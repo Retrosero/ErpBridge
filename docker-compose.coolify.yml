@@ -15,8 +15,12 @@
 # Secrets (never commit): JWT_SIGNING_KEY, ADMIN_SEED_PASSWORD,
 # POSTGRES_PASSWORD. Configure them as "Secret" type in Coolify's
 # per-service Environment tab, NOT as plain values.
+#
+# Internal container ports are 4001 (centralapi) and 4002 (admin) -
+# these are the values the application binds inside its container.
+# Coolify fronts the containers with Traefik on HTTPS 443, so external
+# callers hit the public FQDN and never see these ports directly.
 # ============================================================================
-version: "3.8"
 
 x-erpbridge-common: &erpbridge-common
   restart: unless-stopped
