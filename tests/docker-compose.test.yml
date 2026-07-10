@@ -1,0 +1,77 @@
+version: '3.8'
+
+# ErpBridge integration test ortamı.
+#
+# Üç ayrı veritabanı konteyneri çalıştırır:
+#   - mssql-mikro16 → port 14330 (SQL Server 2022 + V16 Guid kolonları)
+#   - mssql-mikro15 → port 14331 (SQL Server 2019 + V15 RECno kolonları)
+#   - postgres-central → port 54320 (PostgreSQL 16, CentralApi SaaS veritabanı)
+#
+# Bu kompozisyon TEST-ONLY'dir. Üretimde kullanılmaz. Container içindeki
+# şifreler (ErpBridge_Test_2026! / ErpBridge_Test_2026!) tamamen fixture
+# amaçlıdır; hiçbir prod yapılandırmasında veya CI secret'ında yer almaz.
+#
+# Kullanım:
+#   cd tests
+#   docker compose -f docker-compose.test.yml up -d
+#   export ERPBridge_RUN_INTEGRATION=1
+#   export ERPBridge_SQL_SERVER_16=localhost,14330
+#   export ERPBridge_SQL_SERVER_15=localhost,14331
+#   export ConnectionStrings__CentralApi="Host=localhost;Port=54320;Database=erpbridge_central_test;Username=erpbridge;Password=ErpBridge_Test_2026!"
+#   cd .. && dotnet test ErpBridge.sln -p:EnableWindowsTargeting=true -p:RollForward=LatestMajor
+#   cd tests && docker compose -f docker-compose.test.yml down
+#
+# Sadece CentralApi'yi çalıştırmak için:
+#   docker compose -f docker-compose.test.yml up -d postgres-central
+
+services:
+  mssql-mikro16:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: erpbridge-test-mikro16
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "ErpBridge_Test_2026!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "14330:1433"  # host 14330 → container 1433 (port çakışması önleme)
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "ErpBridge_Test_2026!" -Q "SELECT 1" -C
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - ./mikro16-init.sql:/docker-entrypoint-initdb.d/mikro16-init.sql:ro
+
+  mssql-mikro15:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: erpbridge-test-mikro15
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "ErpBridge_Test_2026!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "14331:1433"
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "ErpBridge_Test_2026!" -Q "SELECT 1" -C
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - ./mikro15-init.sql:/docker-entrypoint-initdb.d/mikro15-init.sql:ro
+
+  postgres-central:
+    image: postgres:16-alpine
+    container_name: erpbridge-test-postgres
+    environment:
+      POSTGRES_DB: erpbridge_central_test
+      POSTGRES_USER: erpbridge
+      POSTGRES_PASSWORD: "ErpBridge_Test_2026!"
+    ports:
+      - "54320:5432"  # host 54320 → container 5432 (port çakışması önleme)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erpbridge -d erpbridge_central_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - ./central-init.sql:/docker-entrypoint-initdb.d/central-init.sql:ro

@@ -1,0 +1,103 @@
+# ============================================================================
+# docker-compose.coolify.yml
+#
+# Coolify's "Docker Compose" deployment source. Paste this into Coolify's
+# "Docker Compose" service; Coolify will parse it and expose each `service`
+# as an individually deployable application, with the `coolify.environment`
+# keys automatically wired into the application's Environment tab.
+#
+# Two services are defined:
+#   * centralapi — the Web API + PostgreSQL backend. Binds to a managed
+#     Coolify PostgreSQL via the Service variable substitution.
+#   * admin      — the Blazor Server admin panel. Calls the central API
+#     over the internal Docker network.
+#
+# Secrets (never commit): JWT_SIGNING_KEY, ADMIN_SEED_PASSWORD,
+# POSTGRES_PASSWORD. Configure them as "Secret" type in Coolify's
+# per-service Environment tab, NOT as plain values.
+# ============================================================================
+version: "3.8"
+
+x-erpbridge-common: &erpbridge-common
+  restart: unless-stopped
+  # Match the Dockerfile's runtime user; Coolify's UID is fine.
+  user: "1000:1000"
+
+services:
+  # --------------------------------------------------------------------------
+  # Central API + PostgreSQL-backed background services.
+  # --------------------------------------------------------------------------
+  centralapi:
+    <<: *erpbridge-common
+    container_name: erpbridge-centralapi
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGET: centralapi
+        VERSION: ${GIT_HASH:-latest}
+    image: erpbridge/centralapi:${GIT_HASH:-latest}
+    environment:
+      # Coolify wires these from the per-service Environment tab. Override
+      # the defaults here only for local docker compose up.
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__CentralApi: Host=postgres;Port=5432;Database=erpbridge;Username=erpbridge;Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY}
+      Jwt__Issuer: ErpBridge.CentralApi
+      Jwt__Audience: ErpBridge.Agents
+      Jwt__AccessTokenMinutes: "60"
+      Admin__SeedEmail: ${ADMIN_SEED_EMAIL}
+      Admin__SeedPassword: ${ADMIN_SEED_PASSWORD}
+      Admin__SeedDisplayName: Bootstrap Admin
+      ASPNETCORE_URLS: http://+:8080
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    # Coolify injects its own Traefik labels and DNS via the UI; nothing to
+    # add here. The service is reachable at
+    # https://${COOLIFY_FQDN_CENTRALAPI}.
+
+  # --------------------------------------------------------------------------
+  # Blazor Server admin panel. Talks to the central API via the internal
+  # Docker network using the central API's service hostname.
+  # --------------------------------------------------------------------------
+  admin:
+    <<: *erpbridge-common
+    container_name: erpbridge-admin
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGET: admin
+        VERSION: ${GIT_HASH:-latest}
+    image: erpbridge/admin:${GIT_HASH:-latest}
+    depends_on:
+      centralapi:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # The admin panel calls the central API; it must know its base URL.
+      # We use the internal Docker network name "centralapi". For an
+      # external URL (e.g. https://api.erpbridge.example.com) override
+      # here or in the Coolify environment tab.
+      CentralApi__BaseUrl: ${CENTRALAPI_BASE_URL:-http://centralapi:8080}
+      ASPNETCORE_URLS: http://+:8080
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+# ============================================================================
+# Coolify Service database — managed PostgreSQL. Defined here as a placeholder;
+# in production we attach the Coolify-managed Postgres resource and just
+# reference it by name via ConnectionStrings__CentralApi.
+#
+# networks:
+#   coolify:
+#     name: coolify
+# ============================================================================

@@ -1,0 +1,70 @@
+@page "/bootstrap"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Bootstrap — ErpBridge Admin</PageTitle>
+
+<h1>Bootstrap snapshots</h1>
+
+<div class="mb-3 row g-2">
+    <div class="col-auto">
+        <select class="form-select" @bind="_tenantId">
+            <option value="">Select tenant…</option>
+            @foreach (var t in _tenants)
+            {
+                <option value="@t.Id">@t.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" @onclick="LoadAsync" disabled="@(string.IsNullOrEmpty(_tenantId) || _loading)">Load</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_summary is not null)
+{
+    <p>Captured at: <strong>@(_summary.CapturedAtUtc?.ToString("u") ?? "never")</strong></p>
+    <table class="table">
+        <thead><tr><th>Section</th><th>Row count</th></tr></thead>
+        <tbody>
+            <tr><td>Customers</td><td>@_summary.CustomersCount</td></tr>
+            <tr><td>Stocks</td><td>@_summary.StocksCount</td></tr>
+            <tr><td>Prices</td><td>@_summary.PricesCount</td></tr>
+            <tr><td>Inventory</td><td>@_summary.InventoryCount</td></tr>
+            <tr><td>Open orders</td><td>@_summary.OpenOrdersCount</td></tr>
+            <tr><td>Cash &amp; bank</td><td>@_summary.CashAndBankCount</td></tr>
+            <tr><td>Lookups</td><td>@_summary.LookupsCount</td></tr>
+        </tbody>
+    </table>
+}
+
+@code {
+    private string _tenantId = string.Empty;
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private ErpBridge.Admin.Api.BootstrapSummaryDto? _summary;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _tenants = await Api.ListTenantsAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        try
+        {
+            if (Guid.TryParse(_tenantId, out var id))
+                _summary = await Api.GetLatestBootstrapAsync(id);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

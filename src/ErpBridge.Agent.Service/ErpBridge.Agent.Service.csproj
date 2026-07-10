@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <UseWindowsService>true</UseWindowsService>
+    <RootNamespace>ErpBridge.Agent.Service</RootNamespace>
+    <AssemblyName>ErpBridge.Agent.Service</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
+    <ProjectReference Include="..\ErpBridge.Core\ErpBridge.Core.csproj" />
+    <ProjectReference Include="..\ErpBridge.LocalStore\ErpBridge.LocalStore.csproj" />
+    <ProjectReference Include="..\ErpBridge.RemoteApi\ErpBridge.RemoteApi.csproj" />
+    <ProjectReference Include="..\ErpBridge.Erp.Mikro\ErpBridge.Erp.Mikro.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="8.0.0" />
+    <PackageReference Include="Serilog" Version="4.0.2" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+  </ItemGroup>
+
+  <!--
+    Expose internal helpers (e.g. AgentWorker.ProcessJobAsync) to the
+    companion test project so unit tests can drive the per-job dispatch path
+    without spinning up the full BackgroundService host loop.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ErpBridge.Agent.Service.Tests" />
+  </ItemGroup>
+
+  <!--
+    Service references Core + Shared + LocalStore + RemoteApi. It does NOT reference
+    ErpBridge.Erp.Mikro directly — Phase 1 dispatches work via interfaces and the
+    ILocalQueueStore durable queue. Real Mikro writes are wired in Phase 6.
+  -->
+
+</Project>

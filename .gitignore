@@ -1,0 +1,45 @@
+# .NET build outputs
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+.vs/
+.vscode/
+
+# NuGet
+*.nupkg
+.nuget/
+packages/
+
+# Test results
+TestResults/
+coverage*.xml
+*.trx
+*.coverage
+
+# Local SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# Secrets — asla repo'ya düşmemeli
+secrets.json
+appsettings.Local.json
+appsettings.Development.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rider / VS
+.idea/
+*.sln.docstates
+
+# Publish output
+publish/
+*.publish.xml

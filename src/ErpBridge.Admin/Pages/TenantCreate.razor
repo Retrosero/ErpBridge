@@ -1,0 +1,42 @@
+@page "/tenants/create"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@inject NavigationManager Nav
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>New Tenant — ErpBridge Admin</PageTitle>
+
+<h1>New Tenant</h1>
+
+<EditForm Model="_model" OnValidSubmit="HandleSubmitAsync" FormName="new-tenant">
+    <div class="mb-3">
+        <label class="form-label">Name</label>
+        <InputText class="form-control" @bind-Value="_model.Name" />
+    </div>
+    <button type="submit" class="btn btn-primary" disabled="@_busy">@(_busy ? "Saving..." : "Save")</button>
+    <a class="btn btn-link" href="tenants">Cancel</a>
+</EditForm>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger mt-3">@_error</div>
+}
+
+@code {
+    private readonly Model _model = new();
+    private bool _busy;
+    private string? _error;
+
+    private sealed class Model { public string Name { get; set; } = string.Empty; }
+
+    private async Task HandleSubmitAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            await Api.CreateTenantAsync(_model.Name);
+            Nav.NavigateTo("/tenants");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

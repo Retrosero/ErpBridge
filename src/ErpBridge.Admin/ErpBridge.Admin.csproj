@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ErpBridge.Admin</RootNamespace>
+    <AssemblyName>ErpBridge.Admin</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
+  </ItemGroup>
+
+  <!--
+    Admin panel intentionally does NOT reference ErpBridge.CentralApi directly.
+    Communication with the central API is HTTP-based through CentralApiClient;
+    DTOs are mirrored locally in src/ErpBridge.Admin/Api/Models.cs to keep the
+    boundary explicit and the dependency graph one-way (Admin → HTTP only).
+  -->
+
+</Project>

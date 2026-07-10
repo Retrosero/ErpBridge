@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ErpBridge.Core</RootNamespace>
+    <AssemblyName>ErpBridge.Core</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <!--
+      Polly v8 is used by BootstrapSyncService for the canonical
+      5s/15s/60s exponential-backoff pipeline. The RemoteApi layer uses
+      Microsoft.Extensions.Http.Polly 8.0.11 (Polly 7.x underneath) for
+      HttpClient retries; here we use the v8 API directly because the
+      bootstrap push is an IRemoteApiClient method invocation rather than
+      a raw HttpClient call.
+    -->
+    <PackageReference Include="Polly" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
+    <ProjectReference Include="..\ErpBridge.Erp.Abstractions\ErpBridge.Erp.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

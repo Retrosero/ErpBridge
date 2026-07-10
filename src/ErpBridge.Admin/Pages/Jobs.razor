@@ -1,0 +1,99 @@
+@page "/jobs"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Jobs — ErpBridge Admin</PageTitle>
+
+<h1>Jobs</h1>
+
+<div class="mb-3 row g-2">
+    <div class="col-auto">
+        <select class="form-select" @bind="_status">
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="processing">Processing</option>
+            <option value="succeeded">Succeeded</option>
+            <option value="failed">Failed</option>
+            <option value="deadletter">DeadLetter</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" @onclick="ReloadAsync">Listele</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p><em>Loading…</em></p>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Tenant</th>
+                <th>Type</th>
+                <th>External</th>
+                <th>Status</th>
+                <th>Retries</th>
+                <th>Enqueued</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var j in _jobs)
+            {
+                <tr>
+                    <td><code>@j.Id.ToString().Substring(0, 8)</code></td>
+                    <td>@(TenantName(j.TenantId))</td>
+                    <td>@j.DocumentType</td>
+                    <td>@j.ExternalId</td>
+                    <td>@j.Status</td>
+                    <td>@j.RetryCount</td>
+                    <td>@j.EnqueuedAtUtc.ToString("u")</td>
+                    <td>
+                        @if (j.Status == "processing" || j.Status == "failed" || j.Status == "deadletter")
+                        {
+                            <button class="btn btn-sm btn-warning" @onclick="() => RetryAsync(j.Id)">Retry</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private string _status = "pending";
+    private IReadOnlyList<ErpBridge.Admin.Api.JobDto> _jobs = Array.Empty<ErpBridge.Admin.Api.JobDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tenants = await Api.ListTenantsAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true; _error = null;
+        try { _jobs = await Api.ListJobsAsync(_status, 200); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task RetryAsync(Guid id)
+    {
+        try { await Api.RetryJobAsync(id); await ReloadAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+}

@@ -1,0 +1,3 @@
+---
+[2026-07-09 23:18:00] coder | f6-mikro-sql-schema | done
+tests/mikro15-init.sql ve tests/mikro16-init.sql dosyalarına SIPARISLER + STOK_HAREKETLERI + unique index eklendi; V15 RECno identity, V16 Guid identity ile writer sözleşmesine (sth_sip_RECid_RECno / sth_sip_uid) birebir uyumlu. Mevcut seed ve Test-ONLY yorumları korundu. Build/test değişmedi. Deliverable: outputs/f6-mikro-sql-schema/deliverable.md

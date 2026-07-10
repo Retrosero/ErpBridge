@@ -1,0 +1,11 @@
+@page "/logout"
+@inject ErpBridge.Admin.Auth.TokenStore Tokens
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        Tokens.Clear();
+        Nav.NavigateTo("/login", forceLoad: true);
+    }
+}

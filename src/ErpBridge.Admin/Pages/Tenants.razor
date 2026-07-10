@@ -1,0 +1,90 @@
+@page "/tenants"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Tenants — ErpBridge Admin</PageTitle>
+
+<h1>Tenants</h1>
+
+<p>
+    <a class="btn btn-primary" href="tenants/create">New Tenant</a>
+</p>
+
+@if (_loading)
+{
+    <p><em>Loading…</em></p>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Name</th>
+                <th>Created</th>
+                <th>Active</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _tenants)
+            {
+                <tr>
+                    <td><code>@t.Id.ToString().Substring(0, 8)</code></td>
+                    <td>@t.Name</td>
+                    <td>@t.CreatedAtUtc.ToString("u")</td>
+                    <td>@(t.IsActive ? "✓" : "✗")</td>
+                    <td>
+                        @if (t.IsActive)
+                        {
+                            <button class="btn btn-sm btn-warning" @onclick="() => DeactivateAsync(t.Id)">Deactivate</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-success" @onclick="() => ActivateAsync(t.Id)">Activate</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _tenants = await Api.ListTenantsAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        try { await Api.UpdateTenantAsync(id, false); await ReloadAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task ActivateAsync(Guid id)
+    {
+        try { await Api.UpdateTenantAsync(id, true); await ReloadAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+}

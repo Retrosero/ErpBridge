@@ -1,0 +1,183 @@
+@page "/apikeys"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@inject IJSRuntime Js
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>API Keys — ErpBridge Admin</PageTitle>
+
+<h1>API Keys</h1>
+
+<p class="text-muted">
+    Tenant-scoped credentials for customer backends to call
+    <code>POST /api/v1/ingest/jobs</code>. The raw value is shown exactly once at creation or rotation.
+</p>
+
+@if (_loading)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-header">Create a new API key</div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-auto">
+                    <select class="form-select" @bind="_create.TenantIdString">
+                        <option value="">Select tenant…</option>
+                        @foreach (var t in _tenants)
+                        {
+                            <option value="@t.Id.ToString()">@t.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <input class="form-control" placeholder="Name (e.g. Acme e-commerce)" @bind="_create.Name" />
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary" @onclick="CreateAsync" disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || string.IsNullOrWhiteSpace(_create.Name) || _busy)">
+                        @(_busy ? "Creating…" : "Create key")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_lastIssuedRaw))
+    {
+        <div class="alert alert-success">
+            <strong>Copy this now — this is the only time the raw key is shown.</strong>
+            <div class="mt-2 d-flex align-items-center">
+                <code class="me-2 flex-grow-1">@_lastIssuedRaw</code>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CopyAsync">Copy</button>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Prefix</th>
+                <th>Name</th>
+                <th>Tenant</th>
+                <th>Scopes</th>
+                <th>Created</th>
+                <th>Last used</th>
+                <th>Active</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var k in _keys)
+            {
+                <tr>
+                    <td><code>@k.KeyPrefix…</code></td>
+                    <td>@k.Name</td>
+                    <td>@(TenantName(k.TenantId))</td>
+                    <td>@string.Join(", ", k.Scopes)</td>
+                    <td>@k.CreatedAtUtc.ToString("u")</td>
+                    <td>@(k.LastUsedAtUtc?.ToString("u") ?? "—")</td>
+                    <td>@(k.IsActive ? "✓" : "✗")</td>
+                    <td>
+                        @if (k.IsActive)
+                        {
+                            <button class="btn btn-sm btn-warning me-1" @onclick="() => RevokeAsync(k.Id)">Revoke</button>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => RotateAsync(k.Id)">Rotate</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private IReadOnlyList<ErpBridge.Admin.Api.ApiKeyDto> _keys = Array.Empty<ErpBridge.Admin.Api.ApiKeyDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private string? _lastIssuedRaw;
+    private string? _error;
+    private readonly CreateModel _create = new();
+
+    private sealed class CreateModel
+    {
+        public string TenantIdString { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty;
+    }
+
+    private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true; _error = null;
+        try
+        {
+            _tenants = await Api.ListTenantsAsync();
+            _keys = await Api.ListApiKeysAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true; _error = null; _lastIssuedRaw = null;
+        try
+        {
+            var created = await Api.CreateApiKeyAsync(_create.TenantId, _create.Name.Trim());
+            _lastIssuedRaw = created.RawKey;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RevokeAsync(Guid id)
+    {
+        _busy = true;
+        try
+        {
+            await Api.RevokeApiKeyAsync(id);
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RotateAsync(Guid id)
+    {
+        _busy = true; _lastIssuedRaw = null;
+        try
+        {
+            var rotated = await Api.RotateApiKeyAsync(id);
+            _lastIssuedRaw = rotated.RawKey;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task CopyAsync()
+    {
+        if (string.IsNullOrEmpty(_lastIssuedRaw)) return;
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", _lastIssuedRaw);
+        }
+        catch
+        {
+            // Clipboard access can be blocked (insecure context, denied
+            // permission). The raw value is still on screen — the operator
+            // can copy it manually.
+        }
+    }
+}

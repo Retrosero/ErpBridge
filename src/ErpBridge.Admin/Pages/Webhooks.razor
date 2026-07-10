@@ -1,0 +1,249 @@
+@page "/webhooks"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@inject IJSRuntime Js
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Webhooks — ErpBridge Admin</PageTitle>
+
+<h1>Webhooks</h1>
+
+<p class="text-muted">
+    Outbound HTTPS endpoints that receive <code>job.succeeded</code> /
+    <code>job.failed</code> events. The signing secret is shown exactly once at
+    creation — store it on the receiver to verify HMAC-SHA256 signatures on
+    <code>ErpBridge-Signature</code>.
+</p>
+
+@if (_loading)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-header">Register a webhook endpoint</div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-auto">
+                    <select class="form-select" @bind="_create.TenantIdString">
+                        <option value="">Tenant…</option>
+                        @foreach (var t in _tenants)
+                        {
+                            <option value="@t.Id.ToString()">@t.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <input class="form-control" placeholder="Name (e.g. ERP staging)" @bind="_create.Name" />
+                </div>
+                <div class="col-auto flex-grow-1">
+                    <input class="form-control" placeholder="https://customer.example/erp-bridge/hook" @bind="_create.Url" />
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary" @onclick="CreateAsync" disabled="@(!CanCreate || _busy)">
+                        @(_busy ? "Creating…" : "Register")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_lastIssuedSecret))
+    {
+        <div class="alert alert-success">
+            <strong>Copy this now — the signing secret is only shown once.</strong>
+            <div class="mt-2 d-flex align-items-center">
+                <code class="me-2 flex-grow-1">@_lastIssuedSecret</code>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CopyAsync">Copy</button>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    @foreach (var w in _webhooks)
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>@w.Name</strong>
+                    <span class="text-muted ms-2">@(w.IsActive ? "active" : "disabled")</span>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => LoadDeliveriesAsync(w.Id)">Deliveries</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(w.Id)">Delete</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row small">
+                    <div class="col-md-6">
+                        <div><strong>URL:</strong> <code>@w.Url</code></div>
+                        <div><strong>Tenant:</strong> @(TenantName(w.TenantId))</div>
+                        <div><strong>Signing secret:</strong> <code>@w.SigningSecretPrefix…</code></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div><strong>Events:</strong> @(w.SubscribedEvents.Length == 0 ? "all" : string.Join(", ", w.SubscribedEvents))</div>
+                        <div><strong>Created:</strong> @w.CreatedAtUtc.ToString("u")</div>
+                        <div><strong>Last delivered:</strong> @(w.LastDeliveredAtUtc?.ToString("u") ?? "—")</div>
+                    </div>
+                </div>
+
+                @if (_deliveriesEndpointId == w.Id)
+                {
+                    <hr />
+                    <h6>Recent deliveries</h6>
+                    @if (_deliveriesLoading)
+                    {
+                        <p><em>Loading…</em></p>
+                    }
+                    else if (_deliveries.Count == 0)
+                    {
+                        <p class="text-muted">No deliveries yet.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Event</th>
+                                    <th>Status</th>
+                                    <th>Attempts</th>
+                                    <th>Last code</th>
+                                    <th>Last error</th>
+                                    <th>Last attempt</th>
+                                    <th>Next retry</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var d in _deliveries)
+                                {
+                                    <tr>
+                                        <td>@d.EventType</td>
+                                        <td>@d.Status</td>
+                                        <td>@d.AttemptCount</td>
+                                        <td>@(d.LastResponseCode?.ToString() ?? "—")</td>
+                                        <td class="text-truncate" style="max-width:240px">@(d.LastError ?? "—")</td>
+                                        <td>@(d.LastAttemptAtUtc?.ToString("u") ?? "—")</td>
+                                        <td>@(d.NextRetryAtUtc?.ToString("u") ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private IReadOnlyList<ErpBridge.Admin.Api.WebhookEndpointDto> _webhooks = Array.Empty<ErpBridge.Admin.Api.WebhookEndpointDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private string? _lastIssuedSecret;
+    private string? _error;
+    private readonly CreateModel _create = new();
+
+    private Guid? _deliveriesEndpointId;
+    private bool _deliveriesLoading;
+    private IReadOnlyList<ErpBridge.Admin.Api.WebhookDeliveryDto> _deliveries = Array.Empty<ErpBridge.Admin.Api.WebhookDeliveryDto>();
+
+    private sealed class CreateModel
+    {
+        public string TenantIdString { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+        public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty;
+    }
+
+    private bool CanCreate =>
+        _create.TenantId != Guid.Empty
+        && !string.IsNullOrWhiteSpace(_create.Name)
+        && !string.IsNullOrWhiteSpace(_create.Url)
+        && Uri.TryCreate(_create.Url, UriKind.Absolute, out var u)
+        && (u.Scheme == Uri.UriSchemeHttps || u.Scheme == Uri.UriSchemeHttp);
+
+    private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true; _error = null;
+        try
+        {
+            _tenants = await Api.ListTenantsAsync();
+            _webhooks = await Api.ListWebhooksAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true; _error = null; _lastIssuedSecret = null;
+        try
+        {
+            var created = await Api.CreateWebhookAsync(_create.TenantId, _create.Name.Trim(), _create.Url.Trim());
+            _lastIssuedSecret = created.SigningSecret;
+            _create.Name = string.Empty;
+            _create.Url = string.Empty;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        _busy = true;
+        try
+        {
+            await Api.DeleteWebhookAsync(id);
+            if (_deliveriesEndpointId == id)
+            {
+                _deliveriesEndpointId = null;
+                _deliveries = Array.Empty<ErpBridge.Admin.Api.WebhookDeliveryDto>();
+            }
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task LoadDeliveriesAsync(Guid id)
+    {
+        if (_deliveriesEndpointId == id)
+        {
+            _deliveriesEndpointId = null;
+            return;
+        }
+        _deliveriesEndpointId = id;
+        _deliveriesLoading = true;
+        try
+        {
+            _deliveries = await Api.ListWebhookDeliveriesAsync(id);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _deliveriesLoading = false; }
+    }
+
+    private async Task CopyAsync()
+    {
+        if (string.IsNullOrEmpty(_lastIssuedSecret)) return;
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", _lastIssuedSecret);
+        }
+        catch
+        {
+            // Same reasoning as the API key page: clipboard access can be
+            // blocked; the value is on screen and the operator can copy it
+            // manually.
+        }
+    }
+}

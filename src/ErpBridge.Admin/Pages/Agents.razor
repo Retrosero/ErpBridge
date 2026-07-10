@@ -1,0 +1,63 @@
+@page "/agents"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Agents — ErpBridge Admin</PageTitle>
+
+<h1>Agents</h1>
+
+@if (_loading)
+{
+    <p><em>Loading…</em></p>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Tenant</th>
+                <th>Machine</th>
+                <th>Last heartbeat</th>
+                <th>Status</th>
+                <th>Queue depth</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in _agents)
+            {
+                <tr>
+                    <td>@(TenantName(a.TenantId))</td>
+                    <td><code>@a.MachineId</code></td>
+                    <td>@(a.LastHeartbeatAtUtc?.ToString("u") ?? "—")</td>
+                    <td>@(a.LastStatus ?? "—")</td>
+                    <td>@a.LastQueueDepth</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private IReadOnlyList<ErpBridge.Admin.Api.AgentDto> _agents = Array.Empty<ErpBridge.Admin.Api.AgentDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            _tenants = await Api.ListTenantsAsync();
+            _agents = await Api.ListAgentsAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+}

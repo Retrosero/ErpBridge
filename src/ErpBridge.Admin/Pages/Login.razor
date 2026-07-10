@@ -1,0 +1,67 @@
+@page "/login"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@inject ErpBridge.Admin.Auth.TokenStore Tokens
+@inject NavigationManager Nav
+
+<PageTitle>Login — ErpBridge Admin</PageTitle>
+
+<h1>Login</h1>
+
+<EditForm Model="_model" OnValidSubmit="HandleLoginAsync" FormName="login">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label class="form-label">Email</label>
+        <InputText class="form-control" @bind-Value="_model.Email" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Password</label>
+        <InputText class="form-control" type="password" @bind-Value="_model.Password" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@_busy">
+        @(_busy ? "Signing in..." : "Sign in")
+    </button>
+</EditForm>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger mt-3">@_error</div>
+}
+
+@code {
+    private readonly LoginModel _model = new();
+    private bool _busy;
+    private string? _error;
+
+    private sealed class LoginModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    private async Task HandleLoginAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var resp = await Api.LoginAsync(_model.Email, _model.Password);
+            Tokens.Set(resp.Token, resp.AdminId, resp.Email, resp.DisplayName, resp.ExpiresAtUtc);
+            Nav.NavigateTo("/");
+        }
+        catch (ErpBridge.Admin.Api.UnauthorizedApiException)
+        {
+            _error = "Invalid email or password.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

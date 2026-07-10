@@ -1,0 +1,139 @@
+@page "/licenses"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Licenses — ErpBridge Admin</PageTitle>
+
+<h1>Licenses</h1>
+
+@if (_loading)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-header">Issue a new license</div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-auto">
+                    <select class="form-select" @bind="_create.TenantIdString">
+                        <option value="">Select tenant…</option>
+                        @foreach (var t in _tenants)
+                        {
+                            <option value="@t.Id.ToString()">@t.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <input class="form-control" type="datetime-local" @bind="_create.ExpiresAtLocal" placeholder="Expires (optional)" />
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary" @onclick="CreateAsync" disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || _busy)">
+                        @(_busy ? "Issuing..." : "Issue license")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_lastIssuedKey))
+    {
+        <div class="alert alert-success">
+            Issued: <code>@_lastIssuedKey</code> — copy it now, this is the only time the full key is shown.
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>License key</th>
+                <th>Tenant</th>
+                <th>Issued</th>
+                <th>Expires</th>
+                <th>Active</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in _licenses)
+            {
+                <tr>
+                    <td><code>@l.LicenseKey.Substring(0, Math.Min(12, l.LicenseKey.Length))…</code></td>
+                    <td>@(TenantName(l.TenantId))</td>
+                    <td>@l.IssuedAtUtc.ToString("u")</td>
+                    <td>@(l.ExpiresAtUtc?.ToString("u") ?? "—")</td>
+                    <td>@(l.IsActive ? "✓" : "✗")</td>
+                    <td>
+                        @if (l.IsActive)
+                        {
+                            <button class="btn btn-sm btn-warning" @onclick="() => RevokeAsync(l.Id)">Revoke</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private IReadOnlyList<ErpBridge.Admin.Api.LicenseDto> _licenses = Array.Empty<ErpBridge.Admin.Api.LicenseDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private string? _lastIssuedKey;
+    private string? _error;
+    private readonly CreateModel _create = new();
+
+    private sealed class CreateModel
+    {
+        public string TenantIdString { get; set; } = string.Empty;
+        public DateTime? ExpiresAtLocal { get; set; }
+        public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty;
+    }
+
+    private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true; _error = null;
+        try
+        {
+            _tenants = await Api.ListTenantsAsync();
+            _licenses = await Api.ListLicensesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            DateTimeOffset? exp = _create.ExpiresAtLocal is { } d
+                ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Local))
+                : (DateTimeOffset?)null;
+            var lic = await Api.CreateLicenseAsync(_create.TenantId, exp);
+            _lastIssuedKey = lic.LicenseKey;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RevokeAsync(Guid id)
+    {
+        _busy = true;
+        try { await Api.RevokeLicenseAsync(id); await ReloadAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

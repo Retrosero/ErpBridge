@@ -1,0 +1,43 @@
+# Source control
+.git
+.gitignore
+.gitattributes
+
+# IDE / editor
+.vs
+.vscode
+.idea
+*.user
+*.suo
+
+# Build outputs
+**/bin
+**/obj
+**/out
+**/publish
+**/.mavis
+**/node_modules
+
+# Test artifacts
+**/TestResults
+**/*.trx
+**/coverage*
+
+# Local config / secrets
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/.env
+**/.env.*
+
+# Docs and meta (delivered separately; not needed in runtime image)
+docs/
+deliverable*.md
+track*-deliverable.md
+README.md
+AGENTS.md
+PROJECT-CONTEXT.md
+appsettings.example.json
+
+# OS junk
+.DS_Store
+Thumbs.db

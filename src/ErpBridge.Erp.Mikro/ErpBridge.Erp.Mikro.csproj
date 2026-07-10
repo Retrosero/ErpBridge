@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ErpBridge.Erp.Mikro</RootNamespace>
+    <AssemblyName>ErpBridge.Erp.Mikro</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    Dependencies for ErpBridge.Erp.Mikro:
+      - ErpBridge.Shared                    (DTOs / Result<T> / utilities)
+      - ErpBridge.Erp.Abstractions          (IErpAdapter / IMappingStore / payloads)
+      - ErpBridge.Core                      (AgentConfig + IAgentConfigToErpSettingsMapper
+                                             — added in Faz 2 Track 1 so the Mikro mapper
+                                             can implement the Core-defined contract)
+      - Microsoft.Data.SqlClient            (real SQL only ships in Phase 3+)
+      - Microsoft.Extensions.DependencyInjection.Abstractions
+
+    MUST NOT reference:
+      - ErpBridge.LocalStore
+      - ErpBridge.RemoteApi
+      - ErpBridge.Agent.Service
+      - ErpBridge.Agent.UI
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
+    <ProjectReference Include="..\ErpBridge.Erp.Abstractions\ErpBridge.Erp.Abstractions.csproj" />
+    <ProjectReference Include="..\ErpBridge.Core\ErpBridge.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.5" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+
+</Project>
