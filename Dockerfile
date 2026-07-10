@@ -89,6 +89,7 @@ RUN PROJECT_DIR=$(cut -d= -f2 /tmp/project_dir.env) && \
 
 # ---------- final stage ----------
 FROM runtime AS final
+FROM runtime AS centralapi
 ARG target=centralapi
 WORKDIR /app
 
