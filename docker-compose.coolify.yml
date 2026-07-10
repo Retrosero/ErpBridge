@@ -38,7 +38,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        TARGET: centralapi
+        target: centralapi
         VERSION: ${GIT_HASH:-latest}
     image: erpbridge/centralapi:${GIT_HASH:-latest}
     # Container-side port. Coolify fronts this with Traefik on HTTPS 443,
@@ -80,7 +80,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        TARGET: admin
+        target: admin
         VERSION: ${GIT_HASH:-latest}
     image: erpbridge/admin:${GIT_HASH:-latest}
     ports:

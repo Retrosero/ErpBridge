@@ -1,20 +1,23 @@
 ﻿# syntax=docker/dockerfile:1.7
 # ============================================================================
 # ErpBridge multi-target Dockerfile. Builds either:
-#   * the central API  (TARGET=CentralApi) - Web API + PostgreSQL backend
-#   * the admin panel  (TARGET=Admin)      - Blazor Server
+#   * the central API  (target=centralapi) - Web API + PostgreSQL backend
+#   * the admin panel  (target=admin)      - Blazor Server
 # into a single self-contained ASP.NET Core 8 runtime image.
 #
 # Usage (Coolify "Dockerfile" source):
-#   build args:  TARGET=CentralApi (or Admin), VERSION=git-sha (optional)
+#   build args:  target=centralapi (or admin), version=git-sha (optional)
 #   port:        4001 - Coolify fronts the container with Traefik; external
 #               traffic arrives at HTTPS 443 and is reverse-proxied to the
 #               container port. Override the internal port at deploy time
 #               by setting the `PORT` environment variable in Coolify.
 #
-# IMPORTANT: TARGET must be passed in PascalCase to match the project
-# folder under src/ErpBridge.*. Coolify passes build args verbatim;
-# we never downcase them, so callers must write `CentralApi` / `Admin`.
+# IMPORTANT: Coolify restricts Dockerfile build-arg values to
+# [a-z 0-9 . - _] only. The `target` arg therefore arrives in lowercase
+# ("centralapi" or "admin"); the Dockerfile maps it to the PascalCase
+# project folder ("ErpBridge.CentralApi" / "ErpBridge.Admin") and the
+# PascalCase DLL name internally. The csproj files on disk are not
+# renamed - only the docker-side mapping changes.
 # ============================================================================
 
 # ---------- shared base: ASP.NET Core 8 runtime ----------
@@ -34,40 +37,59 @@ USER $APP_UID
 
 # ---------- build stage ----------
 FROM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
-ARG TARGET=CentralApi
+# Coolify restricts build-arg values to [a-z 0-9 . - _]. We accept the
+# lowercase form ("centralapi" / "admin") and map it to the PascalCase
+# project folder name via build-time shell normalisation. The hard-coded
+# mapping below is the source of truth - add a branch here whenever the
+# solution gains a new buildable target.
+ARG target=centralapi
+RUN if [ "$target" = "centralapi" ]; then \
+        export PROJECT_DIR="ErpBridge.CentralApi"; \
+    elif [ "$target" = "admin" ]; then \
+        export PROJECT_DIR="ErpBridge.Admin"; \
+    else \
+        echo "Unsupported target '$target' - expected 'centralapi' or 'admin'" >&2; \
+        exit 1; \
+    fi && \
+    echo "PROJECT_DIR=${PROJECT_DIR}" > /tmp/project_dir.env
 WORKDIR /src
 
 # Copy NuGet inputs first for better layer caching. The solution file
 # references every project, but restore only needs the csproj files; we
-# copy them explicitly.
+# copy them explicitly. The project-specific csproj copies use the
+# literal PascalCase folder names because they live on disk in that
+# case.
 COPY ErpBridge.sln ./
-COPY src/ErpBridge.Core/ErpBridge.Core.csproj                  src/ErpBridge.Core/
-COPY src/ErpBridge.Shared/ErpBridge.Shared.csproj              src/ErpBridge.Shared/
-COPY src/ErpBridge.LocalStore/ErpBridge.LocalStore.csproj      src/ErpBridge.LocalStore/
-COPY src/ErpBridge.Erp.Abstractions/ErpBridge.Erp.Abstractions.csproj src/ErpBridge.Erp.Abstractions/
-COPY src/ErpBridge.Erp.Mikro/ErpBridge.Erp.Mikro.csproj       src/ErpBridge.Erp.Mikro/
-COPY src/ErpBridge.RemoteApi/ErpBridge.RemoteApi.csproj        src/ErpBridge.RemoteApi/
-COPY src/ErpBridge.Agent.Service/ErpBridge.Agent.Service.csproj src/ErpBridge.Agent.Service/
-COPY src/ErpBridge.Agent.UI/ErpBridge.Agent.UI.csproj          src/ErpBridge.Agent.UI/
-COPY src/ErpBridge.CentralApi/ErpBridge.CentralApi.csproj      src/ErpBridge.CentralApi/
-COPY src/ErpBridge.Admin/ErpBridge.Admin.csproj                src/ErpBridge.Admin/
+COPY src/ErpBridge.Core/ErpBridge.Core.csproj                            src/ErpBridge.Core/
+COPY src/ErpBridge.Shared/ErpBridge.Shared.csproj                        src/ErpBridge.Shared/
+COPY src/ErpBridge.LocalStore/ErpBridge.LocalStore.csproj                src/ErpBridge.LocalStore/
+COPY src/ErpBridge.Erp.Abstractions/ErpBridge.Erp.Abstractions.csproj    src/ErpBridge.Erp.Abstractions/
+COPY src/ErpBridge.Erp.Mikro/ErpBridge.Erp.Mikro.csproj                   src/ErpBridge.Erp.Mikro/
+COPY src/ErpBridge.RemoteApi/ErpBridge.RemoteApi.csproj                  src/ErpBridge.RemoteApi/
+COPY src/ErpBridge.Agent.Service/ErpBridge.Agent.Service.csproj          src/ErpBridge.Agent.Service/
+COPY src/ErpBridge.Agent.UI/ErpBridge.Agent.UI.csproj                    src/ErpBridge.Agent.UI/
+COPY src/ErpBridge.CentralApi/ErpBridge.CentralApi.csproj                src/ErpBridge.CentralApi/
+COPY src/ErpBridge.Admin/ErpBridge.Admin.csproj                          src/ErpBridge.Admin/
 
-RUN dotnet restore src/ErpBridge.${TARGET}/ErpBridge.${TARGET}.csproj
+# Restore against the PascalCase project folder resolved above.
+RUN PROJECT_DIR=$(cut -d= -f2 /tmp/project_dir.env) && \
+    dotnet restore "src/${PROJECT_DIR}/${PROJECT_DIR}.csproj"
 
 # Now copy the rest of the source. Changing source files after this layer
 # will invalidate only this and later layers, keeping restore cached.
 COPY src/ src/
 
-RUN dotnet publish src/ErpBridge.${TARGET}/ErpBridge.${TARGET}.csproj \
-    -c Release \
-    -o /app/publish \
-    --no-restore \
-    /p:UseAppHost=false \
-    /p:Version=${VERSION:-0.0.0}
+RUN PROJECT_DIR=$(cut -d= -f2 /tmp/project_dir.env) && \
+    dotnet publish "src/${PROJECT_DIR}/${PROJECT_DIR}.csproj" \
+        -c Release \
+        -o /app/publish \
+        --no-restore \
+        /p:UseAppHost=false \
+        /p:Version=${version:-0.0.0}
 
 # ---------- final stage ----------
 FROM runtime AS final
-ARG TARGET=CentralApi
+ARG target=centralapi
 WORKDIR /app
 
 # Copy the publish output for the chosen target. The shared DLLs (Core,
@@ -82,8 +104,13 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 # ENTRYPOINT uses a shell wrapper because the JSON-array form does not
 # expand build args - see https://docs.docker.com/engine/reference/builder/#arg.
-# The wrapper also resolves $PORT against $DEFAULT_PORT, so we stay
-# portable across Coolify, Railway, Render, Fly.io, and a bare
-# `docker run -e PORT=5000`.
-ENV APP_DLL=ErpBridge.${TARGET}.dll
-ENTRYPOINT ["sh", "-c", "exec dotnet \"$APP_DLL\" --urls \"http://+:${PORT:-$DEFAULT_PORT}\""]
+# The wrapper resolves $PORT against $DEFAULT_PORT and maps the
+# lowercase $target to the PascalCase DLL name on disk.
+RUN if [ "$target" = "centralapi" ]; then \
+        echo "ErpBridge.CentralApi.dll" > /tmp/app_dll; \
+    elif [ "$target" = "admin" ]; then \
+        echo "ErpBridge.Admin.dll" > /tmp/app_dll; \
+    else \
+        echo "ErpBridge.dll" > /tmp/app_dll; \
+    fi
+ENTRYPOINT ["sh", "-c", "APP_DLL=$(cat /tmp/app_dll); exec dotnet \"$APP_DLL\" --urls \"http://+:${PORT:-$DEFAULT_PORT}\""]
