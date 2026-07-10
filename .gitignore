@@ -43,3 +43,6 @@ Thumbs.db
 # Publish output
 publish/
 *.publish.xml
+
+# Mavis local plans / scratchpad (per-agent, not project data)
+.mavis/
