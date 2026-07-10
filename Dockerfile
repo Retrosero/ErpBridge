@@ -1,29 +1,40 @@
-# syntax=docker/dockerfile:1.7
+﻿# syntax=docker/dockerfile:1.7
 # ============================================================================
 # ErpBridge multi-target Dockerfile. Builds either:
-#   * the central API  (TARGET=centralapi) — Web API + PostgreSQL backend
-#   * the admin panel  (TARGET=admin)     — Blazor Server
+#   * the central API  (TARGET=CentralApi) - Web API + PostgreSQL backend
+#   * the admin panel  (TARGET=Admin)      - Blazor Server
 # into a single self-contained ASP.NET Core 8 runtime image.
 #
 # Usage (Coolify "Dockerfile" source):
-#   build args:  TARGET=centralapi (or admin), VERSION=git-sha (optional)
-#   expose:      8080 (HTTP; Coolify fronts with Traefik + Let's Encrypt)
+#   build args:  TARGET=CentralApi (or Admin), VERSION=git-sha (optional)
+#   port:        4001 - Coolify fronts the container with Traefik; external
+#               traffic arrives at HTTPS 443 and is reverse-proxied to the
+#               container port. Override the internal port at deploy time
+#               by setting the `PORT` environment variable in Coolify.
+#
+# IMPORTANT: TARGET must be passed in PascalCase to match the project
+# folder under src/ErpBridge.*. Coolify passes build args verbatim;
+# we never downcase them, so callers must write `CentralApi` / `Admin`.
 # ============================================================================
 
 # ---------- shared base: ASP.NET Core 8 runtime ----------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy AS runtime
-ENV ASPNETCORE_URLS=http://+:8080 \
-    ASPNETCORE_ENVIRONMENT=Production \
+ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_NOLOGO=true \
-    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
-EXPOSE 8080
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    # Internal bind port. Most PaaS (Coolify, Render, Railway, Fly.io)
+    # expose PORT to the runtime; we read it through the entrypoint shell
+    # wrapper below. Default to 4001 for `docker run` / debug sessions
+    # where no PORT is supplied.
+    DEFAULT_PORT=4001
+EXPOSE 4001
 # Run as the built-in non-root user that the upstream image ships.
 USER $APP_UID
 
 # ---------- build stage ----------
 FROM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
-ARG TARGET=centralapi
+ARG TARGET=CentralApi
 WORKDIR /src
 
 # Copy NuGet inputs first for better layer caching. The solution file
@@ -56,23 +67,23 @@ RUN dotnet publish src/ErpBridge.${TARGET}/ErpBridge.${TARGET}.csproj \
 
 # ---------- final stage ----------
 FROM runtime AS final
-ARG TARGET=centralapi
+ARG TARGET=CentralApi
 WORKDIR /app
 
 # Copy the publish output for the chosen target. The shared DLLs (Core,
 # Shared) are pulled in transitively by dotnet publish.
 COPY --from=build /app/publish ./
 
-# Healthcheck. The /health endpoint is anonymous; on a non-200 we let the
-# container orchestrator restart us. Five-second timeout for slow boots.
+# Healthcheck hits the anonymous /health endpoint. We resolve the bind
+# port the same way the entrypoint does so the probe never points to a
+# port the application is not listening on.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["dotnet", "--info"]
+    CMD ["sh", "-c", "wget -q -O- http://127.0.0.1:${PORT:-$DEFAULT_PORT}/health || exit 1"]
 
-# By default the central API is the entrypoint. The admin image overrides
-# via Coolify "Entrypoint" / override arguments if needed; the assembly name
-# is identical to the project name, so the default works for both targets.
-# We use a shell wrapper because ENTRYPOINT's JSON-array form does not
-# expand build args — see https://docs.docker.com/engine/reference/builder/#arg.
-ARG TARGET=centralapi
+# ENTRYPOINT uses a shell wrapper because the JSON-array form does not
+# expand build args - see https://docs.docker.com/engine/reference/builder/#arg.
+# The wrapper also resolves $PORT against $DEFAULT_PORT, so we stay
+# portable across Coolify, Railway, Render, Fly.io, and a bare
+# `docker run -e PORT=5000`.
 ENV APP_DLL=ErpBridge.${TARGET}.dll
-ENTRYPOINT ["sh", "-c", "exec dotnet \"$APP_DLL\""]
+ENTRYPOINT ["sh", "-c", "exec dotnet \"$APP_DLL\" --urls \"http://+:${PORT:-$DEFAULT_PORT}\""]

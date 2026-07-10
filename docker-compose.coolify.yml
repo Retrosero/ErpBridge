@@ -37,6 +37,11 @@ services:
         TARGET: centralapi
         VERSION: ${GIT_HASH:-latest}
     image: erpbridge/centralapi:${GIT_HASH:-latest}
+    # Container-side port. Coolify fronts this with Traefik on HTTPS 443,
+    # so external callers hit https://api.erpbridge.example.com and never
+    # see 4001. Change here if 4001 is taken on the host.
+    ports:
+      - "4001:4001"
     environment:
       # Coolify wires these from the per-service Environment tab. Override
       # the defaults here only for local docker compose up.
@@ -49,9 +54,9 @@ services:
       Admin__SeedEmail: ${ADMIN_SEED_EMAIL}
       Admin__SeedPassword: ${ADMIN_SEED_PASSWORD}
       Admin__SeedDisplayName: Bootstrap Admin
-      ASPNETCORE_URLS: http://+:8080
+      PORT: "4001"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:4001/health || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 30s
@@ -74,6 +79,8 @@ services:
         TARGET: admin
         VERSION: ${GIT_HASH:-latest}
     image: erpbridge/admin:${GIT_HASH:-latest}
+    ports:
+      - "4002:4002"
     depends_on:
       centralapi:
         condition: service_started
@@ -83,10 +90,10 @@ services:
       # We use the internal Docker network name "centralapi". For an
       # external URL (e.g. https://api.erpbridge.example.com) override
       # here or in the Coolify environment tab.
-      CentralApi__BaseUrl: ${CENTRALAPI_BASE_URL:-http://centralapi:8080}
-      ASPNETCORE_URLS: http://+:8080
+      CentralApi__BaseUrl: ${CENTRALAPI_BASE_URL:-http://centralapi:4001}
+      PORT: "4002"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:4002/ || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 30s
