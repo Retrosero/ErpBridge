@@ -13,6 +13,12 @@ public interface IRemoteApiClient
     /// <summary>Validate a license key with the central API.</summary>
     Task<LicenseValidationResult> ValidateLicenseAsync(string licenseKey, CancellationToken ct = default);
 
+    /// <summary>
+    /// Register this machine against a license key, minting a JWT the agent will
+    /// use for all subsequent authenticated calls (bootstrap push, heartbeat, ...).
+    /// </summary>
+    Task<AgentRegistrationResult> RegisterAgentAsync(string licenseKey, string machineId, CancellationToken ct = default);
+
     /// <summary>Fetch pending jobs from the central queue.</summary>
     Task<IReadOnlyList<RemoteJob>> GetPendingJobsAsync(CancellationToken ct = default);
 
@@ -24,4 +30,29 @@ public interface IRemoteApiClient
 
     /// <summary>Send a periodic agent heartbeat.</summary>
     Task SendHeartbeatAsync(AgentHeartbeat heartbeat, CancellationToken ct = default);
+}
+
+/// <summary>Outcome of <see cref="IRemoteApiClient.RegisterAgentAsync"/>.</summary>
+public sealed class AgentRegistrationResult
+{
+    /// <summary>True when the central API accepted the registration and returned a JWT.</summary>
+    public bool Success { get; set; }
+
+    /// <summary>JWT the agent should use as <c>Authorization: Bearer ...</c> on subsequent calls.</summary>
+    public string Jwt { get; set; } = string.Empty;
+
+    /// <summary>Agent id assigned by the central API (stored alongside the registration).</summary>
+    public Guid AgentId { get; set; }
+
+    /// <summary>Tenant id the license belongs to.</summary>
+    public Guid TenantId { get; set; }
+
+    /// <summary>UTC timestamp the JWT expires (the agent must re-register after this).</summary>
+    public DateTimeOffset? ExpiresAtUtc { get; set; }
+
+    /// <summary>Stable error code (e.g. <c>LICENSE_NOT_FOUND</c>, <c>LICENSE_EXPIRED</c>, <c>NETWORK</c>).</summary>
+    public string? ErrorCode { get; set; }
+
+    /// <summary>Human-readable error message.</summary>
+    public string? ErrorMessage { get; set; }
 }

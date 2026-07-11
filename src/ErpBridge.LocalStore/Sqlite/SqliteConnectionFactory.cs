@@ -88,6 +88,14 @@ public sealed class SqliteConnectionFactory
             dataSource = SqliteOptions.DefaultDataSource;
         }
 
+        // Microsoft.Data.Sqlite does NOT expand %ENV% tokens inside DataSource.
+        // appsettings.json conventions like "Data Source=%LOCALAPPDATA%\ErpBridge\agent.db"
+        // would otherwise be passed verbatim — SQLite would look for a literal
+        // "%LOCALAPPDATA%" subfolder under the current working directory and fail
+        // with "unable to open database file" (SQLite error 14). Resolve here.
+        dataSource = ExpandEnvironmentTokens(dataSource!);
+        EnsureParentDirectoryExists(dataSource!);
+
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = dataSource!,
@@ -103,6 +111,82 @@ public sealed class SqliteConnectionFactory
         }
 
         _connectionString = builder.ConnectionString;
+    }
+
+    /// <summary>
+    /// Expand <c>%VAR%</c> and <c>${VAR}</c> tokens in <paramref name="value"/> against
+    /// the current process environment. Unknown tokens are left untouched so the
+    /// resulting path is still recognisable in error messages.
+    /// </summary>
+    internal static string ExpandEnvironmentTokens(string value)
+    {
+        if (string.IsNullOrEmpty(value) || value.IndexOf('%') < 0)
+        {
+            return value;
+        }
+
+        // Environment.ExpandEnvironmentVariables handles both %X% and (on .NET 8+) ${X} forms.
+        return Environment.ExpandEnvironmentVariables(value);
+    }
+
+    /// <summary>
+    /// Make sure the parent directory of <paramref name="dataSource"/> exists.
+    /// SQLite (Microsoft.Data.Sqlite) refuses to create a database file when its
+    /// parent folder is missing — error 14, "unable to open database file".
+    /// The path may be absolute (e.g. <c>C:\Users\...\ErpBridge\agent.db</c>) or
+    /// relative (e.g. <c>./agent.db</c>) — both cases are normalised to an
+    /// absolute path before the parent is computed.
+    /// </summary>
+    private static void EnsureParentDirectoryExists(string dataSource)
+    {
+        if (string.IsNullOrWhiteSpace(dataSource)) return;
+
+        // Strip the "Data Source=" / "DataSource=" prefix if it survived from
+        // a full connection string. SqliteConnectionStringBuilder ultimately
+        // parses the same way, but we need the bare path for Path APIs.
+        var bare = StripDataSourcePrefix(dataSource);
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(bare);
+        }
+        catch
+        {
+            // Malformed path — let SQLite's own error surface the real problem.
+            return;
+        }
+
+        var parent = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrEmpty(parent)) return;
+        if (Directory.Exists(parent)) return;
+
+        try
+        {
+            Directory.CreateDirectory(parent);
+        }
+        catch
+        {
+            // Permission / locked volume — let SQLite's own error surface.
+        }
+    }
+
+    private static string StripDataSourcePrefix(string value)
+    {
+        // Common connection-string keys that appear when the DataSource config
+        // value accidentally contains a full connection string instead of a path.
+        const string dataSourceKey = "Data Source=";
+        const string dataSourceKeyCompact = "DataSource=";
+
+        if (value.StartsWith(dataSourceKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return value[dataSourceKey.Length..].Trim();
+        }
+        if (value.StartsWith(dataSourceKeyCompact, StringComparison.OrdinalIgnoreCase))
+        {
+            return value[dataSourceKeyCompact.Length..].Trim();
+        }
+        return value;
     }
 
     /// <summary>

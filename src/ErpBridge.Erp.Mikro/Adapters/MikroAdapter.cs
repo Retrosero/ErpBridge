@@ -131,6 +131,142 @@ public sealed class MikroAdapter : IErpAdapter
             Lookups: lookups);
     }
 
+    /// <summary>
+    /// Read a single reference-data section from Mikro and wrap it in a
+    /// <see cref="SyncPackage"/> with all other sections empty. Useful for
+    /// diagnostics where the bulk <see cref="ReadBootstrapDataAsync"/>
+    /// times out — each section is a small SQL call that can be retried
+    /// independently against a slow Cloudflare tunnel.
+    /// </summary>
+    /// <param name="sectionName">
+    /// One of <c>customers</c>, <c>stocks</c>, <c>openOrders</c>, <c>cashAndBank</c>,
+    /// <c>lookups</c>, <c>prices</c>, <c>inventory</c>. Case-insensitive.
+    /// </param>
+    /// <param name="ct">Cancellation token for the underlying SQL read.</param>
+    public async Task<SyncPackage> ReadBootstrapSectionAsync(string sectionName, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sectionName))
+        {
+            throw new ArgumentException("Section name is required.", nameof(sectionName));
+        }
+
+        const int firmNo = 1;
+        const int warehouseNo = 1;
+        var key = sectionName.Trim().ToLowerInvariant();
+
+        _logger.LogInformation(
+            "MikroAdapter.ReadBootstrapSectionAsync invoked for section {Section} on database {Database}.",
+            key, ConnectionSettings.DatabaseName);
+
+        // Build an empty package with only the requested section populated.
+        // All other sections default to Array.Empty so the JSON payload stays
+        // small and the central API can store it as-is.
+        return key switch
+        {
+            "customers" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: await _dbReader.ReadCustomersAsync(firmNo, ct).ConfigureAwait(false),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: Array.Empty<StockPayload>(),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: Array.Empty<PricePayload>(),
+                Inventory: Array.Empty<InventoryPayload>(),
+                OpenOrders: Array.Empty<OpenOrderPayload>(),
+                CashAndBank: Array.Empty<CashAndBankPayload>(),
+                Lookups: Array.Empty<LookupPayload>()),
+
+            "stocks" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: Array.Empty<CustomerPayload>(),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: await _dbReader.ReadStocksAsync(firmNo, ct).ConfigureAwait(false),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: Array.Empty<PricePayload>(),
+                Inventory: Array.Empty<InventoryPayload>(),
+                OpenOrders: Array.Empty<OpenOrderPayload>(),
+                CashAndBank: Array.Empty<CashAndBankPayload>(),
+                Lookups: Array.Empty<LookupPayload>()),
+
+            "openorders" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: Array.Empty<CustomerPayload>(),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: Array.Empty<StockPayload>(),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: Array.Empty<PricePayload>(),
+                Inventory: Array.Empty<InventoryPayload>(),
+                OpenOrders: await _dbReader.ReadOpenOrdersAsync(firmNo, ct).ConfigureAwait(false),
+                CashAndBank: Array.Empty<CashAndBankPayload>(),
+                Lookups: Array.Empty<LookupPayload>()),
+
+            "cashandbank" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: Array.Empty<CustomerPayload>(),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: Array.Empty<StockPayload>(),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: Array.Empty<PricePayload>(),
+                Inventory: Array.Empty<InventoryPayload>(),
+                OpenOrders: Array.Empty<OpenOrderPayload>(),
+                CashAndBank: await _dbReader.ReadCashAndBankAsync(firmNo, ct).ConfigureAwait(false),
+                Lookups: Array.Empty<LookupPayload>()),
+
+            "lookups" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: Array.Empty<CustomerPayload>(),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: Array.Empty<StockPayload>(),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: Array.Empty<PricePayload>(),
+                Inventory: Array.Empty<InventoryPayload>(),
+                OpenOrders: Array.Empty<OpenOrderPayload>(),
+                CashAndBank: Array.Empty<CashAndBankPayload>(),
+                Lookups: await _dbReader.ReadLookupsAsync(firmNo, ct).ConfigureAwait(false)),
+
+            "prices" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: Array.Empty<CustomerPayload>(),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: Array.Empty<StockPayload>(),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: await _dbReader.ReadPricesAsync(firmNo, ct).ConfigureAwait(false),
+                Inventory: Array.Empty<InventoryPayload>(),
+                OpenOrders: Array.Empty<OpenOrderPayload>(),
+                CashAndBank: Array.Empty<CashAndBankPayload>(),
+                Lookups: Array.Empty<LookupPayload>()),
+
+            "inventory" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: Array.Empty<CustomerPayload>(),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: Array.Empty<StockPayload>(),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: Array.Empty<PricePayload>(),
+                Inventory: await _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct).ConfigureAwait(false),
+                OpenOrders: Array.Empty<OpenOrderPayload>(),
+                CashAndBank: Array.Empty<CashAndBankPayload>(),
+                Lookups: Array.Empty<LookupPayload>()),
+
+            _ => throw new ArgumentException(
+                $"Unknown bootstrap section '{sectionName}'. Expected one of: customers, stocks, openOrders, cashAndBank, lookups, prices, inventory.",
+                nameof(sectionName)),
+        };
+    }
+
     /// <inheritdoc />
     public Task<ErpWriteResult> WriteSalesOrderAsync(
         SalesOrderPayload payload,

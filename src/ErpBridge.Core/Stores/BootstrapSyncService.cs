@@ -301,6 +301,164 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             config.TenantId);
     }
 
+    /// <inheritdoc />
+    public async Task<BootstrapSyncResult> PushSectionAsync(string sectionName, CancellationToken ct = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        if (string.IsNullOrWhiteSpace(sectionName))
+        {
+            return Failed(stopwatch, ErrorCode.ValidationFailed, "Section name is required.");
+        }
+
+        try
+        {
+            var config = await _configStore.LoadAsync(ct).ConfigureAwait(false);
+            if (config is null)
+            {
+                return Failed(stopwatch, ErrorCode.ValidationFailed,
+                    "AgentConfig is not persisted yet; WPF UI must be configured first.");
+            }
+
+            var tenantId = string.IsNullOrWhiteSpace(config.TenantId) ? "unknown" : config.TenantId!;
+
+            IErpAdapter adapter;
+            try
+            {
+                adapter = _adapterFactory.Create((ErpBridge.Erp.Abstractions.ErpType)config.ErpType);
+            }
+            catch (NotSupportedException ex)
+            {
+                return Failed(stopwatch, ErrorCode.UnsupportedVersion, ex.Message);
+            }
+            if (adapter is null)
+            {
+                return Failed(stopwatch, "ADAPTER_MISSING",
+                    $"IErpAdapterFactory returned null for {config.ErpType}.");
+            }
+
+            // 1) Pull a single section. Mirrors the bulk flow but with a smaller
+            //    payload (one section populated, the rest empty arrays).
+            ErpBridge.Erp.Abstractions.Sync.SyncPackage? package;
+            try
+            {
+                package = await adapter.ReadBootstrapSectionAsync(sectionName, ct).ConfigureAwait(false);
+            }
+            catch (ArgumentException ex)
+            {
+                // Unknown section name — surface as a 4xx-style failure.
+                return Failed(stopwatch, "BAD_SECTION", ex.Message);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Adapter ReadBootstrapSectionAsync({Section}) failed.", sectionName);
+                return Failed(stopwatch, ErrorCode.ConnectionFailed,
+                    $"Adapter read failed: {ex.Message}");
+            }
+
+            if (package is null)
+            {
+                return Failed(stopwatch, ErrorCode.InternalError,
+                    "Adapter returned a null SyncPackage.");
+            }
+
+            // 2) Push to central API under the same retry pipeline as the bulk
+            //    flow. The endpoint (POST /api/v1/bootstrap) accepts the partial
+            //    package as-is; the server stores it as JSON in bootstrap_packages.
+            try
+            {
+                await _retryPipeline.ExecuteAsync(
+                    async token => await _remoteApi.PushBootstrapDataAsync(package, token).ConfigureAwait(false),
+                    ct).ConfigureAwait(false);
+            }
+            catch (BootstrapPermanentPushException ex)
+            {
+                _logger.LogWarning("Section {Section} push rejected with 4xx ({Code}): {Message}",
+                    sectionName, ex.ErrorCode, ex.Message);
+                return Failed(stopwatch, ex.ErrorCode, ex.Message);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Section {Section} push failed after retries.", sectionName);
+                return Failed(stopwatch, ErrorCode.TransientUpstream,
+                    $"Push failed after retries: {ex.Message}");
+            }
+
+            // 3) Persist checkpoint on success. We update LastSuccessAt so the
+            //    idempotency window doesn't fire a redundant bulk RunOnceAsync
+            //    immediately after a manual per-section push.
+            try
+            {
+                var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+                var existing = await _checkpointStore
+                    .LoadAsync(tenantId, BootstrapScope, ct)
+                    .ConfigureAwait(false);
+                if (existing is null)
+                {
+                    existing = new CheckpointRecord
+                    {
+                        TenantId = tenantId,
+                        SyncScope = BootstrapScope,
+                        LastToken = null,
+                    };
+                }
+                existing.LastSuccessAt = nowUtc;
+                existing.UpdatedAt = nowUtc;
+                await _checkpointStore.SaveAsync(existing, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Section {Section} push succeeded but checkpoint save failed.", sectionName);
+                // Don't fail the whole call — the push itself succeeded.
+            }
+
+            // 4) Build a partial result — only the requested section's count is
+            //    populated; the rest stay at 0. Downstream UI can read this to
+            //    confirm the section was pushed.
+            var customersCount = sectionName.Equals("customers", StringComparison.OrdinalIgnoreCase)
+                ? package.Customers.Count : 0;
+            var stocksCount = sectionName.Equals("stocks", StringComparison.OrdinalIgnoreCase)
+                ? package.Stocks.Count : 0;
+            var pricesCount = sectionName.Equals("prices", StringComparison.OrdinalIgnoreCase)
+                ? package.Prices.Count : 0;
+            var inventoryCount = sectionName.Equals("inventory", StringComparison.OrdinalIgnoreCase)
+                ? package.Inventory.Count : 0;
+            var openOrdersCount = sectionName.Equals("openorders", StringComparison.OrdinalIgnoreCase)
+                ? package.OpenOrders.Count : 0;
+            var cashAndBankCount = sectionName.Equals("cashandbank", StringComparison.OrdinalIgnoreCase)
+                ? package.CashAndBank.Count : 0;
+            var lookupsCount = sectionName.Equals("lookups", StringComparison.OrdinalIgnoreCase)
+                ? package.Lookups.Count : 0;
+
+            return new BootstrapSyncResult(
+                Success: true,
+                CustomersCount: customersCount,
+                StocksCount: stocksCount,
+                PricesCount: pricesCount,
+                InventoryCount: inventoryCount,
+                OpenOrdersCount: openOrdersCount,
+                CashAndBankCount: cashAndBankCount,
+                LookupsCount: lookupsCount,
+                DurationMs: stopwatch.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected section {Section} push failure.", sectionName);
+            return Failed(stopwatch, ErrorCode.InternalError, ex.Message);
+        }
+    }
+
     private static int SafeCount<T>(IReadOnlyList<T> list) => list?.Count ?? 0;
 
     private static BootstrapSyncResult Failed(Stopwatch stopwatch, string code, string message) =>

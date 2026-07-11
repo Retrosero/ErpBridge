@@ -25,23 +25,18 @@ public static class AgentSettingsValidation
 {
     /// <summary>
     /// Run the validation rules against the form fields. Returns <c>true</c>
-    /// when every required field is present and the integer fields parse;
-    /// populates <paramref name="error"/> with a Turkish user-visible
-    /// message otherwise.
+    /// when every required field is present; populates <paramref name="error"/>
+    /// with a Turkish user-visible message otherwise.
     /// </summary>
     /// <param name="sqlServer">SQL Server host or instance name (required).</param>
     /// <param name="sqlUserName">SQL login (required only when <paramref name="useWindowsAuth"/> is false).</param>
     /// <param name="mikroDatabaseName">Mikro database (required).</param>
-    /// <param name="companyNo">Form-text company number; parsed with <see cref="CultureInfo.InvariantCulture"/>.</param>
-    /// <param name="branchNo">Form-text branch number; parsed with <see cref="CultureInfo.InvariantCulture"/>.</param>
     /// <param name="useWindowsAuth">True for Windows-auth / Trusted_Connection mode (SQL user/password are optional).</param>
     /// <param name="error">Populated with a Turkish user-visible error message when the method returns <c>false</c>.</param>
     public static bool TryValidate(
         string? sqlServer,
         string? sqlUserName,
         string? mikroDatabaseName,
-        string? companyNo,
-        string? branchNo,
         bool useWindowsAuth,
         out string error)
     {
@@ -60,16 +55,6 @@ public static class AgentSettingsValidation
         if (string.IsNullOrWhiteSpace(mikroDatabaseName))
         {
             error = "Mikro database adı boş olamaz.";
-            return false;
-        }
-
-        if (!TryParseNonNegativeInt("Firma no", companyNo, out error))
-        {
-            return false;
-        }
-
-        if (!TryParseNonNegativeInt("Şube no", branchNo, out error))
-        {
             return false;
         }
 

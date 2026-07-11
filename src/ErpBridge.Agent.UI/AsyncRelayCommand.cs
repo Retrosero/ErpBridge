@@ -31,11 +31,22 @@ namespace ErpBridge.Agent.UI;
 /// touching the underlying delegate. There is at most one in-flight
 /// execution at a time per command instance.
 /// </para>
+/// <para>
+/// Thread affinity: <see cref="CanExecuteChanged"/> must fire on the UI thread
+/// because the WPF command manager re-queries <see cref="CanExecute"/> on the
+/// dispatcher's binding subsystem. The async delegate runs with
+/// <c>ConfigureAwait(false)</c> so the post-await continuation lands on a
+/// thread-pool thread; the constructor captures
+/// <see cref="SynchronizationContext.Current"/> (the WPF UI thread) and the
+/// setter/raise methods post back to it. Falls back to direct invocation when
+/// no context is captured (e.g. unit tests).
+/// </para>
 /// </remarks>
 public sealed class AsyncRelayCommand : ICommand
 {
     private readonly Func<CancellationToken, Task> _execute;
     private readonly Func<bool>? _canExecute;
+    private readonly SynchronizationContext? _uiContext;
     private CancellationTokenSource? _executingCts;
     private bool _isExecuting;
 
@@ -44,6 +55,11 @@ public sealed class AsyncRelayCommand : ICommand
     {
         _execute = execute ?? throw new ArgumentNullException(nameof(execute));
         _canExecute = canExecute;
+        // WPF app lifetime guarantees SynchronizationContext.Current is the
+        // DispatcherSynchronizationContext at construction; tests that
+        // construct commands outside the dispatcher get null and fall back
+        // to synchronous invocation.
+        _uiContext = SynchronizationContext.Current;
     }
 
     /// <summary>True while a previous invocation is still running.</summary>
@@ -58,7 +74,7 @@ public sealed class AsyncRelayCommand : ICommand
             }
 
             _isExecuting = value;
-            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+            RaiseCanExecuteChanged();
         }
     }
 
@@ -120,7 +136,24 @@ public sealed class AsyncRelayCommand : ICommand
     /// <summary>
     /// Force a <see cref="CanExecuteChanged"/> notification. The WPF command
     /// manager re-queries <see cref="CanExecute"/> for every bound control
-    /// on the next dispatcher pass.
+    /// on the next dispatcher pass. Marshals to the UI thread when called
+    /// from a background continuation.
     /// </summary>
-    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public void RaiseCanExecuteChanged()
+    {
+        var handler = CanExecuteChanged;
+        if (handler is null)
+        {
+            return;
+        }
+
+        if (_uiContext is not null)
+        {
+            _uiContext.Post(_ => handler(this, EventArgs.Empty), null);
+        }
+        else
+        {
+            handler(this, EventArgs.Empty);
+        }
+    }
 }

@@ -56,8 +56,21 @@ public sealed class MikroAdapterFactory : IErpAdapterFactory
         // adapter fully wired-in instances without keeping factory-level state.
         using var scope = _services.CreateScope();
 
+        // Re-read Mikro connection settings from IConfiguration on every build.
+        // The constructor-injected _connectionSettings was captured at DI
+        // registration time (when the WPF "Mikro" section in appsettings.json
+        // is still empty); the WPF "Kaydet" handler writes into the live
+        // MutableMemoryConfigurationProvider afterwards, so a stale snapshot
+        // would leave every Create() call with empty Server/User/Database and
+        // the adapter would surface "Server is required" on the first
+        // ReadBootstrapDataAsync. Reading live here keeps the factory aligned
+        // with MikroConnectionTestOrchestrator (which already re-reads on
+        // every RunFullTestAsync).
+        var liveSettings = MikroConnectionSettings.FromConfiguration(_configuration)
+            ?? _connectionSettings;
+
         return new MikroAdapter(
-            connectionSettings: _connectionSettings,
+            connectionSettings: liveSettings,
             orchestrator: scope.ServiceProvider.GetRequiredService<IMikroConnectionTestOrchestrator>(),
             versionDetector: scope.ServiceProvider.GetRequiredService<MikroVersionDetector>(),
             strategySelector: scope.ServiceProvider.GetRequiredService<MikroIdentityStrategySelector>(),

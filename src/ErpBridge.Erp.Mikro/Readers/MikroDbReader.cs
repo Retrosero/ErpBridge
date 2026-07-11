@@ -3,6 +3,7 @@ using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.Erp.Mikro.Connection;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using System.Data;
 
 namespace ErpBridge.Erp.Mikro.Readers;
 
@@ -23,6 +24,11 @@ public sealed class MikroDbReader : IMikroDbReader
 {
     private readonly MikroConnectionFactory _factory;
     private readonly ILogger<MikroDbReader> _logger;
+
+    static MikroDbReader()
+    {
+        SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
+    }
 
     /// <summary>
     /// Build a reader. The factory formats connection strings; the logger
@@ -55,17 +61,29 @@ SELECT
     CAST(cari_CepTel AS NVARCHAR(50))                 AS Phone,
     CAST(cari_EMail AS NVARCHAR(200))                 AS Email
 FROM CARI_HESAPLAR
-WHERE cari_firmano = @firmNo";
+WHERE ISNULL(cari_iptal, 0) = 0";
 
-        var rows = await QueryAsync<CustomerPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<CustomerRow>(sql, new { firmNo }, ct).ConfigureAwait(false);
         // Drop the Addresses/Contacts fields the constructor will initialise to null —
         // supply proper empty lists after Dapper hydrates the scalar columns.
         var result = rows
-            .Select(c => c with
-            {
-                Addresses = Array.Empty<CustomerAddressPayload>(),
-                Contacts = Array.Empty<CustomerContactPayload>(),
-            })
+            .Select(c => new CustomerPayload(
+                c.CustomerCode,
+                c.Title1,
+                c.Title2,
+                c.TaxOffice,
+                c.TaxNo,
+                c.GroupCode,
+                c.RegionCode,
+                c.SalespersonCode,
+                c.Currency,
+                c.DefaultWarehouseCode,
+                c.IsLocked,
+                c.IsEInvoiceEnabled,
+                c.Phone,
+                c.Email,
+                Array.Empty<CustomerAddressPayload>(),
+                Array.Empty<CustomerContactPayload>()))
             .ToList();
         _logger.LogInformation("Read {Count} customers for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -99,12 +117,35 @@ SELECT
     CAST(NULL AS DECIMAL(18,6))                       AS StandardCost,
     CAST(NULL AS NVARCHAR(10))                        AS Currency
 FROM STOKLAR
-WHERE sto_firmano = @firmNo
+WHERE ISNULL(sto_iptal, 0) = 0
   AND ISNULL(sto_pasif_fl, 0) = 0";
 
-        var rows = await QueryAsync<StockPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<StockRow>(sql, new { firmNo }, ct).ConfigureAwait(false);
         var result = rows
-            .Select(s => s with { Barcodes = Array.Empty<BarcodePayload>() })
+            .Select(s => new StockPayload(
+                s.StockCode,
+                s.Name,
+                s.ShortName,
+                s.ForeignName,
+                s.DefaultTaxPointer,
+                s.Unit1,
+                s.Unit1Factor,
+                s.Unit2,
+                s.Unit2Factor,
+                s.Unit3,
+                s.Unit3Factor,
+                s.MainGroupCode,
+                s.SubGroupCode,
+                s.SectorCode,
+                s.BrandCode,
+                s.ModelCode,
+                s.ManufacturerCode,
+                s.ShelfCode,
+                s.BedenliTakip,
+                s.RenkDetayli,
+                s.StandardCost,
+                s.Currency,
+                Array.Empty<BarcodePayload>()))
             .ToList();
         _logger.LogInformation("Read {Count} stocks for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -117,7 +158,7 @@ WHERE sto_firmano = @firmNo
 SELECT
     CAST(ISNULL(sip_evrakno_seri, '') AS NVARCHAR(20)) AS Series,
     CAST(ISNULL(sip_evrakno_sira, 0) AS INT)          AS Number,
-    CAST(ISNULL(sip_satirno, 0) AS INT)               AS LineNo,
+    CAST(ISNULL(sip_satirno, 0) AS INT)               AS [LineNo],
     CAST(sip_musteri_kod AS NVARCHAR(50))             AS CustomerCode,
     CAST(ISNULL(sip_stok_kod, '') AS NVARCHAR(50))    AS StockCode,
     CAST(ISNULL(sip_miktar, 0) AS DECIMAL(18,6))      AS Quantity,
@@ -130,6 +171,7 @@ SELECT
     CAST(sip_tutar AS DECIMAL(18,6))                  AS TotalAmount
 FROM SIPARISLER
 WHERE sip_firmano = @firmNo
+  AND ISNULL(sip_iptal, 0) = 0
   AND sip_kapat_fl = 0";
 
         var rows = await QueryAsync<OpenOrderPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
@@ -142,14 +184,14 @@ WHERE sip_firmano = @firmNo
     public async Task<IReadOnlyList<CashAndBankPayload>> ReadCashAndBankAsync(int firmNo, CancellationToken ct = default)
     {
         const string sql = @"
-SELECT 'cash' AS Kind, kas_kod AS Code, kas_ismi AS Name, NULL AS Branch,
-       NULL AS AccountNo, kas_firma_no AS FirmNo, kas_doviz_cinsi AS Currency,
+SELECT kas_kod AS Code, kas_isim AS Name, 'cash' AS Kind, NULL AS Branch,
+       NULL AS AccountNo, kas_firma_no AS FirmNo, CAST(kas_doviz_cinsi AS NVARCHAR(10)) AS Currency,
        NULL AS TcmbCode
-FROM KASALAR WHERE kas_firma_no = @firmNo
+FROM KASALAR WHERE kas_firma_no = @firmNo AND ISNULL(kas_iptal, 0) = 0
 UNION ALL
-SELECT 'bank', ban_kod, ban_ismi, ban_sube, ban_hesapno, ban_firma_no,
-       ban_doviz_cinsi, ban_TCMB_Kodu
-FROM BANKALAR WHERE ban_firma_no = @firmNo";
+SELECT ban_kod, ban_ismi, 'bank', ban_sube, ban_hesapno, ban_firma_no,
+       CAST(ban_doviz_cinsi AS NVARCHAR(10)), ban_TCMB_Kodu
+FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0";
 
         var rows = await QueryAsync<CashAndBankPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();
@@ -164,25 +206,25 @@ FROM BANKALAR WHERE ban_firma_no = @firmNo";
         // down and lets Dapper map a single uniform result shape.
         _ = firmNo; // Suppress "unused parameter" — kept for signature parity.
         const string sql = @"
-SELECT 'warehouse' AS Kind, CAST(depo_no AS NVARCHAR(20)) AS Code, CAST(depo_adi AS NVARCHAR(100)) AS Name,
-       NULL AS ParentCode, NULL AS Currency
+SELECT 'warehouse' AS Kind, CAST(dep_no AS NVARCHAR(20)) AS Code, CAST(dep_adi AS NVARCHAR(100)) AS Name,
+       CAST(NULL AS NVARCHAR(50)) AS ParentCode, CAST(NULL AS NVARCHAR(10)) AS Currency
 FROM DEPOLAR
+WHERE dep_firmano = @firmNo AND ISNULL(dep_iptal, 0) = 0
 UNION ALL
 SELECT 'salesperson', CAST(cari_per_kod AS NVARCHAR(20)), CAST(ISNULL(cari_per_adi,'') + ' ' + ISNULL(cari_per_soyadi,'') AS NVARCHAR(200)),
-       NULL, NULL
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
 FROM CARI_PERSONEL_TANIMLARI
+WHERE ISNULL(cari_per_iptal, 0) = 0
 UNION ALL
 SELECT 'payment_plan', CAST(odp_no AS NVARCHAR(20)), CAST(ISNULL(odp_aratop,0) AS NVARCHAR(200)),
-       NULL, NULL
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
 FROM ODEME_PLANLARI
+WHERE ISNULL(odp_iptal, 0) = 0
 UNION ALL
-SELECT 'project', CAST(pro_kodu AS NVARCHAR(50)), CAST(pro_ismi AS NVARCHAR(200)),
-       NULL, NULL
+SELECT 'project', CAST(pro_kodu AS NVARCHAR(50)), CAST(pro_adi AS NVARCHAR(200)),
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
 FROM PROJELER
-UNION ALL
-SELECT 'currency', CAST(kur_sembol AS NVARCHAR(20)), CAST(kur_ismi AS NVARCHAR(100)),
-       NULL, NULL
-FROM KUR_ISIMLERI";
+WHERE ISNULL(pro_iptal, 0) = 0";
 
         var rows = await QueryAsync<LookupPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();
@@ -201,7 +243,7 @@ SELECT
     CAST(sfiyat_doviz AS NVARCHAR(10))               AS Currency,
     CAST(NULL AS NVARCHAR(50))                       AS DiscountCode
 FROM STOK_SATIS_FIYAT_LISTELERI
-WHERE sfiyat_firmano = @firmNo";
+WHERE ISNULL(sfiyat_iptal, 0) = 0";
 
         var rows = await QueryAsync<PricePayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();
@@ -254,7 +296,17 @@ GROUP BY sth_stok_kod, sth_cikis_depo_no";
 
         try
         {
-            var rows = await conn.QueryAsync<T>(sql, parameters).ConfigureAwait(false);
+            // Hard cap the per-query command timeout so a single hanging SQL
+            // statement can't stall the whole bootstrap (the network-level
+            // Connect Timeout=30 in the connection string governs the initial
+            // handshake; this one fires once the command is executing on the
+            // server). 60s is plenty for a typical Mikro reference-data
+            // query and short enough that a deadlock surfaces quickly.
+            var rows = await conn.QueryAsync<T>(new CommandDefinition(
+                commandText: sql,
+                parameters: parameters,
+                commandTimeout: 60,
+                cancellationToken: ct)).ConfigureAwait(false);
             // Guard against null payloads from Dapper (defensive — empty result
             // typically materialises as an empty sequence, not null).
             return rows?.AsList() ?? new List<T>();
@@ -265,4 +317,64 @@ GROUP BY sth_stok_kod, sth_cikis_depo_no";
             throw;
         }
     }
+
+    private sealed class DateOnlyTypeHandler : SqlMapper.TypeHandler<DateOnly>
+    {
+        public override DateOnly Parse(object value)
+        {
+            return value switch
+            {
+                DateOnly dateOnly => dateOnly,
+                DateTime dateTime => DateOnly.FromDateTime(dateTime),
+                string text when DateTime.TryParse(text, out var parsed) => DateOnly.FromDateTime(parsed),
+                _ => throw new DataException($"Cannot convert {value.GetType().Name} to DateOnly."),
+            };
+        }
+
+        public override void SetValue(IDbDataParameter parameter, DateOnly value)
+        {
+            parameter.Value = value.ToDateTime(TimeOnly.MinValue);
+            parameter.DbType = DbType.Date;
+        }
+    }
+
+    private sealed record CustomerRow(
+        string CustomerCode,
+        string Title1,
+        string? Title2,
+        string? TaxOffice,
+        string? TaxNo,
+        string? GroupCode,
+        string? RegionCode,
+        string? SalespersonCode,
+        string? Currency,
+        string? DefaultWarehouseCode,
+        bool IsLocked,
+        bool IsEInvoiceEnabled,
+        string? Phone,
+        string? Email);
+
+    private sealed record StockRow(
+        string StockCode,
+        string Name,
+        string? ShortName,
+        string? ForeignName,
+        int? DefaultTaxPointer,
+        string? Unit1,
+        decimal? Unit1Factor,
+        string? Unit2,
+        decimal? Unit2Factor,
+        string? Unit3,
+        decimal? Unit3Factor,
+        string? MainGroupCode,
+        string? SubGroupCode,
+        string? SectorCode,
+        string? BrandCode,
+        string? ModelCode,
+        string? ManufacturerCode,
+        string? ShelfCode,
+        bool BedenliTakip,
+        bool RenkDetayli,
+        decimal? StandardCost,
+        string? Currency);
 }

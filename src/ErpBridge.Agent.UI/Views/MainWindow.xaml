@@ -1,317 +1,579 @@
 <Window x:Class="ErpBridge.Agent.UI.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ErpBridge Agent — Ayarlar"
-        Width="680" Height="760"
-        MinWidth="600" MinHeight="660"
+        xmlns:views="clr-namespace:ErpBridge.Agent.UI.Views"
+        Title="ErpBridge Agent"
+        Width="720" Height="780"
+        MinWidth="640" MinHeight="680"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource WindowBackgroundBrush}">
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        Icon="pack://application:,,,/assets/icon-256.png"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        StateChanged="MainWindow_StateChanged">
+    <Grid>
+        <TabControl x:Name="MainTabs"
+                    Background="{DynamicResource WindowBackgroundBrush}"
+                    BorderThickness="0"
+                    Padding="0"
+                    Margin="0">
+            <TabControl.Resources>
+                <Style TargetType="TabItem">
+                    <Setter Property="Padding" Value="14,8" />
+                    <Setter Property="FontSize" Value="13" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                    <Setter Property="Foreground" Value="{DynamicResource SubtleHeaderBrush}" />
+                </Style>
+            </TabControl.Resources>
 
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="170" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+            <!-- Ayar sekmesi -->
+            <TabItem Header="Ayarlar">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-        <!-- Başlık + Mikro versiyon badge'i (sağ üst köşede) -->
-        <Grid Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0"
-                       Text="ErpBridge Agent Yapılandırması"
-                       FontSize="18" FontWeight="SemiBold"
-                       VerticalAlignment="Center"
-                       Foreground="{DynamicResource HeaderBrush}" />
-            <Border Grid.Column="1"
-                    Background="{Binding MikroVersionBrush}"
-                    CornerRadius="3"
-                    Padding="10,3"
-                    VerticalAlignment="Center"
-                    ToolTip="{Binding MikroVersionTooltip}">
-                <TextBlock Text="{Binding MikroVersionBadge}"
-                           Foreground="White"
-                           FontWeight="SemiBold"
-                           FontSize="13" />
-            </Border>
-        </Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
 
-        <!-- Lisans anahtarı -->
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="Lisans anahtarı" VerticalAlignment="Center" Margin="0,4" />
-        <TextBox Grid.Row="1" Grid.Column="1"
-                 x:Name="LicenseKeyBox"
-                 Text="{Binding LicenseKey, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,4" />
+                        <!-- Başlık + Mikro versiyon badge'i (sağ üst köşede) -->
+                        <Grid Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="ErpBridge Agent Yapılandırması"
+                                       FontSize="18" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource HeaderBrush}" />
+                            <Border Grid.Column="1"
+                                    Background="{Binding MikroVersionBrush}"
+                                    CornerRadius="3"
+                                    Padding="10,3"
+                                    VerticalAlignment="Center"
+                                    ToolTip="{Binding MikroVersionTooltip}">
+                                <TextBlock Text="{Binding MikroVersionBadge}"
+                                           Foreground="White"
+                                           FontWeight="SemiBold"
+                                           FontSize="13" />
+                            </Border>
+                        </Grid>
 
-        <!-- SQL Server -->
-        <TextBlock Grid.Row="2" Grid.Column="0" Text="SQL Server" VerticalAlignment="Center" Margin="0,4" />
-        <TextBox Grid.Row="2" Grid.Column="1"
-                 Text="{Binding SqlServer, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,4" />
+                        <!-- Lisans anahtarı -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Lisans anahtarı" VerticalAlignment="Center" Margin="0,4" />
+                        <TextBox Grid.Row="1" Grid.Column="1"
+                                 x:Name="LicenseKeyBox"
+                                 Text="{Binding LicenseKey, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,4" />
 
-        <!-- Windows Authentication (Trusted_Connection) -->
-        <CheckBox Grid.Row="3" Grid.Column="1"
-                  Content="Windows Authentication kullan (Trusted_Connection / SSPI)"
-                  IsChecked="{Binding UseWindowsAuth}"
-                  Margin="0,4"
-                  ToolTip="İşaretliyse SQL kullanıcı adı/şifre gerekmez; bağlantı process kimliğiyle (Windows Service veya oturum açmış Windows kullanıcısı) açılır." />
+                        <!-- SQL Server -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="SQL Server" VerticalAlignment="Center" Margin="0,4" />
+                        <TextBox Grid.Row="2" Grid.Column="1"
+                                 Text="{Binding SqlServer, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,4" />
 
-        <!-- SQL kullanıcı adı -->
-        <TextBlock Grid.Row="4" Grid.Column="0" Text="SQL kullanıcı adı" VerticalAlignment="Center" Margin="0,4" />
-        <TextBox Grid.Row="4" Grid.Column="1"
-                 Text="{Binding SqlUserName, UpdateSourceTrigger=PropertyChanged}"
-                 IsEnabled="{Binding UseWindowsAuth, Converter={StaticResource BoolNegationConverter}}"
-                 Margin="0,4" />
+                        <!-- Windows Authentication -->
+                        <CheckBox Grid.Row="3" Grid.Column="1"
+                                  Content="Windows Authentication kullan (Trusted_Connection / SSPI)"
+                                  IsChecked="{Binding UseWindowsAuth}"
+                                  Margin="0,4"
+                                  ToolTip="İşaretliyse SQL kullanıcı adı/şifre gerekmez; bağlantı process kimliğiyle (Windows Service veya oturum açmış Windows kullanıcısı) açılır." />
 
-        <!-- SQL şifre (PasswordBox) -->
-        <TextBlock Grid.Row="5" Grid.Column="0" Text="SQL şifre" VerticalAlignment="Center" Margin="0,4" />
-        <PasswordBox Grid.Row="5" Grid.Column="1"
-                     x:Name="SqlPasswordBox"
-                     IsEnabled="{Binding UseWindowsAuth, Converter={StaticResource BoolNegationConverter}}"
-                     Margin="0,4"
-                     PasswordChanged="SqlPasswordBox_PasswordChanged" />
+                        <!-- SQL kullanıcı adı -->
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="SQL kullanıcı adı" VerticalAlignment="Center" Margin="0,4" />
+                        <TextBox Grid.Row="4" Grid.Column="1"
+                                 Text="{Binding SqlUserName, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding UseWindowsAuth, Converter={StaticResource BoolNegationConverter}}"
+                                 Margin="0,4" />
 
-        <!-- Mikro database -->
-        <TextBlock Grid.Row="6" Grid.Column="0" Text="Mikro database adı" VerticalAlignment="Center" Margin="0,4" />
-        <TextBox Grid.Row="6" Grid.Column="1"
-                 Text="{Binding MikroDatabaseName, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,4" />
+                        <!-- SQL şifre -->
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="SQL şifre" VerticalAlignment="Center" Margin="0,4" />
+                        <PasswordBox Grid.Row="5" Grid.Column="1"
+                                     x:Name="SqlPasswordBox"
+                                     IsEnabled="{Binding UseWindowsAuth, Converter={StaticResource BoolNegationConverter}}"
+                                     Margin="0,4"
+                                     PasswordChanged="SqlPasswordBox_PasswordChanged" />
 
-        <!-- Firma no -->
-        <TextBlock Grid.Row="7" Grid.Column="0" Text="Firma no" VerticalAlignment="Center" Margin="0,4" />
-        <TextBox Grid.Row="7" Grid.Column="1"
-                 Text="{Binding CompanyNo, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,4" />
+                        <!-- Mikro database -->
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Mikro database adı" VerticalAlignment="Center" Margin="0,4" />
+                        <TextBox Grid.Row="6" Grid.Column="1"
+                                 Text="{Binding MikroDatabaseName, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,4" />
 
-        <!-- Şube no -->
-        <TextBlock Grid.Row="8" Grid.Column="0" Text="Şube no" VerticalAlignment="Center" Margin="0,4" />
-        <TextBox Grid.Row="8" Grid.Column="1"
-                 Text="{Binding BranchNo, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,4" />
+                        <!-- API base URL -->
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="API base URL" VerticalAlignment="Center" Margin="0,4" />
+                        <TextBox Grid.Row="7" Grid.Column="1"
+                                 Text="{Binding ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,4" />
 
-        <!-- API base URL -->
-        <TextBlock Grid.Row="9" Grid.Column="0" Text="API base URL" VerticalAlignment="Center" Margin="0,4" />
-        <TextBox Grid.Row="9" Grid.Column="1"
-                 Text="{Binding ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,4" />
+                        <!-- Spacer -->
+                        <Border Grid.Row="8" Grid.ColumnSpan="2" Height="8" />
 
-        <!-- Spacer -->
-        <Border Grid.Row="10" Grid.ColumnSpan="2" Height="8" />
+                        <!-- Action buttons -->
+                        <Grid Grid.Row="9" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-        <!-- Action buttons (yeniden tespit + bağlantı testi + kaydet) -->
-        <Grid Grid.Row="11" Grid.ColumnSpan="2" Margin="0,8,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Content="🔄 Versiyonu yeniden tespit et"
+                                    Command="{Binding RedetectVersionCommand}"
+                                    MinWidth="200"
+                                    Padding="8,4"
+                                    ToolTip="Mikro versiyon tespitini yeniden çalıştırır (cache'i temizler)" />
 
-            <Button Grid.Column="0"
-                    Content="🔄 Versiyonu yeniden tespit et"
-                    Command="{Binding RedetectVersionCommand}"
-                    MinWidth="200"
-                    Padding="8,4"
-                    ToolTip="Mikro versiyon tespitini yeniden çalıştırır (cache'i temizler)" />
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Center"
+                                        Margin="12,0,0,0"
+                                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="●"
+                                           Foreground="{DynamicResource BusyBrush}"
+                                           FontSize="14"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Triggers>
+                                        <EventTrigger RoutedEvent="TextBlock.Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                     From="0.3" To="1.0" Duration="0:0:0.5"
+                                                                     AutoReverse="True" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </TextBlock.Triggers>
+                                </TextBlock>
+                                <TextBlock Text=" ●"
+                                           Foreground="{DynamicResource BusyBrush}"
+                                           FontSize="14"
+                                           VerticalAlignment="Center"
+                                           Opacity="0.5">
+                                    <TextBlock.Triggers>
+                                        <EventTrigger RoutedEvent="TextBlock.Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever" BeginTime="0:0:0.2">
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                     From="0.3" To="1.0" Duration="0:0:0.5"
+                                                                     AutoReverse="True" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </TextBlock.Triggers>
+                                </TextBlock>
+                                <TextBlock Text=" ●"
+                                           Foreground="{DynamicResource BusyBrush}"
+                                           FontSize="14"
+                                           VerticalAlignment="Center"
+                                           Opacity="0.3">
+                                    <TextBlock.Triggers>
+                                        <EventTrigger RoutedEvent="TextBlock.Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever" BeginTime="0:0:0.4">
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                     From="0.3" To="1.0" Duration="0:0:0.5"
+                                                                     AutoReverse="True" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </TextBlock.Triggers>
+                                </TextBlock>
+                                <TextBlock Text="  çalışıyor..."
+                                           Foreground="{DynamicResource BusyBrush}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center"
+                                           Margin="6,0,0,0" />
+                            </StackPanel>
 
-            <StackPanel Grid.Column="1"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Center"
-                        HorizontalAlignment="Center"
-                        Margin="12,0,0,0"
-                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
-                <TextBlock Text="●"
-                           Foreground="{DynamicResource BusyBrush}"
-                           FontSize="14"
-                           VerticalAlignment="Center">
-                    <TextBlock.Triggers>
-                        <EventTrigger RoutedEvent="TextBlock.Loaded">
-                            <BeginStoryboard>
-                                <Storyboard RepeatBehavior="Forever">
-                                    <DoubleAnimation
-                                        Storyboard.TargetProperty="Opacity"
-                                        From="0.3" To="1.0" Duration="0:0:0.5"
-                                        AutoReverse="True" />
-                                </Storyboard>
-                            </BeginStoryboard>
-                        </EventTrigger>
-                    </TextBlock.Triggers>
-                </TextBlock>
-                <TextBlock Text=" ●"
-                           Foreground="{DynamicResource BusyBrush}"
-                           FontSize="14"
-                           VerticalAlignment="Center"
-                           Opacity="0.5">
-                    <TextBlock.Triggers>
-                        <EventTrigger RoutedEvent="TextBlock.Loaded">
-                            <BeginStoryboard>
-                                <Storyboard RepeatBehavior="Forever" BeginTime="0:0:0.2">
-                                    <DoubleAnimation
-                                        Storyboard.TargetProperty="Opacity"
-                                        From="0.3" To="1.0" Duration="0:0:0.5"
-                                        AutoReverse="True" />
-                                </Storyboard>
-                            </BeginStoryboard>
-                        </EventTrigger>
-                    </TextBlock.Triggers>
-                </TextBlock>
-                <TextBlock Text=" ●"
-                           Foreground="{DynamicResource BusyBrush}"
-                           FontSize="14"
-                           VerticalAlignment="Center"
-                           Opacity="0.3">
-                    <TextBlock.Triggers>
-                        <EventTrigger RoutedEvent="TextBlock.Loaded">
-                            <BeginStoryboard>
-                                <Storyboard RepeatBehavior="Forever" BeginTime="0:0:0.4">
-                                    <DoubleAnimation
-                                        Storyboard.TargetProperty="Opacity"
-                                        From="0.3" To="1.0" Duration="0:0:0.5"
-                                        AutoReverse="True" />
-                                </Storyboard>
-                            </BeginStoryboard>
-                        </EventTrigger>
-                    </TextBlock.Triggers>
-                </TextBlock>
-                <TextBlock Text="  çalışıyor..."
-                           Foreground="{DynamicResource BusyBrush}"
-                           FontSize="12"
-                           VerticalAlignment="Center"
-                           Margin="6,0,0,0" />
-            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <Button Content="🗝 Lisans kontrol"
+                                        Command="{Binding TestLicenseCommand}"
+                                        MinWidth="130" Margin="0,0,8,0"
+                                        Padding="8,4"
+                                        ToolTip="Central API'ye lisans anahtarını doğrulatır (POST /api/v1/licenses/validate)" />
+                                <Button Content="🔑 Lisans ile Kayıt Ol"
+                                        Command="{Binding RegisterAgentCommand}"
+                                        MinWidth="160" Margin="0,0,8,0"
+                                        Padding="8,4"
+                                        ToolTip="Agent'ı Central API'ye kaydeder (POST /api/v1/agents/register) ve dönen JWT'yi in-memory olarak kaydeder. Bootstrap push için bu adım zorunludur." />
+                                <Button Content="🗄 Sunucu DB kontrol"
+                                        Command="{Binding TestServerDbCommand}"
+                                        MinWidth="140" Margin="0,0,8,0"
+                                        Padding="8,4"
+                                        ToolTip="Central API'nin /health endpoint'ine ping atar; DB bağlantısını dolaylı doğrular." />
+                                <Button Content="Bağlantıyı test et"
+                                        Command="{Binding TestConnectionCommand}"
+                                        MinWidth="140" Margin="0,0,8,0"
+                                        Padding="8,4" />
+                                <Button Content="Kaydet"
+                                        Command="{Binding SaveCommand}"
+                                        MinWidth="100"
+                                        Padding="8,4"
+                                        IsDefault="True" />
+                            </StackPanel>
+                        </Grid>
 
-            <StackPanel Grid.Column="2" Orientation="Horizontal">
-                <Button Content="Bağlantıyı test et"
-                        Command="{Binding TestConnectionCommand}"
-                        MinWidth="140" Margin="0,0,8,0"
-                        Padding="8,4" />
-                <Button Content="Kaydet"
-                        Command="{Binding SaveCommand}"
-                        MinWidth="100"
-                        Padding="8,4"
-                        IsDefault="True" />
-            </StackPanel>
-        </Grid>
+                        <!-- Sunucu Bilgisi paneli -->
+                        <Border Grid.Row="10" Grid.ColumnSpan="2"
+                                Margin="0,12,0,0"
+                                Padding="12"
+                                BorderBrush="{DynamicResource StatusBorderBrush}"
+                                BorderThickness="1"
+                                Background="{DynamicResource StatusBackgroundBrush}"
+                                CornerRadius="4"
+                                Visibility="{Binding HasConnectionTestResult, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="Sunucu Bilgisi"
+                                           FontWeight="SemiBold"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource HeaderBrush}"
+                                           Margin="0,0,0,8" />
 
-        <!-- Sunucu Bilgisi paneli (test başarılıysa görünür) -->
-        <Border Grid.Row="12" Grid.ColumnSpan="2"
-                Margin="0,12,0,0"
-                Padding="12"
-                BorderBrush="{DynamicResource StatusBorderBrush}"
-                BorderThickness="1"
-                Background="{DynamicResource StatusBackgroundBrush}"
-                CornerRadius="4"
-                Visibility="{Binding HasConnectionTestResult, Converter={StaticResource BoolToVisibilityConverter}}">
-            <StackPanel>
-                <TextBlock Text="Sunucu Bilgisi"
-                           FontWeight="SemiBold"
-                           FontSize="13"
-                           Foreground="{DynamicResource HeaderBrush}"
-                           Margin="0,0,0,8" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0"
+                                               Text="ServerVersion" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1"
+                                               Text="{Binding ServerVersionDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
 
-                    <TextBlock Grid.Row="0" Grid.Column="0"
-                               Text="ServerVersion" Margin="0,2"
-                               Foreground="{DynamicResource HeaderBrush}" />
-                    <TextBlock Grid.Row="0" Grid.Column="1"
-                               Text="{Binding ServerVersionDisplay}"
-                               FontFamily="Consolas, Lucida Console, monospace"
-                               Margin="0,2" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0"
+                                               Text="Identity Strategy" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1"
+                                               Text="{Binding IdentityStrategyDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
 
-                    <TextBlock Grid.Row="1" Grid.Column="0"
-                               Text="Identity Strategy" Margin="0,2"
-                               Foreground="{DynamicResource HeaderBrush}" />
-                    <TextBlock Grid.Row="1" Grid.Column="1"
-                               Text="{Binding IdentityStrategyDisplay}"
-                               FontFamily="Consolas, Lucida Console, monospace"
-                               Margin="0,2" />
+                                    <TextBlock Grid.Row="2" Grid.Column="0"
+                                               Text="Latency" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1"
+                                               Margin="0,2">
+                                        <Run Text="{Binding LastTestLatencyMs, Mode=OneWay, StringFormat={}{0}}" />
+                                        <Run Text=" ms" />
+                                    </TextBlock>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0"
-                               Text="Latency" Margin="0,2"
-                               Foreground="{DynamicResource HeaderBrush}" />
-                    <TextBlock Grid.Row="2" Grid.Column="1"
-                               Margin="0,2">
-                        <Run Text="{Binding LastTestLatencyMs, Mode=OneWay, StringFormat={}{0}}" />
-                        <Run Text=" ms" />
-                    </TextBlock>
+                                    <TextBlock Grid.Row="3" Grid.Column="0"
+                                               Text="Test zamanı" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1"
+                                               Text="{Binding LastTestTimeDisplay}"
+                                               Margin="0,2" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0"
-                               Text="Test zamanı" Margin="0,2"
-                               Foreground="{DynamicResource HeaderBrush}" />
-                    <TextBlock Grid.Row="3" Grid.Column="1"
-                               Text="{Binding LastTestTimeDisplay}"
-                               Margin="0,2" />
-                </Grid>
-            </StackPanel>
-        </Border>
+                        <!-- Lisans Kontrol Sonucu paneli -->
+                        <Border Grid.Row="11" Grid.ColumnSpan="2"
+                                Margin="0,8,0,0"
+                                Padding="12"
+                                BorderBrush="{DynamicResource StatusBorderBrush}"
+                                BorderThickness="1"
+                                Background="{DynamicResource StatusBackgroundBrush}"
+                                CornerRadius="4"
+                                Visibility="{Binding HasLicenseCheckResult, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="🗝 Lisans Kontrol Sonucu"
+                                           FontWeight="SemiBold"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource HeaderBrush}"
+                                           Margin="0,0,0,8" />
 
-        <!-- Sorun giderme ipucu (test başarısızsa görünür) -->
-        <Border Grid.Row="13" Grid.ColumnSpan="2"
-                Margin="0,8,0,0"
-                Padding="12"
-                BorderBrush="#E53935"
-                BorderThickness="1"
-                Background="#FFEBEE"
-                CornerRadius="4"
-                Visibility="{Binding TroubleshootingHint, Converter={StaticResource StringToVisibilityConverter}}">
-            <StackPanel>
-                <TextBlock Text="Sorun giderme önerileri:"
-                           FontWeight="SemiBold"
-                           Foreground="#B71C1C"
-                           Margin="0,0,0,4" />
-                <TextBlock Text="{Binding TroubleshootingHint}"
-                           Foreground="#B71C1C"
-                           TextWrapping="Wrap" />
-            </StackPanel>
-        </Border>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-        <!-- Spacer -->
-        <Border Grid.Row="14" Grid.ColumnSpan="2" Height="8" />
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Valid" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1"
+                                               Text="{Binding LicenseCheckValidDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
 
-        <!-- Son durum -->
-        <TextBlock Grid.Row="15" Grid.Column="0"
-                   Text="Son durum" FontWeight="SemiBold"
-                   VerticalAlignment="Top" Margin="0,12,0,0" />
-        <Border Grid.Row="15" Grid.Column="1"
-                Margin="0,12,0,0"
-                Padding="8"
-                BorderBrush="{DynamicResource StatusBorderBrush}"
-                BorderThickness="1"
-                Background="{DynamicResource StatusBackgroundBrush}">
-            <TextBlock Text="{Binding Status}"
-                       TextWrapping="Wrap"
-                       MinHeight="60" />
-        </Border>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="TenantId" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1"
+                                               Text="{Binding LicenseCheckTenantIdDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Expires" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1"
+                                               Text="{Binding LicenseCheckExpiresAtDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="ErrorCode" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1"
+                                               Text="{Binding LicenseCheckErrorCodeDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Latency" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,2">
+                                        <Run Text="{Binding LicenseCheckLatencyMs, Mode=OneWay, StringFormat={}{0}}" />
+                                        <Run Text=" ms" />
+                                    </TextBlock>
+
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Test zamanı" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="5" Grid.Column="1"
+                                               Text="{Binding LicenseCheckTimeDisplay}"
+                                               Margin="0,2" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Sunucu DB Kontrol Sonucu paneli -->
+                        <Border Grid.Row="12" Grid.ColumnSpan="2"
+                                Margin="0,8,0,0"
+                                Padding="12"
+                                BorderBrush="{DynamicResource StatusBorderBrush}"
+                                BorderThickness="1"
+                                Background="{DynamicResource StatusBackgroundBrush}"
+                                CornerRadius="4"
+                                Visibility="{Binding HasServerDbCheckResult, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="🗄 Sunucu DB Kontrol Sonucu"
+                                           FontWeight="SemiBold"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource HeaderBrush}"
+                                           Margin="0,0,0,8" />
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Status" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1"
+                                               Text="{Binding ServerDbCheckStatusDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="HTTP" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1"
+                                               Text="{Binding ServerDbCheckHttpDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Body" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1"
+                                               Text="{Binding ServerDbCheckBodyDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               TextWrapping="Wrap"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Latency" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,2">
+                                        <Run Text="{Binding ServerDbCheckLatencyMs, Mode=OneWay, StringFormat={}{0}}" />
+                                        <Run Text=" ms" />
+                                    </TextBlock>
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Test zamanı" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1"
+                                               Text="{Binding ServerDbCheckTimeDisplay}"
+                                               Margin="0,2" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Lisans ile Kayıt Ol Sonucu paneli -->
+                        <Border Grid.Row="13" Grid.ColumnSpan="2"
+                                Margin="0,8,0,0"
+                                Padding="12"
+                                BorderBrush="{DynamicResource StatusBorderBrush}"
+                                BorderThickness="1"
+                                Background="{DynamicResource StatusBackgroundBrush}"
+                                CornerRadius="4"
+                                Visibility="{Binding HasRegisterResult, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="🔑 Lisans ile Kayıt Ol Sonucu"
+                                           FontWeight="SemiBold"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource HeaderBrush}"
+                                           Margin="0,0,0,8" />
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Sonuç" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1"
+                                               Text="{Binding RegisterSuccessDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               FontWeight="SemiBold"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="AgentId" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1"
+                                               Text="{Binding RegisterAgentIdDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="TenantId" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1"
+                                               Text="{Binding RegisterTenantIdDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="JWT Expires" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1"
+                                               Text="{Binding RegisterExpiresAtDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="ErrorCode" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1"
+                                               Text="{Binding RegisterErrorCodeDisplay}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               Margin="0,2" />
+
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Latency" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,2">
+                                        <Run Text="{Binding RegisterLatencyMs, Mode=OneWay, StringFormat={}{0}}" />
+                                        <Run Text=" ms" />
+                                    </TextBlock>
+
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Kayıt zamanı" Margin="0,2"
+                                               Foreground="{DynamicResource HeaderBrush}" />
+                                    <TextBlock Grid.Row="6" Grid.Column="1"
+                                               Text="{Binding RegisterTimeDisplay}"
+                                               Margin="0,2" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Sorun giderme ipucu -->
+                        <Border Grid.Row="14" Grid.ColumnSpan="2"
+                                Margin="0,8,0,0"
+                                Padding="12"
+                                BorderBrush="#E53935"
+                                BorderThickness="1"
+                                Background="#FFEBEE"
+                                CornerRadius="4"
+                                Visibility="{Binding TroubleshootingHint, Converter={StaticResource StringToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="Sorun giderme önerileri:"
+                                           FontWeight="SemiBold"
+                                           Foreground="#B71C1C"
+                                           Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding TroubleshootingHint}"
+                                           Foreground="#B71C1C"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="15" Grid.ColumnSpan="2" Height="8" />
+
+                        <!-- Son durum -->
+                        <TextBlock Grid.Row="16" Grid.Column="0"
+                                   Text="Son durum" FontWeight="SemiBold"
+                                   VerticalAlignment="Top" Margin="0,12,0,0" />
+                        <Border Grid.Row="16" Grid.Column="1"
+                                Margin="0,12,0,0"
+                                Padding="8"
+                                BorderBrush="{DynamicResource StatusBorderBrush}"
+                                BorderThickness="1"
+                                Background="{DynamicResource StatusBackgroundBrush}">
+                            <TextBlock Text="{Binding Status}"
+                                       TextWrapping="Wrap"
+                                       MinHeight="60" />
+                        </Border>
+
+                        <!-- Son kayıt zamanı -->
+                        <TextBlock Grid.Row="18" Grid.ColumnSpan="2"
+                                   Text="{Binding LastSavedAtDisplay, StringFormat='Son kayıt: {0}'}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   HorizontalAlignment="Right"
+                                   Margin="0,8,0,0" />
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Pano sekmesi (sadece ayar kaydedildikten sonra görünür) -->
+            <TabItem x:Name="DashboardTab" Header="Pano" Visibility="Collapsed">
+                <views:DashboardView />
+            </TabItem>
+        </TabControl>
     </Grid>
 </Window>

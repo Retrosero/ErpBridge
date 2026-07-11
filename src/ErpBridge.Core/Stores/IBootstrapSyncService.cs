@@ -30,6 +30,17 @@ public interface IBootstrapSyncService
     /// idempotency window.
     /// </summary>
     Task InvalidateAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Read a single Mikro reference-data section and push it to the central
+    /// API as a partial bootstrap snapshot. Section names match the
+    /// <see cref="BootstrapSyncResult"/> field names: <c>customers</c>,
+    /// <c>stocks</c>, <c>openOrders</c>, <c>cashAndBank</c>, <c>lookups</c>,
+    /// <c>prices</c>, <c>inventory</c>. Useful when the bulk <see cref="RunOnceAsync"/>
+    /// times out on a slow Cloudflare tunnel: each section is a small payload
+    /// that goes through independently.
+    /// </summary>
+    Task<BootstrapSyncResult> PushSectionAsync(string sectionName, CancellationToken ct = default);
 }
 
 /// <summary>

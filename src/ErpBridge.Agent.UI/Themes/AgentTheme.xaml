@@ -2,12 +2,34 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:conv="clr-namespace:ErpBridge.Agent.UI.Converters">
 
+    <!-- Surfaces -->
     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F4F6F8" />
+    <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="HeaderBrush" Color="#1F2937" />
+    <SolidColorBrush x:Key="SubtleHeaderBrush" Color="#4B5563" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#6B7280" />
+
+    <!-- Borders / dividers -->
     <SolidColorBrush x:Key="StatusBorderBrush" Color="#D1D5DB" />
     <SolidColorBrush x:Key="StatusBackgroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="DividerBrush" Color="#E5E7EB" />
+
+    <!-- Accent — matches the icon gradient -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#1E40AF" />
+    <SolidColorBrush x:Key="AccentLightBrush" Color="#DBEAFE" />
+    <SolidColorBrush x:Key="AccentDarkBrush" Color="#1E3A8A" />
+
+    <!-- Status colours -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#16A34A" />
+    <SolidColorBrush x:Key="SuccessLightBrush" Color="#DCFCE7" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#D97706" />
+    <SolidColorBrush x:Key="WarningLightBrush" Color="#FEF3C7" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#DC2626" />
+    <SolidColorBrush x:Key="DangerLightBrush" Color="#FEE2E2" />
+
     <SolidColorBrush x:Key="BusyBrush" Color="#6B7280" />
 
+    <!-- Converters -->
     <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     <conv:StringToVisibilityConverter x:Key="StringToVisibilityConverter" />
 </ResourceDictionary>

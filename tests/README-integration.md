@@ -110,3 +110,41 @@ mekanizması üzerinden çalıştırılır; yalnızca seed INSERT'leri içerir
 `POSTGRES_PASSWORD=ErpBridge_Test_2026!` yalnızca fixture amaçlıdır;
 container kapatıldığında veriler kaybolur (volume yok). Production
 yapılandırmasında veya CI secret'ında bu şifreler **asla** yer almaz.
+
+## Canlı Mikro sunucusuna karşı test (TULPAR)
+
+`MikroBootstrapLiveIntegrationTests` aynı sorguları isteğe bağlı olarak
+**gerçek bir Mikro V15 sunucusuna** karşı da koşturur. Hedef sunucu
+`TulparLiveSettings` env-var'ları ile seçilir; bu env-var'lar set edilmediğinde
+testler yukarıdaki docker-compose fixture'ını kullanır (fallback davranışı).
+
+```bash
+# TULPAR (gerçek müşteri sunucusu) için:
+export ERPBridge_RUN_INTEGRATION=1
+export ERPBridge_TULPAR_SERVER=TULPAR
+export ERPBridge_TULPAR_DATABASE=MikroDB_V15_02
+export ERPBridge_TULPAR_USER=mikro_sync_user
+export ERPBridge_TULPAR_PASSWORD='...'        # production parola — loga düşmez
+```
+
+> **Güvenlik:** `ERPBridge_TULPAR_PASSWORD` **asla** test çıktısına veya log
+> satırlarına yazılmaz; `TulparLiveSettings.Describe` parolayı
+> `***REDACTED***` ile maskeler. Tüm hata mesajları `ConnectionStringMasker`
+> üzerinden geçirilir.
+>
+> **Aktif sunucu:** `MikroDB_V15_02` ajan tarafından read-only erişim için
+> kullanılır. Testler `SELECT`-only sorgular çalıştırır; INSERT/UPDATE/DDL
+> yapmaz. TULPAR şifresi expired olduğunda test **bilinçli şekilde fail**
+> olur (operator credential resetlemesini beklemek için).
+
+### Çift-hedef stratejisi
+
+`ResolveFixture()` önce TULPAR env-var'larına, sonra docker-V15 fixture'ına
+bakarak hedef seçer. Bu sayede:
+
+- Lokal geliştirme: `docker compose up -d` + `ERPBridge_RUN_INTEGRATION=1` → docker fixture
+- Müşteri sahası: TULPAR env-var'larını set et → gerçek sunucu
+
+Aynı test kodu iki hedefte de aynı şekilde koşar; fark yalnızca veri
+büyüklüğüdür. Şifre yanlışsa test **SqlException** bekler; bağlantı
+kurulamazsa hata mesajı masked log'a düşer.

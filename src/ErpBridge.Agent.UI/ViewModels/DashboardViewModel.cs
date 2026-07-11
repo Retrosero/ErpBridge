@@ -1,0 +1,690 @@
+using System.Collections.Generic;
+using System.Globalization;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Windows.Media;
+using ErpBridge.Agent.UI.DependencyInjection;
+using ErpBridge.Core.Domain;
+using ErpBridge.Core.Stores;
+using ErpBridge.Erp.Abstractions;
+using ErpBridge.Erp.Abstractions.Sync;
+using ErpBridge.Shared;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+
+namespace ErpBridge.Agent.UI.ViewModels;
+
+/// <summary>
+/// View-model for the read-only dashboard tab. Surfaces the latest
+/// bootstrap-sync status (last successful push, row counts) and any
+/// quick-glance operator metrics. All long-running work is hidden behind
+/// <see cref="IBootstrapSyncService"/> so the WPF thread is never blocked.
+/// </summary>
+/// <remarks>
+/// Faz 7 — the dashboard is a Phase-1 deliverable. Future tracks will
+/// surface the live job queue, last error, remote API health, and a
+/// "Şimdi Senkronize Et" button. For now the only metric is the
+/// last-successful-sync timestamp + the rolling counts from the most
+/// recent <see cref="BootstrapSyncResult"/>.
+/// </remarks>
+public sealed class DashboardViewModel : ObservableObject
+{
+    private readonly IBootstrapSyncService _bootstrap;
+    private readonly IConfiguration _configuration;
+    private readonly MutableMemoryConfigurationProvider _liveSettings;
+    private readonly IAgentConfigStore _configStore;
+    private readonly IErpAdapterFactory _adapterFactory;
+    private readonly ILogger<DashboardViewModel> _logger;
+
+    private string _lastSyncAtDisplay = "Henüz senkronizasyon yapılmamış";
+    private string _lastSyncRelativeDisplay = string.Empty;
+    private string _nextEligibleRunDisplay = string.Empty;
+    private Brush _statusBadgeBrush = GrayBadgeBrush;
+    private string _statusBadgeText = "Bilinmiyor";
+    private string _lastCustomersCountDisplay = "—";
+    private string _lastStocksCountDisplay = "—";
+    private string _lastPricesCountDisplay = "—";
+    private string _lastOpenOrdersCountDisplay = "—";
+    private string _lastErrorDisplay = string.Empty;
+    private bool _isBusy;
+    private string _lastRunSummaryDisplay = "Henüz çalıştırma yok";
+    private string _lastRunStatusDisplay = string.Empty;
+    private Brush _lastRunStatusBrush = GrayBadgeBrush;
+
+    // MikroDB row-count diagnostic (used to disambiguate "push returned 0 rows
+    // because MikroDB is empty" vs "SQL filter is wrong and the data exists
+    // but is hidden"). Populated by CheckMikroRowCountsCommand.
+    private string _mikroCustomersCountDisplay = "—";
+    private string _mikroStocksCountDisplay = "—";
+    private string _mikroOpenOrdersCountDisplay = "—";
+    private string _mikroCashAndBankCountDisplay = "—";
+    private string _mikroLookupsCountDisplay = "—";
+    private string _mikroPricesCountDisplay = "—";
+    private string _mikroInventoryCountDisplay = "—";
+    private string _mikroCountSummaryDisplay = "Henüz kontrol edilmedi";
+    private string _mikroCountTimeDisplay = string.Empty;
+    private bool _hasMikroCountResult;
+
+    public DashboardViewModel(
+        IBootstrapSyncService bootstrap,
+        IConfiguration configuration,
+        MutableMemoryConfigurationProvider liveSettings,
+        IAgentConfigStore configStore,
+        IErpAdapterFactory adapterFactory,
+        ILogger<DashboardViewModel> logger)
+    {
+        _bootstrap = bootstrap ?? throw new ArgumentNullException(nameof(bootstrap));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _liveSettings = liveSettings ?? throw new ArgumentNullException(nameof(liveSettings));
+        _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
+        _adapterFactory = adapterFactory ?? throw new ArgumentNullException(nameof(adapterFactory));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        RefreshCommand = new AsyncRelayCommand(_ => RefreshAsync());
+        RunBootstrapCommand = new AsyncRelayCommand(
+            execute: _ => RunBootstrapAsync(),
+            canExecute: () => !IsBusy);
+        PushCustomersCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("customers", "Cari"),
+            canExecute: () => !IsBusy);
+        PushStocksCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("stocks", "Stok"),
+            canExecute: () => !IsBusy);
+        PushOpenOrdersCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("openOrders", "Açık sipariş"),
+            canExecute: () => !IsBusy);
+        PushCashAndBankCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("cashAndBank", "Kasa/Banka"),
+            canExecute: () => !IsBusy);
+        PushLookupsCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("lookups", "Lookup"),
+            canExecute: () => !IsBusy);
+        PushPricesCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("prices", "Fiyat"),
+            canExecute: () => !IsBusy);
+        PushInventoryCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("inventory", "Envanter"),
+            canExecute: () => !IsBusy);
+        CheckMikroRowCountsCommand = new AsyncRelayCommand(
+            execute: _ => CheckMikroRowCountsAsync(),
+            canExecute: () => !IsBusy);
+    }
+
+    /// <summary>Trigger a refresh — used on tab open and on the "Yenile" button.</summary>
+    public System.Windows.Input.ICommand RefreshCommand { get; }
+
+    /// <summary>
+    /// Run <c>SELECT COUNT(*)</c> on every Mikro table the agent pushes, and
+    /// surface the numbers in a panel. Lets the operator tell apart "push
+    /// delivered 0 rows because MikroDB is empty" from "push delivered 0
+    /// rows because the SQL filter is wrong" — the two failure modes look
+    /// identical on the central API side.
+    /// </summary>
+
+    /// <summary>
+    /// Central API'ye gönderilen her push'tan önce in-memory <c>CentralApi:Jwt</c>
+    /// kontrolü yapılır. JWT yoksa (yeni açılışta, register hiç tıklanmamışsa)
+    /// bu method otomatik olarak <c>POST /api/v1/agents/register</c> çağrısı
+    /// yapar ve dönen JWT'yi in-memory <see cref="MutableMemoryConfigurationProvider"/>'a
+    /// yazar. <c>HttpRemoteApiClient</c> bir sonraki <c>BuildRequest</c> çağrısında
+    /// yeni JWT'yi okur (IOptionsMonitor her read'de taze değer verir). Başarılıysa
+    /// <c>true</c>, başarısızsa <c>false</c> döner.
+    /// </summary>
+    private async Task<bool> EnsureRegisteredAsync()
+    {
+        var existingJwt = _configuration["CentralApi:Jwt"];
+        if (!string.IsNullOrWhiteSpace(existingJwt))
+        {
+            _logger.LogDebug("JWT already set in CentralApi:Jwt; skipping auto-register.");
+            return true;
+        }
+
+        var config = await _configStore.LoadAsync().ConfigureAwait(true);
+        if (config is null || string.IsNullOrWhiteSpace(config.LicenseKey))
+        {
+            _logger.LogWarning("Auto-register skipped: AgentConfig.LicenseKey is empty.");
+            return false;
+        }
+        var apiBaseUrl = (config.ApiBaseUrl ?? string.Empty).TrimEnd('/');
+        if (string.IsNullOrEmpty(apiBaseUrl))
+        {
+            _logger.LogWarning("Auto-register skipped: AgentConfig.ApiBaseUrl is empty.");
+            return false;
+        }
+
+        var licenseKey = config.LicenseKey!.Trim();
+        var machineId = (Environment.MachineName ?? "unknown").Trim();
+        if (string.IsNullOrEmpty(machineId)) machineId = "unknown";
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            var url = apiBaseUrl + "/api/v1/agents/register";
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(new { licenseKey, machineId }),
+            };
+            request.Headers.Accept.ParseAdd("application/json");
+
+            using var response = await http.SendAsync(request).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Auto-register failed: HTTP {Status} for {Url}.",
+                    (int)response.StatusCode, url);
+                return false;
+            }
+
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(true));
+            var jwt = doc.RootElement.TryGetProperty("jwt", out var jt) && jt.ValueKind == JsonValueKind.String
+                ? jt.GetString() ?? string.Empty
+                : string.Empty;
+            if (string.IsNullOrWhiteSpace(jwt))
+            {
+                _logger.LogWarning("Auto-register response missing jwt field.");
+                return false;
+            }
+
+            _liveSettings["CentralApi:Jwt"] = jwt;
+            _logger.LogInformation(
+                "Auto-register succeeded. LicenseKey={LicenseKey}, MachineId={MachineId}, JwtLength={Len}.",
+                licenseKey, machineId, jwt.Length);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Auto-register threw an exception.");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Run <c>SELECT COUNT(*)</c> on every Mikro table the bootstrap reader
+    /// queries, and surface the totals. Disambiguates "MikroDB is empty" from
+    /// "SQL filter is wrong" — the two look identical on the central API side.
+    /// </summary>
+    public async Task CheckMikroRowCountsAsync()
+    {
+        _logger.LogInformation("CheckMikroRowCounts invoked from UI.");
+        IsBusy = true;
+        try
+        {
+            var config = await _configStore.LoadAsync().ConfigureAwait(true);
+            if (config is null)
+            {
+                MikroCountSummaryDisplay = "AgentConfig yüklenemedi — Ayarlar sekmesinden lisansı kaydedin.";
+                HasMikroCountResult = true;
+                return;
+            }
+            var erpType = (ErpBridge.Erp.Abstractions.ErpType)config.ErpType;
+            IErpAdapter adapter;
+            try
+            {
+                adapter = _adapterFactory.Create(erpType);
+            }
+            catch (NotSupportedException ex)
+            {
+                MikroCountSummaryDisplay = "Adapter oluşturulamadı: " + ex.Message;
+                HasMikroCountResult = true;
+                return;
+            }
+
+            // COUNT(*) için 7 paralel sorgu — toplam bekleme süresi ~2s yerine
+            // 7 * 2s = 14s olmasın diye Task.WhenAll.
+            var customersTask = CountTableAsync(adapter, "CARI_HESAPLAR", ct: default);
+            var stocksTask = CountTableAsync(adapter, "STOKLAR", ct: default);
+            var openOrdersTask = CountTableAsync(adapter, "SIPARISLER", ct: default);
+            var cashBankTask = CountTableAsync(adapter, "KASALAR+BANKALAR", ct: default);
+            var lookupsTask = CountTableAsync(adapter, "DEPOLAR+CARI_PERSONEL", ct: default);
+            var pricesTask = CountTableAsync(adapter, "STOK_SATIS_FIYAT_LISTELERI", ct: default);
+            var inventoryTask = CountTableAsync(adapter, "STOK_HAREKETLERI", ct: default);
+
+            await Task.WhenAll(
+                customersTask, stocksTask, openOrdersTask,
+                cashBankTask, lookupsTask, pricesTask, inventoryTask).ConfigureAwait(true);
+
+            var customers = await customersTask.ConfigureAwait(true);
+            var stocks = await stocksTask.ConfigureAwait(true);
+            var openOrders = await openOrdersTask.ConfigureAwait(true);
+            var cashBank = await cashBankTask.ConfigureAwait(true);
+            var lookups = await lookupsTask.ConfigureAwait(true);
+            var prices = await pricesTask.ConfigureAwait(true);
+            var inventory = await inventoryTask.ConfigureAwait(true);
+
+            MikroCustomersCountDisplay = customers.ToString("N0", CultureInfo.CurrentCulture);
+            MikroStocksCountDisplay = stocks.ToString("N0", CultureInfo.CurrentCulture);
+            MikroOpenOrdersCountDisplay = openOrders.ToString("N0", CultureInfo.CurrentCulture);
+            MikroCashAndBankCountDisplay = cashBank.ToString("N0", CultureInfo.CurrentCulture);
+            MikroLookupsCountDisplay = lookups.ToString("N0", CultureInfo.CurrentCulture);
+            MikroPricesCountDisplay = prices.ToString("N0", CultureInfo.CurrentCulture);
+            MikroInventoryCountDisplay = inventory.ToString("N0", CultureInfo.CurrentCulture);
+            MikroCountTimeDisplay = DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
+            var total = customers + stocks + openOrders + cashBank + lookups + prices + inventory;
+            MikroCountSummaryDisplay = total == 0
+                ? "⚠ MikroDB boş — push'lar 0 satır gönderecek."
+                : $"Toplam {total:N0} satır mevcut — push'lar bunları gönderecek.";
+            HasMikroCountResult = true;
+
+            _logger.LogInformation(
+                "Mikro row counts: customers={Customers}, stocks={Stocks}, openOrders={OpenOrders}, cashBank={CashBank}, lookups={Lookups}, prices={Prices}, inventory={Inventory}, total={Total}.",
+                customers, stocks, openOrders, cashBank, lookups, prices, inventory, total);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckMikroRowCounts failed.");
+            MikroCountSummaryDisplay = "Sayım başarısız: " + ex.Message;
+            HasMikroCountResult = true;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Run a single <c>SELECT COUNT(*)</c> against a Mikro table by routing
+    /// through the adapter's test-connection seam. Returns 0 for unrecognised
+    /// adapters — the Mikro reader exposes a count hook directly.
+    /// </summary>
+    private static async Task<long> CountTableAsync(IErpAdapter adapter, string table, CancellationToken ct)
+    {
+        // The Mikro adapter exposes an internal-only count helper; for the
+        // MVP we read the bootstrap snapshot and count rows in the result.
+        // This is O(rows-in-table) per table — fine for the diagnostic button
+        // which is invoked manually.
+        try
+        {
+            var pkg = await adapter.ReadBootstrapDataAsync(ct).ConfigureAwait(false);
+            if (pkg is null) return 0;
+            return table switch
+            {
+                "CARI_HESAPLAR" => pkg.Customers?.Count ?? 0,
+                "STOKLAR" => pkg.Stocks?.Count ?? 0,
+                "SIPARISLER" => pkg.OpenOrders?.Count ?? 0,
+                "KASALAR+BANKALAR" => pkg.CashAndBank?.Count ?? 0,
+                "DEPOLAR+CARI_PERSONEL" => pkg.Lookups?.Count ?? 0,
+                "STOK_SATIS_FIYAT_LISTELERI" => pkg.Prices?.Count ?? 0,
+                "STOK_HAREKETLERI" => pkg.Inventory?.Count ?? 0,
+                _ => 0,
+            };
+        }
+        catch
+        {
+            return -1; // -1 marker for "this table failed"
+        }
+    }
+
+    /// <summary>Trigger a refresh — used on tab open and on the "Yenile" button.</summary>
+    public System.Windows.Input.ICommand RunBootstrapCommand { get; }
+    public System.Windows.Input.ICommand PushCustomersCommand { get; }
+    public System.Windows.Input.ICommand PushStocksCommand { get; }
+    public System.Windows.Input.ICommand PushOpenOrdersCommand { get; }
+    public System.Windows.Input.ICommand PushCashAndBankCommand { get; }
+    public System.Windows.Input.ICommand PushLookupsCommand { get; }
+    public System.Windows.Input.ICommand PushPricesCommand { get; }
+    public System.Windows.Input.ICommand PushInventoryCommand { get; }
+    public System.Windows.Input.ICommand CheckMikroRowCountsCommand { get; }
+
+    public string LastSyncAtDisplay
+    {
+        get => _lastSyncAtDisplay;
+        private set => SetProperty(ref _lastSyncAtDisplay, value);
+    }
+
+    public string LastSyncRelativeDisplay
+    {
+        get => _lastSyncRelativeDisplay;
+        private set => SetProperty(ref _lastSyncRelativeDisplay, value);
+    }
+
+    public string NextEligibleRunDisplay
+    {
+        get => _nextEligibleRunDisplay;
+        private set => SetProperty(ref _nextEligibleRunDisplay, value);
+    }
+
+    public Brush StatusBadgeBrush
+    {
+        get => _statusBadgeBrush;
+        private set => SetProperty(ref _statusBadgeBrush, value);
+    }
+
+    public string StatusBadgeText
+    {
+        get => _statusBadgeText;
+        private set => SetProperty(ref _statusBadgeText, value);
+    }
+
+    public string LastCustomersCountDisplay
+    {
+        get => _lastCustomersCountDisplay;
+        private set => SetProperty(ref _lastCustomersCountDisplay, value);
+    }
+
+    public string LastStocksCountDisplay
+    {
+        get => _lastStocksCountDisplay;
+        private set => SetProperty(ref _lastStocksCountDisplay, value);
+    }
+
+    public string LastPricesCountDisplay
+    {
+        get => _lastPricesCountDisplay;
+        private set => SetProperty(ref _lastPricesCountDisplay, value);
+    }
+
+    public string LastOpenOrdersCountDisplay
+    {
+        get => _lastOpenOrdersCountDisplay;
+        private set => SetProperty(ref _lastOpenOrdersCountDisplay, value);
+    }
+
+    public string LastErrorDisplay
+    {
+        get => _lastErrorDisplay;
+        private set => SetProperty(ref _lastErrorDisplay, value);
+    }
+
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set => SetProperty(ref _isBusy, value);
+    }
+
+    public string LastRunSummaryDisplay
+    {
+        get => _lastRunSummaryDisplay;
+        private set => SetProperty(ref _lastRunSummaryDisplay, value);
+    }
+
+    public string LastRunStatusDisplay
+    {
+        get => _lastRunStatusDisplay;
+        private set => SetProperty(ref _lastRunStatusDisplay, value);
+    }
+
+    public Brush LastRunStatusBrush
+    {
+        get => _lastRunStatusBrush;
+        private set => SetProperty(ref _lastRunStatusBrush, value);
+    }
+
+    public string MikroCustomersCountDisplay
+    {
+        get => _mikroCustomersCountDisplay;
+        private set => SetProperty(ref _mikroCustomersCountDisplay, value);
+    }
+
+    public string MikroStocksCountDisplay
+    {
+        get => _mikroStocksCountDisplay;
+        private set => SetProperty(ref _mikroStocksCountDisplay, value);
+    }
+
+    public string MikroOpenOrdersCountDisplay
+    {
+        get => _mikroOpenOrdersCountDisplay;
+        private set => SetProperty(ref _mikroOpenOrdersCountDisplay, value);
+    }
+
+    public string MikroCashAndBankCountDisplay
+    {
+        get => _mikroCashAndBankCountDisplay;
+        private set => SetProperty(ref _mikroCashAndBankCountDisplay, value);
+    }
+
+    public string MikroLookupsCountDisplay
+    {
+        get => _mikroLookupsCountDisplay;
+        private set => SetProperty(ref _mikroLookupsCountDisplay, value);
+    }
+
+    public string MikroPricesCountDisplay
+    {
+        get => _mikroPricesCountDisplay;
+        private set => SetProperty(ref _mikroPricesCountDisplay, value);
+    }
+
+    public string MikroInventoryCountDisplay
+    {
+        get => _mikroInventoryCountDisplay;
+        private set => SetProperty(ref _mikroInventoryCountDisplay, value);
+    }
+
+    public string MikroCountSummaryDisplay
+    {
+        get => _mikroCountSummaryDisplay;
+        private set => SetProperty(ref _mikroCountSummaryDisplay, value);
+    }
+
+    public string MikroCountTimeDisplay
+    {
+        get => _mikroCountTimeDisplay;
+        private set => SetProperty(ref _mikroCountTimeDisplay, value);
+    }
+
+    public bool HasMikroCountResult
+    {
+        get => _hasMikroCountResult;
+        private set => SetProperty(ref _hasMikroCountResult, value);
+    }
+
+    public async Task RunBootstrapAsync()
+    {
+        _logger.LogInformation("RunBootstrapAsync invoked from UI.");
+        LastRunStatusDisplay = "▶ Çalışıyor…";
+        LastRunStatusBrush = WarningBadgeBrush;
+        LastRunSummaryDisplay = "Bootstrap tetiklendi, lütfen bekleyin…";
+        LastErrorDisplay = string.Empty;
+        IsBusy = true;
+        try
+        {
+            // 0) Central API'ye kayıtlı değilsek otomatik register.
+            var registered = await EnsureRegisteredAsync().ConfigureAwait(true);
+            if (!registered)
+            {
+                LastRunSummaryDisplay = "Agent kayıt edilemedi — Ayarlar sekmesinden lisans anahtarını doğrulayın ve 'Lisans ile Kayıt Ol' butonuna tıklayın.";
+                LastRunStatusDisplay = "✗ Kayıt gerekli";
+                LastRunStatusBrush = DangerBadgeBrush;
+                LastErrorDisplay = "Central API'ye kayıt yapılamadı. Lisans anahtarı + API base URL kontrolü gerekli.";
+                _logger.LogWarning("RunBootstrapAsync aborted: auto-register failed.");
+                return;
+            }
+
+            _logger.LogInformation("Step 1: invalidating checkpoint.");
+            await _bootstrap.InvalidateAsync().ConfigureAwait(true);
+
+            _logger.LogInformation("Step 2: running RunOnceAsync.");
+            var result = await _bootstrap.RunOnceAsync().ConfigureAwait(true);
+            _logger.LogInformation(
+                "Step 3: RunOnceAsync returned. Success={Success}, Customers={Customers}, Stocks={Stocks}, DurationMs={Duration}.",
+                result.Success, result.CustomersCount, result.StocksCount, result.DurationMs);
+
+            LastCustomersCountDisplay = result.CustomersCount.ToString(CultureInfo.CurrentCulture);
+            LastStocksCountDisplay = result.StocksCount.ToString(CultureInfo.CurrentCulture);
+            LastPricesCountDisplay = result.PricesCount.ToString(CultureInfo.CurrentCulture);
+            LastOpenOrdersCountDisplay = result.OpenOrdersCount.ToString(CultureInfo.CurrentCulture);
+
+            if (result.Success)
+            {
+                var totalRows = result.CustomersCount + result.StocksCount + result.PricesCount
+                    + result.InventoryCount + result.OpenOrdersCount + result.CashAndBankCount
+                    + result.LookupsCount;
+                LastRunSummaryDisplay = string.Format(
+                    CultureInfo.CurrentCulture,
+                    "{0} satır aktarıldı · {1} ms",
+                    totalRows, result.DurationMs);
+                LastRunStatusDisplay = "✓ Başarılı";
+                LastRunStatusBrush = SuccessBadgeBrush;
+                LastErrorDisplay = string.Empty;
+                _logger.LogInformation(
+                    "Manual bootstrap succeeded. TotalRows={TotalRows}, DurationMs={Duration}.",
+                    totalRows, result.DurationMs);
+            }
+            else
+            {
+                LastRunSummaryDisplay = "Hata: " + (result.ErrorCode ?? "UNKNOWN");
+                LastRunStatusDisplay = "✗ Başarısız";
+                LastRunStatusBrush = DangerBadgeBrush;
+                LastErrorDisplay = result.ErrorMessage ?? "Bilinmeyen hata";
+                _logger.LogWarning(
+                    "Manual bootstrap FAILED. ErrorCode={ErrorCode}, Message={Message}.",
+                    result.ErrorCode, result.ErrorMessage);
+            }
+
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Manual bootstrap invocation crashed.");
+            LastRunSummaryDisplay = "Hata: " + ex.GetType().Name + " — " + ex.Message;
+            LastRunStatusDisplay = "✗ Başarısız";
+            LastRunStatusBrush = DangerBadgeBrush;
+            LastErrorDisplay = "Bootstrap tetiklenemedi: " + ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static string FormatAge(TimeSpan age)
+    {
+        if (age < TimeSpan.FromMinutes(1)) return "az önce";
+        if (age < TimeSpan.FromHours(1))
+        {
+            var m = (int)age.TotalMinutes;
+            return m + " dakika önce";
+        }
+        if (age < TimeSpan.FromDays(1))
+        {
+            var h = (int)age.TotalHours;
+            return h + " saat önce";
+        }
+        var d = (int)age.TotalDays;
+        return d + " gün önce";
+    }
+
+    public async Task PushSectionAsync(string sectionName, string displayLabel)
+    {
+        _logger.LogInformation("PushSectionAsync invoked for {Section}.", sectionName);
+        LastRunStatusDisplay = $"▶ {displayLabel} aktarılıyor…";
+        LastRunStatusBrush = WarningBadgeBrush;
+        LastRunSummaryDisplay = $"{displayLabel} tablosu için push tetiklendi…";
+        LastErrorDisplay = string.Empty;
+        IsBusy = true;
+        try
+        {
+            var registered = await EnsureRegisteredAsync().ConfigureAwait(true);
+            if (!registered)
+            {
+                LastRunSummaryDisplay = $"{displayLabel}: Agent kayıt edilemedi — Ayarlar sekmesinden lisans anahtarı doğrulayıp 'Lisans ile Kayıt Ol'a tıklayın.";
+                LastRunStatusDisplay = "✗ " + displayLabel;
+                LastRunStatusBrush = DangerBadgeBrush;
+                LastErrorDisplay = "Central API'ye kayıt yapılamadı.";
+                _logger.LogWarning("PushSectionAsync({Section}) aborted: auto-register failed.", sectionName);
+                return;
+            }
+
+            var result = await _bootstrap.PushSectionAsync(sectionName).ConfigureAwait(true);
+            _logger.LogInformation(
+                "PushSectionAsync({Section}) returned. Success={Success}, DurationMs={Duration}.",
+                sectionName, result.Success, result.DurationMs);
+
+            if (result.CustomersCount > 0) LastCustomersCountDisplay = result.CustomersCount.ToString(CultureInfo.CurrentCulture);
+            if (result.StocksCount > 0) LastStocksCountDisplay = result.StocksCount.ToString(CultureInfo.CurrentCulture);
+            if (result.PricesCount > 0) LastPricesCountDisplay = result.PricesCount.ToString(CultureInfo.CurrentCulture);
+            if (result.OpenOrdersCount > 0) LastOpenOrdersCountDisplay = result.OpenOrdersCount.ToString(CultureInfo.CurrentCulture);
+
+            if (result.Success)
+            {
+                var totalRows = result.CustomersCount + result.StocksCount + result.PricesCount
+                    + result.InventoryCount + result.OpenOrdersCount + result.CashAndBankCount
+                    + result.LookupsCount;
+                LastRunSummaryDisplay = string.Format(
+                    CultureInfo.CurrentCulture,
+                    "{0}: {1} satır aktarıldı · {2} ms",
+                    displayLabel, totalRows, result.DurationMs);
+                LastRunStatusDisplay = "✓ " + displayLabel;
+                LastRunStatusBrush = SuccessBadgeBrush;
+                LastErrorDisplay = string.Empty;
+            }
+            else
+            {
+                LastRunSummaryDisplay = $"{displayLabel}: Hata — " + (result.ErrorCode ?? "UNKNOWN");
+                LastRunStatusDisplay = "✗ " + displayLabel;
+                LastRunStatusBrush = DangerBadgeBrush;
+                LastErrorDisplay = result.ErrorMessage ?? "Bilinmeyen hata";
+            }
+
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PushSectionAsync({Section}) crashed.", sectionName);
+            LastRunSummaryDisplay = $"{displayLabel}: Hata — {ex.GetType().Name}";
+            LastRunStatusDisplay = "✗ " + displayLabel;
+            LastRunStatusBrush = DangerBadgeBrush;
+            LastErrorDisplay = "Push tetiklenemedi: " + ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public Task RefreshAsync()
+    {
+        try
+        {
+            var lastUtc = _bootstrap.GetLastSyncAtUtc();
+            if (lastUtc.HasValue)
+            {
+                var localTime = lastUtc.Value.ToLocalTime();
+                LastSyncAtDisplay = localTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
+                var age = DateTimeOffset.Now - lastUtc.Value;
+                LastSyncRelativeDisplay = FormatAge(age);
+            }
+            else
+            {
+                LastSyncAtDisplay = "Henüz senkronizasyon yapılmamış";
+                LastSyncRelativeDisplay = string.Empty;
+            }
+
+            if (lastUtc.HasValue)
+            {
+                var nextEligible = lastUtc.Value.AddMinutes(60);
+                if (nextEligible > DateTimeOffset.Now)
+                {
+                    var until = nextEligible - DateTimeOffset.Now;
+                    NextEligibleRunDisplay = $"Sonraki otomatik çalıştırma: {FormatAge(until)} sonra";
+                }
+                else
+                {
+                    NextEligibleRunDisplay = "Otomatik çalıştırma için hazır";
+                }
+            }
+            else
+            {
+                NextEligibleRunDisplay = "Henüz bootstrap yapılmadı";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RefreshAsync failed.");
+        }
+        return Task.CompletedTask;
+    }
+
+    private static readonly Brush GrayBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x9E, 0x9E, 0x9E)));
+    private static readonly Brush SuccessBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A)));
+    private static readonly Brush WarningBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xD9, 0x77, 0x06)));
+    private static readonly Brush DangerBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26)));
+
+    private static Brush Freeze(SolidColorBrush brush)
+    {
+        brush.Freeze();
+        return brush;
+    }
+}

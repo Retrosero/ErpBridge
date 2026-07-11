@@ -85,13 +85,13 @@ public static class AdminBootstrapEndpoints
             using var doc = JsonDocument.Parse(payloadJson);
             var root = doc.RootElement;
             return (
-                CountArray(root, "Customers"),
-                CountArray(root, "Stocks"),
-                CountArray(root, "Prices"),
-                CountArray(root, "Inventory"),
-                CountArray(root, "OpenOrders"),
-                CountArray(root, "CashAndBank"),
-                CountArray(root, "Lookups"));
+                CountArray(root, "customers"),
+                CountArray(root, "stocks"),
+                CountArray(root, "prices"),
+                CountArray(root, "inventory"),
+                CountArray(root, "openOrders"),
+                CountArray(root, "cashAndBank"),
+                CountArray(root, "lookups"));
         }
         catch
         {

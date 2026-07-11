@@ -32,6 +32,11 @@ secrets.json
 appsettings.Local.json
 appsettings.Development.json
 
+# Local operator secrets — .env.example şablon olarak commit edilir, .env asla
+.env
+.env.*
+!.env.example
+
 # OS
 .DS_Store
 Thumbs.db

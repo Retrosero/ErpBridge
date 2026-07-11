@@ -1,5 +1,9 @@
 using System.Globalization;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
 using System.Windows.Media;
+using ErpBridge.Agent.UI.DependencyInjection;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
@@ -47,6 +51,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
     private readonly IAgentConfigToErpSettingsMapper _configToErpSettings;
     private readonly IMikroConnectionTestOrchestrator _orchestrator;
     private readonly IConfiguration _configuration;
+    private readonly MutableMemoryConfigurationProvider _liveSettings;
     private readonly ILogger<AgentSettingsViewModel> _logger;
 
     private string _licenseKey = string.Empty;
@@ -54,8 +59,6 @@ public sealed class AgentSettingsViewModel : ObservableObject
     private string _sqlUserName = string.Empty;
     private string _sqlPassword = string.Empty;
     private string _mikroDatabaseName = string.Empty;
-    private string _companyNo = "1";
-    private string _branchNo = "1";
     private string _apiBaseUrl = "https://api.erpbridge.local";
     private bool _useWindowsAuth;
     private string _status = "Hazır.";
@@ -72,18 +75,66 @@ public sealed class AgentSettingsViewModel : ObservableObject
     private string _mikroVersionTooltip = string.Empty;
     private string _troubleshootingHint = string.Empty;
 
+    // Faz 7 — tab visibility + dashboard glue.
+    private bool _hasSavedConfig;
+    private string _lastSavedAtDisplay = string.Empty;
+    private string _lastSyncAtDisplay = string.Empty;
+
+    // Faz 8 — Central API lisans + sunucu DB kontrol (diagnostic test butonları).
+    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private bool? _licenseCheckValid;
+    private string _licenseCheckTenantIdDisplay = string.Empty;
+    private string _licenseCheckExpiresAtDisplay = string.Empty;
+    private string _licenseCheckErrorCodeDisplay = string.Empty;
+    private string _licenseCheckErrorMessageDisplay = string.Empty;
+    private long? _licenseCheckLatencyMs;
+    private string _licenseCheckTimeDisplay = string.Empty;
+    private bool _hasLicenseCheckResult;
+    private string _serverDbCheckStatusDisplay = string.Empty;
+    private string _serverDbCheckHttpDisplay = string.Empty;
+    private string _serverDbCheckBodyDisplay = string.Empty;
+    private long? _serverDbCheckLatencyMs;
+    private string _serverDbCheckTimeDisplay = string.Empty;
+    private bool _hasServerDbCheckResult;
+
+    // Faz 8 — Central API'ye agent kayıt (POST /api/v1/agents/register). Bu çağrı
+    // olmadan bootstrap push 401 alır (Central, JWT olmadan /api/v1/bootstrap'u
+    // reddeder). Register başarılıysa dönen JWT in-memory olarak
+    // CentralApiOptions.Jwt'ye yazılır — sonraki çağrılar geçer.
+    private bool _hasRegisterResult;
+    private bool? _registerSuccess;
+    private string _registerAgentIdDisplay = string.Empty;
+    private string _registerTenantIdDisplay = string.Empty;
+    private string _registerExpiresAtDisplay = string.Empty;
+    private string _registerErrorCodeDisplay = string.Empty;
+    private string _registerErrorMessageDisplay = string.Empty;
+    private long? _registerLatencyMs;
+    private string _registerTimeDisplay = string.Empty;
+
     /// <summary>Build the view-model — every dependency is required.</summary>
+    /// <param name="liveSettings">
+    /// In-memory <see cref="MutableMemoryConfigurationProvider"/> seeded by the
+    /// host at startup. The view-model writes the latest Mikro credentials here
+    /// so the orchestrator's <c>MikroConnectionSettings.FromConfiguration</c>
+    /// call sees the freshly-typed values without a process restart. Writing
+    /// into a dedicated provider (rather than calling
+    /// <c>IConfigurationRoot.Reload()</c> on the JSON-backed root) prevents
+    /// the JSON provider from re-reading the file and erasing the in-memory
+    /// edits.
+    /// </param>
     public AgentSettingsViewModel(
         IAgentConfigStore store,
         IAgentConfigToErpSettingsMapper configToErpSettings,
         IMikroConnectionTestOrchestrator orchestrator,
         IConfiguration configuration,
+        MutableMemoryConfigurationProvider liveSettings,
         ILogger<AgentSettingsViewModel> logger)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _configToErpSettings = configToErpSettings ?? throw new ArgumentNullException(nameof(configToErpSettings));
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _liveSettings = liveSettings ?? throw new ArgumentNullException(nameof(liveSettings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         SaveCommand = new RelayCommand(_ => _ = SaveAsync(), _ => !IsBusy);
@@ -93,10 +144,33 @@ public sealed class AgentSettingsViewModel : ObservableObject
         RedetectVersionCommand = new AsyncRelayCommand(
             execute: _ => RedetectVersionAsync(),
             canExecute: () => !IsBusy && HasConnectionTestResult);
+        TestLicenseCommand = new AsyncRelayCommand(
+            execute: _ => TestLicenseAsync(),
+            canExecute: () => !IsBusy
+                && !string.IsNullOrWhiteSpace(LicenseKey)
+                && !string.IsNullOrWhiteSpace(ApiBaseUrl));
+        TestServerDbCommand = new AsyncRelayCommand(
+            execute: _ => TestServerDbAsync(),
+            canExecute: () => !IsBusy && !string.IsNullOrWhiteSpace(ApiBaseUrl));
+        RegisterAgentCommand = new AsyncRelayCommand(
+            execute: _ => RegisterAgentAsync(),
+            canExecute: () => !IsBusy
+                && !string.IsNullOrWhiteSpace(LicenseKey)
+                && !string.IsNullOrWhiteSpace(ApiBaseUrl));
     }
 
     /// <summary>Lisans anahtarı.</summary>
-    public string LicenseKey { get => _licenseKey; set => SetProperty(ref _licenseKey, value); }
+    public string LicenseKey
+    {
+        get => _licenseKey;
+        set
+        {
+            if (SetProperty(ref _licenseKey, value))
+            {
+                ((AsyncRelayCommand)TestLicenseCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     /// <summary>SQL Server adresi (host veya host\instance).</summary>
     public string SqlServer { get => _sqlServer; set => SetProperty(ref _sqlServer, value); }
@@ -110,14 +184,19 @@ public sealed class AgentSettingsViewModel : ObservableObject
     /// <summary>Mikro database adı.</summary>
     public string MikroDatabaseName { get => _mikroDatabaseName; set => SetProperty(ref _mikroDatabaseName, value); }
 
-    /// <summary>Firma no (integer parse).</summary>
-    public string CompanyNo { get => _companyNo; set => SetProperty(ref _companyNo, value); }
-
-    /// <summary>Şube no (integer parse).</summary>
-    public string BranchNo { get => _branchNo; set => SetProperty(ref _branchNo, value); }
-
     /// <summary>Central API base URL.</summary>
-    public string ApiBaseUrl { get => _apiBaseUrl; set => SetProperty(ref _apiBaseUrl, value); }
+    public string ApiBaseUrl
+    {
+        get => _apiBaseUrl;
+        set
+        {
+            if (SetProperty(ref _apiBaseUrl, value))
+            {
+                ((AsyncRelayCommand)TestLicenseCommand).RaiseCanExecuteChanged();
+                ((AsyncRelayCommand)TestServerDbCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     /// <summary>
     /// True when Mikro is reached via Windows Authentication (Trusted_Connection /
@@ -150,6 +229,8 @@ public sealed class AgentSettingsViewModel : ObservableObject
                 ((RelayCommand)SaveCommand).RaiseCanExecuteChanged();
                 ((AsyncRelayCommand)TestConnectionCommand).RaiseCanExecuteChanged();
                 ((AsyncRelayCommand)RedetectVersionCommand).RaiseCanExecuteChanged();
+                ((AsyncRelayCommand)TestLicenseCommand).RaiseCanExecuteChanged();
+                ((AsyncRelayCommand)TestServerDbCommand).RaiseCanExecuteChanged();
             }
         }
     }
@@ -223,18 +304,250 @@ public sealed class AgentSettingsViewModel : ObservableObject
         private set => SetProperty(ref _troubleshootingHint, value);
     }
 
+    /// <summary>
+    /// True when the user has saved a complete Mikro configuration at least
+    /// once during this process lifetime. Drives the Pano tab visibility —
+    /// the dashboard only appears once the operator has real settings to
+    /// monitor. Refreshed on every successful <see cref="SaveAsync"/>.
+    /// </summary>
+    public bool HasSavedConfig
+    {
+        get => _hasSavedConfig;
+        private set => SetProperty(ref _hasSavedConfig, value);
+    }
+
+    /// <summary>Localised "saved at" timestamp for the footer of the Settings tab.</summary>
+    public string LastSavedAtDisplay
+    {
+        get => _lastSavedAtDisplay;
+        private set => SetProperty(ref _lastSavedAtDisplay, value);
+    }
+
+    /// <summary>
+    /// Localised "last successful sync at" timestamp — wired to the
+    /// Pano tab's primary metric. Populated by the dashboard service when
+    /// the tab is opened.
+    /// </summary>
+    public string LastSyncAtDisplay
+    {
+        get => _lastSyncAtDisplay;
+        private set => SetProperty(ref _lastSyncAtDisplay, value);
+    }
+
+    /// <summary>"true" / "false" / "—" — bound to the lisans kontrol paneli.</summary>
+    public string LicenseCheckValidDisplay
+    {
+        get
+        {
+            if (!_hasLicenseCheckResult) return "—";
+            if (_licenseCheckValid is null) return "(no response)";
+            return _licenseCheckValid.Value ? "✓ true" : "✗ false";
+        }
+    }
+
+    /// <summary>Resolved tenant GUID (empty if invalid).</summary>
+    public string LicenseCheckTenantIdDisplay
+    {
+        get
+        {
+            if (!_hasLicenseCheckResult) return string.Empty;
+            return _licenseCheckTenantIdDisplay;
+        }
+    }
+
+    /// <summary>License expiry in local time (empty if no expiry / invalid).</summary>
+    public string LicenseCheckExpiresAtDisplay
+    {
+        get
+        {
+            if (!_hasLicenseCheckResult || string.IsNullOrEmpty(_licenseCheckExpiresAtDisplay)) return "—";
+            return _licenseCheckExpiresAtDisplay;
+        }
+    }
+
+    /// <summary>Server-returned error code (LICENSE_NOT_FOUND / LICENSE_EXPIRED / LICENSE_INVALID / MISSING_LICENSE_KEY).</summary>
+    public string LicenseCheckErrorCodeDisplay
+    {
+        get
+        {
+            if (!_hasLicenseCheckResult) return string.Empty;
+            return string.IsNullOrEmpty(_licenseCheckErrorCodeDisplay) ? "—" : _licenseCheckErrorCodeDisplay;
+        }
+    }
+
+    public string LicenseCheckErrorMessageDisplay
+    {
+        get
+        {
+            if (!_hasLicenseCheckResult) return string.Empty;
+            return _licenseCheckErrorMessageDisplay;
+        }
+    }
+
+    public long? LicenseCheckLatencyMs
+    {
+        get => _licenseCheckLatencyMs;
+        private set => SetProperty(ref _licenseCheckLatencyMs, value);
+    }
+
+    public string LicenseCheckTimeDisplay
+    {
+        get => _licenseCheckTimeDisplay;
+        private set => SetProperty(ref _licenseCheckTimeDisplay, value);
+    }
+
+    /// <summary>True once a lisans kontrol call produced a result. Gates the panel visibility.</summary>
+    public bool HasLicenseCheckResult
+    {
+        get => _hasLicenseCheckResult;
+        private set => SetProperty(ref _hasLicenseCheckResult, value);
+    }
+
+    public string ServerDbCheckStatusDisplay
+    {
+        get
+        {
+            if (!_hasServerDbCheckResult) return "—";
+            return string.IsNullOrEmpty(_serverDbCheckStatusDisplay) ? "(no response)" : _serverDbCheckStatusDisplay;
+        }
+        private set => SetProperty(ref _serverDbCheckStatusDisplay, value);
+    }
+
+    public string ServerDbCheckHttpDisplay
+    {
+        get
+        {
+            if (!_hasServerDbCheckResult) return "—";
+            return string.IsNullOrEmpty(_serverDbCheckHttpDisplay) ? "(no response)" : _serverDbCheckHttpDisplay;
+        }
+        private set => SetProperty(ref _serverDbCheckHttpDisplay, value);
+    }
+
+    public string ServerDbCheckBodyDisplay
+    {
+        get
+        {
+            if (!_hasServerDbCheckResult) return "—";
+            return string.IsNullOrEmpty(_serverDbCheckBodyDisplay) ? "(empty)" : _serverDbCheckBodyDisplay;
+        }
+        private set => SetProperty(ref _serverDbCheckBodyDisplay, value);
+    }
+
+    public long? ServerDbCheckLatencyMs
+    {
+        get => _serverDbCheckLatencyMs;
+        private set => SetProperty(ref _serverDbCheckLatencyMs, value);
+    }
+
+    public string ServerDbCheckTimeDisplay
+    {
+        get => _serverDbCheckTimeDisplay;
+        private set => SetProperty(ref _serverDbCheckTimeDisplay, value);
+    }
+
+    public bool HasServerDbCheckResult
+    {
+        get => _hasServerDbCheckResult;
+        private set => SetProperty(ref _hasServerDbCheckResult, value);
+    }
+
+    // Register-agent (POST /api/v1/agents/register) için görüntü property'leri.
+    // XAML bunları bir Border panelinde bağlar; başarılıysa agentId/tenantId/
+    // expiresAtUtc, başarısızsa errorCode/message gösterir.
+    public bool HasRegisterResult
+    {
+        get => _hasRegisterResult;
+        private set => SetProperty(ref _hasRegisterResult, value);
+    }
+
+    public string RegisterSuccessDisplay =>
+        !_hasRegisterResult ? string.Empty
+        : _registerSuccess == true ? "✓ kayıtlı"
+        : "✗ başarısız";
+
+    public string RegisterAgentIdDisplay
+    {
+        get => _registerAgentIdDisplay;
+        private set => SetProperty(ref _registerAgentIdDisplay, value);
+    }
+
+    public string RegisterTenantIdDisplay
+    {
+        get => _registerTenantIdDisplay;
+        private set => SetProperty(ref _registerTenantIdDisplay, value);
+    }
+
+    public string RegisterExpiresAtDisplay
+    {
+        get => _registerExpiresAtDisplay;
+        private set => SetProperty(ref _registerExpiresAtDisplay, value);
+    }
+
+    public string RegisterErrorCodeDisplay
+    {
+        get => _registerErrorCodeDisplay;
+        private set => SetProperty(ref _registerErrorCodeDisplay, value);
+    }
+
+    public string RegisterErrorMessageDisplay
+    {
+        get => _registerErrorMessageDisplay;
+        private set => SetProperty(ref _registerErrorMessageDisplay, value);
+    }
+
+    public long? RegisterLatencyMs
+    {
+        get => _registerLatencyMs;
+        private set => SetProperty(ref _registerLatencyMs, value);
+    }
+
+    public string RegisterTimeDisplay
+    {
+        get => _registerTimeDisplay;
+        private set => SetProperty(ref _registerTimeDisplay, value);
+    }
+
     public System.Windows.Input.ICommand SaveCommand { get; }
 
     public System.Windows.Input.ICommand TestConnectionCommand { get; }
 
     public System.Windows.Input.ICommand RedetectVersionCommand { get; }
 
+    /// <summary>
+    /// Central API'ye kayıtlı lisans anahtarını doğrulatır
+    /// (POST <c>{apiBaseUrl}/api/v1/licenses/validate</c>). Lisan yoksa
+    /// panel gizli kalır; 200 gelirse tenantId + expiresAtUtc gösterilir,
+    /// 404/410 gelirse errorCode/message gösterilir.
+    /// </summary>
+    public System.Windows.Input.ICommand TestLicenseCommand { get; }
+
+    /// <summary>
+    /// Central API'nin <c>GET /health</c> endpoint'ine ping atar. Yanıt
+    /// metni + HTTP status + latency gösterilir. /health, merkezi DB
+    /// bağlantısını kullandığı için bu çağrı dolaylı bir DB kontrolüdür.
+    /// </summary>
+    public System.Windows.Input.ICommand TestServerDbCommand { get; }
+
+    /// <summary>
+    /// Agent'ı lisansla Central API'ye kaydeder
+    /// (POST <c>{apiBaseUrl}/api/v1/agents/register</c>). Başarılıysa dönen
+    /// JWT in-memory olarak <c>CentralApiOptions.Jwt</c>'ye yazılır — sonraki
+    /// bootstrap push ve heartbeat çağrıları bu token'la imzalanır.
+    /// </summary>
+    public System.Windows.Input.ICommand RegisterAgentCommand { get; }
+
     /// <summary>Load persisted config into the view-model. Called on window open.</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
         try
         {
-            var config = await _store.LoadAsync(ct).ConfigureAwait(false);
+            // WPF rule: do NOT use ConfigureAwait(false) here — the await must
+            // resume on the captured UI SynchronizationContext, otherwise the
+            // following property mutations fire from a worker thread and WPF's
+            // binding subsystem throws InvalidOperationException, which kills
+            // the process when propagated from the App.xaml.cs Loaded event
+            // handler. Same rule applies to Save/TestConnection/Redetect.
+            var config = await _store.LoadAsync(ct);
             if (config is null)
             {
                 Status = "Henüz kayıtlı konfigürasyon yok. Alanları doldurun ve Kaydet'e basın.";
@@ -246,10 +559,22 @@ public sealed class AgentSettingsViewModel : ObservableObject
             SqlUserName = config.SqlUserName ?? string.Empty;
             SqlPassword = config.SqlPassword ?? string.Empty;
             MikroDatabaseName = config.MikroDatabaseName ?? string.Empty;
-            CompanyNo = config.CompanyNo.ToString(CultureInfo.InvariantCulture);
-            BranchNo = config.BranchNo.ToString(CultureInfo.InvariantCulture);
             ApiBaseUrl = config.ApiBaseUrl ?? string.Empty;
             UseWindowsAuth = config.UseWindowsAuth;
+
+            // Push the saved Mikro credentials into the live
+            // MutableMemoryConfigurationProvider so the bootstrap path
+            // (which reads IConfiguration on every cycle) sees the same
+            // values the test-connection button sees. Without this the
+            // MikroAdapterFactory's re-read at Create() time would still
+            // see the empty appsettings.json Mikro section on the first
+            // launch after process restart, before the user clicks Kaydet.
+            WriteMikroSectionToConfiguration(config);
+
+            // A previously-saved config is on disk — show the Pano tab so the
+            // operator can see the last sync status. The exact timestamp is
+            // fetched by the dashboard service when the tab is opened.
+            HasSavedConfig = true;
             Status = "Konfigürasyon yüklendi.";
         }
         catch (Exception ex)
@@ -271,7 +596,8 @@ public sealed class AgentSettingsViewModel : ObservableObject
         try
         {
             var config = BuildAgentConfig();
-            await _store.SaveAsync(config).ConfigureAwait(false);
+            // No ConfigureAwait(false) — see LoadAsync for the WPF rationale.
+            await _store.SaveAsync(config);
 
             // Push the freshly-typed Mikro settings into the live configuration so
             // MikroAdapter — which re-reads IConfiguration on every TestConnection
@@ -285,6 +611,13 @@ public sealed class AgentSettingsViewModel : ObservableObject
                 "AgentConfig saved. Server={Server}, Database={Database}, UserName={UserName}, Company={Company}, Branch={Branch}.",
                 config.SqlServer, config.MikroDatabaseName, config.SqlUserName,
                 config.CompanyNo, config.BranchNo);
+
+            // Reveal the Pano tab the first time the operator lands a real
+            // configuration — and stamp the footer with the moment of the
+            // save so the operator can tell at a glance when the last write
+            // happened.
+            HasSavedConfig = true;
+            LastSavedAtDisplay = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
 
             Status = "Konfigürasyon kaydedildi.";
         }
@@ -340,7 +673,8 @@ public sealed class AgentSettingsViewModel : ObservableObject
             // so the orchestrator sees them on its next probe.
             WriteMikroSectionToConfiguration(config);
 
-            var result = await _orchestrator.RunFullTestAsync().ConfigureAwait(false);
+            // No ConfigureAwait(false) — see LoadAsync for the WPF rationale.
+            var result = await _orchestrator.RunFullTestAsync();
             ApplyTestResult(result, prefix: "Bağlantı");
 
             if (result.Ok)
@@ -392,7 +726,8 @@ public sealed class AgentSettingsViewModel : ObservableObject
             // Re-use the same orchestration path so the cache state stays
             // consistent. MikroAdapter's TestConnectionAsync would also re-probe
             // but the orchestrator is the single seam and owns the cache.
-            var result = await _orchestrator.RunFullTestAsync().ConfigureAwait(false);
+            // No ConfigureAwait(false) — see LoadAsync for the WPF rationale.
+            var result = await _orchestrator.RunFullTestAsync();
             ApplyTestResult(result, prefix: "Versiyon tespiti");
 
             if (result.Ok)
@@ -415,6 +750,377 @@ public sealed class AgentSettingsViewModel : ObservableObject
                 MikroDatabaseName);
             Status = "Versiyon tespiti başarısız: " + ConnectionStringMasker.MaskForLog(ex.Message);
             TroubleshootingHint = BuildTroubleshootingHint(ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Faz 8 — Central API üzerinden lisans anahtarını doğrular. Endpoint
+    /// <c>POST {apiBaseUrl}/api/v1/licenses/validate</c>. Mutating değildir;
+    /// yalnızca mevcut lisansın aktif + expire olmamış + tenant aktif olduğunu
+    /// kontrol eder. 200 → <see cref="LicenseCheckValidDisplay"/> "✓ true";
+    /// 404/410 → "✗ false" + errorCode (LICENSE_NOT_FOUND / LICENSE_EXPIRED).
+    /// </summary>
+    /// <remarks>
+    /// No ConfigureAwait(false) — WPF UI bağlamında devam etmek zorunda
+    /// (bkz. <see cref="LoadAsync"/>'in tepesindeki uzun açıklama).
+    /// </remarks>
+    private async Task TestLicenseAsync()
+    {
+        var baseUrl = (ApiBaseUrl ?? string.Empty).TrimEnd('/');
+        if (string.IsNullOrEmpty(baseUrl))
+        {
+            Status = "Lisans kontrolü başarısız: API base URL boş.";
+            HasLicenseCheckResult = false;
+            return;
+        }
+
+        var licenseKey = (LicenseKey ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(licenseKey))
+        {
+            Status = "Lisans kontrolü başarısız: lisans anahtarı boş.";
+            HasLicenseCheckResult = false;
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var url = baseUrl + "/api/v1/licenses/validate";
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(new { licenseKey }),
+            };
+            request.Headers.Accept.ParseAdd("application/json");
+
+            using var response = await _http.SendAsync(request).ConfigureAwait(true);
+            sw.Stop();
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+
+            LicenseCheckLatencyMs = sw.ElapsedMilliseconds;
+            LicenseCheckTimeDisplay = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
+            HasLicenseCheckResult = true;
+
+            if (response.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                _licenseCheckValid = root.TryGetProperty("valid", out var v) && v.ValueKind == JsonValueKind.True;
+                if (root.TryGetProperty("tenantId", out var t) && t.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(t.GetString(), out var tenantGuid))
+                {
+                    _licenseCheckTenantIdDisplay = tenantGuid.ToString();
+                }
+                else
+                {
+                    _licenseCheckTenantIdDisplay = string.Empty;
+                }
+                if (root.TryGetProperty("expiresAtUtc", out var e) && e.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(e.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var exp))
+                {
+                    _licenseCheckExpiresAtDisplay = exp.ToLocalTime()
+                        .ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
+                }
+                else
+                {
+                    _licenseCheckExpiresAtDisplay = string.Empty;
+                }
+                _licenseCheckErrorCodeDisplay = root.TryGetProperty("errorCode", out var ec) && ec.ValueKind == JsonValueKind.String
+                    ? ec.GetString() ?? string.Empty
+                    : string.Empty;
+                _licenseCheckErrorMessageDisplay = root.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
+                    ? m.GetString() ?? string.Empty
+                    : string.Empty;
+
+                OnPropertyChanged(nameof(LicenseCheckValidDisplay));
+                OnPropertyChanged(nameof(LicenseCheckTenantIdDisplay));
+                OnPropertyChanged(nameof(LicenseCheckExpiresAtDisplay));
+                OnPropertyChanged(nameof(LicenseCheckErrorCodeDisplay));
+                OnPropertyChanged(nameof(LicenseCheckErrorMessageDisplay));
+
+                _logger.LogInformation(
+                    "License validate OK. LicenseKey={LicenseKey}, Valid={Valid}, TenantId={TenantId}, ExpiresAtUtc={ExpiresAtUtc}, LatencyMs={Latency}.",
+                    licenseKey, _licenseCheckValid, _licenseCheckTenantIdDisplay, _licenseCheckExpiresAtDisplay, sw.ElapsedMilliseconds);
+
+                Status = _licenseCheckValid == true
+                    ? $"Lisans geçerli.\nTenant: {_licenseCheckTenantIdDisplay}\nExpires: {_licenseCheckExpiresAtDisplay}"
+                    : $"Lisans geçersiz: {_licenseCheckErrorCodeDisplay}";
+            }
+            else
+            {
+                _licenseCheckValid = false;
+                _licenseCheckTenantIdDisplay = string.Empty;
+                _licenseCheckExpiresAtDisplay = string.Empty;
+
+                try
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    var root = doc.RootElement;
+                    _licenseCheckErrorCodeDisplay = root.TryGetProperty("errorCode", out var ec) && ec.ValueKind == JsonValueKind.String
+                        ? ec.GetString() ?? string.Empty
+                        : $"HTTP {(int)response.StatusCode}";
+                    _licenseCheckErrorMessageDisplay = root.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
+                        ? m.GetString() ?? string.Empty
+                        : body;
+                }
+                catch
+                {
+                    _licenseCheckErrorCodeDisplay = $"HTTP {(int)response.StatusCode}";
+                    _licenseCheckErrorMessageDisplay = body;
+                }
+
+                OnPropertyChanged(nameof(LicenseCheckValidDisplay));
+                OnPropertyChanged(nameof(LicenseCheckTenantIdDisplay));
+                OnPropertyChanged(nameof(LicenseCheckExpiresAtDisplay));
+                OnPropertyChanged(nameof(LicenseCheckErrorCodeDisplay));
+                OnPropertyChanged(nameof(LicenseCheckErrorMessageDisplay));
+
+                _logger.LogWarning(
+                    "License validate FAILED. LicenseKey={LicenseKey}, StatusCode={StatusCode}, ErrorCode={ErrorCode}, LatencyMs={Latency}.",
+                    licenseKey, (int)response.StatusCode, _licenseCheckErrorCodeDisplay, sw.ElapsedMilliseconds);
+
+                Status = $"Lisans doğrulama başarısız: HTTP {(int)response.StatusCode} {_licenseCheckErrorCodeDisplay}";
+            }
+        }
+        catch (Exception ex)
+        {
+            HasLicenseCheckResult = true;
+            _licenseCheckValid = null;
+            _licenseCheckErrorCodeDisplay = "CLIENT_ERROR";
+            _licenseCheckErrorMessageDisplay = ex.Message;
+            OnPropertyChanged(nameof(LicenseCheckValidDisplay));
+            OnPropertyChanged(nameof(LicenseCheckErrorCodeDisplay));
+            OnPropertyChanged(nameof(LicenseCheckErrorMessageDisplay));
+            _logger.LogError(ex, "License validate client-side failure. LicenseKey={LicenseKey}.", licenseKey);
+            Status = "Lisans kontrolü başarısız: " + ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Faz 8 — Central API'nin <c>GET /health</c> endpoint'ine ping atar.
+    /// Merkezi sunucu + DB bağlantısının canlı olduğunu doğrular (health
+    /// check DB bağlantısı kuran EF context'i açar). Yanıt metni + HTTP
+    /// status + latency <see cref="ServerDbCheckStatusDisplay"/> alanlarına
+    /// yazılır.
+    /// </summary>
+    private async Task TestServerDbAsync()
+    {
+        var baseUrl = (ApiBaseUrl ?? string.Empty).TrimEnd('/');
+        if (string.IsNullOrEmpty(baseUrl))
+        {
+            Status = "Sunucu DB kontrolü başarısız: API base URL boş.";
+            HasServerDbCheckResult = false;
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var url = baseUrl + "/health";
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Accept.ParseAdd("application/json");
+
+            using var response = await _http.SendAsync(request).ConfigureAwait(true);
+            sw.Stop();
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+
+            ServerDbCheckLatencyMs = sw.ElapsedMilliseconds;
+            ServerDbCheckTimeDisplay = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
+            ServerDbCheckHttpDisplay = ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture)
+                + " " + (response.ReasonPhrase ?? string.Empty);
+            ServerDbCheckBodyDisplay = string.IsNullOrWhiteSpace(body) ? "(empty body)" : body;
+            ServerDbCheckStatusDisplay = response.IsSuccessStatusCode ? "OK" : "FAIL";
+            HasServerDbCheckResult = true;
+
+            OnPropertyChanged(nameof(ServerDbCheckStatusDisplay));
+            OnPropertyChanged(nameof(ServerDbCheckHttpDisplay));
+            OnPropertyChanged(nameof(ServerDbCheckBodyDisplay));
+
+            _logger.LogInformation(
+                "Server health check OK. Url={Url}, StatusCode={StatusCode}, LatencyMs={Latency}.",
+                url, (int)response.StatusCode, sw.ElapsedMilliseconds);
+
+            Status = response.IsSuccessStatusCode
+                ? $"Sunucu erişilebilir.\nHTTP: {ServerDbCheckHttpDisplay}\nLatency: {sw.ElapsedMilliseconds} ms"
+                : $"Sunucu hata döndü.\nHTTP: {ServerDbCheckHttpDisplay}\nBody: {ServerDbCheckBodyDisplay}";
+        }
+        catch (Exception ex)
+        {
+            HasServerDbCheckResult = true;
+            ServerDbCheckStatusDisplay = "FAIL";
+            ServerDbCheckHttpDisplay = "—";
+            ServerDbCheckBodyDisplay = ex.Message;
+            OnPropertyChanged(nameof(ServerDbCheckStatusDisplay));
+            OnPropertyChanged(nameof(ServerDbCheckHttpDisplay));
+            OnPropertyChanged(nameof(ServerDbCheckBodyDisplay));
+            _logger.LogError(ex, "Server health check client-side failure. BaseUrl={BaseUrl}.", baseUrl);
+            Status = "Sunucu DB kontrolü başarısız: " + ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Agent'ı Central API'ye kaydeder (POST <c>{baseUrl}/api/v1/agents/register</c>).
+    /// Bu çağrı, lisans anahtarı + makine kimliğinden yeni bir JWT üretir ve
+    /// agent'ı veritabanına yazar. Dönen JWT in-memory olarak
+    /// <c>CentralApiOptions.Jwt</c>'ye yazılır — sonraki bootstrap push ve
+    /// heartbeat çağrıları bu token'la imzalanır. Aynı (lisans, makine) için
+    /// idempotent — tekrar register, JWT'yi yenilemez, sadece var olan
+    /// agent'ın LicenseKey alanını günceller (yeni JWT vermez).
+    /// </summary>
+    private async Task RegisterAgentAsync()
+    {
+        var baseUrl = (ApiBaseUrl ?? string.Empty).TrimEnd('/');
+        if (string.IsNullOrEmpty(baseUrl))
+        {
+            Status = "Agent kayıt başarısız: API base URL boş.";
+            HasRegisterResult = false;
+            return;
+        }
+        var licenseKey = (LicenseKey ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(licenseKey))
+        {
+            Status = "Agent kayıt başarısız: lisans anahtarı boş.";
+            HasRegisterResult = false;
+            return;
+        }
+
+        // Makine kimliği — birden fazla agent aynı lisansla farklı makinelerde
+        // çalışabilsin diye bilgisayar adını kullanıyoruz. Gerçek üretimde
+        // bir machine-id kaynağı (SMBIOS UUID vs.) tercih edilir.
+        var machineId = (Environment.MachineName ?? "unknown").Trim();
+        if (string.IsNullOrEmpty(machineId)) machineId = "unknown";
+
+        IsBusy = true;
+        try
+        {
+            var url = baseUrl + "/api/v1/agents/register";
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(new { licenseKey, machineId }),
+            };
+            request.Headers.Accept.ParseAdd("application/json");
+            // Register anonim — mevcut JWT'yi temizle ki yanlışlıkla eski
+            // token gönderilip 401 alınmasın.
+            request.Headers.Authorization = null;
+
+            using var response = await _http.SendAsync(request).ConfigureAwait(true);
+            sw.Stop();
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(true);
+
+            RegisterLatencyMs = sw.ElapsedMilliseconds;
+            RegisterTimeDisplay = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
+            HasRegisterResult = true;
+
+            if (response.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                var jwt = root.TryGetProperty("jwt", out var jt) && jt.ValueKind == JsonValueKind.String
+                    ? jt.GetString() ?? string.Empty
+                    : string.Empty;
+                var agentId = root.TryGetProperty("agentId", out var aid) && aid.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(aid.GetString(), out var aidg) ? aidg : Guid.Empty;
+                var tenantId = root.TryGetProperty("tenantId", out var tn) && tn.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(tn.GetString(), out var tng) ? tng : Guid.Empty;
+                var expires = root.TryGetProperty("expiresAtUtc", out var ex) && ex.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(ex.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var exp)
+                    ? exp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture)
+                    : string.Empty;
+
+                if (string.IsNullOrWhiteSpace(jwt))
+                {
+                    _registerSuccess = false;
+                    _registerErrorCodeDisplay = "EMPTY_RESPONSE";
+                    _registerErrorMessageDisplay = "Central API boş cevap döndü (jwt alanı eksik).";
+                    Status = "Agent kayıt başarısız: JWT alınamadı.";
+                }
+                else
+                {
+                    _registerSuccess = true;
+                    _registerAgentIdDisplay = agentId == Guid.Empty ? string.Empty : agentId.ToString();
+                    _registerTenantIdDisplay = tenantId == Guid.Empty ? string.Empty : tenantId.ToString();
+                    _registerExpiresAtDisplay = expires;
+                    _registerErrorCodeDisplay = string.Empty;
+                    _registerErrorMessageDisplay = string.Empty;
+
+                    // JWT'yi in-memory config'e yaz — sonraki bootstrap push
+                    // ve heartbeat bu token'la gidecek. Disk'e yazmıyoruz;
+                    // her açılışta yeniden register atılması kabul edilebilir
+                    // ve hatta tavsiye edilen davranış (token rotation).
+                    _liveSettings["CentralApi:Jwt"] = jwt;
+
+                    _logger.LogInformation(
+                        "Agent registered. LicenseKey={LicenseKey}, MachineId={MachineId}, AgentId={AgentId}, TenantId={TenantId}, LatencyMs={Latency}.",
+                        licenseKey, machineId, _registerAgentIdDisplay, _registerTenantIdDisplay, sw.ElapsedMilliseconds);
+
+                    Status = $"Agent kayıt başarılı.\nAgentId: {_registerAgentIdDisplay}\nTenant: {_registerTenantIdDisplay}\nJWT in-memory olarak kaydedildi.\nExpires: {expires}";
+                }
+            }
+            else
+            {
+                _registerSuccess = false;
+                _registerAgentIdDisplay = string.Empty;
+                _registerTenantIdDisplay = string.Empty;
+                _registerExpiresAtDisplay = string.Empty;
+                try
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    var root = doc.RootElement;
+                    _registerErrorCodeDisplay = root.TryGetProperty("errorCode", out var ec) && ec.ValueKind == JsonValueKind.String
+                        ? ec.GetString() ?? string.Empty
+                        : $"HTTP {(int)response.StatusCode}";
+                    _registerErrorMessageDisplay = root.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
+                        ? m.GetString() ?? string.Empty
+                        : body;
+                }
+                catch
+                {
+                    _registerErrorCodeDisplay = $"HTTP {(int)response.StatusCode}";
+                    _registerErrorMessageDisplay = body;
+                }
+
+                _logger.LogWarning(
+                    "Agent register FAILED. LicenseKey={LicenseKey}, MachineId={MachineId}, StatusCode={StatusCode}, ErrorCode={ErrorCode}, LatencyMs={Latency}.",
+                    licenseKey, machineId, (int)response.StatusCode, _registerErrorCodeDisplay, sw.ElapsedMilliseconds);
+
+                Status = $"Agent kayıt başarısız: HTTP {(int)response.StatusCode} {_registerErrorCodeDisplay}";
+            }
+
+            OnPropertyChanged(nameof(RegisterSuccessDisplay));
+            OnPropertyChanged(nameof(RegisterAgentIdDisplay));
+            OnPropertyChanged(nameof(RegisterTenantIdDisplay));
+            OnPropertyChanged(nameof(RegisterExpiresAtDisplay));
+            OnPropertyChanged(nameof(RegisterErrorCodeDisplay));
+            OnPropertyChanged(nameof(RegisterErrorMessageDisplay));
+        }
+        catch (Exception ex)
+        {
+            HasRegisterResult = true;
+            _registerSuccess = false;
+            _registerErrorCodeDisplay = "EXCEPTION";
+            _registerErrorMessageDisplay = ex.Message;
+            OnPropertyChanged(nameof(RegisterSuccessDisplay));
+            OnPropertyChanged(nameof(RegisterErrorCodeDisplay));
+            OnPropertyChanged(nameof(RegisterErrorMessageDisplay));
+            _logger.LogError(ex, "Agent register client-side failure. LicenseKey={LicenseKey}, MachineId={MachineId}.",
+                licenseKey, machineId);
+            Status = "Agent kayıt başarısız: " + ex.Message;
         }
         finally
         {
@@ -515,8 +1221,6 @@ public sealed class AgentSettingsViewModel : ObservableObject
             SqlUserName = SqlUserName?.Trim() ?? string.Empty,
             SqlPassword = SqlPassword ?? string.Empty,
             MikroDatabaseName = MikroDatabaseName?.Trim() ?? string.Empty,
-            CompanyNo = int.Parse(CompanyNo, CultureInfo.InvariantCulture),
-            BranchNo = int.Parse(BranchNo, CultureInfo.InvariantCulture),
             ApiBaseUrl = ApiBaseUrl?.Trim() ?? string.Empty,
             UseWindowsAuth = UseWindowsAuth,
             ErpType = Core.Domain.ErpType.Mikro,
@@ -530,31 +1234,31 @@ public sealed class AgentSettingsViewModel : ObservableObject
     /// makes the user-visible Mikro credentials the source of truth without
     /// requiring a process restart.
     /// </summary>
+    /// <remarks>
+    /// Writes go to the dedicated <see cref="MutableMemoryConfigurationProvider"/>
+    /// rather than the JSON-backed root. The JSON provider would otherwise
+    /// re-read the file on the next <c>Reload()</c> and erase the in-memory
+    /// edits, so we explicitly target the in-memory layer.
+    /// <para>
+    /// <see cref="MutableMemoryConfigurationProvider"/> exposes an indexer
+    /// that mutates the backing dictionary in place; the orchestrator's next
+    /// read sees the freshly-typed values without us having to fire a Reload
+    /// token.
+    /// </para>
+    /// </remarks>
     private void WriteMikroSectionToConfiguration(AgentConfig config)
     {
-        if (_configuration is not IConfigurationRoot root)
-        {
-            // Read-only configuration (e.g. test fixture without reload). The
-            // adapter will fall back to the values present at construction
-            // time — not ideal, but the Save+Test loop is still observable.
-            return;
-        }
-
-        var section = _configuration.GetSection(MikroConnectionSettings.ConfigurationSection);
-        section["Server"] = config.SqlServer ?? string.Empty;
-        section["UserId"] = config.SqlUserName ?? string.Empty;
-        section["Password"] = config.SqlPassword ?? string.Empty;
-        section["DatabaseName"] = config.MikroDatabaseName ?? string.Empty;
-        section["IntegratedSecurity"] = config.UseWindowsAuth ? "true" : "false";
-
-        // Touch the root to make sure reload-aware providers notice the change
-        // even when an in-memory provider above us doesn't forward by itself.
-        root.Reload();
+        const string prefix = "Mikro:";
+        _liveSettings[prefix + "Server"] = config.SqlServer ?? string.Empty;
+        _liveSettings[prefix + "UserId"] = config.SqlUserName ?? string.Empty;
+        _liveSettings[prefix + "Password"] = config.SqlPassword ?? string.Empty;
+        _liveSettings[prefix + "DatabaseName"] = config.MikroDatabaseName ?? string.Empty;
+        _liveSettings[prefix + "IntegratedSecurity"] = config.UseWindowsAuth ? "true" : "false";
     }
 
     private bool TryValidateInputs(out string error)
         => AgentSettingsValidation.TryValidate(
-            SqlServer, SqlUserName, MikroDatabaseName, CompanyNo, BranchNo, UseWindowsAuth, out error);
+            SqlServer, SqlUserName, MikroDatabaseName, UseWindowsAuth, out error);
 
     /// <summary>
     /// Build a user-visible troubleshooting hint based on the exception's

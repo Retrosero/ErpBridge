@@ -1,6 +1,8 @@
 using ErpBridge.Agent.UI.ViewModels;
+using ErpBridge.Core;
 using ErpBridge.Erp.Mikro.DependencyInjection;
 using ErpBridge.LocalStore;
+using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -21,7 +23,17 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
+        // Core registers IBootstrapSyncService + ICheckpointStore + IAgentConfigStore.
+        // Without this the WPF DashboardViewModel can't resolve its IBootstrapSyncService
+        // dependency and MainWindow's XAML parse throws.
+        services.AddErpBridgeCore();
+
         services.AddErpBridgeLocalStore(configuration);
+
+        // Remote API client — used by BootstrapSyncService to push snapshots
+        // through IRemoteApiClient.PushBootstrapDataAsync. Agent.Service wires
+        // this in the same way.
+        services.AddErpBridgeRemoteApi(configuration);
 
         // Mikro adapter — registers IErpAdapterFactory against the Mikro adapter
         // implementation. MikroConnectionSettings are derived from the live
@@ -31,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddErpBridgeMikro(configuration);
 
         services.AddSingleton<AgentSettingsViewModel>();
+        services.AddSingleton<DashboardViewModel>();
 
         services.AddLogging(b =>
         {

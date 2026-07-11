@@ -78,6 +78,86 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
     }
 
     /// <inheritdoc />
+    public async Task<AgentRegistrationResult> RegisterAgentAsync(string licenseKey, string machineId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(licenseKey))
+        {
+            return new AgentRegistrationResult { Success = false, ErrorCode = "MISSING_LICENSE_KEY", ErrorMessage = "Lisans anahtarı boş olamaz." };
+        }
+        if (string.IsNullOrWhiteSpace(machineId))
+        {
+            return new AgentRegistrationResult { Success = false, ErrorCode = "MISSING_MACHINE_ID", ErrorMessage = "Makine kimliği boş olamaz." };
+        }
+
+        var opts = _options.CurrentValue;
+        // Registration is anonymous (no JWT yet) and idempotent per (license, machine) pair —
+        // reuse the same key if the caller retries.
+        var idemKey = $"register:{licenseKey}:{machineId}";
+        using var request = BuildRequest(HttpMethod.Post, "/api/v1/agents/register", opts, idempotencyKey: idemKey);
+        request.Content = SerializeJson(new { licenseKey, machineId });
+
+        try
+        {
+            using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+            if (response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadFromJsonAsync<RegisterResponseDto>(JsonOptions, ct).ConfigureAwait(false);
+                if (body is null || string.IsNullOrWhiteSpace(body.Jwt))
+                {
+                    return new AgentRegistrationResult { Success = false, ErrorCode = "EMPTY_RESPONSE", ErrorMessage = "Central API boş cevap döndü." };
+                }
+                return new AgentRegistrationResult
+                {
+                    Success = true,
+                    Jwt = body.Jwt,
+                    AgentId = body.AgentId,
+                    TenantId = body.TenantId,
+                    ExpiresAtUtc = body.ExpiresAtUtc,
+                };
+            }
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new AgentRegistrationResult { Success = false, ErrorCode = "LICENSE_NOT_FOUND", ErrorMessage = "Lisans anahtarı tanınmadı." };
+            }
+            if (response.StatusCode == HttpStatusCode.Gone)
+            {
+                return new AgentRegistrationResult { Success = false, ErrorCode = "LICENSE_EXPIRED", ErrorMessage = "Lisans süresi dolmuş veya pasif." };
+            }
+            var errBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            _logger.LogWarning("Register failed: {Status} {Body}", response.StatusCode, errBody);
+            return new AgentRegistrationResult
+            {
+                Success = false,
+                ErrorCode = $"HTTP_{(int)response.StatusCode}",
+                ErrorMessage = $"Central API hata döndü: {(int)response.StatusCode} {response.ReasonPhrase}",
+            };
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Register timed out after {Timeout}s", opts.TimeoutSeconds);
+            return new AgentRegistrationResult { Success = false, ErrorCode = "TIMEOUT", ErrorMessage = "Zaman aşımı." };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Register network error");
+            return new AgentRegistrationResult { Success = false, ErrorCode = "NETWORK", ErrorMessage = ex.Message };
+        }
+    }
+
+    private sealed class RegisterResponseDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("agentId")]
+        public Guid AgentId { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("jwt")]
+        public string Jwt { get; set; } = string.Empty;
+        [System.Text.Json.Serialization.JsonPropertyName("tenantId")]
+        public Guid TenantId { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("expiresAtUtc")]
+        public DateTimeOffset? ExpiresAtUtc { get; set; }
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<RemoteJob>> GetPendingJobsAsync(CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
@@ -110,11 +190,38 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         ArgumentNullException.ThrowIfNull(package);
 
         var opts = _options.CurrentValue;
+        // The central API expects a BootstrapRequest envelope: { sourceDatabase,
+        // pulledAtUtc, payload: <SyncPackage> }. The agent previously sent the
+        // raw SyncPackage, which the server deserialized with `body.Payload`
+        // null and silently stored an empty `{}` jsonb — the push "succeeded"
+        // but no data actually landed. Wrap explicitly here so the payload
+        // survives the round-trip.
+        var envelope = new BootstrapRequestEnvelope(
+            SourceDatabase: package.SourceDatabase,
+            PulledAtUtc: new DateTimeOffset(package.PulledAtUtc, TimeSpan.Zero),
+            Payload: package);
         // Each bootstrap push is a fresh idempotent operation; the key is a
         // per-call GUID. Retries within the same call reuse the same key.
         using var request = BuildRequest(HttpMethod.Post, "/api/v1/bootstrap", opts, NewIdempotencyKey("bootstrap"));
-        request.Content = SerializeJson(package);
+        request.Content = SerializeJson(envelope);
         await SendNoContentAsync(request, opts, ct);
+    }
+
+    /// <summary>
+    /// Wire shape for <c>POST /api/v1/bootstrap</c>. Mirrors
+    /// <c>ErpBridge.CentralApi.Contracts.BootstrapRequest</c> — we cannot
+    /// reference the central API project (it would invert the dependency
+    /// arrow), so the shape is duplicated here and pinned by contract.
+    /// </summary>
+    private sealed record BootstrapRequestEnvelope(
+        [property: System.Text.Json.Serialization.JsonPropertyName("sourceDatabase")] string SourceDatabase,
+        [property: System.Text.Json.Serialization.JsonPropertyName("pulledAtUtc")] DateTimeOffset PulledAtUtc,
+        [property: System.Text.Json.Serialization.JsonPropertyName("payload")] object Payload)
+    {
+        // Explicit ctor so the call site can use the camelCase property aliases.
+        // Without this, the record's primary ctor parameters must be the
+        // PascalCase property names (SourceDatabase, PulledAtUtc, Payload),
+        // which is less readable at the push call site.
     }
 
     /// <inheritdoc />
