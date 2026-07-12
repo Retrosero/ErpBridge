@@ -7,10 +7,12 @@
 #
 # Usage (Coolify "Dockerfile" source):
 #   build args:  target=centralapi (or admin), version=git-sha (optional)
-#   port:        4001 - Coolify fronts the container with Traefik; external
-#               traffic arrives at HTTPS 443 and is reverse-proxied to the
-#               container port. Override the internal port at deploy time
-#               by setting the `PORT` environment variable in Coolify.
+#   port:        5080 (centralapi) / 4002 (admin) - chosen at build time
+#               and pinned in /tmp/bind_port so the entrypoint ignores the
+#               PORT env var that Coolify may inject. This guarantees the
+#               bind port matches the auto-generated Caddy/Traefik labels
+#               (Coolify emits `{{upstreams 5080}}` for the central API by
+#               default). See commit history if you need to override.
 #
 # IMPORTANT: Coolify restricts Dockerfile build-arg values to
 # [a-z 0-9 . - _] only. The `target` arg therefore arrives in lowercase
@@ -26,12 +28,11 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_NOLOGO=true \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
-    # Internal bind port. Most PaaS (Coolify, Render, Railway, Fly.io)
-    # expose PORT to the runtime; we read it through the entrypoint shell
-    # wrapper below. Default to 4001 for `docker run` / debug sessions
-    # where no PORT is supplied.
-    DEFAULT_PORT=4001
-EXPOSE 4001
+    # Default to 5080 so the central API matches Coolify's auto-generated
+    # Caddy/Traefik upstreams port. The entrypoint below pins the actual
+    # bind port per build target, so this value is a fallback only.
+    DEFAULT_PORT=5080
+EXPOSE 5080
 # Run as the built-in non-root user that the upstream image ships.
 USER $APP_UID
 
@@ -101,17 +102,21 @@ COPY --from=build /app/publish ./
 # port the same way the entrypoint does so the probe never points to a
 # port the application is not listening on.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["sh", "-c", "wget -q -O- http://127.0.0.1:${PORT:-$DEFAULT_PORT}/health || exit 1"]
+    CMD ["sh", "-c", "BIND_PORT=$(cat /tmp/bind_port); wget -q -O- http://127.0.0.1:${BIND_PORT}/health || exit 1"]
 
 # ENTRYPOINT uses a shell wrapper because the JSON-array form does not
 # expand build args - see https://docs.docker.com/engine/reference/builder/#arg.
-# The wrapper resolves $PORT against $DEFAULT_PORT and maps the
-# lowercase $target to the PascalCase DLL name on disk.
+# The wrapper pins the bind port per build target, ignoring the PORT env
+# var that Coolify may inject. This makes the bind port stable across
+# redeploys and matches Coolify's auto-generated reverse-proxy labels.
 RUN if [ "$target" = "centralapi" ]; then \
         echo "ErpBridge.CentralApi.dll" > /tmp/app_dll; \
+        echo "5080" > /tmp/bind_port; \
     elif [ "$target" = "admin" ]; then \
         echo "ErpBridge.Admin.dll" > /tmp/app_dll; \
+        echo "4002" > /tmp/bind_port; \
     else \
         echo "ErpBridge.dll" > /tmp/app_dll; \
+        echo "8080" > /tmp/bind_port; \
     fi
-ENTRYPOINT ["sh", "-c", "APP_DLL=$(cat /tmp/app_dll); exec dotnet \"$APP_DLL\" --urls \"http://+:${PORT:-$DEFAULT_PORT}\""]
+ENTRYPOINT ["sh", "-c", "APP_DLL=$(cat /tmp/app_dll); BIND_PORT=$(cat /tmp/bind_port); exec dotnet \"$APP_DLL\" --urls \"http://+:${BIND_PORT}\""]
