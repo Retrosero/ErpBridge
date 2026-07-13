@@ -113,4 +113,4 @@ RUN if [ "$target" = "centralapi" ]; then \
         echo "ErpBridge.dll" > /tmp/app_dll; \
         echo "8080" > /tmp/bind_port; \
     fi
-ENTRYPOINT ["sh", "-c", "APP_DLL=$(cat /tmp/app_dll); BIND_PORT=$(cat /tmp/bind_port); exec dotnet \"$APP_DLL\" --urls \"http://+:${BIND_PORT}\""]
+ENTRYPOINT ["sh", "-c", "APP_DLL=$(cat /tmp/app_dll); BIND_PORT=$(cat /tmp/bind_port); exec dotnet \"$APP_DLL\" --urls \"http://0.0.0.0:${BIND_PORT}\""]
