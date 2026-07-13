@@ -98,14 +98,8 @@ WORKDIR /app
 # Shared) are pulled in transitively by dotnet publish.
 COPY --from=build /app/publish ./
 
-# Healthcheck hits the anonymous /health endpoint. We resolve the bind
-# port the same way the entrypoint does so the probe never points to a
-# port the application is not listening on.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["sh", "-c", "BIND_PORT=$(cat /tmp/bind_port); wget -q -O- http://127.0.0.1:${BIND_PORT}/health || exit 1"]
-
-# ENTRYPOINT uses a shell wrapper because the JSON-array form does not
-# expand build args - see https://docs.docker.com/engine/reference/builder/#arg.
+# Coolify healthcheck is disabled for this Dockerfile-based service.
+# The minimal ASP.NET runtime image does not include wget/curl.
 # The wrapper pins the bind port per build target, ignoring the PORT env
 # var that Coolify may inject. This makes the bind port stable across
 # redeploys and matches Coolify's auto-generated reverse-proxy labels.
