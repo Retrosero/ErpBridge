@@ -64,7 +64,7 @@ else
             @foreach (var l in _licenses)
             {
                 <tr>
-                    <td><code>@l.LicenseKey.Substring(0, Math.Min(12, l.LicenseKey.Length))…</code></td>
+                    <td><code>@l.LicenseKey</code></td>
                     <td>@(TenantName(l.TenantId))</td>
                     <td>@l.IssuedAtUtc.ToString("u")</td>
                     <td>@(l.ExpiresAtUtc?.ToString("u") ?? "—")</td>
