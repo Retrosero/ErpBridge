@@ -1,3 +1,108 @@
+:root {
+    --admin-sidebar: 16rem;
+    --admin-border: #e5e7eb;
+    --admin-surface: #ffffff;
+    --admin-muted: #64748b;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100%;
+    overflow-x: hidden;
+}
+
+body {
+    background: #f8fafc;
+    color: #1e293b;
+}
+
+.page {
+    display: grid;
+    grid-template-columns: var(--admin-sidebar) minmax(0, 1fr);
+    min-height: 100vh;
+}
+
+.sidebar {
+    background: #172033;
+    color: #fff;
+    min-width: 0;
+}
+
+.sidebar .top-row {
+    min-height: 4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, .12);
+}
+
+.sidebar nav {
+    padding: .75rem 0 1rem;
+}
+
+.sidebar .nav-item {
+    margin: .15rem .75rem;
+}
+
+.sidebar .nav-link {
+    border-radius: .5rem;
+    color: rgba(255, 255, 255, .82);
+    display: block;
+    padding: .65rem .75rem;
+    text-decoration: none;
+    white-space: normal;
+}
+
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+}
+
+main {
+    min-width: 0;
+}
+
+main > .top-row {
+    align-items: center;
+    background: var(--admin-surface);
+    border-bottom: 1px solid var(--admin-border);
+    display: flex;
+    justify-content: flex-end;
+    min-height: 4rem;
+}
+
+.content {
+    margin: 0 auto;
+    max-width: 1440px;
+    min-width: 0;
+    padding-bottom: 2rem;
+    width: 100%;
+}
+
+/* Keep data-heavy admin pages usable without forcing the whole viewport wider. */
+table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+}
+
+img, svg, video, canvas {
+    max-width: 100%;
+}
+
+input, select, textarea, button {
+    max-width: 100%;
+}
+
+input, select, textarea {
+    min-height: 2.5rem;
+}
+
 #blazor-error-ui {
     background: lightyellow;
     bottom: 0;
@@ -26,3 +131,93 @@
     .blazor-error-boundary::after {
         content: "An error has occurred."
     }
+
+@media (max-width: 767.98px) {
+    :root {
+        --admin-sidebar: auto;
+    }
+
+    .page {
+        display: block;
+    }
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+    }
+
+    .sidebar .top-row {
+        min-height: 3.5rem;
+    }
+
+    .sidebar nav {
+        display: grid;
+        gap: .15rem .35rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: .5rem .5rem .75rem;
+    }
+
+    .sidebar .nav-item {
+        margin: 0;
+        min-width: 0;
+    }
+
+    .sidebar .nav-item:first-child {
+        grid-column: 1 / -1;
+        padding: .35rem .5rem;
+    }
+
+    .sidebar .nav-link {
+        font-size: .9rem;
+        min-height: 2.75rem;
+        padding: .55rem .65rem;
+    }
+
+    main > .top-row {
+        justify-content: flex-start;
+        min-height: 3rem;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    .content {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    h1 { font-size: 1.65rem; }
+    h2 { font-size: 1.35rem; }
+    h3 { font-size: 1.15rem; }
+
+    .row {
+        --bs-gutter-x: 1rem;
+    }
+
+    .btn {
+        min-height: 2.5rem;
+    }
+
+    .table {
+        font-size: .875rem;
+    }
+
+    .card, .alert, .form-control, .form-select {
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 420px) {
+    .sidebar nav {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar .nav-item:first-child {
+        grid-column: auto;
+    }
+
+    .content {
+        padding-left: .75rem !important;
+        padding-right: .75rem !important;
+    }
+}
+
