@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 0.4 seconds
-Output:
 # syntax=docker/dockerfile:1.7
 # ============================================================================
 # ErpBridge multi-target Dockerfile. Builds either:
