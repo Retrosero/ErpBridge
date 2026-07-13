@@ -1,4 +1,7 @@
-﻿# syntax=docker/dockerfile:1.7
+Exit code: 0
+Wall time: 0.4 seconds
+Output:
+# syntax=docker/dockerfile:1.7
 # ============================================================================
 # ErpBridge multi-target Dockerfile. Builds either:
 #   * the central API  (target=centralapi) - Web API + PostgreSQL backend
@@ -33,6 +36,13 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     # bind port per build target, so this value is a fallback only.
     DEFAULT_PORT=5080
 EXPOSE 5080
+# Coolify executes the image healthcheck inside this runtime image. Install
+# wget explicitly; the upstream ASP.NET image does not include it.
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
+
 # Run as the built-in non-root user that the upstream image ships.
 USER $APP_UID
 
@@ -98,11 +108,10 @@ WORKDIR /app
 # Shared) are pulled in transitively by dotnet publish.
 COPY --from=build /app/publish ./
 
-# Healthcheck hits the anonymous /health endpoint. We resolve the bind
-# port the same way the entrypoint does so the probe never points to a
-# port the application is not listening on.
+# The central API exposes /health while the admin panel's liveness endpoint
+# is its root page. Resolve the bind port at runtime so one image serves both.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["sh", "-c", "BIND_PORT=$(cat /tmp/bind_port); wget -q -O- http://127.0.0.1:${BIND_PORT}/health || exit 1"]
+    CMD ["sh", "-c", "BIND_PORT=$(cat /tmp/bind_port); PATH_SUFFIX=/health; [ \"$BIND_PORT\" = \"4002\" ] && PATH_SUFFIX=/; wget -q -O /dev/null http://127.0.0.1:${BIND_PORT}${PATH_SUFFIX} || exit 1"]
 
 # ENTRYPOINT uses a shell wrapper because the JSON-array form does not
 # expand build args - see https://docs.docker.com/engine/reference/builder/#arg.
@@ -120,3 +129,4 @@ RUN if [ "$target" = "centralapi" ]; then \
         echo "8080" > /tmp/bind_port; \
     fi
 ENTRYPOINT ["sh", "-c", "APP_DLL=$(cat /tmp/app_dll); BIND_PORT=$(cat /tmp/bind_port); exec dotnet \"$APP_DLL\" --urls \"http://+:${BIND_PORT}\""]
+
