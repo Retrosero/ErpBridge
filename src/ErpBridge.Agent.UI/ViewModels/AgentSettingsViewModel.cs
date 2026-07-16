@@ -168,6 +168,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             if (SetProperty(ref _licenseKey, value))
             {
                 ((AsyncRelayCommand)TestLicenseCommand).RaiseCanExecuteChanged();
+                ((AsyncRelayCommand)RegisterAgentCommand).RaiseCanExecuteChanged();
             }
         }
     }
@@ -194,6 +195,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             {
                 ((AsyncRelayCommand)TestLicenseCommand).RaiseCanExecuteChanged();
                 ((AsyncRelayCommand)TestServerDbCommand).RaiseCanExecuteChanged();
+                ((AsyncRelayCommand)RegisterAgentCommand).RaiseCanExecuteChanged();
             }
         }
     }
