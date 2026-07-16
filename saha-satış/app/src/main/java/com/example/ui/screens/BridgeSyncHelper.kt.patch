@@ -1,0 +1,68 @@
+--- app/src/main/java/com/example/ui/screens/BridgeSyncHelper.kt
++++ app/src/main/java/com/example/ui/screens/BridgeSyncHelper.kt
+@@ -484,6 +484,10 @@
+         try {
+             log("Uç nokta: $apiUrl/api/v1/android/sync/urun")
+             updateProgress(0.1f)
++            
++            val sharedPrefs = context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
++            val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
++            val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
++
+             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
+             var currentPage = 1
+             val pageSize = 100
+@@ -499,7 +503,16 @@
+                 var levelsPageSize = 200
+                 var hasMoreLevels = true
+                 while (hasMoreLevels) {
+-                    val levelsResponse = apiService.getStokSeviye(page = levelsPage, pageSize = levelsPageSize)
++                    val req = com.example.data.api.PullJobsRequest(
++                        tenant_id = tenantId,
++                        api_key = apiKey,
++                        device_id = deviceId,
++                        agent_version = "v2.0-multi-tenant",
++                        entity = "stokSeviye",
++                        page = levelsPage,
++                        pageSize = levelsPageSize
++                    )
++                    val levelsResponse = apiService.getStokSeviye(req)
+                     if (levelsResponse.isSuccessful && levelsResponse.body() != null) {
+                         val body = levelsResponse.body()!!
+                         val items = body.items
+@@ -531,7 +544,16 @@
+                 var barPageSize = 500
+                 var hasMoreBar = true
+                 while (hasMoreBar) {
+-                    val barResponse = apiService.getBarkodTanimi(page = barPage, pageSize = barPageSize)
++                    val barReq = com.example.data.api.PullJobsRequest(
++                        tenant_id = tenantId,
++                        api_key = apiKey,
++                        device_id = deviceId,
++                        agent_version = "v2.0-multi-tenant",
++                        entity = "barkodTanimi",
++                        page = barPage,
++                        pageSize = barPageSize
++                    )
++                    val barResponse = apiService.getBarkodTanimi(barReq)
+                     if (barResponse.isSuccessful && barResponse.body() != null) {
+                         val body = barResponse.body()!!
+                         val items = body.items
+@@ -569,7 +591,15 @@
+             log("Ana stok/ürün (URUN) verileri çekiliyor...")
+             
+             while (hasMore) {
+-                val response = apiService.getUrunler(page = currentPage, pageSize = pageSize)
++                val req = com.example.data.api.PullJobsRequest(
++                    tenant_id = tenantId,
++                    api_key = apiKey,
++                    device_id = deviceId,
++                    agent_version = "v2.0-multi-tenant",
++                    entity = "urun",
++                    page = currentPage,
++                    pageSize = pageSize
++                )
++                val response = apiService.getUrunler(req)
+                 
+                 if (response.isSuccessful && response.body() != null) {
+                     val syncRes = response.body()!!

@@ -1,0 +1,51 @@
+--- app/src/main/java/com/example/ui/screens/AppDataStore.kt
++++ app/src/main/java/com/example/ui/screens/AppDataStore.kt
+@@ -1023,10 +1023,10 @@
+                         salesHistory.clear()
+                         salesHistory.addAll(loadedSales)
+ 
+-                        products.clear()
+-                        products.addAll(loadedProducts)
++                        // Will be handled by Flow
+ 
+                         customers.clear()
+                         customers.addAll(loadedCustomers)
+@@ -1045,6 +1045,41 @@
+                     isInitialized = true
+                 }
++                
++                // Start collecting products flow
++                dbScope.launch {
++                    db.productDao().getAllProductsFlow().collect { prodEntities ->
++                        val mapped = prodEntities.map { prod ->
++                            ProductCatalog(
++                                barcode = prod.barcode,
++                                code = prod.code,
++                                title = prod.title,
++                                category = prod.category,
++                                desc = prod.desc,
++                                basePrice = prod.basePrice,
++                                dealerPrice = prod.dealerPrice,
++                                wholesalePrice = prod.wholesalePrice,
++                                kdvPercent = prod.kdvPercent,
++                                imageUrlColor = Color(prod.colorValue.toULong()),
++                                brand = prod.brand,
++                                stockByWarehouse = converter.toWarehouseMap(prod.stockByWarehouseJson),
++                                boxQty = prod.boxQty,
++                                packageQty = prod.packageQty,
++                                imageUrl = prod.imageUrl,
++                                localImagePath = prod.localImagePath,
++                                aisle = prod.aisle,
++                                customPrices = converter.toCustomPricesMap(prod.customPricesJson ?: "{}"),
++                                barcodes = converter.toBarcodeList(prod.barcodesJson)
++                            )
++                        }
++                        withContext(Dispatchers.Main) {
++                            products.clear()
++                            products.addAll(mapped)
++                        }
++                    }
++                }
+             } catch (e: Exception) {
+                 e.printStackTrace()
+             }
