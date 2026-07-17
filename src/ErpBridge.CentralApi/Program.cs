@@ -350,6 +350,7 @@ public partial class Program
         app.MapJobsEndpoints();
         app.MapBootstrapEndpoints();
         app.MapIngestEndpoints();
+        app.MapAndroidEndpoints();
         app.MapAdminAuthEndpoints();
         app.MapAdminTenantsEndpoints();
         app.MapAdminLicensesEndpoints();
