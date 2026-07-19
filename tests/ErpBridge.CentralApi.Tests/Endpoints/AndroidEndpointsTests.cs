@@ -53,6 +53,40 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         (await response.Content.ReadAsStringAsync()).Should().Contain("MOBILE_READ_SCOPE_REQUIRED");
     }
 
+    [Fact]
+    public async Task Pull_with_the_short_tenant_id_and_mobile_read_key_returns_data()
+    {
+        var client = _factory.CreateClient();
+        var (tenant, _) = await _factory.SeedTenantAsync("ANDROID-SHORT-ID", "Short-id tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, "{\"customers\":[{\"code\":\"C001\"}]}");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-ANDROID-SHORT-ID", scopes: new[] { "mobile:read" });
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawKey);
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.Id.ToString("N")[..8]);
+
+        var response = await client.PostAsync("/api/v1/android/pull", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("C001");
+    }
+
+    [Fact]
+    public async Task Pull_with_a_mismatched_short_tenant_id_is_unauthorized()
+    {
+        var client = _factory.CreateClient();
+        var (tenant, _) = await _factory.SeedTenantAsync("ANDROID-WRONG-SHORT-ID", "Wrong short-id tenant");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-ANDROID-WRONG-SHORT-ID", scopes: new[] { "mobile:read" });
+        var actualPrefix = tenant.Id.ToString("N")[..8];
+        var mismatchedPrefix = (actualPrefix[0] == '0' ? "1" : "0") + actualPrefix[1..];
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawKey);
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", mismatchedPrefix);
+
+        var response = await client.PostAsync("/api/v1/android/pull", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     private static void Authorize(HttpClient client, Guid tenantId, string rawKey)
     {
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawKey);
