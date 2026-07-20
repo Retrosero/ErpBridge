@@ -103,6 +103,27 @@ public class IngestTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Ingest_with_matching_short_tenant_id_returns_201()
+    {
+        var client = _factory.CreateClient();
+        var (tenant, _) = await _factory.SeedTenantAsync();
+        var raw = "AK-" + Guid.NewGuid().ToString("N");
+        await _factory.SeedApiKeyAsync(tenant.Id, raw);
+
+        var shortTenantId = tenant.Id.ToString("N")[..8];
+        var req = BuildIngestRequest(
+            raw,
+            Guid.Parse(tenant.Id.ToString()),
+            "{\"externalId\":\"ANDROID-001\",\"documentType\":\"sales_order\"}");
+        req.Headers.Remove("X-Tenant-Id");
+        req.Headers.Add("X-Tenant-Id", shortTenantId);
+
+        var resp = await client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
     public async Task Ingest_is_idempotent_on_tenant_documentType_externalId()
     {
         var client = _factory.CreateClient();

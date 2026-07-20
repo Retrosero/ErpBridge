@@ -63,18 +63,11 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
 
         // Step 2: parse the tenant id header. Missing/malformed tenant means
         // we cannot enforce tenant isolation, so we fail closed.
-        if (!Request.Headers.TryGetValue(Options.TenantHeaderName, out var tenantHeader)
-            || !Guid.TryParse(tenantHeader.ToString(), out var tenantId)
-            || tenantId == Guid.Empty)
-        {
-            return AuthenticateResult.Fail($"Missing or invalid {Options.TenantHeaderName} header.");
-        }
-
         // Step 3: hash the raw token and look it up. We can't query by hash
         // directly (each row has its own salt) so we load active rows for the
         // tenant — at typical scale (a few keys per tenant) the set is small.
         var saltAndHash = await _db.ApiKeys
-            .Where(k => k.TenantId == tenantId && k.IsActive)
+            .Where(k => k.IsActive)
             .Select(k => new { k.Id, k.KeySalt, k.KeyHash, k.Scopes, k.ExpiresAtUtc, k.TenantId, k.Tenant!.IsActive })
             .ToListAsync(Context.RequestAborted);
 
@@ -88,6 +81,9 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
             var computed = ComputeHash(row.KeySalt, token);
             if (CryptographicOperations.FixedTimeEquals(computed, row.KeyHash))
             {
+                if (!TenantHeaderMatches(row.TenantId))
+                    return AuthenticateResult.Fail($"Missing, invalid, or mismatched {Options.TenantHeaderName} header.");
+
                 // Found it — also verify the tenant itself is still active.
                 // Defensive: ApiKeyAuth shouldn't be the only line of defense,
                 // but mirroring the JWT path keeps the security model uniform.
@@ -133,6 +129,20 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         }
 
         return AuthenticateResult.Fail("API key not recognised.");
+    }
+
+    private bool TenantHeaderMatches(Guid authenticatedTenantId)
+    {
+        if (!Request.Headers.TryGetValue(Options.TenantHeaderName, out var tenantHeader))
+            return false;
+
+        var supplied = tenantHeader.ToString().Trim();
+        if (Guid.TryParse(supplied, out var fullId))
+            return fullId == authenticatedTenantId;
+
+        return supplied.Length == 8
+            && supplied.All(Uri.IsHexDigit)
+            && authenticatedTenantId.ToString("N").StartsWith(supplied, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />

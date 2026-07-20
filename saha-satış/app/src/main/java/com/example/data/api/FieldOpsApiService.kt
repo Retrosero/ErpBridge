@@ -96,6 +96,12 @@ interface FieldOpsApiService {
 
     @POST("api/v1/android/license/status")
     suspend fun getLicenseStatus(@Body request: PullJobsRequest): Response<LicenseStatusDto>
+
+    @POST("api/v1/android/sync/fiyatlar")
+    suspend fun getFiyatlar(@Body request: PullJobsRequest): Response<FieldOpsSyncResponse<FiyatDto>>
+
+    @POST("api/v1/android/sync/acikSiparisler")
+    suspend fun getAcikSiparisler(@Body request: PullJobsRequest): Response<FieldOpsSyncResponse<AcikSiparisDto>>
 }
 
 // DTOs
@@ -677,6 +683,23 @@ data class PushJobsResponse(
     val message: String? = null,
     val requestId: String? = null,
     val status: String? = null
+)
+
+data class FiyatDto(
+    val id: String? = null,
+    val urunKod: String? = null,
+    val fiyat: Double? = null,
+    val paraBirimi: String? = null,
+    val fiyatListesiKod: String? = null
+)
+
+data class AcikSiparisDto(
+    val id: String? = null,
+    val cariKod: String? = null,
+    val tarih: String? = null,
+    val tutar: Double? = null,
+    val paraBirimi: String? = null,
+    val aciklama: String? = null
 )
 
 

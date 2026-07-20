@@ -107,7 +107,9 @@ fun LicenseScreen(navController: NavController) {
                                 popUpTo("license") { inclusive = true }
                             }
                         } else {
-                            errorMessage = "Geçersiz veya süresi dolmuş lisans anahtarı. Veya cihaz limitine ulaşıldı."
+                            val sharedPrefs = navController.context.getSharedPreferences("secure_license_prefs", android.content.Context.MODE_PRIVATE)
+                            errorMessage = sharedPrefs.getString("last_license_error", null)
+                                ?: "Geçersiz veya süresi dolmuş lisans anahtarı. Veya cihaz limitine ulaşıldı."
                         }
                         isLoading = false
                     }

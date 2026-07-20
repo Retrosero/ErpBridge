@@ -1,35 +1,21 @@
 import re
 
-content = open("app/src/main/java/com/example/data/api/FieldOpsApiService.kt").read()
+with open('app/src/main/java/com/example/data/api/ApiClient.kt', 'r') as f:
+    api_client_code = f.read()
 
-missing_methods = """
-    @POST("api/v1/android/sync/stokHareket")
-    suspend fun getStokHareket(@Body request: PullJobsRequest): Response<StokHareketResponse>
+# Remove getApiService functions entirely from ApiClient.kt
+api_client_code = re.sub(r'fun getApiService\(.*?\)\s*:\s*GoappApiService\s*\{.*?return currentRetrofit\.create\(GoappApiService::class\.java\)\n\s*\}', '', api_client_code, flags=re.DOTALL)
 
-    @POST("api/v1/android/sync/cariHareket")
-    suspend fun getCariHareket(@Body request: PullJobsRequest): Response<CariHareketResponse>
+with open('app/src/main/java/com/example/data/api/ApiClient.kt', 'w') as f:
+    f.write(api_client_code)
 
-    @POST("api/v1/android/sync/barkodTanimi")
-    suspend fun getBarkodTanimi(@Body request: PullJobsRequest): Response<BarkodTanimiResponseDto>
 
-    @POST("api/v1/android/sync/cariAdresleri")
-    suspend fun getCariAdresleri(@Body request: PullJobsRequest): Response<CariAdresResponseDto>
+with open('app/src/main/java/com/example/ui/screens/ErpIntegrationScreen.kt', 'r') as f:
+    erp_code = f.read()
 
-    @POST("api/v1/android/sync/cariBankaHesaplari")
-    suspend fun getCariBankaHesaplari(@Body request: PullJobsRequest): Response<CariBankaHesapResponseDto>
+# Replace all occurrences of getApiService with getFieldOpsApiService
+erp_code = erp_code.replace("ApiClient.getApiService(", "ApiClient.getFieldOpsApiService(")
 
-    @POST("api/v1/android/sync/trigger")
-    suspend fun triggerSync(@Body request: PullJobsRequest): Response<FieldOpsTriggerResponse>
+# And then we need to rewrite the branches that use getCariHesaplar, getSatislar, getTahsilatlar
+# Actually, wait, it's easier to just recreate the file since I'll just change the method names, but FieldOpsApiService has different return types!
 
-    @POST("api/v1/android/sync/status")
-    suspend fun getSyncStatus(@Body request: PullJobsRequest): Response<SyncStatusResponseDto>
-
-    @POST("api/v1/android/sync/pushStatus")
-    suspend fun getPushStatus(@Body request: PullJobsRequest): Response<FieldOpsPushStatusResponse>
-
-    @POST("api/v1/android/sync/fiyatListesi")
-    suspend fun getFiyatListesi(@Body request: PullJobsRequest): Response<okhttp3.ResponseBody>
-"""
-
-content = content.replace("interface FieldOpsApiService {", "interface FieldOpsApiService {" + missing_methods)
-open("app/src/main/java/com/example/data/api/FieldOpsApiService.kt", "w").write(content)

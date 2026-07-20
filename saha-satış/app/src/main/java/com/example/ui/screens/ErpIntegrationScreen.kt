@@ -61,7 +61,7 @@ fun ErpIntegrationScreen(navController: NavController) {
     var selectedErp by remember { mutableStateOf(sharedPrefs.getString("selected_erp", "GOAPP ERP") ?: "GOAPP ERP") }
     
     // API Connection Settings
-    var apiUrl by remember { mutableStateOf(sharedPrefs.getString("api_url", "https://d5e4-88-248-2-49.ngrok-free.app") ?: "https://d5e4-88-248-2-49.ngrok-free.app") }
+    var apiUrl by remember { mutableStateOf(sharedPrefs.getString("api_url", "https://lisans.appsgo.cloud/") ?: "https://lisans.appsgo.cloud/") }
     var tenantId by remember {
         val enc = sharedPrefs.getString("tenant_id_encrypted", "") ?: ""
         mutableStateOf(if (enc.isNotEmpty()) com.example.util.CryptoUtils.decrypt(enc) else sharedPrefs.getString("tenant_id", "T001") ?: "T001")
@@ -373,15 +373,11 @@ fun ErpIntegrationScreen(navController: NavController) {
                 dbName = sharedPrefs.getString("db_name", "BILNEX_ERP_2026") ?: "BILNEX_ERP_2026"
             }
             "GOAPP ERP" -> {
-                apiUrl = "https://api.appsgo.cloud/api"
-                val savedUrl = sharedPrefs.getString("goapp_api_url", apiUrl) ?: apiUrl
-                apiUrl = if (savedUrl.contains("lisanssunucu") || savedUrl.contains("lisans.appsgo.cloud") || savedUrl == "https://lisanssunucu.appsgo.cloud") {
-                    "https://api.appsgo.cloud/api"
-                } else {
-                    savedUrl
-                }
-                apiKey = sharedPrefs.getString("goapp_api_key", "") ?: ""
-                tenantId = sharedPrefs.getString("goapp_tenant_id", "T001") ?: "T001"
+                apiUrl = "https://lisans.appsgo.cloud/"
+                apiKey = com.example.data.LicenseRepository.getApiKey(context)
+                    ?: sharedPrefs.getString("goapp_api_key", "") ?: ""
+                tenantId = com.example.data.LicenseRepository.getTenantId(context)
+                    ?: sharedPrefs.getString("goapp_tenant_id", "T001") ?: "T001"
             }
             "FIELDOPS BRIDGE" -> {
                 apiUrl = "https://d5e4-88-248-2-49.ngrok-free.app"
@@ -662,9 +658,9 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 OutlinedTextField(
                                     value = apiUrl,
                                     onValueChange = { apiUrl = it },
-                                    label = { Text("GoApp Cloud API URL", style = MaterialTheme.typography.bodySmall) },
-                                    placeholder = { Text("örn: https://api.appsgo.cloud/api") },
-                                    supportingText = { Text("Merkez GoApp Bulut Sunucu REST API adresini belirtin.", style = MaterialTheme.typography.labelSmall) },
+                                    label = { Text("Lisans / API Sunucu Adresi", style = MaterialTheme.typography.bodySmall) },
+                                    placeholder = { Text("örn: https://lisans.appsgo.cloud") },
+                                    supportingText = { Text("Merkez lisans ve veri sunucusu adresi.", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
                                     textStyle = MaterialTheme.typography.bodySmall
                                 )
@@ -672,9 +668,9 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 OutlinedTextField(
                                     value = tenantId,
                                     onValueChange = { tenantId = it },
-                                    label = { Text("Tenant ID (Müşteri Kodu)", style = MaterialTheme.typography.bodySmall) },
-                                    placeholder = { Text("örn: tnt_74799c9f9758") },
-                                    supportingText = { Text("Size özel tanımlanmış organizasyon veya müşteri kimliği.", style = MaterialTheme.typography.labelSmall) },
+                                    label = { Text("Tenant ID (Müşteri Kodu / Tenant UUID)", style = MaterialTheme.typography.bodySmall) },
+                                    placeholder = { Text("örn: T001") },
+                                    supportingText = { Text("Size özel tanımlanmış multi-tenant organizasyon kimliği (UUID).", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
                                     textStyle = MaterialTheme.typography.bodySmall
                                 )
@@ -682,9 +678,9 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 OutlinedTextField(
                                     value = apiKey,
                                     onValueChange = { apiKey = it },
-                                    label = { Text("API Key (Erişim Anahtarı)", style = MaterialTheme.typography.bodySmall) },
-                                    placeholder = { Text("örn: ak-prod-9a2f...") },
-                                    supportingText = { Text("GoApp API sistemine güvenli erişim anahtarınız.", style = MaterialTheme.typography.labelSmall) },
+                                    label = { Text("Lisans / API Anahtarı (AK-...)", style = MaterialTheme.typography.bodySmall) },
+                                    placeholder = { Text("örn: AK-API_ANAHTARI") },
+                                    supportingText = { Text("Güvenli veri senkronizasyonu için lisans API anahtarınız.", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
                                     textStyle = MaterialTheme.typography.bodySmall
                                 )
@@ -709,6 +705,7 @@ fun ErpIntegrationScreen(navController: NavController) {
 
                                 Spacer(modifier = Modifier.height(4.dp))
 
+                                // Test Connection Button
                                 var isTestingConnection by remember { mutableStateOf(false) }
                                 var connectionTestResult by remember { mutableStateOf<String?>(null) }
                                 var isConnectionSuccess by remember { mutableStateOf(false) }
@@ -718,73 +715,45 @@ fun ErpIntegrationScreen(navController: NavController) {
                                         scope.launch {
                                             isTestingConnection = true
                                             connectionTestResult = "Bağlantı test ediliyor..."
-                                            log("GoApp ERP bağlantı testi başlatıldı... URL=$apiUrl")
+                                            log("GOAPP ERP lisans ve bağlantı testi başlatıldı: tenant_id=$tenantId, URL=$apiUrl")
                                             try {
-                                                val isUserCorrectCredentials = (tenantId.trim() == "c3bfda18" && apiKey.trim() == "AK-70440e72a03523a355c7d7b89fdb67762d45b0433f2f426f")
-                                                
-                                                if (isUserCorrectCredentials) {
-                                                    isConnectionSuccess = true
-                                                    connectionTestResult = "Bağlantı Başarılı!\nGoApp API (Multi-Tenant) bağlantısı doğrulandı. Müşteri Kodu (c3bfda18) aktif edildi ve saha cari hesapları/ürünleri Room DB ile kilitlendi."
-                                                    log("✅ GoApp ERP bağlantı testi başarılı! (Kullanıcı Kimlik Doğrulama Bypass aktif edildi)")
-                                                } else if (tenantId.isNotEmpty() && tenantId != "T001") {
-                                                    // If it is multi-tenant, test using FieldOps bootstrap
-                                                    val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
-                                                    val response = apiService.bootstrap(
-                                                        com.example.data.api.BootstrapRequest(
-                                                            tenant_id = tenantId,
-                                                            api_key = apiKey,
-                                                            device_id = deviceId,
-                                                            agent_version = "v2.0-multi-tenant"
-                                                        )
+                                                val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey, tenantId)
+                                                val response = apiService.bootstrap(
+                                                    com.example.data.api.BootstrapRequest(
+                                                        tenant_id = tenantId,
+                                                        api_key = apiKey,
+                                                        device_id = deviceId,
+                                                        agent_version = "v2.0-goapp"
                                                     )
-                                                    if (response.isSuccessful && response.body()?.success == true) {
+                                                )
+                                                if (response.isSuccessful && response.body() != null) {
+                                                    val res = response.body()!!
+                                                    if (res.success) {
                                                         isConnectionSuccess = true
-                                                        connectionTestResult = "Bağlantı Başarılı!\nGoApp API (Multi-Tenant) bağlantısı doğrulandı. Müşteri Kodu ($tenantId) başarıyla sisteme bağlandı."
-                                                        log("✅ GoApp ERP bağlantı testi başarılı! Tenant ID: $tenantId")
+                                                        connectionTestResult = "Bağlantı Başarılı!\nTenant: ${res.tenant_name ?: tenantId}\nERP Listesi: ${res.allowed_erps?.joinToString() ?: "Tümü"}"
+                                                        log("✅ GOAPP ERP bağlantı testi başarılı! Tenant: ${res.tenant_name}")
                                                     } else {
                                                         isConnectionSuccess = false
-                                                        val errMsg = response.body()?.message ?: "Invalid, inactive, or expired API key"
-                                                        connectionTestResult = "Yetki Hatası (HTTP 401): API Key (Token) geçersiz veya eksik.\n\n" +
-                                                                "Sebep: Sunucu girdiğiniz API anahtarını kabul etmedi.\n\n" +
-                                                                "Sunucu Mesajı: $errMsg\n\n" +
-                                                                "Çözüm:\n" +
-                                                                "1. GoApp / Appsgo yönetim paneline girerek geçerli bir API Anahtarı (Token) oluşturun.\n" +
-                                                                "2. 'Ayarlar' sekmesindeki GoApp Cloud API Key alanına bu anahtarı eksiksiz yapıştırın."
-                                                        log("❌ GoApp ERP bağlantı testi başarısız: $errMsg")
+                                                        connectionTestResult = "Bağlantı Hatası: ${res.message ?: "Sunucu doğrulayamadı."}"
+                                                        log("❌ GOAPP ERP bağlantı testi başarısız: ${res.message}")
                                                     }
                                                 } else {
-                                                    // Single-tenant fallback
-                                                    val apiService = com.example.data.api.ApiClient.getApiService(context, apiUrl, apiKey)
-                                                    val response = apiService.getCariHesaplar()
-                                                    if (response.isSuccessful) {
-                                                        isConnectionSuccess = true
-                                                        connectionTestResult = "Bağlantı Başarılı!\nGoApp API bağlantısı doğrulandı. Cari hesap verileri başarıyla sorgulanabiliyor."
-                                                        log("✅ GoApp ERP bağlantı testi başarılı!")
-                                                    } else {
-                                                        isConnectionSuccess = false
-                                                        if (response.code() == 401) {
-                                                            connectionTestResult = "Yetki Hatası (HTTP 401): API Key (Token) geçersiz veya eksik.\n\n" +
-                                                                    "Sebep: Sunucu girdiğiniz API anahtarını kabul etmedi.\n\n" +
-                                                                    "Çözüm:\n" +
-                                                                    "1. GoApp / Appsgo yönetim paneline girerek geçerli bir API Anahtarı (Token) oluşturun.\n" +
-                                                                    "2. Oluşturduğunuz anahtarın aktif ve yetkilerinin tam olduğunu (Cari Hesaplar/Ürünler okuma izni) kontrol edin.\n" +
-                                                                    "3. 'Ayarlar' sekmesindeki GoApp Cloud API Key alanına bu anahtarı eksiksiz yapıştırın."
-                                                            log("❌ GoApp ERP bağlantı testi başarısız: Yetki Hatası (HTTP 401)")
-                                                        } else {
-                                                            connectionTestResult = "Hata (HTTP ${response.code()}): ${response.message()}"
-                                                            log("❌ GoApp ERP bağlantı testi başarısız. HTTP: ${response.code()}")
-                                                        }
-                                                     }
-                                                 }
+                                                    isConnectionSuccess = false
+                                                    val code = response.code()
+                                                    val errBody = response.errorBody()?.string() ?: ""
+                                                    val localized = when {
+                                                        code == 401 -> "API anahtarı geçersiz veya eksik."
+                                                        code == 403 || errBody.contains("MOBILE_READ_SCOPE_REQUIRED") -> "Lisans anahtarınızda 'mobile:read' yetkisi bulunmamaktadır."
+                                                        code == 404 || errBody.contains("BOOTSTRAP_NOT_FOUND") -> "Bu tenant için henüz ERP'den veri paketi gelmemiş (Bootstrap kaydı bulunamadı)."
+                                                        else -> "HTTP Hatası: $code - ${response.message()}"
+                                                    }
+                                                    connectionTestResult = localized
+                                                    log("❌ GOAPP ERP bağlantı testi başarısız. HTTP: $code")
+                                                }
                                             } catch (e: java.lang.Exception) {
                                                 isConnectionSuccess = false
-                                                val msg = e.message ?: ""
-                                                if (msg.contains("JsonReader") || msg.contains("malformed JSON") || msg.contains("expected", ignoreCase = true)) {
-                                                    connectionTestResult = "Bağlantı Hatası: Sunucu JSON yerine HTML döndürdü.\n\nSebep: Girdiğiniz URL adresi (https://lisanssunucu.appsgo.cloud) bir API uç noktası değil, web panelinin kendisidir.\n\nÇözüm: Lütfen GoApp Cloud API URL alanına 'https://api.appsgo.cloud/api' yazarak tekrar deneyin. (Uygulama arka planda bu adresi otomatik olarak düzeltecektir)"
-                                                } else {
-                                                    connectionTestResult = "Bağlantı Hatası: ${e.message}"
-                                                }
-                                                log("❌ GoApp ERP bağlantı testi hata fırlattı: ${e.message}")
+                                                connectionTestResult = "Bağlantı Hatası: ${e.message}"
+                                                log("❌ GOAPP ERP bağlantı testi istisna fırlattı: ${e.message}")
                                             } finally {
                                                 isTestingConnection = false
                                             }
@@ -803,7 +772,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                     } else {
                                         Icon(Icons.Filled.NetworkCheck, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Bağlantıyı Test Et", style = MaterialTheme.typography.bodySmall)
+                                        Text("Lisans ve Bağlantıyı Doğrula (Bootstrap)", style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
 
@@ -1030,7 +999,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
-                            if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
+                            if (selectedErp == "FIELDOPS BRIDGE") {
                                 var licenseState by remember { mutableStateOf("Kontrol Edilmedi") }
                                 var allowedErps by remember { mutableStateOf<List<String>?>(null) }
                                 var expiresAt by remember { mutableStateOf<String?>(null) }
@@ -1580,7 +1549,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     isOperating = true
                                                     log("GET [Customers] api çağrısı başlatıldı ($selectedErp)...")
                                                     
-                                                    if (selectedErp == "FIELDOPS BRIDGE") {
+                                                    if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
                                                         try {
                                                             log("Uç nokta: $apiUrl/api/v1/sync/cari")
                                                             activeProgress = 0.2f
@@ -1630,48 +1599,6 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                             }
                                                         } catch(e: Exception) {
                                                             log("Köprü Bağlantı Hatası: ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
-                                                        }
-                                                    } else if (selectedErp == "GOAPP ERP") {
-                                                        try {
-                                                            log("Uç nokta: $apiUrl/cari-hesaplar")
-                                                            activeProgress = 0.4f
-                                                            val apiService = com.example.data.api.ApiClient.getApiService(context, apiUrl, apiKey)
-                                                            val response = apiService.getCariHesaplar()
-                                                            
-                                                            activeProgress = 0.8f
-                                                            if (response.isSuccessful && response.body() != null) {
-                                                                val cariler = response.body()!!
-                                                                log("${cariler.size} adet cari kayıt GoAPP ERP üzerinden başarıyla çekildi.")
-                                                                
-                                                                // Clear and inject
-                                                                // In a real app we might update existing, but for demo:
-                                                                for (cari in cariler) {
-                                                                    AppDataStore.customers.add(
-                                                                        Customer(
-                                                                            id = cari.id,
-                                                                            name = cari.unvan ?: "İsimsiz Cari",
-                                                                            balance = cari.bakiye ?: 0.0,
-                                                                            lastVisit = "Yeni Şenzkronize",
-                                                                            contact = cari.yetkili_kisi ?: "Belirtilmemiş",
-                                                                            phone = cari.telefon ?: "-",
-                                                                            address = cari.adres ?: "-",
-                                                                            taxOffice = cari.vergi_dairesi ?: "-",
-                                                                            taxNumber = cari.vergi_no ?: "-",
-                                                                            gpsLocation = "Bilinmiyor",
-                                                                            riskLimit = 0.0,
-                                                                            priceGroup = "Standart API",
-                                                                            specialDiscountPercent = 0.0,
-                                                                            transactions = mutableListOf()
-                                                                        )
-                                                                    )
-                                                                }
-                                                                log("Başarılı! Cariler eşitlendi.")
-                                                                activeProgress = 1.0f
-                                                            } else {
-                                                                log("Hata: API yanıtı başarısız oldu. Kod: ${response.code()}")
-                                                            }
-                                                        } catch(e: Exception) {
-                                                            log("API Hatası: ${e.message}")
                                                         }
                                                     } else {
                                                         log("Uç nokta: $apiUrl/contacts veya CARI_HESAPLAR SQL Sorgusu")
@@ -1728,7 +1655,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                 scope.launch {
                                                     isOperating = true
                                                     log("GET [Products] api çağrısı başlatıldı...")
-                                                    if (selectedErp == "FIELDOPS BRIDGE") {
+                                                    if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
                                                         try {
                                                             log("FieldOps Bridge GET [Urun] api çağrısı başlatıldı...")
                                                             log("Uç nokta: $apiUrl/api/v1/sync/urun")
@@ -1822,82 +1749,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text("Sanal Stokları Al", style = MaterialTheme.typography.bodySmall)
                                         }
-                                    }
-
-                                    if (selectedErp == "GOAPP ERP") {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Button(
-                                                onClick = {
-                                                    scope.launch {
-                                                        isOperating = true
-                                                        log("GET [Sales] api çağrısı başlatıldı (GOAPP ERP)...")
-                                                        try {
-                                                            activeProgress = 0.4f
-                                                            val apiService = com.example.data.api.ApiClient.getApiService(context, apiUrl, apiKey)
-                                                            val response = apiService.getSatislar()
-                                                            
-                                                            activeProgress = 0.8f
-                                                            if (response.isSuccessful && response.body() != null) {
-                                                                val satislar = response.body()!!.data
-                                                                log("${satislar.size} adet satış faturası GoAPP ERP üzerinden başarıyla çekildi.")
-                                                                activeProgress = 1.0f
-                                                            } else {
-                                                                log("Hata: Satışlar çekilemedi. Kod: ${response.code()}")
-                                                            }
-                                                        } catch(e: Exception) {
-                                                            log("API Hatası: ${e.message}")
-                                                        }
-                                                        isOperating = false
-                                                    }
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                                enabled = !isOperating,
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                                            ) {
-                                                Icon(Icons.Filled.ShoppingCart, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Satış Eşitle", style = MaterialTheme.typography.bodySmall)
-                                            }
-
-                                            Button(
-                                                onClick = {
-                                                    scope.launch {
-                                                        isOperating = true
-                                                        log("GET [Collections] api çağrısı başlatıldı (GOAPP ERP)...")
-                                                        try {
-                                                            activeProgress = 0.4f
-                                                            val apiService = com.example.data.api.ApiClient.getApiService(context, apiUrl, apiKey)
-                                                            val response = apiService.getTahsilatlar()
-                                                            
-                                                            activeProgress = 0.8f
-                                                            if (response.isSuccessful && response.body() != null) {
-                                                                val tahsilatlar = response.body()!!.data
-                                                                log("${tahsilatlar.size} adet tahsilat GoAPP ERP üzerinden başarıyla çekildi.")
-                                                                activeProgress = 1.0f
-                                                            } else {
-                                                                log("Hata: Tahsilatlar çekilemedi. Kod: ${response.code()}")
-                                                            }
-                                                        } catch(e: Exception) {
-                                                            log("API Hatası: ${e.message}")
-                                                        }
-                                                        isOperating = false
-                                                    }
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                                enabled = !isOperating,
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                                            ) {
-                                                Icon(Icons.Filled.Payments, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Tahsilat Eşitle", style = MaterialTheme.typography.bodySmall)
-                                            }
-                                        }
-                                    }
+                                     
                                     }
                                 }
                             }
@@ -2111,7 +1963,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                                 customDepo = customPayloadDepo
                                                             )
 
-                                                            if (selectedErp == "FIELDOPS BRIDGE") {
+                                                            if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
                                                                 try {
                                                                     log("FieldOps Bridge POST [Push] kuyruğuna yazılıyor...")
                                                                     log("Hedef Endpoint: $apiUrl/api/v1/sync/push")
@@ -2259,6 +2111,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     tableSyncStatuses["users"] = "Eşitleniyor..."
                                                     log("GET [users] toplu senkronizasyonu başladı...")
                                                     delay(800)
+
                                                     tableLastSyncTimes["users"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                     tableSyncStatuses["users"] = "Başarılı"
                                                     log("users tablosu senkronize edildi. (4 kullanıcı güncellendi)")
@@ -2270,39 +2123,6 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         try {
                                                             BridgeSyncHelper.syncCariler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
                                                         } catch(e: Exception) { log("Müşteri toplu sync hatası: ${e.message}") }
-                                                    } else if (selectedErp == "GOAPP ERP") {
-                                                        try {
-                                                            val apiService = com.example.data.api.ApiClient.getApiService(context, apiUrl, apiKey)
-                                                            val response = apiService.getCariHesaplar()
-                                                            if (response.isSuccessful && response.body() != null) {
-                                                                val cariler = response.body()!!
-                                                                for (cari in cariler) {
-                                                                    val existingIdx = AppDataStore.customers.indexOfFirst { it.id == cari.id }
-                                                                    val mapped = Customer(
-                                                                        id = cari.id,
-                                                                        name = cari.unvan ?: "İsimsiz Cari",
-                                                                        balance = cari.bakiye ?: 0.0,
-                                                                        lastVisit = "GoAPP Eşitlendi",
-                                                                        contact = cari.yetkili_kisi ?: "-",
-                                                                        phone = cari.telefon ?: "-",
-                                                                        address = cari.adres ?: "-",
-                                                                        taxOffice = cari.vergi_dairesi ?: "-",
-                                                                        taxNumber = cari.vergi_no ?: "-",
-                                                                        gpsLocation = "Bilinmiyor",
-                                                                        riskLimit = 150000.0,
-                                                                        priceGroup = "Normal",
-                                                                        specialDiscountPercent = 0.0,
-                                                                        transactions = mutableListOf()
-                                                                    )
-                                                                    if (existingIdx >= 0) {
-                                                                        AppDataStore.customers[existingIdx] = mapped
-                                                                    } else {
-                                                                        AppDataStore.customers.add(mapped)
-                                                                    }
-                                                                }
-                                                                AppDataStore.persist(context)
-                                                            }
-                                                        } catch(e: Exception) { log("Müşteri GoAPP toplu sync hatası: ${e.message}") }
                                                     } else {
                                                         delay(1000)
                                                         if (AppDataStore.customers.isEmpty()) {
@@ -2310,8 +2130,8 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         }
                                                         AppDataStore.persist(context)
                                                         log("Sandbox müşteriler verisi çekilip Room'a yazıldı.")
-                                                    }
-                                                    tableLastSyncTimes["customers"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
+                                                                                                        }
+                                                                                                        tableLastSyncTimes["customers"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                     tableSyncStatuses["customers"] = "Başarılı"
                                                     log("customers tablosu senkronize edildi. (${AppDataStore.customers.size} cari güncellendi)")
 
@@ -2322,50 +2142,6 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         try {
                                                             BridgeSyncHelper.syncUrunler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
                                                         } catch(e: Exception) { log("Ürün toplu sync hatası: ${e.message}") }
-                                                    } else if (selectedErp == "GOAPP ERP") {
-                                                        try {
-                                                            log("GoAPP ERP GET [products] senkronizasyonu başlatılıyor...")
-                                                            val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
-                                                            val request = com.example.data.api.PullJobsRequest(
-                                                                tenant_id = tenantId,
-                                                                api_key = apiKey,
-                                                                device_id = deviceId,
-                                                                agent_version = "v2.0-multi-tenant"
-                                                            )
-                                                            val response = apiService.getUrunler(request)
-                                                            if (response.isSuccessful && response.body() != null) {
-                                                                val syncRes = response.body()!!
-                                                                val urunler = syncRes.actualItems
-                                                                log("GoAPP ERP üzerinden ${urunler.size} adet ürün kaydı çekildi.")
-                                                                for (u in urunler) {
-                                                                    val existingIdx = AppDataStore.products.indexOfFirst { it.barcode == u.barkod || it.code == u.id }
-                                                                    val mapped = ProductCatalog(
-                                                                        barcode = u.barkod ?: u.id ?: "8680000" + (Math.random() * 9000).toInt().toString(),
-                                                                        code = u.actualUrunKod ?: u.id ?: "",
-                                                                        title = u.actualUrunAd ?: "İsimsiz Ürün",
-                                                                        category = u.kategori ?: "Diğer",
-                                                                        desc = "GoAPP ERP üzerinden güncellenen " + (u.birim ?: "Adet") + " bazlı stok.",
-                                                                        basePrice = u.actualSatisFiyat ?: u.satisFiyat ?: 0.0,
-                                                                        dealerPrice = u.bayiFiyati ?: u.satisFiyat ?: 0.0,
-                                                                        wholesalePrice = u.toptanFiyati ?: u.satisFiyat ?: 0.0,
-                                                                        kdvPercent = u.kdvOrani?.toInt() ?: 20,
-                                                                        imageUrlColor = Color(0xFF1976D2),
-                                                                        brand = u.marka ?: "GoAPP",
-                                                                        stockByWarehouse = mapOf("Merkez Depo" to 150)
-                                                                    )
-                                                                    if (existingIdx >= 0) {
-                                                                        AppDataStore.products[existingIdx] = mapped
-                                                                    } else {
-                                                                        AppDataStore.products.add(mapped)
-                                                                    }
-                                                                }
-                                                                AppDataStore.persist(context)
-                                                            } else {
-                                                                log("GoAPP ürün çekme hatası: Kod ${response.code()}")
-                                                            }
-                                                        } catch(e: Exception) {
-                                                            log("GoAPP ürün toplu sync hatası: ${e.message}")
-                                                        }
                                                     } else {
                                                         delay(1000)
                                                         if (AppDataStore.products.isEmpty()) {
@@ -2373,8 +2149,9 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         }
                                                         AppDataStore.persist(context)
                                                         log("Sandbox stok verisi çekilip Room'a yazıldı.")
-                                                    }
-                                                    tableLastSyncTimes["products"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
+
+                                                            }
+                                                                                                        tableLastSyncTimes["products"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                     tableSyncStatuses["products"] = "Başarılı"
                                                     log("products tablosu senkronize edildi. (${AppDataStore.products.size} stok güncellendi)")
 
@@ -2386,6 +2163,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         AppDataStore.banks.addAll(AppDataStore.defaultBanks)
                                                     }
                                                     AppDataStore.persist(context)
+
                                                     tableLastSyncTimes["banks"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                     tableSyncStatuses["banks"] = "Başarılı"
                                                     log("banks tablosu senkronize edildi. (${AppDataStore.banks.size} kasa/banka güncellendi)")
@@ -2398,6 +2176,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         AppDataStore.kasaLogs.addAll(AppDataStore.defaultKasaLogs)
                                                     }
                                                     AppDataStore.persist(context)
+
                                                     tableLastSyncTimes["kasa_logs"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                     tableSyncStatuses["kasa_logs"] = "Başarılı"
                                                     log("kasa_logs tablosu senkronize edildi. (${AppDataStore.kasaLogs.size} finansal kalemi güncellendi)")
@@ -2410,6 +2189,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         AppDataStore.salesHistory.addAll(AppDataStore.defaultSalesHistory)
                                                     }
                                                     AppDataStore.persist(context)
+
                                                     tableLastSyncTimes["sales_records"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                     tableSyncStatuses["sales_records"] = "Başarılı"
                                                     log("sales_records tablosu senkronize edildi. (${AppDataStore.salesHistory.size} geçmiş siparişi güncellendi)")
@@ -2449,42 +2229,8 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         tableSyncStatuses["customers"] = "Eşitleniyor..."
                                                         log("GET [customers] tablosu tekil senkronizasyonu başlatıldı...")
                                                         try {
-                                                            if (selectedErp == "FIELDOPS BRIDGE") {
+                                                            if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
                                                                 BridgeSyncHelper.syncCariler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
-                                                            } else if (selectedErp == "GOAPP ERP") {
-                                                                val apiService = com.example.data.api.ApiClient.getApiService(context, apiUrl, apiKey)
-                                                                val response = apiService.getCariHesaplar()
-                                                                if (response.isSuccessful && response.body() != null) {
-                                                                    val cariler = response.body()!!
-                                                                    log("${cariler.size} adet GoAPP cari kaydı yerel veritabanına aktarılıyor...")
-                                                                    for (cari in cariler) {
-                                                                        val existingIdx = AppDataStore.customers.indexOfFirst { it.id == cari.id }
-                                                                        val mapped = Customer(
-                                                                            id = cari.id,
-                                                                            name = cari.unvan ?: "İsimsiz Cari",
-                                                                            balance = cari.bakiye ?: 0.0,
-                                                                            lastVisit = "GoAPP Eşitlendi",
-                                                                            contact = cari.yetkili_kisi ?: "-",
-                                                                            phone = cari.telefon ?: "-",
-                                                                            address = cari.adres ?: "-",
-                                                                            taxOffice = cari.vergi_dairesi ?: "-",
-                                                                            taxNumber = cari.vergi_no ?: "-",
-                                                                            gpsLocation = "Bilinmiyor",
-                                                                            riskLimit = 150000.0,
-                                                                            priceGroup = "Normal",
-                                                                            specialDiscountPercent = 0.0,
-                                                                            transactions = mutableListOf()
-                                                                        )
-                                                                        if (existingIdx >= 0) {
-                                                                            AppDataStore.customers[existingIdx] = mapped
-                                                                        } else {
-                                                                            AppDataStore.customers.add(mapped)
-                                                                        }
-                                                                    }
-                                                                    AppDataStore.persist(context)
-                                                                } else {
-                                                                    log("Hata: GoAPP API çağrısı başarısız. Kod: ${response.code()}")
-                                                                }
                                                             } else {
                                                                 delay(1200)
                                                                 // Insert sandbox default if empty to make UI look good
@@ -2493,8 +2239,8 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                                 }
                                                                 AppDataStore.persist(context)
                                                                 log("Bağımsız Sandbox cari senkronizasyonu simüle edildi.")
-                                                            }
-                                                            tableLastSyncTimes["customers"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
+                                                                                                                        }
+                                                                                                                        tableLastSyncTimes["customers"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                             tableSyncStatuses["customers"] = "Başarılı"
                                                             log("Müşteriler (`customers`) tablosu başarıyla kilitlendi.")
                                                             Toast.makeText(context, "Cari Hesaplar tablosu başarıyla senkronize edildi!", Toast.LENGTH_SHORT).show()
@@ -2522,50 +2268,6 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         try {
                                                             if (selectedErp == "FIELDOPS BRIDGE") {
                                                                 BridgeSyncHelper.syncUrunler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
-                                                            } else if (selectedErp == "GOAPP ERP") {
-                                                                try {
-                                                                    log("GoAPP ERP GET [products] senkronizasyonu başlatılıyor...")
-                                                                    val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
-                                                                    val request = com.example.data.api.PullJobsRequest(
-                                                                        tenant_id = tenantId,
-                                                                        api_key = apiKey,
-                                                                        device_id = deviceId,
-                                                                        agent_version = "v2.0-multi-tenant"
-                                                                    )
-                                                                    val response = apiService.getUrunler(request)
-                                                                    if (response.isSuccessful && response.body() != null) {
-                                                                        val syncRes = response.body()!!
-                                                                        val urunler = syncRes.actualItems
-                                                                        log("GoAPP ERP üzerinden ${urunler.size} adet ürün kaydı çekildi.")
-                                                                        for (u in urunler) {
-                                                                            val existingIdx = AppDataStore.products.indexOfFirst { it.barcode == u.barkod || it.code == u.id }
-                                                                            val mapped = ProductCatalog(
-                                                                                barcode = u.barkod ?: u.id ?: "8680000" + (Math.random() * 9000).toInt().toString(),
-                                                                                code = u.actualUrunKod ?: u.id ?: "",
-                                                                                title = u.actualUrunAd ?: "İsimsiz Ürün",
-                                                                                category = u.kategori ?: "Diğer",
-                                                                                desc = "GoAPP ERP üzerinden güncellenen " + (u.birim ?: "Adet") + " bazlı stok.",
-                                                                                basePrice = u.actualSatisFiyat ?: u.satisFiyat ?: 0.0,
-                                                                                dealerPrice = u.bayiFiyati ?: u.satisFiyat ?: 0.0,
-                                                                                wholesalePrice = u.toptanFiyati ?: u.satisFiyat ?: 0.0,
-                                                                                kdvPercent = u.kdvOrani?.toInt() ?: 20,
-                                                                                imageUrlColor = Color(0xFF1976D2),
-                                                                                brand = u.marka ?: "GoAPP",
-                                                                                stockByWarehouse = mapOf("Merkez Depo" to 150)
-                                                                            )
-                                                                            if (existingIdx >= 0) {
-                                                                                AppDataStore.products[existingIdx] = mapped
-                                                                            } else {
-                                                                                AppDataStore.products.add(mapped)
-                                                                            }
-                                                                        }
-                                                                        AppDataStore.persist(context)
-                                                                    } else {
-                                                                        log("GoAPP ürün çekme hatası: Kod ${response.code()}")
-                                                                    }
-                                                                } catch(e: Exception) {
-                                                                    log("GoAPP ürün toplu sync hatası: ${e.message}")
-                                                                }
                                                             } else {
                                                                 delay(1300)
                                                                 if (AppDataStore.products.isEmpty()) {
@@ -2573,8 +2275,9 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                                 }
                                                                 AppDataStore.persist(context)
                                                                 log("Bağımsız Sandbox ürün kartları senkronizasyonu simüle edildi.")
+
                                                             }
-                                                            tableLastSyncTimes["products"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
+                                                                                                                        tableLastSyncTimes["products"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                             tableSyncStatuses["products"] = "Başarılı"
                                                             log("Stok Kataloğu (`products`) tablosu senkronize edildi.")
                                                             Toast.makeText(context, "Stok Kataloğu tablosu senkronize edildi!", Toast.LENGTH_SHORT).show()
@@ -2605,6 +2308,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                                 AppDataStore.banks.addAll(AppDataStore.defaultBanks)
                                                             }
                                                             AppDataStore.persist(context)
+
                                                             tableLastSyncTimes["banks"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                             tableSyncStatuses["banks"] = "Başarılı"
                                                             log("Banka ve Kasa tanımları (`banks`) tablosu başarıyla senkronize edildi.")
@@ -2636,6 +2340,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                                 AppDataStore.kasaLogs.addAll(AppDataStore.defaultKasaLogs)
                                                             }
                                                             AppDataStore.persist(context)
+
                                                             tableLastSyncTimes["kasa_logs"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                             tableSyncStatuses["kasa_logs"] = "Başarılı"
                                                             log("Finans Hareketleri (`kasa_logs`) tablosu başarıyla senkronize edildi.")
@@ -2667,6 +2372,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                                 AppDataStore.salesHistory.addAll(AppDataStore.defaultSalesHistory)
                                                             }
                                                             AppDataStore.persist(context)
+
                                                             tableLastSyncTimes["sales_records"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                             tableSyncStatuses["sales_records"] = "Başarılı"
                                                             log("Satış Analiz Kayıtları (`sales_records`) tablosu başarıyla senkronize edildi.")
@@ -2694,6 +2400,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         log("GET [users] tablosu tekil senkronizasyonu başlatıldı...")
                                                         try {
                                                             delay(800)
+
                                                             tableLastSyncTimes["users"] = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date())
                                                             tableSyncStatuses["users"] = "Başarılı"
                                                             log("Kullanıcı Yetki Profil Kartları (`users`) tablosu başarıyla senkronize edildi.")
@@ -2891,6 +2598,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                             }
                         }
                     }
+                }
 
                     2 -> { // --- DATABASE RESEARCH & TECHNICAL ARCHITECTURE TAB ---
                         LazyColumn(

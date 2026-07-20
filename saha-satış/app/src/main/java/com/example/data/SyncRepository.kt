@@ -19,7 +19,7 @@ object SyncRepository {
 
         val baseUrl = LicenseRepository.getBaseUrl(context)
         val deviceId = LicenseRepository.getDeviceId(context)
-        val apiService = ApiClient.getFieldOpsApiService(context, baseUrl, apiKey)
+        val apiService = ApiClient.getFieldOpsApiService(context, baseUrl, apiKey, tenantId)
         val request = PullJobsRequest(
             tenant_id = tenantId,
             api_key = apiKey,
@@ -71,7 +71,7 @@ object SyncRepository {
 
         val baseUrl = LicenseRepository.getBaseUrl(context)
         val deviceId = LicenseRepository.getDeviceId(context)
-        val apiService = ApiClient.getFieldOpsApiService(context, baseUrl, apiKey)
+        val apiService = ApiClient.getFieldOpsApiService(context, baseUrl, apiKey, tenantId)
         val request = PullJobsRequest(
             tenant_id = tenantId,
             api_key = apiKey,
@@ -113,12 +113,25 @@ object SyncRepository {
     }
 
     fun schedulePeriodicSync(context: Context) {
-        val workRequest = androidx.work.PeriodicWorkRequestBuilder<com.example.worker.SyncWorker>(1, java.util.concurrent.TimeUnit.HOURS)
-            .setConstraints(
-                androidx.work.Constraints.Builder()
-                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
-                    .build()
+        val constraints = androidx.work.Constraints.Builder()
+            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+            .build()
+        val immediateRequest = androidx.work.OneTimeWorkRequestBuilder<com.example.worker.SyncWorker>()
+            .setConstraints(constraints)
+            .setBackoffCriteria(
+                androidx.work.BackoffPolicy.EXPONENTIAL,
+                10,
+                java.util.concurrent.TimeUnit.SECONDS
             )
+            .build()
+        androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(
+            "InitialCentralSync",
+            androidx.work.ExistingWorkPolicy.KEEP,
+            immediateRequest
+        )
+
+        val workRequest = androidx.work.PeriodicWorkRequestBuilder<com.example.worker.SyncWorker>(1, java.util.concurrent.TimeUnit.HOURS)
+            .setConstraints(constraints)
             .build()
         androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             "PeriodicSyncWorker",
