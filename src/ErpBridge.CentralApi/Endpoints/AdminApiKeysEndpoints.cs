@@ -17,6 +17,8 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// </summary>
 public static class AdminApiKeysEndpoints
 {
+    private const string MobileReadScope = "mobile:read";
+
     /// <summary>Random bytes appended to <see cref="ApiKeyAuthenticationHandler.KeyPrefix"/> for the raw value.</summary>
     private const int RawKeyRandomBytes = 24; // 48 hex chars after the AK- prefix
 
@@ -82,7 +84,8 @@ public static class AdminApiKeysEndpoints
                 new ApiError { ErrorCode = "TENANT_NOT_FOUND", Message = "Tenant not found or inactive." });
 
         var (rawKey, salt, hash, prefix) = GenerateKey();
-        var scopes = (body.Scopes is { Length: > 0 }) ? body.Scopes : new[] { "ingest:write" };
+        var scopes = EnsureMobileReadScope(
+            body.Scopes is { Length: > 0 } ? body.Scopes : new[] { "ingest:write" });
 
         var key = new ApiKey
         {
@@ -143,6 +146,7 @@ public static class AdminApiKeysEndpoints
         key.KeyPrefix = prefix;
         key.KeyHash = hash;
         key.KeySalt = salt;
+        key.Scopes = EnsureMobileReadScope(key.Scopes);
         key.IsActive = true;
         await db.SaveChangesAsync(ct);
 
@@ -177,6 +181,13 @@ public static class AdminApiKeysEndpoints
         var hash = ApiKeyAuthenticationHandler.ComputeHash(salt, raw);
         return (raw, salt, hash, prefix);
     }
+
+    private static string[] EnsureMobileReadScope(IEnumerable<string>? scopes) =>
+        (scopes ?? Array.Empty<string>())
+            .Append(MobileReadScope)
+            .Where(scope => !string.IsNullOrWhiteSpace(scope))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
 
     private static ApiKeyDto ToDto(ApiKey k) => new()
     {
