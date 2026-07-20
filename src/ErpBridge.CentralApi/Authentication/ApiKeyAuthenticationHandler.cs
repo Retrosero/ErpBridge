@@ -61,8 +61,15 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         if (string.IsNullOrEmpty(token) || !token.StartsWith(KeyPrefix, StringComparison.Ordinal))
             return AuthenticateResult.Fail("Invalid API key format.");
 
-        // Step 2: parse the tenant id header. Missing/malformed tenant means
-        // we cannot enforce tenant isolation, so we fail closed.
+        // Step 2: require a tenant hint. It may be either a full tenant GUID
+        // or its first eight hexadecimal characters; it is verified after the
+        // API key resolves the authenticated tenant.
+        if (!Request.Headers.TryGetValue(Options.TenantHeaderName, out var tenantHeader)
+            || string.IsNullOrWhiteSpace(tenantHeader.ToString()))
+        {
+            return AuthenticateResult.Fail($"Missing or invalid {Options.TenantHeaderName} header.");
+        }
+
         // Step 3: hash the raw token and look it up. We can't query by hash
         // directly (each row has its own salt) so we load active rows for the
         // tenant — at typical scale (a few keys per tenant) the set is small.
@@ -81,8 +88,8 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
             var computed = ComputeHash(row.KeySalt, token);
             if (CryptographicOperations.FixedTimeEquals(computed, row.KeyHash))
             {
-                if (!TenantHeaderMatches(row.TenantId))
-                    return AuthenticateResult.Fail($"Missing, invalid, or mismatched {Options.TenantHeaderName} header.");
+                if (!TenantHeaderMatches(tenantHeader.ToString(), row.TenantId))
+                    return AuthenticateResult.Fail($"Missing or invalid {Options.TenantHeaderName} header.");
 
                 // Found it — also verify the tenant itself is still active.
                 // Defensive: ApiKeyAuth shouldn't be the only line of defense,
@@ -131,14 +138,11 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         return AuthenticateResult.Fail("API key not recognised.");
     }
 
-    private bool TenantHeaderMatches(Guid authenticatedTenantId)
+    private static bool TenantHeaderMatches(string suppliedTenantId, Guid authenticatedTenantId)
     {
-        if (!Request.Headers.TryGetValue(Options.TenantHeaderName, out var tenantHeader))
-            return false;
-
-        var supplied = tenantHeader.ToString().Trim();
-        if (Guid.TryParse(supplied, out var fullId))
-            return fullId == authenticatedTenantId;
+        var supplied = suppliedTenantId.Trim();
+        if (Guid.TryParse(supplied, out var fullTenantId))
+            return fullTenantId == authenticatedTenantId;
 
         return supplied.Length == 8
             && supplied.All(Uri.IsHexDigit)

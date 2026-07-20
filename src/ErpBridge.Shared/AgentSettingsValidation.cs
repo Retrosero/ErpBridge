@@ -62,6 +62,28 @@ public static class AgentSettingsValidation
         return true;
     }
 
+    /// <summary>
+    /// Validates the common connection fields together with legacy company and
+    /// branch number inputs retained for callers that still expose those fields.
+    /// </summary>
+    public static bool TryValidate(
+        string? sqlServer,
+        string? sqlUserName,
+        string? mikroDatabaseName,
+        string? companyNo,
+        string? branchNo,
+        bool useWindowsAuth,
+        out string error)
+    {
+        if (!TryValidate(sqlServer, sqlUserName, mikroDatabaseName, useWindowsAuth, out error))
+            return false;
+
+        if (!TryParseNonNegativeInt("Firma no", companyNo, out error))
+            return false;
+
+        return TryParseNonNegativeInt("Şube no", branchNo, out error);
+    }
+
     private static bool TryParseNonNegativeInt(string fieldDisplayName, string? value, out string error)
     {
         if (string.IsNullOrWhiteSpace(value))

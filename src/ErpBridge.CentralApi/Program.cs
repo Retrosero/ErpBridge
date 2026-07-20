@@ -154,15 +154,20 @@ public partial class Program
         // static handler and applies to both issuer and validator.
         JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
-        services.Configure<JwtOptions>(cfg.GetSection("Jwt"));
-        services.AddSingleton<IJwtIssuer, JwtIssuer>();
-
         var jwt = cfg.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
         var signingKey = !string.IsNullOrWhiteSpace(jwt.SigningKey)
             ? jwt.SigningKey
             : TestJwtConstants.TestSigningKey;
         if (string.IsNullOrWhiteSpace(jwt.SigningKey))
             jwt.SigningKey = signingKey;
+
+        services.Configure<JwtOptions>(cfg.GetSection("Jwt"));
+        services.PostConfigure<JwtOptions>(options =>
+        {
+            if (string.IsNullOrWhiteSpace(options.SigningKey))
+                options.SigningKey = signingKey;
+        });
+        services.AddSingleton<IJwtIssuer, JwtIssuer>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -350,6 +355,7 @@ public partial class Program
         app.MapJobsEndpoints();
         app.MapBootstrapEndpoints();
         app.MapIngestEndpoints();
+        app.MapAndroidEndpoints();
         app.MapAdminAuthEndpoints();
         app.MapAdminTenantsEndpoints();
         app.MapAdminLicensesEndpoints();

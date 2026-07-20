@@ -102,8 +102,17 @@ public static class AdminBootstrapEndpoints
     private static int CountArray(JsonElement root, string propertyName)
     {
         if (root.ValueKind != JsonValueKind.Object) return 0;
-        if (!root.TryGetProperty(propertyName, out var prop)) return 0;
-        if (prop.ValueKind != JsonValueKind.Array) return 0;
-        return prop.GetArrayLength();
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return property.Value.ValueKind == JsonValueKind.Array
+                ? property.Value.GetArrayLength()
+                : 0;
+        }
+
+        return 0;
     }
 }
