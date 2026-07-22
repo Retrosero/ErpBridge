@@ -31,6 +31,13 @@ public static class AndroidEndpoints
         MapSection(group, "/sync/stokSeviye", "inventory");
         MapSection(group, "/sync/fiyatlar", "prices");
         MapSection(group, "/sync/acikSiparisler", "openOrders");
+        MapSection(group, "/sync/cariAdresler", "customerAddresses");
+        MapSection(group, "/sync/cariYetkililer", "customerContacts");
+        MapSection(group, "/sync/barkodlar", "barcodes");
+        MapSection(group, "/sync/satisSartlari", "salesConditions");
+        MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
+        MapPagedSection(group, "/sync/stokHareket", "stockTransactions");
+        MapPagedSection(group, "/sync/stokHareketleri", "stockTransactions");
         return routes;
     }
 
@@ -38,6 +45,12 @@ public static class AndroidEndpoints
         group.MapPost(route, (HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
                 SectionAsync(propertyName, http, db, ct))
             .WithName("Android" + propertyName)
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+
+    private static void MapPagedSection(RouteGroupBuilder group, string route, string propertyName) =>
+        group.MapPost(route, (AndroidPageRequest request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
+                PagedSectionAsync(propertyName, request, http, db, ct))
+            .WithName("AndroidPaged" + route.Replace("/", string.Empty))
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
     private static async Task<IResult> BootstrapAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
@@ -69,6 +82,38 @@ public static class AndroidEndpoints
         return Results.Ok(new { sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, items });
     }
 
+    private static async Task<IResult> PagedSectionAsync(
+        string propertyName,
+        AndroidPageRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var allItems = document.RootElement.TryGetProperty(propertyName, out var value)
+            && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray().Select(item => item.Clone()).ToArray()
+            : Array.Empty<JsonElement>();
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+
+        return Results.Ok(new
+        {
+            entity = propertyName,
+            sourceDatabase = package.SourceDatabase,
+            pulledAtUtc = package.PulledAtUtc,
+            page,
+            pageSize,
+            total = allItems.Length,
+            since = package.PulledAtUtc,
+            items,
+        });
+    }
+
     private static async Task<(BootstrapPackage? Package, IResult? Error)> GetLatestPackageAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {
         if (!http.User.TryGetTenantId(out var tenantId))
@@ -89,4 +134,6 @@ public static class AndroidEndpoints
 
         return (package, null);
     }
+
+    private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, DateTimeOffset? Since = null);
 }

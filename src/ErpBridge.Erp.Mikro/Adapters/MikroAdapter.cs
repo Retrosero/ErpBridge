@@ -121,6 +121,8 @@ public sealed class MikroAdapter : IErpAdapter
         var prices = await _dbReader.ReadPricesAsync(firmNo, ct).ConfigureAwait(false);
         var salesConditions = await _dbReader.ReadSalesConditionsAsync(firmNo, ct).ConfigureAwait(false);
         var inventory = await _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct).ConfigureAwait(false);
+        var customerTransactions = await _dbReader.ReadCustomerTransactionsAsync(firmNo, ct).ConfigureAwait(false);
+        var stockTransactions = await _dbReader.ReadStockTransactionsAsync(firmNo, ct).ConfigureAwait(false);
 
         return new SyncPackage(
             PulledAtUtc: DateTime.UtcNow,
@@ -135,7 +137,9 @@ public sealed class MikroAdapter : IErpAdapter
             Inventory: inventory,
             OpenOrders: openOrders,
             CashAndBank: cashAndBank,
-            Lookups: lookups);
+            Lookups: lookups,
+            CustomerTransactions: customerTransactions,
+            StockTransactions: stockTransactions);
     }
 
     private static IReadOnlyList<CustomerPayload> AttachCustomerChildren(
@@ -193,7 +197,7 @@ public sealed class MikroAdapter : IErpAdapter
         // Build an empty package with only the requested section populated.
         // All other sections default to Array.Empty so the JSON payload stays
         // small and the central API can store it as-is.
-        return key switch
+        var package = key switch
         {
             "customers" => new SyncPackage(
                 PulledAtUtc: DateTime.UtcNow,
@@ -208,7 +212,9 @@ public sealed class MikroAdapter : IErpAdapter
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
-                Lookups: Array.Empty<LookupPayload>()),
+                Lookups: Array.Empty<LookupPayload>(),
+                CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+                StockTransactions: Array.Empty<StockTransactionPayload>()),
 
             "stocks" => new SyncPackage(
                 PulledAtUtc: DateTime.UtcNow,
@@ -223,7 +229,9 @@ public sealed class MikroAdapter : IErpAdapter
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
-                Lookups: Array.Empty<LookupPayload>()),
+                Lookups: Array.Empty<LookupPayload>(),
+                CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+                StockTransactions: Array.Empty<StockTransactionPayload>()),
 
             "openorders" => new SyncPackage(
                 PulledAtUtc: DateTime.UtcNow,
@@ -238,7 +246,9 @@ public sealed class MikroAdapter : IErpAdapter
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: await _dbReader.ReadOpenOrdersAsync(firmNo, ct).ConfigureAwait(false),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
-                Lookups: Array.Empty<LookupPayload>()),
+                Lookups: Array.Empty<LookupPayload>(),
+                CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+                StockTransactions: Array.Empty<StockTransactionPayload>()),
 
             "cashandbank" => new SyncPackage(
                 PulledAtUtc: DateTime.UtcNow,
@@ -253,7 +263,9 @@ public sealed class MikroAdapter : IErpAdapter
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: await _dbReader.ReadCashAndBankAsync(firmNo, ct).ConfigureAwait(false),
-                Lookups: Array.Empty<LookupPayload>()),
+                Lookups: Array.Empty<LookupPayload>(),
+                CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+                StockTransactions: Array.Empty<StockTransactionPayload>()),
 
             "lookups" => new SyncPackage(
                 PulledAtUtc: DateTime.UtcNow,
@@ -268,7 +280,9 @@ public sealed class MikroAdapter : IErpAdapter
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
-                Lookups: await _dbReader.ReadLookupsAsync(firmNo, ct).ConfigureAwait(false)),
+                Lookups: await _dbReader.ReadLookupsAsync(firmNo, ct).ConfigureAwait(false),
+                CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+                StockTransactions: Array.Empty<StockTransactionPayload>()),
 
             "prices" => new SyncPackage(
                 PulledAtUtc: DateTime.UtcNow,
@@ -283,7 +297,9 @@ public sealed class MikroAdapter : IErpAdapter
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
-                Lookups: Array.Empty<LookupPayload>()),
+                Lookups: Array.Empty<LookupPayload>(),
+                CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+                StockTransactions: Array.Empty<StockTransactionPayload>()),
 
             "inventory" => new SyncPackage(
                 PulledAtUtc: DateTime.UtcNow,
@@ -298,12 +314,49 @@ public sealed class MikroAdapter : IErpAdapter
                 Inventory: await _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct).ConfigureAwait(false),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
-                Lookups: Array.Empty<LookupPayload>()),
+                Lookups: Array.Empty<LookupPayload>(),
+                CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+                StockTransactions: Array.Empty<StockTransactionPayload>()),
+
+            "customertransactions" or "carihareketleri" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: Array.Empty<CustomerPayload>(),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: Array.Empty<StockPayload>(),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: Array.Empty<PricePayload>(),
+                SalesConditions: Array.Empty<SalesConditionPayload>(),
+                Inventory: Array.Empty<InventoryPayload>(),
+                OpenOrders: Array.Empty<OpenOrderPayload>(),
+                CashAndBank: Array.Empty<CashAndBankPayload>(),
+                Lookups: Array.Empty<LookupPayload>(),
+                CustomerTransactions: await _dbReader.ReadCustomerTransactionsAsync(firmNo, ct).ConfigureAwait(false),
+                StockTransactions: Array.Empty<StockTransactionPayload>()),
+
+            "stocktransactions" or "stokhareket" or "stokhareketleri" => new SyncPackage(
+                PulledAtUtc: DateTime.UtcNow,
+                SourceDatabase: ConnectionSettings.DatabaseName,
+                Customers: Array.Empty<CustomerPayload>(),
+                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
+                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                Stocks: Array.Empty<StockPayload>(),
+                Barcodes: Array.Empty<BarcodePayload>(),
+                Prices: Array.Empty<PricePayload>(),
+                SalesConditions: Array.Empty<SalesConditionPayload>(),
+                Inventory: Array.Empty<InventoryPayload>(),
+                OpenOrders: Array.Empty<OpenOrderPayload>(),
+                CashAndBank: Array.Empty<CashAndBankPayload>(),
+                Lookups: Array.Empty<LookupPayload>(),
+                CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+                StockTransactions: await _dbReader.ReadStockTransactionsAsync(firmNo, ct).ConfigureAwait(false)),
 
             _ => throw new ArgumentException(
-                $"Unknown bootstrap section '{sectionName}'. Expected one of: customers, stocks, openOrders, cashAndBank, lookups, prices, inventory.",
+                $"Unknown bootstrap section '{sectionName}'. Expected one of: customers, stocks, openOrders, cashAndBank, lookups, prices, inventory, customerTransactions, stockTransactions.",
                 nameof(sectionName)),
         };
+        return package with { PartialSection = key };
     }
 
     /// <inheritdoc />

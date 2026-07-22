@@ -103,6 +103,8 @@ public sealed class BootstrapSummaryDto
     [JsonPropertyName("customerContactsCount")] public int CustomerContactsCount { get; set; }
     [JsonPropertyName("barcodesCount")] public int BarcodesCount { get; set; }
     [JsonPropertyName("salesConditionsCount")] public int SalesConditionsCount { get; set; }
+    [JsonPropertyName("customerTransactionsCount")] public int CustomerTransactionsCount { get; set; }
+    [JsonPropertyName("stockTransactionsCount")] public int StockTransactionsCount { get; set; }
 }
 
 public sealed class ApiKeyDto

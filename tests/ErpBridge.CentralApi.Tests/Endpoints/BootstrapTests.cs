@@ -64,6 +64,51 @@ public class BootstrapTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Partial_bootstrap_merges_requested_section_without_erasing_existing_sections()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: $"BOOT-MERGE-{suffix}");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, $"MACHINE-MERGE-{suffix}");
+        var token = _factory.IssueTestJwt(agent.Id, tenant.Id);
+        var firstTime = DateTimeOffset.UtcNow.AddMinutes(-1);
+
+        (await client.PostJsonAsync("/api/v1/bootstrap", new
+        {
+            sourceDatabase = "MIKRO",
+            pulledAtUtc = firstTime,
+            payload = new
+            {
+                customers = new[] { new { id = "C-KEEP" } },
+                customerTransactions = Array.Empty<object>(),
+                stockTransactions = new[] { new { id = "S-KEEP" } },
+            },
+        }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await client.PostJsonAsync("/api/v1/bootstrap", new
+        {
+            sourceDatabase = "MIKRO",
+            pulledAtUtc = firstTime.AddSeconds(1),
+            payload = new
+            {
+                customers = Array.Empty<object>(),
+                customerTransactions = new[] { new { id = "CH-NEW" } },
+                stockTransactions = Array.Empty<object>(),
+                partialSection = "customertransactions",
+            },
+        }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+        var latest = await db.BootstrapPackages.AsNoTracking()
+            .Where(item => item.TenantId == tenant.Id)
+            .OrderByDescending(item => item.PulledAtUtc)
+            .FirstAsync();
+        latest.PayloadJson.Should().Contain("C-KEEP").And.Contain("S-KEEP").And.Contain("CH-NEW");
+        latest.PayloadJson.Should().NotContain("partialSection");
+    }
+
+    [Fact]
     public async Task Bootstrap_with_invalid_token_returns_401()
     {
         var client = _factory.CreateClient();

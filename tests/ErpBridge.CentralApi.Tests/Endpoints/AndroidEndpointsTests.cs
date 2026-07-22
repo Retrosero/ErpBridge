@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
 
@@ -40,6 +41,40 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         body.Should().Contain("S001").And.NotContain("C001");
     }
 
+    [Theory]
+    [InlineData("/api/v1/android/sync/cariAdresler", "ADDRESS-001")]
+    [InlineData("/api/v1/android/sync/cariYetkililer", "CONTACT-001")]
+    [InlineData("/api/v1/android/sync/barkodlar", "BARCODE-001")]
+    [InlineData("/api/v1/android/sync/satisSartlari", "CONDITION-001")]
+    public async Task New_section_with_mobile_read_key_returns_requested_collection(string route, string expectedMarker)
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-NEW-{suffix}", "Android new sections tenant");
+        const string payload = """
+            {
+              "customerAddresses": [{"marker":"ADDRESS-001"}],
+              "customerContacts": [{"marker":"CONTACT-001"}],
+              "barcodes": [{"marker":"BARCODE-001"}],
+              "salesConditions": [{"marker":"CONDITION-001"}]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id,
+            $"AK-ANDROID-NEW-{suffix}",
+            scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync(route, content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain(expectedMarker);
+        foreach (var otherMarker in new[] { "ADDRESS-001", "CONTACT-001", "BARCODE-001", "CONDITION-001" }.Where(marker => marker != expectedMarker))
+            body.Should().NotContain(otherMarker);
+    }
+
     [Fact]
     public async Task Pull_with_ingest_only_key_is_forbidden()
     {
@@ -51,6 +86,35 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var response = await client.PostAsync("/api/v1/android/pull", content: null);
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await response.Content.ReadAsStringAsync()).Should().Contain("MOBILE_READ_SCOPE_REQUIRED");
+    }
+
+    [Theory]
+    [InlineData("/api/v1/android/sync/cariHareketleri", "customerTransactions", "CH-002")]
+    [InlineData("/api/v1/android/sync/stokHareket", "stockTransactions", "SH-002")]
+    public async Task Movement_section_returns_requested_page(string route, string section, string expectedMarker)
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-MOVE-{suffix}", "Movement tenant");
+        var prefix = section == "customerTransactions" ? "CH" : "SH";
+        var payload = $$"""
+            { "{{section}}": [
+              { "id": "{{prefix}}-001" },
+              { "id": "{{prefix}}-002" },
+              { "id": "{{prefix}}-003" }
+            ] }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-MOVE-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsJsonAsync(route, new { page = 2, pageSize = 1 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain(expectedMarker).And.Contain("\"total\":3");
+        body.Should().NotContain($"{prefix}-001").And.NotContain($"{prefix}-003");
     }
 
     [Fact]

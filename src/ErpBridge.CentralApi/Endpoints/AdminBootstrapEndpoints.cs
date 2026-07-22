@@ -73,6 +73,8 @@ public static class AdminBootstrapEndpoints
             CustomerContactsCount = counts.CustomerContacts,
             BarcodesCount = counts.Barcodes,
             SalesConditionsCount = counts.SalesConditions,
+            CustomerTransactionsCount = counts.CustomerTransactions,
+            StockTransactionsCount = counts.StockTransactions,
         });
     }
 
@@ -94,7 +96,8 @@ public static class AdminBootstrapEndpoints
                 CountArray(root, "openOrders"), CountArray(root, "cashAndBank"),
                 CountArray(root, "lookups"), CountArray(root, "customerAddresses"),
                 CountArray(root, "customerContacts"), CountArray(root, "barcodes"),
-                CountArray(root, "salesConditions"));
+                CountArray(root, "salesConditions"), CountArray(root, "customerTransactions"),
+                CountArray(root, "stockTransactions"));
         }
         catch
         {
@@ -113,7 +116,9 @@ public static class AdminBootstrapEndpoints
         int CustomerAddresses = 0,
         int CustomerContacts = 0,
         int Barcodes = 0,
-        int SalesConditions = 0);
+        int SalesConditions = 0,
+        int CustomerTransactions = 0,
+        int StockTransactions = 0);
 
     private static int CountArray(JsonElement root, string propertyName)
     {
