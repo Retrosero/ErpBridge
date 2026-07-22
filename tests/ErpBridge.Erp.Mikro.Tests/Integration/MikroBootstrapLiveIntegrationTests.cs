@@ -237,6 +237,7 @@ public class MikroBootstrapLiveIntegrationTests
             Stocks: stocks,
             Barcodes: Array.Empty<BarcodePayload>(),
             Prices: Array.Empty<PricePayload>(),
+            SalesConditions: Array.Empty<SalesConditionPayload>(),
             Inventory: Array.Empty<InventoryPayload>(),
             OpenOrders: Array.Empty<OpenOrderPayload>(),
             CashAndBank: Array.Empty<CashAndBankPayload>(),

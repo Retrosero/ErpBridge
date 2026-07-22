@@ -45,6 +45,7 @@ public sealed record CustomerPayload(
 /// One address attached to a <see cref="CustomerPayload"/>. Lat/long are
 /// nullable because most legacy addresses do not carry geo coordinates.
 /// </summary>
+/// <param name="CustomerCode">Cari code owning this address.</param>
 /// <param name="AddressNo">Address sequence number (1-based) within the cari.</param>
 /// <param name="City">Şehir / il.</param>
 /// <param name="District">İlçe.</param>
@@ -54,6 +55,7 @@ public sealed record CustomerPayload(
 /// <param name="Longitude">Geo longitude (optional).</param>
 /// <param name="SalespersonCode">Plasiyer override for this address (else falls back to <see cref="CustomerPayload.SalespersonCode"/>).</param>
 public sealed record CustomerAddressPayload(
+    string CustomerCode,
     int AddressNo,
     string? City,
     string? District,
@@ -67,6 +69,7 @@ public sealed record CustomerAddressPayload(
 /// One contact person attached to a <see cref="CustomerPayload"/>. Every field
 /// is optional because some caris only carry a single sales rep pointer.
 /// </summary>
+/// <param name="CustomerCode">Cari code owning this contact.</param>
 /// <param name="FirstName">Ad.</param>
 /// <param name="LastName">Soyad.</param>
 /// <param name="Email">E-posta.</param>
@@ -74,6 +77,7 @@ public sealed record CustomerAddressPayload(
 /// <param name="TcIdentityNo">TC kimlik numarası.</param>
 /// <param name="TaxNo">Vergi numarası (şahıs şirketleri için).</param>
 public sealed record CustomerContactPayload(
+    string CustomerCode,
     string? FirstName,
     string? LastName,
     string? Email,

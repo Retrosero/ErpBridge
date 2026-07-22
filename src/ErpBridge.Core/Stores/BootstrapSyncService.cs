@@ -95,7 +95,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     "AgentConfig is not persisted yet; WPF UI must be configured first.");
             }
 
-            var tenantId = string.IsNullOrWhiteSpace(config.TenantId) ? "unknown" : config.TenantId!;
+            var tenantId = ResolveTenantId(config);
 
             // Idempotency window: skip the cycle if the last successful push
             // is still inside the minimum interval. The worker (or operator
@@ -234,7 +234,11 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 OpenOrdersCount: SafeCount(package.OpenOrders),
                 CashAndBankCount: SafeCount(package.CashAndBank),
                 LookupsCount: SafeCount(package.Lookups),
-                DurationMs: stopwatch.ElapsedMilliseconds);
+                DurationMs: stopwatch.ElapsedMilliseconds,
+                CustomerAddressesCount: SafeCount(package.CustomerAddresses),
+                CustomerContactsCount: SafeCount(package.CustomerContacts),
+                BarcodesCount: SafeCount(package.Barcodes),
+                SalesConditionsCount: SafeCount(package.SalesConditions));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -255,13 +259,15 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
         // panel which polls on a low-frequency timer. We still respect the
         // configured minimum interval when RunOnceAsync is called.
         var config = _configStore.LoadAsync().GetAwaiter().GetResult();
-        if (config is null || string.IsNullOrWhiteSpace(config.TenantId))
+        if (config is null)
         {
             return null;
         }
 
+        var tenantId = ResolveTenantId(config);
+
         var checkpoint = _checkpointStore
-            .LoadAsync(config.TenantId!, BootstrapScope, CancellationToken.None)
+            .LoadAsync(tenantId, BootstrapScope, CancellationToken.None)
             .GetAwaiter()
             .GetResult();
 
@@ -274,14 +280,16 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     public async Task InvalidateAsync(CancellationToken ct = default)
     {
         var config = await _configStore.LoadAsync(ct).ConfigureAwait(false);
-        if (config is null || string.IsNullOrWhiteSpace(config.TenantId))
+        if (config is null)
         {
             _logger.LogWarning("Invalidate called with no AgentConfig persisted; nothing to clear.");
             return;
         }
 
+        var tenantId = ResolveTenantId(config);
+
         var existing = await _checkpointStore
-            .LoadAsync(config.TenantId!, BootstrapScope, ct)
+            .LoadAsync(tenantId, BootstrapScope, ct)
             .ConfigureAwait(false);
 
         if (existing is null)
@@ -298,7 +306,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
         await _checkpointStore.SaveAsync(existing, ct).ConfigureAwait(false);
 
         _logger.LogInformation("Bootstrap checkpoint invalidated for tenant {TenantId}.",
-            config.TenantId);
+            tenantId);
     }
 
     /// <inheritdoc />
@@ -319,7 +327,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     "AgentConfig is not persisted yet; WPF UI must be configured first.");
             }
 
-            var tenantId = string.IsNullOrWhiteSpace(config.TenantId) ? "unknown" : config.TenantId!;
+            var tenantId = ResolveTenantId(config);
 
             IErpAdapter adapter;
             try
@@ -446,7 +454,11 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 OpenOrdersCount: openOrdersCount,
                 CashAndBankCount: cashAndBankCount,
                 LookupsCount: lookupsCount,
-                DurationMs: stopwatch.ElapsedMilliseconds);
+                DurationMs: stopwatch.ElapsedMilliseconds,
+                CustomerAddressesCount: package.CustomerAddresses.Count,
+                CustomerContactsCount: package.CustomerContacts.Count,
+                BarcodesCount: package.Barcodes.Count,
+                SalesConditionsCount: package.SalesConditions.Count);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -460,6 +472,9 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     }
 
     private static int SafeCount<T>(IReadOnlyList<T> list) => list?.Count ?? 0;
+
+    private static string ResolveTenantId(AgentConfig config) =>
+        string.IsNullOrWhiteSpace(config.TenantId) ? "unknown" : config.TenantId;
 
     private static BootstrapSyncResult Failed(Stopwatch stopwatch, string code, string message) =>
         new(
