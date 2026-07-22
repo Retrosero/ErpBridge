@@ -18,6 +18,9 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <param name="CashAndBank">Kasa + banka snapshotu (KASALAR + BANKALAR).</param>
 /// <param name="Lookups">Depo / plasiyer / ödeme planı / proje / SM / döviz lookup snapshot.</param>
 /// <param name="SalesConditions">Customer/stock sales conditions (SATIS_SARTLARI).</param>
+/// <param name="CustomerTransactions">Cari ledger rows (CARI_HESAP_HAREKETLERI).</param>
+/// <param name="StockTransactions">Raw stock ledger rows (STOK_HAREKETLERI).</param>
+/// <param name="PartialSection">Section key for a manual partial push; null for a complete snapshot.</param>
 public sealed record SyncPackage(
     DateTime PulledAtUtc,
     string SourceDatabase,
@@ -31,7 +34,10 @@ public sealed record SyncPackage(
     IReadOnlyList<InventoryPayload> Inventory,
     IReadOnlyList<OpenOrderPayload> OpenOrders,
     IReadOnlyList<CashAndBankPayload> CashAndBank,
-    IReadOnlyList<LookupPayload> Lookups)
+    IReadOnlyList<LookupPayload> Lookups,
+    IReadOnlyList<CustomerTransactionPayload> CustomerTransactions,
+    IReadOnlyList<StockTransactionPayload> StockTransactions,
+    string? PartialSection = null)
 {
     /// <summary>
     /// Build a metadata-only <see cref="SyncPackage"/> with empty row collections.
@@ -55,5 +61,7 @@ public sealed record SyncPackage(
             Inventory: Array.Empty<InventoryPayload>(),
             OpenOrders: Array.Empty<OpenOrderPayload>(),
             CashAndBank: Array.Empty<CashAndBankPayload>(),
-            Lookups: Array.Empty<LookupPayload>());
+            Lookups: Array.Empty<LookupPayload>(),
+            CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+            StockTransactions: Array.Empty<StockTransactionPayload>());
 }

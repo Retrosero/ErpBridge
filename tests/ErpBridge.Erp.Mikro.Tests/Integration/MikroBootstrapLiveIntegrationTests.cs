@@ -157,6 +157,30 @@ public class MikroBootstrapLiveIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task Movement_readers_return_live_Tulpar_rows_with_integrated_security()
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("ERPBridge_TULPAR_INTEGRATED"), "1", StringComparison.Ordinal))
+            return;
+
+        var settings = new MikroConnectionSettings(
+            Server: "TULPAR",
+            UserId: string.Empty,
+            Password: string.Empty,
+            DatabaseName: "MikroDB_V15_02",
+            IntegratedSecurity: true);
+        var reader = BuildReader(settings);
+
+        var customerTransactions = await reader.ReadCustomerTransactionsAsync(firmNo: 1);
+        var stockTransactions = await reader.ReadStockTransactionsAsync(firmNo: 1);
+
+        customerTransactions.Should().NotBeEmpty();
+        stockTransactions.Should().NotBeEmpty();
+        customerTransactions.Should().OnlyContain(row => !string.IsNullOrWhiteSpace(row.CustomerCode));
+        stockTransactions.Should().OnlyContain(row => !string.IsNullOrWhiteSpace(row.StockCode));
+        _output.WriteLine($"customerTransactions={customerTransactions.Count}; stockTransactions={stockTransactions.Count}");
+    }
+
     /// <summary>
     /// Verifies that a bad password surfaces a SqlException (or any
     /// exception) rather than returning a fake-empty list. This is the
@@ -241,7 +265,9 @@ public class MikroBootstrapLiveIntegrationTests
             Inventory: Array.Empty<InventoryPayload>(),
             OpenOrders: Array.Empty<OpenOrderPayload>(),
             CashAndBank: Array.Empty<CashAndBankPayload>(),
-            Lookups: Array.Empty<LookupPayload>());
+            Lookups: Array.Empty<LookupPayload>(),
+            CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
+            StockTransactions: Array.Empty<StockTransactionPayload>());
 
         package.SourceDatabase.Should().Be(settings.DatabaseName);
         package.PulledAtUtc.Kind.Should().Be(DateTimeKind.Utc);

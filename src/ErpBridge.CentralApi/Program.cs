@@ -62,6 +62,11 @@ public partial class Program
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
+        // Full Mikro snapshots include tens of thousands of ledger rows. Keep
+        // the ingest limit explicit so Kestrel does not reject movement data
+        // while smaller master-data snapshots continue to work.
+        builder.WebHost.ConfigureKestrel(options =>
+            options.Limits.MaxRequestBodySize = 128L * 1024 * 1024);
         ConfigureBuilder(builder, builder.Configuration);
         var app = builder.Build();
 

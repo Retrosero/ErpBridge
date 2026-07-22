@@ -364,6 +364,72 @@ GROUP BY sth_stok_kod, sth_cikis_depo_no";
         return result;
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CustomerTransactionPayload>> ReadCustomerTransactionsAsync(int firmNo, CancellationToken ct = default)
+    {
+        const string sql = @"
+SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
+       CAST(cha_RECno AS NVARCHAR(50)) AS ErpRef,
+       CAST('MIKRO' AS NVARCHAR(20)) AS Erp,
+       CAST(ISNULL(cha_kod, '') AS NVARCHAR(50)) AS CustomerCode,
+       CAST(cha_tarihi AS DATETIME) AS Date,
+       CAST(ISNULL(cha_evrak_tip, 0) AS INT) AS DocumentType,
+       CAST(CONCAT(NULLIF(cha_evrakno_seri, ''),
+                   CASE WHEN NULLIF(cha_evrakno_seri, '') IS NULL THEN '' ELSE '-' END,
+                   cha_evrakno_sira) AS NVARCHAR(50)) AS DocumentNo,
+       CAST(ISNULL(cha_tip, 0) AS INT) AS Type,
+       CAST(ISNULL(cha_meblag, 0) AS DECIMAL(18,6)) AS Amount,
+       CAST(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN 1 ELSE 0 END AS BIT) AS IsDebit,
+       CAST(cha_aciklama AS NVARCHAR(500)) AS Description,
+       CAST(COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) AS DATETIME) AS UpdatedAt,
+       CAST(cha_RECno AS INT) AS RecNo
+FROM CARI_HESAP_HAREKETLERI
+WHERE ISNULL(cha_iptal, 0) = 0
+ORDER BY cha_RECno";
+
+        var result = (await QueryAsync<CustomerTransactionPayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+        _logger.LogInformation("Read {Count} customer transactions for firmNo={FirmNo}.", result.Count, firmNo);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default)
+    {
+        const string sql = @"
+SELECT CAST(sth_RECno AS NVARCHAR(50)) AS Id,
+       CAST(sth_RECno AS NVARCHAR(50)) AS ErpRef,
+       CAST('MIKRO' AS NVARCHAR(20)) AS Erp,
+       CAST(ISNULL(sth_stok_kod, '') AS NVARCHAR(50)) AS StockCode,
+       CAST(ISNULL(sth_stok_kod, '') AS NVARCHAR(50)) AS ProductCode,
+       CAST(sth_tarih AS DATETIME) AS Date,
+       CAST(CASE WHEN ISNULL(sth_normal_iade, 0) = 0 THEN ISNULL(sth_tip, 0)
+                 WHEN ISNULL(sth_tip, 0) = 1 THEN 2
+                 ELSE 3 END AS INT) AS Type,
+       CAST(ISNULL(sth_cins, 0) AS INT) AS Kind,
+       CAST(ISNULL(sth_evraktip, 0) AS INT) AS DocumentType,
+       CAST(CONCAT(NULLIF(sth_evrakno_seri, ''),
+                   CASE WHEN NULLIF(sth_evrakno_seri, '') IS NULL THEN '' ELSE '-' END,
+                   sth_evrakno_sira) AS NVARCHAR(50)) AS DocumentNo,
+       CAST(CASE WHEN ISNULL(sth_tip, 0) = 0 THEN ISNULL(sth_miktar, 0) ELSE 0 END AS DECIMAL(18,6)) AS InQuantity,
+       CAST(CASE WHEN ISNULL(sth_tip, 0) = 1 THEN ISNULL(sth_miktar, 0) ELSE 0 END AS DECIMAL(18,6)) AS OutQuantity,
+       CAST(CASE WHEN ISNULL(sth_tip, 0) = 0 THEN ISNULL(sth_miktar, 0) ELSE -ISNULL(sth_miktar, 0) END AS DECIMAL(18,6)) AS SignedQuantity,
+       CAST(CASE WHEN ISNULL(sth_miktar, 0) = 0 THEN 0 ELSE ISNULL(sth_tutar, 0) / sth_miktar END AS DECIMAL(18,6)) AS UnitPrice,
+       CAST(ISNULL(sth_tutar, 0) AS DECIMAL(18,6)) AS Amount,
+       CAST(sth_cari_kodu AS NVARCHAR(50)) AS CustomerCode,
+       CAST(sth_giris_depo_no AS INT) AS InWarehouseNo,
+       CAST(sth_cikis_depo_no AS INT) AS OutWarehouseNo,
+       CAST(sth_aciklama AS NVARCHAR(500)) AS Description,
+       CAST(COALESCE(sth_lastup_date, sth_create_date, sth_tarih) AS DATETIME) AS UpdatedAt,
+       CAST(sth_fat_recid_recno AS INT) AS InvoiceRecNo
+FROM STOK_HAREKETLERI
+WHERE ISNULL(sth_iptal, 0) = 0
+ORDER BY sth_RECno";
+
+        var result = (await QueryAsync<StockTransactionPayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+        _logger.LogInformation("Read {Count} stock transactions for firmNo={FirmNo}.", result.Count, firmNo);
+        return result;
+    }
+
     /// <summary>
     /// Open a fresh connection, run <paramref name="sql"/> with
     /// <paramref name="parameters"/>, and materialise the rows. Errors are

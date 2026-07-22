@@ -137,6 +137,7 @@ public sealed class BootstrapWorker : BackgroundService
                 && result.InventoryCount == 0 && result.OpenOrdersCount == 0
                 && result.CashAndBankCount == 0 && result.LookupsCount == 0
                 && result.CustomerAddressesCount == 0 && result.CustomerContactsCount == 0
+                && result.CustomerTransactionsCount == 0 && result.StockTransactionsCount == 0
                 && result.BarcodesCount == 0 && result.SalesConditionsCount == 0)
             {
                 // The success row of all-zeros is the "skipped" path: the

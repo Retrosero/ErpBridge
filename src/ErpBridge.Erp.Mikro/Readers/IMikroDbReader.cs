@@ -71,6 +71,10 @@ public interface IMikroDbReader
 
     Task<IReadOnlyList<SalesConditionPayload>> ReadSalesConditionsAsync(int firmNo, CancellationToken ct = default);
 
+    Task<IReadOnlyList<CustomerTransactionPayload>> ReadCustomerTransactionsAsync(int firmNo, CancellationToken ct = default);
+
+    Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default);
+
     /// <summary>
     /// Read the on-hand inventory for a single warehouse by aggregating
     /// <c>STOK_HAREKETLERI</c> over the supplied <paramref name="firmNo"/> and

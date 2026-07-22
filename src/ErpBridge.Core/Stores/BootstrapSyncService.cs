@@ -238,7 +238,9 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 CustomerAddressesCount: SafeCount(package.CustomerAddresses),
                 CustomerContactsCount: SafeCount(package.CustomerContacts),
                 BarcodesCount: SafeCount(package.Barcodes),
-                SalesConditionsCount: SafeCount(package.SalesConditions));
+                SalesConditionsCount: SafeCount(package.SalesConditions),
+                CustomerTransactionsCount: SafeCount(package.CustomerTransactions),
+                StockTransactionsCount: SafeCount(package.StockTransactions));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -444,6 +446,13 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 ? package.CashAndBank.Count : 0;
             var lookupsCount = sectionName.Equals("lookups", StringComparison.OrdinalIgnoreCase)
                 ? package.Lookups.Count : 0;
+            var customerTransactionsCount = sectionName.Equals("customertransactions", StringComparison.OrdinalIgnoreCase)
+                || sectionName.Equals("carihareketleri", StringComparison.OrdinalIgnoreCase)
+                ? package.CustomerTransactions.Count : 0;
+            var stockTransactionsCount = sectionName.Equals("stocktransactions", StringComparison.OrdinalIgnoreCase)
+                || sectionName.Equals("stokhareket", StringComparison.OrdinalIgnoreCase)
+                || sectionName.Equals("stokhareketleri", StringComparison.OrdinalIgnoreCase)
+                ? package.StockTransactions.Count : 0;
 
             return new BootstrapSyncResult(
                 Success: true,
@@ -458,7 +467,9 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 CustomerAddressesCount: package.CustomerAddresses.Count,
                 CustomerContactsCount: package.CustomerContacts.Count,
                 BarcodesCount: package.Barcodes.Count,
-                SalesConditionsCount: package.SalesConditions.Count);
+                SalesConditionsCount: package.SalesConditions.Count,
+                CustomerTransactionsCount: customerTransactionsCount,
+                StockTransactionsCount: stockTransactionsCount);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

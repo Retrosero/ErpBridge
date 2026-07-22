@@ -76,4 +76,6 @@ public sealed record BootstrapSyncResult(
     int CustomerAddressesCount = 0,
     int CustomerContactsCount = 0,
     int BarcodesCount = 0,
-    int SalesConditionsCount = 0);
+    int SalesConditionsCount = 0,
+    int CustomerTransactionsCount = 0,
+    int StockTransactionsCount = 0);
