@@ -135,7 +135,10 @@ public sealed class BootstrapWorker : BackgroundService
         {
             if (result.CustomersCount == 0 && result.StocksCount == 0 && result.PricesCount == 0
                 && result.InventoryCount == 0 && result.OpenOrdersCount == 0
-                && result.CashAndBankCount == 0 && result.LookupsCount == 0)
+                && result.CashAndBankCount == 0 && result.LookupsCount == 0
+                && result.CustomerAddressesCount == 0 && result.CustomerContactsCount == 0
+                && result.CustomerTransactionsCount == 0 && result.StockTransactionsCount == 0
+                && result.BarcodesCount == 0 && result.SalesConditionsCount == 0)
             {
                 // The success row of all-zeros is the "skipped" path: the
                 // idempotency window is still active. No new push — log at

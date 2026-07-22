@@ -23,7 +23,7 @@ public class AgentSettingsValidationTests
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeTrue();
         error.Should().BeEmpty();
@@ -39,7 +39,7 @@ public class AgentSettingsValidationTests
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeFalse();
         error.Should().Contain("SQL Server");
@@ -55,7 +55,7 @@ public class AgentSettingsValidationTests
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeFalse();
         error.Should().Contain("SQL Server");
@@ -71,7 +71,7 @@ public class AgentSettingsValidationTests
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeFalse();
         error.Should().Contain("kullanıcı adı");
@@ -89,7 +89,7 @@ public class AgentSettingsValidationTests
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: true,
-            out var error);
+            error: out var error);
 
         ok.Should().BeTrue();
         error.Should().BeEmpty();
@@ -105,7 +105,7 @@ public class AgentSettingsValidationTests
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeFalse();
         error.Should().Contain("database adı");
@@ -121,7 +121,7 @@ public class AgentSettingsValidationTests
             companyNo: "abc",
             branchNo: "1",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeFalse();
         error.Should().Contain("Firma no");
@@ -137,7 +137,7 @@ public class AgentSettingsValidationTests
             companyNo: "1",
             branchNo: "   ",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeFalse();
         error.Should().Contain("Şube no");
@@ -157,7 +157,7 @@ public class AgentSettingsValidationTests
             companyNo: "1,5",
             branchNo: "1",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeFalse();
         error.Should().Contain("Firma no");
@@ -175,7 +175,7 @@ public class AgentSettingsValidationTests
             companyNo: "0",
             branchNo: "0",
             useWindowsAuth: false,
-            out var error);
+            error: out var error);
 
         ok.Should().BeTrue();
         error.Should().BeEmpty();

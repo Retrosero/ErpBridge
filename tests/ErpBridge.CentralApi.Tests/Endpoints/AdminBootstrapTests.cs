@@ -30,7 +30,13 @@ public class AdminBootstrapTests : IClassFixture<CentralApiFactory>
             "\"Inventory\":[]," +
             "\"OpenOrders\":[{\"id\":1}]," +
             "\"CashAndBank\":[{\"id\":1},{\"id\":2}]," +
-            "\"Lookups\":[{\"k\":\"v\"}]" +
+            "\"Lookups\":[{\"k\":\"v\"}]," +
+            "\"CustomerAddresses\":[{\"id\":1},{\"id\":2}]," +
+            "\"CustomerContacts\":[{\"id\":1}]," +
+            "\"Barcodes\":[{\"id\":1},{\"id\":2},{\"id\":3}]," +
+            "\"SalesConditions\":[{\"id\":1}]," +
+            "\"CustomerTransactions\":[{\"id\":1},{\"id\":2},{\"id\":3},{\"id\":4}]," +
+            "\"StockTransactions\":[{\"id\":1},{\"id\":2},{\"id\":3},{\"id\":4},{\"id\":5}]" +
             "}";
         await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
 
@@ -46,5 +52,11 @@ public class AdminBootstrapTests : IClassFixture<CentralApiFactory>
         body.OpenOrdersCount.Should().Be(1);
         body.CashAndBankCount.Should().Be(2);
         body.LookupsCount.Should().Be(1);
+        body.CustomerAddressesCount.Should().Be(2);
+        body.CustomerContactsCount.Should().Be(1);
+        body.BarcodesCount.Should().Be(3);
+        body.SalesConditionsCount.Should().Be(1);
+        body.CustomerTransactionsCount.Should().Be(4);
+        body.StockTransactionsCount.Should().Be(5);
     }
 }

@@ -46,6 +46,12 @@ public sealed class DashboardViewModel : ObservableObject
     private string _lastStocksCountDisplay = "—";
     private string _lastPricesCountDisplay = "—";
     private string _lastOpenOrdersCountDisplay = "—";
+    private string _lastCustomerAddressesCountDisplay = "—";
+    private string _lastCustomerContactsCountDisplay = "—";
+    private string _lastBarcodesCountDisplay = "—";
+    private string _lastSalesConditionsCountDisplay = "—";
+    private string _lastCustomerTransactionsCountDisplay = "—";
+    private string _lastStockTransactionsCountDisplay = "—";
     private string _lastErrorDisplay = string.Empty;
     private bool _isBusy;
     private string _lastRunSummaryDisplay = "Henüz çalıştırma yok";
@@ -62,6 +68,12 @@ public sealed class DashboardViewModel : ObservableObject
     private string _mikroLookupsCountDisplay = "—";
     private string _mikroPricesCountDisplay = "—";
     private string _mikroInventoryCountDisplay = "—";
+    private string _mikroCustomerAddressesCountDisplay = "—";
+    private string _mikroCustomerContactsCountDisplay = "—";
+    private string _mikroBarcodesCountDisplay = "—";
+    private string _mikroSalesConditionsCountDisplay = "—";
+    private string _mikroCustomerTransactionsCountDisplay = "—";
+    private string _mikroStockTransactionsCountDisplay = "—";
     private string _mikroCountSummaryDisplay = "Henüz kontrol edilmedi";
     private string _mikroCountTimeDisplay = string.Empty;
     private bool _hasMikroCountResult;
@@ -105,6 +117,12 @@ public sealed class DashboardViewModel : ObservableObject
             canExecute: () => !IsBusy);
         PushInventoryCommand = new AsyncRelayCommand(
             execute: _ => PushSectionAsync("inventory", "Envanter"),
+            canExecute: () => !IsBusy);
+        PushCustomerTransactionsCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("customerTransactions", "Cari Hareketleri"),
+            canExecute: () => !IsBusy);
+        PushStockTransactionsCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("stockTransactions", "Stok Hareketleri"),
             canExecute: () => !IsBusy);
         CheckMikroRowCountsCommand = new AsyncRelayCommand(
             execute: _ => CheckMikroRowCountsAsync(),
@@ -187,9 +205,19 @@ public sealed class DashboardViewModel : ObservableObject
             }
 
             _liveSettings["CentralApi:Jwt"] = jwt;
+            var tenantId = doc.RootElement.TryGetProperty("tenantId", out var tenantElement)
+                && tenantElement.ValueKind == JsonValueKind.String
+                ? tenantElement.GetString()
+                : null;
+            if (!string.IsNullOrWhiteSpace(tenantId)
+                && !string.Equals(config.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                config.TenantId = tenantId;
+                await _configStore.SaveAsync(config).ConfigureAwait(true);
+            }
             _logger.LogInformation(
-                "Auto-register succeeded. LicenseKey={LicenseKey}, MachineId={MachineId}, JwtLength={Len}.",
-                licenseKey, machineId, jwt.Length);
+                "Auto-register succeeded. MachineId={MachineId}, TenantPersisted={TenantPersisted}, JwtLength={Len}.",
+                machineId, !string.IsNullOrWhiteSpace(tenantId), jwt.Length);
             return true;
         }
         catch (Exception ex)
@@ -232,25 +260,20 @@ public sealed class DashboardViewModel : ObservableObject
 
             // COUNT(*) için 7 paralel sorgu — toplam bekleme süresi ~2s yerine
             // 7 * 2s = 14s olmasın diye Task.WhenAll.
-            var customersTask = CountTableAsync(adapter, "CARI_HESAPLAR", ct: default);
-            var stocksTask = CountTableAsync(adapter, "STOKLAR", ct: default);
-            var openOrdersTask = CountTableAsync(adapter, "SIPARISLER", ct: default);
-            var cashBankTask = CountTableAsync(adapter, "KASALAR+BANKALAR", ct: default);
-            var lookupsTask = CountTableAsync(adapter, "DEPOLAR+CARI_PERSONEL", ct: default);
-            var pricesTask = CountTableAsync(adapter, "STOK_SATIS_FIYAT_LISTELERI", ct: default);
-            var inventoryTask = CountTableAsync(adapter, "STOK_HAREKETLERI", ct: default);
-
-            await Task.WhenAll(
-                customersTask, stocksTask, openOrdersTask,
-                cashBankTask, lookupsTask, pricesTask, inventoryTask).ConfigureAwait(true);
-
-            var customers = await customersTask.ConfigureAwait(true);
-            var stocks = await stocksTask.ConfigureAwait(true);
-            var openOrders = await openOrdersTask.ConfigureAwait(true);
-            var cashBank = await cashBankTask.ConfigureAwait(true);
-            var lookups = await lookupsTask.ConfigureAwait(true);
-            var prices = await pricesTask.ConfigureAwait(true);
-            var inventory = await inventoryTask.ConfigureAwait(true);
+            var package = await adapter.ReadBootstrapDataAsync().ConfigureAwait(true);
+            var customers = package.Customers.Count;
+            var addresses = package.CustomerAddresses.Count;
+            var contacts = package.CustomerContacts.Count;
+            var stocks = package.Stocks.Count;
+            var barcodes = package.Barcodes.Count;
+            var openOrders = package.OpenOrders.Count;
+            var cashBank = package.CashAndBank.Count;
+            var lookups = package.Lookups.Count;
+            var prices = package.Prices.Count;
+            var salesConditions = package.SalesConditions.Count;
+            var inventory = package.Inventory.Count;
+            var customerTransactions = package.CustomerTransactions.Count;
+            var stockTransactions = package.StockTransactions.Count;
 
             MikroCustomersCountDisplay = customers.ToString("N0", CultureInfo.CurrentCulture);
             MikroStocksCountDisplay = stocks.ToString("N0", CultureInfo.CurrentCulture);
@@ -259,8 +282,16 @@ public sealed class DashboardViewModel : ObservableObject
             MikroLookupsCountDisplay = lookups.ToString("N0", CultureInfo.CurrentCulture);
             MikroPricesCountDisplay = prices.ToString("N0", CultureInfo.CurrentCulture);
             MikroInventoryCountDisplay = inventory.ToString("N0", CultureInfo.CurrentCulture);
+            MikroCustomerAddressesCountDisplay = addresses.ToString("N0", CultureInfo.CurrentCulture);
+            MikroCustomerContactsCountDisplay = contacts.ToString("N0", CultureInfo.CurrentCulture);
+            MikroBarcodesCountDisplay = barcodes.ToString("N0", CultureInfo.CurrentCulture);
+            MikroSalesConditionsCountDisplay = salesConditions.ToString("N0", CultureInfo.CurrentCulture);
+            MikroCustomerTransactionsCountDisplay = customerTransactions.ToString("N0", CultureInfo.CurrentCulture);
+            MikroStockTransactionsCountDisplay = stockTransactions.ToString("N0", CultureInfo.CurrentCulture);
             MikroCountTimeDisplay = DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
-            var total = customers + stocks + openOrders + cashBank + lookups + prices + inventory;
+            var total = customers + addresses + contacts + stocks + barcodes + openOrders
+                + cashBank + lookups + prices + salesConditions + inventory
+                + customerTransactions + stockTransactions;
             MikroCountSummaryDisplay = total == 0
                 ? "⚠ MikroDB boş — push'lar 0 satır gönderecek."
                 : $"Toplam {total:N0} satır mevcut — push'lar bunları gönderecek.";
@@ -324,6 +355,8 @@ public sealed class DashboardViewModel : ObservableObject
     public System.Windows.Input.ICommand PushLookupsCommand { get; }
     public System.Windows.Input.ICommand PushPricesCommand { get; }
     public System.Windows.Input.ICommand PushInventoryCommand { get; }
+    public System.Windows.Input.ICommand PushCustomerTransactionsCommand { get; }
+    public System.Windows.Input.ICommand PushStockTransactionsCommand { get; }
     public System.Windows.Input.ICommand CheckMikroRowCountsCommand { get; }
 
     public string LastSyncAtDisplay
@@ -378,6 +411,42 @@ public sealed class DashboardViewModel : ObservableObject
     {
         get => _lastOpenOrdersCountDisplay;
         private set => SetProperty(ref _lastOpenOrdersCountDisplay, value);
+    }
+
+    public string LastCustomerAddressesCountDisplay
+    {
+        get => _lastCustomerAddressesCountDisplay;
+        private set => SetProperty(ref _lastCustomerAddressesCountDisplay, value);
+    }
+
+    public string LastCustomerContactsCountDisplay
+    {
+        get => _lastCustomerContactsCountDisplay;
+        private set => SetProperty(ref _lastCustomerContactsCountDisplay, value);
+    }
+
+    public string LastBarcodesCountDisplay
+    {
+        get => _lastBarcodesCountDisplay;
+        private set => SetProperty(ref _lastBarcodesCountDisplay, value);
+    }
+
+    public string LastSalesConditionsCountDisplay
+    {
+        get => _lastSalesConditionsCountDisplay;
+        private set => SetProperty(ref _lastSalesConditionsCountDisplay, value);
+    }
+
+    public string LastCustomerTransactionsCountDisplay
+    {
+        get => _lastCustomerTransactionsCountDisplay;
+        private set => SetProperty(ref _lastCustomerTransactionsCountDisplay, value);
+    }
+
+    public string LastStockTransactionsCountDisplay
+    {
+        get => _lastStockTransactionsCountDisplay;
+        private set => SetProperty(ref _lastStockTransactionsCountDisplay, value);
     }
 
     public string LastErrorDisplay
@@ -452,6 +521,42 @@ public sealed class DashboardViewModel : ObservableObject
         private set => SetProperty(ref _mikroInventoryCountDisplay, value);
     }
 
+    public string MikroCustomerAddressesCountDisplay
+    {
+        get => _mikroCustomerAddressesCountDisplay;
+        private set => SetProperty(ref _mikroCustomerAddressesCountDisplay, value);
+    }
+
+    public string MikroCustomerContactsCountDisplay
+    {
+        get => _mikroCustomerContactsCountDisplay;
+        private set => SetProperty(ref _mikroCustomerContactsCountDisplay, value);
+    }
+
+    public string MikroBarcodesCountDisplay
+    {
+        get => _mikroBarcodesCountDisplay;
+        private set => SetProperty(ref _mikroBarcodesCountDisplay, value);
+    }
+
+    public string MikroSalesConditionsCountDisplay
+    {
+        get => _mikroSalesConditionsCountDisplay;
+        private set => SetProperty(ref _mikroSalesConditionsCountDisplay, value);
+    }
+
+    public string MikroCustomerTransactionsCountDisplay
+    {
+        get => _mikroCustomerTransactionsCountDisplay;
+        private set => SetProperty(ref _mikroCustomerTransactionsCountDisplay, value);
+    }
+
+    public string MikroStockTransactionsCountDisplay
+    {
+        get => _mikroStockTransactionsCountDisplay;
+        private set => SetProperty(ref _mikroStockTransactionsCountDisplay, value);
+    }
+
     public string MikroCountSummaryDisplay
     {
         get => _mikroCountSummaryDisplay;
@@ -505,12 +610,21 @@ public sealed class DashboardViewModel : ObservableObject
             LastStocksCountDisplay = result.StocksCount.ToString(CultureInfo.CurrentCulture);
             LastPricesCountDisplay = result.PricesCount.ToString(CultureInfo.CurrentCulture);
             LastOpenOrdersCountDisplay = result.OpenOrdersCount.ToString(CultureInfo.CurrentCulture);
+            LastCustomerAddressesCountDisplay = result.CustomerAddressesCount.ToString(CultureInfo.CurrentCulture);
+            LastCustomerContactsCountDisplay = result.CustomerContactsCount.ToString(CultureInfo.CurrentCulture);
+            LastBarcodesCountDisplay = result.BarcodesCount.ToString(CultureInfo.CurrentCulture);
+            LastSalesConditionsCountDisplay = result.SalesConditionsCount.ToString(CultureInfo.CurrentCulture);
+            LastCustomerTransactionsCountDisplay = result.CustomerTransactionsCount.ToString(CultureInfo.CurrentCulture);
+            LastStockTransactionsCountDisplay = result.StockTransactionsCount.ToString(CultureInfo.CurrentCulture);
 
             if (result.Success)
             {
                 var totalRows = result.CustomersCount + result.StocksCount + result.PricesCount
                     + result.InventoryCount + result.OpenOrdersCount + result.CashAndBankCount
-                    + result.LookupsCount;
+                    + result.LookupsCount + result.CustomerAddressesCount
+                    + result.CustomerContactsCount + result.BarcodesCount
+                    + result.SalesConditionsCount + result.CustomerTransactionsCount
+                    + result.StockTransactionsCount;
                 LastRunSummaryDisplay = string.Format(
                     CultureInfo.CurrentCulture,
                     "{0} satır aktarıldı · {1} ms",
@@ -596,12 +710,21 @@ public sealed class DashboardViewModel : ObservableObject
             if (result.StocksCount > 0) LastStocksCountDisplay = result.StocksCount.ToString(CultureInfo.CurrentCulture);
             if (result.PricesCount > 0) LastPricesCountDisplay = result.PricesCount.ToString(CultureInfo.CurrentCulture);
             if (result.OpenOrdersCount > 0) LastOpenOrdersCountDisplay = result.OpenOrdersCount.ToString(CultureInfo.CurrentCulture);
+            if (result.CustomerAddressesCount > 0) LastCustomerAddressesCountDisplay = result.CustomerAddressesCount.ToString(CultureInfo.CurrentCulture);
+            if (result.CustomerContactsCount > 0) LastCustomerContactsCountDisplay = result.CustomerContactsCount.ToString(CultureInfo.CurrentCulture);
+            if (result.BarcodesCount > 0) LastBarcodesCountDisplay = result.BarcodesCount.ToString(CultureInfo.CurrentCulture);
+            if (result.SalesConditionsCount > 0) LastSalesConditionsCountDisplay = result.SalesConditionsCount.ToString(CultureInfo.CurrentCulture);
+            if (result.CustomerTransactionsCount > 0) LastCustomerTransactionsCountDisplay = result.CustomerTransactionsCount.ToString(CultureInfo.CurrentCulture);
+            if (result.StockTransactionsCount > 0) LastStockTransactionsCountDisplay = result.StockTransactionsCount.ToString(CultureInfo.CurrentCulture);
 
             if (result.Success)
             {
                 var totalRows = result.CustomersCount + result.StocksCount + result.PricesCount
                     + result.InventoryCount + result.OpenOrdersCount + result.CashAndBankCount
-                    + result.LookupsCount;
+                    + result.LookupsCount + result.CustomerAddressesCount
+                    + result.CustomerContactsCount + result.BarcodesCount
+                    + result.SalesConditionsCount + result.CustomerTransactionsCount
+                    + result.StockTransactionsCount;
                 LastRunSummaryDisplay = string.Format(
                     CultureInfo.CurrentCulture,
                     "{0}: {1} satır aktarıldı · {2} ms",

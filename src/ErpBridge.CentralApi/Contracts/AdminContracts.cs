@@ -119,4 +119,10 @@ public sealed class BootstrapSummaryDto
     [JsonPropertyName("openOrdersCount")] public int OpenOrdersCount { get; set; }
     [JsonPropertyName("cashAndBankCount")] public int CashAndBankCount { get; set; }
     [JsonPropertyName("lookupsCount")] public int LookupsCount { get; set; }
+    [JsonPropertyName("customerAddressesCount")] public int CustomerAddressesCount { get; set; }
+    [JsonPropertyName("customerContactsCount")] public int CustomerContactsCount { get; set; }
+    [JsonPropertyName("barcodesCount")] public int BarcodesCount { get; set; }
+    [JsonPropertyName("salesConditionsCount")] public int SalesConditionsCount { get; set; }
+    [JsonPropertyName("customerTransactionsCount")] public int CustomerTransactionsCount { get; set; }
+    [JsonPropertyName("stockTransactionsCount")] public int StockTransactionsCount { get; set; }
 }

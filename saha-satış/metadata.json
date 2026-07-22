@@ -1,0 +1,6 @@
+{
+  "name": "Sipariş Cepte",
+  "description": "Saha satış, alış, iade, tahsilat, cari, stok ve raporlama işlemleri için profesyonel mobil uygulama.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

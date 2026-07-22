@@ -56,19 +56,25 @@ public static class AdminBootstrapEndpoints
                 new ApiError { ErrorCode = "BOOTSTRAP_NOT_FOUND", Message = "No bootstrap snapshot found for tenant." });
         }
 
-        var (customers, stocks, prices, inventory, openOrders, cashAndBank, lookups) = CountRows(package.PayloadJson);
+        var counts = CountRows(package.PayloadJson);
 
         return JsonResults.Ok(new BootstrapSummaryDto
         {
             TenantId = package.TenantId,
             CapturedAtUtc = package.PulledAtUtc,
-            CustomersCount = customers,
-            StocksCount = stocks,
-            PricesCount = prices,
-            InventoryCount = inventory,
-            OpenOrdersCount = openOrders,
-            CashAndBankCount = cashAndBank,
-            LookupsCount = lookups,
+            CustomersCount = counts.Customers,
+            StocksCount = counts.Stocks,
+            PricesCount = counts.Prices,
+            InventoryCount = counts.Inventory,
+            OpenOrdersCount = counts.OpenOrders,
+            CashAndBankCount = counts.CashAndBank,
+            LookupsCount = counts.Lookups,
+            CustomerAddressesCount = counts.CustomerAddresses,
+            CustomerContactsCount = counts.CustomerContacts,
+            BarcodesCount = counts.Barcodes,
+            SalesConditionsCount = counts.SalesConditions,
+            CustomerTransactionsCount = counts.CustomerTransactions,
+            StockTransactionsCount = counts.StockTransactions,
         });
     }
 
@@ -76,34 +82,58 @@ public static class AdminBootstrapEndpoints
     /// Best-effort row counts for the bootstrap payload. Counts each known
     /// collection by length. Returns 0 for missing/unparseable sections.
     /// </summary>
-    private static (int customers, int stocks, int prices, int inventory, int openOrders, int cashAndBank, int lookups) CountRows(string payloadJson)
+    private static BootstrapCounts CountRows(string payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))
-            return (0, 0, 0, 0, 0, 0, 0);
+            return new();
         try
         {
             using var doc = JsonDocument.Parse(payloadJson);
             var root = doc.RootElement;
-            return (
-                CountArray(root, "customers"),
-                CountArray(root, "stocks"),
-                CountArray(root, "prices"),
-                CountArray(root, "inventory"),
-                CountArray(root, "openOrders"),
-                CountArray(root, "cashAndBank"),
-                CountArray(root, "lookups"));
+            return new BootstrapCounts(
+                CountArray(root, "customers"), CountArray(root, "stocks"),
+                CountArray(root, "prices"), CountArray(root, "inventory"),
+                CountArray(root, "openOrders"), CountArray(root, "cashAndBank"),
+                CountArray(root, "lookups"), CountArray(root, "customerAddresses"),
+                CountArray(root, "customerContacts"), CountArray(root, "barcodes"),
+                CountArray(root, "salesConditions"), CountArray(root, "customerTransactions"),
+                CountArray(root, "stockTransactions"));
         }
         catch
         {
-            return (0, 0, 0, 0, 0, 0, 0);
+            return new();
         }
     }
+
+    private sealed record BootstrapCounts(
+        int Customers = 0,
+        int Stocks = 0,
+        int Prices = 0,
+        int Inventory = 0,
+        int OpenOrders = 0,
+        int CashAndBank = 0,
+        int Lookups = 0,
+        int CustomerAddresses = 0,
+        int CustomerContacts = 0,
+        int Barcodes = 0,
+        int SalesConditions = 0,
+        int CustomerTransactions = 0,
+        int StockTransactions = 0);
 
     private static int CountArray(JsonElement root, string propertyName)
     {
         if (root.ValueKind != JsonValueKind.Object) return 0;
-        if (!root.TryGetProperty(propertyName, out var prop)) return 0;
-        if (prop.ValueKind != JsonValueKind.Array) return 0;
-        return prop.GetArrayLength();
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return property.Value.ValueKind == JsonValueKind.Array
+                ? property.Value.GetArrayLength()
+                : 0;
+        }
+
+        return 0;
     }
 }

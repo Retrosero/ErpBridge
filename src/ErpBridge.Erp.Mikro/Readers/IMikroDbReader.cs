@@ -27,12 +27,18 @@ public interface IMikroDbReader
     /// </summary>
     Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default);
 
+    Task<IReadOnlyList<CustomerAddressPayload>> ReadCustomerAddressesAsync(int firmNo, CancellationToken ct = default);
+
+    Task<IReadOnlyList<CustomerContactPayload>> ReadCustomerContactsAsync(int firmNo, CancellationToken ct = default);
+
     /// <summary>
     /// Read all active stoks (items) from <c>STOKLAR</c> for the given
     /// <paramref name="firmNo"/> where <c>sto_pasif_fl = 0</c>. Passive rows are
     /// excluded so the central API doesn't see archived SKUs.
     /// </summary>
     Task<IReadOnlyList<StockPayload>> ReadStocksAsync(int firmNo, CancellationToken ct = default);
+
+    Task<IReadOnlyList<BarcodePayload>> ReadBarcodesAsync(int firmNo, CancellationToken ct = default);
 
     /// <summary>
     /// Read all open sales-order lines from <c>SIPARISLER</c> for the given
@@ -62,6 +68,12 @@ public interface IMikroDbReader
     /// (mirroring what Mikro actually stores).
     /// </summary>
     Task<IReadOnlyList<PricePayload>> ReadPricesAsync(int firmNo, CancellationToken ct = default);
+
+    Task<IReadOnlyList<SalesConditionPayload>> ReadSalesConditionsAsync(int firmNo, CancellationToken ct = default);
+
+    Task<IReadOnlyList<CustomerTransactionPayload>> ReadCustomerTransactionsAsync(int firmNo, CancellationToken ct = default);
+
+    Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default);
 
     /// <summary>
     /// Read the on-hand inventory for a single warehouse by aggregating

@@ -57,6 +57,9 @@ public class AdapterContractTests
         public Task<SyncPackage> ReadBootstrapDataAsync(CancellationToken ct = default) =>
             Task.FromResult(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB"));
 
+        public Task<SyncPackage> ReadBootstrapSectionAsync(string sectionName, CancellationToken ct = default) =>
+            Task.FromResult(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB"));
+
         public Task<ErpWriteResult> WriteSalesOrderAsync(SalesOrderPayload payload, CancellationToken ct = default) =>
             Task.FromResult(new ErpWriteResult(true, ErpRecno: 1, DocumentSeries: payload.DocumentSeries, DocumentNumber: payload.DocumentNumber));
     }

@@ -61,11 +61,11 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         if (string.IsNullOrEmpty(token) || !token.StartsWith(KeyPrefix, StringComparison.Ordinal))
             return AuthenticateResult.Fail("Invalid API key format.");
 
-        // Step 2: parse the tenant id header. Missing/malformed tenant means
-        // we cannot enforce tenant isolation, so we fail closed.
+        // Step 2: require a tenant hint. It may be either a full tenant GUID
+        // or its first eight hexadecimal characters; it is verified after the
+        // API key resolves the authenticated tenant.
         if (!Request.Headers.TryGetValue(Options.TenantHeaderName, out var tenantHeader)
-            || !Guid.TryParse(tenantHeader.ToString(), out var tenantId)
-            || tenantId == Guid.Empty)
+            || string.IsNullOrWhiteSpace(tenantHeader.ToString()))
         {
             return AuthenticateResult.Fail($"Missing or invalid {Options.TenantHeaderName} header.");
         }
@@ -74,7 +74,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         // directly (each row has its own salt) so we load active rows for the
         // tenant — at typical scale (a few keys per tenant) the set is small.
         var saltAndHash = await _db.ApiKeys
-            .Where(k => k.TenantId == tenantId && k.IsActive)
+            .Where(k => k.IsActive)
             .Select(k => new { k.Id, k.KeySalt, k.KeyHash, k.Scopes, k.ExpiresAtUtc, k.TenantId, k.Tenant!.IsActive })
             .ToListAsync(Context.RequestAborted);
 
@@ -88,6 +88,9 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
             var computed = ComputeHash(row.KeySalt, token);
             if (CryptographicOperations.FixedTimeEquals(computed, row.KeyHash))
             {
+                if (!TenantHeaderMatches(tenantHeader.ToString(), row.TenantId))
+                    return AuthenticateResult.Fail($"Missing or invalid {Options.TenantHeaderName} header.");
+
                 // Found it — also verify the tenant itself is still active.
                 // Defensive: ApiKeyAuth shouldn't be the only line of defense,
                 // but mirroring the JWT path keeps the security model uniform.
@@ -133,6 +136,17 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
         }
 
         return AuthenticateResult.Fail("API key not recognised.");
+    }
+
+    private static bool TenantHeaderMatches(string suppliedTenantId, Guid authenticatedTenantId)
+    {
+        var supplied = suppliedTenantId.Trim();
+        if (Guid.TryParse(supplied, out var fullTenantId))
+            return fullTenantId == authenticatedTenantId;
+
+        return supplied.Length == 8
+            && supplied.All(Uri.IsHexDigit)
+            && authenticatedTenantId.ToString("N").StartsWith(supplied, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />

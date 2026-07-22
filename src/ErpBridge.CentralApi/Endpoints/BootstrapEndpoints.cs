@@ -1,10 +1,12 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Endpoints;
 
@@ -49,6 +51,21 @@ public static class BootstrapEndpoints
             ? "{}"
             : JsonSerializer.Serialize(body.Payload, JsonOptions);
 
+        // A manual per-section push contains empty arrays for every unrelated
+        // section. Merge only the requested section into the previous snapshot
+        // so sending one table cannot make all other tables disappear.
+        var partialSection = TryGetPartialSection(payloadJson);
+        if (partialSection is not null)
+        {
+            var previous = await db.BootstrapPackages.AsNoTracking()
+                .Where(item => item.TenantId == tenantId)
+                .OrderByDescending(item => item.PulledAtUtc)
+                .ThenByDescending(item => item.ReceivedAtUtc)
+                .FirstOrDefaultAsync(ct);
+            if (previous is not null)
+                payloadJson = MergePartialPayload(previous.PayloadJson, payloadJson, partialSection);
+        }
+
         var package = new BootstrapPackage
         {
             Id = Guid.NewGuid(),
@@ -61,5 +78,65 @@ public static class BootstrapEndpoints
         db.BootstrapPackages.Add(package);
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
+    }
+
+    private static string? TryGetPartialSection(string payloadJson)
+    {
+        try
+        {
+            var node = JsonNode.Parse(payloadJson) as JsonObject;
+            return node?["partialSection"]?.GetValue<string>();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string MergePartialPayload(string previousJson, string partialJson, string section)
+    {
+        var previous = JsonNode.Parse(previousJson) as JsonObject ?? new JsonObject();
+        var partial = JsonNode.Parse(partialJson) as JsonObject ?? new JsonObject();
+        var keys = section.ToLowerInvariant() switch
+        {
+            "customers" => new[] { "customers", "customerAddresses", "customerContacts" },
+            "stocks" => new[] { "stocks", "barcodes" },
+            "prices" => new[] { "prices", "salesConditions" },
+            "openorders" => new[] { "openOrders" },
+            "cashandbank" => new[] { "cashAndBank" },
+            "lookups" => new[] { "lookups" },
+            "inventory" => new[] { "inventory" },
+            "customertransactions" or "carihareketleri" => new[] { "customerTransactions" },
+            "stocktransactions" or "stokhareket" or "stokhareketleri" => new[] { "stockTransactions" },
+            _ => Array.Empty<string>(),
+        };
+
+        foreach (var key in keys)
+        {
+            if (TryTakeProperty(partial, key, out var value))
+                SetProperty(previous, key, value);
+        }
+
+        previous["pulledAtUtc"] = partial["pulledAtUtc"]?.DeepClone();
+        previous["sourceDatabase"] = partial["sourceDatabase"]?.DeepClone();
+        previous.Remove("partialSection");
+        return previous.ToJsonString(JsonOptions);
+    }
+
+    private static bool TryTakeProperty(JsonObject source, string key, out JsonNode? value)
+    {
+        var match = source.FirstOrDefault(property =>
+            string.Equals(property.Key, key, StringComparison.OrdinalIgnoreCase));
+        value = match.Value?.DeepClone();
+        return match.Key is not null;
+    }
+
+    private static void SetProperty(JsonObject target, string key, JsonNode? value)
+    {
+        var existing = target.FirstOrDefault(property =>
+            string.Equals(property.Key, key, StringComparison.OrdinalIgnoreCase));
+        if (existing.Key is not null && existing.Key != key)
+            target.Remove(existing.Key);
+        target[key] = value;
     }
 }

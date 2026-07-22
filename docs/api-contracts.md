@@ -40,6 +40,32 @@ erpDocumentSeries?, erpDocumentNumber?, erpRecno?, erpGuid? }`. Yanıt: 204.
 Body: `SyncPackage { customers, stocks, prices, inventory, openOrders, cashAndBank,
 lookups }`. Yanıt: 204. Tenant başına periyodik (örn. saatlik).
 
+## Android veri okuma API'si
+
+Android istemcisi `https://lisans.appsgo.cloud` adresini kullanır. İlgili tenant için
+admin panelinden `mobile:read` scope'lu ayrı bir API key oluşturulmalıdır. Her
+istekte aşağıdaki header'lar zorunludur:
+
+```text
+Authorization: Bearer AK-...
+X-Tenant-Id: <tenant-guid>
+Accept: application/json
+```
+
+`POST /api/v1/android/bootstrap` en son ERP snapshot'unun metadata'sını,
+`POST /api/v1/android/pull` ise snapshotun tamamını döner. Büyük veri setleri
+için Android aşağıdaki daraltılmış endpointleri kullanabilir:
+
+- `POST /api/v1/android/sync/cari` → `customers`
+- `POST /api/v1/android/sync/urun` → `stocks`
+- `POST /api/v1/android/sync/stokSeviye` → `inventory`
+- `POST /api/v1/android/sync/fiyatlar` → `prices`
+- `POST /api/v1/android/sync/acikSiparisler` → `openOrders`
+
+Yanıtlar tenant'a kesin olarak izole edilir; body içinde API key veya tenant id
+gönderilmez. `MOBILE_READ_SCOPE_REQUIRED` API key'in yalnızca yazma yetkisi
+olduğunu, `BOOTSTRAP_NOT_FOUND` ise henüz ERP'den veri gelmediğini belirtir.
+
 ## Hata modeli
 
 ```json
