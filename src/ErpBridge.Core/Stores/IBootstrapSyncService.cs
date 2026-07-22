@@ -72,4 +72,8 @@ public sealed record BootstrapSyncResult(
     int LookupsCount,
     long DurationMs,
     string? ErrorCode = null,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    int CustomerAddressesCount = 0,
+    int CustomerContactsCount = 0,
+    int BarcodesCount = 0,
+    int SalesConditionsCount = 0);

@@ -144,9 +144,16 @@ public class BootstrapSyncServiceTests
         checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
             .ReturnsAsync((CheckpointRecord?)null);
 
+        var package = NewPackage() with
+        {
+            CustomerAddresses = new[] { new CustomerAddressPayload("C1", 1, null, null, null, null, null, null, null) },
+            CustomerContacts = new[] { new CustomerContactPayload("C1", null, null, null, null, null, null) },
+            Barcodes = new[] { new BarcodePayload("869", "S1", null, null, null, 1) },
+            SalesConditions = new[] { new SalesConditionPayload("S1", "C1", null, null, null, null, null, null, Array.Empty<decimal>()) },
+        };
         var adapter = new Mock<IErpAdapter>();
         adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(NewPackage());
+            .ReturnsAsync(package);
 
         var adapterFactory = new Mock<IErpAdapterFactory>();
         adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
@@ -167,6 +174,10 @@ public class BootstrapSyncServiceTests
         result.Success.Should().BeTrue();
         result.ErrorCode.Should().BeNull();
         result.CustomersCount.Should().Be(0, "Empty package has zero rows per section");
+        result.CustomerAddressesCount.Should().Be(1);
+        result.CustomerContactsCount.Should().Be(1);
+        result.BarcodesCount.Should().Be(1);
+        result.SalesConditionsCount.Should().Be(1);
 
         // Verify checkpoint was saved with scope "bootstrap" and the right timestamp.
         checkpointStore.Verify(
@@ -371,6 +382,34 @@ public class BootstrapSyncServiceTests
                     && c.UpdatedAt == fixedNow.UtcDateTime),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task InvalidateAsync_clears_legacy_unknown_checkpoint_when_tenant_is_missing()
+    {
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 18, 0, 0, TimeSpan.Zero);
+        var config = NewAgentConfig();
+        config.TenantId = null;
+        var existing = new CheckpointRecord
+        {
+            TenantId = "unknown",
+            SyncScope = BootstrapSyncService.BootstrapScope,
+            LastSuccessAt = fixedNow.UtcDateTime.AddMinutes(-5),
+        };
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>())).ReturnsAsync(config);
+        var checkpointStore = new Mock<ICheckpointStore>();
+        checkpointStore.Setup(s => s.LoadAsync("unknown", BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, Mock.Of<IErpAdapterFactory>(),
+            Mock.Of<IRemoteApiClient>(), NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        await sut.InvalidateAsync();
+
+        existing.LastSuccessAt.Should().BeNull();
+        checkpointStore.Verify(s => s.SaveAsync(existing, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ------------------------------------------------------------------------

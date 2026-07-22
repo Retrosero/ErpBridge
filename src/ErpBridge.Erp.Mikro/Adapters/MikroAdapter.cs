@@ -109,26 +109,58 @@ public sealed class MikroAdapter : IErpAdapter
         const int warehouseNo = 1;
 
         var customers = await _dbReader.ReadCustomersAsync(firmNo, ct).ConfigureAwait(false);
+        var customerAddresses = await _dbReader.ReadCustomerAddressesAsync(firmNo, ct).ConfigureAwait(false);
+        var customerContacts = await _dbReader.ReadCustomerContactsAsync(firmNo, ct).ConfigureAwait(false);
+        customers = AttachCustomerChildren(customers, customerAddresses, customerContacts);
         var stocks = await _dbReader.ReadStocksAsync(firmNo, ct).ConfigureAwait(false);
+        var barcodes = await _dbReader.ReadBarcodesAsync(firmNo, ct).ConfigureAwait(false);
+        stocks = AttachBarcodes(stocks, barcodes);
         var openOrders = await _dbReader.ReadOpenOrdersAsync(firmNo, ct).ConfigureAwait(false);
         var cashAndBank = await _dbReader.ReadCashAndBankAsync(firmNo, ct).ConfigureAwait(false);
         var lookups = await _dbReader.ReadLookupsAsync(firmNo, ct).ConfigureAwait(false);
         var prices = await _dbReader.ReadPricesAsync(firmNo, ct).ConfigureAwait(false);
+        var salesConditions = await _dbReader.ReadSalesConditionsAsync(firmNo, ct).ConfigureAwait(false);
         var inventory = await _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct).ConfigureAwait(false);
 
         return new SyncPackage(
             PulledAtUtc: DateTime.UtcNow,
             SourceDatabase: ConnectionSettings.DatabaseName,
             Customers: customers,
-            CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
-            CustomerContacts: Array.Empty<CustomerContactPayload>(),
+            CustomerAddresses: customerAddresses,
+            CustomerContacts: customerContacts,
             Stocks: stocks,
-            Barcodes: Array.Empty<BarcodePayload>(),
+            Barcodes: barcodes,
             Prices: prices,
+            SalesConditions: salesConditions,
             Inventory: inventory,
             OpenOrders: openOrders,
             CashAndBank: cashAndBank,
             Lookups: lookups);
+    }
+
+    private static IReadOnlyList<CustomerPayload> AttachCustomerChildren(
+        IReadOnlyList<CustomerPayload> customers,
+        IReadOnlyList<CustomerAddressPayload> addresses,
+        IReadOnlyList<CustomerContactPayload> contacts)
+    {
+        var addressesByCustomer = addresses.ToLookup(x => x.CustomerCode, StringComparer.OrdinalIgnoreCase);
+        var contactsByCustomer = contacts.ToLookup(x => x.CustomerCode, StringComparer.OrdinalIgnoreCase);
+        return customers.Select(customer => customer with
+        {
+            Addresses = addressesByCustomer[customer.CustomerCode].ToArray(),
+            Contacts = contactsByCustomer[customer.CustomerCode].ToArray(),
+        }).ToArray();
+    }
+
+    private static IReadOnlyList<StockPayload> AttachBarcodes(
+        IReadOnlyList<StockPayload> stocks,
+        IReadOnlyList<BarcodePayload> barcodes)
+    {
+        var barcodesByStock = barcodes.ToLookup(x => x.StockCode, StringComparer.OrdinalIgnoreCase);
+        return stocks.Select(stock => stock with
+        {
+            Barcodes = barcodesByStock[stock.StockCode].ToArray(),
+        }).ToArray();
     }
 
     /// <summary>
@@ -167,11 +199,12 @@ public sealed class MikroAdapter : IErpAdapter
                 PulledAtUtc: DateTime.UtcNow,
                 SourceDatabase: ConnectionSettings.DatabaseName,
                 Customers: await _dbReader.ReadCustomersAsync(firmNo, ct).ConfigureAwait(false),
-                CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
-                CustomerContacts: Array.Empty<CustomerContactPayload>(),
+                CustomerAddresses: await _dbReader.ReadCustomerAddressesAsync(firmNo, ct).ConfigureAwait(false),
+                CustomerContacts: await _dbReader.ReadCustomerContactsAsync(firmNo, ct).ConfigureAwait(false),
                 Stocks: Array.Empty<StockPayload>(),
                 Barcodes: Array.Empty<BarcodePayload>(),
                 Prices: Array.Empty<PricePayload>(),
+                SalesConditions: Array.Empty<SalesConditionPayload>(),
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
@@ -184,8 +217,9 @@ public sealed class MikroAdapter : IErpAdapter
                 CustomerAddresses: Array.Empty<CustomerAddressPayload>(),
                 CustomerContacts: Array.Empty<CustomerContactPayload>(),
                 Stocks: await _dbReader.ReadStocksAsync(firmNo, ct).ConfigureAwait(false),
-                Barcodes: Array.Empty<BarcodePayload>(),
+                Barcodes: await _dbReader.ReadBarcodesAsync(firmNo, ct).ConfigureAwait(false),
                 Prices: Array.Empty<PricePayload>(),
+                SalesConditions: Array.Empty<SalesConditionPayload>(),
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
@@ -200,6 +234,7 @@ public sealed class MikroAdapter : IErpAdapter
                 Stocks: Array.Empty<StockPayload>(),
                 Barcodes: Array.Empty<BarcodePayload>(),
                 Prices: Array.Empty<PricePayload>(),
+                SalesConditions: Array.Empty<SalesConditionPayload>(),
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: await _dbReader.ReadOpenOrdersAsync(firmNo, ct).ConfigureAwait(false),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
@@ -214,6 +249,7 @@ public sealed class MikroAdapter : IErpAdapter
                 Stocks: Array.Empty<StockPayload>(),
                 Barcodes: Array.Empty<BarcodePayload>(),
                 Prices: Array.Empty<PricePayload>(),
+                SalesConditions: Array.Empty<SalesConditionPayload>(),
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: await _dbReader.ReadCashAndBankAsync(firmNo, ct).ConfigureAwait(false),
@@ -228,6 +264,7 @@ public sealed class MikroAdapter : IErpAdapter
                 Stocks: Array.Empty<StockPayload>(),
                 Barcodes: Array.Empty<BarcodePayload>(),
                 Prices: Array.Empty<PricePayload>(),
+                SalesConditions: Array.Empty<SalesConditionPayload>(),
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
@@ -242,6 +279,7 @@ public sealed class MikroAdapter : IErpAdapter
                 Stocks: Array.Empty<StockPayload>(),
                 Barcodes: Array.Empty<BarcodePayload>(),
                 Prices: await _dbReader.ReadPricesAsync(firmNo, ct).ConfigureAwait(false),
+                SalesConditions: await _dbReader.ReadSalesConditionsAsync(firmNo, ct).ConfigureAwait(false),
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
@@ -256,6 +294,7 @@ public sealed class MikroAdapter : IErpAdapter
                 Stocks: Array.Empty<StockPayload>(),
                 Barcodes: Array.Empty<BarcodePayload>(),
                 Prices: Array.Empty<PricePayload>(),
+                SalesConditions: Array.Empty<SalesConditionPayload>(),
                 Inventory: await _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct).ConfigureAwait(false),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),

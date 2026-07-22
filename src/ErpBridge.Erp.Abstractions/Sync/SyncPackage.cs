@@ -17,6 +17,7 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <param name="OpenOrders">Açık sipariş satırları (SIPARISLER, kapat_fl=0).</param>
 /// <param name="CashAndBank">Kasa + banka snapshotu (KASALAR + BANKALAR).</param>
 /// <param name="Lookups">Depo / plasiyer / ödeme planı / proje / SM / döviz lookup snapshot.</param>
+/// <param name="SalesConditions">Customer/stock sales conditions (SATIS_SARTLARI).</param>
 public sealed record SyncPackage(
     DateTime PulledAtUtc,
     string SourceDatabase,
@@ -26,6 +27,7 @@ public sealed record SyncPackage(
     IReadOnlyList<StockPayload> Stocks,
     IReadOnlyList<BarcodePayload> Barcodes,
     IReadOnlyList<PricePayload> Prices,
+    IReadOnlyList<SalesConditionPayload> SalesConditions,
     IReadOnlyList<InventoryPayload> Inventory,
     IReadOnlyList<OpenOrderPayload> OpenOrders,
     IReadOnlyList<CashAndBankPayload> CashAndBank,
@@ -49,6 +51,7 @@ public sealed record SyncPackage(
             Stocks: Array.Empty<StockPayload>(),
             Barcodes: Array.Empty<BarcodePayload>(),
             Prices: Array.Empty<PricePayload>(),
+            SalesConditions: Array.Empty<SalesConditionPayload>(),
             Inventory: Array.Empty<InventoryPayload>(),
             OpenOrders: Array.Empty<OpenOrderPayload>(),
             CashAndBank: Array.Empty<CashAndBankPayload>(),

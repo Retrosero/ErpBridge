@@ -209,6 +209,36 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
+    public async Task PushBootstrapDataAsync_serializes_all_planned_child_tables()
+    {
+        string? requestJson = null;
+        var (client, _) = BuildClient(async req =>
+        {
+            requestJson = await req.Content!.ReadAsStringAsync();
+            return await RespondJson(req, HttpStatusCode.NoContent, new { });
+        });
+        var package = SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB") with
+        {
+            CustomerAddresses = new[] { new CustomerAddressPayload("C001", 1, "Istanbul", null, null, null, null, null, null) },
+            CustomerContacts = new[] { new CustomerContactPayload("C001", "Ada", null, null, null, null, null) },
+            Barcodes = new[] { new BarcodePayload("8690000000001", "S001", null, null, null, 1) },
+            SalesConditions = new[]
+            {
+                new SalesConditionPayload("S001", "C001", 1, null, null, null, 10m, "0", new[] { 5m }),
+            },
+        };
+
+        await client.PushBootstrapDataAsync(package);
+
+        using var json = JsonDocument.Parse(requestJson!);
+        var payload = json.RootElement.GetProperty("payload");
+        payload.GetProperty("customerAddresses").GetArrayLength().Should().Be(1);
+        payload.GetProperty("customerContacts").GetArrayLength().Should().Be(1);
+        payload.GetProperty("barcodes").GetArrayLength().Should().Be(1);
+        payload.GetProperty("salesConditions").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
     public async Task SendAckAsync_uses_bearer_authorization_header_when_jwt_is_set()
     {
         var (client, handler) = BuildClient(req => RespondJson(req, HttpStatusCode.NoContent, new { }));

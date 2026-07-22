@@ -90,6 +90,46 @@ WHERE ISNULL(cari_iptal, 0) = 0";
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<CustomerAddressPayload>> ReadCustomerAddressesAsync(int firmNo, CancellationToken ct = default)
+    {
+        const string sql = @"
+SELECT CAST(ISNULL(adr_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
+       CAST(ISNULL(adr_adres_no, 0) AS INT) AS AddressNo,
+       CAST(adr_il AS NVARCHAR(100)) AS City,
+       CAST(adr_ilce AS NVARCHAR(100)) AS District,
+       CAST(LTRIM(RTRIM(ISNULL(adr_cadde, '') + ' ' + ISNULL(adr_mahalle, '') + ' ' +
+            ISNULL(adr_sokak, '') + ' ' + ISNULL(adr_Semt, '') + ' ' +
+            ISNULL(adr_Apt_No, '') + ' ' + ISNULL(adr_Daire_No, ''))) AS NVARCHAR(500)) AS Street,
+       CAST(adr_posta_kodu AS NVARCHAR(20)) AS PostalCode,
+       CAST(adr_gps_enlem AS FLOAT) AS Latitude,
+       CAST(adr_gps_boylam AS FLOAT) AS Longitude,
+       CAST(adr_temsilci_kodu AS NVARCHAR(50)) AS SalespersonCode
+FROM CARI_HESAP_ADRESLERI
+WHERE ISNULL(adr_iptal, 0) = 0";
+        var result = (await QueryAsync<CustomerAddressPayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+        _logger.LogInformation("Read {Count} customer addresses for firmNo={FirmNo}.", result.Count, firmNo);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CustomerContactPayload>> ReadCustomerContactsAsync(int firmNo, CancellationToken ct = default)
+    {
+        const string sql = @"
+SELECT CAST(ISNULL(mye_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
+       CAST(mye_isim AS NVARCHAR(100)) AS FirstName,
+       CAST(mye_soyisim AS NVARCHAR(100)) AS LastName,
+       CAST(mye_email_adres AS NVARCHAR(200)) AS Email,
+       CAST(mye_cep_telno AS NVARCHAR(50)) AS Mobile,
+       CAST(mye_tc_kimlikno AS NVARCHAR(20)) AS TcIdentityNo,
+       CAST(mye_vergi_kimlikno AS NVARCHAR(20)) AS TaxNo
+FROM CARI_HESAP_YETKILILERI
+WHERE ISNULL(mye_iptal, 0) = 0";
+        var result = (await QueryAsync<CustomerContactPayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+        _logger.LogInformation("Read {Count} customer contacts for firmNo={FirmNo}.", result.Count, firmNo);
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<StockPayload>> ReadStocksAsync(int firmNo, CancellationToken ct = default)
     {
         const string sql = @"
@@ -148,6 +188,23 @@ WHERE ISNULL(sto_iptal, 0) = 0
                 Array.Empty<BarcodePayload>()))
             .ToList();
         _logger.LogInformation("Read {Count} stocks for firmNo={FirmNo}.", result.Count, firmNo);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<BarcodePayload>> ReadBarcodesAsync(int firmNo, CancellationToken ct = default)
+    {
+        const string sql = @"
+SELECT CAST(ISNULL(bar_kodu, '') AS NVARCHAR(100)) AS Barcode,
+       CAST(ISNULL(bar_stokkodu, '') AS NVARCHAR(50)) AS StockCode,
+       CAST(bar_partikodu AS NVARCHAR(50)) AS PartCode,
+       CAST(bar_lotno AS NVARCHAR(50)) AS LotNo,
+       CAST(bar_serino_veya_bagkodu AS NVARCHAR(100)) AS SerialNo,
+       CAST(ISNULL(bar_birimpntr, 0) AS INT) AS UnitPointer
+FROM BARKOD_TANIMLARI
+WHERE ISNULL(bar_iptal, 0) = 0";
+        var result = (await QueryAsync<BarcodePayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+        _logger.LogInformation("Read {Count} barcodes for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
@@ -248,6 +305,35 @@ WHERE ISNULL(sfiyat_iptal, 0) = 0";
         var rows = await QueryAsync<PricePayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} price-list rows for firmNo={FirmNo}.", result.Count, firmNo);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SalesConditionPayload>> ReadSalesConditionsAsync(int firmNo, CancellationToken ct = default)
+    {
+        const string sql = @"
+SELECT CAST(sat_stok_kod AS NVARCHAR(50)) AS StockCode,
+       CAST(sat_cari_kod AS NVARCHAR(50)) AS CustomerCode,
+       CAST(sat_depo_no AS INT) AS WarehouseNo,
+       CAST(sat_odeme_plan AS INT) AS PaymentPlanNo,
+       CAST(sat_basla_tarih AS DATE) AS StartDate,
+       CAST(sat_bitis_tarih AS DATE) AS EndDate,
+       CAST(sat_brut_fiyat AS DECIMAL(18,6)) AS GrossPrice,
+       CAST(sat_doviz_cinsi AS NVARCHAR(10)) AS Currency,
+       CAST(ISNULL(sat_det_isk_yuzde1, 0) AS DECIMAL(18,6)) AS Discount1,
+       CAST(ISNULL(sat_det_isk_yuzde2, 0) AS DECIMAL(18,6)) AS Discount2,
+       CAST(ISNULL(sat_det_isk_yuzde3, 0) AS DECIMAL(18,6)) AS Discount3,
+       CAST(ISNULL(sat_det_isk_yuzde4, 0) AS DECIMAL(18,6)) AS Discount4,
+       CAST(ISNULL(sat_det_isk_yuzde5, 0) AS DECIMAL(18,6)) AS Discount5,
+       CAST(ISNULL(sat_det_isk_yuzde6, 0) AS DECIMAL(18,6)) AS Discount6
+FROM SATIS_SARTLARI
+WHERE ISNULL(sat_iptal, 0) = 0";
+        var rows = await QueryAsync<SalesConditionRow>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var result = rows.Select(row => new SalesConditionPayload(
+            row.StockCode, row.CustomerCode, row.WarehouseNo, row.PaymentPlanNo,
+            row.StartDate, row.EndDate, row.GrossPrice, row.Currency,
+            new[] { row.Discount1, row.Discount2, row.Discount3, row.Discount4, row.Discount5, row.Discount6 })).ToList();
+        _logger.LogInformation("Read {Count} sales conditions for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
@@ -377,4 +463,20 @@ GROUP BY sth_stok_kod, sth_cikis_depo_no";
         bool RenkDetayli,
         decimal? StandardCost,
         string? Currency);
+
+    private sealed record SalesConditionRow(
+        string? StockCode,
+        string? CustomerCode,
+        int? WarehouseNo,
+        int? PaymentPlanNo,
+        DateOnly? StartDate,
+        DateOnly? EndDate,
+        decimal? GrossPrice,
+        string? Currency,
+        decimal Discount1,
+        decimal Discount2,
+        decimal Discount3,
+        decimal Discount4,
+        decimal Discount5,
+        decimal Discount6);
 }
