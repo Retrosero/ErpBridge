@@ -340,21 +340,37 @@ WHERE ISNULL(sat_iptal, 0) = 0";
     /// <inheritdoc />
     public async Task<IReadOnlyList<InventoryPayload>> ReadInventoryAsync(int firmNo, int warehouseNo, CancellationToken ct = default)
     {
-        // Tips 1..3 are inflow, tips >= 4 are outflow — negate them so SUM nets
-        // to the current on-hand quantity.
+        // Expand incoming and outgoing warehouse columns into signed rows so
+        // purchases, sales, returns, and warehouse transfers all net correctly.
         const string sql = @"
 SELECT
-    CAST(ISNULL(sth_stok_kod, '') AS NVARCHAR(50))   AS StockCode,
-    CAST(ISNULL(sth_cikis_depo_no, 0) AS INT)        AS WarehouseNo,
-    CAST(SUM(CASE WHEN ISNULL(sth_tip, 0) < 4
-                  THEN ISNULL(sth_miktar, 0)
-                  ELSE -ISNULL(sth_miktar, 0) END) AS DECIMAL(18,6)) AS Quantity,
-    CAST(0 AS DECIMAL(18,6))                         AS ReservedQuantity,
-    CAST(MAX(sth_tarih) AS DATE)                     AS LastMovementDate
-FROM STOK_HAREKETLERI
-WHERE sth_firmano = @firmNo
-  AND sth_cikis_depo_no = @warehouseNo
-GROUP BY sth_stok_kod, sth_cikis_depo_no";
+    CAST(ISNULL(m.StockCode, '') AS NVARCHAR(50)) AS StockCode,
+    CAST(m.WarehouseNo AS INT)                    AS WarehouseNo,
+    CAST(SUM(m.QuantityDelta) AS DECIMAL(18,6))   AS Quantity,
+    CAST(0 AS DECIMAL(18,6))                      AS ReservedQuantity,
+    CAST(MAX(m.MovementDate) AS DATE)             AS LastMovementDate
+FROM (
+    SELECT sth_stok_kod AS StockCode,
+           sth_giris_depo_no AS WarehouseNo,
+           CAST(ISNULL(sth_miktar, 0) AS DECIMAL(18,6)) AS QuantityDelta,
+           sth_tarih AS MovementDate
+    FROM STOK_HAREKETLERI
+    WHERE sth_firmano = @firmNo
+      AND ISNULL(sth_iptal, 0) = 0
+      AND sth_giris_depo_no = @warehouseNo
+
+    UNION ALL
+
+    SELECT sth_stok_kod,
+           sth_cikis_depo_no,
+           -CAST(ISNULL(sth_miktar, 0) AS DECIMAL(18,6)),
+           sth_tarih
+    FROM STOK_HAREKETLERI
+    WHERE sth_firmano = @firmNo
+      AND ISNULL(sth_iptal, 0) = 0
+      AND sth_cikis_depo_no = @warehouseNo
+) AS m
+GROUP BY m.StockCode, m.WarehouseNo";
 
         var rows = await QueryAsync<InventoryPayload>(sql, new { firmNo, warehouseNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();

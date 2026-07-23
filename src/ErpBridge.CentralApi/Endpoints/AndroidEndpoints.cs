@@ -27,7 +27,9 @@ public static class AndroidEndpoints
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         MapSection(group, "/sync/cari", "customers");
-        MapSection(group, "/sync/urun", "stocks");
+        group.MapPost("/sync/urun", ProductCatalogAsync)
+            .WithName("AndroidProductCatalog")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/stokSeviye", "inventory");
         MapSection(group, "/sync/fiyatlar", "prices");
         MapSection(group, "/sync/acikSiparisler", "openOrders");
@@ -83,6 +85,82 @@ public static class AndroidEndpoints
             ? value.Clone()
             : JsonDocument.Parse("[]").RootElement.Clone();
         return Results.Ok(new { sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, items });
+    }
+
+    private static async Task<IResult> ProductCatalogAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var root = document.RootElement;
+
+        var barcodesByStock = GetArray(root, "barcodes")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")))
+            .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Clone()).ToArray(), StringComparer.OrdinalIgnoreCase);
+
+        var pricesByStock = GetArray(root, "prices")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")) && GetDecimal(item, "price") is > 0)
+            .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(item => GetInt32(item, "listNumber") == 1 ? 0 : 1)
+                    .ThenBy(item => GetInt32(item, "listNumber") ?? int.MaxValue)
+                    .Select(item => GetDecimal(item, "price"))
+                    .FirstOrDefault(price => price is > 0),
+                StringComparer.OrdinalIgnoreCase);
+
+        var inventoryByStock = GetArray(root, "inventory")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")))
+            .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.GroupBy(item => GetInt32(item, "warehouseNo") ?? 0)
+                    .ToDictionary(
+                        warehouse => $"Depo {warehouse.Key}",
+                        warehouse => (int)Math.Round(warehouse.Sum(item => GetDecimal(item, "quantity") ?? 0m),
+                            MidpointRounding.AwayFromZero)),
+                StringComparer.OrdinalIgnoreCase);
+
+        var items = GetArray(root, "stocks").Select(stock =>
+        {
+            var mapped = stock.EnumerateObject()
+                .ToDictionary(property => property.Name, property => (object?)property.Value.Clone(), StringComparer.OrdinalIgnoreCase);
+            var stockCode = GetString(stock, "stockCode") ?? string.Empty;
+
+            if (barcodesByStock.TryGetValue(stockCode, out var barcodes) && barcodes.Length > 0)
+            {
+                mapped["barcodes"] = barcodes;
+                mapped["barkod"] = GetString(barcodes[0], "barcode") ?? string.Empty;
+            }
+
+            if (pricesByStock.TryGetValue(stockCode, out var price) && price is > 0)
+            {
+                mapped["satis_fiyati"] = price.Value;
+                mapped["price"] = price.Value;
+            }
+
+            if (inventoryByStock.TryGetValue(stockCode, out var warehouses))
+            {
+                mapped["stockByWarehouse"] = warehouses;
+                mapped["stok"] = warehouses.Values.Sum();
+            }
+            else
+            {
+                mapped["stockByWarehouse"] = new Dictionary<string, int>();
+                mapped["stok"] = 0;
+            }
+
+            return mapped;
+        }).ToArray();
+
+        return Results.Ok(new
+        {
+            sourceDatabase = package.SourceDatabase,
+            pulledAtUtc = package.PulledAtUtc,
+            items,
+        });
     }
 
     private static async Task<IResult> PagedSectionAsync(
