@@ -42,6 +42,44 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         body.Should().Contain("S001").And.NotContain("C001");
     }
 
+    [Fact]
+    public async Task Product_catalog_joins_barcode_price_and_inventory_by_stock_code()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-PRODUCT-{suffix}", "Product catalog tenant");
+        const string payload = """
+            {
+              "stocks": [{"stockCode":"S001","name":"Joined product","barcodes":[]}],
+              "barcodes": [{"barcode":"869000000001","stockCode":"S001","unitPointer":1}],
+              "prices": [
+                {"stockCode":"S001","listNumber":2,"price":90.0},
+                {"stockCode":"S001","listNumber":1,"price":125.5}
+              ],
+              "inventory": [
+                {"stockCode":"S001","warehouseNo":1,"quantity":7.0},
+                {"stockCode":"S001","warehouseNo":2,"quantity":3.0}
+              ]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-ANDROID-PRODUCT-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/android/sync/urun", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var product = document.RootElement.GetProperty("items")[0];
+        product.GetProperty("stockCode").GetString().Should().Be("S001");
+        product.GetProperty("barkod").GetString().Should().Be("869000000001");
+        product.GetProperty("satis_fiyati").GetDecimal().Should().Be(125.5m);
+        product.GetProperty("stok").GetInt32().Should().Be(10);
+        product.GetProperty("stockByWarehouse").GetProperty("Depo 1").GetInt32().Should().Be(7);
+        product.GetProperty("stockByWarehouse").GetProperty("Depo 2").GetInt32().Should().Be(3);
+    }
+
     [Theory]
     [InlineData("/api/v1/android/sync/cariAdresler", "ADDRESS-001")]
     [InlineData("/api/v1/android/sync/cariYetkililer", "CONTACT-001")]
