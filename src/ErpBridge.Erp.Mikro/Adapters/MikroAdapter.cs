@@ -297,7 +297,7 @@ public sealed class MikroAdapter : IErpAdapter
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
                 CashAndBank: Array.Empty<CashAndBankPayload>(),
-                Lookups: Array.Empty<LookupPayload>(),
+                Lookups: await _dbReader.ReadLookupsAsync(firmNo, ct).ConfigureAwait(false),
                 CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
                 StockTransactions: Array.Empty<StockTransactionPayload>()),
 
