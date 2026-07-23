@@ -342,6 +342,12 @@ WHERE ISNULL(sat_iptal, 0) = 0";
     {
         // Expand incoming and outgoing warehouse columns into signed rows so
         // purchases, sales, returns, and warehouse transfers all net correctly.
+        // Mikro company databases commonly store sth_firmano as 0 even when the
+        // Agent's logical firm number is 1. Filtering on that field therefore
+        // produced an empty inventory on otherwise populated installations.
+        // Read every physical warehouse from the active company database; the
+        // Android API can then return either the requested warehouse or the
+        // correctly netted total across warehouses.
         const string sql = @"
 SELECT
     CAST(ISNULL(m.StockCode, '') AS NVARCHAR(50)) AS StockCode,
@@ -355,9 +361,8 @@ FROM (
            CAST(ISNULL(sth_miktar, 0) AS DECIMAL(18,6)) AS QuantityDelta,
            sth_tarih AS MovementDate
     FROM STOK_HAREKETLERI
-    WHERE sth_firmano = @firmNo
-      AND ISNULL(sth_iptal, 0) = 0
-      AND sth_giris_depo_no = @warehouseNo
+    WHERE ISNULL(sth_iptal, 0) = 0
+      AND ISNULL(sth_giris_depo_no, 0) > 0
 
     UNION ALL
 
@@ -366,16 +371,15 @@ FROM (
            -CAST(ISNULL(sth_miktar, 0) AS DECIMAL(18,6)),
            sth_tarih
     FROM STOK_HAREKETLERI
-    WHERE sth_firmano = @firmNo
-      AND ISNULL(sth_iptal, 0) = 0
-      AND sth_cikis_depo_no = @warehouseNo
+    WHERE ISNULL(sth_iptal, 0) = 0
+      AND ISNULL(sth_cikis_depo_no, 0) > 0
 ) AS m
 GROUP BY m.StockCode, m.WarehouseNo";
 
         var rows = await QueryAsync<InventoryPayload>(sql, new { firmNo, warehouseNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation(
-            "Read {Count} inventory rows for firmNo={FirmNo}, warehouseNo={WarehouseNo}.",
+            "Read {Count} inventory rows across all warehouses for firmNo={FirmNo} (requested warehouse={WarehouseNo}).",
             result.Count, firmNo, warehouseNo);
         return result;
     }
