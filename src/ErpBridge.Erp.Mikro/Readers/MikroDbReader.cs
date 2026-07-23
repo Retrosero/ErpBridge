@@ -340,46 +340,26 @@ WHERE ISNULL(sat_iptal, 0) = 0";
     /// <inheritdoc />
     public async Task<IReadOnlyList<InventoryPayload>> ReadInventoryAsync(int firmNo, int warehouseNo, CancellationToken ct = default)
     {
-        // Expand incoming and outgoing warehouse columns into signed rows so
-        // purchases, sales, returns, and warehouse transfers all net correctly.
-        // Mikro company databases commonly store sth_firmano as 0 even when the
-        // Agent's logical firm number is 1. Filtering on that field therefore
-        // produced an empty inventory on otherwise populated installations.
-        // Read every physical warehouse from the active company database; the
-        // Android API can then return either the requested warehouse or the
-        // correctly netted total across warehouses.
+        // Mikro's own stock-movement view contains the authoritative on-hand
+        // quantity after applying the ERP's movement, cancellation, return and
+        // transfer rules. Do not recalculate this value from STOK_HAREKETLERI:
+        // doing so can diverge from Mikro for movement types with special rules.
+        // The view is company-wide (no warehouse column), so expose its result
+        // as the requested/default warehouse while preserving the exact total.
         const string sql = @"
 SELECT
-    CAST(ISNULL(m.StockCode, '') AS NVARCHAR(50)) AS StockCode,
-    CAST(m.WarehouseNo AS INT)                    AS WarehouseNo,
-    CAST(SUM(m.QuantityDelta) AS DECIMAL(18,6))   AS Quantity,
-    CAST(0 AS DECIMAL(18,6))                      AS ReservedQuantity,
-    CAST(MAX(m.MovementDate) AS DATE)             AS LastMovementDate
-FROM (
-    SELECT sth_stok_kod AS StockCode,
-           sth_giris_depo_no AS WarehouseNo,
-           CAST(ISNULL(sth_miktar, 0) AS DECIMAL(18,6)) AS QuantityDelta,
-           sth_tarih AS MovementDate
-    FROM STOK_HAREKETLERI
-    WHERE ISNULL(sth_iptal, 0) = 0
-      AND ISNULL(sth_giris_depo_no, 0) > 0
-
-    UNION ALL
-
-    SELECT sth_stok_kod,
-           sth_cikis_depo_no,
-           -CAST(ISNULL(sth_miktar, 0) AS DECIMAL(18,6)),
-           sth_tarih
-    FROM STOK_HAREKETLERI
-    WHERE ISNULL(sth_iptal, 0) = 0
-      AND ISNULL(sth_cikis_depo_no, 0) > 0
-) AS m
-GROUP BY m.StockCode, m.WarehouseNo";
+    CAST(ISNULL(sth_stok_kod, '') AS NVARCHAR(50))       AS StockCode,
+    CAST(@warehouseNo AS INT)                            AS WarehouseNo,
+    CAST(ISNULL(sth_eldeki_miktar, 0) AS DECIMAL(18,6))  AS Quantity,
+    CAST(0 AS DECIMAL(18,6))                             AS ReservedQuantity,
+    CAST(NULL AS DATE)                                   AS LastMovementDate
+FROM dbo.STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW
+WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL";
 
         var rows = await QueryAsync<InventoryPayload>(sql, new { firmNo, warehouseNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation(
-            "Read {Count} inventory rows across all warehouses for firmNo={FirmNo} (requested warehouse={WarehouseNo}).",
+            "Read {Count} inventory rows from STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW for firmNo={FirmNo}, warehouseNo={WarehouseNo}.",
             result.Count, firmNo, warehouseNo);
         return result;
     }
