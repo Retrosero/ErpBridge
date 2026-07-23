@@ -38,6 +38,9 @@ public static class AndroidEndpoints
         MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
         MapPagedSection(group, "/sync/stokHareket", "stockTransactions");
         MapPagedSection(group, "/sync/stokHareketleri", "stockTransactions");
+        group.MapPost("/sync/faturaHareket", InvoiceMovementsAsync)
+            .WithName("AndroidInvoiceMovements")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         return routes;
     }
 
@@ -114,6 +117,142 @@ public static class AndroidEndpoints
         });
     }
 
+    private static async Task<IResult> InvoiceMovementsAsync(
+        AndroidInvoiceRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var root = document.RootElement;
+
+        var stockNames = GetArray(root, "stocks")
+            .Select(stock => new
+            {
+                Code = GetString(stock, "stockCode"),
+                Name = GetString(stock, "name"),
+            })
+            .Where(stock => !string.IsNullOrWhiteSpace(stock.Code))
+            .GroupBy(stock => stock.Code!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Name, StringComparer.OrdinalIgnoreCase);
+
+        var linesByInvoiceRecNo = GetArray(root, "stockTransactions")
+            .Select(line => new { Line = line, InvoiceRecNo = GetInt32(line, "faturaRecno") })
+            .Where(item => item.InvoiceRecNo is > 0)
+            .GroupBy(item => item.InvoiceRecNo!.Value)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Line).ToArray());
+
+        var customerCode = request.Since?.Trim();
+        var invoices = GetArray(root, "customerTransactions")
+            .Where(transaction =>
+                string.IsNullOrWhiteSpace(customerCode)
+                || string.Equals(GetString(transaction, "cariKod"), customerCode, StringComparison.OrdinalIgnoreCase))
+            .Select(transaction => new
+            {
+                Transaction = transaction,
+                RecNo = GetInt32(transaction, "cha_recno"),
+            })
+            .Where(item => item.RecNo is > 0 && linesByInvoiceRecNo.ContainsKey(item.RecNo.Value))
+            .ToArray();
+
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = invoices
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(invoice =>
+            {
+                var transaction = invoice.Transaction;
+                var lines = linesByInvoiceRecNo[invoice.RecNo!.Value]
+                    .Select(line =>
+                    {
+                        var stockCode = GetString(line, "stokKod");
+                        return new
+                        {
+                            erpRef = GetString(line, "erpRef") ?? GetString(line, "id") ?? string.Empty,
+                            stokKod = stockCode,
+                            stokAd = stockCode is not null && stockNames.TryGetValue(stockCode, out var stockName) ? stockName : null,
+                            tarih = GetString(line, "tarih"),
+                            tip = GetInt32(line, "tip"),
+                            cins = GetInt32(line, "cins"),
+                            girisMiktar = GetDecimal(line, "girisMiktar"),
+                            cikisMiktar = GetDecimal(line, "cikisMiktar"),
+                            miktar = GetDecimal(line, "miktar"),
+                            birimFiyat = GetDecimal(line, "birimFiyat"),
+                            tutar = GetDecimal(line, "tutar"),
+                            vergi = GetDecimal(line, "vergi"),
+                            girisDepoNo = GetInt32(line, "girisDepoNo"),
+                            cikisDepoNo = GetInt32(line, "cikisDepoNo"),
+                            aciklama = GetString(line, "aciklama"),
+                            updatedAt = GetString(line, "updatedAt"),
+                            sth_fat_recid_recno = invoice.RecNo,
+                        };
+                    })
+                    .ToArray();
+
+                return new
+                {
+                    erpRef = GetString(transaction, "erpRef") ?? invoice.RecNo.Value.ToString(),
+                    erp = GetString(transaction, "erp"),
+                    cariKod = GetString(transaction, "cariKod"),
+                    tarih = GetString(transaction, "tarih"),
+                    evrakTip = GetInt32(transaction, "evrakTip"),
+                    evrakNo = GetString(transaction, "evrakNo"),
+                    tip = GetInt32(transaction, "tip"),
+                    tutar = GetDecimal(transaction, "tutar"),
+                    updatedAt = GetString(transaction, "updatedAt"),
+                    satirlar = lines,
+                };
+            })
+            .ToArray();
+
+        return Results.Ok(new
+        {
+            entity = "faturaHareket",
+            cariKod = customerCode,
+            page,
+            pageSize,
+            total = invoices.Length,
+            since = customerCode,
+            items,
+        });
+    }
+
+    private static IEnumerable<JsonElement> GetArray(JsonElement parent, string propertyName) =>
+        parent.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray()
+            : [];
+
+    private static string? GetString(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        return value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
+    }
+
+    private static int? GetInt32(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
+            return number;
+        return int.TryParse(value.ToString(), out number) ? number : null;
+    }
+
+    private static decimal? GetDecimal(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number))
+            return number;
+        return decimal.TryParse(value.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out number)
+            ? number
+            : null;
+    }
+
     private static async Task<(BootstrapPackage? Package, IResult? Error)> GetLatestPackageAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {
         if (!http.User.TryGetTenantId(out var tenantId))
@@ -136,4 +275,5 @@ public static class AndroidEndpoints
     }
 
     private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, DateTimeOffset? Since = null);
+    private sealed record AndroidInvoiceRequest(int Page = 1, int PageSize = 200, string? Since = null);
 }
