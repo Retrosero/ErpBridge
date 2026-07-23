@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
 
@@ -115,6 +116,60 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain(expectedMarker).And.Contain("\"total\":3");
         body.Should().NotContain($"{prefix}-001").And.NotContain($"{prefix}-003");
+    }
+
+    [Fact]
+    public async Task Invoice_movement_returns_only_lines_linked_to_each_customer_transaction_recno()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-INVOICE-{suffix}", "Invoice tenant");
+        const string payload = """
+            {
+              "stocks": [
+                { "stockCode": "S001", "name": "Correct product one" },
+                { "stockCode": "S002", "name": "Correct product two" },
+                { "stockCode": "S999", "name": "Wrong customer product" }
+              ],
+              "customerTransactions": [
+                { "erpRef": "CH-101", "erp": "MIKRO", "cariKod": "C001", "cha_recno": 101, "evrakNo": "FAT-1", "tutar": 100 },
+                { "erpRef": "CH-102", "erp": "MIKRO", "cariKod": "C001", "cha_recno": 102, "evrakNo": "FAT-2", "tutar": 200 },
+                { "erpRef": "CH-999", "erp": "MIKRO", "cariKod": "C999", "cha_recno": 999, "evrakNo": "FAT-999", "tutar": 999 }
+              ],
+              "stockTransactions": [
+                { "erpRef": "SH-1", "stokKod": "S001", "faturaRecno": 101, "miktar": 1, "birimFiyat": 100 },
+                { "erpRef": "SH-2", "stokKod": "S002", "faturaRecno": 102, "miktar": 2, "birimFiyat": 100 },
+                { "erpRef": "SH-999", "stokKod": "S999", "faturaRecno": 999, "miktar": 9, "birimFiyat": 111 },
+                { "erpRef": "SH-STRAY", "stokKod": "S999", "faturaRecno": 777, "miktar": 7, "birimFiyat": 77 }
+              ]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-INVOICE-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/v1/android/sync/faturaHareket",
+            new { page = 1, pageSize = 200, since = "C001" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("total").GetInt32().Should().Be(2);
+        var invoices = root.GetProperty("items").EnumerateArray().ToArray();
+        var firstLines = invoices.Single(item => item.GetProperty("erpRef").GetString() == "CH-101")
+            .GetProperty("satirlar").EnumerateArray().ToArray();
+        var secondLines = invoices.Single(item => item.GetProperty("erpRef").GetString() == "CH-102")
+            .GetProperty("satirlar").EnumerateArray().ToArray();
+
+        firstLines.Should().ContainSingle();
+        firstLines[0].GetProperty("erpRef").GetString().Should().Be("SH-1");
+        firstLines[0].GetProperty("stokAd").GetString().Should().Be("Correct product one");
+        firstLines[0].GetProperty("sth_fat_recid_recno").GetInt32().Should().Be(101);
+        secondLines.Should().ContainSingle();
+        secondLines[0].GetProperty("erpRef").GetString().Should().Be("SH-2");
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("SH-999").And.NotContain("SH-STRAY");
     }
 
     [Fact]
