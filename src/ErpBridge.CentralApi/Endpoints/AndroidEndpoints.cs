@@ -32,14 +32,26 @@ public static class AndroidEndpoints
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/stokSeviye", "inventory");
         MapSection(group, "/sync/fiyatlar", "prices");
+        group.MapPost("/sync/stokSatisFiyatListeleri",
+                (HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
+                    SectionAsync("prices", http, db, ct))
+            .WithName("AndroidPriceListRows")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/stokSatisFiyatListeTanimlari", PriceListDefinitionsAsync)
+            .WithName("AndroidPriceListDefinitions")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/acikSiparisler", "openOrders");
         MapSection(group, "/sync/cariAdresler", "customerAddresses");
         MapSection(group, "/sync/cariYetkililer", "customerContacts");
         MapSection(group, "/sync/barkodlar", "barcodes");
         MapSection(group, "/sync/satisSartlari", "salesConditions");
         MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
-        MapPagedSection(group, "/sync/stokHareket", "stockTransactions");
-        MapPagedSection(group, "/sync/stokHareketleri", "stockTransactions");
+        group.MapPost("/sync/stokHareket", StockMovementsAsync)
+            .WithName("AndroidStockMovements")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/stokHareketleri", StockMovementsAsync)
+            .WithName("AndroidStockMovementsPlural")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/faturaHareket", InvoiceMovementsAsync)
             .WithName("AndroidInvoiceMovements")
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
@@ -111,6 +123,30 @@ public static class AndroidEndpoints
                     .FirstOrDefault(price => price is > 0),
                 StringComparer.OrdinalIgnoreCase);
 
+        var priceListNames = GetArray(root, "lookups")
+            .Where(item => string.Equals(GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase))
+            .Select(item => new
+            {
+                Number = int.TryParse(GetString(item, "code"), out var number) ? number : 0,
+                Name = GetString(item, "name"),
+            })
+            .Where(item => item.Number > 0 && !string.IsNullOrWhiteSpace(item.Name))
+            .GroupBy(item => item.Number)
+            .ToDictionary(group => group.Key, group => group.First().Name!);
+
+        var customPricesByStock = GetArray(root, "prices")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")) && GetDecimal(item, "price") is > 0)
+            .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .GroupBy(item => GetInt32(item, "listNumber") ?? 0)
+                    .Where(list => list.Key > 0)
+                    .ToDictionary(
+                        list => priceListNames.TryGetValue(list.Key, out var name) ? name : $"Liste {list.Key}",
+                        list => list.Select(item => GetDecimal(item, "price")).First(price => price is > 0)!.Value),
+                StringComparer.OrdinalIgnoreCase);
+
         var inventoryByStock = GetArray(root, "inventory")
             .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")))
             .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
@@ -140,6 +176,9 @@ public static class AndroidEndpoints
                 mapped["satis_fiyati"] = price.Value;
                 mapped["price"] = price.Value;
             }
+            mapped["customPrices"] = customPricesByStock.TryGetValue(stockCode, out var customPrices)
+                ? customPrices
+                : new Dictionary<string, decimal>();
 
             if (inventoryByStock.TryGetValue(stockCode, out var warehouses))
             {
@@ -159,6 +198,69 @@ public static class AndroidEndpoints
         {
             sourceDatabase = package.SourceDatabase,
             pulledAtUtc = package.PulledAtUtc,
+            items,
+        });
+    }
+
+    private static async Task<IResult> PriceListDefinitionsAsync(
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        using var document = JsonDocument.Parse(access.Package!.PayloadJson);
+        var items = GetArray(document.RootElement, "lookups")
+            .Where(item => string.Equals(GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase))
+            .Select(item =>
+            {
+                var code = GetString(item, "code") ?? string.Empty;
+                return new
+                {
+                    id = code,
+                    erpRef = code,
+                    listNo = int.TryParse(code, out var number) ? number : 0,
+                    aciklama = GetString(item, "name"),
+                    isDeleted = false,
+                };
+            })
+            .Where(item => item.listNo > 0)
+            .OrderBy(item => item.listNo)
+            .ToArray();
+        return Results.Ok(new { entity = "stokSatisFiyatListeTanimlari", total = items.Length, items });
+    }
+
+    private static async Task<IResult> StockMovementsAsync(
+        AndroidStockMovementRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        using var document = JsonDocument.Parse(access.Package!.PayloadJson);
+
+        var stockCode = request.Since?.Trim();
+        var allItems = GetArray(document.RootElement, "stockTransactions")
+            .Where(item =>
+                string.IsNullOrWhiteSpace(stockCode)
+                || string.Equals(GetString(item, "stokKod"), stockCode, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(GetString(item, "urunKod"), stockCode, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => GetString(item, "updatedAt") ?? GetString(item, "tarih"))
+            .Select(item => item.Clone())
+            .ToArray();
+
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        return Results.Ok(new
+        {
+            entity = "stokHareket",
+            stokKod = stockCode,
+            page,
+            pageSize,
+            total = allItems.Length,
+            since = stockCode,
             items,
         });
     }
@@ -353,5 +455,6 @@ public static class AndroidEndpoints
     }
 
     private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, DateTimeOffset? Since = null);
+    private sealed record AndroidStockMovementRequest(int Page = 1, int PageSize = 50, string? Since = null);
     private sealed record AndroidInvoiceRequest(int Page = 1, int PageSize = 200, string? Since = null);
 }
