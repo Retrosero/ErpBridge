@@ -285,7 +285,12 @@ UNION ALL
 SELECT 'project', CAST(pro_kodu AS NVARCHAR(50)), CAST(pro_adi AS NVARCHAR(200)),
        CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
 FROM PROJELER
-WHERE ISNULL(pro_iptal, 0) = 0";
+WHERE ISNULL(pro_iptal, 0) = 0
+UNION ALL
+SELECT 'price_list', CAST(sfl_sirano AS NVARCHAR(20)), CAST(ISNULL(sfl_aciklama, '') AS NVARCHAR(200)),
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
+FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI
+WHERE ISNULL(sfl_iptal, 0) = 0";
 
         var rows = await QueryAsync<LookupPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();

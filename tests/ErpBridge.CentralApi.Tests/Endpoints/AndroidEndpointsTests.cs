@@ -56,6 +56,10 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
                 {"stockCode":"S001","listNumber":2,"price":90.0},
                 {"stockCode":"S001","listNumber":1,"price":125.5}
               ],
+              "lookups": [
+                {"kind":"price_list","code":"1","name":"SATIŞ FİYATI"},
+                {"kind":"price_list","code":"2","name":"E-TİCARET"}
+              ],
               "inventory": [
                 {"stockCode":"S001","warehouseNo":1,"quantity":7.0},
                 {"stockCode":"S001","warehouseNo":2,"quantity":3.0}
@@ -75,9 +79,30 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         product.GetProperty("stockCode").GetString().Should().Be("S001");
         product.GetProperty("barkod").GetString().Should().Be("869000000001");
         product.GetProperty("satis_fiyati").GetDecimal().Should().Be(125.5m);
+        product.GetProperty("customPrices").GetProperty("SATIŞ FİYATI").GetDecimal().Should().Be(125.5m);
+        product.GetProperty("customPrices").GetProperty("E-TİCARET").GetDecimal().Should().Be(90m);
         product.GetProperty("stok").GetInt32().Should().Be(10);
         product.GetProperty("stockByWarehouse").GetProperty("Depo 1").GetInt32().Should().Be(7);
         product.GetProperty("stockByWarehouse").GetProperty("Depo 2").GetInt32().Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Price_list_definitions_return_erp_names()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-PRICE-NAMES-{suffix}", "Price names tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id,
+            """{"lookups":[{"kind":"price_list","code":"1","name":"SATIŞ FİYATI"},{"kind":"price_list","code":"2","name":"E-TİCARET"}]}""");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-PRICE-NAMES-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/android/sync/stokSatisFiyatListeTanimlari", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("SATIŞ FİYATI").And.Contain("E-TİCARET");
     }
 
     [Theory]
@@ -154,6 +179,40 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain(expectedMarker).And.Contain("\"total\":3");
         body.Should().NotContain($"{prefix}-001").And.NotContain($"{prefix}-003");
+    }
+
+    [Fact]
+    public async Task Stock_movement_section_filters_by_stock_code_and_orders_latest_first()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-STOCK-MOVE-{suffix}", "Stock movement tenant");
+        const string payload = """
+            {
+              "stockTransactions": [
+                {"id":"OLD","stokKod":"S001","updatedAt":"2026-01-01T10:00:00Z"},
+                {"id":"OTHER","stokKod":"S999","updatedAt":"2026-07-01T10:00:00Z"},
+                {"id":"NEW","stokKod":"S001","updatedAt":"2026-06-01T10:00:00Z"}
+              ]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-STOCK-MOVE-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/v1/android/sync/stokHareket",
+            new { page = 1, pageSize = 50, since = "S001" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("total").GetInt32().Should().Be(2);
+        var items = root.GetProperty("items").EnumerateArray().ToArray();
+        items[0].GetProperty("id").GetString().Should().Be("NEW");
+        items[1].GetProperty("id").GetString().Should().Be("OLD");
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("OTHER");
     }
 
     [Fact]
