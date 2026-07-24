@@ -54,7 +54,9 @@ public sealed record StockPayload(
     bool RenkDetayli,
     decimal? StandardCost,
     string? Currency,
-    IReadOnlyList<BarcodePayload> Barcodes);
+    IReadOnlyList<BarcodePayload> Barcodes,
+    string? PackageCode = null,
+    string? CartonCode = null);
 
 /// <summary>
 /// One barcode attached to a <see cref="StockPayload"/>. Lot and serial

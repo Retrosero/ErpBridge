@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
 
@@ -39,6 +40,44 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain("S001").And.NotContain("C001");
+    }
+
+    [Fact]
+    public async Task Product_catalog_joins_barcode_price_and_inventory_by_stock_code()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-PRODUCT-{suffix}", "Product catalog tenant");
+        const string payload = """
+            {
+              "stocks": [{"stockCode":"S001","name":"Joined product","barcodes":[]}],
+              "barcodes": [{"barcode":"869000000001","stockCode":"S001","unitPointer":1}],
+              "prices": [
+                {"stockCode":"S001","listNumber":2,"price":90.0},
+                {"stockCode":"S001","listNumber":1,"price":125.5}
+              ],
+              "inventory": [
+                {"stockCode":"S001","warehouseNo":1,"quantity":7.0},
+                {"stockCode":"S001","warehouseNo":2,"quantity":3.0}
+              ]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-ANDROID-PRODUCT-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/android/sync/urun", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var product = document.RootElement.GetProperty("items")[0];
+        product.GetProperty("stockCode").GetString().Should().Be("S001");
+        product.GetProperty("barkod").GetString().Should().Be("869000000001");
+        product.GetProperty("satis_fiyati").GetDecimal().Should().Be(125.5m);
+        product.GetProperty("stok").GetInt32().Should().Be(10);
+        product.GetProperty("stockByWarehouse").GetProperty("Depo 1").GetInt32().Should().Be(7);
+        product.GetProperty("stockByWarehouse").GetProperty("Depo 2").GetInt32().Should().Be(3);
     }
 
     [Theory]
@@ -115,6 +154,60 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain(expectedMarker).And.Contain("\"total\":3");
         body.Should().NotContain($"{prefix}-001").And.NotContain($"{prefix}-003");
+    }
+
+    [Fact]
+    public async Task Invoice_movement_returns_only_lines_linked_to_each_customer_transaction_recno()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-INVOICE-{suffix}", "Invoice tenant");
+        const string payload = """
+            {
+              "stocks": [
+                { "stockCode": "S001", "name": "Correct product one" },
+                { "stockCode": "S002", "name": "Correct product two" },
+                { "stockCode": "S999", "name": "Wrong customer product" }
+              ],
+              "customerTransactions": [
+                { "erpRef": "CH-101", "erp": "MIKRO", "cariKod": "C001", "cha_recno": 101, "evrakNo": "FAT-1", "tutar": 100 },
+                { "erpRef": "CH-102", "erp": "MIKRO", "cariKod": "C001", "cha_recno": 102, "evrakNo": "FAT-2", "tutar": 200 },
+                { "erpRef": "CH-999", "erp": "MIKRO", "cariKod": "C999", "cha_recno": 999, "evrakNo": "FAT-999", "tutar": 999 }
+              ],
+              "stockTransactions": [
+                { "erpRef": "SH-1", "stokKod": "S001", "faturaRecno": 101, "miktar": 1, "birimFiyat": 100 },
+                { "erpRef": "SH-2", "stokKod": "S002", "faturaRecno": 102, "miktar": 2, "birimFiyat": 100 },
+                { "erpRef": "SH-999", "stokKod": "S999", "faturaRecno": 999, "miktar": 9, "birimFiyat": 111 },
+                { "erpRef": "SH-STRAY", "stokKod": "S999", "faturaRecno": 777, "miktar": 7, "birimFiyat": 77 }
+              ]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-INVOICE-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/v1/android/sync/faturaHareket",
+            new { page = 1, pageSize = 200, since = "C001" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("total").GetInt32().Should().Be(2);
+        var invoices = root.GetProperty("items").EnumerateArray().ToArray();
+        var firstLines = invoices.Single(item => item.GetProperty("erpRef").GetString() == "CH-101")
+            .GetProperty("satirlar").EnumerateArray().ToArray();
+        var secondLines = invoices.Single(item => item.GetProperty("erpRef").GetString() == "CH-102")
+            .GetProperty("satirlar").EnumerateArray().ToArray();
+
+        firstLines.Should().ContainSingle();
+        firstLines[0].GetProperty("erpRef").GetString().Should().Be("SH-1");
+        firstLines[0].GetProperty("stokAd").GetString().Should().Be("Correct product one");
+        firstLines[0].GetProperty("sth_fat_recid_recno").GetInt32().Should().Be(101);
+        secondLines.Should().ContainSingle();
+        secondLines[0].GetProperty("erpRef").GetString().Should().Be("SH-2");
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("SH-999").And.NotContain("SH-STRAY");
     }
 
     [Fact]

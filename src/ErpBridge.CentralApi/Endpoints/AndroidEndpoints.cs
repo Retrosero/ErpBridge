@@ -27,9 +27,19 @@ public static class AndroidEndpoints
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         MapSection(group, "/sync/cari", "customers");
-        MapSection(group, "/sync/urun", "stocks");
+        group.MapPost("/sync/urun", ProductCatalogAsync)
+            .WithName("AndroidProductCatalog")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/stokSeviye", "inventory");
-        MapSection(group, "/sync/fiyatlar", "prices");
+        group.MapPost("/sync/fiyatlar", PriceListRowsAsync)
+            .WithName("AndroidPrices")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/stokSatisFiyatListeleri", PriceListRowsAsync)
+            .WithName("AndroidPriceListRows")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/stokSatisFiyatListeTanimlari", PriceListDefinitionsAsync)
+            .WithName("AndroidPriceListDefinitions")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/acikSiparisler", "openOrders");
         MapSection(group, "/sync/cariAdresler", "customerAddresses");
         MapSection(group, "/sync/cariYetkililer", "customerContacts");
@@ -38,6 +48,9 @@ public static class AndroidEndpoints
         MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
         MapPagedSection(group, "/sync/stokHareket", "stockTransactions");
         MapPagedSection(group, "/sync/stokHareketleri", "stockTransactions");
+        group.MapPost("/sync/faturaHareket", InvoiceMovementsAsync)
+            .WithName("AndroidInvoiceMovements")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         return routes;
     }
 
@@ -82,6 +95,158 @@ public static class AndroidEndpoints
         return Results.Ok(new { sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, items });
     }
 
+    private static async Task<IResult> ProductCatalogAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var root = document.RootElement;
+
+        var barcodesByStock = GetArray(root, "barcodes")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")))
+            .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Clone()).ToArray(), StringComparer.OrdinalIgnoreCase);
+
+        var pricesByStock = GetArray(root, "prices")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")) && GetDecimal(item, "price") is > 0)
+            .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(item => GetInt32(item, "listNumber") == 1 ? 0 : 1)
+                    .ThenBy(item => GetInt32(item, "listNumber") ?? int.MaxValue)
+                    .Select(item => GetDecimal(item, "price"))
+                    .FirstOrDefault(price => price is > 0),
+                StringComparer.OrdinalIgnoreCase);
+
+        var inventoryByStock = GetArray(root, "inventory")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")))
+            .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.GroupBy(item => GetInt32(item, "warehouseNo") ?? 0)
+                    .ToDictionary(
+                        warehouse => $"Depo {warehouse.Key}",
+                        warehouse => (int)Math.Round(warehouse.Sum(item => GetDecimal(item, "quantity") ?? 0m),
+                            MidpointRounding.AwayFromZero)),
+                StringComparer.OrdinalIgnoreCase);
+
+        var items = GetArray(root, "stocks").Select(stock =>
+        {
+            var mapped = stock.EnumerateObject()
+                .ToDictionary(property => property.Name, property => (object?)property.Value.Clone(), StringComparer.OrdinalIgnoreCase);
+            var stockCode = GetString(stock, "stockCode") ?? string.Empty;
+
+            var reyonKod = GetFirstString(stock, "shelfCode", "sto_yer_kod");
+            var olcu = GetFirstString(stock, "sectorCode", "sto_sektor_kodu");
+            var ambalaj = GetFirstString(stock, "packageCode", "sto_ambalaj_kodu");
+            var marka = GetFirstString(stock, "brandCode", "sto_marka_kodu");
+            var koliAdet = GetFirstString(stock, "cartonCode", "sto_kalkon_kodu");
+
+            mapped["reyonKod"] = reyonKod;
+            mapped["olcu"] = olcu;
+            mapped["ambalaj"] = ambalaj;
+            mapped["marka"] = marka;
+            mapped["koliAdet"] = koliAdet;
+            mapped["sto_yer_kod"] = reyonKod;
+            mapped["sto_sektor_kodu"] = olcu;
+            mapped["sto_ambalaj_kodu"] = ambalaj;
+            mapped["sto_marka_kodu"] = marka;
+            mapped["sto_kalkon_kodu"] = koliAdet;
+
+            if (barcodesByStock.TryGetValue(stockCode, out var barcodes) && barcodes.Length > 0)
+            {
+                mapped["barcodes"] = barcodes;
+                mapped["barkod"] = GetString(barcodes[0], "barcode") ?? string.Empty;
+            }
+
+            if (pricesByStock.TryGetValue(stockCode, out var price) && price is > 0)
+            {
+                mapped["satis_fiyati"] = price.Value;
+                mapped["price"] = price.Value;
+            }
+
+            if (inventoryByStock.TryGetValue(stockCode, out var warehouses))
+            {
+                mapped["stockByWarehouse"] = warehouses;
+                mapped["stok"] = warehouses.Values.Sum();
+            }
+            else
+            {
+                mapped["stockByWarehouse"] = new Dictionary<string, int>();
+                mapped["stok"] = 0;
+            }
+
+            return mapped;
+        }).ToArray();
+
+        return Results.Ok(new
+        {
+            sourceDatabase = package.SourceDatabase,
+            pulledAtUtc = package.PulledAtUtc,
+            items,
+        });
+    }
+
+    private static async Task<IResult> PriceListDefinitionsAsync(
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        using var document = JsonDocument.Parse(access.Package!.PayloadJson);
+        var items = GetArray(document.RootElement, "lookups")
+            .Where(item => string.Equals(GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase))
+            .Select(item =>
+            {
+                var code = GetString(item, "code") ?? string.Empty;
+                return new
+                {
+                    id = code,
+                    erpRef = code,
+                    listNo = int.TryParse(code, out var number) ? number : 0,
+                    aciklama = GetString(item, "name"),
+                    isDeleted = false,
+                };
+            })
+            .Where(item => item.listNo > 0)
+            .OrderBy(item => item.listNo)
+            .ToArray();
+        return Results.Ok(new { entity = "stokSatisFiyatListeTanimlari", total = items.Length, items });
+    }
+
+    private static async Task<IResult> PriceListRowsAsync(
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var root = document.RootElement;
+        var namesByListNo = GetArray(root, "lookups")
+            .Where(item => string.Equals(GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase))
+            .Select(item => new { Number = GetInt32(item, "code") ?? 0, Name = GetString(item, "name") })
+            .Where(item => item.Number > 0 && !string.IsNullOrWhiteSpace(item.Name))
+            .GroupBy(item => item.Number)
+            .ToDictionary(group => group.Key, group => group.First().Name!);
+
+        var items = GetArray(root, "prices").Select(price =>
+        {
+            var mapped = price.EnumerateObject()
+                .ToDictionary(property => property.Name, property => (object?)property.Value.Clone(), StringComparer.OrdinalIgnoreCase);
+            var listNo = GetInt32(price, "listNumber") ?? GetInt32(price, "sfiyat_listeno") ?? 0;
+            var listName = namesByListNo.TryGetValue(listNo, out var name) ? name : string.Empty;
+            mapped["listName"] = listName;
+            mapped["aciklama"] = listName;
+            return mapped;
+        }).ToArray();
+
+        return Results.Ok(new { entity = "stokSatisFiyatListeleri", sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, total = items.Length, items });
+    }
+
     private static async Task<IResult> PagedSectionAsync(
         string propertyName,
         AndroidPageRequest request,
@@ -114,6 +279,148 @@ public static class AndroidEndpoints
         });
     }
 
+    private static async Task<IResult> InvoiceMovementsAsync(
+        AndroidInvoiceRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var root = document.RootElement;
+
+        var stockNames = GetArray(root, "stocks")
+            .Select(stock => new
+            {
+                Code = GetString(stock, "stockCode"),
+                Name = GetString(stock, "name"),
+            })
+            .Where(stock => !string.IsNullOrWhiteSpace(stock.Code))
+            .GroupBy(stock => stock.Code!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Name, StringComparer.OrdinalIgnoreCase);
+
+        var linesByInvoiceRecNo = GetArray(root, "stockTransactions")
+            .Select(line => new { Line = line, InvoiceRecNo = GetInt32(line, "faturaRecno") })
+            .Where(item => item.InvoiceRecNo is > 0)
+            .GroupBy(item => item.InvoiceRecNo!.Value)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Line).ToArray());
+
+        var customerCode = request.Since?.Trim();
+        var invoices = GetArray(root, "customerTransactions")
+            .Where(transaction =>
+                string.IsNullOrWhiteSpace(customerCode)
+                || string.Equals(GetString(transaction, "cariKod"), customerCode, StringComparison.OrdinalIgnoreCase))
+            .Select(transaction => new
+            {
+                Transaction = transaction,
+                RecNo = GetInt32(transaction, "cha_recno"),
+            })
+            .Where(item => item.RecNo is > 0 && linesByInvoiceRecNo.ContainsKey(item.RecNo.Value))
+            .ToArray();
+
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = invoices
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(invoice =>
+            {
+                var transaction = invoice.Transaction;
+                var lines = linesByInvoiceRecNo[invoice.RecNo!.Value]
+                    .Select(line =>
+                    {
+                        var stockCode = GetString(line, "stokKod");
+                        return new
+                        {
+                            erpRef = GetString(line, "erpRef") ?? GetString(line, "id") ?? string.Empty,
+                            stokKod = stockCode,
+                            stokAd = stockCode is not null && stockNames.TryGetValue(stockCode, out var stockName) ? stockName : null,
+                            tarih = GetString(line, "tarih"),
+                            tip = GetInt32(line, "tip"),
+                            cins = GetInt32(line, "cins"),
+                            girisMiktar = GetDecimal(line, "girisMiktar"),
+                            cikisMiktar = GetDecimal(line, "cikisMiktar"),
+                            miktar = GetDecimal(line, "miktar"),
+                            birimFiyat = GetDecimal(line, "birimFiyat"),
+                            tutar = GetDecimal(line, "tutar"),
+                            vergi = GetDecimal(line, "vergi"),
+                            girisDepoNo = GetInt32(line, "girisDepoNo"),
+                            cikisDepoNo = GetInt32(line, "cikisDepoNo"),
+                            aciklama = GetString(line, "aciklama"),
+                            updatedAt = GetString(line, "updatedAt"),
+                            sth_fat_recid_recno = invoice.RecNo,
+                        };
+                    })
+                    .ToArray();
+
+                return new
+                {
+                    erpRef = GetString(transaction, "erpRef") ?? invoice.RecNo.Value.ToString(),
+                    erp = GetString(transaction, "erp"),
+                    cariKod = GetString(transaction, "cariKod"),
+                    tarih = GetString(transaction, "tarih"),
+                    evrakTip = GetInt32(transaction, "evrakTip"),
+                    evrakNo = GetString(transaction, "evrakNo"),
+                    tip = GetInt32(transaction, "tip"),
+                    tutar = GetDecimal(transaction, "tutar"),
+                    updatedAt = GetString(transaction, "updatedAt"),
+                    satirlar = lines,
+                };
+            })
+            .ToArray();
+
+        return Results.Ok(new
+        {
+            entity = "faturaHareket",
+            cariKod = customerCode,
+            page,
+            pageSize,
+            total = invoices.Length,
+            since = customerCode,
+            items,
+        });
+    }
+
+    private static IEnumerable<JsonElement> GetArray(JsonElement parent, string propertyName) =>
+        parent.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray()
+            : [];
+
+    private static string? GetString(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        return value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
+    }
+
+    private static string GetFirstString(JsonElement item, params string[] propertyNames) =>
+        propertyNames
+            .Select(propertyName => GetString(item, propertyName)?.Trim())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+        ?? string.Empty;
+
+    private static int? GetInt32(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
+            return number;
+        return int.TryParse(value.ToString(), out number) ? number : null;
+    }
+
+    private static decimal? GetDecimal(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number))
+            return number;
+        return decimal.TryParse(value.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out number)
+            ? number
+            : null;
+    }
+
     private static async Task<(BootstrapPackage? Package, IResult? Error)> GetLatestPackageAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {
         if (!http.User.TryGetTenantId(out var tenantId))
@@ -136,4 +443,5 @@ public static class AndroidEndpoints
     }
 
     private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, DateTimeOffset? Since = null);
+    private sealed record AndroidInvoiceRequest(int Page = 1, int PageSize = 200, string? Since = null);
 }

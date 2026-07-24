@@ -44,6 +44,17 @@
     <Resource Include="assets\tray-32.png" />
   </ItemGroup>
 
+  <!-- Microsoft.Data.SqlClient 5.x keeps a small platform-neutral guard
+       assembly at publish root and the real Windows implementation under
+       runtimes/win. A directly launched self-contained WPF publish can bind
+       the guard first, producing "not supported on this platform". Flatten
+       the Windows implementation into the publish root after publishing. -->
+  <Target Name="UseWindowsSqlClientRuntime" AfterTargets="Publish"
+          Condition="Exists('$(PublishDir)runtimes\win\lib\net6.0\Microsoft.Data.SqlClient.dll')">
+    <Copy SourceFiles="$(PublishDir)runtimes\win\lib\net6.0\Microsoft.Data.SqlClient.dll"
+          DestinationFiles="$(PublishDir)Microsoft.Data.SqlClient.dll" />
+  </Target>
+
   <!--
     UI references Core/Shared/LocalStore/RemoteApi + Erp.Abstractions +
     ErpBridge.Erp.Mikro. The Mikro reference was added in Faz 2 Track 1 so

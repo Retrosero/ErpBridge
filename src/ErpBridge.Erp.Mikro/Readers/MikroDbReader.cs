@@ -152,6 +152,8 @@ SELECT
     CAST(NULL AS NVARCHAR(50))                        AS ModelCode,
     CAST(NULL AS NVARCHAR(50))                        AS ManufacturerCode,
     CAST(sto_yer_kod AS NVARCHAR(50))                 AS ShelfCode,
+    CAST(sto_ambalaj_kodu AS NVARCHAR(50))             AS PackageCode,
+    CAST(sto_kalkon_kodu AS NVARCHAR(50))              AS CartonCode,
     CAST(ISNULL(sto_bedenli_takip, 0) AS BIT)         AS BedenliTakip,
     CAST(ISNULL(sto_renkDetayli, 0) AS BIT)           AS RenkDetayli,
     CAST(NULL AS DECIMAL(18,6))                       AS StandardCost,
@@ -185,7 +187,9 @@ WHERE ISNULL(sto_iptal, 0) = 0
                 s.RenkDetayli,
                 s.StandardCost,
                 s.Currency,
-                Array.Empty<BarcodePayload>()))
+                Array.Empty<BarcodePayload>(),
+                s.PackageCode,
+                s.CartonCode))
             .ToList();
         _logger.LogInformation("Read {Count} stocks for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -340,26 +344,26 @@ WHERE ISNULL(sat_iptal, 0) = 0";
     /// <inheritdoc />
     public async Task<IReadOnlyList<InventoryPayload>> ReadInventoryAsync(int firmNo, int warehouseNo, CancellationToken ct = default)
     {
-        // Tips 1..3 are inflow, tips >= 4 are outflow — negate them so SUM nets
-        // to the current on-hand quantity.
+        // Mikro's own stock-movement view contains the authoritative on-hand
+        // quantity after applying the ERP's movement, cancellation, return and
+        // transfer rules. Do not recalculate this value from STOK_HAREKETLERI:
+        // doing so can diverge from Mikro for movement types with special rules.
+        // The view is company-wide (no warehouse column), so expose its result
+        // as the requested/default warehouse while preserving the exact total.
         const string sql = @"
 SELECT
-    CAST(ISNULL(sth_stok_kod, '') AS NVARCHAR(50))   AS StockCode,
-    CAST(ISNULL(sth_cikis_depo_no, 0) AS INT)        AS WarehouseNo,
-    CAST(SUM(CASE WHEN ISNULL(sth_tip, 0) < 4
-                  THEN ISNULL(sth_miktar, 0)
-                  ELSE -ISNULL(sth_miktar, 0) END) AS DECIMAL(18,6)) AS Quantity,
-    CAST(0 AS DECIMAL(18,6))                         AS ReservedQuantity,
-    CAST(MAX(sth_tarih) AS DATE)                     AS LastMovementDate
-FROM STOK_HAREKETLERI
-WHERE sth_firmano = @firmNo
-  AND sth_cikis_depo_no = @warehouseNo
-GROUP BY sth_stok_kod, sth_cikis_depo_no";
+    CAST(ISNULL(sth_stok_kod, '') AS NVARCHAR(50))       AS StockCode,
+    CAST(@warehouseNo AS INT)                            AS WarehouseNo,
+    CAST(ISNULL(sth_eldeki_miktar, 0) AS DECIMAL(18,6))  AS Quantity,
+    CAST(0 AS DECIMAL(18,6))                             AS ReservedQuantity,
+    CAST(NULL AS DATE)                                   AS LastMovementDate
+FROM dbo.STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW
+WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL";
 
         var rows = await QueryAsync<InventoryPayload>(sql, new { firmNo, warehouseNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation(
-            "Read {Count} inventory rows for firmNo={FirmNo}, warehouseNo={WarehouseNo}.",
+            "Read {Count} inventory rows from STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW for firmNo={FirmNo}, warehouseNo={WarehouseNo}.",
             result.Count, firmNo, warehouseNo);
         return result;
     }
@@ -525,6 +529,8 @@ ORDER BY sth_RECno";
         string? ModelCode,
         string? ManufacturerCode,
         string? ShelfCode,
+        string? PackageCode,
+        string? CartonCode,
         bool BedenliTakip,
         bool RenkDetayli,
         decimal? StandardCost,
