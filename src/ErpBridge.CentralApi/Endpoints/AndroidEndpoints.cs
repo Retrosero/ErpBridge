@@ -238,6 +238,9 @@ public static class AndroidEndpoints
                     erpRef = code,
                     listNo = int.TryParse(code, out var number) ? number : 0,
                     aciklama = GetString(item, "name"),
+                    sfl_sirano = int.TryParse(code, out var sflSirano) ? sflSirano : 0,
+                    sfl_aciklama = GetString(item, "name"),
+                    sfl_fiyatformul = GetString(item, "parentCode"),
                     isDeleted = false,
                 };
             })
