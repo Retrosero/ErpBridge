@@ -161,6 +161,138 @@ interface WmsOrderItemDao {
     suspend fun deleteAll()
 }
 
+@Dao
+interface CustomerAddressDao {
+    @Query("SELECT * FROM customer_addresses")
+    suspend fun getAll(): List<CustomerAddressEntity>
+
+    @Query("SELECT * FROM customer_addresses WHERE customerCode = :customerCode")
+    suspend fun getByCustomer(customerCode: String): List<CustomerAddressEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(addresses: List<CustomerAddressEntity>)
+
+    @Query("DELETE FROM customer_addresses")
+    suspend fun deleteAll()
+
+    @androidx.room.Transaction
+    suspend fun replaceAll(addresses: List<CustomerAddressEntity>) {
+        deleteAll()
+        insertAll(addresses)
+    }
+}
+
+@Dao
+interface CustomerContactDao {
+    @Query("SELECT * FROM customer_contacts")
+    suspend fun getAll(): List<CustomerContactEntity>
+
+    @Query("SELECT * FROM customer_contacts WHERE customerCode = :customerCode")
+    suspend fun getByCustomer(customerCode: String): List<CustomerContactEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(contacts: List<CustomerContactEntity>)
+
+    @Query("DELETE FROM customer_contacts")
+    suspend fun deleteAll()
+
+    @androidx.room.Transaction
+    suspend fun replaceAll(contacts: List<CustomerContactEntity>) {
+        deleteAll()
+        insertAll(contacts)
+    }
+}
+
+@Dao
+interface BarcodeDao {
+    @Query("SELECT * FROM barcodes")
+    suspend fun getAll(): List<BarcodeEntity>
+
+    @Query("SELECT * FROM barcodes WHERE barcode = :barcode LIMIT 1")
+    suspend fun getByBarcode(barcode: String): BarcodeEntity?
+
+    @Query("SELECT * FROM barcodes WHERE stockCode = :stockCode")
+    suspend fun getByStockCode(stockCode: String): List<BarcodeEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(barcodes: List<BarcodeEntity>)
+
+    @Query("DELETE FROM barcodes")
+    suspend fun deleteAll()
+
+    @androidx.room.Transaction
+    suspend fun replaceAll(barcodes: List<BarcodeEntity>) {
+        deleteAll()
+        insertAll(barcodes)
+    }
+}
+
+@Dao
+interface SalesConditionDao {
+    @Query("SELECT * FROM sales_conditions")
+    suspend fun getAll(): List<SalesConditionEntity>
+
+    @Query("SELECT * FROM sales_conditions WHERE customerCode = :customerCode")
+    suspend fun getByCustomer(customerCode: String): List<SalesConditionEntity>
+
+    @Query("SELECT * FROM sales_conditions WHERE stockCode = :stockCode")
+    suspend fun getByStock(stockCode: String): List<SalesConditionEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(conditions: List<SalesConditionEntity>)
+
+    @Query("DELETE FROM sales_conditions")
+    suspend fun deleteAll()
+
+    @androidx.room.Transaction
+    suspend fun replaceAll(conditions: List<SalesConditionEntity>) {
+        deleteAll()
+        insertAll(conditions)
+    }
+}
+
+@Dao
+interface CariHareketDao {
+    @Query("SELECT * FROM cari_hareketleri")
+    suspend fun getAll(): List<CariHareketEntity>
+
+    @Query("SELECT * FROM cari_hareketleri WHERE customerCode = :customerCode")
+    suspend fun getByCustomerCode(customerCode: String): List<CariHareketEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(movements: List<CariHareketEntity>)
+
+    @Query("DELETE FROM cari_hareketleri")
+    suspend fun deleteAll()
+
+    @androidx.room.Transaction
+    suspend fun replaceAll(movements: List<CariHareketEntity>) {
+        deleteAll()
+        insertAll(movements)
+    }
+}
+
+@Dao
+interface StockMovementDao {
+    @Query("SELECT * FROM stock_movements")
+    suspend fun getAll(): List<StockMovementEntity>
+
+    @Query("SELECT * FROM stock_movements WHERE stockCode = :stockCode")
+    suspend fun getByStockCode(stockCode: String): List<StockMovementEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(movements: List<StockMovementEntity>)
+
+    @Query("DELETE FROM stock_movements")
+    suspend fun deleteAll()
+
+    @androidx.room.Transaction
+    suspend fun replaceAll(movements: List<StockMovementEntity>) {
+        deleteAll()
+        insertAll(movements)
+    }
+}
+
 @Database(
     entities = [
         UserEntity::class,
@@ -170,9 +302,15 @@ interface WmsOrderItemDao {
         KasaLogEntity::class,
         SalesRecordEntity::class,
         WmsOrderEntity::class,
-        WmsOrderItemEntity::class
+        WmsOrderItemEntity::class,
+        CustomerAddressEntity::class,
+        CustomerContactEntity::class,
+        BarcodeEntity::class,
+        SalesConditionEntity::class,
+        CariHareketEntity::class,
+        StockMovementEntity::class
     ],
-    version = 7,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -185,4 +323,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun salesRecordDao(): SalesRecordDao
     abstract fun wmsOrderDao(): WmsOrderDao
     abstract fun wmsOrderItemDao(): WmsOrderItemDao
+    abstract fun customerAddressDao(): CustomerAddressDao
+    abstract fun customerContactDao(): CustomerContactDao
+    abstract fun barcodeDao(): BarcodeDao
+    abstract fun salesConditionDao(): SalesConditionDao
+    abstract fun cariHareketDao(): CariHareketDao
+    abstract fun stockMovementDao(): StockMovementDao
 }

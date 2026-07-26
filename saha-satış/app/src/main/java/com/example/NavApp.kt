@@ -395,8 +395,8 @@ fun NavApp() {
                 }
 
                 if (com.example.ui.screens.AppDataStore.globalScannedBarcode != null) {
-                    val scannedCode = com.example.ui.screens.AppDataStore.globalScannedBarcode
-                    val product = com.example.ui.screens.AppDataStore.products.find { it.barcode == scannedCode || it.barcodes.contains(scannedCode) || it.code == scannedCode }
+                    val scannedCode = com.example.ui.screens.AppDataStore.globalScannedBarcode!!
+                    val product = com.example.ui.screens.AppDataStore.findProductByBarcode(scannedCode)
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { com.example.ui.screens.AppDataStore.globalScannedBarcode = null },
                         title = {

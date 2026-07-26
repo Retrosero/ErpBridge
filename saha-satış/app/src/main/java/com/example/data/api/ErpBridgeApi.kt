@@ -9,6 +9,54 @@ typealias LicenseStatusResponse = LicenseStatusDto
 typealias PullResponse = PullJobsResponse
 typealias PushResponse = PushJobsResponse
 
+typealias CariAdreslerResponse = FieldOpsSyncResponse<CustomerAddressDto>
+typealias CariYetkililerResponse = FieldOpsSyncResponse<CustomerContactDto>
+typealias BarkodlarResponse = FieldOpsSyncResponse<BarcodeDto>
+typealias SatisSartlariResponse = FieldOpsSyncResponse<SalesConditionDto>
+
+data class CustomerAddressDto(
+    val customerCode: String,
+    val addressNo: Int,
+    val city: String? = null,
+    val district: String? = null,
+    val street: String? = null,
+    val postalCode: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val salespersonCode: String? = null
+)
+
+data class CustomerContactDto(
+    val customerCode: String,
+    val firstName: String? = null,
+    val lastName: String? = null,
+    val email: String? = null,
+    val mobile: String? = null,
+    val tcIdentityNo: String? = null,
+    val taxNo: String? = null
+)
+
+data class BarcodeDto(
+    val barcode: String,
+    val stockCode: String,
+    val partCode: String? = null,
+    val lotNo: String? = null,
+    val serialNo: String? = null,
+    val unitPointer: Int = 0
+)
+
+data class SalesConditionDto(
+    val stockCode: String? = null,
+    val customerCode: String? = null,
+    val warehouseNo: Int? = null,
+    val paymentPlanNo: Int? = null,
+    val startDate: String? = null,
+    val endDate: String? = null,
+    val grossPrice: Double? = null,
+    val currency: String? = null,
+    val discounts: List<Double> = emptyList()
+)
+
 data class SyncRequest(
     @com.squareup.moshi.Json(name = "tenant_id") val tenantId: String,
     @com.squareup.moshi.Json(name = "api_key") val apiKey: String,
@@ -43,6 +91,18 @@ interface ErpBridgeApi {
 
     @POST("api/v1/android/sync/faturaHareket")
     suspend fun syncFaturaHareket(@Body request: SyncRequest): FaturaHareketResponse
+
+    @POST("api/v1/android/sync/cariAdresler")
+    suspend fun syncCariAdresler(@Body request: SyncRequest): CariAdreslerResponse
+
+    @POST("api/v1/android/sync/cariYetkililer")
+    suspend fun syncCariYetkililer(@Body request: SyncRequest): CariYetkililerResponse
+
+    @POST("api/v1/android/sync/barkodlar")
+    suspend fun syncBarkodlar(@Body request: SyncRequest): BarkodlarResponse
+
+    @POST("api/v1/android/sync/satisSartlari")
+    suspend fun syncSatisSartlari(@Body request: SyncRequest): SatisSartlariResponse
 
     @POST("api/v1/android/license/status")
     suspend fun licenseStatus(@Body request: SyncRequest): LicenseStatusResponse

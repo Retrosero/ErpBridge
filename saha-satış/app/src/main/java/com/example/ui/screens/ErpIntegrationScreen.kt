@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -61,7 +62,7 @@ fun ErpIntegrationScreen(navController: NavController) {
     var selectedErp by remember { mutableStateOf(sharedPrefs.getString("selected_erp", "GOAPP ERP") ?: "GOAPP ERP") }
     
     // API Connection Settings
-    var apiUrl by remember { mutableStateOf(sharedPrefs.getString("api_url", "https://lisans.appsgo.cloud/") ?: "https://lisans.appsgo.cloud/") }
+    var apiUrl by remember { mutableStateOf(sharedPrefs.getString("api_url", "https://d5e4-88-248-2-49.ngrok-free.app") ?: "https://d5e4-88-248-2-49.ngrok-free.app") }
     var tenantId by remember {
         val enc = sharedPrefs.getString("tenant_id_encrypted", "") ?: ""
         mutableStateOf(if (enc.isNotEmpty()) com.example.util.CryptoUtils.decrypt(enc) else sharedPrefs.getString("tenant_id", "T001") ?: "T001")
@@ -314,7 +315,7 @@ fun ErpIntegrationScreen(navController: NavController) {
             putString("db_username", dbUsername)
             putString("db_password", dbPassword)
             putString("db_port", dbPort)
-            if (selectedErp == "FIELDOPS BRIDGE") {
+            if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                 putString("fieldops_api_url", apiUrl)
                 putString("fieldops_api_key", apiKey)
                 putString("fieldops_tenant_id", tenantId)
@@ -373,11 +374,9 @@ fun ErpIntegrationScreen(navController: NavController) {
                 dbName = sharedPrefs.getString("db_name", "BILNEX_ERP_2026") ?: "BILNEX_ERP_2026"
             }
             "GOAPP ERP" -> {
-                apiUrl = "https://lisans.appsgo.cloud/"
-                apiKey = com.example.data.LicenseRepository.getApiKey(context)
-                    ?: sharedPrefs.getString("goapp_api_key", "") ?: ""
-                tenantId = com.example.data.LicenseRepository.getTenantId(context)
-                    ?: sharedPrefs.getString("goapp_tenant_id", "T001") ?: "T001"
+                apiUrl = "https://lisans.appsgo.cloud"
+                apiKey = sharedPrefs.getString("goapp_api_key", "") ?: ""
+                tenantId = sharedPrefs.getString("goapp_tenant_id", "T001") ?: "T001"
             }
             "FIELDOPS BRIDGE" -> {
                 apiUrl = "https://d5e4-88-248-2-49.ngrok-free.app"
@@ -656,16 +655,6 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 )
                             } else if (selectedErp == "GOAPP ERP") {
                                 OutlinedTextField(
-                                    value = apiUrl,
-                                    onValueChange = { apiUrl = it },
-                                    label = { Text("Lisans / API Sunucu Adresi", style = MaterialTheme.typography.bodySmall) },
-                                    placeholder = { Text("örn: https://lisans.appsgo.cloud") },
-                                    supportingText = { Text("Merkez lisans ve veri sunucusu adresi.", style = MaterialTheme.typography.labelSmall) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textStyle = MaterialTheme.typography.bodySmall
-                                )
-
-                                OutlinedTextField(
                                     value = tenantId,
                                     onValueChange = { tenantId = it },
                                     label = { Text("Tenant ID (Müşteri Kodu / Tenant UUID)", style = MaterialTheme.typography.bodySmall) },
@@ -685,19 +674,21 @@ fun ErpIntegrationScreen(navController: NavController) {
                                     textStyle = MaterialTheme.typography.bodySmall
                                 )
 
+                                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                val currentContext = androidx.compose.ui.platform.LocalContext.current
                                 OutlinedTextField(
                                     value = deviceId,
-                                    onValueChange = { deviceId = it },
+                                    onValueChange = { },
                                     label = { Text("Device ID (Cihaz Kimliği)", style = MaterialTheme.typography.bodySmall) },
                                     supportingText = { Text("Sistem tarafında multi-tenant güvenliği ve lisanslama için otomatik üretilen cihaz kimliği.", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
                                     readOnly = true,
                                     trailingIcon = {
                                         IconButton(onClick = {
-                                            deviceId = java.util.UUID.randomUUID().toString()
-                                            log("Cihaz kimliği yeniden üretildi: $deviceId")
+                                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(deviceId))
+                                            Toast.makeText(currentContext, "Cihaz kimliği kopyalandı", Toast.LENGTH_SHORT).show()
                                         }) {
-                                            Icon(Icons.Filled.Refresh, contentDescription = "Regenerate Device ID")
+                                            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy Device ID")
                                         }
                                     },
                                     textStyle = MaterialTheme.typography.bodySmall
@@ -717,11 +708,14 @@ fun ErpIntegrationScreen(navController: NavController) {
                                             connectionTestResult = "Bağlantı test ediliyor..."
                                             log("GOAPP ERP lisans ve bağlantı testi başlatıldı: tenant_id=$tenantId, URL=$apiUrl")
                                             try {
-                                                val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey, tenantId)
+                                                val formattedApiKey = if (apiKey.startsWith("AK-")) apiKey else "AK-$apiKey"
+                                                val combinedKey = "${tenantId}-${formattedApiKey}"
+                                                
+                                                val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, combinedKey)
                                                 val response = apiService.bootstrap(
                                                     com.example.data.api.BootstrapRequest(
                                                         tenant_id = tenantId,
-                                                        api_key = apiKey,
+                                                        api_key = formattedApiKey,
                                                         device_id = deviceId,
                                                         agent_version = "v2.0-goapp"
                                                     )
@@ -731,6 +725,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     if (res.success) {
                                                         isConnectionSuccess = true
                                                         connectionTestResult = "Bağlantı Başarılı!\nTenant: ${res.tenant_name ?: tenantId}\nERP Listesi: ${res.allowed_erps?.joinToString() ?: "Tümü"}"
+                                                        startSyncAll()
                                                         log("✅ GOAPP ERP bağlantı testi başarılı! Tenant: ${res.tenant_name}")
                                                     } else {
                                                         isConnectionSuccess = false
@@ -743,7 +738,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     val errBody = response.errorBody()?.string() ?: ""
                                                     val localized = when {
                                                         code == 401 -> "API anahtarı geçersiz veya eksik."
-                                                        code == 403 || errBody.contains("MOBILE_READ_SCOPE_REQUIRED") -> "Lisans anahtarınızda 'mobile:read' yetkisi bulunmamaktadır."
+                                                        code == 403 -> if (errBody.contains("MOBILE_READ_SCOPE_REQUIRED")) "Lisans anahtarınızda 'mobile:read' yetkisi bulunmamaktadır." else "API anahtarı geçersiz veya yetkiniz yok (HTTP 403)."
                                                         code == 404 || errBody.contains("BOOTSTRAP_NOT_FOUND") -> "Bu tenant için henüz ERP'den veri paketi gelmemiş (Bootstrap kaydı bulunamadı)."
                                                         else -> "HTTP Hatası: $code - ${response.message()}"
                                                     }
@@ -784,16 +779,18 @@ fun ErpIntegrationScreen(navController: NavController) {
                                         modifier = Modifier.padding(top = 4.dp)
                                     )
                                 }
-                            } else if (selectedErp == "FIELDOPS BRIDGE") {
-                                OutlinedTextField(
-                                    value = apiUrl,
-                                    onValueChange = { apiUrl = it },
-                                    label = { Text("FieldOps Bridge REST API URL", style = MaterialTheme.typography.bodySmall) },
-                                    placeholder = { Text("örn: https://api.fieldops.com") },
-                                    supportingText = { Text("Merkez FieldOps Bridge API adresini belirtin.", style = MaterialTheme.typography.labelSmall) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textStyle = MaterialTheme.typography.bodySmall
-                                )
+                            } else if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
+                                if (selectedErp != "GOAPP ERP") {
+                                    OutlinedTextField(
+                                        value = apiUrl,
+                                        onValueChange = { apiUrl = it },
+                                        label = { Text("FieldOps Bridge REST API URL", style = MaterialTheme.typography.bodySmall) },
+                                        placeholder = { Text("örn: https://api.fieldops.com") },
+                                        supportingText = { Text("Merkez FieldOps Bridge API adresini belirtin.", style = MaterialTheme.typography.labelSmall) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textStyle = MaterialTheme.typography.bodySmall
+                                    )
+                                }
 
                                 OutlinedTextField(
                                     value = tenantId,
@@ -815,19 +812,21 @@ fun ErpIntegrationScreen(navController: NavController) {
                                     textStyle = MaterialTheme.typography.bodySmall
                                 )
 
+                                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                val currentContext = androidx.compose.ui.platform.LocalContext.current
                                 OutlinedTextField(
                                     value = deviceId,
-                                    onValueChange = { deviceId = it },
+                                    onValueChange = { },
                                     label = { Text("Device ID (Cihaz Kimliği)", style = MaterialTheme.typography.bodySmall) },
                                     supportingText = { Text("Sistem tarafında multi-tenant güvenliği ve lisanslama için otomatik üretilen cihaz kimliği.", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
                                     readOnly = true,
                                     trailingIcon = {
                                         IconButton(onClick = {
-                                            deviceId = java.util.UUID.randomUUID().toString()
-                                            log("Cihaz kimliği yeniden üretildi: $deviceId")
+                                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(deviceId))
+                                            Toast.makeText(currentContext, "Cihaz kimliği kopyalandı", Toast.LENGTH_SHORT).show()
                                         }) {
-                                            Icon(Icons.Filled.Refresh, contentDescription = "Regenerate Device ID")
+                                            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy Device ID")
                                         }
                                     },
                                     textStyle = MaterialTheme.typography.bodySmall
@@ -861,6 +860,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     if (res.success) {
                                                         isConnectionSuccess = true
                                                         connectionTestResult = "Bağlantı Başarılı!\nTenant: ${res.tenant_name ?: tenantId}\nERP Listesi: ${res.allowed_erps?.joinToString() ?: "Tümü"}"
+                                                        startSyncAll()
                                                         log("✅ Bağlantı testi başarılı! Tenant: ${res.tenant_name}")
                                                     } else {
                                                         isConnectionSuccess = false
@@ -999,7 +999,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
-                            if (selectedErp == "FIELDOPS BRIDGE") {
+                            if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                 var licenseState by remember { mutableStateOf("Kontrol Edilmedi") }
                                 var allowedErps by remember { mutableStateOf<List<String>?>(null) }
                                 var expiresAt by remember { mutableStateOf<String?>(null) }
@@ -1114,7 +1114,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                     modifier = Modifier.padding(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    if (selectedErp == "FIELDOPS BRIDGE") {
+                                    if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                         Column(
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1270,9 +1270,8 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     scope.launch {
                                                         isOperating = true
                                                         log("GET [Stok Hareketleri] aktarımı ve depo eşleme kontrolü başlatıldı...")
-                                                        log("Ürün detay sayfası açıldığında 'getStokHareket' uç noktası dinamik olarak sorgulanır.")
                                                         try {
-                                                            BridgeSyncHelper.syncUrunler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
+                                                            BridgeSyncHelper.syncStokHareketleri(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
                                                         } catch(e: Exception) {
                                                             log("Stok Defteri Aktarım Hatası: ${e.message}")
                                                         }
@@ -1549,7 +1548,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     isOperating = true
                                                     log("GET [Customers] api çağrısı başlatıldı ($selectedErp)...")
                                                     
-                                                    if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
+                                                    if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                                         try {
                                                             log("Uç nokta: $apiUrl/api/v1/sync/cari")
                                                             activeProgress = 0.2f
@@ -1655,7 +1654,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                 scope.launch {
                                                     isOperating = true
                                                     log("GET [Products] api çağrısı başlatıldı...")
-                                                    if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
+                                                    if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                                         try {
                                                             log("FieldOps Bridge GET [Urun] api çağrısı başlatıldı...")
                                                             log("Uç nokta: $apiUrl/api/v1/sync/urun")
@@ -1963,7 +1962,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                                 customDepo = customPayloadDepo
                                                             )
 
-                                                            if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
+                                                            if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                                                 try {
                                                                     log("FieldOps Bridge POST [Push] kuyruğuna yazılıyor...")
                                                                     log("Hedef Endpoint: $apiUrl/api/v1/sync/push")
@@ -2119,7 +2118,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     // Sync 2: Customers
                                                     tableSyncStatuses["customers"] = "Eşitleniyor..."
                                                     log("GET [customers] toplu senkronizasyonu başladı...")
-                                                    if (selectedErp == "FIELDOPS BRIDGE") {
+                                                    if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                                         try {
                                                             BridgeSyncHelper.syncCariler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
                                                         } catch(e: Exception) { log("Müşteri toplu sync hatası: ${e.message}") }
@@ -2138,7 +2137,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                     // Sync 3: Products
                                                     tableSyncStatuses["products"] = "Eşitleniyor..."
                                                     log("GET [products] toplu senkronizasyonu başladı...")
-                                                    if (selectedErp == "FIELDOPS BRIDGE") {
+                                                    if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                                         try {
                                                             BridgeSyncHelper.syncUrunler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
                                                         } catch(e: Exception) { log("Ürün toplu sync hatası: ${e.message}") }
@@ -2229,7 +2228,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         tableSyncStatuses["customers"] = "Eşitleniyor..."
                                                         log("GET [customers] tablosu tekil senkronizasyonu başlatıldı...")
                                                         try {
-                                                            if (selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP") {
+                                                            if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                                                 BridgeSyncHelper.syncCariler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
                                                             } else {
                                                                 delay(1200)
@@ -2266,7 +2265,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                         tableSyncStatuses["products"] = "Eşitleniyor..."
                                                         log("GET [products] tablosu tekil senkronizasyonu başlatıldı...")
                                                         try {
-                                                            if (selectedErp == "FIELDOPS BRIDGE") {
+                                                            if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
                                                                 BridgeSyncHelper.syncUrunler(context, apiUrl, apiKey, { log(it) }, { activeProgress = it })
                                                             } else {
                                                                 delay(1300)
@@ -2563,7 +2562,40 @@ fun ErpIntegrationScreen(navController: NavController) {
                             }
 
                             // Interactive Console Screen
-                            Text("Entegratör Terminal Log Çıktısı", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Entegratör Terminal Log Çıktısı",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                TextButton(
+                                    onClick = {
+                                        val logsText = consoleLogs.joinToString("\n")
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(logsText))
+                                        Toast.makeText(context, "Bütün terminal logları kopyalandı", Toast.LENGTH_SHORT).show()
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("copy_all_logs_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.ContentCopy,
+                                        contentDescription = "Bütün Logları Kopyala",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Kopyala",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                             
                             Box(
                                 modifier = Modifier
@@ -2803,7 +2835,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 when (selectedViewerSubTab) {
                                     0 -> { // Cari Adresleri
                                         val filtered = AppDataStore.cariAdresleri.filter {
-                                            it.cariKod.contains(viewerSearchQuery, true) ||
+                                            (it.cariKod ?: "").contains(viewerSearchQuery, true) ||
                                             (it.il ?: "").contains(viewerSearchQuery, true) ||
                                             (it.ilce ?: "").contains(viewerSearchQuery, true) ||
                                             (it.mahalle ?: "").contains(viewerSearchQuery, true)
@@ -2832,7 +2864,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                             ) {
                                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                                     Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                                                    Text(item.cariKod, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                                                    Text(item.cariKod ?: "", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                                                 }
                                                                 Box(
                                                                     modifier = Modifier
@@ -2859,7 +2891,7 @@ fun ErpIntegrationScreen(navController: NavController) {
 
                                     1 -> { // Cari Banka Hesapları
                                         val filtered = AppDataStore.cariBankaHesaplari.filter {
-                                            it.cariKod.contains(viewerSearchQuery, true) ||
+                                            (it.cariKod ?: "").contains(viewerSearchQuery, true) ||
                                             (it.hesapNumarasi ?: "").contains(viewerSearchQuery, true) ||
                                             (it.swiftKodu ?: "").contains(viewerSearchQuery, true)
                                         }
@@ -2887,7 +2919,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                             ) {
                                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                                     Icon(Icons.Filled.CreditCard, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                                                    Text(item.cariKod, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                                                    Text(item.cariKod ?: "", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                                                 }
                                                                 Box(
                                                                     modifier = Modifier
@@ -2918,8 +2950,8 @@ fun ErpIntegrationScreen(navController: NavController) {
 
                                     2 -> { // Bankalar
                                         val filtered = AppDataStore.bridgeBankalar.filter {
-                                            it.kod.contains(viewerSearchQuery, true) ||
-                                            it.isim.contains(viewerSearchQuery, true) ||
+                                            (it.kod ?: "").contains(viewerSearchQuery, true) ||
+                                            (it.isim ?: "").contains(viewerSearchQuery, true) ||
                                             (it.iBANKodu ?: "").contains(viewerSearchQuery, true) ||
                                             (it.hesapNumarasi ?: "").contains(viewerSearchQuery, true)
                                         }
@@ -2947,14 +2979,14 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                             ) {
                                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                                     Icon(Icons.Filled.AccountBalance, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                                                    Text(item.isim, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                                                    Text(item.isim ?: "", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                                                 }
                                                                 Box(
                                                                     modifier = Modifier
                                                                         .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(4.dp))
                                                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                                                 ) {
-                                                                    Text(item.kod, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                                                    Text(item.kod ?: "", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                                                                 }
                                                             }
                                                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -2976,8 +3008,8 @@ fun ErpIntegrationScreen(navController: NavController) {
 
                                     3 -> { // Kasalar
                                         val filtered = AppDataStore.bridgeKasalar.filter {
-                                            it.kod.contains(viewerSearchQuery, true) ||
-                                            it.isim.contains(viewerSearchQuery, true) ||
+                                            (it.kod ?: "").contains(viewerSearchQuery, true) ||
+                                            (it.isim ?: "").contains(viewerSearchQuery, true) ||
                                             (it.muhasebeKod ?: "").contains(viewerSearchQuery, true)
                                         }
                                         if (filtered.isEmpty()) {
@@ -3004,14 +3036,14 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                             ) {
                                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                                     Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                                                    Text(item.isim, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                                                    Text(item.isim ?: "", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                                                 }
                                                                 Box(
                                                                     modifier = Modifier
                                                                         .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(4.dp))
                                                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                                                 ) {
-                                                                    Text(item.kod, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                                                    Text(item.kod ?: "", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                                                                 }
                                                             }
                                                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -3032,8 +3064,8 @@ fun ErpIntegrationScreen(navController: NavController) {
 
                                     4 -> { // Kasa Yönetimi
                                         val filtered = AppDataStore.kasaYonetimList.filter {
-                                            it.kasaKod.contains(viewerSearchQuery, true) ||
-                                            it.kasaAd.contains(viewerSearchQuery, true) ||
+                                            (it.kasaKod ?: "").contains(viewerSearchQuery, true) ||
+                                            (it.kasaAd ?: "").contains(viewerSearchQuery, true) ||
                                             (it.muhasebeKod ?: "").contains(viewerSearchQuery, true)
                                         }
                                         if (filtered.isEmpty()) {
@@ -3060,14 +3092,14 @@ fun ErpIntegrationScreen(navController: NavController) {
                                                             ) {
                                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                                     Icon(Icons.Filled.ManageAccounts, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                                                    Text(item.kasaAd, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                                                    Text(item.kasaAd ?: "", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                                                 }
                                                                 Box(
                                                                     modifier = Modifier
                                                                         .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(4.dp))
                                                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                                                 ) {
-                                                                    Text(item.kasaKod, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                                                    Text(item.kasaKod ?: "", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                                                                 }
                                                             }
                                                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))

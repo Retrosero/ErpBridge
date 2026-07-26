@@ -1066,7 +1066,8 @@ fun SalesScreen(navController: NavController) {
                         val matchesQuery = searchQuery.isEmpty() ||
                                            p.title.contains(searchQuery, ignoreCase = true) || 
                                            p.code.contains(searchQuery, ignoreCase = true) || 
-                                           p.barcode == searchQuery
+                                           p.barcode.contains(searchQuery, ignoreCase = true) ||
+                                           p.barcodes.any { it.contains(searchQuery, ignoreCase = true) }
                         
                         val matchesCat = if (AppDataStore.salesFilterCategories.value.isNotEmpty()) {
                             AppDataStore.salesFilterCategories.value.contains(p.category)
@@ -2786,7 +2787,6 @@ fun InvoiceDetailDialog(
     val scope = rememberCoroutineScope()
     var loadedItems by remember(tx.id) { mutableStateOf<List<Pair<String, Pair<Int, Double>>>>(emptyList()) }
     var isLoading by remember(tx.id) { mutableStateOf(true) }
-    var isSampleData by remember(tx.id) { mutableStateOf(false) }
     
     var isReprinting by remember { mutableStateOf(false) }
     var reprintStateText by remember { mutableStateOf("") }
@@ -2803,35 +2803,16 @@ fun InvoiceDetailDialog(
                 else tx.id
             
             var found = false
-            if (orderId != null && (orderId == "FT-12002" || orderId == "FT-11915" || orderId == "FT-12056")) {
-                val mockMap = mapOf(
-                    "FT-12002" to listOf(
-                        Pair("Ultra Performans Endüstriyel Motor Yağı 20L", Pair(3, 2450.00)),
-                        Pair("Hava Filtresi - Ağır Vasıta Uyumlu Pro", Pair(3, 485.50)),
-                        Pair("Çelik Rulman 120mm - Yüksek Devir", Pair(1, 133.50))
-                    ),
-                    "FT-11915" to listOf(
-                        Pair("Ultra Performans Endüstriyel Motor Yağı 20L", Pair(4, 2450.00)),
-                        Pair("Çelik Rulman 120mm - Yüksek Devir", Pair(1, 510.00))
-                    ),
-                    "FT-12056" to listOf(
-                        Pair("Hava Filtresi - Ağır Vasıta Uyumlu Pro", Pair(1, 485.50)),
-                        Pair("Çelik Rulman 120mm - Yüksek Devir", Pair(1, 365.00))
-                    )
-                )
-                loadedItems = mockMap[orderId] ?: emptyList()
-                found = true
-            }
 
             var wmsItems = emptyList<com.example.data.database.WmsOrderItemEntity>()
-            if (!found && tx.cha_recno != null) {
+            if (tx.cha_recno != null) {
                 val items = db.wmsOrderItemDao().getItemsByRecNo(tx.cha_recno)
                 if (items.isNotEmpty()) {
                     wmsItems = items
                 }
             }
-            if (wmsItems.isEmpty() && !found && orderId != null) {
-                // Try locating order items using erpRef, recNo, orderId, or tx.id
+            if (wmsItems.isEmpty() && tx.cha_recno == null && orderId != null) {
+                // Eski/offline kayıtlarda yalnızca kesin belge anahtarlarını dene.
                 val keysToTry = listOfNotNull(tx.erpRef, tx.recNo, orderId, tx.id)
                 for (key in keysToTry) {
                     if (key.isNotBlank()) {
@@ -2889,10 +2870,7 @@ fun InvoiceDetailDialog(
                 val customerClean = cleanCariName(customerName)
                 val matchingCust = AppDataStore.customers.find { 
                     val custClean = cleanCariName(it.name)
-                    (custClean.isNotEmpty() && custClean == customerClean) || 
-                    (customerClean.isNotEmpty() && custClean.contains(customerClean)) || 
-                    (custClean.isNotEmpty() && customerClean.contains(custClean)) ||
-                    it.name.trim().equals(customerName.trim(), ignoreCase = true)
+                    custClean.isNotEmpty() && custClean == customerClean
                 }
                 if (matchingCust != null) {
                     val custId = matchingCust.id
@@ -2906,7 +2884,7 @@ fun InvoiceDetailDialog(
                             val response = apiService.getFaturaHareket(com.example.data.api.PullJobsRequest(tenant_id=sharedPrefs.getString("tenant_id", "T001") ?: "T001", api_key=apiKey, device_id=sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT", agent_version="v2.0", entity="faturaHareket", since=custId))
                             if (response.isSuccessful && response.body() != null) {
                                 val body = response.body()!!
-                                val items = body.items
+                                val items = body.actualItems
                                 
                                 val targetClean = orderId?.replace("FT-", "")?.replace("SM-", "") ?: ""
                                 var matchedInvoice = if (tx.cha_recno != null) {
@@ -2915,7 +2893,7 @@ fun InvoiceDetailDialog(
                                     }
                                 } else null
                                 
-                                if (matchedInvoice == null) {
+                                if (matchedInvoice == null && tx.cha_recno == null) {
                                     matchedInvoice = items.find { fatura ->
                                         val rawEvrak = fatura.evrakNo ?: ""
                                         val ref = fatura.erpRef ?: ""
@@ -2925,8 +2903,7 @@ fun InvoiceDetailDialog(
                                         (ref.isNotEmpty() && ref == orderId) ||
                                         (rawEvrak.isNotEmpty() && rawEvrak == targetClean) || 
                                         (rawEvrak.isNotEmpty() && rawEvrak == orderId) || 
-                                        (ref.isNotEmpty() && ref == tx.id) ||
-                                        (rawEvrak.isNotEmpty() && tx.description.contains(rawEvrak))
+                                        (ref.isNotEmpty() && ref == tx.id)
                                     }
                                 }
                                 
@@ -2943,8 +2920,7 @@ fun InvoiceDetailDialog(
                                     val invoiceIdKey = if (!matchedInvoice.erpRef.isNullOrBlank()) matchedInvoice.erpRef else invoiceNo
                                     
                                     val targetLines = if (tx.cha_recno != null) {
-                                        val filtered = matchedInvoice.satirlar.filter { it.realSthFatRecidRecno == tx.cha_recno }
-                                        if (filtered.isNotEmpty()) filtered else matchedInvoice.satirlar
+                                        matchedInvoice.satirlar.filter { it.realSthFatRecidRecno == tx.cha_recno }
                                     } else {
                                         matchedInvoice.satirlar
                                     }
@@ -3006,85 +2982,7 @@ fun InvoiceDetailDialog(
                 }
             }
             
-            if (!found) {
-                val matchingCust = AppDataStore.customers.find { it.name.trim().lowercase() == customerName.trim().lowercase() }
-                val localRecords = AppDataStore.salesHistory.filter { 
-                    (matchingCust == null || it.customerId == matchingCust.id) && it.date == tx.date 
-                }
-                if (localRecords.isNotEmpty()) {
-                    loadedItems = localRecords.map { rec ->
-                        val prod = AppDataStore.products.find { it.barcode == rec.productBarcode }
-                        val nameStr = prod?.title ?: "Ürün (${rec.productBarcode})"
-                        Pair(nameStr, Pair(rec.quantity, rec.price))
-                    }
-                } else {
-                    loadedItems = emptyList()
-                }
-            }
-
-            if (loadedItems.isEmpty()) {
-                if (tx.type == "SATIŞ") {
-                    val resultList = mutableListOf<Pair<String, Pair<Int, Double>>>()
-                    val desc = tx.description ?: ""
-                    var parsed = false
-                    if (desc.contains("adet", ignoreCase = true)) {
-                        val words = desc.split(" ")
-                        val adetIndex = words.indexOfFirst { it.lowercase() == "adet" }
-                        if (adetIndex > 0) {
-                            val qtyText = words.getOrNull(adetIndex - 1)
-                            val qtyVal = qtyText?.toIntOrNull()
-                            if (qtyVal != null && qtyVal > 0) {
-                                val prodName = words.take(adetIndex - 1).joinToString(" ").replace("No:", "").replace("Faturası", "").trim()
-                                val itemPrice = tx.amount / qtyVal
-                                resultList.add(Pair(if (prodName.isNotBlank()) prodName else "Mikro ERP Ürünü", Pair(qtyVal, itemPrice)))
-                                parsed = true
-                            }
-                        }
-                    }
-                    if (!parsed) {
-                        isSampleData = true
-                        val amount = tx.amount
-                        if (AppDataStore.products.isNotEmpty() && amount > 0.0) {
-                            val seed = tx.id.hashCode().toLong()
-                            val random = java.util.Random(seed)
-                            val itemsCount = (random.nextInt(3) + 1).coerceAtMost(AppDataStore.products.size)
-                            val selectedProducts = AppDataStore.products.shuffled(random).take(itemsCount)
-                            
-                            if (selectedProducts.size == 1) {
-                                val p = selectedProducts[0]
-                                val price = if (p.basePrice > 0.0) p.basePrice else amount
-                                val qty = (amount / price).toInt().coerceAtLeast(1)
-                                if (qty == 1) {
-                                    resultList.add(Pair(p.title, Pair(1, amount)))
-                                } else {
-                                    resultList.add(Pair(p.title, Pair(qty, amount / qty)))
-                                }
-                            } else {
-                                var remainingAmount = amount
-                                selectedProducts.forEachIndexed { index, p ->
-                                    if (index == selectedProducts.size - 1) {
-                                        val price = if (p.basePrice > 0.0) p.basePrice else remainingAmount
-                                        val qty = (remainingAmount / price).toInt().coerceAtLeast(1)
-                                        resultList.add(Pair(p.title, Pair(qty, remainingAmount / qty)))
-                                    } else {
-                                        val shareRatio = (random.nextInt(40) + 10) / 100.0 // 10% to 50%
-                                        val shareAmount = remainingAmount * shareRatio
-                                        if (shareAmount > 5.0) {
-                                            val price = if (p.basePrice > 0.0) p.basePrice else shareAmount
-                                            val qty = (shareAmount / price).toInt().coerceAtLeast(1)
-                                            resultList.add(Pair(p.title, Pair(qty, shareAmount / qty)))
-                                            remainingAmount -= (qty * (shareAmount / qty))
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            val valClean = if (amount <= 0.0) 2500.0 else amount
-                            resultList.add(Pair("Mikro ERP Ticari Ürün Satışı", Pair(1, valClean)))
-                        }
-                    }
-                    loadedItems = resultList
-                } else if (tx.type == "TAHSİLAT") {
+            if (loadedItems.isEmpty() && tx.type == "TAHSİLAT") {
                     val method = if (tx.description.contains("Akbank", ignoreCase = true) || tx.description.contains("Banka", ignoreCase = true) || tx.description.contains("EFT", ignoreCase = true) || tx.description.contains("Havale", ignoreCase = true)) {
                         "Banka Havalesi / EFT"
                     } else if (tx.description.contains("Kart", ignoreCase = true) || tx.description.contains("KK", ignoreCase = true)) {
@@ -3095,7 +2993,6 @@ fun InvoiceDetailDialog(
                     loadedItems = listOf(
                         Pair(method, Pair(1, tx.amount))
                     )
-                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -3267,32 +3164,6 @@ fun InvoiceDetailDialog(
                         }
                     }
                     
-                    if (isSampleData) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Warning,
-                                    contentDescription = "Uyarı",
-                                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "Efatura kalemleri buluttan henüz eşitlenmedi.\nDenge amacıyla temsili liste gösteriliyor.",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            }
-                        }
-                    }
-
                     // Main Area for Order Lines / Sipariş Kalemleri
                     Row(
                         modifier = Modifier.fillMaxWidth(),

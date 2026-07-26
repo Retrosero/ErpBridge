@@ -152,6 +152,8 @@ SELECT
     CAST(NULL AS NVARCHAR(50))                        AS ModelCode,
     CAST(NULL AS NVARCHAR(50))                        AS ManufacturerCode,
     CAST(sto_yer_kod AS NVARCHAR(50))                 AS ShelfCode,
+    CAST(sto_ambalaj_kodu AS NVARCHAR(50))             AS PackageCode,
+    CAST(sto_kalkon_kodu AS NVARCHAR(50))              AS CartonCode,
     CAST(ISNULL(sto_bedenli_takip, 0) AS BIT)         AS BedenliTakip,
     CAST(ISNULL(sto_renkDetayli, 0) AS BIT)           AS RenkDetayli,
     CAST(NULL AS DECIMAL(18,6))                       AS StandardCost,
@@ -185,7 +187,9 @@ WHERE ISNULL(sto_iptal, 0) = 0
                 s.RenkDetayli,
                 s.StandardCost,
                 s.Currency,
-                Array.Empty<BarcodePayload>()))
+                Array.Empty<BarcodePayload>(),
+                s.PackageCode,
+                s.CartonCode))
             .ToList();
         _logger.LogInformation("Read {Count} stocks for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -530,6 +534,8 @@ ORDER BY sth_RECno";
         string? ModelCode,
         string? ManufacturerCode,
         string? ShelfCode,
+        string? PackageCode,
+        string? CartonCode,
         bool BedenliTakip,
         bool RenkDetayli,
         decimal? StandardCost,

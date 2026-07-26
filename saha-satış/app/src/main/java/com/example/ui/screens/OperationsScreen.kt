@@ -3509,7 +3509,7 @@ fun CountingModule(onBeep: () -> Unit) {
         if (currentTime - lastDirectScanTime < 1500) return
         lastDirectScanTime = currentTime
         
-        val product = AppDataStore.products.find { it.barcode == barcode.trim() || it.barcodes.contains(barcode.trim()) || it.code.trim().equals(barcode.trim(), ignoreCase = true) }
+        val product = AppDataStore.findProductByBarcode(barcode)
         if (product != null) {
             onBeep()
             scannedProduct = product

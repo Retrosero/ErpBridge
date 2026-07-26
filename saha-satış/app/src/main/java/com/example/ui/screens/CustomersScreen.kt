@@ -72,7 +72,7 @@ fun CustomersScreen(navController: NavController) {
             riskLimit = c.riskLimit,
             priceGroup = c.priceGroup,
             specialDiscountPercent = c.specialDiscountPercent,
-            transactions = mutableListOf()
+            transactions = com.example.data.database.Converters().toCustomerTxList(c.transactionsJson).toMutableList()
         )
     }
 
@@ -632,7 +632,7 @@ fun CariDetailsDrawer(
                     val response = apiService.getFaturaHareket(com.example.data.api.PullJobsRequest(tenant_id=sharedPrefs.getString("tenant_id", "T001") ?: "T001", api_key=apiKey, device_id=sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT", agent_version="v2.0", entity="faturaHareket", since=customer.id))
                     if (response.isSuccessful && response.body() != null) {
                         val body = response.body()!!
-                        val items = body.items
+                        val items = body.actualItems
                         
                         for (fatura in items) {
                             val rawEvrak = fatura.evrakNo ?: ""

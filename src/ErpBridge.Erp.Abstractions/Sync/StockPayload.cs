@@ -31,6 +31,8 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <param name="StandardCost">Standard maliyet (for inventory valuation).</param>
 /// <param name="Currency">Cost / list currency code.</param>
 /// <param name="Barcodes">All barcodes attached to the stok (often multiple per unit).</param>
+/// <param name="PackageCode">Mikro ambalaj kodu (<c>sto_ambalaj_kodu</c>).</param>
+/// <param name="CartonCode">Mikro koli adedi/kodu (<c>sto_kalkon_kodu</c>).</param>
 public sealed record StockPayload(
     string StockCode,
     string Name,
@@ -54,7 +56,9 @@ public sealed record StockPayload(
     bool RenkDetayli,
     decimal? StandardCost,
     string? Currency,
-    IReadOnlyList<BarcodePayload> Barcodes);
+    IReadOnlyList<BarcodePayload> Barcodes,
+    string? PackageCode = null,
+    string? CartonCode = null);
 
 /// <summary>
 /// One barcode attached to a <see cref="StockPayload"/>. Lot and serial

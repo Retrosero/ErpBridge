@@ -71,4 +71,20 @@ class Converters {
         val adapter = moshi.adapter<List<String>>(type)
         return adapter.fromJson(value) ?: emptyList()
     }
+
+    @TypeConverter
+    fun fromDoubleList(value: List<Double>?): String {
+        if (value == null) return "[]"
+        val type = Types.newParameterizedType(List::class.java, Double::class.javaObjectType)
+        val adapter = moshi.adapter<List<Double>>(type)
+        return adapter.toJson(value)
+    }
+
+    @TypeConverter
+    fun toDoubleList(value: String?): List<Double> {
+        if (value.isNullOrBlank()) return emptyList()
+        val type = Types.newParameterizedType(List::class.java, Double::class.javaObjectType)
+        val adapter = moshi.adapter<List<Double>>(type)
+        return adapter.fromJson(value) ?: emptyList()
+    }
 }

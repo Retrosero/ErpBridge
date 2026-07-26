@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "users")
+@androidx.annotation.Keep
 data class UserEntity(
     @PrimaryKey val username: String,
     val passwordHash: String,
@@ -13,6 +14,7 @@ data class UserEntity(
 )
 
 @Entity(tableName = "customers")
+@androidx.annotation.Keep
 data class CustomerEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -31,6 +33,7 @@ data class CustomerEntity(
 )
 
 @Entity(tableName = "products")
+@androidx.annotation.Keep
 data class ProductEntity(
     @PrimaryKey val barcode: String,
     val code: String,
@@ -50,10 +53,14 @@ data class ProductEntity(
     val localImagePath: String? = null,
     val aisle: String? = null,
     val customPricesJson: String? = null,
-    val barcodesJson: String? = null
+    val barcodesJson: String? = null,
+    val measurement: String? = null,
+    val packaging: String? = null,
+    val cartonQuantity: String? = null
 )
 
 @Entity(tableName = "banks")
+@androidx.annotation.Keep
 data class BankEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -63,6 +70,7 @@ data class BankEntity(
 )
 
 @Entity(tableName = "kasa_logs")
+@androidx.annotation.Keep
 data class KasaLogEntity(
     @PrimaryKey val id: String,
     val date: String,
@@ -75,6 +83,7 @@ data class KasaLogEntity(
 )
 
 @Entity(tableName = "sales_records")
+@androidx.annotation.Keep
 data class SalesRecordEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val customerId: String,
@@ -85,6 +94,7 @@ data class SalesRecordEntity(
 )
 
 @Entity(tableName = "wms_orders")
+@androidx.annotation.Keep
 data class WmsOrderEntity(
     @PrimaryKey val id: String,
     val customerName: String,
@@ -98,6 +108,7 @@ data class WmsOrderEntity(
 )
 
 @Entity(tableName = "wms_order_items")
+@androidx.annotation.Keep
 data class WmsOrderItemEntity(
     @PrimaryKey val id: String, // "orderId_barcode"
     val orderId: String,
@@ -108,4 +119,89 @@ data class WmsOrderItemEntity(
     val isPicked: Boolean = false,
     val shelfLocation: String? = null, // e.g. "Raf A-3"
     val sth_fat_recid_recno: Int? = null
+)
+
+@Entity(tableName = "customer_addresses", primaryKeys = ["customerCode", "addressNo"])
+@androidx.annotation.Keep
+data class CustomerAddressEntity(
+    val customerCode: String,
+    val addressNo: Int,
+    val city: String?,
+    val district: String?,
+    val street: String?,
+    val postalCode: String?,
+    val latitude: Double?,
+    val longitude: Double?,
+    val salespersonCode: String?
+)
+
+@Entity(tableName = "customer_contacts")
+@androidx.annotation.Keep
+data class CustomerContactEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val customerCode: String,
+    val firstName: String?,
+    val lastName: String?,
+    val email: String?,
+    val mobile: String?,
+    val tcIdentityNo: String?,
+    val taxNo: String?
+)
+
+@Entity(tableName = "barcodes")
+@androidx.annotation.Keep
+data class BarcodeEntity(
+    @PrimaryKey val barcode: String,
+    val stockCode: String,
+    val partCode: String?,
+    val lotNo: String?,
+    val serialNo: String?,
+    val unitPointer: Int
+)
+
+@Entity(tableName = "sales_conditions")
+@androidx.annotation.Keep
+data class SalesConditionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val stockCode: String?,
+    val customerCode: String?,
+    val warehouseNo: Int?,
+    val paymentPlanNo: Int?,
+    val startDate: String?,
+    val endDate: String?,
+    val grossPrice: Double?,
+    val currency: String?,
+    val discounts: List<Double>
+)
+
+@Entity(tableName = "cari_hareketleri")
+@androidx.annotation.Keep
+data class CariHareketEntity(
+    @PrimaryKey val id: String,
+    val customerCode: String,
+    val date: String,
+    val type: String,
+    val amount: Double,
+    val description: String,
+    val erpRef: String? = null,
+    val recNo: String? = null,
+    val cha_recno: Int? = null
+)
+
+@Entity(tableName = "stock_movements")
+@androidx.annotation.Keep
+data class StockMovementEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val stockCode: String,
+    val date: String,
+    val type: String,
+    val qty: String,
+    val detail: String,
+    val user: String,
+    val evrakNo: String = "",
+    val cariKod: String? = null,
+    val cariName: String? = null,
+    val unitPrice: Double = 0.0,
+    val totalAmount: Double = 0.0,
+    val warehouse: String = ""
 )

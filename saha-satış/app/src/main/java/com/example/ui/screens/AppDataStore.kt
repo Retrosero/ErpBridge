@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -18,6 +19,9 @@ import com.example.data.api.CariBankaHesapDto
 import com.example.data.api.BridgeBankaDto
 import com.example.data.api.KasalarDto
 import com.example.data.api.KasaYonetimDto
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -26,6 +30,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 // --- STOCK COUNT MODELS ---
+@androidx.annotation.Keep
 data class CountedItem(
     val barcode: String,
     val productTitle: String,
@@ -36,6 +41,7 @@ data class CountedItem(
     val aisle: String
 )
 
+@androidx.annotation.Keep
 data class StockCountSession(
     val id: String,
     val date: String,
@@ -47,6 +53,7 @@ data class StockCountSession(
 
 // --- CENTRAL SYSTEM MODELS ---
 
+@androidx.annotation.Keep
 data class ProductCatalog(
     val barcode: String,
     val code: String,
@@ -66,22 +73,32 @@ data class ProductCatalog(
     val localImagePath: String? = null,
     val aisle: String? = null,
     val customPrices: Map<String, Double> = emptyMap(),
-    val barcodes: List<String> = emptyList()
+    val barcodes: List<String> = emptyList(),
+    val measurement: String? = null,
+    val packaging: String? = null,
+    val cartonQuantity: String? = null
 )
 
 fun ProductCatalog.getPriceForGroup(groupName: String): Double {
-    val matchKey = customPrices.keys.find { key ->
-        groupName.contains(key, ignoreCase = true)
+    if (groupName.isNotBlank() && customPrices.isNotEmpty()) {
+        val matchKey = customPrices.keys.find { key ->
+            groupName.contains(key, ignoreCase = true) || key.contains(groupName, ignoreCase = true)
+        }
+        if (matchKey != null) {
+            val price = customPrices[matchKey] ?: 0.0
+            if (price > 0.0) return price
+        }
     }
-    if (matchKey != null) {
-        val price = customPrices[matchKey] ?: 0.0
-        if (price > 0.0) return price
-    }
-    return when {
-        groupName.contains("Bayi", ignoreCase = true) -> dealerPrice
-        groupName.contains("Toptan", ignoreCase = true) -> wholesalePrice
+    val targetPrice = when {
+        groupName.contains("Bayi", ignoreCase = true) -> if (dealerPrice > 0.0) dealerPrice else basePrice
+        groupName.contains("Toptan", ignoreCase = true) -> if (wholesalePrice > 0.0) wholesalePrice else basePrice
         else -> basePrice
     }
+    if (targetPrice > 0.0) return targetPrice
+    return customPrices.values.firstOrNull { it > 0.0 }
+        ?: if (dealerPrice > 0.0) dealerPrice
+        else if (wholesalePrice > 0.0) wholesalePrice
+        else basePrice
 }
 
 val ProductCatalog.inferredAmbalaj: String
@@ -93,6 +110,7 @@ val ProductCatalog.inferredAmbalaj: String
         else -> "Adet"
     }
 
+@androidx.annotation.Keep
 data class Customer(
     val id: String,
     val name: String,
@@ -110,9 +128,25 @@ data class Customer(
     val transactions: MutableList<CustomerTx>
 ) {
     val calculatedBalance: Double
-        get() = balance
+        get() {
+            if (balance != 0.0) return balance
+            if (transactions.isEmpty()) return 0.0
+            var sum = 0.0
+            for (tx in transactions) {
+                val t = tx.type.uppercase()
+                if (t.contains("SATIŞ") || t.contains("SATIS") || t.contains("BORÇ") || t.contains("BORC") || t.contains("FATURA") || t.contains("TEDİYE") || t.contains("TEDIYE") || t == "0") {
+                    sum += tx.amount
+                } else if (t.contains("TAHSİLAT") || t.contains("TAHSILAT") || t.contains("İADE") || t.contains("IADE") || t.contains("ALACAK") || t == "1") {
+                    sum -= tx.amount
+                } else {
+                    sum += tx.amount
+                }
+            }
+            return sum
+        }
 }
 
+@androidx.annotation.Keep
 data class CustomerTx(
     val id: String,
     val date: String,
@@ -125,6 +159,7 @@ data class CustomerTx(
     val cha_recno: Int? = null
 )
 
+@androidx.annotation.Keep
 data class Bank(
     val id: String,
     val name: String,
@@ -133,6 +168,7 @@ data class Bank(
     var balance: Double = 0.0
 )
 
+@androidx.annotation.Keep
 data class CashAccount(
     val id: String,
     val name: String,
@@ -140,6 +176,7 @@ data class CashAccount(
     var balance: Double = 0.0
 )
 
+@androidx.annotation.Keep
 data class KasaLogItem(
     val id: String,
     val date: String,
@@ -151,6 +188,7 @@ data class KasaLogItem(
     val desc: String
 )
 
+@androidx.annotation.Keep
 data class SalesRecord(
     val customerId: String,
     val productBarcode: String,
@@ -159,12 +197,14 @@ data class SalesRecord(
     val date: String
 )
 
+@androidx.annotation.Keep
 data class SuspendedSaleItem(
     val productBarcode: String,
     val quantity: Int,
     val price: Double
 )
 
+@androidx.annotation.Keep
 data class SuspendedSale(
     val id: String,
     val date: String,
@@ -176,6 +216,7 @@ data class SuspendedSale(
     val totalAmount: Double
 )
 
+@androidx.annotation.Keep
 data class CartItem(
     val product: ProductCatalog,
     var quantity: Int,
@@ -183,6 +224,7 @@ data class CartItem(
     var note: String = ""
 )
 
+@androidx.annotation.Keep
 data class ApprovalItem(
     val id: String,
     val type: String, // "Satış", "Tahsilat", "İade", "Alış", "Tediye"
@@ -195,6 +237,7 @@ data class ApprovalItem(
     val orderNote: String? = null
 )
 
+@androidx.annotation.Keep
 data class PurchaseCartItem(
     val code: String,
     val title: String,
@@ -204,6 +247,7 @@ data class PurchaseCartItem(
     val isRegistered: Boolean = false
 )
 
+@androidx.annotation.Keep
 data class SuspendedPurchase(
     val id: String,
     val date: String,
@@ -216,6 +260,7 @@ data class SuspendedPurchase(
     val totalAmount: Double
 )
 
+@androidx.annotation.Keep
 data class Expense(
     val id: String,
     val date: String,
@@ -226,6 +271,7 @@ data class Expense(
     val photoUri: String? = null
 )
 
+@androidx.annotation.Keep
 data class VehicleMaintenance(
     val id: String,
     val date: String,
@@ -235,6 +281,7 @@ data class VehicleMaintenance(
     val photoUri: String? = null
 )
 
+@androidx.annotation.Keep
 data class Vehicle(
     val id: String,
     val plate: String,
@@ -287,6 +334,65 @@ object AppDataStore {
             maintenanceHistoryJson = "[{\"id\":\"VM-1002\",\"date\":\"10.02.2025\",\"km\":110000,\"description\":\"Ağır periyodik bakım kapsamında triger kayışı ve debriyaj balata seti komple yenilendi.\",\"cost\":14500.0}]"
         )
     )
+
+    private val moshiStore = Moshi.Builder()
+        .addLast(KotlinJsonAdapterFactory())
+        .build()
+
+    fun serializeCariAdresleri(): String {
+        val type = Types.newParameterizedType(List::class.java, CariAdresDto::class.java)
+        return moshiStore.adapter<List<CariAdresDto>>(type).toJson(cariAdresleri.toList())
+    }
+
+    fun deserializeCariAdresleri(json: String): List<CariAdresDto> {
+        if (json.isBlank()) return emptyList()
+        val type = Types.newParameterizedType(List::class.java, CariAdresDto::class.java)
+        return moshiStore.adapter<List<CariAdresDto>>(type).fromJson(json) ?: emptyList()
+    }
+
+    fun serializeCariBankaHesaplari(): String {
+        val type = Types.newParameterizedType(List::class.java, CariBankaHesapDto::class.java)
+        return moshiStore.adapter<List<CariBankaHesapDto>>(type).toJson(cariBankaHesaplari.toList())
+    }
+
+    fun deserializeCariBankaHesaplari(json: String): List<CariBankaHesapDto> {
+        if (json.isBlank()) return emptyList()
+        val type = Types.newParameterizedType(List::class.java, CariBankaHesapDto::class.java)
+        return moshiStore.adapter<List<CariBankaHesapDto>>(type).fromJson(json) ?: emptyList()
+    }
+
+    fun serializeBridgeBankalar(): String {
+        val type = Types.newParameterizedType(List::class.java, BridgeBankaDto::class.java)
+        return moshiStore.adapter<List<BridgeBankaDto>>(type).toJson(bridgeBankalar.toList())
+    }
+
+    fun deserializeBridgeBankalar(json: String): List<BridgeBankaDto> {
+        if (json.isBlank()) return emptyList()
+        val type = Types.newParameterizedType(List::class.java, BridgeBankaDto::class.java)
+        return moshiStore.adapter<List<BridgeBankaDto>>(type).fromJson(json) ?: emptyList()
+    }
+
+    fun serializeBridgeKasalar(): String {
+        val type = Types.newParameterizedType(List::class.java, KasalarDto::class.java)
+        return moshiStore.adapter<List<KasalarDto>>(type).toJson(bridgeKasalar.toList())
+    }
+
+    fun deserializeBridgeKasalar(json: String): List<KasalarDto> {
+        if (json.isBlank()) return emptyList()
+        val type = Types.newParameterizedType(List::class.java, KasalarDto::class.java)
+        return moshiStore.adapter<List<KasalarDto>>(type).fromJson(json) ?: emptyList()
+    }
+
+    fun serializeKasaYonetimList(): String {
+        val type = Types.newParameterizedType(List::class.java, KasaYonetimDto::class.java)
+        return moshiStore.adapter<List<KasaYonetimDto>>(type).toJson(kasaYonetimList.toList())
+    }
+
+    fun deserializeKasaYonetimList(json: String): List<KasaYonetimDto> {
+        if (json.isBlank()) return emptyList()
+        val type = Types.newParameterizedType(List::class.java, KasaYonetimDto::class.java)
+        return moshiStore.adapter<List<KasaYonetimDto>>(type).fromJson(json) ?: emptyList()
+    }
 
     fun serializeExpenses(): String {
         val arr = JSONArray()
@@ -783,6 +889,23 @@ object AppDataStore {
     )
     val products = mutableStateListOf<ProductCatalog>()
 
+    fun findProductByBarcode(scannedCode: String): ProductCatalog? {
+        val trimmed = scannedCode.trim()
+        val lower = trimmed.lowercase()
+        // Try direct find
+        var found = products.find {
+            it.barcode == trimmed || it.barcodes.contains(trimmed) || it.code.trim().equals(trimmed, ignoreCase = true)
+        }
+        if (found != null) return found
+        
+        // Try resolving via barcodeToStockCodeMap
+        val stockCode = barcodeToStockCodeMap[lower]
+        if (stockCode != null) {
+            found = products.find { it.code.trim().equals(stockCode, ignoreCase = true) }
+        }
+        return found
+    }
+
     // 5- Global Customers List Shared across screens with Transaction sub-lists
     val defaultCustomers = listOf(
         Customer(
@@ -844,6 +967,8 @@ object AppDataStore {
         )
     )
     val customers = mutableStateListOf<Customer>()
+    val stockMovementsMap = mutableStateMapOf<String, List<StockMovement>>()
+    val barcodeToStockCodeMap = mutableStateMapOf<String, String>()
 
     suspend fun clearAllDataSync(context: Context) {
         val db = DatabaseProvider.getDatabase(context)
@@ -876,7 +1001,7 @@ object AppDataStore {
             salesHistory.clear()
             salesHistory.addAll(defaultSalesHistory)
         }
-        persistSync(context)
+        persistAndWait(context)
     }
 
     suspend fun initializeSync(context: Context) {
@@ -913,6 +1038,27 @@ object AppDataStore {
                     } else {
                         vehicles.addAll(defaultVehicles)
                     }
+
+                    val cariAdresleriStr = prefs.getString("cari_adresleri_json", "") ?: ""
+                    val cariBankaHesaplariStr = prefs.getString("cari_banka_hesaplari_json", "") ?: ""
+                    val bridgeBankalarStr = prefs.getString("bridge_bankalar_json", "") ?: ""
+                    val bridgeKasalarStr = prefs.getString("bridge_kasalar_json", "") ?: ""
+                    val kasaYonetimListStr = prefs.getString("kasa_yonetim_list_json", "") ?: ""
+
+                    cariAdresleri.clear()
+                    cariAdresleri.addAll(deserializeCariAdresleri(cariAdresleriStr))
+
+                    cariBankaHesaplari.clear()
+                    cariBankaHesaplari.addAll(deserializeCariBankaHesaplari(cariBankaHesaplariStr))
+
+                    bridgeBankalar.clear()
+                    bridgeBankalar.addAll(deserializeBridgeBankalar(bridgeBankalarStr))
+
+                    bridgeKasalar.clear()
+                    bridgeKasalar.addAll(deserializeBridgeKasalar(bridgeKasalarStr))
+
+                    kasaYonetimList.clear()
+                    kasaYonetimList.addAll(deserializeKasaYonetimList(kasaYonetimListStr))
                 }
 
                 // Initial alignment pull from cloud if company mode
@@ -959,12 +1105,74 @@ object AppDataStore {
                 val converter = Converters()
                 val loggedInUser = db.userDao().getActiveUser()
 
+                dbScope.launch {
+                    try {
+                        val allBarcodes = db.barcodeDao().getAll()
+                        withContext(Dispatchers.Main) {
+                            barcodeToStockCodeMap.clear()
+                            for (b in allBarcodes) {
+                                barcodeToStockCodeMap[b.barcode.trim().lowercase()] = b.stockCode.trim()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                // Start collecting products flow unconditionally so updates are reactively synced to AppDataStore.products
+                dbScope.launch {
+                    try {
+                        db.productDao().getAllProductsFlow().collect { prodEntities ->
+                            val mapped = prodEntities.mapNotNull { prod ->
+                                try {
+                                    ProductCatalog(
+                                        barcode = prod.barcode,
+                                        code = prod.code,
+                                        title = prod.title,
+                                        category = prod.category,
+                                        desc = prod.desc,
+                                        basePrice = prod.basePrice,
+                                        dealerPrice = prod.dealerPrice,
+                                        wholesalePrice = prod.wholesalePrice,
+                                        kdvPercent = prod.kdvPercent,
+                                        imageUrlColor = Color(prod.colorValue.toULong()),
+                                        brand = prod.brand,
+                                        stockByWarehouse = converter.toWarehouseMap(prod.stockByWarehouseJson),
+                                        boxQty = prod.boxQty,
+                                        packageQty = prod.packageQty,
+                                        imageUrl = prod.imageUrl,
+                                        localImagePath = prod.localImagePath,
+                                        aisle = prod.aisle,
+                                        customPrices = converter.toCustomPricesMap(prod.customPricesJson ?: "{}"),
+                                        barcodes = converter.toBarcodeList(prod.barcodesJson),
+                                        measurement = prod.measurement,
+                                        packaging = prod.packaging,
+                                        cartonQuantity = prod.cartonQuantity
+                                    )
+                                } catch (e: Exception) {
+                                    android.util.Log.e("AppDataStore", "Error mapping flow product entity: ${prod.code}, barcode: ${prod.barcode}", e)
+                                    null
+                                }
+                            }
+                            withContext(Dispatchers.Main) {
+                                products.clear()
+                                products.addAll(mapped)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("AppDataStore", "Error in products flow collection", e)
+                    }
+                }
+
                 // Products and customers are synchronized independently.  Do not treat an
                 // empty customer table as an empty local database; otherwise a successful
                 // product-only synchronization is ignored on the next application launch.
                 if (existingCustomers.isEmpty() && db.productDao().getAllProducts().isEmpty()) {
                     // Start of app without data
-                    if (loggedInUser?.username == "admin") {
+                    val erpPrefs = context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
+                    val hasErpCredentials = !erpPrefs.getString("api_key", "").isNullOrBlank() &&
+                        !erpPrefs.getString("tenant_id", "").isNullOrBlank()
+                    if (loggedInUser?.username == "admin" && !hasErpCredentials) {
                         loadDemoDataSync(context)
                     }
                 } else {
@@ -972,28 +1180,38 @@ object AppDataStore {
                     val loadedBanks = db.bankDao().getAllBanks().map { Bank(it.id, it.name, it.accountNo, it.iban, it.balance) }
                     val loadedKasa = db.kasaLogDao().getAllKasaLogs().map { KasaLogItem(it.id, it.date, it.type, it.customerOrSupplier, it.amount, it.paymentType, it.bankName, it.desc) }
                     val loadedSales = db.salesRecordDao().getAllSalesRecords().map { SalesRecord(it.customerId, it.productBarcode, it.quantity, it.price, it.date) }
-                    val loadedProducts = db.productDao().getAllProducts().map { prod ->
-                        ProductCatalog(
-                            barcode = prod.barcode,
-                            code = prod.code,
-                            title = prod.title,
-                            category = prod.category,
-                            desc = prod.desc,
-                            basePrice = prod.basePrice,
-                            dealerPrice = prod.dealerPrice,
-                            wholesalePrice = prod.wholesalePrice,
-                            kdvPercent = prod.kdvPercent,
-                            imageUrlColor = Color(prod.colorValue.toULong()),
-                            brand = prod.brand,
-                            stockByWarehouse = converter.toWarehouseMap(prod.stockByWarehouseJson),
-                            boxQty = prod.boxQty,
-                            packageQty = prod.packageQty,
-                            imageUrl = prod.imageUrl,
-                            localImagePath = prod.localImagePath,
-                            aisle = prod.aisle,
-                            customPrices = converter.toCustomPricesMap(prod.customPricesJson ?: "{}"),
-                            barcodes = converter.toBarcodeList(prod.barcodesJson)
-                        )
+                    val loadedStockMovements = try { db.stockMovementDao().getAll() } catch (e: Exception) { emptyList() }
+                    val loadedCariMovements = try { db.cariHareketDao().getAll() } catch (e: Exception) { emptyList() }
+                    val loadedProducts = db.productDao().getAllProducts().mapNotNull { prod ->
+                        try {
+                            ProductCatalog(
+                                barcode = prod.barcode,
+                                code = prod.code,
+                                title = prod.title,
+                                category = prod.category,
+                                desc = prod.desc,
+                                basePrice = prod.basePrice,
+                                dealerPrice = prod.dealerPrice,
+                                wholesalePrice = prod.wholesalePrice,
+                                kdvPercent = prod.kdvPercent,
+                                imageUrlColor = Color(prod.colorValue.toULong()),
+                                brand = prod.brand,
+                                stockByWarehouse = converter.toWarehouseMap(prod.stockByWarehouseJson),
+                                boxQty = prod.boxQty,
+                                packageQty = prod.packageQty,
+                                imageUrl = prod.imageUrl,
+                                localImagePath = prod.localImagePath,
+                                aisle = prod.aisle,
+                                customPrices = converter.toCustomPricesMap(prod.customPricesJson ?: "{}"),
+                                barcodes = converter.toBarcodeList(prod.barcodesJson),
+                                measurement = prod.measurement,
+                                packaging = prod.packaging,
+                                cartonQuantity = prod.cartonQuantity
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e("AppDataStore", "Error mapping load product entity: ${prod.code}, barcode: ${prod.barcode}", e)
+                            null
+                        }
                     }
                     val loadedCustomers = db.customerDao().getAllCustomers().map { cust ->
                         Customer(
@@ -1029,38 +1247,69 @@ object AppDataStore {
                         customers.clear()
                         customers.addAll(loadedCustomers)
 
-                        // Start collecting products flow
-                        dbScope.launch {
-                            db.productDao().getAllProductsFlow().collect { prodEntities ->
-                                val mapped = prodEntities.map { prod ->
-                                    ProductCatalog(
-                                        barcode = prod.barcode,
-                                        code = prod.code,
-                                        title = prod.title,
-                                        category = prod.category,
-                                        desc = prod.desc,
-                                        basePrice = prod.basePrice,
-                                        dealerPrice = prod.dealerPrice,
-                                        wholesalePrice = prod.wholesalePrice,
-                                        kdvPercent = prod.kdvPercent,
-                                        imageUrlColor = Color(prod.colorValue.toULong()),
-                                        brand = prod.brand,
-                                        stockByWarehouse = converter.toWarehouseMap(prod.stockByWarehouseJson),
-                                        boxQty = prod.boxQty,
-                                        packageQty = prod.packageQty,
-                                        imageUrl = prod.imageUrl,
-                                        localImagePath = prod.localImagePath,
-                                        aisle = prod.aisle,
-                                        customPrices = converter.toCustomPricesMap(prod.customPricesJson ?: "{}"),
-                                        barcodes = converter.toBarcodeList(prod.barcodesJson)
+                        products.clear()
+                        products.addAll(loadedProducts)
+
+                        if (loadedStockMovements.isNotEmpty()) {
+                            val groupedMovements = loadedStockMovements.groupBy { it.stockCode.lowercase() }.mapValues { entry ->
+                                entry.value.map { item ->
+                                    StockMovement(
+                                        date = item.date,
+                                        type = item.type,
+                                        qty = item.qty,
+                                        detail = item.detail,
+                                        user = item.user,
+                                        evrakNo = item.evrakNo,
+                                        cariKod = item.cariKod,
+                                        cariName = item.cariName,
+                                        unitPrice = item.unitPrice,
+                                        totalAmount = item.totalAmount,
+                                        warehouse = item.warehouse
                                     )
                                 }
-                                withContext(Dispatchers.Main) {
-                                    products.clear()
-                                    products.addAll(mapped)
+                            }
+                            stockMovementsMap.clear()
+                            stockMovementsMap.putAll(groupedMovements)
+                        }
+
+                        if (loadedCariMovements.isNotEmpty()) {
+                            val txGrouped = loadedCariMovements.groupBy { it.customerCode.lowercase() }
+                            for (i in customers.indices) {
+                                val cust = customers[i]
+                                val custKey = cust.id.lowercase()
+                                val matches = txGrouped[custKey]
+                                    ?: txGrouped.entries.firstOrNull { it.key.isNotBlank() && (custKey == it.key || custKey.contains(it.key) || it.key.contains(custKey)) }?.value
+                                if (matches != null && matches.isNotEmpty() && cust.transactions.isEmpty()) {
+                                    val newTxs = matches.map { dto ->
+                                        CustomerTx(
+                                            id = dto.id,
+                                            date = dto.date,
+                                            type = dto.type,
+                                            amount = dto.amount,
+                                            description = dto.description,
+                                            erpRef = dto.erpRef,
+                                            recNo = dto.recNo,
+                                            cha_recno = dto.cha_recno
+                                        )
+                                    }
+                                    var calculated = 0.0
+                                    for (tx in newTxs) {
+                                        val t = tx.type.uppercase()
+                                        if (t.contains("SATIŞ") || t.contains("SATIS") || t.contains("BORÇ") || t.contains("BORC") || t.contains("FATURA") || t.contains("TEDİYE") || t.contains("TEDIYE") || t == "0") {
+                                            calculated += tx.amount
+                                        } else if (t.contains("TAHSİLAT") || t.contains("TAHSILAT") || t.contains("İADE") || t.contains("IADE") || t.contains("ALACAK") || t == "1") {
+                                            calculated -= tx.amount
+                                        } else {
+                                            calculated += tx.amount
+                                        }
+                                    }
+                                    val updatedBal = if (cust.balance != 0.0) cust.balance else calculated
+                                    customers[i] = cust.copy(balance = updatedBal, transactions = newTxs.toMutableList())
                                 }
                             }
                         }
+
+
 
                         // Pre-populate product items for standard mock approvals
                         val oilProd = products.find { it.barcode == "8690123456789" }
@@ -1117,13 +1366,52 @@ object AppDataStore {
         }
     }
 
+    suspend fun persistAndWait(context: Context) {
+        val productsCopy: List<ProductCatalog>
+        val customersCopy: List<Customer>
+        val banksCopy: List<Bank>
+        val kasaLogsCopy: List<KasaLogItem>
+        val salesHistoryCopy: List<SalesRecord>
+        
+        withContext(Dispatchers.Main) {
+            productsCopy = products.toList()
+            customersCopy = customers.toList()
+            banksCopy = banks.toList()
+            kasaLogsCopy = kasaLogs.toList()
+            salesHistoryCopy = salesHistory.toList()
+        }
+        
+        persistSync(context, productsCopy, customersCopy, banksCopy, kasaLogsCopy, salesHistoryCopy)
+    }
+
     fun persist(context: Context) {
         dbScope.launch {
-            persistSync(context)
+            val productsCopy: List<ProductCatalog>
+            val customersCopy: List<Customer>
+            val banksCopy: List<Bank>
+            val kasaLogsCopy: List<KasaLogItem>
+            val salesHistoryCopy: List<SalesRecord>
+            
+            withContext(Dispatchers.Main) {
+                productsCopy = products.toList()
+                customersCopy = customers.toList()
+                banksCopy = banks.toList()
+                kasaLogsCopy = kasaLogs.toList()
+                salesHistoryCopy = salesHistory.toList()
+            }
+            
+            persistSync(context, productsCopy, customersCopy, banksCopy, kasaLogsCopy, salesHistoryCopy)
         }
     }
 
-    private suspend fun persistSync(context: Context) {
+    private suspend fun persistSync(
+        context: Context,
+        productsCopy: List<ProductCatalog>,
+        customersCopy: List<Customer>,
+        banksCopy: List<Bank>,
+        kasaLogsCopy: List<KasaLogItem>,
+        salesHistoryCopy: List<SalesRecord>
+    ) {
         try {
             val db = DatabaseProvider.getDatabase(context)
             val converter = Converters()
@@ -1142,21 +1430,27 @@ object AppDataStore {
             // Save Expenses & Vehicles to SharedPreferences
             editor.putString("expenses_json", serializeExpenses())
             editor.putString("vehicles_json", serializeVehicles())
+
+            editor.putString("cari_adresleri_json", serializeCariAdresleri())
+            editor.putString("cari_banka_hesaplari_json", serializeCariBankaHesaplari())
+            editor.putString("bridge_bankalar_json", serializeBridgeBankalar())
+            editor.putString("bridge_kasalar_json", serializeBridgeKasalar())
+            editor.putString("kasa_yonetim_list_json", serializeKasaYonetimList())
             
             editor.apply()
 
             // 1. Save Banks
-            val bankEntities = banks.map { BankEntity(it.id, it.name, it.accountNo, it.iban, it.balance) }
+            val bankEntities = banksCopy.map { BankEntity(it.id, it.name, it.accountNo, it.iban, it.balance) }
             db.bankDao().deleteAll()
             db.bankDao().insertAll(bankEntities)
 
             // 2. Save Kasa Logs
-            val kasaEntities = kasaLogs.map { KasaLogEntity(it.id, it.date, it.type, it.customerOrSupplier, it.amount, it.paymentType, it.bankName, it.desc) }
+            val kasaEntities = kasaLogsCopy.map { KasaLogEntity(it.id, it.date, it.type, it.customerOrSupplier, it.amount, it.paymentType, it.bankName, it.desc) }
             db.kasaLogDao().deleteAll()
             db.kasaLogDao().insertAll(kasaEntities)
 
             // 3. Save Sales History (using index offset for id to prevent batch insert key collisions)
-            val salesEntities = salesHistory.mapIndexed { idx, it ->
+            val salesEntities = salesHistoryCopy.mapIndexed { idx, it ->
                 SalesRecordEntity(id = idx + 1, customerId = it.customerId, productBarcode = it.productBarcode, quantity = it.quantity, price = it.price, date = it.date)
             }
             db.salesRecordDao().deleteAll()
@@ -1165,9 +1459,16 @@ object AppDataStore {
             // 4. Save products.  ERP synchronization first updates the in-memory list and
             // then calls persist(); without this write, the product list disappeared after
             // a process restart even though synchronization reported success.
-            val productEntities = products.map { product ->
+            val seenBarcodes = mutableSetOf<String>()
+            val productEntities = productsCopy.map { product ->
+                val finalBarcode = if (product.barcode.isBlank() || product.barcode.lowercase() == "null" || product.barcode.lowercase() == "none" || seenBarcodes.contains(product.barcode)) {
+                    product.code.ifBlank { java.util.UUID.randomUUID().toString() }
+                } else {
+                    product.barcode
+                }
+                seenBarcodes.add(finalBarcode)
                 ProductEntity(
-                    barcode = product.barcode,
+                    barcode = finalBarcode,
                     code = product.code,
                     title = product.title,
                     category = product.category,
@@ -1185,13 +1486,17 @@ object AppDataStore {
                     localImagePath = product.localImagePath,
                     aisle = product.aisle,
                     customPricesJson = converter.fromCustomPricesMap(product.customPrices),
-                    barcodesJson = converter.fromBarcodeList(product.barcodes)
+                    barcodesJson = converter.fromBarcodeList(product.barcodes),
+                    measurement = product.measurement,
+                    packaging = product.packaging,
+                    cartonQuantity = product.cartonQuantity
                 )
             }
+            db.productDao().deleteAll()
             db.productDao().insertAll(productEntities)
 
             // 5. Save Customers
-            val customerEntities = customers.map { cust ->
+            val customerEntities = customersCopy.map { cust ->
                 CustomerEntity(
                     id = cust.id,
                     name = cust.name,

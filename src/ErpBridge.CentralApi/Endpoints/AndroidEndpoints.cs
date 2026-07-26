@@ -31,10 +31,10 @@ public static class AndroidEndpoints
             .WithName("AndroidProductCatalog")
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/stokSeviye", "inventory");
-        MapSection(group, "/sync/fiyatlar", "prices");
-        group.MapPost("/sync/stokSatisFiyatListeleri",
-                (HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
-                    SectionAsync("prices", http, db, ct))
+        group.MapPost("/sync/fiyatlar", PriceListRowsAsync)
+            .WithName("AndroidPrices")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/stokSatisFiyatListeleri", PriceListRowsAsync)
             .WithName("AndroidPriceListRows")
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/stokSatisFiyatListeTanimlari", PriceListDefinitionsAsync)
@@ -165,6 +165,26 @@ public static class AndroidEndpoints
                 .ToDictionary(property => property.Name, property => (object?)property.Value.Clone(), StringComparer.OrdinalIgnoreCase);
             var stockCode = GetString(stock, "stockCode") ?? string.Empty;
 
+            // Android-facing names are kept explicit so the mobile client does not
+            // need to know Mikro's internal STOKLAR column names.  Preserve the
+            // raw names too: this makes old and new agent payloads equivalent.
+            var reyonKod = GetFirstString(stock, "shelfCode", "sto_yer_kod");
+            var olcu = GetFirstString(stock, "sectorCode", "sto_sektor_kodu");
+            var ambalaj = GetFirstString(stock, "packageCode", "sto_ambalaj_kodu");
+            var marka = GetFirstString(stock, "brandCode", "sto_marka_kodu");
+            var koliAdet = GetFirstString(stock, "cartonCode", "sto_kalkon_kodu");
+
+            mapped["reyonKod"] = reyonKod;
+            mapped["olcu"] = olcu;
+            mapped["ambalaj"] = ambalaj;
+            mapped["marka"] = marka;
+            mapped["koliAdet"] = koliAdet;
+            mapped["sto_yer_kod"] = reyonKod;
+            mapped["sto_sektor_kodu"] = olcu;
+            mapped["sto_ambalaj_kodu"] = ambalaj;
+            mapped["sto_marka_kodu"] = marka;
+            mapped["sto_kalkon_kodu"] = koliAdet;
+
             if (barcodesByStock.TryGetValue(stockCode, out var barcodes) && barcodes.Length > 0)
             {
                 mapped["barcodes"] = barcodes;
@@ -228,6 +248,37 @@ public static class AndroidEndpoints
             .OrderBy(item => item.listNo)
             .ToArray();
         return Results.Ok(new { entity = "stokSatisFiyatListeTanimlari", total = items.Length, items });
+    }
+
+    private static async Task<IResult> PriceListRowsAsync(
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var root = document.RootElement;
+        var namesByListNo = GetArray(root, "lookups")
+            .Where(item => string.Equals(GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase))
+            .Select(item => new { Number = GetInt32(item, "code") ?? 0, Name = GetString(item, "name") })
+            .Where(item => item.Number > 0 && !string.IsNullOrWhiteSpace(item.Name))
+            .GroupBy(item => item.Number)
+            .ToDictionary(group => group.Key, group => group.First().Name!);
+
+        var items = GetArray(root, "prices").Select(price =>
+        {
+            var mapped = price.EnumerateObject()
+                .ToDictionary(property => property.Name, property => (object?)property.Value.Clone(), StringComparer.OrdinalIgnoreCase);
+            var listNo = GetInt32(price, "listNumber") ?? GetInt32(price, "sfiyat_listeno") ?? 0;
+            var listName = namesByListNo.TryGetValue(listNo, out var name) ? name : string.Empty;
+            mapped["listName"] = listName;
+            mapped["aciklama"] = listName;
+            return mapped;
+        }).ToArray();
+
+        return Results.Ok(new { entity = "stokSatisFiyatListeleri", sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, total = items.Length, items });
     }
 
     private static async Task<IResult> StockMovementsAsync(
@@ -412,6 +463,12 @@ public static class AndroidEndpoints
             return null;
         return value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
     }
+
+    private static string GetFirstString(JsonElement item, params string[] propertyNames) =>
+        propertyNames
+            .Select(propertyName => GetString(item, propertyName)?.Trim())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+        ?? string.Empty;
 
     private static int? GetInt32(JsonElement item, string propertyName)
     {

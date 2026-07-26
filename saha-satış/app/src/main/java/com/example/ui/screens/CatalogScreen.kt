@@ -186,30 +186,7 @@ fun CatalogScreen(navController: NavController) {
     var pendingCartAddInfo by remember { mutableStateOf<PendingCartAdd?>(null) }
 
     // --- 1. MOCK SEED DATABASE ---
-    val dbProducts by com.example.data.database.DatabaseProvider.getDatabase(context).productDao().getAllProductsFlow().collectAsState(initial = emptyList())
-    val initialProducts = dbProducts.map { p ->
-        ProductCatalog(
-            barcode = p.barcode,
-            code = p.code,
-            title = p.title,
-            category = p.category,
-            desc = p.desc,
-            basePrice = p.basePrice,
-            dealerPrice = p.dealerPrice,
-            wholesalePrice = p.wholesalePrice,
-            kdvPercent = p.kdvPercent,
-            imageUrlColor = androidx.compose.ui.graphics.Color(p.colorValue),
-            brand = p.brand,
-            stockByWarehouse = mutableMapOf(),
-            boxQty = p.boxQty,
-            packageQty = p.packageQty,
-            imageUrl = p.imageUrl,
-            localImagePath = p.localImagePath,
-            aisle = p.aisle,
-            customPrices = mutableMapOf(),
-            barcodes = mutableListOf()
-        )
-    }
+    val initialProducts = AppDataStore.products.toList()
 
     val warehouses = remember {
         listOf(
@@ -1786,7 +1763,7 @@ fun CatalogScreen(navController: NavController) {
     if (showTransferDialog) {
         var originDep by remember { mutableStateOf("Ana Depo") }
         var targetDep by remember { mutableStateOf("Ankara Merkez") }
-        var selectedItem by remember { mutableStateOf(initialProducts[0]) } // default to first product
+        var selectedItem by remember { mutableStateOf(initialProducts.firstOrNull()) } // default to first product
         var qtyInput by remember { mutableStateOf("15") }
         
         Dialog(onDismissRequest = { showTransferDialog = false }) {
@@ -1826,10 +1803,12 @@ fun CatalogScreen(navController: NavController) {
                                 .fillMaxWidth()
                                 .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
                                 .clickable {
-                                    // simple rotate list items for simulation
-                                    val currentIdx = initialProducts.indexOf(selectedItem)
-                                    val nextIdx = (currentIdx + 1) % initialProducts.size
-                                    selectedItem = initialProducts[nextIdx]
+                                    if (initialProducts.isNotEmpty()) {
+                                        // simple rotate list items for simulation
+                                        val currentIdx = initialProducts.indexOf(selectedItem)
+                                        val nextIdx = (currentIdx + 1) % initialProducts.size
+                                        selectedItem = initialProducts[nextIdx]
+                                    }
                                 }
                                 .padding(12.dp)
                         ) {
@@ -1839,8 +1818,8 @@ fun CatalogScreen(navController: NavController) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(selectedItem.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text("Kod: ${selectedItem.code}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    Text(selectedItem?.title ?: "Ürün Bulunmamaktadır", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text("Kod: ${selectedItem?.code ?: "-"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                 }
                                 Icon(Icons.Filled.SwapHoriz, contentDescription = "Sıradaki", tint = MaterialTheme.colorScheme.primary)
                             }
@@ -1877,7 +1856,7 @@ fun CatalogScreen(navController: NavController) {
                                     date = date,
                                     origin = originDep,
                                     dest = targetDep,
-                                    itemTitle = selectedItem.title,
+                                    itemTitle = selectedItem?.title ?: "",
                                     qty = amount,
                                     state = "Bekliyor"
                                 )
@@ -3228,8 +3207,8 @@ private fun CartContentBody(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CatalogFilterAndSortBar(selectedPriceTier: String) {
-    val allBrands = remember { (AppDataStore.products.mapNotNull { it.brand }.distinct() + listOf("Belirtilmemiş")).sorted() }
-    val allCats = remember { AppDataStore.products.map { it.category }.distinct().sorted() }
+    val allBrands = remember(AppDataStore.products.size) { (AppDataStore.products.mapNotNull { it.brand }.distinct() + listOf("Belirtilmemiş")).sorted() }
+    val allCats = remember(AppDataStore.products.size) { AppDataStore.products.map { it.category }.distinct().sorted() }
     val allAmbalajs = remember { listOf("Adet", "Koli", "Paket", "Çuval", "Kutu") }
 
     AdvancedFilterDialog(

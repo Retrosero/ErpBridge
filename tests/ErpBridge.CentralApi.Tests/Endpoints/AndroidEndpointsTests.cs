@@ -50,8 +50,20 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-PRODUCT-{suffix}", "Product catalog tenant");
         const string payload = """
             {
-              "stocks": [{"stockCode":"S001","name":"Joined product","barcodes":[]}],
-              "barcodes": [{"barcode":"869000000001","stockCode":"S001","unitPointer":1}],
+              "stocks": [{
+                "stockCode":"S001",
+                "name":"Joined product",
+                "shelfCode":"R-12",
+                "sectorCode":"ADET",
+                "packageCode":"KUTU",
+                "brandCode":"MARKA-1",
+                "cartonCode":"24",
+                "barcodes":[]
+              }],
+              "barcodes": [
+                {"barcode":"869000000001","stockCode":"S001","unitPointer":1},
+                {"barcode":"869000000002","stockCode":"S001","unitPointer":1}
+              ],
               "prices": [
                 {"stockCode":"S001","listNumber":2,"price":90.0},
                 {"stockCode":"S001","listNumber":1,"price":125.5}
@@ -78,6 +90,12 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var product = document.RootElement.GetProperty("items")[0];
         product.GetProperty("stockCode").GetString().Should().Be("S001");
         product.GetProperty("barkod").GetString().Should().Be("869000000001");
+        product.GetProperty("barcodes").GetArrayLength().Should().Be(2);
+        product.GetProperty("reyonKod").GetString().Should().Be("R-12");
+        product.GetProperty("olcu").GetString().Should().Be("ADET");
+        product.GetProperty("ambalaj").GetString().Should().Be("KUTU");
+        product.GetProperty("marka").GetString().Should().Be("MARKA-1");
+        product.GetProperty("koliAdet").GetString().Should().Be("24");
         product.GetProperty("satis_fiyati").GetDecimal().Should().Be(125.5m);
         product.GetProperty("customPrices").GetProperty("SATIŞ FİYATI").GetDecimal().Should().Be(125.5m);
         product.GetProperty("customPrices").GetProperty("E-TİCARET").GetDecimal().Should().Be(90m);

@@ -167,7 +167,7 @@ object BridgeSyncHelper {
                                         )
                                         val txRes = apiService.getCariHareket(com.example.data.api.PullJobsRequest(tenant_id="", api_key="", device_id="", agent_version="", entity="cariHareket", since=cari.erpKod))
                                         if (txRes.isSuccessful && txRes.body() != null) {
-                                            val items = txRes.body()!!.items
+                                            val items = txRes.body()!!.actualItems
                                             if (items.isNotEmpty()) {
                                                 fetchedRealLedger = true
                                                 for (item in items) {
@@ -307,7 +307,7 @@ object BridgeSyncHelper {
                                     if (bal == 0.0) {
                                         txList.add(
                                             CustomerTx(
-                                                id = "TX-${cari.id}-1",
+                                                id = "TX-${cari.actualCariKod}-1",
                                                 date = "15.06.2026",
                                                 type = "SATIŞ",
                                                 amount = 4500.0,
@@ -316,7 +316,7 @@ object BridgeSyncHelper {
                                         )
                                         txList.add(
                                             CustomerTx(
-                                                id = "TX-${cari.id}-2",
+                                                id = "TX-${cari.actualCariKod}-2",
                                                 date = "18.06.2026",
                                                 type = "TAHSİLAT",
                                                 amount = 4500.0,
@@ -326,7 +326,7 @@ object BridgeSyncHelper {
                                     } else if (bal > 0.0) {
                                         txList.add(
                                             CustomerTx(
-                                                id = "TX-${cari.id}-1",
+                                                id = "TX-${cari.actualCariKod}-1",
                                                 date = "28.05.2026",
                                                 type = "SATIŞ",
                                                 amount = bal * 1.5,
@@ -335,7 +335,7 @@ object BridgeSyncHelper {
                                         )
                                         txList.add(
                                             CustomerTx(
-                                                id = "TX-${cari.id}-2",
+                                                id = "TX-${cari.actualCariKod}-2",
                                                 date = "10.06.2026",
                                                 type = "TAHSİLAT",
                                                 amount = bal * 0.5,
@@ -346,7 +346,7 @@ object BridgeSyncHelper {
                                         val absBal = Math.abs(bal)
                                         txList.add(
                                             CustomerTx(
-                                                id = "TX-${cari.id}-1",
+                                                id = "TX-${cari.actualCariKod}-1",
                                                 date = "01.06.2026",
                                                 type = "TAHSİLAT",
                                                 amount = absBal * 2.0,
@@ -355,7 +355,7 @@ object BridgeSyncHelper {
                                         )
                                         txList.add(
                                             CustomerTx(
-                                                id = "TX-${cari.id}-2",
+                                                id = "TX-${cari.actualCariKod}-2",
                                                 date = "14.06.2026",
                                                 type = "SATIŞ",
                                                 amount = absBal * 1.0,
@@ -389,7 +389,7 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (cariler.isEmpty() || ((syncRes.total ?: 0) > 0 && totalFetched >= (syncRes.total ?: 0))) {
+                        if (true) { // Central Android section endpoint returns the complete snapshot in one response.
                             hasMore = false
 
 
@@ -421,6 +421,7 @@ object BridgeSyncHelper {
             }
             if (allMappedCustomers.isNotEmpty()) {
                 withContext(Dispatchers.Main) {
+                    AppDataStore.customers.clear()
                     for (mapped in allMappedCustomers) {
                         // CRITICAL: Match only on id, because duplicate placeholder phones like "-" will collapse other prospects!
                         val existingIndex = AppDataStore.customers.indexOfFirst { it.id == mapped.id }
@@ -459,6 +460,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Cari): ${e.message}. Api'den veri alınamadı.")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -488,6 +490,7 @@ object BridgeSyncHelper {
             val allMappedProducts = mutableListOf<ProductCatalog>()
 
             val stockLevelMap = mutableMapOf<String, Int>()
+            val stockWarehouseMap = mutableMapOf<String, MutableMap<String, Int>>()
             try {
                 log("Mevcut elde kalan stok seviyeleri (STOK_SEVIYELERI) önden yükleniyor...")
                 var levelsPage = 1
@@ -506,12 +509,12 @@ object BridgeSyncHelper {
                         entity = "stokSeviye",
                         since = null,
                         page = levelsPage,
-                        pageSize = 100
+                        pageSize = levelsPageSize
                     )
                     val levelsResponse = apiService.getStokSeviye(req_getStokSeviye)
                     if (levelsResponse.isSuccessful && levelsResponse.body() != null) {
                         val body = levelsResponse.body()!!
-                        val items = body.items
+                        val items = body.actualItems
                         if (items.isEmpty()) {
                             hasMoreLevels = false
 
@@ -528,8 +531,14 @@ object BridgeSyncHelper {
 
                         } else {
                             for (item in items) {
-                                if (!item.stokKod.isNullOrBlank()) {
-                                    stockLevelMap[item.stokKod] = item.actualMiktar.toInt()
+                                val stockCode = item.actualStokKod
+                                if (stockCode.isNotBlank()) {
+                                    val quantity = item.actualMiktar.toInt()
+                                    stockLevelMap[stockCode] = (stockLevelMap[stockCode] ?: 0) + quantity
+                                    val warehouseName = item.depoAd?.takeIf { it.isNotBlank() }
+                                        ?: item.actualDepoNo?.let { "Depo $it" }
+                                        ?: "Merkez Depo"
+                                    stockWarehouseMap.getOrPut(stockCode) { mutableMapOf() }[warehouseName] = quantity
 
 
 
@@ -540,23 +549,8 @@ object BridgeSyncHelper {
 
                                 }
                             }
-                            if (items.size < levelsPageSize) {
-                                hasMoreLevels = false
-
-
-
-                            } else {
-                                levelsPage++
-
-
-
-
-
-
-
-
-
-                            }
+                            // Central section endpoints return the complete snapshot.
+                            hasMoreLevels = false
                         }
                     } else {
                         hasMoreLevels = false
@@ -572,6 +566,47 @@ object BridgeSyncHelper {
 
 
 
+            }
+            val priceMap = mutableMapOf<String, MutableMap<Int, Double>>()
+            val priceListNames = mutableMapOf<Int, String>()
+            try {
+                val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
+                val request = com.example.data.api.PullJobsRequest(
+                    tenant_id = sharedPrefs.getString("tenant_id", "T001") ?: "T001",
+                    api_key = apiKey,
+                    device_id = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT",
+                    agent_version = "v2.0-multi-tenant",
+                    entity = "fiyatlar",
+                    since = null,
+                    page = 1,
+                    pageSize = 20000
+                )
+                val definitionsResponse = apiService.getStokSatisFiyatListeTanimlari(
+                    request.copy(entity = "stokSatisFiyatListeTanimlari", pageSize = 500)
+                )
+                if (definitionsResponse.isSuccessful) {
+                    definitionsResponse.body()?.actualItems.orEmpty().forEach { definition ->
+                        val listNo = definition.actualListNo
+                        val name = definition.actualName
+                        if (listNo > 0 && name.isNotBlank()) {
+                            priceListNames[listNo] = name
+                        }
+                    }
+                }
+                val priceResponse = apiService.getFiyatlar(request)
+                if (priceResponse.isSuccessful && priceResponse.body() != null) {
+                    for (item in priceResponse.body()!!.actualItems) {
+                        if (item.actualStokKod.isNotBlank() && item.actualFiyat > 0.0) {
+                            if (item.actualListeNo > 0 && item.actualListName.isNotBlank()) {
+                                priceListNames[item.actualListeNo] = item.actualListName
+                            }
+                            priceMap.getOrPut(item.actualStokKod) { mutableMapOf() }[item.actualListeNo] = item.actualFiyat
+                        }
+                    }
+                }
+                log("${priceMap.size} stok koduna ait fiyat alindi.")
+            } catch (e: Exception) {
+                log("Fiyat yukleme adimi atlandi: ${e.message}")
             }
             val barcodesMap = mutableMapOf<String, MutableList<String>>()
             try {
@@ -589,15 +624,15 @@ object BridgeSyncHelper {
                         api_key = apiKeyVal,
                         device_id = deviceId,
                         agent_version = "v2.0-multi-tenant",
-                        entity = "barkodTanimi",
+                        entity = "barkodlar",
                         since = null,
                         page = barPage,
-                        pageSize = 100
+                        pageSize = barPageSize
                     )
-                    val barResponse = apiService.getBarkodTanimi(req_getBarkodTanimi)
+                    val barResponse = apiService.getBarkodlar(req_getBarkodTanimi)
                     if (barResponse.isSuccessful && barResponse.body() != null) {
                         val body = barResponse.body()!!
-                        val items = body.items
+                        val items = body.actualItems
                         if (items.isEmpty()) {
                             hasMoreBar = false
 
@@ -614,10 +649,12 @@ object BridgeSyncHelper {
 
                         } else {
                             for (item in items) {
-                                if (!item.stokKod.isNullOrBlank() && !item.barkod.isNullOrBlank()) {
-                                    val list = barcodesMap.getOrPut(item.stokKod) { mutableListOf() }
-                                    if (!list.contains(item.barkod)) {
-                                        list.add(item.barkod)
+                                val stockCode = item.stockCode.trim()
+                                val barcode = item.barcode.trim()
+                                if (stockCode.isNotBlank() && barcode.isNotBlank()) {
+                                    val list = barcodesMap.getOrPut(stockCode) { mutableListOf() }
+                                    if (!list.contains(barcode)) {
+                                        list.add(barcode)
 
 
 
@@ -633,21 +670,8 @@ object BridgeSyncHelper {
                                     }
                                 }
                             }
-                            if (items.size < barPageSize) {
-                                hasMoreBar = false
-
-
-
-                            } else {
-                                barPage++
-
-
-
-
-
-
-
-                            }
+                            // Central section endpoints return the complete snapshot.
+                            hasMoreBar = false
                         }
                     } else {
                         hasMoreBar = false
@@ -702,25 +726,21 @@ object BridgeSyncHelper {
 
                         for (u in urunler) {
                             val codeKey = u.actualUrunKod
-                            val stockFromBridge = stockLevelMap[codeKey] ?: stockLevelMap[u.id]
-                            val existingProduct = AppDataStore.products.find { it.code == codeKey }
-                            val existingStockSum = existingProduct?.stockByWarehouse?.values?.sum()
+                            if (codeKey.isBlank()) {
+                                log("Stok kodu bos olan urun kaydi atlandi: ${u.actualUrunAd}")
+                                continue
+                            }
+                            val stockFromBridge = stockLevelMap[codeKey]
 
-                            // Extract stock count with fallbacks to avoid 150 default
                             val stockQty = stockFromBridge 
-                                ?: existingStockSum 
-                                ?: u.stok 
-                                ?: u.miktar 
-                                ?: u.quantity 
-                                ?: u.stock 
-                                ?: 150
+                                ?: u.explicitStok 
+                                ?: 0
 
                             // Map warehouses
                             val whMap = mutableMapOf<String, Int>()
-                            if (existingProduct != null && existingProduct.stockByWarehouse.isNotEmpty()) {
-                                whMap.putAll(existingProduct.stockByWarehouse)
-                                val firstKey = whMap.keys.firstOrNull() ?: "Merkez Depo"
-                                whMap[firstKey] = stockQty
+                            val serverWarehouses = stockWarehouseMap[codeKey]
+                            if (!serverWarehouses.isNullOrEmpty()) {
+                                whMap.putAll(serverWarehouses)
                             } else if (u.stockByWarehouse != null && u.stockByWarehouse.isNotEmpty()) {
                                 whMap.putAll(u.stockByWarehouse)
                             } else if (u.miktarDepo != null && u.miktarDepo.isNotEmpty()) {
@@ -734,10 +754,15 @@ object BridgeSyncHelper {
                             }
                             // Extract any barcodes fetched from getBarkodTanimi API call for this product
                             val rawBarcodes = barcodesMap[codeKey]?.toMutableList() ?: mutableListOf()
+                            u.stockBarcodes.orEmpty().forEach { embedded ->
+                                if (embedded.barcode.isNotBlank() && !rawBarcodes.contains(embedded.barcode)) {
+                                    rawBarcodes.add(embedded.barcode)
+                                }
+                            }
 
                             // If the API object u itself has a non-blank barcode, add it to raw candidates
-                            if (!u.barkod.isNullOrBlank() && !rawBarcodes.contains(u.barkod)) {
-                                rawBarcodes.add(0, u.barkod)
+                            if (u.actualBarkod.isNotBlank() && u.actualBarkod != codeKey && !rawBarcodes.contains(u.actualBarkod)) {
+                                rawBarcodes.add(0, u.actualBarkod)
 
 
 
@@ -776,10 +801,18 @@ object BridgeSyncHelper {
 
 
                             }
-                            val basePrice = u.actualSatisFiyat
-                            val dealerPrice = u.bayiFiyati ?: (basePrice * 0.9)
-                            val wholesalePrice = u.toptanFiyati ?: (basePrice * 0.8)
-                            val customPricesMap = u.customPrices ?: emptyMap()
+                            val serverPrices = priceMap[codeKey].orEmpty()
+                            val basePrice = serverPrices[1]
+                                ?: serverPrices.toSortedMap().values.firstOrNull()
+                                ?: u.actualSatisFiyat
+                            val dealerPrice = serverPrices[2] ?: u.actualBayiFiyati ?: basePrice
+                            val wholesalePrice = serverPrices[3] ?: u.actualToptanFiyati ?: basePrice
+                            val customPricesMap = buildMap {
+                                putAll(u.customPrices ?: emptyMap())
+                                serverPrices.forEach { (listNo, price) ->
+                                    put(priceListNames[listNo] ?: "Liste $listNo", price)
+                                }
+                            }
 
                             val mapped = ProductCatalog(
                                 barcode = uniqueBarcode,
@@ -790,18 +823,22 @@ object BridgeSyncHelper {
                                 basePrice = basePrice,
                                 dealerPrice = dealerPrice,
                                 wholesalePrice = wholesalePrice,
-                                kdvPercent = u.kdvOrani?.toInt() ?: 20,
+                                kdvPercent = u.actualKdv.toInt(),
                                 imageUrlColor = androidx.compose.ui.graphics.Color(0xFF1976D2),
-                                brand = u.marka ?: u.erp ?: "Mikro",
+                                brand = u.actualMarka ?: u.erp ?: "Mikro",
                                 stockByWarehouse = whMap,
+                                aisle = u.actualReyonKod,
                                 customPrices = customPricesMap,
-                                barcodes = barcodesList
+                                barcodes = barcodesList,
+                                measurement = u.actualOlcu,
+                                packaging = u.actualAmbalaj,
+                                cartonQuantity = u.actualKoliAdet
                             )
                             allMappedProducts.add(mapped)
 
 
                         }
-                        if (urunler.isEmpty() || ((syncRes.total ?: 0) > 0 && totalFetched >= (syncRes.total ?: 0))) {
+                        if (true) { // Central Android section endpoint returns the complete snapshot in one response.
                             hasMore = false
 
 
@@ -828,28 +865,23 @@ object BridgeSyncHelper {
             }
             if (allMappedProducts.isNotEmpty()) {
                 withContext(Dispatchers.Main) {
+                    AppDataStore.products.clear()
+                    val seenBarcodes = mutableSetOf<String>()
                     for (u in allMappedProducts) {
-                        // CRITICAL: Match by unique ERP stock code instead of barcode to avoid overlapping blanks!
-                        val existingIndex = AppDataStore.products.indexOfFirst { it.code == u.code }
-                        if (existingIndex >= 0) {
-                            AppDataStore.products[existingIndex] = u
-
-
-
-
-
-
-
-
-
-
-
-
+                        val finalBarcode = if (u.barcode.isBlank() || u.barcode.lowercase() == "null" || u.barcode.lowercase() == "none" || seenBarcodes.contains(u.barcode)) {
+                            u.code
                         } else {
-                            AppDataStore.products.add(u)
+                            u.barcode
+                        }
+                        seenBarcodes.add(finalBarcode)
+                        val cleaned = u.copy(barcode = finalBarcode)
 
-
-
+                        // CRITICAL: Match by unique ERP stock code instead of barcode to avoid overlapping blanks!
+                        val existingIndex = if (cleaned.code.isNotBlank()) AppDataStore.products.indexOfFirst { it.code == cleaned.code } else -1
+                        if (existingIndex >= 0) {
+                            AppDataStore.products[existingIndex] = cleaned
+                        } else {
+                            AppDataStore.products.add(cleaned)
                         }
                     }
                 }
@@ -866,6 +898,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Stok): ${e.message}. Api'den veri alınamadı.")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -950,39 +983,50 @@ object BridgeSyncHelper {
 
             if (definitions.isNotEmpty() || priceLists.isNotEmpty()) {
                 withContext(Dispatchers.Main) {
-                    val listNoToName = definitions.associate { (it.listNo ?: 0) to (it.aciklama ?: "Liste ${it.listNo}") }
+                    val listNoToName = definitions
+                        .filter { it.actualListNo > 0 && it.actualName.isNotBlank() }
+                        .associate { it.actualListNo to it.actualName }
                     var updatedCount = 0
 
                     for (i in AppDataStore.products.indices) {
                         val prod = AppDataStore.products[i]
-                        val matchedPrices = priceLists.filter { it.stokKod == prod.code }
+                        val matchedPrices = priceLists.filter {
+                            val stk = it.actualStokKod
+                            stk.isNotBlank() && (
+                                stk.equals(prod.code, ignoreCase = true) || 
+                                (prod.barcode.isNotBlank() && stk.equals(prod.barcode, ignoreCase = true))
+                            )
+                        }
                         if (matchedPrices.isNotEmpty()) {
                             val newCustomPrices = prod.customPrices.toMutableMap()
+                            var baseP = prod.basePrice
+                            var dealerP = prod.dealerPrice
+                            var wholesaleP = prod.wholesalePrice
+
                             matchedPrices.forEach { item ->
-                                val listName = listNoToName[item.listNo ?: 0] ?: "Liste ${item.listNo}"
-                                if (item.fiyat != null) {
-                                    newCustomPrices[listName] = item.fiyat
-
-
-
-
-
-
-
-
+                                val lNo = item.actualListNo
+                                val listName = listNoToName[lNo] ?: "Liste $lNo"
+                                val pVal = item.actualFiyat
+                                if (pVal > 0.0) {
+                                    newCustomPrices[listName] = pVal
+                                    if (lNo == 1 || listName.contains("Perakende", ignoreCase = true) || listName.contains("Genel", ignoreCase = true) || baseP == 0.0) {
+                                        baseP = pVal
+                                    }
+                                    if (lNo == 2 || listName.contains("Bayi", ignoreCase = true) || dealerP == 0.0) {
+                                        dealerP = pVal
+                                    }
+                                    if (lNo == 3 || listName.contains("Toptan", ignoreCase = true) || wholesaleP == 0.0) {
+                                        wholesaleP = pVal
+                                    }
                                 }
                             }
-                            AppDataStore.products[i] = prod.copy(customPrices = newCustomPrices)
+                            AppDataStore.products[i] = prod.copy(
+                                basePrice = baseP,
+                                dealerPrice = dealerP,
+                                wholesalePrice = wholesaleP,
+                                customPrices = newCustomPrices
+                            )
                             updatedCount++
-
-
-
-
-
-
-
-
-
                         }
                     }
                     AppDataStore.persist(context)
@@ -1049,105 +1093,58 @@ object BridgeSyncHelper {
                     entity = "stokSeviye",
                     since = null,
                     page = currentPage,
-                    pageSize = 100
+                    pageSize = pageSize
                 )
                 val response = apiService.getStokSeviye(req_getStokSeviye)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    val items = body.items
+                    val items = body.actualItems
                     if (items.isEmpty()) {
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
                         allLevels.addAll(items)
                         totalFetched += items.size
                         updateProgress(Math.min(0.1f + (currentPage * 0.15f), 0.85f))
 
-                        if (items.size < pageSize) {
-                            hasMore = false
-
-
-
-                        } else {
-                            currentPage++
-
-
-                        }
+                        // Central section endpoints return the complete snapshot.
+                        hasMore = false
                     }
                 } else {
                     handleApiError(response, log)
                     throw Exception("API Hatası (\"Sayfa $currentPage stok seviyeleri çekilemedi. Kod: ${response.code()}\")")
-
-
-
-
-
-
                 }
             }
             if (allLevels.isNotEmpty()) {
                 withContext(Dispatchers.Main) {
                     var updatedCount = 0
-                    val levelMap = allLevels.associate { it.stokKod to it.eldekiMiktar }
+                    val levelGroups = allLevels.filter { it.actualStokKod.isNotBlank() }.groupBy { it.actualStokKod }
 
                     for (i in AppDataStore.products.indices) {
                         val prod = AppDataStore.products[i]
-                        val eldeki = levelMap[prod.code]
-                        if (eldeki != null) {
+                        val matchedLevels = levelGroups[prod.code]
+                        if (matchedLevels != null && matchedLevels.isNotEmpty()) {
                             val updatedWhMap = prod.stockByWarehouse.toMutableMap()
-                            // If there are warehouses: update first one (e.g., Merkez/Ana Depo) or "Ana Depo"
-                            val mainDepotKey = updatedWhMap.keys.firstOrNull() ?: "Merkez Depo"
-                            updatedWhMap[mainDepotKey] = eldeki.toInt()
+                            for (level in matchedLevels) {
+                                val whName = level.depoAd?.takeIf { it.isNotBlank() } 
+                                    ?: level.actualDepoNo?.let { "Depo $it" }
+                                    ?: "Merkez Depo"
+                                updatedWhMap[whName] = level.actualMiktar.toInt()
+                            }
 
                             AppDataStore.products[i] = prod.copy(stockByWarehouse = updatedWhMap)
                             updatedCount++
-
-
-
-
-
-
-
-
                         }
                     }
                     AppDataStore.persist(context)
                     log("Başarılı! $updatedCount adet ürünün eldeki stok miktarı güncellendi.")
-
-
-
-
                 }
             } else {
                 log("Güncellenecek stok seviyesi verisi bulunamadı.")
-
-
-
-
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Stok Seviye): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
             updateProgress(1.0f)
-
-
-
-
-
-
-
-
         }
     }
     suspend fun syncFiyatListesiNew(
@@ -1351,12 +1348,12 @@ object BridgeSyncHelper {
                     entity = "cariHareketleri",
                     since = null,
                     page = currentPage,
-                    pageSize = 100
+                    pageSize = pageSize
                 )
                 val response = apiService.getCariHareketleri(req_getCariHareketleri)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    val items = body.items
+                    val items = body.actualItems
                     if (items.isEmpty()) {
                         hasMore = false
 
@@ -1399,13 +1396,60 @@ object BridgeSyncHelper {
                 }
             }
             if (allTx.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val db = com.example.data.database.DatabaseProvider.getDatabase(context)
+                        val entities = allTx.map { dto ->
+                            val rawDate = dto.tarih ?: ""
+                            val formattedDate = try {
+                                if (rawDate.contains("T")) {
+                                    val parts = rawDate.split("T")[0].split("-")
+                                    if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else rawDate
+                                } else rawDate
+                            } catch (e: Exception) { rawDate }
+                            val txType = when (dto.evrakTip) {
+                                29 -> "SATIŞ"
+                                64 -> "TAHSİLAT"
+                                65 -> "TEDİYE"
+                                63 -> "SATIŞ"
+                                else -> when (dto.tip) {
+                                    0 -> "SATIŞ"
+                                    1 -> "TAHSİLAT"
+                                    2 -> "İADE"
+                                    3 -> "VİRMAN"
+                                    else -> if (dto.borcMu == true) "SATIŞ" else "TAHSİLAT"
+                                }
+                            }
+                            val rawEvrak = dto.evrakNo ?: ""
+                            val docNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) "FT-$rawEvrak" else rawEvrak
+                            val finalDesc = if (docNo.isNotEmpty()) "$docNo - ${dto.aciklama ?: "Mikro Cari Hareketi"}" else (dto.aciklama ?: "Mikro Cari Hareketi")
+                            val txId = if (docNo.isNotEmpty()) docNo else (dto.id?.toString() ?: "TX-ERP-${(Math.random() * 100000).toInt()}")
+                            com.example.data.database.CariHareketEntity(
+                                id = txId,
+                                customerCode = (dto.cariKod ?: dto.erpRef ?: "").trim(),
+                                date = formattedDate,
+                                type = txType,
+                                amount = dto.tutar ?: 0.0,
+                                description = finalDesc,
+                                erpRef = dto.erpRef,
+                                recNo = dto.id?.toString(),
+                                cha_recno = dto.realChaRecNo
+                            )
+                        }
+                        db.cariHareketDao().replaceAll(entities)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
                 withContext(Dispatchers.Main) {
                     var updatedCustomersCount = 0
-                    val txGrouped = allTx.groupBy { it.cariKod ?: "" }
+                    val txGrouped = allTx.groupBy { (it.cariKod ?: it.erpRef ?: "").trim().lowercase() }
 
                     for (i in AppDataStore.customers.indices) {
                         val customer = AppDataStore.customers[i]
-                        val matches = txGrouped[customer.id]
+                        val custKey = customer.id.trim().lowercase()
+                        val matches = txGrouped[custKey]
+                            ?: txGrouped.entries.firstOrNull { it.key.isNotBlank() && (custKey == it.key || custKey.contains(it.key) || it.key.contains(custKey)) }?.value
                         if (matches != null && matches.isNotEmpty()) {
                             val newTxs = matches.map { dto ->
                                 val rawDate = dto.tarih ?: ""
@@ -1504,7 +1548,19 @@ object BridgeSyncHelper {
                                 )
 
                             }
-                            AppDataStore.customers[i] = customer.copy(transactions = newTxs.toMutableList())
+                            var calculated = 0.0
+                            for (tx in newTxs) {
+                                val t = tx.type.uppercase()
+                                if (t.contains("SATIŞ") || t.contains("SATIS") || t.contains("BORÇ") || t.contains("BORC") || t.contains("FATURA") || t.contains("TEDİYE") || t.contains("TEDIYE") || t == "0") {
+                                    calculated += tx.amount
+                                } else if (t.contains("TAHSİLAT") || t.contains("TAHSILAT") || t.contains("İADE") || t.contains("IADE") || t.contains("ALACAK") || t == "1") {
+                                    calculated -= tx.amount
+                                } else {
+                                    calculated += tx.amount
+                                }
+                            }
+                            val finalBal = if (customer.balance != 0.0) customer.balance else calculated
+                            AppDataStore.customers[i] = customer.copy(balance = finalBal, transactions = newTxs.toMutableList())
                             updatedCustomersCount++
 
 
@@ -1541,6 +1597,159 @@ object BridgeSyncHelper {
 
         }
     }
+
+    suspend fun syncStokHareketleri(
+        context: Context,
+        apiUrl: String,
+        apiKey: String,
+        log: (String) -> Unit,
+        updateProgress: (Float) -> Unit
+    ) {
+        try {
+            log("Uç nokta: $apiUrl/api/v1/sync/stokHareket")
+            log("Stok Hareket Defteri (STOK_HAREKETLERI) çekiliyor...")
+            updateProgress(0.1f)
+            val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
+            var currentPage = 1
+            val pageSize = 200
+            var totalFetched = 0
+            var hasMore = true
+
+            val allMovements = mutableListOf<com.example.data.api.StokHareketiDto>()
+
+            while (hasMore) {
+                log("Stok hareketleri sayfa $currentPage çekiliyor...")
+                val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
+                val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
+                val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
+                val req = com.example.data.api.PullJobsRequest(
+                    tenant_id = tenantId,
+                    api_key = apiKey,
+                    device_id = deviceId,
+                    agent_version = "v2.0-multi-tenant",
+                    entity = "stokHareket",
+                    since = null,
+                    page = currentPage,
+                    pageSize = pageSize
+                )
+                val response = apiService.getStokHareket(req)
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    val items = body.actualItems
+                    if (items.isEmpty()) {
+                        hasMore = false
+                    } else {
+                        allMovements.addAll(items)
+                        totalFetched += items.size
+                        updateProgress(Math.min(0.1f + (currentPage * 0.15f), 0.85f))
+                        if (items.size < pageSize) {
+                            hasMore = false
+                        } else {
+                            currentPage++
+                        }
+                    }
+                } else {
+                    handleApiError(response, log)
+                    throw Exception("API Hatası (\"Sayfa $currentPage stok hareketleri çekilemedi. Kod: ${response.code()}\")")
+                }
+            }
+
+            if (allMovements.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val db = com.example.data.database.DatabaseProvider.getDatabase(context)
+                        val entities = allMovements.map { item ->
+                            val rawDate = item.tarih ?: ""
+                            val formattedDate = try {
+                                if (rawDate.contains("T")) {
+                                    val timePart = rawDate.split("T").getOrNull(1)?.take(5) ?: "00:00"
+                                    val datePart = rawDate.split("T")[0].split("-")
+                                    if (datePart.size == 3) "${datePart[2]}.${datePart[1]}.${datePart[0]} $timePart" else rawDate
+                                } else rawDate
+                            } catch (e: Exception) { rawDate }
+
+                            val moveType = when (item.tip) {
+                                0 -> "Giriş"
+                                1 -> "Çıkış"
+                                2 -> "İade Giriş"
+                                3 -> "İade Çıkış"
+                                else -> "Hareket"
+                            }
+                            val quantityFormatted = "${item.miktar ?: (item.girisMiktar ?: item.cikisMiktar ?: 0.0)} ADT"
+                            val clientName = AppDataStore.customers.find { it.id == item.cariKod }?.name ?: item.cariKod ?: "Genel Müşteri"
+                            val stockCodeVal = (item.stokKod ?: item.urunKod ?: "").trim()
+                            com.example.data.database.StockMovementEntity(
+                                stockCode = stockCodeVal,
+                                date = formattedDate,
+                                type = moveType,
+                                qty = quantityFormatted,
+                                detail = "Evrak: ${item.evrakNo ?: "Belgesiz"} - $clientName",
+                                user = item.aciklama ?: "Mikro Kaydı",
+                                evrakNo = item.evrakNo ?: "Belgesiz",
+                                cariKod = item.cariKod,
+                                cariName = clientName,
+                                unitPrice = item.birimFiyat ?: 0.0,
+                                totalAmount = item.tutar ?: 0.0,
+                                warehouse = "Depo: ${item.girisDepoNo ?: item.cikisDepoNo ?: "Merkez"}"
+                            )
+                        }
+                        db.stockMovementDao().replaceAll(entities)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    val grouped = allMovements.groupBy { (it.stokKod ?: it.urunKod ?: "").trim().lowercase() }
+                    for ((codeKey, items) in grouped) {
+                        if (codeKey.isNotBlank()) {
+                            val mappedMovements = items.map { item ->
+                                val rawDate = item.tarih ?: ""
+                                val formattedDate = try {
+                                    if (rawDate.contains("T")) {
+                                        val timePart = rawDate.split("T").getOrNull(1)?.take(5) ?: "00:00"
+                                        val datePart = rawDate.split("T")[0].split("-")
+                                        if (datePart.size == 3) "${datePart[2]}.${datePart[1]}.${datePart[0]} $timePart" else rawDate
+                                    } else rawDate
+                                } catch (e: Exception) { rawDate }
+
+                                val moveType = when (item.tip) {
+                                    0 -> "Giriş"
+                                    1 -> "Çıkış"
+                                    2 -> "İade Giriş"
+                                    3 -> "İade Çıkış"
+                                    else -> "Hareket"
+                                }
+                                val quantityFormatted = "${item.miktar ?: (item.girisMiktar ?: item.cikisMiktar ?: 0.0)} ADT"
+                                val clientName = AppDataStore.customers.find { it.id == item.cariKod }?.name ?: item.cariKod ?: "Genel Müşteri"
+                                StockMovement(
+                                    date = formattedDate,
+                                    type = moveType,
+                                    qty = quantityFormatted,
+                                    detail = "Evrak: ${item.evrakNo ?: "Belgesiz"} - $clientName",
+                                    user = item.aciklama ?: "Mikro Kaydı",
+                                    evrakNo = item.evrakNo ?: "Belgesiz",
+                                    cariKod = item.cariKod,
+                                    cariName = clientName,
+                                    unitPrice = item.birimFiyat ?: 0.0,
+                                    totalAmount = item.tutar ?: 0.0,
+                                    warehouse = "Depo: ${item.girisDepoNo ?: item.cikisDepoNo ?: "Merkez"}"
+                                )
+                            }
+                            AppDataStore.stockMovementsMap[codeKey] = mappedMovements
+                        }
+                    }
+                    log("Başarılı! Toplam $totalFetched adet stok hareket satırı alındı. ${grouped.size} adet ürünün hareket defteri güncellendi.")
+                }
+            } else {
+                log("Güncellenecek stok hareketi verisi bulunamadı.")
+            }
+            updateProgress(1.0f)
+        } catch (e: Exception) {
+            log("Köprü Bağlantı Hatası (Stok Hareketleri): ${e.message}")
+            updateProgress(1.0f)
+        }
+    }
+
     suspend fun syncFaturaHareket(
         context: Context,
         apiUrl: String,
@@ -1581,14 +1790,14 @@ object BridgeSyncHelper {
                     device_id = deviceId,
                     agent_version = "v2.0-multi-tenant",
                     entity = "faturaHareket",
-                    since = null,
+                    since = code,
                     page = 1,
                     pageSize = 100
                 )
-                val response = apiService.getFaturaHareket(com.example.data.api.PullJobsRequest(tenant_id="", api_key="", device_id="", agent_version="", entity="faturaHareket", since=code))
+                val response = apiService.getFaturaHareket(req_getFaturaHareket)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    val items = body.items
+                    val items = body.actualItems
                     log("Cari $code için ${items.size} adet detaylı fatura alındı.")
                     val customer = AppDataStore.customers.find { it.id == code }
                     val custName = customer?.name ?: "Müşteri $code"
@@ -1778,7 +1987,6 @@ object BridgeSyncHelper {
             val loadedItems = mutableListOf<CariAdresDto>()
 
             while (hasMore) {
-                log("Sayfa $page adresleri çekiliyor...")
                 val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
                 val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
                 val apiKeyVal = apiKey
@@ -1791,59 +1999,33 @@ object BridgeSyncHelper {
                     entity = "cariAdresleri",
                     since = null,
                     page = page,
-                    pageSize = 100
+                    pageSize = pageSize
                 )
                 val response = apiService.getCariAdresleri(req_getCariAdresleri)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    val items = body.items
+                    val items = body.actualItems
                     if (items.isEmpty()) {
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
                         loadedItems.addAll(items)
                         log("${items.size} adet adres alındı.")
                         if (items.size < pageSize) {
                             hasMore = false
-
-
-
                         } else {
                             page++
-
-
                         }
                     }
                     updateProgress(0.1f + (page * 0.1f).coerceAtMost(0.8f))
                 } else {
                     handleApiError(response, log)
                     throw Exception("API Hatası (\"Adresler çekilemedi. Kod: ${response.code()}\")")
-
-
-
-
-
-
                 }
             }
             withContext(Dispatchers.Main) {
                 AppDataStore.cariAdresleri.clear()
                 AppDataStore.cariAdresleri.addAll(loadedItems)
-
-
-
-
+                AppDataStore.persist(context)
             }
             log("Başarılı! Toplam ${loadedItems.size} adet cari adres kaydedildi.")
             updateProgress(1.0f)
@@ -1891,12 +2073,12 @@ object BridgeSyncHelper {
                     entity = "cariBankaHesaplari",
                     since = null,
                     page = page,
-                    pageSize = 100
+                    pageSize = pageSize
                 )
                 val response = apiService.getCariBankaHesaplari(req_getCariBankaHesaplari)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    val items = body.items
+                    val items = body.actualItems
                     if (items.isEmpty()) {
                         hasMore = false
 
@@ -1940,10 +2122,7 @@ object BridgeSyncHelper {
             withContext(Dispatchers.Main) {
                 AppDataStore.cariBankaHesaplari.clear()
                 AppDataStore.cariBankaHesaplari.addAll(loadedItems)
-
-
-
-
+                AppDataStore.persist(context)
             }
             log("Başarılı! Toplam ${loadedItems.size} adet cari banka hesabı kaydedildi.")
             updateProgress(1.0f)
@@ -1991,12 +2170,12 @@ object BridgeSyncHelper {
                     entity = "bankalar",
                     since = null,
                     page = page,
-                    pageSize = 100
+                    pageSize = pageSize
                 )
                 val response = apiService.getBankalar(req_getBankalar)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    val items = body.items
+                    val items = body.actualItems
                     if (items.isEmpty()) {
                         hasMore = false
 
@@ -2040,10 +2219,7 @@ object BridgeSyncHelper {
             withContext(Dispatchers.Main) {
                 AppDataStore.bridgeBankalar.clear()
                 AppDataStore.bridgeBankalar.addAll(loadedItems)
-
-
-
-
+                AppDataStore.persist(context)
             }
             log("Başarılı! Toplam ${loadedItems.size} adet banka tanımı kaydedildi.")
             updateProgress(1.0f)
@@ -2091,12 +2267,12 @@ object BridgeSyncHelper {
                     entity = "kasalar",
                     since = null,
                     page = page,
-                    pageSize = 100
+                    pageSize = pageSize
                 )
                 val response = apiService.getKasalar(req_getKasalar)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    val items = body.items
+                    val items = body.actualItems
                     if (items.isEmpty()) {
                         hasMore = false
 
@@ -2140,10 +2316,7 @@ object BridgeSyncHelper {
             withContext(Dispatchers.Main) {
                 AppDataStore.bridgeKasalar.clear()
                 AppDataStore.bridgeKasalar.addAll(loadedItems)
-
-
-
-
+                AppDataStore.persist(context)
             }
             log("Başarılı! Toplam ${loadedItems.size} adet kasa tanımı kaydedildi.")
             updateProgress(1.0f)
@@ -2189,14 +2362,11 @@ object BridgeSyncHelper {
             val response = apiService.getKasaYonetim(req_getKasaYonetim)
             if (response.isSuccessful && response.body() != null) {
                 val body = response.body()!!
-                val items = body.items
+                val items = body.actualItems
                 withContext(Dispatchers.Main) {
                     AppDataStore.kasaYonetimList.clear()
                     AppDataStore.kasaYonetimList.addAll(items)
-
-
-
-
+                    AppDataStore.persist(context)
                 }
                 log("Başarılı! Toplam ${items.size} adet kasa yönetim/muhasebe tanımı kaydedildi.")
             } else {
@@ -2539,16 +2709,20 @@ object BridgeSyncHelper {
                     } else {
                         for (u in urunler) {
                             val codeKey = u.actualUrunKod
-                            val stockQty = u.stok ?: u.miktar ?: u.quantity ?: u.stock ?: 150
+                            val stockQty = u.explicitStok ?: 0
                             val whMap = mutableMapOf<String, Int>()
                             whMap["Merkez Depo"] = stockQty
                             val basePrice = u.actualSatisFiyat
-                            val dealerPrice = u.bayiFiyati ?: (basePrice * 0.9)
-                            val wholesalePrice = u.toptanFiyati ?: (basePrice * 0.8)
+                            val dealerPrice = u.actualBayiFiyati ?: (basePrice * 0.9)
+                            val wholesalePrice = u.actualToptanFiyati ?: (basePrice * 0.8)
                             val customPricesMap = u.customPrices ?: emptyMap()
+                            val incrementalBarcodes = (
+                                u.stockBarcodes.orEmpty().map { it.barcode } +
+                                    listOf(u.actualBarkod)
+                                ).filter { it.isNotBlank() }.distinct()
 
                             val mapped = ProductCatalog(
-                                barcode = u.barkod ?: u.actualUrunKod,
+                                barcode = incrementalBarcodes.firstOrNull() ?: u.actualUrunKod,
                                 code = u.actualUrunKod,
                                 title = u.actualUrunAd,
                                 category = u.kategori ?: "Diğer",
@@ -2556,12 +2730,16 @@ object BridgeSyncHelper {
                                 basePrice = basePrice,
                                 dealerPrice = dealerPrice,
                                 wholesalePrice = wholesalePrice,
-                                kdvPercent = u.kdvOrani?.toInt() ?: 20,
+                                kdvPercent = u.actualKdv.toInt(),
                                 imageUrlColor = androidx.compose.ui.graphics.Color(0xFF1976D2),
-                                brand = u.marka ?: u.erp ?: "Mikro",
+                                brand = u.actualMarka ?: u.erp ?: "Mikro",
                                 stockByWarehouse = whMap,
+                                aisle = u.actualReyonKod,
                                 customPrices = customPricesMap,
-                                barcodes = listOf(u.barkod ?: u.actualUrunKod)
+                                barcodes = incrementalBarcodes.ifEmpty { listOf(u.actualUrunKod) },
+                                measurement = u.actualOlcu,
+                                packaging = u.actualAmbalaj,
+                                cartonQuantity = u.actualKoliAdet
                             )
                             allMappedProducts.add(mapped)
 
@@ -2592,9 +2770,16 @@ object BridgeSyncHelper {
             if (allMappedProducts.isNotEmpty()) {
                 val db = com.example.data.database.DatabaseProvider.getDatabase(context)
                 val converter = com.example.data.database.Converters()
+                val seenBarcodes = mutableSetOf<String>()
                 val productEntities = allMappedProducts.map { prod ->
+                    val finalBarcode = if (prod.barcode.isBlank() || prod.barcode.lowercase() == "null" || prod.barcode.lowercase() == "none" || seenBarcodes.contains(prod.barcode)) {
+                        prod.code.ifBlank { java.util.UUID.randomUUID().toString() }
+                    } else {
+                        prod.barcode
+                    }
+                    seenBarcodes.add(finalBarcode)
                     com.example.data.database.ProductEntity(
-                        barcode = prod.barcode,
+                        barcode = finalBarcode,
                         code = prod.code,
                         title = prod.title,
                         category = prod.category,
@@ -2612,7 +2797,10 @@ object BridgeSyncHelper {
                         localImagePath = prod.localImagePath,
                         aisle = prod.aisle,
                         customPricesJson = converter.fromCustomPricesMap(prod.customPrices),
-                        barcodesJson = converter.fromBarcodeList(prod.barcodes)
+                        barcodesJson = converter.fromBarcodeList(prod.barcodes),
+                        measurement = prod.measurement,
+                        packaging = prod.packaging,
+                        cartonQuantity = prod.cartonQuantity
                     )
 
 

@@ -23,17 +23,25 @@ class ExampleUnitTest {
             try {
                 val apiService = ApiClient.getFieldOpsApiService(apiUrl, token)
                 println("Connecting to $apiUrl/api/v1/sync/cari ...")
-                val response = apiService.getCariler(pageSize = 100)
+                val request = com.example.data.api.PullJobsRequest(
+                    tenant_id = "c3bfda18",
+                    api_key = token,
+                    device_id = "test-device",
+                    agent_version = "1.0.0",
+                    pageSize = 100
+                )
+                val response = apiService.getCariler(request)
                 
                 println("Response Code: ${response.code()}")
                 if (response.isSuccessful) {
                     val body = response.body()
                     if (body != null) {
                         println("CONNECTION SUCCESSFUL!")
-                        println("Total items fetched in page: ${body.items.size}")
-                        if (body.items.isNotEmpty()) {
+                        val actualItems = body.actualItems
+                        println("Total items fetched in page: ${actualItems.size}")
+                        if (actualItems.isNotEmpty()) {
                             println("First 10 customers:")
-                            body.items.take(10).forEach { cari ->
+                            actualItems.take(10).forEach { cari ->
                                 println(" -> Kod: ${cari.actualCariKod}, Ünvan: ${cari.actualCariUnvan}, Ref: ${cari.erpRef}")
                             }
                         } else {
@@ -65,13 +73,20 @@ class ExampleUnitTest {
         try {
             val apiService = ApiClient.getFieldOpsApiService(apiUrl, apiKey)
             println("Fetching all customers (cariler)...")
-            val carilerRes = apiService.getCariler(pageSize = 1000)
+            val request = com.example.data.api.PullJobsRequest(
+                tenant_id = "c3bfda18",
+                api_key = apiKey,
+                device_id = "test-device",
+                agent_version = "1.0.0",
+                pageSize = 1000
+            )
+            val carilerRes = apiService.getCariler(request)
             if (!carilerRes.isSuccessful || carilerRes.body() == null) {
                 println("Could not fetch cariler. Code: ${carilerRes.code()}, Body: ${carilerRes.errorBody()?.string()}")
                 return@runBlocking
             }
             
-            val customers = carilerRes.body()!!.items
+            val customers = carilerRes.body()!!.actualItems
             println("Total customers fetched: ${customers.size}")
             
             val matches = customers.filter { 
@@ -99,9 +114,18 @@ class ExampleUnitTest {
             val keysToTryForTx = listOfNotNull(gokhan.id, gokhan.erpKod, gokhan.erpRef)
             for (key in keysToTryForTx) {
                 println("\nTrying to fetch transactions (cariHareket) for key: $key ...")
-                val res = apiService.getCariHareket(cariKod = key, pageSize = 50)
+                val req = com.example.data.api.PullJobsRequest(
+                    tenant_id = "c3bfda18",
+                    api_key = apiKey,
+                    device_id = "test-device",
+                    agent_version = "1.0.0",
+                    entity = "cariHareket",
+                    since = key,
+                    pageSize = 50
+                )
+                val res = apiService.getCariHareket(req)
                 if (res.isSuccessful && res.body() != null) {
-                    val items = res.body()!!.items
+                    val items = res.body()!!.actualItems
                     println("SUCCESS WITH cariHareket on key $key! Fetched size: ${items.size}")
                     if (items.isNotEmpty()) {
                         txs = items
@@ -114,9 +138,18 @@ class ExampleUnitTest {
             if (txs.isEmpty()) {
                 for (key in keysToTryForTx) {
                     println("\nTrying to fetch transactions (cariHareketleri) for key: $key ...")
-                    val res = apiService.getCariHareketleri(cariKod = key, pageSize = 50)
+                    val req = com.example.data.api.PullJobsRequest(
+                        tenant_id = "c3bfda18",
+                        api_key = apiKey,
+                        device_id = "test-device",
+                        agent_version = "1.0.0",
+                        entity = "cariHareketleri",
+                        since = key,
+                        pageSize = 50
+                    )
+                    val res = apiService.getCariHareketleri(req)
                     if (res.isSuccessful && res.body() != null) {
-                        val items = res.body()!!.items
+                        val items = res.body()!!.actualItems
                         println("SUCCESS WITH cariHareketleri on key $key! Fetched size: ${items.size}")
                         if (items.isNotEmpty()) {
                             txs = items
@@ -130,9 +163,18 @@ class ExampleUnitTest {
             
             if (txs.isEmpty()) {
                 println("Could not fetch transactions with any key! Attempting empty/all-customer fetch...")
-                val res = apiService.getCariHareketleri(cariKod = null, pageSize = 50)
+                val req = com.example.data.api.PullJobsRequest(
+                    tenant_id = "c3bfda18",
+                    api_key = apiKey,
+                    device_id = "test-device",
+                    agent_version = "1.0.0",
+                    entity = "cariHareketleri",
+                    since = null,
+                    pageSize = 50
+                )
+                val res = apiService.getCariHareketleri(req)
                 if (res.isSuccessful && res.body() != null) {
-                    txs = res.body()!!.items.filter { it.cariKod == gokhan.id || it.cariKod == gokhan.erpKod || it.cariKod == gokhan.erpRef }
+                    txs = res.body()!!.actualItems.filter { it.cariKod == gokhan.id || it.cariKod == gokhan.erpKod || it.cariKod == gokhan.erpRef }
                     println("SUCCESS WITH general cariHareketleri query! Filtered matches for customer: ${txs.size}")
                 }
             }
@@ -146,9 +188,19 @@ class ExampleUnitTest {
             var invoices = emptyList<com.example.data.api.FaturaHareketDto>()
             for (key in keysToTryForTx) {
                 println("\nFetching invoice detail/satirlar (faturaHareket) for key: $key ...")
-                val fatRes = apiService.getFaturaHareket(cariKod = key, page = 1, pageSize = 50)
+                val req = com.example.data.api.PullJobsRequest(
+                    tenant_id = "c3bfda18",
+                    api_key = apiKey,
+                    device_id = "test-device",
+                    agent_version = "1.0.0",
+                    entity = "faturaHareket",
+                    since = key,
+                    page = 1,
+                    pageSize = 50
+                )
+                val fatRes = apiService.getFaturaHareket(req)
                 if (fatRes.isSuccessful && fatRes.body() != null) {
-                    val items = fatRes.body()!!.items
+                    val items = fatRes.body()!!.actualItems
                     println("SUCCESS with faturaHareket on key $key! Invoices size: ${items.size}")
                     if (items.isNotEmpty()) {
                         invoices = items
@@ -208,6 +260,50 @@ class ExampleUnitTest {
             println("Exception inside debug test: ${e.message}")
             e.printStackTrace()
         }
+    }
+
+    @Test
+    fun testBarcodeResolutionLogic() {
+        val appDataStore = com.example.ui.screens.AppDataStore
+        
+        // Setup mock catalog
+        val mockProduct = com.example.ui.screens.ProductCatalog(
+            barcode = "869000123",
+            code = "PROD-101",
+            title = "Test Product 101",
+            category = "Gıda",
+            desc = "Test description",
+            basePrice = 10.0,
+            dealerPrice = 10.0,
+            wholesalePrice = 10.0,
+            kdvPercent = 20,
+            barcodes = listOf("869000124"),
+            imageUrlColor = androidx.compose.ui.graphics.Color.Red,
+            stockByWarehouse = emptyMap(),
+            boxQty = 1,
+            packageQty = 1,
+            imageUrl = ""
+        )
+        
+        appDataStore.products.clear()
+        appDataStore.products.add(mockProduct)
+        
+        // 1. Direct barcode matches
+        val resolvedDirect1 = appDataStore.findProductByBarcode("869000123")
+        org.junit.Assert.assertEquals(mockProduct, resolvedDirect1)
+        
+        val resolvedDirect2 = appDataStore.findProductByBarcode("869000124")
+        org.junit.Assert.assertEquals(mockProduct, resolvedDirect2)
+        
+        val resolvedDirect3 = appDataStore.findProductByBarcode("PROD-101")
+        org.junit.Assert.assertEquals(mockProduct, resolvedDirect3)
+        
+        // 2. Custom barcodeToStockCodeMap matches
+        appDataStore.barcodeToStockCodeMap.clear()
+        appDataStore.barcodeToStockCodeMap["999000888"] = "PROD-101"
+        
+        val resolvedViaMap = appDataStore.findProductByBarcode("999000888")
+        org.junit.Assert.assertEquals(mockProduct, resolvedViaMap)
     }
 }
 
