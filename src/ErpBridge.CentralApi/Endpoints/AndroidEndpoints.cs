@@ -250,8 +250,6 @@ public static class AndroidEndpoints
         return Results.Ok(new { entity = "stokSatisFiyatListeTanimlari", total = items.Length, items });
     }
 
-    private static async Task<IResult> PriceListRowsAsync(
-
     private static async Task<IResult> StockMovementsAsync(
         AndroidStockMovementRequest request,
         HttpContext http,
