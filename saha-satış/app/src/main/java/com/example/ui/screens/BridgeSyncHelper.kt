@@ -792,10 +792,14 @@ object BridgeSyncHelper {
                                 wholesalePrice = wholesalePrice,
                                 kdvPercent = u.kdvOrani?.toInt() ?: 20,
                                 imageUrlColor = androidx.compose.ui.graphics.Color(0xFF1976D2),
-                                brand = u.marka ?: u.erp ?: "Mikro",
+                                brand = u.actualMarka ?: u.erp ?: "Mikro",
                                 stockByWarehouse = whMap,
                                 customPrices = customPricesMap,
-                                barcodes = barcodesList
+                                barcodes = barcodesList,
+                                aisle = u.actualReyonKod,
+                                measurement = u.actualOlcu,
+                                packaging = u.actualAmbalaj,
+                                cartonQuantity = u.actualKoliAdet
                             )
                             allMappedProducts.add(mapped)
 
@@ -2558,10 +2562,14 @@ object BridgeSyncHelper {
                                 wholesalePrice = wholesalePrice,
                                 kdvPercent = u.kdvOrani?.toInt() ?: 20,
                                 imageUrlColor = androidx.compose.ui.graphics.Color(0xFF1976D2),
-                                brand = u.marka ?: u.erp ?: "Mikro",
+                                brand = u.actualMarka ?: u.erp ?: "Mikro",
                                 stockByWarehouse = whMap,
                                 customPrices = customPricesMap,
-                                barcodes = listOf(u.barkod ?: u.actualUrunKod)
+                                barcodes = listOf(u.barkod ?: u.actualUrunKod),
+                                aisle = u.actualReyonKod,
+                                measurement = u.actualOlcu,
+                                packaging = u.actualAmbalaj,
+                                cartonQuantity = u.actualKoliAdet
                             )
                             allMappedProducts.add(mapped)
 

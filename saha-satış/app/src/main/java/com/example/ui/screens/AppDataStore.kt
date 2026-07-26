@@ -66,7 +66,10 @@ data class ProductCatalog(
     val localImagePath: String? = null,
     val aisle: String? = null,
     val customPrices: Map<String, Double> = emptyMap(),
-    val barcodes: List<String> = emptyList()
+    val barcodes: List<String> = emptyList(),
+    val measurement: String? = null,
+    val packaging: String? = null,
+    val cartonQuantity: String? = null
 )
 
 fun ProductCatalog.getPriceForGroup(groupName: String): Double {

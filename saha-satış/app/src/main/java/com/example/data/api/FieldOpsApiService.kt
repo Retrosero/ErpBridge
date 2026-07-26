@@ -199,6 +199,15 @@ data class UrunDto(
     val stockByWarehouse: Map<String, Int>? = null,
     val bayiFiyati: Double? = null,
     val toptanFiyati: Double? = null,
+    @com.squareup.moshi.Json(name = "reyonKod") val reyonKod: String? = null,
+    @com.squareup.moshi.Json(name = "olcu") val olcu: String? = null,
+    @com.squareup.moshi.Json(name = "ambalaj") val ambalaj: String? = null,
+    @com.squareup.moshi.Json(name = "koliAdet") val koliAdet: String? = null,
+    @com.squareup.moshi.Json(name = "sto_yer_kod") val stoYerKod: String? = null,
+    @com.squareup.moshi.Json(name = "sto_sektor_kodu") val stoSektorKodu: String? = null,
+    @com.squareup.moshi.Json(name = "sto_ambalaj_kodu") val stoAmbalajKodu: String? = null,
+    @com.squareup.moshi.Json(name = "sto_marka_kodu") val stoMarkaKodu: String? = null,
+    @com.squareup.moshi.Json(name = "sto_kalkon_kodu") val stoKalkonKodu: String? = null,
     val customPrices: Map<String, Double>? = null
 ) {
     val actualUrunKod: String get() = urun_kodu ?: urunKod ?: erpKod ?: id ?: ""
@@ -207,6 +216,11 @@ data class UrunDto(
     val actualKdv: Double get() = kdv ?: kdvOrani ?: 20.0
     val actualBarkod: String get() = barkod ?: actualUrunKod
     val actualStok: Int get() = stok ?: miktar ?: quantity ?: stock ?: 0
+    val actualReyonKod: String? get() = listOf(reyonKod, stoYerKod).firstOrNull { !it.isNullOrBlank() }?.trim()
+    val actualOlcu: String? get() = listOf(olcu, stoSektorKodu).firstOrNull { !it.isNullOrBlank() }?.trim()
+    val actualAmbalaj: String? get() = listOf(ambalaj, stoAmbalajKodu).firstOrNull { !it.isNullOrBlank() }?.trim()
+    val actualMarka: String? get() = listOf(marka, stoMarkaKodu).firstOrNull { !it.isNullOrBlank() }?.trim()
+    val actualKoliAdet: String? get() = listOf(koliAdet, stoKalkonKodu).firstOrNull { !it.isNullOrBlank() }?.trim()
 }
 
 data class StokHareketResponse(
