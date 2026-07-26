@@ -49,6 +49,9 @@ data class ProductEntity(
     val imageUrl: String? = null,
     val localImagePath: String? = null,
     val aisle: String? = null,
+    val measurement: String? = null,
+    val packaging: String? = null,
+    val cartonQuantity: String? = null,
     val customPricesJson: String? = null,
     val barcodesJson: String? = null
 )

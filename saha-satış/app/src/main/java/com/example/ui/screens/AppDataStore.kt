@@ -994,6 +994,9 @@ object AppDataStore {
                             imageUrl = prod.imageUrl,
                             localImagePath = prod.localImagePath,
                             aisle = prod.aisle,
+                            measurement = prod.measurement,
+                            packaging = prod.packaging,
+                            cartonQuantity = prod.cartonQuantity,
                             customPrices = converter.toCustomPricesMap(prod.customPricesJson ?: "{}"),
                             barcodes = converter.toBarcodeList(prod.barcodesJson)
                         )
@@ -1054,6 +1057,9 @@ object AppDataStore {
                                         imageUrl = prod.imageUrl,
                                         localImagePath = prod.localImagePath,
                                         aisle = prod.aisle,
+                                        measurement = prod.measurement,
+                                        packaging = prod.packaging,
+                                        cartonQuantity = prod.cartonQuantity,
                                         customPrices = converter.toCustomPricesMap(prod.customPricesJson ?: "{}"),
                                         barcodes = converter.toBarcodeList(prod.barcodesJson)
                                     )
@@ -1187,6 +1193,9 @@ object AppDataStore {
                     imageUrl = product.imageUrl,
                     localImagePath = product.localImagePath,
                     aisle = product.aisle,
+                    measurement = product.measurement,
+                    packaging = product.packaging,
+                    cartonQuantity = product.cartonQuantity,
                     customPricesJson = converter.fromCustomPricesMap(product.customPrices),
                     barcodesJson = converter.fromBarcodeList(product.barcodes)
                 )

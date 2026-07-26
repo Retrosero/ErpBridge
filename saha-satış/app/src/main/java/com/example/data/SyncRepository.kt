@@ -49,6 +49,11 @@ object SyncRepository {
                         kdvPercent = it.kdvOrani?.toInt() ?: 18,
                         colorValue = 0xFFCCCCCC,
                         stockByWarehouseJson = "{}",
+                        brand = it.actualMarka,
+                        aisle = it.actualReyonKod,
+                        measurement = it.actualOlcu,
+                        packaging = it.actualAmbalaj,
+                        cartonQuantity = it.actualKoliAdet,
                         imageUrl = ""
                     )
                 }.filterNotNull()

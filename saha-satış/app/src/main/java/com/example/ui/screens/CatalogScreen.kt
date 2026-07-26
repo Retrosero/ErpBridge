@@ -206,6 +206,9 @@ fun CatalogScreen(navController: NavController) {
             imageUrl = p.imageUrl,
             localImagePath = p.localImagePath,
             aisle = p.aisle,
+            measurement = p.measurement,
+            packaging = p.packaging,
+            cartonQuantity = p.cartonQuantity,
             customPrices = mutableMapOf(),
             barcodes = mutableListOf()
         )

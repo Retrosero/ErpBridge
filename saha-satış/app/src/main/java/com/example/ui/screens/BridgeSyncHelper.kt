@@ -2619,6 +2619,9 @@ object BridgeSyncHelper {
                         imageUrl = prod.imageUrl,
                         localImagePath = prod.localImagePath,
                         aisle = prod.aisle,
+                        measurement = prod.measurement,
+                        packaging = prod.packaging,
+                        cartonQuantity = prod.cartonQuantity,
                         customPricesJson = converter.fromCustomPricesMap(prod.customPrices),
                         barcodesJson = converter.fromBarcodeList(prod.barcodes)
                     )
