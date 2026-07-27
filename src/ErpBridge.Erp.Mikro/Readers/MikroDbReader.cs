@@ -248,11 +248,15 @@ WHERE sip_firmano = @firmNo
 SELECT kas_kod AS Code, kas_isim AS Name, 'cash' AS Kind, NULL AS Branch,
        NULL AS AccountNo, kas_firma_no AS FirmNo, CAST(kas_doviz_cinsi AS NVARCHAR(10)) AS Currency,
        NULL AS TcmbCode
-FROM KASALAR WHERE kas_firma_no = @firmNo AND ISNULL(kas_iptal, 0) = 0
+FROM KASALAR
+WHERE (kas_firma_no = @firmNo OR kas_firma_no = 0)
+  AND ISNULL(kas_iptal, 0) = 0
 UNION ALL
 SELECT ban_kod, ban_ismi, 'bank', ban_sube, ban_hesapno, ban_firma_no,
        CAST(ban_doviz_cinsi AS NVARCHAR(10)), ban_TCMB_Kodu
-FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0";
+FROM BANKALAR
+WHERE (ban_firma_no = @firmNo OR ban_firma_no = 0)
+  AND ISNULL(ban_iptal, 0) = 0";
 
         var rows = await QueryAsync<CashAndBankPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
         var result = rows.ToList();
