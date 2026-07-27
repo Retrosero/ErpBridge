@@ -147,6 +147,33 @@ public class CentralApiFactory : WebApplicationFactory<Program>
         return issuer.Issue(agentId, tenantId).Token;
     }
 
+    /// <summary>Seed an active Android installation for mobile-read endpoint tests.</summary>
+    public async Task<MobileDevice> SeedMobileDeviceAsync(Guid tenantId, string installationId = "TEST-ANDROID-001")
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var device = new MobileDevice
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            InstallationId = installationId,
+            DisplayName = "Test Android",
+            Platform = "android",
+            IsActive = true,
+        };
+        db.MobileDevices.Add(device);
+        await db.SaveChangesAsync();
+        return device;
+    }
+
+    /// <summary>Issue a mobile session JWT for an active seeded device.</summary>
+    public string IssueMobileJwt(Guid deviceId, Guid tenantId)
+    {
+        using var scope = Services.CreateScope();
+        var issuer = scope.ServiceProvider.GetRequiredService<Authentication.IJwtIssuer>();
+        return issuer.IssueForMobile(deviceId, tenantId).Token;
+    }
+
     /// <summary>
     /// Resolve <see cref="CentralApiDbContext"/> from DI for tests that need
     /// to inspect or seed rows outside the production endpoints.

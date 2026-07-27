@@ -42,6 +42,48 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         body.Should().Contain("S001").And.NotContain("C001");
     }
 
+    [Theory]
+    [InlineData("/api/v1/android/sync/bankalar", "BANK-001", "Ana Banka", "BR-01", "TR001")]
+    [InlineData("/api/v1/android/sync/kasalar", "CASH-001", "Merkez Kasa", "", "")]
+    public async Task Cash_and_bank_endpoints_project_only_the_requested_account_kind(
+        string route,
+        string expectedCode,
+        string expectedName,
+        string expectedBranchOrEmpty,
+        string expectedAccountOrEmpty)
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-CASH-BANK-{suffix}", "Cash and bank tenant");
+        const string payload = """
+            {
+              "cashAndBank": [
+                { "code":"CASH-001", "name":"Merkez Kasa", "kind":"cash", "currency":"0" },
+                { "code":"BANK-001", "name":"Ana Banka", "kind":"bank", "branch":"BR-01", "accountNo":"TR001", "tcmbCode":"0062", "currency":"0" }
+              ]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var device = await _factory.SeedMobileDeviceAsync(tenant.Id, $"ANDROID-CASH-BANK-{suffix}");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", _factory.IssueMobileJwt(device.Id, tenant.Id));
+
+        var response = await client.PostAsJsonAsync(route, new { page = 1, pageSize = 50 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("total").GetInt32().Should().Be(1);
+        var item = root.GetProperty("items")[0];
+        item.GetProperty("kod").GetString().Should().Be(expectedCode);
+        item.GetProperty("isim").GetString().Should().Be(expectedName);
+        if (expectedBranchOrEmpty.Length > 0)
+        {
+            item.GetProperty("sube").GetString().Should().Be(expectedBranchOrEmpty);
+            item.GetProperty("hesapNumarasi").GetString().Should().Be(expectedAccountOrEmpty);
+        }
+    }
+
     [Fact]
     public async Task Product_catalog_joins_barcode_price_and_inventory_by_stock_code()
     {

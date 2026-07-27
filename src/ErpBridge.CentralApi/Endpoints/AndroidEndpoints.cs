@@ -43,6 +43,12 @@ public static class AndroidEndpoints
         MapSection(group, "/sync/cariYetkililer", "customerContacts");
         MapSection(group, "/sync/barkodlar", "barcodes");
         MapSection(group, "/sync/satisSartlari", "salesConditions");
+        group.MapPost("/sync/bankalar", BankAccountsAsync)
+            .WithName("AndroidBankAccounts")
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/kasalar", CashAccountsAsync)
+            .WithName("AndroidCashAccounts")
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
         group.MapPost("/sync/stokHareket", StockMovementsAsync)
             .WithName("AndroidStockMovements")
@@ -294,6 +300,98 @@ public static class AndroidEndpoints
         }).ToArray();
 
         return Results.Ok(new { entity = "stokSatisFiyatListeleri", sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, total = items.Length, items });
+    }
+
+    /// <summary>
+    /// Projects the bank records from the agent's unified <c>cashAndBank</c>
+    /// bootstrap collection to the legacy Android bank DTO shape.
+    /// </summary>
+    private static Task<IResult> BankAccountsAsync(
+        AndroidPageRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct) =>
+        CashAndBankAccountsAsync("bank", "bankalar", request, http, db, ct);
+
+    /// <summary>
+    /// Projects the cash records from the agent's unified <c>cashAndBank</c>
+    /// bootstrap collection to the legacy Android cash DTO shape.
+    /// </summary>
+    private static Task<IResult> CashAccountsAsync(
+        AndroidPageRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct) =>
+        CashAndBankAccountsAsync("cash", "kasalar", request, http, db, ct);
+
+    private static async Task<IResult> CashAndBankAccountsAsync(
+        string kind,
+        string entity,
+        AndroidPageRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var allItems = GetArray(document.RootElement, "cashAndBank")
+            .Where(item => string.Equals(GetString(item, "kind"), kind, StringComparison.OrdinalIgnoreCase))
+            .Select(item =>
+            {
+                var code = GetString(item, "code") ?? string.Empty;
+                var name = GetString(item, "name") ?? string.Empty;
+                var currency = GetInt32(item, "currency");
+                if (kind == "bank")
+                {
+                    return (object)new
+                    {
+                        erpRef = code,
+                        erp = "MIKRO",
+                        kod = code,
+                        isim = name,
+                        bankaKod = code,
+                        bankaAd = name,
+                        sube = GetString(item, "branch"),
+                        subeAd = GetString(item, "branch"),
+                        hesapNumarasi = GetString(item, "accountNo"),
+                        iBANKodu = GetString(item, "accountNo"),
+                        tCMBKodu = GetString(item, "tcmbCode"),
+                        dovizCinsi = currency,
+                        id = code,
+                    };
+                }
+
+                return (object)new
+                {
+                    erpRef = code,
+                    erp = "MIKRO",
+                    kod = code,
+                    isim = name,
+                    tip = 0,
+                    muhasebeKod = (string?)null,
+                    dovizCinsi = currency,
+                    bankaKodu = (string?)null,
+                    updatedAt = package.PulledAtUtc,
+                };
+            })
+            .ToArray();
+
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        return Results.Ok(new
+        {
+            entity,
+            sourceDatabase = package.SourceDatabase,
+            pulledAtUtc = package.PulledAtUtc,
+            page,
+            pageSize,
+            total = allItems.Length,
+            items,
+        });
     }
 
     private static async Task<IResult> StockMovementsAsync(
