@@ -159,13 +159,6 @@ public sealed class DashboardViewModel : ObservableObject
     /// </summary>
     private async Task<bool> EnsureRegisteredAsync()
     {
-        var existingJwt = _configuration["CentralApi:Jwt"];
-        if (!string.IsNullOrWhiteSpace(existingJwt))
-        {
-            _logger.LogDebug("JWT already set in CentralApi:Jwt; skipping auto-register.");
-            return true;
-        }
-
         var config = await _configStore.LoadAsync().ConfigureAwait(true);
         if (config is null || string.IsNullOrWhiteSpace(config.LicenseKey))
         {
@@ -184,6 +177,16 @@ public sealed class DashboardViewModel : ObservableObject
         // first bootstrap push; otherwise it can retain an empty value that
         // existed while the UI was starting.
         _liveSettings["CentralApi:BaseUrl"] = apiBaseUrl;
+
+        var existingJwt = _configuration["CentralApi:Jwt"];
+        if (!string.IsNullOrWhiteSpace(existingJwt))
+        {
+            // Manual registration populates the JWT before this method runs.
+            // The remote HttpClient still needs the persisted base URL above,
+            // so only skip the registration HTTP call after applying it.
+            _logger.LogDebug("JWT already set in CentralApi:Jwt; skipping auto-register.");
+            return true;
+        }
 
         var licenseKey = config.LicenseKey!.Trim();
         var machineId = (Environment.MachineName ?? "unknown").Trim();
