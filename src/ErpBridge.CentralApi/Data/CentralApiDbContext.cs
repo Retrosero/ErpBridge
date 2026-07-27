@@ -27,6 +27,8 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<MobileDevice> MobileDevices => Set<MobileDevice>();
     public DbSet<DeviceActivationCode> DeviceActivationCodes => Set<DeviceActivationCode>();
+    public DbSet<TelemetryIssue> TelemetryIssues => Set<TelemetryIssue>();
+    public DbSet<TelemetryEvent> TelemetryEvents => Set<TelemetryEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,6 +59,47 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.CodeHash).IsRequired().HasMaxLength(64);
             b.HasIndex(x => x.CodeHash).IsUnique(); b.HasIndex(x => new { x.TenantId, x.ExpiresAtUtc });
             b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TelemetryIssue>(b =>
+        {
+            b.ToTable("telemetry_issues");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Fingerprint).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Severity).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(240);
+            b.Property(x => x.Status).HasConversion<int>();
+            b.Property(x => x.LastAppVersion).HasMaxLength(64);
+            b.HasIndex(x => new { x.TenantId, x.Fingerprint }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Status, x.LastSeenAtUtc });
+            b.HasIndex(x => new { x.TenantId, x.Severity, x.LastSeenAtUtc });
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TelemetryEvent>(b =>
+        {
+            b.ToTable("telemetry_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Severity).IsRequired().HasMaxLength(16);
+            b.Property(x => x.AppVersion).HasMaxLength(64);
+            b.Property(x => x.AndroidVersion).HasMaxLength(64);
+            b.Property(x => x.DeviceModel).HasMaxLength(128);
+            b.Property(x => x.Screen).HasMaxLength(128);
+            b.Property(x => x.Operation).HasMaxLength(128);
+            b.Property(x => x.ExceptionType).HasMaxLength(256);
+            b.Property(x => x.HttpMethod).HasMaxLength(16);
+            b.Property(x => x.HttpRoute).HasMaxLength(512);
+            b.Property(x => x.CorrelationId).HasMaxLength(128);
+            b.Property(x => x.BreadcrumbsJson).HasColumnType("jsonb").HasDefaultValue("[]");
+            b.HasIndex(x => x.EventId).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
+            b.HasIndex(x => new { x.MobileDeviceId, x.OccurredAtUtc });
+            b.HasIndex(x => new { x.TelemetryIssueId, x.OccurredAtUtc });
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.MobileDevice).WithMany().HasForeignKey(x => x.MobileDeviceId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Issue).WithMany(x => x.Events).HasForeignKey(x => x.TelemetryIssueId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<License>(b =>

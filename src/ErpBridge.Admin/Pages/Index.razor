@@ -26,7 +26,19 @@ else
         <div class="metric-card"><span class="metric-label">Toplam Tenant</span><span class="metric-value">@_tenants.Count</span><span class="metric-accent">▤</span><span class="metric-bar"><span style="width:72%"></span></span></div>
         <div class="metric-card green"><span class="metric-label">Aktif Lisanslar</span><span class="metric-value">@_licenses.Count(x => x.IsActive)</span><span class="metric-accent">◈</span><span class="metric-bar"><span style="width:83%"></span></span></div>
         <div class="metric-card amber"><span class="metric-label">Bağlı Agent</span><span class="metric-value">@_agents.Count</span><span class="metric-accent">♙</span><span class="metric-bar"><span style="width:58%"></span></span></div>
-        <div class="metric-card red"><span class="metric-label">Bekleyen İşler</span><span class="metric-value">@_jobs.Count(x => x.Status == "pending")</span><span class="metric-accent">▣</span><span class="metric-bar"><span style="width:34%"></span></span></div>
+        <a class="metric-card red metric-link" href="errors"><span class="metric-label">Açık Kritik Android Sorunu</span><span class="metric-value">@_telemetry.OpenCriticalIssues</span><span class="metric-accent">!</span><span class="metric-bar"><span style="width:34%"></span></span></a>
+    </section>
+
+    <section class="data-panel telemetry-dashboard-panel">
+        <div class="table-toolbar">
+            <div><strong>Android Uygulama Sağlığı</strong><small>Son 24 saatteki mobil istemci durumu</small></div>
+            <a class="btn" href="errors">Tüm hataları incele</a>
+        </div>
+        <div class="telemetry-dashboard-summary">
+            <span><strong>@_telemetry.CrashesLast24Hours</strong> çökme</span>
+            <span><strong>@_telemetry.AffectedDevices</strong> etkilenen cihaz</span>
+            <span><strong>%@_telemetry.CrashFreeDeviceRate</strong> hatasız cihaz</span>
+        </div>
     </section>
 
     <section class="data-panel">
@@ -60,6 +72,7 @@ else
     private IReadOnlyList<ErpBridge.Admin.Api.LicenseDto> _licenses = Array.Empty<ErpBridge.Admin.Api.LicenseDto>();
     private IReadOnlyList<ErpBridge.Admin.Api.AgentDto> _agents = Array.Empty<ErpBridge.Admin.Api.AgentDto>();
     private IReadOnlyList<ErpBridge.Admin.Api.JobDto> _jobs = Array.Empty<ErpBridge.Admin.Api.JobDto>();
+    private ErpBridge.Admin.Api.TelemetrySummaryDto _telemetry = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -69,6 +82,7 @@ else
             _licenses = await Api.ListLicensesAsync();
             _agents = await Api.ListAgentsAsync();
             _jobs = await Api.ListJobsAsync("pending", 200);
+            _telemetry = await Api.GetTelemetrySummaryAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }

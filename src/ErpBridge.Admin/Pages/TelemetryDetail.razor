@@ -1,0 +1,119 @@
+@page "/errors/{IssueId:guid}"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Hata Ayrıntısı — ErpBridge Admin</PageTitle>
+
+@if (_loading)
+{
+    <div class="data-panel loading-state">Hata ayrıntısı yükleniyor…</div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_detail is not null)
+{
+    <div class="page-heading">
+        <div>
+            <a class="back-link" href="errors">← Hatalara dön</a>
+            <h1>@_detail.Issue.Title</h1>
+            <p>@_detail.Issue.TenantName · @_detail.Issue.OccurrenceCount tekrar · son görülme @LocalTime(_detail.Issue.LastSeenAtUtc)</p>
+        </div>
+        <div class="issue-actions">
+            <button class="btn" @onclick='() => SetStatusAsync("ignored")'>Yoksay</button>
+            <button class="btn" @onclick='() => SetStatusAsync("open")'>Yeniden Aç</button>
+            <button class="btn btn-primary" @onclick='() => SetStatusAsync("resolved")'>Çözüldü</button>
+        </div>
+    </div>
+
+    <section class="issue-overview data-panel">
+        <div><span>Durum</span><strong class="status status-@_detail.Issue.Status">@StatusLabel(_detail.Issue.Status)</strong></div>
+        <div><span>Önem</span><strong class="severity severity-@_detail.Issue.Severity">@SeverityLabel(_detail.Issue.Severity)</strong></div>
+        <div><span>İlk görülme</span><strong>@LocalTime(_detail.Issue.FirstSeenAtUtc)</strong></div>
+        <div><span>Son sürüm</span><strong>@(_detail.Issue.LastAppVersion ?? "—")</strong></div>
+        <div><span>Fingerprint</span><code>@_detail.Issue.Fingerprint</code></div>
+    </section>
+
+    <h2 class="section-title">Son olaylar</h2>
+    @foreach (var item in _detail.Events)
+    {
+        <section class="data-panel occurrence-card">
+            <header>
+                <div><span class="severity severity-@item.Severity">@SeverityLabel(item.Severity)</span><strong>@LocalTime(item.OccurredAtUtc)</strong></div>
+                <div>@item.DeviceName · Android @(item.AndroidVersion ?? "—") · v@(item.AppVersion ?? "—")</div>
+            </header>
+            <div class="occurrence-grid">
+                <div><span>Ekran</span><strong>@(item.Screen ?? "—")</strong></div>
+                <div><span>İşlem</span><strong>@(item.Operation ?? "—")</strong></div>
+                <div><span>Hata sınıfı</span><strong>@(item.ExceptionType ?? "—")</strong></div>
+                <div><span>Cihaz modeli</span><strong>@(item.DeviceModel ?? "—")</strong></div>
+                @if (item.HttpStatus.HasValue)
+                {
+                    <div><span>HTTP</span><strong>@item.HttpMethod @item.HttpRoute → @item.HttpStatus</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(item.CorrelationId))
+                {
+                    <div><span>Correlation ID</span><code>@item.CorrelationId</code></div>
+                }
+            </div>
+            @if (!string.IsNullOrWhiteSpace(item.Message))
+            {
+                <h3>Mesaj</h3><pre class="diagnostic-block">@item.Message</pre>
+            }
+            @if (!string.IsNullOrWhiteSpace(item.StackTrace))
+            {
+                <h3>Stack trace</h3><pre class="diagnostic-block">@item.StackTrace</pre>
+            }
+            @if (Breadcrumbs(item.BreadcrumbsJson).Count > 0)
+            {
+                <h3>Son teknik olaylar</h3>
+                <ol class="breadcrumb-timeline">
+                    @foreach (var crumb in Breadcrumbs(item.BreadcrumbsJson))
+                    {
+                        <li><time>@crumb.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")</time><span>@crumb.Category</span><strong>@crumb.Message</strong></li>
+                    }
+                </ol>
+            }
+        </section>
+    }
+}
+
+@code {
+    [Parameter] public Guid IssueId { get; set; }
+    private bool _loading = true;
+    private string? _error;
+    private ErpBridge.Admin.Api.TelemetryIssueDetailDto? _detail;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    private async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        try { _detail = await Api.GetTelemetryIssueAsync(IssueId); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+    private async Task SetStatusAsync(string status)
+    {
+        try { await Api.UpdateTelemetryIssueStatusAsync(IssueId, status); await LoadAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+    private static string LocalTime(DateTimeOffset value) => value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
+    private static string SeverityLabel(string value) => value switch { "critical" => "Kritik", "error" => "Hata", _ => "Uyarı" };
+    private static string StatusLabel(string value) => value switch { "resolved" => "Çözüldü", "ignored" => "Yoksayıldı", _ => "Açık" };
+    private static IReadOnlyList<BreadcrumbView> Breadcrumbs(string json)
+    {
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<BreadcrumbView[]>(json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))
+                ?? Array.Empty<BreadcrumbView>();
+        }
+        catch { return Array.Empty<BreadcrumbView>(); }
+    }
+    private sealed class BreadcrumbView
+    {
+        public DateTimeOffset TimestampUtc { get; set; }
+        public string Category { get; set; } = "";
+        public string Message { get; set; } = "";
+    }
+}

@@ -1,0 +1,133 @@
+@page "/errors"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Hatalar — ErpBridge Admin</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <h1>Hatalar ve Cihaz Sağlığı</h1>
+        <p>Android çökmeleri, API sorunları ve senkronizasyon hatalarını tenant ve cihaz bazında izleyin.</p>
+    </div>
+    <button class="btn" @onclick="LoadAsync" disabled="@_loading">↻ Yenile</button>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<section class="metric-grid telemetry-metrics" aria-label="Android telemetri özeti">
+    <div class="metric-card red"><span class="metric-label">Son 24 Saat Çökme</span><span class="metric-value">@_summary.CrashesLast24Hours</span><span class="metric-accent">!</span></div>
+    <div class="metric-card amber"><span class="metric-label">Açık Kritik Sorun</span><span class="metric-value">@_summary.OpenCriticalIssues</span><span class="metric-accent">⚠</span></div>
+    <div class="metric-card"><span class="metric-label">Etkilenen Cihaz</span><span class="metric-value">@_summary.AffectedDevices</span><span class="metric-accent">▣</span></div>
+    <div class="metric-card green"><span class="metric-label">Hatasız Cihaz Oranı</span><span class="metric-value">%@_summary.CrashFreeDeviceRate</span><span class="metric-accent">✓</span></div>
+</section>
+
+<section class="data-panel">
+    <div class="telemetry-filters">
+        <label>Tenant
+            <select @bind="_tenantId">
+                <option value="">Tümü</option>
+                @foreach (var tenant in _tenants) { <option value="@tenant.Id">@tenant.Name</option> }
+            </select>
+        </label>
+        <label>Durum
+            <select @bind="_status"><option value="open">Açık</option><option value="">Tümü</option><option value="resolved">Çözüldü</option><option value="ignored">Yoksayıldı</option></select>
+        </label>
+        <label>Önem
+            <select @bind="_severity"><option value="">Tümü</option><option value="critical">Kritik</option><option value="error">Hata</option><option value="warning">Uyarı</option></select>
+        </label>
+        <label>Tür
+            <select @bind="_kind"><option value="">Tümü</option><option value="crash">Crash</option><option value="anr">ANR</option><option value="http_error">HTTP</option><option value="sync_failure">Senkronizasyon</option><option value="database_error">Veritabanı</option><option value="worker_failure">Arka plan</option></select>
+        </label>
+        <label class="telemetry-search">Arama
+            <input @bind="_search" placeholder="Hata adı veya fingerprint..." />
+        </label>
+        <button class="btn btn-primary" @onclick="ApplyFiltersAsync">Filtrele</button>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-state">Hata kayıtları yükleniyor…</div>
+    }
+    else if (_result.Items.Count == 0)
+    {
+        <div class="empty-state"><strong>Bu filtrelerde sorun bulunamadı.</strong><br />Android telemetri göndermeye başladığında kayıtlar burada görünecek.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table telemetry-table">
+                <thead><tr><th>Önem</th><th>Sorun</th><th>Tenant</th><th>Tür</th><th>Tekrar</th><th>Son sürüm</th><th>Son görülme</th><th>Durum</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var issue in _result.Items)
+                {
+                    <tr>
+                        <td><span class="severity severity-@issue.Severity">@SeverityLabel(issue.Severity)</span></td>
+                        <td><strong>@issue.Title</strong><small class="fingerprint">@issue.Fingerprint[..Math.Min(12, issue.Fingerprint.Length)]</small></td>
+                        <td>@issue.TenantName</td>
+                        <td>@KindLabel(issue.Kind)</td>
+                        <td><strong>@issue.OccurrenceCount</strong></td>
+                        <td>@(issue.LastAppVersion ?? "—")</td>
+                        <td>@LocalTime(issue.LastSeenAtUtc)</td>
+                        <td><span class="status status-@issue.Status">@StatusLabel(issue.Status)</span></td>
+                        <td><a class="btn btn-sm btn-outline-primary" href="@($"errors/{issue.Id}")">İncele</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <div class="table-pagination">
+            <span>@_result.Total sorundan @(((_result.Page - 1) * _result.PageSize) + 1)-@Math.Min(_result.Total, _result.Page * _result.PageSize)</span>
+            <div><button class="btn btn-sm" disabled="@(_page <= 1)" @onclick="PreviousPageAsync">‹</button><span>Sayfa @_page</span><button class="btn btn-sm" disabled="@(_page * _result.PageSize >= _result.Total)" @onclick="NextPageAsync">›</button></div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "tenantId")]
+    public Guid? TenantFilter { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "deviceId")]
+    public Guid? DeviceFilter { get; set; }
+
+    private bool _loading = true;
+    private string? _error;
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private ErpBridge.Admin.Api.TelemetrySummaryDto _summary = new();
+    private ErpBridge.Admin.Api.TelemetryIssueListResponse _result = new();
+    private string _tenantId = "";
+    private string _status = "open";
+    private string _severity = "";
+    private string _kind = "";
+    private string _search = "";
+    private int _page = 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (TenantFilter.HasValue)
+            _tenantId = TenantFilter.Value.ToString();
+        await LoadAsync();
+    }
+    private Guid? SelectedTenant => Guid.TryParse(_tenantId, out var id) ? id : null;
+    private async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        try
+        {
+            _tenants = await Api.ListTenantsAsync();
+            _summary = await Api.GetTelemetrySummaryAsync(SelectedTenant);
+            _result = await Api.ListTelemetryIssuesAsync(SelectedTenant, DeviceFilter, status: _status, severity: _severity, kind: _kind, search: _search, page: _page);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+    private async Task ApplyFiltersAsync() { _page = 1; await LoadAsync(); }
+    private async Task PreviousPageAsync() { if (_page > 1) { _page--; await LoadAsync(); } }
+    private async Task NextPageAsync() { _page++; await LoadAsync(); }
+    private static string LocalTime(DateTimeOffset value) => value.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+    private static string SeverityLabel(string value) => value switch { "critical" => "Kritik", "error" => "Hata", _ => "Uyarı" };
+    private static string StatusLabel(string value) => value switch { "resolved" => "Çözüldü", "ignored" => "Yoksayıldı", _ => "Açık" };
+    private static string KindLabel(string value) => value switch { "crash" => "Crash", "anr" => "ANR", "native_crash" => "Native crash", "http_error" => "HTTP", "sync_failure" => "Senkronizasyon", "database_error" => "Veritabanı", "worker_failure" => "Arka plan", "low_memory" => "Düşük bellek", _ => value };
+}

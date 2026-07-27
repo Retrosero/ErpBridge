@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.fieldforce.precision"
     minSdk = 24
     targetSdk = 36
-    versionCode = 319
-    versionName = "319.0"
+    versionCode = 355
+    versionName = "355.0"
 
     buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${System.getenv("FIREBASE_PROJECT_ID") ?: ""}\"")
     buildConfigField("String", "FIREBASE_APP_ID", "\"${System.getenv("FIREBASE_APP_ID") ?: ""}\"")

@@ -11,11 +11,20 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.example.BuildConfig
+import com.example.telemetry.TelemetryReporter
 
 class RetryAndLicenseInterceptor(private val context: Context? = null) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        var response = chain.proceed(request)
+        var response = try {
+            chain.proceed(request)
+        } catch (error: java.io.IOException) {
+            if (!request.url.encodedPath.contains("/api/v1/mobile/telemetry/batch")) {
+                TelemetryReporter.reportHttpError(request.method, request.url.toString(), null, error)
+            }
+            throw error
+        }
         var code = response.code
 
         if (code == 401 || code == 403) {
@@ -56,6 +65,9 @@ class RetryAndLicenseInterceptor(private val context: Context? = null) : Interce
             code = response.code
         }
 
+        if (!request.url.encodedPath.contains("/api/v1/mobile/telemetry/batch") && code >= 400) {
+            TelemetryReporter.reportHttpError(request.method, request.url.toString(), code)
+        }
         return response
     }
 }
@@ -130,7 +142,7 @@ object ApiClient {
             .build()
             
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             redactHeader("Authorization")
             redactHeader("X-Tenant-Id")
         }
@@ -159,7 +171,7 @@ object ApiClient {
             .build()
             
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             redactHeader("Authorization")
             redactHeader("X-Tenant-Id")
         }
@@ -188,7 +200,7 @@ object ApiClient {
             .build()
             
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             redactHeader("Authorization")
             redactHeader("X-Tenant-Id")
         }
@@ -217,7 +229,7 @@ object ApiClient {
             .build()
             
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             redactHeader("Authorization")
             redactHeader("X-Tenant-Id")
         }

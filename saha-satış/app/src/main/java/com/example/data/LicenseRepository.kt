@@ -48,6 +48,21 @@ object LicenseRepository {
     fun getBaseUrl(context: Context): String = BASE_URL
     fun getLastError(context: Context): String? = getPrefs(context).getString("last_license_error", null)
 
+    suspend fun renewSession(context: Context): Boolean = withContext(Dispatchers.IO) {
+        val current = getDeviceToken(context) ?: return@withContext false
+        runCatching {
+            val response = ApiClient.getFieldOpsApiService(context, BASE_URL, current).renewDeviceSession()
+            val session = response.body()
+            if (response.isSuccessful && !session?.token.isNullOrBlank()) {
+                getPrefs(context).edit()
+                    .putString("device_token", session!!.token)
+                    .putString("tenant_id", session.tenantId ?: getTenantId(context))
+                    .apply()
+                true
+            } else false
+        }.getOrDefault(false)
+    }
+
     suspend fun authenticateLicense(
         context: Context,
         licenseKey: String,

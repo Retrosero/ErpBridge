@@ -1850,6 +1850,9 @@ fun NavApp() {
     ) { innerPadding ->
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route
+        androidx.compose.runtime.LaunchedEffect(currentRoute) {
+            com.example.telemetry.TelemetryReporter.setCurrentScreen(currentRoute)
+        }
         val moduleArg = navBackStackEntry?.arguments?.getString("module")
         val isCustomModuleBar = currentRoute?.startsWith("operations") == true && (moduleArg == "collection" || moduleArg == "disbursement" || moduleArg == "counting")
 

@@ -43,6 +43,7 @@ else
                     <td>
                         <a class="btn btn-sm btn-outline-primary me-1" href="@($"tenants/{t.Id}/stock-fields")">Stok alanları</a>
                         <a class="btn btn-sm btn-outline-primary me-1" href="@($"tenants/{t.Id}/devices")">Cihazlar</a>
+                        <a class="btn btn-sm btn-outline-primary me-1" href="@($"errors?tenantId={t.Id}")">Hatalar</a>
                         @if (t.IsActive)
                         {
                             <button class="btn btn-sm btn-warning" @onclick="() => DeactivateAsync(t.Id)">Deactivate</button>

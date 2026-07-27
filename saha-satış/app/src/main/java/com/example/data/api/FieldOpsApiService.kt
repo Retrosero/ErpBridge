@@ -4,6 +4,11 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface FieldOpsApiService {
+    @POST("api/v1/mobile/telemetry/batch")
+    suspend fun uploadTelemetry(
+        @Body request: com.example.telemetry.TelemetryBatchRequest
+    ): Response<com.example.telemetry.TelemetryBatchResponse>
+
     @POST("api/v1/mobile/activate")
     suspend fun activateDevice(@Body request: MobileActivateRequest): Response<MobileSessionResponse>
 
@@ -1056,11 +1061,16 @@ data class FiyatDto(
     @com.squareup.moshi.Json(name = "stockCode") val stockCode: String? = null,
     @com.squareup.moshi.Json(name = "listNumber") val listNumber: Int? = null,
     @com.squareup.moshi.Json(name = "price") val price: Double? = null,
-    @com.squareup.moshi.Json(name = "currency") val currency: String? = null
+    @com.squareup.moshi.Json(name = "currency") val currency: String? = null,
+    @com.squareup.moshi.Json(name = "listName") val listName: String? = null,
+    @com.squareup.moshi.Json(name = "aciklama") val aciklama: String? = null,
+    @com.squareup.moshi.Json(name = "sfiyat_aciklama") val sfiyat_aciklama: String? = null
 ) {
     val actualStokKod: String get() = (stockCode ?: urunKod ?: "").trim()
     val actualListeNo: Int get() = listNumber ?: fiyatListesiKod?.toIntOrNull() ?: 0
     val actualFiyat: Double get() = price ?: fiyat ?: 0.0
+    val actualListName: String get() = listOf(listName, aciklama, sfiyat_aciklama)
+        .firstOrNull { !it.isNullOrBlank() }?.trim().orEmpty()
 }
 
 @androidx.annotation.Keep

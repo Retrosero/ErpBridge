@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@inject ErpBridge.Admin.Auth.TokenStore Tokens
 
 <PageTitle>ErpBridge Admin</PageTitle>
 
@@ -20,6 +22,13 @@
                     <NavLink href="agents"><span class="nav-icon">♙</span>Agents</NavLink>
                     <NavLink href="jobs"><span class="nav-icon">▣</span>Jobs</NavLink>
                     <NavLink href="bootstrap"><span class="nav-icon">↻</span>Bootstrap</NavLink>
+                    <NavLink href="errors">
+                        <span class="nav-icon">!</span>Hatalar
+                        @if (_criticalCount > 0)
+                        {
+                            <span class="nav-badge">@(_criticalCount > 99 ? "99+" : _criticalCount)</span>
+                        }
+                    </NavLink>
                 </nav>
 
                 <div class="sidebar-footer">
@@ -42,7 +51,13 @@
             <AuthorizeView>
                 <Authorized>
                     <div class="topbar-actions">
-                        <button type="button" class="icon-button" title="Bildirimler" aria-label="Bildirimler">♧</button>
+                        <a href="errors" class="icon-button telemetry-notification" title="Android hata bildirimleri" aria-label="Android hata bildirimleri">
+                            !
+                            @if (_criticalCount > 0)
+                            {
+                                <span>@(_criticalCount > 99 ? "99+" : _criticalCount)</span>
+                            }
+                        </a>
                         <button type="button" class="icon-button" title="Yardım" aria-label="Yardım">?</button>
                         <span class="topbar-divider"></span>
                         <div class="profile-chip">
@@ -62,5 +77,22 @@
 </div>
 
 @code {
+    private int _criticalCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Tokens.Get()))
+            return;
+
+        try
+        {
+            _criticalCount = (await Api.GetTelemetrySummaryAsync()).OpenCriticalIssues;
+        }
+        catch
+        {
+            // Eski API sürümünde telemetri uç noktası yoksa layout çalışmaya devam eder.
+        }
+    }
+
     private static string Initial(string? value) => string.IsNullOrWhiteSpace(value) ? "E" : value[..1].ToUpperInvariant();
 }
