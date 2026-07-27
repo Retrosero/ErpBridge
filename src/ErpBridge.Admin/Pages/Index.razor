@@ -1,0 +1,76 @@
+@page "/"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Dashboard — ErpBridge Admin</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <h1>Dashboard</h1>
+        <p>Tenant, lisans ve işlem altyapınızın genel görünümü.</p>
+    </div>
+    <a class="btn btn-primary" href="tenants/create">+ Yeni Tenant</a>
+</div>
+
+@if (_loading)
+{
+    <div class="data-panel loading-state">Veriler yükleniyor…</div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else
+{
+    <section class="metric-grid" aria-label="Sistem özeti">
+        <div class="metric-card"><span class="metric-label">Toplam Tenant</span><span class="metric-value">@_tenants.Count</span><span class="metric-accent">▤</span><span class="metric-bar"><span style="width:72%"></span></span></div>
+        <div class="metric-card green"><span class="metric-label">Aktif Lisanslar</span><span class="metric-value">@_licenses.Count(x => x.IsActive)</span><span class="metric-accent">◈</span><span class="metric-bar"><span style="width:83%"></span></span></div>
+        <div class="metric-card amber"><span class="metric-label">Bağlı Agent</span><span class="metric-value">@_agents.Count</span><span class="metric-accent">♙</span><span class="metric-bar"><span style="width:58%"></span></span></div>
+        <div class="metric-card red"><span class="metric-label">Bekleyen İşler</span><span class="metric-value">@_jobs.Count(x => x.Status == "pending")</span><span class="metric-accent">▣</span><span class="metric-bar"><span style="width:34%"></span></span></div>
+    </section>
+
+    <section class="data-panel">
+        <div class="table-toolbar">
+            <strong>Son Tenantlar</strong>
+            <a class="btn" href="tenants">Tümünü görüntüle</a>
+        </div>
+        @if (_tenants.Count == 0)
+        {
+            <div class="empty-state">Henüz tenant bulunmuyor.</div>
+        }
+        else
+        {
+            <table class="table">
+                <thead><tr><th>Tenant</th><th>Kimlik</th><th>Cihaz kotası</th><th>Durum</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var tenant in _tenants.Take(6))
+                {
+                    <tr><td><strong>@tenant.Name</strong></td><td><code>@tenant.Id.ToString()[..8]</code></td><td>@tenant.DeviceSeatLimit</td><td><span class="status @(tenant.IsActive ? "status-active" : "status-inactive")">@(tenant.IsActive ? "Aktif" : "Pasif")</span></td><td><a class="btn btn-sm btn-outline-primary" href="@($"tenants/{tenant.Id}/devices")">Cihazlar</a></td></tr>
+                }
+                </tbody>
+            </table>
+        }
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.LicenseDto> _licenses = Array.Empty<ErpBridge.Admin.Api.LicenseDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.AgentDto> _agents = Array.Empty<ErpBridge.Admin.Api.AgentDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.JobDto> _jobs = Array.Empty<ErpBridge.Admin.Api.JobDto>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _tenants = await Api.ListTenantsAsync();
+            _licenses = await Api.ListLicensesAsync();
+            _agents = await Api.ListAgentsAsync();
+            _jobs = await Api.ListJobsAsync("pending", 200);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

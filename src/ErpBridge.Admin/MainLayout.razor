@@ -1,67 +1,66 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
 <PageTitle>ErpBridge Admin</PageTitle>
 
-<div class="page">
-    <div class="sidebar">
-        <div class="top-row ps-3 navbar navbar-dark">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="">ErpBridge Admin</a>
-            </div>
-        </div>
-        <nav class="flex-column">
-            <AuthorizeView>
-                <Authorized>
-                    <div class="nav-item px-3">
-                        <span class="text-white-50">@context.User.Identity?.Name</span>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="tenants">Tenants</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="licenses">Licenses</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="apikeys">API Keys</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="webhooks">Webhooks</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="agents">Agents</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="jobs">Jobs</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="bootstrap">Bootstrap</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="logout">Logout</NavLink>
-                    </div>
-                </Authorized>
-                <NotAuthorized>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="login">Login</NavLink>
-                    </div>
-                </NotAuthorized>
-            </AuthorizeView>
-        </nav>
-    </div>
+<div class="admin-shell">
+    <aside class="admin-sidebar">
+        <a class="brand" href="" aria-label="ErpBridge ana sayfa">
+            <span class="brand-name">ErpBridge</span>
+            <span class="brand-subtitle">Enterprise Admin</span>
+        </a>
 
-    <main>
-        <div class="top-row px-4">
+        <AuthorizeView>
+            <Authorized>
+                <nav class="admin-nav" aria-label="Ana menü">
+                    <NavLink href="" Match="NavLinkMatch.All"><span class="nav-icon">▦</span>Dashboard</NavLink>
+                    <NavLink href="tenants"><span class="nav-icon">▤</span>Tenants</NavLink>
+                    <NavLink href="licenses"><span class="nav-icon">◈</span>Licenses</NavLink>
+                    <NavLink href="apikeys"><span class="nav-icon">⌘</span>API Keys</NavLink>
+                    <NavLink href="webhooks"><span class="nav-icon">⌁</span>Webhooks</NavLink>
+                    <NavLink href="agents"><span class="nav-icon">♙</span>Agents</NavLink>
+                    <NavLink href="jobs"><span class="nav-icon">▣</span>Jobs</NavLink>
+                    <NavLink href="bootstrap"><span class="nav-icon">↻</span>Bootstrap</NavLink>
+                </nav>
+
+                <div class="sidebar-footer">
+                    <a class="support-link" href="mailto:support@appsgo.cloud">Support Portal</a>
+                    <NavLink class="utility-link" href="logout"><span class="nav-icon">⇥</span>Logout</NavLink>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <nav class="admin-nav"><NavLink href="login"><span class="nav-icon">⇥</span>Login</NavLink></nav>
+            </NotAuthorized>
+        </AuthorizeView>
+    </aside>
+
+    <main class="admin-main">
+        <header class="admin-topbar">
+            <div class="global-search">
+                <span aria-hidden="true">⌕</span>
+                <input type="search" placeholder="Search licenses, tenants, or ID..." aria-label="Genel arama" />
+            </div>
             <AuthorizeView>
                 <Authorized>
-                    <span class="me-3">@context.User.Identity?.Name</span>
+                    <div class="topbar-actions">
+                        <button type="button" class="icon-button" title="Bildirimler" aria-label="Bildirimler">♧</button>
+                        <button type="button" class="icon-button" title="Yardım" aria-label="Yardım">?</button>
+                        <span class="topbar-divider"></span>
+                        <div class="profile-chip">
+                            <span class="profile-avatar">@Initial(context.User.Identity?.Name)</span>
+                            <span>@context.User.Identity?.Name</span>
+                            <span class="profile-chevron">⌄</span>
+                        </div>
+                    </div>
                 </Authorized>
             </AuthorizeView>
-        </div>
-        <article class="content px-4">
+        </header>
+
+        <article class="admin-content">
             @Body
         </article>
     </main>
 </div>
+
+@code {
+    private static string Initial(string? value) => string.IsNullOrWhiteSpace(value) ? "E" : value[..1].ToUpperInvariant();
+}
