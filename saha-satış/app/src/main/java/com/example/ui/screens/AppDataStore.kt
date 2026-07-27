@@ -835,6 +835,53 @@ object AppDataStore {
     val bridgeKasalar = mutableStateListOf<KasalarDto>()
     val kasaYonetimList = mutableStateListOf<KasaYonetimDto>()
 
+    /**
+     * Makes ERP master data visible in the existing Banka and Kasa screens.
+     *
+     * The Bridge sync stores its wire DTOs separately so that the ERP data
+     * viewer can show every source field. The operational UI, however, reads
+     * [banks] and [cashAccounts]. Keep those presentation lists in lockstep
+     * whenever a real ERP snapshot exists; this also runs on application
+     * startup after the bridge DTOs are restored from preferences.
+     */
+    fun applyBridgeFinancialAccounts() {
+        if (bridgeBankalar.isNotEmpty()) {
+            banks.clear()
+            banks.addAll(
+                bridgeBankalar.mapNotNull { item ->
+                    val code = item.kod?.trim().orEmpty().ifBlank { item.erpRef?.trim().orEmpty() }
+                    val name = item.isim?.trim().orEmpty().ifBlank { item.bankaAd?.trim().orEmpty() }
+                    val id = item.id?.trim().orEmpty().ifBlank { code }
+                    if (id.isBlank() || name.isBlank()) null
+                    else Bank(
+                        id = id,
+                        name = if (code.isBlank() || name.startsWith("$code -")) name else "$code - $name",
+                        accountNo = item.hesapNumarasi?.trim().orEmpty().ifBlank { item.iBANKodu?.trim().orEmpty() },
+                        iban = "",
+                        balance = 0.0
+                    )
+                }.distinctBy { it.id }
+            )
+        }
+
+        if (bridgeKasalar.isNotEmpty()) {
+            cashAccounts.clear()
+            cashAccounts.addAll(
+                bridgeKasalar.mapNotNull { item ->
+                    val code = item.kod?.trim().orEmpty().ifBlank { item.erpRef?.trim().orEmpty() }
+                    val name = item.isim?.trim().orEmpty()
+                    if (code.isBlank() || name.isBlank()) null
+                    else CashAccount(
+                        id = code,
+                        name = "$code - $name",
+                        currency = if (item.dovizCinsi == null || item.dovizCinsi == 0) "TRY" else "DOVIZ-${item.dovizCinsi}",
+                        balance = 0.0
+                    )
+                }.distinctBy { it.id }
+            )
+        }
+    }
+
     // 3- Historically sold products to customers (For Sales filtering in returns)
     val defaultSalesHistory = listOf(
         // Acme Corp purchased: Motor Yağı and Hava Filtresi
@@ -1086,6 +1133,11 @@ object AppDataStore {
 
                     bridgeKasalar.clear()
                     bridgeKasalar.addAll(deserializeBridgeKasalar(bridgeKasalarStr))
+
+                    // Bridge DTOs are the persisted ERP source of truth. Map
+                    // them into the lists consumed by the normal Banka/Kasa
+                    // screens before Compose renders those screens.
+                    applyBridgeFinancialAccounts()
 
                     kasaYonetimList.clear()
                     kasaYonetimList.addAll(deserializeKasaYonetimList(kasaYonetimListStr))

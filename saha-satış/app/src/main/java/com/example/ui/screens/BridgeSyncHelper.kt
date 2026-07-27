@@ -2227,6 +2227,7 @@ object BridgeSyncHelper {
             withContext(Dispatchers.Main) {
                 AppDataStore.bridgeBankalar.clear()
                 AppDataStore.bridgeBankalar.addAll(loadedItems)
+                AppDataStore.applyBridgeFinancialAccounts()
                 AppDataStore.persist(context)
             }
             log("Başarılı! Toplam ${loadedItems.size} adet banka tanımı kaydedildi.")
@@ -2324,6 +2325,7 @@ object BridgeSyncHelper {
             withContext(Dispatchers.Main) {
                 AppDataStore.bridgeKasalar.clear()
                 AppDataStore.bridgeKasalar.addAll(loadedItems)
+                AppDataStore.applyBridgeFinancialAccounts()
                 AppDataStore.persist(context)
             }
             log("Başarılı! Toplam ${loadedItems.size} adet kasa tanımı kaydedildi.")
