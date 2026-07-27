@@ -442,7 +442,9 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 ? package.Inventory.Count : 0;
             var openOrdersCount = sectionName.Equals("openorders", StringComparison.OrdinalIgnoreCase)
                 ? package.OpenOrders.Count : 0;
-            var cashAndBankCount = sectionName.Equals("cashandbank", StringComparison.OrdinalIgnoreCase)
+            var cashAndBankCount = (sectionName.Equals("cashandbank", StringComparison.OrdinalIgnoreCase)
+                || sectionName.Equals("kasalar", StringComparison.OrdinalIgnoreCase)
+                || sectionName.Equals("bankalar", StringComparison.OrdinalIgnoreCase))
                 ? package.CashAndBank.Count : 0;
             var lookupsCount = sectionName.Equals("lookups", StringComparison.OrdinalIgnoreCase)
                 ? package.Lookups.Count : 0;

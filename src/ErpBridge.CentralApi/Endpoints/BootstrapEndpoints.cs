@@ -111,6 +111,23 @@ public static class BootstrapEndpoints
             _ => Array.Empty<string>(),
         };
 
+        var accountKind = section.ToLowerInvariant() switch
+        {
+            "kasalar" => "cash",
+            "bankalar" => "bank",
+            _ => null,
+        };
+        if (accountKind is not null)
+        {
+            // KASALAR and BANKALAR share one payload array. Replacing only
+            // the requested type prevents a bank-only push from deleting cash.
+            MergeCashAndBankKind(previous, partial, accountKind);
+            previous["pulledAtUtc"] = partial["pulledAtUtc"]?.DeepClone();
+            previous["sourceDatabase"] = partial["sourceDatabase"]?.DeepClone();
+            previous.Remove("partialSection");
+            return previous.ToJsonString(JsonOptions);
+        }
+
         foreach (var key in keys)
         {
             if (TryTakeProperty(partial, key, out var value))
@@ -121,6 +138,25 @@ public static class BootstrapEndpoints
         previous["sourceDatabase"] = partial["sourceDatabase"]?.DeepClone();
         previous.Remove("partialSection");
         return previous.ToJsonString(JsonOptions);
+    }
+
+    private static void MergeCashAndBankKind(JsonObject previous, JsonObject partial, string accountKind)
+    {
+        var existing = TryTakeProperty(previous, "cashAndBank", out var previousNode)
+            ? previousNode as JsonArray : null;
+        var incoming = TryTakeProperty(partial, "cashAndBank", out var partialNode)
+            ? partialNode as JsonArray : null;
+        var merged = new JsonArray();
+
+        if (existing is not null)
+            foreach (var item in existing)
+                if (!string.Equals(item?["kind"]?.GetValue<string>(), accountKind, StringComparison.OrdinalIgnoreCase))
+                    merged.Add(item?.DeepClone());
+        if (incoming is not null)
+            foreach (var item in incoming)
+                merged.Add(item?.DeepClone());
+
+        SetProperty(previous, "cashAndBank", merged);
     }
 
     private static bool TryTakeProperty(JsonObject source, string key, out JsonNode? value)

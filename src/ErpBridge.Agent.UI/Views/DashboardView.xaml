@@ -84,7 +84,9 @@
                     <Button Content="👥 Cariler" Command="{Binding PushCustomersCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
                     <Button Content="📦 Stoklar" Command="{Binding PushStocksCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
                     <Button Content="📋 Açık Siparişler" Command="{Binding PushOpenOrdersCommand}" MinWidth="140" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="💰 Kasa/Banka" Command="{Binding PushCashAndBankCommand}" MinWidth="130" Margin="0,0,6,6" Padding="8,4" />
+                    <Button Content="💰 Kasalar" Command="{Binding PushCashCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
+                    <Button Content="🏦 Bankalar" Command="{Binding PushBankCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
+                    <Button Content="💰 Tüm Kasa/Banka" Command="{Binding PushCashAndBankCommand}" MinWidth="150" Margin="0,0,6,6" Padding="8,4" />
                     <Button Content="🔍 Lookup" Command="{Binding PushLookupsCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
                     <Button Content="💲 Fiyatlar" Command="{Binding PushPricesCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
                     <Button Content="📊 Envanter" Command="{Binding PushInventoryCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
@@ -131,6 +133,8 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="CARI_HESAPLAR" Margin="0,1" />
                             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding MikroCustomersCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
@@ -138,26 +142,30 @@
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MikroStocksCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="SIPARISLER (açık)" Margin="0,1" />
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MikroOpenOrdersCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="KASALAR + BANKALAR" Margin="0,1" />
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MikroCashAndBankCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="DEPOLAR + PERSONEL" Margin="0,1" />
-                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding MikroLookupsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="STOK_SATIS_FIYAT_LISTELERI" Margin="0,1" />
-                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding MikroPricesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="STOK_HAREKETLERI" Margin="0,1" />
-                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding MikroInventoryCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="7" Grid.Column="0" Text="CARI_HESAP_ADRESLERI" Margin="0,1" />
-                            <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding MikroCustomerAddressesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="8" Grid.Column="0" Text="CARI_HESAP_YETKILILERI" Margin="0,1" />
-                            <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding MikroCustomerContactsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="9" Grid.Column="0" Text="BARKOD_TANIMLARI" Margin="0,1" />
-                            <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding MikroBarcodesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="10" Grid.Column="0" Text="SATIS_SARTLARI" Margin="0,1" />
-                            <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding MikroSalesConditionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="11" Grid.Column="0" Text="CARI_HESAP_HAREKETLERI" Margin="0,1" />
-                            <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding MikroCustomerTransactionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="12" Grid.Column="0" Text="STOK_HAREKETLERI (satırlar)" Margin="0,1" />
-                            <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding MikroStockTransactionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="KASALAR" Margin="0,1" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MikroCashCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="BANKALAR" Margin="0,1" />
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding MikroBankCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="KASALAR + BANKALAR" Margin="0,1" />
+                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding MikroCashAndBankCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="DEPOLAR + PERSONEL" Margin="0,1" />
+                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding MikroLookupsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="7" Grid.Column="0" Text="STOK_SATIS_FIYAT_LISTELERI" Margin="0,1" />
+                            <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding MikroPricesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="8" Grid.Column="0" Text="STOK_HAREKETLERI" Margin="0,1" />
+                            <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding MikroInventoryCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="9" Grid.Column="0" Text="CARI_HESAP_ADRESLERI" Margin="0,1" />
+                            <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding MikroCustomerAddressesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="10" Grid.Column="0" Text="CARI_HESAP_YETKILILERI" Margin="0,1" />
+                            <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding MikroCustomerContactsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="11" Grid.Column="0" Text="BARKOD_TANIMLARI" Margin="0,1" />
+                            <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding MikroBarcodesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="12" Grid.Column="0" Text="SATIS_SARTLARI" Margin="0,1" />
+                            <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding MikroSalesConditionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="13" Grid.Column="0" Text="CARI_HESAP_HAREKETLERI" Margin="0,1" />
+                            <TextBlock Grid.Row="13" Grid.Column="1" Text="{Binding MikroCustomerTransactionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
+                            <TextBlock Grid.Row="14" Grid.Column="0" Text="STOK_HAREKETLERI (satırlar)" Margin="0,1" />
+                            <TextBlock Grid.Row="14" Grid.Column="1" Text="{Binding MikroStockTransactionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
                         </Grid>
                         <TextBlock Text="{Binding MikroCountTimeDisplay, StringFormat='Son kontrol: {0}'}"
                                    FontSize="10"

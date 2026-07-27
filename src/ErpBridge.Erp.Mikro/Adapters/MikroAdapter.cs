@@ -176,6 +176,7 @@ public sealed class MikroAdapter : IErpAdapter
     /// </summary>
     /// <param name="sectionName">
     /// One of <c>customers</c>, <c>stocks</c>, <c>openOrders</c>, <c>cashAndBank</c>,
+    /// <c>kasalar</c>, <c>bankalar</c>,
     /// <c>lookups</c>, <c>prices</c>, <c>inventory</c>. Case-insensitive.
     /// </param>
     /// <param name="ct">Cancellation token for the underlying SQL read.</param>
@@ -250,7 +251,7 @@ public sealed class MikroAdapter : IErpAdapter
                 CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
                 StockTransactions: Array.Empty<StockTransactionPayload>()),
 
-            "cashandbank" => new SyncPackage(
+            "cashandbank" or "kasalar" or "bankalar" => new SyncPackage(
                 PulledAtUtc: DateTime.UtcNow,
                 SourceDatabase: ConnectionSettings.DatabaseName,
                 Customers: Array.Empty<CustomerPayload>(),
@@ -262,7 +263,10 @@ public sealed class MikroAdapter : IErpAdapter
                 SalesConditions: Array.Empty<SalesConditionPayload>(),
                 Inventory: Array.Empty<InventoryPayload>(),
                 OpenOrders: Array.Empty<OpenOrderPayload>(),
-                CashAndBank: await _dbReader.ReadCashAndBankAsync(firmNo, ct).ConfigureAwait(false),
+                CashAndBank: (await _dbReader.ReadCashAndBankAsync(firmNo, ct).ConfigureAwait(false))
+                    .Where(account => key == "cashandbank"
+                        || string.Equals(account.Kind, key == "kasalar" ? "cash" : "bank", StringComparison.OrdinalIgnoreCase))
+                    .ToArray(),
                 Lookups: Array.Empty<LookupPayload>(),
                 CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
                 StockTransactions: Array.Empty<StockTransactionPayload>()),
@@ -353,7 +357,7 @@ public sealed class MikroAdapter : IErpAdapter
                 StockTransactions: await _dbReader.ReadStockTransactionsAsync(firmNo, ct).ConfigureAwait(false)),
 
             _ => throw new ArgumentException(
-                $"Unknown bootstrap section '{sectionName}'. Expected one of: customers, stocks, openOrders, cashAndBank, lookups, prices, inventory, customerTransactions, stockTransactions.",
+                $"Unknown bootstrap section '{sectionName}'. Expected one of: customers, stocks, openOrders, cashAndBank, kasalar, bankalar, lookups, prices, inventory, customerTransactions, stockTransactions.",
                 nameof(sectionName)),
         };
         return package with { PartialSection = key };

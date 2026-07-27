@@ -65,6 +65,8 @@ public sealed class DashboardViewModel : ObservableObject
     private string _mikroStocksCountDisplay = "—";
     private string _mikroOpenOrdersCountDisplay = "—";
     private string _mikroCashAndBankCountDisplay = "—";
+    private string _mikroCashCountDisplay = "—";
+    private string _mikroBankCountDisplay = "—";
     private string _mikroLookupsCountDisplay = "—";
     private string _mikroPricesCountDisplay = "—";
     private string _mikroInventoryCountDisplay = "—";
@@ -108,6 +110,12 @@ public sealed class DashboardViewModel : ObservableObject
             canExecute: () => !IsBusy);
         PushCashAndBankCommand = new AsyncRelayCommand(
             execute: _ => PushSectionAsync("cashAndBank", "Kasa/Banka"),
+            canExecute: () => !IsBusy);
+        PushCashCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("kasalar", "Kasalar"),
+            canExecute: () => !IsBusy);
+        PushBankCommand = new AsyncRelayCommand(
+            execute: _ => PushSectionAsync("bankalar", "Bankalar"),
             canExecute: () => !IsBusy);
         PushLookupsCommand = new AsyncRelayCommand(
             execute: _ => PushSectionAsync("lookups", "Lookup"),
@@ -274,6 +282,8 @@ public sealed class DashboardViewModel : ObservableObject
             var barcodes = package.Barcodes.Count;
             var openOrders = package.OpenOrders.Count;
             var cashBank = package.CashAndBank.Count;
+            var cash = package.CashAndBank.Count(account => string.Equals(account.Kind, "cash", StringComparison.OrdinalIgnoreCase));
+            var bank = package.CashAndBank.Count(account => string.Equals(account.Kind, "bank", StringComparison.OrdinalIgnoreCase));
             var lookups = package.Lookups.Count;
             var prices = package.Prices.Count;
             var salesConditions = package.SalesConditions.Count;
@@ -285,6 +295,8 @@ public sealed class DashboardViewModel : ObservableObject
             MikroStocksCountDisplay = stocks.ToString("N0", CultureInfo.CurrentCulture);
             MikroOpenOrdersCountDisplay = openOrders.ToString("N0", CultureInfo.CurrentCulture);
             MikroCashAndBankCountDisplay = cashBank.ToString("N0", CultureInfo.CurrentCulture);
+            MikroCashCountDisplay = cash.ToString("N0", CultureInfo.CurrentCulture);
+            MikroBankCountDisplay = bank.ToString("N0", CultureInfo.CurrentCulture);
             MikroLookupsCountDisplay = lookups.ToString("N0", CultureInfo.CurrentCulture);
             MikroPricesCountDisplay = prices.ToString("N0", CultureInfo.CurrentCulture);
             MikroInventoryCountDisplay = inventory.ToString("N0", CultureInfo.CurrentCulture);
@@ -358,6 +370,8 @@ public sealed class DashboardViewModel : ObservableObject
     public System.Windows.Input.ICommand PushStocksCommand { get; }
     public System.Windows.Input.ICommand PushOpenOrdersCommand { get; }
     public System.Windows.Input.ICommand PushCashAndBankCommand { get; }
+    public System.Windows.Input.ICommand PushCashCommand { get; }
+    public System.Windows.Input.ICommand PushBankCommand { get; }
     public System.Windows.Input.ICommand PushLookupsCommand { get; }
     public System.Windows.Input.ICommand PushPricesCommand { get; }
     public System.Windows.Input.ICommand PushInventoryCommand { get; }
@@ -507,6 +521,18 @@ public sealed class DashboardViewModel : ObservableObject
     {
         get => _mikroCashAndBankCountDisplay;
         private set => SetProperty(ref _mikroCashAndBankCountDisplay, value);
+    }
+
+    public string MikroCashCountDisplay
+    {
+        get => _mikroCashCountDisplay;
+        private set => SetProperty(ref _mikroCashCountDisplay, value);
+    }
+
+    public string MikroBankCountDisplay
+    {
+        get => _mikroBankCountDisplay;
+        private set => SetProperty(ref _mikroBankCountDisplay, value);
     }
 
     public string MikroLookupsCountDisplay
