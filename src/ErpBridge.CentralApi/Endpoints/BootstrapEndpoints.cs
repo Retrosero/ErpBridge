@@ -30,7 +30,88 @@ public static class BootstrapEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .RequireAuthorization(Program.AgentPolicy)
             .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
+        routes.MapGet("/api/v1/bootstrap/state", StateAsync)
+            .WithName("BootstrapState").WithTags("Bootstrap")
+            .RequireAuthorization(Program.AgentPolicy);
+        routes.MapPost("/api/v1/bootstrap/delta", DeltaAsync)
+            .WithName("BootstrapDelta").WithTags("Bootstrap")
+            .RequireAuthorization(Program.AgentPolicy)
+            .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
         return routes;
+    }
+
+    private static async Task<IResult> StateAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    {
+        if (!http.User.TryGetTenantId(out var tenantId)) return Results.Unauthorized();
+        var latest = await db.BootstrapPackages.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .OrderByDescending(x => x.ReceivedAtUtc).FirstOrDefaultAsync(ct);
+        return Results.Ok(new
+        {
+            exists = latest is not null,
+            receivedAtUtc = latest?.ReceivedAtUtc,
+            revision = latest is null ? null : $"{latest.Id:N}:{latest.ReceivedAtUtc.ToUnixTimeMilliseconds()}"
+        });
+    }
+
+    private static async Task<IResult> DeltaAsync(BootstrapDeltaRequest body, HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    {
+        if (!http.User.TryGetTenantId(out var tenantId)) return Results.Unauthorized();
+        if (body.Delta is null || string.IsNullOrWhiteSpace(body.SourceDatabase))
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_DELTA", Message = "Delta and sourceDatabase are required." });
+        var previous = await db.BootstrapPackages.Where(x => x.TenantId == tenantId).OrderByDescending(x => x.ReceivedAtUtc).FirstOrDefaultAsync(ct);
+        if (previous is null)
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "BOOTSTRAP_REQUIRED", Message = "A full bootstrap is required before a delta can be applied." });
+        previous.PayloadJson = ApplyDelta(previous.PayloadJson, body.Delta);
+        previous.SourceDatabase = body.SourceDatabase;
+        previous.PulledAtUtc = body.PulledAtUtc;
+        previous.ReceivedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static string ApplyDelta(string snapshotJson, BootstrapDeltaBody delta)
+    {
+        var root = JsonNode.Parse(snapshotJson) as JsonObject ?? new JsonObject();
+        foreach (var section in delta.Upserts)
+        {
+            var keys = section.Value.Select(x => x.Key).ToHashSet(StringComparer.Ordinal);
+            var current = root[section.Key] as JsonArray ?? new JsonArray();
+            // Existing rows without a stored key are matched through their stable
+            // natural key; delta keys use the same field concatenation convention.
+            var retained = new JsonArray();
+            foreach (var node in current)
+                if (!keys.Contains(RowKey(section.Key, node as JsonObject))) retained.Add(node?.DeepClone());
+            foreach (var row in section.Value) retained.Add(JsonNode.Parse(row.PayloadJson));
+            root[section.Key] = retained;
+        }
+        foreach (var section in delta.Deletes)
+        {
+            if (root[section.Key] is not JsonArray current) continue;
+            var deleted = section.Value.ToHashSet(StringComparer.Ordinal);
+            var retained = new JsonArray();
+            foreach (var node in current)
+                if (!deleted.Contains(RowKey(section.Key, node as JsonObject))) retained.Add(node?.DeepClone());
+            root[section.Key] = retained;
+        }
+        root.Remove("partialSection");
+        return root.ToJsonString(JsonOptions);
+    }
+
+    private static string RowKey(string section, JsonObject? row)
+    {
+        if (row is null) return string.Empty;
+        string Get(string name) => row[name]?.ToString() ?? string.Empty;
+        return section.ToLowerInvariant() switch
+        {
+            "customers" => Get("customerCode"), "customeraddresses" => Get("customerCode") + "|" + Get("addressNo"),
+            "customercontacts" => Get("customerCode") + "|" + Get("email") + "|" + Get("mobile"), "stocks" => Get("stockCode"),
+            "barcodes" => Get("barcode"), "prices" => Get("stockCode") + "|" + Get("listNumber"),
+            "salesconditions" => Get("stockCode") + "|" + Get("customerCode") + "|" + Get("warehouseNo") + "|" + Get("paymentPlanNo") + "|" + Get("startDate") + "|" + Get("endDate"),
+            "inventory" => Get("stockCode") + "|" + Get("warehouseNo"),
+            "openorders" => Get("series") + "|" + Get("number") + "|" + Get("lineNo"),
+            "customertransactions" or "stocktransactions" => Get("erpRef"), "cashandbank" => Get("kind") + "|" + Get("code"),
+            "lookups" => Get("kind") + "|" + Get("code"), _ => string.Empty
+        };
     }
 
     private static async Task<IResult> BootstrapAsync(
@@ -66,16 +147,19 @@ public static class BootstrapEndpoints
                 payloadJson = MergePartialPayload(previous.PayloadJson, payloadJson, partialSection);
         }
 
-        var package = new BootstrapPackage
+        var package = await db.BootstrapPackages
+            .Where(item => item.TenantId == tenantId)
+            .OrderByDescending(item => item.ReceivedAtUtc)
+            .FirstOrDefaultAsync(ct);
+        if (package is null)
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            PayloadJson = payloadJson,
-            SourceDatabase = body.SourceDatabase,
-            PulledAtUtc = body.PulledAtUtc,
-            ReceivedAtUtc = DateTimeOffset.UtcNow,
-        };
-        db.BootstrapPackages.Add(package);
+            package = new BootstrapPackage { TenantId = tenantId };
+            db.BootstrapPackages.Add(package);
+        }
+        package.PayloadJson = payloadJson;
+        package.SourceDatabase = body.SourceDatabase;
+        package.PulledAtUtc = body.PulledAtUtc;
+        package.ReceivedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }

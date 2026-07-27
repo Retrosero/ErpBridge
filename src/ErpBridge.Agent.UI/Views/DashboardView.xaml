@@ -7,7 +7,9 @@
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:DashboardViewModel}"
              Background="{DynamicResource WindowBackgroundBrush}">
-    <Grid Margin="24">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+    <Grid Margin="28,22,28,32" MinWidth="880">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -23,11 +25,11 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" Orientation="Vertical">
-                <TextBlock Text="Pano"
-                           FontSize="20" FontWeight="SemiBold"
+                <TextBlock Text="Dashboard"
+                           FontSize="28" FontWeight="SemiBold"
                            Foreground="{DynamicResource HeaderBrush}" />
-                <TextBlock Text="Senkronizasyon durumu ve operatör özet bilgileri"
-                           FontSize="12"
+                <TextBlock Text="ERP senkronizasyon durumu, veri akışı ve hızlı işlemler"
+                           FontSize="13"
                            Foreground="{DynamicResource MutedTextBrush}"
                            Margin="0,2,0,0" />
             </StackPanel>
@@ -53,6 +55,11 @@
                         Command="{Binding RefreshCommand}"
                         MinWidth="110"
                         Padding="10,4" />
+                <Button Content="⚙ Ayarlar"
+                        Click="OpenSettings_Click"
+                        MinWidth="110"
+                        Margin="8,0,0,0"
+                        Padding="10,4" />
             </StackPanel>
         </Grid>
 
@@ -65,34 +72,70 @@
                 Padding="12,8"
                 Margin="0,0,0,16">
             <StackPanel>
-                <TextBlock Text="Her Tablo (yavaş tunnel için)"
-                           FontSize="12" FontWeight="SemiBold"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           Margin="0,0,0,6" />
-                <TextBlock TextWrapping="Wrap"
-                           FontSize="11"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           Margin="0,0,0,8">
-                    <Run Text="Toplu bootstrap tunnel'da takılırsa, her tabloyu ayrı ayrı gönder. Her buton sadece ilgili Mikro tablosunu okur ve Central API'ye push eder." />
-                </TextBlock>
-                <ItemsControl>
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <Button Content="👥 Cariler" Command="{Binding PushCustomersCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="📦 Stoklar" Command="{Binding PushStocksCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="📋 Açık Siparişler" Command="{Binding PushOpenOrdersCommand}" MinWidth="140" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="💰 Kasalar" Command="{Binding PushCashCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="🏦 Bankalar" Command="{Binding PushBankCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="💰 Tüm Kasa/Banka" Command="{Binding PushCashAndBankCommand}" MinWidth="150" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="🔍 Lookup" Command="{Binding PushLookupsCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="💲 Fiyatlar" Command="{Binding PushPricesCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="📊 Envanter" Command="{Binding PushInventoryCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="📒 Cari Hareketleri" Command="{Binding PushCustomerTransactionsCommand}" MinWidth="150" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="🔄 Stok Hareketleri" Command="{Binding PushStockTransactionsCommand}" MinWidth="150" Margin="0,0,6,6" Padding="8,4" />
-                </ItemsControl>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Tablo Senkronizasyonları"
+                                   FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource HeaderBrush}" />
+                        <TextBlock Text="Her tablonun son başarılı güncellemesini izleyebilir veya tek başına yenileyebilirsiniz."
+                                   FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Margin="0,3,0,0" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Background="#ECFDF5" CornerRadius="12"
+                            Padding="12,6" VerticalAlignment="Center">
+                        <TextBlock Text="Canlı izleme otomatik"
+                                   Foreground="#047857" FontWeight="SemiBold" />
+                    </Border>
+                </Grid>
+
+                <Border Background="#F8FAFC" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="12,8">
+                    <StackPanel>
+                        <Grid Margin="10,0,10,7">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="110" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="TABLO" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource MutedTextBrush}" />
+                            <TextBlock Grid.Column="1" Text="KAYIT" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource MutedTextBrush}" />
+                            <TextBlock Grid.Column="2" Text="SON ALGILAMA" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource MutedTextBrush}" />
+                            <TextBlock Grid.Column="3" Text="SON AKTARIM" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource MutedTextBrush}" />
+                            <TextBlock Grid.Column="4" Text="İŞLEM" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource MutedTextBrush}" />
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding SectionStatuses}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="White" BorderBrush="{DynamicResource DividerBrush}"
+                                            BorderThickness="0,1,0,0" Padding="10,7">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="100" />
+                                                <ColumnDefinition Width="170" />
+                                                <ColumnDefinition Width="170" />
+                                                <ColumnDefinition Width="110" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding CountDisplay}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding LastDetectedDisplay}"
+                                                       Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="3" Text="{Binding LastUpdatedDisplay}"
+                                                       Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+                                            <Button Grid.Column="4" Content="Senkronize Et"
+                                                    Command="{Binding SyncCommand}" Padding="8,5" MinHeight="30" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
 
                 <!-- MikroDB row-count diagnostic. Disambiguates "MikroDB empty"
                      from "SQL filter wrong" — both look like 0-row push. -->
@@ -317,4 +360,5 @@
             </StackPanel>
         </Border>
     </Grid>
+    </ScrollViewer>
 </UserControl>

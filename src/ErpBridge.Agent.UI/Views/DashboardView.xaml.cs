@@ -27,4 +27,10 @@ public partial class DashboardView : UserControl
             DataContext = services.GetRequiredService<DashboardViewModel>();
         }
     }
+
+    private void OpenSettings_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (System.Windows.Window.GetWindow(this) is MainWindow window)
+            window.ShowSettings();
+    }
 }

@@ -47,8 +47,20 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName != nameof(AgentSettingsViewModel.HasSavedConfig)) return;
         if (DataContext is not AgentSettingsViewModel vm) return;
-        DashboardTab.Visibility = vm.HasSavedConfig ? Visibility.Visible : Visibility.Collapsed;
+        DashboardTab.Visibility = Visibility.Visible;
+        MainTabs.SelectedItem = DashboardTab;
     }
+
+    /// <summary>Selects the dashboard after persisted configuration has loaded.</summary>
+    public void ShowDashboard()
+    {
+        if (DashboardTab.Visibility == Visibility.Visible)
+            MainTabs.SelectedItem = DashboardTab;
+    }
+
+    public void ShowSettings() => MainTabs.SelectedIndex = 0;
+
+    private void DashboardButton_Click(object sender, RoutedEventArgs e) => ShowDashboard();
 
     private void SqlPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
     {
@@ -71,7 +83,10 @@ public partial class MainWindow : Window
     {
         if (WindowState == WindowState.Minimized)
         {
-            Hide();
+            // Never make the window unreachable. A failed notification-area
+            // registration leaves the normal minimized taskbar button intact.
+            if (App.HasTrayIcon)
+                Hide();
         }
     }
 }

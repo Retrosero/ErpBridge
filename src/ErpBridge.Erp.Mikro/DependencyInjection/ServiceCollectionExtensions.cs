@@ -2,6 +2,7 @@ using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.DependencyInjection;
 using ErpBridge.Erp.Mikro.Adapters;
+using ErpBridge.Erp.Mikro.ChangeTracking;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
 using ErpBridge.Erp.Mikro.Versioning;
@@ -123,6 +124,7 @@ public static class ServiceCollectionExtensions
         // Faz 5 Track 2: MikroDbReader — Dapper-backed bootstrap reader. Singleton
         // because the implementation is stateless aside from its dependencies.
         services.AddSingleton<IMikroDbReader, MikroDbReader>();
+        services.AddSingleton<IMikroChangeMonitor, MikroChangeMonitor>();
 
         // Factory closed over the connection settings + IConfiguration; uses the
         // container for everything else.
@@ -137,6 +139,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingletonLogger<MikroSalesOrderWriter>(services);
         services.TryAddSingletonLogger<MikroAdapter>(services);
         services.TryAddSingletonLogger<MikroDbReader>(services);
+        services.TryAddSingletonLogger<MikroChangeMonitor>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
 

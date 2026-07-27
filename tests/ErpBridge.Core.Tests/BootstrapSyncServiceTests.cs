@@ -160,6 +160,8 @@ public class BootstrapSyncServiceTests
             .Returns(adapter.Object);
 
         var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapState(false, null, null));
         remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -213,6 +215,8 @@ public class BootstrapSyncServiceTests
             .Returns(adapter.Object);
 
         var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapState(false, null, null));
         // Always throw — the retry pipeline will give up after the configured attempts.
         remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TransientPushException("upstream 5xx simulated"));
@@ -241,7 +245,7 @@ public class BootstrapSyncServiceTests
     // 5) Second call inside the idempotency window → returns success=true with zero counts and does NOT push
     // ------------------------------------------------------------------------
     [Fact]
-    public async Task RunOnceAsync_inside_idempotency_window_skips_the_push()
+    public async Task RunOnceAsync_with_recent_checkpoint_still_reads_current_snapshot()
     {
         var fixedNow = new DateTimeOffset(2026, 7, 9, 18, 30, 0, TimeSpan.Zero);
         var lastSuccess = fixedNow.UtcDateTime.AddMinutes(-15); // 15 minutes ago < 60 min window
@@ -260,8 +264,15 @@ public class BootstrapSyncServiceTests
                 UpdatedAt = lastSuccess,
             });
 
-        var adapterFactory = new Mock<IErpAdapterFactory>(MockBehavior.Strict);
-        var remoteApi = new Mock<IRemoteApiClient>(MockBehavior.Strict);
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage());
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapState(true, fixedNow, "rev-1"));
 
         var sut = new BootstrapSyncService(
             configStore.Object, checkpointStore.Object, adapterFactory.Object,
@@ -276,7 +287,10 @@ public class BootstrapSyncServiceTests
         // The adapter and the remote API must not be touched on a skipped cycle.
         adapterFactory.Verify(
             f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()),
-            Times.Never);
+            Times.Once);
+        adapter.Verify(
+            a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
         remoteApi.Verify(
             r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -435,6 +449,8 @@ public class BootstrapSyncServiceTests
             .Returns(adapter.Object);
 
         var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapState(false, null, null));
         remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new BootstrapPermanentPushException("INVALID_PAYLOAD", "missing field foo"));
 

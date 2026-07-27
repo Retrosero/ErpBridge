@@ -65,3 +65,19 @@ public sealed record SyncPackage(
             CustomerTransactions: Array.Empty<CustomerTransactionPayload>(),
             StockTransactions: Array.Empty<StockTransactionPayload>());
 }
+
+/// <summary>One changed ERP row. The key is the stable Mikro RECno (or a composite
+/// key for derived lookup rows); payload is the original Android-compatible JSON.
+/// </summary>
+public sealed record BootstrapDeltaRow(string Key, string PayloadJson);
+
+/// <summary>Incremental bootstrap envelope. The central API merges it into the
+/// existing snapshot without changing the Android snapshot wire contract.</summary>
+public sealed record BootstrapDelta(
+    DateTime PulledAtUtc,
+    string SourceDatabase,
+    IReadOnlyDictionary<string, IReadOnlyList<BootstrapDeltaRow>> Upserts,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> Deletes);
+
+/// <summary>Server-side bootstrap presence/revision information.</summary>
+public sealed record BootstrapState(bool Exists, DateTimeOffset? ReceivedAtUtc, string? Revision);

@@ -4,6 +4,7 @@ using ErpBridge.Core;
 using ErpBridge.Core.Jobs;
 using ErpBridge.Erp.Mikro.DependencyInjection;
 using ErpBridge.LocalStore;
+using ErpBridge.LocalStore.Sqlite.Migrations;
 using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,7 +61,7 @@ public static class Program
                 // singleton; the worker only resolves it through CreateScope.
                 services.AddHostedService<AgentWorker>();
                 services.AddHostedService<HeartbeatWorker>();
-                services.AddHostedService<BootstrapWorker>();
+                services.AddHostedService<LiveSyncWorker>();
             })
             .UseSerilog((ctx, sp, lc) => lc
                 .ReadFrom.Configuration(ctx.Configuration)
@@ -68,6 +69,8 @@ public static class Program
                 .Enrich.FromLogContext());
 
         var host = builder.Build();
+        host.Services.GetRequiredService<MigrationRunner>()
+            .EnsureSchemaAsync().GetAwaiter().GetResult();
         host.Run();
     }
 }

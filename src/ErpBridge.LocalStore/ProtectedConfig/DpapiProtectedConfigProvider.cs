@@ -22,10 +22,11 @@ namespace ErpBridge.LocalStore.ProtectedConfig;
 public sealed class DpapiProtectedConfigProvider : IProtectedConfigProvider
 {
     /// <summary>Marker prefix; shared with <see cref="AesProtectedConfigProvider"/>.</summary>
-    public const string ProtectedPrefix = "enc:v1:dpapi:";
+    public const string ProtectedPrefix = "enc:v2:dpapi-machine:";
+    public const string LegacyProtectedPrefix = "enc:v1:dpapi:";
 
     /// <summary>DPAPI <see cref="DataProtectionScope"/> used for all blobs. Resolved at runtime so the type is not needed at compile time.</summary>
-    public static DataProtectionScope Scope => DataProtectionScope.CurrentUser;
+    public static DataProtectionScope Scope => DataProtectionScope.LocalMachine;
 
     /// <summary>
     /// Construct a DPAPI-backed provider. Throws on non-Windows — the DI registration
@@ -66,7 +67,9 @@ public sealed class DpapiProtectedConfigProvider : IProtectedConfigProvider
             throw new CryptographicException("Value is not in DPAPI-protected form (missing 'enc:v1:dpapi:' prefix).");
         }
 
-        var base64 = protectedValue[ProtectedPrefix.Length..];
+        var legacy = protectedValue.StartsWith(LegacyProtectedPrefix, StringComparison.Ordinal);
+        var prefix = legacy ? LegacyProtectedPrefix : ProtectedPrefix;
+        var base64 = protectedValue[prefix.Length..];
         byte[] blob;
         try
         {
@@ -79,7 +82,8 @@ public sealed class DpapiProtectedConfigProvider : IProtectedConfigProvider
 
         try
         {
-            var plaintext = ProtectedData.Unprotect(blob, optionalEntropy: null, Scope);
+            var plaintext = ProtectedData.Unprotect(blob, optionalEntropy: null,
+                legacy ? DataProtectionScope.CurrentUser : Scope);
             return System.Text.Encoding.UTF8.GetString(plaintext);
         }
         catch (CryptographicException ex)
@@ -92,5 +96,7 @@ public sealed class DpapiProtectedConfigProvider : IProtectedConfigProvider
 
     /// <inheritdoc />
     public bool IsProtected(string value) =>
-        !string.IsNullOrEmpty(value) && value.StartsWith(ProtectedPrefix, StringComparison.Ordinal);
+        !string.IsNullOrEmpty(value)
+        && (value.StartsWith(ProtectedPrefix, StringComparison.Ordinal)
+            || value.StartsWith(LegacyProtectedPrefix, StringComparison.Ordinal));
 }

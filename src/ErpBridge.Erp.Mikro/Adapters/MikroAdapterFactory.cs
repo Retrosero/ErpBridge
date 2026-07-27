@@ -66,8 +66,12 @@ public sealed class MikroAdapterFactory : IErpAdapterFactory
         // ReadBootstrapDataAsync. Reading live here keeps the factory aligned
         // with MikroConnectionTestOrchestrator (which already re-reads on
         // every RunFullTestAsync).
-        var liveSettings = MikroConnectionSettings.FromConfiguration(_configuration)
-            ?? _connectionSettings;
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<MikroConnectionFactory>();
+        var liveSettings = MikroConnectionSettings.FromConfiguration(_configuration);
+        if (liveSettings is null || string.IsNullOrWhiteSpace(liveSettings.Server))
+            liveSettings = string.IsNullOrWhiteSpace(connectionFactory.ActiveSettings.Server)
+                ? _connectionSettings
+                : connectionFactory.ActiveSettings;
 
         return new MikroAdapter(
             connectionSettings: liveSettings,
@@ -79,6 +83,6 @@ public sealed class MikroAdapterFactory : IErpAdapterFactory
             configuration: _configuration,
             logger: scope.ServiceProvider.GetRequiredService<ILogger<MikroAdapter>>(),
             dbReader: scope.ServiceProvider.GetRequiredService<IMikroDbReader>(),
-            connectionFactory: scope.ServiceProvider.GetRequiredService<MikroConnectionFactory>());
+            connectionFactory: connectionFactory);
     }
 }

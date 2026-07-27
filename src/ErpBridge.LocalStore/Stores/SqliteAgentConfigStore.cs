@@ -67,6 +67,7 @@ public sealed class SqliteAgentConfigStore : IAgentConfigStore
         nameof(AgentConfig.BranchNo),
         nameof(AgentConfig.ApiBaseUrl),
         nameof(AgentConfig.UseWindowsAuth),
+        nameof(AgentConfig.SyncIntervalMinutes),
     };
 
     private readonly SqliteConnectionFactory _connectionFactory;
@@ -283,6 +284,12 @@ FROM agent_config;";
                     config.UseWindowsAuth = win;
                 }
                 break;
+            case nameof(AgentConfig.SyncIntervalMinutes):
+                if (int.TryParse(row.Value, out var interval) && interval >= 5)
+                {
+                    config.SyncIntervalMinutes = interval;
+                }
+                break;
         }
     }
 
@@ -299,6 +306,7 @@ FROM agent_config;";
         nameof(AgentConfig.BranchNo) => config.BranchNo.ToString(System.Globalization.CultureInfo.InvariantCulture),
         nameof(AgentConfig.ApiBaseUrl) => config.ApiBaseUrl,
         nameof(AgentConfig.UseWindowsAuth) => config.UseWindowsAuth ? "true" : "false",
+        nameof(AgentConfig.SyncIntervalMinutes) => config.SyncIntervalMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture),
         _ => null,
     };
 

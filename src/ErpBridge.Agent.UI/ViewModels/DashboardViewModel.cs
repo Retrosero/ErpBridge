@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Media;
 using ErpBridge.Agent.UI.DependencyInjection;
 using ErpBridge.Core.Domain;
@@ -34,6 +36,7 @@ public sealed class DashboardViewModel : ObservableObject
     private readonly IConfiguration _configuration;
     private readonly MutableMemoryConfigurationProvider _liveSettings;
     private readonly IAgentConfigStore _configStore;
+    private readonly ICheckpointStore _checkpointStore;
     private readonly IErpAdapterFactory _adapterFactory;
     private readonly ILogger<DashboardViewModel> _logger;
 
@@ -79,12 +82,14 @@ public sealed class DashboardViewModel : ObservableObject
     private string _mikroCountSummaryDisplay = "Henüz kontrol edilmedi";
     private string _mikroCountTimeDisplay = string.Empty;
     private bool _hasMikroCountResult;
+    private int _autoSyncStarted;
 
     public DashboardViewModel(
         IBootstrapSyncService bootstrap,
         IConfiguration configuration,
         MutableMemoryConfigurationProvider liveSettings,
         IAgentConfigStore configStore,
+        ICheckpointStore checkpointStore,
         IErpAdapterFactory adapterFactory,
         ILogger<DashboardViewModel> logger)
     {
@@ -92,6 +97,7 @@ public sealed class DashboardViewModel : ObservableObject
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _liveSettings = liveSettings ?? throw new ArgumentNullException(nameof(liveSettings));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
+        _checkpointStore = checkpointStore ?? throw new ArgumentNullException(nameof(checkpointStore));
         _adapterFactory = adapterFactory ?? throw new ArgumentNullException(nameof(adapterFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -135,6 +141,20 @@ public sealed class DashboardViewModel : ObservableObject
         CheckMikroRowCountsCommand = new AsyncRelayCommand(
             execute: _ => CheckMikroRowCountsAsync(),
             canExecute: () => !IsBusy);
+        SectionStatuses = new ObservableCollection<SyncSectionStatusItem>
+        {
+            new("customers", "Cariler", PushCustomersCommand),
+            new("stocks", "Stoklar", PushStocksCommand),
+            new("openOrders", "Açık Siparişler", PushOpenOrdersCommand),
+            new("kasalar", "Kasalar", PushCashCommand),
+            new("bankalar", "Bankalar", PushBankCommand),
+            new("cashAndBank", "Tüm Kasa / Banka", PushCashAndBankCommand),
+            new("lookups", "Lookup Tanımları", PushLookupsCommand),
+            new("prices", "Fiyatlar", PushPricesCommand),
+            new("inventory", "Envanter", PushInventoryCommand),
+            new("customerTransactions", "Cari Hareketleri", PushCustomerTransactionsCommand),
+            new("stockTransactions", "Stok Hareketleri", PushStockTransactionsCommand),
+        };
     }
 
     /// <summary>Trigger a refresh — used on tab open and on the "Yenile" button.</summary>
@@ -381,6 +401,7 @@ public sealed class DashboardViewModel : ObservableObject
     public System.Windows.Input.ICommand PushCustomerTransactionsCommand { get; }
     public System.Windows.Input.ICommand PushStockTransactionsCommand { get; }
     public System.Windows.Input.ICommand CheckMikroRowCountsCommand { get; }
+    public ObservableCollection<SyncSectionStatusItem> SectionStatuses { get; }
 
     public string LastSyncAtDisplay
     {
@@ -792,11 +813,12 @@ public sealed class DashboardViewModel : ObservableObject
         }
     }
 
-    public Task RefreshAsync()
+    public async Task RefreshAsync()
     {
         try
         {
             var lastUtc = _bootstrap.GetLastSyncAtUtc();
+            var config = await _configStore.LoadAsync().ConfigureAwait(true);
             if (lastUtc.HasValue)
             {
                 var localTime = lastUtc.Value.ToLocalTime();
@@ -810,29 +832,106 @@ public sealed class DashboardViewModel : ObservableObject
                 LastSyncRelativeDisplay = string.Empty;
             }
 
-            if (lastUtc.HasValue)
+            var tenantId = string.IsNullOrWhiteSpace(config?.TenantId) ? "unknown" : config.TenantId;
+            var liveCheckpoint = await _checkpointStore
+                .LoadAsync(tenantId!, LiveSyncScopes.Status)
+                .ConfigureAwait(true);
+            LiveSyncState? liveState = null;
+            if (!string.IsNullOrWhiteSpace(liveCheckpoint?.LastToken))
             {
-                var nextEligible = lastUtc.Value.AddMinutes(60);
-                if (nextEligible > DateTimeOffset.Now)
-                {
-                    var until = nextEligible - DateTimeOffset.Now;
-                    NextEligibleRunDisplay = $"Sonraki otomatik çalıştırma: {FormatAge(until)} sonra";
-                }
-                else
-                {
-                    NextEligibleRunDisplay = "Otomatik çalıştırma için hazır";
-                }
+                try { liveState = JsonSerializer.Deserialize<LiveSyncState>(liveCheckpoint.LastToken); }
+                catch (JsonException) { }
             }
-            else
+            ApplyLiveState(liveState);
+
+            foreach (var item in SectionStatuses)
             {
-                NextEligibleRunDisplay = "Henüz bootstrap yapılmadı";
+                var detected = await _checkpointStore
+                    .LoadAsync(tenantId!, LiveSyncScopes.Detected(item.Key))
+                    .ConfigureAwait(true);
+                var checkpoint = await _checkpointStore
+                    .LoadAsync(tenantId!, BootstrapSyncService.SectionScope(item.Key))
+                    .ConfigureAwait(true);
+                var sectionTime = checkpoint?.LastSuccessAt is { } time
+                    ? new DateTimeOffset(DateTime.SpecifyKind(time, DateTimeKind.Utc), TimeSpan.Zero)
+                    : lastUtc;
+                item.LastUpdatedDisplay = sectionTime.HasValue
+                    ? sectionTime.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture)
+                    : "Henüz aktarılmadı";
+                item.LastDetectedDisplay = detected?.LastSuccessAt is { } detectedAt
+                    ? DateTime.SpecifyKind(detectedAt, DateTimeKind.Utc).ToLocalTime()
+                        .ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture)
+                    : "Değişiklik yok";
+                item.CountDisplay = CountForSection(item.Key);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "RefreshAsync failed.");
         }
-        return Task.CompletedTask;
+    }
+
+    private string CountForSection(string key) => key.ToLowerInvariant() switch
+    {
+        "customers" => LastCustomersCountDisplay,
+        "stocks" => LastStocksCountDisplay,
+        "openorders" => LastOpenOrdersCountDisplay,
+        "prices" => LastPricesCountDisplay,
+        "customertransactions" => LastCustomerTransactionsCountDisplay,
+        "stocktransactions" => LastStockTransactionsCountDisplay,
+        _ => "—",
+    };
+
+    private void ApplyLiveState(LiveSyncState? state)
+    {
+        if (state is null)
+        {
+            StatusBadgeText = "Bağlantı bekleniyor";
+            StatusBadgeBrush = GrayBadgeBrush;
+            NextEligibleRunDisplay = "Windows canlı senkronizasyon servisi bekleniyor";
+            return;
+        }
+        if (state.Status == "error")
+        {
+            StatusBadgeText = "Hata";
+            StatusBadgeBrush = DangerBadgeBrush;
+            NextEligibleRunDisplay = state.Message ?? "Canlı izleme hatası";
+            return;
+        }
+        if (state.Status == "waiting")
+        {
+            StatusBadgeText = "Bağlantı bekleniyor";
+            StatusBadgeBrush = WarningBadgeBrush;
+            NextEligibleRunDisplay = state.Message ?? "Agent ayarları bekleniyor";
+            return;
+        }
+        StatusBadgeText = state.Mode == "change-tracking"
+            ? "Canlı izleme — Change Tracking"
+            : "Canlı izleme — Uyumluluk";
+        StatusBadgeBrush = SuccessBadgeBrush;
+        NextEligibleRunDisplay = state.Message ?? "ERP değişiklikleri otomatik izleniyor";
+    }
+
+    /// <summary>Refreshes service-owned live status; the UI never performs scheduled sync.</summary>
+    public async Task StartAutoSyncAsync()
+    {
+        if (Interlocked.Exchange(ref _autoSyncStarted, 1) != 0) return;
+        while (Application.Current?.Dispatcher.HasShutdownStarted != true)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            if (Application.Current?.Dispatcher.HasShutdownStarted == true) break;
+            try
+            {
+                var application = Application.Current;
+                if (application is null) break;
+                var refreshTask = await application.Dispatcher.InvokeAsync(RefreshAsync);
+                await refreshTask.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Live dashboard status refresh failed.");
+            }
+        }
     }
 
     private static readonly Brush GrayBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x9E, 0x9E, 0x9E)));
@@ -844,5 +943,39 @@ public sealed class DashboardViewModel : ObservableObject
     {
         brush.Freeze();
         return brush;
+    }
+}
+
+public sealed class SyncSectionStatusItem : ObservableObject
+{
+    private string _lastDetectedDisplay = "Değişiklik yok";
+    private string _lastUpdatedDisplay = "Henüz aktarılmadı";
+    private string _countDisplay = "—";
+
+    public SyncSectionStatusItem(string key, string title, System.Windows.Input.ICommand syncCommand)
+    {
+        Key = key;
+        Title = title;
+        SyncCommand = syncCommand;
+    }
+
+    public string Key { get; }
+    public string Title { get; }
+    public System.Windows.Input.ICommand SyncCommand { get; }
+    public string LastUpdatedDisplay
+    {
+        get => _lastUpdatedDisplay;
+        set => SetProperty(ref _lastUpdatedDisplay, value);
+    }
+
+    public string LastDetectedDisplay
+    {
+        get => _lastDetectedDisplay;
+        set => SetProperty(ref _lastDetectedDisplay, value);
+    }
+    public string CountDisplay
+    {
+        get => _countDisplay;
+        set => SetProperty(ref _countDisplay, value);
     }
 }

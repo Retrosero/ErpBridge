@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using ErpBridge.Core.Domain;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Sync;
@@ -37,6 +38,15 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
 
     /// <summary>Skip a new push if the previous successful one is younger than this window.</summary>
     public const int MinimumIntervalMinutes = 60;
+
+    public static readonly string[] BootstrapSections =
+    [
+        "customers", "stocks", "openOrders", "kasalar", "bankalar",
+        "cashAndBank", "lookups", "prices", "inventory",
+        "customerTransactions", "stockTransactions"
+    ];
+
+    public static string SectionScope(string section) => BootstrapScope + ":" + section.ToLowerInvariant();
 
     private readonly IAgentConfigStore _configStore;
     private readonly ICheckpointStore _checkpointStore;
@@ -97,30 +107,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
 
             var tenantId = ResolveTenantId(config);
 
-            // Idempotency window: skip the cycle if the last successful push
-            // is still inside the minimum interval. The worker (or operator
-            // via UI) can call InvalidateAsync() to force a re-run.
             var last = await _checkpointStore.LoadAsync(tenantId, BootstrapScope, ct).ConfigureAwait(false);
-            if (last?.LastSuccessAt is { } lastAt)
-            {
-                var age = _timeProvider.GetUtcNow().UtcDateTime - lastAt;
-                if (age < TimeSpan.FromMinutes(MinimumIntervalMinutes))
-                {
-                    _logger.LogInformation(
-                        "Bootstrap sync skipped: last successful push was {Age:hh\\:mm\\:ss} ago (< {Min}m).",
-                        age, MinimumIntervalMinutes);
-                    return new BootstrapSyncResult(
-                        Success: true,
-                        CustomersCount: 0,
-                        StocksCount: 0,
-                        PricesCount: 0,
-                        InventoryCount: 0,
-                        OpenOrdersCount: 0,
-                        CashAndBankCount: 0,
-                        LookupsCount: 0,
-                        DurationMs: stopwatch.ElapsedMilliseconds);
-                }
-            }
 
             // ErpAdapterFactory throws NotSupportedException for Logo/Paraşüt/Netsis.
             // Cast the Core.Domain.ErpType to the Abstractions enum — the integer
@@ -166,14 +153,27 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     "Adapter returned a null SyncPackage.");
             }
 
-            // 2) Push to central API under the retry pipeline. The IRemoteApiClient
+            // 2) Empty server always receives a complete snapshot. Otherwise we
+            // send only changed rows and tombstones, using the durable SQLite
+            // inventory stored in LastToken.
+            var remoteState = await _remoteApi.GetBootstrapStateAsync(ct).ConfigureAwait(false);
+            var inventory = DeserializeInventory(last?.LastToken);
+            var planner = new BootstrapDeltaPlanner();
+            var delta = planner.Create(package, inventory);
+            var useDelta = remoteState.Exists && (delta.Upserts.Count > 0 || delta.Deletes.Count > 0);
+
+            // 3) Push to central API under the retry pipeline. The IRemoteApiClient
             //    signature is PushBootstrapDataAsync(ErpBridge.Erp.Abstractions.Sync.SyncPackage),
             //    which is exactly the type the adapter returns, so no mapper is
             //    needed between Mikro and the central API.
             try
             {
                 await _retryPipeline.ExecuteAsync(
-                    async token => await _remoteApi.PushBootstrapDataAsync(package, token).ConfigureAwait(false),
+                    async token =>
+                    {
+                        if (useDelta) await _remoteApi.PushBootstrapDeltaAsync(delta, token).ConfigureAwait(false);
+                        else if (!remoteState.Exists) await _remoteApi.PushBootstrapDataAsync(package, token).ConfigureAwait(false);
+                    },
                     ct).ConfigureAwait(false);
             }
             catch (BootstrapPermanentPushException ex)
@@ -193,7 +193,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     $"Push failed after retries: {ex.Message}");
             }
 
-            // 3) Persist checkpoint on success. If the save itself fails we
+            // 4) Persist checkpoint and the row-hash inventory on success. If the save itself fails we
             //    surface the error code but still return success=false — the
             //    next cycle must be allowed to re-push.
             try
@@ -204,10 +204,20 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     TenantId = tenantId,
                     SyncScope = BootstrapScope,
                     LastSuccessAt = nowUtc,
-                    LastToken = null,
+                    LastToken = JsonSerializer.Serialize(planner.Snapshot(package)),
                     UpdatedAt = nowUtc,
                 };
                 await _checkpointStore.SaveAsync(checkpoint, ct).ConfigureAwait(false);
+                foreach (var section in BootstrapSections)
+                {
+                    await _checkpointStore.SaveAsync(new CheckpointRecord
+                    {
+                        TenantId = tenantId,
+                        SyncScope = SectionScope(section),
+                        LastSuccessAt = nowUtc,
+                        UpdatedAt = nowUtc,
+                    }, ct).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -351,7 +361,11 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             ErpBridge.Erp.Abstractions.Sync.SyncPackage? package;
             try
             {
-                package = await adapter.ReadBootstrapSectionAsync(sectionName, ct).ConfigureAwait(false);
+                var readSectionName = sectionName.Equals("kasalar", StringComparison.OrdinalIgnoreCase)
+                    || sectionName.Equals("bankalar", StringComparison.OrdinalIgnoreCase)
+                    ? "cashAndBank"
+                    : sectionName;
+                package = await adapter.ReadBootstrapSectionAsync(readSectionName, ct).ConfigureAwait(false);
             }
             catch (ArgumentException ex)
             {
@@ -375,14 +389,35 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     "Adapter returned a null SyncPackage.");
             }
 
-            // 2) Push to central API under the same retry pipeline as the bulk
-            //    flow. The endpoint (POST /api/v1/bootstrap) accepts the partial
-            //    package as-is; the server stores it as JSON in bootstrap_packages.
+            var remoteState = await _remoteApi.GetBootstrapStateAsync(ct).ConfigureAwait(false);
+            if (!remoteState.Exists)
+            {
+                await InvalidateAsync(ct).ConfigureAwait(false);
+                return await RunOnceAsync(ct).ConfigureAwait(false);
+            }
+
+            var global = await _checkpointStore
+                .LoadAsync(tenantId, BootstrapScope, ct)
+                .ConfigureAwait(false);
+            var completeInventory = new Dictionary<string, string>(
+                DeserializeInventory(global?.LastToken), StringComparer.Ordinal);
+            var prefixes = OutputSectionsFor(sectionName);
+            var previousSectionInventory = completeInventory
+                .Where(item => prefixes.Any(prefix =>
+                    item.Key.StartsWith(prefix + ":", StringComparison.OrdinalIgnoreCase)))
+                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+            var planner = new BootstrapDeltaPlanner();
+            var delta = planner.Create(package, previousSectionInventory);
+
+            // 2) Send only changed rows and tombstones for the affected section.
             try
             {
-                await _retryPipeline.ExecuteAsync(
-                    async token => await _remoteApi.PushBootstrapDataAsync(package, token).ConfigureAwait(false),
-                    ct).ConfigureAwait(false);
+                if (delta.Upserts.Count > 0 || delta.Deletes.Count > 0)
+                {
+                    await _retryPipeline.ExecuteAsync(
+                        async token => await _remoteApi.PushBootstrapDeltaAsync(delta, token).ConfigureAwait(false),
+                        ct).ConfigureAwait(false);
+                }
             }
             catch (BootstrapPermanentPushException ex)
             {
@@ -401,27 +436,34 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     $"Push failed after retries: {ex.Message}");
             }
 
-            // 3) Persist checkpoint on success. We update LastSuccessAt so the
-            //    idempotency window doesn't fire a redundant bulk RunOnceAsync
-            //    immediately after a manual per-section push.
+            // 3) Merge the new section hashes into the durable full inventory.
             try
             {
                 var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
-                var existing = await _checkpointStore
-                    .LoadAsync(tenantId, BootstrapScope, ct)
-                    .ConfigureAwait(false);
-                if (existing is null)
+                foreach (var key in completeInventory.Keys
+                    .Where(key => prefixes.Any(prefix =>
+                        key.StartsWith(prefix + ":", StringComparison.OrdinalIgnoreCase)))
+                    .ToArray())
+                    completeInventory.Remove(key);
+                foreach (var item in planner.Snapshot(package))
+                    completeInventory[item.Key] = item.Value;
+
+                var existing = global ?? new CheckpointRecord
                 {
-                    existing = new CheckpointRecord
-                    {
-                        TenantId = tenantId,
-                        SyncScope = BootstrapScope,
-                        LastToken = null,
-                    };
-                }
+                    TenantId = tenantId,
+                    SyncScope = BootstrapScope,
+                };
                 existing.LastSuccessAt = nowUtc;
+                existing.LastToken = JsonSerializer.Serialize(completeInventory);
                 existing.UpdatedAt = nowUtc;
                 await _checkpointStore.SaveAsync(existing, ct).ConfigureAwait(false);
+                await _checkpointStore.SaveAsync(new CheckpointRecord
+                {
+                    TenantId = tenantId,
+                    SyncScope = SectionScope(sectionName),
+                    LastSuccessAt = nowUtc,
+                    UpdatedAt = nowUtc,
+                }, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -484,7 +526,29 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
         }
     }
 
+    private static IReadOnlySet<string> OutputSectionsFor(string sectionName) =>
+        sectionName.Trim().ToLowerInvariant() switch
+        {
+            "customers" => new HashSet<string>(["customers", "customerAddresses", "customerContacts"], StringComparer.OrdinalIgnoreCase),
+            "stocks" => new HashSet<string>(["stocks", "barcodes"], StringComparer.OrdinalIgnoreCase),
+            "prices" => new HashSet<string>(["prices", "salesConditions", "lookups"], StringComparer.OrdinalIgnoreCase),
+            "openorders" => new HashSet<string>(["openOrders"], StringComparer.OrdinalIgnoreCase),
+            "cashandbank" or "kasalar" or "bankalar" => new HashSet<string>(["cashAndBank"], StringComparer.OrdinalIgnoreCase),
+            "lookups" => new HashSet<string>(["lookups"], StringComparer.OrdinalIgnoreCase),
+            "inventory" => new HashSet<string>(["inventory"], StringComparer.OrdinalIgnoreCase),
+            "customertransactions" or "carihareketleri" => new HashSet<string>(["customerTransactions"], StringComparer.OrdinalIgnoreCase),
+            "stocktransactions" or "stokhareket" or "stokhareketleri" => new HashSet<string>(["stockTransactions"], StringComparer.OrdinalIgnoreCase),
+            _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+        };
+
     private static int SafeCount<T>(IReadOnlyList<T> list) => list?.Count ?? 0;
+
+    private static IReadOnlyDictionary<string, string> DeserializeInventory(string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return new Dictionary<string, string>(StringComparer.Ordinal);
+        try { return JsonSerializer.Deserialize<Dictionary<string, string>>(token) ?? new Dictionary<string, string>(StringComparer.Ordinal); }
+        catch (JsonException) { return new Dictionary<string, string>(StringComparer.Ordinal); }
+    }
 
     private static string ResolveTenantId(AgentConfig config) =>
         string.IsNullOrWhiteSpace(config.TenantId) ? "unknown" : config.TenantId;

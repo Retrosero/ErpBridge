@@ -10,6 +10,9 @@ namespace ErpBridge.Core.Stores;
 /// </summary>
 public interface IRemoteApiClient
 {
+    /// <summary>Applies the runtime API address and bearer token obtained during agent registration.</summary>
+    void ConfigureSession(string baseUrl, string? jwt) { }
+
     /// <summary>Validate a license key with the central API.</summary>
     Task<LicenseValidationResult> ValidateLicenseAsync(string licenseKey, CancellationToken ct = default);
 
@@ -27,6 +30,12 @@ public interface IRemoteApiClient
 
     /// <summary>Push bootstrap data (cari/stok/fiyat/...) to the central API.</summary>
     Task PushBootstrapDataAsync(SyncPackage package, CancellationToken ct = default);
+
+    /// <summary>Returns whether this tenant already has a bootstrap snapshot.</summary>
+    Task<BootstrapState> GetBootstrapStateAsync(CancellationToken ct = default);
+
+    /// <summary>Applies only changed/deleted ERP rows to the existing snapshot.</summary>
+    Task PushBootstrapDeltaAsync(BootstrapDelta delta, CancellationToken ct = default);
 
     /// <summary>Send a periodic agent heartbeat.</summary>
     Task SendHeartbeatAsync(AgentHeartbeat heartbeat, CancellationToken ct = default);

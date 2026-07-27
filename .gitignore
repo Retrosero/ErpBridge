@@ -47,6 +47,7 @@ Thumbs.db
 
 # Publish output
 publish/
+release/
 *.publish.xml
 
 # Mavis local plans / scratchpad (per-agent, not project data)

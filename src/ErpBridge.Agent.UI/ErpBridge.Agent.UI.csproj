@@ -10,6 +10,13 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>ErpBridge.Agent.UI</RootNamespace>
     <AssemblyName>ErpBridge.Agent.UI</AssemblyName>
+    <ApplicationIcon>assets\icon.ico</ApplicationIcon>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,10 +39,6 @@
     <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
     <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
     <PackageReference Include="H.NotifyIcon.Wpf" Version="2.1.4" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ApplicationIcon Include="assets\icon.ico" />
   </ItemGroup>
 
   <ItemGroup>

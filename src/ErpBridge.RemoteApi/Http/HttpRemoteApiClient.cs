@@ -38,6 +38,8 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
     private readonly IOptionsMonitor<CentralApiOptions> _options;
     private readonly IConfiguration _configuration;
     private readonly ILogger<HttpRemoteApiClient> _logger;
+    private string? _runtimeBaseUrl;
+    private string? _runtimeJwt;
 
     /// <summary>Creates a new client bound to the supplied <paramref name="http"/> and <paramref name="options"/>.</summary>
     public HttpRemoteApiClient(
@@ -50,6 +52,12 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public void ConfigureSession(string baseUrl, string? jwt)
+    {
+        _runtimeBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl.TrimEnd('/');
+        _runtimeJwt = string.IsNullOrWhiteSpace(jwt) ? null : jwt;
     }
 
     /// <inheritdoc />
@@ -214,6 +222,28 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         await SendNoContentAsync(request, opts, ct);
     }
 
+    /// <inheritdoc />
+    public async Task<BootstrapState> GetBootstrapStateAsync(CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(HttpMethod.Get, "/api/v1/bootstrap/state", opts, null);
+        var state = await SendAsync<BootstrapStateDto>(request, opts, ct).ConfigureAwait(false);
+        return state is null ? new BootstrapState(false, null, null) : new BootstrapState(state.Exists, state.ReceivedAtUtc, state.Revision);
+    }
+
+    /// <inheritdoc />
+    public async Task PushBootstrapDeltaAsync(BootstrapDelta delta, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(delta);
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(HttpMethod.Post, "/api/v1/bootstrap/delta", opts, NewIdempotencyKey("bootstrap-delta"));
+        request.Content = SerializeJson(new BootstrapDeltaRequestEnvelope(delta.SourceDatabase, new DateTimeOffset(delta.PulledAtUtc, TimeSpan.Zero), delta));
+        await SendNoContentAsync(request, opts, ct).ConfigureAwait(false);
+    }
+
+    private sealed record BootstrapStateDto(bool Exists, DateTimeOffset? ReceivedAtUtc, string? Revision);
+    private sealed record BootstrapDeltaRequestEnvelope(string SourceDatabase, DateTimeOffset PulledAtUtc, BootstrapDelta Delta);
+
     /// <summary>
     /// Wire shape for <c>POST /api/v1/bootstrap</c>. Mirrors
     /// <c>ErpBridge.CentralApi.Contracts.BootstrapRequest</c> — we cannot
@@ -264,15 +294,16 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         // DI graph has been created. Read the live configuration first so a
         // bootstrap initiated from the UI never keeps an empty startup-time
         // options snapshot as its destination.
-        var baseUrl = (_configuration["CentralApi:BaseUrl"] ?? opts.BaseUrl ?? string.Empty).TrimEnd('/');
+        var baseUrl = (_runtimeBaseUrl ?? _configuration["CentralApi:BaseUrl"] ?? opts.BaseUrl ?? string.Empty).TrimEnd('/');
         if (!string.IsNullOrEmpty(baseUrl) && _http.BaseAddress is null)
         {
             _http.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);
         }
 
-        if (!string.IsNullOrEmpty(opts.Jwt))
+        var jwt = _runtimeJwt ?? opts.Jwt;
+        if (!string.IsNullOrEmpty(jwt))
         {
-            request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + opts.Jwt);
+            request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + jwt);
         }
 
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
@@ -284,7 +315,7 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         }
 
         _logger.LogDebug("Prepared {Method} {Path} (timeout={Timeout}s, hasJwt={HasJwt}, hasIdempotencyKey={HasKey})",
-            method, path, opts.TimeoutSeconds, !string.IsNullOrEmpty(opts.Jwt), !string.IsNullOrEmpty(idempotencyKey));
+            method, path, opts.TimeoutSeconds, !string.IsNullOrEmpty(jwt), !string.IsNullOrEmpty(idempotencyKey));
 
         return request;
     }

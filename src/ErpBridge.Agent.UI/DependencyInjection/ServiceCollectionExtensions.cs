@@ -1,4 +1,5 @@
 using ErpBridge.Agent.UI.ViewModels;
+using ErpBridge.Agent.UI.Updates;
 using ErpBridge.Core;
 using ErpBridge.Erp.Mikro.DependencyInjection;
 using ErpBridge.LocalStore;
@@ -44,6 +45,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<AgentSettingsViewModel>();
         services.AddSingleton<DashboardViewModel>();
+        services.AddSingleton<AgentUpdateService>();
 
         services.AddLogging(b =>
         {

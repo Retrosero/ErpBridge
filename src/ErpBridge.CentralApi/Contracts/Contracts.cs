@@ -83,6 +83,25 @@ public sealed class BootstrapRequest
     [JsonPropertyName("payload")] public object? Payload { get; set; }
 }
 
+/// <summary>POST /api/v1/bootstrap/delta request. Payload rows are kept as raw
+/// JSON so the server can preserve the existing Android snapshot schema.</summary>
+public sealed class BootstrapDeltaRequest
+{
+    [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
+    [JsonPropertyName("pulledAtUtc")] public DateTimeOffset PulledAtUtc { get; set; }
+    [JsonPropertyName("delta")] public BootstrapDeltaBody? Delta { get; set; }
+}
+public sealed class BootstrapDeltaBody
+{
+    [JsonPropertyName("upserts")] public Dictionary<string, List<BootstrapDeltaRowBody>> Upserts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    [JsonPropertyName("deletes")] public Dictionary<string, List<string>> Deletes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+public sealed class BootstrapDeltaRowBody
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
+    [JsonPropertyName("payloadJson")] public string PayloadJson { get; set; } = "{}";
+}
+
 /// <summary>Generic error envelope returned by every 4xx/5xx response.</summary>
 public sealed class ApiError
 {

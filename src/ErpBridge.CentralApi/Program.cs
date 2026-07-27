@@ -363,6 +363,7 @@ public partial class Program
         app.MapLicensesEndpoints();
         app.MapJobsEndpoints();
         app.MapBootstrapEndpoints();
+        app.MapAgentUpdateEndpoints();
         app.MapIngestEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileLicensingEndpoints();

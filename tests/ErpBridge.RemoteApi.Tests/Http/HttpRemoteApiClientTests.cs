@@ -11,6 +11,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Moq.Protected;
 using Polly;
@@ -270,7 +271,7 @@ public class HttpRemoteApiClientTests
             .Returns<HttpRequestMessage, CancellationToken>((req, _) => responder(req));
 
         var http = new HttpClient(handler.Object) { BaseAddress = new Uri(BaseUrl + "/") };
-        var client = new HttpRemoteApiClient(http, StubOptions(), NullLogger<HttpRemoteApiClient>.Instance);
+        var client = new HttpRemoteApiClient(http, StubOptions(), new ConfigurationBuilder().Build(), NullLogger<HttpRemoteApiClient>.Instance);
         return (client, handler);
     }
 

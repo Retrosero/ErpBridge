@@ -3,6 +3,7 @@ using System.Windows;
 using ErpBridge.Agent.UI.DependencyInjection;
 using ErpBridge.Agent.UI.ViewModels;
 using ErpBridge.Agent.UI.Views;
+using ErpBridge.Agent.UI.Updates;
 using ErpBridge.LocalStore.Sqlite.Migrations;
 using H.NotifyIcon;
 using Microsoft.Extensions.Configuration;
@@ -32,6 +33,11 @@ public partial class App : Application
 
     /// <summary>True when the operator used the tray menu's "Çıkış" item to terminate the agent.</summary>
     public static bool ExitRequested { get; private set; }
+
+    /// <summary>True only after Windows has accepted the notification-area icon.
+    /// The main window uses this as a safe fallback: it never hides itself if
+    /// the tray icon could not be created.</summary>
+    public static bool HasTrayIcon { get; private set; }
 
     /// <summary>
     /// Service provider for code-behind that needs DI access (e.g. UserControls
@@ -114,6 +120,12 @@ public partial class App : Application
         // keeps "running" in the system tray.
         _tray = BuildTrayIcon(_services.GetRequiredService<ILoggerFactory>().CreateLogger("App.Tray"));
         _tray.Visibility = Visibility.Visible;
+        _tray.ForceCreate(false);
+        HasTrayIcon = _tray.IsCreated;
+        if (!HasTrayIcon)
+        {
+            startupLogger.LogWarning("Windows notification-area icon could not be created; minimize will remain visible in the taskbar.");
+        }
 
         // 6) Resolve and show the main window.
         // IMPORTANT: Services MUST be set before MainWindow is resolved, because
@@ -125,9 +137,25 @@ public partial class App : Application
         var window = _services.GetRequiredService<MainWindow>();
         var viewModel = _services.GetRequiredService<AgentSettingsViewModel>();
         window.DataContext = viewModel;
-        window.Loaded += async (_, _) => await viewModel.LoadAsync();
+        window.Loaded += async (_, _) =>
+        {
+            await viewModel.LoadAsync();
+            // Re-save legacy CurrentUser DPAPI secrets with LocalMachine scope
+            // so the Windows service can read the same protected configuration.
+            var configStore = _services.GetRequiredService<ErpBridge.Core.Stores.IAgentConfigStore>();
+            var persistedConfig = await configStore.LoadAsync();
+            if (persistedConfig is not null)
+                await configStore.SaveAsync(persistedConfig);
+            window.ShowDashboard();
+        };
         MainWindow = window;
         window.Show();
+        _ = _services.GetRequiredService<DashboardViewModel>().StartAutoSyncAsync();
+
+        // Update checks never delay the operator's startup. A verified update
+        // is installed by a short-lived hidden helper after this process exits.
+        _ = _services.GetRequiredService<AgentUpdateService>()
+            .StartAsync(startupLogger, Shutdown);
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -151,7 +179,7 @@ public partial class App : Application
         showItem.Click += (_, _) => ShowMainWindow();
         menu.Items.Add(showItem);
 
-        var dashboardItem = new System.Windows.Controls.MenuItem { Header = "Pano" };
+        var dashboardItem = new System.Windows.Controls.MenuItem { Header = "Dashboard" };
         dashboardItem.Click += (_, _) => ShowMainWindow();
         menu.Items.Add(dashboardItem);
 

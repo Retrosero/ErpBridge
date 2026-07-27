@@ -3,27 +3,56 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:ErpBridge.Agent.UI.Views"
         Title="ErpBridge Agent"
-        Width="720" Height="780"
-        MinWidth="640" MinHeight="680"
+        Width="1280" Height="820"
+        MinWidth="960" MinHeight="700"
+        WindowState="Maximized"
         WindowStartupLocation="CenterScreen"
-        Icon="pack://application:,,,/assets/icon-256.png"
+        Icon="pack://application:,,,/assets/icon.ico"
+        FontFamily="Segoe UI"
         Background="{DynamicResource WindowBackgroundBrush}"
         StateChanged="MainWindow_StateChanged">
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="72" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#0F172A" Padding="24,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Width="42" Height="42" CornerRadius="10" Background="White" Padding="6" VerticalAlignment="Center">
+                    <Image Source="pack://application:,,,/assets/icon-256.png" Stretch="Uniform" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="ErpBridge Agent" Foreground="White" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="ERP entegrasyonu ve senkronizasyon merkezi" Foreground="#94A3B8" FontSize="12" Margin="0,3,0,0" />
+                </StackPanel>
+                <Border Grid.Column="2" Background="#153A2A" CornerRadius="14" Padding="12,6" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Fill="#22C55E" Margin="0,0,7,0" />
+                        <TextBlock Text="Agent çalışıyor" Foreground="#BBF7D0" FontWeight="SemiBold" FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
         <TabControl x:Name="MainTabs"
+                    Grid.Row="1"
                     Background="{DynamicResource WindowBackgroundBrush}"
                     BorderThickness="0"
                     Padding="0"
                     Margin="0">
-            <TabControl.Resources>
-                <Style TargetType="TabItem">
-                    <Setter Property="Padding" Value="14,8" />
-                    <Setter Property="FontSize" Value="13" />
-                    <Setter Property="FontWeight" Value="SemiBold" />
-                    <Setter Property="Foreground" Value="{DynamicResource SubtleHeaderBrush}" />
-                </Style>
-            </TabControl.Resources>
-
+            <TabControl.Template>
+                <ControlTemplate TargetType="TabControl">
+                    <Border Background="{TemplateBinding Background}">
+                        <ContentPresenter ContentSource="SelectedContent" />
+                    </Border>
+                </ControlTemplate>
+            </TabControl.Template>
             <!-- Ayar sekmesi -->
             <TabItem Header="Ayarlar">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -60,13 +89,19 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0"
                                        Text="ErpBridge Agent Yapılandırması"
                                        FontSize="18" FontWeight="SemiBold"
                                        VerticalAlignment="Center"
                                        Foreground="{DynamicResource HeaderBrush}" />
-                            <Border Grid.Column="1"
+                            <Button Grid.Column="1"
+                                    Content="← Dashboard"
+                                    Click="DashboardButton_Click"
+                                    Margin="0,0,10,0"
+                                    MinWidth="120" />
+                            <Border Grid.Column="2"
                                     Background="{Binding MikroVersionBrush}"
                                     CornerRadius="3"
                                     Padding="10,3"
@@ -571,7 +606,7 @@
             </TabItem>
 
             <!-- Pano sekmesi (sadece ayar kaydedildikten sonra görünür) -->
-            <TabItem x:Name="DashboardTab" Header="Pano" Visibility="Collapsed">
+            <TabItem x:Name="DashboardTab" Header="Dashboard" Visibility="Visible">
                 <views:DashboardView />
             </TabItem>
         </TabControl>

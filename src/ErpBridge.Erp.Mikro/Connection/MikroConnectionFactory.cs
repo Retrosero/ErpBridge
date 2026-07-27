@@ -98,6 +98,9 @@ public sealed class MikroConnectionFactory
     public string BuildConnectionStringFromActive()
         => BuildConnectionString(_activeSettings);
 
+    /// <summary>Current process-wide settings, primarily used by the Windows service.</summary>
+    public MikroConnectionSettings ActiveSettings => _activeSettings;
+
     /// <summary>
     /// Convenience helper — builds the connection string and wraps it in a fresh,
     /// non-open <see cref="SqlConnection"/>. The caller owns the lifetime and is

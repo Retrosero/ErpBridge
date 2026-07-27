@@ -3,21 +3,21 @@
                     xmlns:conv="clr-namespace:ErpBridge.Agent.UI.Converters">
 
     <!-- Surfaces -->
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F4F6F8" />
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F6F8FC" />
     <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="HeaderBrush" Color="#1F2937" />
-    <SolidColorBrush x:Key="SubtleHeaderBrush" Color="#4B5563" />
-    <SolidColorBrush x:Key="MutedTextBrush" Color="#6B7280" />
+    <SolidColorBrush x:Key="HeaderBrush" Color="#101828" />
+    <SolidColorBrush x:Key="SubtleHeaderBrush" Color="#344054" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#667085" />
 
     <!-- Borders / dividers -->
-    <SolidColorBrush x:Key="StatusBorderBrush" Color="#D1D5DB" />
+    <SolidColorBrush x:Key="StatusBorderBrush" Color="#D0D5DD" />
     <SolidColorBrush x:Key="StatusBackgroundBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="DividerBrush" Color="#E5E7EB" />
 
     <!-- Accent — matches the icon gradient -->
-    <SolidColorBrush x:Key="AccentBrush" Color="#1E40AF" />
-    <SolidColorBrush x:Key="AccentLightBrush" Color="#DBEAFE" />
-    <SolidColorBrush x:Key="AccentDarkBrush" Color="#1E3A8A" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#2563EB" />
+    <SolidColorBrush x:Key="AccentLightBrush" Color="#EFF6FF" />
+    <SolidColorBrush x:Key="AccentDarkBrush" Color="#1D4ED8" />
 
     <!-- Status colours -->
     <SolidColorBrush x:Key="SuccessBrush" Color="#16A34A" />
@@ -28,6 +28,77 @@
     <SolidColorBrush x:Key="DangerLightBrush" Color="#FEE2E2" />
 
     <SolidColorBrush x:Key="BusyBrush" Color="#6B7280" />
+
+    <Style TargetType="Button">
+        <Setter Property="Foreground" Value="#344054" />
+        <Setter Property="Background" Value="#FFFFFF" />
+        <Setter Property="BorderBrush" Value="#D0D5DD" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="ButtonBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="#F2F4F7" />
+                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#98A2B3" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="#EAECF0" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.48" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="TextBox">
+        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Background" Value="White" />
+        <Setter Property="BorderBrush" Value="#D0D5DD" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style TargetType="PasswordBox">
+        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Background" Value="White" />
+        <Setter Property="BorderBrush" Value="#D0D5DD" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style TargetType="CheckBox">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource SubtleHeaderBrush}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style TargetType="TabItem">
+        <Setter Property="Padding" Value="20,11" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+    </Style>
 
     <!-- Converters -->
     <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />

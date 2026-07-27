@@ -27,6 +27,9 @@ public sealed class AgentConfig
 
     public string? ApiBaseUrl { get; set; }
 
+    /// <summary>Automatic ERP synchronization interval in minutes.</summary>
+    public int SyncIntervalMinutes { get; set; } = 60;
+
     /// <summary>
     /// True when Mikro is reached via Windows Authentication
     /// (Trusted_Connection / Integrated Security / SSPI). When set the
