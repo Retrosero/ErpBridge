@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 #nullable disable
 namespace ErpBridge.CentralApi.Data.Migrations;
 
+[Migration("20260727160000_AddMobileDeviceLicensing")]
 public partial class AddMobileDeviceLicensing : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
