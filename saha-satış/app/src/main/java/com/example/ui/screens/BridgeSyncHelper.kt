@@ -684,6 +684,14 @@ object BridgeSyncHelper {
 
                 if (response.isSuccessful && response.body() != null) {
                     val syncRes = response.body()!!
+                    syncRes.stockDetailFields?.let { fields ->
+                        AppDataStore.setErpStockDetailFields(context, fields.mapNotNull { field ->
+                            val key = field.key?.trim().orEmpty()
+                            val label = field.label?.trim().orEmpty()
+                            if (key.isBlank() || label.isBlank()) null
+                            else ErpStockDetailField(key, label, field.visibleByDefault ?: true)
+                        })
+                    }
                     val urunler = syncRes.actualItems
                     if (urunler.isEmpty()) {
                         hasMore = false

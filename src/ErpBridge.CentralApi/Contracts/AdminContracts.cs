@@ -32,6 +32,21 @@ public sealed class TenantDto
     [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("deviceSeatLimit")] public int DeviceSeatLimit { get; set; }
+    [JsonPropertyName("stockDetailFields")] public IReadOnlyList<StockDetailFieldDefinition> StockDetailFields { get; set; } = Array.Empty<StockDetailFieldDefinition>();
+}
+
+/// <summary>
+/// A tenant-configured field in the Android product-detail ERP section.
+/// <see cref="SourceField"/> must be one of the server's allow-listed
+/// bootstrap stock fields; arbitrary JSON paths are deliberately rejected.
+/// </summary>
+public sealed class StockDetailFieldDefinition
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
+    [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
+    [JsonPropertyName("sourceField")] public string SourceField { get; set; } = string.Empty;
+    [JsonPropertyName("visibleByDefault")] public bool VisibleByDefault { get; set; } = true;
 }
 
 /// <summary>POST /api/v1/admin/tenants body.</summary>
@@ -62,7 +77,26 @@ public sealed class CreateLicenseRequest
 public sealed class PatchTenantRequest
 {
     [JsonPropertyName("isActive")] public bool? IsActive { get; set; }
+    [JsonPropertyName("stockDetailFields")] public IReadOnlyList<StockDetailFieldDefinition>? StockDetailFields { get; set; }
+    [JsonPropertyName("deviceSeatLimit")] public int? DeviceSeatLimit { get; set; }
 }
+
+public sealed class MobileDeviceDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("displayName")] public string DisplayName { get; set; } = string.Empty;
+    [JsonPropertyName("installationId")] public string InstallationId { get; set; } = string.Empty;
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("activatedAtUtc")] public DateTimeOffset ActivatedAtUtc { get; set; }
+    [JsonPropertyName("lastSeenAtUtc")] public DateTimeOffset LastSeenAtUtc { get; set; }
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+}
+
+public sealed class CreateDeviceActivationCodeRequest { [JsonPropertyName("tenantId")] public Guid TenantId { get; set; } }
+public sealed class DeviceActivationCodeDto { [JsonPropertyName("code")] public string Code { get; set; } = string.Empty; [JsonPropertyName("expiresAtUtc")] public DateTimeOffset ExpiresAtUtc { get; set; } }
+public sealed class MobileActivateRequest { [JsonPropertyName("code")] public string Code { get; set; } = string.Empty; [JsonPropertyName("installationId")] public string InstallationId { get; set; } = string.Empty; [JsonPropertyName("deviceName")] public string DeviceName { get; set; } = string.Empty; [JsonPropertyName("appVersion")] public string? AppVersion { get; set; } }
+public sealed class MobileSessionDto { [JsonPropertyName("token")] public string Token { get; set; } = string.Empty; [JsonPropertyName("tenantId")] public Guid TenantId { get; set; } [JsonPropertyName("deviceId")] public Guid DeviceId { get; set; } [JsonPropertyName("expiresAtUtc")] public DateTimeOffset ExpiresAtUtc { get; set; } }
 
 /// <summary>Agent row returned to the admin.</summary>
 public sealed class AgentDto

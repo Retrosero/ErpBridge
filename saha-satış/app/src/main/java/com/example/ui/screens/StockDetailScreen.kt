@@ -49,31 +49,6 @@ import coil.compose.AsyncImage
 import com.example.ui.components.FieldCard
 import kotlinx.coroutines.launch
 
-// Mock database provider matching Catalog and Stocks matching fallbacks
-object StockDetailDb {
-    val products = listOf(
-        ProductCatalog(
-            barcode = "8690123456789",
-            code = "IND-OIL-20L",
-            title = "Ultra Performans Endüstriyel Motor Yağı 20L",
-            category = "Endüstriyel Yağlar",
-            desc = "Ağır sanayi makineleri için özel formüle edilmiş, yüksek ısıya dayanıklı tam sentetik motor yağı.",
-            basePrice = 2450.00,
-            dealerPrice = 2150.00,
-            wholesalePrice = 1950.00,
-            kdvPercent = 20,
-            imageUrlColor = Color(0xFFFFB300),
-            stockByWarehouse = mapOf("Ana Depo" to 145, "Ankara Merkez" to 42, "Ege Bölge" to 12)
-        )
-    )
-
-    fun getProductBySearch(query: String?): ProductCatalog? {
-        if (query.isNullOrBlank()) return null
-        return AppDataStore.products.find { it.barcode == query || it.barcodes.contains(query) || it.code == query }
-    }
-}
-
-// Simulated data class for ledger timeline
 data class StockMovement(
     val date: String,
     val type: String, // "Giriş", "Çıkış", "Sevk"
@@ -96,137 +71,162 @@ fun StockDetailScreen(barcode: String?, navController: NavController) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Statefully bind product from global AppDataStore for real editing reactiveness
+    val initialProduct = remember(barcode) {
+        AppDataStore.products.find {
+            it.barcode == barcode || it.barcodes.contains(barcode) || it.code == barcode
+        }
+    }
+    if (initialProduct == null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Stok Kartı") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Geri")
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Stok kartı bulunamadı.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        return
+    }
+
     var product by remember(barcode) {
-        mutableStateOf(
-            AppDataStore.products.find { it.barcode == barcode || it.barcodes.contains(barcode) }
-                ?: AppDataStore.products.firstOrNull()
-                ?: StockDetailDb.products[0]
-        )
+        mutableStateOf(initialProduct)
     }
 
     val totalStock = product.stockByWarehouse.values.sum()
 
-    // Simulated/Stateful movements
     var movements by remember(product.code) {
         mutableStateOf<List<StockMovement>>(emptyList())
     }
+    var movementsLoading by remember(product.code) { mutableStateOf(true) }
 
     var selectedMovementForDetail by remember { mutableStateOf<StockMovement?>(null) }
 
-    LaunchedEffect(product.code) {
-        // First set simulated fallback data
-        val whList = product.stockByWarehouse.keys.toList()
-        val primaryWh = whList.getOrNull(0) ?: "Merkez Depo"
-        val secondaryWh = whList.getOrNull(1) ?: "Saha Depo"
-        val brandName = product.brand ?: "Mikro"
-        val fallback = listOf(
-            StockMovement(
-                date = "19.06.2026 16:30", 
-                type = "Devir Giriş", 
-                qty = "${product.stockByWarehouse[primaryWh] ?: 120} ADT", 
-                detail = "Evrak: DEV-5057 - Gürbüz Oyuncak Merkez", 
-                user = "Başlangıç devir verisi otomatik girişi", 
-                evrakNo = "DEV-5057",
-                cariName = "Gürbüz Oyuncak Merkez",
-                unitPrice = 45.0,
-                totalAmount = (product.stockByWarehouse[primaryWh] ?: 120) * 45.0,
-                warehouse = primaryWh
-            ),
-            StockMovement(
-                date = "19.06.2026 17:15", 
-                type = "Sevk", 
-                qty = "12 ADT", 
-                detail = "Evrak: SVK-9122 - Ankara Şube Deposu", 
-                user = "Saha şubeleri arası stok nakli", 
-                evrakNo = "SVK-9122",
-                cariName = "Ankara Şube Deposu",
-                unitPrice = 0.0,
-                totalAmount = 0.0,
-                warehouse = "$primaryWh ➜ $secondaryWh"
-            ),
-            StockMovement(
-                date = "20.06.2026 09:12", 
-                type = "Saha Satışı", 
-                qty = "2 ADT", 
-                detail = "Evrak: ST-188 - Yıldırım Metal Döküm A.Ş.", 
-                user = "Saha plasiyer mobil sipariş entegrasyonu", 
-                evrakNo = "ST-188",
-                cariName = "Yıldırım Metal Döküm A.Ş.",
-                unitPrice = 125.0,
-                totalAmount = 250.0,
-                warehouse = secondaryWh
-            )
-        )
-        movements = calculateBalancesForMovements(fallback, totalStock.toDouble())
+    LaunchedEffect(product.code, product.barcode) {
+        val codeKey = product.code.trim().lowercase()
+        val barcodeKey = product.barcode.trim().lowercase()
+        val cachedMovements: List<StockMovement>? = AppDataStore.stockMovementsMap[codeKey]
+            ?: AppDataStore.stockMovementsMap[barcodeKey]
 
-        // Then attempt to pull real live stock movements from the bridge
+        if (cachedMovements != null && cachedMovements.isNotEmpty()) {
+            movements = calculateBalancesForMovements(cachedMovements, totalStock.toDouble())
+            movementsLoading = false
+            return@LaunchedEffect
+        }
+
+        movements = emptyList()
+        movementsLoading = true
         try {
             val sharedPrefs = context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
             val apiUrl = sharedPrefs.getString("api_url", "https://d5e4-88-248-2-49.ngrok-free.app") ?: "https://d5e4-88-248-2-49.ngrok-free.app"
             val apiKey = sharedPrefs.getString("api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production"
-            
+            val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
+            val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
+
             val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
-            val response = apiService.getStokHareket(com.example.data.api.PullJobsRequest(tenant_id=sharedPrefs.getString("tenant_id", "T001") ?: "T001", api_key=apiKey, device_id=sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT", agent_version="v2.0", entity="stokHareket", since=product.barcode))
             
-            if (response.isSuccessful && response.body() != null) {
-                val items = response.body()!!.items
-                if (items.isNotEmpty()) {
-                    val realMovements = items.map { item ->
-                        val rawDate = item.tarih ?: ""
-                        val formattedDate = try {
-                            if (rawDate.contains("T")) {
-                                val timePart = rawDate.split("T").getOrNull(1)?.take(5) ?: "00:00"
-                                val datePart = rawDate.split("T")[0].split("-")
-                                if (datePart.size == 3) {
-                                    "${datePart[2]}.${datePart[1]}.${datePart[0]} $timePart"
-                                } else {
-                                    rawDate
-                                }
+            val searchKey = if (product.code.isNotBlank()) product.code else product.barcode
+            var response = apiService.getStokHareket(com.example.data.api.PullJobsRequest(
+                tenant_id = tenantId,
+                api_key = apiKey,
+                device_id = deviceId,
+                agent_version = "v2.0",
+                entity = "stokHareket",
+                since = searchKey,
+                page = 1,
+                pageSize = 50
+            ))
+
+            var items = if (response.isSuccessful && response.body() != null) response.body()!!.actualItems else emptyList()
+
+            if (items.isEmpty() && product.barcode.isNotBlank() && searchKey != product.barcode) {
+                val responseBarcode = apiService.getStokHareket(com.example.data.api.PullJobsRequest(
+                    tenant_id = tenantId,
+                    api_key = apiKey,
+                    device_id = deviceId,
+                    agent_version = "v2.0",
+                    entity = "stokHareket",
+                    since = product.barcode,
+                    page = 1,
+                    pageSize = 50
+                ))
+                if (responseBarcode.isSuccessful && responseBarcode.body() != null) {
+                    items = responseBarcode.body()!!.actualItems
+                }
+            }
+            
+            if (items.isNotEmpty()) {
+                val realMovements = items.map { item ->
+                    val rawDate = item.tarih ?: ""
+                    val formattedDate = try {
+                        if (rawDate.contains("T")) {
+                            val timePart = rawDate.split("T").getOrNull(1)?.take(5) ?: "00:00"
+                            val datePart = rawDate.split("T")[0].split("-")
+                            if (datePart.size == 3) {
+                                "${datePart[2]}.${datePart[1]}.${datePart[0]} $timePart"
                             } else {
                                 rawDate
                             }
-                        } catch (e: Exception) {
+                        } else {
                             rawDate
                         }
-
-                        val moveType = when (item.tip) {
-                            0 -> "Giriş"
-                            1 -> "Çıkış"
-                            2 -> "İade Giriş"
-                            3 -> "İade Çıkış"
-                            else -> "Hareket"
-                        }
-                        
-                        val quantityFormatted = "${item.miktar ?: (item.girisMiktar ?: item.cikisMiktar ?: 0.0)} ADT"
-                        
-                        // Look up customer name from AppDataStore
-                        val clientName = AppDataStore.customers.find { it.id == item.cariKod }?.name 
-                            ?: item.cariKod
-                            ?: "Genel Müşteri"
-                        
-                        val detailText = "Evrak: ${item.evrakNo ?: "Belgesiz"} - $clientName"
-                        val userText = item.aciklama ?: "Mikro Kaydı"
-                        
-                        StockMovement(
-                            date = formattedDate,
-                            type = moveType,
-                            qty = quantityFormatted,
-                            detail = detailText,
-                            user = userText,
-                            evrakNo = item.evrakNo ?: "Belgesiz",
-                            cariKod = item.cariKod,
-                            cariName = clientName,
-                            unitPrice = item.birimFiyat ?: product.dealerPrice,
-                            totalAmount = item.tutar ?: ((item.miktar ?: (item.girisMiktar ?: item.cikisMiktar ?: 1.0)) * (item.birimFiyat ?: product.dealerPrice)),
-                            warehouse = "Depo: ${if (item.girisDepoNo != null) item.girisDepoNo else if (item.cikisDepoNo != null) item.cikisDepoNo else "Merkez"}"
-                        )
+                    } catch (e: Exception) {
+                        rawDate
                     }
-                    movements = calculateBalancesForMovements(realMovements, totalStock.toDouble())
+
+                    val moveType = when (item.tip) {
+                        0 -> "Giriş"
+                        1 -> "Çıkış"
+                        2 -> "İade Giriş"
+                        3 -> "İade Çıkış"
+                        else -> "Hareket"
+                    }
+                    
+                    val signedQuantity = item.miktar
+                        ?: ((item.girisMiktar ?: 0.0) - (item.cikisMiktar ?: 0.0))
+                    val quantityFormatted = "${kotlin.math.abs(signedQuantity)} ADT"
+                    val clientName = AppDataStore.customers.find { it.id == item.cariKod }?.name 
+                        ?: item.cariKod
+                        ?: "Cari bilgisi yok"
+                    
+                    val detailText = "Evrak: ${item.evrakNo ?: "Belgesiz"} - $clientName"
+                    val userText = item.aciklama ?: "Mikro stok hareketi"
+                    
+                    StockMovement(
+                        date = formattedDate,
+                        type = moveType,
+                        qty = quantityFormatted,
+                        detail = detailText,
+                        user = userText,
+                        evrakNo = item.evrakNo ?: "Belgesiz",
+                        cariKod = item.cariKod,
+                        cariName = clientName,
+                        unitPrice = item.birimFiyat,
+                        totalAmount = item.tutar ?: item.birimFiyat?.let { kotlin.math.abs(signedQuantity) * it },
+                        warehouse = "Depo: ${if (item.girisDepoNo != null) item.girisDepoNo else if (item.cikisDepoNo != null) item.cikisDepoNo else "Merkez"}"
+                    )
                 }
+                AppDataStore.stockMovementsMap[codeKey] = realMovements
+                if (barcodeKey.isNotBlank()) AppDataStore.stockMovementsMap[barcodeKey] = realMovements
+                movements = calculateBalancesForMovements(realMovements, totalStock.toDouble())
+            } else {
+                movements = emptyList()
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            movements = emptyList()
+        } finally {
+            movementsLoading = false
         }
     }
 
@@ -429,742 +429,7 @@ fun StockDetailScreen(barcode: String?, navController: NavController) {
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Category Icon circle
-                                Box(
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .background(product.imageUrlColor.copy(alpha = 0.15f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    val icon = when (product.category) {
-                                        "Endüstriyel Yağlar" -> Icons.Filled.WaterDrop
-                                        "Filtre Grupları" -> Icons.Filled.FilterAlt
-                                        "Yedek Parça" -> Icons.Filled.SettingsSuggest
-                                        else -> Icons.Filled.Construction
-                                    }
-                                    Icon(
-                                        icon,
-                                        contentDescription = null,
-                                        tint = product.imageUrlColor,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = product.category.uppercase(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.sp
-                                    )
-                                    Text(
-                                        text = product.title,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text("ÜRÜN KODU", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                    Text(product.code, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                }
-                                Column {
-                                    Text("BARKOD NO", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                    Text(product.barcode, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                }
-                                Surface(
-                                    color = if (totalStock > 50) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = if (totalStock > 50) "Bol Stok" else if (totalStock > 0) "Kritik Seviye" else "Tükendi",
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (totalStock > 50) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                                    )
-                                }
-                            }
-
-                            if (product.barcodes.size > 1) {
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Ek Barkodlar:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                    Row(
-                                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        product.barcodes.filter { it != product.barcode }.forEach { bar ->
-                                            Surface(
-                                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.61f),
-                                                shape = RoundedCornerShape(6.dp)
-                                            ) {
-                                                Text(
-                                                    text = bar,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (product.desc.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                RichTextBubble(text = product.desc)
-                            }
-                        }
-                    }
-                }
-
-                // --- 3. STORAGE WAREHOUSE BREAKDOWN ---
-                item {
-                    SectionHeader(title = "Depo Dağılım Matrisi", icon = Icons.Filled.Warehouse)
-                }
-
-                item {
-                    FieldCard {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            product.stockByWarehouse.forEach { (whName, qty) ->
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Warehouse,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.outline
-                                            )
-                                            Text(whName, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                                        }
-                                        Text(
-                                            "$qty AD",
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = if (qty > 50) MaterialTheme.colorScheme.primary else if (qty > 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
-                                        )
-                                    }
-
-                                    // Capacity progress bar
-                                    val progressFraction = remember(qty) {
-                                        (qty.toFloat() / 350f).coerceIn(0.01f, 1f)
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(6.dp)
-                                            .background(
-                                                MaterialTheme.colorScheme.surfaceVariant,
-                                                shape = CircleShape
-                                            )
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxHeight()
-                                                .fillMaxWidth(progressFraction)
-                                                .background(
-                                                    if (qty > 50) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
-                                                    shape = CircleShape
-                                                )
-                                        )
-                                    }
-                                }
-                            }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Toplam Dağıtılmış Stok:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    "$totalStock ADET",
-                                    fontWeight = FontWeight.Black,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // --- 4. PACKAGE SECTIONS (Koli & Paket Adetleri) ---
-                if (product.boxQty != null || product.packageQty != null) {
-                    item {
-                        SectionHeader(title = "Paketleme & Ambalajlama", icon = Icons.Filled.Inbox)
-                    }
-                    item {
-                        FieldCard {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (product.boxQty != null) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(Icons.Filled.Inbox, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(28.dp))
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Koli Kapasitesi", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text("${product.boxQty} ADET", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                if (product.boxQty != null && product.packageQty != null) {
-                                    VerticalDivider(modifier = Modifier.height(50.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                                }
-                                if (product.packageQty != null) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(Icons.Filled.Layers, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(28.dp))
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Paket İçi Adet", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text("${product.packageQty} ADET", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // --- 5. PRICING GRID ---
-                item {
-                    SectionHeader(title = "Satış Fiyat Tipleri", icon = Icons.Filled.LocalAtm)
-                }
-
-                item {
-                    val definedPrices = AppDataStore.definitions["Fiyat"] ?: listOf("Perakende", "Bayi", "Toptan")
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        definedPrices.chunked(3).forEach { rowItems ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                rowItems.forEach { priceType ->
-                                    val priceVal = product.customPrices[priceType] ?: when (priceType) {
-                                        "Perakende" -> product.basePrice
-                                        "Bayi" -> product.dealerPrice
-                                        "Toptan" -> product.wholesalePrice
-                                        else -> 0.0
-                                    }
-                                    val badge = when (priceType) {
-                                        "Perakende" -> "Katalog"
-                                        "Bayi" -> "-%12 İsk."
-                                        "Toptan" -> "-%20 İsk."
-                                        else -> "Özel"
-                                    }
-                                    val badgeColor = when (priceType) {
-                                        "Perakende" -> MaterialTheme.colorScheme.primaryContainer
-                                        "Bayi" -> MaterialTheme.colorScheme.secondaryContainer
-                                        "Toptan" -> MaterialTheme.colorScheme.errorContainer
-                                        else -> MaterialTheme.colorScheme.tertiaryContainer
-                                    }
-                                    val badgeTextColor = when (priceType) {
-                                        "Perakende" -> MaterialTheme.colorScheme.onPrimaryContainer
-                                        "Bayi" -> MaterialTheme.colorScheme.onSecondaryContainer
-                                        "Toptan" -> MaterialTheme.colorScheme.onErrorContainer
-                                        else -> MaterialTheme.colorScheme.onTertiaryContainer
-                                    }
-                                    PriceMiniCard(
-                                        label = priceType,
-                                        price = priceVal,
-                                        badge = badge,
-                                        modifier = Modifier.weight(1f),
-                                        badgeColor = badgeColor,
-                                        badgeTextColor = badgeTextColor
-                                    )
-                                }
-                                if (rowItems.size < 3) {
-                                    for (i in 0 until (3 - rowItems.size)) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // --- 6. DETAILS / TECHNICAL SPECIFICATIONS ---
-                item {
-                    SectionHeader(title = "Teknik Kart Bilgileri", icon = Icons.Filled.List)
-                }
-
-                item {
-                    FieldCard {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            SpecRow("Vergi Grubu", "+ %${product.kdvPercent} KDV Dahil")
-                            SpecRow("Saha Raf Hücresi", "Koridor C / Bölme-${product.code.takeLast(3)}")
-                            SpecRow("Paketleme / Ambalaj", if (product.category.contains("Yağ")) "20L Plastik Bidon" else "Karton Kutu (Korumalı)")
-                            SpecRow("Birim Ağırlık", if (product.category.contains("Yağ")) "18.40 Kg" else "1.15 Kg")
-                            SpecRow("Saha Sayım Sıklığı", "Haftalık Zorunlu")
-                        }
-                    }
-                }
-
-                // --- 7. RECENT TRANSACTIONS LEDGER ---
-                item {
-                    SectionHeader(title = "Son Stok Hareketleri", icon = Icons.Filled.History)
-                }
-
-                items(movements) { mov ->
-                    MovementRow(mov, onClick = { selectedMovementForDetail = mov })
-                }
-            }
-        }
-    }
-
-    if (selectedMovementForDetail != null) {
-        val movement = selectedMovementForDetail!!
-        val docNo = movement.evrakNo ?: movement.detail.substringBefore(" - ").replace("Evrak: ", "").trim()
-        val mappedTx = CustomerTx(
-            id = docNo,
-            date = movement.date,
-            type = if (movement.type.contains("Giriş", ignoreCase = true) || movement.type.contains("Giris", ignoreCase = true)) "ALIM" else "SATIŞ",
-            amount = movement.totalAmount ?: 0.0,
-            description = movement.detail
-        )
-        val cari = movement.cariName ?: movement.detail.substringAfter(" - ", "Genel Müşteri").trim()
-        InvoiceDetailDialog(
-            tx = mappedTx,
-            customerName = cari,
-            onDismiss = { selectedMovementForDetail = null }
-        )
-    }
-
-    // --- FULL FEATURED INTERACTIVE PRODUCT EDIT DIALOG (Tüm Bilgilerini Güncelleme Formu) ---
-    if (showEditDialog) {
-        var editTitle by remember { mutableStateOf(product.title) }
-        var editCode by remember { mutableStateOf(product.code) }
-        var editBarcode by remember { mutableStateOf(product.barcode) }
-        var editCategory by remember { mutableStateOf(product.category) }
-        var editMarka by remember { mutableStateOf(product.brand ?: "") }
-        var editDesc by remember { mutableStateOf(product.desc) }
-        val definedPrices = remember { AppDataStore.definitions["Fiyat"] ?: emptyList() }
-        val priceValuesMap = remember {
-            val map = androidx.compose.runtime.mutableStateMapOf<String, String>()
-            definedPrices.forEach { priceType ->
-                val priceVal = product.customPrices[priceType] ?: when (priceType) {
-                    "Perakende" -> product.basePrice
-                    "Bayi" -> product.dealerPrice
-                    "Toptan" -> product.wholesalePrice
-                    else -> 0.0
-                }
-                map[priceType] = if (priceVal > 0.0) priceVal.toString() else ""
-            }
-            map
-        }
-        var editKdvPercent by remember { mutableStateOf(product.kdvPercent.toString()) }
-        
-        var editBoxQty by remember { mutableStateOf(product.boxQty?.toString() ?: "") }
-        var editPackageQty by remember { mutableStateOf(product.packageQty?.toString() ?: "") }
-
-        var editImageUrl by remember { mutableStateOf(product.imageUrl ?: "") }
-        var editLocalImagePath by remember { mutableStateOf(product.localImagePath ?: "") }
-
-        var editStockAnaDepo by remember { mutableStateOf((product.stockByWarehouse["Ana Depo"] ?: 0).toString()) }
-        var editStockAnkara by remember { mutableStateOf((product.stockByWarehouse["Ankara Merkez"] ?: 0).toString()) }
-        var editStockEge by remember { mutableStateOf((product.stockByWarehouse["Ege Bölge"] ?: 0).toString()) }
-
-        var validationError by remember { mutableStateOf("") }
-
-        androidx.activity.compose.BackHandler { showEditDialog = false }
-        Scaffold(
-            modifier = Modifier.fillMaxSize(), // Ensure it covers the base Scaffold
-            containerColor = MaterialTheme.colorScheme.background,
-            topBar = {
-                @OptIn(ExperimentalMaterial3Api::class)
-                TopAppBar(
-                    title = { Text("Stok Kartını Düzenle", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = { showEditDialog = false }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Geri Çık")
-                        }
-                    }
-                )
-            }
-        ) { editPadding ->
-            Box(modifier = Modifier.fillMaxSize().padding(editPadding)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    // Header
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "Stok Kartını Düzenle",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            IconButton(onClick = { showEditDialog = false }) {
-                                Icon(Icons.Filled.Close, contentDescription = "Kapat")
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Scrollable Form Area
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            if (validationError.isNotEmpty()) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.errorContainer,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        text = validationError,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.padding(10.dp),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            // 1. Core info
-                            OutlinedTextField(
-                                value = editTitle,
-                                onValueChange = { editTitle = it },
-                                label = { Text("Ürün Adı / Başlığı") },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = editCode,
-                                    onValueChange = { editCode = it },
-                                    label = { Text("Stok SKU Kodu") },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp)
-                                )
-                                OutlinedTextField(
-                                    value = editBarcode,
-                                    onValueChange = { editBarcode = it },
-                                    label = { Text("Barkod No") },
-                                    modifier = Modifier.weight(1.2f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                                )
-                            }
-
-                            // Category & Marka
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(modifier = Modifier.weight(1f)) {
-                                    SearchableDropdown(
-                                        label = "Ürün Kategorisi",
-                                        items = AppDataStore.definitions["Kategori"] ?: emptyList(),
-                                        selectedValue = editCategory,
-                                        onValueChange = { editCategory = it }
-                                    )
-                                }
-                                Box(modifier = Modifier.weight(1f)) {
-                                    SearchableDropdown(
-                                        label = "Marka",
-                                        items = AppDataStore.definitions["Marka"] ?: emptyList(),
-                                        selectedValue = editMarka,
-                                        onValueChange = { editMarka = it }
-                                    )
-                                }
-                            }
-
-                            OutlinedTextField(
-                                value = editDesc,
-                                onValueChange = { editDesc = it },
-                                label = { Text("Ürün Açıklaması") },
-                                modifier = Modifier.fillMaxWidth(),
-                                minLines = 2,
-                                maxLines = 4,
-                                shape = RoundedCornerShape(10.dp)
-                            )
-
-                            // 2. Pricing and Taxes (Base, Dealer, Wholesale, KDV)
-                            Text("Fiyatlandırma & KDV", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                            
-                            val priceChunked = definedPrices.chunked(2)
-                            priceChunked.forEach { rowItems ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    rowItems.forEach { priceType ->
-                                        val priceValueStr = priceValuesMap[priceType] ?: ""
-                                        val holdsFormula = priceValueStr.isNotBlank() && priceValueStr.toDoubleOrNull() == null
-                                        val evaluatedFormulaPrice = if (holdsFormula) {
-                                            com.example.util.PriceFormulaEvaluator.evaluate(priceValueStr, priceValuesMap.toMap())
-                                        } else null
-
-                                        OutlinedTextField(
-                                            value = priceValueStr,
-                                            onValueChange = { priceValuesMap[priceType] = it },
-                                            label = { Text("$priceType (TL)") },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(10.dp),
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                                            singleLine = true,
-                                            supportingText = if (evaluatedFormulaPrice != null) {
-                                                { Text("Hesaplanan: ₺${String.format("%,.2f", evaluatedFormulaPrice)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall) }
-                                            } else if (holdsFormula) {
-                                                { Text("Geçersiz formül", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall) }
-                                            } else null,
-                                            trailingIcon = if (evaluatedFormulaPrice != null) {
-                                                {
-                                                    IconButton(onClick = {
-                                                        priceValuesMap[priceType] = String.format(java.util.Locale.US, "%.2f", evaluatedFormulaPrice)
-                                                    }) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Calculate,
-                                                            contentDescription = "Formülü Uygula",
-                                                            tint = MaterialTheme.colorScheme.primary
-                                                        )
-                                                    }
-                                                }
-                                            } else null
-                                        )
-                                    }
-                                    if (rowItems.size < 2) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(modifier = Modifier.weight(1.2f)) {
-                                    SearchableDropdown(
-                                        label = "KDV Oranı (%)",
-                                        items = listOf("0", "1", "8", "10", "18", "20"),
-                                        selectedValue = editKdvPercent,
-                                        onValueChange = { editKdvPercent = it }
-                                    )
-                                }
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
-
-                            // 3. Packaging details
-                            Text("Paket & Koli İçi Adetleri", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = editBoxQty,
-                                    onValueChange = { editBoxQty = it },
-                                    label = { Text("Koli İçi (Adet)") },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                                )
-                                OutlinedTextField(
-                                    value = editPackageQty,
-                                    onValueChange = { editPackageQty = it },
-                                    label = { Text("Paket İçi (Adet)") },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                                )
-                            }
-
-                            // 4. Visual Media inputs
-                            Text("Ürün Görselleri", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                            OutlinedTextField(
-                                value = editImageUrl,
-                                onValueChange = { editImageUrl = it },
-                                label = { Text("Görsel Linkleri (Virgül ile ayrılmış listeler desteklenir)") },
-                                placeholder = { Text("https://example.com/resim1.jpg, https://example.com/resim2.jpg") },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            OutlinedTextField(
-                                value = editLocalImagePath,
-                                onValueChange = { editLocalImagePath = it },
-                                label = { Text("Yerel Yakalanan Fotoğraf Dosya Yolu (Opsiyonel)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Controls
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { showEditDialog = false },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Vazgeç")
-                            }
-
-                            Button(
-                                onClick = {
-                                    // Resolve formulas or clean doubles
-                                    val resolvedPrices = mutableMapOf<String, Double>()
-                                    val temporaryPriceMap = priceValuesMap.toMap()
-                                    var hasPriceError = false
-
-                                    temporaryPriceMap.forEach { (priceType, priceValue) ->
-                                        if (priceValue.isNotBlank()) {
-                                            val directDouble = priceValue.toDoubleOrNull()
-                                            if (directDouble != null) {
-                                                resolvedPrices[priceType] = directDouble
-                                            } else {
-                                                val evaluated = com.example.util.PriceFormulaEvaluator.evaluate(priceValue, temporaryPriceMap)
-                                                if (evaluated != null) {
-                                                    resolvedPrices[priceType] = evaluated
-                                                } else {
-                                                    hasPriceError = true
-                                                }
-                                            }
-                                        } else {
-                                            resolvedPrices[priceType] = 0.0
-                                        }
-                                    }
-
-                                    val basePriceD = resolvedPrices["Perakende"] ?: 0.0
-                                    val dealerPriceD = resolvedPrices["Bayi"] ?: 0.0
-                                    val wholesalePriceD = resolvedPrices["Toptan"] ?: 0.0
-                                    val kdvI = editKdvPercent.toIntOrNull()
-                                    val boxI = editBoxQty.toIntOrNull()
-                                    val packI = editPackageQty.toIntOrNull()
-
-                                    if (editTitle.isBlank() || editCode.isBlank() || editBarcode.isBlank()) {
-                                        validationError = "Lütfen başlık, kod ve barkod alanlarını doldurun!"
-                                    } else if (hasPriceError) {
-                                        validationError = "Lütfen tüm fiyat alanlarına geçerli sayısal değerler veya geçerli formüller girin (örn: Perakende * 1.2)!"
-                                    } else if (kdvI == null) {
-                                        validationError = "Lütfen geçerli KDV oranı girin!"
-                                    } else {
-                                        validationError = ""
-                                        // Find index and update globally in AppDataStore
-                                        val idx = AppDataStore.products.indexOfFirst { it.barcode == product.barcode }
-                                        if (idx != -1) {
-                                            val updated = product.copy(
-                                                title = editTitle,
-                                                code = editCode,
-                                                barcode = editBarcode,
-                                                category = editCategory,
-                                                brand = if (editMarka.isBlank()) null else editMarka,
-                                                desc = editDesc,
-                                                basePrice = basePriceD,
-                                                dealerPrice = dealerPriceD,
-                                                wholesalePrice = wholesalePriceD,
-                                                customPrices = resolvedPrices,
-                                                kdvPercent = kdvI,
-                                                boxQty = boxI,
-                                                packageQty = packI,
-                                                imageUrl = if (editImageUrl.isBlank()) null else editImageUrl,
-                                                localImagePath = if (editLocalImagePath.isBlank()) null else editLocalImagePath,
-                                                stockByWarehouse = product.stockByWarehouse
-                                            )
-                                            AppDataStore.products[idx] = updated
-                                            product = updated // Refresh view
-                                            AppDataStore.persist(context) // Write to Room Database!
-                                            playSound()
-                                            showEditDialog = false
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar("Ürün bilgileri başarıyla veri tabanına kaydedildi.")
-                                            }
-                                        } else {
-                                            validationError = "Hata: Ürün ana listede bulunamadı."
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.weight(1.5f).testTag("save_product_detail_btn"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Bilgileri Kaydet")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-@Composable
-fun SearchableDropdown(
-    label: String,
-    items: List<String>,
-    selectedValue: String,
-    onValueChange: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
-    
-    val filteredItems = items.filter { it.contains(searchQuery, ignoreCase = true) }
-
-    Box {
-        OutlinedTextField(
-            value = selectedValue,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
+                         …11177 tokens truncated…Text(label) },
             trailingIcon = {
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(Icons.Filled.ArrowDropDown, "Aç")

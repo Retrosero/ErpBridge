@@ -29,6 +29,16 @@ public sealed class TenantDto
     [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("deviceSeatLimit")] public int DeviceSeatLimit { get; set; }
+    [JsonPropertyName("stockDetailFields")] public IReadOnlyList<StockDetailFieldDefinition> StockDetailFields { get; set; } = Array.Empty<StockDetailFieldDefinition>();
+}
+
+public sealed class StockDetailFieldDefinition
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
+    [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
+    [JsonPropertyName("sourceField")] public string SourceField { get; set; } = string.Empty;
+    [JsonPropertyName("visibleByDefault")] public bool VisibleByDefault { get; set; } = true;
 }
 
 public sealed class CreateTenantRequest
@@ -38,8 +48,13 @@ public sealed class CreateTenantRequest
 
 public sealed class UpdateTenantRequest
 {
-    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("isActive")] public bool? IsActive { get; set; }
+    [JsonPropertyName("stockDetailFields")] public IReadOnlyList<StockDetailFieldDefinition>? StockDetailFields { get; set; }
+    [JsonPropertyName("deviceSeatLimit")] public int? DeviceSeatLimit { get; set; }
 }
+
+public sealed class MobileDeviceDto { [JsonPropertyName("id")] public Guid Id { get; set; } [JsonPropertyName("tenantId")] public Guid TenantId { get; set; } [JsonPropertyName("displayName")] public string DisplayName { get; set; } = string.Empty; [JsonPropertyName("installationId")] public string InstallationId { get; set; } = string.Empty; [JsonPropertyName("appVersion")] public string? AppVersion { get; set; } [JsonPropertyName("activatedAtUtc")] public DateTimeOffset ActivatedAtUtc { get; set; } [JsonPropertyName("lastSeenAtUtc")] public DateTimeOffset LastSeenAtUtc { get; set; } [JsonPropertyName("isActive")] public bool IsActive { get; set; } }
+public sealed class DeviceActivationCodeDto { [JsonPropertyName("code")] public string Code { get; set; } = string.Empty; [JsonPropertyName("expiresAtUtc")] public DateTimeOffset ExpiresAtUtc { get; set; } }
 
 public sealed class LicenseDto
 {
@@ -249,6 +264,18 @@ public sealed class CentralApiClient
 
     public Task<TenantDto> UpdateTenantAsync(Guid id, bool isActive, CancellationToken ct = default) =>
         SendAsync<TenantDto>(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{id}", new UpdateTenantRequest { IsActive = isActive }, ct), ct);
+
+    public Task<TenantDto> GetTenantAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<TenantDto>(() => _http.GetAsync($"/api/v1/admin/tenants/{id}", ct), ct);
+
+    public Task<TenantDto> UpdateStockDetailFieldsAsync(Guid id, IReadOnlyList<StockDetailFieldDefinition> fields, CancellationToken ct = default) =>
+        SendAsync<TenantDto>(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{id}", new UpdateTenantRequest { StockDetailFields = fields }, ct), ct);
+
+    public Task<TenantDto> UpdateDeviceSeatLimitAsync(Guid id, int limit, CancellationToken ct = default) =>
+        SendAsync<TenantDto>(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{id}", new UpdateTenantRequest { DeviceSeatLimit = limit }, ct), ct);
+    public Task<IReadOnlyList<MobileDeviceDto>> ListMobileDevicesAsync(Guid tenantId, CancellationToken ct = default) => SendAsync<IReadOnlyList<MobileDeviceDto>>(() => _http.GetAsync($"/api/v1/admin/mobile-devices/{tenantId}", ct), ct);
+    public Task<DeviceActivationCodeDto> CreateDeviceActivationCodeAsync(Guid tenantId, CancellationToken ct = default) => SendAsync<DeviceActivationCodeDto>(() => _http.PostAsJsonAsync("/api/v1/admin/mobile-devices/activation-codes", new { tenantId }, ct), ct);
+    public Task RevokeMobileDeviceAsync(Guid id, CancellationToken ct = default) => SendAsync<object>(() => _http.PostAsync($"/api/v1/admin/mobile-devices/{id}/revoke", null, ct), ct);
 
     public Task<IReadOnlyList<LicenseDto>> ListLicensesAsync(Guid? tenantId = null, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<LicenseDto>>(() => _http.GetAsync($"/api/v1/admin/licenses?tenantId={tenantId}", ct), ct);

@@ -6,12 +6,14 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.data.api.ApiClient
 import com.example.data.api.BootstrapRequest
+import com.example.data.api.MobileActivateRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
 object LicenseRepository {
     private const val PREFS_NAME = "secure_license_prefs"
+    private const val BASE_URL = "https://lisans.appsgo.cloud/"
     private var sharedPreferences: SharedPreferences? = null
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -41,70 +43,90 @@ object LicenseRepository {
     }
 
     fun getApiKey(context: Context): String? = getPrefs(context).getString("api_key", null)
+    fun getDeviceToken(context: Context): String? = getPrefs(context).getString("device_token", null)
     fun getTenantId(context: Context): String? = getPrefs(context).getString("tenant_id", null)
-    fun getBaseUrl(context: Context): String =
-        getPrefs(context).getString("base_url", "https://lisans.appsgo.cloud/") ?: "https://lisans.appsgo.cloud/"
+    fun getBaseUrl(context: Context): String = BASE_URL
+    fun getLastError(context: Context): String? = getPrefs(context).getString("last_license_error", null)
 
     suspend fun authenticateLicense(
         context: Context,
         licenseKey: String,
         appVersion: String
     ): Boolean = withContext(Dispatchers.IO) {
+        val activationCode = licenseKey.trim()
+        if (activationCode.isBlank()) {
+            getPrefs(context).edit().putString("last_license_error", "Aktivasyon kodunu girin veya QR kodu tarayın.").apply()
+            return@withContext false
+        }
         try {
-            // Backwards compatible format: TENANT-API_KEY.  The key itself is
-            // never modified; in particular, no AK- prefix is added.
-            val parts = licenseKey.split("-", limit = 2)
-            val tenantId = if (parts.size == 2) parts[0] else "T001"
-            val apiKey = if (parts.size == 2) parts[1] else licenseKey
+            val legacyParts = activationCode.split("|", limit = 2)
+            val isLegacy = legacyParts.size == 2 && legacyParts[1].trim().startsWith("AK-")
+            val service = ApiClient.getFieldOpsApiService(context, BASE_URL, if (isLegacy) activationCode else "")
+            val request = MobileActivateRequest(if (isLegacy) "" else activationCode, getDeviceId(context), android.os.Build.MODEL ?: "Android cihaz", appVersion)
+            val response = if (isLegacy) service.migrateDevice(request) else service.activateDevice(request)
+            val session = response.body()
+            if (response.isSuccessful && !session?.token.isNullOrBlank() && !session?.tenantId.isNullOrBlank()) {
+                getPrefs(context).edit().putString("device_token", session!!.token).putString("tenant_id", session.tenantId).putString("base_url", BASE_URL).remove("api_key").remove("last_license_error").apply()
+                return@withContext true
+            }
+            val message = when (response.code()) { 409 -> "Cihaz kotası dolu. Panelden eski bir cihazı kaldırın."; 403 -> "Bu cihazın kullanım izni kaldırılmış."; else -> "Aktivasyon kodu hatalı veya süresi dolmuş." }
+            getPrefs(context).edit().putString("last_license_error", message).apply()
+            return@withContext false
+        } catch (_: Exception) {
+            getPrefs(context).edit().putString("last_license_error", "Ağ hatası oluştu. Lütfen tekrar deneyin.").apply()
+            return@withContext false
+        }
 
-            val baseUrl = ApiClient.centralBaseUrl()
-            val deviceId = getDeviceId(context)
+        @Suppress("UNREACHABLE_CODE")
+        val credentials = licenseKey.trim().split("|", limit = 2)
+        if (credentials.size != 2) {
+            getPrefs(context).edit()
+                .putString("last_license_error", "Tenant GUID ve API anahtarını tenant-guid|AK-... biçiminde girin.")
+                .apply()
+            return@withContext false
+        }
 
-            val apiService = ApiClient.getFieldOpsApiService(context, baseUrl, apiKey, tenantId)
-            
+        val tenantId = credentials[0].trim()
+        val apiKey = credentials[1].trim()
+        val validTenant = runCatching { UUID.fromString(tenantId) }.isSuccess
+        if (!validTenant || !apiKey.startsWith("AK-")) {
+            getPrefs(context).edit()
+                .putString("last_license_error", "Tenant GUID veya API anahtarı biçimi geçersiz.")
+                .apply()
+            return@withContext false
+        }
+
+        try {
+            val apiService = ApiClient.getFieldOpsApiService(context, BASE_URL, apiKey)
             val request = BootstrapRequest(
                 tenant_id = tenantId,
                 api_key = apiKey,
-                device_id = deviceId,
+                device_id = getDeviceId(context),
                 agent_version = appVersion
             )
-            
             val response = apiService.bootstrap(request)
             if (response.isSuccessful && response.body()?.success == true) {
-                // Save securely
                 getPrefs(context).edit()
                     .putString("api_key", apiKey)
                     .putString("tenant_id", tenantId)
-                    .putString("base_url", baseUrl)
+                    .putString("base_url", BASE_URL)
                     .remove("last_license_error")
                     .apply()
-                // Older sync screens read this preference file. Keep the
-                // non-secret routing data aligned while the API key remains
-                // protected by EncryptedSharedPreferences.
-                context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE).edit()
-                    .putString("api_url", baseUrl)
-                    .putString("tenant_id", tenantId)
-                    .putString("device_id", deviceId)
-                    .apply()
-                SyncRepository.schedulePeriodicSync(context)
                 true
             } else {
-                val code = response.code()
-                val errBody = response.errorBody()?.string() ?: ""
-                android.util.Log.e("LicenseRepository", "License validation failed. HTTP $code")
-
-                val localizedMessage = when {
-                    code == 401 -> "API anahtarı geçersiz veya eksik."
-                    code == 403 || errBody.contains("MOBILE_READ_SCOPE_REQUIRED") -> "Lisans anahtarınızda 'mobile:read' yetkisi bulunmamaktadır."
-                    code == 404 || errBody.contains("BOOTSTRAP_NOT_FOUND") -> "Bu tenant için henüz ERP'den veri paketi gelmemiş (Bootstrap kaydı bulunamadı)."
-                    else -> "Lisans aktivasyonu başarısız oldu (Hata Kodu: $code). Lütfen anahtarınızı kontrol edin."
+                val message = when (response.code()) {
+                    401 -> "API anahtarı veya tenant GUID hatalı."
+                    403 -> "API anahtarında mobile:read yetkisi yok."
+                    404 -> "Bu tenant için sunucuda ERP verisi bulunamadı."
+                    else -> "Sunucu bağlantısı başarısız (HTTP " + response.code() + ")."
                 }
-                getPrefs(context).edit().putString("last_license_error", localizedMessage).apply()
+                getPrefs(context).edit().putString("last_license_error", message).apply()
                 false
             }
-        } catch (e: Exception) {
-            android.util.Log.e("LicenseRepository", "Exception during validation: ${e.message}", e)
-            getPrefs(context).edit().putString("last_license_error", "Ağ hatası veya sunucuya erişilemiyor: ${e.localizedMessage}").apply()
+        } catch (_: Exception) {
+            getPrefs(context).edit()
+                .putString("last_license_error", "Ağ hatası oluştu. Lütfen tekrar deneyin.")
+                .apply()
             false
         }
     }

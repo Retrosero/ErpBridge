@@ -72,6 +72,13 @@ data class ProductCatalog(
     val cartonQuantity: String? = null
 )
 
+@androidx.annotation.Keep
+data class ErpStockDetailField(
+    val key: String,
+    val label: String,
+    val visibleByDefault: Boolean = true
+)
+
 fun ProductCatalog.getPriceForGroup(groupName: String): Double {
     val matchKey = customPrices.keys.find { key ->
         groupName.contains(key, ignoreCase = true)
@@ -252,6 +259,29 @@ data class Vehicle(
 )
 
 object AppDataStore {
+    private val defaultErpStockDetailFields = listOf(
+        ErpStockDetailField("aisle", "Reyon Kodu"),
+        ErpStockDetailField("measurement", "Ölçü"),
+        ErpStockDetailField("packaging", "Ambalaj"),
+        ErpStockDetailField("brand", "Marka"),
+        ErpStockDetailField("cartonQuantity", "Koli Adet")
+    )
+    var erpStockDetailFields by mutableStateOf(defaultErpStockDetailFields)
+    var visibleErpStockDetailKeys by mutableStateOf(defaultErpStockDetailFields.map { it.key }.toSet())
+
+    fun setErpStockDetailFields(context: Context, fields: List<ErpStockDetailField>) {
+        val valid = fields.filter { it.key.isNotBlank() && it.label.isNotBlank() }
+        erpStockDetailFields = if (valid.isEmpty()) defaultErpStockDetailFields else valid
+        val prefs = context.applicationContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val current = prefs.getStringSet("visible_erp_stock_detail_fields", null)
+        visibleErpStockDetailKeys = current ?: erpStockDetailFields.filter { it.visibleByDefault }.map { it.key }.toSet()
+    }
+
+    fun setVisibleErpStockDetailKeys(context: Context, keys: Set<String>) {
+        visibleErpStockDetailKeys = keys
+        context.applicationContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            .edit().putStringSet("visible_erp_stock_detail_fields", keys).apply()
+    }
     private val dbScope = CoroutineScope(Dispatchers.IO)
     private var isInitialized = false
 

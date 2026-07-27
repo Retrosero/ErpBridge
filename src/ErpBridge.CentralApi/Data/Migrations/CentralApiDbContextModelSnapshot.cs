@@ -134,6 +134,12 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("StockDetailFieldsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<string[]>("Scopes")
                         .IsRequired()
                         .HasColumnType("text[]");

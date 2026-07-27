@@ -171,6 +171,12 @@ public sealed class DashboardViewModel : ObservableObject
             return false;
         }
 
+        // AgentConfig is the operator-facing source of truth. Make its API
+        // address available to the already-created remote client before the
+        // first bootstrap push; otherwise it can retain an empty value that
+        // existed while the UI was starting.
+        _liveSettings["CentralApi:BaseUrl"] = apiBaseUrl;
+
         var licenseKey = config.LicenseKey!.Trim();
         var machineId = (Environment.MachineName ?? "unknown").Trim();
         if (string.IsNullOrEmpty(machineId)) machineId = "unknown";

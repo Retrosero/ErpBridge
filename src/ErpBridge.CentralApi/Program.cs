@@ -33,6 +33,7 @@ public partial class Program
 
     /// <summary>Authorization policy applied to the public ingest endpoint. Requires <c>scope=apikey</c>.</summary>
     public const string ApiKeyPolicy = "ApiKey";
+    public const string MobilePolicy = "Mobile";
 
     /// <summary>Rate-limit policy name partitioned by the JWT <c>sub</c> (agent id).</summary>
     public const string PerAgentRateLimitPolicy = "per-agent";
@@ -224,6 +225,9 @@ public partial class Program
                 .RequireAuthenticatedUser()
                 .AddAuthenticationSchemes(ApiKeyAuthenticationHandler.SchemeName)
                 .RequireClaim("scope", "apikey"));
+            options.AddPolicy(MobilePolicy, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireClaim("scope", "mobile"));
         });
     }
 
@@ -361,6 +365,7 @@ public partial class Program
         app.MapBootstrapEndpoints();
         app.MapIngestEndpoints();
         app.MapAndroidEndpoints();
+        app.MapMobileLicensingEndpoints();
         app.MapAdminAuthEndpoints();
         app.MapAdminTenantsEndpoints();
         app.MapAdminLicensesEndpoints();

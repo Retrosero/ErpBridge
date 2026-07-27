@@ -489,6 +489,34 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 }
                             }
 
+                            // Labels and source fields are tenant-managed by the
+                            // admin panel. The mobile user can only choose which
+                            // of those fields are visible on the stock detail.
+                            if (AppDataStore.erpStockDetailFields.isNotEmpty()) {
+                                FieldCard {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("Stok detayında göster", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Text("Alan adları ve ERP kaynakları firmanızın yönetici panelinden belirlenir.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        AppDataStore.erpStockDetailFields.forEach { field ->
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Checkbox(
+                                                    checked = field.key in AppDataStore.visibleErpStockDetailKeys,
+                                                    onCheckedChange = { checked ->
+                                                        val next = AppDataStore.visibleErpStockDetailKeys.toMutableSet()
+                                                        if (checked) next.add(field.key) else next.remove(field.key)
+                                                        AppDataStore.setVisibleErpStockDetailKeys(context, next)
+                                                    }
+                                                )
+                                                Text(field.label, style = MaterialTheme.typography.bodyMedium)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             // ERP Provider Selection
                             Text("ERP / Bulut Ön Muhasebe Sistem Sağlayıcısı", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             
