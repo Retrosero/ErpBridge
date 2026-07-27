@@ -16,6 +16,7 @@ public sealed record IssuedToken(string Token, Guid AgentId, Guid TenantId, Date
 
 /// <summary>Result of an admin token issuance; mirrors <see cref="IssuedToken"/> for the admin flow.</summary>
 public sealed record IssuedAdminToken(string Token, Guid AdminId, DateTimeOffset ExpiresAtUtc);
+public sealed record IssuedMobileToken(string Token, Guid DeviceId, Guid TenantId, DateTimeOffset ExpiresAtUtc);
 
 /// <summary>
 /// Mints HS256 JWTs for registered agents and admins. Signing/validation keys
@@ -30,6 +31,7 @@ public interface IJwtIssuer
 
     /// <summary>Issue a token for an admin.</summary>
     IssuedAdminToken IssueForAdmin(Guid adminId);
+    IssuedMobileToken IssueForMobile(Guid deviceId, Guid tenantId);
 
     /// <summary>Validate a token. Returns <c>null</c> when invalid/expired.</summary>
     ClaimsPrincipal? Validate(string token);
@@ -98,6 +100,16 @@ public sealed class JwtIssuer : IJwtIssuer
 
         var serialized = new JwtSecurityTokenHandler().WriteToken(token);
         return new IssuedAdminToken(serialized, adminId, expires);
+    }
+
+    public IssuedMobileToken IssueForMobile(Guid deviceId, Guid tenantId)
+    {
+        var opts = _options.CurrentValue; var keyBytes = EnsureKey(opts);
+        var expires = DateTimeOffset.UtcNow.AddDays(7);
+        var claims = new[] { new Claim(JwtRegisteredClaimNames.Sub, deviceId.ToString()), new Claim("tenant", tenantId.ToString()), new Claim("scope", "mobile"), new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")) };
+        var token = new JwtSecurityToken(opts.Issuer, opts.Audience, claims, DateTime.UtcNow, expires.UtcDateTime,
+            new SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256));
+        return new IssuedMobileToken(new JwtSecurityTokenHandler().WriteToken(token), deviceId, tenantId, expires);
     }
 
     private static byte[] EnsureKey(JwtOptions opts)

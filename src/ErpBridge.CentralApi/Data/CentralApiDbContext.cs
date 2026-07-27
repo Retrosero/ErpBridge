@@ -25,6 +25,8 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
+    public DbSet<MobileDevice> MobileDevices => Set<MobileDevice>();
+    public DbSet<DeviceActivationCode> DeviceActivationCodes => Set<DeviceActivationCode>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,7 +35,28 @@ public sealed class CentralApiDbContext : DbContext
             b.ToTable("tenants");
             b.HasKey(x => x.Id);
             b.Property(x => x.Name).IsRequired().HasMaxLength(255);
+            b.Property(x => x.StockDetailFieldsJson).HasColumnType("jsonb").HasDefaultValue("[]");
+            b.Property(x => x.DeviceSeatLimit).HasDefaultValue(5);
             b.HasIndex(x => x.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<MobileDevice>(b =>
+        {
+            b.ToTable("mobile_devices"); b.HasKey(x => x.Id);
+            b.Property(x => x.InstallationId).IsRequired().HasMaxLength(128);
+            b.Property(x => x.DisplayName).IsRequired().HasMaxLength(128);
+            b.Property(x => x.Platform).HasMaxLength(32); b.Property(x => x.AppVersion).HasMaxLength(64);
+            b.HasIndex(x => new { x.TenantId, x.InstallationId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.IsActive });
+            b.HasOne(x => x.Tenant).WithMany(x => x.MobileDevices).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DeviceActivationCode>(b =>
+        {
+            b.ToTable("device_activation_codes"); b.HasKey(x => x.Id);
+            b.Property(x => x.CodeHash).IsRequired().HasMaxLength(64);
+            b.HasIndex(x => x.CodeHash).IsUnique(); b.HasIndex(x => new { x.TenantId, x.ExpiresAtUtc });
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<License>(b =>

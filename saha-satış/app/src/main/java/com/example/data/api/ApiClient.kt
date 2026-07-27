@@ -73,9 +73,9 @@ class LicenseHeaderInterceptor(
         // 1. Try to load from secure SharedPreferences first
         if (context != null) {
             try {
-                val sharedPrefs = context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
+                val sharedPrefs = context.getSharedPreferences("secure_license_prefs", Context.MODE_PRIVATE)
                 tenantId = sharedPrefs.getString("tenant_id", "") ?: ""
-                apiKey = sharedPrefs.getString("api_key", "") ?: ""
+                apiKey = sharedPrefs.getString("device_token", "") ?: sharedPrefs.getString("api_key", "") ?: ""
             } catch (e: Exception) {
                 android.util.Log.e("LicenseHeader", "SharedPreferences error: ${e.message}")
             }
@@ -84,7 +84,11 @@ class LicenseHeaderInterceptor(
         // 2. Fall back to parsing the token parameter (e.g. during activation check)
         if (apiKey.isEmpty() || tenantId.isEmpty()) {
             val tempToken = token.trim()
-            if (tempToken.contains("-")) {
+            if (tempToken.contains("|")) {
+                val parts = tempToken.split("|", limit = 2)
+                tenantId = parts[0].trim()
+                apiKey = parts[1].trim()
+            } else if (tempToken.contains("-")) {
                 val parts = tempToken.split("-", limit = 2)
                 if (parts.size == 2) {
                     if (!parts[0].equals("AK", ignoreCase = true)) {
@@ -99,9 +103,7 @@ class LicenseHeaderInterceptor(
             }
         }
 
-        if (tenantId.isEmpty()) {
-            tenantId = "T001"
-        }
+        // Activation itself is anonymous; data calls receive tenant from the mobile JWT.
         if (apiKey.isEmpty()) {
             apiKey = token
         }

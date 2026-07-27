@@ -5,6 +5,7 @@ using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.RemoteApi.Options;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -35,13 +36,19 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
 
     private readonly HttpClient _http;
     private readonly IOptionsMonitor<CentralApiOptions> _options;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<HttpRemoteApiClient> _logger;
 
     /// <summary>Creates a new client bound to the supplied <paramref name="http"/> and <paramref name="options"/>.</summary>
-    public HttpRemoteApiClient(HttpClient http, IOptionsMonitor<CentralApiOptions> options, ILogger<HttpRemoteApiClient> logger)
+    public HttpRemoteApiClient(
+        HttpClient http,
+        IOptionsMonitor<CentralApiOptions> options,
+        IConfiguration configuration,
+        ILogger<HttpRemoteApiClient> logger)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -253,7 +260,11 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
     {
         var request = new HttpRequestMessage(method, path);
 
-        var baseUrl = (opts.BaseUrl ?? string.Empty).TrimEnd('/');
+        // The desktop agent loads its persisted connection settings after the
+        // DI graph has been created. Read the live configuration first so a
+        // bootstrap initiated from the UI never keeps an empty startup-time
+        // options snapshot as its destination.
+        var baseUrl = (_configuration["CentralApi:BaseUrl"] ?? opts.BaseUrl ?? string.Empty).TrimEnd('/');
         if (!string.IsNullOrEmpty(baseUrl) && _http.BaseAddress is null)
         {
             _http.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);

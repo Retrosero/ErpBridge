@@ -1,0 +1,80 @@
+@page "/tenants/{TenantId:guid}/stock-fields"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Stok alanları — ErpBridge Admin</PageTitle>
+
+<h1>Tenant stok detay alanları</h1>
+
+@if (_loading)
+{
+    <p><em>Yükleniyor…</em></p>
+}
+else if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else
+{
+    <p class="text-muted">@_tenantName için Android ürün detayında görünen etiket ve ERP bootstrap alanı.</p>
+    <p class="text-muted">Kullanıcı uygulamada yalnızca görünürlük tercihini değiştirebilir; kaynak alan bu ekrandan yönetilir.</p>
+    <table class="table align-middle">
+        <thead><tr><th>Android alanı</th><th>Etiket</th><th>Bootstrap alanı</th><th>Varsayılan görünür</th></tr></thead>
+        <tbody>
+            @foreach (var row in _fields)
+            {
+                <tr>
+                    <td>@SlotName(row.Key)</td>
+                    <td><input class="form-control" @bind="row.Label" maxlength="48" /></td>
+                    <td>
+                        <select class="form-select" @bind="row.SourceField">
+                            @foreach (var source in Sources)
+                            { <option value="@source.Key">@source.Value</option> }
+                        </select>
+                    </td>
+                    <td><input type="checkbox" class="form-check-input" @bind="row.VisibleByDefault" /></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">@(_saving ? "Kaydediliyor…" : "Kaydet")</button>
+    <a class="btn btn-link" href="/tenants">Tenants listesine dön</a>
+    @if (!string.IsNullOrWhiteSpace(_success)) { <div class="alert alert-success mt-3">@_success</div> }
+}
+
+@code {
+    [Parameter] public Guid TenantId { get; set; }
+    private bool _loading = true, _saving;
+    private string? _error, _success, _tenantName;
+    private List<ErpBridge.Admin.Api.StockDetailFieldDefinition> _fields = new();
+    private static readonly IReadOnlyDictionary<string, string> Sources = new Dictionary<string, string>
+    {
+        ["shelfCode"] = "shelfCode — sto_yer_kod", ["sectorCode"] = "sectorCode — sto_sektor_kodu",
+        ["packageCode"] = "packageCode — sto_ambalaj_kodu", ["brandCode"] = "brandCode — sto_marka_kodu",
+        ["cartonCode"] = "cartonCode — sto_kalkon_kodu"
+    };
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true; _error = null;
+        try
+        {
+            var tenant = await Api.GetTenantAsync(TenantId);
+            _tenantName = tenant.Name;
+            _fields = tenant.StockDetailFields.Select(field => new ErpBridge.Admin.Api.StockDetailFieldDefinition
+            { Key = field.Key, Label = field.Label, SourceField = field.SourceField, VisibleByDefault = field.VisibleByDefault }).ToList();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+    private async Task SaveAsync()
+    {
+        _saving = true; _error = _success = null;
+        try { await Api.UpdateStockDetailFieldsAsync(TenantId, _fields); _success = "Stok alanı eşlemesi kaydedildi. Android bir sonraki stok senkronunda kullanır."; }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+    private static string SlotName(string key) => key switch
+    {
+        "aisle" => "1. alan", "measurement" => "2. alan", "packaging" => "3. alan", "brand" => "4. alan", "cartonQuantity" => "5. alan", _ => key
+    };
+}

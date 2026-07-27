@@ -15,31 +15,29 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// </summary>
 public static class AndroidEndpoints
 {
-    private const string MobileReadScope = "mobile:read";
-
     public static IEndpointRouteBuilder MapAndroidEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/android").WithTags("Android");
 
         group.MapPost("/bootstrap", BootstrapAsync).WithName("AndroidBootstrap")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/pull", PullAsync).WithName("AndroidPull")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         MapSection(group, "/sync/cari", "customers");
         group.MapPost("/sync/urun", ProductCatalogAsync)
             .WithName("AndroidProductCatalog")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/stokSeviye", "inventory");
         group.MapPost("/sync/fiyatlar", PriceListRowsAsync)
             .WithName("AndroidPrices")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/stokSatisFiyatListeleri", PriceListRowsAsync)
             .WithName("AndroidPriceListRows")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/stokSatisFiyatListeTanimlari", PriceListDefinitionsAsync)
             .WithName("AndroidPriceListDefinitions")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/acikSiparisler", "openOrders");
         MapSection(group, "/sync/cariAdresler", "customerAddresses");
         MapSection(group, "/sync/cariYetkililer", "customerContacts");
@@ -48,13 +46,13 @@ public static class AndroidEndpoints
         MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
         group.MapPost("/sync/stokHareket", StockMovementsAsync)
             .WithName("AndroidStockMovements")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/stokHareketleri", StockMovementsAsync)
             .WithName("AndroidStockMovementsPlural")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/faturaHareket", InvoiceMovementsAsync)
             .WithName("AndroidInvoiceMovements")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         return routes;
     }
 
@@ -62,13 +60,13 @@ public static class AndroidEndpoints
         group.MapPost(route, (HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
                 SectionAsync(propertyName, http, db, ct))
             .WithName("Android" + propertyName)
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
     private static void MapPagedSection(RouteGroupBuilder group, string route, string propertyName) =>
         group.MapPost(route, (AndroidPageRequest request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
                 PagedSectionAsync(propertyName, request, http, db, ct))
             .WithName("AndroidPaged" + route.Replace("/", string.Empty))
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
     private static async Task<IResult> BootstrapAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {
@@ -104,6 +102,10 @@ public static class AndroidEndpoints
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var package = access.Package!;
+        var tenant = await db.Tenants.AsNoTracking()
+            .Select(item => new { item.Id, item.StockDetailFieldsJson })
+            .FirstOrDefaultAsync(item => item.Id == package.TenantId, ct);
+        var detailFields = AdminTenantsEndpoints.ReadStockDetailFields(tenant?.StockDetailFieldsJson);
         using var document = JsonDocument.Parse(package.PayloadJson);
         var root = document.RootElement;
 
@@ -168,11 +170,11 @@ public static class AndroidEndpoints
             // Android-facing names are kept explicit so the mobile client does not
             // need to know Mikro's internal STOKLAR column names.  Preserve the
             // raw names too: this makes old and new agent payloads equivalent.
-            var reyonKod = GetFirstString(stock, "shelfCode", "sto_yer_kod");
-            var olcu = GetFirstString(stock, "sectorCode", "sto_sektor_kodu");
-            var ambalaj = GetFirstString(stock, "packageCode", "sto_ambalaj_kodu");
-            var marka = GetFirstString(stock, "brandCode", "sto_marka_kodu");
-            var koliAdet = GetFirstString(stock, "cartonCode", "sto_kalkon_kodu");
+            var reyonKod = GetConfiguredStockDetailValue(stock, detailFields, "aisle", "shelfCode", "sto_yer_kod");
+            var olcu = GetConfiguredStockDetailValue(stock, detailFields, "measurement", "sectorCode", "sto_sektor_kodu");
+            var ambalaj = GetConfiguredStockDetailValue(stock, detailFields, "packaging", "packageCode", "sto_ambalaj_kodu");
+            var marka = GetConfiguredStockDetailValue(stock, detailFields, "brand", "brandCode", "sto_marka_kodu");
+            var koliAdet = GetConfiguredStockDetailValue(stock, detailFields, "cartonQuantity", "cartonCode", "sto_kalkon_kodu");
 
             mapped["reyonKod"] = reyonKod;
             mapped["olcu"] = olcu;
@@ -218,8 +220,21 @@ public static class AndroidEndpoints
         {
             sourceDatabase = package.SourceDatabase,
             pulledAtUtc = package.PulledAtUtc,
+            stockDetailFields = detailFields,
             items,
         });
+    }
+
+    private static string? GetConfiguredStockDetailValue(
+        JsonElement stock,
+        IReadOnlyList<StockDetailFieldDefinition> fields,
+        string key,
+        params string[] fallbackFields)
+    {
+        var configured = fields.FirstOrDefault(field => string.Equals(field.Key, key, StringComparison.Ordinal));
+        return configured is null
+            ? GetFirstString(stock, fallbackFields)
+            : GetFirstString(stock, new[] { configured.SourceField }.Concat(fallbackFields).ToArray());
     }
 
     private static async Task<IResult> PriceListDefinitionsAsync(
@@ -495,13 +510,11 @@ public static class AndroidEndpoints
         if (!http.User.TryGetTenantId(out var tenantId))
             return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." }));
 
-        var keyIdText = http.User.FindFirst(ApiKeyClaims.ApiKeyId)?.Value;
-        if (!Guid.TryParse(keyIdText, out var keyId))
-            return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_API_KEY", Message = "API key identity is missing." }));
-
-        var allowed = await db.ApiKeys.AsNoTracking().AnyAsync(key => key.Id == keyId && key.TenantId == tenantId && key.IsActive && (key.Scopes.Contains(MobileReadScope) || key.Scopes.Contains("*")), ct);
+        if (!MobileLicensingEndpoints.TryDevice(http, out var deviceId, out var deviceTenantId) || deviceTenantId != tenantId)
+            return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_DEVICE_TOKEN", Message = "Device identity is missing." }));
+        var allowed = await db.MobileDevices.AsNoTracking().AnyAsync(x => x.Id == deviceId && x.TenantId == tenantId && x.IsActive && x.Tenant!.IsActive, ct);
         if (!allowed)
-            return (null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "MOBILE_READ_SCOPE_REQUIRED", Message = "API key requires the mobile:read scope." }));
+            return (null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "DEVICE_REVOKED", Message = "This device is no longer licensed." }));
 
         var package = await db.BootstrapPackages.AsNoTracking().Where(item => item.TenantId == tenantId)
             .OrderByDescending(item => item.PulledAtUtc).ThenByDescending(item => item.ReceivedAtUtc).FirstOrDefaultAsync(ct);

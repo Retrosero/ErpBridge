@@ -4,6 +4,14 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface FieldOpsApiService {
+    @POST("api/v1/mobile/activate")
+    suspend fun activateDevice(@Body request: MobileActivateRequest): Response<MobileSessionResponse>
+
+    @POST("api/v1/mobile/migrate")
+    suspend fun migrateDevice(@Body request: MobileActivateRequest): Response<MobileSessionResponse>
+
+    @POST("api/v1/mobile/renew")
+    suspend fun renewDeviceSession(): Response<MobileSessionResponse>
     @POST("api/v1/android/sync/stokHareket")
     suspend fun getStokHareket(@Body request: PullJobsRequest): Response<StokHareketResponse>
 
@@ -116,6 +124,12 @@ interface FieldOpsApiService {
     suspend fun getSalesConditions(@Body request: PullJobsRequest): Response<FieldOpsSyncResponse<SalesConditionDto>>
 }
 
+@androidx.annotation.Keep
+data class MobileActivateRequest(val code: String, val installationId: String, val deviceName: String, val appVersion: String?)
+
+@androidx.annotation.Keep
+data class MobileSessionResponse(val token: String? = null, val tenantId: String? = null, val deviceId: String? = null, val expiresAtUtc: String? = null)
+
 // DTOs
 @androidx.annotation.Keep
 data class FieldOpsSyncResponse<T>(
@@ -128,10 +142,19 @@ data class FieldOpsSyncResponse<T>(
     val since: String? = null,
     val watermark: String? = null,
     @com.squareup.moshi.Json(name = "items") val items: List<T>? = null,
-    @com.squareup.moshi.Json(name = "data") val data: List<T>? = null
+    @com.squareup.moshi.Json(name = "data") val data: List<T>? = null,
+    @com.squareup.moshi.Json(name = "stockDetailFields") val stockDetailFields: List<StockDetailFieldDto>? = null
 ) {
     val actualItems: List<T> get() = items ?: data ?: emptyList()
 }
+
+@androidx.annotation.Keep
+data class StockDetailFieldDto(
+    val key: String? = null,
+    val label: String? = null,
+    val sourceField: String? = null,
+    val visibleByDefault: Boolean? = null
+)
 
 @androidx.annotation.Keep
 data class CariHareketDto(

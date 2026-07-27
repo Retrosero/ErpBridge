@@ -27,6 +27,7 @@ else
                 <th>Name</th>
                 <th>Created</th>
                 <th>Active</th>
+                <th>Cihaz kotası</th>
                 <th></th>
             </tr>
         </thead>
@@ -38,7 +39,10 @@ else
                     <td>@t.Name</td>
                     <td>@t.CreatedAtUtc.ToString("u")</td>
                     <td>@(t.IsActive ? "✓" : "✗")</td>
+                    <td>@t.DeviceSeatLimit</td>
                     <td>
+                        <a class="btn btn-sm btn-outline-primary me-1" href="@($"tenants/{t.Id}/stock-fields")">Stok alanları</a>
+                        <a class="btn btn-sm btn-outline-primary me-1" href="@($"tenants/{t.Id}/devices")">Cihazlar</a>
                         @if (t.IsActive)
                         {
                             <button class="btn btn-sm btn-warning" @onclick="() => DeactivateAsync(t.Id)">Deactivate</button>
