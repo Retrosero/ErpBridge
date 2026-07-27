@@ -1,9 +1,11 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 namespace ErpBridge.CentralApi.Data.Migrations;
 
+[DbContext(typeof(CentralApiDbContext))]
 [Migration("20260727160000_AddMobileDeviceLicensing")]
 public partial class AddMobileDeviceLicensing : Migration
 {
