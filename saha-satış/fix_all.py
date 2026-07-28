@@ -1,43 +1,35 @@
 import re
 import os
 
-def fix_file(filename):
-    if not os.path.exists(filename): return
-    content = open(filename).read()
+def fix_file(filepath):
+    with open(filepath, 'r') as f:
+        content = f.read()
     
-    # We want to change ONLY these specific calls where the response is FieldOpsSyncResponse
-    # Which are from getCariler, getUrunler, getStokSeviye
-    content = content.replace("val items = syncRes.items", "val items = syncRes.actualItems")
+    # We look for cartonQuantity = ...\n                )
+    # And replace with cartonQuantity = ..., imageLinksJson = ..., localImagePathsJson = ... )
     
-    # Replace other places in BridgeSyncHelper where it failed
-    content = content.replace("items.isEmpty()", "items.isEmpty()")
+    # regex to find ProductEntity creation endings
+    new_content = re.sub(
+        r'(cartonQuantity\s*=\s*[^,\n\)]+)(\s*\))',
+        r'\1,\n    imageLinksJson = null,\n    localImagePathsJson = null\2',
+        content
+    )
     
-    # ErpIntegrationScreen:
-    if filename == "app/src/main/java/com/example/ui/screens/ErpIntegrationScreen.kt":
-        # we had some items = apiService.getCariler(...).body()?.actualItems
-        # revert first, then apply
-        content = content.replace(".actualItems", ".items")
-        content = re.sub(r'val items = apiService\.getCariler\([^)]+\)\.body\(\)\?\.items', r'val items = apiService.getCariler(request).body()?.actualItems', content)
-        content = re.sub(r'val items = apiService\.getUrunler\([^)]+\)\.body\(\)\?\.items', r'val items = apiService.getUrunler(request).body()?.actualItems', content)
-        
-        # fix: ErpIntegrationScreen.kt:1075:103 No value passed for parameter 'request'.
-        content = content.replace('apiService.getSyncStatus(page = 1, pageSize = 1)', 'apiService.getSyncStatus(com.example.data.api.PullJobsRequest(tenant_id=tenantId, api_key=apiKey, device_id=deviceId, agent_version="v2.0", entity="syncStatus"))')
-        
-        # fix: ErpIntegrationScreen.kt:1591:98 No parameter with name 'page' found.
-        content = re.sub(r'apiService\.getCariler\(page\s*=\s*\d+,\s*pageSize\s*=\s*\d+\)', 'apiService.getCariler(com.example.data.api.PullJobsRequest(tenant_id=tenantId, api_key=apiKey, device_id=deviceId, agent_version="v2.0", entity="cari"))', content)
-        
-        # fix: ErpIntegrationScreen.kt:1740:98 No parameter with name 'page' found.
-        content = re.sub(r'apiService\.getUrunler\(page\s*=\s*\d+,\s*pageSize\s*=\s*\d+\)', 'apiService.getUrunler(com.example.data.api.PullJobsRequest(tenant_id=tenantId, api_key=apiKey, device_id=deviceId, agent_version="v2.0", entity="urun"))', content)
-        
-    if filename == "app/src/main/java/com/example/ui/screens/BridgeSyncHelper.kt":
-        content = content.replace('responseDef.body()!!.items', 'responseDef.body()!!.items') # StokSatisFiyatListeTanimlariDto doesn't have actualItems
-        
-    if filename == "app/src/main/java/com/example/data/SyncRepository.kt":
-        content = content.replace(".items", ".actualItems") # SyncRepository uses FieldOpsSyncResponse
+    # But wait, in BridgeSyncHelper and AppDataStore we might have prod.imageLinks etc.
+    # Let's do a more robust approach:
+    # First, undo the previous script's effect if it failed or made a mess in BridgeSyncHelper.
     
-    open(filename, "w").write(content)
+    with open(filepath, 'w') as f:
+        f.write(new_content)
 
-fix_file("app/src/main/java/com/example/ui/screens/ErpIntegrationScreen.kt")
-fix_file("app/src/main/java/com/example/ui/screens/BridgeSyncHelper.kt")
-fix_file("app/src/main/java/com/example/data/SyncRepository.kt")
+for root, dirs, files in os.walk('app/src/main/java/com/example/'):
+    for file in files:
+        if file.endswith('.kt') and file != 'DatabaseModels.kt':
+            filepath = os.path.join(root, file)
+            with open(filepath, 'r') as f:
+                content = f.read()
+            if 'ProductEntity(' in content or 'cartonQuantity =' in content:
+                # We need to carefully append to the end of ProductEntity( ... )
+                # It's better to just manually check them if regex fails.
+                pass
 

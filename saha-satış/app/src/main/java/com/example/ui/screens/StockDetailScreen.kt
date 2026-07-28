@@ -128,7 +128,7 @@ fun StockDetailScreen(barcode: String?, navController: NavController) {
         movementsLoading = true
         try {
             val sharedPrefs = context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
-            val apiUrl = sharedPrefs.getString("api_url", "https://d5e4-88-248-2-49.ngrok-free.app") ?: "https://d5e4-88-248-2-49.ngrok-free.app"
+            val apiUrl = sharedPrefs.getString("api_url", "https://lisans.appsgo.cloud") ?: "https://lisans.appsgo.cloud"
             val apiKey = sharedPrefs.getString("api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production"
             val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
             val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
@@ -531,16 +531,13 @@ fun StockDetailScreen(barcode: String?, navController: NavController) {
                                 }
                             }
 
-                            val detailValues = mapOf(
-                                "aisle" to product.aisle.orEmpty().ifBlank { "-" },
-                                "measurement" to product.measurement.orEmpty().ifBlank { "-" },
-                                "packaging" to product.packaging.orEmpty().ifBlank { "-" },
-                                "brand" to product.brand.orEmpty().ifBlank { "-" },
-                                "cartonQuantity" to product.cartonQuantity.orEmpty().ifBlank { "-" }
+                            val erpDetails = listOf(
+                                "Reyon Kodu" to product.aisle.orEmpty().ifBlank { "-" },
+                                "Ölçü" to product.measurement.orEmpty().ifBlank { "-" },
+                                "Ambalaj" to product.packaging.orEmpty().ifBlank { "-" },
+                                "Marka" to product.brand.orEmpty().ifBlank { "-" },
+                                "Koli Adet" to product.cartonQuantity.orEmpty().ifBlank { "-" }
                             )
-                            val erpDetails = AppDataStore.erpStockDetailFields
-                                .filter { it.key in AppDataStore.visibleErpStockDetailKeys }
-                                .map { field -> field.label to (detailValues[field.key] ?: "-") }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "ERP Stok Bilgileri",

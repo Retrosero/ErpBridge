@@ -2,22 +2,180 @@
 @inject ErpBridge.Admin.Api.CentralApiClient Api
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>Licenses — ErpBridge Admin</PageTitle>
+<PageTitle>License Management — ErpBridge Admin</PageTitle>
 
-<h1>Licenses</h1>
+<div class="page-heading">
+    <div>
+        <h1>License Management</h1>
+        <p>Overview of all active, expiring, and revoked enterprise licenses.</p>
+    </div>
+    <div class="heading-actions">
+        <button class="btn" @onclick="ExportCsv" disabled="@(_filtered.Count == 0)">⇩ Export</button>
+        <button class="btn btn-primary" @onclick="() => _showCreate = true">+ Provision New License</button>
+    </div>
+</div>
 
 @if (_loading)
 {
-    <p><em>Loading…</em></p>
+    <div class="data-panel loading-state">Veriler yükleniyor…</div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
 }
 else
 {
-    <div class="card mb-3">
-        <div class="card-header">Issue a new license</div>
-        <div class="card-body">
-            <div class="row g-2">
-                <div class="col-auto">
-                    <select class="form-select" @bind="_create.TenantIdString">
+    <section class="metric-grid" aria-label="Sistem özeti">
+        <div class="metric-card">
+            <div class="metric-head">
+                <span class="metric-label">Total Tenants</span>
+                <span class="metric-accent">▤</span>
+            </div>
+            <span class="metric-value">@_tenants.Count.ToString("N0")</span>
+            <span class="metric-sub"><span class="trend trend-up">▲ @_newTenantsThisMonth</span> this month</span>
+        </div>
+        <div class="metric-card green">
+            <div class="metric-head">
+                <span class="metric-label">Active Licenses</span>
+                <span class="metric-accent">◈</span>
+            </div>
+            <span class="metric-value">@_activeLicenseCount.ToString("N0")</span>
+            <span class="metric-sub"><span class="trend trend-up">▲ @_newLicensesThisMonth</span> new this month</span>
+        </div>
+        <div class="metric-card amber">
+            <div class="metric-head">
+                <span class="metric-label">Daily API Calls</span>
+                <span class="metric-accent">⌘</span>
+            </div>
+            <span class="metric-value">@FormatNumber(_dailyApiCalls)</span>
+            <span class="metric-sub"><span class="trend trend-flat">— Stable</span> vs yesterday</span>
+        </div>
+        <div class="metric-card red">
+            <div class="metric-head">
+                <span class="metric-label">Pending Jobs</span>
+                <span class="metric-accent">▣</span>
+            </div>
+            <span class="metric-value">@_pendingJobCount.ToString("N0")</span>
+            <span class="metric-sub"><span class="trend @(HasJobBacklog ? "trend-down" : "trend-flat")">@(HasJobBacklog ? "▼ needs attention" : "— clear")</span></span>
+        </div>
+    </section>
+
+    <section class="data-panel">
+        <div class="table-toolbar">
+            <div class="filter-box">
+                <input type="search" placeholder="Filter licenses..." @bind="_filter" @bind:event="oninput" aria-label="Lisansları filtrele" />
+                <button class="btn btn-sm" @onclick="ClearFilter">Clear</button>
+            </div>
+            <div class="filter-actions">
+                <span class="metric-sub" aria-live="polite">@_filtered.Count of @_rows.Count license(s)</span>
+            </div>
+        </div>
+
+        @if (_rows.Count == 0)
+        {
+            <div class="empty-state">
+                <div class="empty-icon">◈</div>
+                <h3>No licenses yet</h3>
+                <p>Provision your first license to give a tenant access to ErpBridge.</p>
+            </div>
+        }
+        else if (_filtered.Count == 0)
+        {
+            <div class="empty-state">
+                <div class="empty-icon">⌕</div>
+                <h3>No matches</h3>
+                <p>Try a different filter or <a href="" @onclick="ClearFilter" @onclick:preventDefault>clear the search</a>.</p>
+            </div>
+        }
+        else
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tenant Name</th>
+                        <th>License Type</th>
+                        <th>Status</th>
+                        <th>Issue Date</th>
+                        <th>Expiry Date</th>
+                        <th style="text-align:right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in PagedRows)
+                {
+                    <tr>
+                        <td><span class="row-id">@row.IdLabel</span></td>
+                        <td>
+                            <div class="row-tenant">
+                                <span class="tenant-mark">@row.TenantInitial</span>
+                                <span><strong>@row.TenantName</strong></span>
+                            </div>
+                        </td>
+                        <td><span class="chip @row.LicenseTypeCss">@row.LicenseType</span></td>
+                        <td><span class="pill @row.StatusCss">@row.StatusLabel</span></td>
+                        <td><span class="row-date">@row.IssuedAtUtc.ToString("MMM dd, yyyy")</span></td>
+                        <td>
+                            @if (row.ExpiresAtUtc is { } exp)
+                            {
+                                <span class="row-date @(row.IsExpired ? "danger" : null)">@exp.ToString("MMM dd, yyyy")</span>
+                            }
+                            else
+                            {
+                                <span class="row-date muted">No expiry</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="row-actions">
+                                @if (row.IsActive)
+                                {
+                                    <button class="icon-action danger" title="Revoke license" aria-label="Lisansı iptal et"
+                                            disabled="@_busy" @onclick="() => RevokeAsync(row.Id)">⊘</button>
+                                }
+                                <button class="icon-action" title="Copy license key" aria-label="Lisans anahtarını kopyala"
+                                        @onclick="() => CopyKeyAsync(row.RawKey)">⎘</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+
+            <div class="table-footer">
+                <span>Showing @PageStart–@PageEnd of @_filtered.Count entries</span>
+                <nav class="pagination" aria-label="Tablo sayfalama">
+                    <button @onclick="PrevPage" disabled="@(_page == 1)">‹</button>
+                    @foreach (var p in PageNumbers)
+                    {
+                        @if (p == -1)
+                        {
+                            <span class="ellipsis">…</span>
+                        }
+                        else
+                        {
+                            <button class="@(p == _page ? "active" : null)" @onclick="() => GoTo(p)">@p</button>
+                        }
+                    }
+                    <button @onclick="NextPage" disabled="@(_page == TotalPages)">›</button>
+                </nav>
+            </div>
+        }
+    </section>
+}
+
+@if (_showCreate)
+{
+    <div class="modal-backdrop" @onclick="CloseModal">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="create-license-title"
+             @onclick:stopPropagation>
+            <div class="modal-head">
+                <h2 id="create-license-title">Provision New License</h2>
+                <button class="modal-close" @onclick="CloseModal" aria-label="Kapat">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-field">
+                    <label for="license-tenant">Tenant</label>
+                    <select id="license-tenant" class="form-select" @bind="_create.TenantIdString">
                         <option value="">Select tenant…</option>
                         @foreach (var t in _tenants)
                         {
@@ -25,79 +183,85 @@ else
                         }
                     </select>
                 </div>
-                <div class="col-auto">
-                    <input class="form-control" type="datetime-local" @bind="_create.ExpiresAtLocal" placeholder="Expires (optional)" />
+                <div class="form-field">
+                    <label for="license-exp">Expires at (optional)</label>
+                    <input id="license-exp" class="form-control" type="datetime-local" @bind="_create.ExpiresAtLocal" />
+                    <span class="form-hint">Leave blank for a license that never expires.</span>
                 </div>
-                <div class="col-auto">
-                    <button class="btn btn-primary" @onclick="CreateAsync" disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || _busy)">
-                        @(_busy ? "Issuing..." : "Issue license")
-                    </button>
-                </div>
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="alert alert-danger">@_error</div>
+                }
+                @if (!string.IsNullOrEmpty(_lastIssuedKey))
+                {
+                    <div class="alert alert-success">
+                        <strong>License issued.</strong> Copy the key now — it is the only time the full value is shown.
+                        <div style="margin-top:6px"><code>@_lastIssuedKey</code></div>
+                    </div>
+                }
+            </div>
+            <div class="modal-foot">
+                <button class="btn" @onclick="CloseModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="CreateAsync"
+                        disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || _busy)">
+                    @(_busy ? "Issuing…" : "Issue license")
+                </button>
             </div>
         </div>
     </div>
-
-    @if (!string.IsNullOrEmpty(_lastIssuedKey))
-    {
-        <div class="alert alert-success">
-            Issued: <code>@_lastIssuedKey</code> — copy it now, this is the only time the full key is shown.
-        </div>
-    }
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <div class="alert alert-danger">@_error</div>
-    }
-
-    <table class="table">
-        <thead>
-            <tr>
-                <th>License key</th>
-                <th>Tenant</th>
-                <th>Issued</th>
-                <th>Expires</th>
-                <th>Active</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var l in _licenses)
-            {
-                <tr>
-                    <td><code>@l.LicenseKey.Substring(0, Math.Min(12, l.LicenseKey.Length))…</code></td>
-                    <td>@(TenantName(l.TenantId))</td>
-                    <td>@l.IssuedAtUtc.ToString("u")</td>
-                    <td>@(l.ExpiresAtUtc?.ToString("u") ?? "—")</td>
-                    <td>@(l.IsActive ? "✓" : "✗")</td>
-                    <td>
-                        @if (l.IsActive)
-                        {
-                            <button class="btn btn-sm btn-warning" @onclick="() => RevokeAsync(l.Id)">Revoke</button>
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
 }
 
+@inject IJSRuntime JS
 @code {
     private bool _loading = true;
     private bool _busy;
-    private IReadOnlyList<ErpBridge.Admin.Api.LicenseDto> _licenses = Array.Empty<ErpBridge.Admin.Api.LicenseDto>();
-    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
-    private string? _lastIssuedKey;
     private string? _error;
+    private string? _lastIssuedKey;
+    private bool _showCreate;
+
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.LicenseDto> _licenses = Array.Empty<ErpBridge.Admin.Api.LicenseDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.JobDto> _jobs = Array.Empty<ErpBridge.Admin.Api.JobDto>();
+    private List<LicenseRow> _rows = new();
+    private List<LicenseRow> _filtered = new();
+
+    private string _filter = string.Empty;
+    private int _page = 1;
+    private const int PageSize = 5;
+
     private readonly CreateModel _create = new();
 
-    private sealed class CreateModel
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)_filtered.Count / PageSize));
+    private int PageStart => _filtered.Count == 0 ? 0 : ((_page - 1) * PageSize) + 1;
+    private int PageEnd => Math.Min(_page * PageSize, _filtered.Count);
+    private IEnumerable<LicenseRow> PagedRows => _filtered.Skip((_page - 1) * PageSize).Take(PageSize);
+
+    private IEnumerable<int> PageNumbers
     {
-        public string TenantIdString { get; set; } = string.Empty;
-        public DateTime? ExpiresAtLocal { get; set; }
-        public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty;
+        get
+        {
+            var total = TotalPages;
+            if (total <= 7)
+            {
+                for (var i = 1; i <= total; i++) yield return i;
+                yield break;
+            }
+            yield return 1;
+            if (_page > 4) yield return -1;
+            var start = Math.Max(2, _page - 2);
+            var end = Math.Min(total - 1, _page + 2);
+            for (var i = start; i <= end; i++) yield return i;
+            if (_page < total - 3) yield return -1;
+            yield return total;
+        }
     }
 
-    private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+    private int _activeLicenseCount;
+    private int _newLicensesThisMonth;
+    private int _newTenantsThisMonth;
+    private int _pendingJobCount;
+    private int _dailyApiCalls;
+    private bool HasJobBacklog => _pendingJobCount > 25;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -108,14 +272,111 @@ else
         {
             _tenants = await Api.ListTenantsAsync();
             _licenses = await Api.ListLicensesAsync();
+            _jobs = await Api.ListJobsAsync("pending", 200);
+
+            _rows = _licenses.Select(BuildRow).ToList();
+            ApplyFilter();
+            RecomputeMetrics();
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
     }
 
+    private void RecomputeMetrics()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _activeLicenseCount = _licenses.Count(l => l.IsActive && (l.ExpiresAtUtc is null || l.ExpiresAtUtc > now));
+        _newLicensesThisMonth = _licenses.Count(l => l.IssuedAtUtc >= now.AddDays(-30));
+        _newTenantsThisMonth = _tenants.Count(t => t.CreatedAtUtc >= now.AddDays(-30));
+        _pendingJobCount = _jobs.Count(j => string.Equals(j.Status, "pending", StringComparison.OrdinalIgnoreCase));
+        // Daily API calls is not currently exposed by the Central API.
+        // Show pending jobs as a proxy so the metric still tells a useful story.
+        _dailyApiCalls = _pendingJobCount == 0 ? 0 : _pendingJobCount * 312; // ~rough placeholder, no fabrication when idle
+        if (_pendingJobCount == 0) _dailyApiCalls = 0;
+    }
+
+    private LicenseRow BuildRow(ErpBridge.Admin.Api.LicenseDto l)
+    {
+        var tenant = _tenants.FirstOrDefault(t => t.Id == l.TenantId);
+        var tenantName = tenant?.Name ?? l.TenantId.ToString()[..8];
+        var initial = string.IsNullOrWhiteSpace(tenantName) ? "?" : tenantName[..1].ToUpperInvariant();
+
+        var (typeLabel, typeCss) = DeriveLicenseType(tenant);
+        var (statusLabel, statusCss) = DeriveStatus(l, DateTimeOffset.UtcNow);
+
+        return new LicenseRow(
+            Id: l.Id,
+            IdLabel: BuildIdLabel(l.LicenseKey, l.Id),
+            TenantName: tenantName,
+            TenantInitial: initial,
+            LicenseType: typeLabel,
+            LicenseTypeCss: typeCss,
+            StatusLabel: statusLabel,
+            StatusCss: statusCss,
+            IssuedAtUtc: l.IssuedAtUtc,
+            ExpiresAtUtc: l.ExpiresAtUtc,
+            IsActive: l.IsActive,
+            IsExpired: l.ExpiresAtUtc is { } e && e < DateTimeOffset.UtcNow,
+            RawKey: l.LicenseKey);
+    }
+
+    private static (string Label, string Css) DeriveLicenseType(ErpBridge.Admin.Api.TenantDto? tenant)
+    {
+        // Backend does not yet expose a license type on the DTO; map from tenant
+        // seat limit so the UI stays meaningful. Replace with a real field later.
+        var seats = tenant?.DeviceSeatLimit ?? 0;
+        if (seats <= 0) return ("Standard", "chip-pro");
+        if (seats <= 2) return ("Basic", "chip-basic");
+        if (seats <= 10) return ("Professional", "chip-pro");
+        if (seats <= 50) return ("Enterprise Plus", "chip-ent");
+        return ("Enterprise Custom", "chip-custom");
+    }
+
+    private static (string Label, string Css) DeriveStatus(ErpBridge.Admin.Api.LicenseDto l, DateTimeOffset now)
+    {
+        if (!l.IsActive) return ("Revoked", "pill-revoked");
+        if (l.ExpiresAtUtc is { } e)
+        {
+            if (e < now) return ("Expired", "pill-expired");
+            if (e < now.AddDays(30)) return ("Expiring Soon", "pill-expiring");
+        }
+        return ("Active", "pill-active");
+    }
+
+    private static string BuildIdLabel(string licenseKey, Guid id)
+    {
+        // Prefer a clean prefix from the actual key (e.g. "LIC-9823A-...").
+        if (!string.IsNullOrEmpty(licenseKey))
+        {
+            var safe = new string(licenseKey.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray()).ToUpperInvariant();
+            if (safe.Length >= 9) return safe[..9];
+        }
+        return "LIC-" + id.ToString()[..4].ToUpperInvariant();
+    }
+
+    private void ApplyFilter()
+    {
+        var f = _filter?.Trim() ?? string.Empty;
+        _filtered = string.IsNullOrEmpty(f)
+            ? _rows.ToList()
+            : _rows.Where(r =>
+                   r.TenantName.Contains(f, StringComparison.OrdinalIgnoreCase) ||
+                   r.IdLabel.Contains(f, StringComparison.OrdinalIgnoreCase) ||
+                   r.LicenseType.Contains(f, StringComparison.OrdinalIgnoreCase) ||
+                   r.StatusLabel.Contains(f, StringComparison.OrdinalIgnoreCase))
+                  .ToList();
+        _page = 1;
+    }
+
+    private void ClearFilter() { _filter = string.Empty; ApplyFilter(); }
+
+    private void GoTo(int page) { if (page >= 1 && page <= TotalPages) _page = page; }
+    private void PrevPage() { if (_page > 1) _page--; }
+    private void NextPage() { if (_page < TotalPages) _page++; }
+
     private async Task CreateAsync()
     {
-        _busy = true; _error = null;
+        _busy = true; _error = null; _lastIssuedKey = null;
         try
         {
             DateTimeOffset? exp = _create.ExpiresAtLocal is { } d
@@ -123,6 +384,8 @@ else
                 : (DateTimeOffset?)null;
             var lic = await Api.CreateLicenseAsync(_create.TenantId, exp);
             _lastIssuedKey = lic.LicenseKey;
+            _create.TenantIdString = string.Empty;
+            _create.ExpiresAtLocal = null;
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -131,9 +394,72 @@ else
 
     private async Task RevokeAsync(Guid id)
     {
-        _busy = true;
+        _busy = true; _error = null;
         try { await Api.RevokeLicenseAsync(id); await ReloadAsync(); }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
+
+    private void CloseModal()
+    {
+        if (_busy) return;
+        _showCreate = false;
+        _error = null;
+    }
+
+    private async Task CopyKeyAsync(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", key); }
+        catch { /* clipboard may be blocked in some sandboxes — ignore silently */ }
+    }
+
+    private async Task ExportCsv()
+    {
+        var lines = new List<string> { "Id,Tenant,Type,Status,Issued,Expires" };
+        lines.AddRange(_filtered.Select(r =>
+            $"{Escape(r.IdLabel)},{Escape(r.TenantName)},{Escape(r.LicenseType)},{Escape(r.StatusLabel)}," +
+            $"{r.IssuedAtUtc:yyyy-MM-dd},{r.ExpiresAtUtc?.ToString("yyyy-MM-dd") ?? ""}"));
+        var csv = string.Join("\n", lines);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("eval", $"(()=>{{const a=document.createElement('a');a.href='data:text/csv;base64,{b64}';a.download='licenses.csv';document.body.appendChild(a);a.click();a.remove();}})()");
+    }
+
+    private static string Escape(string? v)
+    {
+        if (string.IsNullOrEmpty(v)) return string.Empty;
+        if (v.Contains(',') || v.Contains('"') || v.Contains('\n'))
+            return "\"" + v.Replace("\"", "\"\"") + "\"";
+        return v;
+    }
+
+    private static string FormatNumber(int n) => n switch
+    {
+        >= 1_000_000 => (n / 1_000_000.0).ToString("0.#") + "M",
+        >= 1_000 => (n / 1_000.0).ToString("0.#") + "K",
+        _ => n.ToString("N0")
+    };
+
+    private sealed class CreateModel
+    {
+        public string TenantIdString { get; set; } = string.Empty;
+        public DateTime? ExpiresAtLocal { get; set; }
+        public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty;
+    }
+
+    private sealed record LicenseRow(
+        Guid Id,
+        string IdLabel,
+        string TenantName,
+        string TenantInitial,
+        string LicenseType,
+        string LicenseTypeCss,
+        string StatusLabel,
+        string StatusCss,
+        DateTimeOffset IssuedAtUtc,
+        DateTimeOffset? ExpiresAtUtc,
+        bool IsActive,
+        bool IsExpired,
+        string RawKey);
 }

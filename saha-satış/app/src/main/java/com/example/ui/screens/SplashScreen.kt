@@ -19,6 +19,10 @@ import com.example.data.database.DatabaseProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import com.example.data.api.LicenseHeaderInterceptor
+import com.example.data.api.RetryAndLicenseInterceptor
 
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.ui.graphics.Brush
@@ -55,7 +59,38 @@ fun SplashScreen(navController: NavController) {
                 db.userDao().getActiveUser()
             }
             
-            if (activeUser != null) {
+            val secPrefs = context.getSharedPreferences("secure_license_prefs", android.content.Context.MODE_PRIVATE)
+            var isLicenseValid = secPrefs.getBoolean("is_license_valid", true)
+            val hasApiKey = secPrefs.getString("api_key", null) != null
+            
+            // Validate JWT explicitly on app launch
+            if (hasApiKey && isLicenseValid) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val token = secPrefs.getString("api_key", "") ?: ""
+                        val client = OkHttpClient.Builder()
+                            .addInterceptor(LicenseHeaderInterceptor(context, token))
+                            .addInterceptor(RetryAndLicenseInterceptor(context))
+                            .build()
+                            
+                        val request = okhttp3.Request.Builder()
+                            .url("https://lisans.appsgo.cloud/api/v1/mobile/telemetry/batch")
+                            .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), "{\"events\":[]}"))
+                            .build()
+                            
+                        val response = client.newCall(request).execute()
+                        // If it fails with 401/403, RetryAndLicenseInterceptor attempts token renewal.
+                        // If renewal fails, it sets is_license_valid to false in preferences.
+                        if (!response.isSuccessful && (response.code == 401 || response.code == 403)) {
+                             isLicenseValid = secPrefs.getBoolean("is_license_valid", false)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+            
+            if (activeUser != null && isLicenseValid && hasApiKey) {
                 navController.navigate("dashboard") {
                     popUpTo("splash") { inclusive = true }
                 }

@@ -66,7 +66,7 @@ object DataSyncHelper {
     }
 
     fun generateProductCsvTemplate(): String {
-        return "barcode,code,title,category,basePrice,dealerPrice,wholesalePrice,kdvPercent,boxQty,packageQty,imageUrl\n" +
+        return "barcode,code,title,category,basePrice,dealerPrice,wholesalePrice,kdvPercent,boxQty,packageQty,imageUrl1,imageUrl2,imageUrl3,imageUrl4,imageUrl5,imageUrl6,imageUrl7,imageUrl8,imageUrl9,imageUrl10\n" +
                 "869000000001,PRD-001,Tek Resimli Gıda Ürünü,Temel Gıda,150.0,140.0,130.0,1,12,1,https://images.unsplash.com/photo-1542838132-92c53300491e\n" +
                 "869000000002,PRD-002,Çok Resimli Ayakkabı (10 Farklı Resim),Giyim,499.9,450.0,420.0,20,30,1,\"https://images.unsplash.com/photo-1542291026-7eec264c27ff;https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a;https://images.unsplash.com/photo-1523275335684-37898b6baf30;https://images.unsplash.com/photo-1572635196237-14b3f281503f;https://images.unsplash.com/photo-1505740420928-5e560c06d30e;https://images.unsplash.com/photo-1560343090-f0409e92791a;https://images.unsplash.com/photo-1581655353564-df123a1eb820;https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77;https://images.unsplash.com/photo-1491553895911-0055eca6402d;https://images.unsplash.com/photo-1549298916-b41d501d3772\""
     }
@@ -142,7 +142,7 @@ object DataSyncHelper {
         )
 
         val sb = java.lang.StringBuilder()
-        sb.append("barcode,code,title,category,basePrice,dealerPrice,wholesalePrice,kdvPercent,boxQty,packageQty,imageUrl\n")
+        sb.append("barcode,code,title,category,basePrice,dealerPrice,wholesalePrice,kdvPercent,boxQty,packageQty,imageUrl1,imageUrl2,imageUrl3,imageUrl4,imageUrl5,imageUrl6,imageUrl7,imageUrl8,imageUrl9,imageUrl10\n")
 
         var count = 0
         val targetSize = 300
@@ -177,7 +177,7 @@ object DataSyncHelper {
             }
             val pkgQty = 1
             
-            sb.append("$barcodeValue,$code,$title,$cat,$basePrice,$dealerPrice,$wholesalePrice,$kdv,$boxQty,$pkgQty,\n")
+            sb.append("$barcodeValue,$code,$title,$cat,$basePrice,$dealerPrice,$wholesalePrice,$kdv,$boxQty,$pkgQty, , , , , , , , , , \n")
             count++
         }
         

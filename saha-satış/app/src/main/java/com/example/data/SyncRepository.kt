@@ -46,6 +46,11 @@ object SyncRepository {
                         wholesalePrice = it.satisFiyat ?: 0.0,
                         kdvPercent = it.kdvOrani?.toInt() ?: 18,
                         colorValue = 0xFFCCCCCC,
+                        brand = it.actualMarka,
+                        aisle = it.actualReyonKod,
+                        measurement = it.actualOlcu,
+                        packaging = it.actualAmbalaj,
+                        cartonQuantity = it.actualKoliAdet,
                         stockByWarehouseJson = "{}",
                         imageUrl = ""
                     )
@@ -204,7 +209,11 @@ object SyncRepository {
                         val dealerPrice = item.getDouble("dealerPrice", "bayiFiyati", "satisFiyat")
                         val wholesalePrice = item.getDouble("wholesalePrice", "toptanFiyati", "satisFiyat")
                         val kdvPercent = item.getInt("kdvPercent", "kdv", "kdvOrani")
-                        val brand = item.getString("brand", "marka")
+                        val brand = item.getString("brand", "marka", "actualMarka")
+                        val aisle = item.getString("aisle", "reyon", "reyonKod", "actualReyonKod", "sto_yer_kod")
+                        val measurement = item.getString("measurement", "olcu", "actualOlcu", "sto_sektor_kodu")
+                        val packaging = item.getString("packaging", "ambalaj", "actualAmbalaj", "sto_ambalaj_kodu")
+                        val cartonQuantity = item.getString("cartonQuantity", "koliAdet", "actualKoliAdet")
                         val stockByWarehouseJson = item.getString("stockByWarehouseJson", "stockByWarehouse", "miktarDepo")
 
                         productsToInsert.add(
@@ -220,6 +229,10 @@ object SyncRepository {
                                 kdvPercent = if (kdvPercent == 0) 20 else kdvPercent,
                                 colorValue = 0xFFCCCCCC,
                                 brand = brand,
+                                aisle = aisle,
+                                measurement = measurement,
+                                packaging = packaging,
+                                cartonQuantity = cartonQuantity,
                                 stockByWarehouseJson = if (stockByWarehouseJson.isBlank()) "{}" else stockByWarehouseJson
                             )
                         )
@@ -288,34 +301,9 @@ object SyncRepository {
             device_id = deviceId,
             agent_version = "1.0.0"
         )
-        try {
-            val response = apiService.getCariAdresler(request)
-            if (response.isSuccessful && response.body() != null) {
-                val db = com.example.data.database.DatabaseProvider.getDatabase(context)
-                val items = response.body()?.actualItems ?: emptyList()
-                val entities = items.map {
-                    com.example.data.database.CustomerAddressEntity(
-                        customerCode = it.customerCode,
-                        addressNo = it.addressNo,
-                        city = it.city,
-                        district = it.district,
-                        street = it.street,
-                        postalCode = it.postalCode,
-                        latitude = it.latitude,
-                        longitude = it.longitude,
-                        salespersonCode = it.salespersonCode
-                    )
-                }
-                db.customerAddressDao().replaceAll(entities)
-                true
-            } else {
-                Log.e("SyncRepository", "syncCustomerAddresses error HTTP ${response.code()}")
-                false
-            }
-        } catch (e: Exception) {
-            Log.e("SyncRepository", "syncCustomerAddresses exception", e)
-            false
-        }
+        // Disabled sync
+        Log.e("SyncRepository", "syncCustomerAddresses disabled")
+        return@withContext false
     }
 
     suspend fun syncCustomerContacts(context: Context): Boolean = withContext(Dispatchers.IO) {
@@ -332,32 +320,9 @@ object SyncRepository {
             device_id = deviceId,
             agent_version = "1.0.0"
         )
-        try {
-            val response = apiService.getCariYetkililer(request)
-            if (response.isSuccessful && response.body() != null) {
-                val db = com.example.data.database.DatabaseProvider.getDatabase(context)
-                val items = response.body()?.actualItems ?: emptyList()
-                val entities = items.map {
-                    com.example.data.database.CustomerContactEntity(
-                        customerCode = it.customerCode,
-                        firstName = it.firstName,
-                        lastName = it.lastName,
-                        email = it.email,
-                        mobile = it.mobile,
-                        tcIdentityNo = it.tcIdentityNo,
-                        taxNo = it.taxNo
-                    )
-                }
-                db.customerContactDao().replaceAll(entities)
-                true
-            } else {
-                Log.e("SyncRepository", "syncCustomerContacts error HTTP ${response.code()}")
-                false
-            }
-        } catch (e: Exception) {
-            Log.e("SyncRepository", "syncCustomerContacts exception", e)
-            false
-        }
+        // Disabled sync
+        Log.e("SyncRepository", "syncCustomerContacts disabled")
+        return@withContext false
     }
 
     suspend fun syncBarcodes(context: Context): Boolean = withContext(Dispatchers.IO) {
@@ -374,38 +339,9 @@ object SyncRepository {
             device_id = deviceId,
             agent_version = "1.0.0"
         )
-        try {
-            val response = apiService.getBarkodlar(request)
-            if (response.isSuccessful && response.body() != null) {
-                val db = com.example.data.database.DatabaseProvider.getDatabase(context)
-                val items = response.body()?.actualItems ?: emptyList()
-                val entities = items.map {
-                    com.example.data.database.BarcodeEntity(
-                        barcode = it.barcode,
-                        stockCode = it.stockCode,
-                        partCode = it.partCode,
-                        lotNo = it.lotNo,
-                        serialNo = it.serialNo,
-                        unitPointer = it.unitPointer
-                    )
-                }
-                db.barcodeDao().replaceAll(entities)
-
-                // Update AppDataStore.barcodeToStockCodeMap reactively
-                withContext(Dispatchers.Main) {
-                    for (b in entities) {
-                        com.example.ui.screens.AppDataStore.barcodeToStockCodeMap[b.barcode.trim().lowercase()] = b.stockCode.trim()
-                    }
-                }
-                true
-            } else {
-                Log.e("SyncRepository", "syncBarcodes error HTTP ${response.code()}")
-                false
-            }
-        } catch (e: Exception) {
-            Log.e("SyncRepository", "syncBarcodes exception", e)
-            false
-        }
+        // Disabled sync
+        Log.e("SyncRepository", "syncBarcodes disabled")
+        return@withContext false
     }
 
     suspend fun syncSalesConditions(context: Context): Boolean = withContext(Dispatchers.IO) {

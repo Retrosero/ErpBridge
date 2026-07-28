@@ -13,6 +13,7 @@ import com.example.data.database.WmsOrderEntity
 import com.example.data.database.WmsOrderItemEntity
 import com.example.data.database.DatabaseProvider
 import kotlinx.coroutines.Dispatchers
+import com.example.util.TelemetryReporter
 import kotlinx.coroutines.withContext
 
 object BridgeSyncHelper {
@@ -458,7 +459,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Köprü Bağlantı Hatası (Cari): ${e.message}. Api'den veri alınamadı.")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Köprü Bağlantı Hatası (Cari): ${e.message}. Api'den veri alınamadı.")
+            log("Köprü Bağlantı Hatası (Cari): ${e.message}. Api'den veri alınamadı.: ${e.message}")
             updateProgress(1.0f)
             throw e
 
@@ -560,7 +562,8 @@ object BridgeSyncHelper {
                 }
                 log("Başarılı! ${stockLevelMap.size} adet stok bakiye kaydı alındı.")
             } catch (e: Exception) {
-                log("Ön stok seviye yükleme adımı es geçiliyor/hata: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Ön stok seviye yükleme adımı es geçiliyor/hata: ${e.message}")
+            log("Ön stok seviye yükleme adımı es geçiliyor/hata: ${e.message}: ${e.message}")
 
 
 
@@ -586,8 +589,8 @@ object BridgeSyncHelper {
                 )
                 if (definitionsResponse.isSuccessful) {
                     definitionsResponse.body()?.actualItems.orEmpty().forEach { definition ->
-                        val listNo = definition.actualListNo
-                        val name = definition.actualName
+                        val listNo = definition.listNo ?: 0
+                        val name = definition.aciklama?.trim().orEmpty()
                         if (listNo > 0 && name.isNotBlank()) {
                             priceListNames[listNo] = name
                         }
@@ -597,16 +600,14 @@ object BridgeSyncHelper {
                 if (priceResponse.isSuccessful && priceResponse.body() != null) {
                     for (item in priceResponse.body()!!.actualItems) {
                         if (item.actualStokKod.isNotBlank() && item.actualFiyat > 0.0) {
-                            if (item.actualListeNo > 0 && item.actualListName.isNotBlank()) {
-                                priceListNames[item.actualListeNo] = item.actualListName
-                            }
                             priceMap.getOrPut(item.actualStokKod) { mutableMapOf() }[item.actualListeNo] = item.actualFiyat
                         }
                     }
                 }
                 log("${priceMap.size} stok koduna ait fiyat alindi.")
             } catch (e: Exception) {
-                log("Fiyat yukleme adimi atlandi: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Fiyat yukleme adimi atlandi: ${e.message}")
+            log("Fiyat yukleme adimi atlandi: ${e.message}: ${e.message}")
             }
             val barcodesMap = mutableMapOf<String, MutableList<String>>()
             try {
@@ -681,7 +682,8 @@ object BridgeSyncHelper {
                 }
                 log("Başarılı! ${barcodesMap.size} adet stok koduna ait çoklu barkod tanımları alındı.")
             } catch (e: Exception) {
-                log("Çoklu barkod tanımları yükleme adımı es geçiliyor/hata: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Çoklu barkod tanımları yükleme adımı es geçiliyor/hata: ${e.message}")
+            log("Çoklu barkod tanımları yükleme adımı es geçiliyor/hata: ${e.message}: ${e.message}")
 
 
 
@@ -708,14 +710,6 @@ object BridgeSyncHelper {
 
                 if (response.isSuccessful && response.body() != null) {
                     val syncRes = response.body()!!
-                    syncRes.stockDetailFields?.let { fields ->
-                        AppDataStore.setErpStockDetailFields(context, fields.mapNotNull { field ->
-                            val key = field.key?.trim().orEmpty()
-                            val label = field.label?.trim().orEmpty()
-                            if (key.isBlank() || label.isBlank()) null
-                            else ErpStockDetailField(key, label, field.visibleByDefault ?: true)
-                        })
-                    }
                     val urunler = syncRes.actualItems
                     if (urunler.isEmpty()) {
                         hasMore = false
@@ -833,7 +827,7 @@ object BridgeSyncHelper {
                                 wholesalePrice = wholesalePrice,
                                 kdvPercent = u.actualKdv.toInt(),
                                 imageUrlColor = androidx.compose.ui.graphics.Color(0xFF1976D2),
-                                brand = u.actualMarka ?: u.erp ?: "Mikro",
+                                brand = u.marka ?: u.erp ?: "Mikro",
                                 stockByWarehouse = whMap,
                                 aisle = u.actualReyonKod,
                                 customPrices = customPricesMap,
@@ -904,7 +898,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Köprü Bağlantı Hatası (Stok): ${e.message}. Api'den veri alınamadı.")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Köprü Bağlantı Hatası (Stok): ${e.message}. Api'den veri alınamadı.")
+            log("Köprü Bağlantı Hatası (Stok): ${e.message}. Api'den veri alınamadı.: ${e.message}")
             updateProgress(1.0f)
             throw e
 
@@ -991,9 +986,7 @@ object BridgeSyncHelper {
 
             if (definitions.isNotEmpty() || priceLists.isNotEmpty()) {
                 withContext(Dispatchers.Main) {
-                    val listNoToName = definitions
-                        .filter { it.actualListNo > 0 && it.actualName.isNotBlank() }
-                        .associate { it.actualListNo to it.actualName }
+                    val listNoToName = definitions.associate { (it.listNo ?: 0) to (it.aciklama ?: "Liste ${it.listNo}") }
                     var updatedCount = 0
 
                     for (i in AppDataStore.products.indices) {
@@ -1037,6 +1030,43 @@ object BridgeSyncHelper {
                             updatedCount++
                         }
                     }
+                    
+                    val db = com.example.data.database.DatabaseProvider.getDatabase(context)
+                    val converter = com.example.data.database.Converters()
+                    val pList = AppDataStore.products.toList()
+                    val productEntities = pList.map { prod ->
+                        val fb = if (prod.barcode.isBlank() || prod.barcode.lowercase() == "null") prod.code.ifBlank { java.util.UUID.randomUUID().toString() } else prod.barcode
+                        com.example.data.database.ProductEntity(
+                            barcode = fb,
+                            code = prod.code,
+                            title = prod.title,
+                            category = prod.category,
+                            desc = prod.desc,
+                            basePrice = prod.basePrice,
+                            dealerPrice = prod.dealerPrice,
+                            wholesalePrice = prod.wholesalePrice,
+                            kdvPercent = prod.kdvPercent,
+                            colorValue = prod.imageUrlColor.value.toLong(),
+                            brand = prod.brand,
+                            stockByWarehouseJson = converter.fromWarehouseMap(prod.stockByWarehouse),
+                            boxQty = prod.boxQty,
+                            packageQty = prod.packageQty,
+                            imageUrl = prod.imageUrl,
+                            localImagePath = prod.localImagePath,
+                            aisle = prod.aisle,
+                            customPricesJson = converter.fromCustomPricesMap(prod.customPrices),
+                            barcodesJson = converter.fromBarcodeList(prod.barcodes),
+                            measurement = prod.measurement,
+                            packaging = prod.packaging,
+                            cartonQuantity = prod.cartonQuantity,
+    imageLinksJson = null,
+    localImagePathsJson = null
+                        )
+                    }
+                    withContext(Dispatchers.IO) {
+                        db.productDao().insertAll(productEntities)
+                    }
+                    
                     AppDataStore.persist(context)
                     log("Başarılı! $updatedCount adet stok kartının özel fiyat listesi tanımları ve fiyatları başarıyla güncellendi.")
 
@@ -1055,7 +1085,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Köprü Bağlantı Hatası (Fiyat Listesi): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Köprü Bağlantı Hatası (Fiyat Listesi): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
+            log("Köprü Bağlantı Hatası (Fiyat Listesi): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -1151,7 +1182,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Köprü Bağlantı Hatası (Stok Seviye): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Köprü Bağlantı Hatası (Stok Seviye): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
+            log("Köprü Bağlantı Hatası (Stok Seviye): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.: ${e.message}")
             updateProgress(1.0f)
         }
     }
@@ -1281,7 +1313,8 @@ object BridgeSyncHelper {
                                 }
                             }
                         } catch (e: Exception) {
-                            log("Liste No $listeNo işlenirken hata oluştu: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Liste No $listeNo işlenirken hata oluştu: ${e.message}")
+            log("Liste No $listeNo işlenirken hata oluştu: ${e.message}: ${e.message}")
 
 
 
@@ -1313,7 +1346,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Yükseltilmiş Fiyat Hatası: ${e.message}. Gelişmiş fiyat listesi uc noktasını kontrol edin.")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Yükseltilmiş Fiyat Hatası: ${e.message}. Gelişmiş fiyat listesi uc noktasını kontrol edin.")
+            log("Yükseltilmiş Fiyat Hatası: ${e.message}. Gelişmiş fiyat listesi uc noktasını kontrol edin.: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -1593,7 +1627,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Köprü Bağlantı Hatası (Cari Hareketleri): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Köprü Bağlantı Hatası (Cari Hareketleri): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
+            log("Köprü Bağlantı Hatası (Cari Hareketleri): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -1753,7 +1788,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Köprü Bağlantı Hatası (Stok Hareketleri): ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Köprü Bağlantı Hatası (Stok Hareketleri): ${e.message}")
+            log("Köprü Bağlantı Hatası (Stok Hareketleri): ${e.message}: ${e.message}")
             updateProgress(1.0f)
         }
     }
@@ -1904,7 +1940,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Köprü Bağlantı Hatası (Fatura Hareketleri): ${e.message}. Api'den veri alınamadı.")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Köprü Bağlantı Hatası (Fatura Hareketleri): ${e.message}. Api'den veri alınamadı.")
+            log("Köprü Bağlantı Hatası (Fatura Hareketleri): ${e.message}. Api'den veri alınamadı.: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -1964,7 +2001,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Köprü Bağlantı Hatası (Sync Status): ${e.message}.")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Köprü Bağlantı Hatası (Sync Status): ${e.message}.")
+            log("Köprü Bağlantı Hatası (Sync Status): ${e.message}.: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -2038,7 +2076,8 @@ object BridgeSyncHelper {
             log("Başarılı! Toplam ${loadedItems.size} adet cari adres kaydedildi.")
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Adres Senkronizasyon Hatası: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Adres Senkronizasyon Hatası: ${e.message}")
+            log("Adres Senkronizasyon Hatası: ${e.message}: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -2135,7 +2174,8 @@ object BridgeSyncHelper {
             log("Başarılı! Toplam ${loadedItems.size} adet cari banka hesabı kaydedildi.")
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Cari Banka Senkronizasyon Hatası: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Cari Banka Senkronizasyon Hatası: ${e.message}")
+            log("Cari Banka Senkronizasyon Hatası: ${e.message}: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -2227,13 +2267,14 @@ object BridgeSyncHelper {
             withContext(Dispatchers.Main) {
                 AppDataStore.bridgeBankalar.clear()
                 AppDataStore.bridgeBankalar.addAll(loadedItems)
-                AppDataStore.applyBridgeFinancialAccounts()
+                AppDataStore.mapBridgeDataToAppModels()
                 AppDataStore.persist(context)
             }
             log("Başarılı! Toplam ${loadedItems.size} adet banka tanımı kaydedildi.")
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Banka Senkronizasyon Hatası: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Banka Senkronizasyon Hatası: ${e.message}")
+            log("Banka Senkronizasyon Hatası: ${e.message}: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -2325,13 +2366,14 @@ object BridgeSyncHelper {
             withContext(Dispatchers.Main) {
                 AppDataStore.bridgeKasalar.clear()
                 AppDataStore.bridgeKasalar.addAll(loadedItems)
-                AppDataStore.applyBridgeFinancialAccounts()
+                AppDataStore.mapBridgeDataToAppModels()
                 AppDataStore.persist(context)
             }
             log("Başarılı! Toplam ${loadedItems.size} adet kasa tanımı kaydedildi.")
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Kasa Senkronizasyon Hatası: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Kasa Senkronizasyon Hatası: ${e.message}")
+            log("Kasa Senkronizasyon Hatası: ${e.message}: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -2388,7 +2430,8 @@ object BridgeSyncHelper {
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
-            log("Kasa Yönetim Senkronizasyon Hatası: ${e.message}")
+            TelemetryReporter.reportException(e, "BridgeSyncHelper_sync", "ERROR", "Kasa Yönetim Senkronizasyon Hatası: ${e.message}")
+            log("Kasa Yönetim Senkronizasyon Hatası: ${e.message}: ${e.message}")
             updateProgress(1.0f)
 
 
@@ -2472,7 +2515,7 @@ object BridgeSyncHelper {
 
             }
             val prefs = appCxt.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
-            val apiUrl = prefs.getString("api_url", null) ?: "https://d5e4-88-248-2-49.ngrok-free.app"
+            val apiUrl = prefs.getString("api_url", null) ?: "https://lisans.appsgo.cloud"
             val apiKey = prefs.getString("api_key", null) ?: "dev-token-change-in-production"
 
             logCallback?.invoke("Hızlı arka plan senkronizasyonu başlatılıyor...")
@@ -2742,7 +2785,7 @@ object BridgeSyncHelper {
                                 wholesalePrice = wholesalePrice,
                                 kdvPercent = u.actualKdv.toInt(),
                                 imageUrlColor = androidx.compose.ui.graphics.Color(0xFF1976D2),
-                                brand = u.actualMarka ?: u.erp ?: "Mikro",
+                                brand = u.marka ?: u.erp ?: "Mikro",
                                 stockByWarehouse = whMap,
                                 aisle = u.actualReyonKod,
                                 customPrices = customPricesMap,
@@ -2810,7 +2853,9 @@ object BridgeSyncHelper {
                         barcodesJson = converter.fromBarcodeList(prod.barcodes),
                         measurement = prod.measurement,
                         packaging = prod.packaging,
-                        cartonQuantity = prod.cartonQuantity
+                        cartonQuantity = prod.cartonQuantity,
+    imageLinksJson = null,
+    localImagePathsJson = null
                     )
 
 

@@ -62,7 +62,7 @@ fun ErpIntegrationScreen(navController: NavController) {
     var selectedErp by remember { mutableStateOf(sharedPrefs.getString("selected_erp", "GOAPP ERP") ?: "GOAPP ERP") }
     
     // API Connection Settings
-    var apiUrl by remember { mutableStateOf(sharedPrefs.getString("api_url", "https://d5e4-88-248-2-49.ngrok-free.app") ?: "https://d5e4-88-248-2-49.ngrok-free.app") }
+    var apiUrl by remember { mutableStateOf(sharedPrefs.getString("api_url", "https://lisans.appsgo.cloud") ?: "https://lisans.appsgo.cloud") }
     var tenantId by remember {
         val enc = sharedPrefs.getString("tenant_id_encrypted", "") ?: ""
         mutableStateOf(if (enc.isNotEmpty()) com.example.util.CryptoUtils.decrypt(enc) else sharedPrefs.getString("tenant_id", "T001") ?: "T001")
@@ -98,6 +98,23 @@ fun ErpIntegrationScreen(navController: NavController) {
     var consoleLogs = remember { mutableStateListOf<String>("Entegrasyon konsolu hazır.") }
     var isOperating by remember { mutableStateOf(false) }
     var activeProgress by remember { mutableStateOf(0f) }
+
+    var showBarcodeScanner by remember { mutableStateOf(false) }
+
+    if (showBarcodeScanner) {
+        BarcodeScannerDialog(
+            onDismissRequest = { showBarcodeScanner = false },
+            onBarcodeScanned = { code ->
+                apiKey = code
+                showBarcodeScanner = false
+            },
+            onSimulateScan = { code ->
+                apiKey = code
+                showBarcodeScanner = false
+            }
+        )
+    }
+
     var showPayloadDialog by remember { mutableStateOf(false) }
     var payloadTitle by remember { mutableStateOf("") }
     var payloadJsonContent by remember { mutableStateOf("") }
@@ -315,15 +332,16 @@ fun ErpIntegrationScreen(navController: NavController) {
             putString("db_username", dbUsername)
             putString("db_password", dbPassword)
             putString("db_port", dbPort)
-            if ((selectedErp == "FIELDOPS BRIDGE" || selectedErp == "GOAPP ERP")) {
-                putString("fieldops_api_url", apiUrl)
-                putString("fieldops_api_key", apiKey)
-                putString("fieldops_tenant_id", tenantId)
-            } else if (selectedErp == "GOAPP ERP") {
-                putString("goapp_api_url", apiUrl)
-                putString("goapp_api_key", apiKey)
-                putString("goapp_tenant_id", tenantId)
-            } else if (selectedErp == "MİKRO") {
+            
+            // Per-ERP saved keys
+            putString("goapp_api_url", apiUrl)
+            putString("goapp_api_key", apiKey)
+            putString("goapp_tenant_id", tenantId)
+            putString("fieldops_api_url", apiUrl)
+            putString("fieldops_api_key", apiKey)
+            putString("fieldops_tenant_id", tenantId)
+
+            if (selectedErp == "MİKRO") {
                 putString("mikro_api_url", apiUrl)
             } else if (selectedErp == "LOGO TİGER/GO3") {
                 putString("logo_api_url", apiUrl)
@@ -337,8 +355,22 @@ fun ErpIntegrationScreen(navController: NavController) {
             } else if (selectedErp == "BİLNEX ERP") {
                 putString("bilnex_api_url", apiUrl)
             }
-            apply()
+            commit()
         }
+
+        // Also save to secure_license_prefs synchronously
+        try {
+            val secPrefs = context.getSharedPreferences("secure_license_prefs", Context.MODE_PRIVATE)
+            secPrefs.edit()
+                .putString("api_key", apiKey)
+                .putString("tenant_id", tenantId)
+                .putString("base_url", apiUrl)
+                .putBoolean("is_license_valid", true)
+                .commit()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         Toast.makeText(context, "ERP Entegrasyon ayarları kaydedildi.", Toast.LENGTH_SHORT).show()
         log("Sistem parametreleri yerel cihaz kayıtlarına kilitlendi.")
     }
@@ -347,42 +379,48 @@ fun ErpIntegrationScreen(navController: NavController) {
     LaunchedEffect(selectedErp) {
         when (selectedErp) {
             "MİKRO" -> {
-                apiUrl = "http://100.102.61.97:5443"
-                apiUrl = sharedPrefs.getString("mikro_api_url", apiUrl) ?: apiUrl
-                dbHost = sharedPrefs.getString("db_host", "100.102.61.97") ?: "100.102.61.97"
-                dbName = sharedPrefs.getString("db_name", "MikroDB_2026") ?: "MikroDB_2026"
+                val savedUrl = sharedPrefs.getString("mikro_api_url", null)
+                if (!savedUrl.isNullOrEmpty()) apiUrl = savedUrl
+                dbHost = sharedPrefs.getString("db_host", dbHost) ?: dbHost
+                dbName = sharedPrefs.getString("db_name", dbName) ?: dbName
             }
             "LOGO TİGER/GO3" -> {
-                apiUrl = "http://localhost:32001/api/v1"
-                apiUrl = sharedPrefs.getString("logo_api_url", apiUrl) ?: apiUrl
-                companyId = sharedPrefs.getString("logo_firm_no", "001") ?: "001"
+                val savedUrl = sharedPrefs.getString("logo_api_url", null)
+                if (!savedUrl.isNullOrEmpty()) apiUrl = savedUrl
+                companyId = sharedPrefs.getString("logo_firm_no", companyId) ?: companyId
             }
             "PARAŞÜT" -> {
-                apiUrl = "https://api.parasut.com/v3"
-                apiUrl = sharedPrefs.getString("parasut_api_url", apiUrl) ?: apiUrl
-                companyId = sharedPrefs.getString("parasut_company_id", "456201") ?: "456201"
+                val savedUrl = sharedPrefs.getString("parasut_api_url", null)
+                if (!savedUrl.isNullOrEmpty()) apiUrl = savedUrl
+                companyId = sharedPrefs.getString("parasut_company_id", companyId) ?: companyId
             }
             "BİZİMHESAP" -> {
-                apiUrl = "https://api.bizimhesap.com/api/v1"
-                apiUrl = sharedPrefs.getString("bizim_api_url", apiUrl) ?: apiUrl
-                apiKey = sharedPrefs.getString("bizim_api_key", "bizim_token_8829911") ?: "bizim_token_8829911"
+                val savedUrl = sharedPrefs.getString("bizim_api_url", null)
+                if (!savedUrl.isNullOrEmpty()) apiUrl = savedUrl
+                val savedKey = sharedPrefs.getString("bizim_api_key", null)
+                if (!savedKey.isNullOrEmpty()) apiKey = savedKey
             }
             "BİLNEX ERP" -> {
-                apiUrl = "http://192.168.1.50/bilnex/api"
-                apiUrl = sharedPrefs.getString("bilnex_api_url", apiUrl) ?: apiUrl
-                dbHost = sharedPrefs.getString("db_host", "192.168.1.50\\SQLEXPRESS") ?: "192.168.1.50\\SQLEXPRESS"
-                dbName = sharedPrefs.getString("db_name", "BILNEX_ERP_2026") ?: "BILNEX_ERP_2026"
+                val savedUrl = sharedPrefs.getString("bilnex_api_url", null)
+                if (!savedUrl.isNullOrEmpty()) apiUrl = savedUrl
+                dbHost = sharedPrefs.getString("db_host", dbHost) ?: dbHost
+                dbName = sharedPrefs.getString("db_name", dbName) ?: dbName
             }
             "GOAPP ERP" -> {
-                apiUrl = "https://lisans.appsgo.cloud"
-                apiKey = sharedPrefs.getString("goapp_api_key", "") ?: ""
-                tenantId = sharedPrefs.getString("goapp_tenant_id", "T001") ?: "T001"
+                val savedUrl = sharedPrefs.getString("goapp_api_url", null) ?: sharedPrefs.getString("api_url", null)
+                if (!savedUrl.isNullOrEmpty()) apiUrl = savedUrl
+                val savedKey = sharedPrefs.getString("goapp_api_key", null) ?: sharedPrefs.getString("api_key", null)
+                if (!savedKey.isNullOrEmpty()) apiKey = savedKey
+                val savedTenant = sharedPrefs.getString("goapp_tenant_id", null) ?: sharedPrefs.getString("tenant_id", null)
+                if (!savedTenant.isNullOrEmpty()) tenantId = savedTenant
             }
             "FIELDOPS BRIDGE" -> {
-                apiUrl = "https://d5e4-88-248-2-49.ngrok-free.app"
-                apiUrl = sharedPrefs.getString("fieldops_api_url", apiUrl) ?: apiUrl
-                apiKey = sharedPrefs.getString("fieldops_api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production"
-                tenantId = sharedPrefs.getString("fieldops_tenant_id", "T001") ?: "T001"
+                val savedUrl = sharedPrefs.getString("fieldops_api_url", null) ?: sharedPrefs.getString("api_url", null)
+                if (!savedUrl.isNullOrEmpty()) apiUrl = savedUrl
+                val savedKey = sharedPrefs.getString("fieldops_api_key", null) ?: sharedPrefs.getString("api_key", null)
+                if (!savedKey.isNullOrEmpty()) apiKey = savedKey
+                val savedTenant = sharedPrefs.getString("fieldops_tenant_id", null) ?: sharedPrefs.getString("tenant_id", null)
+                if (!savedTenant.isNullOrEmpty()) tenantId = savedTenant
             }
         }
     }
@@ -485,34 +523,6 @@ fun ErpIntegrationScreen(navController: NavController) {
                                             log(if (it) "ERP Entegrasyon modu aktif edildi. Merkez ERP veritabanı öncelikli duruma getirildi." else "ERP Bağlantısı pasifleştirildi. Bağımsız yerel moda geçildi.")
                                         }
                                     )
-                                }
-                            }
-
-                            // Labels and source fields are tenant-managed by the
-                            // admin panel. The mobile user can only choose which
-                            // of those fields are visible on the stock detail.
-                            if (AppDataStore.erpStockDetailFields.isNotEmpty()) {
-                                FieldCard {
-                                    Column(
-                                        modifier = Modifier.padding(16.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text("Stok detayında göster", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                        Text("Alan adları ve ERP kaynakları firmanızın yönetici panelinden belirlenir.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        AppDataStore.erpStockDetailFields.forEach { field ->
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Checkbox(
-                                                    checked = field.key in AppDataStore.visibleErpStockDetailKeys,
-                                                    onCheckedChange = { checked ->
-                                                        val next = AppDataStore.visibleErpStockDetailKeys.toMutableSet()
-                                                        if (checked) next.add(field.key) else next.remove(field.key)
-                                                        AppDataStore.setVisibleErpStockDetailKeys(context, next)
-                                                    }
-                                                )
-                                                Text(field.label, style = MaterialTheme.typography.bodyMedium)
-                                            }
-                                        }
-                                    }
                                 }
                             }
 
@@ -685,7 +695,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 OutlinedTextField(
                                     value = tenantId,
                                     onValueChange = { tenantId = it },
-                                    label = { Text("Tenant ID (Müşteri Kodu / Tenant UUID)", style = MaterialTheme.typography.bodySmall) },
+                                    label = { Text("Aktivasyon Kodu (Opsiyonel Eski Sistem)", style = MaterialTheme.typography.bodySmall) },
                                     placeholder = { Text("örn: T001") },
                                     supportingText = { Text("Size özel tanımlanmış multi-tenant organizasyon kimliği (UUID).", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
@@ -695,11 +705,16 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 OutlinedTextField(
                                     value = apiKey,
                                     onValueChange = { apiKey = it },
-                                    label = { Text("Lisans / API Anahtarı (AK-...)", style = MaterialTheme.typography.bodySmall) },
+                                    label = { Text("Aktivasyon Kodu", style = MaterialTheme.typography.bodySmall) },
                                     placeholder = { Text("örn: AK-API_ANAHTARI") },
                                     supportingText = { Text("Güvenli veri senkronizasyonu için lisans API anahtarınız.", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
-                                    textStyle = MaterialTheme.typography.bodySmall
+                                    textStyle = MaterialTheme.typography.bodySmall,
+                                    trailingIcon = {
+                                        IconButton(onClick = { showBarcodeScanner = true }) {
+                                            Icon(androidx.compose.material.icons.Icons.Filled.QrCodeScanner, contentDescription = "QR Tarat")
+                                        }
+                                    }
                                 )
 
                                 val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -736,43 +751,18 @@ fun ErpIntegrationScreen(navController: NavController) {
                                             connectionTestResult = "Bağlantı test ediliyor..."
                                             log("GOAPP ERP lisans ve bağlantı testi başlatıldı: tenant_id=$tenantId, URL=$apiUrl")
                                             try {
-                                                val formattedApiKey = if (apiKey.startsWith("AK-")) apiKey else "AK-$apiKey"
-                                                val combinedKey = "${tenantId}-${formattedApiKey}"
-                                                
-                                                val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, combinedKey)
-                                                val response = apiService.bootstrap(
-                                                    com.example.data.api.BootstrapRequest(
-                                                        tenant_id = tenantId,
-                                                        api_key = formattedApiKey,
-                                                        device_id = deviceId,
-                                                        agent_version = "v2.0-goapp"
-                                                    )
-                                                )
-                                                if (response.isSuccessful && response.body() != null) {
-                                                    val res = response.body()!!
-                                                    if (res.success) {
-                                                        isConnectionSuccess = true
-                                                        connectionTestResult = "Bağlantı Başarılı!\nTenant: ${res.tenant_name ?: tenantId}\nERP Listesi: ${res.allowed_erps?.joinToString() ?: "Tümü"}"
-                                                        startSyncAll()
-                                                        log("✅ GOAPP ERP bağlantı testi başarılı! Tenant: ${res.tenant_name}")
-                                                    } else {
-                                                        isConnectionSuccess = false
-                                                        connectionTestResult = "Bağlantı Hatası: ${res.message ?: "Sunucu doğrulayamadı."}"
-                                                        log("❌ GOAPP ERP bağlantı testi başarısız: ${res.message}")
-                                                    }
-                                                } else {
-                                                    isConnectionSuccess = false
-                                                    val code = response.code()
-                                                    val errBody = response.errorBody()?.string() ?: ""
-                                                    val localized = when {
-                                                        code == 401 -> "API anahtarı geçersiz veya eksik."
-                                                        code == 403 -> if (errBody.contains("MOBILE_READ_SCOPE_REQUIRED")) "Lisans anahtarınızda 'mobile:read' yetkisi bulunmamaktadır." else "API anahtarı geçersiz veya yetkiniz yok (HTTP 403)."
-                                                        code == 404 || errBody.contains("BOOTSTRAP_NOT_FOUND") -> "Bu tenant için henüz ERP'den veri paketi gelmemiş (Bootstrap kaydı bulunamadı)."
-                                                        else -> "HTTP Hatası: $code - ${response.message()}"
-                                                    }
-                                                    connectionTestResult = localized
-                                                    log("❌ GOAPP ERP bağlantı testi başarısız. HTTP: $code")
-                                                }
+                                                val appVersion = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0" } catch (e: Exception) { "1.0.0" }
+val isValid = com.example.data.LicenseRepository.authenticateLicense(context, apiKey, appVersion)
+if (isValid) { 
+    isConnectionSuccess = true
+    connectionTestResult = "Bağlantı Başarılı!"
+    startSyncAll()
+    log("✅ GOAPP ERP bağlantı testi başarılı!")
+} else { 
+    isConnectionSuccess = false
+    connectionTestResult = "Bağlantı Hatası: Aktivasyon kodu geçersiz veya yetkiniz yok."
+    log("❌ GOAPP ERP bağlantı testi başarısız")
+}
                                             } catch (e: java.lang.Exception) {
                                                 isConnectionSuccess = false
                                                 connectionTestResult = "Bağlantı Hatası: ${e.message}"
@@ -823,7 +813,7 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 OutlinedTextField(
                                     value = tenantId,
                                     onValueChange = { tenantId = it },
-                                    label = { Text("Tenant ID (Müşteri Kodu)", style = MaterialTheme.typography.bodySmall) },
+                                    label = { Text("Aktivasyon Kodu (Opsiyonel Eski Sistem)", style = MaterialTheme.typography.bodySmall) },
                                     placeholder = { Text("örn: tenant-123") },
                                     supportingText = { Text("Size özel tanımlanmış multi-tenant organizasyon kimliği.", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
@@ -833,11 +823,16 @@ fun ErpIntegrationScreen(navController: NavController) {
                                 OutlinedTextField(
                                     value = apiKey,
                                     onValueChange = { apiKey = it },
-                                    label = { Text("API Key", style = MaterialTheme.typography.bodySmall) },
+                                    label = { Text("Aktivasyon Kodu", style = MaterialTheme.typography.bodySmall) },
                                     placeholder = { Text("örn: ak-prod-9a2f...") },
                                     supportingText = { Text("FieldOps API sistemine güvenli erişim anahtarınız.", style = MaterialTheme.typography.labelSmall) },
                                     modifier = Modifier.fillMaxWidth(),
-                                    textStyle = MaterialTheme.typography.bodySmall
+                                    textStyle = MaterialTheme.typography.bodySmall,
+                                    trailingIcon = {
+                                        IconButton(onClick = { showBarcodeScanner = true }) {
+                                            Icon(androidx.compose.material.icons.Icons.Filled.QrCodeScanner, contentDescription = "QR Tarat")
+                                        }
+                                    }
                                 )
 
                                 val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -875,6 +870,9 @@ fun ErpIntegrationScreen(navController: NavController) {
                                             log("Multi-tenant bağlantı testi başlatıldı: tenant_id=$tenantId, URL=$apiUrl")
                                             try {
                                                 val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
+                                                val appVersion = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0" } catch (e: Exception) { "1.0.0" }
+                                                val isValid = com.example.data.LicenseRepository.authenticateLicense(context, apiKey, appVersion)
+                                                if (isValid) { isConnectionSuccess = true; connectionTestResult = "Bağlantı Başarılı!"; startSyncAll(); log("Bağlantı başarılı") } else { isConnectionSuccess = false; connectionTestResult = "Bağlantı Hatası: Aktivasyon kodu geçersiz."; log("Bağlantı başarısız") }
                                                 val response = apiService.bootstrap(
                                                     com.example.data.api.BootstrapRequest(
                                                         tenant_id = tenantId,

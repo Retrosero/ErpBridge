@@ -309,9 +309,9 @@ interface StockMovementDao {
         SalesConditionEntity::class,
         CariHareketEntity::class,
         StockMovementEntity::class,
-        com.example.telemetry.TelemetryEventEntity::class
+        TelemetryEventEntity::class
     ],
-    version = 11,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -330,5 +330,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun salesConditionDao(): SalesConditionDao
     abstract fun cariHareketDao(): CariHareketDao
     abstract fun stockMovementDao(): StockMovementDao
-    abstract fun telemetryDao(): com.example.telemetry.TelemetryDao
+    abstract fun telemetryDao(): TelemetryDao
 }

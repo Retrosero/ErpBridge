@@ -1,22 +1,17 @@
 import re
+import os
 
-f = "app/src/main/java/com/example/ui/screens/BridgeSyncHelper.kt"
-c = open(f).read()
+files_to_fix = [
+    'app/src/main/java/com/example/ui/screens/BridgeSyncHelper.kt'
+]
 
-# Lines 985, 993, 1000 etc. are because `priceLists` is nullable if `items` is nullable.
-c = c.replace('val items = responseList.body()!!.items', 'val items = responseList.body()?.actualItems ?: emptyList()')
+for filepath in files_to_fix:
+    with open(filepath, 'r') as f:
+        content = f.read()
 
-open(f, "w").write(c)
-
-f = "app/src/main/java/com/example/ui/screens/ErpIntegrationScreen.kt"
-c = open(f).read()
-
-# Lines 1597, 1600 are about `syncRes.items` being nullable.
-c = c.replace('val cariler = syncRes.items', 'val cariler = syncRes.actualItems')
-c = c.replace('val urunler = syncRes.items', 'val urunler = syncRes.actualItems')
-
-# Fallback if they were already `syncRes.items ?: emptyList()`
-c = c.replace('val cariler = syncRes.items ?: emptyList()', 'val cariler = syncRes.actualItems')
-c = c.replace('val urunler = syncRes.items ?: emptyList()', 'val urunler = syncRes.actualItems')
-
-open(f, "w").write(c)
+    # We need to replace imageLinks with imageLinksJson = null and localImagePaths with localImagePathsJson = null
+    # But wait, earlier I replaced imageLinksJson with imageLinks.
+    content = content.replace("imageLinks = emptyList(),\n    localImagePaths = emptyList()", "imageLinksJson = null,\n    localImagePathsJson = null")
+    
+    with open(filepath, 'w') as f:
+        f.write(content)

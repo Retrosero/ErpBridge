@@ -1125,7 +1125,7 @@ fun SalesScreen(navController: NavController) {
                             }
                         }
                     } else {
-                        itemsIndexed(displayedProducts) { index, prod ->
+                        itemsIndexed(items = displayedProducts, key = { index, prod -> prod.barcode + "_" + index }) { index, prod ->
                             if (index >= displayedProducts.size - 5 && displayedProducts.size < filteredProducts.size) {
                                 LaunchedEffect(Unit) {
                                     salesProductVisibleCount += 100
@@ -1749,7 +1749,7 @@ fun SalesScreen(navController: NavController) {
                                 .fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filteredCustomers) { cust ->
+                            items(items = filteredCustomers, key = { cust -> cust.id }) { cust ->
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -2877,7 +2877,7 @@ fun InvoiceDetailDialog(
                     if (!custId.startsWith("customer_")) {
                         try {
                             val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
-                            val apiUrl = sharedPrefs.getString("api_url", "https://d5e4-88-248-2-49.ngrok-free.app") ?: "https://d5e4-88-248-2-49.ngrok-free.app"
+                            val apiUrl = sharedPrefs.getString("api_url", "https://lisans.appsgo.cloud") ?: "https://lisans.appsgo.cloud"
                             val apiKey = sharedPrefs.getString("api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production"
                             
                             val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)

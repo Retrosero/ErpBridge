@@ -56,7 +56,9 @@ data class ProductEntity(
     val barcodesJson: String? = null,
     val measurement: String? = null,
     val packaging: String? = null,
-    val cartonQuantity: String? = null
+    val cartonQuantity: String? = null,
+    val imageLinksJson: String? = null,
+    val localImagePathsJson: String? = null
 )
 
 @Entity(tableName = "banks")

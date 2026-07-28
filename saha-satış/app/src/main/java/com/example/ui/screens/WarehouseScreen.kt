@@ -357,7 +357,7 @@ fun WarehouseScreen(navController: NavController) {
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 0.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(filteredOrders) { order ->
+                            items(items = filteredOrders, key = { order -> order.id }) { order ->
                                 OrderCard(
                                     order = order,
                                     onClick = { viewModel.selectOrder(order) }
@@ -450,7 +450,7 @@ fun WarehouseScreen(navController: NavController) {
                                         .testTag("wms_picking_list"),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    items(filteredItems) { item ->
+                                    items(items = filteredItems, key = { item -> item.id }) { item ->
                                         PickingItemCard(
                                             item = item,
                                             onConfirmManual = { viewModel.pickItemManually(item) },
@@ -515,7 +515,7 @@ fun WarehouseScreen(navController: NavController) {
                                         .testTag("wms_control_list"),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    items(activeOrderItems) { item ->
+                                    items(items = activeOrderItems, key = { item -> item.id }) { item ->
                                         ControlItemCard(item = item)
                                     }
                                 }

@@ -6,7 +6,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.room.withTransaction
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import android.content.Context
+import com.example.util.TelemetryReporter
 import com.example.data.database.DatabaseProvider
 import com.example.data.database.Converters
 import com.example.data.database.CustomerEntity
@@ -76,14 +80,9 @@ data class ProductCatalog(
     val barcodes: List<String> = emptyList(),
     val measurement: String? = null,
     val packaging: String? = null,
-    val cartonQuantity: String? = null
-)
-
-@androidx.annotation.Keep
-data class ErpStockDetailField(
-    val key: String,
-    val label: String,
-    val visibleByDefault: Boolean = true
+    val cartonQuantity: String? = null,
+    val imageLinks: List<String> = emptyList(),
+    val localImagePaths: List<String> = emptyList()
 )
 
 fun ProductCatalog.getPriceForGroup(groupName: String): Double {
@@ -303,29 +302,7 @@ data class Vehicle(
 )
 
 object AppDataStore {
-    private val defaultErpStockDetailFields = listOf(
-        ErpStockDetailField("aisle", "Reyon Kodu"),
-        ErpStockDetailField("measurement", "Ölçü"),
-        ErpStockDetailField("packaging", "Ambalaj"),
-        ErpStockDetailField("brand", "Marka"),
-        ErpStockDetailField("cartonQuantity", "Koli Adet")
-    )
-    var erpStockDetailFields by mutableStateOf(defaultErpStockDetailFields)
-    var visibleErpStockDetailKeys by mutableStateOf(defaultErpStockDetailFields.map { it.key }.toSet())
-
-    fun setErpStockDetailFields(context: Context, fields: List<ErpStockDetailField>) {
-        val valid = fields.filter { it.key.isNotBlank() && it.label.isNotBlank() }
-        erpStockDetailFields = if (valid.isEmpty()) defaultErpStockDetailFields else valid
-        val prefs = context.applicationContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        val current = prefs.getStringSet("visible_erp_stock_detail_fields", null)
-        visibleErpStockDetailKeys = current ?: erpStockDetailFields.filter { it.visibleByDefault }.map { it.key }.toSet()
-    }
-
-    fun setVisibleErpStockDetailKeys(context: Context, keys: Set<String>) {
-        visibleErpStockDetailKeys = keys
-        context.applicationContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-            .edit().putStringSet("visible_erp_stock_detail_fields", keys).apply()
-    }
+    private val persistMutex = Mutex()
     private val dbScope = CoroutineScope(Dispatchers.IO)
     private var isInitialized = false
 
@@ -423,6 +400,39 @@ object AppDataStore {
         val type = Types.newParameterizedType(List::class.java, KasaYonetimDto::class.java)
         return moshiStore.adapter<List<KasaYonetimDto>>(type).fromJson(json) ?: emptyList()
     }
+
+    fun mapBridgeDataToAppModels() {
+        if (bridgeBankalar.isNotEmpty()) {
+            val mappedBanks = bridgeBankalar.mapNotNull { b ->
+                val id = b.id ?: b.kod ?: b.erpRef
+                val namePart = b.isim ?: b.bankaAd ?: ""
+                val name = if (b.kod != null && namePart.isNotEmpty()) "${b.kod} - $namePart" else (namePart.takeIf { it.isNotEmpty() } ?: b.kod ?: id ?: "Bilinmeyen Banka")
+                val accountNo = b.hesapNumarasi ?: b.iBANKodu ?: ""
+                if (id.isNullOrBlank() || name.isBlank()) null
+                else Bank(id = id, name = name, accountNo = accountNo, iban = b.iBANKodu ?: "", balance = 0.0)
+            }.distinctBy { it.id }
+            if (mappedBanks.isNotEmpty()) {
+                banks.clear()
+                banks.addAll(mappedBanks)
+            }
+        }
+        
+        if (bridgeKasalar.isNotEmpty()) {
+            val mappedCash = bridgeKasalar.mapNotNull { k ->
+                val id = k.id ?: k.kod ?: k.erpRef
+                val namePart = k.isim ?: ""
+                val name = if (k.kod != null && namePart.isNotEmpty()) "${k.kod} - $namePart" else (namePart.takeIf { it.isNotEmpty() } ?: k.kod ?: id ?: "Bilinmeyen Kasa")
+                val currency = if (k.dovizCinsi == null || k.dovizCinsi == 0) "TRY" else k.dovizCinsi.toString()
+                if (id.isNullOrBlank() || name.isBlank()) null
+                else CashAccount(id = id, name = name, currency = currency, balance = 0.0)
+            }.distinctBy { it.id }
+            if (mappedCash.isNotEmpty()) {
+                cashAccounts.clear()
+                cashAccounts.addAll(mappedCash)
+            }
+        }
+    }
+
 
     fun serializeExpenses(): String {
         val arr = JSONArray()
@@ -835,53 +845,6 @@ object AppDataStore {
     val bridgeKasalar = mutableStateListOf<KasalarDto>()
     val kasaYonetimList = mutableStateListOf<KasaYonetimDto>()
 
-    /**
-     * Makes ERP master data visible in the existing Banka and Kasa screens.
-     *
-     * The Bridge sync stores its wire DTOs separately so that the ERP data
-     * viewer can show every source field. The operational UI, however, reads
-     * [banks] and [cashAccounts]. Keep those presentation lists in lockstep
-     * whenever a real ERP snapshot exists; this also runs on application
-     * startup after the bridge DTOs are restored from preferences.
-     */
-    fun applyBridgeFinancialAccounts() {
-        if (bridgeBankalar.isNotEmpty()) {
-            banks.clear()
-            banks.addAll(
-                bridgeBankalar.mapNotNull { item ->
-                    val code = item.kod?.trim().orEmpty().ifBlank { item.erpRef?.trim().orEmpty() }
-                    val name = item.isim?.trim().orEmpty().ifBlank { item.bankaAd?.trim().orEmpty() }
-                    val id = item.id?.trim().orEmpty().ifBlank { code }
-                    if (id.isBlank() || name.isBlank()) null
-                    else Bank(
-                        id = id,
-                        name = if (code.isBlank() || name.startsWith("$code -")) name else "$code - $name",
-                        accountNo = item.hesapNumarasi?.trim().orEmpty().ifBlank { item.iBANKodu?.trim().orEmpty() },
-                        iban = "",
-                        balance = 0.0
-                    )
-                }.distinctBy { it.id }
-            )
-        }
-
-        if (bridgeKasalar.isNotEmpty()) {
-            cashAccounts.clear()
-            cashAccounts.addAll(
-                bridgeKasalar.mapNotNull { item ->
-                    val code = item.kod?.trim().orEmpty().ifBlank { item.erpRef?.trim().orEmpty() }
-                    val name = item.isim?.trim().orEmpty()
-                    if (code.isBlank() || name.isBlank()) null
-                    else CashAccount(
-                        id = code,
-                        name = "$code - $name",
-                        currency = if (item.dovizCinsi == null || item.dovizCinsi == 0) "TRY" else "DOVIZ-${item.dovizCinsi}",
-                        balance = 0.0
-                    )
-                }.distinctBy { it.id }
-            )
-        }
-    }
-
     // 3- Historically sold products to customers (For Sales filtering in returns)
     val defaultSalesHistory = listOf(
         // Acme Corp purchased: Motor Yağı and Hava Filtresi
@@ -1055,7 +1018,12 @@ object AppDataStore {
         db.productDao().deleteAll()
         db.customerDao().deleteAll()
 
-        withContext(Dispatchers.Main) {
+        
+                    val loadedStockMovements = db.stockMovementDao().getAll()
+                    val loadedCariMovements = db.cariHareketDao().getAll()
+                    
+                    withContext(Dispatchers.Main) {
+
             banks.clear()
             kasaLogs.clear()
             salesHistory.clear()
@@ -1134,13 +1102,9 @@ object AppDataStore {
                     bridgeKasalar.clear()
                     bridgeKasalar.addAll(deserializeBridgeKasalar(bridgeKasalarStr))
 
-                    // Bridge DTOs are the persisted ERP source of truth. Map
-                    // them into the lists consumed by the normal Banka/Kasa
-                    // screens before Compose renders those screens.
-                    applyBridgeFinancialAccounts()
-
                     kasaYonetimList.clear()
                     kasaYonetimList.addAll(deserializeKasaYonetimList(kasaYonetimListStr))
+                    mapBridgeDataToAppModels()
                 }
 
                 // Initial alignment pull from cloud if company mode
@@ -1229,7 +1193,9 @@ object AppDataStore {
                                         barcodes = converter.toBarcodeList(prod.barcodesJson),
                                         measurement = prod.measurement,
                                         packaging = prod.packaging,
-                                        cartonQuantity = prod.cartonQuantity
+                                        cartonQuantity = prod.cartonQuantity,
+                                        imageLinks = converter.toBarcodeList(prod.imageLinksJson),
+                                        localImagePaths = converter.toBarcodeList(prod.localImagePathsJson)
                                     )
                                 } catch (e: Exception) {
                                     android.util.Log.e("AppDataStore", "Error mapping flow product entity: ${prod.code}, barcode: ${prod.barcode}", e)
@@ -1252,8 +1218,9 @@ object AppDataStore {
                 if (existingCustomers.isEmpty() && db.productDao().getAllProducts().isEmpty()) {
                     // Start of app without data
                     val erpPrefs = context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
-                    val hasErpCredentials = !erpPrefs.getString("api_key", "").isNullOrBlank() &&
-                        !erpPrefs.getString("tenant_id", "").isNullOrBlank()
+                    val secPrefs = context.getSharedPreferences("secure_license_prefs", Context.MODE_PRIVATE)
+                    val hasErpCredentials = (!erpPrefs.getString("api_key", "").isNullOrBlank() || !secPrefs.getString("api_key", "").isNullOrBlank()) &&
+                        (!erpPrefs.getString("tenant_id", "").isNullOrBlank() || !secPrefs.getString("tenant_id", "").isNullOrBlank())
                     if (loggedInUser?.username == "admin" && !hasErpCredentials) {
                         loadDemoDataSync(context)
                     }
@@ -1262,8 +1229,8 @@ object AppDataStore {
                     val loadedBanks = db.bankDao().getAllBanks().map { Bank(it.id, it.name, it.accountNo, it.iban, it.balance) }
                     val loadedKasa = db.kasaLogDao().getAllKasaLogs().map { KasaLogItem(it.id, it.date, it.type, it.customerOrSupplier, it.amount, it.paymentType, it.bankName, it.desc) }
                     val loadedSales = db.salesRecordDao().getAllSalesRecords().map { SalesRecord(it.customerId, it.productBarcode, it.quantity, it.price, it.date) }
-                    val loadedStockMovements = try { db.stockMovementDao().getAll() } catch (e: Exception) { emptyList() }
-                    val loadedCariMovements = try { db.cariHareketDao().getAll() } catch (e: Exception) { emptyList() }
+                    val loadedStockMovements = db.stockMovementDao().getAll()
+                    val loadedCariMovements = db.cariHareketDao().getAll()
                     val loadedProducts = db.productDao().getAllProducts().mapNotNull { prod ->
                         try {
                             ProductCatalog(
@@ -1288,8 +1255,10 @@ object AppDataStore {
                                 barcodes = converter.toBarcodeList(prod.barcodesJson),
                                 measurement = prod.measurement,
                                 packaging = prod.packaging,
-                                cartonQuantity = prod.cartonQuantity
-                            )
+                                cartonQuantity = prod.cartonQuantity,
+                                        imageLinks = emptyList(),
+                                        localImagePaths = emptyList()
+                                    )
                         } catch (e: Exception) {
                             android.util.Log.e("AppDataStore", "Error mapping load product entity: ${prod.code}, barcode: ${prod.barcode}", e)
                             null
@@ -1429,8 +1398,9 @@ object AppDataStore {
                 }
                 isInitialized = true
             } catch (e: Throwable) {
-                e.printStackTrace()
-            }
+            TelemetryReporter.reportException(e, "AppDataStore_Operation", "ERROR")
+            e.printStackTrace()
+        }
         }
     }
 
@@ -1449,6 +1419,7 @@ object AppDataStore {
     }
 
     suspend fun persistAndWait(context: Context) {
+        persistMutex.withLock {
         val productsCopy: List<ProductCatalog>
         val customersCopy: List<Customer>
         val banksCopy: List<Bank>
@@ -1464,10 +1435,12 @@ object AppDataStore {
         }
         
         persistSync(context, productsCopy, customersCopy, banksCopy, kasaLogsCopy, salesHistoryCopy)
+        }
     }
 
     fun persist(context: Context) {
         dbScope.launch {
+            persistMutex.withLock {
             val productsCopy: List<ProductCatalog>
             val customersCopy: List<Customer>
             val banksCopy: List<Bank>
@@ -1483,6 +1456,7 @@ object AppDataStore {
             }
             
             persistSync(context, productsCopy, customersCopy, banksCopy, kasaLogsCopy, salesHistoryCopy)
+            }
         }
     }
 
@@ -1523,20 +1497,13 @@ object AppDataStore {
 
             // 1. Save Banks
             val bankEntities = banksCopy.map { BankEntity(it.id, it.name, it.accountNo, it.iban, it.balance) }
-            db.bankDao().deleteAll()
-            db.bankDao().insertAll(bankEntities)
-
             // 2. Save Kasa Logs
             val kasaEntities = kasaLogsCopy.map { KasaLogEntity(it.id, it.date, it.type, it.customerOrSupplier, it.amount, it.paymentType, it.bankName, it.desc) }
-            db.kasaLogDao().deleteAll()
-            db.kasaLogDao().insertAll(kasaEntities)
 
             // 3. Save Sales History (using index offset for id to prevent batch insert key collisions)
             val salesEntities = salesHistoryCopy.mapIndexed { idx, it ->
                 SalesRecordEntity(id = idx + 1, customerId = it.customerId, productBarcode = it.productBarcode, quantity = it.quantity, price = it.price, date = it.date)
             }
-            db.salesRecordDao().deleteAll()
-            db.salesRecordDao().insertAll(salesEntities)
 
             // 4. Save products.  ERP synchronization first updates the in-memory list and
             // then calls persist(); without this write, the product list disappeared after
@@ -1571,11 +1538,11 @@ object AppDataStore {
                     barcodesJson = converter.fromBarcodeList(product.barcodes),
                     measurement = product.measurement,
                     packaging = product.packaging,
-                    cartonQuantity = product.cartonQuantity
+                    cartonQuantity = product.cartonQuantity,
+                    imageLinksJson = null,
+                    localImagePathsJson = null
                 )
             }
-            db.productDao().deleteAll()
-            db.productDao().insertAll(productEntities)
 
             // 5. Save Customers
             val customerEntities = customersCopy.map { cust ->
@@ -1596,8 +1563,23 @@ object AppDataStore {
                     transactionsJson = converter.fromCustomerTxList(cust.transactions)
                 )
             }
-            db.customerDao().deleteAll()
-            db.customerDao().insertAll(customerEntities)
+
+            db.withTransaction {
+                db.bankDao().deleteAll()
+                db.bankDao().insertAll(bankEntities)
+                
+                db.kasaLogDao().deleteAll()
+                db.kasaLogDao().insertAll(kasaEntities)
+                
+                db.salesRecordDao().deleteAll()
+                db.salesRecordDao().insertAll(salesEntities)
+                
+                db.productDao().deleteAll()
+                db.productDao().insertAll(productEntities)
+                
+                db.customerDao().deleteAll()
+                db.customerDao().insertAll(customerEntities)
+            }
 
             // Trigger cloud background sync according to subscription tier
             try {
@@ -1610,6 +1592,7 @@ object AppDataStore {
             }
 
         } catch (e: Throwable) {
+            TelemetryReporter.reportException(e, "AppDataStore_Operation", "ERROR")
             e.printStackTrace()
         }
     }

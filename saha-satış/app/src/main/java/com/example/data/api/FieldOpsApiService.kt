@@ -4,19 +4,6 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface FieldOpsApiService {
-    @POST("api/v1/mobile/telemetry/batch")
-    suspend fun uploadTelemetry(
-        @Body request: com.example.telemetry.TelemetryBatchRequest
-    ): Response<com.example.telemetry.TelemetryBatchResponse>
-
-    @POST("api/v1/mobile/activate")
-    suspend fun activateDevice(@Body request: MobileActivateRequest): Response<MobileSessionResponse>
-
-    @POST("api/v1/mobile/migrate")
-    suspend fun migrateDevice(@Body request: MobileActivateRequest): Response<MobileSessionResponse>
-
-    @POST("api/v1/mobile/renew")
-    suspend fun renewDeviceSession(): Response<MobileSessionResponse>
     @POST("api/v1/android/sync/stokHareket")
     suspend fun getStokHareket(@Body request: PullJobsRequest): Response<StokHareketResponse>
 
@@ -125,17 +112,35 @@ interface FieldOpsApiService {
     @POST("api/v1/android/sync/barkodlar")
     suspend fun getBarkodlar(@Body request: PullJobsRequest): Response<FieldOpsSyncResponse<BarcodeDto>>
 
+    @POST("api/v1/mobile/activate")
+    suspend fun activateDevice(@Body request: ActivationRequest): Response<ActivationResponse>
+
+    @POST("api/v1/mobile/migrate")
+    suspend fun migrateDevice(@Body request: ActivationRequest): Response<ActivationResponse>
+
+    @POST("api/v1/mobile/renew")
+    suspend fun renewDeviceToken(): Response<ActivationResponse>
+
     @POST("api/v1/android/sync/satisSartlari")
     suspend fun getSalesConditions(@Body request: PullJobsRequest): Response<FieldOpsSyncResponse<SalesConditionDto>>
 }
 
-@androidx.annotation.Keep
-data class MobileActivateRequest(val code: String, val installationId: String, val deviceName: String, val appVersion: String?)
-
-@androidx.annotation.Keep
-data class MobileSessionResponse(val token: String? = null, val tenantId: String? = null, val deviceId: String? = null, val expiresAtUtc: String? = null)
-
 // DTOs
+@androidx.annotation.Keep
+data class ActivationRequest(
+    val code: String,
+    val installationId: String,
+    val deviceName: String,
+    val appVersion: String
+)
+
+@androidx.annotation.Keep
+data class ActivationResponse(
+    val token: String,
+    val tenantId: String,
+    val deviceId: String,
+    val expiresAtUtc: String
+)
 @androidx.annotation.Keep
 data class FieldOpsSyncResponse<T>(
     val success: Boolean? = null,
@@ -147,19 +152,10 @@ data class FieldOpsSyncResponse<T>(
     val since: String? = null,
     val watermark: String? = null,
     @com.squareup.moshi.Json(name = "items") val items: List<T>? = null,
-    @com.squareup.moshi.Json(name = "data") val data: List<T>? = null,
-    @com.squareup.moshi.Json(name = "stockDetailFields") val stockDetailFields: List<StockDetailFieldDto>? = null
+    @com.squareup.moshi.Json(name = "data") val data: List<T>? = null
 ) {
     val actualItems: List<T> get() = items ?: data ?: emptyList()
 }
-
-@androidx.annotation.Keep
-data class StockDetailFieldDto(
-    val key: String? = null,
-    val label: String? = null,
-    val sourceField: String? = null,
-    val visibleByDefault: Boolean? = null
-)
 
 @androidx.annotation.Keep
 data class CariHareketDto(
@@ -965,7 +961,8 @@ data class KasalarDto(
     val muhasebeKod: String? = null,
     val dovizCinsi: Int? = null,
     val bankaKodu: String? = null,
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
+    val id: String? = null
 )
 
 @androidx.annotation.Keep
@@ -1061,16 +1058,11 @@ data class FiyatDto(
     @com.squareup.moshi.Json(name = "stockCode") val stockCode: String? = null,
     @com.squareup.moshi.Json(name = "listNumber") val listNumber: Int? = null,
     @com.squareup.moshi.Json(name = "price") val price: Double? = null,
-    @com.squareup.moshi.Json(name = "currency") val currency: String? = null,
-    @com.squareup.moshi.Json(name = "listName") val listName: String? = null,
-    @com.squareup.moshi.Json(name = "aciklama") val aciklama: String? = null,
-    @com.squareup.moshi.Json(name = "sfiyat_aciklama") val sfiyat_aciklama: String? = null
+    @com.squareup.moshi.Json(name = "currency") val currency: String? = null
 ) {
     val actualStokKod: String get() = (stockCode ?: urunKod ?: "").trim()
     val actualListeNo: Int get() = listNumber ?: fiyatListesiKod?.toIntOrNull() ?: 0
     val actualFiyat: Double get() = price ?: fiyat ?: 0.0
-    val actualListName: String get() = listOf(listName, aciklama, sfiyat_aciklama)
-        .firstOrNull { !it.isNullOrBlank() }?.trim().orEmpty()
 }
 
 @androidx.annotation.Keep

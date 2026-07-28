@@ -625,7 +625,7 @@ fun CariDetailsDrawer(
             if (!customer.id.startsWith("customer_")) {
                 try {
                     val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
-                    val apiUrl = sharedPrefs.getString("api_url", "https://d5e4-88-248-2-49.ngrok-free.app") ?: "https://d5e4-88-248-2-49.ngrok-free.app"
+                    val apiUrl = sharedPrefs.getString("api_url", "https://lisans.appsgo.cloud") ?: "https://lisans.appsgo.cloud"
                     val apiKey = sharedPrefs.getString("api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production"
                     
                     val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
@@ -1361,10 +1361,12 @@ fun CariDetailsDrawer(
                         }
 
                         var productSearchQuery by remember { mutableStateOf("") }
-                        val filteredPurchasedList = purchasedList.filter { (record, product) ->
-                            val title = product?.title ?: record.productBarcode
-                            val code = product?.code ?: ""
-                            title.contains(productSearchQuery, ignoreCase = true) || code.contains(productSearchQuery, ignoreCase = true)
+                        val filteredPurchasedList = remember(purchasedList, productSearchQuery) {
+                            purchasedList.filter { (record, product) ->
+                                val title = product?.title ?: record.productBarcode
+                                val code = product?.code ?: ""
+                                title.contains(productSearchQuery, ignoreCase = true) || code.contains(productSearchQuery, ignoreCase = true)
+                            }
                         }
 
                         Column(
@@ -1405,7 +1407,7 @@ fun CariDetailsDrawer(
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.weight(1f).fillMaxWidth()
                                 ) {
-                                    items(filteredPurchasedList) { (record, product) ->
+                                    items(items = filteredPurchasedList, key = { (record, _) -> record.date + "_" + record.productBarcode }) { (record, product) ->
                                         Card(
                                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                                             modifier = Modifier.fillMaxWidth(),

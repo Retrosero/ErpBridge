@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +24,23 @@ fun LicenseScreen(navController: NavController) {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    var showBarcodeScanner by remember { mutableStateOf(false) }
+
+    if (showBarcodeScanner) {
+        BarcodeScannerDialog(
+            onDismissRequest = { showBarcodeScanner = false },
+            onBarcodeScanned = { code ->
+                licenseKey = code
+                showBarcodeScanner = false
+                errorMessage = null
+            },
+            onSimulateScan = { code ->
+                licenseKey = code
+                showBarcodeScanner = false
+                errorMessage = null
+            }
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -50,7 +68,7 @@ fun LicenseScreen(navController: NavController) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Uygulamayı kullanmak için lisans anahtarınızı giriniz. Cihazınız benzersiz bir kimlik ile (Device ID) lisansa kaydedilecektir.",
+                "Uygulamayı kullanmak için aktivasyon kodunuzu giriniz veya taratınız.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -64,11 +82,16 @@ fun LicenseScreen(navController: NavController) {
                     errorMessage = null 
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Lisans Anahtarı (örn: DEMO-123)") },
+                label = { Text("Aktivasyon Kodu") },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 enabled = !isLoading,
-                isError = errorMessage != null
+                isError = errorMessage != null,
+                trailingIcon = {
+                    IconButton(onClick = { showBarcodeScanner = true }) {
+                        Icon(Icons.Filled.QrCodeScanner, contentDescription = "QR Tarat")
+                    }
+                }
             )
             
             if (errorMessage != null) {
@@ -86,7 +109,7 @@ fun LicenseScreen(navController: NavController) {
                 onClick = {
                     coroutineScope.launch {
                         isLoading = true
-                        val formattedKey = licenseKey.uppercase()
+                        val formattedKey = licenseKey.trim()
                         
                         val appVersion = try {
                             val pInfo = navController.context.packageManager.getPackageInfo(navController.context.packageName, 0)
@@ -109,7 +132,7 @@ fun LicenseScreen(navController: NavController) {
                         } else {
                             val sharedPrefs = navController.context.getSharedPreferences("secure_license_prefs", android.content.Context.MODE_PRIVATE)
                             errorMessage = sharedPrefs.getString("last_license_error", null)
-                                ?: "Geçersiz veya süresi dolmuş lisans anahtarı. Veya cihaz limitine ulaşıldı."
+                                ?: "Aktivasyon başarısız oldu."
                         }
                         isLoading = false
                     }
@@ -126,9 +149,7 @@ fun LicenseScreen(navController: NavController) {
                     Text("Etkinleştir ve Cihazı Eşleştir")
                 }
             }
-
             Spacer(modifier = Modifier.height(12.dp))
-
             FieldSecondaryButton(
                 onClick = {
                     coroutineScope.launch {

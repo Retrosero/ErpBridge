@@ -6,7 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 object DatabaseProvider {
-    private val MIGRATION_9_10 = object : Migration(9, 10) {
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE products ADD COLUMN measurement TEXT")
             db.execSQL("ALTER TABLE products ADD COLUMN packaging TEXT")
@@ -14,33 +14,17 @@ object DatabaseProvider {
         }
     }
 
-    private val MIGRATION_10_11 = object : Migration(10, 11) {
+        
+    private val MIGRATION_9_10 = object : Migration(9, 10) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS telemetry_events (
-                    eventId TEXT NOT NULL PRIMARY KEY,
-                    occurredAtUtc TEXT NOT NULL,
-                    kind TEXT NOT NULL,
-                    severity TEXT NOT NULL,
-                    appVersion TEXT NOT NULL,
-                    androidVersion TEXT NOT NULL,
-                    deviceModel TEXT NOT NULL,
-                    screen TEXT,
-                    operation TEXT,
-                    exceptionType TEXT,
-                    message TEXT,
-                    stackTrace TEXT,
-                    httpMethod TEXT,
-                    httpRoute TEXT,
-                    httpStatus INTEGER,
-                    correlationId TEXT,
-                    breadcrumbsJson TEXT NOT NULL,
-                    createdAtEpochMs INTEGER NOT NULL
-                )
-                """.trimIndent()
-            )
-            db.execSQL("CREATE INDEX IF NOT EXISTS index_telemetry_events_createdAtEpochMs ON telemetry_events(createdAtEpochMs)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `telemetry_events` (`eventId` TEXT NOT NULL, `occurredAtUtc` TEXT NOT NULL, `kind` TEXT NOT NULL, `severity` TEXT NOT NULL, `appVersion` TEXT NOT NULL, `androidVersion` TEXT NOT NULL, `deviceModel` TEXT NOT NULL, `screen` TEXT NOT NULL, `operation` TEXT NOT NULL, `exceptionType` TEXT NOT NULL, `message` TEXT NOT NULL, `stackTrace` TEXT NOT NULL, `httpMethod` TEXT NOT NULL, `httpRoute` TEXT NOT NULL, `httpStatus` INTEGER, `correlationId` TEXT NOT NULL, `breadcrumbsJson` TEXT NOT NULL, PRIMARY KEY(`eventId`))")
+        }
+    }
+
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE products ADD COLUMN imageLinksJson TEXT")
+            db.execSQL("ALTER TABLE products ADD COLUMN localImagePathsJson TEXT")
         }
     }
 
@@ -54,7 +38,8 @@ object DatabaseProvider {
                 AppDatabase::class.java,
                 "field_force_db"
             )
-            .addMigrations(MIGRATION_9_10, MIGRATION_10_11)
+            .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+            // .fallbackToDestructiveMigration() removed to prevent data loss on schema updates
             .build()
             INSTANCE = instance
             instance

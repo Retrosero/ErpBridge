@@ -76,7 +76,15 @@ fun NavApp() {
         true
     }
     
+    
     val navController = rememberNavController()
+    androidx.compose.runtime.LaunchedEffect(navController) {
+        navController.addOnDestinationChangedListener { _, destination, _ ->
+            com.example.util.TelemetryReporter.setCurrentScreen(destination.route ?: "unknown")
+            com.example.util.TelemetryReporter.addBreadcrumb("Navigation", "Navigated to ${destination.route}")
+        }
+    }
+
     val isOnline by BridgeSyncHelper.isOnlineState
     var showConnectionDialog by remember { mutableStateOf(false) }
     var isManualSyncInProgress by remember { mutableStateOf(false) }
@@ -1850,9 +1858,6 @@ fun NavApp() {
     ) { innerPadding ->
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route
-        androidx.compose.runtime.LaunchedEffect(currentRoute) {
-            com.example.telemetry.TelemetryReporter.setCurrentScreen(currentRoute)
-        }
         val moduleArg = navBackStackEntry?.arguments?.getString("module")
         val isCustomModuleBar = currentRoute?.startsWith("operations") == true && (moduleArg == "collection" || moduleArg == "disbursement" || moduleArg == "counting")
 
