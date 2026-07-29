@@ -63,8 +63,8 @@ public static class AndroidEndpoints
     }
 
     private static void MapSection(RouteGroupBuilder group, string route, string propertyName) =>
-        group.MapPost(route, (HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
-                SectionAsync(propertyName, http, db, ct))
+        group.MapPost(route, (AndroidPageRequest? request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
+                SectionAsync(propertyName, request ?? new AndroidPageRequest(), http, db, ct))
             .WithName("Android" + propertyName)
             .RequireAuthorization(Program.MobilePolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
@@ -91,19 +91,38 @@ public static class AndroidEndpoints
         return Results.Ok(new { sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, receivedAtUtc = package.ReceivedAtUtc, data = document.RootElement.Clone() });
     }
 
-    private static async Task<IResult> SectionAsync(string propertyName, HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    private static async Task<IResult> SectionAsync(
+        string propertyName,
+        AndroidPageRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
     {
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var package = access.Package!;
         using var document = JsonDocument.Parse(package.PayloadJson);
-        var items = document.RootElement.TryGetProperty(propertyName, out var value)
-            ? value.Clone()
-            : JsonDocument.Parse("[]").RootElement.Clone();
-        return Results.Ok(new { sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, items });
+        var allItems = GetArray(document.RootElement, propertyName).Select(item => item.Clone()).ToArray();
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        return Results.Ok(new
+        {
+            entity = propertyName,
+            sourceDatabase = package.SourceDatabase,
+            pulledAtUtc = package.PulledAtUtc,
+            page,
+            pageSize,
+            total = allItems.Length,
+            items,
+        });
     }
 
-    private static async Task<IResult> ProductCatalogAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    private static async Task<IResult> ProductCatalogAsync(
+        AndroidPageRequest? request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
     {
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
@@ -167,7 +186,7 @@ public static class AndroidEndpoints
                             MidpointRounding.AwayFromZero)),
                 StringComparer.OrdinalIgnoreCase);
 
-        var items = GetArray(root, "stocks").Select(stock =>
+        var allItems = GetArray(root, "stocks").Select(stock =>
         {
             var mapped = stock.EnumerateObject()
                 .ToDictionary(property => property.Name, property => (object?)property.Value.Clone(), StringComparer.OrdinalIgnoreCase);
@@ -222,11 +241,18 @@ public static class AndroidEndpoints
             return mapped;
         }).ToArray();
 
+        var page = Math.Max(1, request?.Page ?? 1);
+        var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+
         return Results.Ok(new
         {
             sourceDatabase = package.SourceDatabase,
             pulledAtUtc = package.PulledAtUtc,
             stockDetailFields = detailFields,
+            page,
+            pageSize,
+            total = allItems.Length,
             items,
         });
     }
