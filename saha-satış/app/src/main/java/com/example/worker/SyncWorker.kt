@@ -12,17 +12,12 @@ class SyncWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            val pullSuccess = SyncRepository.syncAllFromPull(applicationContext)
             val pSuccess = SyncRepository.syncProducts(applicationContext)
             val cSuccess = SyncRepository.syncCustomers(applicationContext)
-            val addrSuccess = SyncRepository.syncCustomerAddresses(applicationContext)
-            val contactsSuccess = SyncRepository.syncCustomerContacts(applicationContext)
-            val barcodesSuccess = SyncRepository.syncBarcodes(applicationContext)
-            val conditionsSuccess = SyncRepository.syncSalesConditions(applicationContext)
-            val cariHareketSuccess = SyncRepository.syncCariHareketleri(applicationContext)
-            val stokHareketSuccess = SyncRepository.syncStokHareketleri(applicationContext)
-            
-            if ((pullSuccess || (pSuccess && cSuccess)) && addrSuccess && contactsSuccess && barcodesSuccess && conditionsSuccess) {
+
+            // /pull may return an unbounded mixed snapshot.  The catalog methods above
+            // use the bounded, page-aware endpoints and are the worker's only contract.
+            if (pSuccess && cSuccess) {
                 Result.success()
             } else {
                 Result.retry()

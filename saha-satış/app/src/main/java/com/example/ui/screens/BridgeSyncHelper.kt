@@ -75,6 +75,7 @@ object BridgeSyncHelper {
             val pageSize = 100
             var totalFetched = 0
             var hasMore = true
+            var wroteAnyPage = false
 
             val allMappedCustomers = mutableListOf<Customer>()
 
@@ -390,7 +391,14 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (true) { // Central Android section endpoint returns the complete snapshot in one response.
+                        AppDataStore.upsertCustomerSyncPage(context, allMappedCustomers)
+                        allMappedCustomers.clear()
+                        wroteAnyPage = true
+                        // A deployed server predating pagination returns the complete
+                        // catalog without page/total metadata. Stop after that page so
+                        // the client does not repeatedly import the same snapshot.
+                        if (syncRes.page == null || syncRes.total == null ||
+                            cariler.size < pageSize || totalFetched >= syncRes.total) {
                             hasMore = false
 
 
@@ -420,9 +428,8 @@ object BridgeSyncHelper {
 
                 }
             }
-            if (allMappedCustomers.isNotEmpty()) {
+            if (wroteAnyPage) {
                 withContext(Dispatchers.Main) {
-                    AppDataStore.customers.clear()
                     for (mapped in allMappedCustomers) {
                         // CRITICAL: Match only on id, because duplicate placeholder phones like "-" will collapse other prospects!
                         val existingIndex = AppDataStore.customers.indexOfFirst { it.id == mapped.id }
@@ -448,7 +455,6 @@ object BridgeSyncHelper {
                         }
                     }
                 }
-                AppDataStore.persist(context)
                 log("Başarılı! Toplam $totalFetched adet cari kayıt FieldOps Bridge üzerinden başarıyla çekildi")
             } else {
                 log("Uç noktadan müşteri verisi çekilemedi. Listede aktarılacak cari bulunamadı.")
@@ -490,6 +496,7 @@ object BridgeSyncHelper {
             var hasMore = true
 
             val allMappedProducts = mutableListOf<ProductCatalog>()
+            var wroteAnyPage = false
 
             val stockLevelMap = mutableMapOf<String, Int>()
             val stockWarehouseMap = mutableMapOf<String, MutableMap<String, Int>>()
@@ -840,7 +847,13 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (true) { // Central Android section endpoint returns the complete snapshot in one response.
+                        AppDataStore.upsertProductSyncPage(context, allMappedProducts)
+                        allMappedProducts.clear()
+                        wroteAnyPage = true
+                        // Keep compatibility with servers that have not yet rolled out
+                        // the paged catalog contract; their response is a single snapshot.
+                        if (syncRes.page == null || syncRes.total == null ||
+                            urunler.size < pageSize || totalFetched >= syncRes.total) {
                             hasMore = false
 
 
@@ -865,9 +878,8 @@ object BridgeSyncHelper {
 
                 }
             }
-            if (allMappedProducts.isNotEmpty()) {
+            if (wroteAnyPage) {
                 withContext(Dispatchers.Main) {
-                    AppDataStore.products.clear()
                     val seenBarcodes = mutableSetOf<String>()
                     for (u in allMappedProducts) {
                         val finalBarcode = if (u.barcode.isBlank() || u.barcode.lowercase() == "null" || u.barcode.lowercase() == "none" || seenBarcodes.contains(u.barcode)) {
@@ -887,7 +899,6 @@ object BridgeSyncHelper {
                         }
                     }
                 }
-                AppDataStore.persist(context)
                 log("Saha Gücü yerel stok kartları Room veritabanı başarıyla güncellendi. Toplam $totalFetched adet ürün/stok kaydı çekildi.")
             } else {
                 log("Uç noktadan ürün verisi çekilemedi. Listede aktarılacak ürün bulunamadı.")
@@ -2516,7 +2527,11 @@ object BridgeSyncHelper {
             }
             val prefs = appCxt.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
             val apiUrl = prefs.getString("api_url", null) ?: "https://lisans.appsgo.cloud"
-            val apiKey = prefs.getString("api_key", null) ?: "dev-token-change-in-production"
+            val apiKey = prefs.getString("api_key", null).orEmpty()
+            if (apiKey.isBlank()) {
+                logCallback?.invoke("Arka plan senkronizasyonu iÃ§in geÃ§erli bir cihaz belirteci gerekli.")
+                return@withContext
+            }
 
             logCallback?.invoke("Hızlı arka plan senkronizasyonu başlatılıyor...")
 
@@ -2571,6 +2586,7 @@ object BridgeSyncHelper {
             var currentPage = 1
             val pageSize = 100
             var hasMore = true
+            var totalFetched = 0
             val allMappedCustomers = mutableListOf<Customer>()
 
             while (hasMore) {
@@ -2607,6 +2623,7 @@ object BridgeSyncHelper {
 
 
                     } else {
+                        totalFetched += cariler.size
                         for (cari in cariler) {
                             val bal = cari.bakiye ?: cari.balance ?: cari.netBakiye ?: 0.0
                             val txList = mutableListOf<CustomerTx>()
@@ -2654,7 +2671,10 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (cariler.isEmpty() || ((syncRes.total ?: 0) > 0 && allMappedCustomers.size >= (syncRes.total ?: 0))) {
+                        AppDataStore.upsertCustomerSyncPage(context, allMappedCustomers)
+                        allMappedCustomers.clear()
+                        if (syncRes.page == null || syncRes.total == null ||
+                            cariler.size < pageSize || totalFetched >= syncRes.total) {
                             hasMore = false
 
 
@@ -2674,7 +2694,7 @@ object BridgeSyncHelper {
 
                 }
             }
-            if (allMappedCustomers.isNotEmpty()) {
+            if (totalFetched > 0) {
                 withContext(Dispatchers.Main) {
                     for (mapped in allMappedCustomers) {
                         val existingIndex = AppDataStore.customers.indexOfFirst { it.id == mapped.id }
@@ -2700,7 +2720,6 @@ object BridgeSyncHelper {
                         }
                     }
                 }
-                AppDataStore.persist(context)
 
 
 
@@ -2724,6 +2743,7 @@ object BridgeSyncHelper {
             var currentPage = 1
             val pageSize = 100
             var hasMore = true
+            var totalFetched = 0
             val allMappedProducts = mutableListOf<ProductCatalog>()
 
             while (hasMore) {
@@ -2760,6 +2780,7 @@ object BridgeSyncHelper {
 
 
                     } else {
+                        totalFetched += urunler.size
                         for (u in urunler) {
                             val codeKey = u.actualUrunKod
                             val stockQty = u.explicitStok ?: 0
@@ -2800,7 +2821,10 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (urunler.isEmpty() || ((syncRes.total ?: 0) > 0 && allMappedProducts.size >= (syncRes.total ?: 0))) {
+                        AppDataStore.upsertProductSyncPage(context, allMappedProducts)
+                        allMappedProducts.clear()
+                        if (syncRes.page == null || syncRes.total == null ||
+                            urunler.size < pageSize || totalFetched >= syncRes.total) {
                             hasMore = false
 
 
@@ -2820,7 +2844,7 @@ object BridgeSyncHelper {
 
                 }
             }
-            if (allMappedProducts.isNotEmpty()) {
+            if (totalFetched > 0) {
                 val db = com.example.data.database.DatabaseProvider.getDatabase(context)
                 val converter = com.example.data.database.Converters()
                 val seenBarcodes = mutableSetOf<String>()

@@ -69,7 +69,7 @@ fun ErpIntegrationScreen(navController: NavController) {
     }
     var apiKey by remember {
         val enc = sharedPrefs.getString("api_key_encrypted", "") ?: ""
-        mutableStateOf(if (enc.isNotEmpty()) com.example.util.CryptoUtils.decrypt(enc) else sharedPrefs.getString("api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production")
+        mutableStateOf(if (enc.isNotEmpty()) com.example.util.CryptoUtils.decrypt(enc) else sharedPrefs.getString("api_key", null).orEmpty())
     }
     var deviceId by remember {
         var devId = sharedPrefs.getString("device_id", "") ?: ""

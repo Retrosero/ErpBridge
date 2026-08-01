@@ -2878,7 +2878,7 @@ fun InvoiceDetailDialog(
                         try {
                             val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
                             val apiUrl = sharedPrefs.getString("api_url", "https://lisans.appsgo.cloud") ?: "https://lisans.appsgo.cloud"
-                            val apiKey = sharedPrefs.getString("api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production"
+                            val apiKey = sharedPrefs.getString("api_key", null).orEmpty()
                             
                             val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
                             val response = apiService.getFaturaHareket(com.example.data.api.PullJobsRequest(tenant_id=sharedPrefs.getString("tenant_id", "T001") ?: "T001", api_key=apiKey, device_id=sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT", agent_version="v2.0", entity="faturaHareket", since=custId))

@@ -98,9 +98,10 @@ class TelemetryUploadWorker(
                         .addInterceptor(RetryAndLicenseInterceptor(applicationContext))
                         .build()
 
-                    val targetUrl = (baseUrl ?: "https://lisans.appsgo.cloud/").let { 
-                        val b = if(it.endsWith("/")) it else "$it/"
-                        b + "api/v1/mobile/telemetry/batch"
+                    val targetUrl = (baseUrl ?: "https://lisans.appsgo.cloud/").let {
+                        val normalized = it.trimEnd('/')
+                        val origin = normalized.removeSuffix("/api")
+                        "$origin/api/v1/mobile/telemetry/batch"
                     }
                     Log.d("TelemetryWorker", "Sending telemetry batch of size ${batch.size} to $targetUrl...")
 

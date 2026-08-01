@@ -12,6 +12,8 @@ import kotlinx.coroutines.withContext
 
 object SyncRepository {
 
+    private const val CATALOG_PAGE_SIZE = 200
+
     suspend fun syncProducts(context: Context): Boolean = withContext(Dispatchers.IO) {
         val apiKey = LicenseRepository.getApiKey(context)
         val tenantId = LicenseRepository.getTenantId(context)
@@ -24,14 +26,22 @@ object SyncRepository {
             tenant_id = tenantId,
             api_key = "", // Avoid sending API key in request body
             device_id = deviceId,
-            agent_version = "1.0.0"
+            agent_version = "1.0.0",
+            pageSize = CATALOG_PAGE_SIZE
         )
         
         try {
-            val response = apiService.getUrunler(request)
-            if (response.isSuccessful) {
-                val db = DatabaseProvider.getDatabase(context)
-                val items = response.body()?.actualItems ?: emptyList()
+            val db = DatabaseProvider.getDatabase(context)
+            var page = 1
+            var fetched = 0
+            while (true) {
+                val response = apiService.getUrunler(request.copy(page = page))
+                if (!response.isSuccessful) {
+                    Log.e("SyncRepository", "Product sync error HTTP ${response.code()}")
+                    return@withContext false
+                }
+                val body = response.body() ?: return@withContext false
+                val items = body.actualItems
                 val entities = items.map {
                     ProductEntity(
                         barcode = it.barkod?.takeIf(String::isNotBlank)
@@ -55,12 +65,16 @@ object SyncRepository {
                         imageUrl = ""
                     )
                 }.filterNotNull()
-                db.productDao().insertAll(entities)
-                true
-            } else {
-                Log.e("SyncRepository", "Sync error HTTP ${response.code()}")
-                false
+                if (entities.isNotEmpty()) db.productDao().insertAll(entities)
+                fetched += items.size
+                // Older production servers can still return an unpaged snapshot without
+                // page metadata. Treat that single response as terminal instead of
+                // requesting the same full catalog forever.
+                if (body.page == null || body.total == null ||
+                    items.size < CATALOG_PAGE_SIZE || fetched >= body.total) break
+                page++
             }
+            true
         } catch (e: Exception) {
             Log.e("SyncRepository", "Exception", e)
             false
@@ -79,14 +93,22 @@ object SyncRepository {
             tenant_id = tenantId,
             api_key = "", // Avoid sending API key in request body
             device_id = deviceId,
-            agent_version = "1.0.0"
+            agent_version = "1.0.0",
+            pageSize = CATALOG_PAGE_SIZE
         )
         
         try {
-            val response = apiService.getCariler(request)
-            if (response.isSuccessful) {
-                val db = DatabaseProvider.getDatabase(context)
-                val items = response.body()?.actualItems ?: emptyList()
+            val db = DatabaseProvider.getDatabase(context)
+            var page = 1
+            var fetched = 0
+            while (true) {
+                val response = apiService.getCariler(request.copy(page = page))
+                if (!response.isSuccessful) {
+                    Log.e("SyncRepository", "Customer sync error HTTP ${response.code()}")
+                    return@withContext false
+                }
+                val body = response.body() ?: return@withContext false
+                val items = body.actualItems
                 val entities = items.map {
                     CustomerEntity(
                         id = it.actualCariKod,
@@ -105,11 +127,15 @@ object SyncRepository {
                         transactionsJson = "[]"
                     )
                 }
-                db.customerDao().insertAll(entities)
-                true
-            } else {
-                false
+                if (entities.isNotEmpty()) db.customerDao().insertAll(entities)
+                fetched += items.size
+                // See syncProducts: a legacy unpaged response must never cause an
+                // infinite page loop while the server rollout is in progress.
+                if (body.page == null || body.total == null ||
+                    items.size < CATALOG_PAGE_SIZE || fetched >= body.total) break
+                page++
             }
+            true
         } catch (e: Exception) {
             false
         }

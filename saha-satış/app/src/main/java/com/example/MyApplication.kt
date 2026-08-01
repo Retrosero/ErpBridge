@@ -6,6 +6,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.work.Configuration
 import com.example.util.AppContextProvider
 import com.example.util.TelemetryReporter
 import com.example.util.TelemetryWorker
@@ -19,12 +20,17 @@ import java.io.FileOutputStream
 import java.io.BufferedReader
 import java.io.FileReader
 
-class MyApplication : Application() {
+class MyApplication : Application(), Configuration.Provider {
 
     companion object {
         lateinit var instance: MyApplication
             private set
     }
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setMinimumLoggingLevel(Log.INFO)
+            .build()
 
     override fun onCreate() {
         super.onCreate()

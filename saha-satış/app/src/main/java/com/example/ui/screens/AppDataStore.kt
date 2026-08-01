@@ -1438,6 +1438,96 @@ object AppDataStore {
         }
     }
 
+    /**
+     * Applies one ERP customer page without cloning, deleting, and reinserting the
+     * whole local catalogue.  The sync pipeline calls this for bounded pages so a
+     * large initial import cannot turn into one unbounded Room transaction.
+     */
+    suspend fun upsertCustomerSyncPage(context: Context, page: List<Customer>) {
+        if (page.isEmpty()) return
+        persistMutex.withLock {
+            withContext(Dispatchers.Main) {
+                page.forEach { customer ->
+                    val existingIndex = customers.indexOfFirst { it.id == customer.id }
+                    if (existingIndex >= 0) customers[existingIndex] = customer else customers.add(customer)
+                }
+            }
+            val converter = Converters()
+            val entities = page.map { customer ->
+                CustomerEntity(
+                    id = customer.id,
+                    name = customer.name,
+                    balance = customer.balance,
+                    lastVisit = customer.lastVisit,
+                    contact = customer.contact,
+                    phone = customer.phone,
+                    address = customer.address,
+                    taxOffice = customer.taxOffice,
+                    taxNumber = customer.taxNumber,
+                    gpsLocation = customer.gpsLocation,
+                    riskLimit = customer.riskLimit,
+                    priceGroup = customer.priceGroup,
+                    specialDiscountPercent = customer.specialDiscountPercent,
+                    transactionsJson = converter.fromCustomerTxList(customer.transactions)
+                )
+            }
+            val db = DatabaseProvider.getDatabase(context)
+            db.withTransaction {
+                db.customerDao().insertAll(entities)
+            }
+        }
+    }
+
+    /** See [upsertCustomerSyncPage]; product pages use the same bounded upsert path. */
+    suspend fun upsertProductSyncPage(context: Context, page: List<ProductCatalog>) {
+        if (page.isEmpty()) return
+        persistMutex.withLock {
+            val seenBarcodes = mutableSetOf<String>()
+            val converter = Converters()
+            val entities = page.map { product ->
+                val barcode = product.barcode.takeIf {
+                    it.isNotBlank() && !it.equals("null", true) && !it.equals("none", true) && seenBarcodes.add(it)
+                } ?: product.code.ifBlank { java.util.UUID.randomUUID().toString() }
+                ProductEntity(
+                    barcode = barcode,
+                    code = product.code,
+                    title = product.title,
+                    category = product.category,
+                    desc = product.desc,
+                    basePrice = product.basePrice,
+                    dealerPrice = product.dealerPrice,
+                    wholesalePrice = product.wholesalePrice,
+                    kdvPercent = product.kdvPercent,
+                    colorValue = product.imageUrlColor.value.toLong(),
+                    brand = product.brand,
+                    stockByWarehouseJson = converter.fromWarehouseMap(product.stockByWarehouse),
+                    boxQty = product.boxQty,
+                    packageQty = product.packageQty,
+                    imageUrl = product.imageUrl,
+                    localImagePath = product.localImagePath,
+                    aisle = product.aisle,
+                    customPricesJson = converter.fromCustomPricesMap(product.customPrices),
+                    barcodesJson = converter.fromBarcodeList(product.barcodes),
+                    measurement = product.measurement,
+                    packaging = product.packaging,
+                    cartonQuantity = product.cartonQuantity,
+                    imageLinksJson = null,
+                    localImagePathsJson = null
+                )
+            }
+            withContext(Dispatchers.Main) {
+                page.forEach { product ->
+                    val existingIndex = products.indexOfFirst { it.code.isNotBlank() && it.code == product.code }
+                    if (existingIndex >= 0) products[existingIndex] = product else products.add(product)
+                }
+            }
+            val db = DatabaseProvider.getDatabase(context)
+            db.withTransaction {
+                db.productDao().insertAll(entities)
+            }
+        }
+    }
+
     fun persist(context: Context) {
         dbScope.launch {
             persistMutex.withLock {

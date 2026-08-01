@@ -129,7 +129,7 @@ fun StockDetailScreen(barcode: String?, navController: NavController) {
         try {
             val sharedPrefs = context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
             val apiUrl = sharedPrefs.getString("api_url", "https://lisans.appsgo.cloud") ?: "https://lisans.appsgo.cloud"
-            val apiKey = sharedPrefs.getString("api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production"
+            val apiKey = sharedPrefs.getString("api_key", null).orEmpty()
             val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
             val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
 

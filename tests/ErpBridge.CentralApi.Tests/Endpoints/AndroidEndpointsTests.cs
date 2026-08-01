@@ -13,15 +13,14 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     public AndroidEndpointsTests(CentralApiFactory factory) => _factory = factory;
 
     [Fact]
-    public async Task Pull_with_mobile_read_key_returns_only_the_callers_latest_snapshot()
+    public async Task Pull_with_mobile_device_token_returns_only_the_callers_latest_snapshot()
     {
         var client = _factory.CreateClient();
         var (tenant, _) = await _factory.SeedTenantAsync("ANDROID-PULL", "Android tenant");
         var (otherTenant, _) = await _factory.SeedTenantAsync("ANDROID-OTHER", "Other tenant");
         await _factory.SeedBootstrapPackageAsync(tenant.Id, "{\"customers\":[{\"code\":\"C001\"}],\"stocks\":[{\"code\":\"S001\"}]}");
         await _factory.SeedBootstrapPackageAsync(otherTenant.Id, "{\"customers\":[{\"code\":\"OTHER\"}]}");
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-ANDROID-PULL", scopes: new[] { "mobile:read" });
-        Authorize(client, tenant.Id, rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, "ANDROID-PULL-DEVICE");
         var response = await client.PostAsync("/api/v1/android/pull", content: null);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
@@ -29,17 +28,51 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
-    public async Task Section_with_mobile_read_key_returns_requested_collection()
+    public async Task Section_with_mobile_device_token_returns_requested_collection()
     {
         var client = _factory.CreateClient();
         var (tenant, _) = await _factory.SeedTenantAsync("ANDROID-SECTION", "Section tenant");
         await _factory.SeedBootstrapPackageAsync(tenant.Id, "{\"customers\":[{\"code\":\"C001\"}],\"stocks\":[{\"code\":\"S001\"}]}");
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-ANDROID-SECTION", scopes: new[] { "mobile:read" });
-        Authorize(client, tenant.Id, rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, "ANDROID-SECTION-DEVICE");
         var response = await client.PostAsync("/api/v1/android/sync/urun", content: null);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain("S001").And.NotContain("C001");
+    }
+
+    [Theory]
+    [InlineData("/api/v1/android/sync/cari", "customers", "C002")]
+    [InlineData("/api/v1/android/sync/urun", "stocks", "S002")]
+    public async Task Catalog_sections_return_only_the_requested_page(
+        string route,
+        string collectionName,
+        string expectedSecondPageCode)
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-PAGE-{suffix}", "Paged Android tenant");
+        var payload = $$"""
+            {
+              "customers":[{"code":"C001"},{"code":"C002"},{"code":"C003"}],
+              "stocks":[{"stockCode":"S001"},{"stockCode":"S002"},{"stockCode":"S003"}]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var device = await _factory.SeedMobileDeviceAsync(tenant.Id, $"ANDROID-PAGE-{suffix}");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", _factory.IssueMobileJwt(device.Id, tenant.Id));
+
+        var response = await client.PostAsJsonAsync(route, new { page = 2, pageSize = 1 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("page").GetInt32().Should().Be(2);
+        root.GetProperty("pageSize").GetInt32().Should().Be(1);
+        root.GetProperty("total").GetInt32().Should().Be(3);
+        root.GetProperty("items").GetArrayLength().Should().Be(1);
+        root.GetProperty("items")[0].GetProperty(collectionName == "customers" ? "code" : "stockCode")
+            .GetString().Should().Be(expectedSecondPageCode);
     }
 
     [Theory]
@@ -121,9 +154,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
             }
             """;
         await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
-            tenant.Id, $"AK-ANDROID-PRODUCT-{suffix}", scopes: new[] { "mobile:read" });
-        Authorize(client, tenant.Id, rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, $"ANDROID-PRODUCT-{suffix}");
 
         var response = await client.PostAsync("/api/v1/android/sync/urun", content: null);
 
@@ -154,9 +185,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-PRICE-NAMES-{suffix}", "Price names tenant");
         await _factory.SeedBootstrapPackageAsync(tenant.Id,
             """{"lookups":[{"kind":"price_list","code":"1","name":"SATIŞ FİYATI"},{"kind":"price_list","code":"2","name":"E-TİCARET"}]}""");
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
-            tenant.Id, $"AK-PRICE-NAMES-{suffix}", scopes: new[] { "mobile:read" });
-        Authorize(client, tenant.Id, rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, $"ANDROID-PRICE-NAMES-{suffix}");
 
         var response = await client.PostAsync("/api/v1/android/sync/stokSatisFiyatListeTanimlari", null);
 
@@ -170,7 +199,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     [InlineData("/api/v1/android/sync/cariYetkililer", "CONTACT-001")]
     [InlineData("/api/v1/android/sync/barkodlar", "BARCODE-001")]
     [InlineData("/api/v1/android/sync/satisSartlari", "CONDITION-001")]
-    public async Task New_section_with_mobile_read_key_returns_requested_collection(string route, string expectedMarker)
+    public async Task New_section_with_mobile_device_token_returns_requested_collection(string route, string expectedMarker)
     {
         var client = _factory.CreateClient();
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -184,11 +213,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
             }
             """;
         await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
-            tenant.Id,
-            $"AK-ANDROID-NEW-{suffix}",
-            scopes: new[] { "mobile:read" });
-        Authorize(client, tenant.Id, rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, $"ANDROID-NEW-{suffix}");
 
         var response = await client.PostAsync(route, content: null);
 
@@ -200,16 +225,16 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
-    public async Task Pull_with_ingest_only_key_is_forbidden()
+    public async Task Pull_with_an_api_key_is_unauthorized()
     {
         var client = _factory.CreateClient();
         var (tenant, _) = await _factory.SeedTenantAsync("ANDROID-FORBIDDEN", "Forbidden tenant");
         await _factory.SeedBootstrapPackageAsync(tenant.Id, "{\"customers\":[]}");
         var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-ANDROID-FORBIDDEN", scopes: new[] { "ingest:write" });
-        Authorize(client, tenant.Id, rawKey);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawKey);
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.Id.ToString());
         var response = await client.PostAsync("/api/v1/android/pull", content: null);
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("MOBILE_READ_SCOPE_REQUIRED");
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Theory]
@@ -229,9 +254,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
             ] }
             """;
         await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
-            tenant.Id, $"AK-MOVE-{suffix}", scopes: new[] { "mobile:read" });
-        Authorize(client, tenant.Id, rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, $"ANDROID-MOVE-{suffix}");
 
         var response = await client.PostAsJsonAsync(route, new { page = 2, pageSize = 1 });
 
@@ -257,9 +280,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
             }
             """;
         await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
-            tenant.Id, $"AK-STOCK-MOVE-{suffix}", scopes: new[] { "mobile:read" });
-        Authorize(client, tenant.Id, rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, $"ANDROID-STOCK-MOVE-{suffix}");
 
         var response = await client.PostAsJsonAsync(
             "/api/v1/android/sync/stokHareket",
@@ -302,9 +323,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
             }
             """;
         await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
-            tenant.Id, $"AK-INVOICE-{suffix}", scopes: new[] { "mobile:read" });
-        Authorize(client, tenant.Id, rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, $"ANDROID-INVOICE-{suffix}");
 
         var response = await client.PostAsJsonAsync(
             "/api/v1/android/sync/faturaHareket",
@@ -330,14 +349,12 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
-    public async Task Pull_with_the_short_tenant_id_and_mobile_read_key_returns_data()
+    public async Task Pull_with_the_short_tenant_header_and_mobile_device_token_returns_data()
     {
         var client = _factory.CreateClient();
         var (tenant, _) = await _factory.SeedTenantAsync("ANDROID-SHORT-ID", "Short-id tenant");
         await _factory.SeedBootstrapPackageAsync(tenant.Id, "{\"customers\":[{\"code\":\"C001\"}]}");
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-ANDROID-SHORT-ID", scopes: new[] { "mobile:read" });
-
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawKey);
+        await AuthorizeMobileDeviceAsync(client, tenant.Id, "ANDROID-SHORT-ID-DEVICE");
         client.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.Id.ToString("N")[..8]);
 
         var response = await client.PostAsync("/api/v1/android/pull", content: null);
@@ -347,25 +364,26 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
-    public async Task Pull_with_a_mismatched_short_tenant_id_is_unauthorized()
+    public async Task Pull_with_a_different_tenant_device_cannot_read_another_tenants_snapshot()
     {
         var client = _factory.CreateClient();
         var (tenant, _) = await _factory.SeedTenantAsync("ANDROID-WRONG-SHORT-ID", "Wrong short-id tenant");
-        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-ANDROID-WRONG-SHORT-ID", scopes: new[] { "mobile:read" });
-        var actualPrefix = tenant.Id.ToString("N")[..8];
-        var mismatchedPrefix = (actualPrefix[0] == '0' ? "1" : "0") + actualPrefix[1..];
+        var (otherTenant, _) = await _factory.SeedTenantAsync("ANDROID-OTHER-DEVICE", "Other device tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, "{\"customers\":[{\"code\":\"PRIVATE\"}]}");
+        await AuthorizeMobileDeviceAsync(client, otherTenant.Id, "ANDROID-OTHER-DEVICE");
 
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawKey);
-        client.DefaultRequestHeaders.Add("X-Tenant-Id", mismatchedPrefix);
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.Id.ToString("N")[..8]);
 
         var response = await client.PostAsync("/api/v1/android/pull", content: null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("PRIVATE");
     }
 
-    private static void Authorize(HttpClient client, Guid tenantId, string rawKey)
+    private async Task AuthorizeMobileDeviceAsync(HttpClient client, Guid tenantId, string installationId)
     {
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawKey);
-        client.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId.ToString());
+        var device = await _factory.SeedMobileDeviceAsync(tenantId, installationId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", _factory.IssueMobileJwt(device.Id, tenantId));
     }
 }

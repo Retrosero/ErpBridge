@@ -169,8 +169,7 @@ fun LicenseScreen(navController: NavController) {
                             licenseKey = demoKey,
                             appVersion = appVersion
                         )
-                        if (isValid || true) { // Fallback to let demo always work if server is down for now (remove `|| true` if strict)
-                            com.example.data.LicenseRepository.authenticateLicense(navController.context, "T001-dev-token-change-in-production", "1.0.0") // set fallback manually just in case
+                        if (isValid) {
                             AppDataStore.setLicenseKeySetting(navController.context, demoKey)
                             navController.navigate("login") {
                                 popUpTo("license") { inclusive = true }
