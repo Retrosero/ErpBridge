@@ -227,7 +227,10 @@ public partial class Program
                 .RequireClaim("scope", "apikey"));
             options.AddPolicy(MobilePolicy, policy => policy
                 .RequireAuthenticatedUser()
-                .RequireClaim("scope", "mobile"));
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme, ApiKeyAuthenticationHandler.SchemeName)
+                .RequireAssertion(context =>
+                    context.User.HasClaim("scope", "mobile")
+                    || context.User.HasClaim("scope", "apikey")));
         });
     }
 

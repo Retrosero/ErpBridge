@@ -15,6 +15,8 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// </summary>
 public static class AndroidEndpoints
 {
+    private const string MobileReadScope = "mobile:read";
+
     public static IEndpointRouteBuilder MapAndroidEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/android").WithTags("Android");
@@ -510,11 +512,31 @@ public static class AndroidEndpoints
         if (!http.User.TryGetTenantId(out var tenantId))
             return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." }));
 
-        if (!MobileLicensingEndpoints.TryDevice(http, out var deviceId, out var deviceTenantId) || deviceTenantId != tenantId)
-            return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_DEVICE_TOKEN", Message = "Device identity is missing." }));
-        var allowed = await db.MobileDevices.AsNoTracking().AnyAsync(x => x.Id == deviceId && x.TenantId == tenantId && x.IsActive && x.Tenant!.IsActive, ct);
-        if (!allowed)
-            return (null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "DEVICE_REVOKED", Message = "This device is no longer licensed." }));
+        if (MobileLicensingEndpoints.TryDevice(http, out var deviceId, out var deviceTenantId))
+        {
+            if (deviceTenantId != tenantId)
+                return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_DEVICE_TOKEN", Message = "Device tenant does not match the request." }));
+
+            var activeDevice = await db.MobileDevices.AsNoTracking().AnyAsync(
+                x => x.Id == deviceId && x.TenantId == tenantId && x.IsActive && x.Tenant!.IsActive, ct);
+            if (!activeDevice)
+                return (null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "DEVICE_REVOKED", Message = "This device is no longer licensed." }));
+        }
+        else
+        {
+            // Existing mobile installs continue to use their tenant-scoped key.
+            // They can exchange it for a device session through /mobile/migrate,
+            // while new installs are counted at activation time.
+            var keyIdText = http.User.FindFirst(ApiKeyClaims.ApiKeyId)?.Value;
+            if (!Guid.TryParse(keyIdText, out var keyId))
+                return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_API_KEY", Message = "API key identity is missing." }));
+
+            var keyAllowed = await db.ApiKeys.AsNoTracking().AnyAsync(
+                key => key.Id == keyId && key.TenantId == tenantId && key.IsActive
+                    && (key.Scopes.Contains(MobileReadScope) || key.Scopes.Contains("*")), ct);
+            if (!keyAllowed)
+                return (null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "MOBILE_READ_SCOPE_REQUIRED", Message = "API key requires the mobile:read scope." }));
+        }
 
         var package = await db.BootstrapPackages.AsNoTracking().Where(item => item.TenantId == tenantId)
             .OrderByDescending(item => item.PulledAtUtc).ThenByDescending(item => item.ReceivedAtUtc).FirstOrDefaultAsync(ct);
