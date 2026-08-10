@@ -8,6 +8,7 @@ using ErpBridge.RemoteApi.DependencyInjection;
 using ErpBridge.RemoteApi.Http;
 using ErpBridge.RemoteApi.Options;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -270,7 +271,8 @@ public class HttpRemoteApiClientTests
             .Returns<HttpRequestMessage, CancellationToken>((req, _) => responder(req));
 
         var http = new HttpClient(handler.Object) { BaseAddress = new Uri(BaseUrl + "/") };
-        var client = new HttpRemoteApiClient(http, StubOptions(), NullLogger<HttpRemoteApiClient>.Instance);
+        var configuration = new ConfigurationBuilder().Build();
+        var client = new HttpRemoteApiClient(http, StubOptions(), configuration, NullLogger<HttpRemoteApiClient>.Instance);
         return (client, handler);
     }
 
