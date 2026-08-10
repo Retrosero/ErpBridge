@@ -334,6 +334,26 @@ public partial class Program
             app.UseSwaggerUI();
         }
 
+        // Older Android releases used /api/v1/sync/* while the public mobile
+        // contract is /api/v1/android/sync/*. Keep those installations working
+        // during the client rollout without weakening authentication: the
+        // rewritten request is still authorized by the Android endpoint policy.
+        app.Use(async (context, next) =>
+        {
+            var path = context.Request.Path.Value ?? string.Empty;
+            var normalized = "/" + path.TrimStart('/');
+            const string legacyPrefix = "/api/v1/sync/";
+            if (normalized.StartsWith(legacyPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var suffix = normalized[legacyPrefix.Length..];
+                if (string.Equals(suffix, "cariAdresleri", StringComparison.OrdinalIgnoreCase))
+                    suffix = "cariAdresler";
+                context.Request.Path = "/api/v1/android/sync/" + suffix;
+            }
+
+            await next();
+        });
+
         app.UseRouting();
 
         // Only enable the rate-limiter middleware when rate limiter services

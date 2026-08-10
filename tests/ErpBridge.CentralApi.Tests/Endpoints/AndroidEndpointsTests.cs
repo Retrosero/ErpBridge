@@ -43,6 +43,21 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Legacy_sync_path_is_routed_to_the_android_endpoint()
+    {
+        var client = _factory.CreateClient();
+        var (tenant, _) = await _factory.SeedTenantAsync("ANDROID-LEGACY-ROUTE", "Legacy route tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, "{\"customers\":[{\"code\":\"C001\"}]} ");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-ANDROID-LEGACY-ROUTE", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/sync/cari", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("C001");
+    }
+
+    [Fact]
     public async Task Product_catalog_joins_barcode_price_and_inventory_by_stock_code()
     {
         var client = _factory.CreateClient();
