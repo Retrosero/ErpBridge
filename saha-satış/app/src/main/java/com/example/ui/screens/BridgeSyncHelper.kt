@@ -41,6 +41,7 @@ object BridgeSyncHelper {
         }
         val userFriendlyMessage = when (code) {
             401, 403 -> "Yetkilendirme Hatası: API Anahtarı veya Tenant ID geçersiz ($safeMessage)"
+            404 -> "Endpoint mevcut değil (HTTP 404): ${response.raw().request.url.encodedPath} ($safeMessage)"
             422 -> "Doğrulama Hatası: Gönderilen parametreler hatalı ($safeMessage)"
             429 -> "İstek Sınırı Aşıldı: Çok fazla istek gönderdiniz ($safeMessage)"
             in 500..599 -> "Sunucu Hatası: GoApp Cloud sunucusunda bir sorun oluştu ($safeMessage)"
@@ -59,6 +60,30 @@ object BridgeSyncHelper {
 
 
     }
+
+    /**
+     * Merkezi API bu entity için endpoint sunmuyorsa (404) veya API anahtarının
+     * bu uç noktaya erişim yetkisi yoksa (403) sync fonksiyonu bilgilendirici
+     * log düşerek başarıyla dönsün. Tüm sync zincirini kırmasın; sadece o tablo
+     * boş kalsın. UI tarafında "bu özellik tenant'ta yok" şeklinde gösterilir.
+     */
+    private fun isUnsupportedEndpoint(
+        response: retrofit2.Response<*>,
+        entity: String,
+        log: (String) -> Unit
+    ): Boolean {
+        val code = response.code()
+        if (code == 404) {
+            log("⚠ '$entity' endpoint’i merkezi API’de mevcut değil (HTTP 404). Bu tablo için sync atlanıyor.")
+            return true
+        }
+        if (code == 403) {
+            log("⚠ '$entity' endpoint’ine bu API anahtarıyla erişim yok (HTTP 403). Bu tablo için sync atlanıyor.")
+            return true
+        }
+        return false
+    }
+
     suspend fun syncCariler(
         context: Context,
         apiUrl: String,
@@ -446,7 +471,8 @@ object BridgeSyncHelper {
                         }
                     }
                 }
-                AppDataStore.persist(context)
+                val localResult = AppDataStore.persistAndVerify(context)
+                log("ROOM_WRITE_OK entity=cari fetched=$totalFetched saved=${localResult.customers}")
                 log("Başarılı! Toplam $totalFetched adet cari kayıt FieldOps Bridge üzerinden başarıyla çekildi")
             } else {
                 log("Uç noktadan müşteri verisi çekilemedi. Listede aktarılacak cari bulunamadı.")
@@ -491,7 +517,7 @@ object BridgeSyncHelper {
             try {
                 log("Mevcut elde kalan stok seviyeleri (STOK_SEVIYELERI) önden yükleniyor...")
                 var levelsPage = 1
-                val levelsPageSize = 200
+                val levelsPageSize = 100
                 var hasMoreLevels = true
                 while (hasMoreLevels) {
                     val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
@@ -577,7 +603,7 @@ object BridgeSyncHelper {
             try {
                 log("Barkod tanımları (BARKOD_TANIMLARI) sunucudan indiriliyor...")
                 var barPage = 1
-                val barPageSize = 500
+                val barPageSize = 100
                 var hasMoreBar = true
                 while (hasMoreBar) {
                     val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
@@ -857,7 +883,8 @@ object BridgeSyncHelper {
                         }
                     }
                 }
-                AppDataStore.persist(context)
+                val localResult = AppDataStore.persistAndVerify(context)
+                log("ROOM_WRITE_OK entity=urun fetched=$totalFetched saved=${localResult.products}")
                 log("Saha Gücü yerel stok kartları Room veritabanı başarıyla güncellendi. Toplam $totalFetched adet ürün/stok kaydı çekildi.")
             } else {
                 log("Uç noktadan ürün verisi çekilemedi. Listede aktarılacak ürün bulunamadı.")
@@ -1033,7 +1060,7 @@ object BridgeSyncHelper {
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var currentPage = 1
-            val pageSize = 200
+            val pageSize = 100
             var totalFetched = 0
             var hasMore = true
 
@@ -1335,7 +1362,7 @@ object BridgeSyncHelper {
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var currentPage = 1
-            val pageSize = 200
+            val pageSize = 100
             var totalFetched = 0
             var hasMore = true
 
@@ -1777,7 +1804,7 @@ object BridgeSyncHelper {
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var page = 1
-            val pageSize = 200
+            val pageSize = 100
             var hasMore = true
             val loadedItems = mutableListOf<CariAdresDto>()
 
@@ -1877,7 +1904,7 @@ object BridgeSyncHelper {
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var page = 1
-            val pageSize = 200
+            val pageSize = 100
             var hasMore = true
             val loadedItems = mutableListOf<CariBankaHesapDto>()
 
@@ -1898,6 +1925,13 @@ object BridgeSyncHelper {
                     pageSize = 100
                 )
                 val response = apiService.getCariBankaHesaplari(req_getCariBankaHesaplari)
+                if (isUnsupportedEndpoint(response, "cariBankaHesaplari", log)) {
+                    withContext(Dispatchers.Main) {
+                        AppDataStore.cariBankaHesaplari.clear()
+                    }
+                    updateProgress(1.0f)
+                    return
+                }
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
@@ -1977,7 +2011,7 @@ object BridgeSyncHelper {
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var page = 1
-            val pageSize = 200
+            val pageSize = 100
             var hasMore = true
             val loadedItems = mutableListOf<BridgeBankaDto>()
 
@@ -1998,6 +2032,13 @@ object BridgeSyncHelper {
                     pageSize = 100
                 )
                 val response = apiService.getBankalar(req_getBankalar)
+                if (isUnsupportedEndpoint(response, "bankalar", log)) {
+                    withContext(Dispatchers.Main) {
+                        AppDataStore.bridgeBankalar.clear()
+                    }
+                    updateProgress(1.0f)
+                    return
+                }
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
@@ -2077,7 +2118,7 @@ object BridgeSyncHelper {
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var page = 1
-            val pageSize = 200
+            val pageSize = 100
             var hasMore = true
             val loadedItems = mutableListOf<KasalarDto>()
 
@@ -2098,6 +2139,13 @@ object BridgeSyncHelper {
                     pageSize = 100
                 )
                 val response = apiService.getKasalar(req_getKasalar)
+                if (isUnsupportedEndpoint(response, "kasalar", log)) {
+                    withContext(Dispatchers.Main) {
+                        AppDataStore.bridgeKasalar.clear()
+                    }
+                    updateProgress(1.0f)
+                    return
+                }
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
@@ -2191,6 +2239,13 @@ object BridgeSyncHelper {
                 pageSize = 100
             )
             val response = apiService.getKasaYonetim(req_getKasaYonetim)
+            if (isUnsupportedEndpoint(response, "kasaYonetim", log)) {
+                withContext(Dispatchers.Main) {
+                    AppDataStore.kasaYonetimList.clear()
+                }
+                updateProgress(1.0f)
+                return
+            }
             if (response.isSuccessful && response.body() != null) {
                 val body = response.body()!!
                 val items = body.items

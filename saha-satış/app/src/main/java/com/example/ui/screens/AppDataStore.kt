@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import android.content.Context
+import android.util.Log
+import androidx.room.withTransaction
 import com.example.data.database.DatabaseProvider
 import com.example.data.database.Converters
 import com.example.data.database.CustomerEntity
@@ -252,6 +254,7 @@ data class Vehicle(
 )
 
 object AppDataStore {
+    private const val SyncLogTag = "ErpBridgeSync"
     private val dbScope = CoroutineScope(Dispatchers.IO)
     private var isInitialized = false
 
@@ -1126,14 +1129,37 @@ object AppDataStore {
         }
     }
 
+    data class LocalPersistenceResult(
+        val products: Int,
+        val customers: Int,
+        val banks: Int,
+        val cashLogs: Int
+    )
+
+    /**
+     * Fire-and-forget saves are retained for ordinary UI edits. ERP sync must use
+     * [persistAndVerify] so it never reports success before Room has committed.
+     */
     fun persist(context: Context) {
         dbScope.launch {
-            persistSync(context)
+            runCatching { persistSync(context) }
+                .onFailure { Log.e(SyncLogTag, "LOCAL_SAVE_FAILED operation=background", it) }
         }
     }
 
-    private suspend fun persistSync(context: Context) {
+    suspend fun persistAndVerify(context: Context): LocalPersistenceResult = withContext(Dispatchers.IO) {
+        Log.i(SyncLogTag, "LOCAL_SAVE_START products=${products.size} customers=${customers.size} banks=${banks.size} cashLogs=${kasaLogs.size}")
         try {
+            persistSync(context).also {
+                Log.i(SyncLogTag, "LOCAL_SAVE_OK products=${it.products} customers=${it.customers} banks=${it.banks} cashLogs=${it.cashLogs}")
+            }
+        } catch (error: Throwable) {
+            Log.e(SyncLogTag, "LOCAL_SAVE_FAILED products=${products.size} customers=${customers.size}", error)
+            throw error
+        }
+    }
+
+    private suspend fun persistSync(context: Context): LocalPersistenceResult {
             val db = DatabaseProvider.getDatabase(context)
             val converter = Converters()
 
@@ -1154,6 +1180,7 @@ object AppDataStore {
             
             editor.apply()
 
+            val result = db.withTransaction {
             // 1. Save Banks
             val bankEntities = banks.map { BankEntity(it.id, it.name, it.accountNo, it.iban, it.balance) }
             db.bankDao().deleteAll()
@@ -1224,6 +1251,21 @@ object AppDataStore {
             db.customerDao().deleteAll()
             db.customerDao().insertAll(customerEntities)
 
+            val verifiedResult = LocalPersistenceResult(
+                products = db.productDao().getAllProducts().size,
+                customers = db.customerDao().getAllCustomers().size,
+                banks = db.bankDao().getAllBanks().size,
+                cashLogs = db.kasaLogDao().getAllKasaLogs().size
+            )
+            if (verifiedResult.products < productEntities.size || verifiedResult.customers != customerEntities.size) {
+                throw IllegalStateException(
+                    "Room row count mismatch: products=${verifiedResult.products}/${productEntities.size}, " +
+                        "customers=${verifiedResult.customers}/${customerEntities.size}"
+                )
+            }
+            verifiedResult
+            }
+
             // Trigger cloud background sync according to subscription tier
             try {
                 com.example.data.CloudSyncManager.autoSyncOnSave(context)
@@ -1234,8 +1276,6 @@ object AppDataStore {
                 se.printStackTrace()
             }
 
-        } catch (e: Throwable) {
-            e.printStackTrace()
-        }
+            return result
     }
 }
