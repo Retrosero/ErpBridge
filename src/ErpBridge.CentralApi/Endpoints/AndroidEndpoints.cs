@@ -45,6 +45,18 @@ public static class AndroidEndpoints
         MapSection(group, "/sync/cariYetkililer", "customerContacts");
         MapSection(group, "/sync/barkodlar", "barcodes");
         MapSection(group, "/sync/satisSartlari", "salesConditions");
+        group.MapPost("/sync/bankalar", (AndroidPageRequest? request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
+                CashAndBankSectionAsync("bank", "bankalar", request ?? new AndroidPageRequest(), http, db, ct))
+            .WithName("AndroidBanks")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/kasalar", (AndroidPageRequest? request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
+                CashAndBankSectionAsync("cash", "kasalar", request ?? new AndroidPageRequest(), http, db, ct))
+            .WithName("AndroidCashRegisters")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/kasaYonetim", (AndroidPageRequest? request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
+                CashAndBankSectionAsync("cash", "kasaYonetim", request ?? new AndroidPageRequest(), http, db, ct))
+            .WithName("AndroidCashManagement")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
         group.MapPost("/sync/stokHareket", StockMovementsAsync)
             .WithName("AndroidStockMovements")
@@ -243,6 +255,39 @@ public static class AndroidEndpoints
             total = allItems.Length,
             items,
         });
+    }
+
+    private static async Task<IResult> CashAndBankSectionAsync(
+        string kind,
+        string entity,
+        AndroidPageRequest request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        using var document = JsonDocument.Parse(access.Package!.PayloadJson);
+        var allItems = GetArray(document.RootElement, "cashAndBank")
+            .Where(item => string.Equals(GetString(item, "kind"), kind, StringComparison.OrdinalIgnoreCase))
+            .Select(item => new
+            {
+                erpRef = GetString(item, "code") ?? string.Empty,
+                erp = "MIKRO",
+                kod = GetString(item, "code") ?? string.Empty,
+                isim = GetString(item, "name") ?? string.Empty,
+                sube = GetString(item, "branch"),
+                hesapNumarasi = GetString(item, "accountNo"),
+                tCMBKodu = GetString(item, "tcmbCode"),
+                dovizCinsi = GetInt32(item, "currency"),
+                muhasebeKod = (string?)null,
+                tip = kind == "cash" ? 0 : 1,
+            })
+            .ToArray();
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        return Results.Ok(new { entity, page, pageSize, total = allItems.Length, items });
     }
 
     private static async Task<IResult> PriceListDefinitionsAsync(

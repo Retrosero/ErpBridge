@@ -139,6 +139,32 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
             body.Should().NotContain(otherMarker);
     }
 
+    [Theory]
+    [InlineData("/api/v1/android/sync/bankalar", "BANK-001")]
+    [InlineData("/api/v1/android/sync/kasalar", "CASH-001")]
+    [InlineData("/api/v1/android/sync/kasaYonetim", "CASH-001")]
+    public async Task Cash_and_bank_sections_return_only_the_requested_kind(string route, string expectedCode)
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-CASH-{suffix}", "Cash and bank tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, """
+            { "cashAndBank": [
+              { "code": "CASH-001", "name": "Merkez Kasa", "kind": "cash" },
+              { "code": "BANK-001", "name": "Banka Hesabı", "kind": "bank", "accountNo": "TR01" }
+            ] }
+            """);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, $"AK-CASH-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync(route, content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain(expectedCode);
+        body.Should().NotContain(expectedCode == "BANK-001" ? "CASH-001" : "BANK-001");
+    }
+
     [Fact]
     public async Task Pull_with_ingest_only_key_is_forbidden()
     {
