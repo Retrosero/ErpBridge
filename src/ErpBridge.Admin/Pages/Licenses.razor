@@ -2,84 +2,68 @@
 @inject ErpBridge.Admin.Api.CentralApiClient Api
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>Licenses — ErpBridge Admin</PageTitle>
+<PageTitle>Lisanslar — ErpBridge Admin</PageTitle>
 
-<h1>Licenses</h1>
+<section class="license-page" aria-labelledby="licenses-title">
+    <header class="license-page__header">
+        <div>
+            <p class="license-page__eyebrow">ERPBIDGE ADMIN</p>
+            <h1 id="licenses-title">Lisanslar</h1>
+            <p class="license-page__subtitle">Müşteri lisanslarını oluşturun, görüntüleyin ve erişim durumlarını yönetin.</p>
+        </div>
+        <button class="btn license-refresh" @onclick="ReloadAsync" disabled="@_loading" aria-label="Lisans listesini yenile"><span aria-hidden="true">↻</span> Yenile</button>
+    </header>
 
-@if (_loading)
-{
-    <p><em>Loading…</em></p>
-}
-else
-{
-    <div class="card mb-3">
-        <div class="card-header">Issue a new license</div>
-        <div class="card-body">
-            <div class="row g-2">
-                <div class="col-auto">
-                    <select class="form-select" @bind="_create.TenantIdString">
-                        <option value="">Select tenant…</option>
-                        @foreach (var t in _tenants)
-                        {
-                            <option value="@t.Id.ToString()">@t.Name</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-auto">
-                    <input class="form-control" type="datetime-local" @bind="_create.ExpiresAtLocal" placeholder="Expires (optional)" />
-                </div>
-                <div class="col-auto">
-                    <button class="btn btn-primary" @onclick="CreateAsync" disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || _busy)">
-                        @(_busy ? "Issuing..." : "Issue license")
-                    </button>
-                </div>
+    @if (_loading)
+    {
+        <div class="license-loading" role="status"><span class="license-loading__spinner" aria-hidden="true"></span>Lisanslar hazırlanıyor…</div>
+    }
+    else
+    {
+        <div class="license-summary" aria-label="Lisans özeti">
+            <div class="license-stat"><span>Toplam lisans</span><strong>@_licenses.Count</strong></div>
+            <div class="license-stat license-stat--active"><span>Aktif</span><strong>@_licenses.Count(l => l.IsActive)</strong></div>
+            <div class="license-stat license-stat--inactive"><span>Pasif</span><strong>@_licenses.Count(l => !l.IsActive)</strong></div>
+        </div>
+
+        <section class="license-issue" aria-labelledby="issue-license-title">
+            <div class="license-issue__heading"><span class="license-issue__icon" aria-hidden="true">+</span><div><h2 id="issue-license-title">Yeni lisans oluştur</h2><p>Bir müşteri seçin; isterseniz lisans için bitiş tarihi belirleyin.</p></div></div>
+            <div class="license-issue__form">
+                <label><span>Müşteri</span><select class="form-select" @bind="_create.TenantIdString" aria-label="Müşteri seçin"><option value="">Müşteri seçin…</option>@foreach (var t in _tenants) { <option value="@t.Id.ToString()">@t.Name</option> }</select></label>
+                <label><span>Bitiş tarihi <em>(isteğe bağlı)</em></span><input class="form-control" type="datetime-local" @bind="_create.ExpiresAtLocal" /></label>
+                <button class="btn btn-primary license-issue__button" @onclick="CreateAsync" disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || _busy)">@(_busy ? "Oluşturuluyor…" : "Lisans oluştur")</button>
             </div>
-        </div>
-    </div>
+        </section>
 
-    @if (!string.IsNullOrEmpty(_lastIssuedKey))
-    {
-        <div class="alert alert-success">
-            Issued: <code>@_lastIssuedKey</code> — copy it now, this is the only time the full key is shown.
-        </div>
-    }
+        @if (!string.IsNullOrEmpty(_lastIssuedKey))
+        {
+            <div class="license-notice license-notice--success" role="status"><span class="license-notice__icon" aria-hidden="true">✓</span><div><strong>Lisans başarıyla oluşturuldu</strong><p>Bu anahtar yalnızca şimdi tam olarak görüntülenir.</p><code>@_lastIssuedKey</code></div></div>
+        }
+        @if (!string.IsNullOrEmpty(_error)) { <div class="license-notice license-notice--error" role="alert">@_error</div> }
 
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <div class="alert alert-danger">@_error</div>
-    }
-
-    <table class="table">
-        <thead>
-            <tr>
-                <th>License key</th>
-                <th>Tenant</th>
-                <th>Issued</th>
-                <th>Expires</th>
-                <th>Active</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var l in _licenses)
+        <section class="license-list" aria-labelledby="license-list-title">
+            <div class="license-list__heading"><div><h2 id="license-list-title">Tüm lisanslar</h2><p>@_licenses.Count kayıt</p></div></div>
+            @if (_licenses.Count == 0)
             {
-                <tr>
-                    <td><code>@l.LicenseKey</code></td>
-                    <td>@(TenantName(l.TenantId))</td>
-                    <td>@l.IssuedAtUtc.ToString("u")</td>
-                    <td>@(l.ExpiresAtUtc?.ToString("u") ?? "—")</td>
-                    <td>@(l.IsActive ? "✓" : "✗")</td>
-                    <td>
-                        @if (l.IsActive)
-                        {
-                            <button class="btn btn-sm btn-warning" @onclick="() => RevokeAsync(l.Id)">Revoke</button>
-                        }
-                    </td>
-                </tr>
+                <div class="license-empty"><span aria-hidden="true">⌁</span><h3>Henüz lisans yok</h3><p>İlk lisansı yukarıdaki formdan oluşturabilirsiniz.</p></div>
             }
-        </tbody>
-    </table>
-}
+            else
+            {
+                <div class="license-cards">
+                    @foreach (var l in _licenses)
+                    {
+                        <article class="license-card">
+                            <div class="license-card__topline"><span class="license-status @(l.IsActive ? "license-status--active" : "license-status--inactive")"><span aria-hidden="true">●</span>@(l.IsActive ? "Aktif" : "Pasif")</span><span class="license-card__tenant">@(TenantName(l.TenantId))</span></div>
+                            <code class="license-card__key">@l.LicenseKey</code>
+                            <dl class="license-card__details"><div><dt>Oluşturulma</dt><dd>@l.IssuedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</dd></div><div><dt>Bitiş</dt><dd>@(l.ExpiresAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "Süresiz")</dd></div></dl>
+                            @if (l.IsActive) { <button class="btn license-revoke" @onclick="() => RevokeAsync(l.Id)" disabled="@_busy">Lisansı iptal et</button> }
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    }
+</section>
 
 @code {
     private bool _loading = true;
@@ -89,51 +73,10 @@ else
     private string? _lastIssuedKey;
     private string? _error;
     private readonly CreateModel _create = new();
-
-    private sealed class CreateModel
-    {
-        public string TenantIdString { get; set; } = string.Empty;
-        public DateTime? ExpiresAtLocal { get; set; }
-        public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty;
-    }
-
+    private sealed class CreateModel { public string TenantIdString { get; set; } = string.Empty; public DateTime? ExpiresAtLocal { get; set; } public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty; }
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
-
     protected override async Task OnInitializedAsync() => await ReloadAsync();
-
-    private async Task ReloadAsync()
-    {
-        _loading = true; _error = null;
-        try
-        {
-            _tenants = await Api.ListTenantsAsync();
-            _licenses = await Api.ListLicensesAsync();
-        }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _loading = false; }
-    }
-
-    private async Task CreateAsync()
-    {
-        _busy = true; _error = null;
-        try
-        {
-            DateTimeOffset? exp = _create.ExpiresAtLocal is { } d
-                ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Local))
-                : (DateTimeOffset?)null;
-            var lic = await Api.CreateLicenseAsync(_create.TenantId, exp);
-            _lastIssuedKey = lic.LicenseKey;
-            await ReloadAsync();
-        }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _busy = false; }
-    }
-
-    private async Task RevokeAsync(Guid id)
-    {
-        _busy = true;
-        try { await Api.RevokeLicenseAsync(id); await ReloadAsync(); }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _busy = false; }
-    }
+    private async Task ReloadAsync() { _loading = true; _error = null; try { _tenants = await Api.ListTenantsAsync(); _licenses = await Api.ListLicensesAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
+    private async Task CreateAsync() { _busy = true; _error = null; try { DateTimeOffset? exp = _create.ExpiresAtLocal is { } d ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Local)) : null; var lic = await Api.CreateLicenseAsync(_create.TenantId, exp); _lastIssuedKey = lic.LicenseKey; await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
+    private async Task RevokeAsync(Guid id) { _busy = true; try { await Api.RevokeLicenseAsync(id); await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
 }
