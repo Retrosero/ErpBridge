@@ -5,9 +5,12 @@
 
 <PageTitle>Login — ErpBridge Admin</PageTitle>
 
-<h1>Login</h1>
+<div class="admin-login">
+<div class="admin-login__brand"><span>E</span> ErpBridge <small>ADMIN PORTAL</small></div>
+<h1>Tekrar hoş geldiniz</h1>
+<p>Yönetim paneline devam etmek için oturum açın.</p>
 
-<EditForm Model="_model" OnValidSubmit="HandleLoginAsync" FormName="login">
+<EditForm class="admin-form-card" Model="_model" OnValidSubmit="HandleLoginAsync" FormName="login">
     <DataAnnotationsValidator />
     <ValidationSummary />
 
@@ -29,6 +32,7 @@
 {
     <div class="alert alert-danger mt-3">@_error</div>
 }
+</div>
 
 @code {
     private readonly LoginModel _model = new();

@@ -4,9 +4,9 @@
 
 <PageTitle>Jobs — ErpBridge Admin</PageTitle>
 
-<h1>Jobs</h1>
+<AdminPageHeader Title="İş kuyruğu" Description="Merkezi API'ye iletilen işlemleri filtreleyin ve gerektiğinde tekrar deneyin." />
 
-<div class="mb-3 row g-2">
+<div class="admin-filter-bar mb-3 row g-2">
     <div class="col-auto">
         <select class="form-select" @bind="_status">
             <option value="">All</option>
@@ -32,7 +32,7 @@ else if (!string.IsNullOrEmpty(_error))
 }
 else
 {
-    <table class="table">
+    <div class="admin-data-surface"><table class="table admin-data-table">
         <thead>
             <tr>
                 <th>Id</th>
@@ -49,14 +49,14 @@ else
             @foreach (var j in _jobs)
             {
                 <tr>
-                    <td><code>@j.Id.ToString().Substring(0, 8)</code></td>
-                    <td>@(TenantName(j.TenantId))</td>
-                    <td>@j.DocumentType</td>
-                    <td>@j.ExternalId</td>
-                    <td>@j.Status</td>
-                    <td>@j.RetryCount</td>
-                    <td>@j.EnqueuedAtUtc.ToString("u")</td>
-                    <td>
+                    <td data-label="Kimlik"><code>@j.Id.ToString().Substring(0, 8)</code></td>
+                    <td data-label="Müşteri">@(TenantName(j.TenantId))</td>
+                    <td data-label="Tür">@j.DocumentType</td>
+                    <td data-label="Harici no"><code>@j.ExternalId</code></td>
+                    <td data-label="Durum"><span class="admin-status">@j.Status</span></td>
+                    <td data-label="Deneme">@j.RetryCount</td>
+                    <td data-label="Kuyruğa alınma">@j.EnqueuedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
+                    <td data-label="İşlem" class="admin-data-table__action">
                         @if (j.Status == "processing" || j.Status == "failed" || j.Status == "deadletter")
                         {
                             <button class="btn btn-sm btn-warning" @onclick="() => RetryAsync(j.Id)">Retry</button>
@@ -65,7 +65,7 @@ else
                 </tr>
             }
         </tbody>
-    </table>
+    </table></div>
 }
 
 @code {

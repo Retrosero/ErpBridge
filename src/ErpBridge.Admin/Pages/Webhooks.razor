@@ -5,14 +5,7 @@
 
 <PageTitle>Webhooks — ErpBridge Admin</PageTitle>
 
-<h1>Webhooks</h1>
-
-<p class="text-muted">
-    Outbound HTTPS endpoints that receive <code>job.succeeded</code> /
-    <code>job.failed</code> events. The signing secret is shown exactly once at
-    creation — store it on the receiver to verify HMAC-SHA256 signatures on
-    <code>ErpBridge-Signature</code>.
-</p>
+<AdminPageHeader Title="Webhooklar" Description="İşlem olaylarını müşteri sistemlerine güvenli biçimde iletin." />
 
 @if (_loading)
 {
@@ -20,8 +13,8 @@
 }
 else
 {
-    <div class="card mb-3">
-        <div class="card-header">Register a webhook endpoint</div>
+    <div class="card admin-form-card mb-3">
+        <div class="card-header">Yeni webhook uç noktası</div>
         <div class="card-body">
             <div class="row g-2">
                 <div class="col-auto">
@@ -66,7 +59,7 @@ else
 
     @foreach (var w in _webhooks)
     {
-        <div class="card mb-3">
+        <div class="card admin-webhook-card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div>
                     <strong>@w.Name</strong>

@@ -5,9 +5,9 @@
 
 <PageTitle>New Tenant — ErpBridge Admin</PageTitle>
 
-<h1>New Tenant</h1>
+<AdminPageHeader Title="Yeni müşteri" Description="ERP Bridge erişimi için yeni müşteri hesabı oluşturun." />
 
-<EditForm Model="_model" OnValidSubmit="HandleSubmitAsync" FormName="new-tenant">
+<EditForm class="admin-form-card" Model="_model" OnValidSubmit="HandleSubmitAsync" FormName="new-tenant">
     <div class="mb-3">
         <label class="form-label">Name</label>
         <InputText class="form-control" @bind-Value="_model.Name" />

@@ -4,9 +4,9 @@
 
 <PageTitle>Bootstrap — ErpBridge Admin</PageTitle>
 
-<h1>Bootstrap snapshots</h1>
+<AdminPageHeader Title="Veri anlık görüntüleri" Description="Müşteri ERP verilerinin son bootstrap alma durumunu inceleyin." />
 
-<div class="mb-3 row g-2">
+<div class="admin-filter-bar mb-3 row g-2">
     <div class="col-auto">
         <select class="form-select" @bind="_tenantId">
             <option value="">Select tenant…</option>
@@ -28,25 +28,25 @@
 
 @if (_summary is not null)
 {
-    <p>Captured at: <strong>@(_summary.CapturedAtUtc?.ToString("u") ?? "never")</strong></p>
-    <table class="table">
+    <div class="admin-insight"><span>Son alınma</span><strong>@(_summary.CapturedAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "Henüz alınmadı")</strong></div>
+    <div class="admin-data-surface"><table class="table admin-data-table">
         <thead><tr><th>Section</th><th>Row count</th></tr></thead>
         <tbody>
-            <tr><td>Customers</td><td>@_summary.CustomersCount</td></tr>
-            <tr><td>Stocks</td><td>@_summary.StocksCount</td></tr>
-            <tr><td>Prices</td><td>@_summary.PricesCount</td></tr>
-            <tr><td>Inventory</td><td>@_summary.InventoryCount</td></tr>
-            <tr><td>Open orders</td><td>@_summary.OpenOrdersCount</td></tr>
-            <tr><td>Cash &amp; bank</td><td>@_summary.CashAndBankCount</td></tr>
-            <tr><td>Lookups</td><td>@_summary.LookupsCount</td></tr>
-            <tr><td>Customer addresses</td><td>@_summary.CustomerAddressesCount</td></tr>
-            <tr><td>Customer contacts</td><td>@_summary.CustomerContactsCount</td></tr>
-            <tr><td>Barcodes</td><td>@_summary.BarcodesCount</td></tr>
-            <tr><td>Sales conditions</td><td>@_summary.SalesConditionsCount</td></tr>
-            <tr><td>Customer transactions</td><td>@_summary.CustomerTransactionsCount</td></tr>
-            <tr><td>Stock transactions</td><td>@_summary.StockTransactionsCount</td></tr>
+            <tr><td data-label="Bölüm">Müşteriler</td><td data-label="Kayıt"><strong>@_summary.CustomersCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Stoklar</td><td data-label="Kayıt"><strong>@_summary.StocksCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Fiyatlar</td><td data-label="Kayıt"><strong>@_summary.PricesCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Envanter</td><td data-label="Kayıt"><strong>@_summary.InventoryCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Açık siparişler</td><td data-label="Kayıt"><strong>@_summary.OpenOrdersCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Kasa ve banka</td><td data-label="Kayıt"><strong>@_summary.CashAndBankCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Tanımlar</td><td data-label="Kayıt"><strong>@_summary.LookupsCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Müşteri adresleri</td><td data-label="Kayıt"><strong>@_summary.CustomerAddressesCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Müşteri ilişkileri</td><td data-label="Kayıt"><strong>@_summary.CustomerContactsCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Barkodlar</td><td data-label="Kayıt"><strong>@_summary.BarcodesCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Satış koşulları</td><td data-label="Kayıt"><strong>@_summary.SalesConditionsCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Cari hareketleri</td><td data-label="Kayıt"><strong>@_summary.CustomerTransactionsCount</strong></td></tr>
+            <tr><td data-label="Bölüm">Stok hareketleri</td><td data-label="Kayıt"><strong>@_summary.StockTransactionsCount</strong></td></tr>
         </tbody>
-    </table>
+    </table></div>
 }
 
 @code {

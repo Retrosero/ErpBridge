@@ -4,11 +4,9 @@
 
 <PageTitle>Tenants — ErpBridge Admin</PageTitle>
 
-<h1>Tenants</h1>
-
-<p>
-    <a class="btn btn-primary" href="tenants/create">New Tenant</a>
-</p>
+<AdminPageHeader Title="Müşteriler" Description="ERP bağlantısı olan müşteri hesaplarını ve erişim durumlarını yönetin.">
+    <Actions><a class="btn btn-primary" href="tenants/create">+ Yeni müşteri</a></Actions>
+</AdminPageHeader>
 
 @if (_loading)
 {
@@ -20,7 +18,8 @@ else if (!string.IsNullOrEmpty(_error))
 }
 else
 {
-    <table class="table">
+    <div class="admin-data-surface">
+    <table class="table admin-data-table">
         <thead>
             <tr>
                 <th>Id</th>
@@ -34,24 +33,25 @@ else
             @foreach (var t in _tenants)
             {
                 <tr>
-                    <td><code>@t.Id.ToString().Substring(0, 8)</code></td>
-                    <td>@t.Name</td>
-                    <td>@t.CreatedAtUtc.ToString("u")</td>
-                    <td>@(t.IsActive ? "✓" : "✗")</td>
-                    <td>
+                    <td data-label="Kimlik"><code>@t.Id.ToString().Substring(0, 8)</code></td>
+                    <td data-label="Müşteri"><strong>@t.Name</strong></td>
+                    <td data-label="Oluşturulma">@t.CreatedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
+                    <td data-label="Durum"><span class="admin-status @(t.IsActive ? "admin-status--success" : "admin-status--muted")">@(t.IsActive ? "Aktif" : "Pasif")</span></td>
+                    <td data-label="İşlem" class="admin-data-table__action">
                         @if (t.IsActive)
                         {
-                            <button class="btn btn-sm btn-warning" @onclick="() => DeactivateAsync(t.Id)">Deactivate</button>
+                            <button class="btn btn-sm btn-warning" @onclick="() => DeactivateAsync(t.Id)">Pasifleştir</button>
                         }
                         else
                         {
-                            <button class="btn btn-sm btn-success" @onclick="() => ActivateAsync(t.Id)">Activate</button>
+                            <button class="btn btn-sm btn-success" @onclick="() => ActivateAsync(t.Id)">Etkinleştir</button>
                         }
                     </td>
                 </tr>
             }
         </tbody>
     </table>
+    </div>
 }
 
 @code {

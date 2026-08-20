@@ -4,7 +4,7 @@
 
 <PageTitle>Agents — ErpBridge Admin</PageTitle>
 
-<h1>Agents</h1>
+<AdminPageHeader Title="Ajanlar" Description="Müşteri sistemlerinde çalışan ErpBridge ajanlarının bağlantı ve kuyruk durumunu izleyin." />
 
 @if (_loading)
 {
@@ -16,7 +16,7 @@ else if (!string.IsNullOrEmpty(_error))
 }
 else
 {
-    <table class="table">
+    <div class="admin-data-surface"><table class="table admin-data-table">
         <thead>
             <tr>
                 <th>Tenant</th>
@@ -30,15 +30,15 @@ else
             @foreach (var a in _agents)
             {
                 <tr>
-                    <td>@(TenantName(a.TenantId))</td>
-                    <td><code>@a.MachineId</code></td>
-                    <td>@(a.LastHeartbeatAtUtc?.ToString("u") ?? "—")</td>
-                    <td>@(a.LastStatus ?? "—")</td>
-                    <td>@a.LastQueueDepth</td>
+                    <td data-label="Müşteri"><strong>@(TenantName(a.TenantId))</strong></td>
+                    <td data-label="Makine"><code>@a.MachineId</code></td>
+                    <td data-label="Son bağlantı">@(a.LastHeartbeatAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "—")</td>
+                    <td data-label="Durum"><span class="admin-status">@(a.LastStatus ?? "Bilinmiyor")</span></td>
+                    <td data-label="Kuyruk"><strong>@a.LastQueueDepth</strong></td>
                 </tr>
             }
         </tbody>
-    </table>
+    </table></div>
 }
 
 @code {
