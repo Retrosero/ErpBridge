@@ -2,18 +2,21 @@
 
 <PageTitle>ErpBridge Admin</PageTitle>
 
-<div class="page">
+<div class="page admin-shell">
     <div class="sidebar">
-        <div class="top-row ps-3 navbar navbar-dark">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="">ErpBridge Admin</a>
+        <div class="top-row navbar navbar-dark">
+            <div class="container-fluid admin-brand">
+                <a class="navbar-brand" href="">
+                    <span class="admin-brand__mark" aria-hidden="true">E</span>
+                    <span>ErpBridge <small>ADMIN</small></span>
+                </a>
             </div>
         </div>
-        <nav class="flex-column">
+        <nav class="flex-column" aria-label="Yönetim menüsü">
             <AuthorizeView>
                 <Authorized>
                     <div class="nav-item px-3">
-                        <span class="text-white-50">@context.User.Identity?.Name</span>
+                        <span class="admin-user">@context.User.Identity?.Name</span>
                     </div>
                     <div class="nav-item px-3">
                         <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
@@ -53,10 +56,10 @@
     </div>
 
     <main>
-        <div class="top-row px-4">
+        <div class="top-row admin-topbar px-4">
             <AuthorizeView>
                 <Authorized>
-                    <span class="me-3">@context.User.Identity?.Name</span>
+                    <span class="admin-topbar__identity">@context.User.Identity?.Name</span>
                 </Authorized>
             </AuthorizeView>
         </div>
