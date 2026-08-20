@@ -85,10 +85,10 @@ services:
     container_name: erpbridge-admin
     build:
       context: .
-      dockerfile: Dockerfile
-      args:
-        target: admin
-        VERSION: ${GIT_HASH:-latest}
+      # The Admin panel has its own single-purpose Dockerfile. The shared
+      # Dockerfile exposes only centralapi as a final build stage, so using
+      # it here can leave Coolify serving a stale or invalid Admin image.
+      dockerfile: Dockerfile.admin
     image: erpbridge/admin:${GIT_HASH:-latest}
     ports:
       - "4002:4002"
