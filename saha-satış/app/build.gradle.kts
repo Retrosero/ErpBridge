@@ -11,15 +11,11 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.fieldforce.precision"
+    applicationId = "com.aistudio.fieldforce.qwxzt"
     minSdk = 24
     targetSdk = 36
-    versionCode = 260
-    versionName = "260.0"
-
-    buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${System.getenv("FIREBASE_PROJECT_ID") ?: ""}\"")
-    buildConfigField("String", "FIREBASE_APP_ID", "\"${System.getenv("FIREBASE_APP_ID") ?: ""}\"")
-    buildConfigField("String", "FIREBASE_API_KEY", "\"${System.getenv("FIREBASE_API_KEY") ?: ""}\"")
+    versionCode = 418
+    versionName = "418.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

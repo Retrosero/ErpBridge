@@ -1,0 +1,1 @@
+sed -i 's/label = { Text("API Key", style = MaterialTheme.typography.bodySmall) }/label = { Text("Aktivasyon Kodu", style = MaterialTheme.typography.bodySmall) }/g' app/src/main/java/com/example/ui/screens/ErpIntegrationScreen.kt

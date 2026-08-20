@@ -4,9 +4,9 @@
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
     <NotFound>
-        <PageTitle>Not found</PageTitle>
+        <PageTitle>Sayfa bulunamadı</PageTitle>
         <LayoutView Layout="@typeof(MainLayout)">
-            <p role="alert">Sorry, there's nothing at this address.</p>
+            <AdminState Tone="empty" Icon="?" Title="Sayfa bulunamadı" Message="Aradığınız sayfa taşınmış veya kaldırılmış olabilir." />
         </LayoutView>
     </NotFound>
 </Router>

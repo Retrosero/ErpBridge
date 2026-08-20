@@ -617,68 +617,325 @@ fun CariDetailsDrawer(
     var selectedInvoiceTxDetails by remember { mutableStateOf<CustomerTx?>(null) }
 
     var dbOrderRecords by remember(customer.id) { mutableStateOf<List<SalesRecord>>(emptyList()) }
+    var txStateList by remember(customer.id) { mutableStateOf(customer.transactions.toList()) }
+
     LaunchedEffect(customer.id, customer.name) {
         try {
             val db = com.example.data.database.DatabaseProvider.getDatabase(context.applicationContext)
             
-            // Proactively and dynamically fetch detailed invoices via FieldOps API if not a local draft
+            // 1. Proactively load cached movements from Room database (cari_hesap_hareketleri)
+            try {
+                val dbMovements = db.cariHesapHareketDao().getByCariKod(customer.id)
+                val fallbackMovements = if (dbMovements.isEmpty()) {
+                    val allCh = db.cariHesapHareketDao().getAll()
+                    val cKey = customer.id.uppercase().trim()
+                    val nKey = customer.name.uppercase().trim()
+                    allCh.filter { 
+                        it.cariKod.uppercase().trim().equals(cKey, ignoreCase = true) ||
+                        it.cariKod.uppercase().trim().equals(nKey, ignoreCase = true) ||
+                        (cKey.isNotEmpty() && (it.cariKod.uppercase().contains(cKey) || cKey.contains(it.cariKod.uppercase())))
+                    }
+                } else dbMovements
+
+                if (fallbackMovements.isNotEmpty()) {
+                    val newTxs = fallbackMovements.map { ch ->
+                        val rawEvrak = ch.evrakNo.trim()
+                        val docNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) "FT-$rawEvrak" else rawEvrak
+                        val finalId = if (docNo.isNotEmpty()) docNo else ch.id
+                        val txType = when (ch.evrakTip) {
+                            29, 63 -> "SATIŞ"
+                            64 -> "TAHSİLAT"
+                            65 -> "TEDİYE"
+                            else -> when (ch.tip) {
+                                0 -> "SATIŞ"
+                                1 -> "TAHSİLAT"
+                                2 -> "İADE"
+                                3 -> "VİRMAN"
+                                else -> if (ch.borcMu) "SATIŞ" else "TAHSİLAT"
+                            }
+                        }
+                        val rawDate = ch.tarih
+                        val formattedDate = try {
+                            if (rawDate.contains("T")) {
+                                val parts = rawDate.split("T")[0].split("-")
+                                if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else rawDate
+                            } else rawDate
+                        } catch (e: Exception) { rawDate }
+                        
+                        val finalDesc = if (docNo.isNotEmpty()) "$docNo - ${ch.aciklama.ifEmpty { "Mikro Cari Hareketi" }}" else ch.aciklama.ifEmpty { "Mikro Cari Hareketi" }
+                        CustomerTx(
+                            id = finalId,
+                            date = formattedDate,
+                            type = txType,
+                            amount = ch.tutar,
+                            description = finalDesc
+                        )
+                    }
+
+                    val currentList = customer.transactions.toMutableList()
+                    for (nt in newTxs) {
+                        val idx = currentList.indexOfFirst { it.id == nt.id }
+                        if (idx >= 0) currentList[idx] = nt
+                        else currentList.add(nt)
+                    }
+                    customer.transactions.clear()
+                    customer.transactions.addAll(currentList)
+                    txStateList = customer.transactions.toList()
+
+                    var calcLedgerLocal = 0.0
+                    for (tx in customer.transactions) {
+                        val t = tx.type.uppercase()
+                        if (t.contains("SATIŞ") || t.contains("BORÇ") || t.contains("TEDİYE")) calcLedgerLocal += tx.amount
+                        else if (t.contains("TAHSİLAT") || t.contains("ALACAK") || t.contains("İADE")) calcLedgerLocal -= tx.amount
+                    }
+                    if (customer.transactions.isNotEmpty()) {
+                        customer.balance = calcLedgerLocal
+                    }
+                    
+                    val custIdxL = com.example.ui.screens.AppDataStore.customers.indexOfFirst { it.id == customer.id }
+                    if (custIdxL >= 0) {
+                        val newCust = customer.copy(balance = customer.balance, transactions = customer.transactions)
+                        com.example.ui.screens.AppDataStore.customers[custIdxL] = newCust
+                        if (com.example.ui.screens.AppDataStore.activeSelectedCustomer.value?.id == customer.id) {
+                            com.example.ui.screens.AppDataStore.activeSelectedCustomer.value = newCust
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 2. Proactively and dynamically fetch detailed transactions and invoices via FieldOps API if not a local draft
             if (!customer.id.startsWith("customer_")) {
                 try {
                     val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
                     val apiUrl = sharedPrefs.getString("api_url", "https://d5e4-88-248-2-49.ngrok-free.app") ?: "https://d5e4-88-248-2-49.ngrok-free.app"
-                    val apiKey = sharedPrefs.getString("api_key", "dev-token-change-in-production") ?: "dev-token-change-in-production"
+                    val apiKey = com.example.data.LicenseRepository.getApiKey(context.applicationContext) ?: ""
+                    val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
+                    val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
                     
                     val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
-                    val response = apiService.getFaturaHareket(com.example.data.api.PullJobsRequest(tenant_id=sharedPrefs.getString("tenant_id", "T001") ?: "T001", api_key=apiKey, device_id=sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT", agent_version="v2.0", entity="faturaHareket", since=customer.id))
-                    if (response.isSuccessful && response.body() != null) {
-                        val body = response.body()!!
-                        val items = body.items
-                        
-                        for (fatura in items) {
-                            val rawEvrak = fatura.evrakNo ?: ""
-                            val invoiceNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) {
-                                "FT-$rawEvrak"
-                            } else {
-                                rawEvrak.ifEmpty { "FT-ERP-${fatura.erpRef ?: (Math.random()*100000).toInt()}" }
-                            }
-                            
-                            val totalQtySum = fatura.satirlar?.sumOf { it.miktar?.toInt() ?: 1 } ?: 0
-                            val orderEntity = com.example.data.database.WmsOrderEntity(
-                                id = invoiceNo,
-                                customerName = customer.name,
-                                orderDate = fatura.tarih ?: "",
-                                status = "Sevk Edildi",
-                                totalItems = totalQtySum,
-                                syncStatus = "SYNCED"
-                            )
-                            db.wmsOrderDao().insert(orderEntity)
-                            
-                            val orderItemsList = mutableListOf<com.example.data.database.WmsOrderItemEntity>()
-                            fatura.satirlar?.forEachIndexed { idx, satir ->
-                                val stokK = satir.stokKod ?: ""
-                                val matchedProd = AppDataStore.products.find { it.code == stokK }
-                                val prodBarcode = matchedProd?.barcode ?: "ST-${stokK}"
-                                val prodTitle = matchedProd?.title ?: satir.stokAd ?: "Ürün ($stokK)"
-                                val itemQty = satir.miktar?.toInt() ?: 1
-                                
-                                val orderItem = com.example.data.database.WmsOrderItemEntity(
-                                    id = "${invoiceNo}_${stokK}_${idx}",
-                                    orderId = invoiceNo,
-                                    productBarcode = prodBarcode,
-                                    productTitle = prodTitle,
-                                    quantityOrdered = itemQty,
-                                    quantityPicked = itemQty,
-                                    isPicked = true,
-                                    shelfLocation = "ERP Merkez",
-                                    sth_fat_recid_recno = satir.realSthFatRecidRecno
-                                )
-                                orderItemsList.add(orderItem)
-                            }
-                            if (orderItemsList.isNotEmpty()) {
-                                db.wmsOrderItemDao().insertAll(orderItemsList)
-                            }
+                    
+//                    // Fetch Cari Hareketleri from API
+//                    try {
+//                        val cariHareketResponse = apiService.getCariHareket(
+//                            com.example.data.api.PullJobsRequest(
+//                                tenant_id = tenantId,
+//                                api_key = apiKey,
+//                                device_id = deviceId,
+//                                agent_version = "v2.0",
+//                                entity = "cariHareket",
+//                                since = customer.id
+//                            )
+//                        )
+//                        if (cariHareketResponse.isSuccessful && cariHareketResponse.body() != null) {
+//                            val items = cariHareketResponse.body()!!.items
+//                            if (items.isNotEmpty()) {
+//                                val chEntities = items.map { dto ->
+//                                    com.example.data.database.CariHesapHareketEntity(
+//                                        id = dto.id ?: dto.erpRef ?: java.util.UUID.randomUUID().toString(),
+//                                        cariKod = dto.actualCariKod.ifEmpty { customer.id },
+//                                        tarih = dto.actualTarih,
+//                                        evrakTip = dto.actualEvrakTip,
+//                                        evrakNo = dto.actualEvrakNo,
+//                                        tip = dto.tip ?: dto.cha_tip ?: 0,
+//                                        tutar = dto.actualTutar,
+//                                        borcMu = dto.actualBorcMu,
+//                                        aciklama = dto.actualAciklama
+//                                    )
+//                                }
+//                                db.cariHesapHareketDao().insertAll(chEntities)
+//
+//                                val newTxs = items.map { dto ->
+//                                    val rawDate = dto.actualTarih
+//                                    val formattedDate = try {
+//                                        if (rawDate.contains("T")) {
+//                                            val parts = rawDate.split("T")[0].split("-")
+//                                            if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else rawDate
+//                                        } else rawDate
+//                                    } catch (e: Exception) { rawDate }
+//                                    
+//                                    val txType = when (dto.actualEvrakTip) {
+//                                        29 -> "SATIŞ"
+//                                        64 -> "TAHSİLAT"
+//                                        65 -> "TEDİYE"
+//                                        63 -> "SATIŞ"
+//                                        else -> when (dto.tip ?: dto.cha_tip) {
+//                                            0 -> "SATIŞ"
+//                                            1 -> "TAHSİLAT"
+//                                            2 -> "İADE"
+//                                            3 -> "VİRMAN"
+//                                            else -> if (dto.actualBorcMu) "SATIŞ" else "TAHSİLAT"
+//                                        }
+//                                    }
+//                                    val rawEvrak = dto.actualEvrakNo
+//                                    val docNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) {
+//                                        "FT-$rawEvrak"
+//                                    } else {
+//                                        rawEvrak
+//                                    }
+//                                    val finalDesc = if (docNo.isNotEmpty()) {
+//                                        "$docNo - ${dto.actualAciklama.ifEmpty { "Mikro Cari Hareketi" }}"
+//                                    } else {
+//                                        dto.actualAciklama.ifEmpty { "Mikro Cari Hareketi" }
+//                                    }
+//                                    
+//                                    CustomerTx(
+//                                        id = dto.id ?: if (docNo.isNotEmpty()) docNo else "TX-ERP-${(Math.random() * 100000).toInt()}",
+//                                        date = formattedDate,
+//                                        type = txType,
+//                                        amount = dto.actualTutar,
+//                                        description = finalDesc,
+//                                        erpRef = dto.erpRef,
+//                                        recNo = dto.id,
+//                                        cha_recno = dto.realChaRecNo
+//                                    )
+//                                }
+//
+//                                val currentList = customer.transactions.toMutableList()
+//                                for (nt in newTxs) {
+//                                    val idx = currentList.indexOfFirst { it.id == nt.id || (it.erpRef != null && it.erpRef == nt.erpRef) }
+//                                    if (idx >= 0) currentList[idx] = nt
+//                                    else currentList.add(nt)
+//                                }
+//                                customer.transactions.clear()
+//                                customer.transactions.addAll(currentList)
+//                                txStateList = customer.transactions.toList()
+//                            }
+//                        }
+//                    } catch (e: Exception) {
+//                        e.printStackTrace()
+//                    }
+//
+//                    // Fetch Fatura Hareketleri from API
+//                    val response = apiService.getFaturaHareket(com.example.data.api.PullJobsRequest(tenant_id=tenantId, api_key=apiKey, device_id=deviceId, agent_version="v2.0", entity="faturaHareket", since=customer.id))
+//                    if (response.isSuccessful && response.body() != null) {
+//                        val body = response.body()!!
+//                        val items = body.items
+//                        
+//                        val newInvoiceTxs = mutableListOf<CustomerTx>()
+//
+//                        for (fatura in items) {
+//                            val rawEvrak = fatura.evrakNo ?: ""
+//                            val invoiceNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) {
+//                                "FT-$rawEvrak"
+//                            } else {
+//                                rawEvrak.ifEmpty { "FT-ERP-${fatura.erpRef ?: (Math.random()*100000).toInt()}" }
+//                            }
+//                            
+//                            val totalQtySum = fatura.satirlar?.sumOf { it.miktar?.toInt() ?: 1 } ?: 0
+//                            val totalAmount = fatura.satirlar?.sumOf { (it.miktar ?: 1.0) * (it.birimFiyat ?: 0.0) } ?: 0.0
+//                            val formattedDate = try {
+//                                val rawDate = fatura.tarih ?: ""
+//                                if (rawDate.contains("T")) {
+//                                    val parts = rawDate.split("T")[0].split("-")
+//                                    if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else rawDate
+//                                } else rawDate
+//                            } catch (e: Exception) { fatura.tarih ?: "" }
+//
+//                            val orderEntity = com.example.data.database.WmsOrderEntity(
+//                                id = invoiceNo,
+//                                customerName = customer.name,
+//                                orderDate = fatura.tarih ?: "",
+//                                status = "Sevk Edildi",
+//                                totalItems = totalQtySum,
+//                                syncStatus = "SYNCED"
+//                            )
+//                            db.wmsOrderDao().insert(orderEntity)
+//                            
+//                            val orderItemsList = mutableListOf<com.example.data.database.WmsOrderItemEntity>()
+//                            fatura.satirlar?.forEachIndexed { idx, satir ->
+//                                val stokK = satir.stokKod ?: ""
+//                                val matchedProd = AppDataStore.products.find { it.code == stokK }
+//                                val prodBarcode = matchedProd?.barcode ?: "ST-${stokK}"
+//                                val prodTitle = matchedProd?.title ?: satir.stokAd ?: "Ürün ($stokK)"
+//                                val itemQty = satir.miktar?.toInt() ?: 1
+//                                
+//                                val orderItem = com.example.data.database.WmsOrderItemEntity(
+//                                    id = "${invoiceNo}_${stokK}_${idx}",
+//                                    orderId = invoiceNo,
+//                                    productBarcode = prodBarcode,
+//                                    productTitle = prodTitle,
+//                                    quantityOrdered = itemQty,
+//                                    quantityPicked = itemQty,
+//                                    isPicked = true,
+//                                    shelfLocation = "ERP Merkez",
+//                                    sth_fat_recid_recno = satir.realSthFatRecidRecno
+//                                )
+//                                orderItemsList.add(orderItem)
+//                            }
+//                            if (orderItemsList.isNotEmpty()) {
+//                                db.wmsOrderItemDao().insertAll(orderItemsList)
+//                            }
+//
+//                            if (totalAmount > 0.0) {
+//                                newInvoiceTxs.add(
+//                                    CustomerTx(
+//                                        id = invoiceNo,
+//                                        date = formattedDate,
+//                                        type = "SATIŞ",
+//                                        amount = totalAmount,
+//                                        description = "$invoiceNo - Satış Faturası",
+//                                        erpRef = fatura.erpRef
+//                                    )
+//                                )
+//                            }
+//                        }
+//
+//                        if (newInvoiceTxs.isNotEmpty()) {
+//                            val currentList = customer.transactions.toMutableList()
+//                            for (invTx in newInvoiceTxs) {
+//                                if (currentList.none { it.id == invTx.id || (it.erpRef != null && it.erpRef == invTx.erpRef) }) {
+//                                    currentList.add(invTx)
+//                                }
+//                            }
+//                            customer.transactions.clear()
+//                            customer.transactions.addAll(currentList)
+//                            txStateList = customer.transactions.toList()
+//                        }
+//                    }
+//
+                    // Save customer transactions & updated balance to Room database and AppDataStore
+                    var calcLedger = 0.0
+                    for (tx in customer.transactions) {
+                        val t = tx.type.uppercase()
+                        if (t.contains("SATIŞ") || t.contains("BORÇ") || t.contains("TEDİYE")) calcLedger += tx.amount
+                        else if (t.contains("TAHSİLAT") || t.contains("ALACAK") || t.contains("İADE")) calcLedger -= tx.amount
+                    }
+                    if (customer.transactions.isNotEmpty()) {
+                        customer.balance = calcLedger
+                    }
+
+                    val updatedCustEntity = com.example.data.database.CustomerEntity(
+                        id = customer.id,
+                        name = customer.name,
+                        balance = customer.balance,
+                        lastVisit = customer.lastVisit,
+                        contact = customer.contact,
+                        phone = customer.phone,
+                        address = customer.address,
+                        taxOffice = customer.taxOffice,
+                        taxNumber = customer.taxNumber,
+                        gpsLocation = customer.gpsLocation,
+                        riskLimit = customer.riskLimit,
+                        priceGroup = customer.priceGroup,
+                        specialDiscountPercent = customer.specialDiscountPercent,
+                        transactionsJson = com.example.data.database.Converters().fromCustomerTxList(customer.transactions)
+                    )
+                    db.customerDao().insert(updatedCustEntity)
+                    
+                    val custIdx = com.example.ui.screens.AppDataStore.customers.indexOfFirst { it.id == customer.id }
+                    if (custIdx >= 0) {
+                        val newCust = customer.copy(
+                            balance = customer.balance,
+                            transactions = customer.transactions
+                        )
+                        com.example.ui.screens.AppDataStore.customers[custIdx] = newCust
+                        if (com.example.ui.screens.AppDataStore.activeSelectedCustomer.value?.id == customer.id) {
+                            com.example.ui.screens.AppDataStore.activeSelectedCustomer.value = newCust
                         }
                     }
+                    txStateList = customer.transactions.toList()
                 } catch (ne: Exception) {
                     ne.printStackTrace()
                 }
@@ -1151,7 +1408,8 @@ fun CariDetailsDrawer(
                     }
 
                     1 -> { // Hareketler Tab
-                        if (customer.transactions.isEmpty()) {
+                        val activeTransactions = if (txStateList.isNotEmpty()) txStateList else customer.transactions
+                        if (activeTransactions.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Icon(Icons.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline)
@@ -1160,8 +1418,8 @@ fun CariDetailsDrawer(
                             }
                         } else {
                             // Extract unique years from the transactions list dynamically
-                            val availableYears = remember(customer.transactions) {
-                                val years = customer.transactions.map { tx ->
+                            val availableYears = remember(activeTransactions) {
+                                val years = activeTransactions.map { tx ->
                                     val trimmed = tx.date.trim()
                                     var extracted = "Tümü"
                                     if (trimmed.length >= 4) {
@@ -1182,11 +1440,11 @@ fun CariDetailsDrawer(
                                 listOf("Tümü") + years
                             }
                             var selectedYear by remember { mutableStateOf("Tümü") }
-                            val filteredTransactions = remember(customer.transactions, selectedYear) {
+                            val filteredTransactions = remember(activeTransactions, selectedYear) {
                                 if (selectedYear == "Tümü") {
-                                    customer.transactions
+                                    activeTransactions
                                 } else {
-                                    customer.transactions.filter { tx ->
+                                    activeTransactions.filter { tx ->
                                         val trimmed = tx.date.trim()
                                         var extracted = ""
                                         if (trimmed.length >= 4) {

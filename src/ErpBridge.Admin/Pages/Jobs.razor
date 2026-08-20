@@ -2,19 +2,14 @@
 @inject ErpBridge.Admin.Api.CentralApiClient Api
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>Jobs — ErpBridge Admin</PageTitle>
+<PageTitle>İş Kuyruğu — ErpBridge Yönetim</PageTitle>
 
 <AdminPageHeader Title="İş kuyruğu" Description="Merkezi API'ye iletilen işlemleri filtreleyin ve gerektiğinde tekrar deneyin." />
 
 <div class="admin-filter-bar mb-3 row g-2">
     <div class="col-auto">
         <select class="form-select" @bind="_status">
-            <option value="">All</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="succeeded">Succeeded</option>
-            <option value="failed">Failed</option>
-            <option value="deadletter">DeadLetter</option>
+            <option value="">Tüm durumlar</option><option value="pending">Bekliyor</option><option value="processing">İşleniyor</option><option value="succeeded">Başarılı</option><option value="failed">Başarısız</option><option value="deadletter">İşlenemedi</option>
         </select>
     </div>
     <div class="col-auto">
@@ -24,25 +19,18 @@
 
 @if (_loading)
 {
-    <p><em>Loading…</em></p>
+    <AdminLoading Text="İş kuyruğu yükleniyor…" />
 }
 else if (!string.IsNullOrEmpty(_error))
 {
-    <div class="alert alert-danger">@_error</div>
+    <AdminState Tone="error" Icon="!" Title="İş kuyruğu alınamadı" Message="@_error" />
 }
 else
 {
     <div class="admin-data-surface"><table class="table admin-data-table">
         <thead>
             <tr>
-                <th>Id</th>
-                <th>Tenant</th>
-                <th>Type</th>
-                <th>External</th>
-                <th>Status</th>
-                <th>Retries</th>
-                <th>Enqueued</th>
-                <th></th>
+                <th>Kimlik</th><th>Müşteri</th><th>Tür</th><th>Harici no</th><th>Durum</th><th>Deneme</th><th>Kuyruğa alınma</th><th>İşlem</th>
             </tr>
         </thead>
         <tbody>
@@ -53,13 +41,13 @@ else
                     <td data-label="Müşteri">@(TenantName(j.TenantId))</td>
                     <td data-label="Tür">@j.DocumentType</td>
                     <td data-label="Harici no"><code>@j.ExternalId</code></td>
-                    <td data-label="Durum"><span class="admin-status">@j.Status</span></td>
+                    <td data-label="Durum"><AdminStatusBadge Text="@StatusText(j.Status)" Tone="@StatusTone(j.Status)" /></td>
                     <td data-label="Deneme">@j.RetryCount</td>
                     <td data-label="Kuyruğa alınma">@j.EnqueuedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
                     <td data-label="İşlem" class="admin-data-table__action">
                         @if (j.Status == "processing" || j.Status == "failed" || j.Status == "deadletter")
                         {
-                            <button class="btn btn-sm btn-warning" @onclick="() => RetryAsync(j.Id)">Retry</button>
+                            <button class="btn btn-sm btn-warning" @onclick="() => RetryAsync(j.Id)">Tekrar dene</button>
                         }
                     </td>
                 </tr>
@@ -96,4 +84,6 @@ else
     }
 
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+    private static string StatusText(string status) => status.ToLowerInvariant() switch { "pending" => "Bekliyor", "processing" => "İşleniyor", "succeeded" => "Başarılı", "failed" => "Başarısız", "deadletter" => "İşlenemedi", _ => status };
+    private static string StatusTone(string status) => status.ToLowerInvariant() switch { "succeeded" => "success", "failed" or "deadletter" => "danger", "pending" or "processing" => "warning", _ => "muted" };
 }

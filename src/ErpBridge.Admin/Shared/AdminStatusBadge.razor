@@ -1,0 +1,6 @@
+<span class="admin-status admin-status--@Tone">@Text</span>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+    [Parameter] public string Tone { get; set; } = "info";
+}

@@ -564,7 +564,15 @@ fun OfflineSyncScreen(navController: NavController) {
 
                             // Interactive Scheme Tabs
                             var selectedSchemeTab by remember { mutableStateOf(0) }
-                            val schemeTabs = listOf("Cariler (customers)", "Stoklar (products)", "Sync Kuyruğu (sync_queue)", "Fiyat / Depo")
+                            val schemeTabs = listOf(
+                                "Cariler (customers)",
+                                "Stoklar (products)",
+                                "Cari Hareketler",
+                                "Stok Hareketler",
+                                "Bankalar",
+                                "Cari Adresler",
+                                "Sync Kuyruğu"
+                            )
                             
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 items(schemeTabs.size) { index ->
@@ -610,6 +618,72 @@ fun OfflineSyncScreen(navController: NavController) {
                                 }
                                 2 -> {
                                     SchemaTableCard(
+                                        tableName = "cari_hesap_hareketleri",
+                                        desc = "ERP köprüsünden çekilen fatura, tahsilat, tediye ve devir cari hesap hareketlerinin tutulduğu tablodur.",
+                                        fields = listOf(
+                                            SchemaField("id", "TEXT (PK)", "Hareket ID / erpRef", "CH-902182"),
+                                            SchemaField("cariKod", "TEXT", "Müşteri / Tedarikçi cari kodu", "CR-001"),
+                                            SchemaField("tarih", "TEXT", "İşlem tarihi", "2026-08-14"),
+                                            SchemaField("evrakTip", "INTEGER", "Evrak türü kodu (29: Fatura, 64: Tahsilat)", "29"),
+                                            SchemaField("evrakNo", "TEXT", "Evrak seri/sıra numarası", "FT-2026001"),
+                                            SchemaField("tip", "INTEGER", "İşlem yönü (0: Borç, 1: Alacak)", "0"),
+                                            SchemaField("tutar", "REAL", "İşlem tutarı", "12500.00"),
+                                            SchemaField("borcMu", "INTEGER", "Borç bayrağı", "1"),
+                                            SchemaField("aciklama", "TEXT", "Satır açıklaması", "Mikro Satış Faturası")
+                                        )
+                                    )
+                                }
+                                3 -> {
+                                    SchemaTableCard(
+                                        tableName = "stok_hareketleri",
+                                        desc = "ERP entegrasyonuyla aktarılan giriş, çıkış, iade ve sevk stok hareketleri tablosudur.",
+                                        fields = listOf(
+                                            SchemaField("id", "TEXT (PK)", "Stok hareket UUID/erpRef", "SH-891021"),
+                                            SchemaField("stokKod", "TEXT", "Ürün / Stok Kodu", "STK-1002"),
+                                            SchemaField("tarih", "TEXT", "Hareket tarihi", "2026-08-14"),
+                                            SchemaField("tip", "INTEGER", "Hareket tipi (0: Giriş, 1: Çıkış)", "1"),
+                                            SchemaField("evrakTip", "INTEGER", "Evrak tipi", "29"),
+                                            SchemaField("evrakNo", "TEXT", "İrsaliye/Fatura Evrak No", "İRS-202601"),
+                                            SchemaField("miktar", "REAL", "Giriş/Çıkış Miktarı", "25.0"),
+                                            SchemaField("birimFiyat", "REAL", "Birim Fiyat", "145.00"),
+                                            SchemaField("tutar", "REAL", "Toplam Satır Tutarı", "3625.00"),
+                                            SchemaField("cariKod", "TEXT", "İlişkili Cari Kod", "CR-001"),
+                                            SchemaField("depoNo", "INTEGER", "Depo Numarası", "1")
+                                        )
+                                    )
+                                }
+                                4 -> {
+                                    SchemaTableCard(
+                                        tableName = "bridge_bankalar",
+                                        desc = "Merkez banka ve şube tanımlarının, IBAN ve hesap numaralarının tutulduğu tablodur.",
+                                        fields = listOf(
+                                            SchemaField("id", "TEXT (PK)", "Banka kayıt anahtarı", "BNK-01"),
+                                            SchemaField("kod", "TEXT", "Banka Kodu", "AKBANK-01"),
+                                            SchemaField("isim", "TEXT", "Banka / Hesap Adı", "Akbank Ticari"),
+                                            SchemaField("sube", "TEXT", "Şube Adı", "Merkez Şube"),
+                                            SchemaField("iban", "TEXT", "IBAN Numarası", "TR1200046..."),
+                                            SchemaField("hesapNumarasi", "TEXT", "Hesap Numarası", "1234567")
+                                        )
+                                    )
+                                }
+                                5 -> {
+                                    SchemaTableCard(
+                                        tableName = "cari_adresleri",
+                                        desc = "Carilere ait sevk, teslimat ve fatura adreslerinin detaylı tutulduğu tablodur.",
+                                        fields = listOf(
+                                            SchemaField("id", "TEXT (PK)", "Adres anahtarı", "ADR-001-1"),
+                                            SchemaField("cariKod", "TEXT", "İlişkili Cari Kod", "CR-001"),
+                                            SchemaField("adresNo", "INTEGER", "Adres Sıra No", "1"),
+                                            SchemaField("il", "TEXT", "İl", "İstanbul"),
+                                            SchemaField("ilce", "TEXT", "İlçe", "Kadıköy"),
+                                            SchemaField("mahalle", "TEXT", "Mahalle", "Caddebostan"),
+                                            SchemaField("cadde", "TEXT", "Cadde", "Bağdat Cad."),
+                                            SchemaField("sokak", "TEXT", "Sokak / No", "No: 14/2")
+                                        )
+                                    )
+                                }
+                                6 -> {
+                                    SchemaTableCard(
                                         tableName = "sync_queue",
                                         desc = "İnternet yokken yapılan sipariş, fatura, tahsilat, tediye ve sayım hareketlerini içeren kritik işlem kuyruğu.",
                                         fields = listOf(
@@ -620,19 +694,6 @@ fun OfflineSyncScreen(navController: NavController) {
                                             SchemaField("captured_at", "INTEGER", "İşlemin yapıldığı milisaniye zaman damgası", "1782293812000"),
                                             SchemaField("is_processed", "INTEGER", "Senkronizasyon durumu (0: Bekliyor, 1: Tamamlandı)", "0"),
                                             SchemaField("retry_count", "INTEGER", "Gönderim esnasında alınan hata deneme sayısı", "2")
-                                        )
-                                    )
-                                }
-                                3 -> {
-                                    SchemaTableCard(
-                                        tableName = "warehouse_stocks",
-                                        desc = "Depo bazlı anlık stok dağılımlarının yerel tutulduğu veridir.",
-                                        fields = listOf(
-                                            SchemaField("warehouse_id", "TEXT (Composite PK)", "Depo kodu", "DEPO-ANADOLU"),
-                                            SchemaField("product_code", "TEXT (Composite PK)", "Ürün kodu referansı", "YAĞ-20L-PREM"),
-                                            SchemaField("on_hand_qty", "INTEGER", "Fiziki elde bulunan stok adedi", "124"),
-                                            SchemaField("reserved_qty", "INTEGER", "Kesilen ama sevk edilmeyen rezerv stok", "12"),
-                                            SchemaField("last_updated", "INTEGER", "Son veri yenilenme zamanı", "1782293812000")
                                         )
                                     )
                                 }

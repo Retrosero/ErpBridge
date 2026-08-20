@@ -1,0 +1,43 @@
+# Local development override for docker-compose.coolify.yml.
+# Run: docker compose -f docker-compose.coolify.yml -f docker-compose.local.yml up -d --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: erpbridge
+      POSTGRES_USER: erpbridge
+      POSTGRES_PASSWORD: erpbridge-local
+    ports:
+      - "5434:5432"
+    volumes:
+      - erpbridge-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erpbridge -d erpbridge"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  centralapi:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__CentralApi: Host=postgres;Port=5432;Database=erpbridge;Username=erpbridge;Password=erpbridge-local
+      Jwt__SigningKey: local-development-signing-key-change-before-production-2026
+      Jwt__Issuer: ErpBridge.CentralApi
+      Jwt__Audience: ErpBridge.Agents
+      Jwt__AccessTokenMinutes: "60"
+      Admin__SeedEmail: admin@local.test
+      Admin__SeedPassword: admin-local-only
+      Admin__SeedDisplayName: Local Admin
+      PORT: "5080"
+
+  admin:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      CentralApi__BaseUrl: http://centralapi:5080
+      PORT: "4002"
+
+volumes:
+  erpbridge-postgres-data:

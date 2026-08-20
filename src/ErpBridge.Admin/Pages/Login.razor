@@ -3,28 +3,28 @@
 @inject ErpBridge.Admin.Auth.TokenStore Tokens
 @inject NavigationManager Nav
 
-<PageTitle>Login — ErpBridge Admin</PageTitle>
+<PageTitle>Giriş — ErpBridge Yönetim</PageTitle>
 
 <div class="admin-login">
-<div class="admin-login__brand"><span>E</span> ErpBridge <small>ADMIN PORTAL</small></div>
+<div class="admin-login__brand"><span>EB</span> ErpBridge <small>YÖNETİM MERKEZİ</small></div>
 <h1>Tekrar hoş geldiniz</h1>
-<p>Yönetim paneline devam etmek için oturum açın.</p>
+<p>Bağlantıları ve operasyonları yönetmek için hesabınızla giriş yapın.</p>
 
 <EditForm class="admin-form-card" Model="_model" OnValidSubmit="HandleLoginAsync" FormName="login">
     <DataAnnotationsValidator />
     <ValidationSummary />
 
     <div class="mb-3">
-        <label class="form-label">Email</label>
-        <InputText class="form-control" @bind-Value="_model.Email" />
+        <label class="form-label" for="login-email">E-posta adresi</label>
+        <InputText id="login-email" class="form-control" type="email" autocomplete="username" @bind-Value="_model.Email" />
     </div>
     <div class="mb-3">
-        <label class="form-label">Password</label>
-        <InputText class="form-control" type="password" @bind-Value="_model.Password" />
+        <label class="form-label" for="login-password">Parola</label>
+        <InputText id="login-password" class="form-control" type="password" autocomplete="current-password" @bind-Value="_model.Password" />
     </div>
 
     <button type="submit" class="btn btn-primary" disabled="@_busy">
-        @(_busy ? "Signing in..." : "Sign in")
+        @(_busy ? "Giriş yapılıyor…" : "Giriş yap")
     </button>
 </EditForm>
 
@@ -57,7 +57,7 @@
         }
         catch (ErpBridge.Admin.Api.UnauthorizedApiException)
         {
-            _error = "Invalid email or password.";
+            _error = "E-posta adresi veya parola hatalı.";
         }
         catch (Exception ex)
         {

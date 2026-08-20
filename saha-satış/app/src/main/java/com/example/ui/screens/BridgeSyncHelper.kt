@@ -11,6 +11,7 @@ import com.example.data.api.KasalarDto
 import com.example.data.api.KasaYonetimDto
 import com.example.data.database.WmsOrderEntity
 import com.example.data.database.WmsOrderItemEntity
+import androidx.room.withTransaction
 import com.example.data.database.DatabaseProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -41,7 +42,6 @@ object BridgeSyncHelper {
         }
         val userFriendlyMessage = when (code) {
             401, 403 -> "Yetkilendirme Hatası: API Anahtarı veya Tenant ID geçersiz ($safeMessage)"
-            404 -> "Endpoint mevcut değil (HTTP 404): ${response.raw().request.url.encodedPath} ($safeMessage)"
             422 -> "Doğrulama Hatası: Gönderilen parametreler hatalı ($safeMessage)"
             429 -> "İstek Sınırı Aşıldı: Çok fazla istek gönderdiniz ($safeMessage)"
             in 500..599 -> "Sunucu Hatası: GoApp Cloud sunucusunda bir sorun oluştu ($safeMessage)"
@@ -60,30 +60,6 @@ object BridgeSyncHelper {
 
 
     }
-
-    /**
-     * Merkezi API bu entity için endpoint sunmuyorsa (404) veya API anahtarının
-     * bu uç noktaya erişim yetkisi yoksa (403) sync fonksiyonu bilgilendirici
-     * log düşerek başarıyla dönsün. Tüm sync zincirini kırmasın; sadece o tablo
-     * boş kalsın. UI tarafında "bu özellik tenant'ta yok" şeklinde gösterilir.
-     */
-    private fun isUnsupportedEndpoint(
-        response: retrofit2.Response<*>,
-        entity: String,
-        log: (String) -> Unit
-    ): Boolean {
-        val code = response.code()
-        if (code == 404) {
-            log("⚠ '$entity' endpoint’i merkezi API’de mevcut değil (HTTP 404). Bu tablo için sync atlanıyor.")
-            return true
-        }
-        if (code == 403) {
-            log("⚠ '$entity' endpoint’ine bu API anahtarıyla erişim yok (HTTP 403). Bu tablo için sync atlanıyor.")
-            return true
-        }
-        return false
-    }
-
     suspend fun syncCariler(
         context: Context,
         apiUrl: String,
@@ -92,13 +68,14 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/cari")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/cari")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var currentPage = 1
-            val pageSize = 100
+            val pageSize = 1000
             var totalFetched = 0
             var hasMore = true
+            var lastFingerprint = ""
 
             val allMappedCustomers = mutableListOf<Customer>()
 
@@ -116,33 +93,24 @@ object BridgeSyncHelper {
                     entity = "cari",
                     since = null,
                     page = currentPage,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getCariler(req_getCariler)
 
                 if (response.isSuccessful && response.body() != null) {
                     val syncRes = response.body()!!
                     val cariler = syncRes.actualItems
-                    if (cariler.isEmpty()) {
+                    val currentFingerprint = cariler.joinToString(",") { it.hashCode().toString() }
+                    if (cariler.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         totalFetched += cariler.size
                         updateProgress(Math.min(0.1f + (currentPage * 0.15f), 0.85f))
 
                         for (cari in cariler) {
-                            val bal = cari.bakiye ?: cari.balance ?: cari.netBakiye ?: 0.0
+                            val bal = cari.actualBakiye
                             var finalBal = bal
                             val txList = mutableListOf<CustomerTx>()
                             val apiTxs = cari.transactions ?: cari.hareketler
@@ -188,7 +156,7 @@ object BridgeSyncHelper {
                                             entity = "cariHareket",
                                             since = null,
                                             page = 1,
-                                            pageSize = 100
+                                            pageSize = 1000
                                         )
                                         val txRes = apiService.getCariHareket(com.example.data.api.PullJobsRequest(tenant_id="", api_key="", device_id="", agent_version="", entity="cariHareket", since=cari.erpKod))
                                         if (txRes.isSuccessful && txRes.body() != null) {
@@ -294,7 +262,7 @@ object BridgeSyncHelper {
                                                             description = finalDesc,
                                                             erpRef = item.erpRef,
                                                             recNo = item.id,
-                                                            cha_recno = item.realChaRecNo ?: item.id.toIntOrNull()
+                                                            cha_recno = item.realChaRecNo ?: item.id?.toIntOrNull()
                                                         )
                                                     )
 
@@ -405,7 +373,7 @@ object BridgeSyncHelper {
                                 taxOffice = cari.vergiDairesi ?: "-",
                                 taxNumber = cari.vergiNo ?: "-",
                                 gpsLocation = "Bilinmiyor",
-                                riskLimit = 150000.0,
+                                riskLimit = 110000.0,
                                 priceGroup = "Özel Fiyat",
                                 specialDiscountPercent = 0.0,
                                 transactions = txList
@@ -414,7 +382,7 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (cariler.isEmpty() || ((syncRes.total ?: 0) > 0 && totalFetched >= (syncRes.total ?: 0))) {
+                        if (cariler.size < pageSize || ((syncRes.total ?: 0) > 0 && totalFetched >= (syncRes.total ?: 0))) {
                             hasMore = false
 
 
@@ -434,8 +402,13 @@ object BridgeSyncHelper {
                         }
                     }
                 } else {
-                    handleApiError(response, log)
-                    throw Exception("API Hatası (Kod: ${response.code()})")
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
 
 
 
@@ -444,37 +417,22 @@ object BridgeSyncHelper {
 
                 }
             }
-            if (allMappedCustomers.isNotEmpty()) {
-                withContext(Dispatchers.Main) {
-                    for (mapped in allMappedCustomers) {
-                        // CRITICAL: Match only on id, because duplicate placeholder phones like "-" will collapse other prospects!
-                        val existingIndex = AppDataStore.customers.indexOfFirst { it.id == mapped.id }
-                        if (existingIndex >= 0) {
-                            AppDataStore.customers[existingIndex] = mapped
-
-
-
-
-
-
-
-
-
-
-
-
-                        } else {
-                            AppDataStore.customers.add(mapped)
-
-
-
-                        }
-                    }
+                        if (allMappedCustomers.isNotEmpty()) {
+                val currentList = withContext(Dispatchers.Main) { AppDataStore.customers.toList() }
+                val customerMap = currentList.associateBy { it.id }.toMutableMap()
+                for (mapped in allMappedCustomers) {
+                    customerMap[mapped.id] = mapped
                 }
-                val localResult = AppDataStore.persistAndVerify(context)
-                log("ROOM_WRITE_OK entity=cari fetched=$totalFetched saved=${localResult.customers}")
-                log("Başarılı! Toplam $totalFetched adet cari kayıt FieldOps Bridge üzerinden başarıyla çekildi")
-            } else {
+                val mergedList = customerMap.values.toList()
+                
+                withContext(Dispatchers.Main) {
+                    AppDataStore.customers.clear()
+                    AppDataStore.customers.addAll(mergedList)
+                }
+                AppDataStore.persist(context)
+            }
+            log("Başarılı! Toplam $totalFetched adet cari kayıt FieldOps Bridge üzerinden başarıyla çekildi")
+            if(totalFetched == 0) {
                 log("Uç noktadan müşteri verisi çekilemedi. Listede aktarılacak cari bulunamadı.")
 
 
@@ -485,6 +443,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Cari): ${e.message}. Api'den veri alınamadı.")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -503,13 +462,17 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/urun")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/urun")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var currentPage = 1
-            val pageSize = 100
+            val pageSize = 1000
             var totalFetched = 0
             var hasMore = true
+            var lastFingerprint = ""
+            
+            val db = DatabaseProvider.getDatabase(context.applicationContext)
+            val productsDbCopy = db.productDao().getAllProducts()
 
             val allMappedProducts = mutableListOf<ProductCatalog>()
 
@@ -517,8 +480,9 @@ object BridgeSyncHelper {
             try {
                 log("Mevcut elde kalan stok seviyeleri (STOK_SEVIYELERI) önden yükleniyor...")
                 var levelsPage = 1
-                val levelsPageSize = 100
+                val levelsPageSize = 1000
                 var hasMoreLevels = true
+            var lastFingerprint = ""
                 while (hasMoreLevels) {
                     val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
                     val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
@@ -532,27 +496,18 @@ object BridgeSyncHelper {
                         entity = "stokSeviye",
                         since = null,
                         page = levelsPage,
-                        pageSize = 100
+                        pageSize = 1000
                     )
                     val levelsResponse = apiService.getStokSeviye(req_getStokSeviye)
                     if (levelsResponse.isSuccessful && levelsResponse.body() != null) {
                         val body = levelsResponse.body()!!
                         val items = body.items
-                        if (items.isEmpty()) {
-                            hasMoreLevels = false
-
-
-
-
-
-
-
-
-
-
-
-
-                        } else {
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
+                        hasMoreLevels = false
+                    } else {
+                        lastFingerprint = currentFingerprint
                             for (item in items) {
                                 if (!item.stokKod.isNullOrBlank()) {
                                     stockLevelMap[item.stokKod] = item.actualMiktar.toInt()
@@ -603,8 +558,9 @@ object BridgeSyncHelper {
             try {
                 log("Barkod tanımları (BARKOD_TANIMLARI) sunucudan indiriliyor...")
                 var barPage = 1
-                val barPageSize = 100
+                val barPageSize = 1000
                 var hasMoreBar = true
+            var lastFingerprint = ""
                 while (hasMoreBar) {
                     val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
                     val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
@@ -618,27 +574,18 @@ object BridgeSyncHelper {
                         entity = "barkodTanimi",
                         since = null,
                         page = barPage,
-                        pageSize = 100
+                        pageSize = 1000
                     )
                     val barResponse = apiService.getBarkodTanimi(req_getBarkodTanimi)
                     if (barResponse.isSuccessful && barResponse.body() != null) {
                         val body = barResponse.body()!!
                         val items = body.items
-                        if (items.isEmpty()) {
-                            hasMoreBar = false
-
-
-
-
-
-
-
-
-
-
-
-
-                        } else {
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
+                        hasMoreBar = false
+                    } else {
+                        lastFingerprint = currentFingerprint
                             for (item in items) {
                                 if (!item.stokKod.isNullOrBlank() && !item.barkod.isNullOrBlank()) {
                                     val list = barcodesMap.getOrPut(item.stokKod) { mutableListOf() }
@@ -704,33 +651,35 @@ object BridgeSyncHelper {
                     entity = "urun",
                     since = null,
                     page = currentPage,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getUrunler(req_getUrunler)
 
                 if (response.isSuccessful && response.body() != null) {
                     val syncRes = response.body()!!
                     val urunler = syncRes.actualItems
-                    if (urunler.isEmpty()) {
+                    val currentFingerprint = urunler.joinToString(",") { it.hashCode().toString() }
+                    if (urunler.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         totalFetched += urunler.size
                         updateProgress(Math.min(0.1f + (currentPage * 0.15f), 0.85f))
 
                         for (u in urunler) {
                             val codeKey = u.actualUrunKod
                             val stockFromBridge = stockLevelMap[codeKey] ?: stockLevelMap[u.id]
-                            val existingProduct = AppDataStore.products.find { it.code == codeKey }
-                            val existingStockSum = existingProduct?.stockByWarehouse?.values?.sum()
+                            val existingProduct = productsDbCopy.find { it.code == codeKey }
+                            
+                            // Map existing warehouses back from JSON
+                            val existingStockByWarehouse = if (existingProduct?.stockByWarehouseJson != null && existingProduct.stockByWarehouseJson.isNotBlank()) {
+                                com.example.data.database.Converters().toWarehouseMap(existingProduct.stockByWarehouseJson)
+                            } else {
+                                emptyMap<String, Int>()
+                            }
+                            
+                            val existingStockSum = existingStockByWarehouse.values.sum()
 
                             // Extract stock count with fallbacks to avoid 150 default
                             val stockQty = stockFromBridge 
@@ -743,8 +692,8 @@ object BridgeSyncHelper {
 
                             // Map warehouses
                             val whMap = mutableMapOf<String, Int>()
-                            if (existingProduct != null && existingProduct.stockByWarehouse.isNotEmpty()) {
-                                whMap.putAll(existingProduct.stockByWarehouse)
+                            if (existingProduct != null && existingStockByWarehouse.isNotEmpty()) {
+                                whMap.putAll(existingStockByWarehouse)
                                 val firstKey = whMap.keys.firstOrNull() ?: "Merkez Depo"
                                 whMap[firstKey] = stockQty
                             } else if (u.stockByWarehouse != null && u.stockByWarehouse.isNotEmpty()) {
@@ -831,7 +780,7 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (urunler.isEmpty() || ((syncRes.total ?: 0) > 0 && totalFetched >= (syncRes.total ?: 0))) {
+                        if (urunler.size < pageSize || ((syncRes.total ?: 0) > 0 && totalFetched >= (syncRes.total ?: 0))) {
                             hasMore = false
 
 
@@ -846,8 +795,13 @@ object BridgeSyncHelper {
                         }
                     }
                 } else {
-                    handleApiError(response, log)
-                    throw Exception("API Hatası (Kod: ${response.code()})")
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
 
 
 
@@ -856,37 +810,22 @@ object BridgeSyncHelper {
 
                 }
             }
-            if (allMappedProducts.isNotEmpty()) {
-                withContext(Dispatchers.Main) {
-                    for (u in allMappedProducts) {
-                        // CRITICAL: Match by unique ERP stock code instead of barcode to avoid overlapping blanks!
-                        val existingIndex = AppDataStore.products.indexOfFirst { it.code == u.code }
-                        if (existingIndex >= 0) {
-                            AppDataStore.products[existingIndex] = u
-
-
-
-
-
-
-
-
-
-
-
-
-                        } else {
-                            AppDataStore.products.add(u)
-
-
-
-                        }
-                    }
+                        if (allMappedProducts.isNotEmpty()) {
+                val currentList = withContext(Dispatchers.Main) { AppDataStore.products.toList() }
+                val productMap = currentList.associateBy { it.code }.toMutableMap()
+                for (u in allMappedProducts) {
+                    productMap[u.code] = u
                 }
-                val localResult = AppDataStore.persistAndVerify(context)
-                log("ROOM_WRITE_OK entity=urun fetched=$totalFetched saved=${localResult.products}")
-                log("Saha Gücü yerel stok kartları Room veritabanı başarıyla güncellendi. Toplam $totalFetched adet ürün/stok kaydı çekildi.")
-            } else {
+                val mergedList = productMap.values.toList()
+                
+                withContext(Dispatchers.Main) {
+                    AppDataStore.products.clear()
+                    AppDataStore.products.addAll(mergedList)
+                }
+                AppDataStore.persist(context)
+            }
+            log("Saha Gücü yerel stok kartları Room veritabanı başarıyla güncellendi. Toplam $totalFetched adet ürün/stok kaydı çekildi.")
+            if(totalFetched == 0) {
                 log("Uç noktadan ürün verisi çekilemedi. Listede aktarılacak ürün bulunamadı.")
 
 
@@ -897,6 +836,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Stok): ${e.message}. Api'den veri alınamadı.")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -916,8 +856,8 @@ object BridgeSyncHelper {
     ) {
         try {
             log("Uç nokta listesi hazırlanıyor...")
-            log("1. Tanımlar: $apiUrl/api/v1/sync/stokSatisFiyatListeTanimlari")
-            log("2. Fiyatlar: $apiUrl/api/v1/sync/stokSatisFiyatListeleri")
+            log("1. Tanımlar: $apiUrl/api/v1/android/sync/stokSatisFiyatListeTanimlari")
+            log("2. Fiyatlar: $apiUrl/api/v1/android/sync/stokSatisFiyatListeleri")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
 
@@ -935,7 +875,7 @@ object BridgeSyncHelper {
                 entity = "stokSatisFiyatListeTanimlari",
                 since = null,
                 page = 1,
-                pageSize = 100
+                pageSize = 1000
             )
             val responseDef = apiService.getStokSatisFiyatListeTanimlari(req_getStokSatisFiyatListeTanimlari)
             val definitions = if (responseDef.isSuccessful && responseDef.body() != null) {
@@ -962,7 +902,7 @@ object BridgeSyncHelper {
                 entity = "stokSatisFiyatListeleri",
                 since = null,
                 page = 1,
-                pageSize = 100
+                pageSize = 1000
             )
             val responseList = apiService.getStokSatisFiyatListeleri(req_getStokSatisFiyatListeleri)
             val priceLists = if (responseList.isSuccessful && responseList.body() != null) {
@@ -1025,17 +965,12 @@ object BridgeSyncHelper {
                 }
             } else {
                 log("Güncellenecek standart fiyat listesi verisi bulunamadı (veya sunucu desteklemiyor).")
-                log("Sistem alternatif gelişmiş 'fiyatListesi' metodunu deniyor...")
-                syncFiyatListesiNew(context, apiUrl, apiKey, log, updateProgress)
-
-
-
-
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Fiyat Listesi): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -1055,14 +990,15 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/stokSeviye")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/stokSeviye")
             log("Stok seviye eldeki miktar (STOK_SEVIYELERI) çekiliyor...")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var currentPage = 1
-            val pageSize = 100
+            val pageSize = 1000
             var totalFetched = 0
             var hasMore = true
+            var lastFingerprint = ""
 
             val allLevels = mutableListOf<com.example.data.api.StokSeviyeDto>()
 
@@ -1080,45 +1016,36 @@ object BridgeSyncHelper {
                     entity = "stokSeviye",
                     since = null,
                     page = currentPage,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getStokSeviye(req_getStokSeviye)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
-                    if (items.isEmpty()) {
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         allLevels.addAll(items)
                         totalFetched += items.size
                         updateProgress(Math.min(0.1f + (currentPage * 0.15f), 0.85f))
 
                         if (items.size < pageSize) {
                             hasMore = false
-
-
-
                         } else {
                             currentPage++
-
-
                         }
                     }
                 } else {
-                    handleApiError(response, log)
-                    throw Exception("API Hatası (\"Sayfa $currentPage stok seviyeleri çekilemedi. Kod: ${response.code()}\")")
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
 
 
 
@@ -1171,6 +1098,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Stok Seviye): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -1189,7 +1117,7 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/fiyatListesi")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/fiyatListesi")
             log("Gelişmiş Fiyat Listesi (fiyatListesi) senkronizasyonu başlatılıyor...")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
@@ -1207,7 +1135,7 @@ object BridgeSyncHelper {
                 entity = "fiyatListesi",
                 since = null,
                 page = 1,
-                pageSize = 100
+                pageSize = 1000
             )
             val responseTanim = apiService.getFiyatListesi(req_getFiyatListesi)
             updateProgress(0.3f)
@@ -1239,7 +1167,7 @@ object BridgeSyncHelper {
                         entity = "fiyatListesi",
                         since = null,
                         page = 1,
-                        pageSize = 100
+                        pageSize = 1000
                     )
                     val responseLines = apiService.getFiyatListesi(req_getFiyatListesi)
                     if (responseLines.isSuccessful && responseLines.body() != null) {
@@ -1331,16 +1259,17 @@ object BridgeSyncHelper {
                 }
                 log("Başarılı! Gelişmiş fiyat listesi matrisinde $matchedUpdated adet ürün fiyatı güncellendi.")
             } else {
-                log("Hata: Fiyat listesi tanımları alınamadı. Kod: ${responseTanim.code()}")
-
-
-
-
+                if (responseTanim.code() == 404) {
+                    log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                } else {
+                    log("Hata: Fiyat listesi tanımları alınamadı. Kod: ${responseTanim.code()}")
+                }
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
             log("Yükseltilmiş Fiyat Hatası: ${e.message}. Gelişmiş fiyat listesi uc noktasını kontrol edin.")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -1357,221 +1286,236 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/cariHareketleri")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/cariHareketleri")
             log("Cari Hesap Hareketleri toplu sync (CARI_HESAP_HAREKETLERI) çekiliyor...")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
-            var currentPage = 1
-            val pageSize = 100
+            
+            val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
+            val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
+            val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
+            val db = DatabaseProvider.getDatabase(context.applicationContext)
+            
+            var currentPage = sharedPrefs.getInt("cariHareketleri_last_page", 1)
+            val pageSize = 500
             var totalFetched = 0
             var hasMore = true
-
-            val allTx = mutableListOf<com.example.data.api.CariHareketiDto>()
+            var lastFingerprint = ""
+            
+            val startTime = System.currentTimeMillis()
 
             while (hasMore) {
+                if (currentPage == 1) {
+                    db.withTransaction {
+                        db.cariHesapHareketDao().deleteAll()
+                    }
+                }
                 log("Cari hareketleri sayfa $currentPage çekiliyor...")
-                val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
-                val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
-                val apiKeyVal = apiKey
-                val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
-                val req_getCariHareketleri = com.example.data.api.PullJobsRequest(
+                kotlinx.coroutines.delay(1000L) // Prevent Rate Limit Exceeded
+                
+                val req = com.example.data.api.PullJobsRequest(
                     tenant_id = tenantId,
-                    api_key = apiKeyVal,
+                    api_key = apiKey,
                     device_id = deviceId,
                     agent_version = "v2.0-multi-tenant",
                     entity = "cariHareketleri",
                     since = null,
                     page = currentPage,
-                    pageSize = 100
+                    pageSize = pageSize
                 )
-                val response = apiService.getCariHareketleri(req_getCariHareketleri)
+                val response = apiService.getCariHareketleri(req)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
-                    if (items.isEmpty()) {
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
+                        sharedPrefs.edit().putInt("cariHareketleri_last_page", 1).apply()
                     } else {
-                        allTx.addAll(items)
+                        lastFingerprint = currentFingerprint
+                        
+                        val chEntities = items.map { dto ->
+                            com.example.data.database.CariHesapHareketEntity(
+                                id = dto.id ?: dto.erpRef ?: java.util.UUID.randomUUID().toString(),
+                                cariKod = dto.actualCariKod,
+                                tarih = dto.actualTarih,
+                                evrakTip = dto.actualEvrakTip,
+                                evrakNo = dto.actualEvrakNo,
+                                tip = dto.tip ?: dto.cha_tip ?: 0,
+                                tutar = dto.actualTutar,
+                                borcMu = dto.actualBorcMu,
+                                aciklama = dto.actualAciklama
+                            )
+                        }
+                        db.withTransaction {
+                            chEntities.chunked(500).forEach { db.cariHesapHareketDao().insertAll(it) }
+                        }
+
+                    
+                        val txGrouped = items.groupBy { it.actualCariKod.uppercase().trim() }
+                        val affectedCustomers = mutableListOf<com.example.data.database.CustomerEntity>()
+                        
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            for (i in AppDataStore.customers.indices) {
+                                val customer = AppDataStore.customers[i]
+                                val custIdKey = customer.id.uppercase().trim()
+                                val custNameKey = customer.name.uppercase().trim()
+                                val matches = txGrouped[custIdKey] 
+                                    ?: txGrouped[custNameKey]
+                                    ?: txGrouped.entries.find { 
+                                        it.key.isNotEmpty() && (
+                                            it.key.equals(custIdKey, ignoreCase = true) ||
+                                            it.key.equals(custNameKey, ignoreCase = true) ||
+                                            (custIdKey.isNotEmpty() && (it.key.contains(custIdKey) || custIdKey.contains(it.key)))
+                                        )
+                                    }?.value
+                                
+                                if (matches != null && matches.isNotEmpty()) {
+                                    val newTxs = matches.map { dto: com.example.data.api.CariHareketiDto ->
+                                        val rawDate = dto.actualTarih
+                                        val formattedDate = try {
+                                            if (rawDate.contains("T")) {
+                                                val parts = rawDate.split("T")[0].split("-")
+                                                if (parts.size == 3) {
+                                                    "${parts[2]}.${parts[1]}.${parts[0]}"
+                                                } else rawDate
+                                            } else rawDate
+                                        } catch (e: Exception) { rawDate }
+                                        
+                                        val txType = when (dto.actualEvrakTip) {
+                                            29 -> "SATIŞ"
+                                            64 -> "TAHSİLAT"
+                                            65 -> "TEDİYE"
+                                            63 -> "SATIŞ"
+                                            else -> when (dto.tip ?: dto.cha_tip) {
+                                                0 -> "SATIŞ"
+                                                1 -> "TAHSİLAT"
+                                                2 -> "İADE"
+                                                3 -> "VİRMAN"
+                                                else -> if (dto.actualBorcMu) "SATIŞ" else "TAHSİLAT"
+                                            }
+                                        }
+                                        val rawEvrak = dto.actualEvrakNo
+                                        val docNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) {
+                                            "FT-$rawEvrak"
+                                        } else {
+                                            rawEvrak
+                                        }
+                                        val finalDesc = if (docNo.isNotEmpty()) {
+                                            "$docNo - ${dto.actualAciklama.ifEmpty { "Mikro Cari Hareketi" }}"
+                                        } else {
+                                            dto.actualAciklama.ifEmpty { "Mikro Cari Hareketi" }
+                                        }
+                                        
+                                        com.example.ui.screens.CustomerTx(
+                                            id = dto.id ?: if (docNo.isNotEmpty()) docNo else "TX-ERP-${(Math.random() * 100000).toInt()}",
+                                            date = formattedDate,
+                                            type = txType,
+                                            amount = dto.actualTutar,
+                                            description = finalDesc,
+                                            erpRef = dto.erpRef,
+                                            recNo = dto.id,
+                                            cha_recno = dto.realChaRecNo
+                                        )
+                                    }
+                                    val existingTxs = customer.transactions.toMutableList()
+                                    for (nt in newTxs) {
+                                        val idx = existingTxs.indexOfFirst { it.id == nt.id || (it.erpRef != null && it.erpRef == nt.erpRef) }
+                                        if (idx >= 0) existingTxs[idx] = nt
+                                        else existingTxs.add(nt)
+                                    }
+                                    
+                                    // Calculate ledger balance
+                                    var calcLedger = 0.0
+                                    for (tx in existingTxs) {
+                                        val t = tx.type.uppercase()
+                                        if (t.contains("SATIŞ") || t.contains("BORÇ")) {
+                                            calcLedger += tx.amount
+                                        } else if (t.contains("TAHSİLAT") || t.contains("ALACAK") || t.contains("İADE")) {
+                                            calcLedger -= tx.amount
+                                        }
+                                    }
+                                    val finalBalance = if (customer.balance == 0.0 && calcLedger != 0.0) calcLedger else customer.balance
+                                    
+                                    val updatedCust = customer.copy(
+                                        balance = finalBalance,
+                                        transactions = existingTxs
+                                    )
+                                    AppDataStore.customers[i] = updatedCust
+                                    
+                                    affectedCustomers.add(com.example.data.database.CustomerEntity(
+                                        id = updatedCust.id,
+                                        name = updatedCust.name,
+                                        balance = updatedCust.balance,
+                                        lastVisit = updatedCust.lastVisit,
+                                        contact = updatedCust.contact,
+                                        phone = updatedCust.phone,
+                                        address = updatedCust.address,
+                                        taxOffice = updatedCust.taxOffice,
+                                        taxNumber = updatedCust.taxNumber,
+                                        gpsLocation = updatedCust.gpsLocation,
+                                        riskLimit = updatedCust.riskLimit,
+                                        priceGroup = updatedCust.priceGroup,
+                                        specialDiscountPercent = updatedCust.specialDiscountPercent,
+                                        transactionsJson = com.example.data.database.Converters().fromCustomerTxList(updatedCust.transactions)
+                                    ))
+                                }
+                            }
+                        }
+                        
+                        if (affectedCustomers.isNotEmpty()) {
+                            db.withTransaction {
+                                affectedCustomers.chunked(500).forEach { db.customerDao().insertAll(it) }
+                            }
+                        }
+                        
                         totalFetched += items.size
-                        updateProgress(Math.min(0.1f + (currentPage * 0.15f), 0.85f))
+                        val totalCount = body.total ?: 0
+                        val progressPercent = if (totalCount > 0) (totalFetched.toFloat() / totalCount.toFloat()) else 0.5f
+                        updateProgress(progressPercent)
+                        
+                        val elapsedSecs = (System.currentTimeMillis() - startTime) / 1000f
+                        val speed = if (elapsedSecs > 0) (totalFetched / elapsedSecs).toInt() else 0
+                        
+                        if (totalCount > 0) {
+                            com.example.util.SyncManager.updateSyncStats("CariHareket: $totalFetched / $totalCount kayıt (%${(progressPercent*100).toInt()}) - Hız: $speed sn/kayıt")
+                        } else {
+                            com.example.util.SyncManager.updateSyncStats("CariHareket: $totalFetched kayıt indirildi (Sayfa $currentPage) - Hız: $speed sn/kayıt")
+                        }
+                        
+                        sharedPrefs.edit().putInt("cariHareketleri_last_page", currentPage + 1).apply()
 
                         if (items.size < pageSize) {
                             hasMore = false
-
-
-
+                            sharedPrefs.edit().putInt("cariHareketleri_last_page", 1).apply()
                         } else {
                             currentPage++
-
-
                         }
                     }
                 } else {
-                    handleApiError(response, log)
-                    throw Exception("API Hatası (\"Sayfa $currentPage cari hareketleri çekilemedi. Kod: ${response.code()}\")")
-
-
-
-
-
-
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
                 }
             }
-            if (allTx.isNotEmpty()) {
-                withContext(Dispatchers.Main) {
-                    var updatedCustomersCount = 0
-                    val txGrouped = allTx.groupBy { it.cariKod ?: "" }
-
-                    for (i in AppDataStore.customers.indices) {
-                        val customer = AppDataStore.customers[i]
-                        val matches = txGrouped[customer.id]
-                        if (matches != null && matches.isNotEmpty()) {
-                            val newTxs = matches.map { dto ->
-                                val rawDate = dto.tarih ?: ""
-                                val formattedDate = try {
-                                    if (rawDate.contains("T")) {
-                                        val parts = rawDate.split("T")[0].split("-")
-                                        if (parts.size == 3) {
-                                            "${parts[2]}.${parts[1]}.${parts[0]}"
-
-
-
-
-
-
-
-
-
-
-
-
-                                        } else {
-                                            rawDate
-
-
-
-
-
-
-                                        }
-                                    } else {
-                                        rawDate
-
-
-
-
-
-
-                                    }
-                                } catch (e: Exception) {
-                                    rawDate
-
-                                }
-                                val txType = when (dto.evrakTip) {
-                                    29 -> "SATIŞ"
-                                    64 -> "TAHSİLAT"
-                                    65 -> "TEDİYE"
-                                    63 -> "SATIŞ"
-                                    else -> when (dto.tip) {
-                                        0 -> "SATIŞ"
-                                        1 -> "TAHSİLAT"
-                                        2 -> "İADE"
-                                        3 -> "VİRMAN"
-                                        else -> if (dto.borcMu == true) "SATIŞ" else "TAHSİLAT"
-
-
-
-
-
-
-
-
-                                    }
-                                }
-                                val rawEvrak = dto.evrakNo ?: ""
-                                val docNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) {
-                                    "FT-$rawEvrak"
-
-
-
-
-
-                                } else {
-                                    rawEvrak
-
-                                }
-                                val finalDesc = if (docNo.isNotEmpty()) {
-                                    "$docNo - ${dto.aciklama ?: "Mikro Cari Hareketi"}"
-
-
-
-
-
-                                } else {
-                                    dto.aciklama ?: "Mikro Cari Hareketi"
-
-                                }
-                                CustomerTx(
-                                    id = if (docNo.isNotEmpty()) docNo else (dto.id ?: "TX-ERP-${(Math.random() * 100000).toInt()}"),
-                                    date = formattedDate,
-                                    type = txType,
-                                    amount = dto.tutar ?: 0.0,
-                                    description = finalDesc,
-                                    erpRef = dto.erpRef,
-                                    recNo = dto.id,
-                                    cha_recno = dto.realChaRecNo
-                                )
-
-                            }
-                            AppDataStore.customers[i] = customer.copy(transactions = newTxs.toMutableList())
-                            updatedCustomersCount++
-
-
-
-                        }
-                    }
-                    AppDataStore.persist(context)
-                    log("Başarılı! Toplam $totalFetched adet işlem satırı alındı. $updatedCustomersCount adet carinin yerel hesap ekstresi güncellendi.")
-
-
-
-
-
-
-                }
-            } else {
+            if (totalFetched == 0) {
                 log("Güncellenecek cari hesap hareketi verisi bulunamadı.")
-
-
-
-
+            } else {
+                log("Başarılı! Toplam $totalFetched adet işlem satırı alındı ve veritabanına kaydedildi.")
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Cari Hareketleri): ${e.message}. Lütfen Windows Servisinin çalıştığından emin olun.")
             updateProgress(1.0f)
-
-
-
-
-
-
-
-
+            throw e
         }
     }
+
     suspend fun syncFaturaHareket(
         context: Context,
         apiUrl: String,
@@ -1580,156 +1524,152 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/faturaHareket")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/faturaHareket")
             log("Fatura Detayı (Başlık + Satırlar) (CARI_HESAP_HAREKETLERI + STOK_HAREKETLERI) çekiliyor...")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
-
-            val customerCodes = AppDataStore.customers.map { it.id }.filter { !it.startsWith("customer_") }.take(250)
-
-            if (customerCodes.isEmpty()) {
-                log("Hata: Senkronize edilebilecek mikro koduna sahip kayıtlı cari bulunamadı. Önce Cari Kartları eşitlemelisiniz.")
-                updateProgress(1.0f)
-                return
-
-
-
-
-
-            }
-            log("Örnek cariler için fatura detayları sorgulanıyor: $customerCodes")
+            
+            val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
+            val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
+            val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
             val db = DatabaseProvider.getDatabase(context.applicationContext)
-            var count = 0
-            for (code in customerCodes) {
-                log("Cari $code için faturalar sorgulanıyor...")
-                val sharedPrefs = context.getSharedPreferences("erp_settings", android.content.Context.MODE_PRIVATE)
-                val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
-                val apiKeyVal = apiKey
-                val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
-                val req_getFaturaHareket = com.example.data.api.PullJobsRequest(
+            
+            var currentPage = sharedPrefs.getInt("faturaHareket_last_page", 1)
+            val pageSize = 500
+            var totalFetched = 0
+            var hasMore = true
+            var lastFingerprint = ""
+            
+            val startTime = System.currentTimeMillis()
+            
+            // Create safe copies from DB to avoid IndexOutOfBoundsException from SnapshotStateList concurrent modification
+            val customersCopy = db.customerDao().getAllCustomers()
+            val productsCopy = db.productDao().getAllProducts()
+
+            while (hasMore) {
+                log("Sayfa $currentPage fatura hareketleri çekiliyor...")
+                val req = com.example.data.api.PullJobsRequest(
                     tenant_id = tenantId,
-                    api_key = apiKeyVal,
+                    api_key = apiKey,
                     device_id = deviceId,
                     agent_version = "v2.0-multi-tenant",
                     entity = "faturaHareket",
                     since = null,
-                    page = 1,
-                    pageSize = 100
+                    page = currentPage,
+                    pageSize = pageSize
                 )
-                val response = apiService.getFaturaHareket(com.example.data.api.PullJobsRequest(tenant_id="", api_key="", device_id="", agent_version="", entity="faturaHareket", since=code))
+                
+                val response = apiService.getFaturaHareket(req)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
-                    log("Cari $code için ${items.size} adet detaylı fatura alındı.")
-                    val customer = AppDataStore.customers.find { it.id == code }
-                    val custName = customer?.name ?: "Müşteri $code"
-
-                    for (fatura in items) {
-                        val rawEvrak = fatura.evrakNo ?: ""
-                        val invoiceNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) {
-                            "FT-$rawEvrak"
-
-
-
-
-
-
-
-
-
-
-
-
+                    
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
+                        hasMore = false
+                        sharedPrefs.edit().putInt("faturaHareket_last_page", 1).apply()
+                    } else {
+                        lastFingerprint = currentFingerprint
+                        
+                        db.withTransaction {
+                            val orderEntities = mutableListOf<WmsOrderEntity>()
+                            val orderItemEntities = mutableListOf<WmsOrderItemEntity>()
+                            
+                            for (fatura in items) {
+                                val rawEvrak = fatura.evrakNo ?: ""
+                                val invoiceNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) {
+                                    "FT-$rawEvrak"
+                                } else {
+                                    rawEvrak.ifEmpty { "FT-ERP-${fatura.erpRef ?: (Math.random()*100000).toInt()}" }
+                                }
+                                
+                                val custName = customersCopy.find { it.id == fatura.cariKod }?.name ?: "Müşteri ${fatura.cariKod}"
+                                val totalQtySum = fatura.satirlar?.sumOf { it.miktar?.toInt() ?: 1 } ?: 0
+                                
+                                orderEntities.add(WmsOrderEntity(
+                                    id = invoiceNo,
+                                    customerName = custName,
+                                    orderDate = fatura.tarih ?: "",
+                                    status = "Sevk Edildi",
+                                    totalItems = totalQtySum,
+                                    syncStatus = "SYNCED"
+                                ))
+                                
+                                fatura.satirlar?.forEachIndexed { idx, satir ->
+                                    val stokK = satir.stokKod ?: ""
+                                    val matchedProd = productsCopy.find { it.code == stokK }
+                                    val prodBarcode = matchedProd?.barcode ?: "ST-${stokK}"
+                                    val prodTitle = matchedProd?.title ?: satir.stokAd ?: "Ürün ($stokK)"
+                                    
+                                    orderItemEntities.add(WmsOrderItemEntity(
+                                        id = "${invoiceNo}_${stokK}_${idx}",
+                                        orderId = invoiceNo,
+                                        productBarcode = prodBarcode,
+                                        productTitle = prodTitle,
+                                        quantityOrdered = satir.miktar?.toInt() ?: 1,
+                                        quantityPicked = satir.miktar?.toInt() ?: 1,
+                                        isPicked = true,
+                                        shelfLocation = "ERP Merkez",
+                                        sth_fat_recid_recno = satir.realSthFatRecidRecno
+                                    ))
+                                }
+                            }
+                            
+                            if (orderEntities.isNotEmpty()) {
+                                orderEntities.chunked(500).forEach { db.wmsOrderDao().insertAll(it) }
+                            }
+                            if (orderItemEntities.isNotEmpty()) {
+                                orderItemEntities.chunked(500).forEach { db.wmsOrderItemDao().insertAll(it) }
+                            }
+                        }
+                        
+                        totalFetched += items.size
+                        val totalCount = body.total ?: 0
+                        val progressPercent = if (totalCount > 0) (totalFetched.toFloat() / totalCount.toFloat()) else 0.5f
+                        updateProgress(progressPercent)
+                        
+                        val elapsedSecs = (System.currentTimeMillis() - startTime) / 1000f
+                        val speed = if (elapsedSecs > 0) (totalFetched / elapsedSecs).toInt() else 0
+                        
+                        if (totalCount > 0) {
+                            com.example.util.SyncManager.updateSyncStats("FaturaHareket: $totalFetched / $totalCount kayıt (%${(progressPercent*100).toInt()}) - Hız: $speed sn/kayıt")
                         } else {
-                            rawEvrak.ifEmpty { "FT-ERP-${fatura.erpRef ?: (Math.random()*100000).toInt()}" }
-
+                            com.example.util.SyncManager.updateSyncStats("FaturaHareket: $totalFetched kayıt indirildi (Sayfa $currentPage) - Hız: $speed sn/kayıt")
                         }
-                        log(" Fatura No: $invoiceNo, Tarih: ${fatura.tarih ?: ""}, Tutar: ${fatura.tutar ?: 0.0} TRY")
-
-                        val totalQtySum = fatura.satirlar?.sumOf { it.miktar?.toInt() ?: 1 } ?: 0
-                        val orderEntity = WmsOrderEntity(
-                            id = invoiceNo,
-                            customerName = custName,
-                            orderDate = fatura.tarih ?: "",
-                            status = "Sevk Edildi",
-                            totalItems = totalQtySum,
-                            syncStatus = "SYNCED"
-                        )
-                        db.wmsOrderDao().insert(orderEntity)
-
-                        val orderItemsList = mutableListOf<WmsOrderItemEntity>()
-                        fatura.satirlar?.forEachIndexed { idx, satir ->
-                            log("   -> Satır: StokKod: ${satir.stokKod ?: ""}, Miktar: ${satir.miktar ?: 0.0}, Tutar: ${satir.tutar ?: 0.0} TRY")
-
-                            val stokK = satir.stokKod ?: ""
-                            val matchedProd = AppDataStore.products.find { it.code == stokK }
-                            val prodBarcode = matchedProd?.barcode ?: "ST-${stokK}"
-                            val prodTitle = matchedProd?.title ?: satir.stokAd ?: "Ürün ($stokK)"
-                            val itemQty = satir.miktar?.toInt() ?: 1
-
-                            val orderItem = WmsOrderItemEntity(
-                                id = "${invoiceNo}_${stokK}_${idx}",
-                                orderId = invoiceNo,
-                                productBarcode = prodBarcode,
-                                productTitle = prodTitle,
-                                quantityOrdered = itemQty,
-                                quantityPicked = itemQty,
-                                isPicked = true,
-                                shelfLocation = "ERP Merkez",
-                                sth_fat_recid_recno = satir.realSthFatRecidRecno
-                            )
-                            orderItemsList.add(orderItem)
-
-
-
-
-
-                        }
-                        if (orderItemsList.isNotEmpty()) {
-                            db.wmsOrderItemDao().insertAll(orderItemsList)
-
-
-
-
-
+                        
+                        sharedPrefs.edit().putInt("faturaHareket_last_page", currentPage + 1).apply()
+                        
+                        if (items.size < pageSize) {
+                            hasMore = false
+                            sharedPrefs.edit().putInt("faturaHareket_last_page", 1).apply()
+                        } else {
+                            currentPage++
                         }
                     }
-                    count += items.size
                 } else {
-                    log("Uyarı: $code için faturalar çekilemedi. Hata kodu: ${response.code()}")
-
-
-
-
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
                 }
-                updateProgress(0.1f + (count.toFloat() / customerCodes.size) * 0.9f)
-
-
             }
-            if (count == 0) {
+            if (totalFetched == 0) {
                 log("Uç noktadan herhangi bir fatura bulunamadı/çekilemedi.")
-
             } else {
-                log("Başarılı! Toplam $count adet faturanın satır detayları sorgulandı ve yerel modellere alındı.")
-
-
-
-
+                log("Başarılı! Toplam $totalFetched adet fatura satır detayları sorgulandı ve yerel veritabanına alındı.")
             }
             updateProgress(1.0f)
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Fatura Hareketleri): ${e.message}. Api'den veri alınamadı.")
             updateProgress(1.0f)
-
-
-
-
-
-
-
-
+            throw e
         }
     }
+
     suspend fun syncStatusCheck(
         context: Context,
         apiUrl: String,
@@ -1738,7 +1678,7 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/status")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/status")
             log("Mikro ERP Sync Durumu Sorgulanıyor...")
             updateProgress(0.5f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
@@ -1754,7 +1694,7 @@ object BridgeSyncHelper {
                 entity = "syncStatus",
                 since = null,
                 page = 1,
-                pageSize = 100
+                pageSize = 1000
             )
             val response = apiService.getSyncStatus(req_getSyncStatus)
             if (response.isSuccessful && response.body() != null) {
@@ -1780,6 +1720,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Köprü Bağlantı Hatası (Sync Status): ${e.message}.")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -1799,13 +1740,14 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/cariAdresleri")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/cariAdresleri")
             log("Cari Adresleri Çekiliyor...")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var page = 1
-            val pageSize = 100
+            val pageSize = 1000
             var hasMore = true
+            var lastFingerprint = ""
             val loadedItems = mutableListOf<CariAdresDto>()
 
             while (hasMore) {
@@ -1822,44 +1764,35 @@ object BridgeSyncHelper {
                     entity = "cariAdresleri",
                     since = null,
                     page = page,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getCariAdresleri(req_getCariAdresleri)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
-                    if (items.isEmpty()) {
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         loadedItems.addAll(items)
                         log("${items.size} adet adres alındı.")
                         if (items.size < pageSize) {
                             hasMore = false
-
-
-
                         } else {
                             page++
-
-
                         }
                     }
                     updateProgress(0.1f + (page * 0.1f).coerceAtMost(0.8f))
                 } else {
-                    handleApiError(response, log)
-                    throw Exception("API Hatası (\"Adresler çekilemedi. Kod: ${response.code()}\")")
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
 
 
 
@@ -1868,6 +1801,23 @@ object BridgeSyncHelper {
 
                 }
             }
+            
+            val db = com.example.data.database.DatabaseProvider.getDatabase(context.applicationContext)
+            val adresEntities = loadedItems.map {
+                com.example.data.database.CariAdresEntity(
+                    id = it.erpRef ?: java.util.UUID.randomUUID().toString(),
+                    cariKod = it.cariKod ?: "",
+                    adresNo = it.adresNo ?: 0,
+                    il = it.il ?: "",
+                    ilce = it.ilce ?: "",
+                    mahalle = it.mahalle ?: "",
+                    cadde = it.cadde ?: "",
+                    sokak = it.sokak ?: ""
+                )
+            }
+            db.cariAdresDao().deleteAll()
+            adresEntities.chunked(500).forEach { db.cariAdresDao().insertAll(it) }
+
             withContext(Dispatchers.Main) {
                 AppDataStore.cariAdresleri.clear()
                 AppDataStore.cariAdresleri.addAll(loadedItems)
@@ -1881,6 +1831,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Adres Senkronizasyon Hatası: ${e.message}")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -1899,13 +1850,14 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/cariBankaHesaplari")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/cariBankaHesaplari")
             log("Cari Banka Hesapları Çekiliyor...")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var page = 1
-            val pageSize = 100
+            val pageSize = 1000
             var hasMore = true
+            var lastFingerprint = ""
             val loadedItems = mutableListOf<CariBankaHesapDto>()
 
             while (hasMore) {
@@ -1922,51 +1874,35 @@ object BridgeSyncHelper {
                     entity = "cariBankaHesaplari",
                     since = null,
                     page = page,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getCariBankaHesaplari(req_getCariBankaHesaplari)
-                if (isUnsupportedEndpoint(response, "cariBankaHesaplari", log)) {
-                    withContext(Dispatchers.Main) {
-                        AppDataStore.cariBankaHesaplari.clear()
-                    }
-                    updateProgress(1.0f)
-                    return
-                }
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
-                    if (items.isEmpty()) {
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         loadedItems.addAll(items)
                         log("${items.size} adet cari banka hesabı alındı.")
                         if (items.size < pageSize) {
                             hasMore = false
-
-
-
                         } else {
                             page++
-
-
                         }
                     }
                     updateProgress(0.1f + (page * 0.1f).coerceAtMost(0.8f))
                 } else {
-                    handleApiError(response, log)
-                    throw Exception("API Hatası (\"Cari banka hesapları çekilemedi. Kod: ${response.code()}\")")
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
 
 
 
@@ -1988,6 +1924,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Cari Banka Senkronizasyon Hatası: ${e.message}")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -2006,13 +1943,14 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/bankalar")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/bankalar")
             log("Banka Tanımları Çekiliyor...")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var page = 1
-            val pageSize = 100
+            val pageSize = 1000
             var hasMore = true
+            var lastFingerprint = ""
             val loadedItems = mutableListOf<BridgeBankaDto>()
 
             while (hasMore) {
@@ -2029,51 +1967,35 @@ object BridgeSyncHelper {
                     entity = "bankalar",
                     since = null,
                     page = page,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getBankalar(req_getBankalar)
-                if (isUnsupportedEndpoint(response, "bankalar", log)) {
-                    withContext(Dispatchers.Main) {
-                        AppDataStore.bridgeBankalar.clear()
-                    }
-                    updateProgress(1.0f)
-                    return
-                }
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
-                    if (items.isEmpty()) {
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         loadedItems.addAll(items)
                         log("${items.size} adet banka tanımı alındı.")
                         if (items.size < pageSize) {
                             hasMore = false
-
-
-
                         } else {
                             page++
-
-
                         }
                     }
                     updateProgress(0.1f + (page * 0.1f).coerceAtMost(0.8f))
                 } else {
-                    handleApiError(response, log)
-                    throw Exception("API Hatası (\"Bankalar çekilemedi. Kod: ${response.code()}\")")
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
 
 
 
@@ -2082,19 +2004,55 @@ object BridgeSyncHelper {
 
                 }
             }
+            
+            val db = com.example.data.database.DatabaseProvider.getDatabase(context.applicationContext)
+            val bridgeBankEntities = loadedItems.map {
+                com.example.data.database.BridgeBankaEntity(
+                    id = it.erpRef ?: java.util.UUID.randomUUID().toString(),
+                    kod = it.kod ?: "",
+                    isim = it.isim ?: "",
+                    sube = it.sube ?: "",
+                    iban = it.iBANKodu ?: "",
+                    hesapNumarasi = it.hesapNumarasi ?: ""
+                )
+            }
+            val appBankEntities = loadedItems.map {
+                com.example.data.database.BankEntity(
+                    id = it.kod.ifBlank { it.erpRef ?: java.util.UUID.randomUUID().toString() },
+                    name = it.isim,
+                    accountNo = it.hesapNumarasi ?: it.kod,
+                    iban = it.iBANKodu ?: "",
+                    balance = 0.0
+                )
+            }
+            db.withTransaction {
+                db.bridgeBankaDao().deleteAll()
+                bridgeBankEntities.chunked(500).forEach { db.bridgeBankaDao().insertAll(it) }
+                db.bankDao().deleteAll()
+                appBankEntities.chunked(500).forEach { db.bankDao().insertAll(it) }
+            }
+
             withContext(Dispatchers.Main) {
                 AppDataStore.bridgeBankalar.clear()
                 AppDataStore.bridgeBankalar.addAll(loadedItems)
 
-
-
-
+                AppDataStore.banks.clear()
+                AppDataStore.banks.addAll(appBankEntities.map {
+                    com.example.ui.screens.Bank(
+                        id = it.id,
+                        name = it.name,
+                        accountNo = it.accountNo,
+                        iban = it.iban,
+                        balance = it.balance
+                    )
+                })
             }
             log("Başarılı! Toplam ${loadedItems.size} adet banka tanımı kaydedildi.")
             updateProgress(1.0f)
         } catch (e: Exception) {
             log("Banka Senkronizasyon Hatası: ${e.message}")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -2113,13 +2071,14 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/kasalar")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/kasalar")
             log("Kasa Tanımları Çekiliyor...")
             updateProgress(0.1f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var page = 1
-            val pageSize = 100
+            val pageSize = 1000
             var hasMore = true
+            var lastFingerprint = ""
             val loadedItems = mutableListOf<KasalarDto>()
 
             while (hasMore) {
@@ -2136,51 +2095,35 @@ object BridgeSyncHelper {
                     entity = "kasalar",
                     since = null,
                     page = page,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getKasalar(req_getKasalar)
-                if (isUnsupportedEndpoint(response, "kasalar", log)) {
-                    withContext(Dispatchers.Main) {
-                        AppDataStore.bridgeKasalar.clear()
-                    }
-                    updateProgress(1.0f)
-                    return
-                }
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val items = body.items
-                    if (items.isEmpty()) {
+                    val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                    if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         loadedItems.addAll(items)
                         log("${items.size} adet kasa tanımı alındı.")
                         if (items.size < pageSize) {
                             hasMore = false
-
-
-
                         } else {
                             page++
-
-
                         }
                     }
                     updateProgress(0.1f + (page * 0.1f).coerceAtMost(0.8f))
                 } else {
-                    handleApiError(response, log)
-                    throw Exception("API Hatası (\"Kasalar çekilemedi. Kod: ${response.code()}\")")
+                    val err = handleApiError(response, log)
+                    if (response.code() == 404) {
+                        log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                        hasMore = false
+                    } else {
+                        throw err
+                    }
 
 
 
@@ -2202,6 +2145,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Kasa Senkronizasyon Hatası: ${e.message}")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -2220,7 +2164,7 @@ object BridgeSyncHelper {
         updateProgress: (Float) -> Unit
     ) {
         try {
-            log("Uç nokta: $apiUrl/api/v1/sync/kasaYonetim")
+            log("Uç nokta: $apiUrl/api/v1/android/sync/kasaYonetim")
             log("Kasa Yönetim / Muhasebe Tanımları Çekiliyor...")
             updateProgress(0.3f)
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
@@ -2236,16 +2180,9 @@ object BridgeSyncHelper {
                 entity = "kasaYonetim",
                 since = null,
                 page = 1,
-                pageSize = 100
+                pageSize = 1000
             )
             val response = apiService.getKasaYonetim(req_getKasaYonetim)
-            if (isUnsupportedEndpoint(response, "kasaYonetim", log)) {
-                withContext(Dispatchers.Main) {
-                    AppDataStore.kasaYonetimList.clear()
-                }
-                updateProgress(1.0f)
-                return
-            }
             if (response.isSuccessful && response.body() != null) {
                 val body = response.body()!!
                 val items = body.items
@@ -2269,6 +2206,7 @@ object BridgeSyncHelper {
         } catch (e: Exception) {
             log("Kasa Yönetim Senkronizasyon Hatası: ${e.message}")
             updateProgress(1.0f)
+            throw e
 
 
 
@@ -2352,7 +2290,7 @@ object BridgeSyncHelper {
             }
             val prefs = appCxt.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
             val apiUrl = prefs.getString("api_url", null) ?: "https://d5e4-88-248-2-49.ngrok-free.app"
-            val apiKey = prefs.getString("api_key", null) ?: "dev-token-change-in-production"
+            val apiKey = com.example.data.LicenseRepository.getApiKey(context) ?: "dev-token-change-in-production"
 
             logCallback?.invoke("Hızlı arka plan senkronizasyonu başlatılıyor...")
 
@@ -2405,8 +2343,9 @@ object BridgeSyncHelper {
         try {
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var currentPage = 1
-            val pageSize = 100
+            val pageSize = 1000
             var hasMore = true
+            var lastFingerprint = ""
             val allMappedCustomers = mutableListOf<Customer>()
 
             while (hasMore) {
@@ -2422,29 +2361,20 @@ object BridgeSyncHelper {
                     entity = "cari",
                     since = null,
                     page = currentPage,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getCariler(req_getCariler)
                 if (response.isSuccessful && response.body() != null) {
                     val syncRes = response.body()!!
                     val cariler = syncRes.actualItems
-                    if (cariler.isEmpty()) {
+                    val currentFingerprint = cariler.joinToString(",") { it.hashCode().toString() }
+                    if (cariler.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) android.util.Log.d("Sync", "Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         for (cari in cariler) {
-                            val bal = cari.bakiye ?: cari.balance ?: cari.netBakiye ?: 0.0
+                            val bal = cari.actualBakiye
                             val txList = mutableListOf<CustomerTx>()
                             val apiTxs = cari.transactions ?: cari.hareketler
                             if (apiTxs != null) {
@@ -2479,7 +2409,7 @@ object BridgeSyncHelper {
                                 taxOffice = cari.vergiDairesi ?: "-",
                                 taxNumber = cari.vergiNo ?: "-",
                                 gpsLocation = "41.0, 28.0",
-                                riskLimit = 500000.0,
+                                riskLimit = 100000.0,
                                 priceGroup = "1",
                                 specialDiscountPercent = 0.0,
                                 transactions = txList
@@ -2490,7 +2420,7 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (cariler.isEmpty() || ((syncRes.total ?: 0) > 0 && allMappedCustomers.size >= (syncRes.total ?: 0))) {
+                        if (cariler.size < pageSize || ((syncRes.total ?: 0) > 0 && allMappedCustomers.size >= (syncRes.total ?: 0))) {
                             hasMore = false
 
 
@@ -2558,8 +2488,9 @@ object BridgeSyncHelper {
         try {
             val apiService = ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
             var currentPage = 1
-            val pageSize = 100
+            val pageSize = 1000
             var hasMore = true
+            var lastFingerprint = ""
             val allMappedProducts = mutableListOf<ProductCatalog>()
 
             while (hasMore) {
@@ -2575,27 +2506,18 @@ object BridgeSyncHelper {
                     entity = "urun",
                     since = null,
                     page = currentPage,
-                    pageSize = 100
+                    pageSize = 1000
                 )
                 val response = apiService.getUrunler(req_getUrunler)
                 if (response.isSuccessful && response.body() != null) {
                     val syncRes = response.body()!!
                     val urunler = syncRes.actualItems
-                    if (urunler.isEmpty()) {
+                    val currentFingerprint = urunler.joinToString(",") { it.hashCode().toString() }
+                    if (urunler.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                        if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) android.util.Log.d("Sync", "Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
                         hasMore = false
-
-
-
-
-
-
-
-
-
-
-
-
                     } else {
+                        lastFingerprint = currentFingerprint
                         for (u in urunler) {
                             val codeKey = u.actualUrunKod
                             val stockQty = u.stok ?: u.miktar ?: u.quantity ?: u.stock ?: 150
@@ -2632,7 +2554,7 @@ object BridgeSyncHelper {
 
 
                         }
-                        if (urunler.isEmpty() || ((syncRes.total ?: 0) > 0 && allMappedProducts.size >= (syncRes.total ?: 0))) {
+                        if (urunler.size < pageSize || ((syncRes.total ?: 0) > 0 && allMappedProducts.size >= (syncRes.total ?: 0))) {
                             hasMore = false
 
 
@@ -2686,7 +2608,7 @@ object BridgeSyncHelper {
 
                 }
                 // insertAll replaces on conflict! Idempotent upsert.
-                db.productDao().insertAll(productEntities)
+                productEntities.chunked(100).forEach { db.productDao().insertAll(it) }
 
 
 
@@ -2705,6 +2627,141 @@ object BridgeSyncHelper {
 
 
 
+        }
+    }
+
+    suspend fun syncStokHareketleri(context: Context, apiUrl: String, apiKey: String, log: (String) -> Unit, progress: (Float) -> Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                log("Uç nokta: $apiUrl/api/v1/android/sync/stokHareketleri")
+                log("Stok Hareketleri Çekiliyor...")
+                progress(0.1f)
+                val sharedPrefs = context.getSharedPreferences("erp_settings", Context.MODE_PRIVATE)
+                val tenantId = sharedPrefs.getString("tenant_id", "T001") ?: "T001"
+                val deviceId = sharedPrefs.getString("device_id", "DEVICE_DEFAULT") ?: "DEVICE_DEFAULT"
+                val apiService = com.example.data.api.ApiClient.getFieldOpsApiService(context, apiUrl, apiKey)
+                val db = com.example.data.database.DatabaseProvider.getDatabase(context.applicationContext)
+
+                var page = 1
+                val pageSize = 1000
+                var hasMore = true
+                var lastFingerprint = ""
+                val loadedItems = mutableListOf<com.example.data.api.StokHareketiDto>()
+
+                while (hasMore) {
+                    log("Sayfa $page stok hareketleri çekiliyor...")
+                    val req = com.example.data.api.PullJobsRequest(
+                        tenant_id = tenantId,
+                        api_key = apiKey,
+                        device_id = deviceId,
+                        agent_version = "v2.0-multi-tenant",
+                        entity = "stokHareketleri",
+                        since = null,
+                        page = page,
+                        pageSize = pageSize
+                    )
+                    val resp = apiService.getStokHareketleri(req)
+                    if (resp.isSuccessful && resp.body() != null) {
+                        val body = resp.body()!!
+                        val items = body.items
+                        val currentFingerprint = items.joinToString(",") { it.hashCode().toString() }
+                        if (items.isEmpty() || (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty())) {
+                            if (currentFingerprint == lastFingerprint && lastFingerprint.isNotEmpty()) log("Tekrarlayan sayfa algılandı, sayfalama durduruluyor.")
+                            hasMore = false
+                        } else {
+                            lastFingerprint = currentFingerprint
+                            loadedItems.addAll(items)
+                            log("${items.size} adet stok hareketi alındı.")
+                            if (items.size < pageSize) {
+                                hasMore = false
+                            } else {
+                                page++
+                            }
+                        }
+                        progress(0.1f + (page * 0.1f).coerceAtMost(0.5f))
+                    } else {
+                        val err = handleApiError(resp, log)
+                        if (resp.code() == 404) {
+                            log("Uç nokta bulunamadı (404). Senkronizasyon atlanıyor.")
+                            hasMore = false
+                        } else {
+                            throw err
+                        }
+                    }
+                }
+
+                if (loadedItems.isNotEmpty()) {
+                    val shEntities = loadedItems.map { dto ->
+                        com.example.data.database.StokHareketEntity(
+                            id = dto.id ?: dto.erpRef ?: java.util.UUID.randomUUID().toString(),
+                            stokKod = dto.stokKod ?: dto.urunKod ?: "",
+                            tarih = dto.tarih ?: "",
+                            tip = dto.tip ?: 0,
+                            evrakTip = dto.evrakTip ?: 0,
+                            evrakNo = dto.evrakNo ?: "",
+                            miktar = dto.miktar ?: (if ((dto.girisMiktar ?: 0.0) > 0) dto.girisMiktar else dto.cikisMiktar) ?: 0.0,
+                            birimFiyat = dto.birimFiyat ?: 0.0,
+                            tutar = dto.tutar ?: 0.0,
+                            cariKod = dto.cariKod ?: "",
+                            depoNo = dto.cikisDepoNo ?: dto.girisDepoNo ?: 0
+                        )
+                    }
+                    db.withTransaction {
+                        db.stokHareketDao().deleteAll()
+                        shEntities.chunked(500).forEach { db.stokHareketDao().insertAll(it) }
+                    }
+
+                    val grouped = loadedItems.groupBy { it.stokKod ?: it.urunKod ?: "" }.filterKeys { it.isNotEmpty() }
+                    val allProducts = db.productDao().getAllProducts()
+                    val updatedProducts = mutableListOf<com.example.data.database.ProductEntity>()
+
+                    for (prod in allProducts) {
+                        val productCode = prod.code
+                        val movementsDto = grouped[productCode]
+                        if (movementsDto != null && movementsDto.isNotEmpty()) {
+                            val movements = movementsDto.map { item ->
+                                val dateStr = item.tarih?.take(10)?.let {
+                                    val parts = it.split("-")
+                                    if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else it
+                                } ?: "Bilinmeyen Tarih"
+
+                                val miktar = item.miktar ?: (if ((item.girisMiktar ?: 0.0) > 0) item.girisMiktar else item.cikisMiktar) ?: 0.0
+                                val typeStr = if ((item.tip ?: -1) == 0 || miktar > 0) "Giriş" else "Çıkış"
+                                val prefix = if (typeStr == "Giriş") "+" else "-"
+                                val evrakNo = item.evrakNo ?: ""
+
+                                com.example.ui.screens.StockMovement(
+                                    date = dateStr,
+                                    type = typeStr,
+                                    qty = "$prefix${kotlin.math.abs(miktar).toInt()} ADT",
+                                    detail = "Evrak No: $evrakNo | Cari: " + (item.cariKod ?: ""),
+                                    user = "Sistem",
+                                    evrakNo = evrakNo,
+                                    cariKod = item.cariKod,
+                                    cariName = item.cariKod,
+                                    unitPrice = item.birimFiyat ?: 0.0,
+                                    totalAmount = item.tutar ?: (kotlin.math.abs(miktar) * (item.birimFiyat ?: 0.0)),
+                                    warehouse = if (typeStr == "Giriş") item.girisDepoNo?.toString() else item.cikisDepoNo?.toString()
+                                )
+                            }
+                            val converter = com.example.data.database.Converters()
+                            val json = converter.fromStockMovementList(movements)
+                            updatedProducts.add(prod.copy(transactionsJson = json))
+                        }
+                    }
+
+                    if (updatedProducts.isNotEmpty()) {
+                        db.withTransaction {
+                            updatedProducts.chunked(200).forEach { db.productDao().insertAll(it) }
+                        }
+                    }
+                }
+
+                log("Başarılı! Toplam ${loadedItems.size} adet stok hareketi veritabanına kaydedildi.")
+                progress(1.0f)
+            } catch (e: Exception) {
+                log("Hata: ${e.message}")
+            }
         }
     }
 }

@@ -2,7 +2,7 @@
 @inject ErpBridge.Admin.Api.CentralApiClient Api
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>Tenants — ErpBridge Admin</PageTitle>
+<PageTitle>Müşteriler — ErpBridge Yönetim</PageTitle>
 
 <AdminPageHeader Title="Müşteriler" Description="ERP bağlantısı olan müşteri hesaplarını ve erişim durumlarını yönetin.">
     <Actions><a class="btn btn-primary" href="tenants/create">+ Yeni müşteri</a></Actions>
@@ -10,11 +10,11 @@
 
 @if (_loading)
 {
-    <p><em>Loading…</em></p>
+    <AdminLoading Text="Müşteriler yükleniyor…" />
 }
 else if (!string.IsNullOrEmpty(_error))
 {
-    <div class="alert alert-danger">@_error</div>
+    <AdminState Tone="error" Icon="!" Title="Müşteriler alınamadı" Message="@_error" />
 }
 else
 {
@@ -22,11 +22,7 @@ else
     <table class="table admin-data-table">
         <thead>
             <tr>
-                <th>Id</th>
-                <th>Name</th>
-                <th>Created</th>
-                <th>Active</th>
-                <th></th>
+                <th>Kimlik</th><th>Müşteri</th><th>Oluşturulma</th><th>Durum</th><th>İşlem</th>
             </tr>
         </thead>
         <tbody>
@@ -36,7 +32,7 @@ else
                     <td data-label="Kimlik"><code>@t.Id.ToString().Substring(0, 8)</code></td>
                     <td data-label="Müşteri"><strong>@t.Name</strong></td>
                     <td data-label="Oluşturulma">@t.CreatedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
-                    <td data-label="Durum"><span class="admin-status @(t.IsActive ? "admin-status--success" : "admin-status--muted")">@(t.IsActive ? "Aktif" : "Pasif")</span></td>
+                    <td data-label="Durum"><AdminStatusBadge Text="@(t.IsActive ? "Aktif" : "Pasif")" Tone="@(t.IsActive ? "success" : "muted")" /></td>
                     <td data-label="İşlem" class="admin-data-table__action">
                         @if (t.IsActive)
                         {

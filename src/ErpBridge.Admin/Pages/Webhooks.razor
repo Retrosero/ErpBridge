@@ -3,13 +3,13 @@
 @inject IJSRuntime Js
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>Webhooks — ErpBridge Admin</PageTitle>
+<PageTitle>Webhooklar — ErpBridge Yönetim</PageTitle>
 
 <AdminPageHeader Title="Webhooklar" Description="İşlem olaylarını müşteri sistemlerine güvenli biçimde iletin." />
 
 @if (_loading)
 {
-    <p><em>Loading…</em></p>
+    <AdminLoading Text="Webhooklar yükleniyor…" />
 }
 else
 {
@@ -19,7 +19,7 @@ else
             <div class="row g-2">
                 <div class="col-auto">
                     <select class="form-select" @bind="_create.TenantIdString">
-                        <option value="">Tenant…</option>
+                        <option value="">Müşteri seçin…</option>
                         @foreach (var t in _tenants)
                         {
                             <option value="@t.Id.ToString()">@t.Name</option>
@@ -27,14 +27,14 @@ else
                     </select>
                 </div>
                 <div class="col-auto">
-                    <input class="form-control" placeholder="Name (e.g. ERP staging)" @bind="_create.Name" />
+                    <input class="form-control" aria-label="Webhook adı" placeholder="Webhook adı" @bind="_create.Name" />
                 </div>
                 <div class="col-auto flex-grow-1">
-                    <input class="form-control" placeholder="https://customer.example/erp-bridge/hook" @bind="_create.Url" />
+                    <input class="form-control" aria-label="Webhook adresi" placeholder="https://musteri.example/erp-bridge/hook" @bind="_create.Url" />
                 </div>
                 <div class="col-auto">
                     <button class="btn btn-primary" @onclick="CreateAsync" disabled="@(!CanCreate || _busy)">
-                        @(_busy ? "Creating…" : "Register")
+                        @(_busy ? "Kaydediliyor…" : "Webhook ekle")
                     </button>
                 </div>
             </div>
@@ -44,17 +44,17 @@ else
     @if (!string.IsNullOrEmpty(_lastIssuedSecret))
     {
         <div class="alert alert-success">
-            <strong>Copy this now — the signing secret is only shown once.</strong>
+            <strong>Şimdi kopyalayın — imzalama anahtarı yalnızca bir kez gösterilir.</strong>
             <div class="mt-2 d-flex align-items-center">
                 <code class="me-2 flex-grow-1">@_lastIssuedSecret</code>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="CopyAsync">Copy</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CopyAsync">Kopyala</button>
             </div>
         </div>
     }
 
     @if (!string.IsNullOrEmpty(_error))
     {
-        <div class="alert alert-danger">@_error</div>
+        <AdminState Tone="error" Icon="!" Title="İşlem tamamlanamadı" Message="@_error" />
     }
 
     @foreach (var w in _webhooks)
@@ -63,64 +63,48 @@ else
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div>
                     <strong>@w.Name</strong>
-                    <span class="text-muted ms-2">@(w.IsActive ? "active" : "disabled")</span>
+                    <AdminStatusBadge Text="@(w.IsActive ? "Aktif" : "Devre dışı")" Tone="@(w.IsActive ? "success" : "muted")" />
                 </div>
                 <div>
-                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => LoadDeliveriesAsync(w.Id)">Deliveries</button>
-                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(w.Id)">Delete</button>
+                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => LoadDeliveriesAsync(w.Id)">Teslimatlar</button>
+                    <button class="btn btn-sm btn-outline-danger" disabled="@_busy" @onclick="() => DeleteAsync(w.Id)">Sil</button>
                 </div>
             </div>
             <div class="card-body">
                 <div class="row small">
                     <div class="col-md-6">
-                        <div><strong>URL:</strong> <code>@w.Url</code></div>
-                        <div><strong>Tenant:</strong> @(TenantName(w.TenantId))</div>
-                        <div><strong>Signing secret:</strong> <code>@w.SigningSecretPrefix…</code></div>
+                        <div><strong>Adres:</strong> <code>@w.Url</code></div><div><strong>Müşteri:</strong> @(TenantName(w.TenantId))</div><div><strong>İmzalama anahtarı:</strong> <code>@w.SigningSecretPrefix…</code></div>
                     </div>
                     <div class="col-md-6">
-                        <div><strong>Events:</strong> @(w.SubscribedEvents.Length == 0 ? "all" : string.Join(", ", w.SubscribedEvents))</div>
-                        <div><strong>Created:</strong> @w.CreatedAtUtc.ToString("u")</div>
-                        <div><strong>Last delivered:</strong> @(w.LastDeliveredAtUtc?.ToString("u") ?? "—")</div>
+                        <div><strong>Olaylar:</strong> @(w.SubscribedEvents.Length == 0 ? "Tümü" : string.Join(", ", w.SubscribedEvents))</div><div><strong>Oluşturulma:</strong> @w.CreatedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</div><div><strong>Son teslim:</strong> @(w.LastDeliveredAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "—")</div>
                     </div>
                 </div>
 
                 @if (_deliveriesEndpointId == w.Id)
                 {
                     <hr />
-                    <h6>Recent deliveries</h6>
+                    <h3>Son teslimatlar</h3>
                     @if (_deliveriesLoading)
                     {
-                        <p><em>Loading…</em></p>
+                        <AdminLoading Text="Teslimatlar yükleniyor…" />
                     }
                     else if (_deliveries.Count == 0)
                     {
-                        <p class="text-muted">No deliveries yet.</p>
+                        <AdminState Title="Henüz teslimat yok" Message="Bu webhook için kaydedilmiş bir gönderim bulunmuyor." />
                     }
                     else
                     {
-                        <table class="table table-sm">
+                        <table class="table table-sm admin-data-table">
                             <thead>
                                 <tr>
-                                    <th>Event</th>
-                                    <th>Status</th>
-                                    <th>Attempts</th>
-                                    <th>Last code</th>
-                                    <th>Last error</th>
-                                    <th>Last attempt</th>
-                                    <th>Next retry</th>
+                                    <th>Olay</th><th>Durum</th><th>Deneme</th><th>Yanıt kodu</th><th>Son hata</th><th>Son deneme</th><th>Sonraki deneme</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach (var d in _deliveries)
                                 {
                                     <tr>
-                                        <td>@d.EventType</td>
-                                        <td>@d.Status</td>
-                                        <td>@d.AttemptCount</td>
-                                        <td>@(d.LastResponseCode?.ToString() ?? "—")</td>
-                                        <td class="text-truncate" style="max-width:240px">@(d.LastError ?? "—")</td>
-                                        <td>@(d.LastAttemptAtUtc?.ToString("u") ?? "—")</td>
-                                        <td>@(d.NextRetryAtUtc?.ToString("u") ?? "—")</td>
+                                        <td data-label="Olay">@d.EventType</td><td data-label="Durum">@d.Status</td><td data-label="Deneme">@d.AttemptCount</td><td data-label="Yanıt">@(d.LastResponseCode?.ToString() ?? "—")</td><td data-label="Son hata">@(d.LastError ?? "—")</td><td data-label="Son deneme">@(d.LastAttemptAtUtc?.LocalDateTime.ToString("dd MMM, HH:mm") ?? "—")</td><td data-label="Sonraki">@(d.NextRetryAtUtc?.LocalDateTime.ToString("dd MMM, HH:mm") ?? "—")</td>
                                     </tr>
                                 }
                             </tbody>

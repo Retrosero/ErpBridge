@@ -1,70 +1,54 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
-<PageTitle>ErpBridge Admin</PageTitle>
+<PageTitle>ErpBridge Yönetim</PageTitle>
 
-<div class="page admin-shell">
-    <div class="sidebar">
-        <div class="top-row navbar navbar-dark">
-            <div class="container-fluid admin-brand">
-                <a class="navbar-brand" href="">
-                    <span class="admin-brand__mark" aria-hidden="true">E</span>
-                    <span>ErpBridge <small>ADMIN</small></span>
-                </a>
-            </div>
+<div class="admin-shell @(_menuOpen ? "admin-shell--menu-open" : null)">
+    <button class="admin-menu-backdrop" aria-label="Menüyü kapat" @onclick="CloseMenu"></button>
+    <aside class="admin-sidebar" aria-label="Ana navigasyon">
+        <div class="admin-brand">
+            <a href="/" class="admin-brand__link" @onclick="CloseMenu">
+                <span class="admin-brand__mark" aria-hidden="true">EB</span>
+                <span><strong>ErpBridge</strong><small>YÖNETİM MERKEZİ</small></span>
+            </a>
+            <button class="admin-icon-button admin-sidebar__close" type="button" aria-label="Menüyü kapat" @onclick="CloseMenu">×</button>
         </div>
-        <nav class="flex-column" aria-label="Yönetim menüsü">
-            <AuthorizeView>
-                <Authorized>
-                    <div class="nav-item px-3">
-                        <span class="admin-user">@context.User.Identity?.Name</span>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="tenants">Tenants</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="licenses">Licenses</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="apikeys">API Keys</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="webhooks">Webhooks</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="agents">Agents</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="jobs">Jobs</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="bootstrap">Bootstrap</NavLink>
-                    </div>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="logout">Logout</NavLink>
-                    </div>
-                </Authorized>
-                <NotAuthorized>
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="login">Login</NavLink>
-                    </div>
-                </NotAuthorized>
-            </AuthorizeView>
-        </nav>
+        <AuthorizeView>
+            <Authorized>
+                <nav class="admin-nav">
+                    <p class="admin-nav__label">GENEL</p>
+                    <NavLink class="admin-nav__link" href="" Match="NavLinkMatch.All" @onclick="CloseMenu"><span aria-hidden="true">⌂</span> Genel bakış</NavLink>
+                    <NavLink class="admin-nav__link" href="tenants" @onclick="CloseMenu"><span aria-hidden="true">◇</span> Müşteriler</NavLink>
+                    <NavLink class="admin-nav__link" href="licenses" @onclick="CloseMenu"><span aria-hidden="true">✓</span> Lisanslar</NavLink>
+                    <p class="admin-nav__label">ERİŞİM</p>
+                    <NavLink class="admin-nav__link" href="apikeys" @onclick="CloseMenu"><span aria-hidden="true">⌁</span> API anahtarları</NavLink>
+                    <NavLink class="admin-nav__link" href="webhooks" @onclick="CloseMenu"><span aria-hidden="true">↗</span> Webhooklar</NavLink>
+                    <p class="admin-nav__label">OPERASYON</p>
+                    <NavLink class="admin-nav__link" href="agents" @onclick="CloseMenu"><span aria-hidden="true">◉</span> Ajanlar</NavLink>
+                    <NavLink class="admin-nav__link" href="jobs" @onclick="CloseMenu"><span aria-hidden="true">≡</span> İş kuyruğu</NavLink>
+                    <NavLink class="admin-nav__link" href="bootstrap" @onclick="CloseMenu"><span aria-hidden="true">↻</span> Veri özeti</NavLink>
+                </nav>
+                <div class="admin-sidebar__account">
+                    <span class="admin-avatar" aria-hidden="true">@Initial(context.User.Identity?.Name)</span>
+                    <span class="admin-account-copy"><strong>@(context.User.Identity?.Name ?? "Yönetici")</strong><small>Yönetici hesabı</small></span>
+                    <a class="admin-icon-button" href="logout" title="Çıkış yap" aria-label="Çıkış yap">↪</a>
+                </div>
+            </Authorized>
+            <NotAuthorized><nav class="admin-nav"><NavLink class="admin-nav__link" href="login" @onclick="CloseMenu">Giriş yap</NavLink></nav></NotAuthorized>
+        </AuthorizeView>
+    </aside>
+    <div class="admin-main">
+        <header class="admin-topbar">
+            <button class="admin-icon-button admin-menu-button" type="button" aria-label="Menüyü aç" aria-expanded="@_menuOpen" @onclick="ToggleMenu">☰</button>
+            <div class="admin-topbar__title"><span class="admin-brand__mark" aria-hidden="true">EB</span><strong>ErpBridge</strong></div>
+            <AuthorizeView><Authorized><span class="admin-topbar__status"><i aria-hidden="true"></i> Sistem bağlı</span></Authorized></AuthorizeView>
+        </header>
+        <main id="main-content" class="admin-content" tabindex="-1">@Body</main>
     </div>
-
-    <main>
-        <div class="top-row admin-topbar px-4">
-            <AuthorizeView>
-                <Authorized>
-                    <span class="admin-topbar__identity">@context.User.Identity?.Name</span>
-                </Authorized>
-            </AuthorizeView>
-        </div>
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
 </div>
+
+@code {
+    private bool _menuOpen;
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+    private void CloseMenu() => _menuOpen = false;
+    private static string Initial(string? value) => string.IsNullOrWhiteSpace(value) ? "Y" : value.Trim()[0].ToString().ToUpperInvariant();
+}

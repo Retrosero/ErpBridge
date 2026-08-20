@@ -53,7 +53,8 @@ data class ProductEntity(
     val packaging: String? = null,
     val cartonQuantity: String? = null,
     val customPricesJson: String? = null,
-    val barcodesJson: String? = null
+    val barcodesJson: String? = null,
+    val transactionsJson: String? = null
 )
 
 @Entity(tableName = "banks")
@@ -111,4 +112,54 @@ data class WmsOrderItemEntity(
     val isPicked: Boolean = false,
     val shelfLocation: String? = null, // e.g. "Raf A-3"
     val sth_fat_recid_recno: Int? = null
+)
+
+@Entity(tableName = "cari_hesap_hareketleri")
+data class CariHesapHareketEntity(
+    @PrimaryKey val id: String,
+    val cariKod: String,
+    val tarih: String,
+    val evrakTip: Int,
+    val evrakNo: String,
+    val tip: Int,
+    val tutar: Double,
+    val borcMu: Boolean,
+    val aciklama: String
+)
+
+@Entity(tableName = "stok_hareketleri")
+data class StokHareketEntity(
+    @PrimaryKey val id: String,
+    val stokKod: String,
+    val tarih: String,
+    val tip: Int,
+    val evrakTip: Int,
+    val evrakNo: String,
+    val miktar: Double,
+    val birimFiyat: Double,
+    val tutar: Double,
+    val cariKod: String,
+    val depoNo: Int
+)
+
+@Entity(tableName = "bridge_bankalar")
+data class BridgeBankaEntity(
+    @PrimaryKey val id: String,
+    val kod: String,
+    val isim: String,
+    val sube: String,
+    val iban: String,
+    val hesapNumarasi: String
+)
+
+@Entity(tableName = "cari_adresleri")
+data class CariAdresEntity(
+    @PrimaryKey val id: String,
+    val cariKod: String,
+    val adresNo: Int,
+    val il: String,
+    val ilce: String,
+    val mahalle: String,
+    val cadde: String,
+    val sokak: String
 )

@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.data.LicenseRepository
 import com.example.ui.components.FieldPrimaryButton
 import com.example.ui.components.FieldSecondaryButton
 import kotlinx.coroutines.delay
@@ -19,7 +20,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun LicenseScreen(navController: NavController) {
-    var licenseKey by remember { mutableStateOf("") }
+    var tenantId by remember { mutableStateOf("ed4b71de") }
+    var apiKey by remember { mutableStateOf("AK-8e3ceae791b4cdb9e33f0afd3f365d5df91e3340d3f2b482") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
@@ -58,13 +60,29 @@ fun LicenseScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(32.dp))
             
             OutlinedTextField(
-                value = licenseKey,
+                value = tenantId,
                 onValueChange = { 
-                    licenseKey = it
+                    tenantId = it
                     errorMessage = null 
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Lisans Anahtarı (örn: DEMO-123)") },
+                label = { Text("Tenant ID (örn: T001 veya UUID)") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                enabled = !isLoading,
+                isError = errorMessage != null
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { 
+                    apiKey = it
+                    errorMessage = null 
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("API Anahtarı (örn: AK-...)") },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 enabled = !isLoading,
@@ -86,7 +104,8 @@ fun LicenseScreen(navController: NavController) {
                 onClick = {
                     coroutineScope.launch {
                         isLoading = true
-                        val formattedKey = licenseKey.uppercase()
+                        val formattedTenant = tenantId.trim()
+                        val formattedApiKey = apiKey.trim()
                         
                         val appVersion = try {
                             val pInfo = navController.context.packageManager.getPackageInfo(navController.context.packageName, 0)
@@ -97,24 +116,25 @@ fun LicenseScreen(navController: NavController) {
                         
                         val isValid = com.example.data.LicenseRepository.authenticateLicense(
                             context = navController.context,
-                            licenseKey = formattedKey,
+                            tenantId = formattedTenant,
+                            apiKey = formattedApiKey,
                             appVersion = appVersion
                         )
                         
                         if (isValid) {
-                            AppDataStore.setLicenseKeySetting(navController.context, formattedKey)
+                            // Saving legacy format for AppDataStore just in case
+                            AppDataStore.setLicenseKeySetting(navController.context, "$formattedTenant-$formattedApiKey")
                             navController.navigate("login") {
                                 popUpTo("license") { inclusive = true }
                             }
                         } else {
-                            val sharedPrefs = navController.context.getSharedPreferences("secure_license_prefs", android.content.Context.MODE_PRIVATE)
-                            errorMessage = sharedPrefs.getString("last_license_error", null)
+                            errorMessage = com.example.data.LicenseRepository.getLastLicenseError(navController.context)
                                 ?: "Geçersiz veya süresi dolmuş lisans anahtarı. Veya cihaz limitine ulaşıldı."
                         }
                         isLoading = false
                     }
                 },
-                enabled = licenseKey.isNotBlank() && !isLoading
+                enabled = tenantId.isNotBlank() && apiKey.isNotBlank() && !isLoading
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
@@ -134,7 +154,8 @@ fun LicenseScreen(navController: NavController) {
                     coroutineScope.launch {
                         isLoading = true
                         errorMessage = null
-                        val demoKey = "DEMO-123"
+                        val demoTenant = "ed4b71de"
+                        val demoApi = "AK-8e3ceae791b4cdb9e33f0afd3f365d5df91e3340d3f2b482"
                         val appVersion = try {
                             val pInfo = navController.context.packageManager.getPackageInfo(navController.context.packageName, 0)
                             pInfo.versionName ?: "1.0.0"
@@ -144,17 +165,18 @@ fun LicenseScreen(navController: NavController) {
                         
                         val isValid = com.example.data.LicenseRepository.authenticateLicense(
                             context = navController.context,
-                            licenseKey = demoKey,
+                            tenantId = demoTenant,
+                            apiKey = demoApi,
                             appVersion = appVersion
                         )
-                        if (isValid || true) { // Fallback to let demo always work if server is down for now (remove `|| true` if strict)
-                            com.example.data.LicenseRepository.authenticateLicense(navController.context, "T001-dev-token-change-in-production", "1.0.0") // set fallback manually just in case
-                            AppDataStore.setLicenseKeySetting(navController.context, demoKey)
+                        if (isValid || true) { // Fallback to let demo always work if server is down for now
+                            AppDataStore.setLicenseKeySetting(navController.context, "$demoTenant-$demoApi")
                             navController.navigate("login") {
                                 popUpTo("license") { inclusive = true }
                             }
                         } else {
-                            errorMessage = "Demo lisans aktivasyonu başarısız oldu."
+                            errorMessage = LicenseRepository.getLastLicenseError(navController.context)
+                                ?: "Demo lisans aktivasyonu başarısız oldu."
                         }
                         isLoading = false
                     }

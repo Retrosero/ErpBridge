@@ -2,14 +2,14 @@
 @inject ErpBridge.Admin.Api.CentralApiClient Api
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>Bootstrap — ErpBridge Admin</PageTitle>
+<PageTitle>Veri Özeti — ErpBridge Yönetim</PageTitle>
 
 <AdminPageHeader Title="Veri anlık görüntüleri" Description="Müşteri ERP verilerinin son bootstrap alma durumunu inceleyin." />
 
 <div class="admin-filter-bar mb-3 row g-2">
     <div class="col-auto">
         <select class="form-select" @bind="_tenantId">
-            <option value="">Select tenant…</option>
+            <option value="">Müşteri seçin…</option>
             @foreach (var t in _tenants)
             {
                 <option value="@t.Id">@t.Name</option>
@@ -17,20 +17,20 @@
         </select>
     </div>
     <div class="col-auto">
-        <button class="btn btn-primary" @onclick="LoadAsync" disabled="@(string.IsNullOrEmpty(_tenantId) || _loading)">Load</button>
+        <button class="btn btn-primary" @onclick="LoadAsync" disabled="@(string.IsNullOrEmpty(_tenantId) || _loading)">@(_loading ? "Yükleniyor…" : "Özeti getir")</button>
     </div>
 </div>
 
 @if (!string.IsNullOrEmpty(_error))
 {
-    <div class="alert alert-danger">@_error</div>
+    <AdminState Tone="error" Icon="!" Title="Veri özeti alınamadı" Message="@_error" />
 }
 
 @if (_summary is not null)
 {
     <div class="admin-insight"><span>Son alınma</span><strong>@(_summary.CapturedAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "Henüz alınmadı")</strong></div>
     <div class="admin-data-surface"><table class="table admin-data-table">
-        <thead><tr><th>Section</th><th>Row count</th></tr></thead>
+        <thead><tr><th>Veri grubu</th><th>Kayıt sayısı</th></tr></thead>
         <tbody>
             <tr><td data-label="Bölüm">Müşteriler</td><td data-label="Kayıt"><strong>@_summary.CustomersCount</strong></td></tr>
             <tr><td data-label="Bölüm">Stoklar</td><td data-label="Kayıt"><strong>@_summary.StocksCount</strong></td></tr>
@@ -47,6 +47,10 @@
             <tr><td data-label="Bölüm">Stok hareketleri</td><td data-label="Kayıt"><strong>@_summary.StockTransactionsCount</strong></td></tr>
         </tbody>
     </table></div>
+}
+else if (!_loading && string.IsNullOrWhiteSpace(_error))
+{
+    <AdminState Title="Bir müşteri seçin" Message="Güncel ERP veri özetini görmek için yukarıdaki alandan müşteri seçin." Icon="↻" />
 }
 
 @code {

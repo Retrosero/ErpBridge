@@ -170,9 +170,14 @@ interface WmsOrderItemDao {
         KasaLogEntity::class,
         SalesRecordEntity::class,
         WmsOrderEntity::class,
-        WmsOrderItemEntity::class
+        WmsOrderItemEntity::class,
+        CariHesapHareketEntity::class,
+        StokHareketEntity::class,
+        BridgeBankaEntity::class,
+        CariAdresEntity::class,
+        TelemetryEventEntity::class
     ],
-    version = 8,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -185,4 +190,78 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun salesRecordDao(): SalesRecordDao
     abstract fun wmsOrderDao(): WmsOrderDao
     abstract fun wmsOrderItemDao(): WmsOrderItemDao
+    abstract fun telemetryDao(): TelemetryDao
+    abstract fun cariHesapHareketDao(): CariHesapHareketDao
+    abstract fun stokHareketDao(): StokHareketDao
+    abstract fun bridgeBankaDao(): BridgeBankaDao
+    abstract fun cariAdresDao(): CariAdresDao
+}
+
+@Dao
+interface CariHesapHareketDao {
+    @Query("SELECT * FROM cari_hesap_hareketleri")
+    suspend fun getAll(): List<CariHesapHareketEntity>
+
+    @Query("SELECT * FROM cari_hesap_hareketleri WHERE cariKod = :cariKod")
+    suspend fun getByCariKod(cariKod: String): List<CariHesapHareketEntity>
+
+    @Query("SELECT COUNT(*) FROM cari_hesap_hareketleri")
+    suspend fun getCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<CariHesapHareketEntity>)
+
+    @Query("DELETE FROM cari_hesap_hareketleri")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface StokHareketDao {
+    @Query("SELECT * FROM stok_hareketleri")
+    suspend fun getAll(): List<StokHareketEntity>
+
+    @Query("SELECT * FROM stok_hareketleri WHERE stokKod = :stokKod")
+    suspend fun getByStokKod(stokKod: String): List<StokHareketEntity>
+
+    @Query("SELECT COUNT(*) FROM stok_hareketleri")
+    suspend fun getCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<StokHareketEntity>)
+
+    @Query("DELETE FROM stok_hareketleri")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface BridgeBankaDao {
+    @Query("SELECT * FROM bridge_bankalar")
+    suspend fun getAll(): List<BridgeBankaEntity>
+
+    @Query("SELECT COUNT(*) FROM bridge_bankalar")
+    suspend fun getCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<BridgeBankaEntity>)
+
+    @Query("DELETE FROM bridge_bankalar")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface CariAdresDao {
+    @Query("SELECT * FROM cari_adresleri")
+    suspend fun getAll(): List<CariAdresEntity>
+
+    @Query("SELECT * FROM cari_adresleri WHERE cariKod = :cariKod")
+    suspend fun getByCariKod(cariKod: String): List<CariAdresEntity>
+
+    @Query("SELECT COUNT(*) FROM cari_adresleri")
+    suspend fun getCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<CariAdresEntity>)
+
+    @Query("DELETE FROM cari_adresleri")
+    suspend fun deleteAll()
 }

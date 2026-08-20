@@ -71,4 +71,20 @@ class Converters {
         val adapter = moshi.adapter<List<String>>(type)
         return adapter.fromJson(value) ?: emptyList()
     }
+
+    @TypeConverter
+    fun fromStockMovementList(value: List<com.example.ui.screens.StockMovement>?): String {
+        if (value == null) return "[]"
+        val type = Types.newParameterizedType(List::class.java, com.example.ui.screens.StockMovement::class.java)
+        val adapter = moshi.adapter<List<com.example.ui.screens.StockMovement>>(type)
+        return adapter.toJson(value)
+    }
+
+    @TypeConverter
+    fun toStockMovementList(value: String?): List<com.example.ui.screens.StockMovement> {
+        if (value.isNullOrBlank()) return emptyList()
+        val type = Types.newParameterizedType(List::class.java, com.example.ui.screens.StockMovement::class.java)
+        val adapter = moshi.adapter<List<com.example.ui.screens.StockMovement>>(type)
+        return adapter.fromJson(value) ?: emptyList()
+    }
 }

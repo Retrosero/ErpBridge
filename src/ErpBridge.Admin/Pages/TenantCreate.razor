@@ -3,17 +3,17 @@
 @inject NavigationManager Nav
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>New Tenant — ErpBridge Admin</PageTitle>
+<PageTitle>Yeni Müşteri — ErpBridge Yönetim</PageTitle>
 
 <AdminPageHeader Title="Yeni müşteri" Description="ERP Bridge erişimi için yeni müşteri hesabı oluşturun." />
 
 <EditForm class="admin-form-card" Model="_model" OnValidSubmit="HandleSubmitAsync" FormName="new-tenant">
     <div class="mb-3">
-        <label class="form-label">Name</label>
-        <InputText class="form-control" @bind-Value="_model.Name" />
+        <label class="form-label" for="tenant-name">Müşteri adı</label>
+        <InputText id="tenant-name" class="form-control" autocomplete="organization" @bind-Value="_model.Name" />
     </div>
-    <button type="submit" class="btn btn-primary" disabled="@_busy">@(_busy ? "Saving..." : "Save")</button>
-    <a class="btn btn-link" href="tenants">Cancel</a>
+    <button type="submit" class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_model.Name))">@(_busy ? "Kaydediliyor…" : "Müşteriyi kaydet")</button>
+    <a class="btn btn-link" href="tenants">Vazgeç</a>
 </EditForm>
 
 @if (!string.IsNullOrEmpty(_error))

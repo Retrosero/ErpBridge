@@ -1,0 +1,7 @@
+            .header("Authorization", authHeaderValue)
+            .header("X-Tenant-Id", tenantId)
+                .header("X-API-Key", apiKey)
+                .header("apikey", apiKey)
+            .header("Content-Type", "application/json")
+
+        return chain.proceed(builder.build())

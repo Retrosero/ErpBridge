@@ -6,9 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import android.content.Context
-import android.util.Log
-import androidx.room.withTransaction
 import com.example.data.database.DatabaseProvider
+import androidx.room.withTransaction
 import com.example.data.database.Converters
 import com.example.data.database.CustomerEntity
 import com.example.data.database.ProductEntity
@@ -254,7 +253,6 @@ data class Vehicle(
 )
 
 object AppDataStore {
-    private const val SyncLogTag = "ErpBridgeSync"
     private val dbScope = CoroutineScope(Dispatchers.IO)
     private var isInitialized = false
 
@@ -976,6 +974,57 @@ object AppDataStore {
                 } else {
                     // Populate memory lists from persistent Room DB
                     val loadedBanks = db.bankDao().getAllBanks().map { Bank(it.id, it.name, it.accountNo, it.iban, it.balance) }
+                    val loadedBridgeBanks = db.bridgeBankaDao().getAll().map {
+                        com.example.data.api.BridgeBankaDto(
+                            erpRef = it.id,
+                            erp = "bridge",
+                            kod = it.kod,
+                            isim = it.isim,
+                            sube = it.sube,
+                            swiftKodu = null,
+                            iBANKodu = it.iban,
+                            hesapNumarasi = it.hesapNumarasi,
+                            tCMBKodu = null,
+                            tCMBSubeKodu = null,
+                            tCMBIlKodu = null,
+                            musteriNo = null,
+                            hesapTipi = null,
+                            dovizCinsi = null,
+                            cadde = null,
+                            mahalle = null,
+                            il = null,
+                            ulke = null,
+                            temsilci = null,
+                            temsilciEposta = null,
+                            updatedAt = null
+                        )
+                    }
+                    val loadedCariAdresler = db.cariAdresDao().getAll().map {
+                        com.example.data.api.CariAdresDto(
+                            erpRef = it.id,
+                            erp = "bridge",
+                            cariKod = it.cariKod,
+                            adresNo = it.adresNo,
+                            yazdirilabilir = true,
+                            cadde = it.cadde,
+                            mahalle = it.mahalle,
+                            sokak = it.sokak,
+                            semt = null,
+                            ilce = it.ilce,
+                            il = it.il,
+                            ulke = null,
+                            postaKodu = null,
+                            telUlkeKodu = null,
+                            telBolgeKodu = null,
+                            telNo1 = null,
+                            gpsEnlem = null,
+                            gpsBoylam = null,
+                            ziyaretPeriyodu = null,
+                            ziyaretGunu = null,
+                            eFaturaAlias = null,
+                            updatedAt = null
+                        )
+                    }
                     val loadedKasa = db.kasaLogDao().getAllKasaLogs().map { KasaLogItem(it.id, it.date, it.type, it.customerOrSupplier, it.amount, it.paymentType, it.bankName, it.desc) }
                     val loadedSales = db.salesRecordDao().getAllSalesRecords().map { SalesRecord(it.customerId, it.productBarcode, it.quantity, it.price, it.date) }
                     val loadedProducts = db.productDao().getAllProducts().map { prod ->
@@ -1004,11 +1053,75 @@ object AppDataStore {
                             barcodes = converter.toBarcodeList(prod.barcodesJson)
                         )
                     }
+                    val allChHareketler = try { db.cariHesapHareketDao().getAll() } catch (e: Exception) { emptyList() }
+                    val chGrouped = allChHareketler.groupBy { it.cariKod.uppercase().trim() }
+
                     val loadedCustomers = db.customerDao().getAllCustomers().map { cust ->
+                        val baseTxs = converter.toCustomerTxList(cust.transactionsJson).toMutableList()
+                        val custKey = cust.id.uppercase().trim()
+                        val custNameKey = cust.name.uppercase().trim()
+                        val chMatches = chGrouped[custKey] 
+                            ?: chGrouped[custNameKey]
+                            ?: chGrouped.entries.find { 
+                                it.key.isNotEmpty() && (
+                                    it.key.equals(custKey, ignoreCase = true) ||
+                                    it.key.equals(custNameKey, ignoreCase = true) ||
+                                    (custKey.isNotEmpty() && (it.key.contains(custKey) || custKey.contains(it.key)))
+                                )
+                            }?.value
+
+                        if (chMatches != null && chMatches.isNotEmpty()) {
+                            for (ch in chMatches) {
+                                val rawEvrak = ch.evrakNo.trim()
+                                val docNo = if (rawEvrak.isNotEmpty() && !rawEvrak.startsWith("FT-") && !rawEvrak.startsWith("SM-")) "FT-$rawEvrak" else rawEvrak
+                                val finalId = if (docNo.isNotEmpty()) docNo else ch.id
+                                if (baseTxs.none { it.id == finalId || it.id == ch.id }) {
+                                    val txType = when (ch.evrakTip) {
+                                        29, 63 -> "SATIŞ"
+                                        64 -> "TAHSİLAT"
+                                        65 -> "TEDİYE"
+                                        else -> when (ch.tip) {
+                                            0 -> "SATIŞ"
+                                            1 -> "TAHSİLAT"
+                                            2 -> "İADE"
+                                            3 -> "VİRMAN"
+                                            else -> if (ch.borcMu) "SATIŞ" else "TAHSİLAT"
+                                        }
+                                    }
+                                    val rawDate = ch.tarih
+                                    val formattedDate = try {
+                                        if (rawDate.contains("T")) {
+                                            val parts = rawDate.split("T")[0].split("-")
+                                            if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else rawDate
+                                        } else rawDate
+                                    } catch (e: Exception) { rawDate }
+                                    
+                                    val finalDesc = if (docNo.isNotEmpty()) "$docNo - ${ch.aciklama.ifEmpty { "Mikro Cari Hareketi" }}" else ch.aciklama.ifEmpty { "Mikro Cari Hareketi" }
+                                    baseTxs.add(
+                                        CustomerTx(
+                                            id = finalId,
+                                            date = formattedDate,
+                                            type = txType,
+                                            amount = ch.tutar,
+                                            description = finalDesc
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        var calcLedger = 0.0
+                        for (tx in baseTxs) {
+                            val t = tx.type.uppercase()
+                            if (t.contains("SATIŞ") || t.contains("BORÇ") || t.contains("TEDİYE")) calcLedger += tx.amount
+                            else if (t.contains("TAHSİLAT") || t.contains("ALACAK") || t.contains("İADE")) calcLedger -= tx.amount
+                        }
+                        val finalBalance = if (baseTxs.isNotEmpty()) calcLedger else cust.balance
+
                         Customer(
                             id = cust.id,
                             name = cust.name,
-                            balance = cust.balance,
+                            balance = finalBalance,
                             lastVisit = cust.lastVisit,
                             contact = cust.contact,
                             phone = cust.phone,
@@ -1020,14 +1133,32 @@ object AppDataStore {
                             priceGroup = cust.priceGroup,
                             specialDiscountPercent = cust.specialDiscountPercent,
                             transactions = mutableStateListOf<CustomerTx>().apply {
-                                addAll(converter.toCustomerTxList(cust.transactionsJson))
+                                addAll(baseTxs)
                             }
                         )
                     }
 
                     withContext(Dispatchers.Main) {
+                        bridgeBankalar.clear()
+                        bridgeBankalar.addAll(loadedBridgeBanks)
+
+                        cariAdresleri.clear()
+                        cariAdresleri.addAll(loadedCariAdresler)
+
                         banks.clear()
-                        banks.addAll(loadedBanks)
+                        if (loadedBanks.isNotEmpty()) {
+                            banks.addAll(loadedBanks)
+                        } else if (loadedBridgeBanks.isNotEmpty()) {
+                            banks.addAll(loadedBridgeBanks.map {
+                                Bank(
+                                    id = it.kod,
+                                    name = it.isim,
+                                    accountNo = it.hesapNumarasi ?: it.kod,
+                                    iban = it.iBANKodu ?: "",
+                                    balance = 0.0
+                                )
+                            })
+                        }
 
                         kasaLogs.clear()
                         kasaLogs.addAll(loadedKasa)
@@ -1129,39 +1260,39 @@ object AppDataStore {
         }
     }
 
-    data class LocalPersistenceResult(
-        val products: Int,
-        val customers: Int,
-        val banks: Int,
-        val cashLogs: Int
-    )
-
-    /**
-     * Fire-and-forget saves are retained for ordinary UI edits. ERP sync must use
-     * [persistAndVerify] so it never reports success before Room has committed.
-     */
     fun persist(context: Context) {
+        val banksCopy = banks.toList()
+        val kasaLogsCopy = kasaLogs.toList()
+        val salesHistoryCopy = salesHistory.toList()
+        val productsCopy = products.toList()
+        val customersCopy = customers.toList()
+        
         dbScope.launch {
-            runCatching { persistSync(context) }
-                .onFailure { Log.e(SyncLogTag, "LOCAL_SAVE_FAILED operation=background", it) }
-        }
-    }
-
-    suspend fun persistAndVerify(context: Context): LocalPersistenceResult = withContext(Dispatchers.IO) {
-        Log.i(SyncLogTag, "LOCAL_SAVE_START products=${products.size} customers=${customers.size} banks=${banks.size} cashLogs=${kasaLogs.size}")
-        try {
-            persistSync(context).also {
-                Log.i(SyncLogTag, "LOCAL_SAVE_OK products=${it.products} customers=${it.customers} banks=${it.banks} cashLogs=${it.cashLogs}")
+            try {
+                persistSync(context, banksCopy, kasaLogsCopy, salesHistoryCopy, productsCopy, customersCopy)
+            } catch (e: Throwable) {
+                // Already logged in persistSync
             }
-        } catch (error: Throwable) {
-            Log.e(SyncLogTag, "LOCAL_SAVE_FAILED products=${products.size} customers=${customers.size}", error)
-            throw error
         }
     }
 
-    private suspend fun persistSync(context: Context): LocalPersistenceResult {
+    suspend fun persistSync(
+        context: Context,
+        banks: List<Bank> = this.banks.toList(),
+        kasaLogs: List<KasaLogItem> = this.kasaLogs.toList(),
+        salesHistory: List<SalesRecord> = this.salesHistory.toList(),
+        products: List<ProductCatalog> = this.products.toList(),
+        customers: List<Customer> = this.customers.toList()
+    ) {
+        android.util.Log.d("ErpBridgeSync", "LOCAL_SAVE_START products=${products.size} customers=${customers.size}")
+        try {
             val db = DatabaseProvider.getDatabase(context)
             val converter = Converters()
+            
+            var insertedProductsCount = 0
+            var insertedCustomersCount = 0
+
+            db.withTransaction {
 
             // Save custom definitions
             val prefs = context.getApplicationContext().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
@@ -1180,23 +1311,54 @@ object AppDataStore {
             
             editor.apply()
 
-            val result = db.withTransaction {
             // 1. Save Banks
             val bankEntities = banks.map { BankEntity(it.id, it.name, it.accountNo, it.iban, it.balance) }
             db.bankDao().deleteAll()
-            db.bankDao().insertAll(bankEntities)
+            bankEntities.chunked(100).forEach { db.bankDao().insertAll(it) }
+
+            if (bridgeBankalar.isNotEmpty()) {
+                val bridgeBankEntities = bridgeBankalar.map {
+                    com.example.data.database.BridgeBankaEntity(
+                        id = it.erpRef ?: it.kod,
+                        kod = it.kod,
+                        isim = it.isim,
+                        sube = it.sube ?: "",
+                        iban = it.iBANKodu ?: "",
+                        hesapNumarasi = it.hesapNumarasi ?: ""
+                    )
+                }
+                db.bridgeBankaDao().deleteAll()
+                bridgeBankEntities.chunked(100).forEach { db.bridgeBankaDao().insertAll(it) }
+            }
+
+            if (cariAdresleri.isNotEmpty()) {
+                val cariAdresEntities = cariAdresleri.map {
+                    com.example.data.database.CariAdresEntity(
+                        id = it.erpRef ?: "${it.cariKod}_${it.adresNo}",
+                        cariKod = it.cariKod ?: "",
+                        adresNo = it.adresNo,
+                        il = it.il ?: "",
+                        ilce = it.ilce ?: "",
+                        mahalle = it.mahalle ?: "",
+                        cadde = it.cadde ?: "",
+                        sokak = it.sokak ?: ""
+                    )
+                }
+                db.cariAdresDao().deleteAll()
+                cariAdresEntities.chunked(100).forEach { db.cariAdresDao().insertAll(it) }
+            }
 
             // 2. Save Kasa Logs
             val kasaEntities = kasaLogs.map { KasaLogEntity(it.id, it.date, it.type, it.customerOrSupplier, it.amount, it.paymentType, it.bankName, it.desc) }
             db.kasaLogDao().deleteAll()
-            db.kasaLogDao().insertAll(kasaEntities)
+            kasaEntities.chunked(100).forEach { db.kasaLogDao().insertAll(it) }
 
             // 3. Save Sales History (using index offset for id to prevent batch insert key collisions)
             val salesEntities = salesHistory.mapIndexed { idx, it ->
                 SalesRecordEntity(id = idx + 1, customerId = it.customerId, productBarcode = it.productBarcode, quantity = it.quantity, price = it.price, date = it.date)
             }
             db.salesRecordDao().deleteAll()
-            db.salesRecordDao().insertAll(salesEntities)
+            salesEntities.chunked(100).forEach { db.salesRecordDao().insertAll(it) }
 
             // 4. Save products.  ERP synchronization first updates the in-memory list and
             // then calls persist(); without this write, the product list disappeared after
@@ -1227,7 +1389,8 @@ object AppDataStore {
                     barcodesJson = converter.fromBarcodeList(product.barcodes)
                 )
             }
-            db.productDao().insertAll(productEntities)
+            db.productDao().deleteAll()
+            productEntities.chunked(100).forEach { db.productDao().insertAll(it) }
 
             // 5. Save Customers
             val customerEntities = customers.map { cust ->
@@ -1249,22 +1412,20 @@ object AppDataStore {
                 )
             }
             db.customerDao().deleteAll()
-            db.customerDao().insertAll(customerEntities)
+            customerEntities.chunked(100).forEach { db.customerDao().insertAll(it) }
 
-            val verifiedResult = LocalPersistenceResult(
-                products = db.productDao().getAllProducts().size,
-                customers = db.customerDao().getAllCustomers().size,
-                banks = db.bankDao().getAllBanks().size,
-                cashLogs = db.kasaLogDao().getAllKasaLogs().size
-            )
-            if (verifiedResult.products < productEntities.size || verifiedResult.customers != customerEntities.size) {
-                throw IllegalStateException(
-                    "Room row count mismatch: products=${verifiedResult.products}/${productEntities.size}, " +
-                        "customers=${verifiedResult.customers}/${customerEntities.size}"
-                )
+            insertedProductsCount = db.productDao().getAllProducts().size
+            insertedCustomersCount = db.customerDao().getAllCustomers().size
             }
-            verifiedResult
+
+            if (products.isNotEmpty() && insertedProductsCount != products.size) {
+                throw IllegalStateException("Room product count mismatch: expected ${products.size}, inserted $insertedProductsCount")
             }
+            if (customers.isNotEmpty() && insertedCustomersCount != customers.size) {
+                throw IllegalStateException("Room customer count mismatch: expected ${customers.size}, inserted $insertedCustomersCount")
+            }
+
+            android.util.Log.d("ErpBridgeSync", "LOCAL_SAVE_OK products=$insertedProductsCount customers=$insertedCustomersCount")
 
             // Trigger cloud background sync according to subscription tier
             try {
@@ -1276,6 +1437,9 @@ object AppDataStore {
                 se.printStackTrace()
             }
 
-            return result
+        } catch (e: Throwable) {
+            android.util.Log.e("ErpBridgeSync", "LOCAL_SAVE_FAILED", e)
+            throw e
+        }
     }
 }

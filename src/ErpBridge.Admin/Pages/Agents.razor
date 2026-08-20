@@ -2,28 +2,24 @@
 @inject ErpBridge.Admin.Api.CentralApiClient Api
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>Agents — ErpBridge Admin</PageTitle>
+<PageTitle>Ajanlar — ErpBridge Yönetim</PageTitle>
 
 <AdminPageHeader Title="Ajanlar" Description="Müşteri sistemlerinde çalışan ErpBridge ajanlarının bağlantı ve kuyruk durumunu izleyin." />
 
 @if (_loading)
 {
-    <p><em>Loading…</em></p>
+    <AdminLoading Text="Ajanlar yükleniyor…" />
 }
 else if (!string.IsNullOrEmpty(_error))
 {
-    <div class="alert alert-danger">@_error</div>
+    <AdminState Tone="error" Icon="!" Title="Ajanlar alınamadı" Message="@_error" />
 }
 else
 {
     <div class="admin-data-surface"><table class="table admin-data-table">
         <thead>
             <tr>
-                <th>Tenant</th>
-                <th>Machine</th>
-                <th>Last heartbeat</th>
-                <th>Status</th>
-                <th>Queue depth</th>
+                <th>Müşteri</th><th>Makine</th><th>Son bağlantı</th><th>Durum</th><th>Kuyruk</th>
             </tr>
         </thead>
         <tbody>
@@ -33,7 +29,7 @@ else
                     <td data-label="Müşteri"><strong>@(TenantName(a.TenantId))</strong></td>
                     <td data-label="Makine"><code>@a.MachineId</code></td>
                     <td data-label="Son bağlantı">@(a.LastHeartbeatAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "—")</td>
-                    <td data-label="Durum"><span class="admin-status">@(a.LastStatus ?? "Bilinmiyor")</span></td>
+                    <td data-label="Durum"><AdminStatusBadge Text="@(a.LastStatus ?? "Bilinmiyor")" Tone="@(IsOnline(a) ? "success" : "muted")" /></td>
                     <td data-label="Kuyruk"><strong>@a.LastQueueDepth</strong></td>
                 </tr>
             }
@@ -60,4 +56,5 @@ else
     }
 
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+    private static bool IsOnline(ErpBridge.Admin.Api.AgentDto agent) => agent.LastHeartbeatAtUtc is not null && agent.LastHeartbeatAtUtc > DateTimeOffset.UtcNow.AddMinutes(-5);
 }
