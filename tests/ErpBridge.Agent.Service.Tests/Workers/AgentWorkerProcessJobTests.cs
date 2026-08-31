@@ -238,10 +238,10 @@ public class AgentWorkerProcessJobTests
     }
 
     // ---------------------------------------------------------------------
-    // 4) Other document type — ack succeeded (no-op for now)
+    // 4) Other document type — never claim it was posted to Mikro
     // ---------------------------------------------------------------------
     [Fact]
-    public async Task ProcessJobAsync_other_document_type_sends_succeeded_ack_without_calling_adapter()
+    public async Task ProcessJobAsync_other_document_type_sends_failed_ack_without_calling_adapter()
     {
         var (worker, remoteApi, localQueue, _, adapterFactory, adapter) = Build();
 
@@ -250,8 +250,10 @@ public class AgentWorkerProcessJobTests
         remoteApi.Verify(r => r.SendAckAsync(
             It.Is<JobAck>(a =>
                 a.JobId == JobId
-                && a.Status == "succeeded"
-                && a.ErrorCode == null),
+                && a.Status == "failed"
+                && a.ErrorCode == "UNSUPPORTED_DOCUMENT_TYPE"
+                && a.ErrorMessage != null
+                && a.ErrorMessage.Contains("invoice")),
             It.IsAny<CancellationToken>()),
             Times.Once);
 

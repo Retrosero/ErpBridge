@@ -191,9 +191,9 @@ public sealed class AgentWorker : BackgroundService
     /// <summary>
     /// Run the ERP write for the supplied job and translate the adapter
     /// outcome into a <see cref="JobAck"/>. <c>sales_order</c> is the only
-    /// supported type today; everything else is acknowledged as succeeded so
-    /// the central API does not block the queue — the real handler lives in
-    /// a future worker.
+    /// supported type today. A type without a concrete ERP writer must remain
+    /// visible as failed; otherwise a mobile user could believe it was posted
+    /// to Mikro when it was not.
     /// </summary>
     /// <remarks>
     /// Marked <c>internal</c> to keep the worker testable from Core.Tests
@@ -206,16 +206,17 @@ public sealed class AgentWorker : BackgroundService
             return await DispatchSalesOrderAsync(job, config, ct);
         }
 
-        // Unknown / not-yet-implemented document types: ack succeeded so the
-        // central API removes the job from the queue. Logging at warning level
-        // makes it obvious in operations when a new type shows up.
+        // Unknown types must not be consumed. They remain auditable in Central
+        // and can be retried after their Mikro writer is installed.
         _logger.LogWarning(
-            "Received job {JobId} with document type {DocumentType}; no adapter wired yet — acking succeeded.",
+            "Received job {JobId} with document type {DocumentType}; no adapter wired yet — reporting failure.",
             job.JobId, job.DocumentType);
         return new JobAck
         {
             JobId = job.JobId,
-            Status = "succeeded",
+            Status = "failed",
+            ErrorCode = "UNSUPPORTED_DOCUMENT_TYPE",
+            ErrorMessage = $"No Mikro writer is configured for document type '{job.DocumentType}'.",
         };
     }
 
