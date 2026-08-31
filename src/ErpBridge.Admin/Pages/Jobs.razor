@@ -58,7 +58,10 @@ else
 
 @code {
     private bool _loading = true;
-    private string _status = "pending";
+    // Opening on "Bekliyor" hid documents that an agent had already picked
+    // up or rejected. The queue is an audit screen, so it should show every
+    // recent document until the operator intentionally narrows it.
+    private string _status = "";
     private IReadOnlyList<ErpBridge.Admin.Api.JobDto> _jobs = Array.Empty<ErpBridge.Admin.Api.JobDto>();
     private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
     private string? _error;

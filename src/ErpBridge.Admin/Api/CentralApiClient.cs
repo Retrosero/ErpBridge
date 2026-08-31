@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using ErpBridge.Admin.Auth;
 
@@ -267,10 +268,42 @@ public sealed class CentralApiClient
         }
         if (!resp.IsSuccessStatusCode)
         {
-            var err = await resp.Content.ReadFromJsonAsync<ApiErrorDto>(cancellationToken: ct).ConfigureAwait(false);
-            throw new ApiCallException(err?.ErrorCode ?? "HTTP_ERROR", err?.Message ?? resp.ReasonPhrase ?? "HTTP error");
+            // Reverse proxies and authentication middleware may legitimately
+            // return an empty body (not JSON) for e.g. a 401 response. Never
+            // expose a JsonException to the admin user in that case.
+            var raw = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            ApiErrorDto? err = null;
+            if (!string.IsNullOrWhiteSpace(raw))
+            {
+                try
+                {
+                    err = JsonSerializer.Deserialize<ApiErrorDto>(raw, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                }
+                catch (JsonException)
+                {
+                    // Keep the status-based message below. HTML and empty
+                    // proxy responses are not useful API payloads.
+                }
+            }
+            throw new ApiCallException(
+                err?.ErrorCode ?? $"HTTP_{(int)resp.StatusCode}",
+                err?.Message ?? (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                    ? "Oturumunuz sona erdi. Lütfen yeniden giriş yapın."
+                    : resp.ReasonPhrase ?? "Merkez API yanıt vermedi."));
         }
-        return (await resp.Content.ReadFromJsonAsync<T>(cancellationToken: ct).ConfigureAwait(false))!;
+
+        var successBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(successBody))
+            throw new ApiCallException("EMPTY_RESPONSE", "Merkez API boş yanıt döndürdü. Lütfen tekrar deneyin.");
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(successBody, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        }
+        catch (JsonException)
+        {
+            throw new ApiCallException("INVALID_RESPONSE", "Merkez API geçersiz bir yanıt döndürdü. Sunucu günlüklerini kontrol edin.");
+        }
     }
 
     public Task<AdminLoginResponse> LoginAsync(string email, string password, CancellationToken ct = default) =>

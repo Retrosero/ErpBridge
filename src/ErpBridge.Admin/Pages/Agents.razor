@@ -16,6 +16,9 @@ else if (!string.IsNullOrEmpty(_error))
 }
 else
 {
+    <div class="d-flex justify-content-end mb-3">
+        <button class="btn btn-outline-primary" @onclick="ReloadAsync">Yenile</button>
+    </div>
     <div class="admin-data-surface"><table class="table admin-data-table">
         <thead>
             <tr>
@@ -45,7 +48,13 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
         _loading = true;
+        _error = null;
         try
         {
             _tenants = await Api.ListTenantsAsync();
