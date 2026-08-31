@@ -42,6 +42,25 @@ public class AdminLicensesTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Create_tenant_persists_selected_device_limit()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync(email: "device-limit-admin@test.local");
+        var token = _factory.IssueAdminJwt(admin.Id);
+
+        var create = await client.PostJsonAsync("/api/v1/admin/tenants", new { name = "Device Limit Tenant", maxDeviceCount = 3 }, token);
+
+        create.StatusCode.Should().Be(HttpStatusCode.Created);
+        var tenant = await create.ReadAsJsonAsync<TenantDto>();
+        tenant!.MaxDeviceCount.Should().Be(3);
+
+        var patch = await client.PatchAsync($"/api/v1/admin/tenants/{tenant.Id}", new { maxDeviceCount = 5 }, token);
+
+        patch.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await patch.ReadAsJsonAsync<TenantDto>())!.MaxDeviceCount.Should().Be(5);
+    }
+
+    [Fact]
     public async Task Revoke_sets_IsActive_false()
     {
         var client = _factory.CreateClient();

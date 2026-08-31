@@ -85,6 +85,35 @@ public class AdminJobsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Failure_log_lists_agent_acknowledged_ERP_errors_for_the_selected_tenant()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync(email: "failure-log-admin@test.local");
+        var adminToken = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: "FAILURE-LOG-LICENSE");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, "FAILURE-LOG-MACHINE");
+        var agentToken = _factory.IssueTestJwt(agent.Id, tenant.Id);
+        var job = await _factory.SeedJobAsync(tenant.Id, "cari-123");
+
+        var ack = await client.PostJsonAsync("/api/v1/jobs/ack", new
+        {
+            jobId = job.Id,
+            status = "failed",
+            errorCode = "CUSTOMER_NOT_FOUND",
+            errorMessage = "Cari bulunamadı.",
+        }, agentToken);
+        ack.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var response = await client.GetAsync($"/api/v1/admin/jobs/failures?tenantId={tenant.Id}", adminToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var failures = await response.ReadAsJsonAsync<JobFailureDto[]>();
+        failures.Should().ContainSingle(failure => failure.JobId == job.Id
+            && failure.ErrorCode == "CUSTOMER_NOT_FOUND"
+            && failure.ErrorMessage == "Cari bulunamadı.");
+    }
+
+    [Fact]
     public async Task Anonymous_rejected_401()
     {
         var client = _factory.CreateClient();

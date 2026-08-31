@@ -61,6 +61,8 @@ public static class AdminTenantsEndpoints
     {
         if (body is null || string.IsNullOrWhiteSpace(body.Name))
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "MISSING_NAME", Message = "name is required." });
+        if (body.MaxDeviceCount < 1)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_DEVICE_LIMIT", Message = "maxDeviceCount must be at least 1." });
 
         var tenant = new Tenant
         {
@@ -68,6 +70,7 @@ public static class AdminTenantsEndpoints
             Name = body.Name.Trim(),
             CreatedAtUtc = DateTimeOffset.UtcNow,
             IsActive = true,
+            MaxDeviceCount = body.MaxDeviceCount,
         };
         db.Tenants.Add(tenant);
         await db.SaveChangesAsync(ct);
@@ -99,6 +102,12 @@ public static class AdminTenantsEndpoints
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "TENANT_NOT_FOUND", Message = "Tenant not found." });
 
         if (body.IsActive.HasValue) tenant.IsActive = body.IsActive.Value;
+        if (body.MaxDeviceCount is { } maxDeviceCount)
+        {
+            if (maxDeviceCount < 1)
+                return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_DEVICE_LIMIT", Message = "maxDeviceCount must be at least 1." });
+            tenant.MaxDeviceCount = maxDeviceCount;
+        }
         await db.SaveChangesAsync(ct);
         return JsonResults.Ok(ToDto(tenant));
     }
@@ -109,5 +118,6 @@ public static class AdminTenantsEndpoints
         Name = t.Name,
         CreatedAtUtc = t.CreatedAtUtc,
         IsActive = t.IsActive,
+        MaxDeviceCount = t.MaxDeviceCount,
     };
 }

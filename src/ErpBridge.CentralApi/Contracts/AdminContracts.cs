@@ -32,12 +32,14 @@ public sealed class TenantDto
     [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("maxDeviceCount")] public int MaxDeviceCount { get; set; }
 }
 
 /// <summary>POST /api/v1/admin/tenants body.</summary>
 public sealed class CreateTenantRequest
 {
     [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("maxDeviceCount")] public int MaxDeviceCount { get; set; } = 1;
 }
 
 /// <summary>License row returned to the admin.</summary>
@@ -62,6 +64,7 @@ public sealed class CreateLicenseRequest
 public sealed class PatchTenantRequest
 {
     [JsonPropertyName("isActive")] public bool? IsActive { get; set; }
+    [JsonPropertyName("maxDeviceCount")] public int? MaxDeviceCount { get; set; }
 }
 
 /// <summary>Agent row returned to the admin.</summary>
@@ -105,6 +108,20 @@ public sealed class JobDetailDto
     [JsonPropertyName("completedAtUtc")] public DateTimeOffset? CompletedAtUtc { get; set; }
     /// <summary>Raw payload JSON as the agent supplied it. May include PII; admin-only access.</summary>
     [JsonPropertyName("payloadJson")] public string PayloadJson { get; set; } = "{}";
+}
+
+/// <summary>
+/// Immutable failure acknowledgement sent by an agent after it cannot process a job.
+/// </summary>
+public sealed class JobFailureDto
+{
+    [JsonPropertyName("jobId")] public Guid JobId { get; set; }
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("externalId")] public string ExternalId { get; set; } = string.Empty;
+    [JsonPropertyName("documentType")] public string DocumentType { get; set; } = string.Empty;
+    [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
+    [JsonPropertyName("errorMessage")] public string? ErrorMessage { get; set; }
+    [JsonPropertyName("occurredAtUtc")] public DateTimeOffset OccurredAtUtc { get; set; }
 }
 
 /// <summary>Row-count summary of the latest bootstrap snapshot for a tenant.</summary>

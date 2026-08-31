@@ -33,6 +33,7 @@ public sealed class CentralApiDbContext : DbContext
             b.ToTable("tenants");
             b.HasKey(x => x.Id);
             b.Property(x => x.Name).IsRequired().HasMaxLength(255);
+            b.Property(x => x.MaxDeviceCount).HasDefaultValue(1);
             b.HasIndex(x => x.Name).IsUnique();
         });
 

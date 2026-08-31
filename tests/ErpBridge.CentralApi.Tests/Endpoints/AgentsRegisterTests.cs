@@ -43,6 +43,27 @@ public class AgentsRegisterTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Register_with_new_machine_beyond_tenant_device_limit_returns_conflict()
+    {
+        var (_, license) = await _factory.SeedTenantAsync(licenseKey: "REG-DEVICE-LIMIT");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+            var tenant = await db.Tenants.FindAsync(license.TenantId);
+            tenant!.MaxDeviceCount = 1;
+            await db.SaveChangesAsync();
+        }
+
+        var client = _factory.CreateClient();
+        var first = await client.PostJsonAsync("/api/v1/agents/register", new { licenseKey = license.LicenseKey, machineId = "DEVICE-ONE" });
+        var second = await client.PostJsonAsync("/api/v1/agents/register", new { licenseKey = license.LicenseKey, machineId = "DEVICE-TWO" });
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await second.ReadAsJsonAsync<ApiError>())!.ErrorCode.Should().Be("DEVICE_LIMIT_REACHED");
+    }
+
+    [Fact]
     public async Task Register_with_existing_machine_is_idempotent_returns_same_agent_id()
     {
         var client = _factory.CreateClient();

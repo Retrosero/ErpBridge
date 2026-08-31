@@ -29,6 +29,7 @@ public static class AgentsEndpoints
             .Produces<AgentRegisterResponse>(StatusCodes.Status200OK)
             .Produces<ApiError>(StatusCodes.Status404NotFound)
             .Produces<ApiError>(StatusCodes.Status410Gone)
+            .Produces<ApiError>(StatusCodes.Status409Conflict)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
             .AllowAnonymous()
             .RequireRateLimiting("Anonymous");
@@ -87,6 +88,11 @@ public static class AgentsEndpoints
         Agent agent;
         if (existing is null)
         {
+            var registeredDeviceCount = await db.Agents.CountAsync(a => a.TenantId == license.TenantId, ct);
+            if (registeredDeviceCount >= license.Tenant!.MaxDeviceCount)
+                return JsonResults.Status(StatusCodes.Status409Conflict,
+                    new ApiError { ErrorCode = "DEVICE_LIMIT_REACHED", Message = "The device limit for this customer has been reached." });
+
             agent = new Agent
             {
                 Id = Guid.NewGuid(),

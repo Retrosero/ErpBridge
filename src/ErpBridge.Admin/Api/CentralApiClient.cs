@@ -29,16 +29,19 @@ public sealed class TenantDto
     [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("maxDeviceCount")] public int MaxDeviceCount { get; set; }
 }
 
 public sealed class CreateTenantRequest
 {
     [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("maxDeviceCount")] public int MaxDeviceCount { get; set; } = 1;
 }
 
 public sealed class UpdateTenantRequest
 {
-    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("isActive")] public bool? IsActive { get; set; }
+    [JsonPropertyName("maxDeviceCount")] public int? MaxDeviceCount { get; set; }
 }
 
 public sealed class LicenseDto
@@ -86,6 +89,17 @@ public sealed class JobDetailDto
 {
     public JobDto Job { get; set; } = new();
     [JsonPropertyName("payloadJson")] public string PayloadJson { get; set; } = "{}";
+}
+
+public sealed class JobFailureDto
+{
+    [JsonPropertyName("jobId")] public Guid JobId { get; set; }
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("externalId")] public string ExternalId { get; set; } = string.Empty;
+    [JsonPropertyName("documentType")] public string DocumentType { get; set; } = string.Empty;
+    [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
+    [JsonPropertyName("errorMessage")] public string? ErrorMessage { get; set; }
+    [JsonPropertyName("occurredAtUtc")] public DateTimeOffset OccurredAtUtc { get; set; }
 }
 
 public sealed class BootstrapSummaryDto
@@ -244,11 +258,11 @@ public sealed class CentralApiClient
     public Task<IReadOnlyList<TenantDto>> ListTenantsAsync(CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<TenantDto>>(() => _http.GetAsync("/api/v1/admin/tenants", ct), ct);
 
-    public Task<TenantDto> CreateTenantAsync(string name, CancellationToken ct = default) =>
-        SendAsync<TenantDto>(() => _http.PostAsJsonAsync("/api/v1/admin/tenants", new CreateTenantRequest { Name = name }, ct), ct);
+    public Task<TenantDto> CreateTenantAsync(string name, int maxDeviceCount = 1, CancellationToken ct = default) =>
+        SendAsync<TenantDto>(() => _http.PostAsJsonAsync("/api/v1/admin/tenants", new CreateTenantRequest { Name = name, MaxDeviceCount = maxDeviceCount }, ct), ct);
 
-    public Task<TenantDto> UpdateTenantAsync(Guid id, bool isActive, CancellationToken ct = default) =>
-        SendAsync<TenantDto>(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{id}", new UpdateTenantRequest { IsActive = isActive }, ct), ct);
+    public Task<TenantDto> UpdateTenantAsync(Guid id, bool? isActive = null, int? maxDeviceCount = null, CancellationToken ct = default) =>
+        SendAsync<TenantDto>(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{id}", new UpdateTenantRequest { IsActive = isActive, MaxDeviceCount = maxDeviceCount }, ct), ct);
 
     public Task<IReadOnlyList<LicenseDto>> ListLicensesAsync(Guid? tenantId = null, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<LicenseDto>>(() => _http.GetAsync($"/api/v1/admin/licenses?tenantId={tenantId}", ct), ct);
@@ -267,6 +281,9 @@ public sealed class CentralApiClient
 
     public Task<JobDetailDto> GetJobAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<JobDetailDto>(() => _http.GetAsync($"/api/v1/admin/jobs/{id}", ct), ct);
+
+    public Task<IReadOnlyList<JobFailureDto>> ListJobFailuresAsync(Guid? tenantId = null, int take = 200, CancellationToken ct = default) =>
+        SendAsync<IReadOnlyList<JobFailureDto>>(() => _http.GetAsync($"/api/v1/admin/jobs/failures?tenantId={tenantId}&take={take}", ct), ct);
 
     public Task<JobDto> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<JobDto>(() => _http.PostAsync($"/api/v1/admin/jobs/{id}/retry", content: null, ct), ct);

@@ -12,6 +12,11 @@
         <label class="form-label" for="tenant-name">Müşteri adı</label>
         <InputText id="tenant-name" class="form-control" autocomplete="organization" @bind-Value="_model.Name" />
     </div>
+    <div class="mb-3">
+        <label class="form-label" for="tenant-device-limit">Cihaz hakkı</label>
+        <InputNumber id="tenant-device-limit" class="form-control" @bind-Value="_model.MaxDeviceCount" min="1" max="1000" />
+        <div class="form-text">Bu müşterinin aynı anda kaydedebileceği farklı cihaz sayısı.</div>
+    </div>
     <button type="submit" class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_model.Name))">@(_busy ? "Kaydediliyor…" : "Müşteriyi kaydet")</button>
     <a class="btn btn-link" href="tenants">Vazgeç</a>
 </EditForm>
@@ -26,14 +31,14 @@
     private bool _busy;
     private string? _error;
 
-    private sealed class Model { public string Name { get; set; } = string.Empty; }
+    private sealed class Model { public string Name { get; set; } = string.Empty; public int MaxDeviceCount { get; set; } = 1; }
 
     private async Task HandleSubmitAsync()
     {
         _busy = true; _error = null;
         try
         {
-            await Api.CreateTenantAsync(_model.Name);
+            await Api.CreateTenantAsync(_model.Name, _model.MaxDeviceCount);
             Nav.NavigateTo("/tenants");
         }
         catch (Exception ex) { _error = ex.Message; }

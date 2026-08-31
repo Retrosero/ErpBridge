@@ -29,6 +29,10 @@ public static class AdminJobsEndpoints
             .WithName("AdminJobsList")
             .Produces<JobDto[]>(StatusCodes.Status200OK);
 
+        group.MapGet("/failures", ListFailuresAsync)
+            .WithName("AdminJobFailuresList")
+            .Produces<JobFailureDto[]>(StatusCodes.Status200OK);
+
         group.MapGet("/{id:guid}", DetailAsync)
             .WithName("AdminJobsDetail")
             .Produces<JobDetailDto>(StatusCodes.Status200OK)
@@ -75,6 +79,33 @@ public static class AdminJobsEndpoints
         if (job is null)
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "JOB_NOT_FOUND", Message = "Job not found." });
         return JsonResults.Ok(ToDetail(job));
+    }
+
+    private static async Task<IResult> ListFailuresAsync(
+        [FromQuery] Guid? tenantId,
+        [FromQuery] int? take,
+        [FromServices] CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var takeClamped = Math.Clamp(take ?? DefaultTake, 1, MaxTake);
+        var query = db.JobAcks.AsNoTracking()
+            .Include(ack => ack.Job)
+            .Where(ack => ack.Status == "failed");
+
+        if (tenantId.HasValue)
+            query = query.Where(ack => ack.Job!.TenantId == tenantId.Value);
+
+        var rows = await query.OrderByDescending(ack => ack.AckedAtUtc).Take(takeClamped).ToListAsync(ct);
+        return JsonResults.Ok(rows.Where(ack => ack.Job is not null).Select(ack => new JobFailureDto
+        {
+            JobId = ack.JobId,
+            TenantId = ack.Job!.TenantId,
+            ExternalId = ack.Job.ExternalId,
+            DocumentType = ack.Job.DocumentType,
+            ErrorCode = ack.ErrorCode,
+            ErrorMessage = ack.ErrorMessage,
+            OccurredAtUtc = ack.AckedAtUtc,
+        }).ToArray());
     }
 
     private static async Task<IResult> RetryAsync(
