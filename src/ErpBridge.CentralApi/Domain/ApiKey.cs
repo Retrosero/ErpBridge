@@ -33,10 +33,10 @@ public sealed class ApiKey
 
     /// <summary>
     /// Capability tags for this key. Today the only scope we honour is
-    /// <c>ingest:write</c>; the field is an array so we can add read-only
-    /// keys (e.g. <c>jobs:read</c>) without a schema change.
+    /// <c>ingest:write</c> and <c>mobile:read</c>; the field is an array so
+    /// additional permissions can be introduced without a schema change.
     /// </summary>
-    public string[] Scopes { get; set; } = new[] { "ingest:write" };
+    public string[] Scopes { get; set; } = new[] { "ingest:write", "mobile:read" };
 
     public bool IsActive { get; set; } = true;
 

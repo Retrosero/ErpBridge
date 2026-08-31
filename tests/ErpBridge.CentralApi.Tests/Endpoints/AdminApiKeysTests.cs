@@ -36,6 +36,7 @@ public class AdminApiKeysTests : IClassFixture<CentralApiFactory>
         created.KeyPrefix.Should().StartWith("AK-");
         created.RawKey.Should().StartWith(created.KeyPrefix);
         created.Scopes.Should().Contain("ingest:write");
+        created.Scopes.Should().Contain("mobile:read");
 
         // The DB row must hold the hash, never the raw value.
         using var scope = _factory.Services.CreateScope();
@@ -43,6 +44,22 @@ public class AdminApiKeysTests : IClassFixture<CentralApiFactory>
         var row = await db.ApiKeys.AsNoTracking().FirstAsync(k => k.Id == created.Id);
         System.Text.Encoding.UTF8.GetString(row.KeyHash).Should().NotContain(created.RawKey);
         row.KeyHash.Length.Should().Be(32); // SHA-256
+    }
+
+    [Fact]
+    public async Task Create_always_adds_mobile_read_to_explicit_scopes()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync();
+
+        var resp = await client.PostJsonAsync("/api/v1/admin/api-keys",
+            new { tenantId = tenant.Id, name = "Desktop agent", scopes = new[] { "ingest:write" } }, token);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await resp.ReadAsJsonAsync<ApiKeyCreatedDto>();
+        created.Scopes.Should().BeEquivalentTo("ingest:write", "mobile:read");
     }
 
     [Fact]
@@ -117,6 +134,7 @@ public class AdminApiKeysTests : IClassFixture<CentralApiFactory>
         rotated.RawKey.Should().StartWith("AK-");
         rotated.RawKey.Should().NotBe(rawOld);
         rotated.Id.Should().Be(key.Id);
+        rotated.Scopes.Should().Contain("mobile:read");
 
         // Old key now fails; new key succeeds.
         var oldReq = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, "/api/v1/ingest/jobs")
