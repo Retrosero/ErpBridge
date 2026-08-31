@@ -90,3 +90,36 @@ public sealed class ApiError
     [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
     [JsonPropertyName("traceId")] public string? TraceId { get; set; }
 }
+
+/// <summary>POST /api/v1/mobile/telemetry/batch body.</summary>
+public sealed class MobileTelemetryBatchRequest
+{
+    [JsonPropertyName("events")] public List<MobileTelemetryEventRequest> Events { get; set; } = [];
+}
+
+public sealed class MobileTelemetryEventRequest
+{
+    [JsonPropertyName("eventId")] public string? EventId { get; set; }
+    [JsonPropertyName("occurredAtUtc")] public DateTimeOffset? OccurredAtUtc { get; set; }
+    [JsonPropertyName("kind")] public string? Kind { get; set; }
+    [JsonPropertyName("severity")] public string? Severity { get; set; }
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("androidVersion")] public string? AndroidVersion { get; set; }
+    [JsonPropertyName("deviceModel")] public string? DeviceModel { get; set; }
+    [JsonPropertyName("screen")] public string? Screen { get; set; }
+    [JsonPropertyName("operation")] public string? Operation { get; set; }
+    [JsonPropertyName("exceptionType")] public string? ExceptionType { get; set; }
+    [JsonPropertyName("message")] public string? Message { get; set; }
+    [JsonPropertyName("stackTrace")] public string? StackTrace { get; set; }
+    [JsonPropertyName("httpMethod")] public string? HttpMethod { get; set; }
+    [JsonPropertyName("httpRoute")] public string? HttpRoute { get; set; }
+    [JsonPropertyName("httpStatus")] public int? HttpStatus { get; set; }
+    [JsonPropertyName("correlationId")] public string? CorrelationId { get; set; }
+    [JsonPropertyName("breadcrumbs")] public System.Text.Json.JsonElement? Breadcrumbs { get; set; }
+}
+
+public sealed class MobileTelemetryBatchResponse
+{
+    [JsonPropertyName("accepted")] public int Accepted { get; set; }
+    [JsonPropertyName("duplicate")] public int Duplicate { get; set; }
+}

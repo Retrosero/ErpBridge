@@ -102,6 +102,27 @@ public sealed class JobFailureDto
     [JsonPropertyName("occurredAtUtc")] public DateTimeOffset OccurredAtUtc { get; set; }
 }
 
+public sealed class MobileTelemetryEventDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("occurredAtUtc")] public DateTimeOffset OccurredAtUtc { get; set; }
+    [JsonPropertyName("receivedAtUtc")] public DateTimeOffset ReceivedAtUtc { get; set; }
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("severity")] public string Severity { get; set; } = string.Empty;
+    [JsonPropertyName("appVersion")] public string AppVersion { get; set; } = string.Empty;
+    [JsonPropertyName("androidVersion")] public string AndroidVersion { get; set; } = string.Empty;
+    [JsonPropertyName("deviceModel")] public string DeviceModel { get; set; } = string.Empty;
+    [JsonPropertyName("screen")] public string Screen { get; set; } = string.Empty;
+    [JsonPropertyName("operation")] public string Operation { get; set; } = string.Empty;
+    [JsonPropertyName("exceptionType")] public string ExceptionType { get; set; } = string.Empty;
+    [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
+    [JsonPropertyName("stackTrace")] public string StackTrace { get; set; } = string.Empty;
+    [JsonPropertyName("httpMethod")] public string? HttpMethod { get; set; }
+    [JsonPropertyName("httpRoute")] public string? HttpRoute { get; set; }
+    [JsonPropertyName("httpStatus")] public int? HttpStatus { get; set; }
+}
+
 public sealed class BootstrapSummaryDto
 {
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
@@ -284,6 +305,9 @@ public sealed class CentralApiClient
 
     public Task<IReadOnlyList<JobFailureDto>> ListJobFailuresAsync(Guid? tenantId = null, int take = 200, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<JobFailureDto>>(() => _http.GetAsync($"/api/v1/admin/jobs/failures?tenantId={tenantId}&take={take}", ct), ct);
+
+    public Task<IReadOnlyList<MobileTelemetryEventDto>> ListTelemetryAsync(Guid? tenantId = null, string? severity = "ERROR", int take = 200, CancellationToken ct = default) =>
+        SendAsync<IReadOnlyList<MobileTelemetryEventDto>>(() => _http.GetAsync($"/api/v1/admin/telemetry?tenantId={tenantId}&severity={Uri.EscapeDataString(severity ?? string.Empty)}&take={take}", ct), ct);
 
     public Task<JobDto> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<JobDto>(() => _http.PostAsync($"/api/v1/admin/jobs/{id}/retry", content: null, ct), ct);

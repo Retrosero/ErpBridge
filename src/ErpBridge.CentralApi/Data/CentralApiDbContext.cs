@@ -25,6 +25,7 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
+    public DbSet<MobileTelemetryEvent> MobileTelemetryEvents => Set<MobileTelemetryEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -150,6 +151,30 @@ public sealed class CentralApiDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.Status, x.NextRetryAtUtc });
             b.HasIndex(x => new { x.EndpointId, x.CreatedAtUtc });
+        });
+
+        modelBuilder.Entity<MobileTelemetryEvent>(b =>
+        {
+            b.ToTable("mobile_telemetry_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.EventId).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Severity).IsRequired().HasMaxLength(16);
+            b.Property(x => x.AppVersion).IsRequired().HasMaxLength(64);
+            b.Property(x => x.AndroidVersion).IsRequired().HasMaxLength(32);
+            b.Property(x => x.DeviceModel).IsRequired().HasMaxLength(128);
+            b.Property(x => x.Screen).IsRequired().HasMaxLength(120);
+            b.Property(x => x.Operation).IsRequired().HasMaxLength(120);
+            b.Property(x => x.ExceptionType).IsRequired().HasMaxLength(160);
+            b.Property(x => x.Message).IsRequired().HasMaxLength(1000);
+            b.Property(x => x.StackTrace).IsRequired().HasMaxLength(4000);
+            b.Property(x => x.HttpMethod).HasMaxLength(16);
+            b.Property(x => x.HttpRoute).HasMaxLength(300);
+            b.Property(x => x.CorrelationId).HasMaxLength(128);
+            b.Property(x => x.BreadcrumbsJson).HasColumnType("jsonb");
+            b.HasIndex(x => new { x.TenantId, x.EventId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
+            b.HasIndex(x => new { x.Severity, x.ReceivedAtUtc });
         });
     }
 }

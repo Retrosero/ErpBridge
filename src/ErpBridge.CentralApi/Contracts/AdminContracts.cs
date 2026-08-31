@@ -124,6 +124,29 @@ public sealed class JobFailureDto
     [JsonPropertyName("occurredAtUtc")] public DateTimeOffset OccurredAtUtc { get; set; }
 }
 
+/// <summary>Privacy-scrubbed mobile diagnostic row, visible to support administrators.</summary>
+public sealed class MobileTelemetryEventDto
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public DateTimeOffset OccurredAtUtc { get; set; }
+    public DateTimeOffset ReceivedAtUtc { get; set; }
+    public string Kind { get; set; } = string.Empty;
+    public string Severity { get; set; } = string.Empty;
+    public string AppVersion { get; set; } = string.Empty;
+    public string AndroidVersion { get; set; } = string.Empty;
+    public string DeviceModel { get; set; } = string.Empty;
+    public string Screen { get; set; } = string.Empty;
+    public string Operation { get; set; } = string.Empty;
+    public string ExceptionType { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string StackTrace { get; set; } = string.Empty;
+    public string? HttpMethod { get; set; }
+    public string? HttpRoute { get; set; }
+    public int? HttpStatus { get; set; }
+    public string? CorrelationId { get; set; }
+}
+
 /// <summary>Row-count summary of the latest bootstrap snapshot for a tenant.</summary>
 public sealed class BootstrapSummaryDto
 {

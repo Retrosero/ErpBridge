@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Endpoints;
 using ErpBridge.CentralApi.Options;
+using ErpBridge.CentralApi.Telemetry;
 using ErpBridge.CentralApi.Webhooks;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
@@ -123,6 +124,7 @@ public partial class Program
         builder.Services.AddScoped<IWebhookDispatcher, WebhookDispatcher>();
         builder.Services.AddHttpClient("WebhookDispatcher");
         builder.Services.AddHostedService<WebhookDispatcherWorker>();
+        builder.Services.AddHostedService<MobileTelemetryRetentionWorker>();
     }
 
     /// <summary>
@@ -361,6 +363,7 @@ public partial class Program
         app.MapBootstrapEndpoints();
         app.MapIngestEndpoints();
         app.MapAndroidEndpoints();
+        app.MapMobileTelemetryEndpoints();
         app.MapAdminAuthEndpoints();
         app.MapAdminTenantsEndpoints();
         app.MapAdminLicensesEndpoints();
@@ -369,6 +372,7 @@ public partial class Program
         app.MapAdminBootstrapEndpoints();
         app.MapAdminApiKeysEndpoints();
         app.MapAdminWebhooksEndpoints();
+        app.MapAdminTelemetryEndpoints();
     }
 
     private static bool HasRateLimiter(IServiceProvider services)
