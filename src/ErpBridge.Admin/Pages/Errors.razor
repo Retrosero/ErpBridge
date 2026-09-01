@@ -3,71 +3,42 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
 <PageTitle>Hata Kayıtları — ErpBridge Yönetim</PageTitle>
-
 <AdminPageHeader Title="Hata kayıtları" Description="Müşteri ajanlarının ERP işlemlerinde bildirdiği kalıcı hata kayıtlarını inceleyin." />
 
-<div class="admin-filter-bar mb-3 row g-2">
-    <div class="col-auto">
-        <select class="form-select" @bind="_tenantId">
-            <option value="">Tüm müşteriler</option>
-            @foreach (var tenant in _tenants) { <option value="@tenant.Id">@tenant.Name</option> }
-        </select>
-    </div>
-    <div class="col-auto"><button class="btn btn-primary" @onclick="ReloadAsync">Listele</button></div>
-</div>
+<div class="admin-filter-bar mb-3 row g-2"><div class="col-auto"><select class="form-select" @bind="_tenantId"><option value="">Tüm müşteriler</option>@foreach (var tenant in _tenants) { <option value="@tenant.Id">@tenant.Name</option> }</select></div><div class="col-auto"><button class="btn btn-primary" @onclick="ReloadAsync">Listele</button></div></div>
 
-@if (_loading)
-{
-    <AdminLoading Text="Hata kayıtları yükleniyor…" />
-}
-else if (!string.IsNullOrEmpty(_error))
-{
-    <AdminState Tone="error" Icon="!" Title="Hata kayıtları alınamadı" Message="@_error" />
-}
-else if (_failures.Count == 0)
-{
-    <AdminState Tone="success" Icon="✓" Title="Hata kaydı yok" Message="Seçilen müşteri için bildirilen bir ERP işlem hatası bulunmuyor." />
-}
+@if (_loading) { <AdminLoading Text="Hata kayıtları yükleniyor…" /> }
+else if (!string.IsNullOrEmpty(_error)) { <AdminState Tone="error" Icon="!" Title="Hata kayıtları alınamadı" Message="@_error" /> }
+else if (_failures.Count == 0) { <AdminState Tone="success" Icon="✓" Title="Hata kaydı yok" Message="Seçilen müşteri için bildirilen bir ERP işlem hatası bulunmuyor." /> }
 else
 {
-    <div class="admin-data-surface"><table class="table admin-data-table">
-        <thead><tr><th>Zaman</th><th>Müşteri</th><th>Tür</th><th>Harici no</th><th>Hata kodu</th><th>Açıklama</th></tr></thead>
-        <tbody>
-            @foreach (var failure in _failures)
-            {
-                <tr>
-                    <td data-label="Zaman">@failure.OccurredAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
-                    <td data-label="Müşteri"><strong>@TenantName(failure.TenantId)</strong></td>
-                    <td data-label="Tür">@failure.DocumentType</td>
-                    <td data-label="Harici no"><code>@failure.ExternalId</code></td>
-                    <td data-label="Hata kodu"><code>@(failure.ErrorCode ?? "—")</code></td>
-                    <td data-label="Açıklama">@(failure.ErrorMessage ?? "—")</td>
-                </tr>
-            }
-        </tbody>
-    </table></div>
+    <div class="admin-record-list" aria-label="Hata kayıtları">
+        @foreach (var failure in _failures)
+        {
+            var expanded = _expandedJobId == failure.JobId;
+            <article class="admin-record admin-record--error @(expanded ? "admin-record--expanded" : null)">
+                <button class="admin-record__summary" @onclick="() => Toggle(failure.JobId)" aria-expanded="@expanded">
+                    <span class="admin-record__primary"><strong>@failure.DocumentType</strong><code>@failure.ExternalId</code></span>
+                    <span class="admin-record__customer">@TenantName(failure.TenantId)</span>
+                    <code class="admin-record__code">@(failure.ErrorCode ?? "HATA")</code>
+                    <time datetime="@failure.OccurredAtUtc.ToString("O")">@failure.OccurredAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</time>
+                    <span class="admin-record__chevron" aria-hidden="true">⌄</span>
+                </button>
+                @if (expanded)
+                {
+                    <div class="admin-record__detail"><dl class="admin-kv"><div><dt>İş kimliği</dt><dd><code>@failure.JobId</code></dd></div><div><dt>Hata kodu</dt><dd><code>@(failure.ErrorCode ?? "—")</code></dd></div><div class="admin-kv__wide"><dt>Açıklama</dt><dd>@(failure.ErrorMessage ?? "—")</dd></div></dl></div>
+                }
+            </article>
+        }
+    </div>
 }
 
 @code {
-    private bool _loading = true;
-    private string _tenantId = string.Empty;
-    private string? _error;
+    private bool _loading = true; private string _tenantId = string.Empty; private Guid? _expandedJobId; private string? _error;
     private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
     private IReadOnlyList<ErpBridge.Admin.Api.JobFailureDto> _failures = Array.Empty<ErpBridge.Admin.Api.JobFailureDto>();
-
-    protected override async Task OnInitializedAsync()
-    {
-        try { _tenants = await Api.ListTenantsAsync(); await ReloadAsync(); }
-        catch (Exception ex) { _loading = false; _error = ex.Message; }
-    }
-
-    private async Task ReloadAsync()
-    {
-        _loading = true; _error = null;
-        try { _failures = await Api.ListJobFailuresAsync(Guid.TryParse(_tenantId, out var id) ? id : null); }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _loading = false; }
-    }
-
+    protected override async Task OnInitializedAsync() { try { _tenants = await Api.ListTenantsAsync(); await ReloadAsync(); } catch (Exception ex) { _loading = false; _error = ex.Message; } }
+    private async Task ReloadAsync() { _loading = true; _error = null; _expandedJobId = null; try { _failures = await Api.ListJobFailuresAsync(Guid.TryParse(_tenantId, out var id) ? id : null); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
+    private void Toggle(Guid id) => _expandedJobId = _expandedJobId == id ? null : id;
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
 }

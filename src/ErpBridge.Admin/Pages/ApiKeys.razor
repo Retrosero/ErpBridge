@@ -76,10 +76,7 @@ else
                     <td data-label="İşlem" class="admin-data-table__action">
                         @if (k.IsActive)
                         {
-                            @if (k.SecretAvailable)
-                            {
-                                <button class="btn btn-sm btn-outline-secondary me-1" disabled="@_busy" @onclick="() => CopyStoredAsync(k.Id)">Kopyala</button>
-                            }
+                            <button class="btn btn-sm btn-outline-secondary me-1" disabled="@_busy" title="@(k.SecretAvailable ? "Maskeli anahtarı panoya kopyala" : "Bu eski anahtarı geri almak için önce yenilemeniz gerekir")" @onclick="() => CopyStoredAsync(k.Id)">Kopyala</button>
                             <button class="btn btn-sm btn-warning me-1" disabled="@_busy" @onclick="() => RevokeAsync(k.Id)">İptal et</button>
                             <button class="btn btn-sm btn-outline-primary" disabled="@_busy" @onclick="() => RotateAsync(k.Id)">Yenile</button>
                         }

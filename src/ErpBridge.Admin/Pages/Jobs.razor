@@ -4,92 +4,53 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
 <PageTitle>İş Kuyruğu — ErpBridge Yönetim</PageTitle>
-
 <AdminPageHeader Title="İş kuyruğu" Description="Merkezi API'ye iletilen işlemleri filtreleyin ve gerektiğinde tekrar deneyin." />
 
 <div class="admin-filter-bar mb-3 row g-2">
-    <div class="col-auto">
-        <select class="form-select" @bind="_status">
-            <option value="">Tüm durumlar</option><option value="pending">Bekliyor</option><option value="processing">İşleniyor</option><option value="succeeded">Başarılı</option><option value="failed">Başarısız</option><option value="deadletter">İşlenemedi</option>
-        </select>
-    </div>
-    <div class="col-auto">
-        <button class="btn btn-primary" @onclick="ReloadAsync">Listele</button>
-    </div>
+    <div class="col-auto"><select class="form-select" @bind="_status"><option value="">Tüm durumlar</option><option value="pending">Bekliyor</option><option value="processing">İşleniyor</option><option value="succeeded">Başarılı</option><option value="failed">Başarısız</option><option value="deadletter">İşlenemedi</option></select></div>
+    <div class="col-auto"><button class="btn btn-primary" @onclick="ReloadAsync">Listele</button></div>
 </div>
 
-@if (_loading)
-{
-    <AdminLoading Text="İş kuyruğu yükleniyor…" />
-}
-else if (!string.IsNullOrEmpty(_error))
-{
-    <AdminState Tone="error" Icon="!" Title="İş kuyruğu alınamadı" Message="@_error" />
-}
+@if (_loading) { <AdminLoading Text="İş kuyruğu yükleniyor…" /> }
+else if (!string.IsNullOrEmpty(_error)) { <AdminState Tone="error" Icon="!" Title="İş kuyruğu alınamadı" Message="@_error" /> }
+else if (_jobs.Count == 0) { <AdminState Tone="empty" Icon="✓" Title="İş bulunamadı" Message="Seçilen filtre için kuyrukta kayıt yok." /> }
 else
 {
-    <div class="admin-data-surface"><table class="table admin-data-table">
-        <thead>
-            <tr>
-                <th>Kimlik</th><th>Müşteri</th><th>Tür</th><th>Harici no</th><th>Durum</th><th>Deneme</th><th>Kuyruğa alınma</th><th>İşlem</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var j in _jobs)
-            {
-                <tr>
-                    <td data-label="Kimlik"><code>@j.Id.ToString().Substring(0, 8)</code></td>
-                    <td data-label="Müşteri">@(TenantName(j.TenantId))</td>
-                    <td data-label="Tür">@j.DocumentType</td>
-                    <td data-label="Harici no"><code>@j.ExternalId</code></td>
-                    <td data-label="Durum"><AdminStatusBadge Text="@StatusText(j.Status)" Tone="@StatusTone(j.Status)" /></td>
-                    <td data-label="Deneme">@j.RetryCount</td>
-                    <td data-label="Kuyruğa alınma">@j.EnqueuedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
-                    <td data-label="İşlem" class="admin-data-table__action">
-                        @if (j.Status == "processing" || j.Status == "failed" || j.Status == "deadletter")
-                        {
-                            <button class="btn btn-sm btn-warning" @onclick="() => RetryAsync(j.Id)">Tekrar dene</button>
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table></div>
+    <div class="admin-record-list" aria-label="İş kuyruğu kayıtları">
+        @foreach (var j in _jobs)
+        {
+            var expanded = _expandedId == j.Id;
+            <article class="admin-record @(expanded ? "admin-record--expanded" : null)">
+                <button class="admin-record__summary" @onclick="() => Toggle(j.Id)" aria-expanded="@expanded">
+                    <span class="admin-record__primary"><strong>@j.DocumentType</strong><code>@j.ExternalId</code></span>
+                    <span class="admin-record__customer">@TenantName(j.TenantId)</span>
+                    <AdminStatusBadge Text="@StatusText(j.Status)" Tone="@StatusTone(j.Status)" />
+                    <time datetime="@j.EnqueuedAtUtc.ToString("O")">@j.EnqueuedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</time>
+                    <span class="admin-record__chevron" aria-hidden="true">⌄</span>
+                </button>
+                @if (expanded)
+                {
+                    <div class="admin-record__detail">
+                        <dl class="admin-kv"><div><dt>Kimlik</dt><dd><code>@j.Id</code></dd></div><div><dt>Deneme</dt><dd>@j.RetryCount</dd></div><div><dt>Tamamlanma</dt><dd>@(j.CompletedAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "—")</dd></div><div><dt>Son hata</dt><dd>@(j.LastError ?? "—")</dd></div></dl>
+                        @if (j.Status is "processing" or "failed" or "deadletter") { <button class="btn btn-sm btn-warning" @onclick="() => RetryAsync(j.Id)">Tekrar dene</button> }
+                    </div>
+                }
+            </article>
+        }
+    </div>
 }
 
 @code {
     private bool _loading = true;
-    // Opening on "Bekliyor" hid documents that an agent had already picked
-    // up or rejected. The queue is an audit screen, so it should show every
-    // recent document until the operator intentionally narrows it.
-    [SupplyParameterFromQuery(Name = "status")]
-    public string? StatusFromQuery { get; set; }
-    private string _status = "";
+    [SupplyParameterFromQuery(Name = "status")] public string? StatusFromQuery { get; set; }
+    private string _status = ""; private Guid? _expandedId;
     private IReadOnlyList<ErpBridge.Admin.Api.JobDto> _jobs = Array.Empty<ErpBridge.Admin.Api.JobDto>();
     private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
     private string? _error;
-
-    protected override async Task OnInitializedAsync()
-    {
-        _status = StatusFromQuery ?? string.Empty;
-        _tenants = await Api.ListTenantsAsync();
-        await ReloadAsync();
-    }
-
-    private async Task ReloadAsync()
-    {
-        _loading = true; _error = null;
-        try { _jobs = await Api.ListJobsAsync(_status, 200); }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _loading = false; }
-    }
-
-    private async Task RetryAsync(Guid id)
-    {
-        try { await Api.RetryJobAsync(id); await ReloadAsync(); }
-        catch (Exception ex) { _error = ex.Message; }
-    }
-
+    protected override async Task OnInitializedAsync() { _status = StatusFromQuery ?? string.Empty; _tenants = await Api.ListTenantsAsync(); await ReloadAsync(); }
+    private async Task ReloadAsync() { _loading = true; _error = null; _expandedId = null; try { _jobs = await Api.ListJobsAsync(_status, 200); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
+    private async Task RetryAsync(Guid id) { try { await Api.RetryJobAsync(id); await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } }
+    private void Toggle(Guid id) => _expandedId = _expandedId == id ? null : id;
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
     private static string StatusText(string status) => status.ToLowerInvariant() switch { "pending" => "Bekliyor", "processing" => "İşleniyor", "succeeded" => "Başarılı", "failed" => "Başarısız", "deadletter" => "İşlenemedi", _ => status };
     private static string StatusTone(string status) => status.ToLowerInvariant() switch { "succeeded" => "success", "failed" or "deadletter" => "danger", "pending" or "processing" => "warning", _ => "muted" };

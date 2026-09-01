@@ -4,28 +4,32 @@
 
 <PageTitle>Mobil Tanılama — ErpBridge Yönetim</PageTitle>
 <AdminPageHeader Title="Mobil tanılama" Description="Uygulamanın gizlilikten arındırılmış hata ve işlem kayıtları." />
-
-<div class="admin-filter-bar mb-3 row g-2">
-    <div class="col-auto"><select class="form-select" @bind="_tenantId"><option value="">Tüm müşteriler</option>@foreach (var tenant in _tenants) { <option value="@tenant.Id">@tenant.Name</option> }</select></div>
-    <div class="col-auto"><select class="form-select" @bind="_severity"><option value="ERROR">Hatalar</option><option value="FATAL">Kritik</option><option value="">Tümü</option></select></div>
-    <div class="col-auto"><button class="btn btn-primary" @onclick="ReloadAsync">Listele</button></div>
-</div>
+<div class="admin-filter-bar mb-3 row g-2"><div class="col-auto"><select class="form-select" @bind="_tenantId"><option value="">Tüm müşteriler</option>@foreach (var tenant in _tenants) { <option value="@tenant.Id">@tenant.Name</option> }</select></div><div class="col-auto"><select class="form-select" @bind="_severity"><option value="ERROR">Hatalar</option><option value="FATAL">Kritik</option><option value="">Tümü</option></select></div><div class="col-auto"><button class="btn btn-primary" @onclick="ReloadAsync">Listele</button></div></div>
 
 @if (_loading) { <AdminLoading Text="Mobil kayıtlar yükleniyor…" /> }
 else if (!string.IsNullOrWhiteSpace(_error)) { <AdminState Tone="error" Icon="!" Title="Kayıtlar alınamadı" Message="@_error" /> }
 else if (_events.Count == 0) { <AdminState Tone="empty" Icon="✓" Title="Kayıt bulunamadı" Message="Seçilen filtre için henüz mobil tanılama kaydı yok." /> }
-else { <div class="admin-data-surface"><table class="table admin-data-table"><thead><tr><th>Zaman</th><th>Müşteri</th><th>Seviye</th><th>Ekran / işlem</th><th>Hata</th><th>Sürüm</th></tr></thead><tbody>
-@foreach (var item in _events) { <tr><td data-label="Zaman">@item.OccurredAtUtc.LocalDateTime.ToString("dd MMM HH:mm")</td><td data-label="Müşteri">@TenantName(item.TenantId)</td><td data-label="Seviye"><strong>@item.Severity</strong></td><td data-label="Ekran / işlem">@item.Screen<br /><small>@item.Operation</small></td><td data-label="Hata">@(string.IsNullOrWhiteSpace(item.ExceptionType) ? item.Message : $"{item.ExceptionType}: {item.Message}")</td><td data-label="Sürüm">@item.AppVersion</td></tr> }
-</tbody></table></div> }
+else
+{
+    <div class="admin-record-list" aria-label="Mobil hata kayıtları">
+        @foreach (var item in _events)
+        {
+            var expanded = _expandedId == item.Id;
+            <article class="admin-record admin-record--error @(expanded ? "admin-record--expanded" : null)">
+                <button class="admin-record__summary" @onclick="() => Toggle(item.Id)" aria-expanded="@expanded">
+                    <span class="admin-record__primary"><strong>@item.Screen</strong><code>@item.Operation</code></span><span class="admin-record__customer">@TenantName(item.TenantId)</span><code class="admin-record__code">@item.Severity</code><time datetime="@item.OccurredAtUtc.ToString("O")">@item.OccurredAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</time><span class="admin-record__chevron" aria-hidden="true">⌄</span>
+                </button>
+                @if (expanded) { <div class="admin-record__detail"><dl class="admin-kv"><div><dt>Sürüm</dt><dd>@item.AppVersion</dd></div><div><dt>Cihaz</dt><dd>@item.DeviceModel / @item.AndroidVersion</dd></div><div class="admin-kv__wide"><dt>Hata</dt><dd>@(string.IsNullOrWhiteSpace(item.ExceptionType) ? item.Message : $"{item.ExceptionType}: {item.Message}")</dd></div><div class="admin-kv__wide"><dt>İz kaydı</dt><dd><code>@item.StackTrace</code></dd></div></dl></div> }
+            </article>
+        }
+    </div>
+}
 
 @code {
-    private bool _loading = true;
-    private string _tenantId = string.Empty;
-    private string _severity = "ERROR";
-    private string? _error;
-    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
-    private IReadOnlyList<ErpBridge.Admin.Api.MobileTelemetryEventDto> _events = Array.Empty<ErpBridge.Admin.Api.MobileTelemetryEventDto>();
+    private bool _loading = true; private string _tenantId = string.Empty; private string _severity = "ERROR"; private Guid? _expandedId; private string? _error;
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>(); private IReadOnlyList<ErpBridge.Admin.Api.MobileTelemetryEventDto> _events = Array.Empty<ErpBridge.Admin.Api.MobileTelemetryEventDto>();
     protected override async Task OnInitializedAsync() { try { _tenants = await Api.ListTenantsAsync(); await ReloadAsync(); } catch (Exception ex) { _loading = false; _error = ex.Message; } }
-    private async Task ReloadAsync() { _loading = true; _error = null; try { _events = await Api.ListTelemetryAsync(Guid.TryParse(_tenantId, out var id) ? id : null, _severity); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
+    private async Task ReloadAsync() { _loading = true; _error = null; _expandedId = null; try { _events = await Api.ListTelemetryAsync(Guid.TryParse(_tenantId, out var id) ? id : null, _severity); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
+    private void Toggle(Guid id) => _expandedId = _expandedId == id ? null : id;
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString()[..8];
 }
