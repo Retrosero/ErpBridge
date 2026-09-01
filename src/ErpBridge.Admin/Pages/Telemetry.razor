@@ -15,11 +15,12 @@ else
         @foreach (var item in _events)
         {
             var expanded = _expandedId == item.Id;
+            var presentation = Present(item);
             <article class="admin-record admin-record--error @(expanded ? "admin-record--expanded" : null)">
                 <button class="admin-record__summary" @onclick="() => Toggle(item.Id)" aria-expanded="@expanded">
-                    <span class="admin-record__primary"><strong>@item.Screen</strong><code>@item.Operation</code></span><span class="admin-record__customer">@TenantName(item.TenantId)</span><code class="admin-record__code">@item.Severity</code><time datetime="@item.OccurredAtUtc.ToString("O")">@item.OccurredAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</time><span class="admin-record__chevron" aria-hidden="true">⌄</span>
+                    <span class="admin-record__primary"><strong>@presentation.Title</strong><span>@presentation.Summary</span></span><span class="admin-record__customer">@TenantName(item.TenantId)</span><code class="admin-record__code">@item.Severity</code><time datetime="@item.OccurredAtUtc.ToString("O")">@item.OccurredAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</time><span class="admin-record__chevron" aria-hidden="true">⌄</span>
                 </button>
-                @if (expanded) { <div class="admin-record__detail"><dl class="admin-kv"><div><dt>Sürüm</dt><dd>@item.AppVersion</dd></div><div><dt>Cihaz</dt><dd>@item.DeviceModel / @item.AndroidVersion</dd></div><div class="admin-kv__wide"><dt>Hata</dt><dd>@(string.IsNullOrWhiteSpace(item.ExceptionType) ? item.Message : $"{item.ExceptionType}: {item.Message}")</dd></div><div class="admin-kv__wide"><dt>İz kaydı</dt><dd><code>@item.StackTrace</code></dd></div></dl></div> }
+                @if (expanded) { <div class="admin-record__detail"><div class="admin-error-explainer"><strong>@presentation.Title</strong><p>@presentation.Detail</p><p><b>Önerilen işlem:</b> @presentation.Suggestion</p></div><dl class="admin-kv"><div><dt>Sürüm</dt><dd>@item.AppVersion</dd></div><div><dt>Cihaz</dt><dd>@item.DeviceModel / @item.AndroidVersion</dd></div></dl><details class="admin-technical-details"><summary>Teknik ayrıntıyı göster</summary><dl class="admin-kv"><div class="admin-kv__wide"><dt>Ham hata</dt><dd><code>@(string.IsNullOrWhiteSpace(item.ExceptionType) ? item.Message : $"{item.ExceptionType}: {item.Message}")</code></dd></div><div class="admin-kv__wide"><dt>İz kaydı</dt><dd><code>@item.StackTrace</code></dd></div></dl></details></div> }
             </article>
         }
     </div>
@@ -32,4 +33,19 @@ else
     private async Task ReloadAsync() { _loading = true; _error = null; _expandedId = null; try { _events = await Api.ListTelemetryAsync(Guid.TryParse(_tenantId, out var id) ? id : null, _severity); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
     private void Toggle(Guid id) => _expandedId = _expandedId == id ? null : id;
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString()[..8];
+    private static ErrorPresentation Present(ErpBridge.Admin.Api.MobileTelemetryEventDto item)
+    {
+        var raw = $"{item.ExceptionType} {item.Message}".ToLowerInvariant();
+        if (raw.Contains("no jsonadapter") || raw.Contains("linkedhashmap") || raw.Contains("moshi"))
+            return new("Belge verisi okunamadı", "Gönderilmek istenen belgedeki bir alan uygulama tarafından işlenemedi.", "Uygulamayı güncelleyin; devam ederse belgeyi yeniden kaydedip gönderin.");
+        if (raw.Contains("timeout") || raw.Contains("timed out"))
+            return new("Sunucuya zamanında ulaşılamadı", "Bağlantı süresi doldu; belge kaybolmadı ve kuyrukta yeniden denenebilir.", "İnternet bağlantısını kontrol edin ve kuyruktan tekrar deneyin.");
+        if (raw.Contains("unauthorized") || raw.Contains("401") || raw.Contains("forbidden") || raw.Contains("403"))
+            return new("Sunucu erişimi reddedildi", "Bu cihazın sunucu erişim bilgileri geçersiz veya süresi dolmuş olabilir.", "Ayarlar üzerinden senkronizasyon bağlantısını yenileyin.");
+        return new("İşlem tamamlanamadı", "Uygulama bu işlemi tamamlayamadı; kayıt hata listesine alındı.", "Belgeyi ve bağlantıyı kontrol edip tekrar deneyin; sürerse teknik ayrıntıyı destek ekibiyle paylaşın.");
+    }
+    private sealed record ErrorPresentation(string Title, string Summary, string Detail, string Suggestion)
+    {
+        public ErrorPresentation(string title, string detail, string suggestion) : this(title, detail, detail, suggestion) { }
+    }
 }

@@ -16,9 +16,10 @@ else
         @foreach (var failure in _failures)
         {
             var expanded = _expandedJobId == failure.JobId;
+            var presentation = Present(failure.ErrorMessage);
             <article class="admin-record admin-record--error @(expanded ? "admin-record--expanded" : null)">
                 <button class="admin-record__summary" @onclick="() => Toggle(failure.JobId)" aria-expanded="@expanded">
-                    <span class="admin-record__primary"><strong>@failure.DocumentType</strong><code>@failure.ExternalId</code></span>
+                    <span class="admin-record__primary"><strong>@presentation.Title</strong><span>@failure.DocumentType · @failure.ExternalId</span></span>
                     <span class="admin-record__customer">@TenantName(failure.TenantId)</span>
                     <code class="admin-record__code">@(failure.ErrorCode ?? "HATA")</code>
                     <time datetime="@failure.OccurredAtUtc.ToString("O")">@failure.OccurredAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</time>
@@ -26,7 +27,7 @@ else
                 </button>
                 @if (expanded)
                 {
-                    <div class="admin-record__detail"><dl class="admin-kv"><div><dt>İş kimliği</dt><dd><code>@failure.JobId</code></dd></div><div><dt>Hata kodu</dt><dd><code>@(failure.ErrorCode ?? "—")</code></dd></div><div class="admin-kv__wide"><dt>Açıklama</dt><dd>@(failure.ErrorMessage ?? "—")</dd></div></dl></div>
+                    <div class="admin-record__detail"><div class="admin-error-explainer"><strong>@presentation.Title</strong><p>@presentation.Detail</p><p><b>Önerilen işlem:</b> @presentation.Suggestion</p></div><dl class="admin-kv"><div><dt>İş kimliği</dt><dd><code>@failure.JobId</code></dd></div><div><dt>Hata kodu</dt><dd><code>@(failure.ErrorCode ?? "—")</code></dd></div></dl><details class="admin-technical-details"><summary>Teknik ayrıntıyı göster</summary><code>@(failure.ErrorMessage ?? "—")</code></details></div>
                 }
             </article>
         }
@@ -41,4 +42,12 @@ else
     private async Task ReloadAsync() { _loading = true; _error = null; _expandedJobId = null; try { _failures = await Api.ListJobFailuresAsync(Guid.TryParse(_tenantId, out var id) ? id : null); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
     private void Toggle(Guid id) => _expandedJobId = _expandedJobId == id ? null : id;
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
+    private static ErrorPresentation Present(string? raw)
+    {
+        var message = raw?.ToLowerInvariant() ?? string.Empty;
+        if (message.Contains("duplicate") || message.Contains("already exists")) return new("Kayıt zaten işlenmiş", "Bu belge daha önce kaydedilmiş olabilir.", "Aynı belgeyi yeniden göndermeyin; ERP kaydını kontrol edin.");
+        if (message.Contains("timeout") || message.Contains("timed out")) return new("Bağlantı zaman aşımına uğradı", "İşlem sırasında sunucuya ulaşılamadı.", "Bağlantıyı kontrol edip kuyruğu tekrar deneyin.");
+        return new("ERP işlemi tamamlanamadı", "Belge ERP'ye aktarılırken bir sorun oluştu.", "Belge bilgilerini kontrol edin ve tekrar deneyin.");
+    }
+    private sealed record ErrorPresentation(string Title, string Detail, string Suggestion);
 }
