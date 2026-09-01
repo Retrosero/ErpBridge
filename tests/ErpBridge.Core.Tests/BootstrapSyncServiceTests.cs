@@ -207,6 +207,8 @@ public class BootstrapSyncServiceTests
         var adapter = new Mock<IErpAdapter>();
         adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(NewPackage());
+        adapter.Setup(a => a.ReadBootstrapSectionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((string section, CancellationToken _) => Task.FromResult(NewPackage() with { PartialSection = section }));
 
         var adapterFactory = new Mock<IErpAdapterFactory>();
         adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
@@ -227,14 +229,63 @@ public class BootstrapSyncServiceTests
         result.Success.Should().BeFalse();
         result.ErrorCode.Should().Be(ErrorCode.TransientUpstream);
         result.ErrorMessage.Should().Contain("5xx");
-        // 1 initial + 1 retry = 2 attempts (TestRetryPipeline uses MaxRetryAttempts=1).
+        // The full request is attempted twice, then the first fallback section
+        // is also attempted twice before its error is returned.
         remoteApi.Verify(
             r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()),
-            Times.Exactly(2));
+            Times.Exactly(4));
         // No checkpoint saved on failure.
         checkpointStore.Verify(
             s => s.SaveAsync(It.IsAny<CheckpointRecord>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task RunOnceAsync_when_full_snapshot_fails_pushes_all_mergeable_sections()
+    {
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+
+        var checkpointStore = new Mock<ICheckpointStore>();
+        checkpointStore.Setup(s => s.LoadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CheckpointRecord?)null);
+        checkpointStore.Setup(s => s.SaveAsync(It.IsAny<CheckpointRecord>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var package = NewPackage();
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(package);
+        adapter.Setup(a => a.ReadBootstrapSectionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((string section, CancellationToken _) => Task.FromResult(package with { PartialSection = section }));
+
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+
+        var calls = new List<SyncPackage>();
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .Callback<SyncPackage, CancellationToken>((sent, _) => calls.Add(sent))
+            .Returns(() => calls.Count == 1
+                ? Task.FromException(new TransientPushException("gateway timeout"))
+                : Task.CompletedTask);
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(DateTimeOffset.UtcNow), NoRetryPipeline());
+
+        var result = await sut.RunOnceAsync();
+
+        result.Success.Should().BeTrue();
+        calls.Should().HaveCount(10);
+        calls.Skip(1).Select(item => item.PartialSection).Should().BeEquivalentTo(new[]
+        {
+            "customers", "stocks", "prices", "inventory", "openOrders", "cashAndBank", "lookups",
+            "customerTransactions", "stockTransactions",
+        }, options => options.WithStrictOrdering());
     }
 
     // ------------------------------------------------------------------------

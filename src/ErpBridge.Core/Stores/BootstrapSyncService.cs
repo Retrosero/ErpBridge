@@ -38,6 +38,22 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     /// <summary>Skip a new push if the previous successful one is younger than this window.</summary>
     public const int MinimumIntervalMinutes = 60;
 
+    // A complete Mikro snapshot can contain many years of ledger movements.
+    // If a reverse proxy times out while accepting that large single request,
+    // these independently mergeable sections keep the snapshot uploadable.
+    private static readonly string[] FallbackSectionNames =
+    [
+        "customers",
+        "stocks",
+        "prices",
+        "inventory",
+        "openOrders",
+        "cashAndBank",
+        "lookups",
+        "customerTransactions",
+        "stockTransactions",
+    ];
+
     private readonly IAgentConfigStore _configStore;
     private readonly ICheckpointStore _checkpointStore;
     private readonly IErpAdapterFactory _adapterFactory;
@@ -188,9 +204,24 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Bootstrap push failed after retries.");
-                return Failed(stopwatch, ErrorCode.TransientUpstream,
-                    $"Push failed after retries: {ex.Message}");
+                _logger.LogWarning(ex,
+                    "Complete bootstrap push failed after retries; retrying as mergeable sections.");
+
+                // The Central API merges a package whose PartialSection is set
+                // into the previous snapshot. This is safe even when the
+                // original request reached the API but its response was lost.
+                foreach (var sectionName in FallbackSectionNames)
+                {
+                    var sectionResult = await PushSectionAsync(sectionName, ct).ConfigureAwait(false);
+                    if (!sectionResult.Success)
+                    {
+                        return Failed(stopwatch, sectionResult.ErrorCode ?? ErrorCode.TransientUpstream,
+                            $"Full snapshot and '{sectionName}' fallback both failed: {sectionResult.ErrorMessage}");
+                    }
+                }
+
+                _logger.LogInformation("Bootstrap fallback completed through {SectionCount} sections.",
+                    FallbackSectionNames.Length);
             }
 
             // 3) Persist checkpoint on success. If the save itself fails we

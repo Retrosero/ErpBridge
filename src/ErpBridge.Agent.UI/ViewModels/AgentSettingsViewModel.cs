@@ -1068,8 +1068,8 @@ public sealed class AgentSettingsViewModel : ObservableObject
                     _liveSettings["CentralApi:Jwt"] = jwt;
 
                     _logger.LogInformation(
-                        "Agent registered. LicenseKey={LicenseKey}, MachineId={MachineId}, AgentId={AgentId}, TenantId={TenantId}, LatencyMs={Latency}.",
-                        licenseKey, machineId, _registerAgentIdDisplay, _registerTenantIdDisplay, sw.ElapsedMilliseconds);
+                        "Agent registered. MachineId={MachineId}, AgentId={AgentId}, TenantId={TenantId}, LatencyMs={Latency}.",
+                        machineId, _registerAgentIdDisplay, _registerTenantIdDisplay, sw.ElapsedMilliseconds);
 
                     Status = $"Agent kayıt başarılı.\nAgentId: {_registerAgentIdDisplay}\nTenant: {_registerTenantIdDisplay}\nJWT in-memory olarak kaydedildi.\nExpires: {expires}";
                 }
@@ -1098,8 +1098,8 @@ public sealed class AgentSettingsViewModel : ObservableObject
                 }
 
                 _logger.LogWarning(
-                    "Agent register FAILED. LicenseKey={LicenseKey}, MachineId={MachineId}, StatusCode={StatusCode}, ErrorCode={ErrorCode}, LatencyMs={Latency}.",
-                    licenseKey, machineId, (int)response.StatusCode, _registerErrorCodeDisplay, sw.ElapsedMilliseconds);
+                    "Agent register FAILED. MachineId={MachineId}, StatusCode={StatusCode}, ErrorCode={ErrorCode}, LatencyMs={Latency}.",
+                    machineId, (int)response.StatusCode, _registerErrorCodeDisplay, sw.ElapsedMilliseconds);
 
                 Status = $"Agent kayıt başarısız: HTTP {(int)response.StatusCode} {_registerErrorCodeDisplay}";
             }
