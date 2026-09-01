@@ -68,6 +68,45 @@ public class AdminApiKeysTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Copy_returns_vaulted_key_and_writes_administrator_audit_record()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync();
+        var createdResponse = await client.PostJsonAsync("/api/v1/admin/api-keys",
+            new { tenantId = tenant.Id, name = "Vaulted" }, token);
+        var created = await createdResponse.ReadAsJsonAsync<ApiKeyCreatedDto>();
+
+        var copyResponse = await client.PostJsonAsync($"/api/v1/admin/api-keys/{created.Id}/copy", new { }, token);
+
+        copyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var copied = await copyResponse.ReadAsJsonAsync<ApiKeySecretDto>();
+        copied.RawKey.Should().Be(created.RawKey);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var audit = await db.ApiKeySecretAccessAudits.SingleAsync(x => x.ApiKeyId == created.Id);
+        audit.AdminUserId.Should().Be(admin.Id);
+        audit.Action.Should().Be("copied");
+    }
+
+    [Fact]
+    public async Task Copy_legacy_hash_only_key_requires_rotation()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync();
+        var (key, _, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, "AK-" + Guid.NewGuid().ToString("N"));
+
+        var response = await client.PostJsonAsync($"/api/v1/admin/api-keys/{key.Id}/copy", new { }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("API_KEY_ROTATION_REQUIRED");
+    }
+
+    [Fact]
     public async Task Revoke_sets_IsActive_false_and_subsequent_auth_fails()
     {
         var client = _factory.CreateClient();

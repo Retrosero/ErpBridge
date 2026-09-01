@@ -3,28 +3,31 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
 <PageTitle>Genel Bakış — ErpBridge Yönetim</PageTitle>
-<AdminPageHeader Title="Genel bakış" Description="ERP bağlantılarınızın ve operasyon akışınızın güncel durumunu tek ekrandan izleyin.">
+<AdminPageHeader Title="Genel bakış" Description="Müşteri, erişim, ajan ve işlem akışını tek ekranda izleyin.">
     <Actions><button class="btn btn-secondary" @onclick="LoadAsync" disabled="@_loading">↻ Yenile</button></Actions>
 </AdminPageHeader>
 
-@if (_loading) { <AdminLoading Text="Sistem durumu hazırlanıyor…" /> }
-else if (!string.IsNullOrWhiteSpace(_error)) { <AdminState Tone="error" Icon="!" Title="Veriler alınamadı" Message="@_error" /> }
+@if (_loading) { <AdminLoading Text="Sistem göstergeleri hazırlanıyor…" /> }
+else if (!string.IsNullOrWhiteSpace(_error)) { <AdminState Tone="error" Icon="!" Title="Göstergeler alınamadı" Message="@_error" /> }
 else {
-    <section class="admin-grid admin-grid--stats" aria-label="Sistem özeti">
-        <article class="admin-stat"><span class="admin-stat__label">Müşteriler</span><strong>@_tenants.Count</strong><small>@_tenants.Count(x => x.IsActive) aktif hesap</small></article>
-        <article class="admin-stat admin-stat--success"><span class="admin-stat__label">Aktif lisanslar</span><strong>@_licenses.Count(x => x.IsActive)</strong><small>@_licenses.Count toplam lisans</small></article>
-        <article class="admin-stat"><span class="admin-stat__label">Bağlı ajanlar</span><strong>@OnlineAgents</strong><small>@_agents.Count kayıtlı ajan</small></article>
-        <article class="admin-stat @(_jobs.Any() ? "admin-stat--warning" : null)"><span class="admin-stat__label">Bekleyen işler</span><strong>@_jobs.Count</strong><small>İşlem kuyruğunda</small></article>
+    <section class="admin-grid admin-grid--stats" aria-label="Yönetim göstergeleri">
+        <a class="admin-stat" href="tenants"><span class="admin-stat__label">Müşteriler</span><strong>@_tenants.Count</strong><small>@_tenants.Count(x => x.IsActive) aktif hesap</small></a>
+        <a class="admin-stat" href="apikeys"><span class="admin-stat__label">API anahtarları</span><strong>@_apiKeys.Count</strong><small>@_apiKeys.Count(x => x.IsActive) aktif erişim</small></a>
+        <a class="admin-stat admin-stat--success" href="licenses"><span class="admin-stat__label">Aktif lisanslar</span><strong>@_licenses.Count(x => x.IsActive)</strong><small>@_licenses.Count toplam lisans</small></a>
+        <a class="admin-stat @(OnlineAgents == _agents.Count ? "admin-stat--success" : "admin-stat--warning")" href="agents"><span class="admin-stat__label">Bağlı ajanlar</span><strong>@OnlineAgents</strong><small>@_agents.Count kayıtlı, @(_agents.Count - OnlineAgents) çevrimdışı</small></a>
+        <a class="admin-stat @(_pendingJobs.Count > 0 ? "admin-stat--warning" : "admin-stat--success")" href="jobs?status=pending"><span class="admin-stat__label">Bekleyen işler</span><strong>@_pendingJobs.Count</strong><small>İşlem kuyruğunda</small></a>
+        <a class="admin-stat @(_failedJobs.Count > 0 ? "admin-stat--danger" : "admin-stat--success")" href="jobs?status=failed"><span class="admin-stat__label">Hatalı işler</span><strong>@_failedJobs.Count</strong><small>@_deadLetterJobs.Count işlenemedi</small></a>
+        <a class="admin-stat @(_failedTelemetry.Count > 0 ? "admin-stat--danger" : "admin-stat--success")" href="telemetry"><span class="admin-stat__label">Mobil hatalar</span><strong>@_failedTelemetry.Count</strong><small>Son bildirilen hata kayıtları</small></a>
     </section>
     <div class="dashboard-layout">
         <section class="admin-panel"><header class="admin-panel__header"><div><h2>Operasyon sağlığı</h2><p>Dikkat gerektiren alanların kısa özeti</p></div></header><div class="admin-panel__body dashboard-health">
             <div class="dashboard-health__item"><span>Ajan bağlantıları</span><AdminStatusBadge Text="@(OnlineAgents == _agents.Count ? "Sağlıklı" : "Kontrol gerekli")" Tone="@(OnlineAgents == _agents.Count ? "success" : "warning")" /></div>
-            <div class="dashboard-health__item"><span>İş kuyruğu</span><AdminStatusBadge Text="@(_jobs.Count == 0 ? "Temiz" : $"{_jobs.Count} bekliyor")" Tone="@(_jobs.Count == 0 ? "success" : "warning")" /></div>
-            <div class="dashboard-health__item"><span>Lisans durumu</span><AdminStatusBadge Text="@(_licenses.Any(x => !x.IsActive) ? "Pasif kayıt var" : "Tümü aktif")" Tone="@(_licenses.Any(x => !x.IsActive) ? "muted" : "success")" /></div>
+            <div class="dashboard-health__item"><span>İş kuyruğu</span><AdminStatusBadge Text="@(_pendingJobs.Count == 0 ? "Temiz" : $"{_pendingJobs.Count} bekliyor")" Tone="@(_pendingJobs.Count == 0 ? "success" : "warning")" /></div>
+            <div class="dashboard-health__item"><span>Hata akışı</span><AdminStatusBadge Text="@(_failedJobs.Count + _deadLetterJobs.Count == 0 ? "Hata yok" : $"{_failedJobs.Count + _deadLetterJobs.Count} işlem")" Tone="@(_failedJobs.Count + _deadLetterJobs.Count == 0 ? "success" : "danger")" /></div>
         </div></section>
         <section class="admin-panel"><header class="admin-panel__header"><div><h2>Hızlı işlemler</h2><p>Sık kullanılan yönetim alanları</p></div></header><div class="admin-panel__body dashboard-quick-links">
             <a class="dashboard-quick-link" href="tenants/create"><span>Yeni müşteri oluştur</span><span>→</span></a>
-            <a class="dashboard-quick-link" href="licenses"><span>Lisansları yönet</span><span>→</span></a>
+            <a class="dashboard-quick-link" href="apikeys"><span>API anahtarlarını yönet</span><span>→</span></a>
             <a class="dashboard-quick-link" href="jobs"><span>İş kuyruğunu aç</span><span>→</span></a>
         </div></section>
     </div>
@@ -32,11 +35,23 @@ else {
 
 @code {
     private bool _loading = true; private string? _error;
-    private IReadOnlyList<TenantDto> _tenants = Array.Empty<TenantDto>();
-    private IReadOnlyList<LicenseDto> _licenses = Array.Empty<LicenseDto>();
-    private IReadOnlyList<AgentDto> _agents = Array.Empty<AgentDto>();
-    private IReadOnlyList<JobDto> _jobs = Array.Empty<JobDto>();
+    private IReadOnlyList<TenantDto> _tenants = Array.Empty<TenantDto>(); private IReadOnlyList<LicenseDto> _licenses = Array.Empty<LicenseDto>();
+    private IReadOnlyList<AgentDto> _agents = Array.Empty<AgentDto>(); private IReadOnlyList<ApiKeyDto> _apiKeys = Array.Empty<ApiKeyDto>();
+    private IReadOnlyList<JobDto> _pendingJobs = Array.Empty<JobDto>(); private IReadOnlyList<JobDto> _failedJobs = Array.Empty<JobDto>();
+    private IReadOnlyList<JobDto> _deadLetterJobs = Array.Empty<JobDto>(); private IReadOnlyList<MobileTelemetryEventDto> _failedTelemetry = Array.Empty<MobileTelemetryEventDto>();
     private int OnlineAgents => _agents.Count(a => a.LastHeartbeatAtUtc is not null && a.LastHeartbeatAtUtc > DateTimeOffset.UtcNow.AddMinutes(-5));
     protected override Task OnInitializedAsync() => LoadAsync();
-    private async Task LoadAsync() { _loading = true; _error = null; try { var tenants=Api.ListTenantsAsync(); var licenses=Api.ListLicensesAsync(); var agents=Api.ListAgentsAsync(); var jobs=Api.ListJobsAsync("pending",200); await Task.WhenAll(tenants,licenses,agents,jobs); _tenants=await tenants; _licenses=await licenses; _agents=await agents; _jobs=await jobs; } catch(Exception ex) { _error=ex.Message; } finally { _loading=false; } }
+    private async Task LoadAsync()
+    {
+        _loading = true; _error = null;
+        try
+        {
+            var tenants = Api.ListTenantsAsync(); var licenses = Api.ListLicensesAsync(); var agents = Api.ListAgentsAsync(); var keys = Api.ListApiKeysAsync();
+            var pending = Api.ListJobsAsync("pending", 200); var failed = Api.ListJobsAsync("failed", 200); var deadLetter = Api.ListJobsAsync("deadletter", 200); var telemetry = Api.ListTelemetryAsync(take: 200);
+            await Task.WhenAll(tenants, licenses, agents, keys, pending, failed, deadLetter, telemetry);
+            _tenants = await tenants; _licenses = await licenses; _agents = await agents; _apiKeys = await keys; _pendingJobs = await pending; _failedJobs = await failed; _deadLetterJobs = await deadLetter; _failedTelemetry = await telemetry;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
 }

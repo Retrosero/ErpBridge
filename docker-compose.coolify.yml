@@ -13,7 +13,7 @@
 #     over the internal Docker network.
 #
 # Secrets (never commit): JWT_SIGNING_KEY, ADMIN_SEED_PASSWORD,
-# POSTGRES_PASSWORD. Configure them as "Secret" type in Coolify's
+# POSTGRES_PASSWORD, API_KEY_VAULT_MASTER_KEY. Configure them as "Secret" type in Coolify's
 # per-service Environment tab, NOT as plain values.
 #
 # Internal container ports are 5080 (centralapi) and 4002 (admin) -
@@ -61,6 +61,9 @@ services:
       Admin__SeedEmail: ${ADMIN_SEED_EMAIL}
       Admin__SeedPassword: ${ADMIN_SEED_PASSWORD}
       Admin__SeedDisplayName: Bootstrap Admin
+      # Base64 encoded random 32-byte key. Required to issue keys that can be
+      # copied later through the audited admin vault; never commit its value.
+      ApiKeyVault__MasterKey: ${API_KEY_VAULT_MASTER_KEY}
       # Pin the bind port so the entrypoint does not need to rely on $PORT
       # being unset. The Dockerfile entrypoint already pins this in
       # /tmp/bind_port for the centralapi target; we mirror it here for

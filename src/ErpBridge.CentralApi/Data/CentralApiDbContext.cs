@@ -23,6 +23,7 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<BootstrapPackage> BootstrapPackages => Set<BootstrapPackage>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<ApiKeySecretAccessAudit> ApiKeySecretAccessAudits => Set<ApiKeySecretAccessAudit>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<MobileTelemetryEvent> MobileTelemetryEvents => Set<MobileTelemetryEvent>();
@@ -114,12 +115,29 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.KeyPrefix).IsRequired().HasMaxLength(32);
             b.Property(x => x.KeyHash).IsRequired().HasMaxLength(64);
             b.Property(x => x.KeySalt).IsRequired().HasMaxLength(64);
+            b.Property(x => x.VaultCiphertext).HasColumnType("bytea");
+            b.Property(x => x.VaultNonce).HasMaxLength(12);
+            b.Property(x => x.VaultTag).HasMaxLength(16);
             b.Property(x => x.Scopes).HasColumnType("text[]");
             b.HasOne(x => x.Tenant)
                 .WithMany()
                 .HasForeignKey(x => x.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.KeyPrefix });
+        });
+
+        modelBuilder.Entity<ApiKeySecretAccessAudit>(b =>
+        {
+            b.ToTable("api_key_secret_access_audits");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Action).IsRequired().HasMaxLength(32);
+            b.Property(x => x.RemoteIp).HasMaxLength(64);
+            b.HasOne(x => x.ApiKey)
+                .WithMany()
+                .HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.ApiKeyId, x.AccessedAtUtc });
+            b.HasIndex(x => x.AdminUserId);
         });
 
         modelBuilder.Entity<WebhookEndpoint>(b =>

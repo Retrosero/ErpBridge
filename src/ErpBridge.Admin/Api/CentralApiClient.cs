@@ -154,6 +154,12 @@ public sealed class ApiKeyDto
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
     [JsonPropertyName("lastUsedAtUtc")] public DateTimeOffset? LastUsedAtUtc { get; set; }
+    [JsonPropertyName("secretAvailable")] public bool SecretAvailable { get; set; }
+}
+
+public sealed class ApiKeySecretDto
+{
+    [JsonPropertyName("rawKey")] public string RawKey { get; set; } = string.Empty;
 }
 
 public sealed class ApiKeyCreatedDto
@@ -319,7 +325,7 @@ public sealed class CentralApiClient
         SendAsync<TenantDto>(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{id}", new UpdateTenantRequest { IsActive = isActive, MaxDeviceCount = maxDeviceCount }, ct), ct);
 
     public Task<IReadOnlyList<LicenseDto>> ListLicensesAsync(Guid? tenantId = null, CancellationToken ct = default) =>
-        SendAsync<IReadOnlyList<LicenseDto>>(() => _http.GetAsync($"/api/v1/admin/licenses?tenantId={tenantId}", ct), ct);
+        SendAsync<IReadOnlyList<LicenseDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/licenses", tenantId), ct), ct);
 
     public Task<LicenseDto> CreateLicenseAsync(Guid tenantId, DateTimeOffset? expiresAtUtc, CancellationToken ct = default) =>
         SendAsync<LicenseDto>(() => _http.PostAsJsonAsync("/api/v1/admin/licenses", new CreateLicenseRequest { TenantId = tenantId, ExpiresAtUtc = expiresAtUtc }, ct), ct);
@@ -328,7 +334,7 @@ public sealed class CentralApiClient
         SendAsync<object>(() => _http.PostAsync($"/api/v1/admin/licenses/{id}/revoke", content: null, ct), ct);
 
     public Task<IReadOnlyList<AgentDto>> ListAgentsAsync(Guid? tenantId = null, CancellationToken ct = default) =>
-        SendAsync<IReadOnlyList<AgentDto>>(() => _http.GetAsync($"/api/v1/admin/agents?tenantId={tenantId}", ct), ct);
+        SendAsync<IReadOnlyList<AgentDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/agents", tenantId), ct), ct);
 
     public Task<IReadOnlyList<JobDto>> ListJobsAsync(string? status = null, int take = 50, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<JobDto>>(() => _http.GetAsync($"/api/v1/admin/jobs?status={Uri.EscapeDataString(status ?? string.Empty)}&take={take}", ct), ct);
@@ -337,10 +343,10 @@ public sealed class CentralApiClient
         SendAsync<JobDetailDto>(() => _http.GetAsync($"/api/v1/admin/jobs/{id}", ct), ct);
 
     public Task<IReadOnlyList<JobFailureDto>> ListJobFailuresAsync(Guid? tenantId = null, int take = 200, CancellationToken ct = default) =>
-        SendAsync<IReadOnlyList<JobFailureDto>>(() => _http.GetAsync($"/api/v1/admin/jobs/failures?tenantId={tenantId}&take={take}", ct), ct);
+        SendAsync<IReadOnlyList<JobFailureDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/jobs/failures", tenantId, $"take={take}"), ct), ct);
 
     public Task<IReadOnlyList<MobileTelemetryEventDto>> ListTelemetryAsync(Guid? tenantId = null, string? severity = "ERROR", int take = 200, CancellationToken ct = default) =>
-        SendAsync<IReadOnlyList<MobileTelemetryEventDto>>(() => _http.GetAsync($"/api/v1/admin/telemetry?tenantId={tenantId}&severity={Uri.EscapeDataString(severity ?? string.Empty)}&take={take}", ct), ct);
+        SendAsync<IReadOnlyList<MobileTelemetryEventDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/telemetry", tenantId, $"severity={Uri.EscapeDataString(severity ?? string.Empty)}&take={take}"), ct), ct);
 
     public Task<JobDto> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<JobDto>(() => _http.PostAsync($"/api/v1/admin/jobs/{id}/retry", content: null, ct), ct);
@@ -349,7 +355,7 @@ public sealed class CentralApiClient
         SendAsync<BootstrapSummaryDto>(() => _http.GetAsync($"/api/v1/admin/bootstrap/latest?tenantId={tenantId}", ct), ct);
 
     public Task<IReadOnlyList<ApiKeyDto>> ListApiKeysAsync(Guid? tenantId = null, CancellationToken ct = default) =>
-        SendAsync<IReadOnlyList<ApiKeyDto>>(() => _http.GetAsync($"/api/v1/admin/api-keys?tenantId={tenantId}", ct), ct);
+        SendAsync<IReadOnlyList<ApiKeyDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/api-keys", tenantId), ct), ct);
 
     public Task<ApiKeyCreatedDto> CreateApiKeyAsync(Guid tenantId, string name, string[]? scopes = null, DateTimeOffset? expiresAtUtc = null, CancellationToken ct = default) =>
         SendAsync<ApiKeyCreatedDto>(() => _http.PostAsJsonAsync("/api/v1/admin/api-keys",
@@ -361,8 +367,11 @@ public sealed class CentralApiClient
     public Task<ApiKeyCreatedDto> RotateApiKeyAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<ApiKeyCreatedDto>(() => _http.PostAsync($"/api/v1/admin/api-keys/{id}/rotate", content: null, ct), ct);
 
+    public Task<ApiKeySecretDto> CopyApiKeyAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<ApiKeySecretDto>(() => _http.PostAsync($"/api/v1/admin/api-keys/{id}/copy", content: null, ct), ct);
+
     public Task<IReadOnlyList<WebhookEndpointDto>> ListWebhooksAsync(Guid? tenantId = null, CancellationToken ct = default) =>
-        SendAsync<IReadOnlyList<WebhookEndpointDto>>(() => _http.GetAsync($"/api/v1/admin/webhooks?tenantId={tenantId}", ct), ct);
+        SendAsync<IReadOnlyList<WebhookEndpointDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/webhooks", tenantId), ct), ct);
 
     public Task<WebhookEndpointCreatedDto> CreateWebhookAsync(Guid tenantId, string name, string url, string[]? subscribedEvents = null, CancellationToken ct = default) =>
         SendAsync<WebhookEndpointCreatedDto>(() => _http.PostAsJsonAsync("/api/v1/admin/webhooks",
@@ -373,6 +382,14 @@ public sealed class CentralApiClient
 
     public Task<IReadOnlyList<WebhookDeliveryDto>> ListWebhookDeliveriesAsync(Guid endpointId, int take = 50, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<WebhookDeliveryDto>>(() => _http.GetAsync($"/api/v1/admin/webhooks/{endpointId}/deliveries?take={take}", ct), ct);
+
+    private static string WithTenant(string path, Guid? tenantId, string? extraQuery = null)
+    {
+        var query = new List<string>();
+        if (tenantId.HasValue) query.Add($"tenantId={tenantId.Value}");
+        if (!string.IsNullOrWhiteSpace(extraQuery)) query.Add(extraQuery);
+        return query.Count == 0 ? path : $"{path}?{string.Join("&", query)}";
+    }
 }
 
 /// <summary>

@@ -1,10 +1,12 @@
 using System.Security.Cryptography;
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,6 +52,12 @@ public static class AdminApiKeysEndpoints
             .Produces<ApiKeyCreatedDto>(StatusCodes.Status200OK)
             .Produces<ApiError>(StatusCodes.Status404NotFound);
 
+        group.MapPost("/{id:guid}/copy", CopyAsync)
+            .WithName("AdminApiKeysCopy")
+            .Produces<ApiKeySecretDto>(StatusCodes.Status200OK)
+            .Produces<ApiError>(StatusCodes.Status404NotFound)
+            .Produces<ApiError>(StatusCodes.Status409Conflict);
+
         return routes;
     }
 
@@ -67,6 +75,7 @@ public static class AdminApiKeysEndpoints
     private static async Task<IResult> CreateAsync(
         [FromBody] CreateApiKeyRequest body,
         [FromServices] CentralApiDbContext db,
+        [FromServices] IApiKeyVault vault,
         CancellationToken ct)
     {
         if (body is null || body.TenantId == Guid.Empty)
@@ -82,6 +91,9 @@ public static class AdminApiKeysEndpoints
                 new ApiError { ErrorCode = "TENANT_NOT_FOUND", Message = "Tenant not found or inactive." });
 
         var (rawKey, salt, hash, prefix) = GenerateKey();
+        if (!vault.IsAvailable)
+            return VaultUnavailable();
+        var encrypted = vault.Encrypt(rawKey);
         var scopes = (body.Scopes is { Length: > 0 }) ? body.Scopes : new[] { "ingest:write" };
 
         var key = new ApiKey
@@ -92,6 +104,9 @@ public static class AdminApiKeysEndpoints
             KeyPrefix = prefix,
             KeyHash = hash,
             KeySalt = salt,
+            VaultCiphertext = encrypted.Ciphertext,
+            VaultNonce = encrypted.Nonce,
+            VaultTag = encrypted.Tag,
             Scopes = scopes,
             IsActive = true,
             CreatedAtUtc = DateTimeOffset.UtcNow,
@@ -132,6 +147,7 @@ public static class AdminApiKeysEndpoints
     private static async Task<IResult> RotateAsync(
         Guid id,
         [FromServices] CentralApiDbContext db,
+        [FromServices] IApiKeyVault vault,
         CancellationToken ct)
     {
         var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id, ct);
@@ -140,9 +156,15 @@ public static class AdminApiKeysEndpoints
                 new ApiError { ErrorCode = "API_KEY_NOT_FOUND", Message = "API key not found." });
 
         var (rawKey, salt, hash, prefix) = GenerateKey();
+        if (!vault.IsAvailable)
+            return VaultUnavailable();
+        var encrypted = vault.Encrypt(rawKey);
         key.KeyPrefix = prefix;
         key.KeyHash = hash;
         key.KeySalt = salt;
+        key.VaultCiphertext = encrypted.Ciphertext;
+        key.VaultNonce = encrypted.Nonce;
+        key.VaultTag = encrypted.Tag;
         key.IsActive = true;
         await db.SaveChangesAsync(ct);
 
@@ -157,6 +179,44 @@ public static class AdminApiKeysEndpoints
             CreatedAtUtc = key.CreatedAtUtc,
             ExpiresAtUtc = key.ExpiresAtUtc,
         });
+    }
+
+    private static async Task<IResult> CopyAsync(
+        Guid id,
+        HttpContext http,
+        [FromServices] CentralApiDbContext db,
+        [FromServices] IApiKeyVault vault,
+        CancellationToken ct)
+    {
+        var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id, ct);
+        if (key is null)
+            return JsonResults.Status(StatusCodes.Status404NotFound,
+                new ApiError { ErrorCode = "API_KEY_NOT_FOUND", Message = "API key not found." });
+        if (key.VaultCiphertext is null || key.VaultNonce is null || key.VaultTag is null)
+            return JsonResults.Status(StatusCodes.Status409Conflict,
+                new ApiError { ErrorCode = "API_KEY_ROTATION_REQUIRED", Message = "This legacy API key cannot be retrieved. Rotate it to create a securely vaulted replacement." });
+        if (!vault.IsAvailable)
+            return VaultUnavailable();
+        if (!Guid.TryParse(http.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value, out var adminUserId))
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "ADMIN_ID_MISSING", Message = "Administrator identity is missing." });
+
+        string rawKey;
+        try { rawKey = vault.Decrypt(key.VaultCiphertext, key.VaultNonce, key.VaultTag); }
+        catch (CryptographicException)
+        {
+            return JsonResults.Status(StatusCodes.Status409Conflict,
+                new ApiError { ErrorCode = "API_KEY_VAULT_INVALID", Message = "The stored API key cannot be retrieved. Rotate it to issue a replacement." });
+        }
+
+        db.ApiKeySecretAccessAudits.Add(new ApiKeySecretAccessAudit
+        {
+            Id = Guid.NewGuid(), ApiKeyId = key.Id, AdminUserId = adminUserId,
+            AccessedAtUtc = DateTimeOffset.UtcNow, Action = "copied",
+            RemoteIp = http.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync(ct);
+        return JsonResults.Ok(new ApiKeySecretDto { RawKey = rawKey });
     }
 
     /// <summary>
@@ -189,5 +249,9 @@ public static class AdminApiKeysEndpoints
         CreatedAtUtc = k.CreatedAtUtc,
         ExpiresAtUtc = k.ExpiresAtUtc,
         LastUsedAtUtc = k.LastUsedAtUtc,
+        SecretAvailable = k.VaultCiphertext is not null && k.VaultNonce is not null && k.VaultTag is not null,
     };
+
+    private static IResult VaultUnavailable() => JsonResults.Status(StatusCodes.Status503ServiceUnavailable,
+        new ApiError { ErrorCode = "API_KEY_VAULT_UNAVAILABLE", Message = "API key vault is not configured. Set ApiKeyVault__MasterKey before issuing or copying API keys." });
 }

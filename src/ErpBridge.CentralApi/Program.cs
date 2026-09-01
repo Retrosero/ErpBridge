@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Endpoints;
 using ErpBridge.CentralApi.Options;
+using ErpBridge.CentralApi.Security;
 using ErpBridge.CentralApi.Telemetry;
 using ErpBridge.CentralApi.Webhooks;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -117,6 +118,8 @@ public partial class Program
         ConfigureAuthentication(builder.Services, cfg);
         ConfigureRateLimiter(builder.Services);
         builder.Services.Configure<AdminSeedOptions>(cfg.GetSection("Admin"));
+        builder.Services.Configure<ApiKeyVaultOptions>(cfg.GetSection("ApiKeyVault"));
+        builder.Services.AddSingleton<IApiKeyVault, ApiKeyVault>();
 
         // Webhook fan-out: JobsEndpoints.AckAsync resolves
         // IWebhookDispatcher and enqueues per-endpoint delivery rows.

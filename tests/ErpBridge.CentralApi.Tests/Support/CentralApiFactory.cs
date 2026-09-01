@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using ErpBridge.CentralApi.Options;
 
 namespace ErpBridge.CentralApi.Tests.Support;
 
@@ -55,6 +57,12 @@ public class CentralApiFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Test");
         builder.ConfigureServices(services =>
         {
+            services.PostConfigure<ApiKeyVaultOptions>(options =>
+                options.MasterKey = Convert.ToBase64String(new byte[32]
+                {
+                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+                }));
             // Replace the production DbContext (Npgsql if a connection string
             // was supplied, in-memory fallback otherwise) with a fresh
             // in-memory store. The name is unique per factory so tests can

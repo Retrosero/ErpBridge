@@ -34,6 +34,14 @@ public sealed class ApiKeyDto
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
     [JsonPropertyName("lastUsedAtUtc")] public DateTimeOffset? LastUsedAtUtc { get; set; }
+    /// <summary>Whether this key was created or rotated after the encrypted vault was enabled.</summary>
+    [JsonPropertyName("secretAvailable")] public bool SecretAvailable { get; set; }
+}
+
+/// <summary>Returned only after an authenticated administrator explicitly copies a vaulted API key.</summary>
+public sealed class ApiKeySecretDto
+{
+    [JsonPropertyName("rawKey")] public string RawKey { get; set; } = string.Empty;
 }
 
 /// <summary>POST <c>/api/v1/admin/api-keys</c> body.</summary>

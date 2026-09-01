@@ -3,9 +3,9 @@ namespace ErpBridge.CentralApi.Domain;
 /// <summary>
 /// A long-lived API credential issued to a tenant. The customer pastes the
 /// raw value (prefixed with <c>AK-</c>) into their backend / mobile app to
-/// call <c>POST /api/v1/ingest/jobs</c>. We store only the SHA-256 hash of
-/// <c>salt || rawKey</c>; the raw value is shown exactly once at creation
-/// (and again on rotate) and never persisted.
+/// call <c>POST /api/v1/ingest/jobs</c>. Authentication uses only the
+/// SHA-256 hash of <c>salt || rawKey</c>. Newly issued values are also held
+/// as AES-GCM ciphertext so an administrator can make an audited copy later.
 /// </summary>
 public sealed class ApiKey
 {
@@ -30,6 +30,11 @@ public sealed class ApiKey
 
     /// <summary>Per-row random salt. 16 bytes. Stored alongside the hash.</summary>
     public byte[] KeySalt { get; set; } = Array.Empty<byte>();
+
+    /// <summary>AES-GCM ciphertext for privileged copy access; null for legacy hash-only keys.</summary>
+    public byte[]? VaultCiphertext { get; set; }
+    public byte[]? VaultNonce { get; set; }
+    public byte[]? VaultTag { get; set; }
 
     /// <summary>
     /// Capability tags for this key. Today the only scope we honour is

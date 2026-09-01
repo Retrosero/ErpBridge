@@ -3,6 +3,7 @@ using System;
 using ErpBridge.CentralApi.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ErpBridge.CentralApi.Data.Migrations
 {
     [DbContext(typeof(CentralApiDbContext))]
-    partial class CentralApiDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260901074605_AddApiKeySecretVault")]
+    partial class AddApiKeySecretVault
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

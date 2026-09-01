@@ -1,4 +1,5 @@
 @page "/jobs"
+@using Microsoft.AspNetCore.Components
 @inject ErpBridge.Admin.Api.CentralApiClient Api
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
@@ -61,6 +62,8 @@ else
     // Opening on "Bekliyor" hid documents that an agent had already picked
     // up or rejected. The queue is an audit screen, so it should show every
     // recent document until the operator intentionally narrows it.
+    [SupplyParameterFromQuery(Name = "status")]
+    public string? StatusFromQuery { get; set; }
     private string _status = "";
     private IReadOnlyList<ErpBridge.Admin.Api.JobDto> _jobs = Array.Empty<ErpBridge.Admin.Api.JobDto>();
     private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
@@ -68,6 +71,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        _status = StatusFromQuery ?? string.Empty;
         _tenants = await Api.ListTenantsAsync();
         await ReloadAsync();
     }

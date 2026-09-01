@@ -44,14 +44,10 @@ else
         </div>
     </div>
 
-    @if (!string.IsNullOrEmpty(_lastIssuedRaw))
+    @if (!string.IsNullOrEmpty(_notice))
     {
         <div class="alert alert-success">
-            <strong>Şimdi kopyalayın — anahtarın tamamı yalnızca bir kez gösterilir.</strong>
-            <div class="mt-2 d-flex align-items-center">
-                <code class="me-2 flex-grow-1">@_lastIssuedRaw</code>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="CopyAsync">Kopyala</button>
-            </div>
+            <strong>@_notice</strong>
         </div>
     }
 
@@ -70,7 +66,7 @@ else
             @foreach (var k in _keys)
             {
                 <tr>
-                    <td data-label="Anahtar"><code>@k.KeyPrefix…</code></td>
+                    <td data-label="Anahtar"><code>@k.KeyPrefix••••••••</code></td>
                     <td data-label="Ad"><strong>@k.Name</strong></td>
                     <td data-label="Müşteri">@(TenantName(k.TenantId))</td>
                     <td data-label="Yetki">@string.Join(", ", k.Scopes)</td>
@@ -80,6 +76,10 @@ else
                     <td data-label="İşlem" class="admin-data-table__action">
                         @if (k.IsActive)
                         {
+                            @if (k.SecretAvailable)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary me-1" disabled="@_busy" @onclick="() => CopyStoredAsync(k.Id)">Kopyala</button>
+                            }
                             <button class="btn btn-sm btn-warning me-1" disabled="@_busy" @onclick="() => RevokeAsync(k.Id)">İptal et</button>
                             <button class="btn btn-sm btn-outline-primary" disabled="@_busy" @onclick="() => RotateAsync(k.Id)">Yenile</button>
                         }
@@ -95,7 +95,7 @@ else
     private bool _busy;
     private IReadOnlyList<ErpBridge.Admin.Api.ApiKeyDto> _keys = Array.Empty<ErpBridge.Admin.Api.ApiKeyDto>();
     private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
-    private string? _lastIssuedRaw;
+    private string? _notice;
     private string? _error;
     private readonly CreateModel _create = new();
 
@@ -125,11 +125,12 @@ else
 
     private async Task CreateAsync()
     {
-        _busy = true; _error = null; _lastIssuedRaw = null;
+        _busy = true; _error = null; _notice = null;
         try
         {
             var created = await Api.CreateApiKeyAsync(_create.TenantId, _create.Name.Trim(), new[] { _create.Scope });
-            _lastIssuedRaw = created.RawKey;
+            await CopyToClipboardAsync(created.RawKey);
+            _notice = "Anahtar oluşturuldu ve panoya kopyalandı. Anahtar ekranda gösterilmez.";
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -150,29 +151,29 @@ else
 
     private async Task RotateAsync(Guid id)
     {
-        _busy = true; _lastIssuedRaw = null;
+        _busy = true; _notice = null;
         try
         {
             var rotated = await Api.RotateApiKeyAsync(id);
-            _lastIssuedRaw = rotated.RawKey;
+            await CopyToClipboardAsync(rotated.RawKey);
+            _notice = "Anahtar yenilendi ve panoya kopyalandı. Eski anahtar artık geçersizdir.";
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
 
-    private async Task CopyAsync()
+    private async Task CopyStoredAsync(Guid id)
     {
-        if (string.IsNullOrEmpty(_lastIssuedRaw)) return;
-        try
-        {
-            await Js.InvokeVoidAsync("navigator.clipboard.writeText", _lastIssuedRaw);
-        }
-        catch
-        {
-            // Clipboard access can be blocked (insecure context, denied
-            // permission). The raw value is still on screen — the operator
-            // can copy it manually.
-        }
+        _busy = true; _error = null; _notice = null;
+        try { var secret = await Api.CopyApiKeyAsync(id); await CopyToClipboardAsync(secret.RawKey); _notice = "Anahtar güvenli biçimde panoya kopyalandı. Bu erişim kayda alındı."; }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task CopyToClipboardAsync(string rawKey)
+    {
+        try { await Js.InvokeVoidAsync("navigator.clipboard.writeText", rawKey); }
+        catch { throw new InvalidOperationException("Tarayıcı pano erişimine izin vermedi. Anahtar güvenlik nedeniyle ekranda gösterilmez."); }
     }
 }
