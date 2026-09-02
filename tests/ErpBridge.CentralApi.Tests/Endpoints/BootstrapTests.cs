@@ -109,6 +109,37 @@ public class BootstrapTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Incremental_bootstrap_merges_changed_rows_without_erasing_existing_rows()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: $"BOOT-DELTA-{suffix}");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, $"MACHINE-DELTA-{suffix}");
+        var token = _factory.IssueTestJwt(agent.Id, tenant.Id);
+        var firstTime = DateTimeOffset.UtcNow.AddMinutes(-1);
+
+        (await client.PostJsonAsync("/api/v1/bootstrap", new
+        {
+            sourceDatabase = "MIKRO",
+            pulledAtUtc = firstTime,
+            payload = new { customers = new[] { new { customerCode = "C-KEEP", title1 = "Old" }, new { customerCode = "C-UPDATE", title1 = "Old" } } },
+        }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await client.PostJsonAsync("/api/v1/bootstrap", new
+        {
+            sourceDatabase = "MIKRO",
+            pulledAtUtc = firstTime.AddSeconds(1),
+            payload = new { isIncremental = true, changedSinceUtc = firstTime, customers = new[] { new { customerCode = "C-UPDATE", title1 = "New" } } },
+        }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+        var latest = await db.BootstrapPackages.AsNoTracking().Where(item => item.TenantId == tenant.Id)
+            .OrderByDescending(item => item.PulledAtUtc).FirstAsync();
+        latest.PayloadJson.Should().Contain("C-KEEP").And.Contain("C-UPDATE").And.Contain("\"New\"");
+    }
+
+    [Fact]
     public async Task Bootstrap_with_invalid_token_returns_401()
     {
         var client = _factory.CreateClient();

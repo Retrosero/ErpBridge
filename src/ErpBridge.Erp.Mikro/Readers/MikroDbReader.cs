@@ -42,7 +42,7 @@ public sealed class MikroDbReader : IMikroDbReader
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT
@@ -61,9 +61,10 @@ SELECT
     CAST(cari_CepTel AS NVARCHAR(50))                 AS Phone,
     CAST(cari_EMail AS NVARCHAR(200))                 AS Email
 FROM CARI_HESAPLAR
-WHERE ISNULL(cari_iptal, 0) = 0";
+WHERE ISNULL(cari_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(cari_lastup_date, cari_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<CustomerRow>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<CustomerRow>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
         // Drop the Addresses/Contacts fields the constructor will initialise to null —
         // supply proper empty lists after Dapper hydrates the scalar columns.
         var result = rows
@@ -90,7 +91,7 @@ WHERE ISNULL(cari_iptal, 0) = 0";
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<CustomerAddressPayload>> ReadCustomerAddressesAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CustomerAddressPayload>> ReadCustomerAddressesAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT CAST(ISNULL(adr_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
@@ -105,14 +106,15 @@ SELECT CAST(ISNULL(adr_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
        CAST(adr_gps_boylam AS FLOAT) AS Longitude,
        CAST(adr_temsilci_kodu AS NVARCHAR(50)) AS SalespersonCode
 FROM CARI_HESAP_ADRESLERI
-WHERE ISNULL(adr_iptal, 0) = 0";
-        var result = (await QueryAsync<CustomerAddressPayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+WHERE ISNULL(adr_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(adr_lastup_date, adr_create_date) > @changedSinceUtc)";
+        var result = (await QueryAsync<CustomerAddressPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} customer addresses for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<CustomerContactPayload>> ReadCustomerContactsAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CustomerContactPayload>> ReadCustomerContactsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT CAST(ISNULL(mye_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
@@ -123,14 +125,15 @@ SELECT CAST(ISNULL(mye_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
        CAST(mye_tc_kimlikno AS NVARCHAR(20)) AS TcIdentityNo,
        CAST(mye_vergi_kimlikno AS NVARCHAR(20)) AS TaxNo
 FROM CARI_HESAP_YETKILILERI
-WHERE ISNULL(mye_iptal, 0) = 0";
-        var result = (await QueryAsync<CustomerContactPayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+WHERE ISNULL(mye_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(mye_lastup_date, mye_create_date) > @changedSinceUtc)";
+        var result = (await QueryAsync<CustomerContactPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} customer contacts for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<StockPayload>> ReadStocksAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<StockPayload>> ReadStocksAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT
@@ -160,9 +163,10 @@ SELECT
     CAST(NULL AS NVARCHAR(10))                        AS Currency
 FROM STOKLAR
 WHERE ISNULL(sto_iptal, 0) = 0
-  AND ISNULL(sto_pasif_fl, 0) = 0";
+  AND ISNULL(sto_pasif_fl, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(sto_lastup_date, sto_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<StockRow>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<StockRow>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
         var result = rows
             .Select(s => new StockPayload(
                 s.StockCode,
@@ -196,7 +200,7 @@ WHERE ISNULL(sto_iptal, 0) = 0
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<BarcodePayload>> ReadBarcodesAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<BarcodePayload>> ReadBarcodesAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT CAST(ISNULL(bar_kodu, '') AS NVARCHAR(100)) AS Barcode,
@@ -206,14 +210,15 @@ SELECT CAST(ISNULL(bar_kodu, '') AS NVARCHAR(100)) AS Barcode,
        CAST(bar_serino_veya_bagkodu AS NVARCHAR(100)) AS SerialNo,
        CAST(ISNULL(bar_birimpntr, 0) AS INT) AS UnitPointer
 FROM BARKOD_TANIMLARI
-WHERE ISNULL(bar_iptal, 0) = 0";
-        var result = (await QueryAsync<BarcodePayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+WHERE ISNULL(bar_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(bar_lastup_date, bar_create_date) > @changedSinceUtc)";
+        var result = (await QueryAsync<BarcodePayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} barcodes for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<OpenOrderPayload>> ReadOpenOrdersAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<OpenOrderPayload>> ReadOpenOrdersAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT
@@ -233,35 +238,38 @@ SELECT
 FROM SIPARISLER
 WHERE sip_firmano = @firmNo
   AND ISNULL(sip_iptal, 0) = 0
-  AND sip_kapat_fl = 0";
+  AND sip_kapat_fl = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(sip_lastup_date, sip_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<OpenOrderPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<OpenOrderPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} open orders for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<CashAndBankPayload>> ReadCashAndBankAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CashAndBankPayload>> ReadCashAndBankAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT kas_kod AS Code, kas_isim AS Name, 'cash' AS Kind, NULL AS Branch,
        NULL AS AccountNo, kas_firma_no AS FirmNo, CAST(kas_doviz_cinsi AS NVARCHAR(10)) AS Currency,
        NULL AS TcmbCode
 FROM KASALAR WHERE kas_firma_no = @firmNo AND ISNULL(kas_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(kas_lastup_date, kas_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT ban_kod, ban_ismi, 'bank', ban_sube, ban_hesapno, ban_firma_no,
        CAST(ban_doviz_cinsi AS NVARCHAR(10)), ban_TCMB_Kodu
-FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0";
+FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(ban_lastup_date, ban_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<CashAndBankPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<CashAndBankPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} cash+bank for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<LookupPayload>> ReadLookupsAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<LookupPayload>> ReadLookupsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         // Lookups span several tables; one unioned query keeps the round-trips
         // down and lets Dapper map a single uniform result shape.
@@ -271,35 +279,40 @@ SELECT 'warehouse' AS Kind, CAST(dep_no AS NVARCHAR(20)) AS Code, CAST(dep_adi A
        CAST(NULL AS NVARCHAR(50)) AS ParentCode, CAST(NULL AS NVARCHAR(10)) AS Currency
 FROM DEPOLAR
 WHERE dep_firmano = @firmNo AND ISNULL(dep_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(dep_lastup_date, dep_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'salesperson', CAST(cari_per_kod AS NVARCHAR(20)), CAST(ISNULL(cari_per_adi,'') + ' ' + ISNULL(cari_per_soyadi,'') AS NVARCHAR(200)),
        CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
 FROM CARI_PERSONEL_TANIMLARI
 WHERE ISNULL(cari_per_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(cari_per_lastup_date, cari_per_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'payment_plan', CAST(odp_no AS NVARCHAR(20)), CAST(ISNULL(odp_aratop,0) AS NVARCHAR(200)),
        CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
 FROM ODEME_PLANLARI
 WHERE ISNULL(odp_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(odp_lastup_date, odp_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'project', CAST(pro_kodu AS NVARCHAR(50)), CAST(pro_adi AS NVARCHAR(200)),
        CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
 FROM PROJELER
 WHERE ISNULL(pro_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(pro_lastup_date, pro_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'price_list', CAST(sfl_sirano AS NVARCHAR(20)), CAST(ISNULL(sfl_aciklama, '') AS NVARCHAR(200)),
        CAST(ISNULL(sfl_fiyatformul, '') AS NVARCHAR(500)), CAST(NULL AS NVARCHAR(10))
 FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI
-WHERE ISNULL(sfl_iptal, 0) = 0";
+WHERE ISNULL(sfl_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(sfl_lastup_date, sfl_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<LookupPayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<LookupPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} lookups.", result.Count);
         return result;
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<PricePayload>> ReadPricesAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<PricePayload>> ReadPricesAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT
@@ -309,16 +322,17 @@ SELECT
     CAST(sfiyat_doviz AS NVARCHAR(10))               AS Currency,
     CAST(NULL AS NVARCHAR(50))                       AS DiscountCode
 FROM STOK_SATIS_FIYAT_LISTELERI
-WHERE ISNULL(sfiyat_iptal, 0) = 0";
+WHERE ISNULL(sfiyat_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(sfiyat_lastup_date, sfiyat_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<PricePayload>(sql, new { firmNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<PricePayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} price-list rows for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<SalesConditionPayload>> ReadSalesConditionsAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<SalesConditionPayload>> ReadSalesConditionsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT CAST(sat_stok_kod AS NVARCHAR(50)) AS StockCode,
@@ -336,8 +350,9 @@ SELECT CAST(sat_stok_kod AS NVARCHAR(50)) AS StockCode,
        CAST(ISNULL(sat_det_isk_yuzde5, 0) AS DECIMAL(18,6)) AS Discount5,
        CAST(ISNULL(sat_det_isk_yuzde6, 0) AS DECIMAL(18,6)) AS Discount6
 FROM SATIS_SARTLARI
-WHERE ISNULL(sat_iptal, 0) = 0";
-        var rows = await QueryAsync<SalesConditionRow>(sql, new { firmNo }, ct).ConfigureAwait(false);
+WHERE ISNULL(sat_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(sat_lastup_date, sat_create_date) > @changedSinceUtc)";
+        var rows = await QueryAsync<SalesConditionRow>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
         var result = rows.Select(row => new SalesConditionPayload(
             row.StockCode, row.CustomerCode, row.WarehouseNo, row.PaymentPlanNo,
             row.StartDate, row.EndDate, row.GrossPrice, row.Currency,
@@ -347,7 +362,7 @@ WHERE ISNULL(sat_iptal, 0) = 0";
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<InventoryPayload>> ReadInventoryAsync(int firmNo, int warehouseNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<InventoryPayload>> ReadInventoryAsync(int firmNo, int warehouseNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         // Mikro's own stock-movement view contains the authoritative on-hand
         // quantity after applying the ERP's movement, cancellation, return and
@@ -363,9 +378,13 @@ SELECT
     CAST(0 AS DECIMAL(18,6))                             AS ReservedQuantity,
     CAST(NULL AS DATE)                                   AS LastMovementDate
 FROM dbo.STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW
-WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL";
+WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL
+  AND (@changedSinceUtc IS NULL OR EXISTS (
+      SELECT 1 FROM STOK_HAREKETLERI changed
+      WHERE changed.sth_stok_kod = sth_stok_kod
+        AND COALESCE(changed.sth_lastup_date, changed.sth_create_date, changed.sth_tarih) > @changedSinceUtc))";
 
-        var rows = await QueryAsync<InventoryPayload>(sql, new { firmNo, warehouseNo }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<InventoryPayload>(sql, new { firmNo, warehouseNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation(
             "Read {Count} inventory rows from STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW for firmNo={FirmNo}, warehouseNo={WarehouseNo}.",
@@ -374,7 +393,7 @@ WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL";
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<CustomerTransactionPayload>> ReadCustomerTransactionsAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CustomerTransactionPayload>> ReadCustomerTransactionsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
@@ -394,15 +413,16 @@ SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
        CAST(cha_RECno AS INT) AS RecNo
 FROM CARI_HESAP_HAREKETLERI
 WHERE ISNULL(cha_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) > @changedSinceUtc)
 ORDER BY cha_RECno";
 
-        var result = (await QueryAsync<CustomerTransactionPayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+        var result = (await QueryAsync<CustomerTransactionPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} customer transactions for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default)
+    public async Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
 SELECT CAST(sth_RECno AS NVARCHAR(50)) AS Id,
@@ -432,9 +452,10 @@ SELECT CAST(sth_RECno AS NVARCHAR(50)) AS Id,
        CAST(sth_fat_recid_recno AS INT) AS InvoiceRecNo
 FROM STOK_HAREKETLERI
 WHERE ISNULL(sth_iptal, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(sth_lastup_date, sth_create_date, sth_tarih) > @changedSinceUtc)
 ORDER BY sth_RECno";
 
-        var result = (await QueryAsync<StockTransactionPayload>(sql, new { firmNo }, ct).ConfigureAwait(false)).ToList();
+        var result = (await QueryAsync<StockTransactionPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} stock transactions for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }

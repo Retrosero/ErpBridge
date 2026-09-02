@@ -28,9 +28,18 @@ public interface IRemoteApiClient
     /// <summary>Push bootstrap data (cari/stok/fiyat/...) to the central API.</summary>
     Task PushBootstrapDataAsync(SyncPackage package, CancellationToken ct = default);
 
+    /// <summary>
+    /// Returns whether the central API already has a bootstrap snapshot for
+    /// this tenant and, when it does, the cursor for an incremental read.
+    /// </summary>
+    Task<BootstrapRemoteStatus> GetBootstrapStatusAsync(CancellationToken ct = default)
+        => Task.FromResult(new BootstrapRemoteStatus(false, null));
+
     /// <summary>Send a periodic agent heartbeat.</summary>
     Task SendHeartbeatAsync(AgentHeartbeat heartbeat, CancellationToken ct = default);
 }
+
+public sealed record BootstrapRemoteStatus(bool HasSnapshot, DateTimeOffset? LastPulledAtUtc);
 
 /// <summary>Outcome of <see cref="IRemoteApiClient.RegisterAgentAsync"/>.</summary>
 public sealed class AgentRegistrationResult

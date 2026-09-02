@@ -94,6 +94,13 @@ public sealed class ApiError
     [JsonPropertyName("traceId")] public string? TraceId { get; set; }
 }
 
+/// <summary>Authenticated bootstrap state used by agents to choose full or incremental reads.</summary>
+public sealed class BootstrapStatusResponse
+{
+    [JsonPropertyName("hasSnapshot")] public bool HasSnapshot { get; set; }
+    [JsonPropertyName("lastPulledAtUtc")] public DateTimeOffset? LastPulledAtUtc { get; set; }
+}
+
 /// <summary>POST /api/v1/mobile/telemetry/batch body.</summary>
 public sealed class MobileTelemetryBatchRequest
 {

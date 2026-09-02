@@ -25,20 +25,20 @@ public interface IMikroDbReader
     /// contacts) are filled from the dedicated tables downstream — Phase 5 keeps
     /// them empty.
     /// </summary>
-    Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
-    Task<IReadOnlyList<CustomerAddressPayload>> ReadCustomerAddressesAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<CustomerAddressPayload>> ReadCustomerAddressesAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
-    Task<IReadOnlyList<CustomerContactPayload>> ReadCustomerContactsAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<CustomerContactPayload>> ReadCustomerContactsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
     /// <summary>
     /// Read all active stoks (items) from <c>STOKLAR</c> for the given
     /// <paramref name="firmNo"/> where <c>sto_pasif_fl = 0</c>. Passive rows are
     /// excluded so the central API doesn't see archived SKUs.
     /// </summary>
-    Task<IReadOnlyList<StockPayload>> ReadStocksAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<StockPayload>> ReadStocksAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
-    Task<IReadOnlyList<BarcodePayload>> ReadBarcodesAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<BarcodePayload>> ReadBarcodesAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
     /// <summary>
     /// Read all open sales-order lines from <c>SIPARISLER</c> for the given
@@ -46,34 +46,34 @@ public interface IMikroDbReader
     /// <c>RemainingQuantity</c> column on <see cref="OpenOrderPayload"/> is
     /// denormalised as <c>Quantity - DeliveredQuantity</c>.
     /// </summary>
-    Task<IReadOnlyList<OpenOrderPayload>> ReadOpenOrdersAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<OpenOrderPayload>> ReadOpenOrdersAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
     /// <summary>
     /// Read kasa + banka records (cash and bank accounts) as a single typed
     /// stream where <see cref="CashAndBankPayload.Kind"/> is either
     /// <c>"cash"</c> or <c>"bank"</c>.
     /// </summary>
-    Task<IReadOnlyList<CashAndBankPayload>> ReadCashAndBankAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<CashAndBankPayload>> ReadCashAndBankAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
     /// <summary>
     /// Read the closed-set of lookup dimensions (warehouse, salesperson,
     /// payment-plan, project, currency) as a single uniform stream where
     /// <see cref="LookupPayload.Kind"/> disambiguates the source master.
     /// </summary>
-    Task<IReadOnlyList<LookupPayload>> ReadLookupsAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<LookupPayload>> ReadLookupsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
     /// <summary>
     /// Read all aktif price-list rows from <c>STOK_SATIS_FIYAT_LISTELERI</c>
     /// for the given <paramref name="firmNo"/>. Rows with null price are kept
     /// (mirroring what Mikro actually stores).
     /// </summary>
-    Task<IReadOnlyList<PricePayload>> ReadPricesAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<PricePayload>> ReadPricesAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
-    Task<IReadOnlyList<SalesConditionPayload>> ReadSalesConditionsAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<SalesConditionPayload>> ReadSalesConditionsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
-    Task<IReadOnlyList<CustomerTransactionPayload>> ReadCustomerTransactionsAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<CustomerTransactionPayload>> ReadCustomerTransactionsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
-    Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default);
+    Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 
     /// <summary>
     /// Read the on-hand inventory for a single warehouse by aggregating
@@ -81,5 +81,5 @@ public interface IMikroDbReader
     /// <paramref name="warehouseNo"/>. Tip values &lt; 4 count as inflow,
     /// tips ≥ 4 as outflow so net quantity is sign-correct.
     /// </summary>
-    Task<IReadOnlyList<InventoryPayload>> ReadInventoryAsync(int firmNo, int warehouseNo, CancellationToken ct = default);
+    Task<IReadOnlyList<InventoryPayload>> ReadInventoryAsync(int firmNo, int warehouseNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null);
 }

@@ -156,14 +156,32 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     $"IErpAdapterFactory returned null for {config.ErpType}.");
             }
 
-            // 1) Pull snapshot from Mikro. The adapter is responsible for the
-            //    full V15/V16 + connection-test + version-detect flow; this
-            //    orchestrator only cares that the returned SyncPackage is
-            //    non-null and carries the SourceDatabase for traceability.
+            // The central API is authoritative for whether it already has a
+            // snapshot. A local checkpoint alone cannot detect that the
+            // central store was reset while this agent stayed online.
+            BootstrapRemoteStatus remoteStatus;
+            try
+            {
+                remoteStatus = await _remoteApi.GetBootstrapStatusAsync(ct).ConfigureAwait(false)
+                    ?? new BootstrapRemoteStatus(false, null);
+            }
+            catch (Exception ex)
+            {
+                // Old servers without the status endpoint must remain safe:
+                // use a full package rather than risk a partial first upload.
+                _logger.LogWarning(ex, "Bootstrap status unavailable; using a full snapshot.");
+                remoteStatus = new BootstrapRemoteStatus(false, null);
+            }
+
+            // Pull a complete package only for an empty central tenant.
+            // Otherwise Mikro filters on the remote cursor and returns a
+            // mergeable incremental package.
             SyncPackage? package;
             try
             {
-                package = await adapter.ReadBootstrapDataAsync(ct).ConfigureAwait(false);
+                package = remoteStatus.HasSnapshot && remoteStatus.LastPulledAtUtc is { } changedSinceUtc
+                    ? await adapter.ReadBootstrapChangesAsync(changedSinceUtc, ct).ConfigureAwait(false)
+                    : await adapter.ReadBootstrapDataAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

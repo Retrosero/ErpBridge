@@ -20,6 +20,14 @@ public interface IErpAdapter
     Task<SyncPackage> ReadBootstrapDataAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Read records changed after <paramref name="changedSinceUtc"/>. Adapters
+    /// that have no reliable modification timestamp may fall back to a full
+    /// read; Mikro implements this with its create/last-update timestamps.
+    /// </summary>
+    Task<SyncPackage> ReadBootstrapChangesAsync(DateTimeOffset changedSinceUtc, CancellationToken ct = default)
+        => ReadBootstrapDataAsync(ct);
+
+    /// <summary>
     /// Read a single reference-data section from the ERP and return it wrapped
     /// in a <see cref="SyncPackage"/> with all other sections empty. Used by
     /// the WPF "Her Tablo" diagnostic buttons when the bulk

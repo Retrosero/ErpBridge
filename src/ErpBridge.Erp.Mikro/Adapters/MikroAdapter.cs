@@ -142,6 +142,39 @@ public sealed class MikroAdapter : IErpAdapter
             StockTransactions: stockTransactions);
     }
 
+    /// <inheritdoc />
+    public async Task<SyncPackage> ReadBootstrapChangesAsync(DateTimeOffset changedSinceUtc, CancellationToken ct = default)
+    {
+        const int firmNo = 1;
+        const int warehouseNo = 1;
+        var customers = await _dbReader.ReadCustomersAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
+        var customerAddresses = await _dbReader.ReadCustomerAddressesAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
+        var customerContacts = await _dbReader.ReadCustomerContactsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
+        customers = AttachCustomerChildren(customers, customerAddresses, customerContacts);
+        var stocks = await _dbReader.ReadStocksAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
+        var barcodes = await _dbReader.ReadBarcodesAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
+        stocks = AttachBarcodes(stocks, barcodes);
+
+        return new SyncPackage(
+            PulledAtUtc: DateTime.UtcNow,
+            SourceDatabase: ConnectionSettings.DatabaseName,
+            Customers: customers,
+            CustomerAddresses: customerAddresses,
+            CustomerContacts: customerContacts,
+            Stocks: stocks,
+            Barcodes: barcodes,
+            Prices: await _dbReader.ReadPricesAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
+            SalesConditions: await _dbReader.ReadSalesConditionsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
+            Inventory: await _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct, changedSinceUtc).ConfigureAwait(false),
+            OpenOrders: await _dbReader.ReadOpenOrdersAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
+            CashAndBank: await _dbReader.ReadCashAndBankAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
+            Lookups: await _dbReader.ReadLookupsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
+            CustomerTransactions: await _dbReader.ReadCustomerTransactionsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
+            StockTransactions: await _dbReader.ReadStockTransactionsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
+            IsIncremental: true,
+            ChangedSinceUtc: changedSinceUtc.UtcDateTime);
+    }
+
     private static IReadOnlyList<CustomerPayload> AttachCustomerChildren(
         IReadOnlyList<CustomerPayload> customers,
         IReadOnlyList<CustomerAddressPayload> addresses,

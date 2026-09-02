@@ -21,6 +21,8 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <param name="CustomerTransactions">Cari ledger rows (CARI_HESAP_HAREKETLERI).</param>
 /// <param name="StockTransactions">Raw stock ledger rows (STOK_HAREKETLERI).</param>
 /// <param name="PartialSection">Section key for a manual partial push; null for a complete snapshot.</param>
+/// <param name="IsIncremental">True when collections contain only records changed since <paramref name="ChangedSinceUtc"/>.</param>
+/// <param name="ChangedSinceUtc">Exclusive UTC cursor used for an incremental package.</param>
 public sealed record SyncPackage(
     DateTime PulledAtUtc,
     string SourceDatabase,
@@ -37,7 +39,9 @@ public sealed record SyncPackage(
     IReadOnlyList<LookupPayload> Lookups,
     IReadOnlyList<CustomerTransactionPayload> CustomerTransactions,
     IReadOnlyList<StockTransactionPayload> StockTransactions,
-    string? PartialSection = null)
+    string? PartialSection = null,
+    bool IsIncremental = false,
+    DateTime? ChangedSinceUtc = null)
 {
     /// <summary>
     /// Build a metadata-only <see cref="SyncPackage"/> with empty row collections.

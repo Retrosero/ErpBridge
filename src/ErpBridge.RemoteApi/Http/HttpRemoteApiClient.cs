@@ -207,6 +207,26 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         await SendNoContentAsync(request, opts, ct, classifyBootstrapFailure: true);
     }
 
+    /// <inheritdoc />
+    public async Task<BootstrapRemoteStatus> GetBootstrapStatusAsync(CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(HttpMethod.Get, "/api/v1/bootstrap/status", opts, idempotencyKey: null);
+        var response = await SendAsync<BootstrapStatusResponseDto>(request, opts, ct).ConfigureAwait(false);
+        return response is null
+            ? new BootstrapRemoteStatus(false, null)
+            : new BootstrapRemoteStatus(response.HasSnapshot, response.LastPulledAtUtc);
+    }
+
+    private sealed class BootstrapStatusResponseDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("hasSnapshot")]
+        public bool HasSnapshot { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("lastPulledAtUtc")]
+        public DateTimeOffset? LastPulledAtUtc { get; set; }
+    }
+
     /// <summary>
     /// Wire shape for <c>POST /api/v1/bootstrap</c>. Mirrors
     /// <c>ErpBridge.CentralApi.Contracts.BootstrapRequest</c> — we cannot
