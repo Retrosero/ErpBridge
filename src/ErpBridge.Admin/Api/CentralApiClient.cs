@@ -31,6 +31,8 @@ public sealed class TenantDto
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
     [JsonPropertyName("maxDeviceCount")] public int MaxDeviceCount { get; set; }
+    [JsonPropertyName("registeredDeviceCount")] public int RegisteredDeviceCount { get; set; }
+    [JsonPropertyName("registeredDeviceIds")] public string[] RegisteredDeviceIds { get; set; } = Array.Empty<string>();
 }
 
 public sealed class CreateTenantRequest

@@ -36,6 +36,25 @@ public class AdminTenantsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task List_includes_registered_device_usage_and_machine_ids()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync(tenantName: "Device usage tenant");
+        await _factory.SeedAgentAsync(tenant.Id, "DEVICE-002");
+        await _factory.SeedAgentAsync(tenant.Id, "DEVICE-001");
+
+        var response = await client.GetAsync("/api/v1/admin/tenants", token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.ReadAsJsonAsync<TenantDto[]>();
+        var row = body!.Single(t => t.Id == tenant.Id);
+        row.RegisteredDeviceCount.Should().Be(2);
+        row.RegisteredDeviceIds.Should().Equal("DEVICE-001", "DEVICE-002");
+    }
+
+    [Fact]
     public async Task Create_returns_201_with_new_tenant()
     {
         var client = _factory.CreateClient();

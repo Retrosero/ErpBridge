@@ -49,7 +49,11 @@ public static class AdminTenantsEndpoints
         [FromServices] CentralApiDbContext db,
         CancellationToken ct)
     {
-        var rows = await db.Tenants.AsNoTracking().OrderBy(t => t.Name).ToListAsync(ct);
+        var rows = await db.Tenants
+            .AsNoTracking()
+            .Include(t => t.Agents)
+            .OrderBy(t => t.Name)
+            .ToListAsync(ct);
         var dtos = rows.Select(ToDto).ToArray();
         return JsonResults.Ok(dtos);
     }
@@ -82,7 +86,10 @@ public static class AdminTenantsEndpoints
         [FromServices] CentralApiDbContext db,
         CancellationToken ct)
     {
-        var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, ct);
+        var tenant = await db.Tenants
+            .AsNoTracking()
+            .Include(t => t.Agents)
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tenant is null)
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "TENANT_NOT_FOUND", Message = "Tenant not found." });
         return JsonResults.Ok(ToDto(tenant));
@@ -97,7 +104,9 @@ public static class AdminTenantsEndpoints
         if (body is null)
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_BODY", Message = "Body required." });
 
-        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
+        var tenant = await db.Tenants
+            .Include(t => t.Agents)
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tenant is null)
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "TENANT_NOT_FOUND", Message = "Tenant not found." });
 
@@ -119,5 +128,10 @@ public static class AdminTenantsEndpoints
         CreatedAtUtc = t.CreatedAtUtc,
         IsActive = t.IsActive,
         MaxDeviceCount = t.MaxDeviceCount,
+        RegisteredDeviceCount = t.Agents.Count,
+        RegisteredDeviceIds = t.Agents
+            .Select(a => a.MachineId)
+            .OrderBy(machineId => machineId, StringComparer.OrdinalIgnoreCase)
+            .ToArray(),
     };
 }

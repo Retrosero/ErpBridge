@@ -81,22 +81,25 @@ public class HeartbeatTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
-    public async Task Heartbeat_with_token_claiming_wrong_tenant_returns_401()
+    public async Task Heartbeat_uses_token_identity_when_legacy_body_contains_machine_name()
     {
         var client = _factory.CreateClient();
         var (tenantA, _) = await _factory.SeedTenantAsync(licenseKey: "HB-TENANT-MISMATCH");
         var agentA = await _factory.SeedAgentAsync(tenantA.Id, "MACHINE-HB-004");
         var token = _factory.IssueTestJwt(agentA.Id, tenantA.Id);
 
-        var tenantBSpoof = Guid.NewGuid();
-
         var response = await client.PostJsonAsync("/api/v1/agents/heartbeat", new
         {
-            agentId = agentA.Id,
-            tenantId = tenantBSpoof,
-            status = "ok",
+            agentId = "MACHINE-HB-004",
+            tenantId = "legacy-tenant-id",
+            status = "running",
         }, token);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+        var stored = await db.Agents.AsNoTracking().FirstAsync(a => a.Id == agentA.Id);
+        stored.LastStatus.Should().Be("running");
     }
 }

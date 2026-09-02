@@ -133,14 +133,9 @@ public static class AgentsEndpoints
             return JsonResults.Status(StatusCodes.Status401Unauthorized,
                 new ApiError { ErrorCode = "INVALID_TOKEN", Message = "JWT missing sub/tenant claims." });
 
-        // Tenant comes strictly from the token — never from the body. This is the
-        // tenant isolation seam for the whole API.
-        if (tokenAgentId != body.AgentId)
-            return JsonResults.Status(StatusCodes.Status401Unauthorized,
-                new ApiError { ErrorCode = "AGENT_MISMATCH", Message = "Body agentId does not match token sub." });
-        if (tokenTenantId != body.TenantId)
-            return JsonResults.Status(StatusCodes.Status401Unauthorized,
-                new ApiError { ErrorCode = "TENANT_MISMATCH", Message = "Body tenantId does not match token tenant claim." });
+        // Identity and tenant come strictly from the token — never from the
+        // body. Older agents send their machine name in agentId, while newer
+        // ones may send the GUID, so body values are intentionally ignored.
 
         var agent = await db.Agents.FirstOrDefaultAsync(a => a.Id == tokenAgentId && a.TenantId == tokenTenantId, ct);
         if (agent is null)

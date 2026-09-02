@@ -25,8 +25,11 @@ public sealed class AgentRegisterResponse
 /// <summary>POST /api/v1/agents/heartbeat body.</summary>
 public sealed class AgentHeartbeatRequest
 {
-    [JsonPropertyName("agentId")] public Guid AgentId { get; set; }
-    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    // Agent identity and tenant isolation are taken exclusively from the JWT.
+    // Keep these fields as strings to accept the existing agent payload, which
+    // reports its stable machine name as agentId.
+    [JsonPropertyName("agentId")] public string AgentId { get; set; } = string.Empty;
+    [JsonPropertyName("tenantId")] public string TenantId { get; set; } = string.Empty;
     [JsonPropertyName("status")] public string? Status { get; set; }
     [JsonPropertyName("lastSyncAtUtc")] public DateTimeOffset? LastSyncAtUtc { get; set; }
     [JsonPropertyName("queueDepth")] public int QueueDepth { get; set; }

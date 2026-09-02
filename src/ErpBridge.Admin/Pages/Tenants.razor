@@ -22,7 +22,7 @@ else
     <table class="table admin-data-table">
         <thead>
             <tr>
-                <th>Kimlik</th><th>Müşteri</th><th>Cihaz hakkı</th><th>Oluşturulma</th><th>Durum</th><th>İşlem</th>
+                <th>Kimlik</th><th>Müşteri</th><th>Cihaz kullanımı</th><th>Bağlı cihaz kimlikleri</th><th>Cihaz hakkı</th><th>Oluşturulma</th><th>Durum</th><th>İşlem</th>
             </tr>
         </thead>
         <tbody>
@@ -31,6 +31,20 @@ else
                 <tr>
                     <td data-label="Kimlik"><code>@t.Id.ToString().Substring(0, 8)</code></td>
                     <td data-label="Müşteri"><strong>@t.Name</strong></td>
+                    <td data-label="Cihaz kullanımı"><strong>@t.RegisteredDeviceCount / @t.MaxDeviceCount</strong></td>
+                    <td data-label="Bağlı cihaz kimlikleri">
+                        @if (t.RegisteredDeviceIds.Length == 0)
+                        {
+                            <span class="text-muted">Henüz cihaz bağlanmadı</span>
+                        }
+                        else
+                        {
+                            @foreach (var deviceId in t.RegisteredDeviceIds)
+                            {
+                                <code class="d-block">@deviceId</code>
+                            }
+                        }
+                    </td>
                     <td data-label="Cihaz hakkı"><input class="form-control form-control-sm" type="number" min="1" max="1000" value="@t.MaxDeviceCount" @onchange="e => UpdateDeviceLimitAsync(t.Id, e.Value?.ToString())" aria-label="@($"{t.Name} cihaz hakkı")" /></td>
                     <td data-label="Oluşturulma">@t.CreatedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
                     <td data-label="Durum"><AdminStatusBadge Text="@(t.IsActive ? "Aktif" : "Pasif")" Tone="@(t.IsActive ? "success" : "muted")" /></td>
