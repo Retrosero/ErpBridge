@@ -32,6 +32,13 @@
     <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="appsettings*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <!--
     Expose internal helpers (e.g. AgentWorker.ProcessJobAsync) to the
     companion test project so unit tests can drive the per-job dispatch path

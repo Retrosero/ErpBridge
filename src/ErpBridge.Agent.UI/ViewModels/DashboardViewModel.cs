@@ -151,13 +151,6 @@ public sealed class DashboardViewModel : ObservableObject
     /// </summary>
     private async Task<bool> EnsureRegisteredAsync()
     {
-        var existingJwt = _configuration["CentralApi:Jwt"];
-        if (!string.IsNullOrWhiteSpace(existingJwt))
-        {
-            _logger.LogDebug("JWT already set in CentralApi:Jwt; skipping auto-register.");
-            return true;
-        }
-
         var config = await _configStore.LoadAsync().ConfigureAwait(true);
         if (config is null || string.IsNullOrWhiteSpace(config.LicenseKey))
         {
@@ -169,6 +162,18 @@ public sealed class DashboardViewModel : ObservableObject
         {
             _logger.LogWarning("Auto-register skipped: AgentConfig.ApiBaseUrl is empty.");
             return false;
+        }
+
+        // The persisted setting is the operator's source of truth. Keep the
+        // IOptionsMonitor-backed remote client aligned with it before either
+        // using an existing token or obtaining a new one.
+        _liveSettings["CentralApi:BaseUrl"] = apiBaseUrl;
+
+        var existingJwt = _configuration["CentralApi:Jwt"];
+        if (!string.IsNullOrWhiteSpace(existingJwt))
+        {
+            _logger.LogDebug("JWT already set in CentralApi:Jwt; skipping auto-register.");
+            return true;
         }
 
         var licenseKey = config.LicenseKey!.Trim();

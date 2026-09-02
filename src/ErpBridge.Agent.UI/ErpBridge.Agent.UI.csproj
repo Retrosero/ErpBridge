@@ -39,6 +39,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="appsettings*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="assets\icon.ico" />
     <Resource Include="assets\icon-256.png" />
     <Resource Include="assets\tray-32.png" />

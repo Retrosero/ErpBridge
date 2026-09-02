@@ -1230,11 +1230,10 @@ public sealed class AgentSettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Project the Mikro-relevant fields of <paramref name="config"/> into the
-    /// "Mikro" section of the live <see cref="IConfiguration"/>. The adapter
-    /// reads this section on every TestConnection call, so updating it here
-    /// makes the user-visible Mikro credentials the source of truth without
-    /// requiring a process restart.
+    /// Project Mikro settings and the Central API URL from <paramref name="config"/>
+    /// into the live <see cref="IConfiguration"/>. The remote API client reads
+    /// these through <c>IOptionsMonitor</c>, so the operator's saved URL is used
+    /// without requiring a process restart.
     /// </summary>
     /// <remarks>
     /// Writes go to the dedicated <see cref="MutableMemoryConfigurationProvider"/>
@@ -1256,6 +1255,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
         _liveSettings[prefix + "Password"] = config.SqlPassword ?? string.Empty;
         _liveSettings[prefix + "DatabaseName"] = config.MikroDatabaseName ?? string.Empty;
         _liveSettings[prefix + "IntegratedSecurity"] = config.UseWindowsAuth ? "true" : "false";
+        _liveSettings["CentralApi:BaseUrl"] = config.ApiBaseUrl ?? string.Empty;
     }
 
     private bool TryValidateInputs(out string error)

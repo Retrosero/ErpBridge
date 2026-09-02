@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using ErpBridge.Core.Domain;
+using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.RemoteApi.DependencyInjection;
 using ErpBridge.RemoteApi.Http;
@@ -206,6 +207,22 @@ public class HttpRemoteApiClientTests
         await client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB"));
 
         AssertRequest(handler, HttpMethod.Post, "/api/v1/bootstrap", idempotencyKeyRequired: true);
+    }
+
+    [Fact]
+    public async Task PushBootstrapDataAsync_401_returns_permanent_error_instead_of_transient_upstream()
+    {
+        var (client, _) = BuildClient(req => RespondJson(req, HttpStatusCode.Unauthorized, new
+        {
+            errorCode = "INVALID_TOKEN",
+            message = "JWT expired.",
+        }));
+
+        var act = () => client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB"));
+
+        var exception = await act.Should().ThrowAsync<BootstrapPermanentPushException>();
+        exception.Which.ErrorCode.Should().Be("INVALID_TOKEN");
+        exception.Which.Message.Should().Be("JWT expired.");
     }
 
     [Fact]

@@ -204,7 +204,7 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         // per-call GUID. Retries within the same call reuse the same key.
         using var request = BuildRequest(HttpMethod.Post, "/api/v1/bootstrap", opts, NewIdempotencyKey("bootstrap"));
         request.Content = SerializeJson(envelope);
-        await SendNoContentAsync(request, opts, ct);
+        await SendNoContentAsync(request, opts, ct, classifyBootstrapFailure: true);
     }
 
     /// <summary>
@@ -335,7 +335,11 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         }
     }
 
-    private async Task SendNoContentAsync(HttpRequestMessage request, CentralApiOptions opts, CancellationToken ct)
+    private async Task SendNoContentAsync(
+        HttpRequestMessage request,
+        CentralApiOptions opts,
+        CancellationToken ct,
+        bool classifyBootstrapFailure = false)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(opts.TimeoutSeconds));
@@ -343,12 +347,53 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         try
         {
             using var response = await _http.SendAsync(request, timeout.Token).ConfigureAwait(false);
+            if (classifyBootstrapFailure && !response.IsSuccessStatusCode)
+            {
+                var (errorCode, message) = await ReadApiErrorAsync(response, timeout.Token).ConfigureAwait(false);
+                if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
+                {
+                    throw new TransientPushException($"Central API returned {errorCode}: {message}");
+                }
+
+                throw new BootstrapPermanentPushException(errorCode, message);
+            }
             response.EnsureSuccessStatusCode();
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Central API call {Path} timed out after {Timeout}s", request.RequestUri, opts.TimeoutSeconds);
             throw;
+        }
+    }
+
+    private static async Task<(string ErrorCode, string Message)> ReadApiErrorAsync(
+        HttpResponseMessage response,
+        CancellationToken ct)
+    {
+        var fallbackCode = $"HTTP_{(int)response.StatusCode}";
+        var fallbackMessage = response.ReasonPhrase ?? "Central API isteği reddetti.";
+        var raw = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(raw)) return (fallbackCode, fallbackMessage);
+
+        try
+        {
+            using var document = JsonDocument.Parse(raw);
+            var root = document.RootElement;
+            var errorCode = root.TryGetProperty("errorCode", out var code)
+                && code.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(code.GetString())
+                ? code.GetString()!
+                : fallbackCode;
+            var message = root.TryGetProperty("message", out var text)
+                && text.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(text.GetString())
+                ? text.GetString()!
+                : fallbackMessage;
+            return (errorCode, message);
+        }
+        catch (JsonException)
+        {
+            return (fallbackCode, fallbackMessage);
         }
     }
 }

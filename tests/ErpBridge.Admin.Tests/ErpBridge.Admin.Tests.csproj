@@ -25,4 +25,9 @@
     <ProjectReference Include="..\..\src\ErpBridge.Admin\ErpBridge.Admin.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\..\src\ErpBridge.Agent.UI\DependencyInjection\MutableMemoryConfigurationProvider.cs"
+             Link="Configuration\MutableMemoryConfigurationProvider.cs" />
+  </ItemGroup>
+
 </Project>
