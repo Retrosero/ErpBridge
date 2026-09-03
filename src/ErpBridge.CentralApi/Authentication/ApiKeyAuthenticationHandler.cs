@@ -70,21 +70,30 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
             return AuthenticateResult.Fail($"Missing or invalid {Options.TenantHeaderName} header.");
         }
 
-        // Step 3: hash the raw token and look it up. We can't query by hash
-        // directly (each row has its own salt) so we load active rows for the
-        // tenant — at typical scale (a few keys per tenant) the set is small.
-        var saltAndHash = await _db.ApiKeys
-            .Where(k => k.IsActive)
-            .Select(k => new { k.Id, k.KeySalt, k.KeyHash, k.Scopes, k.ExpiresAtUtc, k.TenantId, k.Tenant!.IsActive })
+        // Step 3: hash the raw token and look it up. Hashes use a per-row
+        // salt, so they cannot be indexed directly. Every issued key carries
+        // an indexed, non-secret 11-character lookup prefix; use it to bound
+        // candidate rows rather than loading every active key in the system.
+        // A prefix collision only adds another constant-time hash comparison.
+        var lookupPrefix = token[..Math.Min(token.Length, KeyPrefix.Length + 8)];
+        var saltAndHash = await _db.ApiKeys.AsNoTracking()
+            .Where(k => k.IsActive && k.KeyPrefix == lookupPrefix)
+            .Select(k => new
+            {
+                k.Id,
+                k.KeySalt,
+                k.KeyHash,
+                k.Scopes,
+                k.ExpiresAtUtc,
+                k.TenantId,
+                TenantIsActive = k.Tenant!.IsActive,
+            })
             .ToListAsync(Context.RequestAborted);
 
         foreach (var row in saltAndHash)
         {
             if (row.ExpiresAtUtc is { } exp && exp <= DateTimeOffset.UtcNow)
                 continue;
-            if (!row.IsActive)
-                continue;
-
             var computed = ComputeHash(row.KeySalt, token);
             if (CryptographicOperations.FixedTimeEquals(computed, row.KeyHash))
             {
@@ -94,7 +103,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
                 // Found it — also verify the tenant itself is still active.
                 // Defensive: ApiKeyAuth shouldn't be the only line of defense,
                 // but mirroring the JWT path keeps the security model uniform.
-                if (!row.IsActive)
+                if (!row.TenantIsActive)
                     return AuthenticateResult.Fail("Tenant is inactive.");
 
                 var claims = new[]
