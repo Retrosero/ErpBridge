@@ -16,7 +16,10 @@ public sealed record CustomerTransactionPayload(
     [property: JsonPropertyName("borcMu")] bool IsDebit,
     [property: JsonPropertyName("aciklama")] string? Description,
     [property: JsonPropertyName("updatedAt")] DateTime UpdatedAt,
-    [property: JsonPropertyName("cha_recno")] int? RecNo);
+    [property: JsonPropertyName("cha_recno")] int? RecNo,
+    [property: JsonPropertyName("type")] string TransactionType = "HAREKET",
+    [property: JsonPropertyName("cins")] int Kind = 0,
+    [property: JsonPropertyName("normalIade")] bool IsReturn = false);
 
 /// <summary>A single row from Mikro STOK_HAREKETLERI.</summary>
 public sealed record StockTransactionPayload(

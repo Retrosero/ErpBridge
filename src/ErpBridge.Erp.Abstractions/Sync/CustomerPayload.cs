@@ -23,6 +23,7 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <param name="Email">Primary e-mail address.</param>
 /// <param name="Addresses">All addresses attached to the cari (often one).</param>
 /// <param name="Contacts">All contact persons attached to the cari.</param>
+/// <param name="Balance">Official local-currency ledger balance from Mikro; positive means debit/customer owes us.</param>
 public sealed record CustomerPayload(
     string CustomerCode,
     string Title1,
@@ -39,7 +40,8 @@ public sealed record CustomerPayload(
     string? Phone,
     string? Email,
     IReadOnlyList<CustomerAddressPayload> Addresses,
-    IReadOnlyList<CustomerContactPayload> Contacts);
+    IReadOnlyList<CustomerContactPayload> Contacts,
+    decimal Balance = 0m);
 
 /// <summary>
 /// One address attached to a <see cref="CustomerPayload"/>. Lat/long are
@@ -54,6 +56,21 @@ public sealed record CustomerPayload(
 /// <param name="Latitude">Geo latitude (optional).</param>
 /// <param name="Longitude">Geo longitude (optional).</param>
 /// <param name="SalespersonCode">Plasiyer override for this address (else falls back to <see cref="CustomerPayload.SalespersonCode"/>).</param>
+/// <param name="IsPrintable">Mikro <c>adr_aprint_fl</c> flag.</param>
+/// <param name="Avenue">Cadde.</param>
+/// <param name="Neighborhood">Mahalle.</param>
+/// <param name="StreetName">Sokak.</param>
+/// <param name="Quarter">Semt.</param>
+/// <param name="ApartmentNo">Apartman numarası.</param>
+/// <param name="FlatNo">Daire numarası.</param>
+/// <param name="Country">Ülke.</param>
+/// <param name="PhoneCountryCode">Telefon ülke kodu.</param>
+/// <param name="PhoneAreaCode">Telefon bölge kodu.</param>
+/// <param name="PhoneNo">Birincil telefon numarası.</param>
+/// <param name="VisitPeriod">Ziyaret periyodu.</param>
+/// <param name="VisitDay">Ziyaret günü.</param>
+/// <param name="EInvoiceAlias">e-Fatura etiketi.</param>
+/// <param name="UpdatedAt">Mikro son güncelleme zamanı.</param>
 public sealed record CustomerAddressPayload(
     string CustomerCode,
     int AddressNo,
@@ -63,7 +80,22 @@ public sealed record CustomerAddressPayload(
     string? PostalCode,
     double? Latitude,
     double? Longitude,
-    string? SalespersonCode);
+    string? SalespersonCode,
+    bool IsPrintable = false,
+    string? Avenue = null,
+    string? Neighborhood = null,
+    string? StreetName = null,
+    string? Quarter = null,
+    string? ApartmentNo = null,
+    string? FlatNo = null,
+    string? Country = null,
+    string? PhoneCountryCode = null,
+    string? PhoneAreaCode = null,
+    string? PhoneNo = null,
+    int? VisitPeriod = null,
+    int? VisitDay = null,
+    string? EInvoiceAlias = null,
+    DateTime? UpdatedAt = null);
 
 /// <summary>
 /// One contact person attached to a <see cref="CustomerPayload"/>. Every field

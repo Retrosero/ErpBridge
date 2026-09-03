@@ -26,7 +26,9 @@ public static class AndroidEndpoints
         group.MapPost("/pull", PullAsync).WithName("AndroidPull")
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
-        MapSection(group, "/sync/cari", "customers");
+        group.MapPost("/sync/cari", CustomersAsync)
+            .WithName("AndroidCustomers")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/urun", ProductCatalogAsync)
             .WithName("AndroidProductCatalog")
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
@@ -41,7 +43,9 @@ public static class AndroidEndpoints
             .WithName("AndroidPriceListDefinitions")
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/acikSiparisler", "openOrders");
-        MapSection(group, "/sync/cariAdresler", "customerAddresses");
+        group.MapPost("/sync/cariAdresler", CustomerAddressesAsync)
+            .WithName("AndroidCustomerAddresses")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/cariYetkililer", "customerContacts");
         MapSection(group, "/sync/barkodlar", "barcodes");
         MapSection(group, "/sync/satisSartlari", "salesConditions");
@@ -257,10 +261,59 @@ public static class AndroidEndpoints
         });
     }
 
+    /// <summary>
+    /// Projects the canonical customer payload to the legacy Android names.
+    /// The mobile DTO intentionally uses Turkish field names, whereas the
+    /// bridge package uses English canonical names. Returning the raw payload
+    /// silently discarded tax, phone and region values on Android.
+    /// </summary>
+    private static async Task<IResult> CustomersAsync(
+        AndroidPageRequest? request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var page = Math.Max(1, request?.Page ?? 1);
+        var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
+        var all = GetArray(document.RootElement, "customers").ToArray();
+        var items = all.Skip((page - 1) * pageSize).Take(pageSize).Select(customer => new
+        {
+            id = GetString(customer, "customerCode"),
+            erpRef = GetString(customer, "customerCode"),
+            cariKod = GetString(customer, "customerCode"),
+            unvan = JoinAddressLine(GetString(customer, "title1"), GetString(customer, "title2")),
+            cariUnvan = GetString(customer, "title1"),
+            vergiNo = GetString(customer, "taxNo"),
+            vergiDairesi = GetString(customer, "taxOffice"),
+            telefon = GetString(customer, "phone"),
+            email = GetString(customer, "email"),
+            cariBolgeKodu = GetString(customer, "regionCode"),
+            paraBirimi = GetString(customer, "currency"),
+            bakiye = GetDecimal(customer, "balance") ?? 0m,
+            updatedAt = package.PulledAtUtc,
+            isDeleted = false,
+        }).ToArray();
+
+        return Results.Ok(new
+        {
+            entity = "cari",
+            sourceDatabase = package.SourceDatabase,
+            pulledAtUtc = package.PulledAtUtc,
+            page,
+            pageSize,
+            total = all.Length,
+            items,
+        });
+    }
+
     private static async Task<IResult> CashAndBankSectionAsync(
         string kind,
         string entity,
-        AndroidPageRequest request,
+        AndroidPageRequest? request,
         HttpContext http,
         CentralApiDbContext db,
         CancellationToken ct)
@@ -284,10 +337,77 @@ public static class AndroidEndpoints
                 tip = kind == "cash" ? 0 : 1,
             })
             .ToArray();
-        var page = Math.Max(1, request.Page);
-        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var page = Math.Max(1, request?.Page ?? 1);
+        var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
         var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
         return Results.Ok(new { entity, page, pageSize, total = allItems.Length, items });
+    }
+
+    /// <summary>
+    /// Translates the canonical bootstrap address payload to the Android contract.
+    /// The mobile client deliberately uses Turkish field names because these values
+    /// are also stored verbatim in its offline Room database.  Returning the raw
+    /// <c>CustomerAddressPayload</c> here used to expose <c>customerCode</c>,
+    /// <c>city</c> and <c>street</c>, silently leaving cariKod/il/sokak empty.
+    /// </summary>
+    private static async Task<IResult> CustomerAddressesAsync(
+        AndroidPageRequest? request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return access.Error;
+        var package = access.Package!;
+        using var document = JsonDocument.Parse(package.PayloadJson);
+        var page = Math.Max(1, request?.Page ?? 1);
+        var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
+
+        var allItems = GetArray(document.RootElement, "customerAddresses")
+            .Select(address =>
+            {
+                var cariKod = GetString(address, "customerCode") ?? string.Empty;
+                var adresNo = GetInt32(address, "addressNo") ?? 0;
+                var telUlkeKodu = GetString(address, "phoneCountryCode");
+                var telBolgeKodu = GetString(address, "phoneAreaCode");
+                var telNo = GetString(address, "phoneNo");
+                var phone = string.Join(" ", new[] { telUlkeKodu, telBolgeKodu, telNo }
+                    .Where(value => !string.IsNullOrWhiteSpace(value)));
+                return new
+                {
+                    erpRef = $"ADR-{cariKod}-{adresNo}",
+                    erp = "MIKRO",
+                    cariKod,
+                    adresNo,
+                    yazdirilabilir = GetBoolean(address, "isPrintable") ?? false,
+                    cadde = GetString(address, "avenue"),
+                    mahalle = GetString(address, "neighborhood"),
+                    sokak = GetString(address, "streetName") ?? GetString(address, "street"),
+                    semt = GetString(address, "quarter"),
+                    ilce = GetString(address, "district"),
+                    il = GetString(address, "city"),
+                    ulke = GetString(address, "country"),
+                    postaKodu = GetString(address, "postalCode"),
+                    telUlkeKodu,
+                    telBolgeKodu,
+                    telNo1 = telNo,
+                    telefon = phone,
+                    gpsEnlem = GetDouble(address, "latitude"),
+                    gpsBoylam = GetDouble(address, "longitude"),
+                    ziyaretPeriyodu = GetInt32(address, "visitPeriod"),
+                    ziyaretGunu = GetInt32(address, "visitDay"),
+                    eFaturaAlias = GetString(address, "eInvoiceAlias"),
+                    adresSatir1 = JoinAddressLine(GetString(address, "avenue"), GetString(address, "neighborhood"), GetString(address, "streetName")),
+                    adresSatir2 = JoinAddressLine(GetString(address, "quarter"), GetString(address, "apartmentNo"), GetString(address, "flatNo")),
+                    updatedAt = GetString(address, "updatedAt"),
+                };
+            })
+            .OrderBy(item => item.cariKod, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.adresNo)
+            .ToArray();
+
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        return Results.Ok(new { entity = "cariAdresler", page, pageSize, total = allItems.Length, items });
     }
 
     private static async Task<IResult> PriceListDefinitionsAsync(
@@ -331,27 +451,44 @@ public static class AndroidEndpoints
         if (access.Error is not null) return access.Error;
         using var document = JsonDocument.Parse(access.Package!.PayloadJson);
 
-        var stockCode = request.Since?.Trim();
-        var allItems = GetArray(document.RootElement, "stockTransactions")
-            .Where(item =>
-                string.IsNullOrWhiteSpace(stockCode)
-                || string.Equals(GetString(item, "stokKod"), stockCode, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(GetString(item, "urunKod"), stockCode, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => GetString(item, "updatedAt") ?? GetString(item, "tarih"))
-            .Select(item => item.Clone())
-            .ToArray();
-
         var page = Math.Max(1, request.Page);
         var pageSize = Math.Clamp(request.PageSize, 1, 500);
-        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        // `since` was historically (and incorrectly) overloaded as a stock
+        // code.  Treat a timestamp as the incremental watermark while keeping
+        // the old stock-code request usable for the stock-card screen.
+        var rawSince = request.Since?.Trim();
+        var hasWatermark = DateTimeOffset.TryParse(rawSince, out var watermark);
+        var stockCode = hasWatermark ? null : rawSince;
+        var offset = (page - 1) * pageSize;
+        var total = 0;
+        string? latestWatermark = rawSince;
+        var items = new List<JsonElement>(pageSize);
+        foreach (var item in GetArray(document.RootElement, "stockTransactions"))
+        {
+            var updatedAt = GetString(item, "updatedAt") ?? GetString(item, "sth_lastup_date") ?? GetString(item, "tarih");
+            if (hasWatermark && (!DateTimeOffset.TryParse(updatedAt, out var updated) || updated <= watermark)) continue;
+            if (!string.IsNullOrWhiteSpace(stockCode)
+                && !string.Equals(GetString(item, "stokKod"), stockCode, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(GetString(item, "urunKod"), stockCode, StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (items.Count == 0 || total >= offset)
+            {
+                if (total >= offset && items.Count < pageSize) items.Add(item.Clone());
+            }
+            total++;
+            if (DateTimeOffset.TryParse(updatedAt, out var candidate)
+                && (!DateTimeOffset.TryParse(latestWatermark, out var latest) || candidate > latest))
+                latestWatermark = candidate.ToUniversalTime().ToString("O");
+        }
         return Results.Ok(new
         {
             entity = "stokHareket",
             stokKod = stockCode,
             page,
             pageSize,
-            total = allItems.Length,
-            since = stockCode,
+            total,
+            since = rawSince,
+            watermark = latestWatermark,
             items,
         });
     }
@@ -548,6 +685,34 @@ public static class AndroidEndpoints
         if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
             return number;
         return int.TryParse(value.ToString(), out number) ? number : null;
+    }
+
+    private static bool? GetBoolean(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            return value.GetBoolean();
+        return bool.TryParse(value.ToString(), out var result)
+            ? result
+            : int.TryParse(value.ToString(), out var numeric) ? numeric != 0 : null;
+    }
+
+    private static double? GetDouble(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var result))
+            return result;
+        return double.TryParse(value.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out result)
+            ? result
+            : null;
+    }
+
+    private static string? JoinAddressLine(params string?[] values)
+    {
+        var result = string.Join(" ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()));
+        return string.IsNullOrWhiteSpace(result) ? null : result;
     }
 
     private static decimal? GetDecimal(JsonElement item, string propertyName)

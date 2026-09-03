@@ -59,8 +59,20 @@ SELECT
     CAST(ISNULL(cari_cari_kilitli_flg, 0) AS BIT)     AS IsLocked,
     CAST(ISNULL(cari_efatura_fl, 0) AS BIT)           AS IsEInvoiceEnabled,
     CAST(cari_CepTel AS NVARCHAR(50))                 AS Phone,
-    CAST(cari_EMail AS NVARCHAR(200))                 AS Email
+    CAST(cari_EMail AS NVARCHAR(200))                 AS Email,
+    CAST(ISNULL(ledger.Balance, 0) AS DECIMAL(18,6))   AS Balance
 FROM CARI_HESAPLAR
+LEFT JOIN (
+    -- The official cari balance is determined by accounting direction, not
+    -- invoice/receipt labels.  `cha_tip=0` is debit, `cha_tip=1` is credit.
+    SELECT cha_kod,
+           SUM(CASE WHEN ISNULL(cha_tip, 0) = 0
+                    THEN ISNULL(cha_meblag, 0)
+                    ELSE -ISNULL(cha_meblag, 0) END) AS Balance
+    FROM CARI_HESAP_HAREKETLERI
+    WHERE ISNULL(cha_iptal, 0) = 0
+    GROUP BY cha_kod
+) AS ledger ON ledger.cha_kod = cari_kod
 WHERE ISNULL(cari_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(cari_lastup_date, cari_create_date) > @changedSinceUtc)";
 
@@ -84,7 +96,8 @@ WHERE ISNULL(cari_iptal, 0) = 0
                 c.Phone,
                 c.Email,
                 Array.Empty<CustomerAddressPayload>(),
-                Array.Empty<CustomerContactPayload>()))
+                Array.Empty<CustomerContactPayload>(),
+                c.Balance))
             .ToList();
         _logger.LogInformation("Read {Count} customers for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -104,7 +117,22 @@ SELECT CAST(ISNULL(adr_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
        CAST(adr_posta_kodu AS NVARCHAR(20)) AS PostalCode,
        CAST(adr_gps_enlem AS FLOAT) AS Latitude,
        CAST(adr_gps_boylam AS FLOAT) AS Longitude,
-       CAST(adr_temsilci_kodu AS NVARCHAR(50)) AS SalespersonCode
+       CAST(adr_temsilci_kodu AS NVARCHAR(50)) AS SalespersonCode,
+       CAST(ISNULL(adr_aprint_fl, 0) AS BIT) AS IsPrintable,
+       CAST(adr_cadde AS NVARCHAR(127)) AS Avenue,
+       CAST(adr_mahalle AS NVARCHAR(127)) AS Neighborhood,
+       CAST(adr_sokak AS NVARCHAR(127)) AS StreetName,
+       CAST(adr_Semt AS NVARCHAR(50)) AS Quarter,
+       CAST(adr_Apt_No AS NVARCHAR(20)) AS ApartmentNo,
+       CAST(adr_Daire_No AS NVARCHAR(20)) AS FlatNo,
+       CAST(adr_ulke AS NVARCHAR(100)) AS Country,
+       CAST(adr_tel_ulke_kodu AS NVARCHAR(10)) AS PhoneCountryCode,
+       CAST(adr_tel_bolge_kodu AS NVARCHAR(10)) AS PhoneAreaCode,
+       CAST(adr_tel_no1 AS NVARCHAR(30)) AS PhoneNo,
+       CAST(adr_ziyaretperyodu AS INT) AS VisitPeriod,
+       CAST(adr_ziyaretgunu AS INT) AS VisitDay,
+       CAST(adr_efatura_alias AS NVARCHAR(120)) AS EInvoiceAlias,
+       CAST(COALESCE(adr_lastup_date, adr_create_date) AS DATETIME) AS UpdatedAt
 FROM CARI_HESAP_ADRESLERI
 WHERE ISNULL(adr_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(adr_lastup_date, adr_create_date) > @changedSinceUtc)";
@@ -410,7 +438,18 @@ SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
        CAST(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN 1 ELSE 0 END AS BIT) AS IsDebit,
        CAST(cha_aciklama AS NVARCHAR(500)) AS Description,
        CAST(COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) AS DATETIME) AS UpdatedAt,
-       CAST(cha_RECno AS INT) AS RecNo
+       CAST(cha_RECno AS INT) AS RecNo,
+       CAST(CASE
+            WHEN ISNULL(cha_evrak_tip, 0) = 63 AND ISNULL(cha_normal_Iade, 0) = 0 AND ISNULL(cha_tip, 0) = 0 THEN 'SATIS'
+            WHEN ISNULL(cha_evrak_tip, 0) = 63 AND (ISNULL(cha_normal_Iade, 0) <> 0 OR ISNULL(cha_tip, 0) = 1) THEN 'SATIS_IADE'
+            WHEN ISNULL(cha_evrak_tip, 0) = 0 AND ISNULL(cha_normal_Iade, 0) = 0 AND ISNULL(cha_tip, 0) = 1 THEN 'ALIS'
+            WHEN ISNULL(cha_evrak_tip, 0) = 0 AND (ISNULL(cha_normal_Iade, 0) <> 0 OR ISNULL(cha_tip, 0) = 0) THEN 'ALIS_IADE'
+            WHEN ISNULL(cha_evrak_tip, 0) = 1 AND ISNULL(cha_tip, 0) = 1 THEN 'TAHSILAT'
+            WHEN ISNULL(cha_evrak_tip, 0) IN (64, 65) AND ISNULL(cha_tip, 0) = 0 THEN 'TEDIYE'
+            ELSE 'HAREKET'
+       END AS NVARCHAR(20)) AS TransactionType,
+       CAST(ISNULL(cha_cinsi, 0) AS INT) AS Kind,
+       CAST(ISNULL(cha_normal_Iade, 0) AS BIT) AS IsReturn
 FROM CARI_HESAP_HAREKETLERI
 WHERE ISNULL(cha_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) > @changedSinceUtc)
@@ -534,7 +573,8 @@ ORDER BY sth_RECno";
         bool IsLocked,
         bool IsEInvoiceEnabled,
         string? Phone,
-        string? Email);
+        string? Email,
+        decimal Balance);
 
     private sealed record StockRow(
         string StockCode,

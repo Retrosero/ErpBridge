@@ -106,7 +106,6 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     }
 
     [Theory]
-    [InlineData("/api/v1/android/sync/cariAdresler", "ADDRESS-001")]
     [InlineData("/api/v1/android/sync/cariYetkililer", "CONTACT-001")]
     [InlineData("/api/v1/android/sync/barkodlar", "BARCODE-001")]
     [InlineData("/api/v1/android/sync/satisSartlari", "CONDITION-001")]
@@ -137,6 +136,41 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         body.Should().Contain(expectedMarker);
         foreach (var otherMarker in new[] { "ADDRESS-001", "CONTACT-001", "BARCODE-001", "CONDITION-001" }.Where(marker => marker != expectedMarker))
             body.Should().NotContain(otherMarker);
+    }
+
+    [Fact]
+    public async Task Customer_addresses_are_translated_to_the_mobile_address_contract()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-ADDRESS-{suffix}", "Address tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, """
+            {
+              "customerAddresses": [{
+                "customerCode":"120.01", "addressNo":2, "isPrintable":true,
+                "avenue":"Atatürk Cd.", "neighborhood":"Merkez", "streetName":"Gül Sk.",
+                "quarter":"Çarşı", "apartmentNo":"12", "flatNo":"4", "district":"Muratpaşa",
+                "city":"Antalya", "country":"Türkiye", "postalCode":"07000",
+                "phoneCountryCode":"90", "phoneAreaCode":"242", "phoneNo":"1234567",
+                "latitude":36.88, "longitude":30.70, "visitPeriod":2, "visitDay":4,
+                "eInvoiceAlias":"urn:mail:12001", "updatedAt":"2026-09-02T12:00:00Z"
+              }]
+            }
+            """);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, $"AK-ADDRESS-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/android/sync/cariAdresler", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var address = document.RootElement.GetProperty("items")[0];
+        address.GetProperty("cariKod").GetString().Should().Be("120.01");
+        address.GetProperty("yazdirilabilir").GetBoolean().Should().BeTrue();
+        address.GetProperty("il").GetString().Should().Be("Antalya");
+        address.GetProperty("ilce").GetString().Should().Be("Muratpaşa");
+        address.GetProperty("sokak").GetString().Should().Be("Gül Sk.");
+        address.GetProperty("adresSatir2").GetString().Should().Be("Çarşı 12 4");
     }
 
     [Theory]
@@ -208,7 +242,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
-    public async Task Stock_movement_section_filters_by_stock_code_and_orders_latest_first()
+    public async Task Stock_movement_section_filters_by_legacy_stock_code_without_materialising_the_full_snapshot()
     {
         var client = _factory.CreateClient();
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -236,8 +270,8 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var root = document.RootElement;
         root.GetProperty("total").GetInt32().Should().Be(2);
         var items = root.GetProperty("items").EnumerateArray().ToArray();
-        items[0].GetProperty("id").GetString().Should().Be("NEW");
-        items[1].GetProperty("id").GetString().Should().Be("OLD");
+        items[0].GetProperty("id").GetString().Should().Be("OLD");
+        items[1].GetProperty("id").GetString().Should().Be("NEW");
         (await response.Content.ReadAsStringAsync()).Should().NotContain("OTHER");
     }
 
