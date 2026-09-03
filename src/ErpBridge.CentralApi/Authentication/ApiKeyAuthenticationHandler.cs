@@ -27,15 +27,18 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
     public const string KeyPrefix = "AK-";
 
     private readonly CentralApiDbContext _db;
+    private readonly ApiKeyUsageTracker _usageTracker;
 
     public ApiKeyAuthenticationHandler(
         IOptionsMonitor<ApiKeyAuthenticationOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder,
-        CentralApiDbContext db)
+        CentralApiDbContext db,
+        ApiKeyUsageTracker usageTracker)
         : base(options, logger, encoder)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _usageTracker = usageTracker ?? throw new ArgumentNullException(nameof(usageTracker));
     }
 
     /// <summary>
@@ -116,29 +119,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAu
                 var principal = new ClaimsPrincipal(identity);
                 var ticket = new AuthenticationTicket(principal, SchemeName);
 
-                // Best-effort LastUsedAtUtc update. Defer to right before the
-                // response is flushed via OnStarting so the auth decision
-                // itself stays synchronous and the row update cannot fail the
-                // caller. Failures are swallowed.
-                var keyId = row.Id;
-                Response.OnStarting(() =>
-                {
-                    try
-                    {
-                        var row2 = _db.ApiKeys.Local.FirstOrDefault(k => k.Id == keyId)
-                            ?? _db.ApiKeys.FirstOrDefault(k => k.Id == keyId);
-                        if (row2 is not null)
-                        {
-                            row2.LastUsedAtUtc = DateTimeOffset.UtcNow;
-                            _db.SaveChanges();
-                        }
-                    }
-                    catch
-                    {
-                        // Telemetry-grade failure: never surface to the caller.
-                    }
-                    return Task.CompletedTask;
-                });
+                _usageTracker.Record(row.Id, DateTimeOffset.UtcNow);
 
                 return AuthenticateResult.Success(ticket);
             }

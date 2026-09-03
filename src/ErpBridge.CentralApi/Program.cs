@@ -114,6 +114,8 @@ public partial class Program
         builder.Services.Configure<AdminSeedOptions>(cfg.GetSection("Admin"));
         builder.Services.Configure<ApiKeyVaultOptions>(cfg.GetSection("ApiKeyVault"));
         builder.Services.AddSingleton<IApiKeyVault, ApiKeyVault>();
+        builder.Services.AddSingleton<ApiKeyUsageTracker>();
+        builder.Services.AddHostedService<ApiKeyUsageFlushWorker>();
 
         // Webhook fan-out: JobsEndpoints.AckAsync resolves
         // IWebhookDispatcher and enqueues per-endpoint delivery rows.
