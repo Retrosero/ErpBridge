@@ -375,8 +375,26 @@ public partial class Program
 
         app.UseAuthorization();
 
-        app.MapGet("/health", () => Results.Text("{\"status\":\"ok\"}", "application/json"))
+        // Liveness deliberately has no dependency on PostgreSQL: an orchestrator
+        // can restart only a wedged process without hiding a database outage.
+        app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }))
+            .WithName("HealthLive").WithTags("System").AllowAnonymous();
+        app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
             .WithName("Health").WithTags("System").AllowAnonymous();
+        app.MapGet("/health/ready", async (CentralApiDbContext db, CancellationToken ct) =>
+        {
+            try
+            {
+                return await db.Database.CanConnectAsync(ct)
+                    ? Results.Ok(new { status = "ready" })
+                    : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
+            catch (Exception)
+            {
+                // Do not disclose connection strings, hostnames, or provider diagnostics.
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
+        }).WithName("HealthReady").WithTags("System").AllowAnonymous();
 
         app.MapAgentsEndpoints();
         app.MapLicensesEndpoints();

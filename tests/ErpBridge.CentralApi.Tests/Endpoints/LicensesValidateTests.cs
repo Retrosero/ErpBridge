@@ -92,4 +92,18 @@ public class LicensesValidateTests : IClassFixture<CentralApiFactory>
 
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
+
+    [Fact]
+    public async Task Ready_health_check_returns_200_when_database_is_reachable()
+    {
+        var response = await _factory.CreateClient().GetAsync("/health/ready");
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Live_health_check_does_not_require_database_probe()
+    {
+        var response = await _factory.CreateClient().GetAsync("/health/live");
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+    }
 }
