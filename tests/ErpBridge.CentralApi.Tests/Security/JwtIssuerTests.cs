@@ -69,9 +69,13 @@ public class JwtIssuerTests : IClassFixture<CentralApiFactory>
         var issuer = scope.ServiceProvider.GetRequiredService<IJwtIssuer>();
         var issued = issuer.Issue(Guid.NewGuid(), Guid.NewGuid());
 
-        // Flip the last character of the signature segment.
-        var tampered = issued.Token.Substring(0, issued.Token.Length - 1)
-            + (issued.Token[^1] == 'A' ? 'B' : 'A');
+        // Mutate a significant base64url character in the signature segment.
+        // Changing its last character can alter only unused trailing bits and
+        // still decode to the same HMAC byte sequence.
+        var segments = issued.Token.Split('.');
+        segments.Should().HaveCount(3);
+        segments[2] = (segments[2][0] == 'A' ? 'B' : 'A') + segments[2][1..];
+        var tampered = string.Join('.', segments);
 
         issuer.Validate(tampered).Should().BeNull();
     }
