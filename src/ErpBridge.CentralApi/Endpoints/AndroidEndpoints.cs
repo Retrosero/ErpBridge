@@ -46,6 +46,15 @@ public static class AndroidEndpoints
         group.MapPost("/sync/cariAdresler", CustomerAddressesAsync)
             .WithName("AndroidCustomerAddresses")
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        // Android has used both the Turkish plural spelling and the older
+        // singular alias. Keep all three routes on the same contract so an
+        // app update cannot turn address sync into a 404.
+        group.MapPost("/sync/cariAdresleri", CustomerAddressesAsync)
+            .WithName("AndroidCustomerAddressesPlural")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/cariAdres", CustomerAddressesAsync)
+            .WithName("AndroidCustomerAddress")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/cariYetkililer", "customerContacts");
         MapSection(group, "/sync/barkodlar", "barcodes");
         MapSection(group, "/sync/satisSartlari", "salesConditions");
