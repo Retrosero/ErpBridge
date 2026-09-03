@@ -58,8 +58,8 @@ public partial class Program
     public const int AdminPermitsPerMinute = 60;
 
     /// <summary>
-    /// Host entry point. Builds the WebApplication, applies EF migrations when
-    /// a connection string is present, runs the host, then exits.
+    /// Host entry point. Builds the WebApplication and runs the host. Database
+    /// migrations are an explicit release operation invoked with <c>--migrate</c>.
     /// </summary>
     public static void Main(string[] args)
     {
@@ -72,22 +72,14 @@ public partial class Program
         ConfigureBuilder(builder, builder.Configuration);
         var app = builder.Build();
 
-        // Apply migrations on startup when a real connection string is present.
-        // Tests using WebApplicationFactory<Program> + InMemory provider skip
-        // this path because they replace the DbContext registration entirely.
-        var connectionString = app.Configuration.GetConnectionString("CentralApi");
-        if (!string.IsNullOrWhiteSpace(connectionString))
+        if (args.Contains("--migrate", StringComparer.OrdinalIgnoreCase))
         {
             using var scope = app.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
-            // Migrate() is only valid for relational providers (PostgreSQL).
-            // The test host (WebApplicationFactory<Program>) replaces the
-            // DbContext with an in-memory provider; in that case the
-            // EnsureCreated call below seeds the schema.
-            if (db.Database.IsRelational())
-                db.Database.Migrate();
-            else
-                db.Database.EnsureCreated();
+            if (!db.Database.IsRelational())
+                throw new InvalidOperationException("--migrate requires the configured relational CentralApi database.");
+            db.Database.Migrate();
+            return;
         }
 
         // Seed the bootstrap admin if configuration supplies one and the row
@@ -114,8 +106,10 @@ public partial class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
-        ConfigureData(builder.Services, cfg);
-        ConfigureAuthentication(builder.Services, cfg);
+        var allowTestDefaults = IsTestEnvironment(builder.Environment.EnvironmentName);
+        ValidateRuntimeConfiguration(cfg, allowTestDefaults);
+        ConfigureData(builder.Services, cfg, allowTestDefaults);
+        ConfigureAuthentication(builder.Services, cfg, allowTestDefaults);
         ConfigureRateLimiter(builder.Services);
         builder.Services.Configure<AdminSeedOptions>(cfg.GetSection("Admin"));
         builder.Services.Configure<ApiKeyVaultOptions>(cfg.GetSection("ApiKeyVault"));
@@ -131,12 +125,10 @@ public partial class Program
     }
 
     /// <summary>
-    /// Wire the EF Core <see cref="CentralApiDbContext"/>. When the central
-    /// connection string is missing or empty (development / test startup), we
-    /// fall back to an in-memory provider so the host can boot without a
-    /// PostgreSQL instance.
+    /// Wire the EF Core <see cref="CentralApiDbContext"/>. In-memory storage is
+    /// available only to the explicit in-process test host.
     /// </summary>
-    public static void ConfigureData(IServiceCollection services, IConfiguration cfg)
+    public static void ConfigureData(IServiceCollection services, IConfiguration cfg, bool allowTestDefaults)
     {
         var connectionString = cfg.GetConnectionString("CentralApi");
         if (!string.IsNullOrWhiteSpace(connectionString))
@@ -144,19 +136,22 @@ public partial class Program
             services.AddDbContext<CentralApiDbContext>(opt =>
                 opt.UseNpgsql(connectionString));
         }
-        else
+        else if (allowTestDefaults)
         {
             services.AddDbContext<CentralApiDbContext>(opt => opt.UseInMemoryDatabase("CentralApiFallback"));
+        }
+        else
+        {
+            throw new InvalidOperationException("ConnectionStrings:CentralApi is required outside the test environment.");
         }
     }
 
     /// <summary>
     /// Configure JWT bearer authentication. The signing key is read from the
-    /// <c>Jwt</c> config section; for tests a stable, test-only default is
-    /// substituted when the section is empty so <see cref="WebApplicationFactory{Program}"/>
-    /// can mint tokens out-of-the-box.
+    /// <c>Jwt</c> config section. The stable test-only key is available only to
+    /// the in-process test host.
     /// </summary>
-    public static void ConfigureAuthentication(IServiceCollection services, IConfiguration cfg)
+    public static void ConfigureAuthentication(IServiceCollection services, IConfiguration cfg, bool allowTestDefaults)
     {
         // Disable the legacy claim mapping so the wire-format names (`sub`,
         // `tenant`, `scope`) reach the controllers verbatim instead of being
@@ -167,7 +162,9 @@ public partial class Program
         var jwt = cfg.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
         var signingKey = !string.IsNullOrWhiteSpace(jwt.SigningKey)
             ? jwt.SigningKey
-            : TestJwtConstants.TestSigningKey;
+            : allowTestDefaults
+                ? TestJwtConstants.TestSigningKey
+                : throw new InvalidOperationException("Jwt:SigningKey is required outside the test environment.");
         if (string.IsNullOrWhiteSpace(jwt.SigningKey))
             jwt.SigningKey = signingKey;
 
@@ -231,6 +228,26 @@ public partial class Program
                 .RequireClaim("scope", "apikey"));
         });
     }
+
+    /// <summary>
+    /// Reject configuration that would otherwise make a non-test host boot with
+    /// test credentials or transient storage. Kept public for startup tests.
+    /// </summary>
+    public static void ValidateRuntimeConfiguration(IConfiguration cfg, bool allowTestDefaults)
+    {
+        if (allowTestDefaults) return;
+
+        if (string.IsNullOrWhiteSpace(cfg.GetConnectionString("CentralApi")))
+            throw new InvalidOperationException("ConnectionStrings:CentralApi is required outside the test environment.");
+
+        var signingKey = cfg.GetSection("Jwt").Get<JwtOptions>()?.SigningKey;
+        if (string.IsNullOrWhiteSpace(signingKey) || string.Equals(signingKey, TestJwtConstants.TestSigningKey, StringComparison.Ordinal))
+            throw new InvalidOperationException("A non-test host requires a non-test Jwt:SigningKey.");
+    }
+
+    private static bool IsTestEnvironment(string environmentName) =>
+        string.Equals(environmentName, "Test", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Configure a fixed-window rate limiter. The "per-agent" policy partitions
