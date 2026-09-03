@@ -51,6 +51,28 @@ public class RateLimitTests
         }
     }
 
+    [Fact]
+    public async Task Authenticated_agents_receive_independent_rate_limit_partitions()
+    {
+        using var factory = new RateLimitedFactory();
+        var (firstTenant, _) = await factory.SeedTenantAsync(licenseKey: "RL-AGENT-A", tenantName: "Rate tenant A");
+        var (secondTenant, _) = await factory.SeedTenantAsync(licenseKey: "RL-AGENT-B", tenantName: "Rate tenant B");
+        var firstAgent = await factory.SeedAgentAsync(firstTenant.Id, "MACHINE-RL-A");
+        var secondAgent = await factory.SeedAgentAsync(secondTenant.Id, "MACHINE-RL-B");
+        var firstToken = factory.IssueTestJwt(firstAgent.Id, firstTenant.Id);
+        var secondToken = factory.IssueTestJwt(secondAgent.Id, secondTenant.Id);
+        var client = factory.CreateClient();
+
+        // Each agent stays below its own 100 request/minute limit. If the
+        // rate limiter ran before authentication, both callers would share
+        // the anonymous partition and the combined 120 requests would fail.
+        for (var i = 0; i < 60; i++)
+        {
+            (await client.GetAsync("/api/v1/jobs/pending", firstToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+            (await client.GetAsync("/api/v1/jobs/pending", secondToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+    }
+
     /// <summary>
     /// Variant of <see cref="CentralApiFactory"/> that does NOT strip the
     /// rate limiter. Used by the limiter tests so the limiter is actually

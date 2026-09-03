@@ -351,27 +351,21 @@ public partial class Program
 
         app.UseRouting();
 
-        // Only enable the rate-limiter middleware when rate limiter services
-        // are actually registered. The test factory intentionally strips
-        // AddRateLimiter's registrations to bypass the limiter; under that
-        // scenario middleware must be skipped too, otherwise UseRateLimiter
-        // throws at startup.
-        if (HasRateLimiter(app.Services))
+        // Endpoint rate-limit policies partition agent, admin and tenant
+        // traffic by authenticated claims. Authentication must therefore run
+        // before the limiter; otherwise every protected request is charged to
+        // the anonymous bucket and a single caller can throttle all tenants.
+        app.UseAuthentication();
+
+        // The in-process test factory can explicitly disable this middleware
+        // for endpoint tests that are unrelated to throttling. Production
+        // never probes-and-swallows a missing limiter registration: a broken
+        // configuration must fail host startup rather than serve unprotected.
+        if (!app.Configuration.GetValue<bool>("RateLimiter:DisabledForTests"))
         {
-            try
-            {
-                app.UseRateLimiter();
-            }
-            catch (InvalidOperationException)
-            {
-                // Test factory can intentionally strip rate limiter services;
-                // a mismatched ConfigurationWebHost sequence may also lead to
-                // missing IOptions<RateLimiterOptions>. Swallow so the host can
-                // still serve traffic.
-            }
+            app.UseRateLimiter();
         }
 
-        app.UseAuthentication();
         app.UseAuthorization();
 
         app.MapGet("/health", () => Results.Text("{\"status\":\"ok\"}", "application/json"))
@@ -393,13 +387,6 @@ public partial class Program
         app.MapAdminApiKeysEndpoints();
         app.MapAdminWebhooksEndpoints();
         app.MapAdminTelemetryEndpoints();
-    }
-
-    private static bool HasRateLimiter(IServiceProvider services)
-    {
-        // RateLimiterOptions is the canonical registration the UseRateLimiter
-        // middleware looks up. Its presence means AddRateLimiter was called.
-        return services.GetService<Microsoft.Extensions.Options.IOptions<RateLimiterOptions>>() is not null;
     }
 
     /// <summary>

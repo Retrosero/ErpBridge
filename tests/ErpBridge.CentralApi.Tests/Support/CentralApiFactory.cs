@@ -55,6 +55,8 @@ public class CentralApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Test");
+        if (_disableRateLimiter)
+            builder.UseSetting("RateLimiter:DisabledForTests", "true");
         builder.ConfigureServices(services =>
         {
             services.PostConfigure<ApiKeyVaultOptions>(options =>
