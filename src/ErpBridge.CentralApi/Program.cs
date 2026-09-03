@@ -121,7 +121,12 @@ public partial class Program
         // IWebhookDispatcher and enqueues per-endpoint delivery rows.
         // The hosted service drains them asynchronously.
         builder.Services.AddScoped<IWebhookDispatcher, WebhookDispatcher>();
-        builder.Services.AddHttpClient("WebhookDispatcher");
+        builder.Services.AddHttpClient("WebhookDispatcher")
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                UseProxy = false,
+                ConnectCallback = WebhookTargetValidator.ConnectPublicAsync,
+            });
         builder.Services.AddHostedService<WebhookDispatcherWorker>();
         builder.Services.AddHostedService<MobileTelemetryRetentionWorker>();
     }

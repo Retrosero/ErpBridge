@@ -140,13 +140,28 @@ public sealed class WebhookDispatcherWorker : BackgroundService
 
         try
         {
+            if (!WebhookTargetValidator.TryParsePublicHttpsUri(endpoint.Url, out var targetUri, out var targetError))
+            {
+                await MarkFailedAsync(db, row, "Unsafe webhook target: " + targetError);
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+
+            var resolvedTargetError = await WebhookTargetValidator.ValidateResolvedTargetAsync(targetUri!, ct);
+            if (resolvedTargetError is not null)
+            {
+                await MarkFailedAsync(db, row, resolvedTargetError);
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+
             using var http = _httpFactory.CreateClient("WebhookDispatcher");
             http.Timeout = HttpTimeout;
 
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
             var signature = ComputeSignature(endpoint.SigningSecret, timestamp, row.PayloadJson);
 
-            using var req = new HttpRequestMessage(HttpMethod.Post, endpoint.Url)
+            using var req = new HttpRequestMessage(HttpMethod.Post, targetUri)
             {
                 Content = new StringContent(row.PayloadJson, Encoding.UTF8, "application/json"),
             };

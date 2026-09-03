@@ -3,6 +3,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Webhooks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -95,11 +96,10 @@ public static class AdminWebhooksEndpoints
         if (string.IsNullOrWhiteSpace(body.Url))
             return JsonResults.Status(StatusCodes.Status400BadRequest,
                 new ApiError { ErrorCode = "MISSING_URL", Message = "url is required." });
-        if (!Uri.TryCreate(body.Url, UriKind.Absolute, out var parsed)
-            || (parsed.Scheme != Uri.UriSchemeHttps && parsed.Scheme != Uri.UriSchemeHttp))
+        if (!WebhookTargetValidator.TryParsePublicHttpsUri(body.Url, out _, out var targetError))
         {
             return JsonResults.Status(StatusCodes.Status400BadRequest,
-                new ApiError { ErrorCode = "INVALID_URL", Message = "url must be an absolute http(s) URL." });
+                new ApiError { ErrorCode = "INVALID_URL", Message = targetError! });
         }
 
         var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == body.TenantId, ct);
@@ -156,11 +156,10 @@ public static class AdminWebhooksEndpoints
         if (!string.IsNullOrWhiteSpace(body.Name)) row.Name = body.Name.Trim();
         if (!string.IsNullOrWhiteSpace(body.Url))
         {
-            if (!Uri.TryCreate(body.Url, UriKind.Absolute, out var p)
-                || (p.Scheme != Uri.UriSchemeHttps && p.Scheme != Uri.UriSchemeHttp))
+            if (!WebhookTargetValidator.TryParsePublicHttpsUri(body.Url, out _, out var targetError))
             {
                 return JsonResults.Status(StatusCodes.Status400BadRequest,
-                    new ApiError { ErrorCode = "INVALID_URL", Message = "url must be an absolute http(s) URL." });
+                    new ApiError { ErrorCode = "INVALID_URL", Message = targetError! });
             }
             row.Url = body.Url;
         }

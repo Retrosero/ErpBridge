@@ -71,6 +71,25 @@ public class AdminWebhooksTests : IClassFixture<CentralApiFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Theory]
+    [InlineData("http://customer.example/hook")]
+    [InlineData("https://127.0.0.1/hook")]
+    [InlineData("https://169.254.169.254/latest/meta-data")]
+    [InlineData("https://localhost/hook")]
+    [InlineData("https://customer.example:8443/hook")]
+    public async Task Create_rejects_non_public_or_non_https_target(string url)
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync();
+
+        var response = await client.PostJsonAsync("/api/v1/admin/webhooks",
+            new { tenantId = tenant.Id, name = "Unsafe", url }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     [Fact]
     public async Task Delete_removes_endpoint()
     {
