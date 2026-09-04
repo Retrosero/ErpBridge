@@ -35,6 +35,7 @@ public sealed class ApiKeyUsageFlushWorker : BackgroundService
     private readonly ApiKeyUsageTracker _tracker;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ApiKeyUsageFlushWorker> _logger;
+    private volatile bool _isStopping;
 
     public ApiKeyUsageFlushWorker(
         ApiKeyUsageTracker tracker,
@@ -62,6 +63,7 @@ public sealed class ApiKeyUsageFlushWorker : BackgroundService
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        _isStopping = true;
         await FlushAsync(cancellationToken);
         await base.StopAsync(cancellationToken);
     }
@@ -91,7 +93,12 @@ public sealed class ApiKeyUsageFlushWorker : BackgroundService
         {
             foreach (var update in updates)
                 _tracker.Record(update.Key, update.Value);
-            _logger.LogWarning(ex, "Deferred API-key usage flush failed for {ApiKeyCount} keys.", updates.Count);
+
+            // Logging providers can already be disposing while hosted services
+            // receive their final StopAsync call. Do not turn a best-effort
+            // telemetry flush failure into an application shutdown failure.
+            if (!_isStopping)
+                _logger.LogWarning(ex, "Deferred API-key usage flush failed for {ApiKeyCount} keys.", updates.Count);
         }
     }
 }
