@@ -36,6 +36,8 @@ public partial class Program
     /// <summary>Authorization policy applied to the public ingest endpoint. Requires <c>scope=apikey</c>.</summary>
     public const string ApiKeyPolicy = "ApiKey";
 
+    private const string ProductionCorsPolicy = "production-origins";
+
     /// <summary>Rate-limit policy name partitioned by the JWT <c>sub</c> (agent id).</summary>
     public const string PerAgentRateLimitPolicy = "per-agent";
 
@@ -108,6 +110,7 @@ public partial class Program
 
         var allowTestDefaults = IsTestEnvironment(builder.Environment.EnvironmentName);
         ValidateRuntimeConfiguration(cfg, allowTestDefaults);
+        ConfigureCors(builder.Services, cfg, allowTestDefaults);
         ConfigureData(builder.Services, cfg, allowTestDefaults);
         ConfigureAuthentication(builder.Services, cfg, allowTestDefaults);
         ConfigureRateLimiter(builder.Services);
@@ -264,6 +267,25 @@ public partial class Program
         {
             throw new InvalidOperationException("ApiKeyVault:MasterKey must be valid base64.", ex);
         }
+
+        var allowedOrigins = cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+        if (allowedOrigins.Length == 0 || allowedOrigins.Any(string.IsNullOrWhiteSpace))
+            throw new InvalidOperationException("Cors:AllowedOrigins requires at least one explicit origin outside the test environment.");
+    }
+
+    private static void ConfigureCors(IServiceCollection services, IConfiguration cfg, bool allowTestDefaults)
+    {
+        var allowedOrigins = cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+        services.AddCors(options => options.AddPolicy(ProductionCorsPolicy, policy =>
+        {
+            if (allowTestDefaults)
+            {
+                policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+                return;
+            }
+
+            policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
+        }));
     }
 
     private static bool IsTestEnvironment(string environmentName) =>
@@ -371,6 +393,7 @@ public partial class Program
         }
 
         app.UseRouting();
+        app.UseCors(ProductionCorsPolicy);
 
         // Endpoint rate-limit policies partition agent, admin and tenant
         // traffic by authenticated claims. Authentication must therefore run
