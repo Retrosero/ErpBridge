@@ -138,7 +138,6 @@ public class CentralApiFactory : WebApplicationFactory<Program>
             Id = Guid.NewGuid(),
             TenantId = tenantId,
             MachineId = machineId,
-            LicenseKey = "TEST-LICENSE-001",
             RegisteredAtUtc = DateTimeOffset.UtcNow,
         };
         db.Agents.Add(agent);

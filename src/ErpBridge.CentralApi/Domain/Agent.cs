@@ -15,12 +15,6 @@ public sealed class Agent
 
     public string MachineId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// License key last presented by this agent at registration. Optional —
-    /// an admin can detach a license without deleting the agent row.
-    /// </summary>
-    public string? LicenseKey { get; set; }
-
     public DateTimeOffset RegisteredAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? LastHeartbeatAtUtc { get; set; }

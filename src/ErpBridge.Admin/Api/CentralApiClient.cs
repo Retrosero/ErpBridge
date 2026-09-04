@@ -68,7 +68,6 @@ public sealed class AgentDto
     [JsonPropertyName("id")] public Guid Id { get; set; }
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("machineId")] public string MachineId { get; set; } = string.Empty;
-    [JsonPropertyName("licenseKey")] public string? LicenseKey { get; set; }
     [JsonPropertyName("registeredAtUtc")] public DateTimeOffset RegisteredAtUtc { get; set; }
     [JsonPropertyName("lastHeartbeatAtUtc")] public DateTimeOffset? LastHeartbeatAtUtc { get; set; }
     [JsonPropertyName("lastStatus")] public string? LastStatus { get; set; }

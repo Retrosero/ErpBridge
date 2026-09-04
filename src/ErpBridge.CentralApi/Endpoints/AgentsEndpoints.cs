@@ -98,7 +98,6 @@ public static class AgentsEndpoints
                 Id = Guid.NewGuid(),
                 TenantId = license.TenantId,
                 MachineId = body.MachineId,
-                LicenseKey = body.LicenseKey,
                 RegisteredAtUtc = DateTimeOffset.UtcNow,
             };
             db.Agents.Add(agent);
@@ -107,7 +106,6 @@ public static class AgentsEndpoints
         else
         {
             agent = existing;
-            existing.LicenseKey = body.LicenseKey;
             await db.SaveChangesAsync(ct);
         }
 

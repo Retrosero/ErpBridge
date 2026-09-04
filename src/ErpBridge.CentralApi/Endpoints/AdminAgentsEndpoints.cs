@@ -59,7 +59,6 @@ public static class AdminAgentsEndpoints
         Id = a.Id,
         TenantId = a.TenantId,
         MachineId = a.MachineId,
-        LicenseKey = a.LicenseKey,
         RegisteredAtUtc = a.RegisteredAtUtc,
         LastHeartbeatAtUtc = a.LastHeartbeatAtUtc,
         LastStatus = a.LastStatus,
