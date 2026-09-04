@@ -846,8 +846,8 @@ public sealed class AgentSettingsViewModel : ObservableObject
                 OnPropertyChanged(nameof(LicenseCheckErrorMessageDisplay));
 
                 _logger.LogInformation(
-                    "License validate OK. LicenseKey={LicenseKey}, Valid={Valid}, TenantId={TenantId}, ExpiresAtUtc={ExpiresAtUtc}, LatencyMs={Latency}.",
-                    licenseKey, _licenseCheckValid, _licenseCheckTenantIdDisplay, _licenseCheckExpiresAtDisplay, sw.ElapsedMilliseconds);
+                    "License validate OK. Valid={Valid}, TenantId={TenantId}, ExpiresAtUtc={ExpiresAtUtc}, LatencyMs={Latency}.",
+                    _licenseCheckValid, _licenseCheckTenantIdDisplay, _licenseCheckExpiresAtDisplay, sw.ElapsedMilliseconds);
 
                 Status = _licenseCheckValid == true
                     ? $"Lisans geçerli.\nTenant: {_licenseCheckTenantIdDisplay}\nExpires: {_licenseCheckExpiresAtDisplay}"
@@ -883,8 +883,8 @@ public sealed class AgentSettingsViewModel : ObservableObject
                 OnPropertyChanged(nameof(LicenseCheckErrorMessageDisplay));
 
                 _logger.LogWarning(
-                    "License validate FAILED. LicenseKey={LicenseKey}, StatusCode={StatusCode}, ErrorCode={ErrorCode}, LatencyMs={Latency}.",
-                    licenseKey, (int)response.StatusCode, _licenseCheckErrorCodeDisplay, sw.ElapsedMilliseconds);
+                    "License validate FAILED. StatusCode={StatusCode}, ErrorCode={ErrorCode}, LatencyMs={Latency}.",
+                    (int)response.StatusCode, _licenseCheckErrorCodeDisplay, sw.ElapsedMilliseconds);
 
                 Status = $"Lisans doğrulama başarısız: HTTP {(int)response.StatusCode} {_licenseCheckErrorCodeDisplay}";
             }
@@ -898,7 +898,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             OnPropertyChanged(nameof(LicenseCheckValidDisplay));
             OnPropertyChanged(nameof(LicenseCheckErrorCodeDisplay));
             OnPropertyChanged(nameof(LicenseCheckErrorMessageDisplay));
-            _logger.LogError(ex, "License validate client-side failure. LicenseKey={LicenseKey}.", licenseKey);
+            _logger.LogError(ex, "License validate client-side failure.");
             Status = "Lisans kontrolü başarısız: " + ex.Message;
         }
         finally
@@ -1120,8 +1120,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             OnPropertyChanged(nameof(RegisterSuccessDisplay));
             OnPropertyChanged(nameof(RegisterErrorCodeDisplay));
             OnPropertyChanged(nameof(RegisterErrorMessageDisplay));
-            _logger.LogError(ex, "Agent register client-side failure. LicenseKey={LicenseKey}, MachineId={MachineId}.",
-                licenseKey, machineId);
+            _logger.LogError(ex, "Agent register client-side failure. MachineId={MachineId}.", machineId);
             Status = "Agent kayıt başarısız: " + ex.Message;
         }
         finally
