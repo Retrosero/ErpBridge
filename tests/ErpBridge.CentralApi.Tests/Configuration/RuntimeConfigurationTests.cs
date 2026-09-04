@@ -20,12 +20,25 @@ public sealed class RuntimeConfigurationTests
     [Fact]
     public void Non_test_host_rejects_test_signing_key()
     {
-        var configuration = BuildConfiguration(TestJwtConstants.TestSigningKey, "Host=postgres;Database=erpbridge");
+        var configuration = BuildConfiguration(TestJwtConstants.TestSigningKey, "Host=postgres;Database=erpbridge", VaultKey());
 
         var act = () => Program.ValidateRuntimeConfiguration(configuration, allowTestDefaults: false);
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*non-test Jwt:SigningKey*");
+    }
+
+    [Fact]
+    public void Non_test_host_rejects_missing_api_key_vault_key()
+    {
+        var configuration = BuildConfiguration(
+            "production-signing-key-that-is-long-enough-for-hs256",
+            "Host=postgres;Database=erpbridge");
+
+        var act = () => Program.ValidateRuntimeConfiguration(configuration, allowTestDefaults: false);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*ApiKeyVault:MasterKey*");
     }
 
     [Fact]
@@ -38,11 +51,14 @@ public sealed class RuntimeConfigurationTests
         act.Should().NotThrow();
     }
 
-    private static IConfiguration BuildConfiguration(string? signingKey, string? connectionString = null)
+    private static IConfiguration BuildConfiguration(string? signingKey, string? connectionString = null, string? vaultKey = null)
     {
         var settings = new Dictionary<string, string?>();
         if (signingKey is not null) settings["Jwt:SigningKey"] = signingKey;
         if (connectionString is not null) settings["ConnectionStrings:CentralApi"] = connectionString;
+        if (vaultKey is not null) settings["ApiKeyVault:MasterKey"] = vaultKey;
         return new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
     }
+
+    private static string VaultKey() => Convert.ToBase64String(new byte[32]);
 }
