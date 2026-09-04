@@ -23,7 +23,7 @@
 # ============================================================================
 
 # ---------- shared base: ASP.NET Core 10 runtime ----------
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-jammy AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_NOLOGO=true \
@@ -44,7 +44,7 @@ RUN apt-get update \
 USER $APP_UID
 
 # ---------- build stage ----------
-FROM mcr.microsoft.com/dotnet/sdk:10.0-jammy AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 # Coolify restricts build-arg values to [a-z 0-9 . - _]. We accept the
 # lowercase form ("centralapi" / "admin") and map it to the PascalCase
 # project folder name via build-time shell normalisation. The hard-coded
