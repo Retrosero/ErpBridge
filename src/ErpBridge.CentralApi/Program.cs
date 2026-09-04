@@ -250,6 +250,20 @@ public partial class Program
         var signingKey = cfg.GetSection("Jwt").Get<JwtOptions>()?.SigningKey;
         if (string.IsNullOrWhiteSpace(signingKey) || string.Equals(signingKey, TestJwtConstants.TestSigningKey, StringComparison.Ordinal))
             throw new InvalidOperationException("A non-test host requires a non-test Jwt:SigningKey.");
+
+        var vaultKey = cfg.GetSection("ApiKeyVault").Get<ApiKeyVaultOptions>()?.MasterKey;
+        if (string.IsNullOrWhiteSpace(vaultKey))
+            throw new InvalidOperationException("ApiKeyVault:MasterKey is required outside the test environment.");
+
+        try
+        {
+            if (Convert.FromBase64String(vaultKey).Length != 32)
+                throw new InvalidOperationException("ApiKeyVault:MasterKey must decode to exactly 32 bytes.");
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException("ApiKeyVault:MasterKey must be valid base64.", ex);
+        }
     }
 
     private static bool IsTestEnvironment(string environmentName) =>
