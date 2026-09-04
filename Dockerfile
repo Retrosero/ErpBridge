@@ -3,7 +3,7 @@
 # ErpBridge multi-target Dockerfile. Builds either:
 #   * the central API  (target=centralapi) - Web API + PostgreSQL backend
 #   * the admin panel  (target=admin)      - Blazor Server
-# into a single self-contained ASP.NET Core 8 runtime image.
+# into a single self-contained ASP.NET Core 10 runtime image.
 #
 # Usage (Coolify "Dockerfile" source):
 #   build args:  target=centralapi (or admin), version=git-sha (optional)
@@ -22,8 +22,8 @@
 # renamed - only the docker-side mapping changes.
 # ============================================================================
 
-# ---------- shared base: ASP.NET Core 8 runtime ----------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy AS runtime
+# ---------- shared base: ASP.NET Core 10 runtime ----------
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-jammy AS runtime
 ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_NOLOGO=true \
@@ -44,7 +44,7 @@ RUN apt-get update \
 USER $APP_UID
 
 # ---------- build stage ----------
-FROM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-jammy AS build
 # Coolify restricts build-arg values to [a-z 0-9 . - _]. We accept the
 # lowercase form ("centralapi" / "admin") and map it to the PascalCase
 # project folder name via build-time shell normalisation. The hard-coded

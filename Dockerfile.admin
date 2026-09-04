@@ -1,11 +1,11 @@
 # ErpBridge Admin-only image for Coolify.
-FROM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-jammy AS build
 WORKDIR /src
 COPY . .
 RUN dotnet restore src/ErpBridge.Admin/ErpBridge.Admin.csproj
 RUN dotnet publish src/ErpBridge.Admin/ErpBridge.Admin.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-jammy AS final
 ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_NOLOGO=true \
