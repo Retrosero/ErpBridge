@@ -40,7 +40,7 @@ try {
     }
     Write-Host '[security-gate] secret signature scan passed'
 
-    Invoke-GateCommand 'restore' { dotnet restore ErpBridge.sln --verbosity minimal }
+    Invoke-GateCommand 'locked restore' { dotnet restore ErpBridge.sln --locked-mode --verbosity minimal }
     Write-Host '[security-gate] known vulnerable packages'
     $vulnerabilityReport = (& dotnet list ErpBridge.sln package --vulnerable --include-transitive | Out-String)
     $vulnerabilityReport.TrimEnd() | Write-Host
