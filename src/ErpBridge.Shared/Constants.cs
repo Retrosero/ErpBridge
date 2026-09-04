@@ -11,8 +11,15 @@ public static class AgentConstants
     /// <summary>Default queue poll interval in milliseconds for the local job worker.</summary>
     public const int DefaultQueuePollIntervalMs = 30_000;
 
-    /// <summary>Default bootstrap push interval in minutes (customer → central API).</summary>
+    /// <summary>Default bootstrap push interval in minutes (customer → central API). Legacy — use <see cref="DefaultBootstrapPushIntervalSeconds"/>.</summary>
+    [Obsolete("Use DefaultBootstrapPushIntervalSeconds (Phase 9 switched the worker to a 60s cadence).")]
     public const int DefaultBootstrapPushIntervalMinutes = 60;
+
+    /// <summary>Default bootstrap push interval in seconds (Mikro → central API). Phase 9 default: 60.</summary>
+    public const int DefaultBootstrapPushIntervalSeconds = 60;
+
+    /// <summary>Skip a new bootstrap push if the previous successful one is younger than this window. Phase 9 default: 30 s (half the worker interval).</summary>
+    public const int DefaultBootstrapMinimumIntervalSeconds = 30;
 
     /// <summary>Default batch size when draining the local SQLite queue.</summary>
     public const int DefaultQueueTake = 25;

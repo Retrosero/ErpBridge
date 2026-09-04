@@ -73,7 +73,9 @@ public static class ServiceCollectionExtensions
                     Server: string.Empty,
                     UserId: string.Empty,
                     Password: string.Empty,
-                    DatabaseName: string.Empty);
+                    DatabaseName: string.Empty,
+                    CompanyNo: 1,
+                    WarehouseNo: 1);
             });
     }
 

@@ -101,6 +101,18 @@ public sealed class BootstrapStatusResponse
     [JsonPropertyName("lastPulledAtUtc")] public DateTimeOffset? LastPulledAtUtc { get; set; }
 }
 
+/// <summary>
+/// Response shape for <c>GET /api/v1/bootstrap/notify</c>. Long-polled by
+/// desktop clients that want a real-time signal when a new bootstrap package
+/// lands. <see cref="Updated"/> is <c>true</c> when the server returned a
+/// cursor inside the wait window; <c>false</c> (and HTTP 204) on timeout.
+/// </summary>
+public sealed class BootstrapNotifyResponse
+{
+    [JsonPropertyName("updated")] public bool Updated { get; set; }
+    [JsonPropertyName("lastPulledAtUtc")] public DateTimeOffset? LastPulledAtUtc { get; set; }
+}
+
 /// <summary>POST /api/v1/mobile/telemetry/batch body.</summary>
 public sealed class MobileTelemetryBatchRequest
 {

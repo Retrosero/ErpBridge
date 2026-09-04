@@ -295,7 +295,11 @@ public class BootstrapSyncServiceTests
     public async Task RunOnceAsync_inside_idempotency_window_skips_the_push()
     {
         var fixedNow = new DateTimeOffset(2026, 7, 9, 18, 30, 0, TimeSpan.Zero);
-        var lastSuccess = fixedNow.UtcDateTime.AddMinutes(-15); // 15 minutes ago < 60 min window
+        // Phase 9: the worker now runs every 60 s, so the skip window is
+        // 30 seconds (BootstrapSyncService.MinimumIntervalSeconds). A 15 s
+        // old checkpoint must short-circuit the cycle so the agent does not
+        // push twice inside a single worker tick.
+        var lastSuccess = fixedNow.UtcDateTime.AddSeconds(-15);
 
         var configStore = new Mock<IAgentConfigStore>();
         configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
@@ -542,5 +546,193 @@ public class BootstrapSyncServiceTests
         public FixedTimeProvider(DateTimeOffset now) => _now = now;
 
         public override DateTimeOffset GetUtcNow() => _now;
+    }
+
+    // ------------------------------------------------------------------------
+    // Phase 9: 1-minute delta cadence. The service must read the remote
+    // status cursor, choose the delta path when the server already has a
+    // snapshot, and skip when the previous success is inside the 30 s window.
+    // ------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RunOnceAsync_uses_delta_path_when_server_has_snapshot()
+    {
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);
+        var cursor = fixedNow.AddMinutes(-1);
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+
+        var checkpointStore = new Mock<ICheckpointStore>();
+        // Last success is 5 minutes ago — outside the 30 s window.
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CheckpointRecord
+            {
+                TenantId = TenantId,
+                SyncScope = BootstrapSyncService.BootstrapScope,
+                LastSuccessAt = fixedNow.AddMinutes(-5).UtcDateTime,
+                UpdatedAt = fixedNow.AddMinutes(-5).UtcDateTime,
+            });
+
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage());
+        adapter.Setup(a => a.ReadBootstrapChangesAsync(cursor, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage() with { IsIncremental = true, ChangedSinceUtc = cursor.UtcDateTime });
+
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapRemoteStatus(true, cursor));
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        var result = await sut.RunOnceAsync();
+
+        result.Success.Should().BeTrue();
+        adapter.Verify(a => a.ReadBootstrapChangesAsync(cursor, It.IsAny<CancellationToken>()), Times.Once);
+        adapter.Verify(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RunOnceAsync_uses_full_read_when_server_has_no_snapshot()
+    {
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+
+        var checkpointStore = new Mock<ICheckpointStore>();
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CheckpointRecord?)null);
+
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage());
+
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+
+        var remoteApi = new Mock<IRemoteApiClient>();
+        // HasSnapshot=false → server has no package yet, so the cursor is null.
+        remoteApi.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapRemoteStatus(false, null));
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        var result = await sut.RunOnceAsync();
+
+        result.Success.Should().BeTrue();
+        adapter.Verify(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()), Times.Once);
+        adapter.Verify(a => a.ReadBootstrapChangesAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RunOnceAsync_skips_when_last_success_within_30_seconds()
+    {
+        // Phase 9: the worker now runs every 60 s, so the skip window was
+        // tightened from 60 minutes to 30 seconds. A 5-second-old checkpoint
+        // must short-circuit the adapter call so the agent does not push
+        // twice inside a single worker tick.
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 5, TimeSpan.Zero);
+        var lastSuccess = fixedNow.AddSeconds(-5).UtcDateTime;
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+
+        var checkpointStore = new Mock<ICheckpointStore>();
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CheckpointRecord
+            {
+                TenantId = TenantId,
+                SyncScope = BootstrapSyncService.BootstrapScope,
+                LastSuccessAt = lastSuccess,
+                UpdatedAt = lastSuccess,
+            });
+
+        var adapterFactory = new Mock<IErpAdapterFactory>(MockBehavior.Strict);
+        var remoteApi = new Mock<IRemoteApiClient>(MockBehavior.Strict);
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        var result = await sut.RunOnceAsync();
+
+        result.Success.Should().BeTrue();
+        result.CustomersCount.Should().Be(0, "skipped run carries zero rows");
+        result.StocksCount.Should().Be(0);
+        // The remote status is NOT consulted when we skip — saves a round-trip.
+        remoteApi.Verify(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()), Times.Never);
+        remoteApi.Verify(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RunOnceAsync_runs_when_last_success_older_than_30_seconds()
+    {
+        // Companion to the skip test: 60 s of age must allow the cycle to run.
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 1, 0, TimeSpan.Zero);
+        var lastSuccess = fixedNow.AddSeconds(-60).UtcDateTime;
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+
+        var checkpointStore = new Mock<ICheckpointStore>();
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CheckpointRecord
+            {
+                TenantId = TenantId,
+                SyncScope = BootstrapSyncService.BootstrapScope,
+                LastSuccessAt = lastSuccess,
+                UpdatedAt = lastSuccess,
+            });
+        checkpointStore.Setup(s => s.SaveAsync(It.IsAny<CheckpointRecord>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage());
+
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapRemoteStatus(false, null));
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        var result = await sut.RunOnceAsync();
+
+        result.Success.Should().BeTrue();
+        // The 60 s age exceeds the 30 s skip window, so the worker performs
+        // a full read. (HasSnapshot=false → full read, not delta.)
+        adapter.Verify(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()), Times.Once);
+        remoteApi.Verify(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

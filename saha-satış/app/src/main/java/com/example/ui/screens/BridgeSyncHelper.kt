@@ -42,6 +42,7 @@ object BridgeSyncHelper {
         }
         val userFriendlyMessage = when (code) {
             401, 403 -> "Yetkilendirme Hatası: API Anahtarı veya Tenant ID geçersiz ($safeMessage)"
+            404 -> "Endpoint mevcut değil: ${response.raw().request.url.encodedPath} ($safeMessage)"
             422 -> "Doğrulama Hatası: Gönderilen parametreler hatalı ($safeMessage)"
             429 -> "İstek Sınırı Aşıldı: Çok fazla istek gönderdiniz ($safeMessage)"
             in 500..599 -> "Sunucu Hatası: GoApp Cloud sunucusunda bir sorun oluştu ($safeMessage)"
@@ -2196,7 +2197,12 @@ object BridgeSyncHelper {
                 }
                 log("Başarılı! Toplam ${items.size} adet kasa yönetim/muhasebe tanımı kaydedildi.")
             } else {
-                handleApiError(response, log)
+                val err = handleApiError(response, log)
+                if (response.code() == 404) {
+                    log("⚠️ 'kasaYonetim' endpoint'i merkezi API'de mevcut değil (HTTP 404). Bu tablo için sync atlanıyor.")
+                } else {
+                    throw err
+                }
 
 
 

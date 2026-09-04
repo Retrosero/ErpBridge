@@ -98,15 +98,14 @@ public sealed class MikroAdapter : IErpAdapter
         // MikroDbReader. Each section is a separate SQL call against the live
         // Mikro database; errors propagate so BootstrapSyncService can fail the
         // cycle cleanly.
+        // Faz 10: firm / warehouse numbers come from MikroConnectionSettings
+        // (sourced from AgentConfig by the bootstrap orchestrator / WPF UI).
         _logger.LogInformation(
-            "MikroAdapter.ReadBootstrapDataAsync invoked for database {Database}.",
-            ConnectionSettings.DatabaseName);
+            "MikroAdapter.ReadBootstrapDataAsync invoked for database {Database}, companyNo={CompanyNo}, warehouseNo={WarehouseNo}.",
+            ConnectionSettings.DatabaseName, ConnectionSettings.CompanyNo, ConnectionSettings.WarehouseNo);
 
-        // Firm / warehouse numbers come from configuration in a later phase.
-        // For Phase 5 the MVP is hardcoded; the bootstrap orchestrator itself is
-        // the seam where these will be sourced from AgentConfig.
-        const int firmNo = 1;
-        const int warehouseNo = 1;
+        var firmNo = ConnectionSettings.CompanyNo;
+        var warehouseNo = ConnectionSettings.WarehouseNo;
 
         var customers = await _dbReader.ReadCustomersAsync(firmNo, ct).ConfigureAwait(false);
         var customerAddresses = await _dbReader.ReadCustomerAddressesAsync(firmNo, ct).ConfigureAwait(false);
@@ -145,8 +144,8 @@ public sealed class MikroAdapter : IErpAdapter
     /// <inheritdoc />
     public async Task<SyncPackage> ReadBootstrapChangesAsync(DateTimeOffset changedSinceUtc, CancellationToken ct = default)
     {
-        const int firmNo = 1;
-        const int warehouseNo = 1;
+        var firmNo = ConnectionSettings.CompanyNo;
+        var warehouseNo = ConnectionSettings.WarehouseNo;
         var customers = await _dbReader.ReadCustomersAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
         var customerAddresses = await _dbReader.ReadCustomerAddressesAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
         var customerContacts = await _dbReader.ReadCustomerContactsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
@@ -219,13 +218,13 @@ public sealed class MikroAdapter : IErpAdapter
             throw new ArgumentException("Section name is required.", nameof(sectionName));
         }
 
-        const int firmNo = 1;
-        const int warehouseNo = 1;
+        var firmNo = ConnectionSettings.CompanyNo;
+        var warehouseNo = ConnectionSettings.WarehouseNo;
         var key = sectionName.Trim().ToLowerInvariant();
 
         _logger.LogInformation(
-            "MikroAdapter.ReadBootstrapSectionAsync invoked for section {Section} on database {Database}.",
-            key, ConnectionSettings.DatabaseName);
+            "MikroAdapter.ReadBootstrapSectionAsync invoked for section {Section} on database {Database} (companyNo={CompanyNo}, warehouseNo={WarehouseNo}).",
+            key, ConnectionSettings.DatabaseName, firmNo, warehouseNo);
 
         // Build an empty package with only the requested section populated.
         // All other sections default to Array.Empty so the JSON payload stays

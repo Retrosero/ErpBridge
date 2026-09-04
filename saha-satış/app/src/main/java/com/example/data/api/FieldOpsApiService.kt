@@ -10,13 +10,13 @@ interface FieldOpsApiService {
     @POST("api/v1/android/sync/stokHareketleri")
     suspend fun getStokHareketleri(@Body request: PullJobsRequest): Response<StokHareketResponse>
 
-    @POST("api/v1/android/sync/cariHareket")
+    @POST("api/v1/android/sync/cariHareketleri")
     suspend fun getCariHareket(@Body request: PullJobsRequest): Response<CariHareketResponse>
 
-    @POST("api/v1/android/sync/barkodTanimi")
+    @POST("api/v1/android/sync/barkodlar")
     suspend fun getBarkodTanimi(@Body request: PullJobsRequest): Response<BarkodTanimiResponseDto>
 
-    @POST("api/v1/android/sync/cariAdresleri")
+    @POST("api/v1/android/sync/cariAdresler")
     suspend fun getCariAdresleri(@Body request: PullJobsRequest): Response<CariAdresResponseDto>
 
     @POST("api/v1/android/sync/cariBankaHesaplari")

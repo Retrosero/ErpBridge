@@ -38,7 +38,31 @@ erpDocumentSeries?, erpDocumentNumber?, erpRecno?, erpGuid? }`. Yanıt: 204.
 ### POST /api/v1/bootstrap
 
 Body: `SyncPackage { customers, stocks, prices, inventory, openOrders, cashAndBank,
-lookups }`. Yanıt: 204. Tenant başına periyodik (örn. saatlik).
+lookups }`. Yanıt: 204. Tenant başına periyodik (Faz 9: her 60 sn delta push).
+Başarılı insert'ten sonra sunucu, bu tenant'ın `/api/v1/bootstrap/notify` long-poll
+bekleyenlerini cursor ile uyandırır.
+
+### GET /api/v1/bootstrap/notify
+
+Long-polling. Agent Service veya WPF UI bir push'u beklemek için bu endpoint'i
+çağırır. Body yok. Query: `wait` (int, default 30, max 60, min 1 saniye).
+Yanıtlar:
+
+- `200 OK` — `BootstrapNotifyResponse { updated: true, lastPulledAtUtc: <cursor> }`
+  (yeni bootstrap paketi `wait` penceresi içinde geldi).
+- `204 No Content` — `wait` süresi doldu, publish olmadı.
+- `400 Bad Request` — `wait` 1..60 aralığında değil (`INVALID_WAIT`).
+- `401 Unauthorized` — JWT yok / geçersiz.
+
+```text
+GET /api/v1/bootstrap/notify?wait=30
+Authorization: Bearer <jwt>
+```
+
+Sunucu `POST /api/v1/bootstrap` başarılı olduğunda ilgili tenant'ın tüm
+long-poll bekleyenlerini uyandırır ve 200 ile cursor'ı döner. Hub process-local
+pub/sub kullanır (tek-replica Coolify varsayımı); çok-instans dağıtımda
+Redis backplane gerekir (ileride).
 
 ## Android veri okuma API'si
 

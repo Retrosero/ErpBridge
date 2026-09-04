@@ -17,7 +17,9 @@ public sealed class MikroConnectionFactory
         Server: string.Empty,
         UserId: string.Empty,
         Password: string.Empty,
-        DatabaseName: string.Empty);
+        DatabaseName: string.Empty,
+        CompanyNo: 1,
+        WarehouseNo: 1);
 
     /// <summary>
     /// Overwrite the "active" settings used by readers that don't carry

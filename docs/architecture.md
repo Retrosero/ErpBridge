@@ -12,6 +12,11 @@ ErpBridge üç ana bileşenden oluşur:
 3. **Android / Web Saha Satış Uygulaması** — merkezi API'ye JSON payload gönderir,
    Mikro SQL'e **doğrudan bağlanmaz**.
 
+> **Faz 10:** Agent artık `MikroConnectionSettings.CompanyNo` +
+> `WarehouseNo` üzerinden çok-firmalı / çok-depolu Mikro kurulumlarını
+> destekliyor. Operatör WPF'te Firma No / Şube No / Depo No girip
+> kaydedebiliyor; her bootstrap okuması bu değerlerle filtreleniyor.
+
 ## Katmanlı yapı
 
 ```

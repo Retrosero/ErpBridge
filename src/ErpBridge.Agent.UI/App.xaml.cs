@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Windows;
 using ErpBridge.Agent.UI.DependencyInjection;
+using ErpBridge.Agent.UI.Services;
 using ErpBridge.Agent.UI.ViewModels;
 using ErpBridge.Agent.UI.Views;
 using ErpBridge.LocalStore.Sqlite.Migrations;
@@ -43,6 +44,7 @@ public partial class App : Application
 
     private ServiceProvider? _services;
     private TaskbarIcon? _tray;
+    private IDesktopSignalService? _signalService;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -128,11 +130,47 @@ public partial class App : Application
         window.Loaded += async (_, _) => await viewModel.LoadAsync();
         MainWindow = window;
         window.Show();
+
+        // Phase 9: long-poll the central API for "new bootstrap package
+        // available" notifications. The callback re-uses the singleton
+        // DashboardViewModel's RefreshFromSignalAsync so the operator sees
+        // the fresh snapshot without touching the UI. A missing
+        // IDesktopSignalService would only happen if DI registration is
+        // broken; the try/catch keeps the rest of the app usable so the
+        // operator can see and fix the misconfiguration.
+        try
+        {
+            var dashboardVm = _services.GetRequiredService<DashboardViewModel>();
+            _signalService = _services.GetRequiredService<IDesktopSignalService>();
+            _signalService.Start(cursor => dashboardVm.RefreshFromSignalAsync(cursor));
+            startupLogger.LogInformation(
+                "Desktop signal service started — waiting for central-API bootstrap notifications.");
+        }
+        catch (Exception ex)
+        {
+            startupLogger.LogError(ex,
+                "Failed to start the desktop signal service. The UI will still work but live updates are disabled.");
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         _tray?.Dispose();
+        // Stop the long-poll loop before disposing the DI container so the
+        // background task doesn't try to resolve services that are already torn
+        // down.
+        if (_signalService is not null)
+        {
+            try
+            {
+                _signalService.StopAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Signal service stop failed: {ex.Message}");
+            }
+            _signalService = null;
+        }
         _services?.Dispose();
         base.OnExit(e);
     }

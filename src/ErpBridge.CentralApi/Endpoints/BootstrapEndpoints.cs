@@ -5,6 +5,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Notifications;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -38,6 +39,22 @@ public static class BootstrapEndpoints
             .RequireAuthorization(Program.AgentPolicy)
             .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
         return routes;
+    }
+
+    /// <summary>
+    /// Resolve the per-tenant <see cref="IBootstrapNotificationHub"/> from the
+    /// request services. Throws <see cref="InvalidOperationException"/> when
+    /// the hub is missing — the symptom of a misconfigured DI graph.
+    /// </summary>
+    private static IBootstrapNotificationHub ResolveHub(HttpContext http)
+    {
+        var hub = http.RequestServices.GetService(typeof(IBootstrapNotificationHub)) as IBootstrapNotificationHub;
+        if (hub is null)
+        {
+            throw new InvalidOperationException(
+                "IBootstrapNotificationHub is not registered with the DI container.");
+        }
+        return hub;
     }
 
     private static async Task<IResult> StatusAsync(
@@ -107,6 +124,29 @@ public static class BootstrapEndpoints
         };
         db.BootstrapPackages.Add(package);
         await db.SaveChangesAsync(ct);
+
+        // Phase 9: notify any desktop UI that is currently long-polling for a
+        // fresh snapshot. The hub is a process-local pub/sub (see
+        // IBootstrapNotificationHub for the multi-replica caveat).
+        // We resolve it here (not via constructor injection) because the
+        // minimal-API binding for BootstrapAsync keeps the rest of the
+        // signature aligned with the original Phase 4 endpoint.
+        try
+        {
+            var hub = ResolveHub(http);
+            hub.Publish(tenantId, package.PulledAtUtc);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // A misconfigured DI graph should not break the push itself — log
+            // and move on. The data is durable; the next push will retry.
+            var fallbackLogger = http.RequestServices
+                .GetService(typeof(Microsoft.Extensions.Logging.ILoggerFactory))
+                as Microsoft.Extensions.Logging.ILoggerFactory;
+            fallbackLogger?.CreateLogger("BootstrapEndpoints")
+                .LogWarning(ex, "Bootstrap publish succeeded but notification hub was missing; signal not delivered.");
+        }
+
         return Results.NoContent();
     }
 

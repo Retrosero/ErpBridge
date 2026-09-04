@@ -1,20 +1,26 @@
+using ErpBridge.Agent.Service.Configuration;
 using ErpBridge.Core.Stores;
 using ErpBridge.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ErpBridge.Agent.Service.Workers;
 
 /// <summary>
 /// Periodic background worker that drives <see cref="IBootstrapSyncService"/>.
-/// One iteration = one full bootstrap cycle (read Mikro → push central API).
-/// The interval is <see cref="AgentConstants.DefaultBootstrapPushIntervalMinutes"/>
-/// (60 minutes by default) so the central API keeps a fresh reference-data
-/// snapshot without flooding the agent. The first iteration is delayed
-/// <see cref="FirstRunDelaySeconds"/> seconds so the service can finish booting
-/// (DB migrations, config load, Mikro connection pool warmup) before the first
-/// push is attempted.
+/// One iteration = one delta (or first-time full) bootstrap cycle
+/// (read Mikro → push central API).
+///
+/// Phase 9 switched the cadence from 60 minutes to 60 seconds so the WPF
+/// desktop UI can surface new data within ~1 minute of an ERP change. The
+/// first iteration is delayed <see cref="AgentServiceOptions.BootstrapFirstRunDelaySeconds"/>
+/// seconds (default 5 s) so the service can finish booting (DB migrations,
+/// config load, Mikro connection pool warmup) before the first push is
+/// attempted. The interval itself comes from
+/// <see cref="AgentServiceOptions.BootstrapIntervalSeconds"/> — operators can
+/// override it from <c>appsettings.json</c> without rebuilding the agent.
 /// </summary>
 /// <remarks>
 /// The worker is intentionally lightweight: the actual retry / checkpoint /
@@ -25,11 +31,9 @@ namespace ErpBridge.Agent.Service.Workers;
 /// </remarks>
 public sealed class BootstrapWorker : BackgroundService
 {
-    private static readonly TimeSpan FirstRunDelay = TimeSpan.FromSeconds(30);
-
     private readonly IServiceProvider _services;
     private readonly ILogger<BootstrapWorker> _logger;
-    private readonly TimeSpan _interval;
+    private readonly AgentServiceOptions _options;
 
     /// <summary>
     /// Build the worker. <paramref name="services"/> is the root provider —
@@ -39,35 +43,27 @@ public sealed class BootstrapWorker : BackgroundService
     /// </summary>
     public BootstrapWorker(
         IServiceProvider services,
+        IOptions<AgentServiceOptions> options,
         ILogger<BootstrapWorker> logger)
-        : this(services, logger, TimeSpan.FromMinutes(AgentConstants.DefaultBootstrapPushIntervalMinutes))
-    {
-    }
-
-    /// <summary>
-    /// Test seam — explicitly set the interval so unit tests can drive the
-    /// loop in milliseconds.
-    /// </summary>
-    public BootstrapWorker(
-        IServiceProvider services,
-        ILogger<BootstrapWorker> logger,
-        TimeSpan interval)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        if (interval <= TimeSpan.Zero)
+        ArgumentNullException.ThrowIfNull(options);
+        _options = options.Value;
+        if (_options.BootstrapIntervalSeconds <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(interval), "Interval must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                $"AgentServiceOptions.BootstrapIntervalSeconds must be positive (got {_options.BootstrapIntervalSeconds}).");
         }
-        _interval = interval;
     }
 
     /// <inheritdoc />
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation(
-            "BootstrapWorker starting (interval = {IntervalMinutes} min, first run delayed {FirstDelay}s).",
-            _interval.TotalMinutes, FirstRunDelay.TotalSeconds);
+            "BootstrapWorker starting (interval = {IntervalSeconds}s, first run delayed {FirstDelay}s).",
+            _options.BootstrapIntervalSeconds, _options.BootstrapFirstRunDelaySeconds);
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -77,14 +73,20 @@ public sealed class BootstrapWorker : BackgroundService
         // Defer the first push so the service can finish booting (DB
         // migrations, config load, Mikro connection warmup) without the
         // bootstrap push competing for resources on the first tick.
-        try
+        var firstDelay = TimeSpan.FromSeconds(Math.Max(0, _options.BootstrapFirstRunDelaySeconds));
+        if (firstDelay > TimeSpan.Zero)
         {
-            await Task.Delay(FirstRunDelay, stoppingToken).ConfigureAwait(false);
+            try
+            {
+                await Task.Delay(firstDelay, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            return;
-        }
+
+        var interval = TimeSpan.FromSeconds(_options.BootstrapIntervalSeconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -92,7 +94,7 @@ public sealed class BootstrapWorker : BackgroundService
 
             try
             {
-                await Task.Delay(_interval, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(interval, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

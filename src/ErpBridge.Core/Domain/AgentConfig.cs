@@ -25,6 +25,16 @@ public sealed class AgentConfig
 
     public int BranchNo { get; set; } = 1;
 
+    /// <summary>
+    /// Default warehouse number used by the bootstrap reader when no per-row
+    /// warehouse is supplied (inventory aggregation queries). Mikro multi-firm
+    /// installations share a single database where the company/branch columns
+    /// are constant for the whole agent; warehouses vary per document, so
+    /// this field is the *default* that the bootstrap reader uses for the
+    /// <c>STOK_HAREKETLERI</c> aggregate.
+    /// </summary>
+    public int WarehouseNo { get; set; } = 1;
+
     public string? ApiBaseUrl { get; set; }
 
     /// <summary>

@@ -69,3 +69,23 @@
 - Cari kart açma / Stok kart açma
 - Logo adapter
 - Paraşüt adapter
+
+## Faz 9 — 1 dakikalık delta sync + sunucudan WPF UI'a long-polling sinyali ✅
+
+- `BootstrapWorker` artık her 60 sn tetiklenir (önce 60 dk); delta path (`ReadBootstrapChangesAsync`) snapshot mevcutsa varsayılan.
+- `BootstrapSyncService.MinimumIntervalSeconds = 30` — işçinin kendi ritmini throttle etmesini önler.
+- Central API'ye `GET /api/v1/bootstrap/notify?wait=30` long-polling endpoint'i eklendi.
+- `IBootstrapNotificationHub` (in-memory pub/sub) push sonrası bekleyenleri uyandırır.
+- WPF UI: `BootstrapSignalService` arka planda long-poll yapar, `DashboardViewModel.RefreshFromSignalAsync` anında dashboard'u tazeler.
+- Toplam uçtan uca gecikme ~60-70 sn (önceki ~60 dk'ya karşı).
+- Test: 20 yeni / 1 güncelleme (Hub 7 + Notify endpoint 5 + Delta path 4 + 1 idempotency update + Wait client 4).
+
+## Faz 10 — Multi-firm Mikro desteği ✅
+
+- `MikroAdapter`'da `const int firmNo = 1; const int warehouseNo = 1;` hardcode'ları kaldırıldı; her 3 bootstrap method artık `ConnectionSettings.CompanyNo` + `ConnectionSettings.WarehouseNo` kullanıyor.
+- `AgentConfig.WarehouseNo` (default 1) eklendi; `SqliteAgentConfigStore` round-trip yapıyor.
+- `MikroConnectionSettings.CompanyNo` + `WarehouseNo` alanları; `FromConfiguration` invariant culture + default 1.
+- `AgentConfigMapper.FromAgentConfig(config, companyNo, branchNo, warehouseNo)` 3 parametreli overload; `BranchNo` ve `WarehouseNo` validation.
+- WPF: `MainWindow.xaml` 3 yeni input (Firma No / Şube No / Varsayılan Depo No), `AgentSettingsViewModel` 3 yeni property + Save/Load + `WriteMikroSectionToConfiguration`.
+- Paket çakışması: `System.Security.Cryptography.ProtectedData 8.0.0` → `9.0.13` (Microsoft.Data.SqlClient 7.0.2 transitive requirement).
+- Test: 14 yeni (Settings 4 + Mapper 4 + Adapter 4 + Store 2).

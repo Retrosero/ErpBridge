@@ -13,12 +13,25 @@ namespace ErpBridge.Erp.Mikro.Connection;
 /// <param name="Password">SQL password (ignored when <see cref="IntegratedSecurity"/> is true).</param>
 /// <param name="DatabaseName">Mikro database (e.g. "MIKRO16").</param>
 /// <param name="IntegratedSecurity">True for Windows authentication (Trusted_Connection / SSPI).</param>
+/// <param name="CompanyNo">
+/// Mikro firma (company) number. Every master-data query is filtered by
+/// <c>*_firmano = @firmNo</c> (or <c>*_firma_no</c>); the bootstrap reader uses
+/// this value for every section. Defaults to <c>1</c> for single-firm
+/// installations.
+/// </param>
+/// <param name="WarehouseNo">
+/// Default warehouse number used by the inventory aggregation query. Per-row
+/// warehouses (e.g. <c>sip_depono</c> in open orders) come from the row
+/// itself; this value is the *default* fallback. Defaults to <c>1</c>.
+/// </param>
 public sealed record MikroConnectionSettings(
     string Server,
     string UserId,
     string Password,
     string DatabaseName,
-    bool IntegratedSecurity = false)
+    bool IntegratedSecurity = false,
+    int CompanyNo = 1,
+    int WarehouseNo = 1)
 {
     /// <summary>
     /// Configuration section that holds Mikro SQL connection parameters. The WPF
@@ -54,6 +67,8 @@ public sealed record MikroConnectionSettings(
         var userId = section["UserId"];
         var databaseName = section["DatabaseName"];
         var integratedSecurity = ParseBool(section["IntegratedSecurity"]);
+        var companyNo = ParseInt(section["CompanyNo"], defaultValue: 1);
+        var warehouseNo = ParseInt(section["WarehouseNo"], defaultValue: 1);
 
         if (string.IsNullOrWhiteSpace(server)
             || string.IsNullOrWhiteSpace(databaseName))
@@ -76,7 +91,9 @@ public sealed record MikroConnectionSettings(
             UserId: integratedSecurity ? (userId?.Trim() ?? string.Empty) : userId!.Trim(),
             Password: integratedSecurity ? string.Empty : password,
             DatabaseName: databaseName.Trim(),
-            IntegratedSecurity: integratedSecurity);
+            IntegratedSecurity: integratedSecurity,
+            CompanyNo: companyNo,
+            WarehouseNo: warehouseNo);
     }
 
     private static bool ParseBool(string? raw)
@@ -85,5 +102,22 @@ public sealed record MikroConnectionSettings(
         return raw.Trim().Equals("true", StringComparison.OrdinalIgnoreCase)
             || raw.Trim().Equals("1", StringComparison.OrdinalIgnoreCase)
             || raw.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Parse an integer config value. Returns <paramref name="defaultValue"/> on
+    /// missing / blank / unparsable input. The fallback exists because older
+    /// Mikro installations are single-firm (CompanyNo=1, WarehouseNo=1) and a
+    /// missing key must not break the bootstrap path.
+    /// </summary>
+    private static int ParseInt(string? raw, int defaultValue)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
+        if (int.TryParse(raw.Trim(), System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var value))
+        {
+            return value;
+        }
+        return defaultValue;
     }
 }

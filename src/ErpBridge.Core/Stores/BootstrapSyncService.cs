@@ -13,11 +13,14 @@ namespace ErpBridge.Core.Stores;
 /// Default <see cref="IBootstrapSyncService"/> implementation. One cycle is:
 ///   1. Load <see cref="AgentConfig"/> from <see cref="IAgentConfigStore"/> (skipped on null).
 ///   2. Check the local <see cref="ICheckpointStore"/> — skip the cycle if the
-///      last successful push is younger than <see cref="MinimumIntervalMinutes"/>
-///      (idempotency window, default 60 minutes).
+///      last successful push is younger than <see cref="MinimumIntervalSeconds"/>
+///      (idempotency window, default 30 seconds — half the worker's 60 s cadence).
 ///   3. Ask <see cref="IErpAdapterFactory"/> for the Mikro adapter and call
-///      <see cref="IErpAdapter.ReadBootstrapDataAsync"/> — returns a typed
-///      <see cref="SyncPackage"/> (cari/stok/fiyat/depo/kasa-banka/...).
+///      <see cref="IErpAdapter.ReadBootstrapDataAsync"/> (full read, on first push)
+///      or <see cref="IErpAdapter.ReadBootstrapChangesAsync"/> (incremental, when
+///      the server already has a snapshot). The remote status cursor returned by
+///      <see cref="IRemoteApiClient.GetBootstrapStatusAsync"/> decides which path
+///      to take; this is the Phase 9 default.
 ///   4. Push the package through <see cref="IRemoteApiClient.PushBootstrapDataAsync"/>
 ///      protected by a Polly v8 exponential-backoff retry pipeline
 ///      (5s / 15s / 60s, 3 attempts total).
@@ -35,8 +38,8 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     /// <summary>Checkpoint scope used by the bootstrap orchestrator. Stable string — do not rename.</summary>
     public const string BootstrapScope = "bootstrap";
 
-    /// <summary>Skip a new push if the previous successful one is younger than this window.</summary>
-    public const int MinimumIntervalMinutes = 60;
+    /// <summary>Skip a new push if the previous successful one is younger than this window. Phase 9: 30 s (half the worker interval).</summary>
+    public const int MinimumIntervalSeconds = 30;
 
     // A complete Mikro snapshot can contain many years of ledger movements.
     // If a reverse proxy times out while accepting that large single request,
@@ -120,11 +123,11 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             if (last?.LastSuccessAt is { } lastAt)
             {
                 var age = _timeProvider.GetUtcNow().UtcDateTime - lastAt;
-                if (age < TimeSpan.FromMinutes(MinimumIntervalMinutes))
+                if (age < TimeSpan.FromSeconds(MinimumIntervalSeconds))
                 {
                     _logger.LogInformation(
-                        "Bootstrap sync skipped: last successful push was {Age:hh\\:mm\\:ss} ago (< {Min}m).",
-                        age, MinimumIntervalMinutes);
+                        "Bootstrap sync skipped: last successful push was {Age:hh\\:mm\\:ss} ago (< {Min}s).",
+                        age, MinimumIntervalSeconds);
                     return new BootstrapSyncResult(
                         Success: true,
                         CustomersCount: 0,

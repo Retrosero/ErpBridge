@@ -120,6 +120,33 @@
                                  Text="{Binding MikroDatabaseName, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,4" />
 
+                        <!-- Firma / Şube / Varsayılan Depo (Faz 10: multi-firm) -->
+                        <Grid Grid.Row="7" Grid.ColumnSpan="2" Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Firma No" VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="Şube No" VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="0" Grid.Column="4" Text="Varsayılan Depo No" VerticalAlignment="Center" />
+                            <TextBox Grid.Row="1" Grid.Column="0"
+                                     Text="{Binding CompanyNo, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Mikro firma numarası (CARI_HESAPLAR.cari_firmano, STOKLAR.sto_firmano, …)." />
+                            <TextBox Grid.Row="1" Grid.Column="2"
+                                     Text="{Binding BranchNo, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Mikro şube numarası (satış siparişi yazımı için). Satış siparişi yazılmıyorsa 0 bırakılabilir." />
+                            <TextBox Grid.Row="1" Grid.Column="4"
+                                     Text="{Binding WarehouseNo, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Stok envanter sorguları için varsayılan depo numarası (STOK_HAREKETLERI.sth_depo_no)." />
+                        </Grid>
+
                         <!-- API base URL -->
                         <TextBlock Grid.Row="7" Grid.Column="0" Text="API base URL" VerticalAlignment="Center" Margin="0,4" />
                         <TextBox Grid.Row="7" Grid.Column="1"

@@ -782,7 +782,9 @@ public sealed class DashboardViewModel : ObservableObject
 
             if (lastUtc.HasValue)
             {
-                var nextEligible = lastUtc.Value.AddMinutes(60);
+                // Phase 9: the worker now runs every 60 s, so the "next eligible
+                // run" hint reflects the new cadence.
+                var nextEligible = lastUtc.Value.AddSeconds(60);
                 if (nextEligible > DateTimeOffset.Now)
                 {
                     var until = nextEligible - DateTimeOffset.Now;
@@ -803,6 +805,29 @@ public sealed class DashboardViewModel : ObservableObject
             _logger.LogError(ex, "RefreshAsync failed.");
         }
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Called by <c>BootstrapSignalService</c> when the central API notifies
+    /// a new bootstrap package. Refreshes the timestamp + status badge, then
+    /// kicks off a Mikro row-count check so the operator sees the new totals
+    /// without having to hit "Yenile" manually. Skips the row-count refresh
+    /// when <see cref="IsBusy"/> is already true (e.g. a manual bootstrap is
+    /// running) so the signal does not interfere with the operator's flow.
+    /// </summary>
+    public async Task RefreshFromSignalAsync(DateTimeOffset? cursor)
+    {
+        _logger.LogInformation(
+            "RefreshFromSignalAsync invoked (cursor={Cursor}, isBusy={IsBusy}).",
+            cursor, IsBusy);
+        await RefreshAsync().ConfigureAwait(true);
+        if (IsBusy)
+        {
+            _logger.LogDebug(
+                "RefreshFromSignalAsync: skipping Mikro row-count refresh because the VM is busy.");
+            return;
+        }
+        await CheckMikroRowCountsAsync().ConfigureAwait(true);
     }
 
     private static readonly Brush GrayBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x9E, 0x9E, 0x9E)));

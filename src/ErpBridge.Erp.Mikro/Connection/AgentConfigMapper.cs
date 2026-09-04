@@ -37,8 +37,13 @@ public sealed class AgentConfigMapper : IAgentConfigToErpSettingsMapper
         {
             return null;
         }
+        if (!int.TryParse(config.WarehouseNo.ToString(CultureInfo.InvariantCulture),
+                NumberStyles.Integer, CultureInfo.InvariantCulture, out var warehouseNo))
+        {
+            return null;
+        }
 
-        return FromAgentConfig(config, companyNo, branchNo);
+        return FromAgentConfig(config, companyNo, branchNo, warehouseNo);
     }
 
     /// <summary>
@@ -56,14 +61,14 @@ public sealed class AgentConfigMapper : IAgentConfigToErpSettingsMapper
     /// </summary>
     /// <param name="config">Source agent config.</param>
     public static MikroConnectionSettings? FromAgentConfig(AgentConfig config)
-        => FromAgentConfig(config, config.CompanyNo, config.BranchNo);
+        => FromAgentConfig(config, config.CompanyNo, config.BranchNo, config.WarehouseNo);
 
     /// <summary>
-    /// Strongly-typed mapping with explicit company / branch numbers (so
-    /// callers that parse the values up-front can reuse them and still hit
+    /// Strongly-typed mapping with explicit company / branch / warehouse numbers
+    /// (so callers that parse the values up-front can reuse them and still hit
     /// the canonical validation path).
     /// </summary>
-    public static MikroConnectionSettings? FromAgentConfig(AgentConfig config, int companyNo, int branchNo)
+    public static MikroConnectionSettings? FromAgentConfig(AgentConfig config, int companyNo, int branchNo, int warehouseNo)
     {
         ArgumentNullException.ThrowIfNull(config);
 
@@ -73,17 +78,20 @@ public sealed class AgentConfigMapper : IAgentConfigToErpSettingsMapper
         // SQL-auth path requires a user name; Windows-auth path does not.
         if (!config.UseWindowsAuth && string.IsNullOrWhiteSpace(config.SqlUserName)) return null;
 
-        // CompanyNo / BranchNo are validated at this seam — out-of-range values
-        // would also be caught downstream by the lookup SQL, but we surface
-        // a clear "missing field" here.
+        // CompanyNo / BranchNo / WarehouseNo are validated at this seam —
+        // out-of-range values would also be caught downstream by the lookup
+        // SQL, but we surface a clear "missing field" here.
         if (companyNo <= 0) return null;
         if (branchNo < 0) return null;
+        if (warehouseNo <= 0) return null;
 
         return new MikroConnectionSettings(
             Server: config.SqlServer.Trim(),
             UserId: config.UseWindowsAuth ? string.Empty : (config.SqlUserName ?? string.Empty).Trim(),
             Password: config.UseWindowsAuth ? string.Empty : (config.SqlPassword ?? string.Empty),
             DatabaseName: config.MikroDatabaseName.Trim(),
-            IntegratedSecurity: config.UseWindowsAuth);
+            IntegratedSecurity: config.UseWindowsAuth,
+            CompanyNo: companyNo,
+            WarehouseNo: warehouseNo);
     }
 }

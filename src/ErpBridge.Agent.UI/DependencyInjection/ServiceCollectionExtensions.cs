@@ -1,3 +1,4 @@
+using ErpBridge.Agent.UI.Services;
 using ErpBridge.Agent.UI.ViewModels;
 using ErpBridge.Core;
 using ErpBridge.Erp.Mikro.DependencyInjection;
@@ -32,7 +33,8 @@ public static class ServiceCollectionExtensions
 
         // Remote API client — used by BootstrapSyncService to push snapshots
         // through IRemoteApiClient.PushBootstrapDataAsync. Agent.Service wires
-        // this in the same way.
+        // this in the same way. The same IRemoteApiClient is consumed by
+        // BootstrapSignalService for the long-poll notify loop.
         services.AddErpBridgeRemoteApi(configuration);
 
         // Mikro adapter — registers IErpAdapterFactory against the Mikro adapter
@@ -44,6 +46,10 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<AgentSettingsViewModel>();
         services.AddSingleton<DashboardViewModel>();
+
+        // Phase 9: desktop-side long-poll signal service. Singleton because it
+        // owns a single background loop keyed to the WPF application lifetime.
+        services.AddSingleton<IDesktopSignalService, BootstrapSignalService>();
 
         services.AddLogging(b =>
         {

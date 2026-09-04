@@ -42,6 +42,7 @@ public class SqliteAgentConfigStoreTests : IDisposable
             MikroDatabaseName = "MIKRO_DB",
             CompanyNo = 7,
             BranchNo = 3,
+            WarehouseNo = 5,
             ApiBaseUrl = "https://api.example.com",
         };
 
@@ -57,7 +58,36 @@ public class SqliteAgentConfigStoreTests : IDisposable
         loaded.MikroDatabaseName.Should().Be("MIKRO_DB");
         loaded.CompanyNo.Should().Be(7);
         loaded.BranchNo.Should().Be(3);
+        loaded.WarehouseNo.Should().Be(5);
         loaded.ApiBaseUrl.Should().Be("https://api.example.com");
+    }
+
+    [Fact]
+    public async Task Save_then_Load_roundtrips_warehouseNo_for_multi_firm_Mikro()
+    {
+        // Phase 10: the new WarehouseNo field must round-trip through the
+        // SQLite key-value store exactly like CompanyNo / BranchNo.
+        var sut = new SqliteAgentConfigStore(_factory, _protector);
+
+        await sut.SaveAsync(new AgentConfig { WarehouseNo = 11 });
+
+        var loaded = await sut.LoadAsync();
+        loaded.Should().NotBeNull();
+        loaded!.WarehouseNo.Should().Be(11);
+    }
+
+    [Fact]
+    public async Task Load_defaults_WarehouseNo_to_1_when_no_row_exists()
+    {
+        // A fresh deployment with no saved WarehouseNo must not throw — the
+        // AgentConfig property default (1) propagates to the adapter.
+        var sut = new SqliteAgentConfigStore(_factory, _protector);
+
+        await sut.SaveAsync(new AgentConfig { SqlServer = "localhost" });
+
+        var loaded = await sut.LoadAsync();
+        loaded.Should().NotBeNull();
+        loaded!.WarehouseNo.Should().Be(1);
     }
 
     [Fact]

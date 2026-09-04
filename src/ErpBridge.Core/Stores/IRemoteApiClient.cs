@@ -35,11 +35,33 @@ public interface IRemoteApiClient
     Task<BootstrapRemoteStatus> GetBootstrapStatusAsync(CancellationToken ct = default)
         => Task.FromResult(new BootstrapRemoteStatus(false, null));
 
+    /// <summary>
+    /// Long-poll: block until the central API publishes a new bootstrap
+    /// package for the caller's tenant, or <paramref name="wait"/> elapses,
+    /// or <paramref name="ct"/> is cancelled. The default implementation
+    /// short-circuits to "no update" so older servers don't have to ship
+    /// the signal endpoint.
+    /// </summary>
+    Task<BootstrapRemoteSignal> WaitForBootstrapUpdateAsync(
+        TimeSpan wait,
+        CancellationToken ct = default)
+        => Task.FromResult(new BootstrapRemoteSignal(false, null));
+
     /// <summary>Send a periodic agent heartbeat.</summary>
     Task SendHeartbeatAsync(AgentHeartbeat heartbeat, CancellationToken ct = default);
 }
 
 public sealed record BootstrapRemoteStatus(bool HasSnapshot, DateTimeOffset? LastPulledAtUtc);
+
+/// <summary>
+/// Outcome of <see cref="IRemoteApiClient.WaitForBootstrapUpdateAsync"/>.
+/// <see cref="Updated"/> is <c>true</c> when the server returned a fresh
+/// cursor inside the wait window; <c>false</c> on timeout or
+/// cancellation. <see cref="LastPulledAtUtc"/> is the cursor the server
+/// stamped on the most recent successful push; <c>null</c> when the wait
+/// timed out with no update.
+/// </summary>
+public sealed record BootstrapRemoteSignal(bool Updated, DateTimeOffset? LastPulledAtUtc);
 
 /// <summary>Outcome of <see cref="IRemoteApiClient.RegisterAgentAsync"/>.</summary>
 public sealed class AgentRegistrationResult

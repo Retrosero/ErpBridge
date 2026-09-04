@@ -18,7 +18,8 @@ public class AgentConfigMapperTests
         string password = "topsecret",
         string database = "MIKRO16",
         int companyNo = 1,
-        int branchNo = 1)
+        int branchNo = 1,
+        int warehouseNo = 1)
     {
         return new AgentConfig
         {
@@ -28,6 +29,7 @@ public class AgentConfigMapperTests
             MikroDatabaseName = database,
             CompanyNo = companyNo,
             BranchNo = branchNo,
+            WarehouseNo = warehouseNo,
         };
     }
 
@@ -147,5 +149,64 @@ public class AgentConfigMapperTests
         mikro!.Server.Should().Be("srv");
         mikro.UserId.Should().Be("sa");
         mikro.DatabaseName.Should().Be("MIKRO16");
+    }
+
+    // ------------------------------------------------------------------------
+    // Faz 10 — multi-firm Mikro support: CompanyNo + WarehouseNo propagation.
+    // ------------------------------------------------------------------------
+
+    [Fact]
+    public void FromAgentConfig_propagates_CompanyNo_and_WarehouseNo()
+    {
+        var config = ValidConfig(companyNo: 3, warehouseNo: 5);
+
+        var mikro = AgentConfigMapper.FromAgentConfig(config);
+
+        mikro.Should().NotBeNull();
+        mikro!.CompanyNo.Should().Be(3);
+        mikro.WarehouseNo.Should().Be(5);
+    }
+
+    [Fact]
+    public void ToErpSettings_propagates_CompanyNo_and_WarehouseNo()
+    {
+        IAgentConfigToErpSettingsMapper mapper = new AgentConfigMapper();
+
+        var settings = mapper.ToErpSettings(ValidConfig(companyNo: 7, warehouseNo: 2));
+
+        settings.Should().NotBeNull();
+        var mikro = (MikroConnectionSettings)settings!;
+        mikro.CompanyNo.Should().Be(7);
+        mikro.WarehouseNo.Should().Be(2);
+    }
+
+    [Fact]
+    public void FromAgentConfig_with_zero_warehouseNo_returns_null()
+    {
+        IAgentConfigToErpSettingsMapper mapper = new AgentConfigMapper();
+
+        var settings = mapper.ToErpSettings(ValidConfig(warehouseNo: 0));
+
+        settings.Should().BeNull();
+    }
+
+    [Fact]
+    public void FromAgentConfig_defaults_warehouseNo_to_1_when_AgentConfig_is_fresh()
+    {
+        // A brand-new AgentConfig (no setter calls) must not break the mapper;
+        // the AgentConfig field default of 1 is propagated.
+        var config = new AgentConfig
+        {
+            SqlServer = "MIKROSQL\\MIKRO",
+            SqlUserName = "sa",
+            SqlPassword = "secret",
+            MikroDatabaseName = "MIKRO16",
+        };
+
+        var mikro = AgentConfigMapper.FromAgentConfig(config);
+
+        mikro.Should().NotBeNull();
+        mikro!.CompanyNo.Should().Be(1);
+        mikro.WarehouseNo.Should().Be(1);
     }
 }

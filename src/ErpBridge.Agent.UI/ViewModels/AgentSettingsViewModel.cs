@@ -61,6 +61,13 @@ public sealed class AgentSettingsViewModel : ObservableObject
     private string _mikroDatabaseName = string.Empty;
     private string _apiBaseUrl = "https://api.erpbridge.local";
     private bool _useWindowsAuth;
+    // Faz 10 — multi-firm Mikro: company / branch / warehouse numbers used by
+    // every bootstrap reader query. Stored as strings so the WPF TextBox can
+    // two-way bind to them and surface validation errors locally; the
+    // view-model parses the strings on read/write.
+    private string _companyNo = "1";
+    private string _branchNo = "0";
+    private string _warehouseNo = "1";
     private string _status = "Hazır.";
     private bool _isBusy;
 
@@ -184,6 +191,56 @@ public sealed class AgentSettingsViewModel : ObservableObject
 
     /// <summary>Mikro database adı.</summary>
     public string MikroDatabaseName { get => _mikroDatabaseName; set => SetProperty(ref _mikroDatabaseName, value); }
+
+    /// <summary>
+    /// Mikro firma numarası. Tüm bootstrap sorguları bu değerle filtrelenir
+    /// (<c>*_firmano = @firmNo</c>). Faz 10: artık kullanıcı tarafından
+    /// ayarlanabilir; tek-firmalı kurulumlarda varsayılan 1'dir.
+    /// </summary>
+    public string CompanyNo
+    {
+        get => _companyNo;
+        set
+        {
+            if (SetProperty(ref _companyNo, value ?? string.Empty))
+            {
+                ((RelayCommand)SaveCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Mikro şube numarası. Satış siparişi yazımı için kullanılır. Tek
+    /// şubeli kurulumlarda 0 bırakılabilir.
+    /// </summary>
+    public string BranchNo
+    {
+        get => _branchNo;
+        set
+        {
+            if (SetProperty(ref _branchNo, value ?? string.Empty))
+            {
+                ((RelayCommand)SaveCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stok envanter sorguları için varsayılan depo numarası
+    /// (<c>STOK_HAREKETLERI.sth_depo_no</c>). Per-row depo numarası olmayan
+    /// toplamalar bu değerle yapılır.
+    /// </summary>
+    public string WarehouseNo
+    {
+        get => _warehouseNo;
+        set
+        {
+            if (SetProperty(ref _warehouseNo, value ?? string.Empty))
+            {
+                ((RelayCommand)SaveCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     /// <summary>Central API base URL.</summary>
     public string ApiBaseUrl
@@ -563,6 +620,13 @@ public sealed class AgentSettingsViewModel : ObservableObject
             MikroDatabaseName = config.MikroDatabaseName ?? string.Empty;
             ApiBaseUrl = config.ApiBaseUrl ?? string.Empty;
             UseWindowsAuth = config.UseWindowsAuth;
+            // Faz 10: multi-firm Mikro — CompanyNo / BranchNo / WarehouseNo
+            // round-trip through the persisted AgentConfig and the Mikro
+            // connection settings so the bootstrap reader filters by the
+            // operator's chosen company/warehouse.
+            CompanyNo = config.CompanyNo.ToString(CultureInfo.InvariantCulture);
+            BranchNo = config.BranchNo.ToString(CultureInfo.InvariantCulture);
+            WarehouseNo = config.WarehouseNo.ToString(CultureInfo.InvariantCulture);
 
             // Push the saved Mikro credentials into the live
             // MutableMemoryConfigurationProvider so the bootstrap path
@@ -1224,9 +1288,25 @@ public sealed class AgentSettingsViewModel : ObservableObject
             MikroDatabaseName = MikroDatabaseName?.Trim() ?? string.Empty,
             ApiBaseUrl = ApiBaseUrl?.Trim() ?? string.Empty,
             UseWindowsAuth = UseWindowsAuth,
+            // Faz 10: parse the three new int fields defensively. Bad input
+            // is coerced to the AgentConfig default so the persistence layer
+            // never sees a non-integer (the underlying column is text but
+            // every reader treats it as a number).
+            CompanyNo = TryParseInt(CompanyNo, fallback: 1),
+            BranchNo = TryParseInt(BranchNo, fallback: 0),
+            WarehouseNo = TryParseInt(WarehouseNo, fallback: 1),
             ErpType = Core.Domain.ErpType.Mikro,
         };
     }
+
+    /// <summary>
+    /// Parse a WPF TextBox string into an int; return <paramref name="fallback"/>
+    /// on blank / non-numeric input. Invariant culture so a Turkish-locale
+    /// operator typing "1,5" doesn't accidentally treat the comma as a decimal
+    /// separator and silently lose data.
+    /// </summary>
+    private static int TryParseInt(string? raw, int fallback)
+        => int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : fallback;
 
     /// <summary>
     /// Project Mikro settings and the Central API URL from <paramref name="config"/>
@@ -1254,6 +1334,12 @@ public sealed class AgentSettingsViewModel : ObservableObject
         _liveSettings[prefix + "Password"] = config.SqlPassword ?? string.Empty;
         _liveSettings[prefix + "DatabaseName"] = config.MikroDatabaseName ?? string.Empty;
         _liveSettings[prefix + "IntegratedSecurity"] = config.UseWindowsAuth ? "true" : "false";
+        // Faz 10: propagate the multi-firm numbers into the live Mikro
+        // section so MikroConnectionSettings.FromConfiguration sees them on
+        // the next adapter construction (and the test-connection button
+        // uses the same values as the bootstrap reader).
+        _liveSettings[prefix + "CompanyNo"] = config.CompanyNo.ToString(CultureInfo.InvariantCulture);
+        _liveSettings[prefix + "WarehouseNo"] = config.WarehouseNo.ToString(CultureInfo.InvariantCulture);
         _liveSettings["CentralApi:BaseUrl"] = config.ApiBaseUrl ?? string.Empty;
     }
 

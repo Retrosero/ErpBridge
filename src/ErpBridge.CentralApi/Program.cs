@@ -5,6 +5,7 @@ using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Endpoints;
+using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Options;
 using ErpBridge.CentralApi.Security;
 using ErpBridge.CentralApi.Telemetry;
@@ -132,6 +133,11 @@ public partial class Program
             });
         builder.Services.AddHostedService<WebhookDispatcherWorker>();
         builder.Services.AddHostedService<MobileTelemetryRetentionWorker>();
+
+        // Phase 9: in-memory pub/sub for "new bootstrap package available"
+        // signals consumed by the WPF desktop UI's long-poll loop. Single
+        // replica only — multi-instance scale would need a Redis backplane.
+        builder.Services.AddSingleton<IBootstrapNotificationHub, BootstrapNotificationHub>();
     }
 
     /// <summary>
@@ -437,6 +443,7 @@ public partial class Program
         app.MapLicensesEndpoints();
         app.MapJobsEndpoints();
         app.MapBootstrapEndpoints();
+        app.MapBootstrapNotifyEndpoints();
         app.MapIngestEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileTelemetryEndpoints();

@@ -227,6 +227,99 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         public DateTimeOffset? LastPulledAtUtc { get; set; }
     }
 
+    /// <inheritdoc />
+    public async Task<BootstrapRemoteSignal> WaitForBootstrapUpdateAsync(
+        TimeSpan wait,
+        CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        // Clamp the wait so we never ask the server for a wait that exceeds
+        // the agent's own HttpClient.Timeout (configured per request). The
+        // server caps the same way (1..60 s), so this is symmetric.
+        var clampedWait = wait <= TimeSpan.Zero
+            ? TimeSpan.FromSeconds(1)
+            : (wait > TimeSpan.FromSeconds(60) ? TimeSpan.FromSeconds(60) : wait);
+        // Use the longer of the configured per-request timeout and wait+10s so
+        // the long-poll can survive the server holding the connection for the
+        // full wait window without the HttpClient.Timeout killing it.
+        var effectiveTimeout = TimeSpan.FromSeconds(Math.Max(opts.TimeoutSeconds, clampedWait.TotalSeconds + 10));
+
+        using var request = BuildRequest(
+            HttpMethod.Get,
+            $"/api/v1/bootstrap/notify?wait={(int)clampedWait.TotalSeconds}",
+            opts,
+            idempotencyKey: null);
+
+        using var timeoutCts = new CancellationTokenSource();
+        timeoutCts.CancelAfter(effectiveTimeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        HttpResponseMessage? response = null;
+        try
+        {
+            response = await _http.SendAsync(request, linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // The local wait elapsed (or the per-request timeout fired) without
+            // the server returning a body. This is the success case for a
+            // long-poll that timed out — surface as "no update" rather than
+            // throwing, so the WPF signal service can reconnect immediately.
+            _logger.LogDebug(
+                "Bootstrap notify long-poll returned without a server response (wait={Wait}s).",
+                (int)clampedWait.TotalSeconds);
+            return new BootstrapRemoteSignal(false, null);
+        }
+        catch (HttpRequestException ex)
+        {
+            // Transient network blip. Surface as "no update" so the caller's
+            // reconnect loop keeps the WPF UI responsive; the next tick will
+            // try again.
+            _logger.LogWarning(ex, "Bootstrap notify long-poll network error; will retry.");
+            return new BootstrapRemoteSignal(false, null);
+        }
+
+        try
+        {
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                return new BootstrapRemoteSignal(false, null);
+            }
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _logger.LogWarning("Bootstrap notify long-poll returned 401; agent must re-register.");
+                return new BootstrapRemoteSignal(false, null);
+            }
+            if ((int)response.StatusCode >= 500)
+            {
+                _logger.LogWarning(
+                    "Bootstrap notify long-poll returned {Status}; will retry next tick.",
+                    (int)response.StatusCode);
+                return new BootstrapRemoteSignal(false, null);
+            }
+            response.EnsureSuccessStatusCode();
+            var body = await response.Content.ReadFromJsonAsync<BootstrapNotifyResponseDto>(
+                JsonOptions, linked.Token).ConfigureAwait(false);
+            if (body is null)
+            {
+                return new BootstrapRemoteSignal(false, null);
+            }
+            return new BootstrapRemoteSignal(body.Updated, body.LastPulledAtUtc);
+        }
+        finally
+        {
+            response.Dispose();
+        }
+    }
+
+    private sealed class BootstrapNotifyResponseDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("updated")]
+        public bool Updated { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("lastPulledAtUtc")]
+        public DateTimeOffset? LastPulledAtUtc { get; set; }
+    }
+
     /// <summary>
     /// Wire shape for <c>POST /api/v1/bootstrap</c>. Mirrors
     /// <c>ErpBridge.CentralApi.Contracts.BootstrapRequest</c> — we cannot

@@ -65,6 +65,7 @@ public sealed class SqliteAgentConfigStore : IAgentConfigStore
         nameof(AgentConfig.MikroDatabaseName),
         nameof(AgentConfig.CompanyNo),
         nameof(AgentConfig.BranchNo),
+        nameof(AgentConfig.WarehouseNo),
         nameof(AgentConfig.ApiBaseUrl),
         nameof(AgentConfig.UseWindowsAuth),
     };
@@ -274,6 +275,12 @@ FROM agent_config;";
                     config.BranchNo = branch;
                 }
                 break;
+            case nameof(AgentConfig.WarehouseNo):
+                if (int.TryParse(row.Value, out var warehouse))
+                {
+                    config.WarehouseNo = warehouse;
+                }
+                break;
             case nameof(AgentConfig.ApiBaseUrl):
                 config.ApiBaseUrl = effective;
                 break;
@@ -297,6 +304,7 @@ FROM agent_config;";
         nameof(AgentConfig.MikroDatabaseName) => config.MikroDatabaseName,
         nameof(AgentConfig.CompanyNo) => config.CompanyNo.ToString(System.Globalization.CultureInfo.InvariantCulture),
         nameof(AgentConfig.BranchNo) => config.BranchNo.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        nameof(AgentConfig.WarehouseNo) => config.WarehouseNo.ToString(System.Globalization.CultureInfo.InvariantCulture),
         nameof(AgentConfig.ApiBaseUrl) => config.ApiBaseUrl,
         nameof(AgentConfig.UseWindowsAuth) => config.UseWindowsAuth ? "true" : "false",
         _ => null,

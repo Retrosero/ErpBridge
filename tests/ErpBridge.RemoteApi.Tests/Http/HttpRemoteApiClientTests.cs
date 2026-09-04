@@ -272,6 +272,75 @@ public class HttpRemoteApiClientTests
             ItExpr.IsAny<CancellationToken>());
     }
 
+    // ---- Phase 9: long-poll wait-for-bootstrap-update --------------------
+
+    [Fact]
+    public async Task WaitForBootstrapUpdateAsync_parses_200_with_cursor()
+    {
+        var cursor = DateTimeOffset.UtcNow;
+        var (client, handler) = BuildClient(req => RespondJson(req, HttpStatusCode.OK, new
+        {
+            updated = true,
+            lastPulledAtUtc = cursor,
+        }));
+
+        var signal = await client.WaitForBootstrapUpdateAsync(TimeSpan.FromSeconds(5));
+
+        signal.Updated.Should().BeTrue();
+        signal.LastPulledAtUtc.Should().BeCloseTo(cursor, TimeSpan.FromMilliseconds(50));
+        // Long-poll is a GET; no Idempotency-Key (matches GET /jobs/pending).
+        handler.Protected().Verify(
+            "SendAsync",
+            Times.AtLeastOnce(),
+            ItExpr.Is<HttpRequestMessage>(m =>
+                m.Method == HttpMethod.Get
+                && m.RequestUri!.AbsolutePath == "/api/v1/bootstrap/notify"
+                && !m.Headers.Contains("Idempotency-Key")),
+            ItExpr.IsAny<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WaitForBootstrapUpdateAsync_parses_204_as_no_update()
+    {
+        var (client, _) = BuildClient(req => RespondJson(req, HttpStatusCode.NoContent, new { }));
+
+        var signal = await client.WaitForBootstrapUpdateAsync(TimeSpan.FromSeconds(5));
+
+        signal.Updated.Should().BeFalse();
+        signal.LastPulledAtUtc.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task WaitForBootstrapUpdateAsync_clamps_oversize_wait_to_60_seconds()
+    {
+        string? requestedPath = null;
+        var (client, _) = BuildClient(async req =>
+        {
+            requestedPath = req.RequestUri!.AbsolutePath + req.RequestUri.Query;
+            return await RespondJson(req, HttpStatusCode.NoContent, new { });
+        });
+
+        // 999 s is well above the server-side cap; the client must clamp to 60.
+        await client.WaitForBootstrapUpdateAsync(TimeSpan.FromSeconds(999));
+
+        requestedPath.Should().NotBeNull();
+        requestedPath.Should().Contain("wait=60");
+    }
+
+    [Fact]
+    public async Task WaitForBootstrapUpdateAsync_returns_no_update_on_5xx()
+    {
+        var (client, _) = BuildClient(req => RespondJson(req, HttpStatusCode.BadGateway, new
+        {
+            errorCode = "UPSTREAM_DOWN",
+            message = "service unavailable",
+        }));
+
+        var signal = await client.WaitForBootstrapUpdateAsync(TimeSpan.FromSeconds(5));
+
+        signal.Updated.Should().BeFalse();
+    }
+
     // ---- helpers --------------------------------------------------------
 
     private static (HttpRemoteApiClient Client, Mock<HttpMessageHandler> Handler) BuildClient(
