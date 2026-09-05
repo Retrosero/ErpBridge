@@ -20,6 +20,12 @@ namespace ErpBridge.Erp.Mikro.Readers;
 public interface IMikroDbReader
 {
     /// <summary>
+    /// Return the totals for all bootstrap data sets without materialising
+    /// their rows. Intended for the operator dashboard diagnostic.
+    /// </summary>
+    Task<BootstrapRecordCounts> GetBootstrapRecordCountsAsync(int firmNo, int warehouseNo, CancellationToken ct = default);
+
+    /// <summary>
     /// Read all caris (customers and vendors) from <c>CARI_HESAPLAR</c> for the
     /// given <paramref name="firmNo"/>. Optional child collections (addresses,
     /// contacts) are filled from the dedicated tables downstream — Phase 5 keeps

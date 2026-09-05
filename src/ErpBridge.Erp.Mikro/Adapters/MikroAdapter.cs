@@ -142,6 +142,19 @@ public sealed class MikroAdapter : IErpAdapter
     }
 
     /// <inheritdoc />
+    public Task<BootstrapRecordCounts> GetBootstrapRecordCountsAsync(CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "MikroAdapter.GetBootstrapRecordCountsAsync invoked for database {Database}, companyNo={CompanyNo}, warehouseNo={WarehouseNo}.",
+            ConnectionSettings.DatabaseName, ConnectionSettings.CompanyNo, ConnectionSettings.WarehouseNo);
+
+        return _dbReader.GetBootstrapRecordCountsAsync(
+            ConnectionSettings.CompanyNo,
+            ConnectionSettings.WarehouseNo,
+            ct);
+    }
+
+    /// <inheritdoc />
     public async Task<SyncPackage> ReadBootstrapChangesAsync(DateTimeOffset changedSinceUtc, CancellationToken ct = default)
     {
         var firmNo = ConnectionSettings.CompanyNo;

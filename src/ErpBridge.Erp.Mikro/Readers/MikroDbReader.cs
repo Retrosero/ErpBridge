@@ -42,6 +42,51 @@ public sealed class MikroDbReader : IMikroDbReader
     }
 
     /// <inheritdoc />
+    public async Task<BootstrapRecordCounts> GetBootstrapRecordCountsAsync(
+        int firmNo,
+        int warehouseNo,
+        CancellationToken ct = default)
+    {
+        // This is deliberately a single, scalar-only command. The dashboard
+        // must never enumerate the large movement tables merely to display a
+        // row count.
+        const string sql = @"
+SELECT
+    (SELECT COUNT_BIG(1) FROM CARI_HESAPLAR WHERE ISNULL(cari_iptal, 0) = 0) AS Customers,
+    (SELECT COUNT_BIG(1) FROM CARI_HESAP_ADRESLERI WHERE ISNULL(adr_iptal, 0) = 0) AS CustomerAddresses,
+    (SELECT COUNT_BIG(1) FROM CARI_HESAP_YETKILILERI WHERE ISNULL(mye_iptal, 0) = 0) AS CustomerContacts,
+    (SELECT COUNT_BIG(1) FROM STOKLAR WHERE ISNULL(sto_iptal, 0) = 0 AND ISNULL(sto_pasif_fl, 0) = 0) AS Stocks,
+    (SELECT COUNT_BIG(1) FROM BARKOD_TANIMLARI WHERE ISNULL(bar_iptal, 0) = 0) AS Barcodes,
+    (SELECT COUNT_BIG(1) FROM SIPARISLER WHERE sip_firmano = @firmNo AND ISNULL(sip_iptal, 0) = 0 AND sip_kapat_fl = 0) AS OpenOrders,
+    ((SELECT COUNT_BIG(1) FROM KASALAR WHERE kas_firma_no = @firmNo AND ISNULL(kas_iptal, 0) = 0)
+      + (SELECT COUNT_BIG(1) FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0)) AS CashAndBank,
+    ((SELECT COUNT_BIG(1) FROM DEPOLAR WHERE dep_firmano = @firmNo AND ISNULL(dep_iptal, 0) = 0)
+      + (SELECT COUNT_BIG(1) FROM CARI_PERSONEL_TANIMLARI WHERE ISNULL(cari_per_iptal, 0) = 0)
+      + (SELECT COUNT_BIG(1) FROM ODEME_PLANLARI WHERE ISNULL(odp_iptal, 0) = 0)
+      + (SELECT COUNT_BIG(1) FROM PROJELER WHERE ISNULL(pro_iptal, 0) = 0)
+      + (SELECT COUNT_BIG(1) FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI WHERE ISNULL(sfl_iptal, 0) = 0)) AS Lookups,
+    (SELECT COUNT_BIG(1) FROM STOK_SATIS_FIYAT_LISTELERI WHERE ISNULL(sfiyat_iptal, 0) = 0) AS Prices,
+    (SELECT COUNT_BIG(1) FROM SATIS_SARTLARI WHERE ISNULL(sat_iptal, 0) = 0) AS SalesConditions,
+    (SELECT COUNT_BIG(1) FROM dbo.STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL) AS Inventory,
+    (SELECT COUNT_BIG(1) FROM CARI_HESAP_HAREKETLERI WHERE ISNULL(cha_iptal, 0) = 0) AS CustomerTransactions,
+    (SELECT COUNT_BIG(1) FROM STOK_HAREKETLERI WHERE ISNULL(sth_iptal, 0) = 0) AS StockTransactions;";
+
+        var counts = await QuerySingleAsync<BootstrapRecordCounts>(
+            sql,
+            new { firmNo, warehouseNo },
+            ct).ConfigureAwait(false);
+        _logger.LogInformation(
+            "Read bootstrap row counts for firmNo={FirmNo}, warehouseNo={WarehouseNo}: total={Total}.",
+            firmNo,
+            warehouseNo,
+            counts.Customers + counts.CustomerAddresses + counts.CustomerContacts + counts.Stocks
+                + counts.Barcodes + counts.OpenOrders + counts.CashAndBank + counts.Lookups
+                + counts.Prices + counts.SalesConditions + counts.Inventory + counts.CustomerTransactions
+                + counts.StockTransactions);
+        return counts;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         const string sql = @"
@@ -535,6 +580,27 @@ ORDER BY sth_RECno";
         catch (Exception ex)
         {
             _logger.LogError(ex, "MikroDbReader failed: {Message}", ex.Message);
+            throw;
+        }
+    }
+
+    private async Task<T> QuerySingleAsync<T>(string sql, object parameters, CancellationToken ct)
+    {
+        var connectionString = _factory.BuildConnectionStringFromActive();
+        await using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        try
+        {
+            return await conn.QuerySingleAsync<T>(new CommandDefinition(
+                commandText: sql,
+                parameters: parameters,
+                commandTimeout: 30,
+                cancellationToken: ct)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MikroDbReader scalar query failed: {Message}", ex.Message);
             throw;
         }
     }

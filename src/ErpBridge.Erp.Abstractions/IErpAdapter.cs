@@ -20,6 +20,15 @@ public interface IErpAdapter
     Task<SyncPackage> ReadBootstrapDataAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Read lightweight totals for each bootstrap data set without downloading
+    /// the records themselves. Implementations that do not support this
+    /// diagnostic may leave the default behaviour in place.
+    /// </summary>
+    Task<BootstrapRecordCounts> GetBootstrapRecordCountsAsync(CancellationToken ct = default)
+        => Task.FromException<BootstrapRecordCounts>(new NotSupportedException(
+            "This ERP adapter does not provide bootstrap record counts."));
+
+    /// <summary>
     /// Read records changed after <paramref name="changedSinceUtc"/>. Adapters
     /// that have no reliable modification timestamp may fall back to a full
     /// read; Mikro implements this with its create/last-update timestamps.

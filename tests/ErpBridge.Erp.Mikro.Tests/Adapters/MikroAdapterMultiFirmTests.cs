@@ -198,6 +198,25 @@ public class MikroAdapterMultiFirmTests
     }
 
     [Fact]
+    public async Task GetBootstrapRecordCountsAsync_passes_CompanyNo_and_WarehouseNo_to_reader()
+    {
+        const int companyNo = 6;
+        const int warehouseNo = 8;
+        var settings = new MikroConnectionSettings(
+            Server: "srv", UserId: "sa", Password: "pwd", DatabaseName: "MIKRO16",
+            IntegratedSecurity: false, CompanyNo: companyNo, WarehouseNo: warehouseNo);
+        var expected = new BootstrapRecordCounts(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
+        var reader = new Mock<IMikroDbReader>();
+        reader.Setup(r => r.GetBootstrapRecordCountsAsync(companyNo, warehouseNo, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var result = await BuildAdapter(reader.Object, settings).GetBootstrapRecordCountsAsync();
+
+        result.Should().Be(expected);
+        reader.Verify(r => r.GetBootstrapRecordCountsAsync(companyNo, warehouseNo, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public void Adapter_exposes_CompanyNo_and_WarehouseNo_via_ConnectionSettings()
     {
         // Sanity check: the adapter must surface the multi-firm values to

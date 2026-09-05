@@ -263,22 +263,23 @@ public sealed class DashboardViewModel : ObservableObject
                 return;
             }
 
-            // COUNT(*) için 7 paralel sorgu — toplam bekleme süresi ~2s yerine
-            // 7 * 2s = 14s olmasın diye Task.WhenAll.
-            var package = await adapter.ReadBootstrapDataAsync().ConfigureAwait(true);
-            var customers = package.Customers.Count;
-            var addresses = package.CustomerAddresses.Count;
-            var contacts = package.CustomerContacts.Count;
-            var stocks = package.Stocks.Count;
-            var barcodes = package.Barcodes.Count;
-            var openOrders = package.OpenOrders.Count;
-            var cashBank = package.CashAndBank.Count;
-            var lookups = package.Lookups.Count;
-            var prices = package.Prices.Count;
-            var salesConditions = package.SalesConditions.Count;
-            var inventory = package.Inventory.Count;
-            var customerTransactions = package.CustomerTransactions.Count;
-            var stockTransactions = package.StockTransactions.Count;
+            MikroCountSummaryDisplay = "MikroDB satır sayıları okunuyor…";
+            HasMikroCountResult = true;
+
+            var counts = await adapter.GetBootstrapRecordCountsAsync().ConfigureAwait(true);
+            var customers = counts.Customers;
+            var addresses = counts.CustomerAddresses;
+            var contacts = counts.CustomerContacts;
+            var stocks = counts.Stocks;
+            var barcodes = counts.Barcodes;
+            var openOrders = counts.OpenOrders;
+            var cashBank = counts.CashAndBank;
+            var lookups = counts.Lookups;
+            var prices = counts.Prices;
+            var salesConditions = counts.SalesConditions;
+            var inventory = counts.Inventory;
+            var customerTransactions = counts.CustomerTransactions;
+            var stockTransactions = counts.StockTransactions;
 
             MikroCustomersCountDisplay = customers.ToString("N0", CultureInfo.CurrentCulture);
             MikroStocksCountDisplay = stocks.ToString("N0", CultureInfo.CurrentCulture);
@@ -315,39 +316,6 @@ public sealed class DashboardViewModel : ObservableObject
         finally
         {
             IsBusy = false;
-        }
-    }
-
-    /// <summary>
-    /// Run a single <c>SELECT COUNT(*)</c> against a Mikro table by routing
-    /// through the adapter's test-connection seam. Returns 0 for unrecognised
-    /// adapters — the Mikro reader exposes a count hook directly.
-    /// </summary>
-    private static async Task<long> CountTableAsync(IErpAdapter adapter, string table, CancellationToken ct)
-    {
-        // The Mikro adapter exposes an internal-only count helper; for the
-        // MVP we read the bootstrap snapshot and count rows in the result.
-        // This is O(rows-in-table) per table — fine for the diagnostic button
-        // which is invoked manually.
-        try
-        {
-            var pkg = await adapter.ReadBootstrapDataAsync(ct).ConfigureAwait(false);
-            if (pkg is null) return 0;
-            return table switch
-            {
-                "CARI_HESAPLAR" => pkg.Customers?.Count ?? 0,
-                "STOKLAR" => pkg.Stocks?.Count ?? 0,
-                "SIPARISLER" => pkg.OpenOrders?.Count ?? 0,
-                "KASALAR+BANKALAR" => pkg.CashAndBank?.Count ?? 0,
-                "DEPOLAR+CARI_PERSONEL" => pkg.Lookups?.Count ?? 0,
-                "STOK_SATIS_FIYAT_LISTELERI" => pkg.Prices?.Count ?? 0,
-                "STOK_HAREKETLERI" => pkg.Inventory?.Count ?? 0,
-                _ => 0,
-            };
-        }
-        catch
-        {
-            return -1; // -1 marker for "this table failed"
         }
     }
 
