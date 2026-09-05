@@ -1,0 +1,238 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>ErpBridge.Shared</name>
+    </assembly>
+    <members>
+        <member name="T:ErpBridge.Shared.AgentSettingsValidation">
+            <summary>
+            Pure validation logic for the agent settings form. Lives in <c>Shared</c>
+            (not in the WPF assembly) so the WPF view-model can be unit-tested from
+            a headless <c>net8.0</c> test project that does not load
+            <c>PresentationCore</c>. The view-model is responsible for mirroring
+            the form fields into this helper.
+            </summary>
+            <remarks>
+            Rules enforced:
+            <list type="number">
+              <item><c>SqlServer</c>, <c>SqlUserName</c>, <c>MikroDatabaseName</c> — required, whitespace counts as missing.</item>
+              <item><c>CompanyNo</c>, <c>BranchNo</c> — must parse as a non-negative
+                    32-bit integer; the form passes them as text so we tolerate locale
+                    settings explicitly via <see cref="P:System.Globalization.CultureInfo.InvariantCulture"/>.</item>
+              <item>The agent never validates the password here — empty passwords are
+                    legitimate for trusted-auth / Windows-integrated SQL connections
+                    and the adapter handles the resulting <see cref="T:System.Exception"/>.</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Shared.AgentSettingsValidation.TryValidate(System.String,System.String,System.String,System.Boolean,System.String@)">
+            <summary>
+            Run the validation rules against the form fields. Returns <c>true</c>
+            when every required field is present; populates <paramref name="error"/>
+            with a Turkish user-visible message otherwise.
+            </summary>
+            <param name="sqlServer">SQL Server host or instance name (required).</param>
+            <param name="sqlUserName">SQL login (required only when <paramref name="useWindowsAuth"/> is false).</param>
+            <param name="mikroDatabaseName">Mikro database (required).</param>
+            <param name="useWindowsAuth">True for Windows-auth / Trusted_Connection mode (SQL user/password are optional).</param>
+            <param name="error">Populated with a Turkish user-visible error message when the method returns <c>false</c>.</param>
+        </member>
+        <member name="M:ErpBridge.Shared.AgentSettingsValidation.TryValidate(System.String,System.String,System.String,System.String,System.String,System.Boolean,System.String@)">
+            <summary>
+            Validates the common connection fields together with legacy company and
+            branch number inputs retained for callers that still expose those fields.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.ConnectionStringMasker">
+            <summary>
+            Stateless helpers that scrub secrets out of SQL connection strings and
+            arbitrary log lines. Used at every emit-to-log boundary so a stray
+            <c>LogInformation("...conn={Conn}...", conn)</c> never leaks the SQL
+            password to disk.
+            </summary>
+            <remarks>
+            The masker intentionally does not throw on malformed input — it always
+            returns the closest safe string. Empty / null inputs round-trip to the
+            empty string so call sites can compose it freely.
+            </remarks>
+        </member>
+        <member name="F:ErpBridge.Shared.ConnectionStringMasker.RedactedMarker">
+            <summary>Canonical placeholder written in place of every redacted secret.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.ConnectionStringMasker.MaskPassword(System.String)">
+            <summary>
+            Replace every password-bearing fragment of <paramref name="connectionString"/>
+            with the canonical redacted marker, preserving the key name and the
+            surrounding <c>;</c>-separated structure.
+            </summary>
+            <param name="connectionString">Connection string to scrub. <c>null</c> returns the empty string.</param>
+        </member>
+        <member name="M:ErpBridge.Shared.ConnectionStringMasker.MaskForLog(System.String)">
+            <summary>
+            Generic text scrubber for arbitrary log lines / exception messages.
+            When the text contains a recognized secret key the password fragment
+            is masked; otherwise the text is returned verbatim.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.AgentConstants">
+            <summary>
+            Cross-cutting default constants for the ErpBridge Windows Sync Agent.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultSqlTimeoutSeconds">
+            <summary>Default SQL command timeout in seconds for Mikro queries.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultQueuePollIntervalMs">
+            <summary>Default queue poll interval in milliseconds for the local job worker.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultBootstrapPushIntervalMinutes">
+            <summary>Default bootstrap push interval in minutes (customer → central API). Legacy — use <see cref="F:ErpBridge.Shared.AgentConstants.DefaultBootstrapPushIntervalSeconds"/>.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultBootstrapPushIntervalSeconds">
+            <summary>Default bootstrap push interval in seconds (Mikro → central API). Phase 9 default: 60.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultBootstrapMinimumIntervalSeconds">
+            <summary>Skip a new bootstrap push if the previous successful one is younger than this window. Phase 9 default: 30 s (half the worker interval).</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultQueueTake">
+            <summary>Default batch size when draining the local SQLite queue.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultMaxJobRetries">
+            <summary>Maximum retry attempts before a local job is parked.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultHeartbeatIntervalSeconds">
+            <summary>Default agent heartbeat interval in seconds.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.ErpBridgeConstants">
+            <summary>
+            Path / mask constants used by the local SQLite store. Kept separate from
+            <see cref="T:ErpBridge.Shared.AgentConstants"/> so the LocalStore layer can resolve defaults
+            without dragging the rest of the agent tunables.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErpBridgeConstants.DefaultSqlitePath">
+            <summary>
+            Default on-disk path for the agent SQLite database. Resolved under
+            <c>%LOCALAPPDATA%</c> at runtime; the literal here is the relative fallback
+            the store layer applies when no configuration is supplied.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErpBridgeConstants.RedactedPlaceholder">
+            <summary>String written into <c>agent_config.value</c> for secret rows on masked read.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.Error">
+            <summary>
+            Immutable error descriptor with a stable machine-readable code and a human-readable message.
+            </summary>
+            <param name="Code">Stable machine-readable error code (see <see cref="T:ErpBridge.Shared.ErrorCode"/>).</param>
+            <param name="Message">Human-readable description of what went wrong.</param>
+        </member>
+        <member name="M:ErpBridge.Shared.Error.#ctor(System.String,System.String)">
+            <summary>
+            Immutable error descriptor with a stable machine-readable code and a human-readable message.
+            </summary>
+            <param name="Code">Stable machine-readable error code (see <see cref="T:ErpBridge.Shared.ErrorCode"/>).</param>
+            <param name="Message">Human-readable description of what went wrong.</param>
+        </member>
+        <member name="P:ErpBridge.Shared.Error.Code">
+            <summary>Stable machine-readable error code (see <see cref="T:ErpBridge.Shared.ErrorCode"/>).</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Error.Message">
+            <summary>Human-readable description of what went wrong.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.Error.None">
+            <summary>Canonical "no error" sentinel.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Error.IsNone">
+            <summary>True when this error carries an empty code (i.e. is the <see cref="F:ErpBridge.Shared.Error.None"/> sentinel).</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.ErrorCode">
+            <summary>
+            Centralised, stable error codes used across the ErpBridge agent.
+            Adding new codes here is the preferred way to keep ack payloads and logs uniform.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.MissingLookup">
+            <summary>A required ERP lookup (customer, stock, warehouse, …) was not found.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.JobNotFound">
+            <summary>The job referenced by the central API could not be found locally.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.ValidationFailed">
+            <summary>The supplied payload failed validation.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.LicenseInvalid">
+            <summary>The license key is invalid or expired.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.TransientUpstream">
+            <summary>The central SaaS API responded with a transient error.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.ConnectionFailed">
+            <summary>The Mikro ERP connection test failed.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.UnsupportedVersion">
+            <summary>The detected Mikro ERP version is not supported.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.InternalError">
+            <summary>An unexpected internal error occurred.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.HashUtil">
+            <summary>
+            Hashing helpers used to produce deterministic checksums for idempotency mappings.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.HashUtil.Sha256Hex(System.String)">
+            <summary>
+            Returns a lowercase, hex-encoded SHA-256 digest of the supplied input (UTF-8 bytes).
+            Output is always 64 lowercase hex characters.
+            </summary>
+            <param name="input">Arbitrary string. <c>null</c> is treated as the empty string.</param>
+        </member>
+        <member name="T:ErpBridge.Shared.Result`1">
+            <summary>
+            Lightweight success/failure result without exception throwing for expected error paths.
+            </summary>
+            <typeparam name="T">Payload type carried by a successful result.</typeparam>
+        </member>
+        <member name="P:ErpBridge.Shared.Result`1.IsSuccess">
+            <summary>True when the operation succeeded.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Result`1.Value">
+            <summary>Payload value when <see cref="P:ErpBridge.Shared.Result`1.IsSuccess"/> is true; default otherwise.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Result`1.Error">
+            <summary>Human-readable error description when <see cref="P:ErpBridge.Shared.Result`1.IsSuccess"/> is false.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Result`1.ErrorCode">
+            <summary>Machine-readable error code when <see cref="P:ErpBridge.Shared.Result`1.IsSuccess"/> is false.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.Result`1.Ok(`0)">
+            <summary>Builds a successful result carrying <paramref name="value"/>.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.Result`1.Fail(System.String,System.String)">
+            <summary>Builds a failed result with a code and a human-readable message.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.Result`1.Fail(ErpBridge.Shared.Error)">
+            <summary>Builds a failed result wrapping the supplied <see cref="P:ErpBridge.Shared.Result`1.Error"/>.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.Result`1.ValueOrThrow">
+            <summary>Returns the success value or throws if the result is a failure.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.StringExtensions">
+            <summary>
+            Small, allocation-friendly string helpers used uniformly across the agent.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.StringExtensions.SafeTrim(System.String)">
+            <summary>
+            Trims whitespace from <paramref name="value"/>; returns <c>null</c> when the
+            result is null, empty, or whitespace-only.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.StringExtensions.IsNullOrEmptyInvariant(System.String)">
+            <summary>
+            True when <paramref name="value"/> is <c>null</c>, empty, or pure whitespace.
+            </summary>
+        </member>
+    </members>
+</doc>
