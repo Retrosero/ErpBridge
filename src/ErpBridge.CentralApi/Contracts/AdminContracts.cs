@@ -133,6 +133,7 @@ public sealed class MobileTelemetryEventDto
     public DateTimeOffset OccurredAtUtc { get; set; }
     public DateTimeOffset ReceivedAtUtc { get; set; }
     public string Kind { get; set; } = string.Empty;
+    public string Source { get; set; } = string.Empty;
     public string Severity { get; set; } = string.Empty;
     public string AppVersion { get; set; } = string.Empty;
     public string AndroidVersion { get; set; } = string.Empty;

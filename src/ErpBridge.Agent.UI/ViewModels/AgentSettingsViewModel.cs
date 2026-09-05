@@ -646,6 +646,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "AgentConfig load failed.");
+            _ = App.ReportExceptionAsync(ex, "Load agent configuration");
             Status = "Konfigürasyon yüklenemedi: " + ex.Message;
         }
     }
@@ -694,6 +695,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             _logger.LogError(ex,
                 "AgentConfig save failed for Server={Server}, Database={Database}.",
                 SqlServer, MikroDatabaseName);
+            _ = App.ReportExceptionAsync(ex, "Save agent configuration");
             Status = "Kaydetme başarısız: " + ex.Message;
         }
         finally
@@ -761,6 +763,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             _logger.LogError(ex,
                 "TestConnection failed for Server={Server}, Database={Database}.",
                 SqlServer, MikroDatabaseName);
+            _ = App.ReportExceptionAsync(ex, "Mikro connection test");
             Status = "Bağlantı testi başarısız: " + ConnectionStringMasker.MaskForLog(ex.Message);
             TroubleshootingHint = BuildTroubleshootingHint(ex);
             HasConnectionTestResult = true;
@@ -814,6 +817,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             _logger.LogError(ex,
                 "Redetect version failed for Database={Database}.",
                 MikroDatabaseName);
+            _ = App.ReportExceptionAsync(ex, "Mikro version detection");
             Status = "Versiyon tespiti başarısız: " + ConnectionStringMasker.MaskForLog(ex.Message);
             TroubleshootingHint = BuildTroubleshootingHint(ex);
         }
@@ -956,6 +960,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             HasLicenseCheckResult = true;
+            _ = App.ReportExceptionAsync(ex, "License validation");
             _licenseCheckValid = null;
             _licenseCheckErrorCodeDisplay = "CLIENT_ERROR";
             _licenseCheckErrorMessageDisplay = ex.Message;
@@ -1023,6 +1028,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             HasServerDbCheckResult = true;
+            _ = App.ReportExceptionAsync(ex, "License server database check");
             ServerDbCheckStatusDisplay = "FAIL";
             ServerDbCheckHttpDisplay = "—";
             ServerDbCheckBodyDisplay = ex.Message;
@@ -1178,6 +1184,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             HasRegisterResult = true;
+            _ = App.ReportExceptionAsync(ex, "Agent registration");
             _registerSuccess = false;
             _registerErrorCodeDisplay = "EXCEPTION";
             _registerErrorMessageDisplay = ex.Message;

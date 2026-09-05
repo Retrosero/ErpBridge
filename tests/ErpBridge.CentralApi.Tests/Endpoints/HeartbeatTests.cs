@@ -47,6 +47,38 @@ public class HeartbeatTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Desktop_telemetry_with_valid_token_is_saved_in_shared_diagnostics_store()
+    {
+        var client = _factory.CreateClient();
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: "TELEMETRY-AGENT");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, "MACHINE-TELEMETRY-001");
+        var token = _factory.IssueTestJwt(agent.Id, tenant.Id);
+        var eventId = Guid.NewGuid();
+
+        var response = await client.PostJsonAsync("/api/v1/agents/telemetry", new
+        {
+            eventId,
+            occurredAtUtc = DateTimeOffset.UtcNow,
+            kind = "desktop_exception",
+            severity = "ERROR",
+            appVersion = "1.0.0",
+            windowsVersion = "Windows 11",
+            machineName = "UNTRUSTED-BODY-VALUE",
+            operation = "MikroDB row count",
+            exceptionType = "SqlException",
+            message = "Login failed",
+            stackTrace = "safe stack trace",
+        }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        using var db = _factory.CreateDbContext();
+        var stored = await db.MobileTelemetryEvents.SingleAsync(row => row.EventId == eventId.ToString());
+        stored.TenantId.Should().Be(tenant.Id);
+        stored.Kind.Should().Be("desktop_exception");
+        stored.DeviceModel.Should().Be("MACHINE-TELEMETRY-001");
+    }
+
+    [Fact]
     public async Task Heartbeat_without_token_returns_401()
     {
         var client = _factory.CreateClient();

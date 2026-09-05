@@ -42,9 +42,13 @@ public partial class App : Application
     /// </summary>
     public static IServiceProvider? Services { get; private set; }
 
+    /// <summary>Best-effort remote error reporting after the DI container is ready.</summary>
+    public static DesktopAgentTelemetryReporter? TelemetryReporter { get; private set; }
+
     private ServiceProvider? _services;
     private TaskbarIcon? _tray;
     private IDesktopSignalService? _signalService;
+    private DesktopHeartbeatService? _heartbeatService;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -91,6 +95,7 @@ public partial class App : Application
         services.AddSingleton<MainWindow>();
 
         _services = services.BuildServiceProvider(validateScopes: true);
+        TelemetryReporter = _services.GetRequiredService<DesktopAgentTelemetryReporter>();
 
         // 4) Ensure SQLite schema is up-to-date.
         var migrationRunner = _services.GetRequiredService<MigrationRunner>();
@@ -108,6 +113,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             startupLogger.LogError(ex, "Local SQLite migration failed at startup.");
+            _ = ReportExceptionAsync(ex, "SQLite migration", "FATAL");
         }
 
         // 5) System tray icon. Built in code-behind so we can wire menu
@@ -150,7 +156,11 @@ public partial class App : Application
         {
             startupLogger.LogError(ex,
                 "Failed to start the desktop signal service. The UI will still work but live updates are disabled.");
+            _ = ReportExceptionAsync(ex, "Desktop signal startup");
         }
+
+        _heartbeatService = _services.GetRequiredService<DesktopHeartbeatService>();
+        _heartbeatService.Start();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -171,6 +181,13 @@ public partial class App : Application
             }
             _signalService = null;
         }
+        if (_heartbeatService is not null)
+        {
+            try { _heartbeatService.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Heartbeat service stop failed: {ex.Message}"); }
+            _heartbeatService = null;
+        }
+        TelemetryReporter = null;
         _services?.Dispose();
         base.OnExit(e);
     }
@@ -311,6 +328,7 @@ public partial class App : Application
         {
             logger.LogCritical(args.Exception,
                 "UNHANDLED DISPATCHER EXCEPTION (UI thread) — handled to keep the process alive.");
+            _ = ReportExceptionAsync(args.Exception, "Unhandled UI exception", "FATAL");
             args.Handled = true;
         };
 
@@ -318,13 +336,20 @@ public partial class App : Application
         {
             logger.LogCritical(args.ExceptionObject as Exception,
                 "UNHANDLED APPDOMAIN EXCEPTION (non-UI thread) — process likely terminating.");
+            if (args.ExceptionObject is Exception exception)
+                _ = ReportExceptionAsync(exception, "Unhandled background exception", "FATAL");
         };
 
         TaskScheduler.UnobservedTaskException += (_, args) =>
         {
             logger.LogCritical(args.Exception,
                 "UNOBSERVED TASK EXCEPTION (async void / fire-and-forget) — marking observed.");
+            _ = ReportExceptionAsync(args.Exception, "Unobserved task exception", "FATAL");
             args.SetObserved();
         };
     }
+
+    /// <summary>Report an exception without letting remote diagnostics alter UI flow.</summary>
+    public static Task ReportExceptionAsync(Exception exception, string operation, string severity = "ERROR")
+        => TelemetryReporter?.ReportExceptionAsync(exception, operation, severity) ?? Task.CompletedTask;
 }

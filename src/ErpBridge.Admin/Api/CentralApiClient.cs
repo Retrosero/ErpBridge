@@ -111,6 +111,7 @@ public sealed class MobileTelemetryEventDto
     [JsonPropertyName("occurredAtUtc")] public DateTimeOffset OccurredAtUtc { get; set; }
     [JsonPropertyName("receivedAtUtc")] public DateTimeOffset ReceivedAtUtc { get; set; }
     [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("source")] public string Source { get; set; } = string.Empty;
     [JsonPropertyName("severity")] public string Severity { get; set; } = string.Empty;
     [JsonPropertyName("appVersion")] public string AppVersion { get; set; } = string.Empty;
     [JsonPropertyName("androidVersion")] public string AndroidVersion { get; set; } = string.Empty;

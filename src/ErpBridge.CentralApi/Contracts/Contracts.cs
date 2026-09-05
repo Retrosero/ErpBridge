@@ -36,6 +36,22 @@ public sealed class AgentHeartbeatRequest
     [JsonPropertyName("lastError")] public string? LastError { get; set; }
 }
 
+/// <summary>POST /api/v1/agents/telemetry body, authenticated with an agent JWT.</summary>
+public sealed class AgentTelemetryRequest
+{
+    [JsonPropertyName("eventId")] public string? EventId { get; set; }
+    [JsonPropertyName("occurredAtUtc")] public DateTimeOffset? OccurredAtUtc { get; set; }
+    [JsonPropertyName("kind")] public string? Kind { get; set; }
+    [JsonPropertyName("severity")] public string? Severity { get; set; }
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("windowsVersion")] public string? WindowsVersion { get; set; }
+    [JsonPropertyName("machineName")] public string? MachineName { get; set; }
+    [JsonPropertyName("operation")] public string? Operation { get; set; }
+    [JsonPropertyName("exceptionType")] public string? ExceptionType { get; set; }
+    [JsonPropertyName("message")] public string? Message { get; set; }
+    [JsonPropertyName("stackTrace")] public string? StackTrace { get; set; }
+}
+
 /// <summary>POST /api/v1/licenses/validate body.</summary>
 public sealed class LicenseValidateRequest
 {

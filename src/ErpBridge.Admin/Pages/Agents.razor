@@ -32,7 +32,7 @@ else
                     <td data-label="Müşteri"><strong>@(TenantName(a.TenantId))</strong></td>
                     <td data-label="Makine"><code>@a.MachineId</code></td>
                     <td data-label="Son bağlantı">@(a.LastHeartbeatAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "—")</td>
-                    <td data-label="Durum"><AdminStatusBadge Text="@(a.LastStatus ?? "Bilinmiyor")" Tone="@(IsOnline(a) ? "success" : "muted")" /></td>
+                    <td data-label="Durum"><AdminStatusBadge Text="@(IsOnline(a) ? "Çevrimiçi" : "Çevrimdışı")" Tone="@(IsOnline(a) ? "success" : "muted")" /></td>
                     <td data-label="Kuyruk"><strong>@a.LastQueueDepth</strong></td>
                 </tr>
             }

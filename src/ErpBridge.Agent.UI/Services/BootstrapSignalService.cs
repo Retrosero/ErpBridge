@@ -106,6 +106,7 @@ public sealed class BootstrapSignalService : IDesktopSignalService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Signal loop exited with an unexpected exception during shutdown.");
+                _ = App.ReportExceptionAsync(ex, "Desktop signal shutdown");
             }
         }
         lock (_stateLock)
@@ -172,6 +173,7 @@ public sealed class BootstrapSignalService : IDesktopSignalService
                 // serialization failure). Log and back off so we don't spam
                 // the server.
                 _logger.LogWarning(ex, "Bootstrap signal loop caught an unexpected error; will retry.");
+                _ = App.ReportExceptionAsync(ex, "Desktop bootstrap signal");
                 await DelaySafe(ReconnectBackoff, ct).ConfigureAwait(false);
             }
         }

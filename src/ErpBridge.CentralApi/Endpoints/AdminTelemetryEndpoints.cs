@@ -36,7 +36,8 @@ public static class AdminTelemetryEndpoints
         return JsonResults.Ok(rows.Select(row => new MobileTelemetryEventDto
         {
             Id = row.Id, TenantId = row.TenantId, OccurredAtUtc = row.OccurredAtUtc, ReceivedAtUtc = row.ReceivedAtUtc,
-            Kind = row.Kind, Severity = row.Severity, AppVersion = row.AppVersion, AndroidVersion = row.AndroidVersion,
+            Kind = row.Kind, Source = row.Kind.StartsWith("desktop_", StringComparison.OrdinalIgnoreCase) ? "Windows Agent" : "Mobil",
+            Severity = row.Severity, AppVersion = row.AppVersion, AndroidVersion = row.AndroidVersion,
             DeviceModel = row.DeviceModel, Screen = row.Screen, Operation = row.Operation, ExceptionType = row.ExceptionType,
             Message = row.Message, StackTrace = row.StackTrace, HttpMethod = row.HttpMethod, HttpRoute = row.HttpRoute,
             HttpStatus = row.HttpStatus, CorrelationId = row.CorrelationId,

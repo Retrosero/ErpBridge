@@ -348,6 +348,17 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         await SendNoContentAsync(request, opts, ct);
     }
 
+    /// <inheritdoc />
+    public async Task SendAgentTelemetryAsync(AgentTelemetryEvent telemetry, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(telemetry);
+
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(HttpMethod.Post, "/api/v1/agents/telemetry", opts, NewIdempotencyKey("telemetry"));
+        request.Content = SerializeJson(telemetry);
+        await SendNoContentAsync(request, opts, ct);
+    }
+
     /// <summary>
     /// Build a stable idempotency key for non-ack POSTs. The same call (and any
     /// Polly retries against the same <see cref="HttpRequestMessage"/>) reuses

@@ -41,6 +41,14 @@ public static class AgentsEndpoints
             .RequireAuthorization(Program.AgentPolicy)
             .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
 
+        group.MapPost("/telemetry", TelemetryAsync)
+            .WithName("AgentsTelemetry")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+            .RequireAuthorization(Program.AgentPolicy)
+            .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
+
         return routes;
     }
 
@@ -140,11 +148,75 @@ public static class AgentsEndpoints
             return JsonResults.Status(StatusCodes.Status401Unauthorized,
                 new ApiError { ErrorCode = "AGENT_NOT_FOUND", Message = "Agent not registered for this tenant." });
 
-        agent.LastHeartbeatAtUtc = body.LastSyncAtUtc ?? DateTimeOffset.UtcNow;
+        // LastHeartbeat is a liveness measurement, not the last successful
+        // sync time. A healthy idle agent must remain online in the console.
+        agent.LastHeartbeatAtUtc = DateTimeOffset.UtcNow;
         agent.LastStatus = body.Status;
         agent.LastQueueDepth = body.QueueDepth;
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
+    }
+
+    private static async Task<IResult> TelemetryAsync(
+        [FromBody] AgentTelemetryRequest body,
+        HttpContext http,
+        [FromServices] CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        if (body is null
+            || !http.User.TryGetTenantId(out var tenantId)
+            || !http.User.TryGetAgentId(out var agentId))
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Agent identity is required." });
+
+        var eventId = body.EventId?.Trim();
+        if (string.IsNullOrWhiteSpace(eventId) || eventId.Length > 64 || !Guid.TryParse(eventId, out _))
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "INVALID_EVENT_ID", Message = "eventId must be a GUID." });
+
+        var agent = await db.Agents.AsNoTracking().FirstOrDefaultAsync(
+            item => item.Id == agentId && item.TenantId == tenantId,
+            ct);
+        if (agent is null)
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "AGENT_NOT_FOUND", Message = "Agent is not registered." });
+
+        var exists = await db.MobileTelemetryEvents.AnyAsync(
+            item => item.TenantId == tenantId && item.EventId == eventId,
+            ct);
+        if (!exists)
+        {
+            db.MobileTelemetryEvents.Add(new MobileTelemetryEvent
+            {
+                TenantId = tenantId,
+                EventId = eventId,
+                OccurredAtUtc = body.OccurredAtUtc ?? DateTimeOffset.UtcNow,
+                ReceivedAtUtc = DateTimeOffset.UtcNow,
+                Kind = Bound(body.Kind, 32, "desktop_exception"),
+                Severity = Bound(body.Severity, 16, "ERROR"),
+                AppVersion = Bound(body.AppVersion, 64, "unknown"),
+                // Existing shared telemetry storage uses these legacy column
+                // names. They intentionally hold the Windows runtime and
+                // machine identity for desktop events.
+                AndroidVersion = Bound(body.WindowsVersion, 32, "Windows"),
+                DeviceModel = agent.MachineId,
+                Screen = "Windows Agent",
+                Operation = Bound(body.Operation, 120, "unknown"),
+                ExceptionType = Bound(body.ExceptionType, 160, "Exception"),
+                Message = Bound(body.Message, 1000, "No message"),
+                StackTrace = Bound(body.StackTrace, 4000, string.Empty),
+                BreadcrumbsJson = "[]",
+            });
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.NoContent();
+    }
+
+    private static string Bound(string? value, int max, string fallback)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return fallback;
+        return trimmed.Length <= max ? trimmed : trimmed[..max];
     }
 
     private enum LicenseStatus { Ok, NotFound, Expired }

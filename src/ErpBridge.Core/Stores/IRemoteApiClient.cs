@@ -49,6 +49,13 @@ public interface IRemoteApiClient
 
     /// <summary>Send a periodic agent heartbeat.</summary>
     Task SendHeartbeatAsync(AgentHeartbeat heartbeat, CancellationToken ct = default);
+
+    /// <summary>
+    /// Send one privacy-scrubbed Windows-agent diagnostic event. Older remote
+    /// implementations may ignore this optional observability capability.
+    /// </summary>
+    Task SendAgentTelemetryAsync(AgentTelemetryEvent telemetry, CancellationToken ct = default)
+        => Task.CompletedTask;
 }
 
 public sealed record BootstrapRemoteStatus(bool HasSnapshot, DateTimeOffset? LastPulledAtUtc);

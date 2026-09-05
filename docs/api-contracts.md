@@ -20,6 +20,15 @@ Yeni agent kaydı. Body: `{ licenseKey, machineId, agentVersion }`. Yanıt:
 Periyodik (örn. her 60 sn). Body: `AgentHeartbeat { agentId, tenantId, status,
 lastSyncAtUtc, queueDepth, lastError? }`. Yanıt: 204.
 
+### POST /api/v1/agents/telemetry
+
+Windows Agent'ın gizlilikten arındırılmış hata kaydı. Agent JWT'si zorunludur.
+Body: `{ eventId, occurredAtUtc, kind, severity, appVersion, windowsVersion,
+machineName, operation, exceptionType, message, stackTrace }`. Yanıt: `204`.
+Lisans anahtarı, JWT, SQL şifresi, bağlantı dizesi ve ERP payloadları kesinlikle
+gönderilmez; agent bunları göndermeden önce maskeler. Kayıtlar mobil tanılama
+kayıtlarıyla aynı yönetim ekranında tutulur.
+
 ### POST /api/v1/licenses/validate
 
 `{ licenseKey }` → `{ valid, tenantId, expiresAtUtc }`. Agent başlangıcında bir kez

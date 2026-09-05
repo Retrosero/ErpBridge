@@ -200,6 +200,22 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
+    public async Task SendAgentTelemetryAsync_posts_to_agents_telemetry()
+    {
+        var (client, handler) = BuildClient(req => RespondJson(req, HttpStatusCode.NoContent, new { }));
+
+        await client.SendAgentTelemetryAsync(new AgentTelemetryEvent
+        {
+            MachineName = "AGENT-01",
+            Operation = "Mikro row count",
+            ExceptionType = "SqlException",
+            Message = "safe message",
+        });
+
+        AssertRequest(handler, HttpMethod.Post, "/api/v1/agents/telemetry", idempotencyKeyRequired: true);
+    }
+
+    [Fact]
     public async Task PushBootstrapDataAsync_posts_to_bootstrap()
     {
         var (client, handler) = BuildClient(req => RespondJson(req, HttpStatusCode.NoContent, new { }));

@@ -228,6 +228,7 @@ public sealed class DashboardViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Auto-register threw an exception.");
+            _ = App.ReportExceptionAsync(ex, "Automatic agent registration");
             return false;
         }
     }
@@ -310,6 +311,7 @@ public sealed class DashboardViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "CheckMikroRowCounts failed.");
+            _ = App.ReportExceptionAsync(ex, "MikroDB row count");
             MikroCountSummaryDisplay = "Sayım başarısız: " + ex.Message;
             HasMikroCountResult = true;
         }
@@ -625,6 +627,7 @@ public sealed class DashboardViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Manual bootstrap invocation crashed.");
+            _ = App.ReportExceptionAsync(ex, "Manual bootstrap");
             LastRunSummaryDisplay = "Hata: " + ex.GetType().Name + " — " + ex.Message;
             LastRunStatusDisplay = "✗ Başarısız";
             LastRunStatusBrush = DangerBadgeBrush;
@@ -719,6 +722,7 @@ public sealed class DashboardViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "PushSectionAsync({Section}) crashed.", sectionName);
+            _ = App.ReportExceptionAsync(ex, "Push section: " + sectionName);
             LastRunSummaryDisplay = $"{displayLabel}: Hata — {ex.GetType().Name}";
             LastRunStatusDisplay = "✗ " + displayLabel;
             LastRunStatusBrush = DangerBadgeBrush;
@@ -771,6 +775,7 @@ public sealed class DashboardViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "RefreshAsync failed.");
+            _ = App.ReportExceptionAsync(ex, "Dashboard refresh");
         }
         return Task.CompletedTask;
     }

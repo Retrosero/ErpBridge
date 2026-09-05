@@ -50,6 +50,8 @@ public static class ServiceCollectionExtensions
         // Phase 9: desktop-side long-poll signal service. Singleton because it
         // owns a single background loop keyed to the WPF application lifetime.
         services.AddSingleton<IDesktopSignalService, BootstrapSignalService>();
+        services.AddSingleton<DesktopAgentTelemetryReporter>();
+        services.AddSingleton<DesktopHeartbeatService>();
 
         services.AddLogging(b =>
         {
