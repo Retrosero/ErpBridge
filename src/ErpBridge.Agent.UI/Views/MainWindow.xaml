@@ -148,16 +148,16 @@
                         </Grid>
 
                         <!-- API base URL -->
-                        <TextBlock Grid.Row="7" Grid.Column="0" Text="API base URL" VerticalAlignment="Center" Margin="0,4" />
-                        <TextBox Grid.Row="7" Grid.Column="1"
+                        <TextBlock Grid.Row="8" Grid.Column="0" Text="API base URL" VerticalAlignment="Center" Margin="0,4" />
+                        <TextBox Grid.Row="8" Grid.Column="1"
                                  Text="{Binding ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,4" />
 
                         <!-- Spacer -->
-                        <Border Grid.Row="8" Grid.ColumnSpan="2" Height="8" />
+                        <Border Grid.Row="9" Grid.ColumnSpan="2" Height="8" />
 
                         <!-- Action buttons -->
-                        <Grid Grid.Row="9" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                        <Grid Grid.Row="10" Grid.ColumnSpan="2" Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -263,7 +263,7 @@
                         </Grid>
 
                         <!-- Sunucu Bilgisi paneli -->
-                        <Border Grid.Row="10" Grid.ColumnSpan="2"
+                        <Border Grid.Row="11" Grid.ColumnSpan="2"
                                 Margin="0,12,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -326,7 +326,7 @@
                         </Border>
 
                         <!-- Lisans Kontrol Sonucu paneli -->
-                        <Border Grid.Row="11" Grid.ColumnSpan="2"
+                        <Border Grid.Row="12" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -400,7 +400,7 @@
                         </Border>
 
                         <!-- Sunucu DB Kontrol Sonucu paneli -->
-                        <Border Grid.Row="12" Grid.ColumnSpan="2"
+                        <Border Grid.Row="13" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -467,7 +467,7 @@
                         </Border>
 
                         <!-- Lisans ile Kayıt Ol Sonucu paneli -->
-                        <Border Grid.Row="13" Grid.ColumnSpan="2"
+                        <Border Grid.Row="14" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -550,7 +550,7 @@
                         </Border>
 
                         <!-- Sorun giderme ipucu -->
-                        <Border Grid.Row="14" Grid.ColumnSpan="2"
+                        <Border Grid.Row="15" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
                                 BorderBrush="#E53935"
@@ -569,13 +569,13 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Grid.Row="15" Grid.ColumnSpan="2" Height="8" />
+                        <Border Grid.Row="16" Grid.ColumnSpan="2" Height="8" />
 
                         <!-- Son durum -->
-                        <TextBlock Grid.Row="16" Grid.Column="0"
+                        <TextBlock Grid.Row="17" Grid.Column="0"
                                    Text="Son durum" FontWeight="SemiBold"
                                    VerticalAlignment="Top" Margin="0,12,0,0" />
-                        <Border Grid.Row="16" Grid.Column="1"
+                        <Border Grid.Row="17" Grid.Column="1"
                                 Margin="0,12,0,0"
                                 Padding="8"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -597,8 +597,9 @@
                 </ScrollViewer>
             </TabItem>
 
-            <!-- Pano sekmesi (sadece ayar kaydedildikten sonra görünür) -->
-            <TabItem x:Name="DashboardTab" Header="Pano" Visibility="Collapsed">
+            <!-- Pano, ilk kurulumda da görünür. Bootstrap komutu eksik ayar veya
+                 lisans kaydı varsa zaten doğrulama yapıp operatöre yol gösterir. -->
+            <TabItem x:Name="DashboardTab" Header="Pano">
                 <views:DashboardView />
             </TabItem>
         </TabControl>

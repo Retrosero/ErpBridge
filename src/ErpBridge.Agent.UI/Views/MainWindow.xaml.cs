@@ -17,37 +17,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // Reveal the Pano tab the first time a configuration lands on disk.
-        // We do this in code-behind because TabItem.Visibility lives in the
-        // visual tree and a one-way binding on a content control would force
-        // the dashboard view-model to be constructed at startup. The
-        // AgentSettingsViewModel raises PropertyChanged for HasSavedConfig
-        // on Load/Save — we wire that to the tab's Visibility here.
-        DataContextChanged += OnDataContextChanged;
-
         // X button: gerçekten kapat. Önceki davranış pencereyi tray'e gizliyor
         // ve süreç arka planda çalışmaya devam ediyordu — operatör "kapattım"
         // sanıyordu ama 10+ instance birikiyordu. Artık X = process exit.
         // Minimize butonu ise hâlâ tray'e gizler (StateChanged aşağıda).
-    }
-
-    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (e.OldValue is ObservableObject oldVm)
-        {
-            oldVm.PropertyChanged -= OnViewModelPropertyChanged;
-        }
-        if (e.NewValue is ObservableObject newVm)
-        {
-            newVm.PropertyChanged += OnViewModelPropertyChanged;
-        }
-    }
-
-    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName != nameof(AgentSettingsViewModel.HasSavedConfig)) return;
-        if (DataContext is not AgentSettingsViewModel vm) return;
-        DashboardTab.Visibility = vm.HasSavedConfig ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void SqlPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
