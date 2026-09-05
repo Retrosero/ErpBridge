@@ -1,0 +1,920 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>ErpBridge.Erp.Mikro</name>
+    </assembly>
+    <members>
+        <member name="T:ErpBridge.Erp.Mikro.Adapters.MikroAdapter">
+            <summary>
+            <see cref="T:ErpBridge.Erp.Abstractions.IErpAdapter"/> implementation for Mikro ERP (V15 + V16). The class is
+            a thin coordinator — every behaviour (connection, version probe, write, read) is
+            delegated to a dedicated collaborator. Construction happens once per session
+            inside the factory.
+            </summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.ConnectionSettings">
+            <summary>Settings supplied at construction time — the adapter is bound to one DB.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.#ctor(ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings,ErpBridge.Erp.Mikro.Adapters.IMikroConnectionTestOrchestrator,ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector,ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector,ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter,ErpBridge.Erp.Abstractions.Stores.IMappingStore,Microsoft.Extensions.Configuration.IConfiguration,Microsoft.Extensions.Logging.ILogger{ErpBridge.Erp.Mikro.Adapters.MikroAdapter},ErpBridge.Erp.Mikro.Readers.IMikroDbReader,ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory)">
+            <summary>
+            Build an adapter; the connection settings identify the Mikro database.
+            <paramref name="configuration"/> is read by the orchestrator so the WPF
+            "Bağlantıyı test et" button picks up the latest in-memory values the user
+            typed into the settings window without a process restart.
+            </summary>
+            <remarks>
+            Faz 3 Track 1: connection-test behaviour moved to
+            <see cref="T:ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator"/> — this constructor now wires
+            the orchestrator instead of owning the SqlConnection.Open logic inline.
+            Faz 5 Track 2: a <see cref="T:ErpBridge.Erp.Mikro.Readers.IMikroDbReader"/> is now mandatory so the
+            bootstrap read path can be exercised end-to-end.
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.TestConnectionAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.DetectVersionAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.ReadBootstrapDataAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.ReadBootstrapChangesAsync(System.DateTimeOffset,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.ReadBootstrapSectionAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Read a single reference-data section from Mikro and wrap it in a
+            <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/> with all other sections empty. Useful for
+            diagnostics where the bulk <see cref="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.ReadBootstrapDataAsync(System.Threading.CancellationToken)"/>
+            times out — each section is a small SQL call that can be retried
+            independently against a slow Cloudflare tunnel.
+            </summary>
+            <param name="sectionName">
+            One of <c>customers</c>, <c>stocks</c>, <c>openOrders</c>, <c>cashAndBank</c>,
+            <c>lookups</c>, <c>prices</c>, <c>inventory</c>. Case-insensitive.
+            </param>
+            <param name="ct">Cancellation token for the underlying SQL read.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapter.WriteSalesOrderAsync(ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Adapters.MikroAdapterFactory">
+            <summary>
+            Factory for <see cref="T:ErpBridge.Erp.Abstractions.IErpAdapter"/> instances. The host wires a single
+            connection profile (server / user / database) into the factory and asks for
+            adapters on demand. Only Mikro is supported; other ERP types throw.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapterFactory.#ctor(System.IServiceProvider,ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings,Microsoft.Extensions.Configuration.IConfiguration)">
+            <summary>
+            Build the factory. Services supplies the collaborators (detector, writer,
+            lookups, mapping store); the connection settings tell the factory which
+            Mikro database this agent instance is bound to; the configuration is
+            forwarded to <see cref="T:ErpBridge.Erp.Mikro.Adapters.MikroAdapter"/> so <c>TestConnectionAsync</c>
+            can read the latest in-memory values typed into the WPF settings window.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroAdapterFactory.Create(ErpBridge.Erp.Abstractions.ErpType)">
+            <inheritdoc />
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Adapters.IMikroConnectionTestOrchestrator">
+            <summary>
+            Coordinates the three Mikro connection-test phases (quick probe, version detection,
+            full diagnostic) and owns the short-lived cache that keeps repeated probes cheap.
+            </summary>
+            <remarks>
+            The orchestrator is the single seam used by the WPF "Bağlantıyı test et" button,
+            the Windows Service pre-flight check, and the <see cref="T:ErpBridge.Erp.Mikro.Adapters.MikroAdapter"/> test
+            methods. Centralising the logic here means:
+            <list type="bullet">
+              <item>The cache TTL is owned in one place (<c>MikroConnectionTestOrchestrator.CacheTtl</c>) and is
+                    invalidatable from any caller via <see cref="M:ErpBridge.Erp.Mikro.Adapters.IMikroConnectionTestOrchestrator.InvalidateCache"/>.</item>
+              <item>Password masking is applied at every error boundary, not just inside
+                    <see cref="T:ErpBridge.Erp.Mikro.Adapters.MikroAdapter"/>.</item>
+              <item>The <see cref="T:ErpBridge.Erp.Abstractions.ErpConnectionTestResult"/> is filled in once, with all
+                    rich fields (DetectedMikroVersion, IdentityStrategyName, LatencyMs) in
+                    a single shape.</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.IMikroConnectionTestOrchestrator.RunFullTestAsync(System.Threading.CancellationToken)">
+            <summary>
+            Run the full diagnostic — quick probe + version detection + strategy cache warming —
+            and return the consolidated <see cref="T:ErpBridge.Erp.Abstractions.ErpConnectionTestResult"/>. Always returns;
+            never throws: failures are surfaced via <see cref="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.Ok"/>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.IMikroConnectionTestOrchestrator.RunQuickTestAsync(System.Threading.CancellationToken)">
+            <summary>
+            Open a short-lived <see cref="T:Microsoft.Data.SqlClient.SqlConnection"/> and report only
+            <see cref="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.Ok"/> + <see cref="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.ServerVersion"/>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.IMikroConnectionTestOrchestrator.RunVersionDetectionAsync(System.Threading.CancellationToken)">
+            <summary>
+            Probe Mikro SQL for V15 vs V16, returning the cached result when fresh. Side-effect:
+            warms <see cref="T:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector"/> so subsequent writers don't re-probe.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.IMikroConnectionTestOrchestrator.InvalidateCache">
+            <summary>
+            Drop every cached entry so the next test forces a re-probe. Called when the WPF
+            operator saves new connection settings or explicitly requests a refresh.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator">
+            <summary>
+            Default implementation of <see cref="T:ErpBridge.Erp.Mikro.Adapters.IMikroConnectionTestOrchestrator"/>.
+            </summary>
+            <remarks>
+            Lifetime: registered as a singleton — the cache is process-wide. The TTL is intentionally
+            generous (30 minutes) so a busy agent doesn't repeatedly probe Mikro between unrelated
+            write bursts but short enough that a server-side schema upgrade is picked up within a
+            reasonable window.
+            </remarks>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator.CacheTtl">
+            <summary>
+            How long a cached <see cref="T:ErpBridge.Erp.Abstractions.ErpVersionInfo"/> stays valid. The probe is cheap
+            but not free — caching prevents back-to-back re-probes from hammering Mikro.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator.#ctor(ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory,ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector,ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector,Microsoft.Extensions.Configuration.IConfiguration,Microsoft.Extensions.Logging.ILogger{ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator})">
+            <summary>Build the orchestrator — every dependency is required.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator.RunFullTestAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator.RunQuickTestAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator.RunVersionDetectionAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Adapters.MikroConnectionTestOrchestrator.InvalidateCache">
+            <inheritdoc />
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Connection.AgentConfigMapper">
+            <summary>
+            Maps <see cref="T:ErpBridge.Core.Domain.AgentConfig"/> to a Mikro-bound
+            <see cref="T:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings"/>. Lives in <c>ErpBridge.Erp.Mikro</c>
+            because the Core layer must not reference Mikro types (architectural rule,
+            see <c>SKILL.md</c> section 3 rule 1). The mapper returns
+            <c><see cref="T:System.Object"/></c> from the public entry-point to respect the
+            <see cref="T:ErpBridge.Core.Stores.IAgentConfigToErpSettingsMapper"/> contract — typed access is
+            offered through the convenience <c>FromAgentConfig</c> helper below.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.AgentConfigMapper.ToErpSettings(ErpBridge.Core.Domain.AgentConfig)">
+            <inheritdoc />
+            <remarks>
+            The interface contract returns <c>object?</c> so <c>Core</c> stays Mikro-free.
+            Concrete callers inside the Mikro package can use the typed
+            <see cref="M:ErpBridge.Erp.Mikro.Connection.AgentConfigMapper.FromAgentConfig(ErpBridge.Core.Domain.AgentConfig)"/> helper.
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.AgentConfigMapper.FromAgentConfig(ErpBridge.Core.Domain.AgentConfig)">
+            <summary>
+            Public surface area intentionally exposes two <c>FromAgentConfig</c> overloads
+            so callers can either reuse parsed values or let the mapper read
+            <c>CompanyNo</c> / <c>BranchNo</c> directly from the config.
+            </summary>
+            <summary>
+            Strongly-typed mapping. Performs strict null/empty checks on the fields
+            the Mikro adapter actually needs (<c>SqlServer</c>, <c>SqlUserName</c>,
+            <c>MikroDatabaseName</c>). Returns <c>null</c> when any required field
+            is missing — <c>Password</c> may legitimately be empty (trusted auth /
+            integrated security on the customer's network).
+            </summary>
+            <param name="config">Source agent config.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.AgentConfigMapper.FromAgentConfig(ErpBridge.Core.Domain.AgentConfig,System.Int32,System.Int32,System.Int32)">
+            <summary>
+            Strongly-typed mapping with explicit company / branch / warehouse numbers
+            (so callers that parse the values up-front can reuse them and still hit
+            the canonical validation path).
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory">
+            <summary>
+            Builds <see cref="T:Microsoft.Data.SqlClient.SqlConnection"/> instances for the Mikro database. The factory
+            itself never stores credentials — it is stateless w.r.t. secrets — but it does
+            expose a single "active settings" slot so collaborators that are constructed
+            without a direct settings reference (e.g. <see cref="T:ErpBridge.Erp.Mikro.Readers.MikroDbReader"/>)
+            can still resolve a connection string at read time. The active slot is updated
+            by <c>MikroAdapter</c> via <see cref="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory.SetActiveSettings(ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings)"/>
+            whenever the user saves new credentials.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory.SetActiveSettings(ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings)">
+            <summary>
+            Overwrite the "active" settings used by readers that don't carry
+            settings of their own. Safe to call from any thread — assignment of a
+            reference type is atomic on .NET.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory.BuildConnectionString(ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings)">
+            <summary>
+            Build a SQL Server connection string for the supplied Mikro settings. The
+            format is the canonical
+            <c>Server=...;User ID=...;Password=...;Initial Catalog=...;MultipleActiveResultSets=True</c>
+            — <c>MultipleActiveResultSets</c> is enabled so future writers (Phase 6) can
+            batch header + lines on the same connection without juggling MARS quirks.
+            </summary>
+            <remarks>
+            When <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/> is true the
+            SQL user/password pair is omitted and <c>Integrated Security=true</c> is
+            emitted — the connection then authenticates as the process identity
+            (Windows Service: <c>NETWORK SERVICE</c> / <c>LOCAL SYSTEM</c>; WPF: the
+            signed-in Windows user). Trusted_Connection / SSPI flow is supported
+            for environments where Mikro rejects SQL-logins.
+            </remarks>
+            <exception cref="T:System.ArgumentException">Any required field is missing.</exception>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory.BuildConnectionStringFromActive">
+            <summary>
+            Build the connection string from the currently "active" settings set by
+            the adapter via <see cref="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory.SetActiveSettings(ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings)"/>.
+            Used by collaborators that don't have a settings reference of their own
+            (notably <see cref="T:ErpBridge.Erp.Mikro.Readers.MikroDbReader"/>).
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory.CreateConnection(ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings)">
+            <summary>
+            Convenience helper — builds the connection string and wraps it in a fresh,
+            non-open <see cref="T:Microsoft.Data.SqlClient.SqlConnection"/>. The caller owns the lifetime and is
+            expected to dispose it.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings">
+            <summary>
+            Plain-data carrier for Mikro SQL connection parameters. All fields are
+            required for the default SQL-auth path; when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/>
+            is set the SQL <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.UserId"/> and <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.Password"/> are ignored
+            at the connection-string layer and Windows authentication is used instead.
+            </summary>
+            <param name="Server">SQL Server host (e.g. "MIKROSQL\\MIKRO" or "192.168.1.10").</param>
+            <param name="UserId">SQL login (ignored when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/> is true).</param>
+            <param name="Password">SQL password (ignored when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/> is true).</param>
+            <param name="DatabaseName">Mikro database (e.g. "MIKRO16").</param>
+            <param name="IntegratedSecurity">True for Windows authentication (Trusted_Connection / SSPI).</param>
+            <param name="CompanyNo">
+            Mikro firma (company) number. Every master-data query is filtered by
+            <c>*_firmano = @firmNo</c> (or <c>*_firma_no</c>); the bootstrap reader uses
+            this value for every section. Defaults to <c>1</c> for single-firm
+            installations.
+            </param>
+            <param name="WarehouseNo">
+            Default warehouse number used by the inventory aggregation query. Per-row
+            warehouses (e.g. <c>sip_depono</c> in open orders) come from the row
+            itself; this value is the *default* fallback. Defaults to <c>1</c>.
+            </param>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.#ctor(System.String,System.String,System.String,System.String,System.Boolean,System.Int32,System.Int32)">
+            <summary>
+            Plain-data carrier for Mikro SQL connection parameters. All fields are
+            required for the default SQL-auth path; when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/>
+            is set the SQL <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.UserId"/> and <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.Password"/> are ignored
+            at the connection-string layer and Windows authentication is used instead.
+            </summary>
+            <param name="Server">SQL Server host (e.g. "MIKROSQL\\MIKRO" or "192.168.1.10").</param>
+            <param name="UserId">SQL login (ignored when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/> is true).</param>
+            <param name="Password">SQL password (ignored when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/> is true).</param>
+            <param name="DatabaseName">Mikro database (e.g. "MIKRO16").</param>
+            <param name="IntegratedSecurity">True for Windows authentication (Trusted_Connection / SSPI).</param>
+            <param name="CompanyNo">
+            Mikro firma (company) number. Every master-data query is filtered by
+            <c>*_firmano = @firmNo</c> (or <c>*_firma_no</c>); the bootstrap reader uses
+            this value for every section. Defaults to <c>1</c> for single-firm
+            installations.
+            </param>
+            <param name="WarehouseNo">
+            Default warehouse number used by the inventory aggregation query. Per-row
+            warehouses (e.g. <c>sip_depono</c> in open orders) come from the row
+            itself; this value is the *default* fallback. Defaults to <c>1</c>.
+            </param>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.Server">
+            <summary>SQL Server host (e.g. "MIKROSQL\\MIKRO" or "192.168.1.10").</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.UserId">
+            <summary>SQL login (ignored when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/> is true).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.Password">
+            <summary>SQL password (ignored when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/> is true).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.DatabaseName">
+            <summary>Mikro database (e.g. "MIKRO16").</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity">
+            <summary>True for Windows authentication (Trusted_Connection / SSPI).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.CompanyNo">
+            <summary>
+            Mikro firma (company) number. Every master-data query is filtered by
+            <c>*_firmano = @firmNo</c> (or <c>*_firma_no</c>); the bootstrap reader uses
+            this value for every section. Defaults to <c>1</c> for single-firm
+            installations.
+            </summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.WarehouseNo">
+            <summary>
+            Default warehouse number used by the inventory aggregation query. Per-row
+            warehouses (e.g. <c>sip_depono</c> in open orders) come from the row
+            itself; this value is the *default* fallback. Defaults to <c>1</c>.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.ConfigurationSection">
+            <summary>
+            Configuration section that holds Mikro SQL connection parameters. The WPF
+            settings window writes to this section on every "Kaydet" click so the
+            adapter always reads the latest values without restarting the process.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.FromConfiguration(Microsoft.Extensions.Configuration.IConfiguration)">
+            <summary>
+            Build a <see cref="T:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings"/> from the
+            <see cref="F:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.ConfigurationSection"/> of <paramref name="configuration"/>.
+            Returns <c>null</c> when the section is missing or any required field is
+            blank — the caller is expected to surface a clear "configuration missing"
+            error rather than fall back to defaults.
+            </summary>
+            <remarks>
+            Passwords may legitimately be empty (trusted auth / integrated security),
+            so an empty password is allowed and the call returns a populated settings
+            object — but Server and DatabaseName are mandatory. UserId is required
+            only when <see cref="P:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.IntegratedSecurity"/> is false.
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings.ParseInt(System.String,System.Int32)">
+            <summary>
+            Parse an integer config value. Returns <paramref name="defaultValue"/> on
+            missing / blank / unparsable input. The fallback exists because older
+            Mikro installations are single-firm (CompanyNo=1, WarehouseNo=1) and a
+            missing key must not break the bootstrap path.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.DependencyInjection.ServiceCollectionExtensions">
+            <summary>
+            Registers the Mikro adapter graph against an <see cref="T:Microsoft.Extensions.DependencyInjection.IServiceCollection"/>.
+            Call this once at agent startup after Mikro connection settings are known.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.DependencyInjection.ServiceCollectionExtensions.AddErpBridgeMikro(Microsoft.Extensions.DependencyInjection.IServiceCollection,ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings,Microsoft.Extensions.Configuration.IConfiguration)">
+            <summary>
+            Add the Mikro adapter to the service collection. The Mikro connection
+            settings determine which database the factory will bind to; the
+            <paramref name="configuration"/> is forwarded into <see cref="T:ErpBridge.Erp.Mikro.Adapters.MikroAdapter"/>
+            so the adapter can re-read the latest "Mikro" section on every
+            <c>TestConnectionAsync</c> call. Lookups are registered as in-memory stubs
+            — replace them in Phase 5 with the SQL-backed implementations.
+            </summary>
+            <param name="services">DI container.</param>
+            <param name="connectionSettings">Bound Mikro connection profile used as the bootstrap default.</param>
+            <param name="configuration">Root configuration — the WPF "Kaydet" handler writes into this so the adapter sees fresh values.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.DependencyInjection.ServiceCollectionExtensions.AddErpBridgeMikro(Microsoft.Extensions.DependencyInjection.IServiceCollection,Microsoft.Extensions.Configuration.IConfiguration)">
+            <summary>
+            Convenience overload — derives Mikro connection settings from the
+            "Mikro" section of <paramref name="configuration"/>. If the section is
+            missing or the required fields are blank a placeholder settings object
+            is supplied; the adapter will surface the missing-field error on the
+            first <c>TestConnectionAsync</c> rather than failing DI startup.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Readers.IMikroDbReader">
+            <summary>
+            Reads the bootstrap master-data snapshot directly from the Mikro SQL Server
+            database. Every method is fully <c>async</c>, uses Dapper with named
+            parameters (no string concatenation), and returns a non-null empty list
+            when the underlying table is empty so callers don't need to special-case
+            "no rows" vs "reader failure".
+            </summary>
+            <remarks>
+            All readers take <c>firmNo</c> because Mikro multi-firm installations share
+            a single database where every master table carries <c>*_firmano</c> or
+            <c>*_firma_no</c>. The warehouse-specific inventory reader additionally
+            takes <c>warehouseNo</c>. Readers must never open a connection themselves —
+            the injected <see cref="T:ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory"/> owns the
+            connection-string formatting.
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.IMikroDbReader.ReadCustomersAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <summary>
+            Read all caris (customers and vendors) from <c>CARI_HESAPLAR</c> for the
+            given <paramref name="firmNo"/>. Optional child collections (addresses,
+            contacts) are filled from the dedicated tables downstream — Phase 5 keeps
+            them empty.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.IMikroDbReader.ReadStocksAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <summary>
+            Read all active stoks (items) from <c>STOKLAR</c> for the given
+            <paramref name="firmNo"/> where <c>sto_pasif_fl = 0</c>. Passive rows are
+            excluded so the central API doesn't see archived SKUs.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.IMikroDbReader.ReadOpenOrdersAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <summary>
+            Read all open sales-order lines from <c>SIPARISLER</c> for the given
+            <paramref name="firmNo"/> where <c>sip_kapat_fl = 0</c>. The
+            <c>RemainingQuantity</c> column on <see cref="T:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload"/> is
+            denormalised as <c>Quantity - DeliveredQuantity</c>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.IMikroDbReader.ReadCashAndBankAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <summary>
+            Read kasa + banka records (cash and bank accounts) as a single typed
+            stream where <see cref="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Kind"/> is either
+            <c>"cash"</c> or <c>"bank"</c>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.IMikroDbReader.ReadLookupsAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <summary>
+            Read the closed-set of lookup dimensions (warehouse, salesperson,
+            payment-plan, project, currency) as a single uniform stream where
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Kind"/> disambiguates the source master.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.IMikroDbReader.ReadPricesAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <summary>
+            Read all aktif price-list rows from <c>STOK_SATIS_FIYAT_LISTELERI</c>
+            for the given <paramref name="firmNo"/>. Rows with null price are kept
+            (mirroring what Mikro actually stores).
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.IMikroDbReader.ReadInventoryAsync(System.Int32,System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <summary>
+            Read the on-hand inventory for a single warehouse by aggregating
+            <c>STOK_HAREKETLERI</c> over the supplied <paramref name="firmNo"/> and
+            <paramref name="warehouseNo"/>. Tip values &lt; 4 count as inflow,
+            tips ≥ 4 as outflow so net quantity is sign-correct.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Readers.MikroDbReader">
+            <summary>
+            Dapper-backed implementation of <see cref="T:ErpBridge.Erp.Mikro.Readers.IMikroDbReader"/>. Every method
+            opens its own short-lived <see cref="T:Microsoft.Data.SqlClient.SqlConnection"/>, executes a single
+            fully-parameterised query, and materialises the rows via Dapper's positional
+            record-constructor binding. <c>@firmNo</c> / <c>@warehouseNo</c> parameters
+            keep every call injection-safe.
+            </summary>
+            <remarks>
+            Construction is cheap — the class is intentionally registered as a singleton
+            in <see cref="T:ErpBridge.Erp.Mikro.DependencyInjection.ServiceCollectionExtensions"/>. Connections
+            are opened per call so the adapter never holds an open idle connection; the
+            underlying <c>SqlConnection</c> pooling is handled by ADO.NET.
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.#ctor(ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory,Microsoft.Extensions.Logging.ILogger{ErpBridge.Erp.Mikro.Readers.MikroDbReader})">
+            <summary>
+            Build a reader. The factory formats connection strings; the logger
+            receives one <c>Information</c> line per read with row counts so the
+            operator can see what came back from Mikro without enabling debug SQL.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadCustomersAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadCustomerAddressesAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadCustomerContactsAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadStocksAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadBarcodesAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadOpenOrdersAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadCashAndBankAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadLookupsAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadPricesAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadSalesConditionsAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadInventoryAsync(System.Int32,System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadCustomerTransactionsAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.ReadStockTransactionsAsync(System.Int32,System.Threading.CancellationToken,System.Nullable{System.DateTimeOffset})">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Readers.MikroDbReader.QueryAsync``1(System.String,System.Object,System.Threading.CancellationToken)">
+            <summary>
+            Open a fresh connection, run <paramref name="sql"/> with
+            <paramref name="parameters"/>, and materialise the rows. Errors are
+            logged at <c>Error</c> and rethrown so the bootstrap pipeline surfaces
+            them as a failed cycle.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Versioning.GuidStrategy">
+            <summary>
+            V16 identity strategy. The header Guid is generated in the application layer
+            via <see cref="M:System.Guid.NewGuid"/> and supplied at INSERT time; child rows are
+            linked through the single <c>sth_sip_uid</c> column.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Versioning.GuidStrategy.HeaderLinkColumn">
+            <summary>Column on child rows that links to the parent sipariş Guid.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.GuidStrategy.SelectScopeIdentitySql">
+            <summary>V16 does not need a SCOPE_IDENTITY() round-trip.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.GuidStrategy.GenerateGuidSql">
+            <summary>Generation in app — server <c>NEWID()</c> left as an alternate path.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.GuidStrategy.GenerateNewId">
+            <summary>Hand out a fresh Guid at INSERT time.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.GuidStrategy.ApplyHeaderLinkFields(System.Collections.Generic.IDictionary{System.String,System.Object},System.Object)">
+            <summary>Set <c>sth_sip_uid</c> on the child row.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Versioning.GuidStrategy.DisplayName">
+            <inheritdoc />
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy">
+            <summary>
+            Abstracts the differences between Mikro V15 (RECno identity) and V16 (Guid
+            identity). All V15/V16 dispatcher logic lives behind this interface — the
+            rest of the adapter (writers, validators) is version-agnostic.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy.SelectScopeIdentitySql">
+            <summary>
+            The SQL fragment that returns the just-inserted identity (V15:
+            <c>SELECT CAST(SCOPE_IDENTITY() AS INT)</c>; V16: empty — the application
+            supplied the Guid before INSERT).
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy.GenerateGuidSql">
+            <summary>
+            SQL used to obtain a new Guid server-side (V16 only). V15 returns an empty
+            string because the identity column auto-increments.
+            </summary>
+            <remarks>Reserved for Phase 6 INSERT statements; present in the skeleton so
+            the writer does not need to branch on version.</remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy.ParameterPrefixForIdentity">
+            <summary>
+            Returns the parameter prefix used for identity parameters. Both versions use
+            <c>@</c> for SQL Server, but kept here so a future port to a different
+            provider stays a single-line change.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy.GenerateNewId">
+            <summary>
+            Produces a new identity value in the application layer. V15 returns
+            <c>0</c> (the real value comes from <c>SCOPE_IDENTITY()</c>); V16 returns
+            <c>Guid.NewGuid()</c>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy.ApplyHeaderLinkFields(System.Collections.Generic.IDictionary{System.String,System.Object},System.Object)">
+            <summary>
+            On a child row, set the link field that points at the parent. V15 uses the
+            <c>*_RECid_RECno</c> pair (the DB number is filled by the writer); V16 uses
+            the single <c>*_uid</c> Guid.
+            </summary>
+            <param name="row">Mutable parameter bag passed to the INSERT — values live by name.</param>
+            <param name="parentId">Parent identifier (int for V15, Guid for V16) that
+            was obtained from the header insert.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy.DisplayName">
+            <summary>Diagnostic label for logs.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector">
+            <summary>
+            Picks the right <see cref="T:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy"/> for a database, caching both
+            the strategy choice and the raw <see cref="T:ErpBridge.Erp.Abstractions.ErpVersionInfo"/> per database name so
+            version-detection runs at most once per process per DB (within the configured TTL).
+            </summary>
+            <remarks>
+            Two independent caches live here:
+            <list type="bullet">
+              <item><c>_strategies</c> — maps database name to the resolved <see cref="T:ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy"/>.</item>
+              <item><c>_versions</c> — maps database name to the last <see cref="T:ErpBridge.Erp.Abstractions.ErpVersionInfo"/> we probed, with a probe
+                    timestamp so callers can decide whether the result is still fresh.</item>
+            </list>
+            Both are <see cref="T:System.Collections.Concurrent.ConcurrentDictionary`2"/> instances with case-insensitive keys — Mikro
+            database names on the same SQL Server can be referenced in mixed case from different tools, and the
+            selector should still treat them as the same key.
+            </remarks>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.CachedVersion">
+            <summary>
+            A probe result remembered with the moment it was recorded so callers can age it
+            against a TTL. Stored as a private nested record so the rest of the codebase
+            only sees <see cref="T:ErpBridge.Erp.Abstractions.ErpVersionInfo"/> going out.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.CachedVersion.#ctor(ErpBridge.Erp.Abstractions.ErpVersionInfo,System.DateTime)">
+            <summary>
+            A probe result remembered with the moment it was recorded so callers can age it
+            against a TTL. Stored as a private nested record so the rest of the codebase
+            only sees <see cref="T:ErpBridge.Erp.Abstractions.ErpVersionInfo"/> going out.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.Recno">
+            <summary>The two concrete strategies held as singletons — they have no state.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.#ctor(Microsoft.Extensions.Logging.ILogger{ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector})">
+            <summary>Build the selector. The logger is used when an Unknown version is coerced to V15.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.GetFor(System.String,ErpBridge.Erp.Abstractions.ErpVersionInfo)">
+            <summary>
+            Resolve the strategy for a specific database. The first call for a given
+            database name evaluates the branches; subsequent calls are O(1).
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.GetCached(System.String)">
+            <summary>
+            Return the cached <see cref="T:ErpBridge.Erp.Abstractions.ErpVersionInfo"/> for <paramref name="databaseName"/>, or
+            <c>null</c> when no probe has been recorded. The TTL check is the caller's job — this
+            method is intentionally cheap so the orchestrator can decide on every operation.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.GetCachedWithTimestamp(System.String)">
+            <summary>
+            Look up both the cached <see cref="T:ErpBridge.Erp.Abstractions.ErpVersionInfo"/> AND the probe timestamp — needed
+            by the orchestrator to age-test against its TTL without exposing internal record types.
+            </summary>
+            <returns>A tuple of <c>(Info, ProbedAtUtc)</c>; both <c>null</c> when nothing is cached.</returns>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.Invalidate(System.String)">
+            <summary>Explicit cache invalidation — exposed for tests and reconnect scenarios.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.InvalidateAll">
+            <summary>Drop every cached entry — used by the orchestrator's <c>InvalidateCache()</c>.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector.Pick(ErpBridge.Erp.Abstractions.ErpVersionInfo)">
+            <summary>Strategy decision — pure so the dispatcher behaviour is unit-testable.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector">
+            <summary>
+            Probes a Mikro SQL connection to determine whether it is V15 (RECno identity) or V16
+            (Guid identity). The detector is cheap to re-run but is expected to be cached
+            per-database by the caller (<c>MikroAdapter</c> caches via
+            <c>MikroIdentityStrategySelector</c>).
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector.V16ProbeColumn">
+            <summary>The V16 probe column — when present on <c>STOKLAR</c> the database is V16.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector.V16ProbeTable">
+            <summary>Table we look for the V16 probe column on.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector.ServerVersionSql">
+            <summary>
+            Raw SQL to read the SQL Server major.minor.build as a single string.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector.V16ColumnProbeSql">
+            <summary>
+            SQL probe for the V16-specific column. TOP 1 keeps the metadata lookup
+            trivial in size; the column existence check is what matters.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector.#ctor(Microsoft.Extensions.Logging.ILogger{ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector})">
+            <summary>Construct an instance — logger is required to emit resolution warnings.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector.DetectAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Run both probes (server-product-version and V16-column) and combine the result:
+            server says 16.x → V16; column <c>sto_Guid</c> exists → V16; if both probes agree
+            on V15 we use V15. If they disagree, V16 wins and a warning is logged.
+            Server-version <c>10.x</c> or anything else collapses to Unknown → default V15.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector.ParseVersionString(System.String)">
+            <summary>
+            Pure helper — exposes SQL Server <c>ProductVersion</c> string parsing for tests
+            (no DB required). Accepts <c>16.0.1.7</c>, <c>15.0.2000.0</c>, etc. Anything
+            outside the 15.x / 16.x family maps to <see cref="F:ErpBridge.Erp.Abstractions.MikroVersion.Unknown"/>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector.Combine(ErpBridge.Erp.Abstractions.MikroVersion,System.Boolean)">
+            <summary>
+            Combine the two probes. V16 wins on conflict (the column-existence probe is
+            considered the ground truth because not all 16.x builds bump the SQL Server
+            major to 16 — some stay on the 15.x platform with the new schema).
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Versioning.RecnoStrategy">
+            <summary>
+            V15 identity strategy. The header row's RECno comes from SQL Server's
+            <c>SCOPE_IDENTITY()</c>; child rows use the <c>sth_sip_RECid_RECno</c> link
+            column (the corresponding <c>sth_sip_RECid_DBCno</c> is filled by the writer
+            based on the active database number).
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Versioning.RecnoStrategy.HeaderLinkColumn">
+            <summary>Column on child rows that links to the parent sipariş RECno.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.RecnoStrategy.SelectScopeIdentitySql">
+            <summary>Cast SCOPE_IDENTITY to INT for typed access.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.RecnoStrategy.GenerateNewId">
+            <summary>Generate a placeholder int — real value arrives from SQL Server.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Versioning.RecnoStrategy.ApplyHeaderLinkFields(System.Collections.Generic.IDictionary{System.String,System.Object},System.Object)">
+            <summary>Set <c>sth_sip_RECid_RECno</c> on the child row.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Mikro.Versioning.RecnoStrategy.DisplayName">
+            <inheritdoc />
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Writers.ICustomerLookup">
+            <summary>
+            Verifies that a Mikro cari (customer) exists for the supplied code. The MVP
+            implementation is in-memory; the production implementation in Phase 5+ will
+            hit the <c>CARI_HESAPLAR</c> table via <c>Microsoft.Data.SqlClient</c>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.ICustomerLookup.ExistsAsync(System.String,System.Threading.CancellationToken)">
+            <summary>True when a customer with this code is known to the ERP.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Writers.IStockLookup">
+            <summary>
+            Verifies that a Mikro stok (stock) item exists for the supplied code.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.IStockLookup.ExistsAsync(System.String,System.Threading.CancellationToken)">
+            <summary>True when a stock item with this code is known to the ERP.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Writers.IWarehouseLookup">
+            <summary>
+            Verifies that a Mikro depo (warehouse) exists for the supplied number.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.IWarehouseLookup.ExistsAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>True when a warehouse with this number is known to the ERP.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Writers.InMemoryCustomerLookup">
+            <summary>
+            Default MVP implementation of the three lookup interfaces. Uses in-memory sets
+            preloaded by the host (typically via DI). Production implementations will swap
+            these for SQL-backed readers without touching <c>MikroSalesOrderWriter</c>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.InMemoryCustomerLookup.#ctor">
+            <summary>Empty lookup — every query resolves to false. Useful as a default.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.InMemoryCustomerLookup.#ctor(System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Build a lookup from an initial set of customer codes.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.InMemoryCustomerLookup.ExistsAsync(System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.InMemoryCustomerLookup.Add(System.String)">
+            <summary>Manually add a customer code (used by tests).</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Writers.InMemoryStockLookup">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.InMemoryStockLookup.ExistsAsync(System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Writers.InMemoryWarehouseLookup">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.InMemoryWarehouseLookup.ExistsAsync(System.Int32,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter">
+            <summary>
+            Writes a <see cref="T:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload"/> into the customer's Mikro database
+            inside a single SQL Server transaction:
+            <list type="number">
+              <item>Validate the payload (returns <see cref="F:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErrorCodeValidationFailed"/>).</item>
+              <item>Idempotency lookup via <see cref="M:ErpBridge.Erp.Abstractions.Stores.IMappingStore.FindAsync(System.String,System.String,System.String,System.Threading.CancellationToken)"/> (returns the previous
+                    <c>Recno</c>/<c>Guid</c> on hit, without an INSERT).</item>
+              <item>Cari / stok / depo existence checks via the lookup interfaces.</item>
+              <item>Version detection via <see cref="T:ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector"/> and strategy selection.</item>
+              <item>Open one <see cref="T:Microsoft.Data.SqlClient.SqlConnection"/>, BEGIN TRANSACTION, INSERT into
+                    <c>SIPARISLER</c> (header), capture identity (<c>SCOPE_IDENTITY()</c> for V15 or
+                    the pre-generated <c>Guid</c> for V16), INSERT each line into
+                    <c>STOK_HAREKETLERI</c> with the parent link, COMMIT, then save the
+                    <see cref="T:ErpBridge.Erp.Abstractions.Stores.MappingRecord"/> through the local <see cref="T:ErpBridge.Erp.Abstractions.Stores.IMappingStore"/>.</item>
+            </list>
+            Every parameter is bound through Dapper / <see cref="T:Microsoft.Data.SqlClient.SqlParameter"/>s — no
+            string concatenation is ever used to assemble SQL.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.DocumentType">
+            <summary>Reserved document-type key used when storing the mapping row.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.EntityType">
+            <summary>Reserved entity-type key — supports future filter queries by entity.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.DefaultFirmNo">
+            <summary>Default firma (company) number — overridable via a future config seam.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.DefaultBranchNo">
+            <summary>Default sube (branch) number — overridable via a future config seam.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.DefaultActiveDbNo">
+            <summary>Default aktif-DB number used for the <c>sth_sip_RECid_DBCno</c> link in V15.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.SalesOrderLineTip">
+            <summary>
+            Stok hareketi tipi — sales-order line. Matches the convention seen in Mikro
+            bootstrap readers (sales order staging).
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.SiparisHeaderInsertSqlV15">
+            <summary>
+            Insert into <c>SIPARISLER</c>. The <c>sip_RECno</c> column is left out — SQL
+            Server's identity produces it. V15 path binds scalar parameters; V16 path also
+            binds the app-generated <c>sip_Guid</c>.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.SiparisHeaderInsertSqlV16">
+            <summary>
+            V16 variant — <c>sip_Guid</c> is supplied at INSERT time with the
+            <c>@HeaderGuid</c> parameter. The identity round-trip is unnecessary because the
+            application chose the Guid before the INSERT.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.StokHareketiInsertSqlV15">
+            <summary>
+            Insert into <c>STOK_HAREKETLERI</c>. The parent header's identifier is bound
+            through the strategy-specific parameter (<c>@SipRecno</c> for V15 or
+            <c>@SipUid</c> for V16) so the same SQL template can serve both versions when
+            the dispatcher supplies the right parameter set.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.StokHareketiInsertSqlV16">
+            <summary>
+            V16 sibling of <see cref="F:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.StokHareketiInsertSqlV15"/> — the parent link is the
+            single <c>sth_sip_uid</c> column carrying the header Guid.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.#ctor(ErpBridge.Erp.Mikro.Connection.MikroConnectionFactory,ErpBridge.Erp.Mikro.Versioning.MikroVersionDetector,ErpBridge.Erp.Mikro.Versioning.MikroIdentityStrategySelector,ErpBridge.Erp.Mikro.Writers.ICustomerLookup,ErpBridge.Erp.Mikro.Writers.IStockLookup,ErpBridge.Erp.Mikro.Writers.IWarehouseLookup,Microsoft.Extensions.Logging.ILogger{ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter})">
+            <summary>
+            All dependencies are required. The connection factory builds connection
+            strings; the detector probes V15 vs V16; the lookups gate INSERTs against
+            missing cari / stok / depo records.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.WriteAsync(ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,ErpBridge.Erp.Abstractions.Stores.IMappingStore,ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings,System.Threading.CancellationToken)">
+            <summary>
+            Run the full write pipeline (validate → idempotent-ack or
+            lookup-check → INSERT header + lines + mapping save). On a fully successful
+            run, <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.Ok"/> is true with either an <c>ErpRecno</c>
+            (V15) or <c>ErpGuid</c> (V16) populated.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.InsertSalesOrderAsync(ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,System.String,ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy,System.Threading.CancellationToken)">
+            <summary>
+            Open a fresh <see cref="T:Microsoft.Data.SqlClient.SqlConnection"/>, open a transaction, insert the
+            header and each line, then commit. Returns the parent identifier and the
+            header Guid (V16 always; <c>null</c> for V15).
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.InsertHeaderAsync(Microsoft.Data.SqlClient.SqlConnection,System.Data.IDbTransaction,ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy,System.Nullable{System.Guid},System.Threading.CancellationToken)">
+            <summary>
+            Insert the <c>SIPARISLER</c> header row. V15 returns the freshly generated
+            RECno; V16 returns 0 (the actual identifier is the pre-generated
+            <paramref name="headerGuid"/>).
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.InsertLineAsync(Microsoft.Data.SqlClient.SqlConnection,System.Data.IDbTransaction,ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload,System.Int32,ErpBridge.Erp.Mikro.Versioning.IMikroIdentityStrategy,System.Nullable{System.Guid},System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Insert a single <c>STOK_HAREKETLERI</c> line, linking it back to the header
+            row through the strategy-specific parent field.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.BuildMappingRecord(ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings,ErpBridge.Erp.Abstractions.ErpVersionInfo,ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.InsertOutcome)">
+            <summary>
+            Build the <see cref="T:ErpBridge.Erp.Abstractions.Stores.MappingRecord"/> that links the source payload to the
+            ERP-assigned identifier. V15 writes <c>Recno</c>; V16 writes <c>Guid</c>.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.InsertOutcome">
+            <summary>
+            Outcome of a single transactional INSERT — wraps the parent identifier in both
+            possible shapes so the caller can build the mapping record without
+            re-inspecting the strategy type.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Mikro.Writers.MikroSalesOrderWriter.InsertOutcome.#ctor(System.Int32,System.Nullable{System.Guid})">
+            <summary>
+            Outcome of a single transactional INSERT — wraps the parent identifier in both
+            possible shapes so the caller can build the mapping record without
+            re-inspecting the strategy type.
+            </summary>
+        </member>
+    </members>
+</doc>

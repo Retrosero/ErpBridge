@@ -1,0 +1,1497 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>ErpBridge.Erp.Abstractions</name>
+    </assembly>
+    <members>
+        <member name="T:ErpBridge.Erp.Abstractions.DependencyInjection.ServiceCollectionExtensions">
+            <summary>
+            DI helpers for the abstractions project. The <see cref="T:ErpBridge.Erp.Abstractions.IErpAdapterFactory"/> must
+            be registered by the concrete adapter package (e.g. <c>ErpBridge.Erp.Mikro</c>);
+            this extension only makes the core contracts visible as types.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.DependencyInjection.ServiceCollectionExtensions.AddErpBridgeErpAbstractions(Microsoft.Extensions.DependencyInjection.IServiceCollection)">
+            <summary>
+            Register the abstractions contracts. The default <see cref="T:ErpBridge.Erp.Abstractions.Stores.IMappingStore"/>
+            registration is a deliberate no-op used when an adapter is constructed outside
+            a fully-wired DI graph (e.g. the factory tests in this track). Adapters in
+            production must replace the noop with the LocalStore-backed implementation.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.DependencyInjection.ServiceCollectionExtensions.NoopMappingStore">
+            <summary>In-memory fallback that always reports "no mapping yet" — used by tests.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.ErpConnectionTestResult">
+            <summary>
+            Outcome of a quick connection test performed by <see cref="M:ErpBridge.Erp.Abstractions.IErpAdapter.TestConnectionAsync(System.Threading.CancellationToken)"/>.
+            Extended in Faz 3 to surface the resolved Mikro version + chosen identity strategy so
+            the WPF operator screen can show "V16 / Guid-based" without a second round trip.
+            </summary>
+            <param name="Ok">True when the adapter could open and close a connection.</param>
+            <param name="Message">Human-readable diagnostic message (success or failure reason). Must be free of secrets.</param>
+            <param name="ServerVersion">Optional server-reported version (e.g. "16.0.1.7").</param>
+            <param name="DetectedMikroVersion">Resolved Mikro major version when version detection ran as part of the test.</param>
+            <param name="IdentityStrategyName">Display name of the identity strategy picked by <c>MikroIdentityStrategySelector</c>.</param>
+            <param name="DatabaseName">Database the probe was run against (echoes <c>MikroConnectionSettings.DatabaseName</c>).</param>
+            <param name="TestedAtUtc">UTC timestamp of the test — supplied by the orchestrator so multiple probes stay comparable.</param>
+            <param name="LatencyMs">Total wall-clock duration of the test in milliseconds (open + version probe + cache warming).</param>
+            <remarks>
+            All new fields are optional with safe defaults so existing <c>new ErpConnectionTestResult(true, "...", "...")</c>
+            callsites keep compiling — the orchestrator fills the rich fields only when a full test was performed.
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.#ctor(System.Boolean,System.String,System.String,System.Nullable{ErpBridge.Erp.Abstractions.MikroVersion},System.String,System.String,System.Nullable{System.DateTimeOffset},System.Nullable{System.Int64})">
+            <summary>
+            Outcome of a quick connection test performed by <see cref="M:ErpBridge.Erp.Abstractions.IErpAdapter.TestConnectionAsync(System.Threading.CancellationToken)"/>.
+            Extended in Faz 3 to surface the resolved Mikro version + chosen identity strategy so
+            the WPF operator screen can show "V16 / Guid-based" without a second round trip.
+            </summary>
+            <param name="Ok">True when the adapter could open and close a connection.</param>
+            <param name="Message">Human-readable diagnostic message (success or failure reason). Must be free of secrets.</param>
+            <param name="ServerVersion">Optional server-reported version (e.g. "16.0.1.7").</param>
+            <param name="DetectedMikroVersion">Resolved Mikro major version when version detection ran as part of the test.</param>
+            <param name="IdentityStrategyName">Display name of the identity strategy picked by <c>MikroIdentityStrategySelector</c>.</param>
+            <param name="DatabaseName">Database the probe was run against (echoes <c>MikroConnectionSettings.DatabaseName</c>).</param>
+            <param name="TestedAtUtc">UTC timestamp of the test — supplied by the orchestrator so multiple probes stay comparable.</param>
+            <param name="LatencyMs">Total wall-clock duration of the test in milliseconds (open + version probe + cache warming).</param>
+            <remarks>
+            All new fields are optional with safe defaults so existing <c>new ErpConnectionTestResult(true, "...", "...")</c>
+            callsites keep compiling — the orchestrator fills the rich fields only when a full test was performed.
+            </remarks>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.Ok">
+            <summary>True when the adapter could open and close a connection.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.Message">
+            <summary>Human-readable diagnostic message (success or failure reason). Must be free of secrets.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.ServerVersion">
+            <summary>Optional server-reported version (e.g. "16.0.1.7").</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.DetectedMikroVersion">
+            <summary>Resolved Mikro major version when version detection ran as part of the test.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.IdentityStrategyName">
+            <summary>Display name of the identity strategy picked by <c>MikroIdentityStrategySelector</c>.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.DatabaseName">
+            <summary>Database the probe was run against (echoes <c>MikroConnectionSettings.DatabaseName</c>).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.TestedAtUtc">
+            <summary>UTC timestamp of the test — supplied by the orchestrator so multiple probes stay comparable.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpConnectionTestResult.LatencyMs">
+            <summary>Total wall-clock duration of the test in milliseconds (open + version probe + cache warming).</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.ErpType">
+            <summary>
+            Supported ERP back-ends. Values are stable across releases because they are
+            persisted in the local SQLite store.
+            </summary>
+            <remarks>
+            This enumeration lives in the abstractions project so adapter packages can speak
+            about their ERP family without reaching into Core. The Core project may expose
+            its own equivalent for domain-model reasons — that duplication is acknowledged
+            as a known reconciliation item (see <c>track4-deliverable.md</c>).
+            </remarks>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.ErpType.Mikro">
+            <summary>Mikro ERP — V15 (RECno/RECid) and V16 (Guid/uid).</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.ErpType.Logo">
+            <summary>Logo (reserved — not yet implemented).</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.ErpType.Parasut">
+            <summary>Paraşüt (reserved — not yet implemented).</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.ErpType.Netsis">
+            <summary>Netsis (reserved — not yet implemented).</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.ErpVersionInfo">
+            <summary>
+            Outcome of probing an ERP connection for its version. A single adapter instance is
+            expected to cache this per database to avoid re-probing on every write.
+            </summary>
+            <param name="Version">Resolved major version (Unknown if neither probe matched).</param>
+            <param name="RawVersion">Raw SQL Server / database version string if available.</param>
+            <param name="DatabaseName">Database this result was probed for.</param>
+            <param name="ProbedAtUtc">UTC timestamp of the probe.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.ErpVersionInfo.#ctor(ErpBridge.Erp.Abstractions.MikroVersion,System.String,System.String,System.DateTime)">
+            <summary>
+            Outcome of probing an ERP connection for its version. A single adapter instance is
+            expected to cache this per database to avoid re-probing on every write.
+            </summary>
+            <param name="Version">Resolved major version (Unknown if neither probe matched).</param>
+            <param name="RawVersion">Raw SQL Server / database version string if available.</param>
+            <param name="DatabaseName">Database this result was probed for.</param>
+            <param name="ProbedAtUtc">UTC timestamp of the probe.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpVersionInfo.Version">
+            <summary>Resolved major version (Unknown if neither probe matched).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpVersionInfo.RawVersion">
+            <summary>Raw SQL Server / database version string if available.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpVersionInfo.DatabaseName">
+            <summary>Database this result was probed for.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpVersionInfo.ProbedAtUtc">
+            <summary>UTC timestamp of the probe.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpVersionInfo.IsKnown">
+            <summary>True when the resolved version is known (V15 or V16).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpVersionInfo.IsV16">
+            <summary>True when the adapter should use Guid-based identity (V16).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.ErpVersionInfo.IsV15">
+            <summary>True when the adapter should use RECno-based identity (V15).</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.IErpAdapter">
+            <summary>
+            ERP-agnostic adapter contract. The Core/UI/Service/RemoteApi layers depend on this
+            interface — they MUST NOT see any type from <c>ErpBridge.Erp.Mikro</c>.
+            Implementations are produced by <see cref="T:ErpBridge.Erp.Abstractions.IErpAdapterFactory"/>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.IErpAdapter.TestConnectionAsync(System.Threading.CancellationToken)">
+            <summary>Open a short-lived connection to validate credentials and reachability.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.IErpAdapter.DetectVersionAsync(System.Threading.CancellationToken)">
+            <summary>Detect the underlying ERP major version (cached internally).</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.IErpAdapter.ReadBootstrapDataAsync(System.Threading.CancellationToken)">
+            <summary>Read the bootstrap snapshot to push to the central API.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.IErpAdapter.ReadBootstrapChangesAsync(System.DateTimeOffset,System.Threading.CancellationToken)">
+            <summary>
+            Read records changed after <paramref name="changedSinceUtc"/>. Adapters
+            that have no reliable modification timestamp may fall back to a full
+            read; Mikro implements this with its create/last-update timestamps.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.IErpAdapter.ReadBootstrapSectionAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Read a single reference-data section from the ERP and return it wrapped
+            in a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/> with all other sections empty. Used by
+            the WPF "Her Tablo" diagnostic buttons when the bulk
+            <see cref="M:ErpBridge.Erp.Abstractions.IErpAdapter.ReadBootstrapDataAsync(System.Threading.CancellationToken)"/> times out — each section is a small
+            payload that pushes independently through a slow tunnel.
+            </summary>
+            <param name="sectionName">
+            Section identifier (e.g. <c>customers</c>, <c>stocks</c>). Case-insensitive.
+            </param>
+            <param name="ct">Cancellation token for the SQL read.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.IErpAdapter.WriteSalesOrderAsync(ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,System.Threading.CancellationToken)">
+            <summary>
+            Write a sales order into the ERP inside a single transaction, with idempotency
+            lookup and mapping save. Returns <see cref="T:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult"/> describing the
+            outcome (validation failure / lookup miss / success / already-acked).
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.IErpAdapterFactory">
+            <summary>
+            Produces <see cref="T:ErpBridge.Erp.Abstractions.IErpAdapter"/> instances for the requested <see cref="T:ErpBridge.Erp.Abstractions.ErpType"/>.
+            The factory MUST throw <see cref="T:System.NotSupportedException"/> for ERP types that are
+            not yet implemented (Logo, Paraşüt, Netsis — reserved for later phases).
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.IErpAdapterFactory.Create(ErpBridge.Erp.Abstractions.ErpType)">
+            <summary>Create a fresh adapter instance — concrete adapters may be expensive to construct.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.MikroVersion">
+            <summary>
+            Mikro ERP major version. Core/UI/Service/RemoteApi must never branch on this enum —
+            only the Mikro adapter uses it to pick the right identity strategy.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.MikroVersion.Unknown">
+            <summary>Detection failed or the version string did not match the known patterns.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.MikroVersion.V15">
+            <summary>Mikro V15 — RECno / RECid identity and link pattern.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.MikroVersion.V16">
+            <summary>Mikro V16 — Guid / uid identity and link pattern.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult">
+            <summary>
+            Outcome of a <see cref="M:ErpBridge.Erp.Abstractions.IErpAdapter.WriteSalesOrderAsync(ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,System.Threading.CancellationToken)"/> call.
+            On success <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.Ok"/> is true and at least one of <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErpRecno"/> /
+            <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErpGuid"/> carries the ERP-assigned identifier.
+            </summary>
+            <param name="Ok">True when the write committed (or was an idempotent ack).</param>
+            <param name="ErrorCode">Stable error code when <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.Ok"/> is false.</param>
+            <param name="ErrorMessage">Human-readable diagnostic.</param>
+            <param name="ErpRecno">V15 RECno (int) when the adapter used RECno identity.</param>
+            <param name="ErpGuid">V16 Guid when the adapter used Guid identity.</param>
+            <param name="DocumentSeries">Echoed from payload on success.</param>
+            <param name="DocumentNumber">Echoed from payload on success.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.#ctor(System.Boolean,System.String,System.String,System.Nullable{System.Int32},System.Nullable{System.Guid},System.String,System.Nullable{System.Int32})">
+            <summary>
+            Outcome of a <see cref="M:ErpBridge.Erp.Abstractions.IErpAdapter.WriteSalesOrderAsync(ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload,System.Threading.CancellationToken)"/> call.
+            On success <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.Ok"/> is true and at least one of <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErpRecno"/> /
+            <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErpGuid"/> carries the ERP-assigned identifier.
+            </summary>
+            <param name="Ok">True when the write committed (or was an idempotent ack).</param>
+            <param name="ErrorCode">Stable error code when <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.Ok"/> is false.</param>
+            <param name="ErrorMessage">Human-readable diagnostic.</param>
+            <param name="ErpRecno">V15 RECno (int) when the adapter used RECno identity.</param>
+            <param name="ErpGuid">V16 Guid when the adapter used Guid identity.</param>
+            <param name="DocumentSeries">Echoed from payload on success.</param>
+            <param name="DocumentNumber">Echoed from payload on success.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.Ok">
+            <summary>True when the write committed (or was an idempotent ack).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErrorCode">
+            <summary>Stable error code when <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.Ok"/> is false.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErrorMessage">
+            <summary>Human-readable diagnostic.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErpRecno">
+            <summary>V15 RECno (int) when the adapter used RECno identity.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErpGuid">
+            <summary>V16 Guid when the adapter used Guid identity.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.DocumentSeries">
+            <summary>Echoed from payload on success.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.DocumentNumber">
+            <summary>Echoed from payload on success.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErrorCodeValidationFailed">
+            <summary>Validation failed before touching the database.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErrorCodeMissingLookup">
+            <summary>Required lookup key (cari/stok/depo) did not exist.</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErrorCodeNotImplemented">
+            <summary>The operation has not been wired up yet (reserved for MVP stubs).</summary>
+        </member>
+        <member name="F:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErrorCodeUnknown">
+            <summary>An unexpected error occurred — see <see cref="P:ErpBridge.Erp.Abstractions.SalesOrder.ErpWriteResult.ErrorMessage"/>.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload">
+            <summary>
+            One line of a <see cref="T:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload"/>. Up to six discount rates per line,
+            applied in Mikro-native order.
+            </summary>
+            <param name="StockCode">Stok kodu — must be non-empty.</param>
+            <param name="Quantity">Miktar — must be &gt; 0.</param>
+            <param name="UnitPointer">Birim pointer (1=adet, 2=kilo, ...).</param>
+            <param name="UnitPrice">Birim fiyat.</param>
+            <param name="TaxPointer">KDV pointer.</param>
+            <param name="Discounts">Up to six discount rates.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload.#ctor(System.String,System.Decimal,System.Int32,System.Decimal,System.Int32,System.Collections.Generic.IReadOnlyList{System.Decimal})">
+            <summary>
+            One line of a <see cref="T:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload"/>. Up to six discount rates per line,
+            applied in Mikro-native order.
+            </summary>
+            <param name="StockCode">Stok kodu — must be non-empty.</param>
+            <param name="Quantity">Miktar — must be &gt; 0.</param>
+            <param name="UnitPointer">Birim pointer (1=adet, 2=kilo, ...).</param>
+            <param name="UnitPrice">Birim fiyat.</param>
+            <param name="TaxPointer">KDV pointer.</param>
+            <param name="Discounts">Up to six discount rates.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload.StockCode">
+            <summary>Stok kodu — must be non-empty.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload.Quantity">
+            <summary>Miktar — must be &gt; 0.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload.UnitPointer">
+            <summary>Birim pointer (1=adet, 2=kilo, ...).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload.UnitPrice">
+            <summary>Birim fiyat.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload.TaxPointer">
+            <summary>KDV pointer.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload.Discounts">
+            <summary>Up to six discount rates.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload">
+            <summary>
+            Sales order payload sent from the central API to the agent. Field set is fixed and
+            independent of the target ERP — Mikro-specific fields are introduced by the adapter.
+            </summary>
+            <param name="TenantId">Multi-tenant identifier — every mapping is scoped under this.</param>
+            <param name="ExternalId">Idempotency key — a second call with the same ExternalId MUST
+            not create a duplicate Mikro document.</param>
+            <param name="CustomerCode">Mikro cari kodu (e.g. "120.01.0001"). Validated by adapter.</param>
+            <param name="SalespersonCode">Optional plasiyer kodu.</param>
+            <param name="WarehouseNo">Depo numarası.</param>
+            <param name="DocumentSeries">Evrak serisi (e.g. "S" or "SS").</param>
+            <param name="DocumentNumber">Evrak numarası — must be &gt; 0.</param>
+            <param name="OccurredAt">UTC timestamp for the document date.</param>
+            <param name="Currency">Currency code (TL, USD, EUR, ...).</param>
+            <param name="Lines">Order lines — must be non-empty.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.#ctor(System.String,System.String,System.String,System.String,System.Int32,System.String,System.Int32,System.DateTime,System.String,System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderLinePayload})">
+            <summary>
+            Sales order payload sent from the central API to the agent. Field set is fixed and
+            independent of the target ERP — Mikro-specific fields are introduced by the adapter.
+            </summary>
+            <param name="TenantId">Multi-tenant identifier — every mapping is scoped under this.</param>
+            <param name="ExternalId">Idempotency key — a second call with the same ExternalId MUST
+            not create a duplicate Mikro document.</param>
+            <param name="CustomerCode">Mikro cari kodu (e.g. "120.01.0001"). Validated by adapter.</param>
+            <param name="SalespersonCode">Optional plasiyer kodu.</param>
+            <param name="WarehouseNo">Depo numarası.</param>
+            <param name="DocumentSeries">Evrak serisi (e.g. "S" or "SS").</param>
+            <param name="DocumentNumber">Evrak numarası — must be &gt; 0.</param>
+            <param name="OccurredAt">UTC timestamp for the document date.</param>
+            <param name="Currency">Currency code (TL, USD, EUR, ...).</param>
+            <param name="Lines">Order lines — must be non-empty.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.TenantId">
+            <summary>Multi-tenant identifier — every mapping is scoped under this.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.ExternalId">
+            <summary>Idempotency key — a second call with the same ExternalId MUST
+            not create a duplicate Mikro document.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.CustomerCode">
+            <summary>Mikro cari kodu (e.g. "120.01.0001"). Validated by adapter.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.SalespersonCode">
+            <summary>Optional plasiyer kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.WarehouseNo">
+            <summary>Depo numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.DocumentSeries">
+            <summary>Evrak serisi (e.g. "S" or "SS").</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.DocumentNumber">
+            <summary>Evrak numarası — must be &gt; 0.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.OccurredAt">
+            <summary>UTC timestamp for the document date.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.Currency">
+            <summary>Currency code (TL, USD, EUR, ...).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.SalesOrder.SalesOrderPayload.Lines">
+            <summary>Order lines — must be non-empty.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Stores.IMappingStore">
+            <summary>
+            Idempotency mapping store. The Mikro adapter depends on this contract but
+            does NOT own its implementation — persistence is the LocalStore project's
+            responsibility. The interface lives in abstractions so adapters can be wired
+            without taking a dependency on LocalStore (and vice versa).
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Stores.IMappingStore.FindAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Look up a previously written mapping. Returns null when no row exists for
+            the (tenant, documentType, externalId) tuple.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Stores.IMappingStore.SaveAsync(ErpBridge.Erp.Abstractions.Stores.MappingRecord,System.Threading.CancellationToken)">
+            <summary>Persist a new mapping. Must be idempotent on the natural key.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Stores.MappingRecord">
+            <summary>
+            Idempotency record — the cross-link between an external identifier and the
+            ERP-assigned identifier (V15 RECno or V16 Guid). The Mikro adapter looks up
+            this record before every write; a hit means the document was already created
+            and the call should ack without a second insert.
+            </summary>
+            <remarks>
+            <para>This type lives in the abstractions project so adapter packages can speak
+            about mappings without taking a dependency on Core or LocalStore.</para>
+            <para>A reconciliation track will collapse this with the equivalent
+            <c>ErpBridge.Core.Domain.MappingRecord</c> — both shapes are deliberately
+            kept identical (property-by-property) so that move is mechanical.</para>
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Stores.MappingRecord.#ctor(System.String,System.String,System.String,System.String,ErpBridge.Erp.Abstractions.ErpType,System.String,System.String,System.String,System.Nullable{System.Int32},System.Nullable{System.Int32},System.Nullable{System.Guid},System.String,System.DateTime)">
+            <summary>
+            Idempotency record — the cross-link between an external identifier and the
+            ERP-assigned identifier (V15 RECno or V16 Guid). The Mikro adapter looks up
+            this record before every write; a hit means the document was already created
+            and the call should ack without a second insert.
+            </summary>
+            <remarks>
+            <para>This type lives in the abstractions project so adapter packages can speak
+            about mappings without taking a dependency on Core or LocalStore.</para>
+            <para>A reconciliation track will collapse this with the equivalent
+            <c>ErpBridge.Core.Domain.MappingRecord</c> — both shapes are deliberately
+            kept identical (property-by-property) so that move is mechanical.</para>
+            </remarks>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Stores.MappingRecord.Id">
+            <summary>
+            Property bag used by tests / serialization — the adapter never sets this;
+            it exists so a future SQLite row mapper can hydrate from an existing row.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload">
+            <summary>
+            Kasa / banka hesabı (cash and bank account) record carried inside a
+            <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>. <see cref="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Kind"/> is a closed string — either
+            <c>"cash"</c> (kasa) or <c>"bank"</c> (banka) — so the central API can
+            branch without learning Mikro table names. <see cref="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Branch"/> and
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.AccountNo"/> are bank-only; the cash reader leaves them null.
+            </summary>
+            <param name="Code">Hesap kodu (unique within tenant).</param>
+            <param name="Name">Hesap adı (display).</param>
+            <param name="Kind">"cash" for kasa, "bank" for banka hesabı.</param>
+            <param name="Branch">Banka şubesi (bank only).</param>
+            <param name="AccountNo">Banka hesap no / IBAN (bank only).</param>
+            <param name="FirmNo">Firma numarası (multi-firm installations).</param>
+            <param name="Currency">Hesap dövizi.</param>
+            <param name="TcmbCode">Optional TCMB kodu (Türkiye Cumhuriyet Merkez Bankası).</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.#ctor(System.String,System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.String,System.String)">
+            <summary>
+            Kasa / banka hesabı (cash and bank account) record carried inside a
+            <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>. <see cref="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Kind"/> is a closed string — either
+            <c>"cash"</c> (kasa) or <c>"bank"</c> (banka) — so the central API can
+            branch without learning Mikro table names. <see cref="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Branch"/> and
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.AccountNo"/> are bank-only; the cash reader leaves them null.
+            </summary>
+            <param name="Code">Hesap kodu (unique within tenant).</param>
+            <param name="Name">Hesap adı (display).</param>
+            <param name="Kind">"cash" for kasa, "bank" for banka hesabı.</param>
+            <param name="Branch">Banka şubesi (bank only).</param>
+            <param name="AccountNo">Banka hesap no / IBAN (bank only).</param>
+            <param name="FirmNo">Firma numarası (multi-firm installations).</param>
+            <param name="Currency">Hesap dövizi.</param>
+            <param name="TcmbCode">Optional TCMB kodu (Türkiye Cumhuriyet Merkez Bankası).</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Code">
+            <summary>Hesap kodu (unique within tenant).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Name">
+            <summary>Hesap adı (display).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Kind">
+            <summary>"cash" for kasa, "bank" for banka hesabı.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Branch">
+            <summary>Banka şubesi (bank only).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.AccountNo">
+            <summary>Banka hesap no / IBAN (bank only).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.FirmNo">
+            <summary>Firma numarası (multi-firm installations).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.Currency">
+            <summary>Hesap dövizi.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload.TcmbCode">
+            <summary>Optional TCMB kodu (Türkiye Cumhuriyet Merkez Bankası).</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.CustomerPayload">
+            <summary>
+            Cari (customer / vendor) master record carried inside a
+            <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>. The field set is the Mikro-friendly superset
+            shared by Phase 5 readers; the adapter strips/expands per-version. Every
+            field other than <see cref="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.CustomerCode"/> and <see cref="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Title1"/> is
+            optional because Mikro cari records are notoriously sparse in the wild.
+            </summary>
+            <param name="CustomerCode">Unique customer code (e.g. "120.01.0001").</param>
+            <param name="Title1">Primary display name — must be non-empty.</param>
+            <param name="Title2">Optional secondary display name (e.g. legal suffix).</param>
+            <param name="TaxOffice">Vergi dairesi.</param>
+            <param name="TaxNo">Vergi / TC kimlik numarası.</param>
+            <param name="GroupCode">Cari grup kodu (for reporting / pricing).</param>
+            <param name="RegionCode">Bölge kodu (used by sales-rep routing).</param>
+            <param name="SalespersonCode">Default plasiyer kodu for orders from this cari.</param>
+            <param name="Currency">Default currency code (TL, USD, EUR, ...).</param>
+            <param name="DefaultWarehouseCode">Default depo kodu for orders from this cari.</param>
+            <param name="IsLocked">True when the cari is locked and must not accept new orders.</param>
+            <param name="IsEInvoiceEnabled">True when the cari is registered for e-fatura.</param>
+            <param name="Phone">Primary phone number.</param>
+            <param name="Email">Primary e-mail address.</param>
+            <param name="Addresses">All addresses attached to the cari (often one).</param>
+            <param name="Contacts">All contact persons attached to the cari.</param>
+            <param name="Balance">Official local-currency ledger balance from Mikro; positive means debit/customer owes us.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.#ctor(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.Boolean,System.Boolean,System.String,System.String,System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload},System.Decimal)">
+            <summary>
+            Cari (customer / vendor) master record carried inside a
+            <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>. The field set is the Mikro-friendly superset
+            shared by Phase 5 readers; the adapter strips/expands per-version. Every
+            field other than <see cref="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.CustomerCode"/> and <see cref="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Title1"/> is
+            optional because Mikro cari records are notoriously sparse in the wild.
+            </summary>
+            <param name="CustomerCode">Unique customer code (e.g. "120.01.0001").</param>
+            <param name="Title1">Primary display name — must be non-empty.</param>
+            <param name="Title2">Optional secondary display name (e.g. legal suffix).</param>
+            <param name="TaxOffice">Vergi dairesi.</param>
+            <param name="TaxNo">Vergi / TC kimlik numarası.</param>
+            <param name="GroupCode">Cari grup kodu (for reporting / pricing).</param>
+            <param name="RegionCode">Bölge kodu (used by sales-rep routing).</param>
+            <param name="SalespersonCode">Default plasiyer kodu for orders from this cari.</param>
+            <param name="Currency">Default currency code (TL, USD, EUR, ...).</param>
+            <param name="DefaultWarehouseCode">Default depo kodu for orders from this cari.</param>
+            <param name="IsLocked">True when the cari is locked and must not accept new orders.</param>
+            <param name="IsEInvoiceEnabled">True when the cari is registered for e-fatura.</param>
+            <param name="Phone">Primary phone number.</param>
+            <param name="Email">Primary e-mail address.</param>
+            <param name="Addresses">All addresses attached to the cari (often one).</param>
+            <param name="Contacts">All contact persons attached to the cari.</param>
+            <param name="Balance">Official local-currency ledger balance from Mikro; positive means debit/customer owes us.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.CustomerCode">
+            <summary>Unique customer code (e.g. "120.01.0001").</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Title1">
+            <summary>Primary display name — must be non-empty.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Title2">
+            <summary>Optional secondary display name (e.g. legal suffix).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.TaxOffice">
+            <summary>Vergi dairesi.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.TaxNo">
+            <summary>Vergi / TC kimlik numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.GroupCode">
+            <summary>Cari grup kodu (for reporting / pricing).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.RegionCode">
+            <summary>Bölge kodu (used by sales-rep routing).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.SalespersonCode">
+            <summary>Default plasiyer kodu for orders from this cari.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Currency">
+            <summary>Default currency code (TL, USD, EUR, ...).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.DefaultWarehouseCode">
+            <summary>Default depo kodu for orders from this cari.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.IsLocked">
+            <summary>True when the cari is locked and must not accept new orders.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.IsEInvoiceEnabled">
+            <summary>True when the cari is registered for e-fatura.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Phone">
+            <summary>Primary phone number.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Email">
+            <summary>Primary e-mail address.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Addresses">
+            <summary>All addresses attached to the cari (often one).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Contacts">
+            <summary>All contact persons attached to the cari.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.Balance">
+            <summary>Official local-currency ledger balance from Mikro; positive means debit/customer owes us.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload">
+            <summary>
+            One address attached to a <see cref="T:ErpBridge.Erp.Abstractions.Sync.CustomerPayload"/>. Lat/long are
+            nullable because most legacy addresses do not carry geo coordinates.
+            </summary>
+            <param name="CustomerCode">Cari code owning this address.</param>
+            <param name="AddressNo">Address sequence number (1-based) within the cari.</param>
+            <param name="City">Şehir / il.</param>
+            <param name="District">İlçe.</param>
+            <param name="Street">Full street / address line.</param>
+            <param name="PostalCode">Posta kodu.</param>
+            <param name="Latitude">Geo latitude (optional).</param>
+            <param name="Longitude">Geo longitude (optional).</param>
+            <param name="SalespersonCode">Plasiyer override for this address (else falls back to <see cref="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.SalespersonCode"/>).</param>
+            <param name="IsPrintable">Mikro <c>adr_aprint_fl</c> flag.</param>
+            <param name="Avenue">Cadde.</param>
+            <param name="Neighborhood">Mahalle.</param>
+            <param name="StreetName">Sokak.</param>
+            <param name="Quarter">Semt.</param>
+            <param name="ApartmentNo">Apartman numarası.</param>
+            <param name="FlatNo">Daire numarası.</param>
+            <param name="Country">Ülke.</param>
+            <param name="PhoneCountryCode">Telefon ülke kodu.</param>
+            <param name="PhoneAreaCode">Telefon bölge kodu.</param>
+            <param name="PhoneNo">Birincil telefon numarası.</param>
+            <param name="VisitPeriod">Ziyaret periyodu.</param>
+            <param name="VisitDay">Ziyaret günü.</param>
+            <param name="EInvoiceAlias">e-Fatura etiketi.</param>
+            <param name="UpdatedAt">Mikro son güncelleme zamanı.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.#ctor(System.String,System.Int32,System.String,System.String,System.String,System.String,System.Nullable{System.Double},System.Nullable{System.Double},System.String,System.Boolean,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.Nullable{System.Int32},System.String,System.Nullable{System.DateTime})">
+            <summary>
+            One address attached to a <see cref="T:ErpBridge.Erp.Abstractions.Sync.CustomerPayload"/>. Lat/long are
+            nullable because most legacy addresses do not carry geo coordinates.
+            </summary>
+            <param name="CustomerCode">Cari code owning this address.</param>
+            <param name="AddressNo">Address sequence number (1-based) within the cari.</param>
+            <param name="City">Şehir / il.</param>
+            <param name="District">İlçe.</param>
+            <param name="Street">Full street / address line.</param>
+            <param name="PostalCode">Posta kodu.</param>
+            <param name="Latitude">Geo latitude (optional).</param>
+            <param name="Longitude">Geo longitude (optional).</param>
+            <param name="SalespersonCode">Plasiyer override for this address (else falls back to <see cref="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.SalespersonCode"/>).</param>
+            <param name="IsPrintable">Mikro <c>adr_aprint_fl</c> flag.</param>
+            <param name="Avenue">Cadde.</param>
+            <param name="Neighborhood">Mahalle.</param>
+            <param name="StreetName">Sokak.</param>
+            <param name="Quarter">Semt.</param>
+            <param name="ApartmentNo">Apartman numarası.</param>
+            <param name="FlatNo">Daire numarası.</param>
+            <param name="Country">Ülke.</param>
+            <param name="PhoneCountryCode">Telefon ülke kodu.</param>
+            <param name="PhoneAreaCode">Telefon bölge kodu.</param>
+            <param name="PhoneNo">Birincil telefon numarası.</param>
+            <param name="VisitPeriod">Ziyaret periyodu.</param>
+            <param name="VisitDay">Ziyaret günü.</param>
+            <param name="EInvoiceAlias">e-Fatura etiketi.</param>
+            <param name="UpdatedAt">Mikro son güncelleme zamanı.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.CustomerCode">
+            <summary>Cari code owning this address.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.AddressNo">
+            <summary>Address sequence number (1-based) within the cari.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.City">
+            <summary>Şehir / il.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.District">
+            <summary>İlçe.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.Street">
+            <summary>Full street / address line.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.PostalCode">
+            <summary>Posta kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.Latitude">
+            <summary>Geo latitude (optional).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.Longitude">
+            <summary>Geo longitude (optional).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.SalespersonCode">
+            <summary>Plasiyer override for this address (else falls back to <see cref="P:ErpBridge.Erp.Abstractions.Sync.CustomerPayload.SalespersonCode"/>).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.IsPrintable">
+            <summary>Mikro <c>adr_aprint_fl</c> flag.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.Avenue">
+            <summary>Cadde.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.Neighborhood">
+            <summary>Mahalle.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.StreetName">
+            <summary>Sokak.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.Quarter">
+            <summary>Semt.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.ApartmentNo">
+            <summary>Apartman numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.FlatNo">
+            <summary>Daire numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.Country">
+            <summary>Ülke.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.PhoneCountryCode">
+            <summary>Telefon ülke kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.PhoneAreaCode">
+            <summary>Telefon bölge kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.PhoneNo">
+            <summary>Birincil telefon numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.VisitPeriod">
+            <summary>Ziyaret periyodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.VisitDay">
+            <summary>Ziyaret günü.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.EInvoiceAlias">
+            <summary>e-Fatura etiketi.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload.UpdatedAt">
+            <summary>Mikro son güncelleme zamanı.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload">
+            <summary>
+            One contact person attached to a <see cref="T:ErpBridge.Erp.Abstractions.Sync.CustomerPayload"/>. Every field
+            is optional because some caris only carry a single sales rep pointer.
+            </summary>
+            <param name="CustomerCode">Cari code owning this contact.</param>
+            <param name="FirstName">Ad.</param>
+            <param name="LastName">Soyad.</param>
+            <param name="Email">E-posta.</param>
+            <param name="Mobile">GSM / cep telefonu.</param>
+            <param name="TcIdentityNo">TC kimlik numarası.</param>
+            <param name="TaxNo">Vergi numarası (şahıs şirketleri için).</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload.#ctor(System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
+            <summary>
+            One contact person attached to a <see cref="T:ErpBridge.Erp.Abstractions.Sync.CustomerPayload"/>. Every field
+            is optional because some caris only carry a single sales rep pointer.
+            </summary>
+            <param name="CustomerCode">Cari code owning this contact.</param>
+            <param name="FirstName">Ad.</param>
+            <param name="LastName">Soyad.</param>
+            <param name="Email">E-posta.</param>
+            <param name="Mobile">GSM / cep telefonu.</param>
+            <param name="TcIdentityNo">TC kimlik numarası.</param>
+            <param name="TaxNo">Vergi numarası (şahıs şirketleri için).</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload.CustomerCode">
+            <summary>Cari code owning this contact.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload.FirstName">
+            <summary>Ad.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload.LastName">
+            <summary>Soyad.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload.Email">
+            <summary>E-posta.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload.Mobile">
+            <summary>GSM / cep telefonu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload.TcIdentityNo">
+            <summary>TC kimlik numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload.TaxNo">
+            <summary>Vergi numarası (şahıs şirketleri için).</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.InventoryPayload">
+            <summary>
+            Stok envanter (inventory) snapshot for a single (stok, depo) pair. The
+            central API uses this to drive stock-availability checks on incoming
+            sales orders without round-tripping the agent.
+            </summary>
+            <param name="StockCode">Stok kodu the inventory row refers to.</param>
+            <param name="WarehouseNo">Depo numarası the inventory is held at.</param>
+            <param name="Quantity">Anlık miktar (on-hand) — may be negative for back-orders.</param>
+            <param name="ReservedQuantity">Rezerve miktar (allocated to open orders).</param>
+            <param name="LastMovementDate">Last <c>STOK_HAREKETLERI</c> date for the pair.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.InventoryPayload.#ctor(System.String,System.Int32,System.Decimal,System.Decimal,System.DateOnly)">
+            <summary>
+            Stok envanter (inventory) snapshot for a single (stok, depo) pair. The
+            central API uses this to drive stock-availability checks on incoming
+            sales orders without round-tripping the agent.
+            </summary>
+            <param name="StockCode">Stok kodu the inventory row refers to.</param>
+            <param name="WarehouseNo">Depo numarası the inventory is held at.</param>
+            <param name="Quantity">Anlık miktar (on-hand) — may be negative for back-orders.</param>
+            <param name="ReservedQuantity">Rezerve miktar (allocated to open orders).</param>
+            <param name="LastMovementDate">Last <c>STOK_HAREKETLERI</c> date for the pair.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.InventoryPayload.StockCode">
+            <summary>Stok kodu the inventory row refers to.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.InventoryPayload.WarehouseNo">
+            <summary>Depo numarası the inventory is held at.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.InventoryPayload.Quantity">
+            <summary>Anlık miktar (on-hand) — may be negative for back-orders.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.InventoryPayload.ReservedQuantity">
+            <summary>Rezerve miktar (allocated to open orders).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.InventoryPayload.LastMovementDate">
+            <summary>Last <c>STOK_HAREKETLERI</c> date for the pair.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload">
+            <summary>
+            Genel amaçlı lookup (dimension) record carried inside a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>.
+            The reader uses <see cref="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Kind"/> to disambiguate which Mikro master
+            produced the row. Closed <see cref="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Kind"/> values:
+              <c>"warehouse"</c>            — depolar
+              <c>"salesperson"</c>          — plasiyerler
+              <c>"payment_plan"</c>         — ödeme planları
+              <c>"currency"</c>             — döviz kurları
+              <c>"project"</c>              — projeler
+              <c>"responsibility_center"</c> — sorumluluk merkezleri
+              <c>"tax_office"</c>           — vergi daireleri
+            For Phase 5 a single record is enough; typed variants are kept as
+            skeletons to be filled in by Phase 6+ readers that need richer fields
+            (warehouse group numbers, salesperson names, etc.).
+            </summary>
+            <param name="Kind">Lookup kind tag (see class doc for closed values).</param>
+            <param name="Code">Lookup code (primary key within its kind).</param>
+            <param name="Name">Display name.</param>
+            <param name="ParentCode">Optional parent lookup (e.g. warehouse group code).</param>
+            <param name="Currency">Optional currency code (e.g. for currency lookups).</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.LookupPayload.#ctor(System.String,System.String,System.String,System.String,System.String)">
+            <summary>
+            Genel amaçlı lookup (dimension) record carried inside a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>.
+            The reader uses <see cref="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Kind"/> to disambiguate which Mikro master
+            produced the row. Closed <see cref="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Kind"/> values:
+              <c>"warehouse"</c>            — depolar
+              <c>"salesperson"</c>          — plasiyerler
+              <c>"payment_plan"</c>         — ödeme planları
+              <c>"currency"</c>             — döviz kurları
+              <c>"project"</c>              — projeler
+              <c>"responsibility_center"</c> — sorumluluk merkezleri
+              <c>"tax_office"</c>           — vergi daireleri
+            For Phase 5 a single record is enough; typed variants are kept as
+            skeletons to be filled in by Phase 6+ readers that need richer fields
+            (warehouse group numbers, salesperson names, etc.).
+            </summary>
+            <param name="Kind">Lookup kind tag (see class doc for closed values).</param>
+            <param name="Code">Lookup code (primary key within its kind).</param>
+            <param name="Name">Display name.</param>
+            <param name="ParentCode">Optional parent lookup (e.g. warehouse group code).</param>
+            <param name="Currency">Optional currency code (e.g. for currency lookups).</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Kind">
+            <summary>Lookup kind tag (see class doc for closed values).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Code">
+            <summary>Lookup code (primary key within its kind).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Name">
+            <summary>Display name.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.ParentCode">
+            <summary>Optional parent lookup (e.g. warehouse group code).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.LookupPayload.Currency">
+            <summary>Optional currency code (e.g. for currency lookups).</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.WarehousePayload">
+            <summary>Skeleton — typed warehouse lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="WarehouseNo">Depo numarası.</param>
+            <param name="Name">Depo adı.</param>
+            <param name="GroupNo">Optional depo grubu numarası.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.WarehousePayload.#ctor(System.String,System.String,System.Nullable{System.Int32})">
+            <summary>Skeleton — typed warehouse lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="WarehouseNo">Depo numarası.</param>
+            <param name="Name">Depo adı.</param>
+            <param name="GroupNo">Optional depo grubu numarası.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.WarehousePayload.WarehouseNo">
+            <summary>Depo numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.WarehousePayload.Name">
+            <summary>Depo adı.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.WarehousePayload.GroupNo">
+            <summary>Optional depo grubu numarası.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.SalespersonPayload">
+            <summary>Skeleton — typed salesperson lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="Code">Plasiyer kodu.</param>
+            <param name="FirstName">Plasiyer adı.</param>
+            <param name="LastName">Plasiyer soyadı.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.SalespersonPayload.#ctor(System.String,System.String,System.String)">
+            <summary>Skeleton — typed salesperson lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="Code">Plasiyer kodu.</param>
+            <param name="FirstName">Plasiyer adı.</param>
+            <param name="LastName">Plasiyer soyadı.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalespersonPayload.Code">
+            <summary>Plasiyer kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalespersonPayload.FirstName">
+            <summary>Plasiyer adı.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalespersonPayload.LastName">
+            <summary>Plasiyer soyadı.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.PaymentPlanPayload">
+            <summary>Skeleton — typed payment-plan lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="PlanNo">Ödeme planı numarası.</param>
+            <param name="Aratop">Aratop gün sayısı (vade farkı).</param>
+            <param name="Name">Ödeme planı adı.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.PaymentPlanPayload.#ctor(System.Int32,System.Nullable{System.Int32},System.String)">
+            <summary>Skeleton — typed payment-plan lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="PlanNo">Ödeme planı numarası.</param>
+            <param name="Aratop">Aratop gün sayısı (vade farkı).</param>
+            <param name="Name">Ödeme planı adı.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.PaymentPlanPayload.PlanNo">
+            <summary>Ödeme planı numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.PaymentPlanPayload.Aratop">
+            <summary>Aratop gün sayısı (vade farkı).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.PaymentPlanPayload.Name">
+            <summary>Ödeme planı adı.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.CurrencyPayload">
+            <summary>Skeleton — typed currency lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="Code">Döviz kodu (USD, EUR, ...).</param>
+            <param name="Name">Döviz adı.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.CurrencyPayload.#ctor(System.String,System.String)">
+            <summary>Skeleton — typed currency lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="Code">Döviz kodu (USD, EUR, ...).</param>
+            <param name="Name">Döviz adı.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CurrencyPayload.Code">
+            <summary>Döviz kodu (USD, EUR, ...).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.CurrencyPayload.Name">
+            <summary>Döviz adı.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.ProjectPayload">
+            <summary>Skeleton — typed project lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="Code">Proje kodu.</param>
+            <param name="Name">Proje adı.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.ProjectPayload.#ctor(System.String,System.String)">
+            <summary>Skeleton — typed project lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="Code">Proje kodu.</param>
+            <param name="Name">Proje adı.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.ProjectPayload.Code">
+            <summary>Proje kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.ProjectPayload.Name">
+            <summary>Proje adı.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.ResponsibilityCenterPayload">
+            <summary>Skeleton — typed responsibility-center lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="Code">Sorumluluk merkezi kodu.</param>
+            <param name="Name">Sorumluluk merkezi adı.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.ResponsibilityCenterPayload.#ctor(System.String,System.String)">
+            <summary>Skeleton — typed responsibility-center lookup. Phase 5 carries via <see cref="T:ErpBridge.Erp.Abstractions.Sync.LookupPayload"/>.</summary>
+            <param name="Code">Sorumluluk merkezi kodu.</param>
+            <param name="Name">Sorumluluk merkezi adı.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.ResponsibilityCenterPayload.Code">
+            <summary>Sorumluluk merkezi kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.ResponsibilityCenterPayload.Name">
+            <summary>Sorumluluk merkezi adı.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.CustomerTransactionPayload">
+            <summary>A single row from Mikro CARI_HESAP_HAREKETLERI.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.CustomerTransactionPayload.#ctor(System.String,System.String,System.String,System.String,System.DateTime,System.Int32,System.String,System.Int32,System.Decimal,System.Boolean,System.String,System.DateTime,System.Nullable{System.Int32},System.String,System.Int32,System.Boolean)">
+            <summary>A single row from Mikro CARI_HESAP_HAREKETLERI.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.StockTransactionPayload">
+            <summary>A single row from Mikro STOK_HAREKETLERI.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.StockTransactionPayload.#ctor(System.String,System.String,System.String,System.String,System.String,System.DateTime,System.Int32,System.Int32,System.Int32,System.String,System.Decimal,System.Decimal,System.Decimal,System.Decimal,System.Decimal,System.String,System.Nullable{System.Int32},System.Nullable{System.Int32},System.String,System.DateTime,System.Nullable{System.Int32})">
+            <summary>A single row from Mikro STOK_HAREKETLERI.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload">
+            <summary>
+            Açık sipariş (open / unfulfilled sales order) record carried inside a
+            <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>. The agent surfaces these so the central API can
+            answer "what did customer X already order?" queries without a direct
+            Mikro connection. <see cref="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.RemainingQuantity"/> is denormalised because
+            the central API uses it for fast availability checks.
+            </summary>
+            <param name="Series">Evrak serisi (e.g. "S", "SS").</param>
+            <param name="Number">Evrak numarası.</param>
+            <param name="LineNo">Satır numarası (1-based within the order).</param>
+            <param name="CustomerCode">Cari kodu on the order header.</param>
+            <param name="StockCode">Stok kodu on the order line.</param>
+            <param name="Quantity">Original ordered miktar.</param>
+            <param name="DeliveredQuantity">Sevk / teslim edilen miktar (cumulative).</param>
+            <param name="RemainingQuantity">Quantity - DeliveredQuantity (denormalised).</param>
+            <param name="WarehouseNo">Depo numarası for fulfilment.</param>
+            <param name="SalespersonCode">Plasiyer kodu on the order header.</param>
+            <param name="OrderDate">Sipariş tarihi.</param>
+            <param name="DeliveryDate">Optional teslim tarihi.</param>
+            <param name="TotalAmount">Optional line total in the order currency.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.#ctor(System.String,System.Int32,System.Int32,System.String,System.String,System.Decimal,System.Decimal,System.Decimal,System.Int32,System.String,System.DateOnly,System.Nullable{System.DateOnly},System.Nullable{System.Decimal})">
+            <summary>
+            Açık sipariş (open / unfulfilled sales order) record carried inside a
+            <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>. The agent surfaces these so the central API can
+            answer "what did customer X already order?" queries without a direct
+            Mikro connection. <see cref="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.RemainingQuantity"/> is denormalised because
+            the central API uses it for fast availability checks.
+            </summary>
+            <param name="Series">Evrak serisi (e.g. "S", "SS").</param>
+            <param name="Number">Evrak numarası.</param>
+            <param name="LineNo">Satır numarası (1-based within the order).</param>
+            <param name="CustomerCode">Cari kodu on the order header.</param>
+            <param name="StockCode">Stok kodu on the order line.</param>
+            <param name="Quantity">Original ordered miktar.</param>
+            <param name="DeliveredQuantity">Sevk / teslim edilen miktar (cumulative).</param>
+            <param name="RemainingQuantity">Quantity - DeliveredQuantity (denormalised).</param>
+            <param name="WarehouseNo">Depo numarası for fulfilment.</param>
+            <param name="SalespersonCode">Plasiyer kodu on the order header.</param>
+            <param name="OrderDate">Sipariş tarihi.</param>
+            <param name="DeliveryDate">Optional teslim tarihi.</param>
+            <param name="TotalAmount">Optional line total in the order currency.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.Series">
+            <summary>Evrak serisi (e.g. "S", "SS").</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.Number">
+            <summary>Evrak numarası.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.LineNo">
+            <summary>Satır numarası (1-based within the order).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.CustomerCode">
+            <summary>Cari kodu on the order header.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.StockCode">
+            <summary>Stok kodu on the order line.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.Quantity">
+            <summary>Original ordered miktar.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.DeliveredQuantity">
+            <summary>Sevk / teslim edilen miktar (cumulative).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.RemainingQuantity">
+            <summary>Quantity - DeliveredQuantity (denormalised).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.WarehouseNo">
+            <summary>Depo numarası for fulfilment.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.SalespersonCode">
+            <summary>Plasiyer kodu on the order header.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.OrderDate">
+            <summary>Sipariş tarihi.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.DeliveryDate">
+            <summary>Optional teslim tarihi.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload.TotalAmount">
+            <summary>Optional line total in the order currency.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.PricePayload">
+            <summary>
+            Fiyat listesi (price list) record carried inside a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>.
+            Mikro typically keeps 4 numbered lists (1=base, 2-4=customer-tiered) and the
+            Phase 5 reader surfaces every active list per stok. <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Price"/> and
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Currency"/> are nullable because the reader can opt to push only
+            the rows that have an actual price (cheaper payloads).
+            </summary>
+            <param name="StockCode">Stok kodu the price applies to.</param>
+            <param name="ListNumber">List number (1-4 in Mikro).</param>
+            <param name="Price">List price in <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Currency"/>.</param>
+            <param name="Currency">Currency code of <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Price"/>.</param>
+            <param name="DiscountCode">Optional discount / kampanya kodu attached to the row.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.PricePayload.#ctor(System.String,System.Int32,System.Nullable{System.Decimal},System.String,System.String)">
+            <summary>
+            Fiyat listesi (price list) record carried inside a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>.
+            Mikro typically keeps 4 numbered lists (1=base, 2-4=customer-tiered) and the
+            Phase 5 reader surfaces every active list per stok. <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Price"/> and
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Currency"/> are nullable because the reader can opt to push only
+            the rows that have an actual price (cheaper payloads).
+            </summary>
+            <param name="StockCode">Stok kodu the price applies to.</param>
+            <param name="ListNumber">List number (1-4 in Mikro).</param>
+            <param name="Price">List price in <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Currency"/>.</param>
+            <param name="Currency">Currency code of <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Price"/>.</param>
+            <param name="DiscountCode">Optional discount / kampanya kodu attached to the row.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.StockCode">
+            <summary>Stok kodu the price applies to.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.ListNumber">
+            <summary>List number (1-4 in Mikro).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Price">
+            <summary>List price in <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Currency"/>.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Currency">
+            <summary>Currency code of <see cref="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.Price"/>.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.PricePayload.DiscountCode">
+            <summary>Optional discount / kampanya kodu attached to the row.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload">
+            <summary>
+            Satış koşulu (sales condition) record carried inside a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>.
+            Sales conditions are per-customer / per-stok / per-warehouse price + discount
+            overrides that Mikro applies when the matching order is entered. The
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.Discounts"/> list holds the per-line discount rates in Mikro
+            order (typically 6 slots). Stock/Customer pointers are nullable because a
+            condition may be wildcarded (e.g. all customers in a group).
+            </summary>
+            <param name="StockCode">Stok kodu (nullable for wildcard conditions).</param>
+            <param name="CustomerCode">Cari kodu (nullable for wildcard conditions).</param>
+            <param name="WarehouseNo">Depo numarası (nullable for warehouse-agnostic).</param>
+            <param name="PaymentPlanNo">Ödeme planı numarası (nullable for any plan).</param>
+            <param name="StartDate">Optional validity start (inclusive).</param>
+            <param name="EndDate">Optional validity end (inclusive).</param>
+            <param name="GrossPrice">Brüt fiyat in <see cref="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.Currency"/>.</param>
+            <param name="Currency">Currency code of <see cref="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.GrossPrice"/>.</param>
+            <param name="Discounts">Discount rates in apply-order (Mikro: 6 slots).</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.#ctor(System.String,System.String,System.Nullable{System.Int32},System.Nullable{System.Int32},System.Nullable{System.DateOnly},System.Nullable{System.DateOnly},System.Nullable{System.Decimal},System.String,System.Collections.Generic.IReadOnlyList{System.Decimal})">
+            <summary>
+            Satış koşulu (sales condition) record carried inside a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>.
+            Sales conditions are per-customer / per-stok / per-warehouse price + discount
+            overrides that Mikro applies when the matching order is entered. The
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.Discounts"/> list holds the per-line discount rates in Mikro
+            order (typically 6 slots). Stock/Customer pointers are nullable because a
+            condition may be wildcarded (e.g. all customers in a group).
+            </summary>
+            <param name="StockCode">Stok kodu (nullable for wildcard conditions).</param>
+            <param name="CustomerCode">Cari kodu (nullable for wildcard conditions).</param>
+            <param name="WarehouseNo">Depo numarası (nullable for warehouse-agnostic).</param>
+            <param name="PaymentPlanNo">Ödeme planı numarası (nullable for any plan).</param>
+            <param name="StartDate">Optional validity start (inclusive).</param>
+            <param name="EndDate">Optional validity end (inclusive).</param>
+            <param name="GrossPrice">Brüt fiyat in <see cref="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.Currency"/>.</param>
+            <param name="Currency">Currency code of <see cref="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.GrossPrice"/>.</param>
+            <param name="Discounts">Discount rates in apply-order (Mikro: 6 slots).</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.StockCode">
+            <summary>Stok kodu (nullable for wildcard conditions).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.CustomerCode">
+            <summary>Cari kodu (nullable for wildcard conditions).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.WarehouseNo">
+            <summary>Depo numarası (nullable for warehouse-agnostic).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.PaymentPlanNo">
+            <summary>Ödeme planı numarası (nullable for any plan).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.StartDate">
+            <summary>Optional validity start (inclusive).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.EndDate">
+            <summary>Optional validity end (inclusive).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.GrossPrice">
+            <summary>Brüt fiyat in <see cref="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.Currency"/>.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.Currency">
+            <summary>Currency code of <see cref="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.GrossPrice"/>.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload.Discounts">
+            <summary>Discount rates in apply-order (Mikro: 6 slots).</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.StockPayload">
+            <summary>
+            Stok (item / SKU) master record carried inside a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>.
+            Three unit slots are exposed because Mikro lets a single stok carry up to
+            three units (adet / kilo / metre, etc.) with conversion factors. The
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.BedenliTakip"/> and <see cref="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.RenkDetayli"/> flags advertise
+            variant-tracking behaviour; Phase 6+ writers consume them when building
+            <c>STOK_HAREKETLERI</c> rows.
+            </summary>
+            <param name="StockCode">Unique stok kodu.</param>
+            <param name="Name">Primary display name.</param>
+            <param name="ShortName">Short display name (etiket / satır).</param>
+            <param name="ForeignName">English / foreign-language name (export / e-fatura).</param>
+            <param name="DefaultTaxPointer">Default KDV pointer index (0-8).</param>
+            <param name="Unit1">Birim 1 kodu (adet / kg / mt ...).</param>
+            <param name="Unit1Factor">Conversion factor from unit 1 to base unit.</param>
+            <param name="Unit2">Birim 2 kodu.</param>
+            <param name="Unit2Factor">Conversion factor from unit 2 to base unit.</param>
+            <param name="Unit3">Birim 3 kodu.</param>
+            <param name="Unit3Factor">Conversion factor from unit 3 to base unit.</param>
+            <param name="MainGroupCode">Ana grup kodu (e.g. "GIDA").</param>
+            <param name="SubGroupCode">Alt grup kodu (e.g. "SEBZE").</param>
+            <param name="SectorCode">Sektör kodu.</param>
+            <param name="BrandCode">Marka kodu.</param>
+            <param name="ModelCode">Model kodu.</param>
+            <param name="ManufacturerCode">Üretici kodu.</param>
+            <param name="ShelfCode">Raf kodu (depo içi konum).</param>
+            <param name="BedenliTakip">True when the stok tracks sizes (variant SKU).</param>
+            <param name="RenkDetayli">True when the stok tracks colours (variant SKU).</param>
+            <param name="StandardCost">Standard maliyet (for inventory valuation).</param>
+            <param name="Currency">Cost / list currency code.</param>
+            <param name="Barcodes">All barcodes attached to the stok (often multiple per unit).</param>
+            <param name="PackageCode">ERP ambalaj kodu.</param>
+            <param name="CartonCode">ERP koli / kalkon kodu.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.StockPayload.#ctor(System.String,System.String,System.String,System.String,System.Nullable{System.Int32},System.String,System.Nullable{System.Decimal},System.String,System.Nullable{System.Decimal},System.String,System.Nullable{System.Decimal},System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.Boolean,System.Boolean,System.Nullable{System.Decimal},System.String,System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.BarcodePayload},System.String,System.String)">
+            <summary>
+            Stok (item / SKU) master record carried inside a <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/>.
+            Three unit slots are exposed because Mikro lets a single stok carry up to
+            three units (adet / kilo / metre, etc.) with conversion factors. The
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.BedenliTakip"/> and <see cref="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.RenkDetayli"/> flags advertise
+            variant-tracking behaviour; Phase 6+ writers consume them when building
+            <c>STOK_HAREKETLERI</c> rows.
+            </summary>
+            <param name="StockCode">Unique stok kodu.</param>
+            <param name="Name">Primary display name.</param>
+            <param name="ShortName">Short display name (etiket / satır).</param>
+            <param name="ForeignName">English / foreign-language name (export / e-fatura).</param>
+            <param name="DefaultTaxPointer">Default KDV pointer index (0-8).</param>
+            <param name="Unit1">Birim 1 kodu (adet / kg / mt ...).</param>
+            <param name="Unit1Factor">Conversion factor from unit 1 to base unit.</param>
+            <param name="Unit2">Birim 2 kodu.</param>
+            <param name="Unit2Factor">Conversion factor from unit 2 to base unit.</param>
+            <param name="Unit3">Birim 3 kodu.</param>
+            <param name="Unit3Factor">Conversion factor from unit 3 to base unit.</param>
+            <param name="MainGroupCode">Ana grup kodu (e.g. "GIDA").</param>
+            <param name="SubGroupCode">Alt grup kodu (e.g. "SEBZE").</param>
+            <param name="SectorCode">Sektör kodu.</param>
+            <param name="BrandCode">Marka kodu.</param>
+            <param name="ModelCode">Model kodu.</param>
+            <param name="ManufacturerCode">Üretici kodu.</param>
+            <param name="ShelfCode">Raf kodu (depo içi konum).</param>
+            <param name="BedenliTakip">True when the stok tracks sizes (variant SKU).</param>
+            <param name="RenkDetayli">True when the stok tracks colours (variant SKU).</param>
+            <param name="StandardCost">Standard maliyet (for inventory valuation).</param>
+            <param name="Currency">Cost / list currency code.</param>
+            <param name="Barcodes">All barcodes attached to the stok (often multiple per unit).</param>
+            <param name="PackageCode">ERP ambalaj kodu.</param>
+            <param name="CartonCode">ERP koli / kalkon kodu.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.StockCode">
+            <summary>Unique stok kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Name">
+            <summary>Primary display name.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.ShortName">
+            <summary>Short display name (etiket / satır).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.ForeignName">
+            <summary>English / foreign-language name (export / e-fatura).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.DefaultTaxPointer">
+            <summary>Default KDV pointer index (0-8).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Unit1">
+            <summary>Birim 1 kodu (adet / kg / mt ...).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Unit1Factor">
+            <summary>Conversion factor from unit 1 to base unit.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Unit2">
+            <summary>Birim 2 kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Unit2Factor">
+            <summary>Conversion factor from unit 2 to base unit.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Unit3">
+            <summary>Birim 3 kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Unit3Factor">
+            <summary>Conversion factor from unit 3 to base unit.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.MainGroupCode">
+            <summary>Ana grup kodu (e.g. "GIDA").</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.SubGroupCode">
+            <summary>Alt grup kodu (e.g. "SEBZE").</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.SectorCode">
+            <summary>Sektör kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.BrandCode">
+            <summary>Marka kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.ModelCode">
+            <summary>Model kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.ManufacturerCode">
+            <summary>Üretici kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.ShelfCode">
+            <summary>Raf kodu (depo içi konum).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.BedenliTakip">
+            <summary>True when the stok tracks sizes (variant SKU).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.RenkDetayli">
+            <summary>True when the stok tracks colours (variant SKU).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.StandardCost">
+            <summary>Standard maliyet (for inventory valuation).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Currency">
+            <summary>Cost / list currency code.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.Barcodes">
+            <summary>All barcodes attached to the stok (often multiple per unit).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.PackageCode">
+            <summary>ERP ambalaj kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.StockPayload.CartonCode">
+            <summary>ERP koli / kalkon kodu.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.BarcodePayload">
+            <summary>
+            One barcode attached to a <see cref="T:ErpBridge.Erp.Abstractions.Sync.StockPayload"/>. Lot and serial
+            numbers are optional because most barcodes do not carry them. The
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.UnitPointer"/> identifies which unit (1/2/3) the barcode prices.
+            </summary>
+            <param name="Barcode">The barcode digits (EAN-13, EAN-8, Code-128, ...).</param>
+            <param name="StockCode">The stok kodu the barcode resolves to.</param>
+            <param name="PartCode">Optional variant / beden-renk part kodu.</param>
+            <param name="LotNo">Lot / parti numarası when the barcode is lot-tracked.</param>
+            <param name="SerialNo">Serial / seri numarası when the barcode is serial-tracked.</param>
+            <param name="UnitPointer">Which unit slot (1/2/3) the barcode prices.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.#ctor(System.String,System.String,System.String,System.String,System.String,System.Int32)">
+            <summary>
+            One barcode attached to a <see cref="T:ErpBridge.Erp.Abstractions.Sync.StockPayload"/>. Lot and serial
+            numbers are optional because most barcodes do not carry them. The
+            <see cref="P:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.UnitPointer"/> identifies which unit (1/2/3) the barcode prices.
+            </summary>
+            <param name="Barcode">The barcode digits (EAN-13, EAN-8, Code-128, ...).</param>
+            <param name="StockCode">The stok kodu the barcode resolves to.</param>
+            <param name="PartCode">Optional variant / beden-renk part kodu.</param>
+            <param name="LotNo">Lot / parti numarası when the barcode is lot-tracked.</param>
+            <param name="SerialNo">Serial / seri numarası when the barcode is serial-tracked.</param>
+            <param name="UnitPointer">Which unit slot (1/2/3) the barcode prices.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.Barcode">
+            <summary>The barcode digits (EAN-13, EAN-8, Code-128, ...).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.StockCode">
+            <summary>The stok kodu the barcode resolves to.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.PartCode">
+            <summary>Optional variant / beden-renk part kodu.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.LotNo">
+            <summary>Lot / parti numarası when the barcode is lot-tracked.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.SerialNo">
+            <summary>Serial / seri numarası when the barcode is serial-tracked.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.BarcodePayload.UnitPointer">
+            <summary>Which unit slot (1/2/3) the barcode prices.</summary>
+        </member>
+        <member name="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage">
+            <summary>
+            Bootstrap snapshot read by the adapter from the ERP and pushed to the central API.
+            All collections are independent — empty means "no rows" rather than "not yet read".
+            Phase 5 fills every collection with the canonical Mikro bootstrap subset.
+            </summary>
+            <param name="PulledAtUtc">When the snapshot was pulled from the ERP.</param>
+            <param name="SourceDatabase">Database the snapshot was read from.</param>
+            <param name="Customers">Cari kart snapshot (CARI_HESAPLAR).</param>
+            <param name="CustomerAddresses">Cari adres snapshot (CARI_HESAP_ADRESLERI).</param>
+            <param name="CustomerContacts">Cari yetkili snapshot (CARI_HESAP_YETKILILERI).</param>
+            <param name="Stocks">Aktif stok kartları (STOKLAR, sto_pasif_fl=0).</param>
+            <param name="Barcodes">Stok barkodları (BARKOD_TANIMLARI).</param>
+            <param name="Prices">Satış fiyat listeleri (STOK_SATIS_FIYAT_LISTELERI).</param>
+            <param name="Inventory">Depo bazlı stok envanteri (STOK_HAREKETLERI agregatı).</param>
+            <param name="OpenOrders">Açık sipariş satırları (SIPARISLER, kapat_fl=0).</param>
+            <param name="CashAndBank">Kasa + banka snapshotu (KASALAR + BANKALAR).</param>
+            <param name="Lookups">Depo / plasiyer / ödeme planı / proje / SM / döviz lookup snapshot.</param>
+            <param name="SalesConditions">Customer/stock sales conditions (SATIS_SARTLARI).</param>
+            <param name="CustomerTransactions">Cari ledger rows (CARI_HESAP_HAREKETLERI).</param>
+            <param name="StockTransactions">Raw stock ledger rows (STOK_HAREKETLERI).</param>
+            <param name="PartialSection">Section key for a manual partial push; null for a complete snapshot.</param>
+            <param name="IsIncremental">True when collections contain only records changed since <paramref name="ChangedSinceUtc"/>.</param>
+            <param name="ChangedSinceUtc">Exclusive UTC cursor used for an incremental package.</param>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.SyncPackage.#ctor(System.DateTime,System.String,System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.CustomerPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.CustomerAddressPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.CustomerContactPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.StockPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.BarcodePayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.PricePayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.SalesConditionPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.InventoryPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.OpenOrderPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.CashAndBankPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.LookupPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.CustomerTransactionPayload},System.Collections.Generic.IReadOnlyList{ErpBridge.Erp.Abstractions.Sync.StockTransactionPayload},System.String,System.Boolean,System.Nullable{System.DateTime})">
+            <summary>
+            Bootstrap snapshot read by the adapter from the ERP and pushed to the central API.
+            All collections are independent — empty means "no rows" rather than "not yet read".
+            Phase 5 fills every collection with the canonical Mikro bootstrap subset.
+            </summary>
+            <param name="PulledAtUtc">When the snapshot was pulled from the ERP.</param>
+            <param name="SourceDatabase">Database the snapshot was read from.</param>
+            <param name="Customers">Cari kart snapshot (CARI_HESAPLAR).</param>
+            <param name="CustomerAddresses">Cari adres snapshot (CARI_HESAP_ADRESLERI).</param>
+            <param name="CustomerContacts">Cari yetkili snapshot (CARI_HESAP_YETKILILERI).</param>
+            <param name="Stocks">Aktif stok kartları (STOKLAR, sto_pasif_fl=0).</param>
+            <param name="Barcodes">Stok barkodları (BARKOD_TANIMLARI).</param>
+            <param name="Prices">Satış fiyat listeleri (STOK_SATIS_FIYAT_LISTELERI).</param>
+            <param name="Inventory">Depo bazlı stok envanteri (STOK_HAREKETLERI agregatı).</param>
+            <param name="OpenOrders">Açık sipariş satırları (SIPARISLER, kapat_fl=0).</param>
+            <param name="CashAndBank">Kasa + banka snapshotu (KASALAR + BANKALAR).</param>
+            <param name="Lookups">Depo / plasiyer / ödeme planı / proje / SM / döviz lookup snapshot.</param>
+            <param name="SalesConditions">Customer/stock sales conditions (SATIS_SARTLARI).</param>
+            <param name="CustomerTransactions">Cari ledger rows (CARI_HESAP_HAREKETLERI).</param>
+            <param name="StockTransactions">Raw stock ledger rows (STOK_HAREKETLERI).</param>
+            <param name="PartialSection">Section key for a manual partial push; null for a complete snapshot.</param>
+            <param name="IsIncremental">True when collections contain only records changed since <paramref name="ChangedSinceUtc"/>.</param>
+            <param name="ChangedSinceUtc">Exclusive UTC cursor used for an incremental package.</param>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.PulledAtUtc">
+            <summary>When the snapshot was pulled from the ERP.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.SourceDatabase">
+            <summary>Database the snapshot was read from.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.Customers">
+            <summary>Cari kart snapshot (CARI_HESAPLAR).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.CustomerAddresses">
+            <summary>Cari adres snapshot (CARI_HESAP_ADRESLERI).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.CustomerContacts">
+            <summary>Cari yetkili snapshot (CARI_HESAP_YETKILILERI).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.Stocks">
+            <summary>Aktif stok kartları (STOKLAR, sto_pasif_fl=0).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.Barcodes">
+            <summary>Stok barkodları (BARKOD_TANIMLARI).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.Prices">
+            <summary>Satış fiyat listeleri (STOK_SATIS_FIYAT_LISTELERI).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.SalesConditions">
+            <summary>Customer/stock sales conditions (SATIS_SARTLARI).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.Inventory">
+            <summary>Depo bazlı stok envanteri (STOK_HAREKETLERI agregatı).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.OpenOrders">
+            <summary>Açık sipariş satırları (SIPARISLER, kapat_fl=0).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.CashAndBank">
+            <summary>Kasa + banka snapshotu (KASALAR + BANKALAR).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.Lookups">
+            <summary>Depo / plasiyer / ödeme planı / proje / SM / döviz lookup snapshot.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.CustomerTransactions">
+            <summary>Cari ledger rows (CARI_HESAP_HAREKETLERI).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.StockTransactions">
+            <summary>Raw stock ledger rows (STOK_HAREKETLERI).</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.PartialSection">
+            <summary>Section key for a manual partial push; null for a complete snapshot.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.IsIncremental">
+            <summary>True when collections contain only records changed since <paramref name="ChangedSinceUtc"/>.</summary>
+        </member>
+        <member name="P:ErpBridge.Erp.Abstractions.Sync.SyncPackage.ChangedSinceUtc">
+            <summary>Exclusive UTC cursor used for an incremental package.</summary>
+        </member>
+        <member name="M:ErpBridge.Erp.Abstractions.Sync.SyncPackage.Empty(System.DateTimeOffset,System.String)">
+            <summary>
+            Build a metadata-only <see cref="T:ErpBridge.Erp.Abstractions.Sync.SyncPackage"/> with empty row collections.
+            Used by adapters (and tests) that need a placeholder snapshot — the
+            central API rejects a non-null but completely-empty payload the same
+            way it rejects a populated one, so this is the safe MVP default.
+            </summary>
+            <param name="pulledAtUtc">UTC instant the snapshot was taken (e.g. <c>DateTimeOffset.UtcNow</c>).</param>
+            <param name="sourceDatabase">Source database name (e.g. <c>MikroDatabaseName</c>).</param>
+        </member>
+    </members>
+</doc>

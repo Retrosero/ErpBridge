@@ -68,6 +68,7 @@ WORKDIR /src
 # literal PascalCase folder names because they live on disk in that
 # case.
 COPY ErpBridge.sln ./
+COPY Directory.Packages.props ./
 COPY src/ErpBridge.Core/ErpBridge.Core.csproj                            src/ErpBridge.Core/
 COPY src/ErpBridge.Shared/ErpBridge.Shared.csproj                        src/ErpBridge.Shared/
 COPY src/ErpBridge.LocalStore/ErpBridge.LocalStore.csproj                src/ErpBridge.LocalStore/

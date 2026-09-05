@@ -1,0 +1,7 @@
+services:
+  centralapi:
+    ports: !override
+      - "5081:5080"
+    environment:
+      ApiKeyVault__MasterKey: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      Cors__AllowedOrigins__0: http://localhost:4002

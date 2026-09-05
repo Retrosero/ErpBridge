@@ -1,0 +1,150 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>ErpBridge.RemoteApi</name>
+    </assembly>
+    <members>
+        <member name="T:ErpBridge.RemoteApi.Authentication.IJwtTokenProvider">
+            <summary>
+            Resolves the bearer token to use for outbound calls. MVP reads from
+            <see cref="P:ErpBridge.RemoteApi.Options.CentralApiOptions.Jwt"/>; later phases may rotate/refresh from disk
+            or the registration endpoint.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.RemoteApi.DependencyInjection.ServiceCollectionExtensions">
+            <summary>DI helpers for registering the central API client.</summary>
+        </member>
+        <member name="M:ErpBridge.RemoteApi.DependencyInjection.ServiceCollectionExtensions.AddErpBridgeRemoteApi(Microsoft.Extensions.DependencyInjection.IServiceCollection,Microsoft.Extensions.Configuration.IConfiguration)">
+            <summary>
+            Register <see cref="T:ErpBridge.Core.Stores.IRemoteApiClient"/>, options, and a Polly-protected <see cref="T:System.Net.Http.HttpClient"/>
+            reading configuration from the <c>CentralApi</c> section.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.RemoteApi.DependencyInjection.ServiceCollectionExtensions.BuildRetryPolicy">
+            <summary>
+            Polly retry policy. Retries on transient HTTP failures and 429 responses using
+            the canonical 5s/15s/60s/300s exponential backoff schedule (capped).
+            </summary>
+        </member>
+        <member name="F:ErpBridge.RemoteApi.DependencyInjection.ServiceCollectionExtensions.CanonicalRetryDelays">
+            <summary>Canonical 5/15/60/300-second backoff schedule.</summary>
+        </member>
+        <member name="M:ErpBridge.RemoteApi.DependencyInjection.ServiceCollectionExtensions.BuildRetryPolicy(System.Collections.Generic.IEnumerable{System.TimeSpan})">
+            <summary>
+            Build a Polly retry policy with a custom delay schedule. Exposed for
+            tests that need fast retries; production code should use the parameterless
+            <see cref="M:ErpBridge.RemoteApi.DependencyInjection.ServiceCollectionExtensions.BuildRetryPolicy"/>.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.RemoteApi.Http.HttpRemoteApiClient">
+             <summary>
+             Default <see cref="T:ErpBridge.Core.Stores.IRemoteApiClient"/> implementation. Uses a Polly-protected
+             <see cref="T:System.Net.Http.HttpClient"/> and System.Text.Json for (de)serialization.
+            
+             All five endpoints defined in <c>docs/api-contracts.md</c> are bound here:
+               - POST /api/v1/licenses/validate
+               - GET  /api/v1/jobs/pending
+               - POST /api/v1/jobs/ack
+               - POST /api/v1/bootstrap
+               - POST /api/v1/agents/heartbeat
+            
+             Per the contract, every POST carries an <c>Idempotency-Key</c> header so a
+             retried request after a network blip is not interpreted as a new operation
+             by the central API. For <see cref="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.SendAckAsync(ErpBridge.Core.Domain.JobAck,System.Threading.CancellationToken)"/> the key is the job id
+             (the natural unit of work). For other POSTs the key is generated per call.
+             </summary>
+        </member>
+        <member name="F:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.IdempotencyKeyHeader">
+            <summary>Canonical HTTP header name for the central API idempotency key.</summary>
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.#ctor(System.Net.Http.HttpClient,Microsoft.Extensions.Options.IOptionsMonitor{ErpBridge.RemoteApi.Options.CentralApiOptions},Microsoft.Extensions.Logging.ILogger{ErpBridge.RemoteApi.Http.HttpRemoteApiClient})">
+            <summary>Creates a new client bound to the supplied <paramref name="http"/> and <paramref name="options"/>.</summary>
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.ValidateLicenseAsync(System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.RegisterAgentAsync(System.String,System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.GetPendingJobsAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.SendAckAsync(ErpBridge.Core.Domain.JobAck,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.PushBootstrapDataAsync(ErpBridge.Erp.Abstractions.Sync.SyncPackage,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.GetBootstrapStatusAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.WaitForBootstrapUpdateAsync(System.TimeSpan,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="T:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.BootstrapRequestEnvelope">
+            <summary>
+            Wire shape for <c>POST /api/v1/bootstrap</c>. Mirrors
+            <c>ErpBridge.CentralApi.Contracts.BootstrapRequest</c> — we cannot
+            reference the central API project (it would invert the dependency
+            arrow), so the shape is duplicated here and pinned by contract.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.BootstrapRequestEnvelope.#ctor(System.String,System.DateTimeOffset,System.Object)">
+            <summary>
+            Wire shape for <c>POST /api/v1/bootstrap</c>. Mirrors
+            <c>ErpBridge.CentralApi.Contracts.BootstrapRequest</c> — we cannot
+            reference the central API project (it would invert the dependency
+            arrow), so the shape is duplicated here and pinned by contract.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.SendHeartbeatAsync(ErpBridge.Core.Domain.AgentHeartbeat,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.SendAgentTelemetryAsync(ErpBridge.Core.Domain.AgentTelemetryEvent,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.NewIdempotencyKey(System.String)">
+            <summary>
+            Build a stable idempotency key for non-ack POSTs. The same call (and any
+            Polly retries against the same <see cref="T:System.Net.Http.HttpRequestMessage"/>) reuses
+            the value, so the central API sees one logical operation.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.SendAsyncAllowNotFound``1(System.Net.Http.HttpRequestMessage,ErpBridge.RemoteApi.Options.CentralApiOptions,System.Threading.CancellationToken)">
+            <summary>
+            Like <see cref="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.SendAsync``1(System.Net.Http.HttpRequestMessage,ErpBridge.RemoteApi.Options.CentralApiOptions,System.Threading.CancellationToken)"/> but reports a 404 as a distinct outcome
+            (so the caller can return a structured "not found" result instead of a
+            generic deserialization error). Used by <see cref="M:ErpBridge.RemoteApi.Http.HttpRemoteApiClient.ValidateLicenseAsync(System.String,System.Threading.CancellationToken)"/>.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.RemoteApi.Options.CentralApiOptions">
+            <summary>
+            Configuration bound from the <c>CentralApi</c> section of appsettings.json.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.RemoteApi.Options.CentralApiOptions.SectionName">
+            <summary>Configuration section name.</summary>
+        </member>
+        <member name="P:ErpBridge.RemoteApi.Options.CentralApiOptions.BaseUrl">
+            <summary>Base URL of the central SaaS API (e.g. https://api.erpbridge.local).</summary>
+        </member>
+        <member name="P:ErpBridge.RemoteApi.Options.CentralApiOptions.TimeoutSeconds">
+            <summary>Per-request HTTP timeout in seconds.</summary>
+        </member>
+        <member name="P:ErpBridge.RemoteApi.Options.CentralApiOptions.Jwt">
+            <summary>JWT token used in the <c>Authorization: Bearer</c> header. May be empty until the agent has registered.</summary>
+        </member>
+        <member name="P:ErpBridge.RemoteApi.Options.CentralApiOptions.Retry">
+            <summary>Retry tuning for the Polly pipeline.</summary>
+        </member>
+        <member name="T:ErpBridge.RemoteApi.Options.CentralApiOptions.RetryOptions">
+            <summary>Nested retry options.</summary>
+        </member>
+        <member name="P:ErpBridge.RemoteApi.Options.CentralApiOptions.RetryOptions.MaxAttempts">
+            <summary>Maximum number of retry attempts (excluding the initial call).</summary>
+        </member>
+        <member name="P:ErpBridge.RemoteApi.Options.CentralApiOptions.RetryOptions.InitialDelaySeconds">
+            <summary>Initial backoff delay in seconds. Subsequent delays follow the 5s/15s/60s/300s cap schedule.</summary>
+        </member>
+    </members>
+</doc>
