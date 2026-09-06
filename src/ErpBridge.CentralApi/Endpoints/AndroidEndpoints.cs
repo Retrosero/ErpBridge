@@ -593,11 +593,14 @@ public static class AndroidEndpoints
             .GroupBy(item => item.InvoiceRecNo!.Value)
             .ToDictionary(group => group.Key, group => group.Select(item => item.Line).ToArray());
 
-        var customerCode = request.Since?.Trim();
+        var rawSince = request.Since?.Trim();
+        var hasWatermark = DateTimeOffset.TryParse(rawSince, out var watermark);
+        var customerCode = hasWatermark ? null : rawSince;
         var invoices = GetArray(root, "customerTransactions")
             .Where(transaction =>
                 string.IsNullOrWhiteSpace(customerCode)
                 || string.Equals(GetString(transaction, "cariKod"), customerCode, StringComparison.OrdinalIgnoreCase))
+            .Where(transaction => !hasWatermark || IsNewer(transaction, watermark))
             .Select(transaction => new
             {
                 Transaction = transaction,
@@ -664,9 +667,15 @@ public static class AndroidEndpoints
             page,
             pageSize,
             total = invoices.Length,
-            since = customerCode,
+            since = rawSince,
             items,
         });
+    }
+
+    private static bool IsNewer(JsonElement item, DateTimeOffset watermark)
+    {
+        var raw = GetString(item, "updatedAt") ?? GetString(item, "cha_lastup_date") ?? GetString(item, "tarih");
+        return DateTimeOffset.TryParse(raw, out var updated) && updated > watermark;
     }
 
     private static IEnumerable<JsonElement> GetArray(JsonElement parent, string propertyName) =>
