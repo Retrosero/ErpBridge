@@ -22,6 +22,7 @@ namespace ErpBridge.Erp.Mikro.Readers;
 /// </remarks>
 public sealed class MikroDbReader : IMikroDbReader
 {
+    private static readonly TimeZoneInfo MikroTimeZone = ResolveMikroTimeZone();
     private readonly MikroConnectionFactory _factory;
     private readonly ILogger<MikroDbReader> _logger;
 
@@ -39,6 +40,18 @@ public sealed class MikroDbReader : IMikroDbReader
     {
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    // Mikro stores its *_create_date/*_lastup_date columns as Turkey local time,
+    // while the API watermark is UTC. Comparing the raw UTC value made every
+    // existing row look newer by three hours on the Linux agent.
+    private static DateTime? MikroDateTime(DateTimeOffset? utc) =>
+        utc is { } value ? TimeZoneInfo.ConvertTime(value, MikroTimeZone).DateTime : null;
+
+    private static TimeZoneInfo ResolveMikroTimeZone()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("Turkey Standard Time"); }
     }
 
     /// <inheritdoc />
@@ -121,7 +134,7 @@ LEFT JOIN (
 WHERE ISNULL(cari_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(cari_lastup_date, cari_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<CustomerRow>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<CustomerRow>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         // Drop the Addresses/Contacts fields the constructor will initialise to null —
         // supply proper empty lists after Dapper hydrates the scalar columns.
         var result = rows
@@ -181,7 +194,7 @@ SELECT CAST(ISNULL(adr_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
 FROM CARI_HESAP_ADRESLERI
 WHERE ISNULL(adr_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(adr_lastup_date, adr_create_date) > @changedSinceUtc)";
-        var result = (await QueryAsync<CustomerAddressPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
+        var result = (await QueryAsync<CustomerAddressPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} customer addresses for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
@@ -200,7 +213,7 @@ SELECT CAST(ISNULL(mye_cari_kod, '') AS NVARCHAR(50)) AS CustomerCode,
 FROM CARI_HESAP_YETKILILERI
 WHERE ISNULL(mye_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(mye_lastup_date, mye_create_date) > @changedSinceUtc)";
-        var result = (await QueryAsync<CustomerContactPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
+        var result = (await QueryAsync<CustomerContactPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} customer contacts for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
@@ -239,7 +252,7 @@ WHERE ISNULL(sto_iptal, 0) = 0
   AND ISNULL(sto_pasif_fl, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sto_lastup_date, sto_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<StockRow>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<StockRow>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows
             .Select(s => new StockPayload(
                 s.StockCode,
@@ -285,7 +298,7 @@ SELECT CAST(ISNULL(bar_kodu, '') AS NVARCHAR(100)) AS Barcode,
 FROM BARKOD_TANIMLARI
 WHERE ISNULL(bar_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(bar_lastup_date, bar_create_date) > @changedSinceUtc)";
-        var result = (await QueryAsync<BarcodePayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
+        var result = (await QueryAsync<BarcodePayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} barcodes for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
@@ -314,7 +327,7 @@ WHERE sip_firmano = @firmNo
   AND sip_kapat_fl = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sip_lastup_date, sip_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<OpenOrderPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<OpenOrderPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} open orders for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -335,7 +348,7 @@ SELECT ban_kod, ban_ismi, 'bank', ban_sube, ban_hesapno, ban_firma_no,
 FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(ban_lastup_date, ban_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<CashAndBankPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<CashAndBankPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} cash+bank for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -378,7 +391,7 @@ FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI
 WHERE ISNULL(sfl_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sfl_lastup_date, sfl_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<LookupPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<LookupPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} lookups.", result.Count);
         return result;
@@ -398,7 +411,7 @@ FROM STOK_SATIS_FIYAT_LISTELERI
 WHERE ISNULL(sfiyat_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sfiyat_lastup_date, sfiyat_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<PricePayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<PricePayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} price-list rows for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -425,7 +438,7 @@ SELECT CAST(sat_stok_kod AS NVARCHAR(50)) AS StockCode,
 FROM SATIS_SARTLARI
 WHERE ISNULL(sat_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sat_lastup_date, sat_create_date) > @changedSinceUtc)";
-        var rows = await QueryAsync<SalesConditionRow>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<SalesConditionRow>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.Select(row => new SalesConditionPayload(
             row.StockCode, row.CustomerCode, row.WarehouseNo, row.PaymentPlanNo,
             row.StartDate, row.EndDate, row.GrossPrice, row.Currency,
@@ -457,7 +470,7 @@ WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL
       WHERE changed.sth_stok_kod = sth_stok_kod
         AND COALESCE(changed.sth_lastup_date, changed.sth_create_date, changed.sth_tarih) > @changedSinceUtc))";
 
-        var rows = await QueryAsync<InventoryPayload>(sql, new { firmNo, warehouseNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false);
+        var rows = await QueryAsync<InventoryPayload>(sql, new { firmNo, warehouseNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation(
             "Read {Count} inventory rows from STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW for firmNo={FirmNo}, warehouseNo={WarehouseNo}.",
@@ -500,7 +513,7 @@ WHERE ISNULL(cha_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) > @changedSinceUtc)
 ORDER BY cha_RECno";
 
-        var result = (await QueryAsync<CustomerTransactionPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
+        var result = (await QueryAsync<CustomerTransactionPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} customer transactions for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
@@ -539,7 +552,7 @@ WHERE ISNULL(sth_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sth_lastup_date, sth_create_date, sth_tarih) > @changedSinceUtc)
 ORDER BY sth_RECno";
 
-        var result = (await QueryAsync<StockTransactionPayload>(sql, new { firmNo, changedSinceUtc = changedSinceUtc?.UtcDateTime }, ct).ConfigureAwait(false)).ToList();
+        var result = (await QueryAsync<StockTransactionPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} stock transactions for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
