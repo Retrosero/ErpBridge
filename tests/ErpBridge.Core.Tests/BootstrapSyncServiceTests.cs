@@ -604,6 +604,30 @@ public class BootstrapSyncServiceTests
     }
 
     [Fact]
+    public async Task RunOnceAsync_does_not_push_an_empty_delta()
+    {
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);
+        var cursor = fixedNow.AddMinutes(-1);
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>())).ReturnsAsync(NewAgentConfig());
+        var checkpointStore = new Mock<ICheckpointStore>();
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CheckpointRecord { TenantId = TenantId, SyncScope = BootstrapSyncService.BootstrapScope, LastSuccessAt = fixedNow.AddMinutes(-5).UtcDateTime });
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapChangesAsync(cursor, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage() with { IsIncremental = true, ChangedSinceUtc = cursor.UtcDateTime });
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>())).Returns(adapter.Object);
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new BootstrapRemoteStatus(true, cursor));
+        var sut = new BootstrapSyncService(configStore.Object, checkpointStore.Object, adapterFactory.Object, remoteApi.Object,
+            NullLogger<BootstrapSyncService>.Instance, new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        (await sut.RunOnceAsync()).Success.Should().BeTrue();
+        remoteApi.Verify(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task RunOnceAsync_uses_full_read_when_server_has_no_snapshot()
     {
         var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);

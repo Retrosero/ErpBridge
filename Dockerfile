@@ -28,6 +28,7 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_NOLOGO=true \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    TZ=Europe/Istanbul \
     # Default to 5080 so the central API matches Coolify's auto-generated
     # Caddy/Traefik upstreams port. The entrypoint below pins the actual
     # bind port per build target, so this value is a fallback only.
@@ -37,7 +38,7 @@ EXPOSE 5080
 # wget explicitly; the upstream ASP.NET image does not include it.
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends wget \
+    && apt-get install -y --no-install-recommends wget tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Run as the built-in non-root user that the upstream image ships.

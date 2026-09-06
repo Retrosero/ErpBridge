@@ -203,6 +203,15 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     "Adapter returned a null SyncPackage.");
             }
 
+            // A delta with no rows must not create a newer server snapshot.
+            // Its freshly generated PulledAtUtc would otherwise make every
+            // mobile client download the unchanged data again.
+            if (package.IsIncremental && IsEmpty(package))
+            {
+                _logger.LogInformation("Bootstrap sync found no ERP changes; server snapshot is unchanged.");
+                return new BootstrapSyncResult(true, 0, 0, 0, 0, 0, 0, 0, stopwatch.ElapsedMilliseconds);
+            }
+
             // 2) Push to central API under the retry pipeline. The IRemoteApiClient
             //    signature is PushBootstrapDataAsync(ErpBridge.Erp.Abstractions.Sync.SyncPackage),
             //    which is exactly the type the adapter returns, so no mapper is
@@ -535,6 +544,13 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     }
 
     private static int SafeCount<T>(IReadOnlyList<T> list) => list?.Count ?? 0;
+
+    private static bool IsEmpty(SyncPackage package) =>
+        SafeCount(package.Customers) + SafeCount(package.CustomerAddresses) + SafeCount(package.CustomerContacts)
+        + SafeCount(package.Stocks) + SafeCount(package.Barcodes) + SafeCount(package.Prices)
+        + SafeCount(package.SalesConditions) + SafeCount(package.Inventory) + SafeCount(package.OpenOrders)
+        + SafeCount(package.CashAndBank) + SafeCount(package.Lookups) + SafeCount(package.CustomerTransactions)
+        + SafeCount(package.StockTransactions) == 0;
 
     private static string ResolveTenantId(AgentConfig config) =>
         string.IsNullOrWhiteSpace(config.TenantId) ? "unknown" : config.TenantId;
