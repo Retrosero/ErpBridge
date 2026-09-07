@@ -227,7 +227,22 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
     {
         var opts = _options.CurrentValue;
         using var request = BuildRequest(HttpMethod.Get, "/api/v1/bootstrap/state", opts, null);
-        var state = await SendAsync<BootstrapStateDto>(request, opts, ct).ConfigureAwait(false);
+
+        // The state endpoint is convenience: it lets PushSectionAsync decide
+        // between full bootstrap and delta. When the central API was
+        // deployed before that endpoint existed, a 404 here should not
+        // brick the agent — treat "no state" as "no previous bootstrap"
+        // and let the caller fall back to the full-sync path.
+        BootstrapStateDto? state;
+        try
+        {
+            state = await SendAsync<BootstrapStateDto>(request, opts, ct).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            _logger.LogInformation("Central API bootstrap/state returned 404 — assuming no prior bootstrap, will run full sync.");
+            return new BootstrapState(false, null, null);
+        }
         return state is null ? new BootstrapState(false, null, null) : new BootstrapState(state.Exists, state.ReceivedAtUtc, state.Revision);
     }
 
@@ -333,7 +348,14 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
             {
                 return null;
             }
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await SafeReadBodyAsync(response, timeout.Token).ConfigureAwait(false);
+                var path = request.RequestUri?.ToString() ?? request.RequestUri?.OriginalString ?? "<unknown>";
+                var msg = $"Central API {path} -> {(int)response.StatusCode} {response.ReasonPhrase}: {TruncateForLog(body)}";
+                _logger.LogWarning("Central API call failed: {Path} {Status} {Body}", path, (int)response.StatusCode, body);
+                throw new HttpRequestException(msg, inner: null, statusCode: response.StatusCode);
+            }
             return await response.Content.ReadFromJsonAsync<T>(JsonOptions, timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -385,12 +407,43 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         try
         {
             using var response = await _http.SendAsync(request, timeout.Token).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                // Surface the response body so the WPF operator can see why a
+                // /api/v1/bootstrap, /api/v1/bootstrap/delta, /api/v1/jobs/ack
+                // etc. call failed (404 path mismatch, 401 missing scope,
+                // 500 stack-trace snippet, etc.) instead of the generic
+                // "Response status code does not indicate success" message.
+                var body = await SafeReadBodyAsync(response, timeout.Token).ConfigureAwait(false);
+                var path = request.RequestUri?.ToString() ?? request.RequestUri?.OriginalString ?? "<unknown>";
+                var msg = $"Central API {path} -> {(int)response.StatusCode} {response.ReasonPhrase}: {TruncateForLog(body)}";
+                _logger.LogWarning("Central API call failed: {Path} {Status} {Body}", path, (int)response.StatusCode, body);
+                throw new HttpRequestException(msg, inner: null, statusCode: response.StatusCode);
+            }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Central API call {Path} timed out after {Timeout}s", request.RequestUri, opts.TimeoutSeconds);
             throw;
         }
+    }
+
+    private static async Task<string> SafeReadBodyAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string TruncateForLog(string body)
+    {
+        if (string.IsNullOrEmpty(body)) return "<empty body>";
+        const int max = 512;
+        return body.Length <= max ? body : body.Substring(0, max) + "...";
     }
 }

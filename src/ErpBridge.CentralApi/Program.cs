@@ -366,6 +366,8 @@ public partial class Program
         app.MapJobsEndpoints();
         app.MapBootstrapEndpoints();
         app.MapAgentUpdateEndpoints();
+        app.MapChangeSetEndpoints();
+        app.MapChangeSetAndroidEndpoints();
         app.MapIngestEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileLicensingEndpoints();
