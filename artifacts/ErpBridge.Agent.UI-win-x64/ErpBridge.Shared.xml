@@ -1,0 +1,497 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>ErpBridge.Shared</name>
+    </assembly>
+    <members>
+        <member name="T:ErpBridge.Shared.AgentSettingsValidation">
+            <summary>
+            Pure validation logic for the agent settings form. Lives in <c>Shared</c>
+            (not in the WPF assembly) so the WPF view-model can be unit-tested from
+            a headless <c>net8.0</c> test project that does not load
+            <c>PresentationCore</c>. The view-model is responsible for mirroring
+            the form fields into this helper.
+            </summary>
+            <remarks>
+            Rules enforced:
+            <list type="number">
+              <item><c>SqlServer</c>, <c>SqlUserName</c>, <c>MikroDatabaseName</c> — required, whitespace counts as missing.</item>
+              <item><c>CompanyNo</c>, <c>BranchNo</c> — must parse as a non-negative
+                    32-bit integer; the form passes them as text so we tolerate locale
+                    settings explicitly via <see cref="P:System.Globalization.CultureInfo.InvariantCulture"/>.</item>
+              <item>The agent never validates the password here — empty passwords are
+                    legitimate for trusted-auth / Windows-integrated SQL connections
+                    and the adapter handles the resulting <see cref="T:System.Exception"/>.</item>
+            </list>
+            </remarks>
+        </member>
+        <member name="M:ErpBridge.Shared.AgentSettingsValidation.TryValidate(System.String,System.String,System.String,System.Boolean,System.String@)">
+            <summary>
+            Run the validation rules against the form fields. Returns <c>true</c>
+            when every required field is present; populates <paramref name="error"/>
+            with a Turkish user-visible message otherwise.
+            </summary>
+            <param name="sqlServer">SQL Server host or instance name (required).</param>
+            <param name="sqlUserName">SQL login (required only when <paramref name="useWindowsAuth"/> is false).</param>
+            <param name="mikroDatabaseName">Mikro database (required).</param>
+            <param name="useWindowsAuth">True for Windows-auth / Trusted_Connection mode (SQL user/password are optional).</param>
+            <param name="error">Populated with a Turkish user-visible error message when the method returns <c>false</c>.</param>
+        </member>
+        <member name="M:ErpBridge.Shared.AgentSettingsValidation.TryValidate(System.String,System.String,System.String,System.String,System.String,System.Boolean,System.String@)">
+            <summary>
+            Validates the common connection fields together with legacy company and
+            branch number inputs retained for callers that still expose those fields.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.ConnectionStringMasker">
+            <summary>
+            Stateless helpers that scrub secrets out of SQL connection strings and
+            arbitrary log lines. Used at every emit-to-log boundary so a stray
+            <c>LogInformation("...conn={Conn}...", conn)</c> never leaks the SQL
+            password to disk.
+            </summary>
+            <remarks>
+            The masker intentionally does not throw on malformed input — it always
+            returns the closest safe string. Empty / null inputs round-trip to the
+            empty string so call sites can compose it freely.
+            </remarks>
+        </member>
+        <member name="F:ErpBridge.Shared.ConnectionStringMasker.RedactedMarker">
+            <summary>Canonical placeholder written in place of every redacted secret.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.ConnectionStringMasker.MaskPassword(System.String)">
+            <summary>
+            Replace every password-bearing fragment of <paramref name="connectionString"/>
+            with the canonical redacted marker, preserving the key name and the
+            surrounding <c>;</c>-separated structure.
+            </summary>
+            <param name="connectionString">Connection string to scrub. <c>null</c> returns the empty string.</param>
+        </member>
+        <member name="M:ErpBridge.Shared.ConnectionStringMasker.MaskForLog(System.String)">
+            <summary>
+            Generic text scrubber for arbitrary log lines / exception messages.
+            When the text contains a recognized secret key the password fragment
+            is masked; otherwise the text is returned verbatim.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.AgentConstants">
+            <summary>
+            Cross-cutting default constants for the ErpBridge Windows Sync Agent.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultSqlTimeoutSeconds">
+            <summary>Default SQL command timeout in seconds for Mikro queries.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultQueuePollIntervalMs">
+            <summary>Default queue poll interval in milliseconds for the local job worker.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultBootstrapPushIntervalMinutes">
+            <summary>Default bootstrap push interval in minutes (customer → central API). Legacy — use <see cref="F:ErpBridge.Shared.AgentConstants.DefaultBootstrapPushIntervalSeconds"/>.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultBootstrapPushIntervalSeconds">
+            <summary>Default bootstrap push interval in seconds (Mikro → central API). Phase 9 default: 60.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultBootstrapMinimumIntervalSeconds">
+            <summary>Skip a new bootstrap push if the previous successful one is younger than this window. Phase 9 default: 30 s (half the worker interval).</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultQueueTake">
+            <summary>Default batch size when draining the local SQLite queue.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultMaxJobRetries">
+            <summary>Maximum retry attempts before a local job is parked.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.AgentConstants.DefaultHeartbeatIntervalSeconds">
+            <summary>Default agent heartbeat interval in seconds.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.ErpBridgeConstants">
+            <summary>
+            Path / mask constants used by the local SQLite store. Kept separate from
+            <see cref="T:ErpBridge.Shared.AgentConstants"/> so the LocalStore layer can resolve defaults
+            without dragging the rest of the agent tunables.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErpBridgeConstants.DefaultSqlitePath">
+            <summary>
+            Default on-disk path for the agent SQLite database. Resolved under
+            <c>%LOCALAPPDATA%</c> at runtime; the literal here is the relative fallback
+            the store layer applies when no configuration is supplied.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErpBridgeConstants.RedactedPlaceholder">
+            <summary>String written into <c>agent_config.value</c> for secret rows on masked read.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.Error">
+            <summary>
+            Immutable error descriptor with a stable machine-readable code and a human-readable message.
+            </summary>
+            <param name="Code">Stable machine-readable error code (see <see cref="T:ErpBridge.Shared.ErrorCode"/>).</param>
+            <param name="Message">Human-readable description of what went wrong.</param>
+        </member>
+        <member name="M:ErpBridge.Shared.Error.#ctor(System.String,System.String)">
+            <summary>
+            Immutable error descriptor with a stable machine-readable code and a human-readable message.
+            </summary>
+            <param name="Code">Stable machine-readable error code (see <see cref="T:ErpBridge.Shared.ErrorCode"/>).</param>
+            <param name="Message">Human-readable description of what went wrong.</param>
+        </member>
+        <member name="P:ErpBridge.Shared.Error.Code">
+            <summary>Stable machine-readable error code (see <see cref="T:ErpBridge.Shared.ErrorCode"/>).</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Error.Message">
+            <summary>Human-readable description of what went wrong.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.Error.None">
+            <summary>Canonical "no error" sentinel.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Error.IsNone">
+            <summary>True when this error carries an empty code (i.e. is the <see cref="F:ErpBridge.Shared.Error.None"/> sentinel).</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.ErrorCode">
+            <summary>
+            Centralised, stable error codes used across the ErpBridge agent.
+            Adding new codes here is the preferred way to keep ack payloads and logs uniform.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.MissingLookup">
+            <summary>A required ERP lookup (customer, stock, warehouse, …) was not found.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.JobNotFound">
+            <summary>The job referenced by the central API could not be found locally.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.ValidationFailed">
+            <summary>The supplied payload failed validation.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.LicenseInvalid">
+            <summary>The license key is invalid or expired.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.TransientUpstream">
+            <summary>The central SaaS API responded with a transient error.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.ConnectionFailed">
+            <summary>The Mikro ERP connection test failed.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.UnsupportedVersion">
+            <summary>The detected Mikro ERP version is not supported.</summary>
+        </member>
+        <member name="F:ErpBridge.Shared.ErrorCode.InternalError">
+            <summary>An unexpected internal error occurred.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.HashUtil">
+            <summary>
+            Hashing helpers used to produce deterministic checksums for idempotency mappings.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.HashUtil.Sha256Hex(System.String)">
+            <summary>
+            Returns a lowercase, hex-encoded SHA-256 digest of the supplied input (UTF-8 bytes).
+            Output is always 64 lowercase hex characters.
+            </summary>
+            <param name="input">Arbitrary string. <c>null</c> is treated as the empty string.</param>
+        </member>
+        <member name="T:ErpBridge.Shared.Result`1">
+            <summary>
+            Lightweight success/failure result without exception throwing for expected error paths.
+            </summary>
+            <typeparam name="T">Payload type carried by a successful result.</typeparam>
+        </member>
+        <member name="P:ErpBridge.Shared.Result`1.IsSuccess">
+            <summary>True when the operation succeeded.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Result`1.Value">
+            <summary>Payload value when <see cref="P:ErpBridge.Shared.Result`1.IsSuccess"/> is true; default otherwise.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Result`1.Error">
+            <summary>Human-readable error description when <see cref="P:ErpBridge.Shared.Result`1.IsSuccess"/> is false.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.Result`1.ErrorCode">
+            <summary>Machine-readable error code when <see cref="P:ErpBridge.Shared.Result`1.IsSuccess"/> is false.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.Result`1.Ok(`0)">
+            <summary>Builds a successful result carrying <paramref name="value"/>.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.Result`1.Fail(System.String,System.String)">
+            <summary>Builds a failed result with a code and a human-readable message.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.Result`1.Fail(ErpBridge.Shared.Error)">
+            <summary>Builds a failed result wrapping the supplied <see cref="P:ErpBridge.Shared.Result`1.Error"/>.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.Result`1.ValueOrThrow">
+            <summary>Returns the success value or throws if the result is a failure.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.StringExtensions">
+            <summary>
+            Small, allocation-friendly string helpers used uniformly across the agent.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.StringExtensions.SafeTrim(System.String)">
+            <summary>
+            Trims whitespace from <paramref name="value"/>; returns <c>null</c> when the
+            result is null, empty, or whitespace-only.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.StringExtensions.IsNullOrEmptyInvariant(System.String)">
+            <summary>
+            True when <paramref name="value"/> is <c>null</c>, empty, or pure whitespace.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.SyncTableDescriptor">
+            <summary>
+            Per-table description used by the agent when pushing a <see cref="T:ErpBridge.Shared.SyncChangeSet"/>
+            to the central API. The agent's metadata travels with the payload so the
+            central API can re-emit the same shape to the Android client without
+            re-querying Mikro for column lists.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.SyncTableDescriptor.#ctor(System.Int32,System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.Boolean)">
+            <summary>
+            Per-table description used by the agent when pushing a <see cref="T:ErpBridge.Shared.SyncChangeSet"/>
+            to the central API. The agent's metadata travels with the payload so the
+            central API can re-emit the same shape to the Android client without
+            re-querying Mikro for column lists.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.SyncNewChunk">
+            <summary>
+            One chunk of *new* rows. Each row is a column→value map; the column
+            order matches <see cref="P:ErpBridge.Shared.SyncTableDescriptor.Fields"/>. The
+            <see cref="P:ErpBridge.Shared.SyncNewChunk.HighestRecNo"/> is the largest source-table RECno the agent
+            observed; the next page should be requested with
+            <c>lastRecNo = HighestRecNo</c>.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.SyncNewChunk.#ctor(ErpBridge.Shared.SyncTableDescriptor,System.Collections.Generic.IReadOnlyList{System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object}},System.Int32,System.Boolean)">
+            <summary>
+            One chunk of *new* rows. Each row is a column→value map; the column
+            order matches <see cref="P:ErpBridge.Shared.SyncTableDescriptor.Fields"/>. The
+            <see cref="P:ErpBridge.Shared.SyncNewChunk.HighestRecNo"/> is the largest source-table RECno the agent
+            observed; the next page should be requested with
+            <c>lastRecNo = HighestRecNo</c>.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.SyncChangedChunk">
+            <summary>
+            One chunk of *changed* rows (Mikro side: UPDATE). Each row carries a
+            <c>TriggerRECno</c> that is monotonic across the chunk; the agent uses
+            the largest one to advance the watermark.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.SyncChangedChunk.#ctor(ErpBridge.Shared.SyncTableDescriptor,System.Collections.Generic.IReadOnlyList{System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object}},System.Int32,System.Boolean)">
+            <summary>
+            One chunk of *changed* rows (Mikro side: UPDATE). Each row carries a
+            <c>TriggerRECno</c> that is monotonic across the chunk; the agent uses
+            the largest one to advance the watermark.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.SyncDeletedChunk">
+            <summary>
+            One chunk of *deleted* row references (Mikro side: DELETE). The chunk
+            only carries the primary-key RECno + the <c>TriggerRECno</c>; the column
+            list is fixed and never the table's full schema.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.SyncDeletedChunk.#ctor(ErpBridge.Shared.SyncTableDescriptor,System.Collections.Generic.IReadOnlyList{System.ValueTuple{System.Int32,System.Int32}},System.Int32,System.Boolean)">
+            <summary>
+            One chunk of *deleted* row references (Mikro side: DELETE). The chunk
+            only carries the primary-key RECno + the <c>TriggerRECno</c>; the column
+            list is fixed and never the table's full schema.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.SyncTableChangeSet">
+            <summary>
+            Per-table snapshot of the three change-tracking directions. The central
+            API persists the chunk lists verbatim in <c>change_sets.payload_json</c>;
+            the Android client pulls each direction through its own endpoint.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.SyncTableChangeSet.#ctor(ErpBridge.Shared.SyncTableDescriptor,ErpBridge.Shared.SyncNewChunk,ErpBridge.Shared.SyncChangedChunk,ErpBridge.Shared.SyncDeletedChunk,System.Int32,System.Int32)">
+            <summary>
+            Per-table snapshot of the three change-tracking directions. The central
+            API persists the chunk lists verbatim in <c>change_sets.payload_json</c>;
+            the Android client pulls each direction through its own endpoint.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.SyncChangeSet">
+            <summary>
+            One agent → central API push. The bundle is the smallest unit of work
+            the central API accepts: one tenant, one Mikro database, one or more
+            tracked tables. The agent builds one of these every 60 s and re-uses
+            the same payload across retries.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.SyncChangeSet.#ctor(System.String,System.String,System.DateTimeOffset,System.Collections.Generic.IReadOnlyList{ErpBridge.Shared.SyncTableChangeSet})">
+            <summary>
+            One agent → central API push. The bundle is the smallest unit of work
+            the central API accepts: one tenant, one Mikro database, one or more
+            tracked tables. The agent builds one of these every 60 s and re-uses
+            the same payload across retries.
+            </summary>
+        </member>
+        <member name="P:ErpBridge.Shared.SyncChangeSet.TotalRowCount">
+            <summary>Sum of every chunk's row count. Used for logging and metrics.</summary>
+        </member>
+        <member name="T:ErpBridge.Shared.RowKeyKind">
+            <summary>
+            Identifies the kind of value stored in <see cref="P:ErpBridge.Shared.TrackedTableSchema.KeyField"/>.
+            The trigger installer uses this to choose between a <c>uniqueidentifier</c>
+            and an <c>int</c> projection when writing the <c>KayitKey</c> shadow column.
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.RowKeyKind.Guid">
+            <summary>
+            The key column holds a SQL Server <c>uniqueidentifier</c> (16-byte GUID).
+            The trigger writes the value verbatim to <c>KayitKey</c> prefixed with
+            <c>guid:</c> (e.g. <c>guid:6F9619FF-8B86-D011-B42D-00C04FC964FF</c>).
+            </summary>
+        </member>
+        <member name="F:ErpBridge.Shared.RowKeyKind.Int">
+            <summary>
+            The key column holds a SQL Server <c>int</c> RECno. The trigger writes
+            the value to <c>KayitKey</c> prefixed with <c>recno:</c>
+            (e.g. <c>recno:12345</c>). This is the default for every Mikro table
+            that does not expose a Guid column.
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.TrackedTableSchema">
+             <summary>
+             Immutable descriptor of one Mikro table that ErpBridge mirrors through the
+             trigger-based change-tracking mechanism. The set of fields here is a strict
+             superset of what the bootstrap reader needs — the three-way pull path uses
+             only the subset supplied at call time so the wire payload stays small.
+            
+             <para>
+             <b>KeyField / KeyKind (Faz 15):</b> the trigger installer and change reader
+             use these to project a row's stable identifier into the
+             <c>_ERPB_SYNC.KayitKey</c> shadow column. Most Mikro tables do not ship a
+             Guid column, so the default fallback uses the <see cref="P:ErpBridge.Shared.TrackedTableSchema.RecnoField"/>
+             with <see cref="F:ErpBridge.Shared.RowKeyKind.Int"/>; tables that do expose a Guid column can
+             override via the constructor argument to take the faster Guid path.
+             </para>
+             </summary>
+             <param name="TabloID">Stable Mikro-side numeric identifier (matches the reference app's TabloHelper ID space).</param>
+             <param name="TabloAdi">SQL table name (e.g. <c>STOKLAR</c>, <c>CARI_HESAPLAR</c>).</param>
+             <param name="RecnoField">Primary-key column for the row (e.g. <c>sto_RECno</c>). The trigger shadow row references the row by this column when <see cref="P:ErpBridge.Shared.TrackedTableSchema.KeyKind"/> is <see cref="F:ErpBridge.Shared.RowKeyKind.Int"/>.</param>
+             <param name="Fields">Full list of columns the adapter is allowed to read. Any other column requested by the caller is rejected to keep the SQL surface safe.</param>
+             <param name="RequiresSoftDeleteFilter">When true, the row is treated as deleted by the consumer when <c>sto_iptal/cari_iptal/...</c> equals 1; the trigger still fires for that update so the change propagates as a "changed" record.</param>
+             <param name="KeyField">Column whose value uniquely identifies a row across inserts and updates. Defaults to <see cref="P:ErpBridge.Shared.TrackedTableSchema.RecnoField"/>; set to the table's <c>*_Guid</c> column when one exists.</param>
+             <param name="KeyKind">SQL type of <paramref name="KeyField"/>. Controls how the trigger projects the value into <c>KayitKey</c> (Guid or <c>recno:N</c>).</param>
+        </member>
+        <member name="M:ErpBridge.Shared.TrackedTableSchema.#ctor(System.Int32,System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.Boolean,System.String,ErpBridge.Shared.RowKeyKind)">
+             <summary>
+             Immutable descriptor of one Mikro table that ErpBridge mirrors through the
+             trigger-based change-tracking mechanism. The set of fields here is a strict
+             superset of what the bootstrap reader needs — the three-way pull path uses
+             only the subset supplied at call time so the wire payload stays small.
+            
+             <para>
+             <b>KeyField / KeyKind (Faz 15):</b> the trigger installer and change reader
+             use these to project a row's stable identifier into the
+             <c>_ERPB_SYNC.KayitKey</c> shadow column. Most Mikro tables do not ship a
+             Guid column, so the default fallback uses the <see cref="P:ErpBridge.Shared.TrackedTableSchema.RecnoField"/>
+             with <see cref="F:ErpBridge.Shared.RowKeyKind.Int"/>; tables that do expose a Guid column can
+             override via the constructor argument to take the faster Guid path.
+             </para>
+             </summary>
+             <param name="TabloID">Stable Mikro-side numeric identifier (matches the reference app's TabloHelper ID space).</param>
+             <param name="TabloAdi">SQL table name (e.g. <c>STOKLAR</c>, <c>CARI_HESAPLAR</c>).</param>
+             <param name="RecnoField">Primary-key column for the row (e.g. <c>sto_RECno</c>). The trigger shadow row references the row by this column when <see cref="P:ErpBridge.Shared.TrackedTableSchema.KeyKind"/> is <see cref="F:ErpBridge.Shared.RowKeyKind.Int"/>.</param>
+             <param name="Fields">Full list of columns the adapter is allowed to read. Any other column requested by the caller is rejected to keep the SQL surface safe.</param>
+             <param name="RequiresSoftDeleteFilter">When true, the row is treated as deleted by the consumer when <c>sto_iptal/cari_iptal/...</c> equals 1; the trigger still fires for that update so the change propagates as a "changed" record.</param>
+             <param name="KeyField">Column whose value uniquely identifies a row across inserts and updates. Defaults to <see cref="P:ErpBridge.Shared.TrackedTableSchema.RecnoField"/>; set to the table's <c>*_Guid</c> column when one exists.</param>
+             <param name="KeyKind">SQL type of <paramref name="KeyField"/>. Controls how the trigger projects the value into <c>KayitKey</c> (Guid or <c>recno:N</c>).</param>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.TabloID">
+            <summary>Stable Mikro-side numeric identifier (matches the reference app's TabloHelper ID space).</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.TabloAdi">
+            <summary>SQL table name (e.g. <c>STOKLAR</c>, <c>CARI_HESAPLAR</c>).</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.RecnoField">
+            <summary>Primary-key column for the row (e.g. <c>sto_RECno</c>). The trigger shadow row references the row by this column when <see cref="P:ErpBridge.Shared.TrackedTableSchema.KeyKind"/> is <see cref="F:ErpBridge.Shared.RowKeyKind.Int"/>.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.Fields">
+            <summary>Full list of columns the adapter is allowed to read. Any other column requested by the caller is rejected to keep the SQL surface safe.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.RequiresSoftDeleteFilter">
+            <summary>When true, the row is treated as deleted by the consumer when <c>sto_iptal/cari_iptal/...</c> equals 1; the trigger still fires for that update so the change propagates as a "changed" record.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.KeyField">
+            <summary>Column whose value uniquely identifies a row across inserts and updates. Defaults to <see cref="P:ErpBridge.Shared.TrackedTableSchema.RecnoField"/>; set to the table's <c>*_Guid</c> column when one exists.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.KeyKind">
+            <summary>SQL type of <paramref name="KeyField"/>. Controls how the trigger projects the value into <c>KayitKey</c> (Guid or <c>recno:N</c>).</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.EffectiveKeyField">
+            <summary>
+            Effective key field. Falls back to <see cref="P:ErpBridge.Shared.TrackedTableSchema.RecnoField"/> when no
+            <see cref="P:ErpBridge.Shared.TrackedTableSchema.KeyField"/> was provided so the existing 49-table catalog
+            keeps working without per-row changes.
+            </summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.EffectiveKeyKind">
+            <summary>Whether this schema's <see cref="P:ErpBridge.Shared.TrackedTableSchema.KeyField"/> is a Guid column or a fallback int.</summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableSchema.DefaultFields">
+            <summary>
+            Suggested default field set when the caller does not specify one. The list
+            is the same as <see cref="P:ErpBridge.Shared.TrackedTableSchema.Fields"/> — the caller may shrink it but should
+            never extend it past <see cref="P:ErpBridge.Shared.TrackedTableSchema.Fields"/> because every field must be
+            whitelisted for SQL safety.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.TrackedTableSchema.BuildSelectList(System.Collections.Generic.IReadOnlyList{System.String})">
+            <summary>
+            Build the SQL fragment that selects the supplied <paramref name="fields"/>
+            with the canonical <c>T.</c> table alias used by the change-tracking
+            joins. The field list is validated against <see cref="P:ErpBridge.Shared.TrackedTableSchema.Fields"/> to keep
+            callers from accidentally reading sensitive columns.
+            </summary>
+        </member>
+        <member name="M:ErpBridge.Shared.TrackedTableSchema.ComputeKeyValueExpression">
+            <summary>
+            Compute the SQL expression that produces the value written to the
+            <c>_ERPB_SYNC.KayitKey</c> shadow column. The expression is safe to
+            embed directly in a <c>SELECT</c> against the source table (the column
+            is whitelisted through <see cref="P:ErpBridge.Shared.TrackedTableSchema.Fields"/> when the caller asks for
+            the <c>KeyValue</c> field).
+            <list type="bullet">
+              <item><see cref="F:ErpBridge.Shared.RowKeyKind.Guid"/>: the column is returned as-is
+                    (cast to <c>NVARCHAR(64)</c> by the trigger) so a value like
+                    <c>6F9619FF-...</c> ends up in <c>KayitKey</c>.</item>
+              <item><see cref="F:ErpBridge.Shared.RowKeyKind.Int"/>: returns
+                    <c>'recno:' + CAST(T.&lt;col&gt; AS NVARCHAR(20))</c> so an int
+                    like 12345 ends up as <c>recno:12345</c> in <c>KayitKey</c>.</item>
+            </list>
+            </summary>
+        </member>
+        <member name="T:ErpBridge.Shared.TrackedTableCatalog">
+             <summary>
+             Static catalogue of the 49 Mikro tables that ErpBridge watches through
+             the <c>_ERPB_SENKRONIZASYON</c> trigger table. Table IDs match the reference
+             app's <c>TabloHelper.GetMikroV14DefaultTablolar()</c> — keeping them aligned
+             is mandatory for any downstream tooling that uses those IDs as opaque
+             tokens.
+            
+             The list is intentionally small enough to be read end-to-end and to make a
+             "you changed table X" code review trivial. Soft-delete filter is enabled on
+             master-data tables that carry a <c>_*_iptal</c> bit so the bootstrap reader
+             can mirror the reference app's soft-delete convention.
+             </summary>
+        </member>
+        <member name="P:ErpBridge.Shared.TrackedTableCatalog.All">
+            <summary>All 49 tracked tables. The list is stable; additions require a coordinated change to the trigger installer and the catalog.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.TrackedTableCatalog.FindByTabloID(System.Int32)">
+            <summary>Look up a table by its Mikro-side numeric ID. Returns <c>null</c> when the ID is not part of the catalog.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.TrackedTableCatalog.FindByTabloAdi(System.String)">
+            <summary>Look up a table by its SQL name (case-insensitive). Returns <c>null</c> when the name is not part of the catalog.</summary>
+        </member>
+        <member name="M:ErpBridge.Shared.TrackedTableCatalog.BuildDefault49">
+            <summary>
+            49 default tables, in the same order as the reference app's
+            <c>GetMikroV14DefaultTablolar()</c>. The order is significant only for
+            diagnostics — every iteration is over the full set regardless.
+            </summary>
+        </member>
+    </members>
+</doc>

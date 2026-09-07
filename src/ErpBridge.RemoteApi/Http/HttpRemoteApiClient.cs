@@ -190,16 +190,6 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
     {
         ArgumentNullException.ThrowIfNull(package);
 
-        // Incremental and manual partial packages still use the legacy merge
-        // endpoint. A chunked full upload is activated atomically by the
-        // server, while the legacy path preserves the existing merge semantics
-        // until tombstone-aware incremental uploads are introduced.
-        if (package.PartialSection is not null)
-        {
-            await PushLegacyBootstrapDataAsync(package, ct).ConfigureAwait(false);
-            return;
-        }
-
         await PushChunkedBootstrapDataAsync(package, ct).ConfigureAwait(false);
     }
 
@@ -246,29 +236,98 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         {
             sourceDatabase = package.SourceDatabase,
             pulledAtUtc = new DateTimeOffset(package.PulledAtUtc, TimeSpan.Zero),
-            isIncremental = package.IsIncremental,
+            // A manual section push is also incremental: the server must merge
+            // only that section into the active snapshot instead of replacing
+            // every other section with the package's empty arrays.
+            isIncremental = package.IsIncremental || package.PartialSection is not null,
         });
         var start = await SendAsync<BootstrapUploadStartResponseDto>(startRequest, opts, ct).ConfigureAwait(false)
             ?? throw new TransientPushException("Central API returned an empty bootstrap upload response.");
         var chunkSize = Math.Clamp(start.MaxItemsPerChunk, 1, 500);
 
-        await SendChunksAsync(start.UploadId, "customers", package.Customers, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "customerAddresses", package.CustomerAddresses, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "customerContacts", package.CustomerContacts, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "stocks", package.Stocks, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "barcodes", package.Barcodes, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "prices", package.Prices, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "salesConditions", package.SalesConditions, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "inventory", package.Inventory, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "openOrders", package.OpenOrders, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "cashAndBank", package.CashAndBank, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "lookups", package.Lookups, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "customerTransactions", package.CustomerTransactions, chunkSize, opts, ct).ConfigureAwait(false);
-        await SendChunksAsync(start.UploadId, "stockTransactions", package.StockTransactions, chunkSize, opts, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(package.PartialSection))
+        {
+            await SendAllBootstrapChunksAsync(start.UploadId, package, chunkSize, opts, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            await SendPartialBootstrapChunksAsync(start.UploadId, package, package.PartialSection, chunkSize, opts, ct).ConfigureAwait(false);
+        }
 
         using var completeRequest = BuildRequest(HttpMethod.Post, $"/api/v1/bootstrap/upload/{start.UploadId:D}/complete", opts, $"bootstrap-complete:{start.UploadId:N}");
         completeRequest.Content = SerializeJson(new { });
         await SendNoContentAsync(completeRequest, opts, ct, classifyBootstrapFailure: true).ConfigureAwait(false);
+    }
+
+    private async Task SendAllBootstrapChunksAsync(
+        Guid uploadId,
+        SyncPackage package,
+        int chunkSize,
+        CentralApiOptions opts,
+        CancellationToken ct)
+    {
+        await SendChunksAsync(uploadId, "customers", package.Customers, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "customerAddresses", package.CustomerAddresses, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "customerContacts", package.CustomerContacts, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "stocks", package.Stocks, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "barcodes", package.Barcodes, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "prices", package.Prices, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "salesConditions", package.SalesConditions, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "inventory", package.Inventory, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "openOrders", package.OpenOrders, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "cashAndBank", package.CashAndBank, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "lookups", package.Lookups, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "customerTransactions", package.CustomerTransactions, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(uploadId, "stockTransactions", package.StockTransactions, chunkSize, opts, ct).ConfigureAwait(false);
+    }
+
+    private async Task SendPartialBootstrapChunksAsync(
+        Guid uploadId,
+        SyncPackage package,
+        string section,
+        int chunkSize,
+        CentralApiOptions opts,
+        CancellationToken ct)
+    {
+        switch (section.Trim().ToLowerInvariant())
+        {
+            case "customers":
+                await SendChunksAsync(uploadId, "customers", package.Customers, chunkSize, opts, ct).ConfigureAwait(false);
+                await SendChunksAsync(uploadId, "customerAddresses", package.CustomerAddresses, chunkSize, opts, ct).ConfigureAwait(false);
+                await SendChunksAsync(uploadId, "customerContacts", package.CustomerContacts, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            case "stocks":
+                await SendChunksAsync(uploadId, "stocks", package.Stocks, chunkSize, opts, ct).ConfigureAwait(false);
+                await SendChunksAsync(uploadId, "barcodes", package.Barcodes, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            case "prices":
+                await SendChunksAsync(uploadId, "prices", package.Prices, chunkSize, opts, ct).ConfigureAwait(false);
+                await SendChunksAsync(uploadId, "salesConditions", package.SalesConditions, chunkSize, opts, ct).ConfigureAwait(false);
+                await SendChunksAsync(uploadId, "lookups", package.Lookups, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            case "openorders":
+                await SendChunksAsync(uploadId, "openOrders", package.OpenOrders, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            case "cashandbank":
+                await SendChunksAsync(uploadId, "cashAndBank", package.CashAndBank, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            case "lookups":
+                await SendChunksAsync(uploadId, "lookups", package.Lookups, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            case "inventory":
+                await SendChunksAsync(uploadId, "inventory", package.Inventory, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            case "customertransactions":
+                await SendChunksAsync(uploadId, "customerTransactions", package.CustomerTransactions, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            case "stocktransactions":
+                await SendChunksAsync(uploadId, "stockTransactions", package.StockTransactions, chunkSize, opts, ct).ConfigureAwait(false);
+                break;
+            default:
+                throw new BootstrapPermanentPushException(
+                    "INVALID_SECTION",
+                    $"Unknown bootstrap section '{section}'.");
+        }
     }
 
     private async Task SendChunksAsync<T>(
@@ -522,10 +581,15 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadFromJsonAsync<T>(JsonOptions, timeout.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Central API call {Path} timed out after {Timeout}s", request.RequestUri, opts.TimeoutSeconds);
-            throw;
+            // A timeout is an upstream/transient failure, not an operator
+            // cancellation. Converting it here lets BootstrapSyncService's
+            // retry policy retry the affected chunk (and then use the
+            // section fallback) instead of surfacing "A task was canceled".
+            throw new TransientPushException(
+                $"Central API call timed out after {opts.TimeoutSeconds}s: {request.RequestUri}", ex);
         }
     }
 
@@ -556,10 +620,11 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
             var body = await response.Content.ReadFromJsonAsync<T>(JsonOptions, timeout.Token).ConfigureAwait(false);
             return (body, false);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Central API call {Path} timed out after {Timeout}s", request.RequestUri, opts.TimeoutSeconds);
-            throw;
+            throw new TransientPushException(
+                $"Central API call timed out after {opts.TimeoutSeconds}s: {request.RequestUri}", ex);
         }
     }
 
@@ -587,10 +652,11 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
             }
             response.EnsureSuccessStatusCode();
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Central API call {Path} timed out after {Timeout}s", request.RequestUri, opts.TimeoutSeconds);
-            throw;
+            throw new TransientPushException(
+                $"Central API call timed out after {opts.TimeoutSeconds}s: {request.RequestUri}", ex);
         }
     }
 

@@ -272,6 +272,56 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
+    public async Task PushBootstrapDataAsync_partial_section_uses_chunked_merge_upload()
+    {
+        var paths = new List<string>();
+        string? startJson = null;
+        var (client, _) = BuildClient(req =>
+        {
+            paths.Add(req.RequestUri!.AbsolutePath);
+            var body = req.Content is null ? string.Empty : req.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            if (req.RequestUri.AbsolutePath.EndsWith("/start", StringComparison.Ordinal))
+            {
+                startJson = body;
+                return RespondJson(req, HttpStatusCode.OK, new { uploadId = Guid.NewGuid(), maxItemsPerChunk = 2 });
+            }
+
+            return RespondJson(req, HttpStatusCode.NoContent, new { });
+        });
+
+        var package = SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB") with
+        {
+            PartialSection = "stockTransactions",
+            StockTransactions = new[]
+            {
+                new StockTransactionPayload("id-1", "erp-1", "Mikro", "STK-1", "STK-1", DateTime.UtcNow, 1, 1, 1, null, 1m, 0m, 1m, 10m, 10m, null, null, null, null, DateTime.UtcNow, null),
+                new StockTransactionPayload("id-2", "erp-2", "Mikro", "STK-2", "STK-2", DateTime.UtcNow, 1, 1, 1, null, 2m, 0m, 2m, 20m, 40m, null, null, null, null, DateTime.UtcNow, null),
+                new StockTransactionPayload("id-3", "erp-3", "Mikro", "STK-3", "STK-3", DateTime.UtcNow, 1, 1, 1, null, 3m, 0m, 3m, 30m, 90m, null, null, null, null, DateTime.UtcNow, null),
+            },
+        };
+
+        await client.PushBootstrapDataAsync(package);
+
+        using var start = JsonDocument.Parse(startJson!);
+        start.RootElement.GetProperty("isIncremental").GetBoolean().Should().BeTrue();
+        paths.Should().Contain(p => p.EndsWith("/bootstrap/upload/start", StringComparison.Ordinal));
+        paths.Should().Contain(p => p.Contains("/bootstrap/upload/") && p.EndsWith("/chunks", StringComparison.Ordinal));
+        paths.Should().Contain(p => p.EndsWith("/complete", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task PushBootstrapDataAsync_timeout_is_reported_as_transient_failure()
+    {
+        var (client, _) = BuildClient(_ => Task.FromCanceled<HttpResponseMessage>(new CancellationToken(canceled: true)));
+        var package = SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB");
+
+        var error = await Assert.ThrowsAsync<TransientPushException>(
+            () => client.PushBootstrapDataAsync(package));
+
+        error.Message.Should().Contain("timed out");
+    }
+
+    [Fact]
     public async Task SendAckAsync_uses_bearer_authorization_header_when_jwt_is_set()
     {
         var (client, handler) = BuildClient(req => RespondJson(req, HttpStatusCode.NoContent, new { }));
