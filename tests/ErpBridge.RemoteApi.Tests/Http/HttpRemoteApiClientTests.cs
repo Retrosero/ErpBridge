@@ -216,13 +216,13 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
-    public async Task PushBootstrapDataAsync_posts_to_bootstrap()
+    public async Task PushBootstrapDataAsync_posts_chunked_upload()
     {
-        var (client, handler) = BuildClient(req => RespondJson(req, HttpStatusCode.NoContent, new { }));
+        var (client, handler) = BuildClient(RespondBootstrapUpload);
 
         await client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB"));
 
-        AssertRequest(handler, HttpMethod.Post, "/api/v1/bootstrap", idempotencyKeyRequired: true);
+        AssertRequest(handler, HttpMethod.Post, "/api/v1/bootstrap/upload/start", idempotencyKeyRequired: true);
     }
 
     [Fact]
@@ -244,10 +244,13 @@ public class HttpRemoteApiClientTests
     [Fact]
     public async Task PushBootstrapDataAsync_serializes_all_planned_child_tables()
     {
-        string? requestJson = null;
+        var chunkJsons = new List<string>();
         var (client, _) = BuildClient(async req =>
         {
-            requestJson = await req.Content!.ReadAsStringAsync();
+            if (req.RequestUri!.AbsolutePath.EndsWith("/start", StringComparison.Ordinal))
+                return await RespondBootstrapUpload(req);
+            if (req.RequestUri.AbsolutePath.EndsWith("/chunks", StringComparison.Ordinal))
+                chunkJsons.Add(await req.Content!.ReadAsStringAsync());
             return await RespondJson(req, HttpStatusCode.NoContent, new { });
         });
         var package = SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB") with
@@ -263,12 +266,17 @@ public class HttpRemoteApiClientTests
 
         await client.PushBootstrapDataAsync(package);
 
-        using var json = JsonDocument.Parse(requestJson!);
-        var payload = json.RootElement.GetProperty("payload");
-        payload.GetProperty("customerAddresses").GetArrayLength().Should().Be(1);
-        payload.GetProperty("customerContacts").GetArrayLength().Should().Be(1);
-        payload.GetProperty("barcodes").GetArrayLength().Should().Be(1);
-        payload.GetProperty("salesConditions").GetArrayLength().Should().Be(1);
+        ChunkItems("customerAddresses").GetArrayLength().Should().Be(1);
+        ChunkItems("customerContacts").GetArrayLength().Should().Be(1);
+        ChunkItems("barcodes").GetArrayLength().Should().Be(1);
+        ChunkItems("salesConditions").GetArrayLength().Should().Be(1);
+
+        JsonElement ChunkItems(string section)
+        {
+            var json = chunkJsons.Single(body => JsonDocument.Parse(body).RootElement.GetProperty("section").GetString() == section);
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.GetProperty("items").Clone();
+        }
     }
 
     [Fact]
@@ -434,6 +442,11 @@ public class HttpRemoteApiClientTests
             Content = new StringContent(json, Encoding.UTF8, "application/json"),
         });
     }
+
+    private static Task<HttpResponseMessage> RespondBootstrapUpload(HttpRequestMessage req)
+        => req.RequestUri!.AbsolutePath.EndsWith("/start", StringComparison.Ordinal)
+            ? RespondJson(req, HttpStatusCode.OK, new { uploadId = Guid.NewGuid(), maxItemsPerChunk = 500 })
+            : RespondJson(req, HttpStatusCode.NoContent, new { });
 
     private static void AssertRequest(
         Mock<HttpMessageHandler> handler,

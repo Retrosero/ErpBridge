@@ -241,7 +241,7 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
             // every other section with the package's empty arrays.
             isIncremental = package.IsIncremental || package.PartialSection is not null,
         });
-        var start = await SendAsync<BootstrapUploadStartResponseDto>(startRequest, opts, ct).ConfigureAwait(false)
+        var start = await SendAsync<BootstrapUploadStartResponseDto>(startRequest, opts, ct, classifyBootstrapFailure: true).ConfigureAwait(false)
             ?? throw new TransientPushException("Central API returned an empty bootstrap upload response.");
         var chunkSize = Math.Clamp(start.MaxItemsPerChunk, 1, 500);
 
@@ -565,7 +565,11 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         return request;
     }
 
-    private async Task<T?> SendAsync<T>(HttpRequestMessage request, CentralApiOptions opts, CancellationToken ct)
+    private async Task<T?> SendAsync<T>(
+        HttpRequestMessage request,
+        CentralApiOptions opts,
+        CancellationToken ct,
+        bool classifyBootstrapFailure = false)
         where T : class
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -577,6 +581,11 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
             if (response.StatusCode == HttpStatusCode.NoContent)
             {
                 return null;
+            }
+            if (classifyBootstrapFailure && !response.IsSuccessStatusCode)
+            {
+                var (errorCode, message) = await ReadApiErrorAsync(response, timeout.Token).ConfigureAwait(false);
+                throw new BootstrapPermanentPushException(errorCode, message);
             }
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadFromJsonAsync<T>(JsonOptions, timeout.Token).ConfigureAwait(false);
