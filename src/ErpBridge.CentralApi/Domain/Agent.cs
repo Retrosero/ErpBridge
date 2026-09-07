@@ -23,4 +23,6 @@ public sealed class Agent
     public string? LastStatus { get; set; }
 
     public int LastQueueDepth { get; set; }
+
+    public ICollection<AgentCompanyAssignment> CompanyAssignments { get; set; } = new List<AgentCompanyAssignment>();
 }

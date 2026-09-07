@@ -449,6 +449,7 @@ public partial class Program
         app.MapMobileTelemetryEndpoints();
         app.MapAdminAuthEndpoints();
         app.MapAdminTenantsEndpoints();
+        app.MapAdminErpCompaniesEndpoints();
         app.MapAdminLicensesEndpoints();
         app.MapAdminAgentsEndpoints();
         app.MapAdminJobsEndpoints();

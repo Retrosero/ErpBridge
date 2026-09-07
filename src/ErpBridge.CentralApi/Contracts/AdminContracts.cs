@@ -69,6 +69,30 @@ public sealed class PatchTenantRequest
     [JsonPropertyName("maxDeviceCount")] public int? MaxDeviceCount { get; set; }
 }
 
+public sealed class ErpCompanyDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("code")] public string Code { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
+    [JsonPropertyName("companyNo")] public int CompanyNo { get; set; }
+    [JsonPropertyName("branchNo")] public int BranchNo { get; set; }
+    [JsonPropertyName("warehouseNo")] public int WarehouseNo { get; set; }
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+}
+
+public sealed class CreateErpCompanyRequest
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("code")] public string Code { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
+    [JsonPropertyName("companyNo")] public int CompanyNo { get; set; }
+    [JsonPropertyName("branchNo")] public int BranchNo { get; set; }
+    [JsonPropertyName("warehouseNo")] public int WarehouseNo { get; set; }
+}
+
 /// <summary>Agent row returned to the admin.</summary>
 public sealed class AgentDto
 {

@@ -18,6 +18,8 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<License> Licenses => Set<License>();
     public DbSet<Agent> Agents => Set<Agent>();
+    public DbSet<ErpCompany> ErpCompanies => Set<ErpCompany>();
+    public DbSet<AgentCompanyAssignment> AgentCompanyAssignments => Set<AgentCompanyAssignment>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobAckRecord> JobAcks => Set<JobAckRecord>();
     public DbSet<BootstrapPackage> BootstrapPackages => Set<BootstrapPackage>();
@@ -124,6 +126,26 @@ public sealed class CentralApiDbContext : DbContext
                 .HasForeignKey(x => x.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.KeyPrefix });
+        });
+
+        modelBuilder.Entity<ErpCompany>(b =>
+        {
+            b.ToTable("erp_companies");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Code).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(255);
+            b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
+            b.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AgentCompanyAssignment>(b =>
+        {
+            b.ToTable("agent_company_assignments");
+            b.HasKey(x => new { x.AgentId, x.ErpCompanyId });
+            b.HasOne(x => x.Agent).WithMany(x => x.CompanyAssignments).HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ErpCompany).WithMany(x => x.AgentAssignments).HasForeignKey(x => x.ErpCompanyId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.ErpCompanyId);
         });
 
         modelBuilder.Entity<ApiKeySecretAccessAudit>(b =>
