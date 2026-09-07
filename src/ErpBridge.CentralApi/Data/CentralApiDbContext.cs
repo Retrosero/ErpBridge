@@ -125,7 +125,7 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.Section).IsRequired().HasMaxLength(64);
             b.Property(x => x.PayloadJson).HasColumnType("jsonb");
             b.HasIndex(x => new { x.SnapshotId, x.Section, x.ChunkIndex }).IsUnique();
-            b.HasOne(x => x.Snapshot).WithMany(x => x.Chunks).HasForeignKey(x => x.SnapshotId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Snapshot).WithMany("Chunks").HasForeignKey(x => x.SnapshotId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AdminUser>(b =>
