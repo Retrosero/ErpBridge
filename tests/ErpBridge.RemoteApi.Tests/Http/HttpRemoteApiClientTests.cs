@@ -242,6 +242,24 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
+    public async Task PushBootstrapDataAsync_uses_legacy_endpoint_when_chunked_endpoint_is_unavailable()
+    {
+        var paths = new List<string>();
+        var (client, _) = BuildClient(req =>
+        {
+            paths.Add(req.RequestUri!.AbsolutePath);
+            return req.RequestUri.AbsolutePath.EndsWith("/start", StringComparison.Ordinal)
+                ? RespondJson(req, HttpStatusCode.InternalServerError, new { })
+                : RespondJson(req, HttpStatusCode.NoContent, new { });
+        });
+
+        await client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB"));
+
+        paths.Should().Contain("/api/v1/bootstrap/upload/start");
+        paths.Should().Contain("/api/v1/bootstrap");
+    }
+
+    [Fact]
     public async Task PushBootstrapDataAsync_serializes_all_planned_child_tables()
     {
         var chunkJsons = new List<string>();

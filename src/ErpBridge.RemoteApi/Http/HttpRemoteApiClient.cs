@@ -190,7 +190,17 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
     {
         ArgumentNullException.ThrowIfNull(package);
 
-        await PushChunkedBootstrapDataAsync(package, ct).ConfigureAwait(false);
+        try
+        {
+            await PushChunkedBootstrapDataAsync(package, ct).ConfigureAwait(false);
+        }
+        catch (BootstrapPermanentPushException ex) when (ex.ErrorCode is "HTTP_404" or "HTTP_405" or "HTTP_500")
+        {
+            // Existing desktop agents must remain able to publish while a
+            // central installation is completing the snapshot-schema upgrade.
+            _logger.LogWarning("Chunked bootstrap is unavailable ({Code}); using the compatible upload endpoint.", ex.ErrorCode);
+            await PushLegacyBootstrapDataAsync(package, ct).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />
