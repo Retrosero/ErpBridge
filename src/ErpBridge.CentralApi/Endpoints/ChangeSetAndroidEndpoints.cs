@@ -36,6 +36,15 @@ public static class ChangeSetAndroidEndpoints
             .RequireAuthorization(Program.ApiKeyPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
+        // Faz 15.7 — primary direction. Mirrors the FORA semantic of "new +
+        // changed rows in one stream". The two older endpoints
+        // (/new, /changed) are kept as aliases below for backwards
+        // compatibility with Android clients that pre-date the merge.
+        group.MapGet("/{table}/new_or_changed", ReadNewOrChangedAsync)
+            .WithName("AndroidChangeSetNewOrChanged")
+            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+
         group.MapGet("/{table}/new", ReadNewAsync)
             .WithName("AndroidChangeSetNew")
             .RequireAuthorization(Program.ApiKeyPolicy)
@@ -51,7 +60,173 @@ public static class ChangeSetAndroidEndpoints
             .RequireAuthorization(Program.ApiKeyPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
+        // Faz 15.7 — operator UI + Android discovery endpoint. Reports the
+        // highest TriggerRECno the central API has accepted for a table
+        // plus a rough "anything to pull?" flag for each direction. The
+        // Android client can poll this before paging the actual rows.
+        group.MapGet("/{table}/status", StatusAsync)
+            .WithName("AndroidChangeSetStatus")
+            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+
         return routes;
+    }
+
+    private static async Task<IResult> ReadNewOrChangedAsync(
+        string table,
+        [FromQuery] long? cursor,
+        [FromQuery] int? size,
+        HttpContext http,
+        [FromServices] CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        // Combine the New and Changed chunks. The Android client only needs
+        // the merged row list; the central API still keeps them separated
+        // internally so the audit log can record one row per direction.
+        var newChunk = await FetchChunkAsync(table, "new", cursor, size, db, http, ct).ConfigureAwait(false);
+        var changedChunk = await FetchChunkAsync(table, "changed", cursor, size, db, http, ct).ConfigureAwait(false);
+
+        if (!newChunk.IsSuccess) return newChunk.Result!;
+        if (!changedChunk.IsSuccess) return changedChunk.Result!;
+
+        var rows = new List<object>(newChunk.Rows.Count + changedChunk.Rows.Count);
+        rows.AddRange(newChunk.Rows);
+        rows.AddRange(changedChunk.Rows);
+
+        long maxCursor = cursor ?? 0;
+        if (newChunk.NextCursor is long newNext) maxCursor = Math.Max(maxCursor, newNext);
+        if (changedChunk.NextCursor is long changedNext) maxCursor = Math.Max(maxCursor, changedNext);
+
+        return JsonResults.Ok(new
+        {
+            table,
+            direction = "new_or_changed",
+            cursor = cursor ?? 0,
+            nextCursor = rows.Count > 0 ? (long?)maxCursor : null,
+            rows,
+        });
+    }
+
+    private static async Task<IResult> StatusAsync(
+        string table,
+        [FromServices] CentralApiDbContext db,
+        HttpContext http,
+        CancellationToken ct)
+    {
+        if (!http.User.TryGetTenantId(out var tenantId))
+        {
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." });
+        }
+
+        if (string.IsNullOrWhiteSpace(table))
+        {
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "MISSING_TABLE", Message = "Table name is required." });
+        }
+
+        var lastTriggerRecNo = await db.ChangeSets.AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.TableName == table)
+            .Select(c => (long?)c.LastTriggerRecNo)
+            .DefaultIfEmpty()
+            .MaxAsync(ct);
+
+        return JsonResults.Ok(new
+        {
+            table,
+            lastTriggerRecNo = lastTriggerRecNo ?? 0,
+            hasPending = (lastTriggerRecNo ?? 0) > 0,
+        });
+    }
+
+    private readonly struct ChunkResult
+    {
+        public ChunkResult(bool success, IResult? result, List<object> rows, long? nextCursor)
+        {
+            IsSuccess = success;
+            Result = result;
+            Rows = rows;
+            NextCursor = nextCursor;
+        }
+
+        public bool IsSuccess { get; }
+        public IResult? Result { get; }
+        public List<object> Rows { get; }
+        public long? NextCursor { get; }
+    }
+
+    private static async Task<ChunkResult> FetchChunkAsync(
+        string table,
+        string direction,
+        long? cursor,
+        int? size,
+        CentralApiDbContext db,
+        HttpContext http,
+        CancellationToken ct)
+    {
+        if (!http.User.TryGetTenantId(out var tenantId))
+        {
+            return new ChunkResult(false,
+                JsonResults.Status(StatusCodes.Status401Unauthorized,
+                    new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." }),
+                new List<object>(), null);
+        }
+
+        if (string.IsNullOrWhiteSpace(table))
+        {
+            return new ChunkResult(false,
+                JsonResults.Status(StatusCodes.Status400BadRequest,
+                    new ApiError { ErrorCode = "MISSING_TABLE", Message = "Table name is required." }),
+                new List<object>(), null);
+        }
+
+        var pageSize = ClampPageSize(size);
+        var startCursor = cursor ?? 0;
+
+        var rows = await db.ChangeSets.AsNoTracking()
+            .Where(c => c.TenantId == tenantId.Value &&
+                        c.TableName == table &&
+                        c.LastTriggerRecNo > startCursor)
+            .OrderBy(c => c.LastTriggerRecNo)
+            .Take(pageSize)
+            .Select(c => new { triggerRecNo = c.LastTriggerRecNo, payload = c.PayloadJson })
+            .ToListAsync(ct);
+
+        var merged = new List<object>(rows.Count);
+        long maxCursor = startCursor;
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrEmpty(row.payload)) continue;
+            try
+            {
+                using var document = JsonDocument.Parse(row.payload);
+                if (!document.RootElement.TryGetProperty(direction switch
+                {
+                    "new" => "New",
+                    "changed" => "Changed",
+                    _ => "New",
+                }, out var chunkElement) || chunkElement.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+                if (!chunkElement.TryGetProperty("Rows", out var rowsElement) || rowsElement.ValueKind != JsonValueKind.Array)
+                {
+                    continue;
+                }
+                foreach (var element in rowsElement.EnumerateArray())
+                {
+                    merged.Add(JsonSerializer.Deserialize<JsonElement>(element.GetRawText()));
+                }
+                maxCursor = Math.Max(maxCursor, row.triggerRecNo);
+            }
+            catch (JsonException)
+            {
+                // Skip malformed payloads so a single corrupted bundle does
+                // not block the entire Android pull.
+            }
+        }
+
+        return new ChunkResult(true, null, merged, merged.Count >= pageSize ? maxCursor : null);
     }
 
     /// <summary>

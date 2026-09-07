@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
@@ -44,6 +46,31 @@ public static class ChangeSetEndpoints
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         return routes;
+    }
+
+    /// <summary>
+    /// Stable idempotency key for one accepted bundle. The audit log uses
+    /// the same key plus the direction to deduplicate retries; the snapshot
+    /// upsert is already deduped by <c>(TenantId, SourceDatabase, TableName,
+    /// LastTriggerRecNo)</c>.
+    /// </summary>
+    internal static string ComputeIdempotencyKey(SyncChangeSet body, SyncTableChangeSet table)
+    {
+        var raw = $"{body.SourceDatabase}|{table.Table.TabloAdi}|{table.PreviousLastTriggerRecNo}|{table.NewLastTriggerRecNo}|{body.PulledAtUtc.UtcTicks}";
+        var bytes = Encoding.UTF8.GetBytes(raw);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Best-effort SHA-256 over the payload JSON. Used by the audit viewer
+    /// to confirm the row has not been silently truncated.
+    /// </summary>
+    internal static string ComputePayloadSha256(string payloadJson)
+    {
+        if (string.IsNullOrEmpty(payloadJson)) return string.Empty;
+        var bytes = Encoding.UTF8.GetBytes(payloadJson);
+        return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     }
 
     private static async Task<IResult> IngestAsync(
@@ -96,6 +123,11 @@ public static class ChangeSetEndpoints
 
         var accepted = 0;
         var duplicates = 0;
+        var idempotencyKey = ComputeIdempotencyKeyForBundle(body, http);
+        var agentId = http.User.FindFirst("sub")?.Value
+                       ?? http.User.Identity?.Name
+                       ?? string.Empty;
+
         foreach (var table in body.Tables)
         {
             ct.ThrowIfCancellationRequested();
@@ -128,15 +160,132 @@ public static class ChangeSetEndpoints
                 PayloadJson = json,
                 PulledAtUtc = body.PulledAtUtc,
             });
+
+            // Faz 15.6: append one audit row per non-empty direction. The
+            // (TenantId, IdempotencyKey, Direction) unique index makes a
+            // retry of the same bundle a no-op on the audit side too.
+            var tableKey = ComputeIdempotencyKey(body, table);
+            AppendAuditIfPresent(db, tenantId, body.SourceDatabase, table, "new", tableKey, json, body.PulledAtUtc, agentId, idempotencyKey);
+            AppendAuditIfPresent(db, tenantId, body.SourceDatabase, table, "changed", tableKey, json, body.PulledAtUtc, agentId, idempotencyKey);
+            AppendAuditIfPresent(db, tenantId, body.SourceDatabase, table, "deleted", tableKey, json, body.PulledAtUtc, agentId, idempotencyKey);
+
             accepted++;
         }
 
         if (accepted > 0)
         {
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException) when (duplicates > 0)
+            {
+                // A retry could have raced a concurrent insert. The
+                // 23505 unique-violation is the expected outcome for the
+                // audit row; ignore so the rest of the bundle commits.
+            }
         }
 
         return Results.Ok(new { accepted, duplicates });
+    }
+
+    private static string ComputeIdempotencyKeyForBundle(SyncChangeSet body, HttpContext http)
+    {
+        // The bundle-level key is shared by every audit row in this push.
+        // It is stable for retries: same body, same key, audit unique index
+        // rejects the second insert.
+        var raw = $"{body.SourceDatabase}|{body.PulledAtUtc.UtcTicks}|{body.Tables.Count}";
+        var bytes = Encoding.UTF8.GetBytes(raw);
+        return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+    }
+
+    private static void AppendAuditIfPresent(
+        CentralApiDbContext db,
+        Guid tenantId,
+        string sourceDatabase,
+        SyncTableChangeSet table,
+        string direction,
+        string idempotencyKey,
+        string fullPayloadJson,
+        DateTimeOffset pulledAtUtc,
+        string agentId,
+        string bundleIdempotencyKey)
+    {
+        object perDirection;
+        long highestTriggerRecNo;
+        int rowCount;
+        if (direction == "new" && table.New is { Rows.Count: > 0 } newChunk)
+        {
+            perDirection = new
+            {
+                table.Table.TabloAdi,
+                table.Table.TabloID,
+                table.Table.RecnoField,
+                table.Table.Fields,
+                direction,
+                rows = newChunk.Rows,
+                newChunk.HighestRecNo,
+            };
+            highestTriggerRecNo = newChunk.HighestRecNo;
+            rowCount = newChunk.Rows.Count;
+        }
+        else if (direction == "changed" && table.Changed is { Rows.Count: > 0 } changedChunk)
+        {
+            perDirection = new
+            {
+                table.Table.TabloAdi,
+                table.Table.TabloID,
+                table.Table.RecnoField,
+                table.Table.Fields,
+                direction,
+                rows = changedChunk.Rows,
+                changedChunk.HighestTriggerRecNo,
+            };
+            highestTriggerRecNo = changedChunk.HighestTriggerRecNo;
+            rowCount = changedChunk.Rows.Count;
+        }
+        else if (direction == "deleted" && table.Deleted is { Rows.Count: > 0 } deletedChunk)
+        {
+            // Deleted chunks carry a tuple list (KayitRecNo, TriggerRecNo);
+            // project to a JSON-friendly anonymous shape.
+            var rows = deletedChunk.Rows
+                .Select(t => new { KayitRecNo = t.KayitRecNo, TriggerRecNo = t.TriggerRecNo })
+                .ToList();
+            perDirection = new
+            {
+                table.Table.TabloAdi,
+                table.Table.TabloID,
+                table.Table.RecnoField,
+                direction,
+                rows,
+                deletedChunk.HighestTriggerRecNo,
+            };
+            highestTriggerRecNo = deletedChunk.HighestTriggerRecNo;
+            rowCount = deletedChunk.Rows.Count;
+        }
+        else
+        {
+            return;
+        }
+
+        var perDirectionJson = JsonSerializer.Serialize(perDirection, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        db.ChangeSetAuditEntries.Add(new ChangeSetAuditEntry
+        {
+            TenantId = tenantId,
+            SourceDatabase = sourceDatabase,
+            TableName = table.Table.TabloAdi,
+            TabloId = table.Table.TabloID,
+            Direction = direction,
+            FirstTriggerRecNo = highestTriggerRecNo,
+            LastTriggerRecNo = highestTriggerRecNo,
+            RowCount = rowCount,
+            PayloadJson = perDirectionJson,
+            PayloadSha256 = ComputePayloadSha256(perDirectionJson),
+            PulledAtUtc = pulledAtUtc,
+            AgentId = agentId,
+            IdempotencyKey = $"{idempotencyKey}:{direction}",
+        });
     }
 
     private static async Task<IResult> StatusAsync(

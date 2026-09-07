@@ -10,6 +10,7 @@ using ErpBridge.CentralApi.Options;
 using ErpBridge.CentralApi.Security;
 using ErpBridge.CentralApi.Telemetry;
 using ErpBridge.CentralApi.Webhooks;
+using ErpBridge.CentralApi.Workers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
@@ -117,6 +118,7 @@ public partial class Program
         ConfigureRateLimiter(builder.Services);
         builder.Services.Configure<AdminSeedOptions>(cfg.GetSection("Admin"));
         builder.Services.Configure<ApiKeyVaultOptions>(cfg.GetSection("ApiKeyVault"));
+        builder.Services.Configure<AuditRetentionOptions>(cfg.GetSection(AuditRetentionOptions.SectionName));
         builder.Services.AddSingleton<IApiKeyVault, ApiKeyVault>();
         builder.Services.AddSingleton<ApiKeyUsageTracker>();
         builder.Services.AddHostedService<ApiKeyUsageFlushWorker>();
@@ -133,6 +135,9 @@ public partial class Program
             });
         builder.Services.AddHostedService<WebhookDispatcherWorker>();
         builder.Services.AddHostedService<MobileTelemetryRetentionWorker>();
+        // Faz 15.6 — audit log retention worker. Disabled in tests via
+        // "AuditRetention:Enabled": false in appsettings.Test.json.
+        builder.Services.AddHostedService<AuditRetentionWorker>();
 
         // Phase 9: in-memory pub/sub for "new bootstrap package available"
         // signals consumed by the WPF desktop UI's long-poll loop. Single
@@ -450,6 +455,9 @@ public partial class Program
         app.MapChangeSetAndroidEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileTelemetryEndpoints();
+        app.MapParameterEndpoints();
+        app.MapParameterReadEndpoints();
+        app.MapAdminAuditEndpoints();
         app.MapAdminAuthEndpoints();
         app.MapAdminTenantsEndpoints();
         app.MapAdminErpCompaniesEndpoints();

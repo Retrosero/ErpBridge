@@ -5,23 +5,70 @@ using System.Linq;
 namespace ErpBridge.Shared;
 
 /// <summary>
+/// Identifies the kind of value stored in <see cref="TrackedTableSchema.KeyField"/>.
+/// The trigger installer uses this to choose between a <c>uniqueidentifier</c>
+/// and an <c>int</c> projection when writing the <c>KayitKey</c> shadow column.
+/// </summary>
+public enum RowKeyKind
+{
+    /// <summary>
+    /// The key column holds a SQL Server <c>uniqueidentifier</c> (16-byte GUID).
+    /// The trigger writes the value verbatim to <c>KayitKey</c> prefixed with
+    /// <c>guid:</c> (e.g. <c>guid:6F9619FF-8B86-D011-B42D-00C04FC964FF</c>).
+    /// </summary>
+    Guid = 0,
+
+    /// <summary>
+    /// The key column holds a SQL Server <c>int</c> RECno. The trigger writes
+    /// the value to <c>KayitKey</c> prefixed with <c>recno:</c>
+    /// (e.g. <c>recno:12345</c>). This is the default for every Mikro table
+    /// that does not expose a Guid column.
+    /// </summary>
+    Int = 1,
+}
+
+/// <summary>
 /// Immutable descriptor of one Mikro table that ErpBridge mirrors through the
 /// trigger-based change-tracking mechanism. The set of fields here is a strict
 /// superset of what the bootstrap reader needs — the three-way pull path uses
 /// only the subset supplied at call time so the wire payload stays small.
+///
+/// <para>
+/// <b>KeyField / KeyKind (Faz 15):</b> the trigger installer and change reader
+/// use these to project a row's stable identifier into the
+/// <c>_ERPB_SYNC.KayitKey</c> shadow column. Most Mikro tables do not ship a
+/// Guid column, so the default fallback uses the <see cref="RecnoField"/>
+/// with <see cref="RowKeyKind.Int"/>; tables that do expose a Guid column can
+/// override via the constructor argument to take the faster Guid path.
+/// </para>
 /// </summary>
 /// <param name="TabloID">Stable Mikro-side numeric identifier (matches the reference app's TabloHelper ID space).</param>
 /// <param name="TabloAdi">SQL table name (e.g. <c>STOKLAR</c>, <c>CARI_HESAPLAR</c>).</param>
-/// <param name="RecnoField">Primary-key column for the row (e.g. <c>sto_RECno</c>). The trigger shadow row references the row by this column.</param>
+/// <param name="RecnoField">Primary-key column for the row (e.g. <c>sto_RECno</c>). The trigger shadow row references the row by this column when <see cref="KeyKind"/> is <see cref="RowKeyKind.Int"/>.</param>
 /// <param name="Fields">Full list of columns the adapter is allowed to read. Any other column requested by the caller is rejected to keep the SQL surface safe.</param>
 /// <param name="RequiresSoftDeleteFilter">When true, the row is treated as deleted by the consumer when <c>sto_iptal/cari_iptal/...</c> equals 1; the trigger still fires for that update so the change propagates as a "changed" record.</param>
+/// <param name="KeyField">Column whose value uniquely identifies a row across inserts and updates. Defaults to <see cref="RecnoField"/>; set to the table's <c>*_Guid</c> column when one exists.</param>
+/// <param name="KeyKind">SQL type of <paramref name="KeyField"/>. Controls how the trigger projects the value into <c>KayitKey</c> (Guid or <c>recno:N</c>).</param>
 public sealed record TrackedTableSchema(
     int TabloID,
     string TabloAdi,
     string RecnoField,
     IReadOnlyList<string> Fields,
-    bool RequiresSoftDeleteFilter = false)
+    bool RequiresSoftDeleteFilter = false,
+    string? KeyField = null,
+    RowKeyKind KeyKind = RowKeyKind.Int)
 {
+    /// <summary>
+    /// Effective key field. Falls back to <see cref="RecnoField"/> when no
+    /// <see cref="KeyField"/> was provided so the existing 49-table catalog
+    /// keeps working without per-row changes.
+    /// </summary>
+    public string EffectiveKeyField => string.IsNullOrWhiteSpace(KeyField) ? RecnoField : KeyField;
+
+    /// <summary>Whether this schema's <see cref="KeyField"/> is a Guid column or a fallback int.</summary>
+    public RowKeyKind EffectiveKeyKind =>
+        string.IsNullOrWhiteSpace(KeyField) ? RowKeyKind.Int : KeyKind;
+
     /// <summary>
     /// Suggested default field set when the caller does not specify one. The list
     /// is the same as <see cref="Fields"/> — the caller may shrink it but should
@@ -51,6 +98,32 @@ public sealed record TrackedTableSchema(
             }
         }
         return string.Join(", ", fields.Select(f => "T." + f));
+    }
+
+    /// <summary>
+    /// Compute the SQL expression that produces the value written to the
+    /// <c>_ERPB_SYNC.KayitKey</c> shadow column. The expression is safe to
+    /// embed directly in a <c>SELECT</c> against the source table (the column
+    /// is whitelisted through <see cref="Fields"/> when the caller asks for
+    /// the <c>KeyValue</c> field).
+    /// <list type="bullet">
+    ///   <item><see cref="RowKeyKind.Guid"/>: the column is returned as-is
+    ///         (cast to <c>NVARCHAR(64)</c> by the trigger) so a value like
+    ///         <c>6F9619FF-...</c> ends up in <c>KayitKey</c>.</item>
+    ///   <item><see cref="RowKeyKind.Int"/>: returns
+    ///         <c>'recno:' + CAST(T.&lt;col&gt; AS NVARCHAR(20))</c> so an int
+    ///         like 12345 ends up as <c>recno:12345</c> in <c>KayitKey</c>.</item>
+    /// </list>
+    /// </summary>
+    public string ComputeKeyValueExpression()
+    {
+        var col = EffectiveKeyField;
+        return EffectiveKeyKind switch
+        {
+            RowKeyKind.Guid => $"CAST(T.[{col}] AS NVARCHAR(64))",
+            RowKeyKind.Int => $"('recno:' + CAST(T.[{col}] AS NVARCHAR(20)))",
+            _ => $"CAST(T.[{col}] AS NVARCHAR(64))",
+        };
     }
 }
 

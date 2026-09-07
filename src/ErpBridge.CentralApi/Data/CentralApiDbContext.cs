@@ -33,6 +33,12 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<MobileTelemetryEvent> MobileTelemetryEvents => Set<MobileTelemetryEvent>();
     public DbSet<ChangeSetRecord> ChangeSets => Set<ChangeSetRecord>();
 
+    /// <summary>Faz 15.6 — append-only audit log of every change-set bundle the central API accepts.</summary>
+    public DbSet<ChangeSetAuditEntry> ChangeSetAuditEntries => Set<ChangeSetAuditEntry>();
+
+    /// <summary>Faz 15.5 — Mikro <c>_ERPB_PARAMETRELER</c> snapshot mirror, one row per parameter.</summary>
+    public DbSet<ParameterRecord> Parameters => Set<ParameterRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Tenant>(b =>
@@ -257,6 +263,59 @@ public sealed class CentralApiDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.LastTriggerRecNo }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.TableName, x.PulledAtUtc });
+        });
+
+        // Faz 15.6: append-only audit log. The unique index on
+        // (TenantId, IdempotencyKey, Direction) makes a duplicate bundle a
+        // no-op for the audit side too — the (IdempotencyKey, Direction)
+        // tuple identifies one row, not three.
+        modelBuilder.Entity<ChangeSetAuditEntry>(b =>
+        {
+            b.ToTable("change_set_audit_log");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
+            b.Property(x => x.TableName).IsRequired().HasMaxLength(128);
+            b.Property(x => x.Direction).IsRequired().HasMaxLength(16);
+            b.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            b.Property(x => x.PayloadSha256).IsRequired().HasMaxLength(64);
+            b.Property(x => x.AgentId).HasMaxLength(128);
+            b.Property(x => x.IdempotencyKey).IsRequired().HasMaxLength(128);
+            b.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.IdempotencyKey, x.Direction }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.TableName, x.ReceivedAtUtc });
+            b.HasIndex(x => new { x.TenantId, x.TableName, x.LastTriggerRecNo });
+        });
+
+        // Faz 15.5: parameters mirror. Unique on (TenantId, SourceDatabase,
+        // ParametreProgram, ParametreUser, ParametreID) lets the agent's push
+        // be a no-op for unchanged rows.
+        modelBuilder.Entity<ParameterRecord>(b =>
+        {
+            b.ToTable("parameter_records");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
+            b.Property(x => x.ParametreProgram).IsRequired().HasMaxLength(25);
+            b.Property(x => x.ParametreUser).IsRequired().HasMaxLength(25);
+            b.Property(x => x.ParametreAnaGrubu).IsRequired().HasMaxLength(40);
+            b.Property(x => x.ParametreAltGrubu).IsRequired().HasMaxLength(40);
+            b.Property(x => x.ParametreID).IsRequired().HasMaxLength(40);
+            b.Property(x => x.ParametreAdi).IsRequired().HasMaxLength(127);
+            b.Property(x => x.ParametreDegeri).IsRequired().HasMaxLength(255);
+            b.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new
+            {
+                x.TenantId,
+                x.SourceDatabase,
+                x.ParametreProgram,
+                x.ParametreUser,
+                x.ParametreID,
+            }).IsUnique();
         });
     }
 }

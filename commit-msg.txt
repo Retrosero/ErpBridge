@@ -1,0 +1,38 @@
+docs(sync-adapter): Android sync writer Faz 2 plani + 3 referans dokumani
+
+Uc dokuman (06, 07, 08) + 1 Faz 2 plani ile Android sync writer
+katmaninin kontrat ve teslim yol haritasi belirlenir.
+
+docs/06-android-crud-mapping.md (18.5 KB)
+  - 7 AndroidAktarimTipi enum degeri icin Tip -> Handler -> Mikro tablo
+    mapping tablosu
+  - Push (Android -> Mikro) ve Pull (Mikro -> Android, trigger CDC)
+    akis diyagramlari
+  - Idempotency, outbox mekanigi, soft-delete notu
+
+docs/07-mikro-v15-v16-stok-cari-diff.md (14.8 KB)
+  - V15 (RECno + *_RECid_*) vs V16 (Guid + *_uid) kolon-kolon farki
+  - CARI_HESAPLAR (TabloID=31) ve STOK_HAREKETLERI (TabloID=16) ozelinde
+  - INSERT kalibi: V15 BEGIN/END + SCOPE_IDENTITY(), V16 NEWID()
+  - IIdentityMapper interface onerisi (V15/V16 writer abstraction)
+
+docs/08-android-payload-schema.md (23.3 KB)
+  - OfflineEvrakV2 envelope semasi
+  - 7 tip icin tam JSON payload ornekleri
+  - POST /SaveOfflineEvrakV3/{firmaid}/{mikroDbName} HTTP endpoint
+  - Validation kurallari, hata kodlari, Kotlin + C# ornek senaryo
+
+plans/02-android-sync.md (18.7 KB)
+  - 7 writer implementasyonu icin adim adim plan
+  - IdentityMapper -> MappingRepository -> LookupValidator ->
+    Writer'lar -> OutboxDispatcher
+  - V15+V16 entegrasyon test senaryolari
+  - ~8 gun tahmini, kabul kriterleri, acik sorular
+
+Kanit: Her iddia decompile edilmis legacy koddan dosya:satir referansiyla
+destekleniyor (MikroService.cs:2596-5350, CariData.cs:1253-1270,
+CariExtensions.cs:138/377, Evrak.cs:4983-7000, TabloHelper.cs:124-676,
+TabloHelperV16.cs:155-210/1591+).
+
+Faz 1 (agent shell, local store, encrypted settings) zaten teslim edildi.
+Bu PR writer kontratini sabitleyerek Faz 2 implementasyonuna giris yapar.
