@@ -26,6 +26,12 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ILogger<BootstrapSyncService>>(sp =>
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<BootstrapSyncService>());
 
+        // Faz 12.4: ChangeSetSyncService is registered by ErpBridge.Erp.Mikro
+        // (Erp.Mikro.Trigger.TriggerChangeSetSyncService) because it depends
+        // on the Mikro-specific ITriggerWatermarkStore. Core stays at
+        // "Abstractions only" — the worker resolves IChangeSetSyncService
+        // from the Mikro-registered singleton.
+
         return services;
     }
 }

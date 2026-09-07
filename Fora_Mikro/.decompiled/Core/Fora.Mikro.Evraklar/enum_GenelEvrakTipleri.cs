@@ -1,0 +1,37 @@
+namespace Fora.Mikro.Evraklar;
+
+public enum enum_GenelEvrakTipleri
+{
+	Tanimsiz = 0,
+	SatisFaturasi = 1,
+	SatisIrsaliyesi = 2,
+	AlisFaturasi = 3,
+	AlisIrsaliyesi = 4,
+	AlinanSiparis = 5,
+	Tahsilat = 6,
+	SayimSonuclariGirisFisi = 7,
+	DepolarArasiSevk = 8,
+	DepolarArasiSiparis = 9,
+	Masraf = 10,
+	GelenHavale = 11,
+	GidenHavale = 12,
+	TahsildekiCekOdemeBordrosu = 14,
+	KonsinyeIrsaliyesi = 15,
+	KonsinyedenIadeIrsaliyesi = 16,
+	TahsileCekCikisBordrosu = 17,
+	BankadanKasayaNakitCekmeMakbuzu = 18,
+	KasadanBankayaNakitYatirmaMakbuzu = 19,
+	TahsileSenetCikisBordrosu = 20,
+	TahsildekiSenetOdemeBordrosu = 21,
+	VerilenFirmaCekiOdemeBordrosu = 22,
+	VerilenFirmaSenediOdemeBordrosu = 23,
+	DepolarArasiNakliyeFisi = 24,
+	DepolarArasiNakliyeOnaylama = 25,
+	BarkodKontrolluFaturaOnaylama = 26,
+	BakimTalep = 27,
+	ProformaSiparis = 28,
+	BankalarArasiVirmanDekontu = 29,
+	VerilenSiparis = 30,
+	StokFiyatEtiketiYazdirma = 31,
+	Tediye = 32
+}

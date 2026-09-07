@@ -1,0 +1,73 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+<resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>1.3</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><data name="richTextBox1.Text" xml:space="preserve"><value>Bu bölümde özel işlem açıklamalarını ve parametre bilgilerini bulabilirsiniz.
+
+Sql den veri çek ve belirtilen alana yaz.
+     Açıklama : Aynı veya başka bir MSSql sunucusundan belirtilen parametrelere göre veri çeker ve belirtilen alanlara yazar.
+     Parametreler :
+          - Parametre 1 : Sql server adresi
+          - Parametre 2 : Veri tabanı adı
+          - Parametre 3 : Sql server kullanıcı adı
+          - Parametre 4 : Sql server şifresi
+          - Parametre 5 : Sorgu cümlesi
+          - Parametre 6 : Sorgu parametresi 1 (Sorgu cümlesindeki [param1] alanı bu değer ile değiştirilir)
+          - Parametre 7 : Sorgu parametresi 2 (Sorgu cümlesindeki [param2] alanı bu değer ile değiştirilir)
+          - Parametre 8 : Sorgu parametresi 3 (Sorgu cümlesindeki [param3] alanı bu değer ile değiştirilir)
+          - Parametre 9 : Sorgu parametresi 4 (Sorgu cümlesindeki [param4] alanı bu değer ile değiştirilir)
+          - Parametre 10 : Sorgu parametresi 5 (Sorgu cümlesindeki [param5] alanı bu değer ile değiştirilir)
+     Sonuc :
+          - İşlem yapılacak alan 1 : Sql'den gelen 1. kolon verisi bu alana yazılır.
+          - İşlem yapılacak alan 2 : Sql'den gelen 2. kolon verisi bu alana yazılır. (Opsiyonel)
+          - İşlem yapılacak alan 3 : Sql'den gelen 3. kolon verisi bu alana yazılır. (Opsiyonel)
+          - İşlem yapılacak alan 4 : Sql'den gelen 4. kolon verisi bu alana yazılır. (Opsiyonel)
+          - İşlem yapılacak alan 5 : Sql'den gelen 5. kolon verisi bu alana yazılır. (Opsiyonel)
+
+Satırı sil
+     Açıklama : İşlem yapılan satırın silinmesini sağlar.
+     Parametreler : Yok
+
+Satırı aktarılmayacak olarak işaretle
+     Açıklama : İşlem yapılan satırın aktarılmayacak olarak işaretlenmesini sağlar
+     Parametreler : Yok
+
+Uyarı mesajı ver
+     Açıklama : Kullanıcıya uyarı mesajı verilmesini sağlar.
+     Parametreler :
+          - Parametre 1 : Uyarı mesajı
+          - Parametre 2 : Uyarı parametresi 1 (Uyarı mesajındaki [mesaj1] alanı bu değer ile değiştirilir.
+          - Parametre 3 : Uyarı parametresi 2 (Uyarı mesajındaki [mesaj2] alanı bu değer ile değiştirilir.
+          - Parametre 4 : Uyarı parametresi 3 (Uyarı mesajındaki [mesaj3] alanı bu değer ile değiştirilir.
+          - Parametre 5 : Uyarı parametresi 4 (Uyarı mesajındaki [mesaj4] alanı bu değer ile değiştirilir.
+          - Parametre 6 : Uyarı parametresi 5 (Uyarı mesajındaki [mesaj5] alanı bu değer ile değiştirilir.
+
+Miktar 1 ile Miktar 2 yi yer değiştir
+     Açıklama : Stok miktar 1 ve miktar 2 bilgisinin yer değiştirmesini sağlar.
+     Parametreler : Yok.</value></data>
+  </root>

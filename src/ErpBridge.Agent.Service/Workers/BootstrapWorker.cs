@@ -1,5 +1,6 @@
 using ErpBridge.Agent.Service.Configuration;
 using ErpBridge.Core.Stores;
+using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -62,8 +63,9 @@ public sealed class BootstrapWorker : BackgroundService
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation(
-            "BootstrapWorker starting (interval = {IntervalSeconds}s, first run delayed {FirstDelay}s).",
-            _options.BootstrapIntervalSeconds, _options.BootstrapFirstRunDelaySeconds);
+            "BootstrapWorker starting (interval = {IntervalSeconds}s, first run delayed {FirstDelay}s, mode = {Mode}).",
+            _options.BootstrapIntervalSeconds, _options.BootstrapFirstRunDelaySeconds,
+            _options.UseTriggerBasedSync ? "trigger" : "watermark");
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -106,18 +108,25 @@ public sealed class BootstrapWorker : BackgroundService
     }
 
     /// <summary>
-    /// Open a DI scope, resolve <see cref="IBootstrapSyncService"/>, and run
+    /// Open a DI scope, resolve either <see cref="IBootstrapSyncService"/>
+    /// or <see cref="IChangeSetSyncService"/> based on the operator's
+    /// <see cref="AgentServiceOptions.UseTriggerBasedSync"/> toggle, and run
     /// a single cycle. Surfaces every result via the logger so the operator
     /// can correlate log lines with the corresponding checkpoint.
     /// </summary>
     private async Task RunSingleIterationAsync(CancellationToken stoppingToken)
     {
-        BootstrapSyncResult result;
         try
         {
             using var scope = _services.CreateScope();
-            var sync = scope.ServiceProvider.GetRequiredService<IBootstrapSyncService>();
-            result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+            if (_options.UseTriggerBasedSync)
+            {
+                await RunTriggerIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await RunLegacyIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -132,37 +141,91 @@ public sealed class BootstrapWorker : BackgroundService
             _logger.LogError(ex, "BootstrapWorker iteration crashed unexpectedly.");
             return;
         }
+    }
 
-        if (result.Success)
-        {
-            if (result.CustomersCount == 0 && result.StocksCount == 0 && result.PricesCount == 0
-                && result.InventoryCount == 0 && result.OpenOrdersCount == 0
-                && result.CashAndBankCount == 0 && result.LookupsCount == 0
-                && result.CustomerAddressesCount == 0 && result.CustomerContactsCount == 0
-                && result.CustomerTransactionsCount == 0 && result.StockTransactionsCount == 0
-                && result.BarcodesCount == 0 && result.SalesConditionsCount == 0)
-            {
-                // The success row of all-zeros is the "skipped" path: the
-                // idempotency window is still active. No new push — log at
-                // Debug to avoid flooding the operator's log.
-                _logger.LogDebug(
-                    "Bootstrap sync skipped (idempotency window active).");
-                return;
-            }
-
-            _logger.LogInformation(
-                "Bootstrap sync completed: ok={Ok} customers={C} stocks={S} prices={P} inventory={I} openOrders={O} cashAndBank={CB} lookups={L} duration={D}ms",
-                result.Success,
-                result.CustomersCount, result.StocksCount, result.PricesCount,
-                result.InventoryCount, result.OpenOrdersCount, result.CashAndBankCount,
-                result.LookupsCount, result.DurationMs);
-        }
-        else
+    private async Task RunLegacyIterationAsync(IServiceScope scope, CancellationToken stoppingToken)
+    {
+        var sync = scope.ServiceProvider.GetRequiredService<IBootstrapSyncService>();
+        var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+        if (!result.Success)
         {
             _logger.LogWarning(
                 "Bootstrap sync failed: code={Code} message={Message} duration={D}ms",
                 result.ErrorCode, result.ErrorMessage, result.DurationMs);
+            return;
         }
+        if (result.CustomersCount == 0 && result.StocksCount == 0 && result.PricesCount == 0
+            && result.InventoryCount == 0 && result.OpenOrdersCount == 0
+            && result.CashAndBankCount == 0 && result.LookupsCount == 0
+            && result.CustomerAddressesCount == 0 && result.CustomerContactsCount == 0
+            && result.CustomerTransactionsCount == 0 && result.StockTransactionsCount == 0
+            && result.BarcodesCount == 0 && result.SalesConditionsCount == 0)
+        {
+            _logger.LogDebug("Bootstrap sync skipped (idempotency window active).");
+            return;
+        }
+        _logger.LogInformation(
+            "Bootstrap sync completed: ok={Ok} customers={C} stocks={S} prices={P} inventory={I} openOrders={O} cashAndBank={CB} lookups={L} duration={D}ms",
+            result.Success, result.CustomersCount, result.StocksCount, result.PricesCount,
+            result.InventoryCount, result.OpenOrdersCount, result.CashAndBankCount,
+            result.LookupsCount, result.DurationMs);
+    }
+
+    private async Task RunTriggerIterationAsync(IServiceScope scope, CancellationToken stoppingToken)
+    {
+        // First-time setup: install the shadow table + per-table triggers.
+        // The installer is idempotent so a warm Mikro takes no time. The
+        // operator can also trigger the same call from the WPF UI button.
+        if (_options.TriggerInstallOnStartup)
+        {
+            try
+            {
+                var installer = scope.ServiceProvider.GetService<TriggerInstaller>();
+                if (installer is not null)
+                {
+                    var settings = ResolveMikroSettings(scope);
+                    if (settings is not null)
+                    {
+                        _ = await installer.InstallAllAsync(settings, stoppingToken).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Installation failure must NOT kill the loop. The trigger
+                // path can still attempt a read; the change-set reader will
+                // surface a clean "shadow table missing" error per call.
+                _logger.LogWarning(ex,
+                    "Trigger installation skipped or failed; change-set reads may fail until triggers are present.");
+            }
+        }
+
+        var sync = scope.ServiceProvider.GetRequiredService<IChangeSetSyncService>();
+        var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+        if (!result.Success)
+        {
+            _logger.LogWarning(
+                "Change-set sync failed: code={Code} message={Message} duration={D}ms",
+                result.ErrorCode, result.ErrorMessage, result.DurationMs);
+            return;
+        }
+        if (result.NewRowsPushed == 0 && result.ChangedRowsPushed == 0 && result.DeletedRowsPushed == 0)
+        {
+            _logger.LogDebug("Change-set sync skipped (no Mikro changes).");
+            return;
+        }
+        _logger.LogInformation(
+            "Change-set sync completed: ok={Ok} tables={T} new={N} changed={C} deleted={D} duration={Ms}ms",
+            result.Success, result.TablesScanned, result.NewRowsPushed, result.ChangedRowsPushed,
+            result.DeletedRowsPushed, result.DurationMs);
+    }
+
+    private static ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings? ResolveMikroSettings(IServiceScope scope)
+    {
+        // The settings are registered as a singleton in AddErpBridgeMikro. We
+        // pull them straight from the scope so the installer sees the same
+        // values the adapter will use.
+        return scope.ServiceProvider.GetService<ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings>();
     }
 
     /// <inheritdoc />

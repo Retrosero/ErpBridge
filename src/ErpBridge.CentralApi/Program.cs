@@ -443,8 +443,11 @@ public partial class Program
         app.MapLicensesEndpoints();
         app.MapJobsEndpoints();
         app.MapBootstrapEndpoints();
+        app.MapBootstrapUploadEndpoints();
         app.MapBootstrapNotifyEndpoints();
         app.MapIngestEndpoints();
+        app.MapChangeSetEndpoints();
+        app.MapChangeSetAndroidEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileTelemetryEndpoints();
         app.MapAdminAuthEndpoints();

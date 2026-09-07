@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ErpBridge.CentralApi.Contracts;
@@ -100,6 +101,28 @@ public sealed class BootstrapRequest
     [JsonPropertyName("pulledAtUtc")] public DateTimeOffset PulledAtUtc { get; set; }
     /// <summary>Serialized reference-data JSON. Persisted as jsonb in PostgreSQL.</summary>
     [JsonPropertyName("payload")] public object? Payload { get; set; }
+}
+
+/// <summary>Starts a bounded, chunked bootstrap upload.</summary>
+public sealed class BootstrapUploadStartRequest
+{
+    [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
+    [JsonPropertyName("pulledAtUtc")] public DateTimeOffset PulledAtUtc { get; set; }
+    [JsonPropertyName("isIncremental")] public bool IsIncremental { get; set; }
+}
+
+/// <summary>One bounded section chunk. Items must be a JSON array.</summary>
+public sealed class BootstrapUploadChunkRequest
+{
+    [JsonPropertyName("section")] public string Section { get; set; } = string.Empty;
+    [JsonPropertyName("chunkIndex")] public int ChunkIndex { get; set; }
+    [JsonPropertyName("items")] public JsonElement Items { get; set; }
+}
+
+public sealed class BootstrapUploadStartResponse
+{
+    [JsonPropertyName("uploadId")] public Guid UploadId { get; set; }
+    [JsonPropertyName("maxItemsPerChunk")] public int MaxItemsPerChunk { get; set; }
 }
 
 /// <summary>Generic error envelope returned by every 4xx/5xx response.</summary>

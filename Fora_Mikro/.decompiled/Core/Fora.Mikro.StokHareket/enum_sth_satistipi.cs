@@ -1,0 +1,15 @@
+namespace Fora.Mikro.StokHareket;
+
+public enum enum_sth_satistipi
+{
+	Kredilisatis,
+	Pompaharicisatis,
+	Pompacisayactanakaryakitsatisirsaliyesi,
+	Pompacisayactanemtiasatisirsaliyesi,
+	Akaryakitaktarmairsaliyesi,
+	Emtiaaktarmairsaliyesi,
+	Pompacipesinfaturadanakaryakitsatisirsaliyesi,
+	Pompacipesinfaturadanemtiasatisirsaliyesi,
+	Pompacipesinfaturasikesilmemisemtiasatisirsaliyesi,
+	Marketpesinfaturadanemtiasatisirsaliyesi
+}

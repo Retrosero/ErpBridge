@@ -1,0 +1,1228 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+<resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>1.3</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><data name="tahsilat_referans_no" xml:space="preserve"><value>Reference number</value></data>
+  <data name="stok_listeleme_ayarlari_ana_alt_gruba_gore" xml:space="preserve"><value>According to main-sub group</value></data>
+  <data name="guncelleme_degisen_kayitlar_cekilemedi" xml:space="preserve"><value>Changed records could not be retrieved.</value></data>
+  <data name="enum_evrak_satir_miktar_duzenleme_sonuc_EvrakUygunDegil" xml:space="preserve"><value>Document inappropriate.</value></data>
+  <data name="genel_fatura_durumu" xml:space="preserve"><value>Invoice state</value></data>
+  <data name="enum_cha_evrak_tip_BankalarVirmanDekontu" xml:space="preserve"><value>Interbank transfer slip</value></data>
+  <data name="enum_cha_cari_cins_Demirbasimiz" xml:space="preserve"><value>Our Equipment</value></data>
+  <data name="kayithikayesi_efatura_mukelleflerine_fatura_yazdirilamaz" xml:space="preserve"><value>Can not present invoice to E-invoice amnables.</value></data>
+  <data name="enum_cari_arama_secenekleri_Icerir" xml:space="preserve"><value>Contains</value></data>
+  <data name="anamenu_diger_islemler" xml:space="preserve"><value>Other operations</value></data>
+  <data name="tarihsecimi_gunluk_tarihler" xml:space="preserve"><value>Daily dates</value></data>
+  <data name="enum_tarih_cinsi_Son3Ay" xml:space="preserve"><value>Last 3 months</value></data>
+  <data name="enum_tarih_cinsi_Son6Ay" xml:space="preserve"><value>Last 6 months</value></data>
+  <data name="anamenu_servis_kontrolu" xml:space="preserve"><value>Service control</value></data>
+  <data name="genel_otomatik" xml:space="preserve"><value>Automatic</value></data>
+  <data name="evrakgirisi_isik_ac_kapat" xml:space="preserve"><value>Light on/off</value></data>
+  <data name="stok_gruplandirma_tum_stoklar" xml:space="preserve"><value>All inventory</value></data>
+  <data name="enum_sck_nerede_cari_cins_Carimiz" xml:space="preserve"><value>Our current account</value></data>
+  <data name="enum_GenelEvrakTipleri_VerilenSiparis" xml:space="preserve"><value>Given order</value></data>
+  <data name="stok_listeleme_ayarlari_koda_gore" xml:space="preserve"><value>According to inventory code</value></data>
+  <data name="enum_evrak_cari_secilebilir_sonuc_SadeceSatisYapilabilir" xml:space="preserve"><value>Current account could not be selected. Only sales is possible.</value></data>
+  <data name="guncelleme_stok_fotograflari_kontrol_ediliyor" xml:space="preserve"><value>Checking inventory photographs…</value></data>
+  <data name="evrakgirisi_miktar_duzenlendi" xml:space="preserve"><value>Quantity arranged!</value></data>
+  <data name="genel_baglanti_yok" xml:space="preserve"><value>Connection not available…</value></data>
+  <data name="siparis_vazgecilen_miktar" xml:space="preserve"><value>Cancelled quantity</value></data>
+  <data name="genel_cari_secimi_yapmadiniz" xml:space="preserve"><value>Current account not selected</value></data>
+  <data name="enum_KapamaSekli_BankadanKapanacak" xml:space="preserve"><value>To be closed from bank</value></data>
+  <data name="evrakgirisi_masraf_secimi" xml:space="preserve"><value>Expense selection</value></data>
+  <data name="giris_kullanici_adi" xml:space="preserve"><value>User name</value></data>
+  <data name="cari_secimi_bolge_kodun_gore" xml:space="preserve"><value>According to region code</value></data>
+  <data name="genel_eposta_gonderme_adres_hatasi" xml:space="preserve"><value>Buyer address must be entered</value></data>
+  <data name="enum_cha_evrak_tip_KasaTediyeFisi" xml:space="preserve"><value>Cash deposit receipt</value></data>
+  <data name="caridetay_onceki_siparisleri" xml:space="preserve"><value>Previous orders</value></data>
+  <data name="cari_adres_konum_tanimli_degil" xml:space="preserve"><value>Location information for address is not defined</value></data>
+  <data name="tarihsecimi_son_12_ay" xml:space="preserve"><value>Last 12 months</value></data>
+  <data name="tarihsecimi_son_7_gun" xml:space="preserve"><value>Last 7 days</value></data>
+  <data name="enum_kas_tip_VerilenSenetKasasi" xml:space="preserve"><value>Given bond cash</value></data>
+  <data name="enum_cha_kasa_hizmet_Hizmetimiz" xml:space="preserve"><value>Our service</value></data>
+  <data name="anamenu_gune_basla" xml:space="preserve"><value>Start day</value></data>
+  <data name="genel_ortalama_vade" xml:space="preserve"><value>Average deferment</value></data>
+  <data name="evrakgirisi_evrak_kaydet" xml:space="preserve"><value>Save document</value></data>
+  <data name="enum_cha_evrak_tip_SatisSerbestMeslekMakbuzu" xml:space="preserve"><value>Sales Free Profession Slip</value></data>
+  <data name="enum_cha_evrak_tip_TakasCekIade" xml:space="preserve"><value>Check clearing return</value></data>
+  <data name="evrakgirisi_otomatik_yazdir" xml:space="preserve"><value>Print automatically</value></data>
+  <data name="enum_CariYetkiliUnvan_Sef" xml:space="preserve"><value>Chief</value></data>
+  <data name="genel_lokasyon_bulunuyor" xml:space="preserve"><value>Searching location</value></data>
+  <data name="enum_CariYetkiliUnvan_YonKurBsk" xml:space="preserve"><value>Head of Management Board</value></data>
+  <data name="enum_StokHareketleriOrdeBy_ReyonKodu" xml:space="preserve"><value>Section code</value></data>
+  <data name="caridetay_son_borc_hareketi" xml:space="preserve"><value>Last debit transaction</value></data>
+  <data name="ticaretturu_toptan_yurt_ici_ticaret" xml:space="preserve"><value>Wholesale domestic trade</value></data>
+  <data name="enum_siparis_tutar_secenekleri_TeslimEdilenNetTutar" xml:space="preserve"><value>Delivered net amount</value></data>
+  <data name="enum_kas_tip_KarsiliksizCekKasasi" xml:space="preserve"><value>Bad check cash</value></data>
+  <data name="enum_EvrakAktarimDurumu_Hepsi" xml:space="preserve"><value>All</value></data>
+  <data name="genel_giris_depo" xml:space="preserve"><value>Entry warehouse</value></data>
+  <data name="stok_markalari" xml:space="preserve"><value>Inventory brands</value></data>
+  <data name="cari_cari_gruplari" xml:space="preserve"><value>Current account groups</value></data>
+  <data name="enum_gruplandirma_secenekleri_CariGrup" xml:space="preserve"><value>Current account group</value></data>
+  <data name="guncelleme_servis_erisimi_kontrol_ediliyor2" xml:space="preserve"><value>Service access being controlled(2)…</value></data>
+  <data name="enum_cha_vardita_evrak_ti_VardiyaSatisFaturasi" xml:space="preserve"><value>Shift sale invoice</value></data>
+  <data name="enum_CariYetkiliUnvan_Uzman" xml:space="preserve"><value>Specialist</value></data>
+  <data name="evrakgirisi_normal_iade_iade" xml:space="preserve"><value>Return</value></data>
+  <data name="enum_cha_kasa_hizmet_IthalatDosyamiz" xml:space="preserve"><value>Our import file</value></data>
+  <data name="caridetay_adresler" xml:space="preserve"><value>Addresses</value></data>
+  <data name="enum_cha_sntck_poz_IadeEdilen" xml:space="preserve"><value>Returned</value></data>
+  <data name="enum_Derecelendirme_CokKotu" xml:space="preserve"><value>Very bad</value></data>
+  <data name="enum_cha_evrak_tip_AcilisCekPortfoyeGiris" xml:space="preserve"><value>Opening check portfolio entry</value></data>
+  <data name="enum_cha_evrak_tip_KrediGeriOdemeVirmanDekontu" xml:space="preserve"><value>Credit repayment transfer receipt</value></data>
+  <data name="enum_sth_normal_iade_Iade" xml:space="preserve"><value>Return</value></data>
+  <data name="enum_AndroidAktarimTipi_Evrak" xml:space="preserve"><value>Document</value></data>
+  <data name="enum_siparis_miktar_secenekleri_VazgecilenMiktar" xml:space="preserve"><value>Cancelled quantity</value></data>
+  <data name="enum_siralama_secenekleri_Isim" xml:space="preserve"><value>Name</value></data>
+  <data name="anamenu_depolar_arasi_nakliye" xml:space="preserve"><value>Interwarehouse transport</value></data>
+  <data name="stok_tanimli_iskonto_yok" xml:space="preserve"><value>No defined discount</value></data>
+  <data name="enum_GenelEvrakTipleri_AlinanSiparis" xml:space="preserve"><value>Received order</value></data>
+  <data name="enum_cha_ticaret_turu_ToptanYurtIciTicaret" xml:space="preserve"><value>Wholesale domestic trade</value></data>
+  <data name="enum_siparis_tutar_secenekleri_TeslimEdilenIskontoTutari" xml:space="preserve"><value>Delivered discount amount</value></data>
+  <data name="siparis_teslim_edilen_miktar" xml:space="preserve"><value>Delivered quantity</value></data>
+  <data name="anamenu_kayit_hikayesi" xml:space="preserve"><value>Record history</value></data>
+  <data name="caridetay_cek_bakiyesi_musterisi" xml:space="preserve"><value>Check balance(Client)</value></data>
+  <data name="enum_cha_evrak_tip_FirmaKrediKartiOdeme" xml:space="preserve"><value>Company Credit Card Payment</value></data>
+  <data name="enum_cha_evrak_tip_KasalarArasiKarsiliksizCekTransfer" xml:space="preserve"><value>Inter-check cash bad check tranfer</value></data>
+  <data name="evrakgirisi_alt_ambalaj" xml:space="preserve"><value>Sub package</value></data>
+  <data name="enum_EvrakAktarimDurumu_Aktarilacak" xml:space="preserve"><value>Will be transferred.</value></data>
+  <data name="evrakgirisi_kaynak_depo" xml:space="preserve"><value>Source warehouse</value></data>
+  <data name="genel_lokasyon_bulunuyor_mesaj" xml:space="preserve"><value>Location search can be long. Please wait.</value></data>
+  <data name="enum_gruplandirma_secenekleri_Ay" xml:space="preserve"><value>Month</value></data>
+  <data name="enum_cha_vardita_evrak_ti_HizmetSatisi" xml:space="preserve"><value>Service sales</value></data>
+  <data name="enum_cha_evrak_tip_TakasCekOdeme" xml:space="preserve"><value>Check clearing payment</value></data>
+  <data name="enum_cha_evrak_tip_TakasCekCikis" xml:space="preserve"><value>Check clearing</value></data>
+  <data name="enum_cha_evrak_tip_DonemselHizmetGelecekYildanGelecekAyaAktarmaDekontu" xml:space="preserve"><value>Periodical Service, receipt of transferring expenses/incomes regarding coming years to coming months</value></data>
+  <data name="anamenu_depo_yonetimi" xml:space="preserve"><value>Warehouse management</value></data>
+  <data name="caridetay_yazboz_kaydet" xml:space="preserve"><value>Text save</value></data>
+  <data name="genel_kayit_yok" xml:space="preserve"><value>Record not available</value></data>
+  <data name="enum_BaslangicBitis_Bitis" xml:space="preserve"><value>Finish</value></data>
+  <data name="enum_cha_normal_Iade_Iade" xml:space="preserve"><value>Return</value></data>
+  <data name="enum_siparis_miktar_secenekleri_TeslimEdilenMiktar" xml:space="preserve"><value>Delivered quantity</value></data>
+  <data name="enum_siralama_secenekleri_Kod" xml:space="preserve"><value>Code</value></data>
+  <data name="enum_cha_cari_cins_Carimiz" xml:space="preserve"><value>Our current account</value></data>
+  <data name="evrakgirisi_masraf_tutari" xml:space="preserve"><value>Expense amount</value></data>
+  <data name="stok_reyonlari" xml:space="preserve"><value>Inventory sections</value></data>
+  <data name="evrakgirisi_cari_unvani" xml:space="preserve"><value>Current account title</value></data>
+  <data name="enum_tarih_cinsi_GecenAy" xml:space="preserve"><value>Last month</value></data>
+  <data name="evrakgirisi_cari_hesap_secilmek_zorunda" xml:space="preserve"><value>Current account must be selected</value></data>
+  <data name="anamenu_alinan_siparis" xml:space="preserve"><value>Received order</value></data>
+  <data name="enum_tutar_secenekleri_IskontoTutari" xml:space="preserve"><value>Discount amount</value></data>
+  <data name="evrakgirisi_hedef_depo_secimi" xml:space="preserve"><value>Target warehouse selection</value></data>
+  <data name="evrakgirisi_ara_toplamdan_yuzde" xml:space="preserve"><value>% from sub total</value></data>
+  <data name="enum_sck_nerede_cari_cins_Demirbasimiz" xml:space="preserve"><value>Our Equipment</value></data>
+  <data name="kayithikayesi_lutfen_aktarilmis_evrak_seciniz" xml:space="preserve"><value>Please select transferred document</value></data>
+  <data name="evrakgirisi_fiyat_listesi_secimi" xml:space="preserve"><value>Pricelist selection</value></data>
+  <data name="enum_cha_ticaret_turu_YurtDisiNitelikliYurtIciTicaret" xml:space="preserve"><value>Foreign eligible domestic trade</value></data>
+  <data name="guncelleme_lisans_hatasi" xml:space="preserve"><value>License error</value></data>
+  <data name="genel_yazdir_nokta_vuruslu" xml:space="preserve"><value>Print(dot matrix)</value></data>
+  <data name="enum_tarih_cinsi_Son30Gun" xml:space="preserve"><value>Last 30 days</value></data>
+  <data name="enum_tarih_cinsi_Son60Gun" xml:space="preserve"><value>Last 60 days</value></data>
+  <data name="caridetay_irsaliye_riski" xml:space="preserve"><value>Waybill risk</value></data>
+  <data name="enum_cha_evrak_tip_TeminatCekOdeme" xml:space="preserve"><value>Check in security payment</value></data>
+  <data name="enum_cha_cinsi_MusteriKrediKarti" xml:space="preserve"><value>Customer credit card</value></data>
+  <data name="enum_tarih_cinsi_Son90Gun" xml:space="preserve"><value>Last 90 days</value></data>
+  <data name="enum_cha_evrak_tip_TeminatCekCikis" xml:space="preserve"><value>Security check exit</value></data>
+  <data name="guncelleme_silinen_kayitlar_kontrol_ediliyor" xml:space="preserve"><value>Checking deleted records…</value></data>
+  <data name="evrakgirisi_teslim_tipi" xml:space="preserve"><value>Delivery type</value></data>
+  <data name="enum_StokHareketleriOrdeBy_AnaAltGrup" xml:space="preserve"><value>Main-sub group</value></data>
+  <data name="enum_cha_evrak_tip_PortfoydekiSenetNakit" xml:space="preserve"><value>Bond in portfolio cash</value></data>
+  <data name="evrakgirisi_sube_secimi" xml:space="preserve"><value>Branch selection</value></data>
+  <data name="enum_tahsilat_cinsi_MusteriSenedi" xml:space="preserve"><value>Customer bond</value></data>
+  <data name="enum_cha_cari_cins_Giderimiz" xml:space="preserve"><value>Our expense</value></data>
+  <data name="enum_cha_evrak_tip_GrupSirketlerArasiVirmanDekontu" xml:space="preserve"><value>Inter-group company transfer slip</value></data>
+  <data name="ticaretturu_yurt_disi_ticaret" xml:space="preserve"><value>Foreign Trade</value></data>
+  <data name="evrakgirisi_koli_etiketi_yazdir" xml:space="preserve"><value>Print parcel label</value></data>
+  <data name="enum_GenelEvrakTipleri_SayimSonuclariGirisFisi" xml:space="preserve"><value>Counting results entry slip</value></data>
+  <data name="genel_gruplama" xml:space="preserve"><value>Grouping</value></data>
+  <data name="tahsilat_cek_musterisi" xml:space="preserve"><value>Customer</value></data>
+  <data name="enum_StokListelemeSecenekleri_TumStoklar" xml:space="preserve"><value>All inventory</value></data>
+  <data name="tarihsecimi_son_3_ay" xml:space="preserve"><value>Last 3 months</value></data>
+  <data name="tarihsecimi_son_6_ay" xml:space="preserve"><value>Last 6 months</value></data>
+  <data name="enum_cha_cinsi_DisTicaretFaturasi" xml:space="preserve"><value>Foreign Trade Invoice</value></data>
+  <data name="evrakgirisi_miktar_uygun_degil_islem_yapilamadi" xml:space="preserve"><value>Operation was not done because of inappropriate entered amount.</value></data>
+  <data name="evrakgirisi_sepette_urun_varken_siparis_karsilanmaz" xml:space="preserve"><value>You can not supply order while there is good in basket!</value></data>
+  <data name="enum_cha_evrak_tip_BankadanMusteriOdemeSozuKapatma" xml:space="preserve"><value>Bank customer payment promise settlement</value></data>
+  <data name="enum_stok_arama_secenekleri_Esittir" xml:space="preserve"><value>Equals</value></data>
+  <data name="evrakgirisi_yekun" xml:space="preserve"><value>Total</value></data>
+  <data name="enum_Fiyat_Kaynagi_Tanimsiz" xml:space="preserve"><value>Undefined</value></data>
+  <data name="tarihsecimi_bugun" xml:space="preserve"><value>Today</value></data>
+  <data name="tarihsecimi_bu_ay" xml:space="preserve"><value>Current month</value></data>
+  <data name="evrakgirisi_proje" xml:space="preserve"><value>Project</value></data>
+  <data name="evrakgirisi_sepet" xml:space="preserve"><value>Basket</value></data>
+  <data name="evrakgirisi_satir" xml:space="preserve"><value>Row</value></data>
+  <data name="enum_cha_evrak_tip_GonderilenHavale" xml:space="preserve"><value>Outgoing transfer</value></data>
+  <data name="evrakgirisi_kayit" xml:space="preserve"><value>Record</value></data>
+  <data name="evrakgirisi_detay" xml:space="preserve"><value>Detail</value></data>
+  <data name="evrakgirisi_kuru_degistirilemez" xml:space="preserve"><value>{0} Currency exchange rate can not be changed</value></data>
+  <data name="evrakgirisi_kasa_secimi" xml:space="preserve"><value>Cash selection</value></data>
+  <data name="evrakgirisi_iskonto_duzenleme" xml:space="preserve"><value>Arrange discount</value></data>
+  <data name="tarihsecimi_dun" xml:space="preserve"><value>Yesterday</value></data>
+  <data name="evrakgirisi_evrak" xml:space="preserve"><value>Document</value></data>
+  <data name="enum_sip_cins_DahiliSarfSiparisi" xml:space="preserve"><value>Inner consumption order</value></data>
+  <data name="evrakgirisi_toplam_miktar" xml:space="preserve"><value>Total quantity</value></data>
+  <data name="evrakgirisi_koli_sayaci" xml:space="preserve"><value>Parcel counter</value></data>
+  <data name="derecelendirme_kotu" xml:space="preserve"><value>Bad</value></data>
+  <data name="genel_listeleme_secenekleri" xml:space="preserve"><value>Listing options</value></data>
+  <data name="enum_GenelEvrakTipleri_KonsinyeIrsaliyesi" xml:space="preserve"><value>Consignee waybill</value></data>
+  <data name="guncelleme_stok_fotograflari_guncelleniyor" xml:space="preserve"><value>Updating inventory photographs</value></data>
+  <data name="tarihsecimi_yillik_tarihler" xml:space="preserve"><value>Annual dates</value></data>
+  <data name="stok_kategorileri" xml:space="preserve"><value>Inventory categories</value></data>
+  <data name="enum_cha_evrak_tip_KarsiliksizCekIadeCikisBordrosu" xml:space="preserve"><value>Bad check return exit note</value></data>
+  <data name="enum_cari_ekstre_menu_secenekleri_BaslangicTarihiniDegistir" xml:space="preserve"><value>Change start date</value></data>
+  <data name="anamenu_depolar_arasi_siparis" xml:space="preserve"><value>Interwarehouse order</value></data>
+  <data name="enum_sck_nerede_cari_cins_Hizmetimiz" xml:space="preserve"><value>Our service</value></data>
+  <data name="stok_iskontolu_fiyat" xml:space="preserve"><value>Price with discount</value></data>
+  <data name="enum_cha_cinsi_IthalatMasrafFaturasi" xml:space="preserve"><value>Import expense invoice</value></data>
+  <data name="enum_cari_hareket_tipi_MalVeHizmetAlinirVeSatilir" xml:space="preserve"><value>Good and Service is purchased and sold</value></data>
+  <data name="evrakgirisi_kismen_karsila" xml:space="preserve"><value>Supply partially</value></data>
+  <data name="genel_ayarlar" xml:space="preserve"><value>Settings</value></data>
+  <data name="anamenu_temsilci_islemleri" xml:space="preserve"><value>Representative operations</value></data>
+  <data name="enum_sck_tip_KendiKrediKartimiz" xml:space="preserve"><value>Company credit card</value></data>
+  <data name="evrakgirisi_urun_sipariste_yok" xml:space="preserve"><value>Product not present in order</value></data>
+  <data name="enum_cha_evrak_tip_BankadanKendiOdemeEmrimiziKapatma" xml:space="preserve"><value>Bank company payment order settlement</value></data>
+  <data name="enum_sck_nerede_cari_cins_IthalatDosyamiz" xml:space="preserve"><value>Our import file</value></data>
+  <data name="genel_evrak_tipi" xml:space="preserve"><value>Document type</value></data>
+  <data name="enum_cha_evrak_tip_SenetIadeGirisBordrosu" xml:space="preserve"><value>Bond return entry note</value></data>
+  <data name="evrakgirisi_bankadan_kapanacak" xml:space="preserve"><value>To be closed from bank</value></data>
+  <data name="caridetay_genel_bilgiler" xml:space="preserve"><value>General information</value></data>
+  <data name="evrakgirisi_firma_no" xml:space="preserve"><value>Company no</value></data>
+  <data name="evrakgirisi_karsi_doviz_kuru" xml:space="preserve"><value>Opposite account currency exchange rate</value></data>
+  <data name="cari_yazboz_tahtasi_offline_kayit_edildi" xml:space="preserve"><value>Text board saved offline</value></data>
+  <data name="anamenu_satis_yonetimi" xml:space="preserve"><value>Sales management</value></data>
+  <data name="enum_AndroidAktarimTipi_YazBozTahtasi" xml:space="preserve"><value>Text board update</value></data>
+  <data name="genel_yetkili_soyadi" xml:space="preserve"><value>Authorized person surname</value></data>
+  <data name="evrakgirisi_cari_kredisi_yeterli_degil" xml:space="preserve"><value>Current account credit not sufficient. Document could not be saved</value></data>
+  <data name="enum_siparis_tutar_secenekleri_SiparisBrutTutari" xml:space="preserve"><value>Order gross amount</value></data>
+  <data name="enum_cari_odeme_sekli_Serbest" xml:space="preserve"><value>Free</value></data>
+  <data name="anamenu_depolar_arasi_nakliye_onaylama" xml:space="preserve"><value>Interwarehouse transport confirmation</value></data>
+  <data name="anamenu_alis_irsaliyesi" xml:space="preserve"><value>Purchase Waybill</value></data>
+  <data name="enum_cha_evrak_tip_ParaNakitYatirma" xml:space="preserve"><value>Cash deposit</value></data>
+  <data name="enum_cha_evrak_tip_OdemeEmriCikisBordrosu" xml:space="preserve"><value>Payment promise exit note</value></data>
+  <data name="enum_sck_tip_KendiHavaleEmrimiz" xml:space="preserve"><value>Company tranfer order</value></data>
+  <data name="enum_evrak_cari_secilebilir_sonuc_Secilebilir" xml:space="preserve"><value>Selectable</value></data>
+  <data name="enum_StokHareketleriOrdeBy_SatirNo" xml:space="preserve"><value>Row number</value></data>
+  <data name="stok_listeleme_ayarlari_siralama" xml:space="preserve"><value>Ordering type</value></data>
+  <data name="genel_iskonto_yok" xml:space="preserve"><value>No discount</value></data>
+  <data name="evrakgirisi_belge_no" xml:space="preserve"><value>Document number</value></data>
+  <data name="siparis_acik_siparis_miktari" xml:space="preserve"><value>Open order amount</value></data>
+  <data name="evrakgirisi_urunun_minimum_fiyati_uygun_degil" xml:space="preserve"><value>Minimum price for product {0} must be {1}. Document was not saved.</value></data>
+  <data name="stok_son_alis_fiyati" xml:space="preserve"><value>Last purchase price</value></data>
+  <data name="enum_cha_evrak_tip_TahsilSenetProtestoluIade" xml:space="preserve"><value>Collection bad bond return</value></data>
+  <data name="enum_sck_sonpoz_OdenmediIade" xml:space="preserve"><value>Not paid return</value></data>
+  <data name="genel_gun_sayisi_secimi" xml:space="preserve"><value>Number of days selection</value></data>
+  <data name="enum_sth_nakliyedurumu_Yolda" xml:space="preserve"><value>On the way</value></data>
+  <data name="enum_miktar_secenekleri_BrutSatisMiktari" xml:space="preserve"><value>Gross sales amount</value></data>
+  <data name="enum_gruplandirma_secenekleri_SorumlulukMerkezi" xml:space="preserve"><value>Responsibility center</value></data>
+  <data name="evrakgirisi_birim_tutar" xml:space="preserve"><value>Unit amount</value></data>
+  <data name="genel_gun_sayisi" xml:space="preserve"><value>Number of days</value></data>
+  <data name="firmaekleme_kurulum_sifresi" xml:space="preserve"><value>Installation password</value></data>
+  <data name="anamenu_temsilci_raporu" xml:space="preserve"><value>Representative report</value></data>
+  <data name="ticaretturu_yurt_disi_nitelikli_ihrac_kayitli_ticaret" xml:space="preserve"><value>Foreign eligible export-registered trade</value></data>
+  <data name="evrakgirisi_masraf_kodu_girilmek_zorunda" xml:space="preserve"><value>Expense code must be entered!</value></data>
+  <data name="enum_cha_evrak_tip_CariBorcDekontu" xml:space="preserve"><value>Current account debit slip</value></data>
+  <data name="evrakgirisi_koli_etiketi_basimi" xml:space="preserve"><value>Parcel label printing</value></data>
+  <data name="enum_GenelEvrakTipleri_KonsinyedenIadeIrsaliyesi" xml:space="preserve"><value>Return waybill from consignee</value></data>
+  <data name="giris_firma_silme" xml:space="preserve"><value>Delete Company</value></data>
+  <data name="cariekstre_devir" xml:space="preserve"><value>Transfer</value></data>
+  <data name="genel_rapor_secimi" xml:space="preserve"><value>Report selection</value></data>
+  <data name="cari_secimi_temsilci_koduna_gore" xml:space="preserve"><value>According to representative code</value></data>
+  <data name="enum_cha_evrak_tip_ParaNakitCekme" xml:space="preserve"><value>Cash retrieval</value></data>
+  <data name="enum_CariYetkiliUnvan_HukukMus" xml:space="preserve"><value>Legal advisor</value></data>
+  <data name="enum_sip_cins_SatinAlmaTalebi" xml:space="preserve"><value>Purchase demand</value></data>
+  <data name="enum_cha_evrak_tip_SatisFaturasi" xml:space="preserve"><value>Sales invoice</value></data>
+  <data name="enum_cha_evrak_tip_DovizSatisBelgesi" xml:space="preserve"><value>Currency sale document</value></data>
+  <data name="enum_sck_tip_KendiSenedimiz" xml:space="preserve"><value>Company bond</value></data>
+  <data name="enum_fatura_durumu_secenekleri_Faturalasmislar" xml:space="preserve"><value>Invoiced(within report date)</value></data>
+  <data name="enum_stok_arama_secenekleri_Icerir" xml:space="preserve"><value>Contains</value></data>
+  <data name="enum_cha_cinsi_PerakendeFaturasi" xml:space="preserve"><value>Retail invoice</value></data>
+  <data name="enum_tumu_tanimli_olan_listeden_sec_TanimliOlan" xml:space="preserve"><value>Defined</value></data>
+  <data name="enum_Derecelendirme_Iyi" xml:space="preserve"><value>Good</value></data>
+  <data name="caridetay_siparis_bakiyesi" xml:space="preserve"><value>Order balance</value></data>
+  <data name="enum_cha_cari_cins_IthalatDosyamiz" xml:space="preserve"><value>Our import file</value></data>
+  <data name="guncelleme_online_tablo_yapisi_kontrol_ediliyor" xml:space="preserve"><value>Online table structure is being controlled</value></data>
+  <data name="enum_cari_hareket_tipi_MalVeHizmetSadeceSatilir" xml:space="preserve"><value>Good and Service only sold</value></data>
+  <data name="evrakgirisi_kur" xml:space="preserve"><value>Currency exchange rate</value></data>
+  <data name="evrakgirisi_cikmak_istediginize_eminmisiniz" xml:space="preserve"><value>Document is not saved. Are you sure you want to exit?</value></data>
+  <data name="caridetay_finansal_bilgiler" xml:space="preserve"><value>Financial information</value></data>
+  <data name="genel_cikis_depo" xml:space="preserve"><value>Exit warehouse</value></data>
+  <data name="enum_IskontoMasrafUygulamaSekli_AraToplamdanYuzde" xml:space="preserve"><value>% from Sub total</value></data>
+  <data name="genel_bilgiler_cekilemedi" xml:space="preserve"><value>Data could not be retrieved</value></data>
+  <data name="evrakgirisi_satir_adet" xml:space="preserve"><value>Row piece</value></data>
+  <data name="evrakgirisi_normal_iade_normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="enum_AndroidAktarimTipi_GunAcilisi" xml:space="preserve"><value>Day opening</value></data>
+  <data name="ziyaret_gune_basla" xml:space="preserve"><value>Start day</value></data>
+  <data name="enum_cha_cinsi_Dekont" xml:space="preserve"><value>Slip/Receipt</value></data>
+  <data name="anamenu_stoklar" xml:space="preserve"><value>Products</value></data>
+  <data name="enum_sck_tip_KendiCekimiz" xml:space="preserve"><value>Own check</value></data>
+  <data name="enum_cari_tipi_DigerCari" xml:space="preserve"><value>Other current account</value></data>
+  <data name="enum_sck_tip_MusteriSenedi" xml:space="preserve"><value>Customer bond</value></data>
+  <data name="enum_GenelEvrakTipleri_Masraf" xml:space="preserve"><value>Expense</value></data>
+  <data name="enum_sip_cins_IsEmirleri" xml:space="preserve"><value>Work orders</value></data>
+  <data name="enum_cha_evrak_tip_AlternatifDovizDonusumFarkiVirmanDekontu" xml:space="preserve"><value>Alternative exchange conversion difference transfer slip</value></data>
+  <data name="enum_siparis_teslim_durumu_secenekleri_Tamamlanan" xml:space="preserve"><value>Completed</value></data>
+  <data name="siparis_siparis_miktari" xml:space="preserve"><value>Order quantity</value></data>
+  <data name="enum_tumu_tanimli_olan_listeden_sec_ListedenSec" xml:space="preserve"><value>Select from list</value></data>
+  <data name="caridetay_irsaliye_bakiyesi" xml:space="preserve"><value>Waybill balance</value></data>
+  <data name="guncelleme_degisen_kayitlar_hazirlaniyor" xml:space="preserve"><value>Changed records are being prepared…</value></data>
+  <data name="stok_iskonto_uygulanacak" xml:space="preserve"><value>Discount will be applied</value></data>
+  <data name="enum_siparis_tutar_secenekleri_TeslimEdilenBrutTutari" xml:space="preserve"><value>Delivered gross amount</value></data>
+  <data name="enum_sck_sonpoz_IadeEdilen" xml:space="preserve"><value>Returned</value></data>
+  <data name="enum_cha_cinsi_MusteriSenedi" xml:space="preserve"><value>Customer bond</value></data>
+  <data name="enum_kas_tip_SenetKasasi" xml:space="preserve"><value>Bond cash</value></data>
+  <data name="enum_cha_evrak_tip_KrediSozlesmesiTaksitOdemeFisi" xml:space="preserve"><value>Credit agreement installment payment slip</value></data>
+  <data name="genel_aciklama" xml:space="preserve"><value>Comment</value></data>
+  <data name="anamenu_stok_detayi" xml:space="preserve"><value>Inventory details</value></data>
+  <data name="enum_cari_tipi_AltBayi" xml:space="preserve"><value>Sub-dealer</value></data>
+  <data name="enum_cari_ekstre_menu_secenekleri_EpostaGonder" xml:space="preserve"><value>Send e-mail</value></data>
+  <data name="enum_cha_sntck_poz_Icrada" xml:space="preserve"><value>On levy</value></data>
+  <data name="enum_cha_evrak_tip_PersonelTahakkukVirmanDekontu" xml:space="preserve"><value>Personnel accrual transfer slip</value></data>
+  <data name="ticaretturu_yurtdisi_nitelikli_yurt_ici_ticaret" xml:space="preserve"><value>Foreign eligible domestic trade</value></data>
+  <data name="genel_web_adresi" xml:space="preserve"><value>Web address</value></data>
+  <data name="enum_cha_evrak_tip_AlisFaturasi" xml:space="preserve"><value>Purchase invoice</value></data>
+  <data name="evrakgirisi_hepsini_karsila" xml:space="preserve"><value>Supply all</value></data>
+  <data name="kayithikayesi_lutfen_evrak_seciniz" xml:space="preserve"><value>Please select document</value></data>
+  <data name="enum_cha_evrak_tip_SenetIadeCikisBordrosu" xml:space="preserve"><value>Bond return exit note</value></data>
+  <data name="evrakgirisi_kapama_kodu_secilmek_zorunda" xml:space="preserve"><value>Closing code must be selected</value></data>
+  <data name="genel_bitis_tarihi" xml:space="preserve"><value>Finish date</value></data>
+  <data name="anamenu_masraf_fisi" xml:space="preserve"><value>Expense slip</value></data>
+  <data name="tarihsecimi_bu_yil" xml:space="preserve"><value>Current year</value></data>
+  <data name="enum_cha_cinsi_DegerFarkiFaturasi" xml:space="preserve"><value>Value difference invoice</value></data>
+  <data name="genel_bu_islem_icin_yetkiniz_bulunmamakta" xml:space="preserve"><value>You do not have authority for this operation</value></data>
+  <data name="enum_cha_evrak_tip_AmortismanGiderlestirmeVirmanDekontu" xml:space="preserve"><value>Amortization write-off transfer slip</value></data>
+  <data name="evrakgirisi_kapama_hesap_kodu" xml:space="preserve"><value>Closing account code</value></data>
+  <data name="enum_siparis_tutar_secenekleri_SiparisNetTutarKdvDahil" xml:space="preserve"><value>Order net amount(VAT included)</value></data>
+  <data name="evrakgirisi_cari_adres_secimi" xml:space="preserve"><value>Current account selection</value></data>
+  <data name="evrakgirisi_iskonto_duzenle" xml:space="preserve"><value>Arrange discount</value></data>
+  <data name="enum_tarih_cinsi_Son12Ay" xml:space="preserve"><value>Last 12 months</value></data>
+  <data name="enum_tarih_cinsi_Son7Gun" xml:space="preserve"><value>Last 7 days</value></data>
+  <data name="enum_StokSiralamaSekli_stok_kodu" xml:space="preserve"><value>According to inventory code</value></data>
+  <data name="enum_StokSiralamaSekli_stok_ismi" xml:space="preserve"><value>According to inventory name</value></data>
+  <data name="guncelleme_degisen_kayitlar_kontrol_ediliyor" xml:space="preserve"><value>Changed records are being controlled…</value></data>
+  <data name="evrakgirisi_ceki_listesini_goster" xml:space="preserve"><value>Show packing list</value></data>
+  <data name="evrakgirisi_evrak_secimi" xml:space="preserve"><value>Document selection</value></data>
+  <data name="evrak_aktarim_durumu" xml:space="preserve"><value>Trasnfer state</value></data>
+  <data name="enum_cha_evrak_tip_KasaMasrafFisi" xml:space="preserve"><value>Cash expense slip</value></data>
+  <data name="enum_cha_evrak_tip_CekCikisBordrosu" xml:space="preserve"><value>Check exit note</value></data>
+  <data name="genel_posta_kodu" xml:space="preserve"><value>Postal code</value></data>
+  <data name="enum_cha_evrak_tip_TeminatCekKarsiliksizIade" xml:space="preserve"><value>Security bad check return</value></data>
+  <data name="enum_cha_evrak_tip_GirisGiderMakbuzu" xml:space="preserve"><value>Expense receipt entry</value></data>
+  <data name="enum_CariListelemeSecenekleri_TemsilciKodunaGore" xml:space="preserve"><value>According to representative code</value></data>
+  <data name="anamenu_aktif_ziyareti_sil_mesaj" xml:space="preserve"><value>Unfinished visit found. Before starting a new visit finalize current visit or cancel started visit. Do you want to cancel current visit?</value></data>
+  <data name="cari_secimi_sektor_koduna_gore" xml:space="preserve"><value>According to sector code</value></data>
+  <data name="enum_cha_evrak_tip_BankadaTeminattakiProtestoluSenediCariyeIadeBordrosu" xml:space="preserve"><value>Security bad bond return to customer note</value></data>
+  <data name="genel_baslangic" xml:space="preserve"><value>Start</value></data>
+  <data name="cari_secimi_rotaya_gore" xml:space="preserve"><value>According to route</value></data>
+  <data name="enum_GenelEvrakTipleri_SatisIrsaliyesi" xml:space="preserve"><value>Sales waybill</value></data>
+  <data name="enum_Fiyat_Kaynagi_StokStandartMaliyeti" xml:space="preserve"><value>Inventory standard cost</value></data>
+  <data name="guncelleme_baglanti_kontrol_ediliyor" xml:space="preserve"><value>Connection being checked…</value></data>
+  <data name="evrakgirisi_kapama_sekli_secimi" xml:space="preserve"><value>Colsing type selection</value></data>
+  <data name="enum_GenelEvrakTipleri_TahsileSenetCikisBordrosu" xml:space="preserve"><value>Collection bond exit note</value></data>
+  <data name="enum_siralama_secenekleri_Miktar3" xml:space="preserve"><value>Quantity 3</value></data>
+  <data name="enum_siralama_secenekleri_Miktar2" xml:space="preserve"><value>Quantity 2</value></data>
+  <data name="enum_siralama_secenekleri_Miktar1" xml:space="preserve"><value>Quantity 1</value></data>
+  <data name="enum_cha_cinsi_FirmaCeki" xml:space="preserve"><value>Company check</value></data>
+  <data name="evrakgirisi_miktar_duzenleme" xml:space="preserve"><value>Edit quantity</value></data>
+  <data name="enum_sck_nerede_cari_cins_Giderimiz" xml:space="preserve"><value>Our expense</value></data>
+  <data name="enum_Fiyat_Kaynagi_FiyatListesi" xml:space="preserve"><value>Pricelist</value></data>
+  <data name="cari_yetkili_unvan" xml:space="preserve"><value>Title</value></data>
+  <data name="evrakgirisi_miktar_olarak_degistirildi" xml:space="preserve"><value>Quantity changed to {0}.</value></data>
+  <data name="caridetay_vergi_no" xml:space="preserve"><value>Tax number</value></data>
+  <data name="enum_cha_cinsi_AvansMakbuzu" xml:space="preserve"><value>Advance payment slip</value></data>
+  <data name="genel_ortalama_evrak_tarihi" xml:space="preserve"><value>Average document date</value></data>
+  <data name="evrakgirisi_kaynak_depo_secimi" xml:space="preserve"><value>Source warehouse selection</value></data>
+  <data name="evrakgirisi_beklemede" xml:space="preserve"><value>Pending</value></data>
+  <data name="tarihsecimi_son_24_saat" xml:space="preserve"><value>Last 24 hours</value></data>
+  <data name="enum_cha_evrak_tip_KrediKartiMasrafVirmanDekontu" xml:space="preserve"><value>Credit card expense transfer slip</value></data>
+  <data name="evrakgirisi_teslim_tarihi" xml:space="preserve"><value>Delivery date</value></data>
+  <data name="enum_sth_tip_Cikis" xml:space="preserve"><value>Exit</value></data>
+  <data name="enum_sck_tip_KendiOdemeEmrimiz" xml:space="preserve"><value>Company payment order</value></data>
+  <data name="enum_sth_tip_Giris" xml:space="preserve"><value>Entry</value></data>
+  <data name="anamenu_satis_irsaliyesi" xml:space="preserve"><value>Sales waybill</value></data>
+  <data name="enum_cari_tipi_BagliOrtaklik" xml:space="preserve"><value>Connected venture</value></data>
+  <data name="enum_cha_evrak_tip_OdemeEmriGirisBordrosu" xml:space="preserve"><value>Payment promise entry note</value></data>
+  <data name="tahsilat_cek_ekle" xml:space="preserve"><value>Add check</value></data>
+  <data name="enum_cha_evrak_tip_FirmaHavaleEmriKapatma" xml:space="preserve"><value>Company transfer order settlement</value></data>
+  <data name="anamenu_temsilci" xml:space="preserve"><value>Representative</value></data>
+  <data name="caridetay_vergi_dairesi" xml:space="preserve"><value>Tax office</value></data>
+  <data name="enum_tarih_cinsi_GecenYil" xml:space="preserve"><value>Last year</value></data>
+  <data name="stok_gruplandirma_markalara_gore" xml:space="preserve"><value>According to brands</value></data>
+  <data name="enum_miktar_secenekleri_NetSatisMiktariBirim2" xml:space="preserve"><value>Net sales quantity(2. unit)</value></data>
+  <data name="enum_miktar_secenekleri_NetSatisMiktariBirim3" xml:space="preserve"><value>Net sales quantity(3. unit)</value></data>
+  <data name="genel_telefon_bolge_kodu" xml:space="preserve"><value>Telephone region code</value></data>
+  <data name="anamenu_fiyat_gor_barkod" xml:space="preserve"><value>See Price(Barcode)</value></data>
+  <data name="enum_cha_cinsi_GumrukBeyannamesi" xml:space="preserve"><value>Customs declaration</value></data>
+  <data name="firmaekleme_firma_daha_once_eklenmis" xml:space="preserve"><value>Company was added before</value></data>
+  <data name="genel_aygit_bagli_degil" xml:space="preserve"><value>Device not connected</value></data>
+  <data name="rapor_toplamlar_satir" xml:space="preserve"><value>Totals({0} row)</value></data>
+  <data name="enum_cha_evrak_tip_KasalarArasiProtestoluSenetTransfer" xml:space="preserve"><value>Inter-bond cashes bad bond transfer</value></data>
+  <data name="enum_StokListelemeSecenekleri_AnaAltGrubaGore" xml:space="preserve"><value>According to main-sub group</value></data>
+  <data name="enum_GenelEvrakTipleri_Tahsilat" xml:space="preserve"><value>Collection</value></data>
+  <data name="genel_devam_et" xml:space="preserve"><value>Continue</value></data>
+  <data name="stokdetay_fiyat_ayarlari" xml:space="preserve"><value>Price settings</value></data>
+  <data name="enum_cha_evrak_tip_KurFarklariVirmani" xml:space="preserve"><value>Exchange difference transfer</value></data>
+  <data name="evrakgirisi_iskonto_tutari" xml:space="preserve"><value>Discount amount</value></data>
+  <data name="enum_sck_sonpoz_Tahsilde" xml:space="preserve"><value>In collection</value></data>
+  <data name="stok_listeleme_ayarlari_reyonlara_gore" xml:space="preserve"><value>According to sections</value></data>
+  <data name="evrakgirisi_hedef_depo" xml:space="preserve"><value>Target warehouse</value></data>
+  <data name="anamenu_cari" xml:space="preserve"><value>Current account</value></data>
+  <data name="anamenu_stok" xml:space="preserve"><value>Inventory</value></data>
+  <data name="enum_cha_evrak_tip_TeminatSenetOdeme" xml:space="preserve"><value>Bond in security payment</value></data>
+  <data name="enum_cha_evrak_tip_GirisSerbestMeslekMakbuzu" xml:space="preserve"><value>Free profession slip entry</value></data>
+  <data name="tahsilat_referans_no_otomatik" xml:space="preserve"><value>Reference number: Automatic</value></data>
+  <data name="enum_cari_tipi_Musteri" xml:space="preserve"><value>Client</value></data>
+  <data name="enum_cha_evrak_tip_TeminatSenetCikis" xml:space="preserve"><value>Security bond exit</value></data>
+  <data name="evrakgirisi_teslim_turu_girilmek_zorunda" xml:space="preserve"><value>Delivery type must be entered. Can not be saved.</value></data>
+  <data name="enum_siparis_tutar_secenekleri_BekleyenBrutTutari" xml:space="preserve"><value>Pending gross amount</value></data>
+  <data name="guncelleme_kayitlar_gonderilemedi" xml:space="preserve"><value>Records could not be sent</value></data>
+  <data name="guncelleme_yazboz_bilgisi_guncelleniyor" xml:space="preserve"><value>Updating text information</value></data>
+  <data name="anamenu_hakkinda" xml:space="preserve"><value>About</value></data>
+  <data name="derecelendirme_iyi" xml:space="preserve"><value>Good</value></data>
+  <data name="enum_cari_tipi_Satici" xml:space="preserve"><value>Seller</value></data>
+  <data name="enum_tutar_secenekleri_Gosterme" xml:space="preserve"><value>Do not show</value></data>
+  <data name="enum_evrak_cari_secilebilir_sonuc_SadeceAlisYapilabilir" xml:space="preserve"><value>Current account could not be selected. Only purchase is possible.</value></data>
+  <data name="enum_AndroidAktarimTipi_GunKapanisi" xml:space="preserve"><value>Day closing</value></data>
+  <data name="enum_cha_evrak_tip_KrediAnaParaVadesiDegisimDekontu" xml:space="preserve"><value>Credit capital due change receipt</value></data>
+  <data name="enum_AndroidAktarimTipi_Ziyaret" xml:space="preserve"><value>Visit</value></data>
+  <data name="caridetay_yapilacak_tahsilatlar" xml:space="preserve"><value>Would be collections</value></data>
+  <data name="evrakgirisi_satir_sayisi" xml:space="preserve"><value>Row quantity</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama5" xml:space="preserve"><value>Comment 5 must be entered. You can not save.</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama4" xml:space="preserve"><value>Comment 4 must be entered. You can not save.</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama7" xml:space="preserve"><value>Comment 7 must be entered. You can not save.</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama6" xml:space="preserve"><value>Comment 6 must be entered. You can not save.</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama1" xml:space="preserve"><value>Comment 1 must be entered. You can not save.</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama3" xml:space="preserve"><value>Comment 3 must be entered. You can not save.</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama2" xml:space="preserve"><value>Comment 2 must be entered. You can not save.</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama9" xml:space="preserve"><value>Comment 9 must be entered. You can not save.</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama8" xml:space="preserve"><value>Comment 8 must be entered. You can not save.</value></data>
+  <data name="enum_cha_evrak_tip_TahsilEdilenAvansMakbuzu" xml:space="preserve"><value>Collected advance payment receipt</value></data>
+  <data name="enum_cari_stok_alim_cinsi_Toptan" xml:space="preserve"><value>Wholesale</value></data>
+  <data name="enum_siparis_tutar_secenekleri_SiparisNetTutar" xml:space="preserve"><value>Order net amount</value></data>
+  <data name="enum_cha_sntck_poz_Odendi" xml:space="preserve"><value>Paid</value></data>
+  <data name="genel_bluetooth_aygit_ismi_tanimlanmamis_durumda" xml:space="preserve"><value>Bluetooth device name is not defined</value></data>
+  <data name="enum_cari_hareket_tipi_CariHareketYapilmaz" xml:space="preserve"><value>Current account transaction IS NOT DONE</value></data>
+  <data name="evrakgirisi_urun_miktari_siparis_miktarindan_fazla" xml:space="preserve"><value>Product quantity more than order quantity</value></data>
+  <data name="enum_siparis_tutar_secenekleri_VazgecilenBrutTutari" xml:space="preserve"><value>Cancelled gross amount</value></data>
+  <data name="enum_sck_sonpoz_Portfoyde" xml:space="preserve"><value>On portfolio</value></data>
+  <data name="genel_fotograf" xml:space="preserve"><value>Photograph</value></data>
+  <data name="stok_birim_brut_fiyat_kdv_haric" xml:space="preserve"><value>Gross Unit price(VAT not included)</value></data>
+  <data name="stok_birim_brut_fiyat_kdv_dahil" xml:space="preserve"><value>Gross Unit price(VAT included)</value></data>
+  <data name="genel_filitre" xml:space="preserve"><value>Filter</value></data>
+  <data name="enum_cha_sntck_poz_Tahsilde" xml:space="preserve"><value>In collection</value></data>
+  <data name="stok_listeleme_ayarlari_ismine_gore" xml:space="preserve"><value>According to inventory name</value></data>
+  <data name="enum_cari_def_efatura_cinsi_TemelFatura" xml:space="preserve"><value>Main invoice</value></data>
+  <data name="enum_sck_nerede_cari_cins_KrediSozlesmemiz" xml:space="preserve"><value>Our credit agreement</value></data>
+  <data name="evrakgirisi_adres_no" xml:space="preserve"><value>Address no</value></data>
+  <data name="enum_cha_tip_Borc" xml:space="preserve"><value>Debit</value></data>
+  <data name="evrakgirisi_maksimum_satir_sayisi_uyari" xml:space="preserve"><value>Product could not be added to basket because maximum row quantity was exceeded.</value></data>
+  <data name="anamenu_anamenu" xml:space="preserve"><value>Main Menu</value></data>
+  <data name="enum_StokListelemeSecenekleri_MarkalaraGore" xml:space="preserve"><value>According to brands</value></data>
+  <data name="genel_lokasyon_guncellendi_mesaj" xml:space="preserve"><value>Location saved offline.</value></data>
+  <data name="caridetay_gecen_yil_cirosu" xml:space="preserve"><value>Last year turnover</value></data>
+  <data name="enum_sip_cins_ProformaSiparis" xml:space="preserve"><value>Proforma order</value></data>
+  <data name="evrakgirisi_masraf_kodu" xml:space="preserve"><value>Expense code</value></data>
+  <data name="evrakgirisi_masraf_ekle" xml:space="preserve"><value>Add expense</value></data>
+  <data name="stok_listeleme_ayarlari_markalara_gore" xml:space="preserve"><value>According to brands</value></data>
+  <data name="anamenu_ziyaret_yok_mesaj" xml:space="preserve"><value>No active visit found. Start visit first.</value></data>
+  <data name="evrakgirisi_karsilamada_urun_varken_degistiremezsiniz" xml:space="preserve"><value>You can not change while there is product in supplying.</value></data>
+  <data name="evrakgirisi_evrak_uygun_degil_islem_yapilamadi" xml:space="preserve"><value>Operation was not done because of inappropriate document.</value></data>
+  <data name="giris_demo_uyarisi" xml:space="preserve"><value>For Demo type "demo" as Username and Password</value></data>
+  <data name="enum_cha_evrak_tip_Tanimsiz" xml:space="preserve"><value>Undefined</value></data>
+  <data name="giris_firma_ekleme" xml:space="preserve"><value>Add company</value></data>
+  <data name="caridetay_risk_bilgileri" xml:space="preserve"><value>Risk information</value></data>
+  <data name="stok_lutfen_barkod_okutunuz" xml:space="preserve"><value>Please scan barcode</value></data>
+  <data name="enum_cha_evrak_tip_AlacakDekontu" xml:space="preserve"><value>Credit slip</value></data>
+  <data name="evrakgirisi_zorunlu_evrak_seri" xml:space="preserve"><value>Document serial must be entered. You can not save.!</value></data>
+  <data name="evrakgirisi_zorunlu_evrak_sira" xml:space="preserve"><value>Document order number must be entered. You can not save.!</value></data>
+  <data name="anamenu_cari_hesaplar" xml:space="preserve"><value>Current account</value></data>
+  <data name="genel_kayit_edilemedi" xml:space="preserve"><value>Could not be saved.</value></data>
+  <data name="enum_cha_sntck_poz_Ciro" xml:space="preserve"><value>Turnover</value></data>
+  <data name="genel_tarih_secimi" xml:space="preserve"><value>Date selection</value></data>
+  <data name="enum_sck_tip_MusteriCeki" xml:space="preserve"><value>Client check</value></data>
+  <data name="enum_cha_evrak_tip_TahsilSenetIade" xml:space="preserve"><value>Collection bond return</value></data>
+  <data name="evrakgirisi_sube_no" xml:space="preserve"><value>Branch number</value></data>
+  <data name="caridetay_kalan_kredisi" xml:space="preserve"><value>Credit balance</value></data>
+  <data name="enum_cha_evrak_tip_GenelVirmanDekontu" xml:space="preserve"><value>General purpose transfer slip</value></data>
+  <data name="genel_islem_yapiliyor" xml:space="preserve"><value>Operation being done…</value></data>
+  <data name="stok_listeleme_ayarlari_ureticilere_gore" xml:space="preserve"><value>By Manufacturers</value></data>
+  <data name="cari_tel2" xml:space="preserve"><value>Telephone 2</value></data>
+  <data name="cari_tel1" xml:space="preserve"><value>Telephone 1</value></data>
+  <data name="enum_GenelEvrakTipleri_Tanimsiz" xml:space="preserve"><value>Undefined</value></data>
+  <data name="genel_sifre_hatali" xml:space="preserve"><value>Wrong password</value></data>
+  <data name="tahsilat_cek_kendisi" xml:space="preserve"><value>Self</value></data>
+  <data name="firmaekleme_firma_girilmek_zorunda" xml:space="preserve"><value>Company must be added</value></data>
+  <data name="enum_Fiyat_Kaynagi_GenelSonSatisFiyati" xml:space="preserve"><value>General last sales price</value></data>
+  <data name="genel_kayit_edildi" xml:space="preserve"><value>Saved</value></data>
+  <data name="evrakgirisi_miktar_duzenle" xml:space="preserve"><value>Edit quantity</value></data>
+  <data name="evrakgirisi_tahsilat_cinsi" xml:space="preserve"><value>Collection type</value></data>
+  <data name="genel_yazdirma_hatasi" xml:space="preserve"><value>Printing error</value></data>
+  <data name="anamenu_evrak_girisi" xml:space="preserve"><value>Document entry</value></data>
+  <data name="enum_cha_cinsi_SerbestMeslekMakbuzu" xml:space="preserve"><value>Free Profession slip</value></data>
+  <data name="enum_siparis_tutar_secenekleri_BekleyenNetTutar" xml:space="preserve"><value>Pending net amount</value></data>
+  <data name="enum_sck_sonpoz_Teminatta" xml:space="preserve"><value>On security</value></data>
+  <data name="enum_cari_stok_alim_cinsi_Perakende" xml:space="preserve"><value>Retail</value></data>
+  <data name="firmasil_offline_kayitlari_sil" xml:space="preserve"><value>Delete Offline records</value></data>
+  <data name="enum_cha_sntck_poz_Teminatta" xml:space="preserve"><value>On security</value></data>
+  <data name="evrakgirisi_sepette_urun_varken_degistiremezsiniz" xml:space="preserve"><value>You can not change while there is product in basket.</value></data>
+  <data name="anamenu_analizler" xml:space="preserve"><value>Analysis</value></data>
+  <data name="anamenu_senkronize_etmek_istiyormusunuz" xml:space="preserve"><value>Do you want to synchronise?</value></data>
+  <data name="firmaekleme_firma_eklenemedi" xml:space="preserve"><value>Company could not be added</value></data>
+  <data name="stok_reyon" xml:space="preserve"><value>Section</value></data>
+  <data name="enum_siralama_secenekleri_Tutar1" xml:space="preserve"><value>Amount 1</value></data>
+  <data name="enum_siralama_secenekleri_Tutar3" xml:space="preserve"><value>Amount 3</value></data>
+  <data name="enum_siralama_secenekleri_Tutar2" xml:space="preserve"><value>Amount 2</value></data>
+  <data name="caridetay_cari_ekstre_gonderiliyor" xml:space="preserve"><value>Current account extract being sent</value></data>
+  <data name="stok_marka" xml:space="preserve"><value>Brand</value></data>
+  <data name="tarihsecimi_gecen_yil" xml:space="preserve"><value>Last year turnover</value></data>
+  <data name="enum_cha_cinsi_FasonFaturasi" xml:space="preserve"><value>Custom manufacture invoice</value></data>
+  <data name="evrakgirisi_normal_iade_secimi" xml:space="preserve"><value>Normal/Return selection</value></data>
+  <data name="enum_cha_evrak_tip_BankadanFirmaCekOdeme" xml:space="preserve"><value>Company check payment from bank</value></data>
+  <data name="enum_cha_evrak_tip_FirmaCekOdeme" xml:space="preserve"><value>Company check payment</value></data>
+  <data name="cari_cari_kalan_bakiye" xml:space="preserve"><value>Current account remaining balance</value></data>
+  <data name="enum_gruplandirma_secenekleri_Proje" xml:space="preserve"><value>Project</value></data>
+  <data name="enum_GenelEvrakTipleri_ProformaSiparis" xml:space="preserve"><value>Proforma order</value></data>
+  <data name="enum_cha_evrak_tip_StokGiderPusulasi" xml:space="preserve"><value>Inventory note of expense</value></data>
+  <data name="giris_hatirla" xml:space="preserve"><value>Remember</value></data>
+  <data name="guncelleme_yeni_kayitlar_cekilemedi" xml:space="preserve"><value>New records could not be retrieved</value></data>
+  <data name="tarihsecimi_aylik_tarihler" xml:space="preserve"><value>Monthly dates</value></data>
+  <data name="genel_basarisiz" xml:space="preserve"><value>Unsuccessful</value></data>
+  <data name="evrakgirisi_stok_ekleme" xml:space="preserve"><value>Inventory addition</value></data>
+  <data name="enum_cari_odeme_sekli_OnBesGunluk" xml:space="preserve"><value>For 15 days</value></data>
+  <data name="siparis_teslim_durumu_TeslimEdilenler" xml:space="preserve"><value>Delivered</value></data>
+  <data name="genel_tamam" xml:space="preserve"><value>Ok</value></data>
+  <data name="genel_tarih" xml:space="preserve"><value>Date</value></data>
+  <data name="genel_tutar" xml:space="preserve"><value>Amount</value></data>
+  <data name="genel_uyari" xml:space="preserve"><value>Warning</value></data>
+  <data name="genel_pesin" xml:space="preserve"><value>Advance</value></data>
+  <data name="genel_eposta_gonderme" xml:space="preserve"><value>Send e-mail</value></data>
+  <data name="genel_alacakli" xml:space="preserve"><value>Creditor</value></data>
+  <data name="genel_rapor" xml:space="preserve"><value>Report</value></data>
+  <data name="genel_sonuc" xml:space="preserve"><value>Result</value></data>
+  <data name="genel_senet" xml:space="preserve"><value>Bond</value></data>
+  <data name="genel_mesaj" xml:space="preserve"><value>Message</value></data>
+  <data name="genel_nakit" xml:space="preserve"><value>Advance</value></data>
+  <data name="genel_hepsi" xml:space="preserve"><value>All</value></data>
+  <data name="genel_haric" xml:space="preserve"><value>Exception/Exclusion</value></data>
+  <data name="genel_hayir" xml:space="preserve"><value>No</value></data>
+  <data name="genel_kapat" xml:space="preserve"><value>Close</value></data>
+  <data name="genel_dahil" xml:space="preserve"><value>Included</value></data>
+  <data name="genel_devam" xml:space="preserve"><value>Continue</value></data>
+  <data name="genel_enlem" xml:space="preserve"><value>Latitude</value></data>
+  <data name="enum_Derecelendirme_Derecelendirilmemis" xml:space="preserve"><value>Not rated</value></data>
+  <data name="enum_cha_cinsi_VadeFarkiFaturasi" xml:space="preserve"><value>Interest invoice</value></data>
+  <data name="genel_grubu" xml:space="preserve"><value>Group</value></data>
+  <data name="enum_evrak_siparis_ekleme_sonuc_UrunEklendi" xml:space="preserve"><value>Product added</value></data>
+  <data name="caridetay_ozet" xml:space="preserve"><value>Summary</value></data>
+  <data name="genel_alici" xml:space="preserve"><value>Buyer</value></data>
+  <data name="enum_siparis_teslim_durumu_secenekleri_Hepsi" xml:space="preserve"><value>All</value></data>
+  <data name="genel_bitis" xml:space="preserve"><value>Finish</value></data>
+  <data name="genel_banka" xml:space="preserve"><value>Bank</value></data>
+  <data name="genel_cinsi" xml:space="preserve"><value>Type</value></data>
+  <data name="anamenu_finans_yonetimi" xml:space="preserve"><value>Finance management</value></data>
+  <data name="evrakgirisi_zorunlu_sorumluluk_merkezi" xml:space="preserve"><value>Responsibility center must be entered. Can not save.</value></data>
+  <data name="enum_cari_ekstre_menu_secenekleri_BitisTarihiniDegistir" xml:space="preserve"><value>Change finish date</value></data>
+  <data name="evrakgirisi_ticaret_turu" xml:space="preserve"><value>Trade type</value></data>
+  <data name="enum_CariYetkiliUnvan_GenelKrd" xml:space="preserve"><value>General Coordinator</value></data>
+  <data name="enum_CariYetkiliUnvan_GenelMud" xml:space="preserve"><value>General Director</value></data>
+  <data name="enum_CariYetkiliUnvan_GenelSek" xml:space="preserve"><value>General Secretary</value></data>
+  <data name="guncelleme_servise_erisilemedi" xml:space="preserve"><value>Service can not be reached. Make sure service is open and and port is redirected.</value></data>
+  <data name="firmaekleme_demo_uyarisi" xml:space="preserve"><value>For Demo type "demo" as Company and Password</value></data>
+  <data name="enum_cha_evrak_tip_PortfoydekiCekNakit" xml:space="preserve"><value>Check in portfolio cash</value></data>
+  <data name="enum_cha_cinsi_FirmaSenedi" xml:space="preserve"><value>Company bond</value></data>
+  <data name="anamenu_alis_faturasi" xml:space="preserve"><value>Purchase invoice</value></data>
+  <data name="enum_cha_evrak_tip_DovizAlisBelgesi" xml:space="preserve"><value>Currency purchase document</value></data>
+  <data name="enum_CariYetkiliUnvan_SatisMud" xml:space="preserve"><value>Sales Director</value></data>
+  <data name="genel_bitis_tarihini_degistir" xml:space="preserve"><value>Change finish date</value></data>
+  <data name="guncelleme_kontrol_islemi_yapilamadi" xml:space="preserve"><value>Control operation could not be done</value></data>
+  <data name="guncelleme_kayitlar_cekiliyor" xml:space="preserve"><value>Records are being retrieved</value></data>
+  <data name="firmasil_senkronizasyon_bilgisini_sil" xml:space="preserve"><value>Delete synchronisation information</value></data>
+  <data name="enum_gruplandirma_secenekleri_Temsilci" xml:space="preserve"><value>Representative</value></data>
+  <data name="enum_cha_cari_cins_Hizmetimiz" xml:space="preserve"><value>Our service</value></data>
+  <data name="evrakgirisi_zorunlu_aciklama10" xml:space="preserve"><value>Comment 10 must be entered. You can not save.</value></data>
+  <data name="enum_CariYetkiliUnvan_SatisElmn" xml:space="preserve"><value>Sales staff</value></data>
+  <data name="anamenu_proforma_siparis" xml:space="preserve"><value>Proforma order</value></data>
+  <data name="enum_cha_kasa_hizmet_Demirbasimiz" xml:space="preserve"><value>Our Equipment</value></data>
+  <data name="caridetay_son_alacak_hareketi" xml:space="preserve"><value>Last credit transaction</value></data>
+  <data name="enum_sck_nerede_cari_cins_Kasamiz" xml:space="preserve"><value>Our cash</value></data>
+  <data name="evrakgirisi_ortalama_vade" xml:space="preserve"><value>Average deferment</value></data>
+  <data name="enum_sck_tip_MusteriKrediKarti" xml:space="preserve"><value>Customer credit card</value></data>
+  <data name="stokekleme_kalem" xml:space="preserve"><value>Item</value></data>
+  <data name="enum_Derecelendirme_Kotu" xml:space="preserve"><value>Bad</value></data>
+  <data name="enum_YuzdeTutar_Tutar" xml:space="preserve"><value>Amount</value></data>
+  <data name="evrakgirisi_barkod_okutulamaz" xml:space="preserve"><value>Barcode can not be scanned.</value></data>
+  <data name="genel_yetkili_adi" xml:space="preserve"><value>Authorized person name</value></data>
+  <data name="enum_YuzdeTutar_Yuzde" xml:space="preserve"><value>Percentage</value></data>
+  <data name="stok_gruplandirma_kategorilere_gore" xml:space="preserve"><value>According to categories</value></data>
+  <data name="enum_evrak_cari_secilebilir_sonuc_SadeceParasalHareketYapilabilir" xml:space="preserve"><value>Current account could not be selected. Only monetary transaction is possible.</value></data>
+  <data name="guncelleme_liste_cekiliyor" xml:space="preserve"><value>List is being retrieved</value></data>
+  <data name="evrakgirisi_urunler_sepete_eklendi" xml:space="preserve"><value>Product/Products added to basket</value></data>
+  <data name="enum_GenelEvrakTipleri_BankalarArasiVirmanDekontu" xml:space="preserve"><value>Interbank transfer slip</value></data>
+  <data name="enum_cha_evrak_tip_TakasCekKarsiliksizIade" xml:space="preserve"><value>Bad check clearing return</value></data>
+  <data name="enum_cha_kasa_hizmet_Carimiz" xml:space="preserve"><value>Our current account</value></data>
+  <data name="genel_toplam_meblag" xml:space="preserve"><value>Total amount</value></data>
+  <data name="ziyaret_gunu_bitirme" xml:space="preserve"><value>Finish day</value></data>
+  <data name="enum_StokListelemeSecenekleri_UreticilereGore" xml:space="preserve"><value>By Manufacturers</value></data>
+  <data name="cari_bay" xml:space="preserve"><value>Mr</value></data>
+  <data name="genel_fiyat_listesi" xml:space="preserve"><value>Pricelist</value></data>
+  <data name="enum_StokListelemeSecenekleri_ReyonlaraGore" xml:space="preserve"><value>According to sections</value></data>
+  <data name="tarihsecimi_gecen_ay" xml:space="preserve"><value>Last month</value></data>
+  <data name="kayithikayesi_sadece_evraklar_goruntulenebilir" xml:space="preserve"><value>Only documents can be viewed.</value></data>
+  <data name="stok_birim4" xml:space="preserve"><value>Unit 4</value></data>
+  <data name="stok_birim1" xml:space="preserve"><value>Unit 1</value></data>
+  <data name="stok_birim2" xml:space="preserve"><value>Unit 2</value></data>
+  <data name="stok_birim3" xml:space="preserve"><value>Unit 3</value></data>
+  <data name="evrakgirisi_stok_secimi" xml:space="preserve"><value>Inventory selection</value></data>
+  <data name="enum_cha_evrak_tip_KarsiliksizCekIadeGirisBordrosu" xml:space="preserve"><value>Bad check return entry note</value></data>
+  <data name="enum_CariYetkiliUnvan_PazarlamaElmn" xml:space="preserve"><value>Marketing staff</value></data>
+  <data name="genel_birim_fiyat" xml:space="preserve"><value>Unit price</value></data>
+  <data name="genel_lutfen_bekleyiniz" xml:space="preserve"><value>Please wait</value></data>
+  <data name="enum_cari_def_efatura_cinsi_YolcuBeraberindeFatura" xml:space="preserve"><value>Invoice with passenger</value></data>
+  <data name="evrakgirisi_proje_secimi" xml:space="preserve"><value>Project selection</value></data>
+  <data name="anamenu_ziyareti_bitir" xml:space="preserve"><value>End visit</value></data>
+  <data name="enum_GenelEvrakTipleri_AlisIrsaliyesi" xml:space="preserve"><value>Purchase Waybill</value></data>
+  <data name="evrakgirisi_form_dosyasi_secilmemis" xml:space="preserve"><value>Form file not selected</value></data>
+  <data name="genel_tumunu_sec" xml:space="preserve"><value>Select all</value></data>
+  <data name="enum_cari_stok_alim_cinsi_ToptanVePerakende" xml:space="preserve"><value>Wholesale and retail</value></data>
+  <data name="guncelleme_bilgiler_guncelleniyor" xml:space="preserve"><value>Data being updated</value></data>
+  <data name="guncelleme_servis_erisimi_kontrol_ediliyor" xml:space="preserve"><value>Service access being controlled…</value></data>
+  <data name="anamenu_sayim_sonuclari_giris_fisi" xml:space="preserve"><value>Counting results entry slip</value></data>
+  <data name="enum_cha_cinsi_CariAcilis" xml:space="preserve"><value>Current account </value></data>
+  <data name="enum_tarih_cinsi_Bugun" xml:space="preserve"><value>Today</value></data>
+  <data name="enum_tarih_cinsi_BuYil" xml:space="preserve"><value>Current year</value></data>
+  <data name="cari_eposta_tanimli_degil" xml:space="preserve"><value>E-mail address is not defined</value></data>
+  <data name="evrakgirisi_kalan_miktar" xml:space="preserve"><value>Balance amount</value></data>
+  <data name="enum_Fiyat_Kaynagi_GenelSonAlisFiyati" xml:space="preserve"><value>General last purchase price</value></data>
+  <data name="genel_yetkiniz_yok" xml:space="preserve"><value>You do not have authority</value></data>
+  <data name="guncelleme_veritabani_ismi_bulunuyor" xml:space="preserve"><value>Searching database name…</value></data>
+  <data name="giris_programi_kapatmak_istediginize_eminmisiniz" xml:space="preserve"><value>Are you sure you want to close the application?</value></data>
+  <data name="enum_cari_arama_secenekleri_TanimliOlan" xml:space="preserve"><value>Defined</value></data>
+  <data name="stok_gruplandirma_ana_alt_gruba_gore" xml:space="preserve"><value>According to main-sub group</value></data>
+  <data name="stok_alt_grubu" xml:space="preserve"><value>Sub group</value></data>
+  <data name="enum_cha_evrak_tip_KasalarArasiCekTransfer" xml:space="preserve"><value>Inter-check cash transfer</value></data>
+  <data name="tarihsecimi_hazir_tarihler" xml:space="preserve"><value>Ready dates</value></data>
+  <data name="enum_evrak_siparis_ekleme_sonuc_StokSeviyesiYeterliDegil" xml:space="preserve"><value>Inventory level not sufficient</value></data>
+  <data name="caridetay_evrak_uygun_degil" xml:space="preserve"><value>The document select is not appropriate to view</value></data>
+  <data name="genel_tanimsiz" xml:space="preserve"><value>Undefined</value></data>
+  <data name="enum_StokHareketleriOrdeBy_MarkaKodu" xml:space="preserve"><value>Brand code</value></data>
+  <data name="evrakgirisi_sorumluluk_merkezi" xml:space="preserve"><value>Responsibility center</value></data>
+  <data name="enum_cha_cinsi_FinansalKiralamaSozlesmesi" xml:space="preserve"><value>Financial Rent Agreement</value></data>
+  <data name="enum_EvrakAktarimDurumu_Hatali" xml:space="preserve"><value>With error</value></data>
+  <data name="evrakgirisi_karsi_hesap_doviz_kuru" xml:space="preserve"><value>Opposite account currency exchange rate</value></data>
+  <data name="evrakgirisi_barkod_okuma_sayisi" xml:space="preserve"><value>Barcode scan amount</value></data>
+  <data name="evrakgirisi_masraf_tutari_girilmek_zorunda" xml:space="preserve"><value>Expense amount must be entered!</value></data>
+  <data name="anamenu_cari_bilgileri" xml:space="preserve"><value>Current account data</value></data>
+  <data name="guncelleme_veritabani_olusturuluyor" xml:space="preserve"><value>Creating database…</value></data>
+  <data name="guncelleme_degisen_kayitlar_indiriliyor" xml:space="preserve"><value>Changed records are being downloaded…</value></data>
+  <data name="enum_cha_cari_cins_MuhasebeHesabimiz" xml:space="preserve"><value>Our account </value></data>
+  <data name="enum_cha_evrak_tip_TahsilSenetOdeme" xml:space="preserve"><value>Collection bond payment</value></data>
+  <data name="enum_CariYetkiliUnvan_TeknikMud" xml:space="preserve"><value>Technical Director</value></data>
+  <data name="enum_CariYetkiliUnvan_UretimMud" xml:space="preserve"><value>Director of production</value></data>
+  <data name="enum_cha_evrak_tip_TahsilSenetCikis" xml:space="preserve"><value>Collection bond exit</value></data>
+  <data name="genel_kayit_edilmemis_evrak_bulundu" xml:space="preserve"><value>Unsaved document found. Do you want to open?</value></data>
+  <data name="genel_net_fiyat" xml:space="preserve"><value>Net price</value></data>
+  <data name="siparis_onaylama" xml:space="preserve"><value>Order confirmation</value></data>
+  <data name="tahsilat_cek_aciklama" xml:space="preserve"><value>Check comment</value></data>
+  <data name="enum_cha_cari_cins_DonemselHizmetimiz" xml:space="preserve"><value>Our periodical service</value></data>
+  <data name="enum_cha_evrak_tip_CariVadeFarkiSifirlamaFisi" xml:space="preserve"><value>Current late interest reset slip</value></data>
+  <data name="stok_cariye_son_satis_fiyati" xml:space="preserve"><value>Latest sales price to current account</value></data>
+  <data name="enum_cha_cari_cins_Bankamiz" xml:space="preserve"><value>Our bank</value></data>
+  <data name="enum_cha_evrak_tip_BankadanFirmaSenetodeme" xml:space="preserve"><value>Company bond payment from bank</value></data>
+  <data name="guncelleme_veritabanina_baglaniyor" xml:space="preserve"><value>Connecting to database…</value></data>
+  <data name="enum_cha_evrak_tip_BankadaTeminattakiSenediCariyeIadeBordrosu" xml:space="preserve"><value>Security bond return to customer note</value></data>
+  <data name="enum_cha_evrak_tip_MevduatCekKarsiliksizIade" xml:space="preserve"><value>Bad check return from deposit</value></data>
+  <data name="evrakgirisi_tahsilat_ekle" xml:space="preserve"><value>Add collection</value></data>
+  <data name="enum_cha_cari_cins_Kasamiz" xml:space="preserve"><value>Our cash</value></data>
+  <data name="enum_cha_evrak_tip_BankadaTeminattakiKarsiliksizCekiCariyeIadeBordrosu" xml:space="preserve"><value>Security bad check return to customer note</value></data>
+  <data name="enum_IskontoMasrafUygulamaSekli_BirimTutar" xml:space="preserve"><value>Unit amount</value></data>
+  <data name="enum_tumu_tanimli_olan_listeden_sec_Tumu" xml:space="preserve"><value>All</value></data>
+  <data name="evrakgirisi_odeme_plani_secimi" xml:space="preserve"><value>Payment plan selection</value></data>
+  <data name="enum_siparis_tutar_secenekleri_SiparisIskontoTutari" xml:space="preserve"><value>Order discount amount</value></data>
+  <data name="siparis_vazgecilenler" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="enum_cha_kasa_hizmet_CariPersonelimiz" xml:space="preserve"><value>Our current personnel</value></data>
+  <data name="evrakgirisi_karsilama" xml:space="preserve"><value>Supplying</value></data>
+  <data name="enum_tutar_secenekleri_NetKarTutari" xml:space="preserve"><value>Net profit amount</value></data>
+  <data name="enum_sth_tip_DepoTransfer" xml:space="preserve"><value>Warehouse transfer</value></data>
+  <data name="enum_cha_cinsi_MusteriHavaleSozu" xml:space="preserve"><value>Customer transfer promise</value></data>
+  <data name="enum_siparis_teslim_durumu_secenekleri_Vazgeçilen" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="enum_siparis_tutar_secenekleri_BekleyenIskontoTutari" xml:space="preserve"><value>Pending discount amount</value></data>
+  <data name="anamenu_gunu_bitir" xml:space="preserve"><value>Finish day</value></data>
+  <data name="enum_StokListelemeSecenekleri_KategorilereGore" xml:space="preserve"><value>According to categories</value></data>
+  <data name="evrakgirisi_teslim_tarihi_evrak_tarihinden_once_olamaz" xml:space="preserve"><value>Delivery date can not be earlier than document date.</value></data>
+  <data name="enum_sip_orderby_TeslimTarihi" xml:space="preserve"><value>Delivery date</value></data>
+  <data name="genel_csv_paylas" xml:space="preserve"><value>Share CSV</value></data>
+  <data name="enum_EvrakAktarimDurumu_Beklemede" xml:space="preserve"><value>Pending</value></data>
+  <data name="enum_fatura_durumu_secenekleri_Irsaliyeler" xml:space="preserve"><value>Waybills</value></data>
+  <data name="enum_cha_evrak_tip_PosSatisVirmanDekontu" xml:space="preserve"><value>POS sales transfer slip</value></data>
+  <data name="enum_cha_ticaret_turu_IhrackayitliYurtIciTicaret" xml:space="preserve"><value>Export-registered domestic trade</value></data>
+  <data name="tahsilat_cek_no" xml:space="preserve"><value>Check no</value></data>
+  <data name="enum_sck_sonpoz_OdenmediPortfoyde" xml:space="preserve"><value>Not paid in portfolio</value></data>
+  <data name="enum_CariYetkiliUnvan_MaliMus" xml:space="preserve"><value>Financial advisor</value></data>
+  <data name="enum_CariYetkiliUnvan_YonKurUyesi" xml:space="preserve"><value>Member of Management Board</value></data>
+  <data name="stok_alt_ambalaj" xml:space="preserve"><value>Sub package</value></data>
+  <data name="enum_cha_evrak_tip_KrediGiderTahakkukuDekontu" xml:space="preserve"><value>Credit expense accrual receipt</value></data>
+  <data name="tarihsecimi_son_365_gun" xml:space="preserve"><value>Last 365 days</value></data>
+  <data name="evrakgirisi_evrak_kilitli_degistirilemez" xml:space="preserve"><value>Document locked. Locked document can not be changed.</value></data>
+  <data name="enum_sck_sonpoz_Icrada" xml:space="preserve"><value>On levy</value></data>
+  <data name="evrakgirisi_zorunlu_proje" xml:space="preserve"><value>Project must be entered. You can not save.!</value></data>
+  <data name="enum_sck_nerede_cari_cins_FinansalSozlesmemiz" xml:space="preserve"><value>Our financial agreement</value></data>
+  <data name="enum_cha_evrak_tip_SenetGirisBordrosu" xml:space="preserve"><value>Bond entry note</value></data>
+  <data name="stok_listeleme_ayarlari_arama" xml:space="preserve"><value>Search settings</value></data>
+  <data name="enum_GenelEvrakTipleri_DepolarArasiSevk" xml:space="preserve"><value>Interwarehouse dispatch</value></data>
+  <data name="enum_GenelEvrakTipleri_GelenHavale" xml:space="preserve"><value>Incoming transfer</value></data>
+  <data name="evrakgirisi_fiyat_listesi" xml:space="preserve"><value>Pricelist</value></data>
+  <data name="enum_tarih_cinsi_BuAy" xml:space="preserve"><value>Current month</value></data>
+  <data name="genel_baslangic_tarihi" xml:space="preserve"><value>Start date</value></data>
+  <data name="enum_cha_cari_cins_KrediSozlesmemiz" xml:space="preserve"><value>Our credit agreement</value></data>
+  <data name="enum_tarih_cinsi_Son24Saat" xml:space="preserve"><value>Last 24 hours</value></data>
+  <data name="enum_tarih_cinsi_Dun" xml:space="preserve"><value>Yesterday</value></data>
+  <data name="siparis_miktar_birim_acik_siparis_var" xml:space="preserve"><value>{0} {1} Open order available</value></data>
+  <data name="enum_cha_evrak_tip_BankadaTeminattakiCekiCariyeIadeBordrosu" xml:space="preserve"><value>Security check return to customer note</value></data>
+  <data name="enum_cha_cari_cins_Personelimiz" xml:space="preserve"><value>Our Staff</value></data>
+  <data name="enum_stok_arama_secenekleri_IleBaslar" xml:space="preserve"><value>Starts with</value></data>
+  <data name="enum_GenelEvrakTipleri_TahsildekiCekOdemeBordrosu" xml:space="preserve"><value>Check in collection payment note</value></data>
+  <data name="enum_sck_nerede_cari_cins_MuhasebeHesabimiz" xml:space="preserve"><value>Our account </value></data>
+  <data name="stok_kisa_ismi" xml:space="preserve"><value>Short name</value></data>
+  <data name="enum_siparis_tutar_secenekleri_VazgecilenNetTutarKdvDahil" xml:space="preserve"><value>Cancelled net amount(VAT included)</value></data>
+  <data name="evrakgirisi_ihracat_kodu" xml:space="preserve"><value>Export code</value></data>
+  <data name="guncelleme_silinen_kayitlar_cekilemedi" xml:space="preserve"><value>Deleted records could not be retrieved.</value></data>
+  <data name="enum_siparis_tutar_secenekleri_Gosterme" xml:space="preserve"><value>Do not show</value></data>
+  <data name="evrakgirisi_taslak_kayit_edilsin_mi" xml:space="preserve"><value>Document is not saved. Do you want to save as template?</value></data>
+  <data name="enum_siparis_miktar_secenekleri_SiparisMiktari" xml:space="preserve"><value>Order quantity</value></data>
+  <data name="genel_depo_secimi" xml:space="preserve"><value>Warehouse selection</value></data>
+  <data name="enum_IskontoMasrafUygulamaSekli_ToplamTutar" xml:space="preserve"><value>Total amount</value></data>
+  <data name="stok_fiyat_kaynagi" xml:space="preserve"><value>Price resource</value></data>
+  <data name="enum_tarih_cinsi_Son365Gun" xml:space="preserve"><value>Last 365 days</value></data>
+  <data name="enum_sck_sonpoz_Odendi" xml:space="preserve"><value>Paid</value></data>
+  <data name="enum_evrak_cari_secilebilir_sonuc_CariKilitliDurumda" xml:space="preserve"><value>Current account could not be selected. Current account is locked.</value></data>
+  <data name="siparis_verilen_siparis_yok" xml:space="preserve"><value>No given order</value></data>
+  <data name="siparis_teslim_tarihi" xml:space="preserve"><value>Delivery date</value></data>
+  <data name="genel_bolgesi" xml:space="preserve"><value>Region</value></data>
+  <data name="siparis_miktar_birim_verilen_siparis_var" xml:space="preserve"><value>{0} {1} given order available</value></data>
+  <data name="cari_adres_lokasyon_guncelleme_onay" xml:space="preserve"><value>Location information available for the address. Do you wish to change?</value></data>
+  <data name="firmaekleme_sifre_girilmek_zorunda" xml:space="preserve"><value>Password mus be entered</value></data>
+  <data name="stok_ureticileri" xml:space="preserve"><value>Inventory manufacturers</value></data>
+  <data name="enum_gruplandirma_secenekleri_StokAnaGrubu" xml:space="preserve"><value>Inventory main group</value></data>
+  <data name="siparis_teslim_durumu_Bekleyenler" xml:space="preserve"><value>Pending</value></data>
+  <data name="evrakgirisi_normal_iade" xml:space="preserve"><value>Normal/Return</value></data>
+  <data name="enum_cha_cinsi_VadeFarkiSifirlama" xml:space="preserve"><value>Resetting late interest</value></data>
+  <data name="guncelleme_degisen_kayitlar_yaziliyor" xml:space="preserve"><value>Changed records are being written…</value></data>
+  <data name="guncelleme_servis_versiyonu_bulunuyor" xml:space="preserve"><value>Searching service version…</value></data>
+  <data name="enum_cha_evrak_tip_BankadaTahsildekiKarsiliksizCekiCariyeIadeBordrosu" xml:space="preserve"><value>Collection  bad check return to customer note</value></data>
+  <data name="enum_stok_arama_secenekleri_TanimliOlan" xml:space="preserve"><value>Defined</value></data>
+  <data name="enum_sip_cins_DisTicaretSiparisi" xml:space="preserve"><value>Foreign Trade Order</value></data>
+  <data name="evrakgirisi_tahsilat_tutari_girilmek_zorunda" xml:space="preserve"><value>Collection amount must be entered!</value></data>
+  <data name="enum_CariYetkiliUnvan_SatinAlmaElmn" xml:space="preserve"><value>Purchasing staff</value></data>
+  <data name="caridetay_adat_vadesi" xml:space="preserve"><value>Interest rate</value></data>
+  <data name="evrakgirisi_ihracat_secimi" xml:space="preserve"><value>Export selection</value></data>
+  <data name="enum_stok_arama_secenekleri_TumStoklar" xml:space="preserve"><value>All inventory</value></data>
+  <data name="guncelleme_servis_guncelleme_gerekmekte" xml:space="preserve"><value>Service update necessary. Operation not completed.</value></data>
+  <data name="guncelleme_tablolar_guncelleniyor" xml:space="preserve"><value>Updating tables</value></data>
+  <data name="enum_cha_tip_BorcVeAlacak" xml:space="preserve"><value>Debit and Credit</value></data>
+  <data name="enum_kas_tip_AlinanOdemeSozuKasasi" xml:space="preserve"><value>Customer payment promises cash</value></data>
+  <data name="enum_cha_evrak_tip_TahsilatMakbuzu" xml:space="preserve"><value>Collection slip(Receipt)</value></data>
+  <data name="genel_toplam_fiyat" xml:space="preserve"><value>Total price</value></data>
+  <data name="enum_tutar_secenekleri_NetMaliyet" xml:space="preserve"><value>Net cost</value></data>
+  <data name="kayithikayesi_sadece_aktarilmis_evraklar_yazdirilabilir" xml:space="preserve"><value>Only transferred documents can be printed.</value></data>
+  <data name="caridetay_tanimli_kredisi" xml:space="preserve"><value>Defined credit</value></data>
+  <data name="enum_cha_kasa_hizmet_MuhasebeHesabimiz" xml:space="preserve"><value>Our account </value></data>
+  <data name="derecelendirme_normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="enum_cha_kasa_hizmet_Bankamiz" xml:space="preserve"><value>Our bank</value></data>
+  <data name="genel_odeme_plani" xml:space="preserve"><value>Payment plan</value></data>
+  <data name="enum_kas_tip_KrediKartiKomisyonKasasi" xml:space="preserve"><value>Credit card comission cash</value></data>
+  <data name="enum_cha_evrak_tip_KasalarArasiSenetTransfer" xml:space="preserve"><value>Inter-bond cashes transfer</value></data>
+  <data name="caridetay_cek_riski_musterisi" xml:space="preserve"><value>Check risk(Client)</value></data>
+  <data name="enum_cha_sntck_poz_Portfoyde" xml:space="preserve"><value>On portfolio</value></data>
+  <data name="caridetay_cari_bilgileri_olusturuluyor" xml:space="preserve"><value>Current account information being generated.</value></data>
+  <data name="evrakgirisi_ana_alt_ambar_yeterli_degil_islem_yapilamadi" xml:space="preserve"><value>Operation on active main and sub package was not done because of insufficient product </value></data>
+  <data name="enum_cha_evrak_tip_Acilis" xml:space="preserve"><value>Opening</value></data>
+  <data name="genel_yok" xml:space="preserve"><value>Not present</value></data>
+  <data name="genel_sil" xml:space="preserve"><value>Delete</value></data>
+  <data name="genel_net" xml:space="preserve"><value>Net</value></data>
+  <data name="genel_kdv" xml:space="preserve"><value>VAT</value></data>
+  <data name="genel_gun" xml:space="preserve"><value>Day</value></data>
+  <data name="genel_ara" xml:space="preserve"><value>Search</value></data>
+  <data name="genel_cek" xml:space="preserve"><value>Check</value></data>
+  <data name="enum_gruplandirma_secenekleri_CariBolge" xml:space="preserve"><value>Current account region</value></data>
+  <data name="enum_cha_tpoz_Acik" xml:space="preserve"><value>Open</value></data>
+  <data name="evrakgirisi_form" xml:space="preserve"><value>Form</value></data>
+  <data name="anamenu_ziyarete_basla" xml:space="preserve"><value>Start visit</value></data>
+  <data name="caridetay_toplam_risk_tutari" xml:space="preserve"><value>Total rist amount</value></data>
+  <data name="tarihsecimi_bu_hafta" xml:space="preserve"><value>Current week</value></data>
+  <data name="enum_gruplandirma_secenekleri_StokMarka" xml:space="preserve"><value>Inventory brand</value></data>
+  <data name="enum_GenelEvrakTipleri_AlisFaturasi" xml:space="preserve"><value>Purchase invoice</value></data>
+  <data name="cari_adres" xml:space="preserve"><value>Address</value></data>
+  <data name="cari_bayan" xml:space="preserve"><value>Mrs</value></data>
+  <data name="evrakgirisi_kasa_banka_kodu_girilmek_zorunda" xml:space="preserve"><value>Cash-bank code must be entered!</value></data>
+  <data name="evrakgirisi_il_secimi" xml:space="preserve"><value>State selection</value></data>
+  <data name="caridetay_cek_bakiyesi_kendisi" xml:space="preserve"><value>Check balance(Self)</value></data>
+  <data name="enum_sck_nerede_cari_cins_Bankamiz" xml:space="preserve"><value>Our bank</value></data>
+  <data name="enum_gruplandirma_secenekleri_StokReyon" xml:space="preserve"><value>Inventory section</value></data>
+  <data name="caridetay_cari_ekstre_olusturuluyor" xml:space="preserve"><value>Current account extract being generated</value></data>
+  <data name="enum_SatirCinsi_Stok" xml:space="preserve"><value>Inventory</value></data>
+  <data name="stok_gruplandirma_ureticilere_gore" xml:space="preserve"><value>By Manufacturers</value></data>
+  <data name="enum_cha_evrak_tip_MusteriKrediKartiIadeÇikisBordrosu" xml:space="preserve"><value>Customer credit card return exit note</value></data>
+  <data name="anamenu_satinalma_yonetimi" xml:space="preserve"><value>Purchasing management</value></data>
+  <data name="enum_cha_sntck_poz_OdenmediIade" xml:space="preserve"><value>Not paid return</value></data>
+  <data name="guncelleme_internete_baglanilamadi" xml:space="preserve"><value>Could not connect to internet. Make sure you have internet.</value></data>
+  <data name="anamenu_barkod_kontrollu_fatura_onaylama" xml:space="preserve"><value>Invoice confirmation with barcode control</value></data>
+  <data name="evrakgirisi_kdv_sil" xml:space="preserve"><value>Delete VAT</value></data>
+  <data name="guncelleme_hata_parametreler_cekilemedi" xml:space="preserve"><value>Parameters could not be retrieved</value></data>
+  <data name="genel_lokasyon_kayit_edilemedi" xml:space="preserve"><value>Location could not be saved offline</value></data>
+  <data name="anamenu_tahsilat_makbuzu" xml:space="preserve"><value>Collection slip(Receipt)</value></data>
+  <data name="evrakgirisi_doviz_kurunu_degistiremezsiniz" xml:space="preserve"><value>{0} You can not change currency exchange rate</value></data>
+  <data name="genel_lokasyon_bul" xml:space="preserve"><value>Find location</value></data>
+  <data name="evrakgirisi_zorunlu_belge_no" xml:space="preserve"><value>Document number must be entered. Can not be saved.</value></data>
+  <data name="enum_cha_cinsi_KurFarkiFaturasi" xml:space="preserve"><value>Currency exchange rate difference invoice</value></data>
+  <data name="evrakgirisi_siparis_karsilama_disi_giris_yapilamaz" xml:space="preserve"><value>Entry can not be done that exceeds order supply</value></data>
+  <data name="ziyaret_gune_baslama" xml:space="preserve"><value>Start day</value></data>
+  <data name="enum_cha_evrak_tip_KasaTahsilatFisi" xml:space="preserve"><value>Cash collection slip</value></data>
+  <data name="guncelleme_toplam_ilerleme" xml:space="preserve"><value>Total progress</value></data>
+  <data name="enum_sth_nakliyedurumu_TeslimEdildi" xml:space="preserve"><value>Delivered</value></data>
+  <data name="enum_cha_cinsi_Nakit" xml:space="preserve"><value>Advance</value></data>
+  <data name="evrakgirisi_evrak_sira" xml:space="preserve"><value>Document order number</value></data>
+  <data name="evrakgirisi_evrak_seri" xml:space="preserve"><value>Document serial</value></data>
+  <data name="caridetay_bakiye_riski" xml:space="preserve"><value>Balance risk</value></data>
+  <data name="firmaekleme_firma_eklendi" xml:space="preserve"><value>Company added</value></data>
+  <data name="kayithikayesi_secilen_evrak_tipi_desteklenmiyor" xml:space="preserve"><value>Selected document type is not supported</value></data>
+  <data name="enum_GenelEvrakTipleri_GidenHavale" xml:space="preserve"><value>Outgoing transfer</value></data>
+  <data name="enum_cha_evrak_tip_CariAlacakDekontu" xml:space="preserve"><value>Current account credit slip</value></data>
+  <data name="enum_cha_cinsi_FirmaKrediKarti" xml:space="preserve"><value>Company Credit Card</value></data>
+  <data name="genel_goruntule" xml:space="preserve"><value>Show</value></data>
+  <data name="enum_cha_cinsi_FirmaOdemeEmri" xml:space="preserve"><value>Company Payment instruction</value></data>
+  <data name="genel_gps_acik_degil" xml:space="preserve"><value>GPS not open</value></data>
+  <data name="enum_cha_normal_Iade_Normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="enum_sck_imza_Kendisi" xml:space="preserve"><value>Self</value></data>
+  <data name="enum_sip_cins_UretimTalebi" xml:space="preserve"><value>Production Demand</value></data>
+  <data name="enum_CariYetkiliUnvan_Musavir" xml:space="preserve"><value>Advisor/Counsellor</value></data>
+  <data name="evrakgirisi_carinin_nakite_donen_borcu_var" xml:space="preserve"><value>Current account{0} has (Maximum:{1} ) debt converted to cash! Document could not be saved.</value></data>
+  <data name="enum_cha_evrak_tip_ProtestoluSenetIadeCikisBordrosu" xml:space="preserve"><value>Bad bond return exit note</value></data>
+  <data name="enum_cha_evrak_tip_MusteriHavaleSozuKapatma" xml:space="preserve"><value>Customer transfer promise settlement</value></data>
+  <data name="genel_gruplandirma_secenekleri" xml:space="preserve"><value>Grouping options</value></data>
+  <data name="enum_cha_evrak_tip_MevduatSenetprotIade" xml:space="preserve"><value>Bad bond return from deposit</value></data>
+  <data name="enum_sip_orderby_SeriSira" xml:space="preserve"><value>Series and order</value></data>
+  <data name="enum_cha_evrak_tip_TediyeMakbuzu" xml:space="preserve"><value>Deposit receipt</value></data>
+  <data name="enum_miktar_secenekleri_Gosterme" xml:space="preserve"><value>Do not show</value></data>
+  <data name="enum_Fiyat_Kaynagi_CaridenSonAlisFiyati" xml:space="preserve"><value>Latest purchase price from current account</value></data>
+  <data name="stok_mal_fazlasi_girisi" xml:space="preserve"><value>Good surplus entry</value></data>
+  <data name="guncelleme_yeni_kayitlar_yaziliyor" xml:space="preserve"><value>Printing new records…</value></data>
+  <data name="enum_cha_cari_cins_CariPersonelimiz" xml:space="preserve"><value>Our current personnel</value></data>
+  <data name="stok_iskonto_kisa" xml:space="preserve"><value>Discount</value></data>
+  <data name="genel_secimi_kaldir" xml:space="preserve"><value>Cancel selection</value></data>
+  <data name="enum_Derecelendirme_CokIyi" xml:space="preserve"><value>Very good</value></data>
+  <data name="enum_cha_tip_Alacak" xml:space="preserve"><value>Credit</value></data>
+  <data name="evrakgirisi_urunler_sipariste_yok" xml:space="preserve"><value>Product/Products not present in order!</value></data>
+  <data name="enum_cha_evrak_tip_ProtestoluSenetIadeGirisBordrosu" xml:space="preserve"><value>Bad bond return entry note</value></data>
+  <data name="genel_pdf_paylas" xml:space="preserve"><value>Share PDF</value></data>
+  <data name="guncelleme_hazirlaniyor" xml:space="preserve"><value>Being prepared</value></data>
+  <data name="caridetay_yazboz_tahtasi" xml:space="preserve"><value>Text board</value></data>
+  <data name="evrakgirisi_urunun_minimum_fiyati_uygun_degil_fiyatsiz" xml:space="preserve"><value>Product {0} is below minimum sales price. Document was not saved.</value></data>
+  <data name="enum_sck_imza_Tumu" xml:space="preserve"><value>All</value></data>
+  <data name="cari_cari_bakiye" xml:space="preserve"><value>Current account balance</value></data>
+  <data name="enum_fatura_durumu_secenekleri_Hepsi" xml:space="preserve"><value>All</value></data>
+  <data name="genel_hakkinda" xml:space="preserve"><value>About</value></data>
+  <data name="kayithikayesi_aktarilmis_evragi_tekrar_aktarmak_istediginize_emin_misiniz" xml:space="preserve"><value>Are you sure you want re-transfer the document?</value></data>
+  <data name="stok_uretici" xml:space="preserve"><value>Manufacturer</value></data>
+  <data name="enum_gruplandirma_secenekleri_StokUretici" xml:space="preserve"><value>Inventory manufacturer</value></data>
+  <data name="siparis_teslim_durumu_Tumu" xml:space="preserve"><value>All</value></data>
+  <data name="giris_sifre" xml:space="preserve"><value>Password</value></data>
+  <data name="anamenu_depolar_arasi_sevk" xml:space="preserve"><value>Interwarehouse dispatch</value></data>
+  <data name="enum_sip_cins_FasonSiparisi" xml:space="preserve"><value>Custom manufacture order slip</value></data>
+  <data name="genel_temsilci" xml:space="preserve"><value>Representative</value></data>
+  <data name="gene_kredi_karti" xml:space="preserve"><value>Credit card</value></data>
+  <data name="derecelendirme_cok_kotu" xml:space="preserve"><value>Very bad</value></data>
+  <data name="enum_sip_cins_KonsinyeSiparis" xml:space="preserve"><value>Consignee order</value></data>
+  <data name="enum_sck_nerede_cari_cins_CariPersonelimiz" xml:space="preserve"><value>Our current personnel</value></data>
+  <data name="giris_firma" xml:space="preserve"><value>Company</value></data>
+  <data name="enum_tarih_cinsi_OzelTarih" xml:space="preserve"><value>Special date</value></data>
+  <data name="enum_tahsilat_cinsi_Nakit" xml:space="preserve"><value>Advance</value></data>
+  <data name="evrakgirisi_cek_banka_secimi" xml:space="preserve"><value>Check bank selection</value></data>
+  <data name="enum_GenelEvrakTipleri_VerilenFirmaCekiOdemeBordrosu" xml:space="preserve"><value>Given company check payment note</value></data>
+  <data name="enum_GenelEvrakTipleri_DepolarArasiSiparis" xml:space="preserve"><value>Interwarehouse order</value></data>
+  <data name="guncelleme_parametreler_guncelleniyor" xml:space="preserve"><value>Parameters are being updated</value></data>
+  <data name="enum_cha_sntck_poz_OdenmediPortfoyde" xml:space="preserve"><value>Not paid in portfolio</value></data>
+  <data name="genel_temsilciler" xml:space="preserve"><value>Representatives</value></data>
+  <data name="enum_cha_cinsi_HediyeCekiFaturasi" xml:space="preserve"><value>Gift check invoice</value></data>
+  <data name="enum_CariListelemeSecenekleri_BolgeKodunaGore" xml:space="preserve"><value>According to region code</value></data>
+  <data name="enum_cha_evrak_tip_FinansalKiralamaSozlesmeEvragi" xml:space="preserve"><value>Financial Rent Agreement document</value></data>
+  <data name="guncelleme_kayitlar_hazirlaniyor" xml:space="preserve"><value>Records are being prepared</value></data>
+  <data name="genel_evrak_tutari" xml:space="preserve"><value>Document amount</value></data>
+  <data name="stok_gruplandirma_reyonlara_gore" xml:space="preserve"><value>According to sections</value></data>
+  <data name="evrakgirisi_tamamini_karsila" xml:space="preserve"><value>Supply all</value></data>
+  <data name="enum_cari_odeme_sekli_Haftalik" xml:space="preserve"><value>Weekly</value></data>
+  <data name="guncelleme_tablo_yapisi_kontrol_ediliyor" xml:space="preserve"><value>Checking table structure…</value></data>
+  <data name="genel_cep_telefonu" xml:space="preserve"><value>Mobile phone</value></data>
+  <data name="siparis_tumu" xml:space="preserve"><value>All</value></data>
+  <data name="evrakgirisi_ceki_listesi_aktif" xml:space="preserve"><value>Packing list active</value></data>
+  <data name="evrakgirisi_nakliye_depo" xml:space="preserve"><value>Transport warehouse</value></data>
+  <data name="caridetay_siparis_riski" xml:space="preserve"><value>Order risk</value></data>
+  <data name="guncelleme_yeni_kayitlar_hazirlaniyor" xml:space="preserve"><value>Preparing new records…</value></data>
+  <data name="enum_cari_arama_secenekleri_IleBaslar" xml:space="preserve"><value>Starts with</value></data>
+  <data name="caridetay_yetkililer" xml:space="preserve"><value>Authorized people</value></data>
+  <data name="enum_evrak_satir_miktar_duzenleme_sonuc_CekiListesiUygunDegil" xml:space="preserve"><value>Packing list not appropriate</value></data>
+  <data name="enum_tahsilat_cinsi_MusteriCeki" xml:space="preserve"><value>Client check</value></data>
+  <data name="enum_kas_tip_ProtestoluSenetKasasi" xml:space="preserve"><value>Bad bond cash</value></data>
+  <data name="enum_Derecelendirme_Normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="enum_cha_cinsi_KabzimalFaturasi" xml:space="preserve"><value>Middlemen invoice</value></data>
+  <data name="enum_CariYetkiliUnvan_SatinAlmamud" xml:space="preserve"><value>Purchasing Director</value></data>
+  <data name="enum_cha_cinsi_ToptanFatura" xml:space="preserve"><value>Wholesale invoice</value></data>
+  <data name="enum_cari_stok_satim_cinsi_Perakende" xml:space="preserve"><value>Retail</value></data>
+  <data name="evrakgirisi_kdv_tutari" xml:space="preserve"><value>VAT amount</value></data>
+  <data name="evrakgirisi_nakliye_depo_secimi" xml:space="preserve"><value>Transport warehouse selection</value></data>
+  <data name="genel_siralama" xml:space="preserve"><value>Ordering</value></data>
+  <data name="evrakgirisi_ticaret_turu_secimi" xml:space="preserve"><value>Trade type selection</value></data>
+  <data name="enum_GenelEvrakTipleri_BarkodKontrolluFaturaOnaylama" xml:space="preserve"><value>Invoice confirmation with barcode control</value></data>
+  <data name="enum_cha_evrak_tip_CekGirisBordrosu" xml:space="preserve"><value>Check entry note</value></data>
+  <data name="enum_Fiyat_Kaynagi_AlisSarti" xml:space="preserve"><value>Purchase conditions</value></data>
+  <data name="anamenu_yeni_cari_olustur" xml:space="preserve"><value>Create new current account</value></data>
+  <data name="evrakgirisi_siparis_karsilama" xml:space="preserve"><value>Supplying order</value></data>
+  <data name="evrakgirisi_banka_secimi" xml:space="preserve"><value>Bank selection</value></data>
+  <data name="guncelleme_yeni_kayitlar_kontrol_ediliyor" xml:space="preserve"><value>Checking new records…</value></data>
+  <data name="enum_cha_evrak_tip_KrediGiderVadesiDegisimDekontu" xml:space="preserve"><value>Credit expense due change receipt</value></data>
+  <data name="evrakgirisi_odeme_plani" xml:space="preserve"><value>Payment plan</value></data>
+  <data name="giris_giris_yapilamadi" xml:space="preserve"><value>Could not be entered. Service is unreachable or on internet connection.</value></data>
+  <data name="enum_evrak_siparis_ekleme_sonuc_UrunSiparisteYok" xml:space="preserve"><value>Product not present in order</value></data>
+  <data name="enum_GenelEvrakTipleri_TahsildekiSenetOdemeBordrosu" xml:space="preserve"><value>Bond in collection payment note</value></data>
+  <data name="enum_cari_stok_satim_cinsi_Toptan" xml:space="preserve"><value>Wholesale</value></data>
+  <data name="enum_siparis_tutar_secenekleri_VazgecilenNetTutar" xml:space="preserve"><value>Cancelled net amount</value></data>
+  <data name="anamenu_satis_faturasi" xml:space="preserve"><value>Sales invoice</value></data>
+  <data name="enum_CariYetkiliUnvan_PersonelMud" xml:space="preserve"><value>Head of Staff</value></data>
+  <data name="enum_sck_nerede_cari_cins_Personelimiz" xml:space="preserve"><value>Our Staff</value></data>
+  <data name="enum_tutar_secenekleri_BrutTutar" xml:space="preserve"><value>Gross amount</value></data>
+  <data name="genel_hitap_sekli" xml:space="preserve"><value>Appeal type</value></data>
+  <data name="evrakgirisi_belge_tarihi" xml:space="preserve"><value>Document date</value></data>
+  <data name="enum_CariListelemeSecenekleri_GrupKodunaGore" xml:space="preserve"><value>According to group code</value></data>
+  <data name="enum_miktar_secenekleri_IadeMiktari" xml:space="preserve"><value>Return amount</value></data>
+  <data name="enum_evrak_satir_miktar_duzenleme_sonuc_MiktarDuzenlendi" xml:space="preserve"><value>Quantity arranged</value></data>
+  <data name="enum_GenelEvrakTipleri_DepolarArasiNakliyeFisi" xml:space="preserve"><value>Interwarehouse transport slip</value></data>
+  <data name="genel_ana_doviz" xml:space="preserve"><value>Main currency</value></data>
+  <data name="evrakgirisi_kur_girisi" xml:space="preserve"><value>Currency exchange rate entry</value></data>
+  <data name="genel_duzenle" xml:space="preserve"><value>Edit</value></data>
+  <data name="enum_cha_cinsi_MustahsilFatura" xml:space="preserve"><value>Manufacturer inoice</value></data>
+  <data name="enum_GenelEvrakTipleri_VerilenFirmaSenediOdemeBordrosu" xml:space="preserve"><value>Given company bond payment note</value></data>
+  <data name="evrakgirisi_siparis_karsilanirken_sepete_urun_ekleyemezsiniz" xml:space="preserve"><value>You can not add product to basket while supplying order!</value></data>
+  <data name="enum_CariYetkiliUnvan_MuhasebeMud" xml:space="preserve"><value>Head of accounting</value></data>
+  <data name="enum_cha_evrak_tip_HizmetMaliyetiYansitmaVirmanDekontu" xml:space="preserve"><value>Service cost reflection transfer slip</value></data>
+  <data name="guncelleme_silinen_kayitlar_hazirlaniyor" xml:space="preserve"><value>Preparing deleted records…</value></data>
+  <data name="ziyaret_gunu_bitir" xml:space="preserve"><value>Finish day</value></data>
+  <data name="anamenu_stok_bilgileri" xml:space="preserve"><value>Inventory information</value></data>
+  <data name="enum_cha_evrak_tip_OdenenAvansMakbuzu" xml:space="preserve"><value>Advance payment slip</value></data>
+  <data name="enum_cha_evrak_tip_TeminatCekIade" xml:space="preserve"><value>Security check return</value></data>
+  <data name="siparis_teslim_edilenler" xml:space="preserve"><value>Delivered</value></data>
+  <data name="enum_cha_cinsi_FinansalKiraFaturasi" xml:space="preserve"><value>Financial Rent invoice</value></data>
+  <data name="enum_IskontoMasrafUygulamaSekli_BrutToplamdanYuzde" xml:space="preserve"><value>% from gross total</value></data>
+  <data name="evrakgirisi_toplam_tutar" xml:space="preserve"><value>Total amount</value></data>
+  <data name="evrakgirisi_brut_toplamdan_yuzde" xml:space="preserve"><value>% from gross total</value></data>
+  <data name="enum_CariYetkiliUnvan_PlanlamaMud" xml:space="preserve"><value>Planning Director</value></data>
+  <data name="stok_listeleme_ayarlari_kategorilere_gore" xml:space="preserve"><value>According to categories</value></data>
+  <data name="enum_CariYetkiliUnvan_PazarlamaMud" xml:space="preserve"><value>Marketing Director</value></data>
+  <data name="genel_islem_seciniz" xml:space="preserve"><value>Select operation</value></data>
+  <data name="tarihsecimi_son_90_gun" xml:space="preserve"><value>Last 90 days</value></data>
+  <data name="enum_cha_evrak_tip_TeminatSenetProtestoluIade" xml:space="preserve"><value>Security bad bond return</value></data>
+  <data name="enum_sth_normal_iade_Normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="enum_Fiyat_Kaynagi_SatisSarti" xml:space="preserve"><value>Sales Condition</value></data>
+  <data name="enum_cha_cinsi_MustahsilDegerFarkiFaturasi" xml:space="preserve"><value>Manufacturer value difference invoice</value></data>
+  <data name="diger_secim_10_karakteri_gectigi_icin_eklenemedi" xml:space="preserve"><value>Selection could not be added because it exceeded 10 characters.</value></data>
+  <data name="cari_telefon_numarasi_tanimli_degil" xml:space="preserve"><value>Telehone number not defined</value></data>
+  <data name="genel_eposta_gonder" xml:space="preserve"><value>Send e-mail</value></data>
+  <data name="enum_cha_evrak_tip_IthalatMasrafYansitmaDekontu" xml:space="preserve"><value>Import expenses reflection slip</value></data>
+  <data name="tarihsecimi_gecen_hafta" xml:space="preserve"><value>Last week</value></data>
+  <data name="evrakgirisi_sepete_ekle" xml:space="preserve"><value>Add to basket</value></data>
+  <data name="siparis_kalan_miktar" xml:space="preserve"><value>Balance amount</value></data>
+  <data name="enum_kas_tip_CekKasasi" xml:space="preserve"><value>Check cash</value></data>
+  <data name="enum_gruplandirma_secenekleri_Gun" xml:space="preserve"><value>Day</value></data>
+  <data name="enum_evrak_cari_secilebilir_sonuc_CariHareketYapilamaz" xml:space="preserve"><value>Current account could not be selected. Current account transaction can not be done.</value></data>
+  <data name="enum_cha_cinsi_StokGiderPusulasi" xml:space="preserve"><value>Inventory note of expense</value></data>
+  <data name="enum_cha_ticaret_turu_YurtDisiTicaret" xml:space="preserve"><value>Foreign Trade</value></data>
+  <data name="enum_cha_evrak_tip_KrediSozlesmesiKabulFisi" xml:space="preserve"><value>Credit agreement acceptance slip</value></data>
+  <data name="enum_cha_ticaret_turu_YurtDisiNitelikliIhracKayitliTicaret" xml:space="preserve"><value>Foreign eligible export-registered trade</value></data>
+  <data name="enum_Fiyat_Kaynagi_CariyeSonSatisFiyati" xml:space="preserve"><value>Latest sales price to current account</value></data>
+  <data name="enum_cha_evrak_tip_CariDegerliKagitDegerlemeVirmanDekontu" xml:space="preserve"><value>Current account valuable paper revaluation transfer slip</value></data>
+  <data name="enum_cha_evrak_tip_KarsiliksizPortfoydenPortfoyeTransfer" xml:space="preserve"><value>Transfer from bad portfolio to portfolio</value></data>
+  <data name="stok_ana_grubu" xml:space="preserve"><value>Main group</value></data>
+  <data name="guncelleme_lisans_bilgisi_kontrol_ediliyor" xml:space="preserve"><value>License information being controlled</value></data>
+  <data name="genel_iskonto" xml:space="preserve"><value>Discount</value></data>
+  <data name="guncelleme_yazboz_tahtasi_sunucu_versiyonu_hatasi" xml:space="preserve"><value>Server version update is necessary in order to update text board</value></data>
+  <data name="enum_gruplandirma_secenekleri_StokKategori" xml:space="preserve"><value>Inventory category</value></data>
+  <data name="enum_cha_evrak_tip_CekIadeCikisBordrosu" xml:space="preserve"><value>Return check exit note</value></data>
+  <data name="enum_cha_evrak_tip_TeminatSenetIade" xml:space="preserve"><value>Security bond return</value></data>
+  <data name="enum_cha_evrak_tip_ProtestoluPortfoydekiSenetKarsiligiNakit" xml:space="preserve"><value>Cash against bad bond in portfolio</value></data>
+  <data name="giris_kullanici_girisi" xml:space="preserve"><value>Login</value></data>
+  <data name="evrakgirisi_aktarilacak" xml:space="preserve"><value>Will be transferred.</value></data>
+  <data name="enum_cari_stok_satim_cinsi_ToptanVePerakende" xml:space="preserve"><value>Wholesale and retail</value></data>
+  <data name="evrakgirisi_urunler_karsilanmamis_depolar_arasi_sevk_onay" xml:space="preserve"><value>All products are not supplied. Missing products will be returned by inter-warehouse transport. Do you confirm?</value></data>
+  <data name="kayithikayesi_aktarilacak_olarak_isaretle" xml:space="preserve"><value>Selected as "Will be transferred"</value></data>
+  <data name="evrakgirisi_kilitli_evrak_kayit_edilemez" xml:space="preserve"><value>Locked document can not be saved</value></data>
+  <data name="evrakgirisi_kapama_sekli" xml:space="preserve"><value>Closing type</value></data>
+  <data name="enum_cha_kasa_hizmet_Personelimiz" xml:space="preserve"><value>Our Staff</value></data>
+  <data name="tahsilat_borclu_ismi" xml:space="preserve"><value>Debtor name</value></data>
+  <data name="enum_sip_cins_NormalSiparis" xml:space="preserve"><value>Normal order</value></data>
+  <data name="carisecimi_cari_secimi" xml:space="preserve"><value>Current Account Selection</value></data>
+  <data name="enum_GenelEvrakTipleri_BankadanKasayaNakitCekmeMakbuzu" xml:space="preserve"><value>Bank to cash withdrawal slip</value></data>
+  <data name="evrakgirisi_cari_doviz_cinsi_secimi" xml:space="preserve"><value>Current account currency selection</value></data>
+  <data name="genel_yazici_tanimlama_hatasi" xml:space="preserve"><value>Printer installation error</value></data>
+  <data name="caridetay_cek_riski_kendisi" xml:space="preserve"><value>Check risk(Self)</value></data>
+  <data name="evrakgirisi_miktarin_sifirdan_buyuk_olmasi_gerekmektedir" xml:space="preserve"><value>Quantity must be greater than zero!</value></data>
+  <data name="enum_cha_evrak_tip_MusteriSaticiVirmanDekontu" xml:space="preserve"><value>Customer seller transfer slip</value></data>
+  <data name="enum_cari_arama_secenekleri_TumCariler" xml:space="preserve"><value>All current accounts</value></data>
+  <data name="enum_sip_cins_DepolarArasiSiparis" xml:space="preserve"><value>Interwarehouse order</value></data>
+  <data name="genel_toplam" xml:space="preserve"><value>Total</value></data>
+  <data name="stok_mal_fazlasi_kisaltma" xml:space="preserve"><value>Good Surplus</value></data>
+  <data name="enum_CariListelemeSecenekleri_TumCariler" xml:space="preserve"><value>All current accounts</value></data>
+  <data name="enum_cha_evrak_tip_BorcDekontu" xml:space="preserve"><value>Debit slip</value></data>
+  <data name="enum_evrak_cari_secilebilir_sonuc_CariEFaturaMukellefi" xml:space="preserve"><value>Current account could not be selected. Current account is viable for E-invoice.</value></data>
+  <data name="enum_SatisAlis_Satis" xml:space="preserve"><value>Sale</value></data>
+  <data name="enum_evrak_siparis_ekleme_sonuc_MaksimumSatirSayisinaUlasildi" xml:space="preserve"><value>Maximum row quantity is reached.</value></data>
+  <data name="firmaekleme_firma_ekle" xml:space="preserve"><value>Add company</value></data>
+  <data name="enum_miktar_secenekleri_NetSatisMiktari" xml:space="preserve"><value>Net sales quantity</value></data>
+  <data name="enum_EvrakAktarimDurumu_Aktarildi" xml:space="preserve"><value>Transferred</value></data>
+  <data name="enum_BaslangicBitis_Baslangic" xml:space="preserve"><value>Start</value></data>
+  <data name="enum_sck_sonpoz_KismenOdendi" xml:space="preserve"><value>Partially paid</value></data>
+  <data name="enum_SatisAlis_Diger" xml:space="preserve"><value>Other</value></data>
+  <data name="guncelleme_kayitlar_gonderiliyor" xml:space="preserve"><value>Records are being sent</value></data>
+  <data name="enum_cha_cinsi_HizmetFaturasi" xml:space="preserve"><value>Service invoice</value></data>
+  <data name="anamenu_evrak_girisi_islemleri" xml:space="preserve"><value>Document entry operations</value></data>
+  <data name="enum_sck_sonpoz_Ciro" xml:space="preserve"><value>Turnover</value></data>
+  <data name="enum_siparis_miktar_secenekleri_Gosterme" xml:space="preserve"><value>Do not show</value></data>
+  <data name="genel_uygula" xml:space="preserve"><value>Apply</value></data>
+  <data name="guncelleme_servis_bilgileri_cekiliyor" xml:space="preserve"><value>Service information being retrieved…</value></data>
+  <data name="evrakgirisi_ara_toplam" xml:space="preserve"><value>Sub total</value></data>
+  <data name="enum_sck_tip_MusteriOdemeSozu" xml:space="preserve"><value>Customer payment promise</value></data>
+  <data name="genel_vazgec" xml:space="preserve"><value>Cancel</value></data>
+  <data name="enum_cha_kasa_hizmet_KrediSozlesmemiz" xml:space="preserve"><value>Our credit agreement</value></data>
+  <data name="enum_tahsilat_cinsi_MusteriKrediKarti" xml:space="preserve"><value>Customer credit card</value></data>
+  <data name="caridetay_bu_yil_cirosu" xml:space="preserve"><value>Current year turnover</value></data>
+  <data name="enum_cha_evrak_tip_KrediKabul" xml:space="preserve"><value>Credit accept</value></data>
+  <data name="enum_cari_hareket_tipi_MalVeHizmetSadeceAlinir" xml:space="preserve"><value>Good and Service only purchased</value></data>
+  <data name="enum_cha_vardita_evrak_ti_KrediKartlariDekontu" xml:space="preserve"><value>Credit cards slip</value></data>
+  <data name="enum_cha_kasa_hizmet_FinansalSozlesmemiz" xml:space="preserve"><value>Our financial agreement</value></data>
+  <data name="firmaekleme_cihaz_limiti_dolu" xml:space="preserve"><value>Device limit reached. Installation is not completed</value></data>
+  <data name="siparis_teslim_durumu_Vazgecilenler" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="evrakgirisi_ceki_listesi" xml:space="preserve"><value>Packing list</value></data>
+  <data name="enum_tutar_secenekleri_NetTutarKdvDahil" xml:space="preserve"><value>Net amount(VAT included)</value></data>
+  <data name="enum_cari_tipi_Dagitici" xml:space="preserve"><value>Distributor</value></data>
+  <data name="anamenu_aktif_ziyaret" xml:space="preserve"><value>Active visit</value></data>
+  <data name="enum_CariListelemeSecenekleri_RotayaGore" xml:space="preserve"><value>Route</value></data>
+  <data name="enum_GenelEvrakTipleri_KasadanBankayaNakitYatirmaMakbuzu" xml:space="preserve"><value>Cash to bank deposit slip</value></data>
+  <data name="anamenu_hareket_gormeyen_cariler" xml:space="preserve"><value>Current accounts without movements/operations</value></data>
+  <data name="evrakgirisi_cek_detay_bilgileri" xml:space="preserve"><value>Check detail information</value></data>
+  <data name="kayithikayesi_aktarilmis_evraklari_duzenleyemezsiniz" xml:space="preserve"><value>You did not select address.</value></data>
+  <data name="enum_GenelEvrakTipleri_BakimTalep" xml:space="preserve"><value>Maintenance demand</value></data>
+  <data name="enum_kas_tip_KrediKartiKasasi" xml:space="preserve"><value>Credit card cash</value></data>
+  <data name="enum_cha_cinsi_MusteriOdemeSozu" xml:space="preserve"><value>Customer payment promise</value></data>
+  <data name="enum_cha_ticaret_turu_PerakendeYurtIciTicaret" xml:space="preserve"><value>Retail domestic trade</value></data>
+  <data name="evrakgirisi_urun_daha_once_eklemis_tekrar_ekleme_istiyormusunuz" xml:space="preserve"><value>product {0} was added to basket {1} before. Do you want to add again?</value></data>
+  <data name="evrakgirisi_tahsilat_tutari" xml:space="preserve"><value>Collection </value></data>
+  <data name="enum_cha_vardita_evrak_ti_VardiyaTahsilatMakbuzu" xml:space="preserve"><value>Shift collection receipt</value></data>
+  <data name="enum_cha_evrak_tip_DegerliKagitlarAcilisFisi" xml:space="preserve"><value>Valuable papers opening slip</value></data>
+  <data name="evrakgirisi_sepete_urun_eklemeden_kayit_yapilmaz" xml:space="preserve"><value>Without adding product to basket you can not record.</value></data>
+  <data name="genel_paylas" xml:space="preserve"><value>Share</value></data>
+  <data name="evrakgirisi_zaten_karsilanmis_durumda" xml:space="preserve"><value>Already supplied</value></data>
+  <data name="enum_gruplandirma_secenekleri_Cari" xml:space="preserve"><value>Current account</value></data>
+  <data name="enum_cha_cinsi_DemirbasFaturasi" xml:space="preserve"><value>Equipment invoice</value></data>
+  <data name="enum_gruplandirma_secenekleri_Depo" xml:space="preserve"><value>Warehouse</value></data>
+  <data name="enum_gruplandirma_secenekleri_Stok" xml:space="preserve"><value>Inventory</value></data>
+  <data name="kayithikayesi_sadece_beklemede_veya_hatali_evraklar_aktarilacak_olarak_isaretlenebilir" xml:space="preserve"><value>Only the pending documents and documents with errors can be marked as "Will be transferred".</value></data>
+  <data name="enum_CariYetkiliUnvan_MudurMvn" xml:space="preserve"><value>Director assistant</value></data>
+  <data name="tarihsecimi_son_30_gun" xml:space="preserve"><value>Last 30 days</value></data>
+  <data name="genel_il" xml:space="preserve"><value>State</value></data>
+  <data name="enum_cha_evrak_tip_SenetCikisBordrosu" xml:space="preserve"><value>Bond exit note</value></data>
+  <data name="giris_kullanici_adi_veya_sifre_hatali" xml:space="preserve"><value>User name or password incorrect</value></data>
+  <data name="derecelendirme_cok_iyi" xml:space="preserve"><value>Very good</value></data>
+  <data name="enum_cha_evrak_tip_GelenHavale" xml:space="preserve"><value>Incoming transfer</value></data>
+  <data name="enum_cha_cari_cins_FinansalSozlesmemiz" xml:space="preserve"><value>Our financial agreement</value></data>
+  <data name="enum_sip_orderby_SiparisTarihi" xml:space="preserve"><value>Order date</value></data>
+  <data name="enum_KapamaSekli_CariPersoneldenKapanacak" xml:space="preserve"><value>To be closed from current personnel</value></data>
+  <data name="enum_cha_kasa_hizmet_Kasamiz" xml:space="preserve"><value>Our cash</value></data>
+  <data name="enum_cha_evrak_tip_KarsiliksizCikancektransfer" xml:space="preserve"><value>Bad check transfer</value></data>
+  <data name="stok_ambar_adresi_secimi" xml:space="preserve"><value>Warehouse address selection</value></data>
+  <data name="guncelleme_yeni_kayitlar_indiriliyor" xml:space="preserve"><value>Downloading new records…</value></data>
+  <data name="evrakgirisi_sorumluluk_merkezi_secimi" xml:space="preserve"><value>Responsibility center selection</value></data>
+  <data name="enum_cha_evrak_tip_MusteriKrediKartiOdeme" xml:space="preserve"><value>Client credit card payment</value></data>
+  <data name="anamenu_diger" xml:space="preserve"><value>Other</value></data>
+  <data name="enum_cha_evrak_tip_KarsiliksizPortfoydekiCekKarsiligiNakit" xml:space="preserve"><value>Cash against check in bad portfolio</value></data>
+  <data name="siparis_bekleyenler" xml:space="preserve"><value>Pending</value></data>
+  <data name="enum_tahsilat_cinsi_GidenHavale" xml:space="preserve"><value>Outgoing transfer</value></data>
+  <data name="evrakgirisi_stok_seviyesi_yeterli_degil" xml:space="preserve"><value>Inventory level not sufficient. Product could not be added to basket.</value></data>
+  <data name="enum_cha_cinsi_FirmaHavaleEmri" xml:space="preserve"><value>Company transfer order</value></data>
+  <data name="evrakgirisi_sipariste_onaylanmamis_satirlar_var" xml:space="preserve"><value>There are unconfirmed rows in the order!</value></data>
+  <data name="genel_sektor" xml:space="preserve"><value>Sector</value></data>
+  <data name="enum_cha_cinsi_GiderMakbuzu" xml:space="preserve"><value>Expense receipt</value></data>
+  <data name="enum_cari_arama_secenekleri_Esittir" xml:space="preserve"><value>Equals</value></data>
+  <data name="enum_kas_tip_VerilenOdemeEmriKasasi" xml:space="preserve"><value>Given payment order cash</value></data>
+  <data name="cari_secimi_grup_koduna_gore" xml:space="preserve"><value>According to group code</value></data>
+  <data name="enum_sck_nerede_cari_cins_DonemselHizmetimiz" xml:space="preserve"><value>Our periodical service</value></data>
+  <data name="evrakgirisi_urunler_okutulmamis_eksik_sevkiyat_onay" xml:space="preserve"><value>All products are not read/scanned. Do you want to confirm as partial dispatch?</value></data>
+  <data name="stok_ismi" xml:space="preserve"><value>Inventory name</value></data>
+  <data name="stok_kodu" xml:space="preserve"><value>Inventory code</value></data>
+  <data name="ticaretturu_perakende_yurt_ici_ticaret" xml:space="preserve"><value>Retail domestic trade</value></data>
+  <data name="enum_cha_evrak_tip_BankadaTahsildekiCekiCariyeIadeBordrosu" xml:space="preserve"><value>Collection check return to customer note</value></data>
+  <data name="evrakgirisi_ortalama_gun" xml:space="preserve"><value>Average day</value></data>
+  <data name="enum_siparis_tutar_secenekleri_VazgecilenIskontoTutari" xml:space="preserve"><value>Cancelled discount amount</value></data>
+  <data name="tarihsecimi_son_60_gun" xml:space="preserve"><value>Last 60 days</value></data>
+  <data name="enum_tarih_cinsi_GecenHafta" xml:space="preserve"><value>Last week</value></data>
+  <data name="genel_barkod_bulunamadi" xml:space="preserve"><value>Barcode not found</value></data>
+  <data name="evrakgirisi_evrak_tutari_uygun_degil" xml:space="preserve"><value>Document amount must be minimum {0}. Document can not be saved.</value></data>
+  <data name="ticaretturu_ihrac_kayitli_yurt_ici_ticaret" xml:space="preserve"><value>Export-registered domestic trade</value></data>
+  <data name="genel_lokasyon_guncellendi" xml:space="preserve"><value>Location updated</value></data>
+  <data name="siparis_acik_siparis_yok" xml:space="preserve"><value>Open order not available</value></data>
+  <data name="tarihsecimi_hazir_tarih_secimi" xml:space="preserve"><value>Ready date selection</value></data>
+  <data name="genel_satir_aciklamasi" xml:space="preserve"><value>Row comment</value></data>
+  <data name="enum_KapamaSekli_AcikHesap" xml:space="preserve"><value>Open account</value></data>
+  <data name="genel_meblag" xml:space="preserve"><value>Total</value></data>
+  <data name="firmasil_firma_sil" xml:space="preserve"><value>Delete Company</value></data>
+  <data name="genel_miktar" xml:space="preserve"><value>Quantity</value></data>
+  <data name="stok_fotografi_bulunamadi" xml:space="preserve"><value>Inventory photograph not found.</value></data>
+  <data name="evrakgirisi_kasa_banka_kodu" xml:space="preserve"><value>Cash-Bank code</value></data>
+  <data name="enum_KapamaSekli_KasadanKapanacak" xml:space="preserve"><value>To be closed from cash</value></data>
+  <data name="enum_cha_evrak_tip_CekIadeGirisBordrosu" xml:space="preserve"><value>Return check entry note</value></data>
+  <data name="genel_adres_secimi_yapmadiniz" xml:space="preserve"><value>You did not select address.</value></data>
+  <data name="cari_adres_lokasyon_yetkiniz_yok" xml:space="preserve"><value>You do not have authority to update location</value></data>
+  <data name="enum_tutar_secenekleri_NetKarYuzdesi" xml:space="preserve"><value>Net profit percentage</value></data>
+  <data name="evrakgirisi_kismi_siparis_karsilama" xml:space="preserve"><value>Partial order supply</value></data>
+  <data name="enum_sck_tip_MusteriHavaleSozu" xml:space="preserve"><value>Customer transfer promise</value></data>
+  <data name="cari_secimi_tum_cariler" xml:space="preserve"><value>All current accounts</value></data>
+  <data name="stok_yoldaki_mallar" xml:space="preserve"><value>Goods on the way</value></data>
+  <data name="enum_SatirCinsi_Hizmet" xml:space="preserve"><value>Service</value></data>
+  <data name="genel_teslim_durumu" xml:space="preserve"><value>Delivery state</value></data>
+  <data name="stok_ana_gruplari" xml:space="preserve"><value>Inventory main groups</value></data>
+  <data name="genel_tipi" xml:space="preserve"><value>Type</value></data>
+  <data name="genel_vade" xml:space="preserve"><value>Deferment</value></data>
+  <data name="genel_saat" xml:space="preserve"><value>Hour</value></data>
+  <data name="genel_sube" xml:space="preserve"><value>Branch</value></data>
+  <data name="genel_ozet" xml:space="preserve"><value>Summary</value></data>
+  <data name="genel_onay" xml:space="preserve"><value>Confirm</value></data>
+  <data name="genel_hata" xml:space="preserve"><value>Error</value></data>
+  <data name="genel_ilce" xml:space="preserve"><value>District</value></data>
+  <data name="genel_konu" xml:space="preserve"><value>Subject</value></data>
+  <data name="genel_depo" xml:space="preserve"><value>Warehouse</value></data>
+  <data name="genel_evet" xml:space="preserve"><value>Yes</value></data>
+  <data name="genel_faks" xml:space="preserve"><value>Fax</value></data>
+  <data name="genel_grup" xml:space="preserve"><value>Group</value></data>
+  <data name="genel_adet" xml:space="preserve"><value>Piece</value></data>
+  <data name="genel_brut" xml:space="preserve"><value>Gross</value></data>
+  <data name="enum_AndroidAktarimTipi_CariLokasyon" xml:space="preserve"><value>Current account location updating</value></data>
+  <data name="evrakgirisi_kasadan_kapanacak" xml:space="preserve"><value>To be closed from cash</value></data>
+  <data name="tahsilat_cek_detaylari" xml:space="preserve"><value>Check details</value></data>
+  <data name="guncelleme_kayitlar_yaziliyor" xml:space="preserve"><value>Records are being recorded</value></data>
+  <data name="genel_yapim_asamasinda" xml:space="preserve"><value>Under construction</value></data>
+  <data name="enum_GenelEvrakTipleri_TahsileCekCikisBordrosu" xml:space="preserve"><value>Collection check exit note</value></data>
+  <data name="enum_cha_sntck_poz_KismenOdendi" xml:space="preserve"><value>Partially paid</value></data>
+  <data name="anamenu_bilgi_guncelle" xml:space="preserve"><value>Data update</value></data>
+  <data name="evrakgirisi_firma_secimi" xml:space="preserve"><value>Company selection</value></data>
+  <data name="enum_cari_tipi_HedefBayi" xml:space="preserve"><value>Target dealer</value></data>
+  <data name="enum_tarih_cinsi_BuHafta" xml:space="preserve"><value>Current week</value></data>
+  <data name="enum_cha_tpoz_Kapali" xml:space="preserve"><value>Closed</value></data>
+  <data name="evrakgirisi_acik_hesap" xml:space="preserve"><value>Open account</value></data>
+  <data name="enum_cari_def_efatura_cinsi_TicariFatura" xml:space="preserve"><value>Commercial invoice</value></data>
+  <data name="anamenu_cari_detayi" xml:space="preserve"><value>Current account details</value></data>
+  <data name="evrakgirisi_cari_kodu" xml:space="preserve"><value>Current account code</value></data>
+  <data name="enum_GenelEvrakTipleri_SatisFaturasi" xml:space="preserve"><value>Sales invoice</value></data>
+  <data name="genel_aygit_bulunamadi" xml:space="preserve"><value>Device not found</value></data>
+  <data name="evrakgirisi_masraf_girisi" xml:space="preserve"><value>Expense entry</value></data>
+  <data name="evrakgirisi_okutulan_miktar" xml:space="preserve"><value>Scanned quantity</value></data>
+  <data name="kayithikayesi_secili_kaydi_silmek_istediginize_emin_misiniz" xml:space="preserve"><value>Are you sure you want to delete the selected record?</value></data>
+  <data name="stokdetay_ambar_adresi" xml:space="preserve"><value>Warehouse address</value></data>
+  <data name="stok_birim_fiyatin_sifirdan_buyuk_olmasi_gerekmektedir" xml:space="preserve"><value>Unit price must be greater than 0.</value></data>
+  <data name="enum_GenelEvrakTipleri_DepolarArasiNakliyeOnaylama" xml:space="preserve"><value>Interwarehouse transport confirmation</value></data>
+  <data name="enum_cha_kasa_hizmet_Giderimiz" xml:space="preserve"><value>Our expense</value></data>
+  <data name="enum_siparis_miktar_secenekleri_BekleyenMiktar" xml:space="preserve"><value>Pending amount</value></data>
+  <data name="evrakgirisi_tahsilat_girisi" xml:space="preserve"><value>Collection entry</value></data>
+  <data name="enum_cha_evrak_tip_KrediKabulVirmanDekontu" xml:space="preserve"><value>Credit acceptance transfer receipt</value></data>
+  <data name="genel_baslangic_tarihini_degistir" xml:space="preserve"><value>Change start date</value></data>
+  <data name="genel_kayit_ediliyor" xml:space="preserve"><value>Is being saved</value></data>
+  <data name="enum_cari_tipi_Bayi" xml:space="preserve"><value>Dealer</value></data>
+  <data name="enum_cha_evrak_tip_BankadaTahsildekiProtestoluSenediCariyeIadeBordrosu" xml:space="preserve"><value>Collection bad bond return to customer note</value></data>
+  <data name="genel_kaydet" xml:space="preserve"><value>Save</value></data>
+  <data name="enum_siparis_tutar_secenekleri_TeslimEdilenNetTutarKdvDahil" xml:space="preserve"><value>Delivered net amount(VAT included)</value></data>
+  <data name="stok_birimler" xml:space="preserve"><value>Units</value></data>
+  <data name="cari_cari_sektorleri" xml:space="preserve"><value>Current account sectors</value></data>
+  <data name="enum_tahsilat_cinsi_GelenHavale" xml:space="preserve"><value>Incoming transfer</value></data>
+  <data name="enum_SatisAlis_Alis" xml:space="preserve"><value>Purchase</value></data>
+  <data name="stok_ambar_adresi_bilgileri_kayit_edildi" xml:space="preserve"><value>Inventory warehouse address information saved. To see change please update information.</value></data>
+  <data name="evrakgirisi_doviz_cinsi" xml:space="preserve"><value>Currency type</value></data>
+  <data name="enum_cha_cinsi_MusteriCeki" xml:space="preserve"><value>Client check</value></data>
+  <data name="enum_cha_evrak_tip_FirmaSenetOdeme" xml:space="preserve"><value>Company bond payment</value></data>
+  <data name="enum_siparis_tutar_secenekleri_BekleyenNetTutarKdvDahil" xml:space="preserve"><value>Pending net amount(vat included)</value></data>
+  <data name="genel_eposta" xml:space="preserve"><value>E-mail</value></data>
+  <data name="enum_cari_tipi_HedefMusteri" xml:space="preserve"><value>Target client</value></data>
+  <data name="tarihsecimi_haftalik_tarihler" xml:space="preserve"><value>Weekly dates</value></data>
+  <data name="enum_cha_cinsi_HalFaturasi" xml:space="preserve"><value>Market hall invoice</value></data>
+  <data name="enum_cha_evrak_tip_KrediVirman" xml:space="preserve"><value>Credit transfer</value></data>
+  <data name="derecelendirme_derecelendirilmemis" xml:space="preserve"><value>Not rated</value></data>
+  <data name="evrakgirisi_kalan_kredisi" xml:space="preserve"><value>Balance credit</value></data>
+  <data name="enum_cha_evrak_tip_KasalarArasiVirmanDekontu" xml:space="preserve"><value>Inter-cash transfer slip</value></data>
+  <data name="genel_format" xml:space="preserve"><value>Format</value></data>
+  <data name="enum_cha_evrak_tip_DonemselHizmetGiderlestirmeGelirlestirmeDekontu" xml:space="preserve"><value>Receipt of making expense/income of periodical services</value></data>
+  <data name="enum_siparis_teslim_durumu_secenekleri_Bekleyen" xml:space="preserve"><value>Pending</value></data>
+  <data name="genel_evrak_cinsi" xml:space="preserve"><value>Document type</value></data>
+  <data name="enum_cha_evrak_tip_BankadaTahsildekiSenediCariyeIadeBordrosu" xml:space="preserve"><value>Collection bond return to customer note</value></data>
+  <data name="anamenu_aktif_ziyareti_sil" xml:space="preserve"><value>Delete active visit</value></data>
+  <data name="genel_gonder" xml:space="preserve"><value>Send</value></data>
+  <data name="stokdetay_finansal_bilgiler" xml:space="preserve"><value>Financial information</value></data>
+  <data name="enum_evrak_satir_miktar_duzenleme_sonuc_MiktarUygunDegil" xml:space="preserve"><value>Quantity not appropriate</value></data>
+  <data name="enum_AndroidAktarimTipi_YeniCariOlusturma" xml:space="preserve"><value>Creating new current account</value></data>
+  <data name="genel_kdv_orani" xml:space="preserve"><value>VAT rate</value></data>
+  <data name="genel_xls_paylas" xml:space="preserve"><value>Share XLS</value></data>
+  <data name="enum_kas_tip_NakitKasasi" xml:space="preserve"><value>Cash</value></data>
+  <data name="genel_brut_fiyat" xml:space="preserve"><value>Gross price</value></data>
+  <data name="genel_kdv_dahil" xml:space="preserve"><value>VAT included</value></data>
+  <data name="anamenu_ziyaret_yok" xml:space="preserve"><value>No visit</value></data>
+  <data name="evrakgirisi_ana_ambalaj" xml:space="preserve"><value>Main package</value></data>
+  <data name="genel_kdv_ayir" xml:space="preserve"><value>Separate VAT</value></data>
+  <data name="firmasil_firma_tanimi_sil" xml:space="preserve"><value>Delete Company Definition</value></data>
+  <data name="cari_cari_bolgeleri" xml:space="preserve"><value>Current account regions</value></data>
+  <data name="stok_ana_ambalaj" xml:space="preserve"><value>Main package</value></data>
+  <data name="enum_cari_odeme_sekli_Aylik" xml:space="preserve"><value>Monthly</value></data>
+  <data name="evrakgirisi_cari_bakiyesi_uygun_degil" xml:space="preserve"><value>Current account{0} has (Maximum:{1} ) current account balance(including document amount)! Document could not be saved.</value></data>
+  <data name="enum_tutar_secenekleri_NetTutar" xml:space="preserve"><value>Net amount</value></data>
+  <data name="genel_jpg_paylas" xml:space="preserve"><value>Share JPG</value></data>
+  <data name="caridetay_ekstre" xml:space="preserve"><value>Extract</value></data>
+  <data name="enum_cha_evrak_tip_OdenmeyenSenetTransfer" xml:space="preserve"><value>Unpaid bond transfer</value></data>
+  <data name="evrakgirisi_sipariste_vazgecilen_satirlar_var" xml:space="preserve"><value>There are cancelled rows in the order!</value></data>
+  <data name="genel_genel_bilgiler" xml:space="preserve"><value>General information</value></data>
+  <data name="enum_StokHareketleriOrdeBy_UreticiKodu" xml:space="preserve"><value>Manufacturer code</value></data>
+  <data name="enum_CariListelemeSecenekleri_SektorKodunaGore" xml:space="preserve"><value>According to sector code</value></data>
+  <data name="enum_evrak_siparis_ekleme_sonuc_MiktarSifirOlamaz" xml:space="preserve"><value>Quantity must be different than zero</value></data>
+  <data name="genel_borclu" xml:space="preserve"><value>Debtor</value></data>
+  <data name="genel_boylam" xml:space="preserve"><value>Longitude</value></data>
+  <data name="genel_cikis_yapmak_istiyor_musunuz" xml:space="preserve"><value>Do you want to exit?</value></data>
+  <data name="enum_cha_evrak_tip_KasadanMusteriOdemeSozuKapatma" xml:space="preserve"><value>Cash customer payment promise settlement</value></data>
+  <data name="evrakgirisi_siparis_daha_once_eklenmis" xml:space="preserve"><value>Order was already added to list!</value></data>
+  <data name="genel_barkod" xml:space="preserve"><value>Barcode</value></data>
+  <data name="genel_bakiye" xml:space="preserve"><value>Balance</value></data>
+  <data name="enum_evrak_siparis_ekleme_sonuc_UrunMiktariSiparisMiktarindanFazla" xml:space="preserve"><value>Product quantity more than order quantity</value></data>
+  <data name="enum_miktar_secenekleri_CariAdresSayisi" xml:space="preserve"><value>Current account quantity</value></data>
+  <data name="evrakgirisi_teslim_turu_secimi" xml:space="preserve"><value>Delivery type selection</value></data>
+  <data name="enum_sck_imza_Musterisi" xml:space="preserve"><value>Customer</value></data>
+  <data name="enum_cari_hareket_tipi_SadeceParasalHareketYapilir" xml:space="preserve"><value>Only monetary transaction done</value></data>
+  <data name="enum_cha_evrak_tip_KasadanKendiOdemeEmrimiziKapatma" xml:space="preserve"><value>Cash Company payment order closing</value></data>
+  <data name="genel_ozel_not" xml:space="preserve"><value>Special note</value></data>
+  <data name="enum_cha_evrak_tip_BankalarArasiKrediKartiTransferi" xml:space="preserve"><value>Interbank credit card transfer</value></data>
+  <data name="enum_sip_tip_Talep" xml:space="preserve"><value>Talep</value></data>
+  <data name="enum_sip_tip_Temin" xml:space="preserve"><value>Supply</value></data>
+  <data name="evrak_seri_sira" xml:space="preserve"><value>Series-Order</value></data>
+  </root>

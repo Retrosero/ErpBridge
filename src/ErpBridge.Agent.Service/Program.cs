@@ -3,6 +3,7 @@ using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core;
 using ErpBridge.Core.Jobs;
 using ErpBridge.Erp.Mikro.DependencyInjection;
+using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.LocalStore;
 using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -55,6 +56,12 @@ public static class Program
                 // every call. The WPF UI is responsible for keeping the section
                 // populated as the user types into the settings window.
                 services.AddErpBridgeMikro(ctx.Configuration);
+
+                // Faz 11.3: SQLite-backed trigger watermark store. The interface
+                // lives in ErpBridge.Erp.Mikro (Mikro-specific contract), but the
+                // implementation depends on ErpBridge.LocalStore which Mikro is
+                // not allowed to reference. Register the concrete here.
+                services.AddSingleton<ITriggerWatermarkStore, SqliteTriggerWatermarkStore>();
 
                 // IBootstrapSyncService is registered by AddErpBridgeCore as a
                 // singleton; the worker only resolves it through CreateScope.

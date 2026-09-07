@@ -54,7 +54,12 @@ public sealed class MikroAdapterFactory : IErpAdapterFactory
     {
         // The factory resolves each collaborator on demand so we can hand the
         // adapter fully wired-in instances without keeping factory-level state.
-        using var scope = _services.CreateScope();
+        //
+        // Do not create a short-lived scope here. MikroAdapter keeps the
+        // IServiceProvider to resolve IChangeSetReader when a sync starts;
+        // disposing that scope before returning the adapter makes the later
+        // "Senkronize Et" action fail with ObjectDisposedException.
+        var services = _services;
 
         // Re-read Mikro connection settings from IConfiguration on every build.
         // The constructor-injected _connectionSettings was captured at DI
@@ -71,14 +76,15 @@ public sealed class MikroAdapterFactory : IErpAdapterFactory
 
         return new MikroAdapter(
             connectionSettings: liveSettings,
-            orchestrator: scope.ServiceProvider.GetRequiredService<IMikroConnectionTestOrchestrator>(),
-            versionDetector: scope.ServiceProvider.GetRequiredService<MikroVersionDetector>(),
-            strategySelector: scope.ServiceProvider.GetRequiredService<MikroIdentityStrategySelector>(),
-            salesOrderWriter: scope.ServiceProvider.GetRequiredService<MikroSalesOrderWriter>(),
-            mappingStore: scope.ServiceProvider.GetRequiredService<IMappingStore>(),
+            orchestrator: services.GetRequiredService<IMikroConnectionTestOrchestrator>(),
+            versionDetector: services.GetRequiredService<MikroVersionDetector>(),
+            strategySelector: services.GetRequiredService<MikroIdentityStrategySelector>(),
+            salesOrderWriter: services.GetRequiredService<MikroSalesOrderWriter>(),
+            mappingStore: services.GetRequiredService<IMappingStore>(),
             configuration: _configuration,
-            logger: scope.ServiceProvider.GetRequiredService<ILogger<MikroAdapter>>(),
-            dbReader: scope.ServiceProvider.GetRequiredService<IMikroDbReader>(),
-            connectionFactory: scope.ServiceProvider.GetRequiredService<MikroConnectionFactory>());
+            logger: services.GetRequiredService<ILogger<MikroAdapter>>(),
+            dbReader: services.GetRequiredService<IMikroDbReader>(),
+            connectionFactory: services.GetRequiredService<MikroConnectionFactory>(),
+            serviceProvider: services);
     }
 }

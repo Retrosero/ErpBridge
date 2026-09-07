@@ -1,0 +1,38 @@
+namespace Fora.Mikro.Rapor.Genel;
+
+public enum enum_tarih_cinsi
+{
+	OzelTarih,
+	Bugun,
+	Dun,
+	Son24Saat,
+	BuHafta,
+	GecenHafta,
+	Son7Gun,
+	BuAy,
+	GecenAy,
+	Son30Gun,
+	BuYil,
+	GecenYil,
+	Son365Gun,
+	Son3Ay,
+	Son60Gun,
+	Son90Gun,
+	Son6Ay,
+	Son12Ay,
+	Yarin,
+	GelecekHafta,
+	Gelecek7Gun,
+	Gelecek15Gun,
+	Gelecek30Gun,
+	Gelecek60Gun,
+	Gelecek90Gun,
+	Gelecek365Gun,
+	GelecekAy,
+	Gelecek3Ay,
+	Gelecek6Ay,
+	Gelecek12Ay,
+	GelecekYil,
+	Son15Gun,
+	TumZamanlar
+}

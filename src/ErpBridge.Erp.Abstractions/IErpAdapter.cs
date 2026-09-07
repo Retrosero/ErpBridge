@@ -37,6 +37,22 @@ public interface IErpAdapter
         => ReadBootstrapDataAsync(ct);
 
     /// <summary>
+    /// Read a trigger-based <c>SyncChangeSet</c> from the ERP. This is the
+    /// new (Faz 11-12) path that uses Mikro's
+    /// <c>_ERPB_SENKRONIZASYON</c> shadow table to surface
+    /// INSERT/UPDATE/DELETE events. Implementations that do not support
+    /// trigger-based sync throw <see cref="NotSupportedException"/>; the
+    /// caller is expected to gate on a config flag.
+    /// </summary>
+    Task<ErpBridge.Shared.SyncChangeSet> ReadChangeSetAsync(
+        string tenantId,
+        IReadOnlyDictionary<int, int> lastTriggerByTabloId,
+        int packetSize,
+        CancellationToken ct = default)
+        => throw new NotSupportedException(
+            "This ERP adapter does not provide a trigger-based change-set reader.");
+
+    /// <summary>
     /// Read a single reference-data section from the ERP and return it wrapped
     /// in a <see cref="SyncPackage"/> with all other sections empty. Used by
     /// the WPF "Her Tablo" diagnostic buttons when the bulk

@@ -71,6 +71,11 @@ public static class BootstrapEndpoints
             .OrderByDescending(item => item.PulledAtUtc)
             .Select(item => (DateTimeOffset?)item.PulledAtUtc)
             .FirstOrDefaultAsync(ct);
+        var chunkedPulledAtUtc = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.IsActive)
+            .Select(item => (DateTimeOffset?)item.PulledAtUtc)
+            .FirstOrDefaultAsync(ct);
+        lastPulledAtUtc = chunkedPulledAtUtc ?? lastPulledAtUtc;
         return JsonResults.Ok(new BootstrapStatusResponse
         {
             HasSnapshot = lastPulledAtUtc.HasValue,
@@ -122,6 +127,14 @@ public static class BootstrapEndpoints
             PulledAtUtc = body.PulledAtUtc,
             ReceivedAtUtc = DateTimeOffset.UtcNow,
         };
+        // Legacy clients still use this endpoint. Keep the fallback table
+        // bounded as well: one current package per tenant is sufficient for
+        // status/pull compatibility and avoids unbounded JSONB growth.
+        var oldPackages = await db.BootstrapPackages
+            .Where(item => item.TenantId == tenantId)
+            .ToListAsync(ct);
+        if (oldPackages.Count > 0)
+            db.BootstrapPackages.RemoveRange(oldPackages);
         db.BootstrapPackages.Add(package);
         await db.SaveChangesAsync(ct);
 

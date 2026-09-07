@@ -1,0 +1,181 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+<resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>1.3</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><data name="labelControl370.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl16.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl17.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl372.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl371.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl374.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl373.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="textBox1.Text" xml:space="preserve"><value>[cari_kod]
+[cari_unvan1]
+[cari_unvan2]
+[cari_vdaire_adi]
+[cari_vdaire_no]
+[cari_sicil_no]
+[cari_VergiKimlikNo]
+[cari_sektor_kodu]
+[cari_bolge_kodu]
+[cari_grup_kodu]
+[cari_temsilci_kodu]
+[cari_wwwadresi]
+[cari_Email]
+[cari_CepTel]
+[evrak_aciklama1]
+[evrak_aciklama2]
+[evrak_aciklama3]
+[evrak_aciklama4]
+[evrak_aciklama5]
+[evrak_aciklama6]
+[evrak_aciklama7]
+[evrak_aciklama8]
+[evrak_aciklama9]
+[evrak_aciklama10]
+[belgeno]
+[belgetarih]
+[evrakno_seri]
+[evrakno_sira]
+[evraktarih]
+[proje_kodu]
+[proje_adi]
+[sorumluluk_merkezi_kodu]
+[sorumluluk_merkezi_adi]
+[tarih]
+[saat]</value></data>
+  <data name="textBox2.Text" xml:space="preserve"><value>[metin1]
+[metin2]
+[metin3]
+[metin4]
+[metin5]
+[sayac]
+[stoklar]
+[stoklistesi]
+[siparisler]
+[sevk_adr_cadde]
+[sevk_adr_sokak]
+[sevk_adr_posta_kodu]
+[sevk_adr_ilce]
+[sevk_adr_il]
+[sevk_adr_ulke]
+[sevk_adr_tel_ulke_kodu]
+[sevk_adr_tel_bolge_kodu]
+[sevk_adr_tel_no1]
+[sevk_adr_tel_no2]
+[sevk_adr_tel_faxno]
+[sevk_adr_tel_modem]
+[sevk_adr_ozel_not]
+[fatura_adr_cadde]
+[fatura_adr_sokak]
+[fatura_adr_posta_kodu]
+[fatura_adr_ilce]
+[fatura_adr_il]
+[fatura_adr_ulke]
+[fatura_adr_tel_ulke_kodu]
+[fatura_adr_tel_bolge_kodu]
+[fatura_adr_tel_no1]
+[fatura_adr_tel_no2]
+[fatura_adr_tel_faxno]
+[fatura_adr_tel_modem]
+[fatura_adr_ozel_not]</value></data>
+  <data name="labelControl47.Text" xml:space="preserve"><value>0: Tanımsız 1:Satış Şartı, 2:Fiyat Listesi, 3: Cariye Son Satış Fiyatı, 4: Genel Son Satış Fiyatı, 5: Cariden Son Alış Fiyatı, 6: Genel Son Alış Fiyatı, 7: Alış Şartı, 8: Stok Standart Maliyeti, 9: Stok Maliyeti, 10: Ana Cari Satış Şartı</value></data>
+  <data name="labelControl641.Text" xml:space="preserve"><value>[1.birim_agirlik]
+[2.birim_agirlik]
+[3.birim_agirlik]
+[4.birim_agirlik]
+[1.birim_dara]
+[2.birim_dara]
+[3.birim_dara]
+[4.birim_dara]
+[1.birim_en]
+[2.birim_en]
+[3.birim_en]
+[4.birim_en]
+[1.birim_boy]
+[2.birim_boy]
+[3.birim_boy]
+[4.birim_boy]
+[1.birim_yukseklik]
+[2.birim_yukseklik]
+[3.birim_yukseklik]
+[4.birim_yukseklik]
+</value></data>
+  <data name="labelControl639.Text" xml:space="preserve"><value>[stok_kodu]
+[stok_ismi]
+[stok_kisa_ismi]
+[stok_yabanci_ismi]
+[doviz_sembol]
+[perakende_kdv_yuzde]
+[toptan_kdv_yuzde]
+[1.birim_fiyat]
+[2.birim_fiyat]
+[3.birim_fiyat]
+[4.birim_fiyat]
+[1.birim_barkod]
+[2.birim_barkod]
+[3.birim_barkod]
+[4.birim_barkod]
+[1.birim_adi]
+[2.birim_adi]
+[3.birim_adi]
+[4.birim_adi]
+[1.birim_katsayi]
+[2.birim_katsayi]
+[3.birim_katsayi]
+[4.birim_katsayi]</value></data>
+  <data name="labelControl32.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl31.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl664.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl368.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  <data name="labelControl369.Text" xml:space="preserve"><value>Varsayılan evrak serisi olarak birden fazla seri girebilirsiniz. İlk seri yeni evrak oluşturulurken otomatik olarak gelecektir.
+Diğer seriler kullanıcı evrak serisini değiştirmek istediğinde liste olarak gösterilecek ve seçmesi istenecektir.
+Örn : A veya A,B</value></data>
+  </root>

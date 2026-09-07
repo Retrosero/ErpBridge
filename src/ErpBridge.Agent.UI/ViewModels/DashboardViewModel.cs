@@ -9,6 +9,7 @@ using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Sync;
+using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Shared;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,7 @@ namespace ErpBridge.Agent.UI.ViewModels;
 public sealed class DashboardViewModel : ObservableObject
 {
     private readonly IBootstrapSyncService _bootstrap;
+    private readonly IChangeSetSyncService _changeSet;
     private readonly IConfiguration _configuration;
     private readonly MutableMemoryConfigurationProvider _liveSettings;
     private readonly IAgentConfigStore _configStore;
@@ -80,6 +82,7 @@ public sealed class DashboardViewModel : ObservableObject
 
     public DashboardViewModel(
         IBootstrapSyncService bootstrap,
+        IChangeSetSyncService changeSet,
         IConfiguration configuration,
         MutableMemoryConfigurationProvider liveSettings,
         IAgentConfigStore configStore,
@@ -87,6 +90,7 @@ public sealed class DashboardViewModel : ObservableObject
         ILogger<DashboardViewModel> logger)
     {
         _bootstrap = bootstrap ?? throw new ArgumentNullException(nameof(bootstrap));
+        _changeSet = changeSet ?? throw new ArgumentNullException(nameof(changeSet));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _liveSettings = liveSettings ?? throw new ArgumentNullException(nameof(liveSettings));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
@@ -96,6 +100,13 @@ public sealed class DashboardViewModel : ObservableObject
         RefreshCommand = new AsyncRelayCommand(_ => RefreshAsync());
         RunBootstrapCommand = new AsyncRelayCommand(
             execute: _ => RunBootstrapAsync(),
+            canExecute: () => !IsBusy);
+        // "Senkronize Et" — Faz 12 trigger tabanlı change-set yolu.
+        // Son sync'ten bu yana değişen INSERT/UPDATE/DELETE satırlarını
+        // gönderir; tüm veriyi değil. Sık kullanım için tasarlandı
+        // (bandwidth + latency düşük, idempotency garanti).
+        RunSyncDeltaCommand = new AsyncRelayCommand(
+            execute: _ => RunSyncDeltaAsync(),
             canExecute: () => !IsBusy);
         PushCustomersCommand = new AsyncRelayCommand(
             execute: _ => PushSectionAsync("customers", "Cari"),
@@ -131,6 +142,14 @@ public sealed class DashboardViewModel : ObservableObject
 
     /// <summary>Trigger a refresh — used on tab open and on the "Yenile" button.</summary>
     public System.Windows.Input.ICommand RefreshCommand { get; }
+
+    /// <summary>
+    /// Trigger-based delta sync. Sadece son sync'ten bu yana değişen
+    /// (INSERT/UPDATE/DELETE) satırları gönderir. Tüm veriyi gönderen
+    /// <see cref="RunBootstrapCommand"/>'ın aksine bu, hızlı ve
+    /// bandwidth-dostu. "Senkronize Et" butonuna bağlıdır.
+    /// </summary>
+    public System.Windows.Input.ICommand RunSyncDeltaCommand { get; }
 
     /// <summary>
     /// Run <c>SELECT COUNT(*)</c> on every Mikro table the agent pushes, and
@@ -548,6 +567,93 @@ public sealed class DashboardViewModel : ObservableObject
     {
         get => _hasMikroCountResult;
         private set => SetProperty(ref _hasMikroCountResult, value);
+    }
+
+    public async Task RunSyncDeltaAsync()
+    {
+        _logger.LogInformation("RunSyncDeltaAsync invoked from UI.");
+        LastRunStatusDisplay = "▶ Senkronize ediliyor…";
+        LastRunStatusBrush = WarningBadgeBrush;
+        LastRunSummaryDisplay = "Son sync'ten bu yana değişen kayıtlar gönderiliyor…";
+        LastErrorDisplay = string.Empty;
+        IsBusy = true;
+        try
+        {
+            // 0) Central API'ye kayıtlı değilsek otomatik register.
+            var registered = await EnsureRegisteredAsync().ConfigureAwait(true);
+            if (!registered)
+            {
+                LastRunSummaryDisplay = "Agent kayıt edilemedi — Ayarlar sekmesinden lisans anahtarını doğrulayın ve 'Lisans ile Kayıt Ol' butonuna tıklayın.";
+                LastRunStatusDisplay = "✗ Kayıt gerekli";
+                LastRunStatusBrush = DangerBadgeBrush;
+                LastErrorDisplay = "Central API'ye kayıt yapılamadı. Lisans anahtarı + API base URL kontrolü gerekli.";
+                _logger.LogWarning("RunSyncDeltaAsync aborted: auto-register failed.");
+                return;
+            }
+
+            _logger.LogInformation("Step 1: running change-set sync.");
+            var result = await _changeSet.RunOnceAsync().ConfigureAwait(true);
+            _logger.LogInformation(
+                "Step 2: RunOnceAsync returned. Success={Success}, Tables={Tables}, New={New}, Changed={Changed}, Deleted={Deleted}, DurationMs={Duration}.",
+                result.Success, result.TablesScanned, result.NewRowsPushed, result.ChangedRowsPushed,
+                result.DeletedRowsPushed, result.DurationMs);
+
+            if (result.Success)
+            {
+                var totalRows = result.NewRowsPushed + result.ChangedRowsPushed + result.DeletedRowsPushed;
+                if (totalRows == 0)
+                {
+                    // Değişen kayıt yok: bu mutlaka başarı değil, sadece "boş iş".
+                    // Operatör "boşuna tıkladım" demesin diye net bir mesaj.
+                    LastRunSummaryDisplay = string.Format(
+                        CultureInfo.CurrentCulture,
+                        "Değişiklik yok · {0} tablo tarandı · {1} ms",
+                        result.TablesScanned, result.DurationMs);
+                    LastRunStatusDisplay = "✓ Değişiklik yok";
+                    LastRunStatusBrush = SuccessBadgeBrush;
+                    LastErrorDisplay = string.Empty;
+                }
+                else
+                {
+                    LastRunSummaryDisplay = string.Format(
+                        CultureInfo.CurrentCulture,
+                        "{0} satır değişiklik gönderildi (yeni={1} değişen={2} silinen={3}) · {4} ms",
+                        totalRows, result.NewRowsPushed, result.ChangedRowsPushed,
+                        result.DeletedRowsPushed, result.DurationMs);
+                    LastRunStatusDisplay = "✓ Senkronize";
+                    LastRunStatusBrush = SuccessBadgeBrush;
+                    LastErrorDisplay = string.Empty;
+                }
+                _logger.LogInformation(
+                    "Manual delta sync succeeded. Tables={Tables}, New={New}, Changed={Changed}, Deleted={Deleted}, DurationMs={Duration}.",
+                    result.TablesScanned, result.NewRowsPushed, result.ChangedRowsPushed,
+                    result.DeletedRowsPushed, result.DurationMs);
+            }
+            else
+            {
+                LastRunSummaryDisplay = "Senkronize hatası: " + (result.ErrorCode ?? "UNKNOWN");
+                LastRunStatusDisplay = "✗ Başarısız";
+                LastRunStatusBrush = DangerBadgeBrush;
+                LastErrorDisplay = result.ErrorMessage ?? "Bilinmeyen hata";
+                _logger.LogWarning(
+                    "Manual delta sync FAILED. ErrorCode={ErrorCode}, Message={Message}.",
+                    result.ErrorCode, result.ErrorMessage);
+            }
+
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            LastRunSummaryDisplay = "Senkronize crash: " + ex.GetType().Name;
+            LastRunStatusDisplay = "✗ Crash";
+            LastRunStatusBrush = DangerBadgeBrush;
+            LastErrorDisplay = ex.Message;
+            _logger.LogError(ex, "RunSyncDeltaAsync crashed.");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     public async Task RunBootstrapAsync()

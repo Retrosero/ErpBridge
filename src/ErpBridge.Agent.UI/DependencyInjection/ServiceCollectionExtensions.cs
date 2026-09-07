@@ -2,6 +2,7 @@ using ErpBridge.Agent.UI.Services;
 using ErpBridge.Agent.UI.ViewModels;
 using ErpBridge.Core;
 using ErpBridge.Erp.Mikro.DependencyInjection;
+using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.LocalStore;
 using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -44,6 +45,12 @@ public static class ServiceCollectionExtensions
         // the user's latest typed-in values without a process restart.
         services.AddErpBridgeMikro(configuration);
 
+        // The trigger sync service is also used by the DashboardViewModel.
+        // Agent.Service registers its SQLite watermark store in its own
+        // composition root; the WPF composition root must register the
+        // desktop equivalent as well or DashboardView construction fails.
+        services.AddSingleton<ITriggerWatermarkStore, SqliteTriggerWatermarkStore>();
+
         services.AddSingleton<AgentSettingsViewModel>();
         services.AddSingleton<DashboardViewModel>();
 
@@ -52,6 +59,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDesktopSignalService, BootstrapSignalService>();
         services.AddSingleton<DesktopAgentTelemetryReporter>();
         services.AddSingleton<DesktopHeartbeatService>();
+        // Live UI clock: drives the tray tooltip + the status-bar clock.
+        services.AddSingleton<IDesktopClockService, DesktopClockService>();
 
         services.AddLogging(b =>
         {

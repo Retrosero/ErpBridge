@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--BaglantiAyarlari-->
+<Config>
+  <SqlServer>SERVER</SqlServer>
+  <SqlUserName>sa</SqlUserName>
+  <SqlPassword>F12341234f</SqlPassword>
+</Config>

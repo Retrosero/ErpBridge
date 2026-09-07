@@ -4,8 +4,10 @@ using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
+using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
+using ErpBridge.Shared;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -28,6 +30,7 @@ public sealed class MikroAdapter : IErpAdapter
     private readonly ILogger<MikroAdapter> _logger;
     private readonly IMikroDbReader _dbReader;
     private readonly MikroConnectionFactory _connectionFactory;
+    private readonly IServiceProvider _serviceProvider;
 
     /// <summary>Settings supplied at construction time — the adapter is bound to one DB.</summary>
     public MikroConnectionSettings ConnectionSettings { get; }
@@ -55,7 +58,8 @@ public sealed class MikroAdapter : IErpAdapter
         IConfiguration configuration,
         ILogger<MikroAdapter> logger,
         IMikroDbReader dbReader,
-        MikroConnectionFactory connectionFactory)
+        MikroConnectionFactory connectionFactory,
+        IServiceProvider serviceProvider)
     {
         ConnectionSettings = connectionSettings ?? throw new ArgumentNullException(nameof(connectionSettings));
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
@@ -67,6 +71,7 @@ public sealed class MikroAdapter : IErpAdapter
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _dbReader = dbReader ?? throw new ArgumentNullException(nameof(dbReader));
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
 
         // Push the active settings into the factory so collaborators that don't
         // carry a MikroConnectionSettings reference (notably MikroDbReader) can
@@ -455,5 +460,120 @@ public sealed class MikroAdapter : IErpAdapter
     {
         ArgumentNullException.ThrowIfNull(payload);
         return _salesOrderWriter.WriteAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <summary>
+    /// Read one trigger-based change set from Mikro. For each tracked table
+    /// the adapter issues the three <see cref="IChangeSetReader"/> queries
+    /// (new / changed / deleted) in parallel, paginates by
+    /// <paramref name="packetSize"/>, and returns a <see cref="SyncChangeSet"/>
+    /// ready to push to the central API.
+    /// </summary>
+    /// <remarks>
+    /// Concurrency: all 49 tables are processed in parallel — the cost is
+    /// one short-lived <see cref="Microsoft.Data.SqlClient.SqlConnection"/>
+    /// per table inside the change-set reader, so the SQL Server end sees a
+    /// burst of 49 short reads. The burst is well under the
+    /// <c>Max Pool Size = 100</c> default. The caller should still throttle
+    /// (the agent worker runs this at most every 60 s).
+    /// </remarks>
+    public async Task<SyncChangeSet> ReadChangeSetAsync(
+        string tenantId,
+        IReadOnlyDictionary<int, int> lastTriggerByTabloId,
+        int packetSize,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentNullException.ThrowIfNull(lastTriggerByTabloId);
+        if (packetSize <= 0) throw new ArgumentOutOfRangeException(nameof(packetSize));
+
+        // Ensure the change-set reader is bound to the active settings. The
+        // factory pulls credentials on every call, so this keeps Mikro DB
+        // swaps (rare but possible across tenants) from leaking into the
+        // trigger pipeline.
+        _connectionFactory.SetActiveSettings(ConnectionSettings);
+
+        var changeReader = _serviceProvider.GetService(typeof(IChangeSetReader)) as IChangeSetReader
+            ?? throw new InvalidOperationException(
+                "IChangeSetReader is not registered. Call AddErpBridgeMikro() with the trigger services enabled.");
+
+        var pulledAtUtc = DateTimeOffset.UtcNow;
+        var perTableTasks = TrackedTableCatalog.All
+            .Select(async schema =>
+            {
+                ct.ThrowIfCancellationRequested();
+                var previous = lastTriggerByTabloId.TryGetValue(schema.TabloID, out var prev) ? prev : 0;
+
+                // All three directions use the monotonic TriggerRECno cursor.
+                // The reader filters Islem=2 for inserts, Islem=1 for updates
+                // and Islem=0 for deletes, so a delta run never scans the
+                // whole Mikro source table when the watermark is zero.
+                var newTask = changeReader.ReadNewAsync(
+                    schema, previous, packetSize, schema.Fields, ct);
+                var changedTask = changeReader.ReadChangedAsync(
+                    schema, previous, packetSize, schema.Fields, ct);
+                var deletedTask = changeReader.ReadDeletedAsync(
+                    schema, previous, packetSize, ct);
+                await Task.WhenAll(newTask, changedTask, deletedTask).ConfigureAwait(false);
+
+                var newChunk = await newTask.ConfigureAwait(false);
+                var changedChunk = await changedTask.ConfigureAwait(false);
+                var deletedChunk = await deletedTask.ConfigureAwait(false);
+
+                var newLast = Max(newChunk.HighestTriggerRecNo, changedChunk.HighestTriggerRecNo, deletedChunk.HighestTriggerRecNo);
+                var descriptor = new SyncTableDescriptor(
+                    TabloID: schema.TabloID,
+                    TabloAdi: schema.TabloAdi,
+                    RecnoField: schema.RecnoField,
+                    Fields: schema.Fields,
+                    RequiresSoftDeleteFilter: schema.RequiresSoftDeleteFilter);
+
+                return new SyncTableChangeSet(
+                    Table: descriptor,
+                    New: ToSyncNew(newChunk),
+                    Changed: ToSyncChanged(changedChunk),
+                    Deleted: ToSyncDeleted(deletedChunk),
+                    PreviousLastTriggerRecNo: previous,
+                    NewLastTriggerRecNo: newLast);
+            });
+
+        var tables = await Task.WhenAll(perTableTasks).ConfigureAwait(false);
+        return new SyncChangeSet(
+            TenantId: tenantId,
+            SourceDatabase: ConnectionSettings.DatabaseName,
+            PulledAtUtc: pulledAtUtc,
+            Tables: tables);
+    }
+
+    private static int Max(params int[] values) => values.Length == 0 ? 0 : values.Max();
+
+    private static SyncTableDescriptor ToDescriptor(TrackedTableSchema schema) =>
+        new SyncTableDescriptor(
+            TabloID: schema.TabloID,
+            TabloAdi: schema.TabloAdi,
+            RecnoField: schema.RecnoField,
+            Fields: schema.Fields,
+            RequiresSoftDeleteFilter: schema.RequiresSoftDeleteFilter);
+
+    private static SyncNewChunk? ToSyncNew(TriggerChunk c)
+    {
+        if (c.Rows.Count == 0 && !c.MoreAvailable) return null;
+        return new SyncNewChunk(ToDescriptor(c.Table), c.Rows, c.HighestTriggerRecNo, c.MoreAvailable);
+    }
+
+    private static SyncChangedChunk? ToSyncChanged(TriggerChunk c)
+    {
+        if (c.Rows.Count == 0 && !c.MoreAvailable) return null;
+        return new SyncChangedChunk(ToDescriptor(c.Table), c.Rows, c.HighestTriggerRecNo, c.MoreAvailable);
+    }
+
+    private static SyncDeletedChunk? ToSyncDeleted(TriggerChunk c)
+    {
+        if (c.Rows.Count == 0 && !c.MoreAvailable) return null;
+        // The deleted chunk always carries (KayitRECno, TriggerRECno) columns.
+        var rows = c.Rows
+            .Select(r => (KayitRecNo: Convert.ToInt32(r["KayitRECno"]), TriggerRecNo: Convert.ToInt32(r["TriggerRECno"])))
+            .ToList();
+        return new SyncDeletedChunk(ToDescriptor(c.Table), rows, c.HighestTriggerRecNo, c.MoreAvailable);
     }
 }

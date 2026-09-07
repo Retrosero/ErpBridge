@@ -1,0 +1,292 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+<resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>1.3</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><data name="$this.ScriptsSource" xml:space="preserve"><value>
+private void hesap_adi_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 20;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrakSatirlari)e.Row).hesap_adi;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+}
+
+private void hesap_kodu_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 6;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrakSatirlari)e.Row).hesap_kodu;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void miktar_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 4;
+	string Hizalama = "right"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrakSatirlari)e.Row).miktar.ToString("F0");
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void toplam_fiyat_net_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 9;
+	string Hizalama = "right"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrakSatirlari)e.Row).toplam_fiyat_net.ToString("N2");
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void ara_toplam_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 10;
+	string Hizalama = "right"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).ara_toplam.ToString("N2");
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void toplam_iskonto_tutari_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 10;
+	string Hizalama = "right"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).toplam_iskonto_tutari.ToString("N2");
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void toplam_vergi_tutari_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 10;
+	string Hizalama = "right"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).toplam_vergi_tutari.ToString("N2");
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void yekun_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 10;
+	string Hizalama = "right"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).yekun.ToString("N2");
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void cari_unvan1_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 40;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).cari.cari_unvan1;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+}
+
+private void cari_unvan2_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 40;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).cari.cari_unvan2;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void cari_vdaire_adi_nkta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 20;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).cari.cari_vdaire_adi;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+}
+
+private void cari_vdaire_no_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 15;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).cari.cari_vdaire_no;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void fatura_adresi_adr_cadde_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 40;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).fatura_adresi.adr_cadde;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void fatura_adresi_adr_sokak_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 40;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).fatura_adresi.adr_sokak;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void fatura_adresi_adr_posta_kodu_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 8;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).fatura_adresi.adr_posta_kodu;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void fatura_adresi_adr_ilce_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 15;
+	string Hizalama = "right"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).fatura_adresi.adr_ilce;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void fatura_adresi_adr_il_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 15;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).fatura_adresi.adr_il;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void sevk_adresi_adr_cadde_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 40;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).sevk_adresi.adr_cadde;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void sevk_adresi_adr_sokak_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 40;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).sevk_adresi.adr_sokak;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void sevk_adresi_adr_posta_kodu_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 8;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).sevk_adresi.adr_posta_kodu;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void sevk_adresi_adr_ilce_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 15;
+	string Hizalama = "right"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).sevk_adresi.adr_ilce;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+
+private void sevk_adresi_adr_il_nokta_vuruslu_GetValue(object sender, DevExpress.XtraReports.UI.GetValueEventArgs e) {
+	int KarakterSayisi = 15;
+	string Hizalama = "left"; // left,right,center
+	string KirpmaYeri = "right"; //left,right
+	string value = ((Fora.Mikro.GenelEvrak)e.Row).sevk_adresi.adr_il;
+	
+	string Sonuc = "";
+	Sonuc = Fora.Utility.GenelUtility.DotMatrixTextHazirla(value,Hizalama,KarakterSayisi,KirpmaYeri);
+	e.Value = Sonuc;
+
+}
+</value></data>
+  </root>

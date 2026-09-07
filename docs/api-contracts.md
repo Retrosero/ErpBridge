@@ -51,6 +51,16 @@ lookups }`. Yanıt: 204. Tenant başına periyodik (Faz 9: her 60 sn delta push)
 Başarılı insert'ten sonra sunucu, bu tenant'ın `/api/v1/bootstrap/notify` long-poll
 bekleyenlerini cursor ile uyandırır.
 
+Yeni agent'lar büyük tam snapshot'lar için chunked sözleşmeyi kullanır:
+
+- `POST /api/v1/bootstrap/upload/start` → `{ uploadId, maxItemsPerChunk }`
+- `POST /api/v1/bootstrap/upload/{uploadId}/chunks` → `{ section, chunkIndex, items[] }`
+- `POST /api/v1/bootstrap/upload/{uploadId}/complete` → 204
+
+Chunk'lar staging snapshot'a yazılır; complete başarılı olmadan Android aktif
+snapshot'ı değiştirmez. Aynı `Idempotency-Key` ve chunk index tekrar gönderilirse
+aynı işlem no-op olur. Tenant başına yalnızca bir aktif snapshot tutulur.
+
 ### GET /api/v1/bootstrap/notify
 
 Long-polling. Agent Service veya WPF UI bir push'u beklemek için bu endpoint'i

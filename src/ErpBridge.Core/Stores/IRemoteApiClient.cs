@@ -29,6 +29,17 @@ public interface IRemoteApiClient
     Task PushBootstrapDataAsync(SyncPackage package, CancellationToken ct = default);
 
     /// <summary>
+    /// Push a trigger-based <see cref="ErpBridge.Shared.SyncChangeSet"/> to the
+    /// central API. The default implementation throws
+    /// <see cref="NotImplementedException"/> so older agent builds keep
+    /// compiling after a server rollback; the WPF toggle keeps the
+    /// trigger path opt-in until the central API is on a build that
+    /// supports the new endpoint.
+    /// </summary>
+    Task PushChangeSetAsync(ErpBridge.Shared.SyncChangeSet changeSet, CancellationToken ct = default)
+        => throw new NotImplementedException("Central API does not support trigger-based change sets yet.");
+
+    /// <summary>
     /// Returns whether the central API already has a bootstrap snapshot for
     /// this tenant and, when it does, the cursor for an incremental read.
     /// </summary>

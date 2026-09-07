@@ -23,6 +23,11 @@
     <ProjectReference Include="..\..\src\ErpBridge.Shared\ErpBridge.Shared.csproj" />
     <ProjectReference Include="..\..\src\ErpBridge.Core\ErpBridge.Core.csproj" />
     <ProjectReference Include="..\..\src\ErpBridge.Erp.Abstractions\ErpBridge.Erp.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\ErpBridge.Erp.Mikro\ErpBridge.Erp.Mikro.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="ErpBridge.Erp.Mikro.Trigger" />
   </ItemGroup>
 
   <ItemGroup>

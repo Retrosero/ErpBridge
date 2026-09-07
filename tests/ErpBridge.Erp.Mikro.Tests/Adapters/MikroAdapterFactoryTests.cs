@@ -3,8 +3,10 @@ using ErpBridge.Erp.Mikro.Adapters;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.DependencyInjection;
 using ErpBridge.Erp.Mikro.Readers;
+using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
+using ErpBridge.Shared;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,6 +36,28 @@ public class MikroAdapterFactoryTests
         var adapter = factory.Create(ErpType.Mikro);
 
         adapter.Should().BeOfType<MikroAdapter>();
+    }
+
+    [Fact]
+    public async Task Created_adapter_can_resolve_change_reader_after_factory_returns()
+    {
+        var settings = new MikroConnectionSettings("srv", "sa", "x", "MIKRO16");
+        var config = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(config);
+        services.AddErpBridgeMikro(settings, config);
+        services.AddSingleton<IChangeSetReader, EmptyChangeSetReader>();
+        using var provider = services.BuildServiceProvider();
+
+        var adapter = provider.GetRequiredService<IErpAdapterFactory>().Create(ErpType.Mikro);
+
+        var act = () => adapter.ReadChangeSetAsync(
+            "tenant-1",
+            new Dictionary<int, int>(),
+            packetSize: 10);
+
+        await act.Should().NotThrowAsync();
     }
 
     [Theory]
@@ -94,5 +118,36 @@ public class MikroAdapterFactoryTests
 
         a.Should().BeOfType<MikroDbReader>();
         a.Should().BeSameAs(b);
+    }
+
+    private sealed class EmptyChangeSetReader : IChangeSetReader
+    {
+        public Task<TriggerChunk> ReadNewAsync(
+            TrackedTableSchema schema,
+            int lastRecNo,
+            int packetSize,
+            IReadOnlyList<string> fields,
+            CancellationToken ct = default) => Empty(schema, fields);
+
+        public Task<TriggerChunk> ReadChangedAsync(
+            TrackedTableSchema schema,
+            int lastTriggerRecNo,
+            int packetSize,
+            IReadOnlyList<string> fields,
+            CancellationToken ct = default) => Empty(schema, fields);
+
+        public Task<TriggerChunk> ReadDeletedAsync(
+            TrackedTableSchema schema,
+            int lastTriggerRecNo,
+            int packetSize,
+            CancellationToken ct = default) => Empty(schema, Array.Empty<string>());
+
+        private static Task<TriggerChunk> Empty(TrackedTableSchema schema, IReadOnlyList<string> fields) =>
+            Task.FromResult(new TriggerChunk(
+                schema,
+                fields,
+                Array.Empty<IReadOnlyDictionary<string, object?>>(),
+                HighestTriggerRecNo: 0,
+                MoreAvailable: false));
     }
 }

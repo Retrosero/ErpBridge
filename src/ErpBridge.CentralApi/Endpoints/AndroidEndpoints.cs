@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
@@ -97,6 +98,13 @@ public static class AndroidEndpoints
 
     private static async Task<IResult> BootstrapAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive).FirstOrDefaultAsync(ct);
+        if (snapshot is not null)
+            return Results.Ok(new { tenantId = snapshot.TenantId, sourceDatabase = snapshot.SourceDatabase, pulledAtUtc = snapshot.PulledAtUtc, receivedAtUtc = snapshot.ReceivedAtUtc });
+
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var package = access.Package!;
@@ -105,6 +113,17 @@ public static class AndroidEndpoints
 
     private static async Task<IResult> PullAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive).FirstOrDefaultAsync(ct);
+        if (snapshot is not null)
+        {
+            using var snapshotDocument = await BuildSnapshotDocumentAsync(db, snapshot,
+                ["customers", "customerAddresses", "customerContacts", "stocks", "barcodes", "prices", "salesConditions", "inventory", "openOrders", "cashAndBank", "lookups", "customerTransactions", "stockTransactions"], ct);
+            return Results.Ok(new { sourceDatabase = snapshot.SourceDatabase, pulledAtUtc = snapshot.PulledAtUtc, receivedAtUtc = snapshot.ReceivedAtUtc, data = snapshotDocument.RootElement.Clone() });
+        }
+
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var package = access.Package!;
@@ -119,21 +138,39 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive)
+            .FirstOrDefaultAsync(ct);
+        if (snapshot is not null)
+        {
+            var page = Math.Max(1, request.Page);
+            var pageSize = Math.Clamp(request.PageSize, 1, 500);
+            var result = await ReadSnapshotSectionPageAsync(db, snapshot, propertyName, page, pageSize, ct);
+            return Results.Ok(new
+            {
+                entity = propertyName, sourceDatabase = snapshot.SourceDatabase,
+                pulledAtUtc = snapshot.PulledAtUtc, page, pageSize,
+                total = result.Total, items = result.Items,
+            });
+        }
+
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var package = access.Package!;
         using var document = JsonDocument.Parse(package.PayloadJson);
         var allItems = GetArray(document.RootElement, propertyName).Select(item => item.Clone()).ToArray();
-        var page = Math.Max(1, request.Page);
-        var pageSize = Math.Clamp(request.PageSize, 1, 500);
-        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        var fallbackPage = Math.Max(1, request.Page);
+        var fallbackPageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = allItems.Skip((fallbackPage - 1) * fallbackPageSize).Take(fallbackPageSize).ToArray();
         return Results.Ok(new
         {
             entity = propertyName,
             sourceDatabase = package.SourceDatabase,
             pulledAtUtc = package.PulledAtUtc,
-            page,
-            pageSize,
+            page = fallbackPage,
+            pageSize = fallbackPageSize,
             total = allItems.Length,
             items,
         });
@@ -145,10 +182,24 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
-        var access = await GetLatestPackageAsync(http, db, ct);
-        if (access.Error is not null) return access.Error;
-        var package = access.Package!;
-        using var document = JsonDocument.Parse(package.PayloadJson);
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive).FirstOrDefaultAsync(ct);
+        BootstrapPackage? package = null;
+        JsonDocument document;
+        if (snapshot is not null)
+        {
+            document = await BuildSnapshotDocumentAsync(db, snapshot,
+                ["stocks", "barcodes", "prices", "lookups", "inventory"], ct);
+        }
+        else
+        {
+            var access = await GetLatestPackageAsync(http, db, ct);
+            if (access.Error is not null) return access.Error;
+            package = access.Package!;
+            document = JsonDocument.Parse(package.PayloadJson);
+        }
         var root = document.RootElement;
 
         var barcodesByStock = GetArray(root, "barcodes")
@@ -261,8 +312,8 @@ public static class AndroidEndpoints
 
         return Results.Ok(new
         {
-            sourceDatabase = package.SourceDatabase,
-            pulledAtUtc = package.PulledAtUtc,
+            sourceDatabase = snapshot?.SourceDatabase ?? package!.SourceDatabase,
+            pulledAtUtc = snapshot?.PulledAtUtc ?? package!.PulledAtUtc,
             page,
             pageSize,
             total = allItems.Length,
@@ -282,10 +333,21 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
-        var access = await GetLatestPackageAsync(http, db, ct);
-        if (access.Error is not null) return access.Error;
-        var package = access.Package!;
-        using var document = JsonDocument.Parse(package.PayloadJson);
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive).FirstOrDefaultAsync(ct);
+        BootstrapPackage? package = null;
+        JsonDocument document;
+        if (snapshot is not null)
+            document = await BuildSnapshotDocumentAsync(db, snapshot, ["customers"], ct);
+        else
+        {
+            var access = await GetLatestPackageAsync(http, db, ct);
+            if (access.Error is not null) return access.Error;
+            package = access.Package!;
+            document = JsonDocument.Parse(package.PayloadJson);
+        }
         var page = Math.Max(1, request?.Page ?? 1);
         var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
         var all = GetArray(document.RootElement, "customers").ToArray();
@@ -303,15 +365,15 @@ public static class AndroidEndpoints
             cariBolgeKodu = GetString(customer, "regionCode"),
             paraBirimi = GetString(customer, "currency"),
             bakiye = GetDecimal(customer, "balance") ?? 0m,
-            updatedAt = package.PulledAtUtc,
+            updatedAt = snapshot?.PulledAtUtc ?? package!.PulledAtUtc,
             isDeleted = false,
         }).ToArray();
 
         return Results.Ok(new
         {
             entity = "cari",
-            sourceDatabase = package.SourceDatabase,
-            pulledAtUtc = package.PulledAtUtc,
+            sourceDatabase = snapshot?.SourceDatabase ?? package!.SourceDatabase,
+            pulledAtUtc = snapshot?.PulledAtUtc ?? package!.PulledAtUtc,
             page,
             pageSize,
             total = all.Length,
@@ -327,9 +389,9 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
-        var access = await GetLatestPackageAsync(http, db, ct);
+        var access = await GetAndroidDocumentAsync(http, db, ["cashAndBank"], ct);
         if (access.Error is not null) return access.Error;
-        using var document = JsonDocument.Parse(access.Package!.PayloadJson);
+        using var document = access.Document!;
         var allItems = GetArray(document.RootElement, "cashAndBank")
             .Where(item => string.Equals(GetString(item, "kind"), kind, StringComparison.OrdinalIgnoreCase))
             .Select(item => new
@@ -365,10 +427,10 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
-        var access = await GetLatestPackageAsync(http, db, ct);
+        var access = await GetAndroidDocumentAsync(http, db, ["customerAddresses"], ct);
         if (access.Error is not null) return access.Error;
-        var package = access.Package!;
-        using var document = JsonDocument.Parse(package.PayloadJson);
+        var snapshot = access.Snapshot!;
+        using var document = access.Document!;
         var page = Math.Max(1, request?.Page ?? 1);
         var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
 
@@ -416,7 +478,7 @@ public static class AndroidEndpoints
             .ToArray();
 
         var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
-        return Results.Ok(new { entity = "cariAdresler", page, pageSize, total = allItems.Length, items });
+        return Results.Ok(new { entity = "cariAdresler", sourceDatabase = snapshot.SourceDatabase, pulledAtUtc = snapshot.PulledAtUtc, page, pageSize, total = allItems.Length, items });
     }
 
     private static async Task<IResult> PriceListDefinitionsAsync(
@@ -424,9 +486,10 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
-        var access = await GetLatestPackageAsync(http, db, ct);
+        var access = await GetAndroidDocumentAsync(http, db, ["lookups"], ct);
         if (access.Error is not null) return access.Error;
-        using var document = JsonDocument.Parse(access.Package!.PayloadJson);
+        var snapshot = access.Snapshot!;
+        using var document = access.Document!;
         var items = GetArray(document.RootElement, "lookups")
             .Where(item => string.Equals(GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase))
             .Select(item =>
@@ -447,7 +510,7 @@ public static class AndroidEndpoints
             .Where(item => item.listNo > 0)
             .OrderBy(item => item.listNo)
             .ToArray();
-        return Results.Ok(new { entity = "stokSatisFiyatListeTanimlari", total = items.Length, items });
+        return Results.Ok(new { entity = "stokSatisFiyatListeTanimlari", sourceDatabase = snapshot.SourceDatabase, pulledAtUtc = snapshot.PulledAtUtc, total = items.Length, items });
     }
 
     private static async Task<IResult> StockMovementsAsync(
@@ -456,9 +519,9 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
-        var access = await GetLatestPackageAsync(http, db, ct);
+        var access = await GetAndroidDocumentAsync(http, db, ["stockTransactions"], ct);
         if (access.Error is not null) return access.Error;
-        using var document = JsonDocument.Parse(access.Package!.PayloadJson);
+        using var document = access.Document!;
 
         var page = Math.Max(1, request.Page);
         var pageSize = Math.Clamp(request.PageSize, 1, 500);
@@ -507,10 +570,10 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
-        var access = await GetLatestPackageAsync(http, db, ct);
+        var access = await GetAndroidDocumentAsync(http, db, ["lookups", "prices"], ct);
         if (access.Error is not null) return access.Error;
-        var package = access.Package!;
-        using var document = JsonDocument.Parse(package.PayloadJson);
+        var snapshot = access.Snapshot!;
+        using var document = access.Document!;
         var root = document.RootElement;
         var namesByListNo = GetArray(root, "lookups")
             .Where(item => string.Equals(GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase))
@@ -530,7 +593,7 @@ public static class AndroidEndpoints
             return mapped;
         }).ToArray();
 
-        return Results.Ok(new { entity = "stokSatisFiyatListeleri", sourceDatabase = package.SourceDatabase, pulledAtUtc = package.PulledAtUtc, total = items.Length, items });
+        return Results.Ok(new { entity = "stokSatisFiyatListeleri", sourceDatabase = snapshot.SourceDatabase, pulledAtUtc = snapshot.PulledAtUtc, total = items.Length, items });
     }
 
     private static async Task<IResult> PagedSectionAsync(
@@ -540,25 +603,43 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive)
+            .FirstOrDefaultAsync(ct);
+        if (snapshot is not null)
+        {
+            var page = Math.Max(1, request.Page);
+            var pageSize = Math.Clamp(request.PageSize, 1, 500);
+            var result = await ReadSnapshotSectionPageAsync(db, snapshot, propertyName, page, pageSize, ct);
+            return Results.Ok(new
+            {
+                entity = propertyName, sourceDatabase = snapshot.SourceDatabase,
+                pulledAtUtc = snapshot.PulledAtUtc, page, pageSize,
+                total = result.Total, since = snapshot.PulledAtUtc, items = result.Items,
+            });
+        }
+
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var package = access.Package!;
         using var document = JsonDocument.Parse(package.PayloadJson);
-        var page = Math.Max(1, request.Page);
-        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var fallbackPage = Math.Max(1, request.Page);
+        var fallbackPageSize = Math.Clamp(request.PageSize, 1, 500);
         var allItems = document.RootElement.TryGetProperty(propertyName, out var value)
             && value.ValueKind == JsonValueKind.Array
             ? value.EnumerateArray().Select(item => item.Clone()).ToArray()
             : Array.Empty<JsonElement>();
-        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        var items = allItems.Skip((fallbackPage - 1) * fallbackPageSize).Take(fallbackPageSize).ToArray();
 
         return Results.Ok(new
         {
             entity = propertyName,
             sourceDatabase = package.SourceDatabase,
             pulledAtUtc = package.PulledAtUtc,
-            page,
-            pageSize,
+            page = fallbackPage,
+            pageSize = fallbackPageSize,
             total = allItems.Length,
             since = package.PulledAtUtc,
             items,
@@ -571,10 +652,10 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
-        var access = await GetLatestPackageAsync(http, db, ct);
+        var access = await GetAndroidDocumentAsync(http, db, ["stocks", "customerTransactions", "stockTransactions"], ct);
         if (access.Error is not null) return access.Error;
-        var package = access.Package!;
-        using var document = JsonDocument.Parse(package.PayloadJson);
+        var snapshot = access.Snapshot!;
+        using var document = access.Document!;
         var root = document.RootElement;
 
         var stockNames = GetArray(root, "stocks")
@@ -763,6 +844,106 @@ public static class AndroidEndpoints
             return (null, JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "BOOTSTRAP_NOT_FOUND", Message = "No ERP data has been received for this tenant yet." }));
 
         return (package, null);
+    }
+
+    private static async Task<AndroidDocumentAccess> GetAndroidDocumentAsync(
+        HttpContext http,
+        CentralApiDbContext db,
+        IReadOnlyCollection<string> sections,
+        CancellationToken ct)
+    {
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return new(null, null, mobile.Error);
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive).FirstOrDefaultAsync(ct);
+        if (snapshot is not null)
+        {
+            var document = await BuildSnapshotDocumentAsync(db, snapshot, sections, ct);
+            return new(document, snapshot, null);
+        }
+        var access = await GetLatestPackageAsync(http, db, ct);
+        if (access.Error is not null) return new(null, null, access.Error);
+        return new(JsonDocument.Parse(access.Package!.PayloadJson),
+            new BootstrapSnapshot
+            {
+                TenantId = access.Package.TenantId, SourceDatabase = access.Package.SourceDatabase,
+                PulledAtUtc = access.Package.PulledAtUtc, ReceivedAtUtc = access.Package.ReceivedAtUtc,
+            }, null);
+    }
+
+    private sealed record AndroidDocumentAccess(JsonDocument? Document, BootstrapSnapshot? Snapshot, IResult? Error);
+
+    private static async Task<(Guid TenantId, IResult? Error)> AuthorizeMobileAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    {
+        if (!http.User.TryGetTenantId(out var tenantId))
+            return (Guid.Empty, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." }));
+        var keyIdText = http.User.FindFirst(ApiKeyClaims.ApiKeyId)?.Value;
+        if (!Guid.TryParse(keyIdText, out var keyId))
+            return (Guid.Empty, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_API_KEY", Message = "API key identity is missing." }));
+        var allowed = await db.ApiKeys.AsNoTracking().AnyAsync(key => key.Id == keyId && key.TenantId == tenantId && key.IsActive && (key.Scopes.Contains(MobileReadScope) || key.Scopes.Contains("*")), ct);
+        return allowed
+            ? (tenantId, null)
+            : (Guid.Empty, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "MOBILE_READ_SCOPE_REQUIRED", Message = "API key requires the mobile:read scope." }));
+    }
+
+    private static async Task<(int Total, JsonElement[] Items)> ReadSnapshotSectionPageAsync(
+        CentralApiDbContext db,
+        BootstrapSnapshot snapshot,
+        string section,
+        int page,
+        int pageSize,
+        CancellationToken ct)
+    {
+        var total = await db.BootstrapSnapshotChunks.AsNoTracking()
+            .Where(x => x.SnapshotId == snapshot.Id && x.Section == section)
+            .Select(x => x.ItemCount)
+            .SumAsync(ct);
+        var skip = (page - 1) * pageSize;
+        var items = new List<JsonElement>(pageSize);
+        var seen = 0;
+        await foreach (var chunk in db.BootstrapSnapshotChunks.AsNoTracking()
+            .Where(x => x.SnapshotId == snapshot.Id && x.Section == section)
+            .OrderBy(x => x.ChunkIndex)
+            .Select(x => x)
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            if (items.Count >= pageSize) break;
+            using var document = JsonDocument.Parse(chunk.PayloadJson);
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (seen++ < skip) continue;
+                items.Add(item.Clone());
+                if (items.Count >= pageSize) break;
+            }
+        }
+        return (total, items.ToArray());
+    }
+
+    private static async Task<JsonDocument> BuildSnapshotDocumentAsync(
+        CentralApiDbContext db,
+        BootstrapSnapshot snapshot,
+        IReadOnlyCollection<string> sections,
+        CancellationToken ct)
+    {
+        var root = new JsonObject();
+        foreach (var section in sections)
+        {
+            var chunks = await db.BootstrapSnapshotChunks.AsNoTracking()
+                .Where(x => x.SnapshotId == snapshot.Id && x.Section == section)
+                .OrderBy(x => x.ChunkIndex)
+                .Select(x => x.PayloadJson)
+                .ToListAsync(ct);
+            var array = new JsonArray();
+            foreach (var chunk in chunks)
+            {
+                using var document = JsonDocument.Parse(chunk);
+                foreach (var item in document.RootElement.EnumerateArray())
+                    array.Add(JsonNode.Parse(item.GetRawText()));
+            }
+            root[section] = array;
+        }
+        return JsonDocument.Parse(root.ToJsonString());
     }
 
     private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, DateTimeOffset? Since = null);

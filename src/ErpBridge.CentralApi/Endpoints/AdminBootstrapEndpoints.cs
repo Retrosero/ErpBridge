@@ -50,31 +50,62 @@ public static class AdminBootstrapEndpoints
             .OrderByDescending(p => p.PulledAtUtc)
             .FirstOrDefaultAsync(ct);
 
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(p => p.TenantId == tenantId.Value && p.IsActive)
+            .FirstOrDefaultAsync(ct);
+
+        if (snapshot is not null)
+        {
+            var counts = await db.BootstrapSnapshotChunks.AsNoTracking()
+                .Where(x => x.SnapshotId == snapshot.Id)
+                .GroupBy(x => x.Section)
+                .Select(g => new { Section = g.Key, Count = g.Sum(x => x.ItemCount) })
+                .ToDictionaryAsync(x => x.Section, x => x.Count, ct);
+            return JsonResults.Ok(new BootstrapSummaryDto
+            {
+                TenantId = snapshot.TenantId,
+                CapturedAtUtc = snapshot.PulledAtUtc,
+                CustomersCount = Count(counts, "customers"),
+                StocksCount = Count(counts, "stocks"),
+                PricesCount = Count(counts, "prices"),
+                InventoryCount = Count(counts, "inventory"),
+                OpenOrdersCount = Count(counts, "openOrders"),
+                CashAndBankCount = Count(counts, "cashAndBank"),
+                LookupsCount = Count(counts, "lookups"),
+                CustomerAddressesCount = Count(counts, "customerAddresses"),
+                CustomerContactsCount = Count(counts, "customerContacts"),
+                BarcodesCount = Count(counts, "barcodes"),
+                SalesConditionsCount = Count(counts, "salesConditions"),
+                CustomerTransactionsCount = Count(counts, "customerTransactions"),
+                StockTransactionsCount = Count(counts, "stockTransactions"),
+            });
+        }
+
         if (package is null)
         {
             return JsonResults.Status(StatusCodes.Status404NotFound,
                 new ApiError { ErrorCode = "BOOTSTRAP_NOT_FOUND", Message = "No bootstrap snapshot found for tenant." });
         }
 
-        var counts = CountRows(package.PayloadJson);
+        var packageCounts = CountRows(package.PayloadJson);
 
         return JsonResults.Ok(new BootstrapSummaryDto
         {
             TenantId = package.TenantId,
             CapturedAtUtc = package.PulledAtUtc,
-            CustomersCount = counts.Customers,
-            StocksCount = counts.Stocks,
-            PricesCount = counts.Prices,
-            InventoryCount = counts.Inventory,
-            OpenOrdersCount = counts.OpenOrders,
-            CashAndBankCount = counts.CashAndBank,
-            LookupsCount = counts.Lookups,
-            CustomerAddressesCount = counts.CustomerAddresses,
-            CustomerContactsCount = counts.CustomerContacts,
-            BarcodesCount = counts.Barcodes,
-            SalesConditionsCount = counts.SalesConditions,
-            CustomerTransactionsCount = counts.CustomerTransactions,
-            StockTransactionsCount = counts.StockTransactions,
+            CustomersCount = packageCounts.Customers,
+            StocksCount = packageCounts.Stocks,
+            PricesCount = packageCounts.Prices,
+            InventoryCount = packageCounts.Inventory,
+            OpenOrdersCount = packageCounts.OpenOrders,
+            CashAndBankCount = packageCounts.CashAndBank,
+            LookupsCount = packageCounts.Lookups,
+            CustomerAddressesCount = packageCounts.CustomerAddresses,
+            CustomerContactsCount = packageCounts.CustomerContacts,
+            BarcodesCount = packageCounts.Barcodes,
+            SalesConditionsCount = packageCounts.SalesConditions,
+            CustomerTransactionsCount = packageCounts.CustomerTransactions,
+            StockTransactionsCount = packageCounts.StockTransactions,
         });
     }
 
@@ -136,4 +167,7 @@ public static class AdminBootstrapEndpoints
 
         return 0;
     }
+
+    private static int Count(IReadOnlyDictionary<string, int> counts, string section) =>
+        counts.TryGetValue(section, out var count) ? count : 0;
 }

@@ -5,6 +5,7 @@ using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.RemoteApi.Options;
+using ErpBridge.Shared;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -189,6 +190,36 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
     {
         ArgumentNullException.ThrowIfNull(package);
 
+        // Incremental and manual partial packages still use the legacy merge
+        // endpoint. A chunked full upload is activated atomically by the
+        // server, while the legacy path preserves the existing merge semantics
+        // until tombstone-aware incremental uploads are introduced.
+        if (package.PartialSection is not null)
+        {
+            await PushLegacyBootstrapDataAsync(package, ct).ConfigureAwait(false);
+            return;
+        }
+
+        await PushChunkedBootstrapDataAsync(package, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task PushChangeSetAsync(SyncChangeSet changeSet, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(changeSet);
+
+        // Idempotency key is the (tenant, sourceDatabase, pulledAtUtc) tuple so
+        // a retry after a network blip is a no-op on the central side. We keep
+        // it human-readable in the request log for support diagnosis.
+        var opts = _options.CurrentValue;
+        var idempotencyKey = $"changeset:{changeSet.TenantId}:{changeSet.SourceDatabase}:{changeSet.PulledAtUtc.UtcTicks}";
+        using var request = BuildRequest(HttpMethod.Post, "/api/v1/ingest/changeset", opts, idempotencyKey);
+        request.Content = SerializeJson(changeSet);
+        await SendNoContentAsync(request, opts, ct, classifyBootstrapFailure: true).ConfigureAwait(false);
+    }
+
+    private async Task PushLegacyBootstrapDataAsync(SyncPackage package, CancellationToken ct)
+    {
         var opts = _options.CurrentValue;
         // The central API expects a BootstrapRequest envelope: { sourceDatabase,
         // pulledAtUtc, payload: <SyncPackage> }. The agent previously sent the
@@ -205,6 +236,70 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         using var request = BuildRequest(HttpMethod.Post, "/api/v1/bootstrap", opts, NewIdempotencyKey("bootstrap"));
         request.Content = SerializeJson(envelope);
         await SendNoContentAsync(request, opts, ct, classifyBootstrapFailure: true);
+    }
+
+    private async Task PushChunkedBootstrapDataAsync(SyncPackage package, CancellationToken ct)
+    {
+        var opts = _options.CurrentValue;
+        using var startRequest = BuildRequest(HttpMethod.Post, "/api/v1/bootstrap/upload/start", opts, NewIdempotencyKey("bootstrap-upload"));
+        startRequest.Content = SerializeJson(new
+        {
+            sourceDatabase = package.SourceDatabase,
+            pulledAtUtc = new DateTimeOffset(package.PulledAtUtc, TimeSpan.Zero),
+            isIncremental = package.IsIncremental,
+        });
+        var start = await SendAsync<BootstrapUploadStartResponseDto>(startRequest, opts, ct).ConfigureAwait(false)
+            ?? throw new TransientPushException("Central API returned an empty bootstrap upload response.");
+        var chunkSize = Math.Clamp(start.MaxItemsPerChunk, 1, 500);
+
+        await SendChunksAsync(start.UploadId, "customers", package.Customers, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "customerAddresses", package.CustomerAddresses, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "customerContacts", package.CustomerContacts, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "stocks", package.Stocks, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "barcodes", package.Barcodes, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "prices", package.Prices, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "salesConditions", package.SalesConditions, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "inventory", package.Inventory, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "openOrders", package.OpenOrders, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "cashAndBank", package.CashAndBank, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "lookups", package.Lookups, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "customerTransactions", package.CustomerTransactions, chunkSize, opts, ct).ConfigureAwait(false);
+        await SendChunksAsync(start.UploadId, "stockTransactions", package.StockTransactions, chunkSize, opts, ct).ConfigureAwait(false);
+
+        using var completeRequest = BuildRequest(HttpMethod.Post, $"/api/v1/bootstrap/upload/{start.UploadId:D}/complete", opts, $"bootstrap-complete:{start.UploadId:N}");
+        completeRequest.Content = SerializeJson(new { });
+        await SendNoContentAsync(completeRequest, opts, ct, classifyBootstrapFailure: true).ConfigureAwait(false);
+    }
+
+    private async Task SendChunksAsync<T>(
+        Guid uploadId,
+        string section,
+        IReadOnlyList<T> rows,
+        int chunkSize,
+        CentralApiOptions opts,
+        CancellationToken ct)
+    {
+        if (rows.Count == 0)
+        {
+            await SendChunkAsync(uploadId, section, 0, Array.Empty<T>(), opts, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var chunkIndex = 0;
+        for (var offset = 0; offset < rows.Count; offset += chunkSize)
+        {
+            var count = Math.Min(chunkSize, rows.Count - offset);
+            var chunk = new T[count];
+            for (var i = 0; i < count; i++) chunk[i] = rows[offset + i];
+            await SendChunkAsync(uploadId, section, chunkIndex++, chunk, opts, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task SendChunkAsync<T>(Guid uploadId, string section, int chunkIndex, IReadOnlyList<T> rows, CentralApiOptions opts, CancellationToken ct)
+    {
+        using var request = BuildRequest(HttpMethod.Post, $"/api/v1/bootstrap/upload/{uploadId:D}/chunks", opts, $"bootstrap-chunk:{uploadId:N}:{section}:{chunkIndex}");
+        request.Content = SerializeJson(new { section, chunkIndex, items = rows });
+        await SendNoContentAsync(request, opts, ct, classifyBootstrapFailure: true).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -346,6 +441,15 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         using var request = BuildRequest(HttpMethod.Post, "/api/v1/agents/heartbeat", opts, NewIdempotencyKey("hb"));
         request.Content = SerializeJson(heartbeat);
         await SendNoContentAsync(request, opts, ct);
+    }
+
+    private sealed class BootstrapUploadStartResponseDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("uploadId")]
+        public Guid UploadId { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("maxItemsPerChunk")]
+        public int MaxItemsPerChunk { get; set; }
     }
 
     /// <inheritdoc />

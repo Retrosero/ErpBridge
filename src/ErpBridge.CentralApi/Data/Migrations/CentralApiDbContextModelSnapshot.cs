@@ -238,6 +238,41 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("bootstrap_packages", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshot", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<DateTimeOffset>("ActivatedAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<bool>("IsActive").HasColumnType("boolean");
+                    b.Property<bool>("IsIncremental").HasColumnType("boolean");
+                    b.Property<DateTimeOffset>("PulledAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<DateTimeOffset>("ReceivedAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<string>("SourceDatabase").IsRequired().HasMaxLength(128).HasColumnType("character varying(128)");
+                    b.Property<Guid>("TenantId").HasColumnType("uuid");
+                    b.HasKey("Id");
+                    b.HasIndex("TenantId").IsUnique().HasFilter("\"IsActive\" = true");
+                    b.HasIndex("TenantId", "PulledAtUtc");
+                    b.ToTable("bootstrap_snapshots", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshotChunk", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<int>("ChunkIndex").HasColumnType("integer");
+                    b.Property<int>("ItemCount").HasColumnType("integer");
+                    b.Property<string>("PayloadJson").IsRequired().HasColumnType("jsonb");
+                    b.Property<DateTimeOffset>("ReceivedAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<string>("Section").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)");
+                    b.Property<Guid>("SnapshotId").HasColumnType("uuid");
+                    b.HasKey("Id");
+                    b.HasIndex("SnapshotId", "Section", "ChunkIndex").IsUnique();
+                    b.ToTable("bootstrap_snapshot_chunks", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshot", b =>
+                {
+                    b.Navigation("Chunks");
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ErpCompany", b =>
                 {
                     b.Property<Guid>("Id")
@@ -705,6 +740,26 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshot", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshotChunk", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.BootstrapSnapshot", "Snapshot")
+                        .WithMany("Chunks")
+                        .HasForeignKey("SnapshotId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                    b.Navigation("Snapshot");
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ErpCompany", b =>

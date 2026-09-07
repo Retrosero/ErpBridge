@@ -4,6 +4,7 @@ using ErpBridge.Erp.Abstractions.DependencyInjection;
 using ErpBridge.Erp.Mikro.Adapters;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
+using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
 using Microsoft.Extensions.Configuration;
@@ -126,6 +127,22 @@ public static class ServiceCollectionExtensions
         // because the implementation is stateless aside from its dependencies.
         services.AddSingleton<IMikroDbReader, MikroDbReader>();
 
+        // Faz 11.2: trigger installer — owns the shadow table + per-table triggers.
+        services.AddSingleton<TriggerInstaller>();
+        // Faz 11.4: three-way change-set reader (new/changed/deleted).
+        services.AddSingleton<IChangeSetReader, TriggerChangeSetReader>();
+        // Faz 11.3: ITriggerWatermarkStore — the interface lives in Mikro (it's
+        // Mikro-specific by design), but the SQLite-backed implementation lives
+        // in ErpBridge.Agent.Service because it depends on ErpBridge.LocalStore,
+        // which Mikro is not allowed to reference. The Agent.Service container
+        // registers the concrete implementation below.
+        // Faz 12.4: change-set sync service. Registered here (not in Core) because
+        // the implementation lives in Mikro and depends on Mikro-specific types
+        // like IChangeSetReader.
+        services.AddSingleton<IChangeSetSyncService, TriggerChangeSetSyncService>();
+        services.TryAddSingleton<ILogger<TriggerChangeSetSyncService>>(sp =>
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<TriggerChangeSetSyncService>());
+
         // Factory closed over the connection settings + IConfiguration; uses the
         // container for everything else.
         services.AddSingleton<IErpAdapterFactory>(sp => new MikroAdapterFactory(
@@ -141,6 +158,8 @@ public static class ServiceCollectionExtensions
         services.TryAddSingletonLogger<MikroDbReader>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
+        services.TryAddSingletonLogger<TriggerInstaller>(services);
+        services.TryAddSingletonLogger<TriggerChangeSetReader>(services);
 
         return services;
     }

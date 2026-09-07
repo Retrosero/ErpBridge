@@ -49,6 +49,9 @@ public partial class App : Application
     private TaskbarIcon? _tray;
     private IDesktopSignalService? _signalService;
     private DesktopHeartbeatService? _heartbeatService;
+    private IDesktopClockService? _clockService;
+    private System.Windows.Threading.DispatcherTimer? _heartbeatTimer;
+    private DateTime _lastHeartbeatNotification = DateTime.MinValue;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -123,6 +126,35 @@ public partial class App : Application
         _tray = BuildTrayIcon(_services.GetRequiredService<ILoggerFactory>().CreateLogger("App.Tray"));
         _tray.Visibility = Visibility.Visible;
 
+        // 5b) Live UI clock: tick every second to update the tray tooltip and
+        // any consumer that subscribes (status bar in MainWindow, etc.). The
+        // clock keeps firing even when the main window is hidden, so the
+        // tray tooltip's "Çalışıyor (HH:mm:ss)" line stays current.
+        _clockService = _services.GetRequiredService<IDesktopClockService>();
+        _clockService.Tick += (_, now) => UpdateTrayClockText(now);
+        _clockService.Start();
+        UpdateTrayClockText(_clockService.Now);
+
+        // 5c) Windows 11 default olarak bildirim alanındaki simgeleri gizliyor.
+        // Operatör ilk çalıştırmada tray simgesini göremeyebiliyor; tek seferlik
+        // balon notification hem saati gösterir hem de simgenin yerini
+        // hatırlatır (görev çubuğundaki ^ okuna tıklayıp "ErpBridge Agent"
+        // için "Bildirim simgelerini her zaman göster" seçilebilir).
+        ShowStartupNotification(_clockService.Now);
+
+        // 5d) Periyodik "yaşıyorum" bildirimi — Windows 11'de tray gizli
+        // olsa bile, her 5 dakikada bir toast bildirimi düşürür. Operatör
+        // merak ettiğinde "Bildirim merkezi"nde ajanın ayakta olduğunu
+        // görür; pencereyi açmak zorunda kalmaz.
+        _heartbeatTimer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMinutes(5),
+        };
+        _heartbeatTimer.Tick += (_, _) => ShowHeartbeatNotification(_clockService.Now);
+        _heartbeatTimer.Start();
+        _lastHeartbeatNotification = _clockService.Now;
+
         // 6) Resolve and show the main window.
         // IMPORTANT: Services MUST be set before MainWindow is resolved, because
         // MainWindow's XAML instantiates UserControls (DashboardView) whose
@@ -165,6 +197,12 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Stop the live clock FIRST so it doesn't try to update a torn-down
+        // tray icon during teardown.
+        _heartbeatTimer?.Stop();
+        _heartbeatTimer = null;
+        _clockService?.Dispose();
+        _clockService = null;
         _tray?.Dispose();
         // Stop the long-poll loop before disposing the DI container so the
         // background task doesn't try to resolve services that are already torn
@@ -225,6 +263,10 @@ public partial class App : Application
 
         var tray = new TaskbarIcon
         {
+            // Tooltip text is updated every second by UpdateTrayClockText so
+            // the system tray's "Çalışıyor (HH:mm:ss)" line always shows the
+            // current local time. The static prefix is set here for the first
+            // paint before the clock service fires its initial tick.
             ToolTipText = "ErpBridge Agent — arka planda çalışıyor",
             // Use the Icon property (System.Drawing.Icon) rather than
             // IconSource (ImageSource). IconSource would require H.NotifyIcon
@@ -238,6 +280,78 @@ public partial class App : Application
         tray.TrayMouseDoubleClick += (_, _) => ShowMainWindow();
 
         return tray;
+    }
+
+    /// <summary>
+    /// Refresh the tray tooltip with the current local time. Called once on
+    /// startup and on every <see cref="IDesktopClockService.Tick"/>. The
+    /// tooltip text is what the operator sees when they hover the tray
+    /// icon — keeping the clock visible there is the easiest way to keep
+    /// the agent's "alive" signal in front of the operator at all times,
+    /// even when the main window is hidden.
+    /// </summary>
+    private void UpdateTrayClockText(DateTime now)
+    {
+        if (_tray is null) return;
+        _tray.ToolTipText = $"ErpBridge Agent — çalışıyor ({now:HH:mm:ss})";
+    }
+
+    /// <summary>
+    /// One-shot toast notification on first launch. The body tells the
+    /// operator where the agent's tray icon lives and confirms the live
+    /// clock. Windows 11 default olarak "Bildirim alanı"nı gizlediği
+    /// için bu balon operatöre görünür bir "buradayım" sinyali verir;
+    /// pencere minimize edildiğinde saati sadece tray tooltip'inde
+    /// ("ErpBridge Agent — çalışıyor (HH:mm:ss)") ve bu balonda görebilir.
+    /// </summary>
+    private void ShowStartupNotification(DateTime now)
+    {
+        if (_tray is null) return;
+        try
+        {
+            // H.NotifyIcon 2.1.4: 2-arg overload uses the OS default Info icon.
+            // The 3-arg overload taking H.NotifyIcon.NotificationIcon is not
+            // available in this version, so we let the shell pick the icon.
+            _tray.ShowNotification(
+                title: "ErpBridge Agent çalışıyor",
+                message: $"Saat: {now:HH:mm:ss}\nSistem tepsisindeki simgeye çift tıklayın.\nGizlemek için pencereyi kapatın (saat tray'de kalır).");
+        }
+        catch (Exception ex)
+        {
+            // Bildirim Windows tarafından reddedilmişse (Focus Assist, Bildirim
+            // ayarları kapalı vs.) sessizce geç — saat hâlâ tray tooltip'inde
+            // güncelleniyor, ana pencere durum çubuğunda görünüyor.
+            System.Diagnostics.Debug.WriteLine($"Startup notification failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Periyodik "hâlâ buradayım" bildirimi. Windows 11 tray icon'u
+    /// varsayılan olarak gizlediği için operatör bir süre sonra
+    /// "uygulama hâlâ çalışıyor mu?" diye merak edebilir; bu
+    /// bildirim her 5 dakikada bir Windows Bildirim Merkezi'ne
+    /// saat damgası düşürür. Operatör merak ettiğinde bildirim
+    /// geçmişine bakıp "agent 14:32'de buradaydı" görebilir.
+    /// </summary>
+    private void ShowHeartbeatNotification(DateTime now)
+    {
+        if (_tray is null) return;
+        // Aynı dakika içinde iki kez düşürme (örneğin saat değişiminde
+        // Title güncellemesi ve Tick'in aynı saniyeye denk gelmesi gibi
+        // yarış koşulları). Pratikte 5 dakikalık interval bunu engeller
+        // ama defansif kalmak ucuz.
+        if ((now - _lastHeartbeatNotification).TotalSeconds < 30) return;
+        _lastHeartbeatNotification = now;
+        try
+        {
+            _tray.ShowNotification(
+                title: "ErpBridge Agent — heartbeat",
+                message: $"Saat {now:HH:mm:ss} · ajan çalışıyor.\nSon sync ve diğer detaylar için Dashboard sekmesine bakın.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Heartbeat notification failed: {ex.Message}");
+        }
     }
 
     /// <summary>

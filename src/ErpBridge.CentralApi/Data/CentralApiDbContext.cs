@@ -23,12 +23,15 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobAckRecord> JobAcks => Set<JobAckRecord>();
     public DbSet<BootstrapPackage> BootstrapPackages => Set<BootstrapPackage>();
+    public DbSet<BootstrapSnapshot> BootstrapSnapshots => Set<BootstrapSnapshot>();
+    public DbSet<BootstrapSnapshotChunk> BootstrapSnapshotChunks => Set<BootstrapSnapshotChunk>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeySecretAccessAudit> ApiKeySecretAccessAudits => Set<ApiKeySecretAccessAudit>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<MobileTelemetryEvent> MobileTelemetryEvents => Set<MobileTelemetryEvent>();
+    public DbSet<ChangeSetRecord> ChangeSets => Set<ChangeSetRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -97,6 +100,26 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.PayloadJson).HasColumnType("jsonb");
             b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
             b.HasIndex(x => new { x.TenantId, x.PulledAtUtc });
+        });
+
+        modelBuilder.Entity<BootstrapSnapshot>(b =>
+        {
+            b.ToTable("bootstrap_snapshots");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
+            b.HasIndex(x => x.TenantId).HasFilter("\"IsActive\" = true").IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.PulledAtUtc });
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BootstrapSnapshotChunk>(b =>
+        {
+            b.ToTable("bootstrap_snapshot_chunks");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Section).IsRequired().HasMaxLength(64);
+            b.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            b.HasIndex(x => new { x.SnapshotId, x.Section, x.ChunkIndex }).IsUnique();
+            b.HasOne(x => x.Snapshot).WithMany(x => x.Chunks).HasForeignKey(x => x.SnapshotId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AdminUser>(b =>
@@ -215,6 +238,25 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.EventId }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
             b.HasIndex(x => new { x.Severity, x.ReceivedAtUtc });
+        });
+
+        // Faz 13.1: ChangeSetRecord — per-table trigger-based change-set
+        // payload. The unique index on
+        // (TenantId, SourceDatabase, TableName, LastTriggerRecNo) makes
+        // duplicate agent pushes a no-op.
+        modelBuilder.Entity<ChangeSetRecord>(b =>
+        {
+            b.ToTable("change_sets");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
+            b.Property(x => x.TableName).IsRequired().HasMaxLength(128);
+            b.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            b.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.LastTriggerRecNo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.TableName, x.PulledAtUtc });
         });
     }
 }
