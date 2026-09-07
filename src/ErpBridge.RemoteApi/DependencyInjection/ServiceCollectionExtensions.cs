@@ -44,7 +44,15 @@ public static class ServiceCollectionExtensions
                 client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("ErpBridge-Agent/1.0");
             })
-            .AddPolicyHandler((Func<HttpRequestMessage, IAsyncPolicy<HttpResponseMessage>>)(_ => BuildRetryPolicy()));
+            // BootstrapSyncService owns bootstrap retries because it must keep
+            // one Idempotency-Key across attempts and can fall back to
+            // mergeable sections. Letting HttpClient add another retry layer
+            // here made one slow upload wait through both retry schedules
+            // (several minutes) before the UI reported a timeout.
+            .AddPolicyHandler((Func<HttpRequestMessage, IAsyncPolicy<HttpResponseMessage>>)(request =>
+                IsBootstrapRequest(request)
+                    ? Policy.NoOpAsync<HttpResponseMessage>()
+                    : BuildRetryPolicy()));
 
         return services;
     }
@@ -54,6 +62,12 @@ public static class ServiceCollectionExtensions
     /// the canonical 5s/15s/60s/300s exponential backoff schedule (capped).
     /// </summary>
     public static IAsyncPolicy<HttpResponseMessage> BuildRetryPolicy() => BuildRetryPolicy(CanonicalRetryDelays);
+
+    private static bool IsBootstrapRequest(HttpRequestMessage request) =>
+        string.Equals(
+            request.RequestUri?.AbsolutePath.TrimEnd('/'),
+            "/api/v1/bootstrap",
+            StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Canonical 5/15/60/300-second backoff schedule.</summary>
     public static readonly IReadOnlyList<TimeSpan> CanonicalRetryDelays = new[]

@@ -107,21 +107,45 @@ public sealed class MikroAdapter : IErpAdapter
         var firmNo = ConnectionSettings.CompanyNo;
         var warehouseNo = ConnectionSettings.WarehouseNo;
 
-        var customers = await _dbReader.ReadCustomersAsync(firmNo, ct).ConfigureAwait(false);
-        var customerAddresses = await _dbReader.ReadCustomerAddressesAsync(firmNo, ct).ConfigureAwait(false);
-        var customerContacts = await _dbReader.ReadCustomerContactsAsync(firmNo, ct).ConfigureAwait(false);
+        // These readers use independent pooled connections. Run the independent
+        // sections together so a slow movement/table view cannot add its full
+        // latency after every preceding section. Keep the two child groups
+        // separate because they are attached after their parent rows arrive.
+        var customerTask = _dbReader.ReadCustomersAsync(firmNo, ct);
+        var customerAddressesTask = _dbReader.ReadCustomerAddressesAsync(firmNo, ct);
+        var customerContactsTask = _dbReader.ReadCustomerContactsAsync(firmNo, ct);
+        var stockTask = _dbReader.ReadStocksAsync(firmNo, ct);
+        var barcodeTask = _dbReader.ReadBarcodesAsync(firmNo, ct);
+        var openOrdersTask = _dbReader.ReadOpenOrdersAsync(firmNo, ct);
+        var cashAndBankTask = _dbReader.ReadCashAndBankAsync(firmNo, ct);
+        var lookupsTask = _dbReader.ReadLookupsAsync(firmNo, ct);
+        var pricesTask = _dbReader.ReadPricesAsync(firmNo, ct);
+        var salesConditionsTask = _dbReader.ReadSalesConditionsAsync(firmNo, ct);
+        var inventoryTask = _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct);
+        var customerTransactionsTask = _dbReader.ReadCustomerTransactionsAsync(firmNo, ct);
+        var stockTransactionsTask = _dbReader.ReadStockTransactionsAsync(firmNo, ct);
+
+        await Task.WhenAll(
+            customerTask, customerAddressesTask, customerContactsTask,
+            stockTask, barcodeTask, openOrdersTask, cashAndBankTask,
+            lookupsTask, pricesTask, salesConditionsTask, inventoryTask,
+            customerTransactionsTask, stockTransactionsTask).ConfigureAwait(false);
+
+        var customers = await customerTask.ConfigureAwait(false);
+        var customerAddresses = await customerAddressesTask.ConfigureAwait(false);
+        var customerContacts = await customerContactsTask.ConfigureAwait(false);
         customers = AttachCustomerChildren(customers, customerAddresses, customerContacts);
-        var stocks = await _dbReader.ReadStocksAsync(firmNo, ct).ConfigureAwait(false);
-        var barcodes = await _dbReader.ReadBarcodesAsync(firmNo, ct).ConfigureAwait(false);
+        var stocks = await stockTask.ConfigureAwait(false);
+        var barcodes = await barcodeTask.ConfigureAwait(false);
         stocks = AttachBarcodes(stocks, barcodes);
-        var openOrders = await _dbReader.ReadOpenOrdersAsync(firmNo, ct).ConfigureAwait(false);
-        var cashAndBank = await _dbReader.ReadCashAndBankAsync(firmNo, ct).ConfigureAwait(false);
-        var lookups = await _dbReader.ReadLookupsAsync(firmNo, ct).ConfigureAwait(false);
-        var prices = await _dbReader.ReadPricesAsync(firmNo, ct).ConfigureAwait(false);
-        var salesConditions = await _dbReader.ReadSalesConditionsAsync(firmNo, ct).ConfigureAwait(false);
-        var inventory = await _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct).ConfigureAwait(false);
-        var customerTransactions = await _dbReader.ReadCustomerTransactionsAsync(firmNo, ct).ConfigureAwait(false);
-        var stockTransactions = await _dbReader.ReadStockTransactionsAsync(firmNo, ct).ConfigureAwait(false);
+        var openOrders = await openOrdersTask.ConfigureAwait(false);
+        var cashAndBank = await cashAndBankTask.ConfigureAwait(false);
+        var lookups = await lookupsTask.ConfigureAwait(false);
+        var prices = await pricesTask.ConfigureAwait(false);
+        var salesConditions = await salesConditionsTask.ConfigureAwait(false);
+        var inventory = await inventoryTask.ConfigureAwait(false);
+        var customerTransactions = await customerTransactionsTask.ConfigureAwait(false);
+        var stockTransactions = await stockTransactionsTask.ConfigureAwait(false);
 
         return new SyncPackage(
             PulledAtUtc: DateTime.UtcNow,
@@ -159,12 +183,32 @@ public sealed class MikroAdapter : IErpAdapter
     {
         var firmNo = ConnectionSettings.CompanyNo;
         var warehouseNo = ConnectionSettings.WarehouseNo;
-        var customers = await _dbReader.ReadCustomersAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
-        var customerAddresses = await _dbReader.ReadCustomerAddressesAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
-        var customerContacts = await _dbReader.ReadCustomerContactsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
+        var customerTask = _dbReader.ReadCustomersAsync(firmNo, ct, changedSinceUtc);
+        var customerAddressesTask = _dbReader.ReadCustomerAddressesAsync(firmNo, ct, changedSinceUtc);
+        var customerContactsTask = _dbReader.ReadCustomerContactsAsync(firmNo, ct, changedSinceUtc);
+        var stockTask = _dbReader.ReadStocksAsync(firmNo, ct, changedSinceUtc);
+        var barcodeTask = _dbReader.ReadBarcodesAsync(firmNo, ct, changedSinceUtc);
+        var openOrdersTask = _dbReader.ReadOpenOrdersAsync(firmNo, ct, changedSinceUtc);
+        var cashAndBankTask = _dbReader.ReadCashAndBankAsync(firmNo, ct, changedSinceUtc);
+        var lookupsTask = _dbReader.ReadLookupsAsync(firmNo, ct, changedSinceUtc);
+        var pricesTask = _dbReader.ReadPricesAsync(firmNo, ct, changedSinceUtc);
+        var salesConditionsTask = _dbReader.ReadSalesConditionsAsync(firmNo, ct, changedSinceUtc);
+        var inventoryTask = _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct, changedSinceUtc);
+        var customerTransactionsTask = _dbReader.ReadCustomerTransactionsAsync(firmNo, ct, changedSinceUtc);
+        var stockTransactionsTask = _dbReader.ReadStockTransactionsAsync(firmNo, ct, changedSinceUtc);
+
+        await Task.WhenAll(
+            customerTask, customerAddressesTask, customerContactsTask,
+            stockTask, barcodeTask, openOrdersTask, cashAndBankTask,
+            lookupsTask, pricesTask, salesConditionsTask, inventoryTask,
+            customerTransactionsTask, stockTransactionsTask).ConfigureAwait(false);
+
+        var customers = await customerTask.ConfigureAwait(false);
+        var customerAddresses = await customerAddressesTask.ConfigureAwait(false);
+        var customerContacts = await customerContactsTask.ConfigureAwait(false);
         customers = AttachCustomerChildren(customers, customerAddresses, customerContacts);
-        var stocks = await _dbReader.ReadStocksAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
-        var barcodes = await _dbReader.ReadBarcodesAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false);
+        var stocks = await stockTask.ConfigureAwait(false);
+        var barcodes = await barcodeTask.ConfigureAwait(false);
         stocks = AttachBarcodes(stocks, barcodes);
 
         return new SyncPackage(
@@ -175,14 +219,14 @@ public sealed class MikroAdapter : IErpAdapter
             CustomerContacts: customerContacts,
             Stocks: stocks,
             Barcodes: barcodes,
-            Prices: await _dbReader.ReadPricesAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
-            SalesConditions: await _dbReader.ReadSalesConditionsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
-            Inventory: await _dbReader.ReadInventoryAsync(firmNo, warehouseNo, ct, changedSinceUtc).ConfigureAwait(false),
-            OpenOrders: await _dbReader.ReadOpenOrdersAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
-            CashAndBank: await _dbReader.ReadCashAndBankAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
-            Lookups: await _dbReader.ReadLookupsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
-            CustomerTransactions: await _dbReader.ReadCustomerTransactionsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
-            StockTransactions: await _dbReader.ReadStockTransactionsAsync(firmNo, ct, changedSinceUtc).ConfigureAwait(false),
+            Prices: await pricesTask.ConfigureAwait(false),
+            SalesConditions: await salesConditionsTask.ConfigureAwait(false),
+            Inventory: await inventoryTask.ConfigureAwait(false),
+            OpenOrders: await openOrdersTask.ConfigureAwait(false),
+            CashAndBank: await cashAndBankTask.ConfigureAwait(false),
+            Lookups: await lookupsTask.ConfigureAwait(false),
+            CustomerTransactions: await customerTransactionsTask.ConfigureAwait(false),
+            StockTransactions: await stockTransactionsTask.ConfigureAwait(false),
             IsIncremental: true,
             ChangedSinceUtc: changedSinceUtc.UtcDateTime);
     }

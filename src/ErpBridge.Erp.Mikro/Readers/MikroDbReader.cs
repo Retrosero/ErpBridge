@@ -129,6 +129,10 @@ LEFT JOIN (
                     ELSE -ISNULL(cha_meblag, 0) END) AS Balance
     FROM CARI_HESAP_HAREKETLERI
     WHERE ISNULL(cha_iptal, 0) = 0
+      AND (@changedSinceUtc IS NULL OR EXISTS (
+          SELECT 1 FROM CARI_HESAPLAR changed
+          WHERE changed.cari_kod = cha_kod
+            AND COALESCE(changed.cari_lastup_date, changed.cari_create_date) > @changedSinceUtc))
     GROUP BY cha_kod
 ) AS ledger ON ledger.cha_kod = cari_kod
 WHERE ISNULL(cari_iptal, 0) = 0
