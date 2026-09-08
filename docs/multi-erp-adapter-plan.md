@@ -309,6 +309,45 @@ yalnızca DI extension dosyaları. WPF'den Mikro'ya bağlanma + bootstrap + sync
 
 ---
 
+## 🔴 Faz 18.7 — Writer SQL onarımı ✅ (planlanmamıştı; canlı DB erişimi ortaya çıkardı)
+**Durum:** Tamamlandı · Commit `522b07f` + `a958b4e`
+
+Gerçek `MikroDB_V15_02`'ye bağlanınca çıkan sonuç:
+
+| Yol | V15'te geçersiz kolon | V16'da |
+|---|---|---|
+| **Okuma** (`MikroDbReader`) | 0 / 205 ✅ | 3 (beklenen RECno↔Guid farkı) |
+| **Yazma** (7 writer) — önce | **179** ❌ | **186** ❌ |
+| **Yazma** — sonra | **0** ✅ | — |
+
+**Yani yazma yolunun tamamı hiç çalışmamıştı.** 212 Mikro testinin hepsi mock
+bağlantı kullandığı için var olmayan kolonu adlandıran INSERT de "geçiyordu".
+
+Bulunan başlıca hatalar:
+- `MikroSalesOrderWriter` "header"ı `SIPARISLER`'e, satırları `STOK_HAREKETLERI`'ne
+  `sto_` önekiyle yazıyordu. Mikro siparişi **`SIPARISLER`'de satır başına bir
+  satır** olarak tutar; `sto_` de aslında `STOKLAR`'ın öneki.
+- `ODEME_EMIRLERI`'nin gerçek öneki `sck_`, `ode_` değil.
+- `STOK_HAREKETLERI`'nin öneki `sth_`, `sto_` değil.
+- `cha_borc`/`cha_alacak` yok — yön `cha_tip` (0=borç, 1=alacak), tutar `cha_meblag`.
+- `CARI_HESAPLAR`'da adres/telefon/yetkili kolonu yok (ayrı tablolarda);
+  `STOKLAR`'da fiyat/KDV kolonu yok (ayrı fiyat listesinde).
+- Writer'lar ISO para kodunu (`"TRY"`) `tinyint` döviz kolonuna bağlıyordu → `MikroCurrency`.
+- Her tabloda `(*_RECid_DBCno, *_RECid_RECno)` UNIQUE index var ve konvansiyon
+  `RECid_RECno = RECno`. IDENTITY insert öncesi bilinmediği için `MikroSelfLink`
+  benzersiz negatif placeholder tohumlayıp aynı transaction'da çözüyor.
+
+**Kalıcı koruma:** `MikroSchemaContractTests` (commit `3a54727`) — adaptörün SQL'e
+koyduğu her kolonu canlı `INFORMATION_SCHEMA`'ya karşı doğrular, read-only,
+`ERPBridge_RUN_INTEGRATION=1` ile açılır.
+
+> **⏭️ Kalan:** tracked-table kataloğunda (trigger sync yolu) 34 tabloda 142
+> geçersiz kolon var — `ARIZA_GRUPLARI` gerçek öneki `agr_`, `BAKIM_HAREKETLERI`
+> → `bkm_`, `STOK_SEKTORLERI` → `sktr_` vb. Change-log motoru bu katalogla
+> çalışamaz; Faz 18.5'ten önce düzeltilmeli.
+
+---
+
 ## Faz 20.5 — Siparis_Cepte (Android) — Değerlendirme: **fonksiyonel değişiklik gerekmiyor**
 **Boyut:** XS · **Risk:** Yok · **Tahmini:** 0 (opsiyonel temizlik ~1 gün)
 
