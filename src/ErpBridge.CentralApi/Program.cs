@@ -38,6 +38,14 @@ public partial class Program
     /// <summary>Authorization policy applied to the public ingest endpoint. Requires <c>scope=apikey</c>.</summary>
     public const string ApiKeyPolicy = "ApiKey";
 
+    /// <summary>
+    /// Combines the JWT (Agent) and ApiKey authentication schemes. Used
+    /// for ingest endpoints that must accept BOTH the legacy Windows
+    /// Agent's JWT and the new SaaS API key. Either scope claim
+    /// (<c>agent</c> or <c>apikey</c>) is sufficient.
+    /// </summary>
+    public const string AgentOrApiKeyPolicy = "AgentOrApiKey";
+
     private const string ProductionCorsPolicy = "production-origins";
 
     /// <summary>Rate-limit policy name partitioned by the JWT <c>sub</c> (agent id).</summary>
@@ -247,6 +255,23 @@ public partial class Program
                 .RequireAuthenticatedUser()
                 .AddAuthenticationSchemes(ApiKeyAuthenticationHandler.SchemeName)
                 .RequireClaim("scope", "apikey"));
+
+            // The "AgentOrApiKey" policy accepts EITHER the legacy Agent JWT
+            // (scope=agent) or the new SaaS API key (scope=apikey). Used by
+            // every agent-facing ingest endpoint so the existing Windows
+            // Agent can still push while new tenants register an API key
+            // instead. This is the OR-semantic equivalent of the previous
+            // single-policy requirement — the previous setup only allowed
+            // ApiKey, which broke the bootstrap change-set push on existing
+            // installations (regression introduced in Wave 8).
+            options.AddPolicy(AgentOrApiKeyPolicy, policy => policy
+                .RequireAuthenticatedUser()
+                .AddAuthenticationSchemes(
+                    JwtBearerDefaults.AuthenticationScheme,
+                    ApiKeyAuthenticationHandler.SchemeName)
+                .RequireAssertion(ctx =>
+                    ctx.User.HasClaim("scope", "agent") ||
+                    ctx.User.HasClaim("scope", "apikey")));
         });
     }
 

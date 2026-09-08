@@ -37,12 +37,12 @@ public static class ChangeSetEndpoints
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
             .Produces<ApiError>(StatusCodes.Status403Forbidden)
             .Produces<ApiError>(StatusCodes.Status413PayloadTooLarge)
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.AgentOrApiKeyPolicy)
             .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
 
         group.MapGet("/status", StatusAsync)
             .WithName("ChangeSetStatus")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.AgentOrApiKeyPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         return routes;
