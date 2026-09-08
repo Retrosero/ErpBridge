@@ -189,10 +189,20 @@ public sealed class DashboardViewModel : ObservableObject
         _liveSettings["CentralApi:BaseUrl"] = apiBaseUrl;
 
         var existingJwt = _configuration["CentralApi:Jwt"];
-        if (!string.IsNullOrWhiteSpace(existingJwt))
+        if (!string.IsNullOrWhiteSpace(existingJwt) && !string.IsNullOrWhiteSpace(config.TenantId))
         {
-            _logger.LogDebug("JWT already set in CentralApi:Jwt; skipping auto-register.");
+            // Both the JWT and the tenant id are persisted. Skip register.
+            _logger.LogDebug("JWT + tenantId already set; skipping auto-register.");
             return true;
+        }
+        if (!string.IsNullOrWhiteSpace(existingJwt) && string.IsNullOrWhiteSpace(config.TenantId))
+        {
+            // JWT exists but tenantId was never persisted (e.g. legacy install,
+            // or first register response didn't carry the field). Force a
+            // re-register so the change-set push can resolve the tenant.
+            _logger.LogWarning(
+                "JWT present but TenantId is empty in AgentConfig; forcing re-register to recover tenantId.");
+            _liveSettings["CentralApi:Jwt"] = string.Empty;
         }
 
         var licenseKey = config.LicenseKey!.Trim();

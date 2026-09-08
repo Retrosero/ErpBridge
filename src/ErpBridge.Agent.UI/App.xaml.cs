@@ -446,6 +446,14 @@ public partial class App : Application
         var logDir = System.IO.Path.Combine(AppContext.BaseDirectory, "logs");
         System.IO.Directory.CreateDirectory(logDir);
         var logPath = System.IO.Path.Combine(logDir, "ui-.log");
+        var selfLogPath = System.IO.Path.Combine(logDir, "serilog-selflog.txt");
+
+        // Serilog selflog: eğer file sink sessizce hata verirse (izin, kilit,
+        // path), Serilog normalde exception'ı yutar. Selflog bunları dosyaya
+        // yazar. Debug için hayat kurtarır.
+        Serilog.Debugging.SelfLog.Enable(msg =>
+            System.IO.File.AppendAllText(selfLogPath,
+                $"[{DateTime.Now:HH:mm:ss.fff}] {msg}{Environment.NewLine}"));
 
         var serilog = new LoggerConfiguration()
             .ReadFrom.Configuration(bootstrapConfig)
