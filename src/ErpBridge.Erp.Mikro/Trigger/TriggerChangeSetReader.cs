@@ -1,9 +1,20 @@
 using System.Data;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
 using Dapper;
+using ErpBridge.Core.Domain;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+
+// Disambiguate the two SyncChangeSet types: the legacy wire-format
+// bundle lives in ErpBridge.Shared; the new per-row record (Faz 15.3)
+// lives in ErpBridge.Core.Domain. The ITriggerChangeSetReader surface
+// returns the Core.Domain one.
+using CoreSyncChangeSet = ErpBridge.Core.Domain.TriggerChangeSet;
+using CoreSyncChangeType = ErpBridge.Core.Domain.TriggerChangeType;
 
 namespace ErpBridge.Erp.Mikro.Trigger;
 
@@ -24,8 +35,19 @@ namespace ErpBridge.Erp.Mikro.Trigger;
 /// Field names are validated against <see cref="TrackedTableSchema.Fields"/>
 /// before any SQL is generated so a typo in a caller's field list cannot
 /// turn into an SQL-injection surface.
+///
+/// <para>
+/// <b>Faz 15.3 / 15.4 — KeyValue semantics:</b> the class also implements
+/// <see cref="ITriggerChangeSetReader"/>. The new methods iterate over the
+/// tracked-table catalog, call the legacy <see cref="IChangeSetReader"/>
+/// methods for each schema, and project the result into a flat
+/// <see cref="CoreSyncChangeSet"/> list. The <see cref="CoreSyncChangeSet.KeyValue"/>
+/// field is resolved through <see cref="KeyValueResolver"/> so the central
+/// API receives a stable, version-agnostic identifier regardless of
+/// whether the row came from a V15 (int RECno) or V16 (Guid) source.
+/// </para>
 /// </summary>
-public sealed class TriggerChangeSetReader : IChangeSetReader
+public sealed class TriggerChangeSetReader : IChangeSetReader, ITriggerChangeSetReader
 {
     private const string ShadowTable = TriggerInstaller.ShadowTableName;
     private const string SchemaName = TriggerInstaller.Schema;
@@ -33,13 +55,50 @@ public sealed class TriggerChangeSetReader : IChangeSetReader
     private readonly MikroConnectionFactory _connectionFactory;
     private readonly ILogger<TriggerChangeSetReader> _logger;
 
-    /// <summary>Build the reader. The factory and logger are required.</summary>
+    // Optional collaborators used by the ITriggerChangeSetReader surface.
+    // Production wires them to `this` (the legacy reader) and to
+    // NullKeyValueLookup.Instance so the new methods work without a
+    // database-specific change. Tests inject a Mock<IChangeSetReader> and
+    // a FakeKeyValueLookup to drive the new methods without SQL Server.
+    private readonly IChangeSetReader? _innerReader;
+    private readonly IKeyValueLookup? _keyValueLookup;
+
+    /// <summary>Build the production reader. The factory and logger are required.</summary>
     public TriggerChangeSetReader(
         MikroConnectionFactory connectionFactory,
         ILogger<TriggerChangeSetReader> logger)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        // Production path: the new ITriggerChangeSetReader methods fall
+        // back to `this` (which implements IChangeSetReader) and the
+        // null-lookup so the new methods degrade to the same behaviour
+        // as the legacy surface.
+        _innerReader = null;
+        _keyValueLookup = NullKeyValueLookup.Instance;
+    }
+
+    /// <summary>
+    /// Test seam — same behaviour as the production constructor but lets
+    /// the test fixture inject a stub <see cref="IChangeSetReader"/> and a
+    /// stub <see cref="IKeyValueLookup"/>. The new
+    /// <see cref="ITriggerChangeSetReader"/> methods then operate on the
+    /// supplied stubs instead of hitting SQL Server. Marked
+    /// <c>internal</c> so the test project can reach it without making
+    /// the constructor part of the public surface.
+    /// </summary>
+    internal TriggerChangeSetReader(
+        IChangeSetReader innerReader,
+        IKeyValueLookup keyValueLookup,
+        ILogger<TriggerChangeSetReader> logger)
+    {
+        ArgumentNullException.ThrowIfNull(innerReader);
+        ArgumentNullException.ThrowIfNull(keyValueLookup);
+        ArgumentNullException.ThrowIfNull(logger);
+        _innerReader = innerReader;
+        _keyValueLookup = keyValueLookup;
+        _connectionFactory = null!;
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -227,17 +286,37 @@ ORDER BY TriggerRECno;";
                 dict[field] = rowAsDict.TryGetValue(field, out var value) ? value : null;
             }
 
+            // Faz 15.3 / 15.4: project the row's stable identifier into a
+            // KeyValue entry. The Int / Guid / String semantics are owned
+            // by the schema; the resolver is a pure function that lives
+            // in the same file so a regression in the projection shows up
+            // in the integration test suite rather than in production.
+            object? keySourceValue = null;
+            int? keyTriggerRecNo = null;
+
             if (isDeleted)
             {
                 // For the deleted chunk, the watermark column is the second one.
                 if (rowAsDict.TryGetValue("TriggerRECno", out var tr) && tr is not null)
                 {
-                    highestTriggerRecNo = Math.Max(highestTriggerRecNo, Convert.ToInt32(tr));
+                    var triggerRecNo = Convert.ToInt32(tr);
+                    highestTriggerRecNo = Math.Max(highestTriggerRecNo, triggerRecNo);
+                    keyTriggerRecNo = triggerRecNo;
+                }
+                if (rowAsDict.TryGetValue("KayitRECno", out var krecno) && krecno is not null)
+                {
+                    keySourceValue = Convert.ToInt32(krecno);
                 }
             }
             else if (extraColumnAtEnd is not null && rowAsDict.TryGetValue(extraColumnAtEnd, out var tr) && tr is not null)
             {
-                highestTriggerRecNo = Math.Max(highestTriggerRecNo, Convert.ToInt32(tr));
+                var triggerRecNo = Convert.ToInt32(tr);
+                highestTriggerRecNo = Math.Max(highestTriggerRecNo, triggerRecNo);
+                keyTriggerRecNo = triggerRecNo;
+                if (rowAsDict.TryGetValue(schema.EffectiveKeyField, out var keyVal))
+                {
+                    keySourceValue = keyVal;
+                }
             }
             else if (!isDeleted)
             {
@@ -246,10 +325,21 @@ ORDER BY TriggerRECno;";
                 // caller can keep paging without a second round-trip.
                 if (rowAsDict.TryGetValue(schema.RecnoField, out var recno) && recno is not null)
                 {
-                    dict["__ERPB_RECNO"] = Convert.ToInt32(recno);
-                    highestTriggerRecNo = Math.Max(highestTriggerRecNo, Convert.ToInt32(recno));
+                    var recnoInt = Convert.ToInt32(recno);
+                    dict["__ERPB_RECNO"] = recnoInt;
+                    highestTriggerRecNo = Math.Max(highestTriggerRecNo, recnoInt);
+                    keyTriggerRecNo = recnoInt;
+                    keySourceValue = recnoInt;
                 }
             }
+
+            // The row's KeyValue is the schema-driven projection. The
+            // resolver returns null on a lookup miss or an unsupported
+            // runtime type — we propagate the null into the dict so the
+            // caller can decide what to do.
+            var keyValue = KeyValueResolver.Resolve(schema, keySourceValue);
+            dict["__ERPB_KEY_VALUE"] = keyValue;
+            dict["__ERPB_KEY_TRIGGER"] = keyTriggerRecNo;
 
             rows.Add(dict);
         }
@@ -275,6 +365,10 @@ ORDER BY TriggerRECno;";
 
         // We omit the synthetic "__ERPB_RECNO" from the public field list
         // so the central API doesn't see internal pagination state.
+        // "__ERPB_KEY_VALUE" and "__ERPB_KEY_TRIGGER" are the Faz 15.3
+        // projections: the central API consumes KeyValue to identify the
+        // row across retries, and the TriggerRECno cursor to advance the
+        // agent's watermark.
         var publicRows = new List<IReadOnlyDictionary<string, object?>>(rows.Count);
         foreach (var r in rows)
         {
@@ -283,6 +377,8 @@ ORDER BY TriggerRECno;";
             {
                 publicDict[field] = r.TryGetValue(field, out var v) ? v : null;
             }
+            publicDict["KeyValue"] = r.TryGetValue("__ERPB_KEY_VALUE", out var kv) ? kv : null;
+            publicDict["TriggerRECno"] = r.TryGetValue("__ERPB_KEY_TRIGGER", out var tr) ? tr : null;
             publicRows.Add(publicDict);
         }
 
@@ -364,5 +460,269 @@ ORDER BY c.column_id;";
             yield return item;
         }
         await Task.CompletedTask.ConfigureAwait(false);
+    }
+
+    // =========================================================================
+    //  ITriggerChangeSetReader surface (Faz 15.3 / 15.4)
+    // =========================================================================
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<CoreSyncChangeSet>> ReadNewAsync(
+        string databaseName,
+        DateTime sinceUtc,
+        CancellationToken ct = default)
+        => ReadDirectionAsync(databaseName, sinceUtc, CoreSyncChangeType.New, isDeleted: false, ct);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<CoreSyncChangeSet>> ReadChangedAsync(
+        string databaseName,
+        DateTime sinceUtc,
+        CancellationToken ct = default)
+        => ReadDirectionAsync(databaseName, sinceUtc, CoreSyncChangeType.Changed, isDeleted: false, ct);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<CoreSyncChangeSet>> ReadDeletedAsync(
+        string databaseName,
+        DateTime sinceUtc,
+        CancellationToken ct = default)
+        => ReadDirectionAsync(databaseName, sinceUtc, CoreSyncChangeType.Deleted, isDeleted: true, ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CoreSyncChangeSet>> ReadAllAsync(
+        string databaseName,
+        DateTime sinceUtc,
+        CancellationToken ct = default)
+    {
+        var newList = await ReadNewAsync(databaseName, sinceUtc, ct).ConfigureAwait(false);
+        var changedList = await ReadChangedAsync(databaseName, sinceUtc, ct).ConfigureAwait(false);
+        var deletedList = await ReadDeletedAsync(databaseName, sinceUtc, ct).ConfigureAwait(false);
+
+        var combined = new List<CoreSyncChangeSet>(newList.Count + changedList.Count + deletedList.Count);
+        combined.AddRange(newList);
+        combined.AddRange(changedList);
+        combined.AddRange(deletedList);
+        return combined;
+    }
+
+    /// <summary>
+    /// Iterate the tracked-table catalog, invoke the legacy
+    /// <see cref="IChangeSetReader"/> for each table, and project the
+    /// result into <see cref="CoreSyncChangeSet"/> records with the
+    /// <see cref="CoreSyncChangeSet.KeyValue"/> already resolved. The
+    /// <paramref name="isDeleted"/> flag selects the corresponding legacy
+    /// direction (read-new, read-changed or read-deleted).
+    /// </summary>
+    private async Task<IReadOnlyList<CoreSyncChangeSet>> ReadDirectionAsync(
+        string databaseName,
+        DateTime sinceUtc,
+        CoreSyncChangeType changeType,
+        bool isDeleted,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
+        // sinceUtc is documented as a lower bound; we surface it through
+        // the change record's OccurredAtUtc so the caller can compare.
+        _ = sinceUtc;
+
+        var reader = _innerReader ?? (IChangeSetReader)this;
+        var lookup = _keyValueLookup ?? NullKeyValueLookup.Instance;
+        var result = new List<CoreSyncChangeSet>();
+        var schemaIndex = 0;
+        var catalog = TrackedTableCatalog.All;
+        var sinceTimestamp = sinceUtc;
+
+        foreach (var schema in catalog)
+        {
+            ct.ThrowIfCancellationRequested();
+            schemaIndex++;
+
+            // The legacy reader exposes a `lastRecNo` cursor, not a UTC
+            // timestamp. The "since" semantics are surfaced on the
+            // CoreSyncChangeSet level so the wire format remains useful for
+            // the agent worker that needs to re-paginate. We start
+            // from cursor 0 — the per-table watermark store is the
+            // caller's responsibility (the worker queries it before
+            // calling the reader).
+            TriggerChunk chunk;
+            try
+            {
+                chunk = changeType switch
+                {
+                    CoreSyncChangeType.New when !isDeleted => await reader.ReadNewAsync(
+                            schema, lastRecNo: 0, packetSize: 1000, schema.Fields, ct)
+                        .ConfigureAwait(false),
+                    CoreSyncChangeType.Changed when !isDeleted => await reader.ReadChangedAsync(
+                            schema, lastTriggerRecNo: 0, packetSize: 1000, schema.Fields, ct)
+                        .ConfigureAwait(false),
+                    CoreSyncChangeType.Deleted => await reader.ReadDeletedAsync(
+                            schema, lastTriggerRecNo: 0, packetSize: 1000, ct)
+                        .ConfigureAwait(false),
+                    _ => throw new InvalidOperationException(
+                        $"Unsupported change type {changeType} (isDeleted={isDeleted})."),
+                };
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // A single failing table must not abort the full 49-table
+                // pull — log and continue, mirroring the legacy reader's
+                // "skip missing source table" behaviour.
+                _logger.LogWarning(ex,
+                    "Skipping {Direction} read for table {Table} ({Index}/{Total}): {Message}.",
+                    changeType, schema.TabloAdi, schemaIndex, catalog.Count, ex.Message);
+                continue;
+            }
+
+            foreach (var row in chunk.Rows)
+            {
+                ct.ThrowIfCancellationRequested();
+                var record = await BuildSyncChangeSet(
+                    schema,
+                    changeType,
+                    row,
+                    databaseName,
+                    lookup,
+                    sinceTimestamp);
+                result.Add(record);
+            }
+        }
+
+        _logger.LogInformation(
+            "ITriggerChangeSetReader {Direction} read produced {Count} change records across {Tables} tables.",
+            changeType, result.Count, catalog.Count);
+        return result;
+    }
+
+    /// <summary>
+    /// Project one row of the legacy <see cref="TriggerChunk"/> into a
+    /// <see cref="CoreSyncChangeSet"/>. The <see cref="CoreSyncChangeSet.KeyValue"/>
+    /// is resolved through <see cref="KeyValueResolver.ResolveAsync"/>;
+    /// the resolver receives the database name so a side-table lookup can
+    /// route the connection to the right SQL Server context.
+    /// </summary>
+    private static async Task<CoreSyncChangeSet> BuildSyncChangeSet(
+        TrackedTableSchema schema,
+        CoreSyncChangeType changeType,
+        IReadOnlyDictionary<string, object?> row,
+        string databaseName,
+        IKeyValueLookup lookup,
+        DateTime sinceUtc)
+    {
+        // The legacy reader stashes the resolved KeyValue under a
+        // synthetic key (see ExecuteReadAsync). When the row came from a
+        // test seam that does not populate the synthetic key, fall back
+        // to deriving the source value from the row's schema columns.
+        object? keySource = null;
+        if (row.TryGetValue("__ERPB_KEY_VALUE", out var kv) && kv is not null)
+        {
+            // Pre-computed path — the source reader already ran the
+            // synchronous resolver. We still call the async resolver so
+            // tests can supply a FakeKeyValueLookup and the production
+            // null-lookup short-circuits to the same result.
+            keySource = kv;
+        }
+        else if (row.TryGetValue(schema.EffectiveKeyField, out var direct))
+        {
+            keySource = direct;
+        }
+        else if (row.TryGetValue(schema.RecnoField, out var recno))
+        {
+            keySource = recno;
+        }
+
+        int triggerRecNo = 0;
+        if (row.TryGetValue("__ERPB_KEY_TRIGGER", out var storedTrigger) && storedTrigger is not null)
+        {
+            triggerRecNo = Convert.ToInt32(storedTrigger);
+        }
+        else if (row.TryGetValue("TriggerRECno", out var tr) && tr is not null)
+        {
+            triggerRecNo = Convert.ToInt32(tr);
+        }
+
+        var keyValue = await KeyValueResolver
+            .ResolveAsync(schema, keySource, databaseName, lookup, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        var payloadJson = BuildPayloadJson(row);
+        var id = Guid.NewGuid().ToString("N");
+        var idempotencyKey = $"{schema.TabloAdi}:{triggerRecNo}:{changeType}";
+
+        return new CoreSyncChangeSet
+        {
+            Id = id,
+            TableName = schema.TabloAdi,
+            RecordKey = FormatRecordKey(keySource),
+            KeyValue = keyValue,
+            ChangeType = changeType,
+            OccurredAtUtc = sinceUtc == default ? DateTime.UtcNow : sinceUtc,
+            TriggerRECno = triggerRecNo,
+            IdempotencyKey = idempotencyKey,
+            PayloadJson = payloadJson,
+        };
+    }
+
+    private static string FormatRecordKey(object? keySource) => keySource switch
+    {
+        null => string.Empty,
+        string s => s,
+        Guid g => g.ToString("D"),
+        IFormattable fmt => fmt.ToString(null, CultureInfo.InvariantCulture),
+        _ => keySource.ToString() ?? string.Empty,
+    };
+
+    /// <summary>
+    /// Render the source row as a stable JSON payload. Columns are
+    /// written in the schema's declared order so two reads of the same
+    /// row produce byte-identical JSON; this is the property the central
+    /// API relies on for payload-equality dedup.
+    /// </summary>
+    private static string BuildPayloadJson(IReadOnlyDictionary<string, object?> row)
+    {
+        var sb = new StringBuilder();
+        sb.Append('{');
+        var first = true;
+        foreach (var key in row.Keys)
+        {
+            if (key.StartsWith("__ERPB_", StringComparison.Ordinal))
+            {
+                // Internal projection keys are not part of the wire payload.
+                continue;
+            }
+            if (!first) sb.Append(',');
+            first = false;
+            sb.Append(JsonEncodedText.Encode(key));
+            sb.Append(':');
+            var value = row[key];
+            if (value is null)
+            {
+                sb.Append("null");
+            }
+            else if (value is string s)
+            {
+                sb.Append(JsonEncodedText.Encode(s));
+            }
+            else if (value is bool b)
+            {
+                sb.Append(b ? "true" : "false");
+            }
+            else if (value is Guid g)
+            {
+                sb.Append(JsonEncodedText.Encode(g.ToString("D")));
+            }
+            else if (value is IFormattable fmt)
+            {
+                sb.Append(fmt.ToString(null, CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                sb.Append(JsonEncodedText.Encode(value.ToString() ?? string.Empty));
+            }
+        }
+        sb.Append('}');
+        return sb.ToString();
     }
 }

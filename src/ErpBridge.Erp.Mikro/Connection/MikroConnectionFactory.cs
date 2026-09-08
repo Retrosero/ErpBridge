@@ -19,6 +19,7 @@ public sealed class MikroConnectionFactory
         Password: string.Empty,
         DatabaseName: string.Empty,
         CompanyNo: 1,
+        BranchNo: 0,
         WarehouseNo: 1);
 
     /// <summary>

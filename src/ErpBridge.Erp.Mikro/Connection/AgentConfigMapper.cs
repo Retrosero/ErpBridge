@@ -92,6 +92,7 @@ public sealed class AgentConfigMapper : IAgentConfigToErpSettingsMapper
             DatabaseName: config.MikroDatabaseName.Trim(),
             IntegratedSecurity: config.UseWindowsAuth,
             CompanyNo: companyNo,
+            BranchNo: branchNo,
             WarehouseNo: warehouseNo);
     }
 }

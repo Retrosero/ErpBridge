@@ -12,6 +12,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Http;
 using Moq;
 using Moq.Protected;
 using Polly;
@@ -347,6 +348,168 @@ public class HttpRemoteApiClientTests
         error.Message.Should().Contain("timed out");
     }
 
+    // ---- Phase X: HttpClient retry / 4xx / 5xx / network regression tests ----
+    //
+    // These tests lock in the contract for the Polly retry pipeline that
+    // ServiceCollectionExtensions.BuildRetryPolicy attaches around the
+    // HttpClient in production: 4xx (other than 429) must NOT be retried;
+    // 5xx / 429 / HttpRequestException / TaskCanceledException must be
+    // retried up to the configured budget, and the final outcome is
+    // surfaced as either success (5xx-then-2xx) or a transient /
+    // network exception (max-retries exhausted).
+
+    [Fact]
+    public async Task PushBootstrapDataAsync_401_throws_permanent_exception_without_retry()
+    {
+        // 401 is not in the Polly retry predicate (only 5xx / 429 / exceptions
+        // are retried). The mock must be hit exactly once, and the client
+        // must surface a BootstrapPermanentPushException so the caller can
+        // re-register instead of looping on a doomed retry budget.
+        var callCount = 0;
+        var (client, _) = BuildClientWithRetryPolicy(req =>
+        {
+            callCount++;
+            return RespondJson(req, HttpStatusCode.Unauthorized, new
+            {
+                errorCode = "INVALID_TOKEN",
+                message = "JWT expired.",
+            });
+        }, retries: 3);
+
+        var exception = await Assert.ThrowsAsync<BootstrapPermanentPushException>(
+            () => client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB")));
+
+        exception.ErrorCode.Should().Be("INVALID_TOKEN");
+        exception.Message.Should().Be("JWT expired.");
+        callCount.Should().Be(1, "401 is not in the retry predicate → no retry attempts");
+    }
+
+    [Fact]
+    public async Task PushBootstrapDataAsync_403_throws_permanent_exception_without_retry()
+    {
+        // Symmetrical to the 401 case: 403 is a permanent failure (the agent
+        // is not authorised for this tenant) and must not consume the retry
+        // budget. The handler must be hit exactly once.
+        var callCount = 0;
+        var (client, _) = BuildClientWithRetryPolicy(req =>
+        {
+            callCount++;
+            return RespondJson(req, HttpStatusCode.Forbidden, new
+            {
+                errorCode = "FORBIDDEN_TENANT",
+                message = "Tenant is not allowed.",
+            });
+        }, retries: 3);
+
+        var exception = await Assert.ThrowsAsync<BootstrapPermanentPushException>(
+            () => client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB")));
+
+        exception.ErrorCode.Should().Be("FORBIDDEN_TENANT");
+        exception.Message.Should().Be("Tenant is not allowed.");
+        callCount.Should().Be(1, "403 is not in the retry predicate → no retry attempts");
+    }
+
+    [Fact]
+    public async Task PushBootstrapDataAsync_retries_on_500_then_succeeds()
+    {
+        // The /start call returns 500 on the first attempt; the Polly retry
+        // fires, the second /start call returns 200 with a fresh uploadId,
+        // and the subsequent chunk + complete calls all return 204. The
+        // push must complete successfully and /start must be hit exactly
+        // twice (one 500 + one 200).
+        var startCallCount = 0;
+        var (client, _) = BuildClientWithRetryPolicy(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/start", StringComparison.Ordinal))
+            {
+                startCallCount++;
+                return startCallCount == 1
+                    ? RespondJson(req, HttpStatusCode.InternalServerError, new { errorCode = "TRANSIENT_DB" })
+                    : RespondJson(req, HttpStatusCode.OK, new { uploadId = Guid.NewGuid(), maxItemsPerChunk = 500 });
+            }
+            return RespondJson(req, HttpStatusCode.NoContent, new { });
+        }, retries: 3);
+
+        await client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB"));
+
+        startCallCount.Should().Be(2, "Polly retries once on the initial 500 → second /start call returns 200");
+    }
+
+    [Fact]
+    public async Task PushBootstrapDataAsync_returns_failure_on_500_after_max_retries()
+    {
+        // Every call returns 500. The first call to fail is /start; with
+        // retries=3, the handler is hit 1 (initial) + 3 (retries) = 4
+        // times, then the final 500 propagates. The exception type is
+        // BootstrapPermanentPushException because the /start call uses
+        // SendAsync<T>(classifyBootstrapFailure: true), which throws the
+        // permanent marker for any non-success — including 5xx. The
+        // subsequent /chunks + /complete calls never get a chance to
+        // run because the /start exception aborts the push immediately.
+        // (A 500 on /chunks or /complete would surface as a
+        // TransientPushException instead; the canonical 5xx retry path
+        // for the chunked upload is exercised by BootstrapSyncService,
+        // not the unit test for the HTTP client.)
+        var callCount = 0;
+        var (client, _) = BuildClientWithRetryPolicy(req =>
+        {
+            callCount++;
+            return RespondJson(req, HttpStatusCode.InternalServerError, new { errorCode = "PERSISTENT_500" });
+        }, retries: 3);
+
+        var exception = await Assert.ThrowsAsync<BootstrapPermanentPushException>(
+            () => client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB")));
+
+        exception.ErrorCode.Should().Be("PERSISTENT_500");
+        callCount.Should().Be(4, "Polly makes 1 initial + 3 retries = 4 total invocations against the handler");
+    }
+
+    [Fact]
+    public async Task PushBootstrapDataAsync_returns_HttpRequestException_after_max_retries_on_network_failure()
+    {
+        // The mock throws HttpRequestException on every attempt (simulating
+        // a persistent network failure such as DNS or TCP reset). Polly
+        // retries HttpRequestException, exhausts the budget, and the final
+        // exception propagates out of PushBootstrapDataAsync because
+        // HttpRemoteApiClient deliberately does NOT wrap it — the
+        // BootstrapSyncService orchestrator is the one that decides what
+        // to do with a network failure (retry the whole section).
+        var callCount = 0;
+        var (client, _) = BuildClientWithRetryPolicy(req =>
+        {
+            callCount++;
+            return Task.FromException<HttpResponseMessage>(new HttpRequestException("simulated network failure"));
+        }, retries: 3);
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB")));
+
+        exception.Message.Should().Be("simulated network failure");
+        callCount.Should().Be(4, "Polly retries HttpRequestException 3 times → 4 total handler invocations");
+    }
+
+    [Fact]
+    public async Task PushBootstrapDataAsync_returns_TransientPushException_on_timeout_TaskCanceledException()
+    {
+        // The mock throws TaskCanceledException on every attempt (simulating
+        // the per-request timeout firing inside HttpClient). Polly retries
+        // TaskCanceledException, exhausts the budget, and SendNoContentAsync
+        // converts the final TaskCanceledException into a TransientPushException
+        // because the caller's CancellationToken is still not cancelled.
+        var callCount = 0;
+        var (client, _) = BuildClientWithRetryPolicy(_ =>
+        {
+            callCount++;
+            return Task.FromException<HttpResponseMessage>(new TaskCanceledException("simulated timeout"));
+        }, retries: 3);
+
+        var exception = await Assert.ThrowsAsync<TransientPushException>(
+            () => client.PushBootstrapDataAsync(SyncPackage.Empty(DateTimeOffset.UtcNow, "TEST_DB")));
+
+        exception.Message.Should().Contain("timed out");
+        callCount.Should().Be(4, "Polly retries TaskCanceledException 3 times → 4 total handler invocations");
+    }
+
     [Fact]
     public async Task SendAckAsync_uses_bearer_authorization_header_when_jwt_is_set()
     {
@@ -434,6 +597,45 @@ public class HttpRemoteApiClientTests
     }
 
     // ---- helpers --------------------------------------------------------
+
+    /// <summary>
+    /// Build a client wrapped in a Polly retry policy with a 1-ms delay
+    /// schedule. Mirrors the production wiring in
+    /// <c>ServiceCollectionExtensions.AddErpBridgeRemoteApi</c> where the
+    /// HttpClient is decorated with the canonical 5/15/60/300-second
+    /// retry policy — the only difference is the back-off is shortened to
+    /// 1 ms so the regression tests for 4xx / 5xx / network / timeout run
+    /// in milliseconds instead of minutes.
+    /// </summary>
+    /// <param name="responder">Delegate the mock <see cref="HttpMessageHandler"/> invokes for each request.</param>
+    /// <param name="retries">Number of Polly retries after the initial call (total invocations = retries + 1).</param>
+    private static (HttpRemoteApiClient Client, Mock<HttpMessageHandler> Handler) BuildClientWithRetryPolicy(
+        Func<HttpRequestMessage, Task<HttpResponseMessage>> responder,
+        int retries)
+    {
+        var handler = new Mock<HttpMessageHandler>(MockBehavior.Strict);
+        handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>((req, _) => responder(req));
+
+        var delays = Enumerable.Range(0, retries).Select(_ => TimeSpan.FromMilliseconds(1)).ToArray();
+        var policy = ServiceCollectionExtensions.BuildRetryPolicy(delays);
+        var policyHandler = new PolicyHttpMessageHandler(policy)
+        {
+            InnerHandler = handler.Object,
+        };
+
+        var http = new HttpClient(policyHandler) { BaseAddress = new Uri(BaseUrl + "/") };
+        var client = new HttpRemoteApiClient(
+            http,
+            StubOptions(maxAttempts: retries),
+            NullLogger<HttpRemoteApiClient>.Instance);
+        return (client, handler);
+    }
 
     private static (HttpRemoteApiClient Client, Mock<HttpMessageHandler> Handler) BuildClient(
         Func<HttpRequestMessage, Task<HttpResponseMessage>> responder)

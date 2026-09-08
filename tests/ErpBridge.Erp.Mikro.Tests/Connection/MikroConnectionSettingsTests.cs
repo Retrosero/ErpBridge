@@ -195,4 +195,83 @@ public class MikroConnectionSettingsTests
         result!.CompanyNo.Should().Be(4);
         result.WarehouseNo.Should().Be(2);
     }
+
+    // ------------------------------------------------------------------------
+    // Faz 10.5 — multi-branch Mikro support: BranchNo parsing. The default is
+    // 0 (single-branch) because Mikro's sip_sube_no / sth_sube_no columns
+    // accept 0 in single-branch databases. A missing key MUST NOT force
+    // BranchNo to 1 — that would silently break single-branch installations
+    // that never carried the key in appsettings.json.
+    // ------------------------------------------------------------------------
+
+    [Fact]
+    public void FromConfiguration_parses_BranchNo_when_present()
+    {
+        var config = BuildConfig(
+            ("Mikro:Server", "MIKROSQL\\MIKRO"),
+            ("Mikro:UserId", "sa"),
+            ("Mikro:DatabaseName", "MIKRO16"),
+            ("Mikro:CompanyNo", "3"),
+            ("Mikro:BranchNo", "5"),
+            ("Mikro:WarehouseNo", "7"));
+
+        var result = MikroConnectionSettings.FromConfiguration(config);
+
+        result.Should().NotBeNull();
+        result!.BranchNo.Should().Be(5);
+        // CompanyNo / WarehouseNo propagation must remain intact.
+        result.CompanyNo.Should().Be(3);
+        result.WarehouseNo.Should().Be(7);
+    }
+
+    [Fact]
+    public void FromConfiguration_defaults_BranchNo_to_0_when_missing()
+    {
+        // Single-branch installations don't carry Mikro:BranchNo in
+        // appsettings.json. The default must keep the sales-order write path
+        // working without forcing the operator to touch the file.
+        var config = BuildConfig(
+            ("Mikro:Server", "MIKROSQL\\MIKRO"),
+            ("Mikro:UserId", "sa"),
+            ("Mikro:DatabaseName", "MIKRO16"),
+            ("Mikro:CompanyNo", "2"));
+
+        var result = MikroConnectionSettings.FromConfiguration(config);
+
+        result.Should().NotBeNull();
+        result!.BranchNo.Should().Be(0, "missing BranchNo must default to 0 (single-branch), not 1");
+    }
+
+    [Fact]
+    public void FromConfiguration_falls_back_to_0_when_BranchNo_is_unparsable()
+    {
+        var config = BuildConfig(
+            ("Mikro:Server", "MIKROSQL\\MIKRO"),
+            ("Mikro:UserId", "sa"),
+            ("Mikro:DatabaseName", "MIKRO16"),
+            ("Mikro:BranchNo", "ana sube"));
+
+        var result = MikroConnectionSettings.FromConfiguration(config);
+
+        result.Should().NotBeNull();
+        result!.BranchNo.Should().Be(0, "non-integer BranchNo must default to 0, not throw");
+    }
+
+    [Fact]
+    public void FromConfiguration_uses_invariant_culture_for_BranchNo_parsing()
+    {
+        // Mirrors the CompanyNo / WarehouseNo invariant-culture guarantee so a
+        // Turkish-locale operator who types "  12  " gets 12 — not a number
+        // re-interpreted under the tr-TR comma rule.
+        var config = BuildConfig(
+            ("Mikro:Server", "MIKROSQL\\MIKRO"),
+            ("Mikro:UserId", "sa"),
+            ("Mikro:DatabaseName", "MIKRO16"),
+            ("Mikro:BranchNo", "  12  "));
+
+        var result = MikroConnectionSettings.FromConfiguration(config);
+
+        result.Should().NotBeNull();
+        result!.BranchNo.Should().Be(12);
+    }
 }

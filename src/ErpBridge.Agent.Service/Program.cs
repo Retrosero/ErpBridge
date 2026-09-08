@@ -1,4 +1,5 @@
 using ErpBridge.Agent.Service.Configuration;
+using ErpBridge.Agent.Service.Configuration.Reconciliation;
 using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core;
 using ErpBridge.Core.Jobs;
@@ -41,6 +42,15 @@ public static class Program
                     .AddOptions<AgentServiceOptions>()
                     .Bind(ctx.Configuration.GetSection(AgentServiceOptions.SectionName));
 
+                // Phase-6 boundary reconciliation: bind the cross-DB
+                // reconciliation options under ErpBridge:Reconciliation.
+                // The monitor pattern lets the worker pick up a live
+                // appsettings.json change (e.g. Enabled=false after an
+                // incident) without a process restart.
+                services
+                    .AddOptions<ReconciliationOptions>()
+                    .Bind(ctx.Configuration.GetSection(ReconciliationOptions.SectionName));
+
                 services.AddErpBridgeCore();
                 services.AddErpBridgeLocalStore(ctx.Configuration);
                 services.AddErpBridgeRemoteApi(ctx.Configuration);
@@ -68,6 +78,16 @@ public static class Program
                 services.AddHostedService<AgentWorker>();
                 services.AddHostedService<HeartbeatWorker>();
                 services.AddHostedService<BootstrapWorker>();
+
+                // Phase-6 boundary reconciliation: read-only safety net that
+                // scans recent SQLite mappings and asks Mikro whether the
+                // document still exists. Alarm-only — never modifies the ERP
+                // or the mapping store. The probe is Mikro-specific; the
+                // history query is SQLite-specific; both are wired here so
+                // the worker is a pure coordinator.
+                services.AddSingleton<IMappingHistoryQuery, SqliteMappingHistoryQuery>();
+                services.AddSingleton<IReconciliationProbe, MikroReconciliationProbe>();
+                services.AddHostedService<CrossDbReconciliationWorker>();
             })
             .UseSerilog((ctx, sp, lc) => lc
                 .ReadFrom.Configuration(ctx.Configuration)

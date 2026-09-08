@@ -81,6 +81,24 @@ public static class AndroidEndpoints
         group.MapPost("/sync/faturaHareket", InvoiceMovementsAsync)
             .WithName("AndroidInvoiceMovements")
             .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+
+        // Tahsilat (Wave 4): Android tarafı için okuma endpoint'leri. Bu
+        // sürümde Microservice tarafı henüz Mikro'dan okuma yapmıyor —
+        // endpoint'ler boş bir snapshot döner ve `note` alanı ile bunu
+        // Android tarafına bildirir. İleride snapshot doldurma ayrı bir
+        // track'te yapılacak.
+        group.MapPost("/sync/collections", CollectionsAsync)
+            .WithName("AndroidCollections")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        group.MapPost("/sync/payment-orders", PaymentOrdersAsync)
+            .WithName("AndroidPaymentOrders")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+        // İrsaliye (Wave 4A): Android tarafı için okuma endpoint'i.
+        // Collections / payment-orders ile aynı kalıbı izler — snapshot'taki
+        // "dispatchNotes" bölümünü arar, bulamazsa boş array + not döner.
+        group.MapPost("/sync/dispatch-notes", DispatchNotesAsync)
+            .WithName("AndroidDispatchNotes")
+            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         return routes;
     }
 
@@ -872,6 +890,161 @@ public static class AndroidEndpoints
     }
 
     private sealed record AndroidDocumentAccess(JsonDocument? Document, BootstrapSnapshot? Snapshot, IResult? Error);
+
+    /// <summary>
+    /// Tahsilat (Wave 4) Android tarafı için okuma endpoint'i. Microservice
+    /// tarafı henüz Mikro'dan <c>CARI_HESAP_HAREKETLERI</c> satırlarını sync
+    /// etmediği için endpoint boş bir snapshot döner; <see cref="note"/>
+    /// alanı Android tarafına "henüz implemente edilmedi" bilgisini taşır.
+    /// İleride <c>BootstrapSnapshot</c> tabanlı okuma devreye alındığında
+    /// sadece response body'sinin doldurulması yeterli olacak.
+    /// </summary>
+    private static async Task<IResult> CollectionsAsync(
+        AndroidPageRequest? request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+
+        // Tahsilat snapshot'ı bootstrap kanalı üzerinden değil, Mikrıdan
+        // tetiklenen collection writer üzerinden beslenir. Şimdilik
+        // snapshot'taki "collections" bölümünü aramayı deneyip bulamazsak
+        // boş array ile geri dönüyoruz.
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive)
+            .FirstOrDefaultAsync(ct);
+        if (snapshot is not null)
+        {
+            using var document = await BuildSnapshotDocumentAsync(db, snapshot, new[] { "collections" }, ct);
+            var items = GetArray(document.RootElement, "collections").Select(item => item.Clone()).ToArray();
+            return Results.Ok(new
+            {
+                entity = "collections",
+                sourceDatabase = snapshot.SourceDatabase,
+                pulledAtUtc = snapshot.PulledAtUtc,
+                page = 1,
+                pageSize = items.Length,
+                total = items.Length,
+                items,
+                note = items.Length == 0 ? "Collection snapshot not yet populated by the agent." : null,
+            });
+        }
+
+        return Results.Ok(new
+        {
+            entity = "collections",
+            sourceDatabase = (string?)null,
+            pulledAtUtc = (DateTimeOffset?)null,
+            page = 1,
+            pageSize = 0,
+            total = 0,
+            items = Array.Empty<object>(),
+            note = "Collection snapshot not yet populated by the agent.",
+        });
+    }
+
+    /// <summary>
+    /// Tahsilat (Wave 4) Android tarafı için ödeme emri okuma endpoint'i.
+    /// <see cref="CollectionsAsync"/> ile aynı kalıbı izler; snapshot
+    /// tarafında <c>"paymentOrders"</c> bölümü aranır, bulunmazsa boş
+    /// array + not döner.
+    /// </summary>
+    private static async Task<IResult> PaymentOrdersAsync(
+        AndroidPageRequest? request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive)
+            .FirstOrDefaultAsync(ct);
+        if (snapshot is not null)
+        {
+            using var document = await BuildSnapshotDocumentAsync(db, snapshot, new[] { "paymentOrders" }, ct);
+            var items = GetArray(document.RootElement, "paymentOrders").Select(item => item.Clone()).ToArray();
+            return Results.Ok(new
+            {
+                entity = "paymentOrders",
+                sourceDatabase = snapshot.SourceDatabase,
+                pulledAtUtc = snapshot.PulledAtUtc,
+                page = 1,
+                pageSize = items.Length,
+                total = items.Length,
+                items,
+                note = items.Length == 0 ? "Payment-order snapshot not yet populated by the agent." : null,
+            });
+        }
+
+        return Results.Ok(new
+        {
+            entity = "paymentOrders",
+            sourceDatabase = (string?)null,
+            pulledAtUtc = (DateTimeOffset?)null,
+            page = 1,
+            pageSize = 0,
+            total = 0,
+            items = Array.Empty<object>(),
+            note = "Payment-order snapshot not yet populated by the agent.",
+        });
+    }
+
+    /// <summary>
+    /// İrsaliye (Wave 4A) Android tarafı için okuma endpoint'i.
+    /// <see cref="CollectionsAsync"/> ile aynı kalıbı izler; snapshot
+    /// tarafında <c>"dispatchNotes"</c> bölümü aranır, bulunmazsa boş
+    /// array + not döner. İrsaliye writer'ı Mikro'ya yazıyor; ancak
+    /// CentralApi snapshot'ında <c>dispatchNotes</c> bölümü için bir agent
+    /// upload path'i yok (irsaliyeler bir "snapshot bölümü" değil, bir
+    /// "yazma olayı"). Android tarafı şimdilik bilgilendirme notu ile boş
+    /// array alıyor; ileride agent'ın yazdığı her irsaliyeyi ayrı bir
+    /// endpoint ile Android'e push etmesi ayrı bir track.
+    /// </summary>
+    private static async Task<IResult> DispatchNotesAsync(
+        AndroidPageRequest? request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var mobile = await AuthorizeMobileAsync(http, db, ct);
+        if (mobile.Error is not null) return mobile.Error;
+
+        var snapshot = await db.BootstrapSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == mobile.TenantId && x.IsActive)
+            .FirstOrDefaultAsync(ct);
+        if (snapshot is not null)
+        {
+            using var document = await BuildSnapshotDocumentAsync(db, snapshot, new[] { "dispatchNotes" }, ct);
+            var items = GetArray(document.RootElement, "dispatchNotes").Select(item => item.Clone()).ToArray();
+            return Results.Ok(new
+            {
+                entity = "dispatchNotes",
+                sourceDatabase = snapshot.SourceDatabase,
+                pulledAtUtc = snapshot.PulledAtUtc,
+                page = 1,
+                pageSize = items.Length,
+                total = items.Length,
+                items,
+                note = items.Length == 0 ? "Dispatch-note snapshot not yet populated by the agent." : null,
+            });
+        }
+
+        return Results.Ok(new
+        {
+            entity = "dispatchNotes",
+            sourceDatabase = (string?)null,
+            pulledAtUtc = (DateTimeOffset?)null,
+            page = 1,
+            pageSize = 0,
+            total = 0,
+            items = Array.Empty<object>(),
+            note = "Dispatch-note snapshot not yet populated by the agent.",
+        });
+    }
 
     private static async Task<(Guid TenantId, IResult? Error)> AuthorizeMobileAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {

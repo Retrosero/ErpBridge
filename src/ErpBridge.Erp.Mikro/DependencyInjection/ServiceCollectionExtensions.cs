@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ErpBridge.Erp.Mikro.DependencyInjection;
 
@@ -122,6 +123,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWarehouseLookup>(_ => new InMemoryWarehouseLookup());
 
         services.AddSingleton<MikroSalesOrderWriter>();
+        // Tahsilat (Wave 4): CARI_HESAP_HAREKETLERI + ODEME_EMIRLERI writers.
+        services.AddSingleton<MikroCollectionWriter>();
+        services.AddSingleton<MikroPaymentOrderWriter>();
+        // Wave 4C — Cari / Stok kart açma (CREATE) writers. Used by the agent
+        // before it writes a sales order: if the saha temsilcisinin gönderdiği
+        // CustomerCode / StockCode Mikro'da yoksa, bu writer yeni kartı açar
+        // ve mapping'i kaydeder. Mapping store şeması değişmedi — sadece yeni
+        // (documentType=customer_card / stock_card) satırları eklenir.
+        services.AddSingleton<MikroCustomerCardWriter>();
+        services.AddSingleton<MikroStockCardWriter>();
 
         // Faz 5 Track 2: MikroDbReader — Dapper-backed bootstrap reader. Singleton
         // because the implementation is stateless aside from its dependencies.
@@ -131,6 +142,48 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<TriggerInstaller>();
         // Faz 11.4: three-way change-set reader (new/changed/deleted).
         services.AddSingleton<IChangeSetReader, TriggerChangeSetReader>();
+
+        // Faz 15.2: opt-in FORA-compatible trigger installer. The runner
+        // (DapperSqlCommandRunner) is always registered so the interface
+        // resolves cleanly even when the installer is disabled; the
+        // installer itself is only added when its Enabled flag is set.
+        // Disabled-by-default means existing agents keep using the
+        // _ERPB_SENKRONIZASYON pipeline until the operator opts in.
+        services.TryAddSingleton<ISqlCommandRunner, DapperSqlCommandRunner>();
+        // Bind through an Action delegate so the Mikro project does not
+        // need a direct reference to Microsoft.Extensions.Options
+        // .ConfigurationExtensions. The section lookup happens once at
+        // composition time; the resulting values flow through IOptions
+        // as usual. Mirrors the existing patterns in the other
+        // ErpBridge.* projects (Abstractions, Core) which also avoid the
+        // ConfigurationExtensions package to keep the dependency graph
+        // lean.
+        var installerOptionsSection = configuration.GetSection(NewSchemaTriggerInstallerOptions.ConfigurationSection);
+        services.Configure<NewSchemaTriggerInstallerOptions>(opts => installerOptionsSection.Bind(opts));
+        services.AddSingleton<NewSchemaTriggerInstaller>(sp =>
+        {
+            var opts = sp.GetRequiredService<IOptions<NewSchemaTriggerInstallerOptions>>().Value;
+            if (!opts.Enabled)
+            {
+                return null!;
+            }
+
+            var factory = sp.GetRequiredService<MikroConnectionFactory>();
+            var runner = sp.GetRequiredService<ISqlCommandRunner>();
+            var logger = sp.GetRequiredService<ILogger<NewSchemaTriggerInstaller>>();
+            var options = sp.GetRequiredService<IOptions<NewSchemaTriggerInstallerOptions>>();
+            // The resolver reads the active settings slot on every call so
+            // the installer reconnects with the latest credentials without
+            // having to be rebuilt. When the active slot is empty the
+            // factory's BuildConnectionString will throw a descriptive
+            // ArgumentException — surfaced as a clean startup error rather
+            // than a silent no-op.
+            return new NewSchemaTriggerInstaller(
+                connectionStringResolver: _ => factory.BuildConnectionStringFromActive(),
+                sqlRunner: runner,
+                logger: logger,
+                options: options);
+        });
         // Faz 11.3: ITriggerWatermarkStore — the interface lives in Mikro (it's
         // Mikro-specific by design), but the SQLite-backed implementation lives
         // in ErpBridge.Agent.Service because it depends on ErpBridge.LocalStore,
@@ -154,12 +207,17 @@ public static class ServiceCollectionExtensions
         services.TryAddSingletonLogger<MikroVersionDetector>(services);
         services.TryAddSingletonLogger<MikroIdentityStrategySelector>(services);
         services.TryAddSingletonLogger<MikroSalesOrderWriter>(services);
+        services.TryAddSingletonLogger<MikroCollectionWriter>(services);
+        services.TryAddSingletonLogger<MikroPaymentOrderWriter>(services);
+        services.TryAddSingletonLogger<MikroCustomerCardWriter>(services);
+        services.TryAddSingletonLogger<MikroStockCardWriter>(services);
         services.TryAddSingletonLogger<MikroAdapter>(services);
         services.TryAddSingletonLogger<MikroDbReader>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
         services.TryAddSingletonLogger<TriggerInstaller>(services);
         services.TryAddSingletonLogger<TriggerChangeSetReader>(services);
+        services.TryAddSingletonLogger<NewSchemaTriggerInstaller>(services);
 
         return services;
     }

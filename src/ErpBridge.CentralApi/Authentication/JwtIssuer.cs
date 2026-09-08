@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using ErpBridge.CentralApi.Options;
 using Microsoft.Extensions.Options;
@@ -152,4 +153,44 @@ public sealed class JwtIssuer : IJwtIssuer
         ValidateLifetime = true,
         ClockSkew = TimeSpan.FromSeconds(30),
     };
+
+    /// <summary>
+    /// Default lifetime of an admin refresh token, in days. The rotation cadence
+    /// sits far above the access-token lifetime (one hour) so a panel that
+    /// keeps the user logged in for a normal workday never has to re-prompt,
+    /// while a stolen token becomes inert after this window.
+    /// </summary>
+    public const int DefaultRefreshTokenDays = 14;
+
+    /// <summary>
+    /// Generate a 32-byte cryptographically random refresh token, returned as
+    /// a URL-safe base64 string. The caller hands the raw value to the client
+    /// once and persists only the SHA-256 hash returned by
+    /// <see cref="HashRefreshToken"/>.
+    /// </summary>
+    public static string GenerateRefreshToken()
+    {
+        Span<byte> buffer = stackalloc byte[32];
+        RandomNumberGenerator.Fill(buffer);
+        return Base64UrlEncode(buffer);
+    }
+
+    /// <summary>
+    /// Hex-encoded SHA-256 of <paramref name="rawToken"/>. Matches the lookup
+    /// index on <c>refresh_tokens.TokenHash</c>. Empty input yields the
+    /// well-known SHA-256 of the empty string rather than throwing — callers
+    /// that need to reject blanks do that check themselves.
+    /// </summary>
+    public static string HashRefreshToken(string rawToken)
+    {
+        var bytes = Encoding.UTF8.GetBytes(rawToken ?? string.Empty);
+        var digest = SHA256.HashData(bytes);
+        return Convert.ToHexString(digest).ToLowerInvariant();
+    }
+
+    private static string Base64UrlEncode(ReadOnlySpan<byte> data)
+    {
+        var standard = Convert.ToBase64String(data);
+        return standard.TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
 }

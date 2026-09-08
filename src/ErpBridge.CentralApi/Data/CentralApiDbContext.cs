@@ -26,6 +26,7 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<BootstrapSnapshot> BootstrapSnapshots => Set<BootstrapSnapshot>();
     public DbSet<BootstrapSnapshotChunk> BootstrapSnapshotChunks => Set<BootstrapSnapshotChunk>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeySecretAccessAudit> ApiKeySecretAccessAudits => Set<ApiKeySecretAccessAudit>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
@@ -136,6 +137,21 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.PasswordHash).IsRequired();
             b.Property(x => x.DisplayName).IsRequired().HasMaxLength(255);
             b.HasIndex(x => x.Email).IsUnique();
+        });
+
+        // Admin refresh-token rotation handles. The unique index on
+        // (AdminUserId, TokenHash) makes a duplicate row a no-op (defence in
+        // depth — the raw token is 32 random bytes). The secondary index on
+        // ExpiresAtUtc supports a future cleanup worker that purges expired
+        // rows in batches.
+        modelBuilder.Entity<RefreshToken>(b =>
+        {
+            b.ToTable("refresh_tokens");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.TokenHash).IsRequired().HasMaxLength(64);
+            b.Property(x => x.CreatedByIp).IsRequired().HasMaxLength(64);
+            b.HasIndex(x => new { x.AdminUserId, x.TokenHash }).IsUnique();
+            b.HasIndex(x => x.ExpiresAtUtc);
         });
 
         modelBuilder.Entity<ApiKey>(b =>

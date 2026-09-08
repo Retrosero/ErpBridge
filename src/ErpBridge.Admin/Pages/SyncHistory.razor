@@ -1,0 +1,235 @@
+@page "/sync-history"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Sync Geçmişi — ErpBridge Yönetim</PageTitle>
+
+<AdminPageHeader Title="Sync geçmişi"
+                 Description="Lisans sunucuya gönderilen tüm değişiklik olaylarını inceleyin. Tablo, yön ve tarih aralığına göre filtreleyebilirsiniz." />
+
+<div class="admin-filter-bar mb-3">
+    <div>
+        <label class="form-label" for="sync-tenant">Müşteri</label>
+        <select id="sync-tenant" class="form-select" @bind="_tenantId" aria-label="Müşteri seçin">
+            <option value="">Müşteri seçin…</option>
+            @foreach (var t in _tenants)
+            {
+                <option value="@t.Id">@t.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="form-label" for="sync-table">Tablo <small class="text-muted">(opsiyonel)</small></label>
+        <input id="sync-table" class="form-control" @bind="_table" placeholder="örn. STOKLAR" />
+    </div>
+    <div>
+        <label class="form-label" for="sync-direction">Yön</label>
+        <select id="sync-direction" class="form-select" @bind="_direction" aria-label="Yön seçin">
+            <option value="">Tümü</option>
+            <option value="new">Yeni</option>
+            <option value="changed">Değişen</option>
+            <option value="deleted">Silinen</option>
+        </select>
+    </div>
+    <div>
+        <label class="form-label" for="sync-from">Başlangıç (UTC)</label>
+        <input id="sync-from" class="form-control" type="datetime-local" @bind="_fromLocal" />
+    </div>
+    <div>
+        <label class="form-label" for="sync-to">Bitiş (UTC)</label>
+        <input id="sync-to" class="form-control" type="datetime-local" @bind="_toLocal" />
+    </div>
+    <div>
+        <button class="btn btn-primary" @onclick="() => LoadAsync(1)" disabled="@(string.IsNullOrEmpty(_tenantId) || _loading)">
+            @(_loading ? "Yükleniyor…" : "Olayları getir")
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <AdminState Tone="error" Icon="!" Title="Olaylar alınamadı" Message="@_error" />
+}
+
+@if (_loading)
+{
+    <AdminLoading Text="Sync olayları yükleniyor…" />
+}
+else if (_result is not null)
+{
+    <div class="admin-insight">
+        <span>Toplam olay</span>
+        <strong>@_result.Total</strong>
+        <span class="ms-3">Sayfa</span>
+        <strong>@_result.Page / @TotalPages</strong>
+    </div>
+
+    @if (_result.Items.Count == 0)
+    {
+        <AdminState Title="Bu filtre için olay yok" Message="Farklı bir tablo, yön veya tarih aralığı deneyin." />
+    }
+    else
+    {
+        <div class="admin-data-surface">
+            <table class="table admin-data-table" aria-label="Sync olayları">
+                <thead>
+                    <tr>
+                        <th>Zaman (UTC)</th>
+                        <th>Müşteri</th>
+                        <th>Tablo</th>
+                        <th>Yön</th>
+                        <th>Son TriggerRECno</th>
+                        <th>Satır</th>
+                        <th>Idempotency Key</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _result.Items)
+                    {
+                        <tr>
+                            <td data-label="Zaman"><time datetime="@item.ReceivedAtUtc.ToString("O")">@FormatTime(item.ReceivedAtUtc)</time></td>
+                            <td data-label="Müşteri">@SelectedTenantName</td>
+                            <td data-label="Tablo"><code>@item.Table</code></td>
+                            <td data-label="Yön"><AdminStatusBadge Text="@DirectionLabel(item.Direction)" Tone="@DirectionTone(item.Direction)" /></td>
+                            <td data-label="Son TriggerRECno">@item.LastTriggerRecNo</td>
+                            <td data-label="Satır">@item.RowCount</td>
+                            <td data-label="Idempotency Key"><code>@item.IdempotencyKey</code></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <div>
+                <button class="btn btn-outline-secondary btn-sm me-2" id="sync-prev" @onclick="PrevPageAsync" disabled="@(_page <= 1 || _loading)">‹ Önceki</button>
+                <button class="btn btn-outline-secondary btn-sm" id="sync-next" @onclick="NextPageAsync" disabled="@(_page >= TotalPages || _loading)">Sonraki ›</button>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" id="sync-export" @onclick="ExportCsvAsync" disabled="@_exporting">
+                @(_exporting ? "Hazırlanıyor…" : "CSV dışa aktar")
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_csvPreview))
+        {
+            <details class="mt-3">
+                <summary>CSV önizleme (@CsvLineCount satır)</summary>
+                <pre class="admin-csv-preview" data-testid="csv-preview">@_csvPreview</pre>
+            </details>
+        }
+
+        @if (!string.IsNullOrEmpty(_exportInfo))
+        {
+            <p class="text-muted small mt-2">@_exportInfo</p>
+        }
+    }
+}
+else if (!_loading && string.IsNullOrEmpty(_error))
+{
+    <AdminState Title="Bir müşteri seçin" Message="Sync geçmişini görmek için yukarıdaki alandan müşteri seçin ve 'Olayları getir' düğmesine basın." />
+}
+
+@code {
+    private const int PageSize = 50;
+
+    private string _tenantId = string.Empty;
+    private string _table = string.Empty;
+    private string _direction = string.Empty;
+    private DateTime? _fromLocal;
+    private DateTime? _toLocal;
+
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private ErpBridge.Admin.Api.ChangeSetAuditPagedResult? _result;
+    private bool _loading;
+    private string? _error;
+    private int _page = 1;
+
+    private bool _exporting;
+    private string? _csvPreview;
+    private string? _exportInfo;
+
+    private int TotalPages => _result is null || _result.Size == 0
+        ? 1
+        : Math.Max(1, (int)Math.Ceiling((double)_result.Total / _result.Size));
+
+    private int CsvLineCount => string.IsNullOrEmpty(_csvPreview)
+        ? 0
+        : _csvPreview.Split('\n').Length;
+
+    private string SelectedTenantName => _tenants.FirstOrDefault(t => t.Id.ToString() == _tenantId)?.Name ?? _tenantId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _tenants = await Api.ListTenantsAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadAsync(int page)
+    {
+        if (string.IsNullOrEmpty(_tenantId)) return;
+        _loading = true;
+        _error = null;
+        _csvPreview = null;
+        _exportInfo = null;
+        _page = Math.Max(1, page);
+        try
+        {
+            if (!Guid.TryParse(_tenantId, out var tenantGuid))
+            {
+                _error = "Geçerli bir müşteri seçin.";
+                return;
+            }
+            var direction = string.IsNullOrEmpty(_direction) ? null : _direction;
+            var fromUtc = _fromLocal.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(_fromLocal.Value, DateTimeKind.Local)).ToUniversalTime() : (DateTimeOffset?)null;
+            var toUtc = _toLocal.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(_toLocal.Value, DateTimeKind.Local)).ToUniversalTime() : (DateTimeOffset?)null;
+            _result = await Api.ListChangeSetAuditAsync(tenantGuid, _table, direction, fromUtc, toUtc, _page, PageSize);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private Task PrevPageAsync() => _page > 1 ? LoadAsync(_page - 1) : Task.CompletedTask;
+    private Task NextPageAsync() => _result is null || _page >= TotalPages ? Task.CompletedTask : LoadAsync(_page + 1);
+
+    private async Task ExportCsvAsync()
+    {
+        if (string.IsNullOrEmpty(_tenantId)) return;
+        _exporting = true;
+        _exportInfo = null;
+        _csvPreview = null;
+        try
+        {
+            if (!Guid.TryParse(_tenantId, out var tenantGuid))
+            {
+                _exportInfo = "Geçerli bir müşteri seçin.";
+                return;
+            }
+            var fromUtc = _fromLocal.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(_fromLocal.Value, DateTimeKind.Local)).ToUniversalTime() : (DateTimeOffset?)null;
+            var toUtc = _toLocal.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(_toLocal.Value, DateTimeKind.Local)).ToUniversalTime() : (DateTimeOffset?)null;
+            var csv = await Api.ExportChangeSetAuditCsvAsync(tenantGuid, _table, fromUtc, toUtc);
+            _csvPreview = csv;
+            _exportInfo = "CSV hazır — aşağıdaki önizlemeden veya 'CSV dışa aktar' düğmesinden indirebilirsiniz.";
+        }
+        catch (Exception ex) { _exportInfo = $"CSV dışa aktarım başarısız: {ex.Message}"; }
+        finally { _exporting = false; }
+    }
+
+    private static string FormatTime(DateTimeOffset utc) =>
+        utc.UtcDateTime.ToString("dd MMM yyyy, HH:mm");
+
+    private static string DirectionLabel(string direction) => direction switch
+    {
+        "new" => "Yeni",
+        "changed" => "Değişen",
+        "deleted" => "Silinen",
+        _ => direction,
+    };
+
+    private static string DirectionTone(string direction) => direction switch
+    {
+        "new" => "success",
+        "changed" => "info",
+        "deleted" => "danger",
+        _ => "muted",
+    };
+}

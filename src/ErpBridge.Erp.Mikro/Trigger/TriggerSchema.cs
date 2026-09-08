@@ -102,7 +102,7 @@ ELSE
     /// <param name="sourceTable">e.g. <c>STOKLAR</c>.</param>
     /// <param name="tabloId">Stable Mikro-side numeric identifier.</param>
     /// <param name="shadowDb">Database that owns the shadow table (master DB for DOVIZ_KURLARI etc.).</param>
-    /// <param name="keyValueExpression">SQL fragment produced by <see cref="ErpBridge.Shared.TrackedTableSchema.ComputeKeyValueExpression"/>.</param>
+    /// <param name="keyValueExpression">SQL fragment produced by <see cref="ErpBridge.Shared.TrackedTableSchema"/>'s key-value expression helper.</param>
     public static string BuildSyncTriggerDdl(
         string triggerName,
         string sourceTable,

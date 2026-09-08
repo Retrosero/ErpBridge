@@ -23,6 +23,34 @@ public sealed class AdminLoginResponse
     [JsonPropertyName("email")] public string Email { get; set; } = string.Empty;
     [JsonPropertyName("displayName")] public string DisplayName { get; set; } = string.Empty;
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset ExpiresAtUtc { get; set; }
+    /// <summary>Long-lived opaque handle used to mint a new access token without re-login.</summary>
+    [JsonPropertyName("refreshToken")] public string RefreshToken { get; set; } = string.Empty;
+    /// <summary>UTC expiry of the <see cref="RefreshToken"/>.</summary>
+    [JsonPropertyName("refreshTokenExpiresAtUtc")] public DateTimeOffset RefreshTokenExpiresAtUtc { get; set; }
+}
+
+/// <summary>POST /api/v1/admin/auth/refresh body. Carries the raw refresh token returned by login.</summary>
+public sealed class AdminRefreshRequest
+{
+    [JsonPropertyName("refreshToken")] public string RefreshToken { get; set; } = string.Empty;
+}
+
+/// <summary>POST /api/v1/admin/auth/refresh response. Same shape as login so the client can swap tokens atomically.</summary>
+public sealed class AdminRefreshResponse
+{
+    [JsonPropertyName("token")] public string Token { get; set; } = string.Empty;
+    [JsonPropertyName("adminId")] public Guid AdminId { get; set; }
+    [JsonPropertyName("email")] public string Email { get; set; } = string.Empty;
+    [JsonPropertyName("displayName")] public string DisplayName { get; set; } = string.Empty;
+    [JsonPropertyName("expiresAtUtc")] public DateTimeOffset ExpiresAtUtc { get; set; }
+    [JsonPropertyName("refreshToken")] public string RefreshToken { get; set; } = string.Empty;
+    [JsonPropertyName("refreshTokenExpiresAtUtc")] public DateTimeOffset RefreshTokenExpiresAtUtc { get; set; }
+}
+
+/// <summary>POST /api/v1/admin/auth/logout body. The server revokes this specific refresh token.</summary>
+public sealed class AdminLogoutRequest
+{
+    [JsonPropertyName("refreshToken")] public string? RefreshToken { get; set; }
 }
 
 /// <summary>Tenant row returned to the admin.</summary>

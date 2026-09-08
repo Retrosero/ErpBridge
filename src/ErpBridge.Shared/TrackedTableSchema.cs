@@ -125,6 +125,54 @@ public sealed record TrackedTableSchema(
             _ => $"CAST(T.[{col}] AS NVARCHAR(64))",
         };
     }
+
+    /// <summary>
+    /// Compute the SQL literal that represents the supplied
+    /// <paramref name="recordKey"/> in the
+    /// <see cref="EffectiveKeyKind"/> of this schema. Used by the
+    /// change-set reader to project a row's primary key into a stable
+    /// application-level value that the central API can match on.
+    /// <list type="bullet">
+    ///   <item><see cref="RowKeyKind.Int"/>: returns the base-10 string
+    ///         of the int (e.g. <c>"42"</c> for 42). The shadow-table
+    ///         <c>recno:</c> prefix is intentionally dropped here — the
+    ///         wire literal is the raw value, the prefix is reserved for
+    ///         the FORA-style shadow table.</item>
+    ///   <item><see cref="RowKeyKind.Guid"/>: returns the Guid in the
+    ///         canonical <c>D</c> format wrapped in single quotes
+    ///         (e.g. <c>'6f9619ff-8b86-d011-b42d-00c04fc964ff'</c>) so
+    ///         the literal can be embedded in a SQL string.</item>
+    ///   <item>String / unknown key kind: returns a single-quoted,
+    ///         doubled-single-quote-escaped literal
+    ///         (e.g. <c>'O''Reilly'</c>).</item>
+    /// </list>
+    /// </summary>
+    /// <param name="recordKey">Runtime value of the row's key column.
+    ///   Accepts <c>int</c>, <c>long</c>, <c>Guid</c> and <c>string</c>;
+    ///   other types fall through to <see cref="object.ToString"/>.</param>
+    /// <returns>SQL-safe string literal that, when evaluated, equals
+    ///   <paramref name="recordKey"/> in the schema's key kind.</returns>
+    public string ComputeKeyValueExpression(object? recordKey)
+    {
+        ArgumentNullException.ThrowIfNull(recordKey);
+
+        return EffectiveKeyKind switch
+        {
+            RowKeyKind.Int when recordKey is int i =>
+                i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            RowKeyKind.Int when recordKey is long l =>
+                l.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            RowKeyKind.Int when recordKey is string s && int.TryParse(s, out var parsed) =>
+                parsed.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            RowKeyKind.Guid when recordKey is Guid g =>
+                $"'{g:D}'",
+            RowKeyKind.Guid when recordKey is string gs && Guid.TryParse(gs, out var parsedGuid) =>
+                $"'{parsedGuid:D}'",
+            _ when recordKey is string raw =>
+                $"'{raw.Replace("'", "''", StringComparison.Ordinal)}'",
+            _ => recordKey.ToString() ?? string.Empty,
+        };
+    }
 }
 
 /// <summary>

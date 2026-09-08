@@ -46,13 +46,14 @@ public sealed class MikroSalesOrderWriter
     /// <summary>Reserved entity-type key — supports future filter queries by entity.</summary>
     public const string EntityType = "sales_order";
 
-    /// <summary>Default firma (company) number — overridable via a future config seam.</summary>
-    internal const short DefaultFirmNo = 1;
-
-    /// <summary>Default sube (branch) number — overridable via a future config seam.</summary>
-    internal const short DefaultBranchNo = 0;
-
-    /// <summary>Default aktif-DB number used for the <c>sth_sip_RECid_DBCno</c> link in V15.</summary>
+    /// <summary>
+    /// Default aktif-DB number used for the <c>sth_sip_RECid_DBCno</c> link in V15.
+    /// Mikro encodes the originating database as <c>0</c> when the parent record
+    /// was inserted on the same database, which is the case for the agent's write
+    /// path. Exposed as a constant so the V15 link column keeps a stable value
+    /// while the <c>FirmNo</c> / <c>BranchNo</c> parameters flow from
+    /// <see cref="MikroConnectionSettings"/>.
+    /// </summary>
     internal const short DefaultActiveDbNo = 0;
 
     /// <summary>
@@ -242,7 +243,7 @@ VALUES (
         try
         {
             var insertOutcome = await InsertSalesOrderAsync(
-                payload, connectionString, strategy, ct).ConfigureAwait(false);
+                payload, connectionString, strategy, connectionSettings, ct).ConfigureAwait(false);
 
             var mapping = BuildMappingRecord(payload, connectionSettings, versionInfo, insertOutcome);
             await mappings.SaveAsync(mapping, ct).ConfigureAwait(false);
@@ -296,8 +297,30 @@ VALUES (
         SalesOrderPayload payload,
         string connectionString,
         IMikroIdentityStrategy strategy,
+        MikroConnectionSettings connectionSettings,
         CancellationToken ct)
     {
+        // Generate the header identifier according to the strategy; pass it back to
+        // the line inserts as the parent link value. Pre-generated BEFORE the
+        // connection opens so the audit log below can include it.
+        var headerGuid = strategy is GuidStrategy ? (Guid?)Guid.NewGuid() : null;
+
+        // Debug-level audit log — fires BEFORE the SQL connection is opened so
+        // the multi-firm parameters (CompanyNo / BranchNo) are observable even
+        // when the subsequent connect/INSERT throws. Hermetic tests at Debug
+        // level use this same line to assert the parameters flow from
+        // <see cref="MikroConnectionSettings"/> into the bound Dapper command.
+        _logger.LogDebug(
+            "Mikro sales-order INSERT parameters: companyNo={CompanyNo}, branchNo={BranchNo}, warehouseNo={WarehouseNo}, strategy={Strategy}, headerGuid={HeaderGuid}, series={Series}, number={Number}, lineCount={LineCount}.",
+            connectionSettings.CompanyNo,
+            connectionSettings.BranchNo,
+            payload.WarehouseNo,
+            strategy.DisplayName,
+            headerGuid,
+            payload.DocumentSeries,
+            payload.DocumentNumber,
+            payload.Lines.Count);
+
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
@@ -305,17 +328,13 @@ VALUES (
 
         try
         {
-            // Generate the header identifier according to the strategy; pass it back to
-            // the line inserts as the parent link value.
-            var headerGuid = strategy is GuidStrategy ? (Guid?)Guid.NewGuid() : null;
-
-            var recno = await InsertHeaderAsync(conn, tx, payload, strategy, headerGuid, ct)
+            var recno = await InsertHeaderAsync(conn, tx, payload, strategy, headerGuid, connectionSettings, ct)
                 .ConfigureAwait(false);
 
             for (var i = 0; i < payload.Lines.Count; i++)
             {
                 var line = payload.Lines[i];
-                await InsertLineAsync(conn, tx, payload, line, i + 1, strategy, headerGuid, recno, ct)
+                await InsertLineAsync(conn, tx, payload, line, i + 1, strategy, headerGuid, recno, connectionSettings, ct)
                     .ConfigureAwait(false);
             }
 
@@ -352,12 +371,13 @@ VALUES (
         SalesOrderPayload payload,
         IMikroIdentityStrategy strategy,
         Guid? headerGuid,
+        MikroConnectionSettings connectionSettings,
         CancellationToken ct)
     {
         var parameters = new
         {
-            FirmNo = DefaultFirmNo,
-            BranchNo = DefaultBranchNo,
+            FirmNo = connectionSettings.CompanyNo,
+            BranchNo = connectionSettings.BranchNo,
             Series = payload.DocumentSeries,
             Number = payload.DocumentNumber,
             OccurredAt = EnsureUtcDate(payload.OccurredAt),
@@ -408,12 +428,13 @@ VALUES (
         IMikroIdentityStrategy strategy,
         Guid? headerGuid,
         int headerRecno,
+        MikroConnectionSettings connectionSettings,
         CancellationToken ct)
     {
         var parameters = new
         {
-            FirmNo = DefaultFirmNo,
-            BranchNo = DefaultBranchNo,
+            FirmNo = connectionSettings.CompanyNo,
+            BranchNo = connectionSettings.BranchNo,
             OccurredAt = EnsureUtcDate(header.OccurredAt),
             Series = header.DocumentSeries,
             Number = header.DocumentNumber,

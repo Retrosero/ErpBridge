@@ -240,37 +240,195 @@ namespace ErpBridge.CentralApi.Data.Migrations
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshot", b =>
                 {
-                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
-                    b.Property<DateTimeOffset>("ActivatedAtUtc").HasColumnType("timestamp with time zone");
-                    b.Property<bool>("IsActive").HasColumnType("boolean");
-                    b.Property<bool>("IsIncremental").HasColumnType("boolean");
-                    b.Property<DateTimeOffset>("PulledAtUtc").HasColumnType("timestamp with time zone");
-                    b.Property<DateTimeOffset>("ReceivedAtUtc").HasColumnType("timestamp with time zone");
-                    b.Property<string>("SourceDatabase").IsRequired().HasMaxLength(128).HasColumnType("character varying(128)");
-                    b.Property<Guid>("TenantId").HasColumnType("uuid");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ActivatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsIncremental")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("PulledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceDatabase")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
-                    b.HasIndex("TenantId").IsUnique().HasFilter("\"IsActive\" = true");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasFilter("\"IsActive\" = true");
+
                     b.HasIndex("TenantId", "PulledAtUtc");
+
                     b.ToTable("bootstrap_snapshots", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshotChunk", b =>
                 {
-                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
-                    b.Property<int>("ChunkIndex").HasColumnType("integer");
-                    b.Property<int>("ItemCount").HasColumnType("integer");
-                    b.Property<string>("PayloadJson").IsRequired().HasColumnType("jsonb");
-                    b.Property<DateTimeOffset>("ReceivedAtUtc").HasColumnType("timestamp with time zone");
-                    b.Property<string>("Section").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)");
-                    b.Property<Guid>("SnapshotId").HasColumnType("uuid");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ChunkIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ItemCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("ReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
-                    b.HasIndex("SnapshotId", "Section", "ChunkIndex").IsUnique();
+
+                    b.HasIndex("SnapshotId", "Section", "ChunkIndex")
+                        .IsUnique();
+
                     b.ToTable("bootstrap_snapshot_chunks", (string)null);
                 });
 
-            modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshot", b =>
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ChangeSetAuditEntry", b =>
                 {
-                    b.Navigation("Chunks");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AgentId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<long>("FirstTriggerRecNo")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long>("LastTriggerRecNo")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("PayloadSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("PulledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceDatabase")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("TabloId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "IdempotencyKey", "Direction")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "TableName", "LastTriggerRecNo");
+
+                    b.HasIndex("TenantId", "TableName", "ReceivedAtUtc");
+
+                    b.ToTable("change_set_audit_log", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ChangeSetRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("LastTriggerRecNo")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("PulledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceDatabase")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("TabloId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "TableName", "PulledAtUtc");
+
+                    b.HasIndex("TenantId", "SourceDatabase", "TableName", "LastTriggerRecNo")
+                        .IsUnique();
+
+                    b.ToTable("change_sets", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ErpCompany", b =>
@@ -546,6 +704,110 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("mobile_telemetry_events", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ParametreAdi")
+                        .IsRequired()
+                        .HasMaxLength(127)
+                        .HasColumnType("character varying(127)");
+
+                    b.Property<string>("ParametreAltGrubu")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("ParametreAnaGrubu")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("ParametreDegeri")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("ParametreID")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("ParametreProgram")
+                        .IsRequired()
+                        .HasMaxLength(25)
+                        .HasColumnType("character varying(25)");
+
+                    b.Property<string>("ParametreUser")
+                        .IsRequired()
+                        .HasMaxLength(25)
+                        .HasColumnType("character varying(25)");
+
+                    b.Property<string>("SourceDatabase")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SourceDatabase", "ParametreProgram", "ParametreUser", "ParametreID")
+                        .IsUnique();
+
+                    b.ToTable("parameter_records", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AdminUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByIp")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReplacedByTokenId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("AdminUserId", "TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("refresh_tokens", (string)null);
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -749,6 +1011,7 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
                     b.Navigation("Tenant");
                 });
 
@@ -759,7 +1022,30 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasForeignKey("SnapshotId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
                     b.Navigation("Snapshot");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ChangeSetAuditEntry", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ChangeSetRecord", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ErpCompany", b =>
@@ -806,6 +1092,17 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterRecord", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.WebhookDelivery", b =>
                 {
                     b.HasOne("ErpBridge.CentralApi.Domain.WebhookEndpoint", "Endpoint")
@@ -831,6 +1128,11 @@ namespace ErpBridge.CentralApi.Data.Migrations
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.Agent", b =>
                 {
                     b.Navigation("CompanyAssignments");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.BootstrapSnapshot", b =>
+                {
+                    b.Navigation("Chunks");
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ErpCompany", b =>

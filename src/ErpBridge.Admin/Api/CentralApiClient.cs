@@ -240,6 +240,56 @@ public sealed class ApiErrorDto
     [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
 }
 
+// ----- Faz 15.8: Sync Geçmişi (change-set audit log) -----
+
+public sealed class ChangeSetAuditEntryDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
+    [JsonPropertyName("table")] public string Table { get; set; } = string.Empty;
+    [JsonPropertyName("tabloId")] public int TabloId { get; set; }
+    [JsonPropertyName("direction")] public string Direction { get; set; } = string.Empty;
+    [JsonPropertyName("lastTriggerRecNo")] public long LastTriggerRecNo { get; set; }
+    [JsonPropertyName("rowCount")] public int RowCount { get; set; }
+    [JsonPropertyName("payloadSha256")] public string PayloadSha256 { get; set; } = string.Empty;
+    [JsonPropertyName("receivedAtUtc")] public DateTimeOffset ReceivedAtUtc { get; set; }
+    [JsonPropertyName("agentId")] public string AgentId { get; set; } = string.Empty;
+    [JsonPropertyName("idempotencyKey")] public string IdempotencyKey { get; set; } = string.Empty;
+}
+
+public sealed class ChangeSetAuditPagedResult
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("size")] public int Size { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("items")] public IReadOnlyList<ChangeSetAuditEntryDto> Items { get; set; } = Array.Empty<ChangeSetAuditEntryDto>();
+}
+
+// ----- Faz 15.8: Parametreler (_ERPB_PARAMETRELER mirror) -----
+
+public sealed class ParameterRecordDto
+{
+    [JsonPropertyName("parametreProgram")] public string ParametreProgram { get; set; } = string.Empty;
+    [JsonPropertyName("parametreUser")] public string ParametreUser { get; set; } = string.Empty;
+    [JsonPropertyName("parametreAnaGrubu")] public string ParametreAnaGrubu { get; set; } = string.Empty;
+    [JsonPropertyName("parametreAltGrubu")] public string ParametreAltGrubu { get; set; } = string.Empty;
+    [JsonPropertyName("parametreID")] public string ParametreID { get; set; } = string.Empty;
+    [JsonPropertyName("parametreAdi")] public string ParametreAdi { get; set; } = string.Empty;
+    [JsonPropertyName("parametreDegeri")] public string ParametreDegeri { get; set; } = string.Empty;
+    [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
+    [JsonPropertyName("updatedAtUtc")] public DateTimeOffset UpdatedAtUtc { get; set; }
+}
+
+public sealed class ParameterListResponse
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("size")] public int Size { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("items")] public IReadOnlyList<ParameterRecordDto> Items { get; set; } = Array.Empty<ParameterRecordDto>();
+}
+
 /// <summary>
 /// Typed HTTP client for the central API. Adds the bearer token from
 /// <see cref="TokenStore"/> on every request and exposes one method per admin
@@ -314,6 +364,44 @@ public sealed class CentralApiClient
         }
     }
 
+    /// <summary>
+    /// Sends the request and returns the raw response body as a string. Used
+    /// for non-JSON endpoints (currently only the audit CSV export). Mirrors
+    /// the error semantics of <see cref="SendAsync{T}"/>: 401 still clears the
+    /// token, non-2xx still raises <see cref="ApiCallException"/>.
+    /// </summary>
+    private async Task<string> SendRawStringAsync(Func<Task<HttpResponseMessage>> send, CancellationToken ct = default)
+    {
+        Authorize();
+        var resp = await send().ConfigureAwait(false);
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            _tokens.Clear();
+            throw new UnauthorizedApiException("Central API returned 401 — token cleared.");
+        }
+        if (!resp.IsSuccessStatusCode)
+        {
+            var raw = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            ApiErrorDto? err = null;
+            if (!string.IsNullOrWhiteSpace(raw))
+            {
+                try
+                {
+                    err = JsonSerializer.Deserialize<ApiErrorDto>(raw, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                }
+                catch (JsonException)
+                {
+                }
+            }
+            throw new ApiCallException(
+                err?.ErrorCode ?? $"HTTP_{(int)resp.StatusCode}",
+                err?.Message ?? (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                    ? "Oturumunuz sona erdi. Lütfen yeniden giriş yapın."
+                    : resp.ReasonPhrase ?? "Merkez API yanıt vermedi."));
+        }
+        return await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+    }
+
     public Task<AdminLoginResponse> LoginAsync(string email, string password, CancellationToken ct = default) =>
         SendAsync<AdminLoginResponse>(() => _http.PostAsJsonAsync("/api/v1/admin/login", new AdminLoginRequest { Email = email, Password = password }, ct), ct);
 
@@ -384,6 +472,90 @@ public sealed class CentralApiClient
 
     public Task<IReadOnlyList<WebhookDeliveryDto>> ListWebhookDeliveriesAsync(Guid endpointId, int take = 50, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<WebhookDeliveryDto>>(() => _http.GetAsync($"/api/v1/admin/webhooks/{endpointId}/deliveries?take={take}", ct), ct);
+
+    // ----- Faz 15.8: Sync Geçmişi (change-set audit log) -----
+
+    /// <summary>
+    /// Faz 15.8 — list a page of <c>change_set_audit_log</c> rows. The endpoint
+    /// always uses the JWT-tenant so a filter mismatch is harmless.
+    /// </summary>
+    public Task<ChangeSetAuditPagedResult> ListChangeSetAuditAsync(
+        Guid? tenantId,
+        string? table = null,
+        string? direction = null,
+        DateTimeOffset? fromUtc = null,
+        DateTimeOffset? toUtc = null,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken ct = default)
+        => SendAsync<ChangeSetAuditPagedResult>(() => _http.GetAsync(
+            BuildChangeSetAuditQuery(tenantId, table, direction, fromUtc, toUtc, page, pageSize), ct), ct);
+
+    /// <summary>
+    /// Faz 15.8 — fetch the same change-set audit query as CSV. Used by the
+    /// "CSV dışa aktar" button. The server caps the response at 50k rows to
+    /// keep the export bounded.
+    /// </summary>
+    public Task<string> ExportChangeSetAuditCsvAsync(
+        Guid? tenantId,
+        string? table = null,
+        DateTimeOffset? fromUtc = null,
+        DateTimeOffset? toUtc = null,
+        CancellationToken ct = default)
+        => SendRawStringAsync(() => _http.GetAsync(
+            BuildChangeSetAuditQuery(tenantId, table, null, fromUtc, toUtc, page: 1, pageSize: 50_000,
+                includeDirection: false, csvPath: true), ct), ct);
+
+    private static string BuildChangeSetAuditQuery(
+        Guid? tenantId,
+        string? table,
+        string? direction,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        int page,
+        int pageSize,
+        bool includeDirection = true,
+        bool csvPath = false)
+    {
+        var qs = new List<string>();
+        if (tenantId.HasValue) qs.Add($"tenantId={tenantId.Value}");
+        if (!string.IsNullOrWhiteSpace(table)) qs.Add($"table={Uri.EscapeDataString(table)}");
+        if (includeDirection && !string.IsNullOrWhiteSpace(direction)) qs.Add($"direction={Uri.EscapeDataString(direction)}");
+        if (fromUtc.HasValue) qs.Add($"from={Uri.EscapeDataString(fromUtc.Value.UtcDateTime.ToString("o", System.Globalization.CultureInfo.InvariantCulture))}");
+        if (toUtc.HasValue) qs.Add($"to={Uri.EscapeDataString(toUtc.Value.UtcDateTime.ToString("o", System.Globalization.CultureInfo.InvariantCulture))}");
+        qs.Add($"page={Math.Max(1, page)}");
+        qs.Add($"size={Math.Clamp(pageSize, 1, 1000)}");
+        var basePath = csvPath ? "/api/v1/admin/audit/changeset/export.csv" : "/api/v1/admin/audit/changeset";
+        return $"{basePath}?{string.Join("&", qs)}";
+    }
+
+    // ----- Faz 15.8: Parametreler (_ERPB_PARAMETRELER mirror) -----
+
+    /// <summary>
+    /// Faz 15.8 — list a page of parameter records for the selected tenant.
+    /// When <paramref name="keyContains"/> is non-empty the server filters by
+    /// ParametreID or ParametreAdi; here we expose a substring filter on
+    /// ParametreAdi to keep the surface small and the UI predictable.
+    /// </summary>
+    public async Task<IReadOnlyList<ParameterRecordDto>> ListParameterRecordsAsync(
+        Guid? tenantId,
+        string? keyContains = null,
+        int page = 1,
+        int pageSize = 200,
+        CancellationToken ct = default)
+    {
+        var qs = new List<string>();
+        if (tenantId.HasValue) qs.Add($"tenantId={tenantId.Value}");
+        qs.Add($"page={Math.Max(1, page)}");
+        qs.Add($"size={Math.Clamp(pageSize, 1, 1000)}");
+        // ParametreID veya ParametreAdi substring filtresi UI tarafında yapılır
+        // (sunucu tarafında yalnızca exact program/user/sourceDatabase eşleşmesi
+        // var). Burada sunucuya sadece tenantId ve sayfalama gönderiyoruz; UI
+        // istemcide keyContains'e göre sonuçları süzer.
+        var resp = await SendAsync<ParameterListResponse>(() =>
+            _http.GetAsync($"/api/v1/admin/parameters?{string.Join("&", qs)}", ct), ct).ConfigureAwait(false);
+        return resp.Items;
+    }
 
     private static string WithTenant(string path, Guid? tenantId, string? extraQuery = null)
     {

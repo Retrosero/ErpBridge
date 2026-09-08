@@ -1,0 +1,64 @@
+﻿C:\Users\Gürbüz Oyuncak\Documents\GitHub\ErpBridge\tests\ErpBridge.Core.Tests\bin\Debug\net10.0\ErpBridge.Core.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
+Toplam 1 test dosyası belirtilen desenle eşleşti.
+C:\Users\Gürbüz Oyuncak\Documents\GitHub\ErpBridge\tests\ErpBridge.Erp.Mikro.Tests\bin\Debug\net10.0\ErpBridge.Erp.Mikro.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
+C:\Users\Gürbüz Oyuncak\Documents\GitHub\ErpBridge\tests\ErpBridge.LocalStore.Tests\bin\Debug\net10.0\ErpBridge.LocalStore.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
+C:\Users\Gürbüz Oyuncak\Documents\GitHub\ErpBridge\tests\ErpBridge.Shared.Tests\bin\Debug\net10.0\ErpBridge.Shared.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
+C:\Users\Gürbüz Oyuncak\Documents\GitHub\ErpBridge\tests\ErpBridge.RemoteApi.Tests\bin\Debug\net10.0\ErpBridge.RemoteApi.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
+Toplam 1 test dosyası belirtilen desenle eşleşti.
+Toplam 1 test dosyası belirtilen desenle eşleşti.
+Toplam 1 test dosyası belirtilen desenle eşleşti.
+Toplam 1 test dosyası belirtilen desenle eşleşti.
+C:\Users\Gürbüz Oyuncak\Documents\GitHub\ErpBridge\tests\ErpBridge.CentralApi.Tests\bin\Debug\net10.0\ErpBridge.CentralApi.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
+Toplam 1 test dosyası belirtilen desenle eşleşti.
+[xUnit.net 00:00:00.54]     ErpBridge.Erp.Mikro.Tests.Writers.MikroSalesOrderWriterTests.Success_path_V15_inserts_header_and_lines_and_records_mapping [SKIP]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Writers.MikroSalesOrderWriterTests.Success_path_V15_inserts_header_and_lines_and_records_mapping [1 ms]
+[xUnit.net 00:00:00.79]     ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Missing_lookup_does_not_insert_v16 [SKIP]
+[xUnit.net 00:00:00.79]     ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Write_sales_order_inserts_header_and_lines_v16 [SKIP]
+[xUnit.net 00:00:00.79]     ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Write_sales_order_inserts_header_and_lines_v15 [SKIP]
+[xUnit.net 00:00:00.79]     ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Idempotency_does_not_create_duplicate_v15 [SKIP]
+[xUnit.net 00:00:00.79]     ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Validation_failure_does_not_insert_v16 [SKIP]
+[xUnit.net 00:00:00.79]     ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Idempotency_does_not_create_duplicate_v16 [SKIP]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Missing_lookup_does_not_insert_v16 [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Write_sales_order_inserts_header_and_lines_v16 [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Write_sales_order_inserts_header_and_lines_v15 [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Idempotency_does_not_create_duplicate_v15 [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Validation_failure_does_not_insert_v16 [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Integration.MikroSalesOrderWriterIntegrationTests.Idempotency_does_not_create_duplicate_v16 [1 ms]
+[xUnit.net 00:00:00.81]     ErpBridge.Erp.Mikro.Tests.Writers.MikroSalesOrderWriterTests.Mapping_save_uses_detected_version_and_database_name [SKIP]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Writers.MikroSalesOrderWriterTests.Mapping_save_uses_detected_version_and_database_name [1 ms]
+[xUnit.net 00:00:00.81]     ErpBridge.Erp.Mikro.Tests.Writers.MikroSalesOrderWriterTests.Success_path_V16_inserts_header_and_lines_and_records_mapping [SKIP]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Writers.MikroSalesOrderWriterTests.Success_path_V16_inserts_header_and_lines_and_records_mapping [1 ms]
+[xUnit.net 00:00:00.85]     ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.WriteSalesOrderAsync_V16_creates_document [SKIP]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.WriteSalesOrderAsync_V16_creates_document [1 ms]
+[xUnit.net 00:00:00.85]     ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.ReadBootstrapDataAsync_V15_returns_empty_package [SKIP]
+[xUnit.net 00:00:00.85]     ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.TestConnectionAsync_opens_a_live_Mikro_V15_database_when_env_is_configured [SKIP]
+[xUnit.net 00:00:00.85]     ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.WriteSalesOrderAsync_V15_creates_document [SKIP]
+[xUnit.net 00:00:00.85]     ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.TestConnectionAsync_opens_a_live_Mikro_V16_database_when_env_is_configured [SKIP]
+[xUnit.net 00:00:00.85]     ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.TestConnection_V16_returns_V16_version [SKIP]
+[xUnit.net 00:00:00.85]     ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.TestConnection_V15_returns_V15_version [SKIP]
+
+Başarılı!  - Başarısız:     0, Başarılı:    50, Atlanan:     0, Toplam:    50, Süre: 443 ms - ErpBridge.LocalStore.Tests.dll (net10.0)
+
+Başarılı!  - Başarısız:     0, Başarılı:    22, Atlanan:     0, Toplam:    22, Süre: 130 ms - ErpBridge.Shared.Tests.dll (net10.0)
+C:\Users\Gürbüz Oyuncak\Documents\GitHub\ErpBridge\tests\ErpBridge.Agent.Service.Tests\bin\Debug\net10.0\ErpBridge.Agent.Service.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
+  Atlandı ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.ReadBootstrapDataAsync_V15_returns_empty_package [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.TestConnectionAsync_opens_a_live_Mikro_V15_database_when_env_is_configured [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.WriteSalesOrderAsync_V15_creates_document [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.TestConnectionAsync_opens_a_live_Mikro_V16_database_when_env_is_configured [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.TestConnection_V16_returns_V16_version [1 ms]
+  Atlandı ErpBridge.Erp.Mikro.Tests.Adapters.MikroAdapterIntegrationTests.TestConnection_V15_returns_V15_version [1 ms]
+Toplam 1 test dosyası belirtilen desenle eşleşti.
+C:\Users\Gürbüz Oyuncak\Documents\GitHub\ErpBridge\tests\ErpBridge.Admin.Tests\bin\Debug\net10.0\ErpBridge.Admin.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
+Toplam 1 test dosyası belirtilen desenle eşleşti.
+
+Başarılı!  - Başarısız:     0, Başarılı:    26, Atlanan:     0, Toplam:    26, Süre: 2 s - ErpBridge.RemoteApi.Tests.dll (net10.0)
+
+Başarılı!  - Başarısız:     0, Başarılı:     8, Atlanan:     0, Toplam:     8, Süre: 349 ms - ErpBridge.Agent.Service.Tests.dll (net10.0)
+
+Başarılı!  - Başarısız:     0, Başarılı:    17, Atlanan:     0, Toplam:    17, Süre: 642 ms - ErpBridge.Admin.Tests.dll (net10.0)
+
+Başarılı!  - Başarısız:     0, Başarılı:    73, Atlanan:     0, Toplam:    73, Süre: 15 s - ErpBridge.Core.Tests.dll (net10.0)
+
+Başarılı!  - Başarısız:     0, Başarılı:   148, Atlanan:     0, Toplam:   148, Süre: 22 s - ErpBridge.CentralApi.Tests.dll (net10.0)
+
+Başarılı!  - Başarısız:     0, Başarılı:   117, Atlanan:    16, Toplam:   133, Süre: 40 s - ErpBridge.Erp.Mikro.Tests.dll (net10.0)

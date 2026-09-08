@@ -71,6 +71,15 @@ public sealed class AgentSettingsViewModel : ObservableObject
     private string _status = "Hazır.";
     private bool _isBusy;
 
+    // Faz 10.6 + 10.7 — inline validation. The dictionary accumulates
+    // field-name → Turkish error message; the per-field error properties
+    // (CompanyNoError, BranchNoError, WarehouseNoError) are what XAML binds
+    // to via StringToVisibilityConverter for the red labels under each
+    // input. The dictionary itself feeds the "X hata" rozet next to the
+    // "Ayarlar geçerli" badge in the form footer.
+    private readonly Dictionary<string, string> _validationErrors = new(StringComparer.Ordinal);
+    private Brush _validationStatusBrush = GreenValidationBrush;
+
     // Faz 3 Track 2 — version + connection-test state surface.
     private string _mikroVersionBadge = "—";
     private Brush _mikroVersionBrush = GrayBadgeBrush;
@@ -144,7 +153,18 @@ public sealed class AgentSettingsViewModel : ObservableObject
         _liveSettings = liveSettings ?? throw new ArgumentNullException(nameof(liveSettings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        SaveCommand = new RelayCommand(_ => _ = SaveAsync(), _ => !IsBusy);
+        // SaveCommand is gated on IsValid so an operator cannot persist a
+        // configuration with a malformed CompanyNo/BranchNo/WarehouseNo. The
+        // setter for each of the three numeric inputs re-runs Validate() and
+        // raises CanExecuteChanged here, so the button greys out within the
+        // same dispatcher pass as the offending keystroke.
+        SaveCommand = new RelayCommand(_ => _ = SaveAsync(), _ => !IsBusy && IsValid);
+        // "Varsayılanlara sıfırla" — restores CompanyNo=1, BranchNo=0,
+        // WarehouseNo=1 (the same defaults the agent ships with in
+        // AgentConfig's parameterless constructor). Available any time the
+        // form is not busy, regardless of validation state — a user with a
+        // bad value should still be able to reset.
+        ResetToDefaultsCommand = new RelayCommand(_ => ResetMultiFirmToDefaults(), _ => !IsBusy);
         TestConnectionCommand = new AsyncRelayCommand(
             execute: _ => TestConnectionAsync(),
             canExecute: () => !IsBusy);
@@ -164,6 +184,12 @@ public sealed class AgentSettingsViewModel : ObservableObject
             canExecute: () => !IsBusy
                 && !string.IsNullOrWhiteSpace(LicenseKey)
                 && !string.IsNullOrWhiteSpace(ApiBaseUrl));
+
+        // Faz 10.7 — ilk rozet rengi + property notification'lar.
+        // Default değerler (1 / 0 / 1) zaten geçerli; bu çağrı
+        // ValidationStatusBrush'i yeşile çekip ValidationStatusText'i
+        // "Ayarlar geçerli" yapar.
+        Validate();
     }
 
     /// <summary>Lisans anahtarı.</summary>
@@ -197,6 +223,14 @@ public sealed class AgentSettingsViewModel : ObservableObject
     /// (<c>*_firmano = @firmNo</c>). Faz 10: artık kullanıcı tarafından
     /// ayarlanabilir; tek-firmalı kurulumlarda varsayılan 1'dir.
     /// </summary>
+    /// <remarks>
+    /// Faz 10.7: her set içinde <see cref="Validate"/> çağrılır; geçersiz
+    /// girdi <see cref="CompanyNoError"/> üzerinden inline kırmızı etikete
+    /// bağlanır ve <see cref="SaveCommand"/> CanExecute'i düşer. Kurallar:
+    /// parse-as-int (invariant) ve <c>&gt;= 1</c>. Faz 10.5 + 10.7
+    /// notu: Türkçe locale'ta "1,5" gibi decimal inputlar kabul edilmez,
+    /// 0 kabul edilmez; sadece tam sayı.
+    /// </remarks>
     public string CompanyNo
     {
         get => _companyNo;
@@ -204,7 +238,9 @@ public sealed class AgentSettingsViewModel : ObservableObject
         {
             if (SetProperty(ref _companyNo, value ?? string.Empty))
             {
+                Validate();
                 ((RelayCommand)SaveCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)ResetToDefaultsCommand).RaiseCanExecuteChanged();
             }
         }
     }
@@ -213,6 +249,10 @@ public sealed class AgentSettingsViewModel : ObservableObject
     /// Mikro şube numarası. Satış siparişi yazımı için kullanılır. Tek
     /// şubeli kurulumlarda 0 bırakılabilir.
     /// </summary>
+    /// <remarks>
+    /// Faz 10.7: BranchNo <c>&gt;= 0</c> kabul eder (Faz 10.5 kararı — tek
+    /// şubeli Mikro veritabanlarında <c>sip_sube_no</c> = 0 yaygın).
+    /// </remarks>
     public string BranchNo
     {
         get => _branchNo;
@@ -220,7 +260,9 @@ public sealed class AgentSettingsViewModel : ObservableObject
         {
             if (SetProperty(ref _branchNo, value ?? string.Empty))
             {
+                Validate();
                 ((RelayCommand)SaveCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)ResetToDefaultsCommand).RaiseCanExecuteChanged();
             }
         }
     }
@@ -230,6 +272,12 @@ public sealed class AgentSettingsViewModel : ObservableObject
     /// (<c>STOK_HAREKETLERI.sth_depo_no</c>). Per-row depo numarası olmayan
     /// toplamalar bu değerle yapılır.
     /// </summary>
+    /// <remarks>
+    /// Faz 10.7: WarehouseNo <c>&gt;= 1</c>. 0 ve negatif kabul edilmez
+    /// çünkü her Mikro kurulumunda depo numaraları 1'den başlar; 0'ın
+    /// "yok depo" anlamına geldiği sütunlarla (örn. <c>sth_depo_no</c>
+    /// NULL durumu) karışmasını engeller.
+    /// </remarks>
     public string WarehouseNo
     {
         get => _warehouseNo;
@@ -237,7 +285,9 @@ public sealed class AgentSettingsViewModel : ObservableObject
         {
             if (SetProperty(ref _warehouseNo, value ?? string.Empty))
             {
+                Validate();
                 ((RelayCommand)SaveCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)ResetToDefaultsCommand).RaiseCanExecuteChanged();
             }
         }
     }
@@ -256,6 +306,65 @@ public sealed class AgentSettingsViewModel : ObservableObject
             }
         }
     }
+
+    // ── Faz 10.6 + 10.7 — Validation + summary surface ──────────────────
+
+    /// <summary>
+    /// True when at least one of the multi-firm inputs (CompanyNo /
+    /// BranchNo / WarehouseNo) is invalid. Bound to the validation badge
+    /// and to <see cref="SaveCommand"/>'s CanExecute predicate so the
+    /// "Kaydet" button greys out while there is anything to fix.
+    /// </summary>
+    public bool HasErrors => _validationErrors.Count > 0;
+
+    /// <summary>Count of validation errors. Used to render the "X hata" rozet.</summary>
+    public int ErrorCount => _validationErrors.Count;
+
+    /// <summary>Inverse of <see cref="HasErrors"/> for XAML bindings.</summary>
+    public bool IsValid => !HasErrors;
+
+    /// <summary>
+    /// Inline error for the Firma No input. Empty when the field is valid;
+    /// non-empty (visible) when the field is blank, non-integer or &lt; 1.
+    /// </summary>
+    public string CompanyNoError
+        => _validationErrors.TryGetValue(nameof(CompanyNo), out var e) ? e : string.Empty;
+
+    /// <summary>Inline error for the Şube No input (must be &gt;= 0).</summary>
+    public string BranchNoError
+        => _validationErrors.TryGetValue(nameof(BranchNo), out var e) ? e : string.Empty;
+
+    /// <summary>Inline error for the Depo No input (must be &gt;= 1).</summary>
+    public string WarehouseNoError
+        => _validationErrors.TryGetValue(nameof(WarehouseNo), out var e) ? e : string.Empty;
+
+    /// <summary>
+    /// "Ayarlar geçerli" when no validation errors, otherwise "X hata".
+    /// Bound to the status rozet in the form footer.
+    /// </summary>
+    public string ValidationStatusText
+        => HasErrors ? $"{ErrorCount} hata" : "Ayarlar geçerli";
+
+    /// <summary>
+    /// Brush for the status rozet — green when valid, red when invalid.
+    /// Direct binding to <c>Border.Background</c>; no XAML converter needed.
+    /// </summary>
+    public Brush ValidationStatusBrush
+    {
+        get => _validationStatusBrush;
+        private set => SetProperty(ref _validationStatusBrush, value);
+    }
+
+    /// <summary>
+    /// Faz 10.6 — "seçili mi" özet rozeti. Operatörün mevcut
+    /// CompanyNo / BranchNo / WarehouseNo değerlerini okunabilir bir
+    /// cümle olarak gösterir; hangi firma/şube/depoya yazılacağını
+    /// tek bakışta doğrular. Bootstrap log satırındaki
+    /// <c>companyNo=X, branchNo=Y, warehouseNo=Z</c> bilgisinin
+    /// UI yansıması.
+    /// </summary>
+    public string MikroConnectionSummary
+        => $"Firma {CompanyNo} / Şube {BranchNo} / Depo {WarehouseNo}";
 
     /// <summary>
     /// True when Mikro is reached via Windows Authentication (Trusted_Connection /
@@ -595,6 +704,15 @@ public sealed class AgentSettingsViewModel : ObservableObject
     /// </summary>
     public System.Windows.Input.ICommand RegisterAgentCommand { get; }
 
+    /// <summary>
+    /// Faz 10.7 — CompanyNo / BranchNo / WarehouseNo üçlüsünü varsayılan
+    /// değerlere (1 / 0 / 1) sıfırlar. Kullanıcı geçersiz bir değer
+    /// girdikten sonra hızlıca temizlemesi için bağlanan küçük link
+    /// butonu. Sadece multi-firm alanlarını etkiler; SQL Server, kullanıcı
+    /// adı ve şifreye dokunmaz.
+    /// </summary>
+    public System.Windows.Input.ICommand ResetToDefaultsCommand { get; }
+
     /// <summary>Load persisted config into the view-model. Called on window open.</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
@@ -653,6 +771,17 @@ public sealed class AgentSettingsViewModel : ObservableObject
 
     private async Task SaveAsync()
     {
+        // Faz 10.7 — Defensive: CanExecute already gates the button, but a
+        // keyboard binding or future code path could still invoke Save while
+        // the multi-firm inputs are invalid. Show the first error in the
+        // status panel and bail out without touching the store.
+        if (HasErrors)
+        {
+            var first = _validationErrors.Values.First();
+            Status = "Konfigürasyon geçersiz: " + first;
+            return;
+        }
+
         if (!TryValidateInputs(out var error))
         {
             Status = error;
@@ -1316,6 +1445,81 @@ public sealed class AgentSettingsViewModel : ObservableObject
         => int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : fallback;
 
     /// <summary>
+    /// Faz 10.7 — re-validate the three multi-firm inputs against the rules
+    /// in the property xmldocs. Idempotent — the dictionary is cleared
+    /// first, then re-populated, so the validation state always matches
+    /// the current field values. All dependent properties
+    /// (HasErrors, ErrorCount, IsValid, ValidationStatusText,
+    /// ValidationStatusBrush, the per-field error properties, and the
+    /// MikroConnectionSummary) are re-raised so the WPF binding subsystem
+    /// refreshes every dependent control in a single dispatcher pass.
+    /// </summary>
+    private void Validate()
+    {
+        _validationErrors.Clear();
+
+        // CompanyNo: parse-as-int (invariant) and >= 1. Boş → "boş olamaz";
+        // non-integer → "tamsayı olmalı"; < 1 → "1 veya daha büyük olmalı".
+        if (string.IsNullOrWhiteSpace(_companyNo))
+        {
+            _validationErrors[nameof(CompanyNo)] = "Firma No boş olamaz.";
+        }
+        else if (!int.TryParse(_companyNo, NumberStyles.Integer, CultureInfo.InvariantCulture, out var c) || c < 1)
+        {
+            _validationErrors[nameof(CompanyNo)] = "Firma No 1 veya daha büyük bir tamsayı olmalı.";
+        }
+
+        // BranchNo: parse-as-int (invariant) and >= 0. 0 single-branch
+        // kurulumlar için geçerli (Faz 10.5 kararı).
+        if (string.IsNullOrWhiteSpace(_branchNo))
+        {
+            _validationErrors[nameof(BranchNo)] = "Şube No boş olamaz.";
+        }
+        else if (!int.TryParse(_branchNo, NumberStyles.Integer, CultureInfo.InvariantCulture, out var b) || b < 0)
+        {
+            _validationErrors[nameof(BranchNo)] = "Şube No 0 veya daha büyük bir tamsayı olmalı.";
+        }
+
+        // WarehouseNo: parse-as-int (invariant) and >= 1. 0 anlamsız çünkü
+        // Mikro depo numaraları 1'den başlar.
+        if (string.IsNullOrWhiteSpace(_warehouseNo))
+        {
+            _validationErrors[nameof(WarehouseNo)] = "Depo No boş olamaz.";
+        }
+        else if (!int.TryParse(_warehouseNo, NumberStyles.Integer, CultureInfo.InvariantCulture, out var w) || w < 1)
+        {
+            _validationErrors[nameof(WarehouseNo)] = "Depo No 1 veya daha büyük bir tamsayı olmalı.";
+        }
+
+        ValidationStatusBrush = HasErrors ? RedValidationBrush : GreenValidationBrush;
+
+        OnPropertyChanged(nameof(HasErrors));
+        OnPropertyChanged(nameof(ErrorCount));
+        OnPropertyChanged(nameof(IsValid));
+        OnPropertyChanged(nameof(CompanyNoError));
+        OnPropertyChanged(nameof(BranchNoError));
+        OnPropertyChanged(nameof(WarehouseNoError));
+        OnPropertyChanged(nameof(ValidationStatusText));
+        OnPropertyChanged(nameof(ValidationStatusBrush));
+        OnPropertyChanged(nameof(MikroConnectionSummary));
+    }
+
+    /// <summary>
+    /// Faz 10.7 — "Varsayılanlara sıfırla" link'inin yaptığı iş.
+    /// CompanyNo=1, BranchNo=0, WarehouseNo=1 atanır; her set edilen
+    /// property kendi setter'ı üzerinden <see cref="Validate"/>'i
+    /// tetikler, bu yüzden bu method çağrıldıktan sonra form
+    /// otomatik olarak "Ayarlar geçerli" rozetini gösterir.
+    /// </summary>
+    private void ResetMultiFirmToDefaults()
+    {
+        CompanyNo = "1";
+        BranchNo = "0";
+        WarehouseNo = "1";
+        Status = "Firma/Şube/Depo numaraları varsayılanlara sıfırlandı (1 / 0 / 1).";
+    }
+
+    /// <summary>
     /// Project Mikro settings and the Central API URL from <paramref name="config"/>
     /// into the live <see cref="IConfiguration"/>. The remote API client reads
     /// these through <c>IOptionsMonitor</c>, so the operator's saved URL is used
@@ -1417,6 +1621,13 @@ public sealed class AgentSettingsViewModel : ObservableObject
     private static readonly Brush GreenBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x38, 0x8E, 0x3C)));
     private static readonly Brush RedBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xE5, 0x39, 0x35)));
     private static readonly Brush GrayBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x9E, 0x9E, 0x9E)));
+    // Faz 10.7 — validation rozet renkleri. SuccessBrush / DangerBrush
+    // temasında (AgentTheme.xaml) zaten mevcut ama bu brush'lar
+    // lokal property'ler üzerinden binding için erişilebilir olduğu için
+    // burada ayrıca dondurulmuş halleri tutulur; böylece ValidationStatusBrush
+    // property'si doğrudan binding için hazır olur.
+    private static readonly Brush GreenValidationBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A)));
+    private static readonly Brush RedValidationBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26)));
 
     private static Brush Freeze(SolidColorBrush brush)
     {

@@ -19,6 +19,12 @@ namespace ErpBridge.Erp.Mikro.Connection;
 /// this value for every section. Defaults to <c>1</c> for single-firm
 /// installations.
 /// </param>
+/// <param name="BranchNo">
+/// Mikro sube (branch) number. Sales-order writes bind this value to
+/// <c>sip_sube_no</c> (header) and <c>sth_sube_no</c> (lines); multi-firm
+/// installations that share a database but isolate branches via this column
+/// need a non-zero value. Defaults to <c>0</c> (single-branch).
+/// </param>
 /// <param name="WarehouseNo">
 /// Default warehouse number used by the inventory aggregation query. Per-row
 /// warehouses (e.g. <c>sip_depono</c> in open orders) come from the row
@@ -31,6 +37,7 @@ public sealed record MikroConnectionSettings(
     string DatabaseName,
     bool IntegratedSecurity = false,
     int CompanyNo = 1,
+    int BranchNo = 0,
     int WarehouseNo = 1)
 {
     /// <summary>
@@ -68,6 +75,11 @@ public sealed record MikroConnectionSettings(
         var databaseName = section["DatabaseName"];
         var integratedSecurity = ParseBool(section["IntegratedSecurity"]);
         var companyNo = ParseInt(section["CompanyNo"], defaultValue: 1);
+        // BranchNo defaults to 0 (single-branch) because Mikro's column is
+        // nullable / zero in single-branch databases. Forcing default=1 here
+        // would silently break single-branch installations that don't carry
+        // the key.
+        var branchNo = ParseInt(section["BranchNo"], defaultValue: 0);
         var warehouseNo = ParseInt(section["WarehouseNo"], defaultValue: 1);
 
         if (string.IsNullOrWhiteSpace(server)
@@ -93,6 +105,7 @@ public sealed record MikroConnectionSettings(
             DatabaseName: databaseName.Trim(),
             IntegratedSecurity: integratedSecurity,
             CompanyNo: companyNo,
+            BranchNo: branchNo,
             WarehouseNo: warehouseNo);
     }
 

@@ -58,6 +58,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
@@ -132,7 +133,12 @@
                                  Text="{Binding MikroDatabaseName, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,4" />
 
-                        <!-- Firma / Şube / Varsayılan Depo (Faz 10: multi-firm) -->
+                        <!-- Firma / Şube / Varsayılan Depo (Faz 10: multi-firm).
+                             Faz 10.6 + 10.7: alt satırda kırmızı inline hata
+                             etiketleri (CompanyNoError / BranchNoError /
+                             WarehouseNoError bağlı), sağ üstte MikroConnectionSummary
+                             rozeti, hemen altında da "Varsayılanlara sıfırla"
+                             link butonu. -->
                         <Grid Grid.Row="7" Grid.ColumnSpan="2" Margin="0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -140,36 +146,127 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="6" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Firma No" VerticalAlignment="Center" />
                             <TextBlock Grid.Row="0" Grid.Column="2" Text="Şube No" VerticalAlignment="Center" />
                             <TextBlock Grid.Row="0" Grid.Column="4" Text="Varsayılan Depo No" VerticalAlignment="Center" />
+
                             <TextBox Grid.Row="1" Grid.Column="0"
                                      Text="{Binding CompanyNo, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="Mikro firma numarası (CARI_HESAPLAR.cari_firmano, STOKLAR.sto_firmano, …)." />
+                                     ToolTip="Mikro firma numarası (CARI_HESAPLAR.cari_firmano, STOKLAR.sto_firmano, …). 1 veya daha büyük bir tamsayı olmalı." />
                             <TextBox Grid.Row="1" Grid.Column="2"
                                      Text="{Binding BranchNo, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="Mikro şube numarası (satış siparişi yazımı için). Satış siparişi yazılmıyorsa 0 bırakılabilir." />
+                                     ToolTip="Mikro şube numarası (satış siparişi yazımı için). 0 veya daha büyük bir tamsayı olmalı. Tek şubeli kurulumlarda 0 bırakılabilir." />
                             <TextBox Grid.Row="1" Grid.Column="4"
                                      Text="{Binding WarehouseNo, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="Stok envanter sorguları için varsayılan depo numarası (STOK_HAREKETLERI.sth_depo_no)." />
+                                     ToolTip="Stok envanter sorguları için varsayılan depo numarası (STOK_HAREKETLERI.sth_depo_no). 1 veya daha büyük bir tamsayı olmalı." />
+
+                            <!-- Faz 10.7: inline kırmızı hata etiketleri.
+                                 Her etiket kendi per-field error property'sine
+                                 bağlı; StringToVisibilityConverter boş string'i
+                                 gizler, dolu string'i görünür yapar. -->
+                            <TextBlock Grid.Row="2" Grid.Column="0"
+                                       Text="{Binding CompanyNoError}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       FontSize="11"
+                                       Margin="0,2,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding CompanyNoError, Converter={StaticResource StringToVisibilityConverter}}" />
+                            <TextBlock Grid.Row="2" Grid.Column="2"
+                                       Text="{Binding BranchNoError}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       FontSize="11"
+                                       Margin="0,2,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding BranchNoError, Converter={StaticResource StringToVisibilityConverter}}" />
+                            <TextBlock Grid.Row="2" Grid.Column="4"
+                                       Text="{Binding WarehouseNoError}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       FontSize="11"
+                                       Margin="0,2,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding WarehouseNoError, Converter={StaticResource StringToVisibilityConverter}}" />
+
+                            <!-- Faz 10.6: seçili mi rozeti. AgentConfig'i hangi
+                                 firma/şube/depoya yazacağımızın özeti. Operator
+                                 bootstrap log'undaki "companyNo=X, branchNo=Y,
+                                 warehouseNo=Z" bilgisini bu rozetten doğrular. -->
+                            <Border Grid.Row="0" Grid.Column="6" Grid.RowSpan="3"
+                                    Background="{DynamicResource AccentLightBrush}"
+                                    BorderBrush="{DynamicResource AccentBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="10,6"
+                                    VerticalAlignment="Center"
+                                    ToolTip="Kaydedildiğinde Mikro'ya bu firma/şube/depo kombinasyonuyla yazılacak.">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Mikro bağlantı"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource AccentDarkBrush}" />
+                                    <TextBlock Text="{Binding MikroConnectionSummary}"
+                                               FontFamily="Consolas, Lucida Console, monospace"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource AccentDarkBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Faz 10.7: sıfırla linki + validation rozet.
+                             "Varsayılanlara sıfırla" multi-firm alanlarını
+                             CompanyNo=1, BranchNo=0, WarehouseNo=1'e çeker;
+                             validation rozet durumu yansıtır. -->
+                        <Grid Grid.Row="8" Grid.ColumnSpan="2" Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Button Grid.Column="0"
+                                    Content="Varsayılanlara sıfırla"
+                                    Command="{Binding ResetToDefaultsCommand}"
+                                    MinWidth="0"
+                                    Padding="8,3"
+                                    FontSize="11"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Foreground="{DynamicResource AccentBrush}"
+                                    Cursor="Hand"
+                                    ToolTip="Firma/Şube/Depo numaralarını varsayılan değerlere sıfırlar (1 / 0 / 1)." />
+
+                            <Border Grid.Column="2"
+                                    Background="{Binding ValidationStatusBrush}"
+                                    CornerRadius="10"
+                                    Padding="10,3"
+                                    VerticalAlignment="Center"
+                                    ToolTip="Firma No / Şube No / Depo No alanlarının doğrulama durumu">
+                                <TextBlock Text="{Binding ValidationStatusText}"
+                                           Foreground="White"
+                                           FontWeight="SemiBold"
+                                           FontSize="11" />
+                            </Border>
                         </Grid>
 
                         <!-- API base URL -->
-                        <TextBlock Grid.Row="8" Grid.Column="0" Text="API base URL" VerticalAlignment="Center" Margin="0,4" />
-                        <TextBox Grid.Row="8" Grid.Column="1"
+                        <TextBlock Grid.Row="9" Grid.Column="0" Text="API base URL" VerticalAlignment="Center" Margin="0,4" />
+                        <TextBox Grid.Row="9" Grid.Column="1"
                                  Text="{Binding ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,4" />
 
                         <!-- Spacer -->
-                        <Border Grid.Row="9" Grid.ColumnSpan="2" Height="8" />
+                        <Border Grid.Row="10" Grid.ColumnSpan="2" Height="8" />
 
                         <!-- Action buttons -->
-                        <Grid Grid.Row="10" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                        <Grid Grid.Row="11" Grid.ColumnSpan="2" Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -276,7 +373,7 @@
                         </Grid>
 
                         <!-- Sunucu Bilgisi paneli -->
-                        <Border Grid.Row="11" Grid.ColumnSpan="2"
+                        <Border Grid.Row="12" Grid.ColumnSpan="2"
                                 Margin="0,12,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -339,7 +436,7 @@
                         </Border>
 
                         <!-- Lisans Kontrol Sonucu paneli -->
-                        <Border Grid.Row="12" Grid.ColumnSpan="2"
+                        <Border Grid.Row="13" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -413,7 +510,7 @@
                         </Border>
 
                         <!-- Sunucu DB Kontrol Sonucu paneli -->
-                        <Border Grid.Row="13" Grid.ColumnSpan="2"
+                        <Border Grid.Row="14" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -480,7 +577,7 @@
                         </Border>
 
                         <!-- Lisans ile Kayıt Ol Sonucu paneli -->
-                        <Border Grid.Row="14" Grid.ColumnSpan="2"
+                        <Border Grid.Row="15" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -563,7 +660,7 @@
                         </Border>
 
                         <!-- Sorun giderme ipucu -->
-                        <Border Grid.Row="15" Grid.ColumnSpan="2"
+                        <Border Grid.Row="16" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
                                 BorderBrush="{DynamicResource DangerBrush}"
@@ -582,13 +679,13 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Grid.Row="16" Grid.ColumnSpan="2" Height="8" />
+                        <Border Grid.Row="17" Grid.ColumnSpan="2" Height="8" />
 
                         <!-- Son durum -->
-                        <TextBlock Grid.Row="17" Grid.Column="0"
+                        <TextBlock Grid.Row="18" Grid.Column="0"
                                    Text="Son durum" FontWeight="SemiBold"
                                    VerticalAlignment="Top" Margin="0,12,0,0" />
-                        <Border Grid.Row="17" Grid.Column="1"
+                        <Border Grid.Row="18" Grid.Column="1"
                                 Margin="0,12,0,0"
                                 Padding="10,8"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
@@ -603,7 +700,7 @@
                         </Border>
 
                         <!-- Son kayıt zamanı -->
-                        <TextBlock Grid.Row="18" Grid.ColumnSpan="2"
+                        <TextBlock Grid.Row="19" Grid.ColumnSpan="2"
                                    Text="{Binding LastSavedAtDisplay, StringFormat='Son kayıt: {0}'}"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedTextBrush}"

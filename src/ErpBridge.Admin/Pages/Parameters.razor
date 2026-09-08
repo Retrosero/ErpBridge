@@ -1,0 +1,152 @@
+@page "/parameters"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Parametreler — ErpBridge Yönetim</PageTitle>
+
+<AdminPageHeader Title="Parametreler"
+                 Description="Mikro'dan gönderilen parametre değerlerini inceleyin. Anahtar araması ile filtreleyebilir, 'Tümünü görüntüle' seçeneği ile sayfalama sınırını kaldırabilirsiniz." />
+
+<div class="admin-filter-bar mb-3">
+    <div>
+        <label class="form-label" for="param-tenant">Müşteri</label>
+        <select id="param-tenant" class="form-select" @bind="_tenantId" aria-label="Müşteri seçin">
+            <option value="">Müşteri seçin…</option>
+            @foreach (var t in _tenants)
+            {
+                <option value="@t.Id">@t.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="form-label" for="param-key">Anahtar araması <small class="text-muted">(substring)</small></label>
+        <input id="param-key" class="form-control" @bind="_keyFilter" placeholder="örn. KASA_HESAP" />
+    </div>
+    <div class="form-check pt-4" style="min-width: 11rem;">
+        <input id="param-all" class="form-check-input" type="checkbox" @bind="_showAll" />
+        <label class="form-check-label" for="param-all">Tümünü görüntüle</label>
+    </div>
+    <div>
+        <button class="btn btn-primary" id="param-load" @onclick="LoadAsync" disabled="@(string.IsNullOrEmpty(_tenantId) || _loading)">
+            @(_loading ? "Yükleniyor…" : "Parametreleri getir")
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <AdminState Tone="error" Icon="!" Title="Parametreler alınamadı" Message="@_error" />
+}
+
+@if (_loading)
+{
+    <AdminLoading Text="Parametreler yükleniyor…" />
+}
+else if (_allRecords is not null)
+{
+    var visible = FilterVisible();
+    <div class="admin-insight">
+        <span>Toplam kayıt</span>
+        <strong>@_allRecords.Count</strong>
+        @if (!string.IsNullOrWhiteSpace(_keyFilter))
+        {
+            <span class="ms-3">Filtre sonrası</span>
+            <strong>@visible.Count</strong>
+        }
+    </div>
+
+    @if (visible.Count == 0)
+    {
+        <AdminState Title="Filtreye uyan parametre yok" Message="Anahtar aramasını temizleyin veya farklı bir müşteri seçin." />
+    }
+    else
+    {
+        <div class="admin-data-surface">
+            <table class="table admin-data-table" aria-label="Parametreler">
+                <thead>
+                    <tr>
+                        <th>Anahtar</th>
+                        <th>Ad</th>
+                        <th>Değer</th>
+                        <th>Kaynak DB</th>
+                        <th>Son güncelleme (UTC)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in visible)
+                    {
+                        <tr>
+                            <td data-label="Anahtar"><code>@p.ParametreID</code></td>
+                            <td data-label="Ad">@p.ParametreAdi</td>
+                            <td data-label="Değer"><code>@p.ParametreDegeri</code></td>
+                            <td data-label="Kaynak DB">@p.SourceDatabase</td>
+                            <td data-label="Son güncelleme"><time datetime="@p.UpdatedAtUtc.ToString("O")">@FormatTime(p.UpdatedAtUtc)</time></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+else if (!_loading && string.IsNullOrEmpty(_error))
+{
+    <AdminState Title="Bir müşteri seçin" Message="Parametre listesini görmek için yukarıdaki alandan müşteri seçin ve 'Parametreleri getir' düğmesine basın." />
+}
+
+@code {
+    private const int DefaultPageSize = 200;
+    private const int AllPageSize = 1000;
+
+    private string _tenantId = string.Empty;
+    private string _keyFilter = string.Empty;
+    private bool _showAll;
+
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private IReadOnlyList<ErpBridge.Admin.Api.ParameterRecordDto>? _allRecords;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _tenants = await Api.ListTenantsAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_tenantId)) return;
+        _loading = true;
+        _error = null;
+        try
+        {
+            if (!Guid.TryParse(_tenantId, out var tenantGuid))
+            {
+                _error = "Geçerli bir müşteri seçin.";
+                return;
+            }
+            var pageSize = _showAll ? AllPageSize : DefaultPageSize;
+            _allRecords = await Api.ListParameterRecordsAsync(tenantGuid, keyContains: null, page: 1, pageSize: pageSize);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private IReadOnlyList<ErpBridge.Admin.Api.ParameterRecordDto> FilterVisible()
+    {
+        if (_allRecords is null) return Array.Empty<ErpBridge.Admin.Api.ParameterRecordDto>();
+        if (string.IsNullOrWhiteSpace(_keyFilter)) return _allRecords;
+        var needle = _keyFilter.Trim();
+        return _allRecords
+            .Where(p => Contains(p.ParametreID, needle)
+                     || Contains(p.ParametreAdi, needle)
+                     || Contains(p.ParametreAnaGrubu, needle)
+                     || Contains(p.ParametreAltGrubu, needle))
+            .ToList();
+    }
+
+    private static bool Contains(string value, string needle) =>
+        !string.IsNullOrEmpty(value) && value.Contains(needle, StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatTime(DateTimeOffset utc) =>
+        utc.UtcDateTime.ToString("dd MMM yyyy, HH:mm");
+}
