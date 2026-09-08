@@ -143,6 +143,16 @@ public class MikroSchemaContractTests
                 continue;
             }
 
+            // A *_Guid column is the V16 identity. V15 databases legitimately
+            // lack it, and the writer only emits the V16 statement when the
+            // version detector selected GuidStrategy — so its absence here is
+            // expected, not a defect.
+            if (column.EndsWith("_Guid", StringComparison.OrdinalIgnoreCase) &&
+                !columns.Contains($"{table}.{column}"))
+            {
+                continue;
+            }
+
             if (!columns.Contains($"{table}.{column}"))
             {
                 problems.Add($"{table}.{column}");

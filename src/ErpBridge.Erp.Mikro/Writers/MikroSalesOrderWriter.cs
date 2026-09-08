@@ -21,12 +21,19 @@ namespace ErpBridge.Erp.Mikro.Writers;
 ///         <c>Recno</c>/<c>Guid</c> on hit, without an INSERT).</item>
 ///   <item>Cari / stok / depo existence checks via the lookup interfaces.</item>
 ///   <item>Version detection via <see cref="MikroVersionDetector"/> and strategy selection.</item>
-///   <item>Open one <see cref="SqlConnection"/>, BEGIN TRANSACTION, INSERT into
-///         <c>SIPARISLER</c> (header), capture identity (<c>SCOPE_IDENTITY()</c> for V15 or
-///         the pre-generated <c>Guid</c> for V16), INSERT each line into
-///         <c>STOK_HAREKETLERI</c> with the parent link, COMMIT, then save the
-///         <see cref="MappingRecord"/> through the local <see cref="IMappingStore"/>.</item>
+///   <item>Open one <see cref="SqlConnection"/>, BEGIN TRANSACTION, INSERT one
+///         <c>SIPARISLER</c> row per order line (Mikro has no separate header
+///         table — every line repeats the document fields), resolve each row's
+///         self-link, COMMIT, then save the <see cref="MappingRecord"/> through
+///         the local <see cref="IMappingStore"/>.</item>
 /// </list>
+/// <para>
+/// The document's ERP identity is the first line's <c>sip_RECno</c> (V15) or
+/// <c>sip_Guid</c> (V16). Mikro's own unique index on
+/// <c>(sip_tip, sip_cins, sip_evrakno_seri, sip_evrakno_sira, sip_satirno)</c>
+/// gives a second, database-level guard against duplicate document lines on top
+/// of the agent's <c>externalId</c> idempotency.
+/// </para>
 /// Every parameter is bound through Dapper / <see cref="SqlParameter"/>s — no
 /// string concatenation is ever used to assemble SQL.
 /// </summary>
@@ -47,96 +54,127 @@ public sealed class MikroSalesOrderWriter
     public const string EntityType = "sales_order";
 
     /// <summary>
-    /// Default aktif-DB number used for the <c>sth_sip_RECid_DBCno</c> link in V15.
-    /// Mikro encodes the originating database as <c>0</c> when the parent record
-    /// was inserted on the same database, which is the case for the agent's write
-    /// path. Exposed as a constant so the V15 link column keeps a stable value
-    /// while the <c>FirmNo</c> / <c>BranchNo</c> parameters flow from
-    /// <see cref="MikroConnectionSettings"/>.
+    /// Default aktif-DB number for the V15 <c>sip_RECid_DBCno</c> self-link.
+    /// Mikro encodes the originating database as <c>0</c> when the record lives
+    /// in the same database, which is always the case for the agent's writes.
     /// </summary>
     internal const short DefaultActiveDbNo = 0;
 
     /// <summary>
-    /// Stok hareketi tipi — sales-order line. Matches the convention seen in Mikro
-    /// bootstrap readers (sales order staging).
+    /// <c>sip_tip</c> — <c>0</c> is a customer (satış) order; <c>1</c> is a
+    /// purchase order. The field-sales agent only ever posts customer orders.
     /// </summary>
-    internal const short SalesOrderLineTip = 1;
+    internal const byte SalesOrderTip = 0;
 
     /// <summary>
-    /// Insert into <c>SIPARISLER</c>. The <c>sip_RECno</c> column is left out — SQL
-    /// Server's identity produces it. V15 path binds scalar parameters; V16 path also
-    /// binds the app-generated <c>sip_Guid</c>.
+    /// <c>sip_cins</c> — <c>0</c> is a normal order line (as opposed to Mikro's
+    /// service / campaign line kinds).
     /// </summary>
-    internal const string SiparisHeaderInsertSqlV15 = @"
+    internal const byte SalesOrderCins = 0;
+
+    /// <summary>
+    /// Insert one <c>SIPARISLER</c> row.
+    ///
+    /// <para>
+    /// <b>Mikro stores a sales order as N rows in <c>SIPARISLER</c>, one per
+    /// line</b> — each row repeats the document-level fields (firma, şube,
+    /// tarih, evrak seri/sıra, müşteri, satıcı) and carries its own line fields
+    /// (satır no, stok, miktar, fiyat, iskonto, vergi). There is no separate
+    /// header table, and order lines do <b>not</b> live in
+    /// <c>STOK_HAREKETLERI</c> — that table holds stock movements (irsaliye /
+    /// fatura), which an order has not produced yet.
+    /// </para>
+    ///
+    /// <para>
+    /// The earlier implementation wrote a "header" row to <c>SIPARISLER</c> and
+    /// the lines to <c>STOK_HAREKETLERI</c> using <c>sto_</c>-prefixed column
+    /// names (the <c>STOKLAR</c> prefix). None of those columns exist; the
+    /// statement could never execute against a real Mikro database.
+    /// </para>
+    /// </summary>
+    internal const string SiparisLineInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO SIPARISLER (
-    sip_firmano, sip_sube_no, sip_evrakno_seri, sip_evrakno_sira,
-    sip_tarih, sip_musteri_kod, sip_satici_kod, sip_depono,
-    sip_doviz_cinsi, sip_kapat_fl
+    sip_RECid_DBCno, sip_RECid_RECno,
+    sip_firmano, sip_subeno,
+    sip_tarih, sip_teslim_tarih,
+    sip_tip, sip_cins,
+    sip_evrakno_seri, sip_evrakno_sira, sip_satirno,
+    sip_musteri_kod, sip_satici_kod, sip_stok_kod,
+    sip_b_fiyat, sip_miktar, sip_birim_pntr,
+    sip_iskonto_1, sip_iskonto_2, sip_iskonto_3,
+    sip_iskonto_4, sip_iskonto_5, sip_iskonto_6,
+    sip_vergi_pntr, sip_depono, sip_doviz_cinsi, sip_kapat_fl
 )
 VALUES (
-    @FirmNo, @BranchNo, @Series, @Number,
-    @OccurredAt, @CustomerCode, @SalespersonCode, @WarehouseNo,
-    @Currency, 0
+    @ActiveDbNo, @SelfLinkSeed,
+    @FirmNo, @BranchNo,
+    @OccurredAt, @OccurredAt,
+    @OrderTip, @OrderCins,
+    @Series, @Number, @LineNo,
+    @CustomerCode, @SalespersonCode, @StockCode,
+    @UnitPrice, @Quantity, @UnitPointer,
+    @Discount1, @Discount2, @Discount3,
+    @Discount4, @Discount5, @Discount6,
+    @TaxPointer, @WarehouseNo, @Currency, 0
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
     /// <summary>
-    /// V16 variant — <c>sip_Guid</c> is supplied at INSERT time with the
-    /// <c>@HeaderGuid</c> parameter. The identity round-trip is unnecessary because the
-    /// application chose the Guid before the INSERT.
+    /// V15 self-link UPDATE. Mikro's <c>sip_RECid_RECno</c> encodes the
+    /// originating record; for a single-database install the link is
+    /// self-referential, so it carries the identity produced by the INSERT.
     /// </summary>
-    internal const string SiparisHeaderInsertSqlV16 = @"
+    internal const string SiparisSelfLinkUpdateSqlV15 = @"
+UPDATE SIPARISLER
+SET sip_RECid_DBCno = @ActiveDbNo,
+    sip_RECid_RECno = @SipRecno
+WHERE sip_RECno = @SipRecno;";
+
+    /// <summary>
+    /// V16 variant — <c>sip_Guid</c> is supplied at INSERT time. The identity
+    /// round-trip is unnecessary because the application chose the Guid first.
+    /// </summary>
+    internal const string SiparisLineInsertSqlV16 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO SIPARISLER (
-    sip_Guid, sip_firmano, sip_sube_no, sip_evrakno_seri, sip_evrakno_sira,
-    sip_tarih, sip_musteri_kod, sip_satici_kod, sip_depono,
-    sip_doviz_cinsi, sip_kapat_fl
+    sip_Guid,
+    sip_RECid_DBCno, sip_RECid_RECno,
+    sip_firmano, sip_subeno,
+    sip_tarih, sip_teslim_tarih,
+    sip_tip, sip_cins,
+    sip_evrakno_seri, sip_evrakno_sira, sip_satirno,
+    sip_musteri_kod, sip_satici_kod, sip_stok_kod,
+    sip_b_fiyat, sip_miktar, sip_birim_pntr,
+    sip_iskonto_1, sip_iskonto_2, sip_iskonto_3,
+    sip_iskonto_4, sip_iskonto_5, sip_iskonto_6,
+    sip_vergi_pntr, sip_depono, sip_doviz_cinsi, sip_kapat_fl
 )
 VALUES (
-    @HeaderGuid, @FirmNo, @BranchNo, @Series, @Number,
-    @OccurredAt, @CustomerCode, @SalespersonCode, @WarehouseNo,
-    @Currency, 0);";
-
-    /// <summary>
-    /// Insert into <c>STOK_HAREKETLERI</c>. The parent header's identifier is bound
-    /// through the strategy-specific parameter (<c>@SipRecno</c> for V15 or
-    /// <c>@SipUid</c> for V16) so the same SQL template can serve both versions when
-    /// the dispatcher supplies the right parameter set.
-    /// </summary>
-    internal const string StokHareketiInsertSqlV15 = @"
-INSERT INTO STOK_HAREKETLERI (
-    sth_firmano, sth_sube_no, sth_tarih, sth_evrakno_seri, sth_evrakno_sira,
-    sth_satirno, sth_stok_kod, sth_miktar, sth_birim_pn, sth_fiyat,
-    sth_kdv_pn, sth_cikis_depo_no, sth_tip,
-    sth_isk1, sth_isk2, sth_isk3, sth_isk4, sth_isk5, sth_isk6,
-    sth_sip_RECid_DBCno, sth_sip_RECid_RECno
-)
-VALUES (
-    @FirmNo, @BranchNo, @OccurredAt, @Series, @Number,
-    @LineNo, @StockCode, @Quantity, @UnitPointer, @UnitPrice,
-    @TaxPointer, @WarehouseNo, @LineTip,
-    @Discount1, @Discount2, @Discount3, @Discount4, @Discount5, @Discount6,
-    @SipDbcNo, @SipRecno
+    @LineGuid,
+    @ActiveDbNo, @SelfLinkSeed,
+    @FirmNo, @BranchNo,
+    @OccurredAt, @OccurredAt,
+    @OrderTip, @OrderCins,
+    @Series, @Number, @LineNo,
+    @CustomerCode, @SalespersonCode, @StockCode,
+    @UnitPrice, @Quantity, @UnitPointer,
+    @Discount1, @Discount2, @Discount3,
+    @Discount4, @Discount5, @Discount6,
+    @TaxPointer, @WarehouseNo, @Currency, 0
 );";
 
     /// <summary>
-    /// V16 sibling of <see cref="StokHareketiInsertSqlV15"/> — the parent link is the
-    /// single <c>sth_sip_uid</c> column carrying the header Guid.
+    /// V16 self-link UPDATE, keyed by the caller-generated Guid. The unique index
+    /// on <c>(sip_RECid_DBCno, sip_RECid_RECno)</c> applies to V16 too, so the
+    /// INSERT seeds a unique negative placeholder and this statement resolves it
+    /// to the row's own identity.
     /// </summary>
-    internal const string StokHareketiInsertSqlV16 = @"
-INSERT INTO STOK_HAREKETLERI (
-    sth_firmano, sth_sube_no, sth_tarih, sth_evrakno_seri, sth_evrakno_sira,
-    sth_satirno, sth_stok_kod, sth_miktar, sth_birim_pn, sth_fiyat,
-    sth_kdv_pn, sth_cikis_depo_no, sth_tip,
-    sth_isk1, sth_isk2, sth_isk3, sth_isk4, sth_isk5, sth_isk6,
-    sth_sip_uid
-)
-VALUES (
-    @FirmNo, @BranchNo, @OccurredAt, @Series, @Number,
-    @LineNo, @StockCode, @Quantity, @UnitPointer, @UnitPrice,
-    @TaxPointer, @WarehouseNo, @LineTip,
-    @Discount1, @Discount2, @Discount3, @Discount4, @Discount5, @Discount6,
-    @SipUid
-);";
+    internal const string SiparisSelfLinkUpdateSqlV16 = @"
+UPDATE SIPARISLER
+SET sip_RECid_DBCno = @ActiveDbNo,
+    sip_RECid_RECno = sip_RECno
+WHERE sip_Guid = @LineGuid;";
 
     /// <summary>
     /// All dependencies are required. The connection factory builds connection
@@ -328,19 +366,27 @@ VALUES (
 
         try
         {
-            var recno = await InsertHeaderAsync(conn, tx, payload, strategy, headerGuid, connectionSettings, ct)
-                .ConfigureAwait(false);
-
+            // One SIPARISLER row per line. The first row's identifier is the one
+            // reported back as the document's ERP identity — Mikro has no
+            // separate header record, so the first line stands for the order.
+            var firstRecno = 0;
             for (var i = 0; i < payload.Lines.Count; i++)
             {
-                var line = payload.Lines[i];
-                await InsertLineAsync(conn, tx, payload, line, i + 1, strategy, headerGuid, recno, connectionSettings, ct)
+                var lineGuid = strategy is GuidStrategy ? (Guid?)Guid.NewGuid() : null;
+                var recno = await InsertLineAsync(
+                        conn, tx, payload, payload.Lines[i], i + 1, strategy, lineGuid, connectionSettings, ct)
                     .ConfigureAwait(false);
+
+                if (i == 0)
+                {
+                    firstRecno = recno;
+                    headerGuid = lineGuid;
+                }
             }
 
             await tx.CommitAsync(ct).ConfigureAwait(false);
 
-            return new InsertOutcome(recno, headerGuid);
+            return new InsertOutcome(firstRecno, headerGuid);
         }
         catch
         {
@@ -361,51 +407,89 @@ VALUES (
     }
 
     /// <summary>
-    /// Insert the <c>SIPARISLER</c> header row. V15 returns the freshly generated
-    /// RECno; V16 returns 0 (the actual identifier is the pre-generated
-    /// <paramref name="headerGuid"/>).
+    /// Insert one <c>SIPARISLER</c> row — a single order line carrying the
+    /// document-level fields alongside its own line values. V15 returns the
+    /// freshly generated RECno and resolves the self-link; V16 returns 0 (the
+    /// identity is the caller-generated <paramref name="lineGuid"/>).
     /// </summary>
-    private async Task<int> InsertHeaderAsync(
+    private async Task<int> InsertLineAsync(
         SqlConnection conn,
         IDbTransaction tx,
-        SalesOrderPayload payload,
+        SalesOrderPayload header,
+        SalesOrderLinePayload line,
+        int lineNo,
         IMikroIdentityStrategy strategy,
-        Guid? headerGuid,
+        Guid? lineGuid,
         MikroConnectionSettings connectionSettings,
         CancellationToken ct)
     {
         var parameters = new
         {
+            ActiveDbNo = DefaultActiveDbNo,
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
-            Series = payload.DocumentSeries,
-            Number = payload.DocumentNumber,
-            OccurredAt = EnsureUtcDate(payload.OccurredAt),
-            CustomerCode = payload.CustomerCode,
-            SalespersonCode = payload.SalespersonCode ?? string.Empty,
-            WarehouseNo = payload.WarehouseNo,
-            Currency = payload.Currency,
-            HeaderGuid = headerGuid ?? Guid.Empty,
+            OccurredAt = EnsureUtcDate(header.OccurredAt),
+            OrderTip = SalesOrderTip,
+            OrderCins = SalesOrderCins,
+            Series = header.DocumentSeries,
+            Number = header.DocumentNumber,
+            LineNo = lineNo,
+            CustomerCode = header.CustomerCode,
+            SalespersonCode = header.SalespersonCode ?? string.Empty,
+            StockCode = line.StockCode,
+            UnitPrice = line.UnitPrice,
+            Quantity = line.Quantity,
+            UnitPointer = line.UnitPointer,
+            TaxPointer = line.TaxPointer,
+            WarehouseNo = header.WarehouseNo,
+            // sip_doviz_cinsi is a tinyint: Mikro stores döviz as a numeric code,
+            // not the ISO string the payload carries.
+            Currency = MikroCurrency.ToMikroCode(header.Currency),
+            // sip_iskonto_1..6 are float and not nullable in practice — an absent
+            // discount is 0, not NULL.
+            Discount1 = line.Discounts.Count > 0 ? line.Discounts[0] : 0m,
+            Discount2 = line.Discounts.Count > 1 ? line.Discounts[1] : 0m,
+            Discount3 = line.Discounts.Count > 2 ? line.Discounts[2] : 0m,
+            Discount4 = line.Discounts.Count > 3 ? line.Discounts[3] : 0m,
+            Discount5 = line.Discounts.Count > 4 ? line.Discounts[4] : 0m,
+            Discount6 = line.Discounts.Count > 5 ? line.Discounts[5] : 0m,
+            LineGuid = lineGuid ?? Guid.Empty,
         };
 
         if (strategy is RecnoStrategy)
         {
-            var recno = await conn.ExecuteScalarAsync<int>(
-                new CommandDefinition(
-                    SiparisHeaderInsertSqlV15,
-                    parameters,
-                    transaction: tx,
-                    cancellationToken: ct)).ConfigureAwait(false);
+            var recno = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                SiparisLineInsertSqlV15,
+                parameters,
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
+            // sip_RECid_RECno is NOT NULL with no default, so the INSERT seeds it
+            // with 0 and this UPDATE resolves the self-link now that the identity
+            // is known — the same pattern the card writers use.
+            await conn.ExecuteAsync(new CommandDefinition(
+                SiparisSelfLinkUpdateSqlV15,
+                new { ActiveDbNo = DefaultActiveDbNo, SipRecno = recno },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
             return recno;
         }
 
         if (strategy is GuidStrategy)
         {
             await conn.ExecuteAsync(new CommandDefinition(
-                SiparisHeaderInsertSqlV16,
+                SiparisLineInsertSqlV16,
                 parameters,
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                SiparisSelfLinkUpdateSqlV16,
+                new { ActiveDbNo = DefaultActiveDbNo, LineGuid = lineGuid ?? Guid.Empty },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
             return 0;
         }
 
@@ -413,63 +497,6 @@ VALUES (
         // anything else is a contract violation that should be loud.
         throw new InvalidOperationException(
             $"Unsupported Mikro identity strategy '{strategy.GetType().FullName}'.");
-    }
-
-    /// <summary>
-    /// Insert a single <c>STOK_HAREKETLERI</c> line, linking it back to the header
-    /// row through the strategy-specific parent field.
-    /// </summary>
-    private async Task InsertLineAsync(
-        SqlConnection conn,
-        IDbTransaction tx,
-        SalesOrderPayload header,
-        SalesOrderLinePayload line,
-        int lineNo,
-        IMikroIdentityStrategy strategy,
-        Guid? headerGuid,
-        int headerRecno,
-        MikroConnectionSettings connectionSettings,
-        CancellationToken ct)
-    {
-        var parameters = new
-        {
-            FirmNo = connectionSettings.CompanyNo,
-            BranchNo = connectionSettings.BranchNo,
-            OccurredAt = EnsureUtcDate(header.OccurredAt),
-            Series = header.DocumentSeries,
-            Number = header.DocumentNumber,
-            LineNo = lineNo,
-            StockCode = line.StockCode,
-            Quantity = line.Quantity,
-            UnitPointer = line.UnitPointer,
-            UnitPrice = line.UnitPrice,
-            TaxPointer = line.TaxPointer,
-            WarehouseNo = header.WarehouseNo,
-            LineTip = SalesOrderLineTip,
-            Discount1 = line.Discounts.Count > 0 ? line.Discounts[0] : (decimal?)null,
-            Discount2 = line.Discounts.Count > 1 ? line.Discounts[1] : (decimal?)null,
-            Discount3 = line.Discounts.Count > 2 ? line.Discounts[2] : (decimal?)null,
-            Discount4 = line.Discounts.Count > 3 ? line.Discounts[3] : (decimal?)null,
-            Discount5 = line.Discounts.Count > 4 ? line.Discounts[4] : (decimal?)null,
-            Discount6 = line.Discounts.Count > 5 ? line.Discounts[5] : (decimal?)null,
-            // V15 linking parameters — populated by the V15 SQL template, ignored
-            // by V16 (which doesn't bind to those names).
-            SipDbcNo = DefaultActiveDbNo,
-            SipRecno = headerRecno,
-            // V16 linking parameter — populated by the V16 SQL template, ignored
-            // by V15 (which doesn't bind to that name).
-            SipUid = headerGuid ?? Guid.Empty,
-        };
-
-        var sql = strategy is RecnoStrategy
-            ? StokHareketiInsertSqlV15
-            : StokHareketiInsertSqlV16;
-
-        await conn.ExecuteAsync(new CommandDefinition(
-            sql,
-            parameters,
-            transaction: tx,
-            cancellationToken: ct)).ConfigureAwait(false);
     }
 
     /// <summary>

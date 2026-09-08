@@ -29,6 +29,12 @@ namespace ErpBridge.Erp.Abstractions.Documents;
 /// <param name="Description">Free-form açıklama (mapped to <c>cha_aciklama</c>).</param>
 /// <param name="DocumentType">Movement type — e.g. <c>"tahsilat_makbuzu"</c> or <c>"odeme_emri"</c>.</param>
 /// <param name="Lines">Optional sub-lines. Empty / null means a single-row header insert.</param>
+/// <param name="DocumentSeries">
+/// Evrak serisi (e.g. <c>"THS"</c>). Required: the ERP identifies a document by
+/// its series + number, and Mikro enforces a unique index over
+/// <c>(evrak_tip, evrakno_seri, evrakno_sira, satir_no)</c>.
+/// </param>
+/// <param name="DocumentNumber">Evrak sıra numarası. Required for the same reason as <paramref name="DocumentSeries"/>.</param>
 public sealed record CollectionPayload(
     Guid TenantId,
     string ExternalId,
@@ -38,7 +44,9 @@ public sealed record CollectionPayload(
     string Currency,
     string Description,
     string DocumentType,
-    IReadOnlyList<CollectionLinePayload>? Lines);
+    IReadOnlyList<CollectionLinePayload>? Lines,
+    string DocumentSeries = "",
+    int DocumentNumber = 0);
 
 /// <summary>
 /// One sub-line of a <see cref="CollectionPayload"/>. Stored as a child row in

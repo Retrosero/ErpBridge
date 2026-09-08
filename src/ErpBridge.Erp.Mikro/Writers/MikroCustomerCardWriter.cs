@@ -76,22 +76,19 @@ public sealed class MikroCustomerCardWriter
     /// self-link UPDATE that runs inside the same transaction.
     /// </summary>
     internal const string CariHesapInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAPLAR (
     cari_RECid_DBCno, cari_RECid_RECno,
-    cari_firmano, cari_sube_no,
     cari_kod, cari_unvan1,
     cari_vdaire_no, cari_vdaire_adi,
-    cari_adres, cari_tel1, cari_tel2,
-    cari_EMail, cari_yetkili,
-    cari_doviz_cinsi, cari_odeme_gun, cari_cari_grup
+    cari_EMail, cari_CepTel,
+    cari_doviz_cinsi, cari_odeme_gunu, cari_grup_kodu
 )
 VALUES (
-    @ActiveDbNo, @CariRecno,
-    @FirmNo, @BranchNo,
+    @ActiveDbNo, @SelfLinkSeed,
     @CustomerCode, @CustomerName,
     @TaxNumber, @TaxOffice,
-    @Address, @Phone1, @Phone2,
-    @Email, @ContactPerson,
+    @Email, @Phone1,
     @Currency, @PaymentTermDays, @GroupCode
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
@@ -102,22 +99,21 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// the application chose the Guid before the INSERT.
     /// </summary>
     internal const string CariHesapInsertSqlV16 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAPLAR (
     cari_Guid,
-    cari_firmano, cari_sube_no,
+    cari_RECid_DBCno, cari_RECid_RECno,
     cari_kod, cari_unvan1,
     cari_vdaire_no, cari_vdaire_adi,
-    cari_adres, cari_tel1, cari_tel2,
-    cari_EMail, cari_yetkili,
-    cari_doviz_cinsi, cari_odeme_gun, cari_cari_grup
+    cari_EMail, cari_CepTel,
+    cari_doviz_cinsi, cari_odeme_gunu, cari_grup_kodu
 )
 VALUES (
     @HeaderGuid,
-    @FirmNo, @BranchNo,
+    @ActiveDbNo, @SelfLinkSeed,
     @CustomerCode, @CustomerName,
     @TaxNumber, @TaxOffice,
-    @Address, @Phone1, @Phone2,
-    @Email, @ContactPerson,
+    @Email, @Phone1,
     @Currency, @PaymentTermDays, @GroupCode
 );";
 
@@ -142,9 +138,7 @@ WHERE cari_RECno = @CariRecno;";
     internal const string CariHesapSelectByCodeSqlV15 = @"
 SELECT CAST(cari_RECno AS INT) AS Recno
 FROM CARI_HESAPLAR
-WHERE cari_kod = @CustomerCode
-  AND cari_firmano = @FirmNo
-  AND cari_sube_no = @BranchNo;";
+WHERE cari_kod = @CustomerCode;";
 
     /// <summary>
     /// V16 duplicate-key probe — same shape as V15 but returns the Guid identity.
@@ -152,9 +146,7 @@ WHERE cari_kod = @CustomerCode
     internal const string CariHesapSelectByCodeSqlV16 = @"
 SELECT CAST(cari_Guid AS UNIQUEIDENTIFIER) AS Uid
 FROM CARI_HESAPLAR
-WHERE cari_kod = @CustomerCode
-  AND cari_firmano = @FirmNo
-  AND cari_sube_no = @BranchNo;";
+WHERE cari_kod = @CustomerCode;";
 
     /// <summary>
     /// Default aktif-DB number used for the <c>cari_RECid_DBCno</c> link in V15
@@ -378,6 +370,14 @@ WHERE cari_kod = @CustomerCode
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
 
+            // V16 seeds a unique negative self-link placeholder for the same
+            // reason V15 does; resolve it now that the row exists.
+            await conn.ExecuteAsync(new CommandDefinition(
+                MikroSelfLink.BuildUpdateByGuid("CARI_HESAPLAR", "cari"),
+                new { ActiveDbNo = MikroSelfLink.ActiveDbNo, RowGuid = headerGuid ?? Guid.Empty },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
             await tx.CommitAsync(ct).ConfigureAwait(false);
             return new InsertOutcome(0, headerGuid, Created: true);
         }
@@ -422,7 +422,7 @@ WHERE cari_kod = @CustomerCode
             Phone2 = req.Phone2 ?? string.Empty,
             Email = req.Email ?? string.Empty,
             ContactPerson = req.ContactPerson ?? string.Empty,
-            Currency = req.Currency,
+            Currency = MikroCurrency.ToMikroCode(req.Currency),
             PaymentTermDays = req.PaymentTermDays,
             GroupCode = req.GroupCode,
         };

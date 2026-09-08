@@ -49,18 +49,60 @@ public sealed class MikroPaymentOrderWriter
     /// <summary>Reserved entity-type key — supports future filter queries by entity.</summary>
     public const string EntityType = "payment_order";
 
+    /// <summary>Resolves a V15 row's self-link once SCOPE_IDENTITY() is known.</summary>
+    internal static readonly string SelfLinkUpdateSqlV15 =
+        MikroSelfLink.BuildUpdate("ODEME_EMIRLERI", "sck");
+
+    /// <summary>Resolves a V16 row's self-link, keyed by the generated Guid.</summary>
+    internal static readonly string SelfLinkUpdateSqlV16 =
+        MikroSelfLink.BuildUpdateByGuid("ODEME_EMIRLERI", "sck");
+
     /// <summary>
-    /// V15 INSERT into <c>ODEME_EMIRLERI</c>. <c>ode_RECno</c> is left out — SQL
-    /// Server's identity produces it.
+    /// Map the payment channel to Mikro's <c>sck_tip</c> instrument code:
+    /// <c>0</c> çek, <c>1</c> senet, <c>2</c> nakit/other. Unknown channels fall
+    /// back to the generic code rather than failing the document.
+    /// </summary>
+    internal static byte ResolvePaymentTip(string? channel) => channel?.Trim().ToLowerInvariant() switch
+    {
+        "cek" or "çek" or "check" => 0,
+        "senet" or "bond" => 1,
+        _ => 2,
+    };
+
+    /// <summary>
+    /// Fold the channel and the description into <c>sck_refno</c> — the only
+    /// free-text field <c>ODEME_EMIRLERI</c> offers. Trimmed to the column width.
+    /// </summary>
+    internal static string BuildReference(PaymentOrderPayload payload)
+    {
+        var parts = new[] { payload.Channel, payload.Description }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim());
+        var joined = string.Join(" / ", parts);
+        return joined.Length <= 40 ? joined : joined[..40];
+    }
+
+    /// <summary>
+    /// V15 INSERT into <c>ODEME_EMIRLERI</c>. Mikro prefixes this table's columns
+    /// with <c>sck_</c>, not <c>ode_</c> — the previous statement used the latter
+    /// and could never execute. <c>sck_RECno</c> is left out; SQL Server's
+    /// identity produces it.
     /// </summary>
     internal const string OdemeEmirleriInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO ODEME_EMIRLERI (
-    ode_firmano, ode_sube_no, ode_tarih, ode_cari_kod, ode_banka_kod,
-    ode_tutar, ode_doviz_cinsi, ode_aciklama, ode_kanal, ode_vade
+    sck_RECid_DBCno, sck_RECid_RECno,
+    sck_firmano, sck_subeno,
+    sck_duzen_tarih, sck_vade,
+    sck_sahip_cari_kodu, sck_bankano,
+    sck_tutar, sck_doviz, sck_tip, sck_refno
 )
 VALUES (
-    @FirmNo, @BranchNo, @OrderDate, @CustomerCode, @BankCode,
-    @Amount, @Currency, @Description, @Channel, @DueDate
+    @ActiveDbNo, @SelfLinkSeed,
+    @FirmNo, @BranchNo,
+    @OrderDate, @DueDate,
+    @CustomerCode, @BankCode,
+    @Amount, @Currency, @Tip, @RefNo
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -70,13 +112,22 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// the application chose the Guid before the INSERT.
     /// </summary>
     internal const string OdemeEmirleriInsertSqlV16 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO ODEME_EMIRLERI (
-    ode_Guid, ode_firmano, ode_sube_no, ode_tarih, ode_cari_kod, ode_banka_kod,
-    ode_tutar, ode_doviz_cinsi, ode_aciklama, ode_kanal, ode_vade
+    sck_Guid,
+    sck_RECid_DBCno, sck_RECid_RECno,
+    sck_firmano, sck_subeno,
+    sck_duzen_tarih, sck_vade,
+    sck_sahip_cari_kodu, sck_bankano,
+    sck_tutar, sck_doviz, sck_tip, sck_refno
 )
 VALUES (
-    @HeaderGuid, @FirmNo, @BranchNo, @OrderDate, @CustomerCode, @BankCode,
-    @Amount, @Currency, @Description, @Channel, @DueDate
+    @HeaderGuid,
+    @ActiveDbNo, @SelfLinkSeed,
+    @FirmNo, @BranchNo,
+    @OrderDate, @DueDate,
+    @CustomerCode, @BankCode,
+    @Amount, @Currency, @Tip, @RefNo
 );";
 
     public MikroPaymentOrderWriter(
@@ -238,6 +289,12 @@ VALUES (
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
 
+            await conn.ExecuteAsync(new CommandDefinition(
+                SelfLinkUpdateSqlV15,
+                new { ActiveDbNo = MikroSelfLink.ActiveDbNo, Recno = recno },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
                 await tx.CommitAsync(ct).ConfigureAwait(false);
                 return new InsertOutcome(recno, headerGuid);
             }
@@ -249,6 +306,12 @@ VALUES (
                     BuildParameters(payload, headerGuid, connectionSettings),
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                SelfLinkUpdateSqlV16,
+                new { ActiveDbNo = MikroSelfLink.ActiveDbNo, RowGuid = headerGuid ?? Guid.Empty },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
 
                 await tx.CommitAsync(ct).ConfigureAwait(false);
                 return new InsertOutcome(0, headerGuid);
@@ -284,15 +347,20 @@ VALUES (
         return new
         {
             HeaderGuid = headerGuid ?? Guid.Empty,
+            ActiveDbNo = MikroSelfLink.ActiveDbNo,
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
             OrderDate = EnsureUtcDate(payload.OrderDate),
             CustomerCode = payload.CustomerCode ?? string.Empty,
             BankCode = payload.BankCode ?? string.Empty,
             Amount = payload.Amount,
-            Currency = payload.Currency,
-            Description = payload.Description ?? string.Empty,
-            Channel = payload.Channel ?? string.Empty,
+            // sck_doviz is a tinyint döviz code, not the ISO string.
+            Currency = MikroCurrency.ToMikroCode(payload.Currency),
+            // ODEME_EMIRLERI has no açıklama column; the payment channel and the
+            // description are folded into sck_refno, the free-text reference
+            // Mikro shows on the ödeme emri. sck_tip carries the instrument kind.
+            Tip = ResolvePaymentTip(payload.Channel),
+            RefNo = BuildReference(payload),
             DueDate = EnsureUtcDate(payload.DueDate),
         };
     }

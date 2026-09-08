@@ -52,11 +52,35 @@ public sealed class MikroCollectionWriter
     public const string EntityType = "collection";
 
     /// <summary>
-    /// <c>cha_tip</c> for tahsilat (collection). Mikro uses a small int taxonomy where
-    /// 0 = generic, 1 = tahsilat, 2 = tediye. Pinned here so the writer can
-    /// re-derive it consistently without callers picking a value.
+    /// <c>cha_tip</c> — the accounting <b>direction</b>, not a document taxonomy:
+    /// <c>0</c> is borç (debit), <c>1</c> is alacak (credit). A tahsilat credits
+    /// the customer's account, so it posts <c>1</c>.
+    ///
+    /// <para>
+    /// This is the same convention the bootstrap reader's balance query relies on
+    /// (<c>SUM(CASE WHEN cha_tip = 0 THEN cha_meblag ELSE -cha_meblag END)</c>),
+    /// so a wrong value here would silently invert a customer's balance.
+    /// </para>
     /// </summary>
     internal const short CollectionTransactionTip = 1;
+
+    /// <summary>
+    /// <c>cha_evrak_tip</c> — Mikro's document-kind code. Tahsilat/tediye
+    /// receipts post under the kasa/banka receipt kind.
+    /// </summary>
+    internal const byte CollectionEvrakTip = 63;
+
+    /// <summary>
+    /// <c>cha_cinsi</c> — <c>0</c> is a normal cari movement (as opposed to
+    /// Mikro's special ledger kinds).
+    /// </summary>
+    internal const byte DefaultCinsi = 0;
+
+    /// <summary>
+    /// <c>cha_normal_Iade</c> — <c>0</c> is a normal movement, <c>1</c> a return.
+    /// A collection is never a return.
+    /// </summary>
+    internal const byte NormalTransaction = 0;
 
     /// <summary>
     /// V15 INSERT into <c>CARI_HESAP_HAREKETLERI</c>. <c>cha_RECno</c> is left out — SQL
@@ -64,17 +88,20 @@ public sealed class MikroCollectionWriter
     /// parameters filled in by the writer.
     /// </summary>
     internal const string CariHesapHareketleriInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAP_HAREKETLERI (
     cha_RECid_DBCno, cha_RECid_RECno,
-    cha_firmano, cha_sube_no, cha_tarihi, cha_kod,
-    cha_tutar, cha_doviz_cinsi, cha_aciklama, cha_evrak_tip, cha_tip,
-    cha_kapat_fl
+    cha_firmano, cha_subeno, cha_tarihi, cha_kod,
+    cha_meblag, cha_d_cins, cha_aciklama,
+    cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
+    cha_evrakno_seri, cha_evrakno_sira, cha_satir_no
 )
 VALUES (
-    @ChaDbcNo, @ChaRecno,
+    @ChaDbcNo, @SelfLinkSeed,
     @FirmNo, @BranchNo, @TransactionDate, @CustomerCode,
-    @Amount, @Currency, @Description, @DocumentType, @TransactionTip,
-    0
+    @Amount, @Currency, @Description,
+    @EvrakTip, @TransactionTip, @Cinsi, @NormalIade,
+    @Series, @Number, @LineNo
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -84,48 +111,81 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// the application chose the Guid before the INSERT.
     /// </summary>
     internal const string CariHesapHareketleriInsertSqlV16 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAP_HAREKETLERI (
-    cha_Guid, cha_firmano, cha_sube_no, cha_tarihi, cha_kod,
-    cha_tutar, cha_doviz_cinsi, cha_aciklama, cha_evrak_tip, cha_tip,
-    cha_kapat_fl
+    cha_Guid,
+    cha_RECid_DBCno, cha_RECid_RECno,
+    cha_firmano, cha_subeno, cha_tarihi, cha_kod,
+    cha_meblag, cha_d_cins, cha_aciklama,
+    cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
+    cha_evrakno_seri, cha_evrakno_sira, cha_satir_no
 )
 VALUES (
-    @HeaderGuid, @FirmNo, @BranchNo, @TransactionDate, @CustomerCode,
-    @Amount, @Currency, @Description, @DocumentType, @TransactionTip,
-    0);";
+    @HeaderGuid,
+    @ChaDbcNo, @SelfLinkSeed,
+    @FirmNo, @BranchNo, @TransactionDate, @CustomerCode,
+    @Amount, @Currency, @Description,
+    @EvrakTip, @TransactionTip, @Cinsi, @NormalIade,
+    @Series, @Number, @LineNo);";
 
     /// <summary>
-    /// Sub-line INSERT (V15) — same table as the header, linked back through
-    /// <c>cha_RECid_RECno</c> / <c>cha_RECid_DBCno</c>. The <c>@ChaRecno</c>
-    /// parameter carries the parent header's identity.
+    /// Sub-line INSERT (V15). Mikro's <c>CARI_HESAP_HAREKETLERI</c> is flat — a
+    /// document's lines are sibling rows sharing
+    /// <c>(cha_evrak_tip, cha_evrakno_seri, cha_evrakno_sira)</c> and separated by
+    /// <c>cha_satir_no</c>. There is no parent-child column, so this statement
+    /// differs from the header only in the line number it carries.
     /// </summary>
     internal const string CariHesapHareketleriLineInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAP_HAREKETLERI (
     cha_RECid_DBCno, cha_RECid_RECno,
-    cha_firmano, cha_sube_no, cha_tarihi, cha_kod,
-    cha_tutar, cha_doviz_cinsi, cha_aciklama, cha_evrak_tip, cha_tip,
-    cha_kapat_fl
+    cha_firmano, cha_subeno, cha_tarihi, cha_kod,
+    cha_meblag, cha_d_cins, cha_aciklama,
+    cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
+    cha_evrakno_seri, cha_evrakno_sira, cha_satir_no
 )
 VALUES (
-    @ChaDbcNo, @ParentRecno,
+    @ChaDbcNo, @SelfLinkSeed,
     @FirmNo, @BranchNo, @TransactionDate, @CustomerCode,
-    @Amount, @Currency, @Description, @DocumentType, @TransactionTip,
-    0);";
+    @Amount, @Currency, @Description,
+    @EvrakTip, @TransactionTip, @Cinsi, @NormalIade,
+    @Series, @Number, @LineNo
+);
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
     /// <summary>
-    /// Sub-line INSERT (V16) — parent link is the single <c>cha_uid</c> column
-    /// carrying the header Guid.
+    /// Sub-line INSERT (V16). Like <c>SIPARISLER</c>, Mikro's
+    /// <c>CARI_HESAP_HAREKETLERI</c> is a flat table — a document's lines are
+    /// sibling rows sharing
+    /// <c>(cha_evrak_tip, cha_evrakno_seri, cha_evrakno_sira)</c> and separated
+    /// by <c>cha_satir_no</c>. There is no parent-child column to link, so this
+    /// differs from the header statement only in carrying its own line number.
     /// </summary>
     internal const string CariHesapHareketleriLineInsertSqlV16 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAP_HAREKETLERI (
-    cha_firmano, cha_sube_no, cha_tarihi, cha_kod,
-    cha_tutar, cha_doviz_cinsi, cha_aciklama, cha_evrak_tip, cha_tip,
-    cha_kapat_fl, cha_uid
+    cha_Guid,
+    cha_RECid_DBCno, cha_RECid_RECno,
+    cha_firmano, cha_subeno, cha_tarihi, cha_kod,
+    cha_meblag, cha_d_cins, cha_aciklama,
+    cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
+    cha_evrakno_seri, cha_evrakno_sira, cha_satir_no
 )
 VALUES (
+    @HeaderGuid,
+    @ChaDbcNo, @SelfLinkSeed,
     @FirmNo, @BranchNo, @TransactionDate, @CustomerCode,
-    @Amount, @Currency, @Description, @DocumentType, @TransactionTip,
-    0, @ParentUid);";
+    @Amount, @Currency, @Description,
+    @EvrakTip, @TransactionTip, @Cinsi, @NormalIade,
+    @Series, @Number, @LineNo);";
+
+    /// <summary>Resolves a V15 row's self-link once SCOPE_IDENTITY() is known.</summary>
+    internal static readonly string SelfLinkUpdateSqlV15 =
+        MikroSelfLink.BuildUpdate("CARI_HESAP_HAREKETLERI", "cha");
+
+    /// <summary>Resolves a V16 row's self-link, keyed by the generated Guid.</summary>
+    internal static readonly string SelfLinkUpdateSqlV16 =
+        MikroSelfLink.BuildUpdateByGuid("CARI_HESAP_HAREKETLERI", "cha");
 
     /// <summary>
     /// Active-DB number used for the <c>cha_RECid_DBCno</c> link in V15 sub-lines.
@@ -289,10 +349,12 @@ VALUES (
 
             if (payload.Lines is { Count: > 0 })
             {
+                // Line 1 is the header row inserted above; sub-lines continue the
+                // satır numbering so the document's unique index stays satisfied.
                 for (var i = 0; i < payload.Lines.Count; i++)
                 {
                     var line = payload.Lines[i];
-                    await InsertLineAsync(conn, tx, payload, line, strategy, headerGuid, recno, connectionSettings, ct)
+                    await InsertLineAsync(conn, tx, payload, line, i + 2, strategy, headerGuid, connectionSettings, ct)
                         .ConfigureAwait(false);
                 }
             }
@@ -335,18 +397,23 @@ VALUES (
     {
         var parameters = new
         {
-            // V15 self-link defaults — V16 SQL ignores these names.
             ChaDbcNo = DefaultActiveDbNo,
-            ChaRecno = (int?)null,
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
             TransactionDate = EnsureUtcDate(payload.TransactionDate),
             CustomerCode = payload.CustomerCode,
+            // cha_meblag holds the magnitude; cha_tip carries the direction.
             Amount = payload.Amount,
-            Currency = payload.Currency,
+            // cha_d_cins is a tinyint döviz code, not the ISO string.
+            Currency = MikroCurrency.ToMikroCode(payload.Currency),
             Description = payload.Description ?? string.Empty,
-            DocumentType = payload.DocumentType ?? string.Empty,
+            EvrakTip = CollectionEvrakTip,
             TransactionTip = CollectionTransactionTip,
+            Cinsi = DefaultCinsi,
+            NormalIade = NormalTransaction,
+            Series = payload.DocumentSeries ?? string.Empty,
+            Number = payload.DocumentNumber,
+            LineNo = 1,
             HeaderGuid = headerGuid ?? Guid.Empty,
         };
 
@@ -358,6 +425,8 @@ VALUES (
                     parameters,
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
+
+            await ResolveSelfLinkAsync(conn, tx, recno, ct).ConfigureAwait(false);
             return recno;
         }
 
@@ -368,6 +437,8 @@ VALUES (
                 parameters,
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
+
+            await ResolveSelfLinkByGuidAsync(conn, tx, headerGuid ?? Guid.Empty, ct).ConfigureAwait(false);
             return 0;
         }
 
@@ -378,41 +449,54 @@ VALUES (
     }
 
     /// <summary>
-    /// Insert a single <c>CARI_HESAP_HAREKETLERI</c> sub-line, linking it back to the
-    /// header row through the strategy-specific parent field.
+    /// Insert one more <c>CARI_HESAP_HAREKETLERI</c> row for a sub-line. The rows
+    /// are siblings sharing the document's evrak tip / seri / sıra and separated
+    /// by <paramref name="lineNo"/> — Mikro has no parent-child link here.
     /// </summary>
     private async Task InsertLineAsync(
         SqlConnection conn,
         IDbTransaction tx,
         CollectionPayload header,
         CollectionLinePayload line,
+        int lineNo,
         IMikroIdentityStrategy strategy,
         Guid? headerGuid,
-        int headerRecno,
         MikroConnectionSettings connectionSettings,
         CancellationToken ct)
     {
         var parameters = new
         {
-            // V15 parent-link parameters.
             ChaDbcNo = DefaultActiveDbNo,
-            ParentRecno = (object?)headerRecno,
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
             TransactionDate = EnsureUtcDate(header.TransactionDate),
             CustomerCode = header.CustomerCode,
             Amount = line.Amount,
-            Currency = header.Currency,
+            Currency = MikroCurrency.ToMikroCode(header.Currency),
             Description = line.Description ?? string.Empty,
-            DocumentType = line.DocumentType ?? string.Empty,
+            EvrakTip = CollectionEvrakTip,
             TransactionTip = CollectionTransactionTip,
-            // V16 parent-link parameter.
-            ParentUid = headerGuid ?? Guid.Empty,
+            Cinsi = DefaultCinsi,
+            NormalIade = NormalTransaction,
+            Series = header.DocumentSeries ?? string.Empty,
+            Number = header.DocumentNumber,
+            LineNo = lineNo,
+            HeaderGuid = headerGuid ?? Guid.Empty,
         };
 
-        var sql = strategy is RecnoStrategy
-            ? CariHesapHareketleriLineInsertSqlV15
-            : CariHesapHareketleriLineInsertSqlV16;
+        if (strategy is RecnoStrategy)
+        {
+            var lineRecno = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                CariHesapHareketleriLineInsertSqlV15,
+                parameters,
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
+            await ResolveSelfLinkAsync(conn, tx, lineRecno, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var sql = CariHesapHareketleriLineInsertSqlV16;
 
         await conn.ExecuteAsync(new CommandDefinition(
             sql,
@@ -420,6 +504,29 @@ VALUES (
             transaction: tx,
             cancellationToken: ct)).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Resolve a freshly inserted V15 row's self-link to its own identity. The
+    /// INSERT seeded it with a unique negative placeholder because
+    /// <c>(cha_RECid_DBCno, cha_RECid_RECno)</c> is a unique index and the
+    /// identity is not known until the INSERT returns.
+    /// </summary>
+    private static Task ResolveSelfLinkAsync(
+        SqlConnection conn, IDbTransaction tx, int recno, CancellationToken ct) =>
+        conn.ExecuteAsync(new CommandDefinition(
+            SelfLinkUpdateSqlV15,
+            new { ActiveDbNo = MikroSelfLink.ActiveDbNo, Recno = recno },
+            transaction: tx,
+            cancellationToken: ct));
+
+    /// <summary>V16 sibling of <see cref="ResolveSelfLinkAsync"/>, keyed by the generated Guid.</summary>
+    private static Task ResolveSelfLinkByGuidAsync(
+        SqlConnection conn, IDbTransaction tx, Guid rowGuid, CancellationToken ct) =>
+        conn.ExecuteAsync(new CommandDefinition(
+            SelfLinkUpdateSqlV16,
+            new { ActiveDbNo = MikroSelfLink.ActiveDbNo, RowGuid = rowGuid },
+            transaction: tx,
+            cancellationToken: ct));
 
     /// <summary>
     /// Build the <see cref="MappingRecord"/> that links the source payload to the
