@@ -58,6 +58,8 @@ services:
       Jwt__Issuer: ErpBridge.CentralApi
       Jwt__Audience: ErpBridge.Agents
       Jwt__AccessTokenMinutes: "60"
+      # Production startup requires an explicit browser origin.
+      Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-https://admin.erpbridge.example.com}
       Admin__SeedEmail: ${ADMIN_SEED_EMAIL}
       Admin__SeedPassword: ${ADMIN_SEED_PASSWORD}
       Admin__SeedDisplayName: Bootstrap Admin

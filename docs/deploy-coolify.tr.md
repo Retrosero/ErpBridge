@@ -70,7 +70,7 @@ Coolify UI'da:
 6. Coolify compose dosyasını parse edip iki servisi listeleyecek:
    `centralapi` ve `admin`. Şimdilik `centralapi`'ya tıkla.
 7. `centralapi` servis detay sayfasında:
-   - **General → Port Exposes**: `4001`.
+   - **General → Port Exposes**: `5080`.
    - **General → FQDN**: `https://api.erpbridge.example.com`.
      Coolify Let's Encrypt sertifikasını otomatik alacak.
    - **Environment Variables**:
@@ -78,6 +78,7 @@ Coolify UI'da:
      - `JWT_SIGNING_KEY` → *(Secret)* — adım 3'teki değeri yapıştır.
      - `ADMIN_SEED_EMAIL` → `ops@erpbridge.example.com`.
      - `ADMIN_SEED_PASSWORD` → *(Secret)* — adım 3'teki değeri yapıştır.
+     - `CORS_ALLOWED_ORIGIN` → `https://admin.erpbridge.example.com`.
    - **Healthchecks** — Coolify'in `/health` için default HTTP check'ini açık bırak.
 8. **Deploy**'a tıkla. Build loglarını izle:
    - `dotnet restore` + `dotnet publish` hatasız bitmeli.
@@ -96,7 +97,7 @@ Coolify UI'da:
 Coolify UI'da:
 
 1. Aynı compose dosyası zaten `admin` servisini tanımlıyor. İçine tıkla.
-2. **General → Port Exposes**: `4002` (admin paneli; centralapi 4001).
+2. **General → Port Exposes**: `4002` (admin paneli; centralapi 5080).
 3. **General → FQDN**: `https://admin.erpbridge.example.com`.
 4. **Environment Variables**:
    - `CENTRALAPI_BASE_URL` → `https://api.erpbridge.example.com`

@@ -72,7 +72,7 @@ In the Coolify UI:
 6. Coolify will parse the compose file and list two services:
    `centralapi` and `admin`. For the moment, click into `centralapi`.
 7. On the `centralapi` service detail page:
-   - **General → Port Exposes**: `4001`.
+   - **General → Port Exposes**: `5080`.
    - **General → FQDN**: `https://api.erpbridge.example.com`.
      Coolify will request the Let's Encrypt certificate automatically.
    - **Environment Variables**:
@@ -80,6 +80,7 @@ In the Coolify UI:
      - `JWT_SIGNING_KEY` â†’ *(Secret)* â€” paste from step 3.
      - `ADMIN_SEED_EMAIL` â†’ `ops@erpbridge.example.com`.
      - `ADMIN_SEED_PASSWORD` â†’ *(Secret)* â€” paste from step 3.
+     - `CORS_ALLOWED_ORIGIN` â†’ `https://admin.erpbridge.example.com`.
    - **Healthchecks** â€” leave Coolify's default HTTP check on `/health`.
 8. Click **Deploy**. Watch the build logs:
    - `dotnet restore` + `dotnet publish` should finish without errors.
@@ -99,7 +100,7 @@ In the Coolify UI:
 
 1. The same compose file already defines the `admin` service. Click into
    it.
-2. **General → Port Exposes**: `4002` (admin paneli; centralapi 4001).
+2. **General → Port Exposes**: `4002` (admin paneli; centralapi 5080).
 3. **General → FQDN**: `https://admin.erpbridge.example.com`.
 4. **Environment Variables**:
    - `CENTRALAPI_BASE_URL` → `https://api.erpbridge.example.com`
