@@ -70,7 +70,62 @@ public static class ChangeSetAndroidEndpoints
             .RequireAuthorization(Program.ApiKeyPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
+        routes.MapGet("/api/v1/android/sync/queue", ReadMobileQueueAsync)
+            .WithName("AndroidMobileSyncQueue")
+            .WithTags("AndroidMobileSync")
+            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+
         return routes;
+    }
+
+    private static async Task<IResult> ReadMobileQueueAsync(
+        [FromQuery] long? cursor,
+        [FromQuery] string? entity,
+        [FromQuery] int? size,
+        HttpContext http,
+        [FromServices] CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        if (!http.User.TryGetTenantId(out var tenantId))
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." });
+
+        if (entity is not null && entity is not ("product" or "customer" or "invoice" or "collection"))
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "INVALID_ENTITY", Message = "entity must be product, customer, invoice or collection." });
+
+        var start = cursor ?? 0;
+        var pageSize = ClampPageSize(size);
+        var query = db.MobileSyncQueue.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Sequence > start);
+
+        if (entity == "product")
+            query = query.Where(x => x.EntityType == "product");
+        else if (entity == "customer")
+            query = query.Where(x => x.EntityType == "customer");
+        else if (entity == "invoice")
+            query = query.Where(x => x.EntityType == "invoice");
+        else if (entity == "collection")
+            query = query.Where(x => x.EntityType == "collection" || x.TableName == "CARI_HESAP_HAREKETLERI");
+
+        var rows = await query.OrderBy(x => x.Sequence).Take(pageSize + 1)
+            .Select(x => new
+            {
+                sequence = x.Sequence,
+                table = x.TableName,
+                entity = x.EntityType,
+                operation = x.Operation,
+                recordKey = x.RecordKey,
+                triggerRecNo = x.TriggerRecNo,
+                payload = x.PayloadJson,
+                createdAtUtc = x.CreatedAtUtc,
+            }).ToListAsync(ct);
+
+        var hasMore = rows.Count > pageSize;
+        if (hasMore) rows.RemoveAt(rows.Count - 1);
+        var nextCursor = rows.Count == 0 ? start : rows[^1].sequence;
+        return JsonResults.Ok(new { cursor = start, nextCursor = hasMore ? nextCursor : (long?)null, items = rows });
     }
 
     private static async Task<IResult> ListTablesAsync(

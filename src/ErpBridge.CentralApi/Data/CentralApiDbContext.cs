@@ -33,6 +33,7 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<MobileTelemetryEvent> MobileTelemetryEvents => Set<MobileTelemetryEvent>();
     public DbSet<ChangeSetRecord> ChangeSets => Set<ChangeSetRecord>();
+    public DbSet<MobileSyncQueueItem> MobileSyncQueue => Set<MobileSyncQueueItem>();
 
     /// <summary>Faz 15.6 — append-only audit log of every change-set bundle the central API accepts.</summary>
     public DbSet<ChangeSetAuditEntry> ChangeSetAuditEntries => Set<ChangeSetAuditEntry>();
@@ -279,6 +280,24 @@ public sealed class CentralApiDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.LastTriggerRecNo }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.TableName, x.PulledAtUtc });
+        });
+
+        modelBuilder.Entity<MobileSyncQueueItem>(b =>
+        {
+            b.ToTable("mobile_sync_queue");
+            b.HasKey(x => x.Sequence);
+            b.Property(x => x.Sequence).ValueGeneratedOnAdd();
+            b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
+            b.Property(x => x.TableName).IsRequired().HasMaxLength(128);
+            b.Property(x => x.EntityType).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Operation).IsRequired().HasMaxLength(16);
+            b.Property(x => x.RecordKey).IsRequired().HasMaxLength(255);
+            b.Property(x => x.SourceRecordKey).HasMaxLength(255);
+            b.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.Sequence });
+            b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.SourceRecordKey });
+            b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.TriggerRecNo, x.Operation, x.RecordKey }).IsUnique();
         });
 
         // Faz 15.6: append-only audit log. The unique index on

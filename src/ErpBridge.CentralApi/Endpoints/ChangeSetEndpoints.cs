@@ -161,6 +161,8 @@ public static class ChangeSetEndpoints
                 PulledAtUtc = body.PulledAtUtc,
             });
 
+            await AddMobileQueueItems(db, tenantId, body.SourceDatabase, table, ct);
+
             // Faz 15.6: append one audit row per non-empty direction. The
             // (TenantId, IdempotencyKey, Direction) unique index makes a
             // retry of the same bundle a no-op on the audit side too.
@@ -188,6 +190,109 @@ public static class ChangeSetEndpoints
 
         return Results.Ok(new { accepted, duplicates });
     }
+
+    private static async Task AddMobileQueueItems(
+        CentralApiDbContext db,
+        Guid tenantId,
+        string sourceDatabase,
+        SyncTableChangeSet table,
+        CancellationToken ct)
+    {
+        var entity = table.Table.TabloAdi switch
+        {
+            "STOKLAR" => "product",
+            "CARI_HESAPLAR" => "customer",
+            "CARI_HESAP_HAREKETLERI" => "invoice", // shared source; collection consumers also receive it
+            "STOK_HAREKETLERI" => "invoice",
+            "ODEME_EMIRLERI" => "collection",
+            _ => null,
+        };
+        if (entity is null) return;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var row in table.New?.Rows ?? Array.Empty<IReadOnlyDictionary<string, object?>>())
+            AddRow(db, tenantId, sourceDatabase, table, entity, "upsert", row, Serialize(row), seen);
+        foreach (var row in table.Changed?.Rows ?? Array.Empty<IReadOnlyDictionary<string, object?>>())
+            AddRow(db, tenantId, sourceDatabase, table, entity, "upsert", row, Serialize(row), seen);
+        foreach (var row in table.Deleted?.Rows ?? Array.Empty<(int KayitRecNo, int TriggerRecNo)>())
+        {
+            var sourceRecordKey = row.KayitRecNo.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var recordKey = await db.MobileSyncQueue
+                .Where(x => x.TenantId == tenantId && x.SourceDatabase == sourceDatabase &&
+                            x.TableName == table.Table.TabloAdi && x.SourceRecordKey == sourceRecordKey)
+                .OrderByDescending(x => x.Sequence)
+                .Select(x => x.RecordKey)
+                .FirstOrDefaultAsync(ct) ?? sourceRecordKey;
+            if (!seen.Add($"{recordKey}:delete:{row.TriggerRecNo}")) continue;
+            var payload = JsonSerializer.Serialize(new { recordKey, sourceRecordKey, triggerRecNo = row.TriggerRecNo });
+            db.MobileSyncQueue.Add(new MobileSyncQueueItem
+            {
+                TenantId = tenantId,
+                SourceDatabase = sourceDatabase,
+                TableName = table.Table.TabloAdi,
+                EntityType = entity,
+                Operation = "delete",
+                RecordKey = recordKey,
+                SourceRecordKey = sourceRecordKey,
+                TriggerRecNo = row.TriggerRecNo,
+                PayloadJson = payload,
+            });
+        }
+    }
+
+    private static void AddRow(
+        CentralApiDbContext db,
+        Guid tenantId,
+        string sourceDatabase,
+        SyncTableChangeSet table,
+        string entity,
+        string operation,
+        IReadOnlyDictionary<string, object?> row,
+        string payload,
+        HashSet<string> seen)
+    {
+        var keyValue = row.FirstOrDefault(x => x.Key.Equals("KeyValue", StringComparison.OrdinalIgnoreCase)).Value;
+        var key = ValueAsString(keyValue)
+            ?? ValueAsString(row.FirstOrDefault(x => x.Key.EndsWith("RECno", StringComparison.OrdinalIgnoreCase)).Value);
+        var sourceRecordKey = ValueAsString(row.FirstOrDefault(x => x.Key.EndsWith("RECno", StringComparison.OrdinalIgnoreCase)).Value);
+        var triggerValue = row.FirstOrDefault(x => x.Key.Equals("TriggerRECno", StringComparison.OrdinalIgnoreCase)).Value;
+        var trigger = ValueAsLong(triggerValue);
+        if (string.IsNullOrWhiteSpace(key) || trigger <= 0) return;
+        if (!seen.Add($"{key}:{operation}:{trigger}")) return;
+
+        db.MobileSyncQueue.Add(new MobileSyncQueueItem
+        {
+            TenantId = tenantId,
+            SourceDatabase = sourceDatabase,
+            TableName = table.Table.TabloAdi,
+            EntityType = entity,
+            Operation = operation,
+            RecordKey = key,
+            SourceRecordKey = sourceRecordKey,
+            TriggerRecNo = trigger,
+            PayloadJson = payload,
+        });
+    }
+
+    private static string Serialize(IReadOnlyDictionary<string, object?> row) =>
+        JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static string? ValueAsString(object? value) => value switch
+    {
+        null => null,
+        JsonElement element when element.ValueKind == JsonValueKind.Null => null,
+        JsonElement element => element.ToString(),
+        _ => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    private static long ValueAsLong(object? value) => value switch
+    {
+        JsonElement element when element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out var number) => number,
+        JsonElement element when long.TryParse(element.ToString(), out var parsed) => parsed,
+        null => 0,
+        _ when long.TryParse(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), out var parsed) => parsed,
+        _ => 0,
+    };
 
     private static string ComputeIdempotencyKeyForBundle(SyncChangeSet body, HttpContext http)
     {

@@ -184,7 +184,28 @@ suspend fun pullChanges(table: String) {
 - Audit log retention `AuditRetentionOptions.RetentionDays` ile
   yapılandırılır (varsayılan 365 gün).
 
-## 6. Faz 15 kapsamı
+## 6. Fatura ve tahsilat outbound kuyruğu
+
+ERP'den gelen küçük fatura/tahsilat değişiklikleri lisans sunucusunda
+`mobile_sync_queue` tablosunda tutulur. Bu tablo `jobs` tablosundan ayrıdır:
+`jobs` lisans sunucusu → Windows Agent yazma kuyruğudur; `mobile_sync_queue`
+ERP → Android olay günlüğüdür.
+
+```http
+GET /api/v1/android/sync/queue?entity=invoice&cursor=0&size=200
+Authorization: Bearer <mobile-api-key>
+X-Tenant-Id: <tenant-guid>
+```
+
+`entity=product` ürün kartlarını, `entity=customer` cari kartlarını,
+`entity=invoice` için `CARI_HESAP_HAREKETLERI` ve `STOK_HAREKETLERI`,
+`entity=collection` için `CARI_HESAP_HAREKETLERI` ve `ODEME_EMIRLERI`
+olaylarını döner. Her olay `upsert` veya `delete` operasyonudur. Android son
+`sequence` değerini cursor olarak saklar; aynı cursor ile tekrar çekmek
+güvenlidir. Legacy silmelerde `sourceRecordKey` ERP RECno'sunu da saklar;
+merkezi API son bilinen ürün/cari anahtarını bu eşleşmeyle bulur.
+
+## 7. Faz 15 kapsamı
 
 - ✅ `_ERPB_SYNC` + `_ERPB_SYNC_DEL` FORA benzeri iki tablo (DDL
   sabitleri `TriggerSchema.cs` içinde).

@@ -150,16 +150,17 @@ public static class ServiceCollectionExtensions
         // Disabled-by-default means existing agents keep using the
         // _ERPB_SENKRONIZASYON pipeline until the operator opts in.
         services.TryAddSingleton<ISqlCommandRunner, DapperSqlCommandRunner>();
-        // Bind through an Action delegate so the Mikro project does not
-        // need a direct reference to Microsoft.Extensions.Options
-        // .ConfigurationExtensions. The section lookup happens once at
-        // composition time; the resulting values flow through IOptions
-        // as usual. Mirrors the existing patterns in the other
-        // ErpBridge.* projects (Abstractions, Core) which also avoid the
-        // ConfigurationExtensions package to keep the dependency graph
-        // lean.
+        // Keep this binding explicit: the project references configuration
+        // abstractions, but must also build when Binder extension assets are
+        // unavailable in a locked/offline restore.
         var installerOptionsSection = configuration.GetSection(NewSchemaTriggerInstallerOptions.ConfigurationSection);
-        services.Configure<NewSchemaTriggerInstallerOptions>(opts => installerOptionsSection.Bind(opts));
+        services.Configure<NewSchemaTriggerInstallerOptions>(opts =>
+        {
+            if (bool.TryParse(installerOptionsSection["Enabled"], out var enabled)) opts.Enabled = enabled;
+            if (bool.TryParse(installerOptionsSection["DropOnUninstall"], out var drop)) opts.DropOnUninstall = drop;
+            opts.TrackedTables = installerOptionsSection.GetSection("TrackedTables")
+                .GetChildren().Select(x => x.Value).Where(x => !string.IsNullOrWhiteSpace(x)).ToArray()!;
+        });
         services.AddSingleton<NewSchemaTriggerInstaller>(sp =>
         {
             var opts = sp.GetRequiredService<IOptions<NewSchemaTriggerInstallerOptions>>().Value;
