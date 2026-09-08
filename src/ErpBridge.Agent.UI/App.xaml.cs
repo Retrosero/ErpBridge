@@ -441,13 +441,21 @@ public partial class App : Application
             .AddEnvironmentVariables(prefix: "ERPBridge_")
             .Build();
 
+        // Mutlak yol: WPF'i farklı working directory'den başlatsa bile
+        // log dosyası her zaman EXE'nin yanındaki "logs/" dizinine yazılır.
+        var logDir = System.IO.Path.Combine(AppContext.BaseDirectory, "logs");
+        System.IO.Directory.CreateDirectory(logDir);
+        var logPath = System.IO.Path.Combine(logDir, "ui-.log");
+
         var serilog = new LoggerConfiguration()
             .ReadFrom.Configuration(bootstrapConfig)
             .Enrich.FromLogContext()
             // shared:false + flushToDiskInterval:1s => her mesaj anında diske yazılır.
             // Debug için kritik — yoksa EXE hâlâ açıkken log dosyası boş kalır.
+            // Mutlak yol: WPF'i farklı working directory'den başlatsa bile EXE
+            // yanındaki "logs/" dizinine yazar.
             .WriteTo.File(
-                "logs/ui-.log",
+                logPath,
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 7,
                 shared: false,
