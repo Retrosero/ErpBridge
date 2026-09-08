@@ -61,21 +61,20 @@ public sealed class MikroStockCardWriter
     /// self-link UPDATE that runs inside the same transaction.
     /// </summary>
     internal const string StoklarInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO STOKLAR (
     sto_RECid_DBCno, sto_RECid_RECno,
-    sto_firmano, sto_sube_no,
-    sto_kod, sto_isim,
-    sto_birim1_ad, sto_kdv_orani, sto_grup_no,
-    sto_satisfiyat1, sto_satisfiyat2, sto_satisfiyat3,
-    sto_anadepo_no
+    sto_kod, sto_isim, sto_kisa_ismi,
+    sto_birim1_ad, sto_birim1_katsayi,
+    sto_perakende_vergi, sto_toptan_vergi,
+    sto_anagrup_kod, sto_cins
 )
 VALUES (
-    @ActiveDbNo, @StoRecno,
-    @FirmNo, @BranchNo,
-    @StockCode, @StockName,
-    @Unit, @VatRate, @GroupCode,
-    @SalePrice1, @SalePrice2, @SalePrice3,
-    @WarehouseNo
+    @ActiveDbNo, @SelfLinkSeed,
+    @StockCode, @StockName, @ShortName,
+    @Unit, 1,
+    @VatRate, @VatRate,
+    @GroupCode, @Cins
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -85,21 +84,22 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// because the application chose the Guid before the INSERT.
     /// </summary>
     internal const string StoklarInsertSqlV16 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO STOKLAR (
     sto_Guid,
-    sto_firmano, sto_sube_no,
-    sto_kod, sto_isim,
-    sto_birim1_ad, sto_kdv_orani, sto_grup_no,
-    sto_satisfiyat1, sto_satisfiyat2, sto_satisfiyat3,
-    sto_anadepo_no
+    sto_RECid_DBCno, sto_RECid_RECno,
+    sto_kod, sto_isim, sto_kisa_ismi,
+    sto_birim1_ad, sto_birim1_katsayi,
+    sto_perakende_vergi, sto_toptan_vergi,
+    sto_anagrup_kod, sto_cins
 )
 VALUES (
     @HeaderGuid,
-    @FirmNo, @BranchNo,
-    @StockCode, @StockName,
-    @Unit, @VatRate, @GroupCode,
-    @SalePrice1, @SalePrice2, @SalePrice3,
-    @WarehouseNo
+    @ActiveDbNo, @SelfLinkSeed,
+    @StockCode, @StockName, @ShortName,
+    @Unit, 1,
+    @VatRate, @VatRate,
+    @GroupCode, @Cins
 );";
 
     /// <summary>
@@ -144,15 +144,14 @@ WHERE sto_kod = @StockCode
     /// stock card through its <c>sto_RECno</c>.
     /// </summary>
     internal const string BarkodInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO BARKOD_TANIMLARI (
     bar_RECid_DBCno, bar_RECid_RECno,
-    bar_firmano, bar_sube_no,
-    bar_kodu, bar_stokkodu, bar_stok_RECid_DBCno, bar_stok_RECid_RECno
+    bar_kodu, bar_stokkodu, bar_birimpntr, bar_barkodtipi
 )
 VALUES (
-    @ActiveDbNo, @BarRecno,
-    @FirmNo, @BranchNo,
-    @Barcode, @StockCode, @ActiveDbNo, @StoRecno
+    @ActiveDbNo, @SelfLinkSeed,
+    @Barcode, @StockCode, 1, 0
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -161,13 +160,16 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// <c>bar_stok_uid</c> Guid.
     /// </summary>
     internal const string BarkodInsertSqlV16 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO BARKOD_TANIMLARI (
-    bar_Guid, bar_firmano, bar_sube_no,
-    bar_kodu, bar_stokkodu, bar_stok_uid
+    bar_Guid,
+    bar_RECid_DBCno, bar_RECid_RECno,
+    bar_kodu, bar_stokkodu, bar_birimpntr, bar_barkodtipi
 )
 VALUES (
-    @BarGuid, @FirmNo, @BranchNo,
-    @Barcode, @StockCode, @StoUid
+    @BarGuid,
+    @ActiveDbNo, @SelfLinkSeed,
+    @Barcode, @StockCode, 1, 0
 );";
 
     /// <summary>
@@ -178,6 +180,9 @@ VALUES (
     /// correct value.
     /// </summary>
     internal const short DefaultActiveDbNo = 0;
+
+    /// <summary><c>sto_cins</c> — 0 is a normal stock card (not hizmet/depozito).</summary>
+    internal const byte StockCardCins = 0;
 
     public MikroStockCardWriter(
         MikroConnectionFactory connectionFactory,
@@ -387,13 +392,11 @@ VALUES (
                 {
                     var barcodeParameters = new
                     {
-                        ActiveDbNo = DefaultActiveDbNo,
                         BarRecno = 0,
                         FirmNo = connectionSettings.CompanyNo,
                         BranchNo = connectionSettings.BranchNo,
                         Barcode = req.Barcode,
                         StockCode = req.StockCode,
-                        StoRecno = recno,
                     };
 
                     await conn.ExecuteAsync(new CommandDefinition(
@@ -470,6 +473,10 @@ VALUES (
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
             StockCode = req.StockCode,
+            ShortName = (req.StockName ?? string.Empty).Length <= 40
+                ? req.StockName ?? string.Empty
+                : req.StockName![..40],
+            Cins = StockCardCins,
             StockName = req.StockName,
             Unit = req.Unit,
             VatRate = req.VatRate,
