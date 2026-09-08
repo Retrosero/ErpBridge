@@ -96,6 +96,11 @@ public static class ServiceCollectionExtensions
                 flushToDiskInterval: TimeSpan.FromSeconds(1))
             .CreateLogger();
 
+        // Log.Logger'ı set et — DI factory'si kurulmuş olsa bile, statik
+        // Log.* çağrıları için Log.Logger gerekli. Set etmeden dosya sink
+        // kurulmuş olsa bile hiçbir mesaj yazılmaz.
+        Log.Logger = logger;
+
         var factory = LoggerFactory.Create(b => b.AddSerilog(logger, dispose: true));
         return factory;
     }

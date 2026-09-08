@@ -470,6 +470,11 @@ public partial class App : Application
                 flushToDiskInterval: TimeSpan.FromSeconds(1))
             .CreateLogger();
 
+        // Log.Logger'ı set etmeden dosya sink kurulmuş olsa bile, uygulama
+        // genelinde Serilog API'si (Log.*) sessiz kalır. Bunu set ederek
+        // hem DI factory hem de static Log.* çağrıları aynı dosyaya yazar.
+        Log.Logger = serilog;
+
         return new LoggerFactory().AddSerilog(serilog).CreateLogger("App.Bootstrap");
     }
 
