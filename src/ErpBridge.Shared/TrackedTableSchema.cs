@@ -400,9 +400,17 @@ public static class TrackedTableCatalog
             RecnoField: "skr_RECno",
             Fields: new[] { "skr_RECno", "skr_kod", "skr_ismi" });
 
-        // STOK_KATEGORILERI — ID 8 (legacy shared ID with SEKTORLERI in reference; reuses RECno pattern)
+        // STOK_KATEGORILERI — ID 99992 (ErpBridge-assigned).
+        //
+        // This table previously shared TabloID 8 with STOK_SEKTORLERI, copied
+        // from the reference app. That is unsound for the shadow-table change
+        // log: TabloID is the only discriminator in _ERPB_SYNC, so both tables'
+        // triggers wrote into one bucket and the reader joined each table's
+        // rows against the *other* table's key column — silently dropping
+        // changes on an inner-join miss, or matching a wrong row when the two
+        // RECno values happened to collide. IDs must be unique within a catalog.
         yield return new TrackedTableSchema(
-            TabloID: 8,
+            TabloID: 99992,
             TabloAdi: "STOK_KATEGORILERI",
             RecnoField: "ktg_RECno",
             Fields: new[] { "ktg_RECno", "ktg_kod", "ktg_ismi" });
@@ -830,9 +838,12 @@ public static class TrackedTableCatalog
             RecnoField: "ek_RECno",
             Fields: new[] { "ek_RECno", "ek_kod", "ek_ismi" });
 
-        // BEDEN_HAREKETLERI — ID 147
+        // BEDEN_HAREKETLERI — ID 99993 (ErpBridge-assigned).
+        // Previously collided with BAKIM_HAREKETLERI on TabloID 147 — see the
+        // STOK_KATEGORILERI note above for why a shared id corrupts the
+        // shadow-table change log.
         yield return new TrackedTableSchema(
-            TabloID: 147,
+            TabloID: 99993,
             TabloAdi: "BEDEN_HAREKETLERI",
             RecnoField: "bdh_RECno",
             Fields: new[] { "bdh_RECno", "bdh_stok_kod", "bdh_beden_kodu" });

@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions.ChangeLog;
 using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Sync;
@@ -11,6 +12,20 @@ namespace ErpBridge.Erp.Abstractions;
 /// </summary>
 public interface IErpAdapter
 {
+    /// <summary>
+    /// How this adapter can report changes. The agent picks its sync strategy
+    /// from this value and must never assume a mechanism is available.
+    /// Defaults to <see cref="ChangeDetectionCapability.FullSnapshotOnly"/>.
+    /// </summary>
+    ChangeDetectionCapability ChangeDetection => ChangeDetectionCapability.FullSnapshotOnly;
+
+    /// <summary>
+    /// The adapter's change-log source, or <c>null</c> when
+    /// <see cref="ChangeDetection"/> is not
+    /// <see cref="ChangeDetectionCapability.ShadowTableChangeLog"/>.
+    /// </summary>
+    IErpChangeLogSource? ChangeLog => null;
+
     /// <summary>Open a short-lived connection to validate credentials and reachability.</summary>
     Task<ErpConnectionTestResult> TestConnectionAsync(CancellationToken ct = default);
 

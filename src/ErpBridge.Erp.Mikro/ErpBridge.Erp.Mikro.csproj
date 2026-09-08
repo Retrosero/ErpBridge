@@ -31,6 +31,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
     <ProjectReference Include="..\ErpBridge.Erp.Abstractions\ErpBridge.Erp.Abstractions.csproj" />
+    <ProjectReference Include="..\ErpBridge.Erp.Sql\ErpBridge.Erp.Sql.csproj" />
     <ProjectReference Include="..\ErpBridge.Core\ErpBridge.Core.csproj" />
   </ItemGroup>
 

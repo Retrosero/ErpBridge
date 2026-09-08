@@ -146,31 +146,60 @@ Amaç: 7 evrak tipinin tamamını soyutlama üzerinden akıtmak.
 Amaç: `_ERPB_SYNC` trigger/shadow mantığını Mikro'dan söküp Logo/Netsis'in de
 konfigüre edip kullanabileceği ortak bir SQL Server katmanına taşımak.
 
-### 18.1 — Sözleşmeler (Abstractions)
-- [ ] `ChangeDetectionCapability` enum: `FullSnapshotOnly | TimestampDelta | ShadowTableChangeLog`.
-- [ ] `ErpSyncCursor` — **opak** token (`string Value`; içi adaptöre ait,
-      Mikro'da `{"tableKey": lastTriggerRecno}` JSON'u).
-- [ ] `ErpChangeRow(ChangeOp Op, string TableKey, string KeyValue, IReadOnlyDictionary<string,object?> Columns)`
-      — `KeyValue` tagged string (`recno:123`, `guid:...`, `logicalref:...`).
-- [ ] `ErpChangeBatch(IReadOnlyList<ErpChangeRow> Rows, ErpSyncCursor CursorAfter, bool MoreAvailable)`.
-- [ ] `IErpChangeLogSource`:
-      `Task<bool> IsInstalledAsync(ct)`, `Task InstallAsync(ct)`,
-      `Task<ErpChangeBatch> ReadChangesAsync(ErpSyncCursor cursor, int maxRows, ct)`.
-- [ ] `IErpAdapter`: `ReadChangeSetAsync(Dictionary<int,int>...)` **kaldır**;
-      yerine `ChangeDetectionCapability ChangeDetection { get; }` +
-      `IErpChangeLogSource? ChangeLog { get; }` (null = desteklemiyor).
+### 18.1 — Sözleşmeler (Abstractions) ✅
+- [x] `ChangeDetectionCapability` enum: `FullSnapshotOnly | TimestampDelta | ShadowTableChangeLog`.
+- [x] `ErpSyncCursor` — **opak** token; `Start` sabiti + log-güvenli `ToString()`.
+- [x] `ErpChangeOp` + `ErpChangeRow(Op, TableKey, KeyValue, Columns)` — `KeyValue`
+      tagged string (`recno:123`, `guid:...`, `logicalref:...`).
+- [x] `ErpChangeBatch(Rows, CursorAfter, MoreAvailable)` + `Empty(cursor)`.
+- [x] `ErpTrackedTable` + `IErpTrackedTableCatalog` + `IErpKeyProjection` +
+      `ErpRowKeyKind`.
+- [x] `IErpChangeLogSource` (`Capability`, `Catalog`, `IsInstalledAsync`,
+      `InstallAsync`, `ReadChangesAsync`) + `IErpSyncCursorStore`.
+- [x] `IErpAdapter`: `ChangeDetection` + `ChangeLog` **default interface member**
+      olarak eklendi (additive — mevcut implementasyonlar kırılmadı).
+- [~] `IErpAdapter.ReadChangeSetAsync(Dictionary<int,int>...)` **henüz kaldırılmadı** —
+      legacy yol 18.5'te sökülecek, şu an yeni yolla yan yana duruyor.
 
-### 18.2 — Ortak SQL Server change-log motoru
-Yeni proje: **`ErpBridge.Erp.Sql`** (referans: `Shared`, `Core`, `Erp.Abstractions`,
-`Microsoft.Data.SqlClient`, `Dapper`).
-- [ ] `IErpTrackedTableCatalog` — `IReadOnlyList<ErpTrackedTable>` (tablo adı,
-      şema, PK kolon(lar)ı, soft-delete filtresi, senkronize edilecek alanlar).
-- [ ] `IErpKeyProjection` — PK satır değeri → tagged `KeyValue` string.
-- [ ] `SqlServerShadowTableChangeLog : IErpChangeLogSource` — bugünkü
-      `TriggerSchema` + `TriggerInstaller` + `TriggerChangeSetReader` mantığının
-      ERP-bağımsız hâli. Shadow tablo adları / şema / prefix parametrik.
-- [ ] `NewSchemaTriggerInstaller` ve `TriggerInstaller` bu projeye taşınır;
-      DDL şablonlarındaki Mikro tablo adları katalogdan gelir.
+### 18.2 — Ortak SQL Server change-log motoru ✅
+Yeni proje: **`ErpBridge.Erp.Sql`** (referans: `Shared`, `Erp.Abstractions`,
+`Microsoft.Data.SqlClient`, `Dapper`). Vendor bilgisi **sıfır**.
+- [x] `ShadowTableOptions` — shadow tablo/trigger adları, şema, farklı DB prefix'i
+      parametrik → iki ERP aynı sunucuda çakışmadan kurulabilir.
+- [x] `ShadowTableDdl` — `TriggerSchema`'nın ERP-bağımsız hâli: `CreateSyncTable`,
+      `CreateSyncDelTable`, `CreateSyncTrigger`, `CreateSyncDelTrigger`,
+      `BuildKeyExpression`, `DropTriggers`, kurulum durumu sorguları.
+- [x] `SqlIdentifier` — interpolate edilen tek girdi türü (tablo/kolon adı) için
+      savunma katmanı; her değer zaten Dapper parametresi.
+- [x] `TaggedKeyProjection` (`recno` / `guid` / `logicalref`) + `KeyKindProjection`
+      (tablo bazında Guid↔Int seçer — Mikro V15/V16 karışık kataloğu bu sayede çalışır).
+- [x] `ShadowCursor` — opak token'ın JSON kodlaması; **monotonik** (geri sarmaz),
+      bozuk token `Start`'a çözülür (crash loop yerine yeniden senkron).
+- [x] `SqlServerShadowTableChangeLog : IErpChangeLogSource` — install / durum /
+      sayfalı okuma; delete'ler ayrı shadow'dan, upsert'ler kaynak tabloya join'le.
+- [x] 43 birim testi (`ErpBridge.Erp.Sql.Tests`).
+- [~] `NewSchemaTriggerInstaller` / `TriggerInstaller` taşınması 18.5'e ertelendi
+      (legacy yol hâlâ canlı).
+
+### 18.6a — Mikro adaptörünü yeni motora bağlama ✅
+- [x] `MikroTrackedTableCatalog` — 49 tabloyu `Shared.TrackedTableCatalog`'tan
+      `ErpTrackedTable`'a projekte eder (`TabloID`/isim/alanlar birebir korunur).
+- [x] `MikroAdapter.ChangeDetection => ShadowTableChangeLog`,
+      `MikroAdapter.ChangeLog => SqlServerShadowTableChangeLog(Mikro kataloğu,
+      recno/guid projeksiyonu)` — lazy, bağlantı dizesi her çağrıda tazeleniyor.
+- [x] 9 projeksiyon testi (kayıpsızlık + benzersizlik).
+
+> ### 🐞 Faz 18'in ortaya çıkardığı gerçek hata (düzeltildi)
+> `TrackedTableCatalog`'ta **iki `TabloID` çakışması** vardı:
+> `8` → `STOK_SEKTORLERI` + `STOK_KATEGORILERI`, `147` → `BAKIM_HAREKETLERI` + `BEDEN_HAREKETLERI`.
+> `TabloID`, `_ERPB_SYNC` satırındaki **tek ayırt edici alan**; okuyucu
+> `WHERE TabloID = @id` ile filtreleyip tek bir kaynak tabloya join atıyor.
+> Çakışma yüzünden iki tablonun trigger'ı aynı kovaya yazıyor, okuyucu da her
+> tablonun satırlarını **diğerinin anahtar kolonuna** join'liyordu — inner-join
+> ıskası olduğunda değişiklikler sessizce kayboluyor, RECno'lar çakıştığında
+> **yanlış satır** eşleşiyordu. İki tabloya ErpBridge-atamalı benzersiz ID verildi
+> (`99992`, `99993`) ve `Shared.Tests`'e kalıcı regresyon testi eklendi.
+> Etki: bu iki tablo bir kez baştan senkron olur (test aşaması — kabul edilebilir).
 
 ### 18.3 — `Shared` temizliği
 - [ ] `Shared/TrackedTableSchema.cs` (49 Mikro tablosu) → **`Erp.Mikro/ChangeLog/MikroTrackedTableCatalog.cs`**.

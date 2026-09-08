@@ -1,10 +1,13 @@
 using ErpBridge.Erp.Abstractions;
+using ErpBridge.Erp.Abstractions.ChangeLog;
 using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
+using ErpBridge.Erp.Mikro.ChangeLog;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
+using ErpBridge.Erp.Sql;
 using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
@@ -33,9 +36,26 @@ public sealed class MikroAdapter : IErpAdapter
     private readonly IMikroDbReader _dbReader;
     private readonly MikroConnectionFactory _connectionFactory;
     private readonly IServiceProvider _serviceProvider;
+    private readonly Lazy<IErpChangeLogSource> _changeLog;
 
     /// <summary>Settings supplied at construction time — the adapter is bound to one DB.</summary>
     public MikroConnectionSettings ConnectionSettings { get; }
+
+    /// <summary>
+    /// Mikro captures INSERT / UPDATE / DELETE through its <c>_ERPB_SYNC</c> +
+    /// <c>_ERPB_SYNC_DEL</c> shadow tables, so it offers the strongest mode.
+    /// The timestamp path (<see cref="ReadBootstrapChangesAsync"/> over
+    /// <c>*_lastup_date</c>) remains available as a fallback but cannot see
+    /// deletes, which is why it is not what the adapter advertises.
+    /// </summary>
+    public ChangeDetectionCapability ChangeDetection => ChangeDetectionCapability.ShadowTableChangeLog;
+
+    /// <summary>
+    /// Vendor-neutral change log: the shared <see cref="SqlServerShadowTableChangeLog"/>
+    /// engine, configured with Mikro's 49-table catalog and its recno/guid key
+    /// projection. Built lazily so constructing an adapter never touches SQL.
+    /// </summary>
+    public IErpChangeLogSource? ChangeLog => _changeLog.Value;
 
     /// <summary>
     /// Build an adapter; the connection settings identify the Mikro database.
@@ -74,6 +94,16 @@ public sealed class MikroAdapter : IErpAdapter
         _dbReader = dbReader ?? throw new ArgumentNullException(nameof(dbReader));
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+
+        // The resolver runs per call so a credential change saved in the WPF
+        // settings window is picked up without rebuilding the adapter graph.
+        _changeLog = new Lazy<IErpChangeLogSource>(() => new SqlServerShadowTableChangeLog(
+            catalog: MikroTrackedTableCatalog.Instance,
+            connectionStringResolver: () => _connectionFactory.BuildConnectionString(ConnectionSettings),
+            projection: KeyKindProjection.RecnoOrGuid,
+            options: ShadowTableOptions.Default,
+            logger: (_serviceProvider.GetService(typeof(ILogger<SqlServerShadowTableChangeLog>))
+                     as ILogger<SqlServerShadowTableChangeLog>)));
 
         // Push the active settings into the factory so collaborators that don't
         // carry a MikroConnectionSettings reference (notably MikroDbReader) can
