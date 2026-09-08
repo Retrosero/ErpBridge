@@ -33,23 +33,25 @@
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                 <Border Background="{Binding StatusBadgeBrush}"
-                        CornerRadius="3"
+                        CornerRadius="10"
                         Padding="10,3"
                         Margin="0,0,12,0"
                         ToolTip="Senkronizasyon gecikmesi / sağlık durumu">
                     <TextBlock Text="{Binding StatusBadgeText}"
                                Foreground="White"
                                FontWeight="SemiBold"
-                               FontSize="13" />
+                               FontSize="12" />
                 </Border>
                 <Button Content="🔄 Senkronize Et"
                         Command="{Binding RunSyncDeltaCommand}"
+                        Style="{StaticResource PrimaryButtonStyle}"
                         MinWidth="160"
                         Margin="0,0,8,0"
                         Padding="10,4"
                         ToolTip="Son sync'ten bu yana değişen INSERT/UPDATE/DELETE satırlarını sunucuya gönderir. Tüm veriyi gönderen 'Şimdi Bootstrap Et'in aksine sadece değişenleri aktarır." />
                 <Button Content="🚀 Şimdi Bootstrap Et"
                         Command="{Binding RunBootstrapCommand}"
+                        Style="{StaticResource TintedButtonStyle}"
                         MinWidth="180"
                         Margin="0,0,8,0"
                         Padding="10,4"
@@ -66,8 +68,8 @@
                 Background="{DynamicResource CardBackgroundBrush}"
                 BorderBrush="{DynamicResource DividerBrush}"
                 BorderThickness="1"
-                CornerRadius="6"
-                Padding="12,8"
+                CornerRadius="14"
+                Padding="14,12"
                 Margin="0,0,0,16">
             <StackPanel>
                 <TextBlock Text="Her Tablo (yavaş tunnel için)"
@@ -115,7 +117,7 @@
                     Background="{DynamicResource CardBackgroundBrush}"
                     BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="1"
-                    CornerRadius="6"
+                    CornerRadius="14"
                     Padding="20">
                 <StackPanel>
                     <TextBlock Text="Son Senkronizasyon"
@@ -144,7 +146,7 @@
                     <Border Background="{DynamicResource WarningLightBrush}"
                             BorderBrush="{DynamicResource WarningBrush}"
                             BorderThickness="1"
-                            CornerRadius="4"
+                            CornerRadius="8"
                             Padding="10,8"
                             Margin="0,16,0,0"
                             Visibility="{Binding LastErrorDisplay, Converter={StaticResource StringToVisibilityConverter}}">
@@ -163,7 +165,7 @@
                     Background="{DynamicResource CardBackgroundBrush}"
                     BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="1"
-                    CornerRadius="6"
+                    CornerRadius="14"
                     Padding="20">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -197,7 +199,7 @@
                                 Padding="10,8"
                                 BorderBrush="{DynamicResource DividerBrush}"
                                 BorderThickness="1"
-                                CornerRadius="4"
+                                CornerRadius="8"
                                 Background="{DynamicResource StatusBackgroundBrush}"
                                 Visibility="{Binding HasMikroCountResult, Converter={StaticResource BoolToVisibilityConverter}}">
                             <TextBlock Text="{Binding MikroCountTimeDisplay, StringFormat='Son kontrol: {0}'}"
@@ -304,7 +306,7 @@
                         </Grid>
 
                         <Border Background="{Binding LastRunStatusBrush}"
-                                CornerRadius="3"
+                                CornerRadius="10"
                                 Padding="8,3"
                                 Margin="0,12,0,0"
                                 HorizontalAlignment="Left">

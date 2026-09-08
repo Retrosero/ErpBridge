@@ -129,20 +129,30 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>True once the operator has seen the "still running in the tray" hint, this run.</summary>
+    private bool _minimizeHintShown;
+
     /// <summary>
-    /// Window state changes. The previous "minimize-to-tray" implementation
-    /// called <see cref="Window.Hide"/> on every minimize, which made the
-    /// window completely invisible to the operator — Windows 11 hides tray
-    /// icons by default, so the live-clock status bar (and everything else)
-    /// disappeared with the window. The new behaviour is a normal minimize:
-    /// the window collapses to the taskbar, the status bar with the clock
-    /// stays alive, and the operator can see the time on the taskbar tooltip
-    /// or on the live status bar after a single click.
+    /// Window state changes. Minimizing hides the window entirely and
+    /// leaves it running from the system-tray icon (built in
+    /// <c>App.BuildTrayIcon</c>) — double-clicking the tray icon, or its
+    /// "Pencereyi Göster" menu item, brings the window back exactly where
+    /// it was. The live clock, heartbeat and sync services all keep running
+    /// on the DI-resolved singletons regardless of window visibility, so
+    /// nothing is paused while the window is hidden.
     /// </summary>
     private void MainWindow_StateChanged(object sender, System.EventArgs e)
     {
-        // No-op: WPF's default minimize behaviour is the right one. The tray
-        // icon remains as a "really hide" alternative (right-click → Pencereyi
-        // Göster). The X button still closes the process, as before.
+        if (WindowState != WindowState.Minimized) return;
+
+        // Restore to Normal before hiding — otherwise Show() later would
+        // "restore" into a minimized, invisible window instead of popping
+        // back up at its previous size/position.
+        WindowState = WindowState.Normal;
+        Hide();
+
+        if (_minimizeHintShown) return;
+        _minimizeHintShown = true;
+        App.NotifyMinimizedToTray();
     }
 }

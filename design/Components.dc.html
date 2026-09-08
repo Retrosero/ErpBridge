@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body {
+      margin: 0;
+      background: #E4E4E7;
+      font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      color: #1D1D1F;
+      -webkit-font-smoothing: antialiased;
+    }
+    * { box-sizing: border-box; }
+    .sec { font-size: 11px; font-weight: 640; letter-spacing: 0.05em; text-transform: uppercase; color: #8E8E93; margin: 0 0 10px 0; }
+    .card { background: #fff; border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); padding: 18px; margin-bottom: 14px; }
+    .swatch { display: flex; align-items: center; gap: 10px; }
+    .chip { width: 34px; height: 34px; border-radius: 9px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06); flex-shrink: 0; }
+    .cname { font-size: 12px; font-weight: 590; color: #1D1D1F; }
+    .chex { font-size: 11px; color: #86868B; font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 620px; margin: 20px auto; background: #F5F5F7; border-radius: 12px; overflow: hidden; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 20px 60px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);">
+
+  <div style="padding: 22px;">
+    <div style="font-size: 19px; font-weight: 700; letter-spacing: -0.02em;">Tasarım Sistemi</div>
+    <div style="font-size: 12.5px; color: #86868B; margin-top: 2px; margin-bottom: 18px;">ErpBridge Agent · minimalist / Apple stili bileşenler</div>
+
+    <!-- Colors -->
+    <div class="card">
+      <div class="sec">Renk Paleti</div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+        <div class="swatch"><div class="chip" style="background: #0A6CFF;"></div><div><div class="cname">Accent</div><div class="chex">#0A6CFF</div></div></div>
+        <div class="swatch"><div class="chip" style="background: linear-gradient(135deg, #1E40AF, #14B8A6);"></div><div><div class="cname">Marka (ikon)</div><div class="chex">#1E40AF → #14B8A6</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #1D1D1F;"></div><div><div class="cname">Metin</div><div class="chex">#1D1D1F</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #6E6E73;"></div><div><div class="cname">İkincil metin</div><div class="chex">#6E6E73</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #F5F5F7;"></div><div><div class="cname">Pencere zemini</div><div class="chex">#F5F5F7</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #E5E5EA;"></div><div><div class="cname">Ayraç</div><div class="chex">#E5E5EA</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #34C759;"></div><div><div class="cname">Başarılı</div><div class="chex">#34C759</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #FF9F0A;"></div><div><div class="cname">Uyarı</div><div class="chex">#FF9F0A</div></div></div>
+        <div class="swatch"><div class="chip" style="background: #FF3B30;"></div><div><div class="cname">Hata</div><div class="chex">#FF3B30</div></div></div>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="card">
+      <div class="sec">Butonlar &amp; Kontroller</div>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px;">
+        <button style="height: 32px; padding: 0 16px; border: none; border-radius: 8px; background: #0A6CFF; color: #fff; font-size: 13px; font-weight: 590; font-family: inherit; box-shadow: 0 1px 2px rgba(10,108,255,0.35);">Birincil</button>
+        <button style="height: 32px; padding: 0 14px; border: none; border-radius: 8px; background: #EAF1FF; color: #0A6CFF; font-size: 13px; font-weight: 590; font-family: inherit;">Tonlu</button>
+        <button style="height: 32px; padding: 0 14px; border: 1px solid #E1E1E6; border-radius: 8px; background: #fff; color: #1D1D1F; font-size: 13px; font-weight: 560; font-family: inherit;">İkincil</button>
+        <button style="width: 32px; height: 32px; border: 1px solid #E1E1E6; border-radius: 8px; background: #fff; display: inline-flex; align-items: center; justify-content: center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 24px;">
+        <!-- segmented -->
+        <div style="display: inline-flex; background: #E9E9EB; border-radius: 9px; padding: 2px; gap: 2px;">
+          <div style="padding: 5px 16px; font-size: 13px; font-weight: 590; color: #1D1D1F; background: #fff; border-radius: 7px; box-shadow: 0 1px 2px rgba(0,0,0,0.12);">Seçili</div>
+          <div style="padding: 5px 16px; font-size: 13px; font-weight: 500; color: #6E6E73; border-radius: 7px;">Pasif</div>
+        </div>
+        <!-- toggle -->
+        <span style="width: 42px; height: 25px; border-radius: 999px; background: #34C759; position: relative;"><span style="position: absolute; top: 2px; left: 19px; width: 21px; height: 21px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></span></span>
+        <span style="width: 42px; height: 25px; border-radius: 999px; background: #E1E1E6; position: relative;"><span style="position: absolute; top: 2px; left: 2px; width: 21px; height: 21px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25);"></span></span>
+      </div>
+    </div>
+
+    <!-- Inputs + badges -->
+    <div class="card" style="margin-bottom: 0;">
+      <div class="sec">Alanlar &amp; Rozetler</div>
+      <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+        <div style="flex: 1; height: 30px; border: 1px solid #E1E1E6; border-radius: 8px; background: #FBFBFD; padding: 0 10px; font-size: 13px; color: #1D1D1F; display: flex; align-items: center;">Girdi alanı</div>
+        <div style="flex: 1; height: 30px; border: 1px solid #E1E1E6; border-radius: 8px; background: #F5F5F7; padding: 0 10px; font-size: 13px; color: #B0B0B5; display: flex; align-items: center;">Pasif alan</div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <span style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: #E7F8ED; border-radius: 999px; font-size: 11.5px; font-weight: 640; color: #1E8E3E;">Başarılı</span>
+        <span style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: #FFF4E0; border-radius: 999px; font-size: 11.5px; font-weight: 640; color: #B26A00;">Uyarı</span>
+        <span style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: #FFECEB; border-radius: 999px; font-size: 11.5px; font-weight: 640; color: #C4291F;">Hata</span>
+        <span style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: #EAF1FF; border-radius: 999px; font-size: 11.5px; font-weight: 640; color: #0A6CFF;">Bilgi</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

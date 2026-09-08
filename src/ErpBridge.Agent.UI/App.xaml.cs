@@ -389,6 +389,29 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// One-shot toast shown the first time the operator minimizes the
+    /// window in this run — confirms the agent keeps running in the tray
+    /// and how to bring it back. Called from
+    /// <see cref="MainWindow.MainWindow_StateChanged"/>.
+    /// </summary>
+    public static void NotifyMinimizedToTray()
+    {
+        var app = Current as App;
+        var tray = app?._tray;
+        if (tray is null) return;
+        try
+        {
+            tray.ShowNotification(
+                title: "ErpBridge Agent arka planda çalışıyor",
+                message: "Pencere gizlendi; ajan ve senkronizasyon arka planda çalışmaya devam ediyor.\nGeri açmak için sistem tepsisindeki simgeye çift tıklayın.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Minimize notification failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Bring the main window back to the foreground. Idempotent — safe to
     /// call from the tray's double-click and from the context menu's
     /// "Pencereyi Göster" item.

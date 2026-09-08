@@ -2,34 +2,342 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:conv="clr-namespace:ErpBridge.Agent.UI.Converters">
 
-    <!-- Surfaces -->
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F4F6F8" />
+    <!-- ================================================================
+         ErpBridge Agent — "Apple-vari" tema.
+         Kompakt, minimalist, sistem fontlu (Segoe UI), ince ayraçlı kart
+         yüzeyleri ve tek bir vurgu rengi (mavi) üzerine kurulu. Aşağıdaki
+         renk/ölçü sabitleri tüm pencerelerin ortak dili — yeni bir ekran
+         eklerken buradan seç, tek tek renk kodu yazma.
+         ================================================================ -->
+
+    <!-- Yüzeyler -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F5F5F7" />
     <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="HeaderBrush" Color="#1F2937" />
-    <SolidColorBrush x:Key="SubtleHeaderBrush" Color="#4B5563" />
-    <SolidColorBrush x:Key="MutedTextBrush" Color="#6B7280" />
+    <SolidColorBrush x:Key="HeaderBrush" Color="#1D1D1F" />
+    <SolidColorBrush x:Key="SubtleHeaderBrush" Color="#6E6E73" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#86868B" />
 
-    <!-- Borders / dividers -->
-    <SolidColorBrush x:Key="StatusBorderBrush" Color="#D1D5DB" />
-    <SolidColorBrush x:Key="StatusBackgroundBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="DividerBrush" Color="#E5E7EB" />
+    <!-- Ayraçlar / kenarlıklar -->
+    <SolidColorBrush x:Key="StatusBorderBrush" Color="#E5E5EA" />
+    <SolidColorBrush x:Key="StatusBackgroundBrush" Color="#FBFBFD" />
+    <SolidColorBrush x:Key="DividerBrush" Color="#EDEDEF" />
 
-    <!-- Accent — matches the icon gradient -->
-    <SolidColorBrush x:Key="AccentBrush" Color="#1E40AF" />
-    <SolidColorBrush x:Key="AccentLightBrush" Color="#DBEAFE" />
-    <SolidColorBrush x:Key="AccentDarkBrush" Color="#1E3A8A" />
+    <!-- Vurgu (accent) — tek mavi, ikon degradesiyle uyumlu -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#0A6CFF" />
+    <SolidColorBrush x:Key="AccentLightBrush" Color="#EAF1FF" />
+    <SolidColorBrush x:Key="AccentDarkBrush" Color="#0A5CE0" />
 
-    <!-- Status colours -->
+    <!-- Durum renkleri -->
     <SolidColorBrush x:Key="SuccessBrush" Color="#16A34A" />
-    <SolidColorBrush x:Key="SuccessLightBrush" Color="#DCFCE7" />
-    <SolidColorBrush x:Key="WarningBrush" Color="#D97706" />
-    <SolidColorBrush x:Key="WarningLightBrush" Color="#FEF3C7" />
+    <SolidColorBrush x:Key="SuccessLightBrush" Color="#E7F8ED" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#B26A00" />
+    <SolidColorBrush x:Key="WarningLightBrush" Color="#FFF4E0" />
     <SolidColorBrush x:Key="DangerBrush" Color="#DC2626" />
-    <SolidColorBrush x:Key="DangerLightBrush" Color="#FEE2E2" />
+    <SolidColorBrush x:Key="DangerLightBrush" Color="#FFECEB" />
 
-    <SolidColorBrush x:Key="BusyBrush" Color="#6B7280" />
+    <SolidColorBrush x:Key="BusyBrush" Color="#86868B" />
+
+    <!-- Girdi alanları -->
+    <SolidColorBrush x:Key="InputBackgroundBrush" Color="#FBFBFD" />
+    <SolidColorBrush x:Key="InputBorderBrush" Color="#E1E1E6" />
+    <SolidColorBrush x:Key="InputDisabledBackgroundBrush" Color="#F5F5F7" />
+    <SolidColorBrush x:Key="InputDisabledForegroundBrush" Color="#B0B0B5" />
+
+    <!-- Segmented control (sekme şeridi) -->
+    <SolidColorBrush x:Key="SegmentTrackBrush" Color="#E9E9EB" />
+    <SolidColorBrush x:Key="SegmentSelectedBrush" Color="#FFFFFF" />
+
+    <!-- Toggle anahtarı -->
+    <SolidColorBrush x:Key="ToggleOnBrush" Color="#34C759" />
+    <SolidColorBrush x:Key="ToggleOffBrush" Color="#E1E1E6" />
+    <SolidColorBrush x:Key="ToggleThumbBrush" Color="#FFFFFF" />
 
     <!-- Converters -->
     <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     <conv:StringToVisibilityConverter x:Key="StringToVisibilityConverter" />
+
+    <!-- ================================================================
+         Buton stilleri
+         Varsayılan (implicit) stil = "ikincil" görünüm: beyaz zemin,
+         ince kenarlık. Vurgulanacak birincil aksiyonlar
+         PrimaryButtonStyle / TintedButtonStyle ile işaretlenir.
+         ================================================================ -->
+    <Style x:Key="{x:Type Button}" TargetType="Button">
+        <Setter Property="Background" Value="#FFFFFF" />
+        <Setter Property="Foreground" Value="{DynamicResource HeaderBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.88" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.72" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.42" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Birincil aksiyon: dolu mavi -->
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- Tonlu aksiyon: açık mavi zemin, mavi metin -->
+    <Style x:Key="TintedButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{DynamicResource AccentLightBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- ================================================================
+         Girdi alanları — yuvarlatılmış, ince kenarlıklı, kompakt
+         ================================================================ -->
+    <Style x:Key="{x:Type TextBox}" TargetType="TextBox">
+        <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource HeaderBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="9,6" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource AccentLightBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource InputDisabledBackgroundBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource InputDisabledForegroundBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="{x:Type PasswordBox}" TargetType="PasswordBox">
+        <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource HeaderBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="9,6" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource AccentLightBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource InputDisabledBackgroundBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================================================================
+         CheckBox → Apple tarzı toggle anahtarı. Metin (Content) sağında
+         okunur kalır; kutu yerine yuvarlatılmış anahtar çizilir.
+         ================================================================ -->
+    <Style x:Key="{x:Type CheckBox}" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource SubtleHeaderBrush}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid x:Name="Root" Opacity="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Anahtar gövdesi -->
+                        <Border x:Name="Track"
+                                Grid.Column="0"
+                                Width="40" Height="23"
+                                CornerRadius="12"
+                                Background="{DynamicResource ToggleOffBrush}"
+                                VerticalAlignment="Center">
+                            <Border x:Name="Thumb"
+                                    Width="19" Height="19"
+                                    CornerRadius="10"
+                                    Background="{DynamicResource ToggleThumbBrush}"
+                                    HorizontalAlignment="Left"
+                                    Margin="2,0,0,0">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="3" ShadowDepth="1" Opacity="0.3" Color="Black" />
+                                </Border.Effect>
+                                <Border.RenderTransform>
+                                    <TranslateTransform x:Name="ThumbTransform" X="0" />
+                                </Border.RenderTransform>
+                            </Border>
+                        </Border>
+
+                        <ContentPresenter Grid.Column="1"
+                                           Margin="10,0,0,0"
+                                           VerticalAlignment="Center"
+                                           RecognizesAccessKey="True" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource ToggleOnBrush}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ThumbTransform"
+                                                         Storyboard.TargetProperty="X"
+                                                         To="17" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ThumbTransform"
+                                                         Storyboard.TargetProperty="X"
+                                                         To="0" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================================================================
+         TabControl → segmented control. Üstte yuvarlatılmış gri şerit
+         (track), seçili sekme beyaz "hap" olarak öne çıkar.
+         ================================================================ -->
+    <Style x:Key="{x:Type TabItem}" TargetType="TabItem">
+        <Setter Property="Padding" Value="16,6" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{DynamicResource SubtleHeaderBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border x:Name="Pill"
+                            Margin="1,2"
+                            Padding="{TemplateBinding Padding}"
+                            CornerRadius="7"
+                            Background="Transparent">
+                        <ContentPresenter x:Name="Content"
+                                          ContentSource="Header"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          TextElement.Foreground="{TemplateBinding Foreground}"
+                                          TextElement.FontWeight="{TemplateBinding FontWeight}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Pill" Property="Background" Value="{DynamicResource SegmentSelectedBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource HeaderBrush}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter TargetName="Pill" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.15" Color="Black" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="{x:Type TabControl}" TargetType="TabControl">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <Grid KeyboardNavigation.TabNavigation="Local">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Segmented control şeridi: yuvarlatılmış gri track -->
+                        <Border Grid.Row="0"
+                                Background="{DynamicResource SegmentTrackBrush}"
+                                CornerRadius="9"
+                                Padding="3"
+                                Margin="20,14,20,10"
+                                HorizontalAlignment="Left">
+                            <TabPanel x:Name="HeaderPanel"
+                                      IsItemsHost="True"
+                                      Background="Transparent"
+                                      KeyboardNavigation.TabIndex="1" />
+                        </Border>
+
+                        <Border Grid.Row="1"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter x:Name="PART_SelectedContentHost"
+                                              ContentSource="SelectedContent"
+                                              KeyboardNavigation.TabIndex="2" />
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

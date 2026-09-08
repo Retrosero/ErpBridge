@@ -1,0 +1,171 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body {
+      margin: 0;
+      background: #E4E4E7;
+      font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      color: #1D1D1F;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #0A6CFF; text-decoration: none; }
+    a:hover { color: #0A5CE0; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 940px; margin: 20px auto; background: #F5F5F7; border-radius: 12px; overflow: hidden; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 20px 60px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);">
+
+  <!-- Titlebar -->
+  <div style="display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 16px; background: rgba(250,250,252,0.9); border-bottom: 1px solid #E5E5EA;">
+    <!-- app mark: indigo->teal rounded square with E + link -->
+    <div style="width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #1E40AF 0%, #14B8A6 100%); position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.2); flex-shrink: 0;">
+      <span style="position: absolute; left: 5px; top: 1px; color: #fff; font-weight: 700; font-size: 16px; font-family: Georgia, 'Segoe UI', serif;">E</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" style="position: absolute; right: 3px; bottom: 4px;"><path d="M9 12a3 3 0 0 1 3-3h2"/><path d="M15 12a3 3 0 0 1-3 3h-2"/></svg>
+    </div>
+    <span style="font-size: 13px; font-weight: 600; color: #1D1D1F;">ErpBridge Agent</span>
+
+    <!-- segmented control -->
+    <div style="margin-left: 16px; display: inline-flex; background: #E9E9EB; border-radius: 9px; padding: 2px; gap: 2px;">
+      <div style="padding: 5px 18px; font-size: 13px; font-weight: 590; color: #1D1D1F; background: #FFFFFF; border-radius: 7px; box-shadow: 0 1px 2px rgba(0,0,0,0.12);">Dashboard</div>
+      <div style="padding: 5px 18px; font-size: 13px; font-weight: 500; color: #6E6E73; border-radius: 7px;">Ayarlar</div>
+    </div>
+
+    <div style="flex: 1;"></div>
+
+    <!-- connection status -->
+    <div style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #E7F8ED; border-radius: 999px;">
+      <span style="width: 7px; height: 7px; border-radius: 999px; background: #34C759;"></span>
+      <span style="font-size: 12px; font-weight: 590; color: #1E8E3E;">Çevrimiçi</span>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div style="padding: 20px;">
+
+    <!-- Page header -->
+    <div style="display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px;">
+      <div style="flex: 1;">
+        <div style="font-size: 20px; font-weight: 680; letter-spacing: -0.02em; color: #1D1D1F;">Dashboard</div>
+        <div style="font-size: 12.5px; color: #86868B; margin-top: 2px;">Senkronizasyon durumu ve operatör özeti</div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <!-- primary -->
+        <button style="height: 32px; padding: 0 16px; border: none; border-radius: 8px; background: #0A6CFF; color: #fff; font-size: 13px; font-weight: 590; font-family: inherit; display: inline-flex; align-items: center; gap: 7px; box-shadow: 0 1px 2px rgba(10,108,255,0.35); cursor: pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
+          Senkronize Et
+        </button>
+        <!-- tinted -->
+        <button style="height: 32px; padding: 0 14px; border: none; border-radius: 8px; background: #EAF1FF; color: #0A6CFF; font-size: 13px; font-weight: 590; font-family: inherit; display: inline-flex; align-items: center; gap: 7px; cursor: pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0A6CFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
+          Bootstrap
+        </button>
+        <!-- ghost icon -->
+        <button title="Yenile" style="width: 32px; height: 32px; border: 1px solid #E1E1E6; border-radius: 8px; background: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Tablolar (per-table push) -->
+    <div style="background: #fff; border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px;">
+        <span style="font-size: 11px; font-weight: 640; letter-spacing: 0.05em; text-transform: uppercase; color: #8E8E93;">Tablo Bazında Gönder</span>
+        <span style="font-size: 11.5px; color: #A1A1A6;">yavaş tunnel için</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <!-- pills -->
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Cariler</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>Stoklar</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>Açık Siparişler</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>Kasa/Banka</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Lookup</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="#6E6E73"/></svg>Fiyatlar</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>Envanter</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Cari Hareketleri</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #F5F5F7; border: 1px solid #E8E8ED; border-radius: 8px; font-size: 12.5px; font-weight: 520; color: #1D1D1F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6E73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Stok Hareketleri</span>
+      </div>
+    </div>
+
+    <!-- Two-column area -->
+    <div style="display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start;">
+
+      <!-- LEFT column -->
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+
+        <!-- Son Senkronizasyon -->
+        <div style="background: #fff; border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+          <div style="font-size: 11px; font-weight: 640; letter-spacing: 0.05em; text-transform: uppercase; color: #8E8E93;">Son Senkronizasyon</div>
+          <div style="font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: #1D1D1F; margin-top: 10px;">8 Eyl, 14:12</div>
+          <div style="font-size: 13px; font-weight: 590; color: #0A6CFF; margin-top: 3px;">3 dakika önce</div>
+          <div style="display: flex; align-items: center; gap: 7px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #F0F0F2;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34C759" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <span style="font-size: 12.5px; color: #6E6E73;">Sağlıklı — sonraki delta ~5 dk sonra</span>
+          </div>
+        </div>
+
+        <!-- Son Çalıştırma -->
+        <div style="background: #fff; border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 11px; font-weight: 640; letter-spacing: 0.05em; text-transform: uppercase; color: #8E8E93;">Son Çalıştırma</span>
+            <span style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; background: #E7F8ED; border-radius: 999px; font-size: 11.5px; font-weight: 640; color: #1E8E3E;">Başarılı</span>
+          </div>
+          <div style="font-size: 12.5px; color: #6E6E73; margin-top: 12px; line-height: 1.5;">
+            <span style="font-weight: 620; color: #1D1D1F;">12.480</span> cari&nbsp;·&nbsp;<span style="font-weight: 620; color: #1D1D1F;">8.310</span> stok&nbsp;·&nbsp;<span style="font-weight: 620; color: #1D1D1F;">45.900</span> fiyat&nbsp;·&nbsp;<span style="font-weight: 620; color: #1D1D1F;">342</span> açık sipariş
+          </div>
+          <div style="font-size: 11.5px; color: #A1A1A6; margin-top: 10px;">Delta gönderimi · 14:12:04 · 1.8 sn</div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT column: MikroDB satır sayıları -->
+      <div style="background: #fff; border: 1px solid rgba(0,0,0,0.05); border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+          <span style="font-size: 11px; font-weight: 640; letter-spacing: 0.05em; text-transform: uppercase; color: #8E8E93;">MikroDB Satır Sayıları</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 590; color: #0A6CFF; cursor: pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0A6CFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+            Yenile
+          </span>
+        </div>
+        <div style="font-size: 11.5px; color: #A1A1A6; margin-bottom: 8px;">Son kontrol: 8 Eyl 2026, 14:10</div>
+
+        <!-- rows -->
+        <div style="font-size: 12.5px;">
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">CARI_HESAPLAR</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">12.480</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">STOKLAR</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">8.310</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">SIPARISLER (açık)</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">342</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">KASALAR + BANKALAR</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">24</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">DEPOLAR + PERSONEL</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">63</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">STOK_SATIS_FIYAT_LISTELERI</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">45.900</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">STOK_HAREKETLERI</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">128.740</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">CARI_HESAP_ADRESLERI</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">9.120</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">CARI_HESAP_YETKILILERI</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">3.870</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">BARKOD_TANIMLARI</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">15.230</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">SATIS_SARTLARI</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">1.204</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F2F2F4;"><span style="color: #3A3A3C;">CARI_HESAP_HAREKETLERI</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">502.300</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0;"><span style="color: #3A3A3C;">STOK_HAREKETLERI (satırlar)</span><span style="font-variant-numeric: tabular-nums; font-weight: 600; color: #1D1D1F;">640.910</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div style="display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 16px; background: rgba(250,250,252,0.9); border-top: 1px solid #E5E5EA;">
+    <span style="font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: #1D1D1F;">14:15:22</span>
+    <span style="flex: 1; text-align: center; font-size: 11.5px; color: #A1A1A6;">Hazır</span>
+    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; background: #EAF1FF; border-radius: 999px; font-size: 11px; font-weight: 640; color: #0A6CFF;">SON SENK. · 8 Eyl 14:12</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

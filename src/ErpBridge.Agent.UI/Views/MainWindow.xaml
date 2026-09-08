@@ -26,14 +26,8 @@
                     Padding="0"
                     Margin="0"
                     SelectedIndex="0">
-            <TabControl.Resources>
-                <Style TargetType="TabItem">
-                    <Setter Property="Padding" Value="14,8" />
-                    <Setter Property="FontSize" Value="13" />
-                    <Setter Property="FontWeight" Value="SemiBold" />
-                    <Setter Property="Foreground" Value="{DynamicResource SubtleHeaderBrush}" />
-                </Style>
-            </TabControl.Resources>
+            <!-- Sekme (segmented control) görünümü Themes/AgentTheme.xaml'deki
+                 global TabControl/TabItem stilinden gelir — burada override yok. -->
 
             <!-- Dashboard: varsayılan açılan sekme. SelectedIndex="0" üst
                  seviyede set edildi; bu XAML order'ı operatörün ilk
@@ -86,7 +80,7 @@
                                        Foreground="{DynamicResource HeaderBrush}" />
                             <Border Grid.Column="1"
                                     Background="{Binding MikroVersionBrush}"
-                                    CornerRadius="3"
+                                    CornerRadius="10"
                                     Padding="10,3"
                                     VerticalAlignment="Center"
                                     ToolTip="{Binding MikroVersionTooltip}">
@@ -274,6 +268,7 @@
                                         Padding="8,4" />
                                 <Button Content="Kaydet"
                                         Command="{Binding SaveCommand}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
                                         MinWidth="100"
                                         Padding="8,4"
                                         IsDefault="True" />
@@ -287,7 +282,7 @@
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
                                 BorderThickness="1"
                                 Background="{DynamicResource StatusBackgroundBrush}"
-                                CornerRadius="4"
+                                CornerRadius="10"
                                 Visibility="{Binding HasConnectionTestResult, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="Sunucu Bilgisi"
@@ -350,7 +345,7 @@
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
                                 BorderThickness="1"
                                 Background="{DynamicResource StatusBackgroundBrush}"
-                                CornerRadius="4"
+                                CornerRadius="10"
                                 Visibility="{Binding HasLicenseCheckResult, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="🗝 Lisans Kontrol Sonucu"
@@ -424,7 +419,7 @@
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
                                 BorderThickness="1"
                                 Background="{DynamicResource StatusBackgroundBrush}"
-                                CornerRadius="4"
+                                CornerRadius="10"
                                 Visibility="{Binding HasServerDbCheckResult, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="🗄 Sunucu DB Kontrol Sonucu"
@@ -491,7 +486,7 @@
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
                                 BorderThickness="1"
                                 Background="{DynamicResource StatusBackgroundBrush}"
-                                CornerRadius="4"
+                                CornerRadius="10"
                                 Visibility="{Binding HasRegisterResult, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="🔑 Lisans ile Kayıt Ol Sonucu"
@@ -571,18 +566,18 @@
                         <Border Grid.Row="15" Grid.ColumnSpan="2"
                                 Margin="0,8,0,0"
                                 Padding="12"
-                                BorderBrush="#E53935"
+                                BorderBrush="{DynamicResource DangerBrush}"
                                 BorderThickness="1"
-                                Background="#FFEBEE"
-                                CornerRadius="4"
+                                Background="{DynamicResource DangerLightBrush}"
+                                CornerRadius="10"
                                 Visibility="{Binding TroubleshootingHint, Converter={StaticResource StringToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="Sorun giderme önerileri:"
                                            FontWeight="SemiBold"
-                                           Foreground="#B71C1C"
+                                           Foreground="{DynamicResource DangerBrush}"
                                            Margin="0,0,0,4" />
                                 <TextBlock Text="{Binding TroubleshootingHint}"
-                                           Foreground="#B71C1C"
+                                           Foreground="{DynamicResource DangerBrush}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
@@ -595,11 +590,14 @@
                                    VerticalAlignment="Top" Margin="0,12,0,0" />
                         <Border Grid.Row="17" Grid.Column="1"
                                 Margin="0,12,0,0"
-                                Padding="8"
+                                Padding="10,8"
                                 BorderBrush="{DynamicResource StatusBorderBrush}"
                                 BorderThickness="1"
-                                Background="{DynamicResource StatusBackgroundBrush}">
+                                Background="{DynamicResource StatusBackgroundBrush}"
+                                CornerRadius="8">
                             <TextBlock Text="{Binding Status}"
+                                       FontSize="12.5"
+                                       Foreground="{DynamicResource SubtleHeaderBrush}"
                                        TextWrapping="Wrap"
                                        MinHeight="60" />
                         </Border>
@@ -648,7 +646,7 @@
                            FontSize="11" />
                 <Border Grid.Column="2"
                         Background="{DynamicResource AccentBrush}"
-                        CornerRadius="3"
+                        CornerRadius="10"
                         Padding="8,2"
                         VerticalAlignment="Center"
                         ToolTip="Central API'ye gönderilen en son başarılı bootstrap yüklemesi">

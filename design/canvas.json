@@ -1,0 +1,11 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Dashboard", "x": 0, "y": 0, "w": 990, "h": 820 },
+    { "file": "Settings.dc.html", "title": "Ayarlar", "x": 1070, "y": 0, "w": 990, "h": 1060 },
+    { "file": "Components.dc.html", "title": "Tasarım Sistemi", "x": 0, "y": 940, "w": 680, "h": 740 }
+  ],
+  "annotations": [
+    { "id": "intro", "x": 0, "y": -110, "w": 640, "text": "ErpBridge Agent — Apple stili yeniden tasarım\nSegmented control (sekme yerine), ince ayraçlı kartlar, tonlu butonlar, kompakt alanlar (30px), sistem yazı tipi. Sayılar örnek verilerdir." }
+  ],
+  "launch": { "view": "canvas" }
+}
