@@ -91,10 +91,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// because the application chose the Guid before the INSERT.
     /// </summary>
     internal const string CariHesapHareketleriInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAP_HAREKETLERI (
     cha_Guid,
-    cha_RECid_DBCno, cha_RECid_RECno,
     cha_firmano, cha_subeno, cha_tarihi, cha_kod,
     cha_meblag, cha_d_cins, cha_aciklama,
     cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
@@ -102,7 +100,6 @@ INSERT INTO CARI_HESAP_HAREKETLERI (
 )
 VALUES (
     @HeaderGuid,
-    @ActiveDbNo, @SelfLinkSeed,
     @FirmNo, @BranchNo, @InvoiceDate, @CustomerCode,
     @TotalAmount, @Currency, @Description,
     @EvrakTip, @Tip, @Cinsi, @NormalIade,
@@ -144,10 +141,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// link is the single <c>sto_cha_uid</c> column carrying the header Guid.
     /// </summary>
     internal const string StokHareketleriLineInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO STOK_HAREKETLERI (
     sth_Guid,
-    sth_RECid_DBCno, sth_RECid_RECno,
     sth_firmano, sth_subeno,
     sth_tarih, sth_tip, sth_cins, sth_normal_iade, sth_evraktip,
     sth_evrakno_seri, sth_evrakno_sira, sth_satirno,
@@ -158,7 +153,6 @@ INSERT INTO STOK_HAREKETLERI (
 )
 VALUES (
     @LineGuid,
-    @ActiveDbNo, @SelfLinkSeed,
     @FirmNo, @BranchNo,
     @InvoiceDate, @Tip, @Cins, @NormalIade, @EvrakTip,
     @DocumentSerial, @DocumentSequence, @LineNo,

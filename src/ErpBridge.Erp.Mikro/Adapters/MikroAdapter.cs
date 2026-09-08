@@ -98,7 +98,12 @@ public sealed class MikroAdapter : IErpAdapter
         // The resolver runs per call so a credential change saved in the WPF
         // settings window is picked up without rebuilding the adapter graph.
         _changeLog = new Lazy<IErpChangeLogSource>(() => new SqlServerShadowTableChangeLog(
-            catalog: MikroTrackedTableCatalog.Instance,
+            // The catalog is version-specific: V15 keys on int *_RECno, V16 on
+            // *_Guid. Detection is cached by the selector, so this probe is cheap.
+            catalog: MikroTrackedTableCatalog.For(
+                _versionDetector.DetectAsync(
+                    _connectionFactory.BuildConnectionString(ConnectionSettings),
+                    CancellationToken.None).GetAwaiter().GetResult().Version),
             connectionStringResolver: () => _connectionFactory.BuildConnectionString(ConnectionSettings),
             projection: KeyKindProjection.RecnoOrGuid,
             options: ShadowTableOptions.Default,

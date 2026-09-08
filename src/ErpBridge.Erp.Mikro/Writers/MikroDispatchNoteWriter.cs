@@ -92,10 +92,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// because the application chose the Guid before the INSERT.
     /// </summary>
     internal const string StokHareketleriInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO STOK_HAREKETLERI (
     sth_Guid,
-    sth_RECid_DBCno, sth_RECid_RECno,
     sth_firmano, sth_subeno,
     sth_tarih, sth_tip, sth_cins, sth_normal_iade, sth_evraktip,
     sth_evrakno_seri, sth_evrakno_sira, sth_satirno,
@@ -106,7 +104,6 @@ INSERT INTO STOK_HAREKETLERI (
 )
 VALUES (
     @HeaderGuid,
-    @ActiveDbNo, @SelfLinkSeed,
     @FirmNo, @BranchNo,
     @TransactionDate, @Tip, @Cins, @NormalIade, @EvrakTip,
     @DocumentSerial, @DocumentSequence, @LineNo,

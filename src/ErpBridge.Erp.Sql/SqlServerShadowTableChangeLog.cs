@@ -125,15 +125,26 @@ public sealed class SqlServerShadowTableChangeLog : IErpChangeLogSource
             .ConfigureAwait(false))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        var present = await ReadPresentTablesAsync(conn, ct).ConfigureAwait(false);
+
         var created = 0;
+        var skipped = 0;
         foreach (var table in Catalog.Tables)
         {
-            var keyExpression = ShadowTableDdl.BuildKeyExpression(table, _projection.For(table));
+            // A Mikro installation ships only the modules the customer licensed,
+            // and a few catalog entries live in the master database. Creating a
+            // trigger on a table that is not here would abort the whole install,
+            // so skip it and report the count instead.
+            if (!present.Contains(table.TableName))
+            {
+                skipped++;
+                continue;
+            }
 
             if (!installed.Contains(_options.SyncTriggerName(table.TableName)))
             {
                 await conn.ExecuteAsync(new CommandDefinition(
-                    ShadowTableDdl.CreateSyncTrigger(_options, table, keyExpression),
+                    ShadowTableDdl.CreateSyncTrigger(_options, table),
                     cancellationToken: ct)).ConfigureAwait(false);
                 created++;
             }
@@ -141,15 +152,15 @@ public sealed class SqlServerShadowTableChangeLog : IErpChangeLogSource
             if (!installed.Contains(_options.SyncDelTriggerName(table.TableName)))
             {
                 await conn.ExecuteAsync(new CommandDefinition(
-                    ShadowTableDdl.CreateSyncDelTrigger(_options, table, keyExpression),
+                    ShadowTableDdl.CreateSyncDelTrigger(_options, table),
                     cancellationToken: ct)).ConfigureAwait(false);
                 created++;
             }
         }
 
         _logger.LogInformation(
-            "Change-log install for {Erp} complete: {Created} trigger(s) created across {Total} tracked tables.",
-            Catalog.Erp, created, Catalog.Tables.Count);
+            "Change-log install for {Erp} complete: {Created} trigger(s) created across {Total} tracked tables; {Skipped} table(s) absent from this installation.",
+            Catalog.Erp, created, Catalog.Tables.Count, skipped);
     }
 
     /// <inheritdoc />
@@ -208,18 +219,19 @@ public sealed class SqlServerShadowTableChangeLog : IErpChangeLogSource
         var schemaName = SqlIdentifier.Validate(table.SchemaName);
         var keyField = SqlIdentifier.Validate(table.EffectiveKeyField);
         var columns = BuildColumnList(table);
+        var keyColumn = ShadowTableDdl.KeyColumn(table);
         var last = position.Upsert(table.TableKey);
 
-        // s.KayitKey carries the tagged key ("recno:123"); the join strips the
-        // tag back off so it can be compared with the source table's key column.
+        // Join natively on the typed shadow key so SQL Server can seek the
+        // source table's primary-key index; a string conversion here would make
+        // the predicate non-sargable and scan the whole table on every poll.
         var sql = $@"
 SELECT TOP (@budget)
        s.[TriggerRECno] AS __TriggerRECno,
-       s.[KayitKey]     AS __KayitKey,
        {columns}
 FROM {_options.QualifiedSyncTable} s
 INNER JOIN [{schemaName}].[{tableName}] t
-        ON CONVERT(NVARCHAR(50), t.[{keyField}]) = SUBSTRING(s.[KayitKey], CHARINDEX(':', s.[KayitKey]) + 1, 50)
+        ON t.[{keyField}] = s.[{keyColumn}]
 WHERE s.[TabloID] = @tableId
   AND s.[TriggerRECno] > @last
 ORDER BY s.[TriggerRECno];";
@@ -236,12 +248,12 @@ ORDER BY s.[TriggerRECno];";
         {
             count++;
             var triggerRecNo = Convert.ToInt32(raw["__TriggerRECno"], System.Globalization.CultureInfo.InvariantCulture);
-            var keyValue = raw["__KayitKey"] as string ?? string.Empty;
+            var keyValue = _projection.Project(table, raw.TryGetValue(table.EffectiveKeyField, out var rawKey) ? rawKey : null);
 
             var payload = new Dictionary<string, object?>(raw.Count, StringComparer.OrdinalIgnoreCase);
             foreach (var kv in raw)
             {
-                if (kv.Key is "__TriggerRECno" or "__KayitKey")
+                if (kv.Key is "__TriggerRECno")
                 {
                     continue;
                 }
@@ -268,24 +280,27 @@ ORDER BY s.[TriggerRECno];";
     {
         var last = position.Delete(table.TableKey);
 
+        var keyColumn = ShadowTableDdl.KeyColumn(table);
+
         var sql = $@"
 SELECT TOP (@budget)
        s.[TriggerRECno] AS TriggerRecNo,
-       s.[KayitKey]     AS KeyValue
+       s.[{keyColumn}]  AS KeyValue
 FROM {_options.QualifiedSyncDelTable} s
 WHERE s.[TabloID] = @tableId
   AND s.[TriggerRECno] > @last
 ORDER BY s.[TriggerRECno];";
 
-        var read = (await conn.QueryAsync<(int TriggerRecNo, string KeyValue)>(new CommandDefinition(
+        var read = (await conn.QueryAsync(new CommandDefinition(
             sql,
             new { budget, tableId = table.TableId, last },
             cancellationToken: ct)).ConfigureAwait(false)).ToList();
 
         var rows = new List<ErpChangeRow>(read.Count);
-        foreach (var (triggerRecNo, keyValue) in read)
+        foreach (IDictionary<string, object?> row in read.Cast<IDictionary<string, object?>>())
         {
-            rows.Add(ErpChangeRow.Deleted(table.TableKey, keyValue ?? string.Empty));
+            var triggerRecNo = Convert.ToInt32(row["TriggerRecNo"], System.Globalization.CultureInfo.InvariantCulture);
+            rows.Add(ErpChangeRow.Deleted(table.TableKey, _projection.Project(table, row["KeyValue"])));
             position.AdvanceDelete(table.TableKey, triggerRecNo);
         }
 
@@ -305,6 +320,18 @@ ORDER BY s.[TriggerRECno];";
         }
 
         return string.Join(", ", table.Fields.Select(f => $"t.[{SqlIdentifier.Validate(f)}]"));
+    }
+
+    /// <summary>
+    /// Table names that actually exist in the target database. A Mikro
+    /// installation ships only the licensed modules, so the catalog is a superset
+    /// of any one install.
+    /// </summary>
+    private static async Task<HashSet<string>> ReadPresentTablesAsync(SqlConnection conn, CancellationToken ct)
+    {
+        var names = await conn.QueryAsync<string>(new CommandDefinition(
+            "SELECT name FROM sys.tables", cancellationToken: ct)).ConfigureAwait(false);
+        return names.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<SqlConnection> OpenAsync(CancellationToken ct)

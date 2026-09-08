@@ -99,10 +99,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// the application chose the Guid before the INSERT.
     /// </summary>
     internal const string CariHesapInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAPLAR (
     cari_Guid,
-    cari_RECid_DBCno, cari_RECid_RECno,
     cari_kod, cari_unvan1,
     cari_vdaire_no, cari_vdaire_adi,
     cari_EMail, cari_CepTel,
@@ -110,7 +108,6 @@ INSERT INTO CARI_HESAPLAR (
 )
 VALUES (
     @HeaderGuid,
-    @ActiveDbNo, @SelfLinkSeed,
     @CustomerCode, @CustomerName,
     @TaxNumber, @TaxOffice,
     @Email, @Phone1,
@@ -370,13 +367,6 @@ WHERE cari_kod = @CustomerCode;";
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
 
-            // V16 seeds a unique negative self-link placeholder for the same
-            // reason V15 does; resolve it now that the row exists.
-            await conn.ExecuteAsync(new CommandDefinition(
-                MikroSelfLink.BuildUpdateByGuid("CARI_HESAPLAR", "cari"),
-                new { ActiveDbNo = MikroSelfLink.ActiveDbNo, RowGuid = headerGuid ?? Guid.Empty },
-                transaction: tx,
-                cancellationToken: ct)).ConfigureAwait(false);
 
             await tx.CommitAsync(ct).ConfigureAwait(false);
             return new InsertOutcome(0, headerGuid, Created: true);

@@ -10,11 +10,24 @@ namespace ErpBridge.Erp.Sql;
 /// detail — table names, ids, key projection — arrives as a parameter.
 ///
 /// <para>
-/// <b>Why a string <c>KayitKey</c>?</b> Most SQL-backed ERP tables do not expose
-/// a Guid column, so the trigger projects whatever key the table has into a
-/// tagged string (<c>recno:12345</c>, <c>guid:6F96…</c>, <c>logicalref:987</c>).
-/// One shadow schema then serves every table of every vendor, and the reader
-/// strips the tag back off before handing rows to the consumer.
+/// <b>Two natively-typed key columns, not one string.</b> The shadow tables carry
+/// <c>KayitRECno int NULL</c> <i>and</i> <c>KayitGuid uniqueidentifier NULL</c>;
+/// each tracked table populates whichever matches its
+/// <see cref="ErpRowKeyKind"/>. That lets the reader join
+/// <c>T.[key] = S.KayitRECno</c> (or <c>= S.KayitGuid</c>) directly, so SQL
+/// Server can seek the index.
+/// </para>
+///
+/// <para>
+/// An earlier revision stored one tagged <c>nvarchar</c> key
+/// (<c>recno:12345</c>) and joined with
+/// <c>CONVERT(NVARCHAR(50), T.[key]) = SUBSTRING(S.KayitKey, …)</c>. That
+/// predicate is not sargable: it forces a scan of the source table on every
+/// read, which on a movement table of ~90k rows is the difference between an
+/// index seek and a full scan. The Fora reference application — proven against
+/// production Mikro installs — keeps native types for exactly this reason, using
+/// <c>KayitRECno</c> for V15 and <c>KayitGuid</c> for V16. This schema unifies
+/// both into one table while preserving the native join.
 /// </para>
 /// </summary>
 public static class ShadowTableDdl
@@ -29,18 +42,19 @@ IF NOT EXISTS (SELECT * FROM sys.tables WHERE object_id = OBJECT_ID(N'{o.Qualifi
 BEGIN
     CREATE TABLE {o.QualifiedSyncTable} (
         [TriggerRECno] [int] IDENTITY(1,1) NOT NULL,
-        [TabloID]      [int]            NOT NULL,
-        [KayitKey]     [nvarchar](64)   NOT NULL,
-        [Tarih]        [datetime]       NOT NULL,
+        [TabloID]      [int]              NOT NULL,
+        [KayitRECno]   [int]              NULL,
+        [KayitGuid]    [uniqueidentifier] NULL,
+        [Tarih]        [datetime]         NOT NULL,
         CONSTRAINT [PK_{Unprefixed(o.SyncTable)}] PRIMARY KEY CLUSTERED ([TriggerRECno] ASC)
             WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF,
                   ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
     ) ON [PRIMARY];
     CREATE NONCLUSTERED INDEX [NDX_{Unprefixed(o.SyncTable)}_01] ON {o.QualifiedSyncTable} ([TabloID] ASC, [TriggerRECno] ASC)
-        INCLUDE ([KayitKey])
+        INCLUDE ([KayitRECno], [KayitGuid])
         WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF,
               IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY];
-    CREATE NONCLUSTERED INDEX [NDX_{Unprefixed(o.SyncTable)}_02] ON {o.QualifiedSyncTable} ([KayitKey] ASC)
+    CREATE NONCLUSTERED INDEX [NDX_{Unprefixed(o.SyncTable)}_02] ON {o.QualifiedSyncTable} ([TabloID] ASC, [KayitRECno] ASC)
         WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF,
               IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY];
     SELECT 1;
@@ -55,9 +69,10 @@ IF NOT EXISTS (SELECT * FROM sys.tables WHERE object_id = OBJECT_ID(N'{o.Qualifi
 BEGIN
     CREATE TABLE {o.QualifiedSyncDelTable} (
         [TriggerRECno] [int] IDENTITY(1,1) NOT NULL,
-        [TabloID]      [int]            NOT NULL,
-        [KayitKey]     [nvarchar](64)   NOT NULL,
-        [Tarih]        [datetime]       NOT NULL,
+        [TabloID]      [int]              NOT NULL,
+        [KayitRECno]   [int]              NULL,
+        [KayitGuid]    [uniqueidentifier] NULL,
+        [Tarih]        [datetime]         NOT NULL,
         CONSTRAINT [PK_{Unprefixed(o.SyncDelTable)}] PRIMARY KEY CLUSTERED ([TriggerRECno] ASC)
             WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF,
                   ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
@@ -79,66 +94,73 @@ ELSE
     /// </summary>
     /// <param name="o">Shadow-table naming.</param>
     /// <param name="table">The source table being tracked.</param>
-    /// <param name="keyExpression">
-    /// SQL fragment evaluated against the <c>inserted</c> pseudo-table that
-    /// yields the tagged key — see <see cref="BuildKeyExpression"/>.
-    /// </param>
-    public static string CreateSyncTrigger(ShadowTableOptions o, ErpTrackedTable table, string keyExpression)
-    {
-        var trigger = o.SyncTriggerName(table.TableName);
-        var shadow = o.ShadowDatabasePrefix + o.QualifiedSyncTable;
-
-        return
-            "EXEC('" +
-            $"CREATE TRIGGER [{o.SchemaName}].[{trigger}] " +
-            $"ON [{table.SchemaName}].[{table.TableName}] " +
-            "AFTER INSERT, UPDATE AS BEGIN " +
-            "SET NOCOUNT ON; " +
-            $"DECLARE @TabloID AS INT; SET @TabloID = {table.TableId.ToString(CultureInfo.InvariantCulture)}; " +
-            $"DELETE {shadow} WHERE TabloID = @TabloID AND KayitKey IN (SELECT {keyExpression} FROM inserted); " +
-            $"INSERT INTO {shadow} (TabloID, KayitKey, Tarih) " +
-            $"SELECT @TabloID, {keyExpression}, GETDATE() FROM inserted; " +
-            "END')";
-    }
+    public static string CreateSyncTrigger(ShadowTableOptions o, ErpTrackedTable table) =>
+        BuildTrigger(o, table, o.SyncTriggerName(table.TableName), "AFTER INSERT, UPDATE", "inserted",
+            o.ShadowDatabasePrefix + o.QualifiedSyncTable);
 
     /// <summary>
     /// <c>AFTER DELETE</c> trigger for one tracked table. Removes the key from
     /// the insert/update shadow (so a deleted row is not also reported as
     /// changed) and appends it to the delete shadow.
     /// </summary>
-    public static string CreateSyncDelTrigger(ShadowTableOptions o, ErpTrackedTable table, string keyExpression)
+    public static string CreateSyncDelTrigger(ShadowTableOptions o, ErpTrackedTable table)
     {
-        var trigger = o.SyncDelTriggerName(table.TableName);
+        var key = KeyColumn(table);
+        var src = SqlIdentifier.Validate(table.EffectiveKeyField);
         var shadow = o.ShadowDatabasePrefix + o.QualifiedSyncTable;
         var shadowDel = o.ShadowDatabasePrefix + o.QualifiedSyncDelTable;
+        var trigger = o.SyncDelTriggerName(table.TableName);
+        var id = table.TableId.ToString(CultureInfo.InvariantCulture);
 
+        // Clearing the row from the upsert shadow first stops a deleted record
+        // being reported as "changed" on the same cursor pass.
         return
             "EXEC('" +
             $"CREATE TRIGGER [{o.SchemaName}].[{trigger}] " +
             $"ON [{table.SchemaName}].[{table.TableName}] " +
             "AFTER DELETE AS BEGIN " +
             "SET NOCOUNT ON; " +
-            $"DECLARE @TabloID AS INT; SET @TabloID = {table.TableId.ToString(CultureInfo.InvariantCulture)}; " +
-            $"DELETE {shadow} WHERE TabloID = @TabloID AND KayitKey IN (SELECT {keyExpression} FROM deleted); " +
-            $"INSERT INTO {shadowDel} (TabloID, KayitKey, Tarih) " +
-            $"SELECT @TabloID, {keyExpression}, GETDATE() FROM deleted; " +
+            $"DECLARE @TabloID AS INT; SET @TabloID = {id}; " +
+            $"DELETE {shadow} WHERE TabloID = @TabloID AND {key} IN (SELECT [{src}] FROM deleted); " +
+            $"INSERT INTO {shadowDel} (TabloID, {key}, Tarih) " +
+            $"SELECT @TabloID, [{src}], GETDATE() FROM deleted; " +
             "END')";
     }
 
     /// <summary>
-    /// SQL expression that projects a tracked table's key column into the tagged
-    /// <c>KayitKey</c> string the shadow tables store. Evaluated inside a trigger
-    /// against <c>inserted</c> / <c>deleted</c>.
+    /// Shared trigger body builder. The upsert trigger removes any earlier shadow
+    /// row for the same key before appending the current one, so a record edited
+    /// ten times is reported once, at its latest cursor position.
     /// </summary>
-    /// <remarks>
-    /// The column name is taken from the catalog (never from user input) and is
-    /// validated by <see cref="SqlIdentifier.Validate"/> before it reaches this
-    /// method, so bracket-quoting it here is safe.
-    /// </remarks>
-    public static string BuildKeyExpression(ErpTrackedTable table, IErpKeyProjection projection)
+    private static string BuildTrigger(
+        ShadowTableOptions o, ErpTrackedTable table, string trigger, string timing, string pseudoTable, string shadow)
     {
-        var column = SqlIdentifier.Validate(table.EffectiveKeyField);
-        return $"''{projection.Tag}:'' + CONVERT(NVARCHAR(50), [{column}])";
+        var key = KeyColumn(table);
+        var src = SqlIdentifier.Validate(table.EffectiveKeyField);
+        var id = table.TableId.ToString(CultureInfo.InvariantCulture);
+
+        return
+            "EXEC('" +
+            $"CREATE TRIGGER [{o.SchemaName}].[{trigger}] " +
+            $"ON [{table.SchemaName}].[{table.TableName}] " +
+            $"{timing} AS BEGIN " +
+            "SET NOCOUNT ON; " +
+            $"DECLARE @TabloID AS INT; SET @TabloID = {id}; " +
+            $"DELETE {shadow} WHERE TabloID = @TabloID AND {key} IN (SELECT [{src}] FROM {pseudoTable}); " +
+            $"INSERT INTO {shadow} (TabloID, {key}, Tarih) " +
+            $"SELECT @TabloID, [{src}], GETDATE() FROM {pseudoTable}; " +
+            "END')";
+    }
+
+    /// <summary>
+    /// The shadow key column a table writes into: <c>KayitGuid</c> for a
+    /// Guid-keyed table, <c>KayitRECno</c> for an int-keyed one. Keeping the
+    /// column natively typed is what makes the reader's join sargable.
+    /// </summary>
+    public static string KeyColumn(ErpTrackedTable table)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        return table.KeyKind == ErpRowKeyKind.Guid ? "KayitGuid" : "KayitRECno";
     }
 
     /// <summary>Drop DDL for one table's pair of triggers. Safe when they do not exist.</summary>

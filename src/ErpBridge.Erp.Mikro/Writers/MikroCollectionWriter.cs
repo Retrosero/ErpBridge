@@ -111,10 +111,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// the application chose the Guid before the INSERT.
     /// </summary>
     internal const string CariHesapHareketleriInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAP_HAREKETLERI (
     cha_Guid,
-    cha_RECid_DBCno, cha_RECid_RECno,
     cha_firmano, cha_subeno, cha_tarihi, cha_kod,
     cha_meblag, cha_d_cins, cha_aciklama,
     cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
@@ -122,7 +120,6 @@ INSERT INTO CARI_HESAP_HAREKETLERI (
 )
 VALUES (
     @HeaderGuid,
-    @ChaDbcNo, @SelfLinkSeed,
     @FirmNo, @BranchNo, @TransactionDate, @CustomerCode,
     @Amount, @Currency, @Description,
     @EvrakTip, @TransactionTip, @Cinsi, @NormalIade,
@@ -162,10 +159,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// differs from the header statement only in carrying its own line number.
     /// </summary>
     internal const string CariHesapHareketleriLineInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAP_HAREKETLERI (
     cha_Guid,
-    cha_RECid_DBCno, cha_RECid_RECno,
     cha_firmano, cha_subeno, cha_tarihi, cha_kod,
     cha_meblag, cha_d_cins, cha_aciklama,
     cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
@@ -173,7 +168,6 @@ INSERT INTO CARI_HESAP_HAREKETLERI (
 )
 VALUES (
     @HeaderGuid,
-    @ChaDbcNo, @SelfLinkSeed,
     @FirmNo, @BranchNo, @TransactionDate, @CustomerCode,
     @Amount, @Currency, @Description,
     @EvrakTip, @TransactionTip, @Cinsi, @NormalIade,
@@ -182,10 +176,6 @@ VALUES (
     /// <summary>Resolves a V15 row's self-link once SCOPE_IDENTITY() is known.</summary>
     internal static readonly string SelfLinkUpdateSqlV15 =
         MikroSelfLink.BuildUpdate("CARI_HESAP_HAREKETLERI", "cha");
-
-    /// <summary>Resolves a V16 row's self-link, keyed by the generated Guid.</summary>
-    internal static readonly string SelfLinkUpdateSqlV16 =
-        MikroSelfLink.BuildUpdateByGuid("CARI_HESAP_HAREKETLERI", "cha");
 
     /// <summary>
     /// Active-DB number used for the <c>cha_RECid_DBCno</c> link in V15 sub-lines.
@@ -438,7 +428,6 @@ VALUES (
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
 
-            await ResolveSelfLinkByGuidAsync(conn, tx, headerGuid ?? Guid.Empty, ct).ConfigureAwait(false);
             return 0;
         }
 
@@ -516,15 +505,6 @@ VALUES (
         conn.ExecuteAsync(new CommandDefinition(
             SelfLinkUpdateSqlV15,
             new { ActiveDbNo = MikroSelfLink.ActiveDbNo, Recno = recno },
-            transaction: tx,
-            cancellationToken: ct));
-
-    /// <summary>V16 sibling of <see cref="ResolveSelfLinkAsync"/>, keyed by the generated Guid.</summary>
-    private static Task ResolveSelfLinkByGuidAsync(
-        SqlConnection conn, IDbTransaction tx, Guid rowGuid, CancellationToken ct) =>
-        conn.ExecuteAsync(new CommandDefinition(
-            SelfLinkUpdateSqlV16,
-            new { ActiveDbNo = MikroSelfLink.ActiveDbNo, RowGuid = rowGuid },
             transaction: tx,
             cancellationToken: ct));
 

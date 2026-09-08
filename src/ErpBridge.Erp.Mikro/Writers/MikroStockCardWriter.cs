@@ -84,10 +84,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// because the application chose the Guid before the INSERT.
     /// </summary>
     internal const string StoklarInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO STOKLAR (
     sto_Guid,
-    sto_RECid_DBCno, sto_RECid_RECno,
     sto_kod, sto_isim, sto_kisa_ismi,
     sto_birim1_ad, sto_birim1_katsayi,
     sto_perakende_vergi, sto_toptan_vergi,
@@ -95,7 +93,6 @@ INSERT INTO STOKLAR (
 )
 VALUES (
     @HeaderGuid,
-    @ActiveDbNo, @SelfLinkSeed,
     @StockCode, @StockName, @ShortName,
     @Unit, 1,
     @VatRate, @VatRate,
@@ -160,15 +157,12 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// <c>bar_stok_uid</c> Guid.
     /// </summary>
     internal const string BarkodInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO BARKOD_TANIMLARI (
     bar_Guid,
-    bar_RECid_DBCno, bar_RECid_RECno,
     bar_kodu, bar_stokkodu, bar_birimpntr, bar_barkodtipi
 )
 VALUES (
     @BarGuid,
-    @ActiveDbNo, @SelfLinkSeed,
     @Barcode, @StockCode, 1, 0
 );";
 

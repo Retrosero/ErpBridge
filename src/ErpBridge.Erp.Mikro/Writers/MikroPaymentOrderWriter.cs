@@ -53,10 +53,6 @@ public sealed class MikroPaymentOrderWriter
     internal static readonly string SelfLinkUpdateSqlV15 =
         MikroSelfLink.BuildUpdate("ODEME_EMIRLERI", "sck");
 
-    /// <summary>Resolves a V16 row's self-link, keyed by the generated Guid.</summary>
-    internal static readonly string SelfLinkUpdateSqlV16 =
-        MikroSelfLink.BuildUpdateByGuid("ODEME_EMIRLERI", "sck");
-
     /// <summary>
     /// Map the payment channel to Mikro's <c>sck_tip</c> instrument code:
     /// <c>0</c> çek, <c>1</c> senet, <c>2</c> nakit/other. Unknown channels fall
@@ -112,10 +108,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// the application chose the Guid before the INSERT.
     /// </summary>
     internal const string OdemeEmirleriInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO ODEME_EMIRLERI (
     sck_Guid,
-    sck_RECid_DBCno, sck_RECid_RECno,
     sck_firmano, sck_subeno,
     sck_duzen_tarih, sck_vade,
     sck_sahip_cari_kodu, sck_bankano,
@@ -123,7 +117,6 @@ INSERT INTO ODEME_EMIRLERI (
 )
 VALUES (
     @HeaderGuid,
-    @ActiveDbNo, @SelfLinkSeed,
     @FirmNo, @BranchNo,
     @OrderDate, @DueDate,
     @CustomerCode, @BankCode,
@@ -307,11 +300,6 @@ VALUES (
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
 
-            await conn.ExecuteAsync(new CommandDefinition(
-                SelfLinkUpdateSqlV16,
-                new { ActiveDbNo = MikroSelfLink.ActiveDbNo, RowGuid = headerGuid ?? Guid.Empty },
-                transaction: tx,
-                cancellationToken: ct)).ConfigureAwait(false);
 
                 await tx.CommitAsync(ct).ConfigureAwait(false);
                 return new InsertOutcome(0, headerGuid);

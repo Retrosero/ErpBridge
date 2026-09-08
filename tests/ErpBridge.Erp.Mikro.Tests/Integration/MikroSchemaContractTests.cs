@@ -90,7 +90,13 @@ public class MikroSchemaContractTests
         var tables = await ReadTablesAsync(database);
 
         var problems = new List<string>();
-        foreach (var table in MikroTrackedTableCatalog.Instance.Tables)
+        // V15 and V16 have different schemas — V16 dropped *_RECno entirely — so
+        // check each database against the catalog that targets it.
+        var catalog = database.Contains("V16", StringComparison.OrdinalIgnoreCase)
+            ? MikroTrackedTableCatalog.V16
+            : MikroTrackedTableCatalog.V15;
+
+        foreach (var table in catalog.Tables)
         {
             // A table absent from this install is not a catalog error — Mikro
             // ships optional modules, and a few catalog entries live in the
@@ -134,28 +140,30 @@ public class MikroSchemaContractTests
         var columns = await ReadColumnsAsync(database);
         var tables = await ReadTablesAsync(database);
 
+        // Each writer ships a V15 and a V16 statement and executes only the one
+        // matching the detected version. Checking a V15 statement against a V16
+        // database (or the reverse) would flag columns that are absent by design
+        // — V16 dropped *_RECno / *_RECid_*, V15 has no *_Guid — so pair each
+        // statement with the database it targets.
+        var targetVersion = database.Contains("V16", StringComparison.OrdinalIgnoreCase) ? "V16" : "V15";
+
         var problems = new List<string>();
-        foreach (var (table, column) in EnumerateWriterInsertColumns())
+        foreach (var (constant, table, column) in EnumerateWriterInsertColumns())
         {
-            if (!tables.Contains(table))
+            if (!constant.EndsWith(targetVersion, StringComparison.OrdinalIgnoreCase))
             {
-                problems.Add($"{table} <TABLE MISSING>");
                 continue;
             }
 
-            // A *_Guid column is the V16 identity. V15 databases legitimately
-            // lack it, and the writer only emits the V16 statement when the
-            // version detector selected GuidStrategy — so its absence here is
-            // expected, not a defect.
-            if (column.EndsWith("_Guid", StringComparison.OrdinalIgnoreCase) &&
-                !columns.Contains($"{table}.{column}"))
+            if (!tables.Contains(table))
             {
+                problems.Add($"{constant}: {table} <TABLE MISSING>");
                 continue;
             }
 
             if (!columns.Contains($"{table}.{column}"))
             {
-                problems.Add($"{table}.{column}");
+                problems.Add($"{constant}: {table}.{column}");
             }
         }
 
@@ -184,21 +192,32 @@ public class MikroSchemaContractTests
     /// sources. Reading the SQL text rather than executing it keeps the test
     /// read-only — it never writes to the customer's ERP.
     /// </summary>
-    private static IEnumerable<(string Table, string Column)> EnumerateWriterInsertColumns()
+    private static IEnumerable<(string Constant, string Table, string Column)> EnumerateWriterInsertColumns()
     {
         var writersDir = ResolveWritersDirectory();
         foreach (var file in Directory.EnumerateFiles(writersDir, "*.cs"))
         {
             var text = File.ReadAllText(file);
-            foreach (Match m in Regex.Matches(text, @"INSERT\s+INTO\s+([A-Z_0-9]+)\s*\(([^)]*)\)", RegexOptions.IgnoreCase))
+
+            // Capture the constant that owns each statement so the caller can tell
+            // a V15 statement from a V16 one. The verbatim-string body contains
+            // semicolons, so the match runs to the closing `";` rather than the
+            // first one.
+            foreach (Match c in Regex.Matches(
+                         text, "(?:const|readonly)\\s+string\\s+(\\w+)\\s*=\\s*@\"((?:[^\"]|\"\")*)\""))
             {
-                var table = m.Groups[1].Value;
-                foreach (var raw in m.Groups[2].Value.Split(','))
+                var constant = c.Groups[1].Value;
+                foreach (Match m in Regex.Matches(
+                             c.Groups[2].Value, @"INSERT\s+INTO\s+([A-Z_0-9]+)\s*\(([^)]*)\)", RegexOptions.IgnoreCase))
                 {
-                    var column = raw.Trim().Trim('\r', '\n');
-                    if (Regex.IsMatch(column, "^[A-Za-z_0-9]+$"))
+                    var table = m.Groups[1].Value;
+                    foreach (var raw in m.Groups[2].Value.Split(','))
                     {
-                        yield return (table, column);
+                        var column = raw.Trim().Trim('\r', '\n');
+                        if (Regex.IsMatch(column, "^[A-Za-z_0-9]+$"))
+                        {
+                            yield return (constant, table, column);
+                        }
                     }
                 }
             }

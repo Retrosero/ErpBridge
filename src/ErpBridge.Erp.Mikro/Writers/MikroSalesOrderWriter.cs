@@ -136,10 +136,8 @@ WHERE sip_RECno = @SipRecno;";
     /// round-trip is unnecessary because the application chose the Guid first.
     /// </summary>
     internal const string SiparisLineInsertSqlV16 = @"
-DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO SIPARISLER (
     sip_Guid,
-    sip_RECid_DBCno, sip_RECid_RECno,
     sip_firmano, sip_subeno,
     sip_tarih, sip_teslim_tarih,
     sip_tip, sip_cins,
@@ -152,7 +150,6 @@ INSERT INTO SIPARISLER (
 )
 VALUES (
     @LineGuid,
-    @ActiveDbNo, @SelfLinkSeed,
     @FirmNo, @BranchNo,
     @OccurredAt, @OccurredAt,
     @OrderTip, @OrderCins,
@@ -163,18 +160,6 @@ VALUES (
     @Discount4, @Discount5, @Discount6,
     @TaxPointer, @WarehouseNo, @Currency, 0
 );";
-
-    /// <summary>
-    /// V16 self-link UPDATE, keyed by the caller-generated Guid. The unique index
-    /// on <c>(sip_RECid_DBCno, sip_RECid_RECno)</c> applies to V16 too, so the
-    /// INSERT seeds a unique negative placeholder and this statement resolves it
-    /// to the row's own identity.
-    /// </summary>
-    internal const string SiparisSelfLinkUpdateSqlV16 = @"
-UPDATE SIPARISLER
-SET sip_RECid_DBCno = @ActiveDbNo,
-    sip_RECid_RECno = sip_RECno
-WHERE sip_Guid = @LineGuid;";
 
     /// <summary>
     /// All dependencies are required. The connection factory builds connection
@@ -484,11 +469,6 @@ WHERE sip_Guid = @LineGuid;";
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
 
-            await conn.ExecuteAsync(new CommandDefinition(
-                SiparisSelfLinkUpdateSqlV16,
-                new { ActiveDbNo = DefaultActiveDbNo, LineGuid = lineGuid ?? Guid.Empty },
-                transaction: tx,
-                cancellationToken: ct)).ConfigureAwait(false);
 
             return 0;
         }

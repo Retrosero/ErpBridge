@@ -27,8 +27,7 @@ public class ShadowTableDdlTests
 
         sql.Should().Contain("IF NOT EXISTS")
            .And.Contain("[dbo].[_ERPB_SYNC]")
-           .And.Contain("[TriggerRECno] [int] IDENTITY(1,1)")
-           .And.Contain("[KayitKey]     [nvarchar](64)");
+           .And.Contain("[TriggerRECno] [int] IDENTITY(1,1)");
     }
 
     [Fact]
@@ -43,10 +42,7 @@ public class ShadowTableDdlTests
     [Fact]
     public void Sync_trigger_fires_on_insert_and_update_and_stamps_the_table_id()
     {
-        var table = Stoklar();
-        var keyExpr = ShadowTableDdl.BuildKeyExpression(table, TaggedKeyProjection.Recno);
-
-        var sql = ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, table, keyExpr);
+        var sql = ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, Stoklar());
 
         sql.Should().Contain("AFTER INSERT, UPDATE")
            .And.Contain("[STOKLAR_ERPB_SYNC]")
@@ -57,25 +53,19 @@ public class ShadowTableDdlTests
     [Fact]
     public void Sync_trigger_replaces_an_earlier_row_for_the_same_key()
     {
-        var table = Stoklar();
-        var keyExpr = ShadowTableDdl.BuildKeyExpression(table, TaggedKeyProjection.Recno);
-
-        var sql = ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, table, keyExpr);
+        var sql = ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, Stoklar());
 
         // A row edited ten times must produce one shadow entry at its latest
         // cursor position, not ten entries.
-        sql.Should().Contain("DELETE").And.Contain("KayitKey IN (SELECT");
+        sql.Should().Contain("DELETE").And.Contain("IN (SELECT");
         // The delete is scoped to this table id so two tables can share a key value.
-        sql.Should().Contain("TabloID = @TabloID AND KayitKey IN");
+        sql.Should().Contain("TabloID = @TabloID AND KayitRECno IN");
     }
 
     [Fact]
     public void Delete_trigger_removes_from_upsert_shadow_and_appends_to_delete_shadow()
     {
-        var table = Stoklar();
-        var keyExpr = ShadowTableDdl.BuildKeyExpression(table, TaggedKeyProjection.Recno);
-
-        var sql = ShadowTableDdl.CreateSyncDelTrigger(ShadowTableOptions.Default, table, keyExpr);
+        var sql = ShadowTableDdl.CreateSyncDelTrigger(ShadowTableOptions.Default, Stoklar());
 
         sql.Should().Contain("AFTER DELETE")
            .And.Contain("[STOKLAR_ERPB_SYNC_DEL]")
@@ -85,21 +75,43 @@ public class ShadowTableDdlTests
     }
 
     [Fact]
-    public void Key_expression_tags_the_value_with_the_projection_prefix()
+    public void Guid_keyed_table_writes_the_native_uniqueidentifier_column()
     {
-        var guidExpr = ShadowTableDdl.BuildKeyExpression(
-            Stoklar(ErpRowKeyKind.Guid) with { KeyField = "sto_Guid" },
-            TaggedKeyProjection.Guid);
+        var table = Stoklar(ErpRowKeyKind.Guid) with { KeyField = "sto_Guid" };
 
-        guidExpr.Should().Contain("guid:").And.Contain("[sto_Guid]");
+        ShadowTableDdl.KeyColumn(table).Should().Be("KayitGuid");
+        ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, table)
+            .Should().Contain("KayitGuid").And.Contain("[sto_Guid]");
     }
 
     [Fact]
-    public void Key_expression_rejects_an_unsafe_column_name()
+    public void Int_keyed_table_writes_the_native_int_column()
+    {
+        var table = Stoklar();
+
+        ShadowTableDdl.KeyColumn(table).Should().Be("KayitRECno");
+        ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, table)
+            .Should().Contain("KayitRECno").And.Contain("[sto_RECno]");
+    }
+
+    [Fact]
+    public void Shadow_tables_declare_both_typed_key_columns()
+    {
+        // One shadow schema serves int-keyed and Guid-keyed tables; each row
+        // populates whichever column matches its table, keeping the reader's
+        // join sargable.
+        var sql = ShadowTableDdl.CreateSyncTable(ShadowTableOptions.Default);
+
+        sql.Should().Contain("[KayitRECno]   [int]              NULL")
+           .And.Contain("[KayitGuid]    [uniqueidentifier] NULL");
+    }
+
+    [Fact]
+    public void Trigger_generation_rejects_an_unsafe_column_name()
     {
         var poisoned = Stoklar() with { KeyField = "sto_RECno]; DROP TABLE STOKLAR--" };
 
-        var act = () => ShadowTableDdl.BuildKeyExpression(poisoned, TaggedKeyProjection.Recno);
+        var act = () => ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, poisoned);
 
         act.Should().Throw<ArgumentException>();
     }
