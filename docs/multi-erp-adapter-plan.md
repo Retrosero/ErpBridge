@@ -208,19 +208,38 @@ Yeni proje: **`ErpBridge.Erp.Sql`** (referans: `Shared`, `Erp.Abstractions`,
       → `(string KeyValue, string CursorToken)`.
 - [ ] `Shared` artık hiçbir Mikro tablo/kolon adı içermez.
 
-### 18.4 — Cursor deposu
-- [ ] `ITriggerWatermarkStore` → `IErpSyncCursorStore`
-      (`Task<ErpSyncCursor?> GetAsync(erpType, ct)`, `Task SetAsync(erpType, cursor, ct)`).
-      SQLite şeması: `erp_sync_cursor(erp_type TEXT PK, cursor_json TEXT, updated_at)`.
-- [ ] `SqliteTriggerWatermarkStore` (Agent.Service + Agent.UI'de kopya var) →
-      tek `SqliteErpSyncCursorStore` (`LocalStore` projesinde).
+### 18.4 — Cursor deposu ✅
+- [x] `IErpSyncCursorStore` (Abstractions) — `GetAsync`/`SetAsync`/`ResetAsync`,
+      tenant + `ErpType` bazında opak token.
+- [x] `SqliteErpSyncCursorStore` (**LocalStore**) — mevcut `checkpoints` tablosunu
+      `erpcursor:<ErpType>` scope'uyla kullanır; yeni tablo/migration yok.
+      `ResetAsync` eski `trigger:*` satırlarını da temizler.
+      Monotonluk `ShadowCursor`'da olduğu için depo düz last-write-wins.
+- [x] 10 birim testi (round-trip, ERP/tenant izolasyonu, legacy temizliği).
+- [~] Agent.Service + Agent.UI'deki iki `SqliteTriggerWatermarkStore` kopyası
+      **henüz silinmedi** — legacy trigger yolu onları hâlâ kullanıyor; 18.5 ile
+      birlikte düşecekler.
 
-### 18.5 — Sync servisi
-- [ ] `TriggerChangeSetSyncService` → `ErpChangeLogSyncService`
-      (`Erp.Sql` veya `Core`'da; `IErpChangeLogSource` + `IErpSyncCursorStore` +
-      `IRemoteApiClient`'a bağlı, Mikro tipine değil). Polly retry aynen korunur.
-- [ ] `Core/DependencyInjection`'daki "ChangeSetSyncService Mikro'da register edilir"
-      notu kalkar; artık Core/Erp.Sql'de register edilir.
+### 18.5 — Sync servisi ⏸️ **DURDURULDU — kullanıcı onayı bekliyor**
+`TriggerChangeSetSyncService` → `ErpChangeLogSyncService` dönüşümü, tek başına
+yapılabilir bir iş **değil**: servis `IRemoteApiClient.PushChangeSetAsync`'e
+`Shared.SyncChangeSet` gönderiyor ve o wire formatı hâlâ Mikro-şekilli
+(`SyncTableDescriptor.TabloID` int, `SyncDeletedChunk` içinde
+`(int KayitRecNo, int TriggerRecNo)`, chunk başına `HighestTriggerRecNo`).
+
+`ErpChangeBatch` bu int cursor'ları **kasıtlı olarak** opak token arkasına
+sakladığı için, 18.5'i doğru yapmak 18.3'ü (wire format değişimi) zorunlu kılıyor;
+o da `CentralApi` + 190 testini ve `docs/android-changeset-api.md` sözleşmesini
+etkiliyor (Faz 20 kapsamı).
+
+**Bu yüzden burada durdum.** Devam kararı kullanıcıya ait çünkü:
+1. Wire format değişimi her tenant için **tam yeniden senkron** demek.
+2. Android sözleşmesine dokunuyor — kullanıcı "mobili şimdilik bozma" dedi.
+3. Tek commit'te yapılırsa geri alması zor; ayrı bir onaylı tur hak ediyor.
+
+Şu an **iki yol yan yana çalışıyor**: legacy trigger yolu üretimde,
+yeni `IErpChangeLogSource` yolu kurulu ve test edilmiş ama henüz sync
+servisine bağlı değil. Mikro davranışı değişmedi.
 
 ### 18.6 — Mikro adaptörünü yeni sözleşmeye bağla
 - [ ] `MikroAdapter.ChangeDetection => ShadowTableChangeLog`.
