@@ -1,4 +1,4 @@
-namespace ErpBridge.Core.Domain;
+namespace ErpBridge.Erp.Abstractions.Documents;
 
 /// <summary>
 /// Tahsilat (collection) payload sent from the central API to the agent. The Mikro

@@ -1,4 +1,4 @@
-namespace ErpBridge.Core.Domain;
+namespace ErpBridge.Erp.Abstractions.Documents;
 
 /// <summary>
 /// Cari (customer) kart açma isteği — sahada bir satış temsilcisi yeni bir müşteri

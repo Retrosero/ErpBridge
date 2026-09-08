@@ -1,4 +1,5 @@
 using ErpBridge.Erp.Abstractions;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
@@ -9,6 +10,7 @@ using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
 using ErpBridge.Shared;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace ErpBridge.Erp.Mikro.Adapters;
@@ -460,6 +462,79 @@ public sealed class MikroAdapter : IErpAdapter
     {
         ArgumentNullException.ThrowIfNull(payload);
         return _salesOrderWriter.WriteAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteInvoiceAsync(InvoicePayload payload, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return _serviceProvider.GetRequiredService<MikroInvoiceWriter>()
+            .WriteInvoiceAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteCollectionAsync(CollectionPayload payload, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return _serviceProvider.GetRequiredService<MikroCollectionWriter>()
+            .WriteAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteDispatchNoteAsync(DispatchNotePayload payload, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return _serviceProvider.GetRequiredService<MikroDispatchNoteWriter>()
+            .WriteDispatchNoteAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WritePaymentOrderAsync(PaymentOrderPayload payload, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return _serviceProvider.GetRequiredService<MikroPaymentOrderWriter>()
+            .WriteAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteCustomerCardAsync(CreateCustomerRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return RunCardWriteAsync(
+            () => _serviceProvider.GetRequiredService<MikroCustomerCardWriter>()
+                .CreateCustomerAsync(request, _mappingStore, ConnectionSettings, ct));
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteStockCardAsync(CreateStockRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return RunCardWriteAsync(
+            () => _serviceProvider.GetRequiredService<MikroStockCardWriter>()
+                .CreateStockAsync(request, _mappingStore, ConnectionSettings, ct));
+    }
+
+    /// <summary>
+    /// Adapt the card writers' <see cref="CreateResult"/> + throw-on-invalid contract
+    /// to the uniform <see cref="ErpWriteResult"/> the adapter interface returns.
+    /// </summary>
+    private static async Task<ErpWriteResult> RunCardWriteAsync(Func<Task<CreateResult>> write)
+    {
+        try
+        {
+            var result = await write().ConfigureAwait(false);
+            return new ErpWriteResult(
+                Ok: true,
+                ErpRecno: result.NewRECno == 0 ? null : result.NewRECno,
+                ErpGuid: result.NewUid);
+        }
+        catch (MikroCardValidationException ex)
+        {
+            return new ErpWriteResult(
+                Ok: false,
+                ErrorCode: ErpWriteResult.ErrorCodeValidationFailed,
+                ErrorMessage: ex.Message);
+        }
     }
 
     /// <summary>

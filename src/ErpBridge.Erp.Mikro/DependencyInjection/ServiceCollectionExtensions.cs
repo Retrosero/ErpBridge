@@ -123,6 +123,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWarehouseLookup>(_ => new InMemoryWarehouseLookup());
 
         services.AddSingleton<MikroSalesOrderWriter>();
+        // Faz 17: fatura + irsaliye yazıcıları da IErpAdapter sözleşmesi üzerinden akıyor.
+        services.AddSingleton<MikroInvoiceWriter>();
+        services.AddSingleton<MikroDispatchNoteWriter>();
         // Tahsilat (Wave 4): CARI_HESAP_HAREKETLERI + ODEME_EMIRLERI writers.
         services.AddSingleton<MikroCollectionWriter>();
         services.AddSingleton<MikroPaymentOrderWriter>();
@@ -208,6 +211,8 @@ public static class ServiceCollectionExtensions
         services.TryAddSingletonLogger<MikroVersionDetector>(services);
         services.TryAddSingletonLogger<MikroIdentityStrategySelector>(services);
         services.TryAddSingletonLogger<MikroSalesOrderWriter>(services);
+        services.TryAddSingletonLogger<MikroInvoiceWriter>(services);
+        services.TryAddSingletonLogger<MikroDispatchNoteWriter>(services);
         services.TryAddSingletonLogger<MikroCollectionWriter>(services);
         services.TryAddSingletonLogger<MikroPaymentOrderWriter>(services);
         services.TryAddSingletonLogger<MikroCustomerCardWriter>(services);

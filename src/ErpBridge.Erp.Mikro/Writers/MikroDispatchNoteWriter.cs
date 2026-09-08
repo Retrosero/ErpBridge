@@ -1,6 +1,6 @@
 using System.Data;
 using Dapper;
-using ErpBridge.Core.Domain;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Stores;

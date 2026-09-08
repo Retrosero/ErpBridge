@@ -1,4 +1,4 @@
-namespace ErpBridge.Core.Domain;
+namespace ErpBridge.Erp.Abstractions.Documents;
 
 /// <summary>
 /// Stok (mal/hizmet) kart açma isteği — sahada bir temsilci yeni bir ürün

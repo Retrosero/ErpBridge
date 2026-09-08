@@ -1,4 +1,4 @@
-namespace ErpBridge.Core.Domain;
+namespace ErpBridge.Erp.Abstractions.Documents;
 
 /// <summary>
 /// İrsaliye (dispatch note / sevkiyat irsaliyesi) payload sent from the central API

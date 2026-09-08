@@ -1,8 +1,10 @@
+using System.Text.Json;
 using ErpBridge.Agent.Service.Configuration;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Jobs;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -14,10 +16,12 @@ namespace ErpBridge.Agent.Service.Workers;
 /// Polls the central API for pending jobs, hands them to the appropriate ERP
 /// adapter, and acknowledges the central API based on the real write result.
 ///
-/// Per-job flow (Phase 6 / sales_order):
+/// Per-job flow:
 ///   1. Pull <see cref="RemoteJob"/> from the central API.
-///   2. If <c>DocumentType == "sales_order"</c>: deserialize the payload via
-///      <see cref="SalesOrderPayloadDeserializer"/>, resolve an
+///   2. <c>sales_order</c> uses the dedicated <see cref="SalesOrderPayloadDeserializer"/>
+///      shape-validation path; the other six document types (invoice, collection,
+///      dispatch_note, payment_order, customer_card, stock_card) go through the
+///      generic JSON dispatch in <c>DispatchDocumentAsync</c>. Both resolve an
 ///      <see cref="IErpAdapter"/> from <see cref="IErpAdapterFactory"/>, and
 ///      invoke <see cref="IErpAdapter.WriteSalesOrderAsync"/>. The adapter
 ///      owns the Mikro transaction AND the idempotent mapping save — the
@@ -50,6 +54,16 @@ public sealed class AgentWorker : BackgroundService
     /// Core / Agent.Service layer does not pull a Mikro-specific constant).
     /// </summary>
     public const string SalesOrderDocumentType = "sales_order";
+
+    /// <summary>Document-type keys handled through the generic JSON dispatch path (Faz 17).</summary>
+    public const string InvoiceDocumentType = "invoice";
+    public const string CollectionDocumentType = "collection";
+    public const string DispatchNoteDocumentType = "dispatch_note";
+    public const string PaymentOrderDocumentType = "payment_order";
+    public const string CustomerCardDocumentType = "customer_card";
+    public const string StockCardDocumentType = "stock_card";
+
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IRemoteApiClient _remoteApi;
     private readonly ILocalQueueStore _localQueue;
@@ -206,19 +220,118 @@ public sealed class AgentWorker : BackgroundService
             return await DispatchSalesOrderAsync(job, config, ct);
         }
 
-        // Unknown types must not be consumed. They remain auditable in Central
-        // and can be retried after their Mikro writer is installed.
-        _logger.LogWarning(
-            "Received job {JobId} with document type {DocumentType}; no adapter wired yet — reporting failure.",
-            job.JobId, job.DocumentType);
-        return new JobAck
-        {
-            JobId = job.JobId,
-            Status = "failed",
-            ErrorCode = "UNSUPPORTED_DOCUMENT_TYPE",
-            ErrorMessage = $"No Mikro writer is configured for document type '{job.DocumentType}'.",
-        };
+        return await DispatchDocumentAsync(job, config, ct);
     }
+
+    /// <summary>
+    /// Generic dispatch for every non-sales-order document type. Resolves the
+    /// adapter, deserializes the JSON payload into the type the adapter method
+    /// expects, invokes it, and maps <see cref="ErpWriteResult"/> to a
+    /// <see cref="JobAck"/>. Business validation stays in the adapter/writer.
+    /// </summary>
+    private static readonly HashSet<string> GenericDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        InvoiceDocumentType, CollectionDocumentType, DispatchNoteDocumentType,
+        PaymentOrderDocumentType, CustomerCardDocumentType, StockCardDocumentType,
+    };
+
+    private async Task<JobAck> DispatchDocumentAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    {
+        // Reject genuinely-unknown document types BEFORE resolving an adapter —
+        // an unrecognised type must never trigger an ERP connection.
+        if (job.DocumentType is null || !GenericDocumentTypes.Contains(job.DocumentType))
+        {
+            _logger.LogWarning(
+                "Received job {JobId} with unsupported document type {DocumentType}.",
+                job.JobId, job.DocumentType);
+            return Failed(job.JobId, "UNSUPPORTED_DOCUMENT_TYPE",
+                $"No writer is configured for document type '{job.DocumentType}'.");
+        }
+
+        IErpAdapter adapter;
+        try
+        {
+            adapter = _adapterFactory.Create(config.ErpType);
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogError(ex, "Adapter factory refused ERP type {ErpType} for job {JobId}.", config.ErpType, job.JobId);
+            return Failed(job.JobId, "UNSUPPORTED_ERP", ex.Message);
+        }
+
+        try
+        {
+            var writeResult = job.DocumentType.ToLowerInvariant() switch
+            {
+                InvoiceDocumentType => await adapter.WriteInvoiceAsync(Parse<InvoicePayload>(job.Payload), ct),
+                CollectionDocumentType => await adapter.WriteCollectionAsync(Parse<CollectionPayload>(job.Payload), ct),
+                DispatchNoteDocumentType => await adapter.WriteDispatchNoteAsync(Parse<DispatchNotePayload>(job.Payload), ct),
+                PaymentOrderDocumentType => await adapter.WritePaymentOrderAsync(Parse<PaymentOrderPayload>(job.Payload), ct),
+                CustomerCardDocumentType => await adapter.WriteCustomerCardAsync(Parse<CreateCustomerRequest>(job.Payload), ct),
+                StockCardDocumentType => await adapter.WriteStockCardAsync(Parse<CreateStockRequest>(job.Payload), ct),
+                _ => new ErpWriteResult(false, "UNSUPPORTED_DOCUMENT_TYPE", $"No writer for '{job.DocumentType}'."),
+            };
+
+            return ToAck(job, writeResult);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Payload for job {JobId} ({DocumentType}) is not valid JSON.", job.JobId, job.DocumentType);
+            return Failed(job.JobId, "INVALID_PAYLOAD_JSON", ex.Message);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Adapter threw for job {JobId} ({DocumentType}).", job.JobId, job.DocumentType);
+            return Failed(job.JobId, ErpWriteResult.ErrorCodeUnknown, ex.Message);
+        }
+    }
+
+    private static T Parse<T>(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new JsonException("RemoteJob payload is empty or whitespace.");
+        }
+
+        return JsonSerializer.Deserialize<T>(json, PayloadJsonOptions)
+            ?? throw new JsonException($"Payload deserialized to null for {typeof(T).Name}.");
+    }
+
+    private JobAck ToAck(RemoteJob job, ErpWriteResult writeResult)
+    {
+        if (writeResult.Ok)
+        {
+            _logger.LogInformation(
+                "Document committed for job {JobId} ({DocumentType}, recno={Recno}, guid={Guid}).",
+                job.JobId, job.DocumentType, writeResult.ErpRecno, writeResult.ErpGuid);
+            return new JobAck
+            {
+                JobId = job.JobId,
+                Status = "succeeded",
+                ErpDocumentSeries = writeResult.DocumentSeries,
+                ErpDocumentNumber = writeResult.DocumentNumber,
+                ErpRecno = writeResult.ErpRecno,
+                ErpGuid = writeResult.ErpGuid?.ToString(),
+            };
+        }
+
+        _logger.LogWarning(
+            "Document rejected for job {JobId} ({DocumentType}): {ErrorCode} {ErrorMessage}",
+            job.JobId, job.DocumentType, writeResult.ErrorCode, writeResult.ErrorMessage);
+        return Failed(job.JobId, writeResult.ErrorCode ?? ErpWriteResult.ErrorCodeUnknown, writeResult.ErrorMessage);
+    }
+
+    private static JobAck Failed(string jobId, string? code, string? message) => new()
+    {
+        JobId = jobId,
+        Status = "failed",
+        ErrorCode = code,
+        ErrorMessage = message,
+    };
 
     private async Task<JobAck> DispatchSalesOrderAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
     {

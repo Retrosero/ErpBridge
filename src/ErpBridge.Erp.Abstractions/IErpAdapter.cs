@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Sync;
 
@@ -73,4 +74,22 @@ public interface IErpAdapter
     Task<ErpWriteResult> WriteSalesOrderAsync(
         SalesOrderPayload payload,
         CancellationToken ct = default);
+
+    /// <summary>Write a sales invoice (header + N stock lines) inside a single transaction.</summary>
+    Task<ErpWriteResult> WriteInvoiceAsync(InvoicePayload payload, CancellationToken ct = default);
+
+    /// <summary>Write a collection (tahsilat) document.</summary>
+    Task<ErpWriteResult> WriteCollectionAsync(CollectionPayload payload, CancellationToken ct = default);
+
+    /// <summary>Write a dispatch note (irsaliye).</summary>
+    Task<ErpWriteResult> WriteDispatchNoteAsync(DispatchNotePayload payload, CancellationToken ct = default);
+
+    /// <summary>Write a payment order (ödeme emri / tediye).</summary>
+    Task<ErpWriteResult> WritePaymentOrderAsync(PaymentOrderPayload payload, CancellationToken ct = default);
+
+    /// <summary>Open a new customer card in the ERP (idempotent by external id + code).</summary>
+    Task<ErpWriteResult> WriteCustomerCardAsync(CreateCustomerRequest request, CancellationToken ct = default);
+
+    /// <summary>Open a new stock card in the ERP (idempotent by external id + code).</summary>
+    Task<ErpWriteResult> WriteStockCardAsync(CreateStockRequest request, CancellationToken ct = default);
 }

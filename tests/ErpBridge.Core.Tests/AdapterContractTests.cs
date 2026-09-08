@@ -1,4 +1,5 @@
 using ErpBridge.Erp.Abstractions;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Sync;
 using FluentAssertions;
@@ -62,6 +63,24 @@ public class AdapterContractTests
 
         public Task<ErpWriteResult> WriteSalesOrderAsync(SalesOrderPayload payload, CancellationToken ct = default) =>
             Task.FromResult(new ErpWriteResult(true, ErpRecno: 1, DocumentSeries: payload.DocumentSeries, DocumentNumber: payload.DocumentNumber));
+
+        public Task<ErpWriteResult> WriteInvoiceAsync(InvoicePayload payload, CancellationToken ct = default) =>
+            Task.FromResult(new ErpWriteResult(true, ErpRecno: 1));
+
+        public Task<ErpWriteResult> WriteCollectionAsync(CollectionPayload payload, CancellationToken ct = default) =>
+            Task.FromResult(new ErpWriteResult(true, ErpRecno: 1));
+
+        public Task<ErpWriteResult> WriteDispatchNoteAsync(DispatchNotePayload payload, CancellationToken ct = default) =>
+            Task.FromResult(new ErpWriteResult(true, ErpRecno: 1));
+
+        public Task<ErpWriteResult> WritePaymentOrderAsync(PaymentOrderPayload payload, CancellationToken ct = default) =>
+            Task.FromResult(new ErpWriteResult(true, ErpRecno: 1));
+
+        public Task<ErpWriteResult> WriteCustomerCardAsync(CreateCustomerRequest request, CancellationToken ct = default) =>
+            Task.FromResult(new ErpWriteResult(true, ErpRecno: 1));
+
+        public Task<ErpWriteResult> WriteStockCardAsync(CreateStockRequest request, CancellationToken ct = default) =>
+            Task.FromResult(new ErpWriteResult(true, ErpRecno: 1));
     }
 
     private sealed class StaticFactory : IErpAdapterFactory

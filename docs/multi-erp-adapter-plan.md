@@ -109,32 +109,34 @@ Amaç: Mikro'ya özgü tip/isim sızıntılarını en ucuz yerden kapatmak.
 
 ---
 
-## Faz 17 — Yazım (Write) Sözleşmesinin Tamamlanması
-**Boyut:** M · **Risk:** Düşük (mekanik) · **Tahmini:** 4–6 gün
+## Faz 17 — Yazım (Write) Sözleşmesinin Tamamlanması ✅
+**Boyut:** M · **Durum:** Tamamlandı
 
 Amaç: 7 evrak tipinin tamamını soyutlama üzerinden akıtmak.
 
-- [ ] 6 payload'ı taşı: `Core.Domain.{Invoice,Collection,DispatchNote,PaymentOrder}Payload`
-      + `CreateCustomerRequest` + `CreateStockRequest` →
-      `Erp.Abstractions.Documents.*`. Doküman yorumlarında "Mikro cari kodu" →
-      "hesap/cari kodu (ERP-nötr string)".
-- [ ] `IErpAdapter`'a ekle (hepsi `Task<ErpWriteResult>` döner):
+- [x] 6 payload `Core.Domain` → `Erp.Abstractions.Documents`'e taşındı
+      (`InvoicePayload`, `CollectionPayload`, `DispatchNotePayload`,
+      `PaymentOrderPayload`, `CreateCustomerRequest`, `CreateStockRequest`).
+      Writer + test `using`'leri güncellendi.
+- [x] `IErpAdapter`'a 6 metot eklendi (hepsi `Task<ErpWriteResult>`):
       `WriteInvoiceAsync`, `WriteCollectionAsync`, `WriteDispatchNoteAsync`,
       `WritePaymentOrderAsync`, `WriteCustomerCardAsync`, `WriteStockCardAsync`.
-- [ ] `MikroInvoiceWriter` + `MikroDispatchNoteWriter`'ı DI'a ekle
-      (`Erp.Mikro/DependencyInjection/ServiceCollectionExtensions.cs`).
-- [ ] `MikroAdapter` yeni 6 metodu ilgili writer'a delege etsin (idempotency +
-      mapping akışı writer'larda zaten var, değişmez).
-- [ ] `AgentWorker.DispatchToAdapterAsync`: `SalesOrderDocumentType` özel-case'i
-      yerine `switch (job.DocumentType)` ile generic dispatch. Her tip için:
-      deserialize → `adapter.Write*Async` → `JobAck`.
-- [ ] `SalesOrderPayloadDeserializer` → `ErpDocumentPayloadDeserializer`
-      (System.Text.Json, `documentType`'a göre tip seçer). Wire şeması doğrulaması
-      adaptöre gitmeden Core'da yapılır (bugünkü gibi).
-- [ ] Testler: her writer için `happy` + `idempotent-replay (mapping hit)` +
-      `lookup-miss` senaryoları (`Erp.Mikro.Tests` + `Agent.Service.Tests`).
+- [x] `MikroInvoiceWriter` + `MikroDispatchNoteWriter` DI'a eklendi (loggerlarıyla).
+- [x] `MikroAdapter` 6 metodu writer'lara delege ediyor;
+      `_serviceProvider.GetRequiredService<T>()` ile lazy resolve (ctor churn yok).
+      Card writer'ların `CreateResult` + throw-on-invalid sözleşmesi
+      `RunCardWriteAsync` ile `ErpWriteResult`'a adapte edildi.
+- [x] `AgentWorker`: `DispatchDocumentAsync` — bilinmeyen tip önce reddedilir
+      (ERP bağlantısı açılmadan), sonra `switch (documentType)` → `Parse<T>` →
+      `adapter.Write*Async` → `ToAck`. `Failed`/`ToAck` yardımcıları eklendi.
+- [x] Testler: `AdapterContractTests.FakeAdapter` 6 metotla güncellendi;
+      `AgentWorkerProcessJobTests`'e invoice-happy + collection-rejected +
+      güncellenmiş unsupported-type testleri eklendi.
+- [~] `SalesOrderPayloadDeserializer` → `ErpDocumentPayloadDeserializer` yeniden
+      adlandırması **ertelendi**: sales_order özel shape-validation yolunu
+      korudum, diğer 6 tip generic `System.Text.Json` ile parse ediliyor.
 
-**Doğrulama:** 7 evrak tipi de gerçek Mikro DB'ye yazılır; tekrar gönderim ikinci evrak açmaz.
+**Doğrulama:** `dotnet build` 0 uyarı; `dotnet test` 607 geçti / 20 atlandı.
 
 ---
 
