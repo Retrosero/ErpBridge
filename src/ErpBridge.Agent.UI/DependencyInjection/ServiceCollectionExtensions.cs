@@ -78,7 +78,16 @@ public static class ServiceCollectionExtensions
             .ReadFrom.Configuration(configuration)
             .Enrich.FromLogContext()
             .WriteTo.Console()
-            .WriteTo.File("logs/ui-.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7)
+            // shared:false + flushToDiskInterval:1s => her mesaj anında diske yazılır,
+            // böylece EXE hâlâ açıkken bile log dosyası gerçek zamanlı güncellenir
+            // (debug için kritik — yoksa Serilog default shared buffer'ı kullanır ve
+            // uygulama kapanana kadar dosya boş kalır).
+            .WriteTo.File(
+                "logs/ui-.log",
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 7,
+                shared: false,
+                flushToDiskInterval: TimeSpan.FromSeconds(1))
             .CreateLogger();
 
         var factory = LoggerFactory.Create(b => b.AddSerilog(logger, dispose: true));

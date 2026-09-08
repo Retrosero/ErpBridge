@@ -444,10 +444,14 @@ public partial class App : Application
         var serilog = new LoggerConfiguration()
             .ReadFrom.Configuration(bootstrapConfig)
             .Enrich.FromLogContext()
+            // shared:false + flushToDiskInterval:1s => her mesaj anında diske yazılır.
+            // Debug için kritik — yoksa EXE hâlâ açıkken log dosyası boş kalır.
             .WriteTo.File(
                 "logs/ui-.log",
                 rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 7)
+                retainedFileCountLimit: 7,
+                shared: false,
+                flushToDiskInterval: TimeSpan.FromSeconds(1))
             .CreateLogger();
 
         return new LoggerFactory().AddSerilog(serilog).CreateLogger("App.Bootstrap");
