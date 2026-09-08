@@ -58,7 +58,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
     private string _sqlServer = string.Empty;
     private string _sqlUserName = string.Empty;
     private string _sqlPassword = string.Empty;
-    private string _mikroDatabaseName = string.Empty;
+    private string _erpDatabaseName = string.Empty;
     private string _apiBaseUrl = "https://api.erpbridge.local";
     private bool _useWindowsAuth;
     // Faz 10 — multi-firm Mikro: company / branch / warehouse numbers used by
@@ -216,7 +216,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
     public string SqlPassword { get => _sqlPassword; set => SetProperty(ref _sqlPassword, value); }
 
     /// <summary>Mikro database adı.</summary>
-    public string MikroDatabaseName { get => _mikroDatabaseName; set => SetProperty(ref _mikroDatabaseName, value); }
+    public string ErpDatabaseName { get => _erpDatabaseName; set => SetProperty(ref _erpDatabaseName, value); }
 
     /// <summary>
     /// Mikro firma numarası. Tüm bootstrap sorguları bu değerle filtrelenir
@@ -735,7 +735,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             SqlServer = config.SqlServer ?? string.Empty;
             SqlUserName = config.SqlUserName ?? string.Empty;
             SqlPassword = config.SqlPassword ?? string.Empty;
-            MikroDatabaseName = config.MikroDatabaseName ?? string.Empty;
+            ErpDatabaseName = config.ErpDatabaseName ?? string.Empty;
             ApiBaseUrl = config.ApiBaseUrl ?? string.Empty;
             UseWindowsAuth = config.UseWindowsAuth;
             // Faz 10: multi-firm Mikro — CompanyNo / BranchNo / WarehouseNo
@@ -805,7 +805,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             // database, and result code. SqlUserName is safe to log (not secret).
             _logger.LogInformation(
                 "AgentConfig saved. Server={Server}, Database={Database}, UserName={UserName}, Company={Company}, Branch={Branch}.",
-                config.SqlServer, config.MikroDatabaseName, config.SqlUserName,
+                config.SqlServer, config.ErpDatabaseName, config.SqlUserName,
                 config.CompanyNo, config.BranchNo);
 
             // Reveal the Pano tab the first time the operator lands a real
@@ -823,7 +823,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             // carries the exception message + class name, never the DTO.
             _logger.LogError(ex,
                 "AgentConfig save failed for Server={Server}, Database={Database}.",
-                SqlServer, MikroDatabaseName);
+                SqlServer, ErpDatabaseName);
             _ = App.ReportExceptionAsync(ex, "Save agent configuration");
             Status = "Kaydetme başarısız: " + ex.Message;
         }
@@ -878,20 +878,20 @@ public sealed class AgentSettingsViewModel : ObservableObject
             {
                 _logger.LogInformation(
                     "Mikro connection test OK. Server={Server}, Database={Database}, ServerVersion={ServerVersion}, MikroVersion={MikroVersion}, LatencyMs={Latency}.",
-                    SqlServer, MikroDatabaseName, result.ServerVersion, result.DetectedMikroVersion, result.LatencyMs);
+                    SqlServer, ErpDatabaseName, result.ServerVersion, result.DetectedMikroVersion, result.LatencyMs);
             }
             else
             {
                 _logger.LogWarning(
                     "Mikro connection test FAILED. Server={Server}, Database={Database}, MaskedMessage={MaskedMessage}.",
-                    SqlServer, MikroDatabaseName, ConnectionStringMasker.MaskForLog(result.Message));
+                    SqlServer, ErpDatabaseName, ConnectionStringMasker.MaskForLog(result.Message));
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
                 "TestConnection failed for Server={Server}, Database={Database}.",
-                SqlServer, MikroDatabaseName);
+                SqlServer, ErpDatabaseName);
             _ = App.ReportExceptionAsync(ex, "Mikro connection test");
             Status = "Bağlantı testi başarısız: " + ConnectionStringMasker.MaskForLog(ex.Message);
             TroubleshootingHint = BuildTroubleshootingHint(ex);
@@ -932,20 +932,20 @@ public sealed class AgentSettingsViewModel : ObservableObject
             {
                 _logger.LogInformation(
                     "Mikro redetect succeeded. Database={Database}, ServerVersion={ServerVersion}, MikroVersion={MikroVersion}, LatencyMs={Latency}.",
-                    MikroDatabaseName, result.ServerVersion, result.DetectedMikroVersion, result.LatencyMs);
+                    ErpDatabaseName, result.ServerVersion, result.DetectedMikroVersion, result.LatencyMs);
             }
             else
             {
                 _logger.LogWarning(
                     "Mikro redetect FAILED. Database={Database}, MaskedMessage={MaskedMessage}.",
-                    MikroDatabaseName, ConnectionStringMasker.MaskForLog(result.Message));
+                    ErpDatabaseName, ConnectionStringMasker.MaskForLog(result.Message));
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
                 "Redetect version failed for Database={Database}.",
-                MikroDatabaseName);
+                ErpDatabaseName);
             _ = App.ReportExceptionAsync(ex, "Mikro version detection");
             Status = "Versiyon tespiti başarısız: " + ConnectionStringMasker.MaskForLog(ex.Message);
             TroubleshootingHint = BuildTroubleshootingHint(ex);
@@ -1354,7 +1354,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
 
             Status = prefix + " başarılı.\n" +
                      "Server: " + SqlServer + "\n" +
-                     "DB: " + MikroDatabaseName + "\n" +
+                     "DB: " + ErpDatabaseName + "\n" +
                      "Mesaj: " + (result.Message ?? "ok") + "\n" +
                      "ServerVersion: " + (result.ServerVersion ?? "?");
         }
@@ -1421,7 +1421,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             SqlServer = SqlServer?.Trim() ?? string.Empty,
             SqlUserName = SqlUserName?.Trim() ?? string.Empty,
             SqlPassword = SqlPassword ?? string.Empty,
-            MikroDatabaseName = MikroDatabaseName?.Trim() ?? string.Empty,
+            ErpDatabaseName = ErpDatabaseName?.Trim() ?? string.Empty,
             ApiBaseUrl = ApiBaseUrl?.Trim() ?? string.Empty,
             UseWindowsAuth = UseWindowsAuth,
             // Faz 10: parse the three new int fields defensively. Bad input
@@ -1431,7 +1431,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
             CompanyNo = TryParseInt(CompanyNo, fallback: 1),
             BranchNo = TryParseInt(BranchNo, fallback: 0),
             WarehouseNo = TryParseInt(WarehouseNo, fallback: 1),
-            ErpType = Core.Domain.ErpType.Mikro,
+            ErpType = ErpType.Mikro,
         };
     }
 
@@ -1543,7 +1543,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
         _liveSettings[prefix + "Server"] = config.SqlServer ?? string.Empty;
         _liveSettings[prefix + "UserId"] = config.SqlUserName ?? string.Empty;
         _liveSettings[prefix + "Password"] = config.SqlPassword ?? string.Empty;
-        _liveSettings[prefix + "DatabaseName"] = config.MikroDatabaseName ?? string.Empty;
+        _liveSettings[prefix + "DatabaseName"] = config.ErpDatabaseName ?? string.Empty;
         _liveSettings[prefix + "IntegratedSecurity"] = config.UseWindowsAuth ? "true" : "false";
         // Faz 10: propagate the multi-firm numbers into the live Mikro
         // section so MikroConnectionSettings.FromConfiguration sees them on
@@ -1556,7 +1556,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
 
     private bool TryValidateInputs(out string error)
         => AgentSettingsValidation.TryValidate(
-            SqlServer, SqlUserName, MikroDatabaseName, UseWindowsAuth, out error);
+            SqlServer, SqlUserName, ErpDatabaseName, UseWindowsAuth, out error);
 
     /// <summary>
     /// Build a user-visible troubleshooting hint based on the exception's

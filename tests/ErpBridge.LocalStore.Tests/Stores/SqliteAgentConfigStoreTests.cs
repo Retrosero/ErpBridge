@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.LocalStore.ProtectedConfig;
@@ -39,7 +40,7 @@ public class SqliteAgentConfigStoreTests : IDisposable
             SqlServer = "localhost\\MIKRO",
             SqlUserName = "sa",
             SqlPassword = "do-not-leak-me",
-            MikroDatabaseName = "MIKRO_DB",
+            ErpDatabaseName = "MIKRO_DB",
             CompanyNo = 7,
             BranchNo = 3,
             WarehouseNo = 5,
@@ -55,7 +56,7 @@ public class SqliteAgentConfigStoreTests : IDisposable
         loaded.ErpType.Should().Be(ErpType.Mikro);
         loaded.SqlServer.Should().Be("localhost\\MIKRO");
         loaded.SqlUserName.Should().Be("sa");
-        loaded.MikroDatabaseName.Should().Be("MIKRO_DB");
+        loaded.ErpDatabaseName.Should().Be("MIKRO_DB");
         loaded.CompanyNo.Should().Be(7);
         loaded.BranchNo.Should().Be(3);
         loaded.WarehouseNo.Should().Be(5);

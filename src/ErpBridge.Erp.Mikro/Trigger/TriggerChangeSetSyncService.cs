@@ -99,7 +99,7 @@ public sealed class TriggerChangeSetSyncService : IChangeSetSyncService
                     Server: config.SqlServer ?? string.Empty,
                     UserId: config.SqlUserName ?? string.Empty,
                     Password: config.SqlPassword ?? string.Empty,
-                    DatabaseName: config.MikroDatabaseName ?? string.Empty,
+                    DatabaseName: config.ErpDatabaseName ?? string.Empty,
                     IntegratedSecurity: config.UseWindowsAuth,
                     CompanyNo: config.CompanyNo,
                     WarehouseNo: config.WarehouseNo);
@@ -125,7 +125,7 @@ public sealed class TriggerChangeSetSyncService : IChangeSetSyncService
             IErpAdapter adapter;
             try
             {
-                adapter = _adapterFactory.Create((ErpBridge.Erp.Abstractions.ErpType)config.ErpType);
+                adapter = _adapterFactory.Create(config.ErpType);
             }
             catch (NotSupportedException ex)
             {

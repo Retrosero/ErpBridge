@@ -5,7 +5,7 @@ namespace ErpBridge.Shared;
 /// </summary>
 public static class AgentConstants
 {
-    /// <summary>Default SQL command timeout in seconds for Mikro queries.</summary>
+    /// <summary>Default SQL command timeout in seconds for ERP queries.</summary>
     public const int DefaultSqlTimeoutSeconds = 30;
 
     /// <summary>Default queue poll interval in milliseconds for the local job worker.</summary>
@@ -15,7 +15,7 @@ public static class AgentConstants
     [Obsolete("Use DefaultBootstrapPushIntervalSeconds (Phase 9 switched the worker to a 60s cadence).")]
     public const int DefaultBootstrapPushIntervalMinutes = 60;
 
-    /// <summary>Default bootstrap push interval in seconds (Mikro → central API). Phase 9 default: 60.</summary>
+    /// <summary>Default bootstrap push interval in seconds (ERP → central API). Phase 9 default: 60.</summary>
     public const int DefaultBootstrapPushIntervalSeconds = 60;
 
     /// <summary>Skip a new bootstrap push if the previous successful one is younger than this window. Phase 9 default: 30 s (half the worker interval).</summary>

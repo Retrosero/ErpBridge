@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions;
 using System.Security.Cryptography;
 using Dapper;
 using ErpBridge.Core.Domain;
@@ -125,7 +126,7 @@ VALUES (@key, @value, @isSecret, @updatedAt);",
             ErpType = ErpType.Mikro,
             SqlServer = "mssql.local",
             SqlUserName = "agent",
-            MikroDatabaseName = "MIKRO_X",
+            ErpDatabaseName = "MIKRO_X",
             CompanyNo = 12,
             BranchNo = 4,
             ApiBaseUrl = "https://api.erpbridge.local",
@@ -140,7 +141,7 @@ VALUES (@key, @value, @isSecret, @updatedAt);",
         loaded.ErpType.Should().Be(ErpType.Mikro);
         loaded.SqlServer.Should().Be("mssql.local");
         loaded.SqlUserName.Should().Be("agent");
-        loaded.MikroDatabaseName.Should().Be("MIKRO_X");
+        loaded.ErpDatabaseName.Should().Be("MIKRO_X");
         loaded.CompanyNo.Should().Be(12);
         loaded.BranchNo.Should().Be(4);
         loaded.ApiBaseUrl.Should().Be("https://api.erpbridge.local");

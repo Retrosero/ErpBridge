@@ -35,10 +35,10 @@ public static class ErrorCode
     /// <summary>The central SaaS API responded with a transient error.</summary>
     public const string TransientUpstream = "TRANSIENT_UPSTREAM";
 
-    /// <summary>The Mikro ERP connection test failed.</summary>
+    /// <summary>An ERP connection test failed.</summary>
     public const string ConnectionFailed = "CONNECTION_FAILED";
 
-    /// <summary>The detected Mikro ERP version is not supported.</summary>
+    /// <summary>The detected ERP version is not supported.</summary>
     public const string UnsupportedVersion = "UNSUPPORTED_VERSION";
 
     /// <summary>An unexpected internal error occurred.</summary>

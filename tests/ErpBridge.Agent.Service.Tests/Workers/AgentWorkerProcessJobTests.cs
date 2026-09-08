@@ -11,12 +11,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 
-// Both Core.Domain.ErpType and ErpBridge.Erp.Abstractions.ErpType exist with
-// identical numeric values. The Core.Domain version is what AgentConfig
-// carries (persisted in SQLite); the Abstractions version is what
-// IErpAdapterFactory consumes. Make them both reachable under unambiguous
-// short names so Moq setups don't accidentally bind to the wrong enum.
-using CoreErpType = ErpBridge.Core.Domain.ErpType;
+// ErpType has a single definition in ErpBridge.Erp.Abstractions — AgentConfig
+// carries it and IErpAdapterFactory consumes the same type (no cast).
+using CoreErpType = ErpBridge.Erp.Abstractions.ErpType;
 using AdapterErpType = ErpBridge.Erp.Abstractions.ErpType;
 
 namespace ErpBridge.Agent.Service.Tests.Workers;
@@ -47,7 +44,7 @@ public class AgentWorkerProcessJobTests
         SqlServer = "localhost",
         SqlUserName = "sa",
         SqlPassword = "secret-not-logged",
-        MikroDatabaseName = "MIKRO_DEMO",
+        ErpDatabaseName = "MIKRO_DEMO",
         CompanyNo = 1,
         BranchNo = 1,
         ApiBaseUrl = "https://api.example.test",

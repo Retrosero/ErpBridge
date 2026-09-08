@@ -141,13 +141,12 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 }
             }
 
-            // ErpAdapterFactory throws NotSupportedException for Logo/Paraşüt/Netsis.
-            // Cast the Core.Domain.ErpType to the Abstractions enum — the integer
-            // values are pinned in the SKILL.md contract and never change.
+            // ErpAdapterFactory throws NotSupportedException for ERP types that
+            // are not wired yet (Logo / Paraşüt / Netsis).
             IErpAdapter adapter;
             try
             {
-                adapter = _adapterFactory.Create((ErpBridge.Erp.Abstractions.ErpType)config.ErpType);
+                adapter = _adapterFactory.Create(config.ErpType);
             }
             catch (NotSupportedException ex)
             {
@@ -395,7 +394,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             IErpAdapter adapter;
             try
             {
-                adapter = _adapterFactory.Create((ErpBridge.Erp.Abstractions.ErpType)config.ErpType);
+                adapter = _adapterFactory.Create(config.ErpType);
             }
             catch (NotSupportedException ex)
             {

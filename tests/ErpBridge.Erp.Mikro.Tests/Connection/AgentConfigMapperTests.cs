@@ -26,7 +26,7 @@ public class AgentConfigMapperTests
             SqlServer = server,
             SqlUserName = user,
             SqlPassword = password,
-            MikroDatabaseName = database,
+            ErpDatabaseName = database,
             CompanyNo = companyNo,
             BranchNo = branchNo,
             WarehouseNo = warehouseNo,
@@ -70,7 +70,7 @@ public class AgentConfigMapperTests
     }
 
     [Fact]
-    public void ToErpSettings_returns_null_when_MikroDatabaseName_is_blank()
+    public void ToErpSettings_returns_null_when_ErpDatabaseName_is_blank()
     {
         IAgentConfigToErpSettingsMapper mapper = new AgentConfigMapper();
 
@@ -111,7 +111,7 @@ public class AgentConfigMapperTests
         mikro.Should().NotBeNull();
         mikro!.Server.Should().Be(config.SqlServer);
         mikro.UserId.Should().Be(config.SqlUserName);
-        mikro.DatabaseName.Should().Be(config.MikroDatabaseName);
+        mikro.DatabaseName.Should().Be(config.ErpDatabaseName);
         mikro.Password.Should().Be(config.SqlPassword);
     }
 
@@ -200,7 +200,7 @@ public class AgentConfigMapperTests
             SqlServer = "MIKROSQL\\MIKRO",
             SqlUserName = "sa",
             SqlPassword = "secret",
-            MikroDatabaseName = "MIKRO16",
+            ErpDatabaseName = "MIKRO16",
         };
 
         var mikro = AgentConfigMapper.FromAgentConfig(config);

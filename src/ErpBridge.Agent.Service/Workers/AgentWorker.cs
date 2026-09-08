@@ -241,12 +241,9 @@ public sealed class AgentWorker : BackgroundService
         IErpAdapter adapter;
         try
         {
-            // The persisted AgentConfig.ErpType is ErpBridge.Core.Domain.ErpType
-            // (kept stable in SQLite). The adapter factory consumes the
-            // numerically-equivalent ErpBridge.Erp.Abstractions.ErpType. Cast
-            // is safe because the integer values are pinned across both
-            // declarations (see BootstrapSyncService for the same convention).
-            adapter = _adapterFactory.Create((ErpBridge.Erp.Abstractions.ErpType)config.ErpType);
+            // AgentConfig.ErpType is ErpBridge.Erp.Abstractions.ErpType — the
+            // single source of truth, consumed directly by the adapter factory.
+            adapter = _adapterFactory.Create(config.ErpType);
         }
         catch (NotSupportedException ex)
         {

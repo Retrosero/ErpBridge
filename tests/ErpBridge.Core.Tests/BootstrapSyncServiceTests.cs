@@ -30,11 +30,11 @@ public class BootstrapSyncServiceTests
     {
         LicenseKey = "LIC-1",
         TenantId = TenantId,
-        ErpType = ErpBridge.Core.Domain.ErpType.Mikro,
+        ErpType = ErpType.Mikro,
         SqlServer = "localhost",
         SqlUserName = "sa",
         SqlPassword = "secret-not-logged",
-        MikroDatabaseName = SourceDatabase,
+        ErpDatabaseName = SourceDatabase,
         CompanyNo = 1,
         BranchNo = 1,
         ApiBaseUrl = "https://api.example.test",

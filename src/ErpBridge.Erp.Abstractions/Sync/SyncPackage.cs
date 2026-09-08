@@ -50,7 +50,7 @@ public sealed record SyncPackage(
     /// way it rejects a populated one, so this is the safe MVP default.
     /// </summary>
     /// <param name="pulledAtUtc">UTC instant the snapshot was taken (e.g. <c>DateTimeOffset.UtcNow</c>).</param>
-    /// <param name="sourceDatabase">Source database name (e.g. <c>MikroDatabaseName</c>).</param>
+    /// <param name="sourceDatabase">Source database name (e.g. <c>ErpDatabaseName</c>).</param>
     public static SyncPackage Empty(DateTimeOffset pulledAtUtc, string sourceDatabase) =>
         new(
             PulledAtUtc: pulledAtUtc.UtcDateTime,
