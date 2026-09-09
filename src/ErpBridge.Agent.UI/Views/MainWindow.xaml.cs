@@ -18,6 +18,13 @@ public partial class MainWindow : Window
 {
     private IDesktopClockService? _clockService;
 
+    /// <summary>
+    /// Source of the status bar's "Son senk." pair. The window's own DataContext
+    /// is the settings view-model, which does not compute the relative ("3 dk
+    /// önce") form — the dashboard view-model owns both.
+    /// </summary>
+    private DashboardViewModel? _dashboard;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -37,6 +44,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        _dashboard = App.Services?.GetService<DashboardViewModel>();
         _clockService = App.Services?.GetService<IDesktopClockService>();
         if (_clockService is not null)
         {
@@ -96,27 +104,33 @@ public partial class MainWindow : Window
         // Windows 11 kurulumlarında bile saat kaybolmaz.
         Title = $"ErpBridge Agent — {now:HH:mm:ss}";
 
-        // Son sync etiketi: AgentSettingsViewModel.LastSyncAtDisplay her
-        // saniye okunmak yerine 30 saniyede bir tazelenir — yeterli
-        // çözünürlük (DashboardViewModel zaten anlık günceller) ve
-        // gereksiz binding churn'i önler.
-        if (DataContext is AgentSettingsViewModel vm)
+        if (LastBootstrapText is not null)
         {
-            var display = string.IsNullOrWhiteSpace(vm.LastSyncAtDisplay) ? "—" : vm.LastSyncAtDisplay;
-            if (LastBootstrapText is not null)
-            {
-                LastBootstrapText.Text = $"Son sync: {display}";
-            }
-            if (StatusText is not null)
-            {
-                // Sağdaki LastSync bilgisi ana satırda zaten gösteriliyor;
-                // burada sadece ajanın "yaşadığını" gösteren kısa bir ipucu.
-                StatusText.Text = string.IsNullOrWhiteSpace(vm.Status)
-                    ? "ErpBridge Agent çalışıyor"
-                    : vm.Status;
-            }
+            var at = _dashboard?.LastSyncAtDisplay;
+            LastBootstrapText.Text = string.IsNullOrWhiteSpace(at) ? "—" : at;
+        }
+
+        if (LastBootstrapRelativeText is not null)
+        {
+            var relative = _dashboard?.LastSyncRelativeDisplay;
+            LastBootstrapRelativeText.Text = string.IsNullOrWhiteSpace(relative) ? string.Empty : relative;
+        }
+
+        if (StatusText is not null && DataContext is AgentSettingsViewModel vm)
+        {
+            StatusText.Text = string.IsNullOrWhiteSpace(vm.Status)
+                ? "ErpBridge Agent çalışıyor"
+                : Flatten(vm.Status);
         }
     }
+
+    /// <summary>
+    /// Collapse a multi-line status message onto one line. Connection-test
+    /// results arrive as five newline-separated lines; rendered verbatim they
+    /// stretch the status bar to triple height and push the content area up.
+    /// </summary>
+    private static string Flatten(string value)
+        => string.Join(" · ", value.Split('\n', '\r').Select(part => part.Trim()).Where(part => part.Length > 0));
 
     private void SqlPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
     {
@@ -133,21 +147,20 @@ public partial class MainWindow : Window
     private bool _minimizeHintShown;
 
     /// <summary>
-    /// Window state changes. Minimizing hides the window entirely and
-    /// leaves it running from the system-tray icon (built in
-    /// <c>App.BuildTrayIcon</c>) — double-clicking the tray icon, or its
-    /// "Pencereyi Göster" menu item, brings the window back exactly where
-    /// it was. The live clock, heartbeat and sync services all keep running
-    /// on the DI-resolved singletons regardless of window visibility, so
-    /// nothing is paused while the window is hidden.
+    /// Minimize sends the window to the notification area instead of the
+    /// taskbar. This only works because the tray icon's <c>System.Drawing.Icon</c>
+    /// is now held in a field on <c>App</c>; while it was collectable its
+    /// finalizer destroyed the HICON, the icon vanished, and a minimized window
+    /// became unreachable. The clock, heartbeat and sync services keep running
+    /// on DI singletons regardless of window visibility.
     /// </summary>
     private void MainWindow_StateChanged(object sender, System.EventArgs e)
     {
         if (WindowState != WindowState.Minimized) return;
 
-        // Restore to Normal before hiding — otherwise Show() later would
-        // "restore" into a minimized, invisible window instead of popping
-        // back up at its previous size/position.
+        // Restore to Normal before hiding — otherwise a later Show() would
+        // "restore" into a minimized, invisible window instead of popping back
+        // up at its previous size and position.
         WindowState = WindowState.Normal;
         Hide();
 

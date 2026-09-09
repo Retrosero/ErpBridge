@@ -7,322 +7,323 @@
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:DashboardViewModel}"
              Background="{DynamicResource WindowBackgroundBrush}">
-    <Grid Margin="24">
+
+    <!--
+        Tek tablo yerleşimi. Önceden üç ayrı blok vardı — tablo başına gönder
+        butonları, MikroDB satır sayıları ve son çalıştırma özeti — aynı 13
+        varlığı üç kez listeliyorlardı. Operatörün sorduğu soru ("MikroDB'de
+        kaç satır var, son gönderimde kaçı gitti, tekrar göndereyim mi?") tek
+        satırda cevaplanıyor artık. Son senkronizasyon zamanı bu ekrandan
+        kaldırıldı; alt durum çubuğunun sağında sürekli görünüyor.
+    -->
+    <Grid Margin="24,20,24,20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Üst başlık satırı: başlık + durum rozeti + Bootstrap/Yenile butonları -->
+        <!-- ============ Başlık + birincil aksiyonlar ============ -->
         <Grid Grid.Row="0" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" Orientation="Vertical">
-                <TextBlock Text="Dashboard"
-                           FontSize="20" FontWeight="SemiBold"
-                           Foreground="{DynamicResource HeaderBrush}" />
-                <TextBlock Text="Senkronizasyon durumu ve operatör özet bilgileri"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           Margin="0,2,0,0" />
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Dashboard"
+                               FontSize="22" FontWeight="SemiBold"
+                               Foreground="{DynamicResource HeaderBrush}"
+                               VerticalAlignment="Center" />
+                    <Border Background="{Binding StatusBadgeBrush}"
+                            CornerRadius="9"
+                            Padding="9,2"
+                            Margin="12,2,0,0"
+                            VerticalAlignment="Center"
+                            ToolTip="Senkronizasyon gecikmesi / sağlık durumu">
+                        <TextBlock Text="{Binding StatusBadgeText}"
+                                   Foreground="White"
+                                   FontWeight="SemiBold"
+                                   FontSize="11" />
+                    </Border>
+                </StackPanel>
+                <TextBlock Text="{Binding NextEligibleRunDisplay}"
+                           Style="{StaticResource CardCaptionStyle}"
+                           Margin="0,4,0,0" />
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Border Background="{Binding StatusBadgeBrush}"
-                        CornerRadius="10"
-                        Padding="10,3"
-                        Margin="0,0,12,0"
-                        ToolTip="Senkronizasyon gecikmesi / sağlık durumu">
-                    <TextBlock Text="{Binding StatusBadgeText}"
-                               Foreground="White"
-                               FontWeight="SemiBold"
-                               FontSize="12" />
-                </Border>
-                <Button Content="🔄 Senkronize Et"
+                <Button Content="Senkronize Et"
                         Command="{Binding RunSyncDeltaCommand}"
                         Style="{StaticResource PrimaryButtonStyle}"
-                        MinWidth="160"
-                        Margin="0,0,8,0"
-                        Padding="10,4"
-                        ToolTip="Son sync'ten bu yana değişen INSERT/UPDATE/DELETE satırlarını sunucuya gönderir. Tüm veriyi gönderen 'Şimdi Bootstrap Et'in aksine sadece değişenleri aktarır." />
-                <Button Content="🚀 Şimdi Bootstrap Et"
+                        MinWidth="126" Padding="14,7" Margin="0,0,8,0"
+                        ToolTip="Son sync'ten bu yana değişen INSERT/UPDATE/DELETE satırlarını gönderir." />
+                <Button Content="Bootstrap"
                         Command="{Binding RunBootstrapCommand}"
                         Style="{StaticResource TintedButtonStyle}"
-                        MinWidth="180"
-                        Margin="0,0,8,0"
-                        Padding="10,4"
-                        ToolTip="Mikro'dan tüm referans verileri çek ve Central API'ye gönder (60 dk idempotency penceresini bypass eder)" />
-                <Button Content="🔃 Yenile"
+                        MinWidth="106" Padding="14,7" Margin="0,0,8,0"
+                        ToolTip="Tüm referans veriyi baştan okuyup gönderir (60 dk idempotency penceresini bypass eder)." />
+                <Button Content="Yenile"
                         Command="{Binding RefreshCommand}"
-                        MinWidth="110"
-                        Padding="10,4" />
+                        MinWidth="84" Padding="14,7"
+                        ToolTip="Ekrandaki durum bilgilerini tazeler." />
             </StackPanel>
         </Grid>
 
-        <!-- Per-section bootstrap buttons (workaround for slow Cloudflare tunnel) -->
+        <!-- ============ Hata bandı — yalnızca hata varken ============ -->
         <Border Grid.Row="1"
-                Background="{DynamicResource CardBackgroundBrush}"
-                BorderBrush="{DynamicResource DividerBrush}"
+                Background="{DynamicResource WarningLightBrush}"
+                BorderBrush="{DynamicResource WarningBrush}"
                 BorderThickness="1"
-                CornerRadius="14"
-                Padding="14,12"
-                Margin="0,0,0,16">
-            <StackPanel>
-                <TextBlock Text="Her Tablo (yavaş tunnel için)"
-                           FontSize="12" FontWeight="SemiBold"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           Margin="0,0,0,6" />
-                <TextBlock TextWrapping="Wrap"
-                           FontSize="11"
-                           Foreground="{DynamicResource MutedTextBrush}"
-                           Margin="0,0,0,8">
-                    <Run Text="Toplu bootstrap tunnel'da takılırsa, her tabloyu ayrı ayrı gönder. Her buton sadece ilgili Mikro tablosunu okur ve Central API'ye push eder." />
-                </TextBlock>
-                <ItemsControl>
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <Button Content="👥 Cariler" Command="{Binding PushCustomersCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="📦 Stoklar" Command="{Binding PushStocksCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="📋 Açık Siparişler" Command="{Binding PushOpenOrdersCommand}" MinWidth="140" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="💰 Kasa/Banka" Command="{Binding PushCashAndBankCommand}" MinWidth="130" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="🔍 Lookup" Command="{Binding PushLookupsCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="💲 Fiyatlar" Command="{Binding PushPricesCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="📊 Envanter" Command="{Binding PushInventoryCommand}" MinWidth="120" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="📰 Cari Hareketleri" Command="{Binding PushCustomerTransactionsCommand}" MinWidth="150" Margin="0,0,6,6" Padding="8,4" />
-                    <Button Content="🔄 Stok Hareketleri" Command="{Binding PushStockTransactionsCommand}" MinWidth="150" Margin="0,0,6,6" Padding="8,4" />
-                </ItemsControl>
-            </StackPanel>
+                CornerRadius="10"
+                Padding="14,10"
+                Margin="0,0,0,14"
+                Visibility="{Binding LastErrorDisplay, Converter={StaticResource StringToVisibilityConverter}}">
+            <TextBlock Text="{Binding LastErrorDisplay}"
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="{DynamicResource WarningBrush}" />
         </Border>
 
-        <!-- Ana içerik: 2 sütun. Sol = Son Senkronizasyon, Sağ = Veri paneli
-             (MikroDB satır sayıları + son çalıştırma özeti). Kalan alanı
-             oranı 4:5 — sol taraf kronolojik özet (büyük tarih + yaş),
-             sağ taraf veri ağırlıklı (sayılar) olduğu için biraz daha geniş. -->
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="1.2*" />
-            </Grid.ColumnDefinitions>
+        <!-- ============ Veri tablosu ============ -->
+        <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="20,16,20,16">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-            <!-- SOL: Son Senkronizasyon kartı -->
-            <Border Grid.Column="0"
-                    Background="{DynamicResource CardBackgroundBrush}"
-                    BorderBrush="{DynamicResource DividerBrush}"
-                    BorderThickness="1"
-                    CornerRadius="14"
-                    Padding="20">
-                <StackPanel>
-                    <TextBlock Text="Son Senkronizasyon"
-                               FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource MutedTextBrush}" />
-
-                    <!-- Tarih/saat blok: ekranda kart'ın ana vurgusu. FontSize
-                         büyük tutuldu ki pencere uzaktan bakıldığında bile
-                         son sync zamanı okunabilsin. -->
-                    <TextBlock Text="{Binding LastSyncAtDisplay}"
-                               FontSize="22" FontWeight="SemiBold"
-                               Foreground="{DynamicResource HeaderBrush}"
-                               Margin="0,8,0,0" />
-                    <TextBlock Text="{Binding LastSyncRelativeDisplay}"
-                               FontSize="13"
-                               Foreground="{DynamicResource AccentBrush}"
-                               Margin="0,2,0,0" />
-
-                    <TextBlock Text="{Binding NextEligibleRunDisplay}"
-                               FontSize="11"
-                               Foreground="{DynamicResource MutedTextBrush}"
-                               Margin="0,16,0,0"
-                               TextWrapping="Wrap" />
-
-                    <!-- Son hata varsa kartın altında uyarı bandı çıkar. -->
-                    <Border Background="{DynamicResource WarningLightBrush}"
-                            BorderBrush="{DynamicResource WarningBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="10,8"
-                            Margin="0,16,0,0"
-                            Visibility="{Binding LastErrorDisplay, Converter={StaticResource StringToVisibilityConverter}}">
-                        <TextBlock Text="{Binding LastErrorDisplay}"
-                                   TextWrapping="Wrap"
-                                   Foreground="{DynamicResource WarningBrush}" />
-                    </Border>
-                </StackPanel>
-            </Border>
-
-            <!-- SAĞ: Veri paneli — MikroDB satır sayıları + son çalıştırma özeti.
-                 İki alt bölüm üst üste: üstte MikroDB (büyük tablo), altta
-                 son çalıştırma (kısa özet). ScrollViewer ile uzun listeyi
-                 taşıyabilir; kısa olduğu için normalde scroll gözükmez. -->
-            <Border Grid.Column="2"
-                    Background="{DynamicResource CardBackgroundBrush}"
-                    BorderBrush="{DynamicResource DividerBrush}"
-                    BorderThickness="1"
-                    CornerRadius="14"
-                    Padding="20">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="12" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <!-- Üst yarı: MikroDB Satır Sayıları -->
-                    <DockPanel Grid.Row="0">
-                        <StackPanel DockPanel.Dock="Top">
-                            <TextBlock Text="MikroDB Satır Sayıları"
-                                       FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource MutedTextBrush}" />
-                            <TextBlock TextWrapping="Wrap"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource MutedTextBrush}"
-                                       Margin="0,2,0,6">
-                                <Run Text="MikroDB'den canlı satır sayıları. Push 0 dönüyorsa MikroDB gerçekten boş mu, SQL filtresi mi yanlış, ayırt etmek için kullanılır." />
-                            </TextBlock>
-                            <Button Content="🔢 MikroDB Satır Sayılarını Al"
-                                    Command="{Binding CheckMikroRowCountsCommand}"
-                                    MinWidth="220"
-                                    Margin="0,0,0,8" Padding="8,4"
-                                    HorizontalAlignment="Left"
-                                    ToolTip="Tüm Mikro tablolarından SELECT COUNT(*) çalıştırır." />
-                        </StackPanel>
-
-                        <Border DockPanel.Dock="Bottom"
-                                Margin="0,8,0,0"
-                                Padding="10,8"
-                                BorderBrush="{DynamicResource DividerBrush}"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Background="{DynamicResource StatusBackgroundBrush}"
-                                Visibility="{Binding HasMikroCountResult, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <TextBlock Text="{Binding MikroCountTimeDisplay, StringFormat='Son kontrol: {0}'}"
-                                       FontSize="10"
-                                       Foreground="{DynamicResource MutedTextBrush}" />
-                        </Border>
-
-                        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled"
-                                      Visibility="{Binding HasMikroCountResult, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <Grid Margin="0,4,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="CARI_HESAPLAR" Margin="0,1" />
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding MikroCustomersCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="STOKLAR" Margin="0,1" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MikroStocksCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="SIPARISLER (açık)" Margin="0,1" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MikroOpenOrdersCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="KASALAR + BANKALAR" Margin="0,1" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MikroCashAndBankCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="DEPOLAR + PERSONEL" Margin="0,1" />
-                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding MikroLookupsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="STOK_SATIS_FIYAT_LISTELERI" Margin="0,1" />
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding MikroPricesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="6" Grid.Column="0" Text="STOK_HAREKETLERI" Margin="0,1" />
-                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding MikroInventoryCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="7" Grid.Column="0" Text="CARI_HESAP_ADRESLERI" Margin="0,1" />
-                                <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding MikroCustomerAddressesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="8" Grid.Column="0" Text="CARI_HESAP_YETKILILERI" Margin="0,1" />
-                                <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding MikroCustomerContactsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="9" Grid.Column="0" Text="BARKOD_TANIMLARI" Margin="0,1" />
-                                <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding MikroBarcodesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="10" Grid.Column="0" Text="SATIS_SARTLARI" Margin="0,1" />
-                                <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding MikroSalesConditionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="11" Grid.Column="0" Text="CARI_HESAP_HAREKETLERI" Margin="0,1" />
-                                <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding MikroCustomerTransactionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                                <TextBlock Grid.Row="12" Grid.Column="0" Text="STOK_HAREKETLERI (satırlar)" Margin="0,1" />
-                                <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding MikroStockTransactionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            </Grid>
-                        </ScrollViewer>
-                    </DockPanel>
-
-                    <!-- Alt yarı: Son Çalıştırma Özeti (özet satır + status rozeti) -->
-                    <StackPanel Grid.Row="2">
-                        <TextBlock Text="Son Çalıştırma Özeti"
-                                   FontSize="12" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource MutedTextBrush}" />
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Cariler" />
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LastCustomersCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" />
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Stoklar" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastStocksCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Fiyatlar" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LastPricesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Açık siparişler" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LastOpenOrdersCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Cari adresleri" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LastCustomerAddressesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Cari yetkilileri" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding LastCustomerContactsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Barkodlar" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding LastBarcodesCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="7" Grid.Column="0" Text="Satış şartları" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding LastSalesConditionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="8" Grid.Column="0" Text="Cari hareketleri" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding LastCustomerTransactionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="9" Grid.Column="0" Text="Stok hareketleri" Margin="0,2,0,0" />
-                            <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding LastStockTransactionsCountDisplay}" FontFamily="Consolas, Lucida Console, monospace" Margin="0,2,0,0" />
-                        </Grid>
-
-                        <Border Background="{Binding LastRunStatusBrush}"
-                                CornerRadius="10"
-                                Padding="8,3"
-                                Margin="0,12,0,0"
-                                HorizontalAlignment="Left">
-                            <TextBlock Text="{Binding LastRunStatusDisplay}"
-                                       Foreground="White"
-                                       FontWeight="SemiBold"
-                                       FontSize="12" />
-                        </Border>
-                        <TextBlock Text="{Binding LastRunSummaryDisplay}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedTextBrush}"
-                                   Margin="0,4,0,0"
-                                   TextWrapping="Wrap" />
+                <!-- Kart başlığı + sayıları tazeleme aksiyonu -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Veri Tabloları" Style="{StaticResource CardTitleStyle}" />
+                        <TextBlock Style="{StaticResource CardCaptionStyle}"
+                                   Text="MikroDB'deki canlı satır sayısı ile son gönderimde aktarılan satır sayısını karşılaştırır. Bir satır 0 gönderildiyse kaynağın gerçekten boş mu olduğunu buradan ayırt edebilirsiniz." />
                     </StackPanel>
+                    <Button Grid.Column="1"
+                            Content="Sayıları Al"
+                            Command="{Binding CheckMikroRowCountsCommand}"
+                            MinWidth="104" Padding="12,6"
+                            VerticalAlignment="Top"
+                            Margin="16,0,0,0"
+                            ToolTip="Tüm Mikro tablolarında SELECT COUNT(*) çalıştırır." />
                 </Grid>
-            </Border>
-        </Grid>
+
+                <!-- Sütun başlıkları. Sağdaki 17px, aşağıdaki ScrollViewer'ın
+                     her zaman görünür dikey çubuğunun genişliği — ayrılmazsa
+                     başlıklar veri sütunlarına göre kayıyor. -->
+                <Grid Grid.Row="1" Margin="0,16,17,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="110" />
+                        <ColumnDefinition Width="110" />
+                        <ColumnDefinition Width="92" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="TABLO" Style="{StaticResource TableHeaderCellStyle}" />
+                    <TextBlock Grid.Column="1" Text="MIKRODB" Style="{StaticResource TableHeaderCellStyle}" HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="SON GÖNDERİM" Style="{StaticResource TableHeaderCellStyle}" HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="" Style="{StaticResource TableHeaderCellStyle}" />
+                    <Border Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" Margin="0,0,0,-6" />
+                </Grid>
+
+                <!-- Satırlar. Her satır: etiket + Mikro tablo adı (alt satır),
+                     canlı sayı, son gönderim sayısı, varsa tekil gönder aksiyonu.
+                     Ayrı push komutu olmayan varlıklar (adres, yetkili, barkod,
+                     satış şartı) ana varlıkla birlikte gider; aksiyon sütununda
+                     bunu söyleyen soluk bir not durur. -->
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled" Margin="0,10,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="110" />
+                            <ColumnDefinition Width="110" />
+                            <ColumnDefinition Width="92" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                        </Grid.RowDefinitions>
+
+                        <!-- 1 · Cariler -->
+                        <StackPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Cariler" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="CARI_HESAPLAR" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding MikroCustomersCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding LastCustomersCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <Button Grid.Row="0" Grid.Column="3" Content="Gönder" Command="{Binding PushCustomersCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="0" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 2 · Cari adresleri -->
+                        <StackPanel Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Cari adresleri" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="CARI_HESAP_ADRESLERI" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MikroCustomerAddressesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding LastCustomerAddressesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="1" Grid.Column="3" Text="Carilerle" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="1" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 3 · Cari yetkilileri -->
+                        <StackPanel Grid.Row="2" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Cari yetkilileri" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="CARI_HESAP_YETKILILERI" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MikroCustomerContactsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding LastCustomerContactsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="2" Grid.Column="3" Text="Carilerle" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="2" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 4 · Cari hareketleri -->
+                        <StackPanel Grid.Row="3" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Cari hareketleri" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="CARI_HESAP_HAREKETLERI" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MikroCustomerTransactionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding LastCustomerTransactionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <Button Grid.Row="3" Grid.Column="3" Content="Gönder" Command="{Binding PushCustomerTransactionsCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="3" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 5 · Stoklar -->
+                        <StackPanel Grid.Row="4" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Stoklar" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="STOKLAR" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding MikroStocksCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding LastStocksCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <Button Grid.Row="4" Grid.Column="3" Content="Gönder" Command="{Binding PushStocksCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="4" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 6 · Barkodlar -->
+                        <StackPanel Grid.Row="5" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Barkodlar" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="BARKOD_TANIMLARI" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding MikroBarcodesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="5" Grid.Column="2" Text="{Binding LastBarcodesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="5" Grid.Column="3" Text="Stoklarla" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="5" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 7 · Stok hareketleri -->
+                        <StackPanel Grid.Row="6" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Stok hareketleri" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="STOK_HAREKETLERI" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding MikroStockTransactionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="6" Grid.Column="2" Text="{Binding LastStockTransactionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <Button Grid.Row="6" Grid.Column="3" Content="Gönder" Command="{Binding PushStockTransactionsCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="6" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 8 · Envanter -->
+                        <StackPanel Grid.Row="7" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Envanter" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding MikroInventoryCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="7" Grid.Column="2" Text="—" Style="{StaticResource TableNumberCellStyle}" Foreground="{DynamicResource MutedTextBrush}" />
+                        <Button Grid.Row="7" Grid.Column="3" Content="Gönder" Command="{Binding PushInventoryCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="7" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 9 · Fiyatlar -->
+                        <StackPanel Grid.Row="8" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Fiyatlar" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="STOK_SATIS_FIYAT_LISTELERI" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding MikroPricesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="8" Grid.Column="2" Text="{Binding LastPricesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <Button Grid.Row="8" Grid.Column="3" Content="Gönder" Command="{Binding PushPricesCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="8" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 10 · Açık siparişler -->
+                        <StackPanel Grid.Row="9" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Açık siparişler" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="SIPARISLER" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding MikroOpenOrdersCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="9" Grid.Column="2" Text="{Binding LastOpenOrdersCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <Button Grid.Row="9" Grid.Column="3" Content="Gönder" Command="{Binding PushOpenOrdersCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="9" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 11 · Satış şartları -->
+                        <StackPanel Grid.Row="10" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Satış şartları" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="SATIS_SARTLARI" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding MikroSalesConditionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="10" Grid.Column="2" Text="{Binding LastSalesConditionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="10" Grid.Column="3" Text="Carilerle" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="10" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 12 · Kasa / Banka -->
+                        <StackPanel Grid.Row="11" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Kasa / Banka" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="KASALAR + BANKALAR" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding MikroCashAndBankCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="11" Grid.Column="2" Text="—" Style="{StaticResource TableNumberCellStyle}" Foreground="{DynamicResource MutedTextBrush}" />
+                        <Button Grid.Row="11" Grid.Column="3" Content="Gönder" Command="{Binding PushCashAndBankCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="11" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 13 · Lookup -->
+                        <StackPanel Grid.Row="12" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Lookup" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="DEPOLAR + PERSONEL" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding MikroLookupsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="12" Grid.Column="2" Text="—" Style="{StaticResource TableNumberCellStyle}" Foreground="{DynamicResource MutedTextBrush}" />
+                        <Button Grid.Row="12" Grid.Column="3" Content="Gönder" Command="{Binding PushLookupsCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- Kart altı: son çalıştırma rozeti + özet + sayım zamanı -->
+                <Grid Grid.Row="3" Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0"
+                            Background="{Binding LastRunStatusBrush}"
+                            CornerRadius="9"
+                            Padding="9,2"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{Binding LastRunStatusDisplay}"
+                                   Foreground="White"
+                                   FontWeight="SemiBold"
+                                   FontSize="11" />
+                    </Border>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding LastRunSummaryDisplay}"
+                               Style="{StaticResource CardCaptionStyle}"
+                               Margin="10,0,10,0"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding MikroCountTimeDisplay, StringFormat='Sayım: {0}'}"
+                               Style="{StaticResource CardCaptionStyle}"
+                               Margin="0"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding HasMikroCountResult, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </Grid>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

@@ -45,6 +45,16 @@ public partial class App : Application
     /// <summary>Best-effort remote error reporting after the DI container is ready.</summary>
     public static DesktopAgentTelemetryReporter? TelemetryReporter { get; private set; }
 
+    /// <summary>
+    /// Per-user single-instance guard. Two agents against the same SQLite store
+    /// would double every sync and race on the cursor, so a second launch hands
+    /// off to the running instance instead of starting its own.
+    /// </summary>
+    private const string SingleInstanceMutexName = @"Local\ErpBridge.Agent.UI.Instance";
+
+    /// <summary>Set by a second launch to ask the running instance to surface its window.</summary>
+    private const string ShowWindowEventName = @"Local\ErpBridge.Agent.UI.ShowWindow";
+
     private ServiceProvider? _services;
     private TaskbarIcon? _tray;
     private IDesktopSignalService? _signalService;
@@ -52,10 +62,31 @@ public partial class App : Application
     private IDesktopClockService? _clockService;
     private System.Windows.Threading.DispatcherTimer? _heartbeatTimer;
     private DateTime _lastHeartbeatNotification = DateTime.MinValue;
+    private System.Threading.Mutex? _instanceMutex;
+    private System.Threading.EventWaitHandle? _showWindowEvent;
+    private System.Threading.CancellationTokenSource? _showWindowListener;
+
+    /// <summary>
+    /// Strong reference to the tray HICON's managed owner. Without this field the
+    /// <see cref="System.Drawing.Icon"/> is unreachable the moment
+    /// <see cref="BuildTrayIcon"/> returns; its finalizer then calls DestroyIcon
+    /// and the notification-area icon silently turns blank / disappears, leaving
+    /// a running agent the operator cannot restore.
+    /// </summary>
+    private System.Drawing.Icon? _trayIcon;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // 0) Single instance. Do this before any other startup work so a second
+        // launch never touches the SQLite store or opens a second tray icon.
+        if (!TryAcquireSingleInstance())
+        {
+            SignalRunningInstance();
+            Shutdown();
+            return;
+        }
 
         // 1) Wire the global unhandled-exception hooks FIRST so even startup
         // failures leave a trace.
@@ -169,6 +200,11 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
 
+        // 6b) A second launch now reopens this window rather than starting a
+        // duplicate agent — the reliable way back in when Windows has tucked
+        // the notification-area icon into the hidden-icons overflow.
+        StartShowWindowListener();
+
         // Phase 9: long-poll the central API for "new bootstrap package
         // available" notifications. The callback re-uses the singleton
         // DashboardViewModel's RefreshFromSignalAsync so the operator sees
@@ -203,7 +239,14 @@ public partial class App : Application
         _heartbeatTimer = null;
         _clockService?.Dispose();
         _clockService = null;
+        _showWindowListener?.Cancel();
+        _showWindowListener?.Dispose();
+        _showWindowListener = null;
+        _showWindowEvent?.Dispose();
+        _showWindowEvent = null;
         _tray?.Dispose();
+        _trayIcon?.Dispose();
+        _trayIcon = null;
         // Stop the long-poll loop before disposing the DI container so the
         // background task doesn't try to resolve services that are already torn
         // down.
@@ -227,6 +270,13 @@ public partial class App : Application
         }
         TelemetryReporter = null;
         _services?.Dispose();
+        if (_instanceMutex is not null)
+        {
+            try { _instanceMutex.ReleaseMutex(); }
+            catch (System.Threading.SynchronizationLockException) { /* never acquired */ }
+            _instanceMutex.Dispose();
+            _instanceMutex = null;
+        }
         base.OnExit(e);
     }
 
@@ -236,6 +286,76 @@ public partial class App : Application
     /// tab) and "Çıkış" (terminates the agent). The icon is loaded from the
     /// embedded <c>pack://application:,,,/assets/tray-32.png</c> resource.
     /// </summary>
+    /// <summary>
+    /// Claim the single-instance mutex. Returns false when another agent already
+    /// owns it. An abandoned mutex (previous instance crashed) still counts as
+    /// acquired — the owner is gone, so this process is now the only one.
+    /// </summary>
+    private bool TryAcquireSingleInstance()
+    {
+        _instanceMutex = new System.Threading.Mutex(initiallyOwned: false, SingleInstanceMutexName);
+        try
+        {
+            return _instanceMutex.WaitOne(TimeSpan.Zero, exitContext: false);
+        }
+        catch (System.Threading.AbandonedMutexException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>Ask the already-running agent to bring its window to the front.</summary>
+    private static void SignalRunningInstance()
+    {
+        try
+        {
+            if (System.Threading.EventWaitHandle.TryOpenExisting(ShowWindowEventName, out var handle))
+            {
+                using (handle)
+                {
+                    handle.Set();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // The running instance may be shutting down. Nothing to recover —
+            // this process is exiting either way.
+            System.Diagnostics.Debug.WriteLine($"Single-instance signal failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Listen for a second launch and surface the window when one happens. This
+    /// is also the operator's escape hatch when the notification-area icon is
+    /// hidden by Windows: double-clicking the EXE again reopens the window
+    /// instead of starting a duplicate agent.
+    /// </summary>
+    private void StartShowWindowListener()
+    {
+        _showWindowEvent = new System.Threading.EventWaitHandle(
+            initialState: false,
+            mode: System.Threading.EventResetMode.AutoReset,
+            name: ShowWindowEventName);
+
+        var cts = new System.Threading.CancellationTokenSource();
+        _showWindowListener = cts;
+        var handle = _showWindowEvent;
+
+        _ = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                // 500 ms poll instead of a blocking WaitOne so shutdown does not
+                // have to interrupt a thread parked in kernel wait.
+                if (handle.WaitOne(500))
+                {
+                    await Dispatcher.InvokeAsync(ShowMainWindow);
+                }
+            }
+        }, cts.Token);
+    }
+
     private TaskbarIcon BuildTrayIcon(Microsoft.Extensions.Logging.ILogger logger)
     {
         var menu = new System.Windows.Controls.ContextMenu();
@@ -274,10 +394,13 @@ public partial class App : Application
             // raises "Argument 'picture' must be a picture that can be used
             // as a Icon." for embedded PNG resources. The .ico resource is
             // already a valid Windows icon so we can hand it over as-is.
-            Icon = LoadTrayIcon(),
+            Icon = _trayIcon ??= LoadTrayIcon(),
             ContextMenu = menu,
         };
+        // Single click is what most operators try first; Windows only raises the
+        // double-click event, so handle the left-button-up as well.
         tray.TrayMouseDoubleClick += (_, _) => ShowMainWindow();
+        tray.TrayLeftMouseUp += (_, _) => ShowMainWindow();
 
         return tray;
     }
@@ -389,24 +512,25 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// One-shot toast shown the first time the operator minimizes the
-    /// window in this run — confirms the agent keeps running in the tray
-    /// and how to bring it back. Called from
-    /// <see cref="MainWindow.MainWindow_StateChanged"/>.
+    /// One-shot toast on the first minimize of this run — tells the operator
+    /// the agent is still running and where the window went. Windows 11 files
+    /// new tray icons into the hidden-icons overflow, so without this the
+    /// window can look like it simply vanished.
     /// </summary>
     public static void NotifyMinimizedToTray()
     {
-        var app = Current as App;
-        var tray = app?._tray;
+        var tray = (Current as App)?._tray;
         if (tray is null) return;
         try
         {
             tray.ShowNotification(
-                title: "ErpBridge Agent arka planda çalışıyor",
-                message: "Pencere gizlendi; ajan ve senkronizasyon arka planda çalışmaya devam ediyor.\nGeri açmak için sistem tepsisindeki simgeye çift tıklayın.");
+                title: "ErpBridge Agent bildirim alanında",
+                message: "Pencere gizlendi; ajan ve senkronizasyon arka planda çalışmaya devam ediyor.\nGeri açmak için görev çubuğundaki ^ okuna tıklayıp ErpBridge simgesine tıklayın.");
         }
         catch (Exception ex)
         {
+            // Focus Assist / notifications disabled — the tray icon is still
+            // there, so the operator is not stranded.
             System.Diagnostics.Debug.WriteLine($"Minimize notification failed: {ex.Message}");
         }
     }

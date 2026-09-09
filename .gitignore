@@ -49,6 +49,10 @@ Thumbs.db
 # Publish output
 publish/
 *.publish.xml
+# Self-contained single-file publishes land here. The WPF exe alone is ~147 MB,
+# past GitHub's 100 MB per-file limit, so committing this directory would make
+# every push fail outright.
+artifacts/
 
 # Mavis local plans / scratchpad (per-agent, not project data)
 .mavis/

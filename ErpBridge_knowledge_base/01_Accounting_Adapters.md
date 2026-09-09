@@ -114,8 +114,14 @@ anahtar projeksiyonu + kendi `ShadowTableOptions`'ını verir.
   benzersiz olmalı, yayınlandıktan sonra asla yeniden numaralanmaz. Referansta
   `STOK_KATEGORILERI`/`STOK_SEKTORLERI` id 8'i paylaşıyordu; ErpBridge birine
   benzersiz id verdi.
-- `_ERPB_SYNC` / `_ERPB_SYNC_DEL` AFTER trigger'ları. Kurulum olmayan tabloları
-  atlar (Mikro yalnızca lisanslı modülleri kurar).
+- `_ERPB_SYNC` / `_ERPB_SYNC_DEL` AFTER trigger'ları. Katalog her kurulumun
+  **üst kümesidir** (Mikro yalnızca lisanslı modülleri kurar), bu yüzden
+  `InstallAsync`, `IsInstalledAsync` **ve** `ReadChangesAsync` üçü de
+  `sys.tables`'da bulunmayan tabloları atlar. Bu filtre okuma tarafında
+  eksikse: var olmayan tabloya join → SQL hata 208 (`Invalid object name`) →
+  tüm batch düşer, cursor ilerlemez, delta sync kalıcı olarak takılır.
+  `IsInstalledAsync`'te eksikse: yok olan tablolar hep "trigger'ı eksik"
+  sayılır, her cycle gereksiz yere yeniden kurulum çalışır.
 - ⚠️ Logo/Netsis'te trigger kurmak vendor'ın desteklenen konfigürasyonu dışında
   kalabilir — **SQL Server Change Tracking** alternatifi.
 
