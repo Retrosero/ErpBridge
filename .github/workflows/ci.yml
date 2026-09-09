@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    # windows-latest: the solution includes the WPF Agent.UI (net10.0-windows),
+    # which cannot be restored/built on Linux. Tests use EF InMemory (no Docker).
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore tools (dotnet-ef)
+        run: dotnet tool restore
+
+      - name: Restore
+        # Locked mode is off here: the runner's SDK feature band can differ from
+        # the dev machine's (global.json rollForward), which shifts SDK-pinned
+        # package versions and trips NU1004. Lock files are still committed and
+        # kept current by devs; CI just does not hard-fail on a band mismatch.
+        run: dotnet restore ErpBridge.sln -p:RestoreLockedMode=false
+
+      - name: Build (TreatWarningsAsErrors)
+        run: dotnet build ErpBridge.sln -c Release --no-restore
+
+      - name: Test (hermetic — integration tests skip without ERPBridge_RUN_INTEGRATION)
+        run: dotnet test ErpBridge.sln -c Release --no-build --verbosity minimal
+
+      # Guards against the 2026-09 incident: a DbContext model change with no
+      # matching migration crashes `--migrate` on every deploy (silently, because
+      # the entrypoint starts the app anyway). Fail the build instead.
+      - name: EF model snapshot is up to date (CentralApi)
+        run: >
+          dotnet tool run dotnet-ef migrations has-pending-model-changes
+          --project src/ErpBridge.CentralApi
+          --startup-project src/ErpBridge.CentralApi
+          --configuration Release --no-build

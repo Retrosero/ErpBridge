@@ -274,11 +274,23 @@
           "Dapper": "[2.1.35, )",
           "ErpBridge.Core": "[1.0.0, )",
           "ErpBridge.Erp.Abstractions": "[1.0.0, )",
+          "ErpBridge.Erp.Sql": "[1.0.0, )",
           "ErpBridge.Shared": "[1.0.0, )",
           "Microsoft.Data.SqlClient": "[7.0.2, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
+          "System.Security.Cryptography.ProtectedData": "[9.0.13, )"
+        }
+      },
+      "erpbridge.erp.sql": {
+        "type": "Project",
+        "dependencies": {
+          "Dapper": "[2.1.35, )",
+          "ErpBridge.Erp.Abstractions": "[1.0.0, )",
+          "ErpBridge.Shared": "[1.0.0, )",
+          "Microsoft.Data.SqlClient": "[7.0.2, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
           "System.Security.Cryptography.ProtectedData": "[9.0.13, )"
         }

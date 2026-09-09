@@ -331,7 +331,13 @@ yalnızca DI extension dosyaları. WPF'den Mikro'ya bağlanma + bootstrap + sync
       `syncMobileDeleteQueue` tek koşuda tüm sayfaları drenaj ediyor
       (`Siparis_Cepte` — 2 dosya).
 
-**Doğrulama:** build 0/0, 665 hermetik test yeşil (`CentralApi.Tests` 190/190).
+**Doğrulama:** build 0/0, 669 hermetik test yeşil. **Production'a deploy edildi
+(2026-09-09, PR #12 → `be444d7`)** — Coolify `lisans_erp_saas`. Deploy sırasında
+prod DB'nin ~8 migration geride olduğu ve `--migrate`'in her deploy'da
+`PendingModelChangesWarning` ile sessizce çöktüğü tespit edildi; DB sıfırdan
+kuruldu (test aşaması, veri kaybı onaylı), 13/13 migration temiz uygulandı.
+Bu kaymayı bir daha yaşamamak için `.github/workflows/ci.yml`'e
+`dotnet ef migrations has-pending-model-changes` guard'ı eklendi.
 
 **Kapsam dışı bırakılan (ileride):** `BootstrapPackage`/`ErpCompany`/`ParameterRecord`
 yorum-seviyesi Mikro göndermeleri (fonksiyonel değil); `AndroidEndpoints` bootstrap
