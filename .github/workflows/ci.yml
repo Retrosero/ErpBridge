@@ -28,7 +28,11 @@ jobs:
         run: dotnet tool restore
 
       - name: Restore
-        run: dotnet restore ErpBridge.sln
+        # Locked mode is off here: the runner's SDK feature band can differ from
+        # the dev machine's (global.json rollForward), which shifts SDK-pinned
+        # package versions and trips NU1004. Lock files are still committed and
+        # kept current by devs; CI just does not hard-fail on a band mismatch.
+        run: dotnet restore ErpBridge.sln -p:RestoreLockedMode=false
 
       - name: Build (TreatWarningsAsErrors)
         run: dotnet build ErpBridge.sln -c Release --no-restore
