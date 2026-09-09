@@ -247,7 +247,8 @@ public sealed class ChangeSetAuditEntryDto
     [JsonPropertyName("id")] public Guid Id { get; set; }
     [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
     [JsonPropertyName("table")] public string Table { get; set; } = string.Empty;
-    [JsonPropertyName("tabloId")] public int TabloId { get; set; }
+    [JsonPropertyName("tableKey")] public string TableKey { get; set; } = string.Empty;
+    [JsonPropertyName("erpType")] public string ErpType { get; set; } = string.Empty;
     [JsonPropertyName("direction")] public string Direction { get; set; } = string.Empty;
     [JsonPropertyName("lastTriggerRecNo")] public long LastTriggerRecNo { get; set; }
     [JsonPropertyName("rowCount")] public int RowCount { get; set; }
