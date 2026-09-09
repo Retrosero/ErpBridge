@@ -24,6 +24,9 @@
   <ItemGroup>
     <ProjectReference Include="..\ErpBridge.Core\ErpBridge.Core.csproj" />
     <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
+    <!-- Faz 18.4: LocalStore implements IErpSyncCursorStore, so the abstraction
+         is now a direct dependency rather than a transitive one via Core. -->
+    <ProjectReference Include="..\ErpBridge.Erp.Abstractions\ErpBridge.Erp.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

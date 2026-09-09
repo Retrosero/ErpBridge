@@ -32,6 +32,13 @@ public sealed class Job
     /// <summary>e.g. "sales_order", "invoice". Drives dispatch on the agent side.</summary>
     public string DocumentType { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Target ERP kind (e.g. <c>Mikro</c>, <c>Logo</c>). Faz 20 — lets a
+    /// multi-ERP tenant route a write to the right adapter; defaults to
+    /// <c>Mikro</c> for rows enqueued before the column existed.
+    /// </summary>
+    public string ErpType { get; set; } = "Mikro";
+
     /// <summary>Document-typed payload serialized as JSON (stored as jsonb in PostgreSQL).</summary>
     public string PayloadJson { get; set; } = "{}";
 

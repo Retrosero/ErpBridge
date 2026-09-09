@@ -478,6 +478,7 @@ public partial class Program
         app.MapIngestEndpoints();
         app.MapChangeSetEndpoints();
         app.MapChangeSetAndroidEndpoints();
+        app.MapAndroidNotifyEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileTelemetryEndpoints();
         app.MapParameterEndpoints();

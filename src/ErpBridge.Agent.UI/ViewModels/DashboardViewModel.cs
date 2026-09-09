@@ -9,7 +9,6 @@ using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Sync;
-using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Shared;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -32,7 +31,7 @@ namespace ErpBridge.Agent.UI.ViewModels;
 public sealed class DashboardViewModel : ObservableObject
 {
     private readonly IBootstrapSyncService _bootstrap;
-    private readonly IChangeSetSyncService _changeSet;
+    private readonly IErpChangeLogSyncService _changeSet;
     private readonly IConfiguration _configuration;
     private readonly MutableMemoryConfigurationProvider _liveSettings;
     private readonly IAgentConfigStore _configStore;
@@ -82,7 +81,7 @@ public sealed class DashboardViewModel : ObservableObject
 
     public DashboardViewModel(
         IBootstrapSyncService bootstrap,
-        IChangeSetSyncService changeSet,
+        IErpChangeLogSyncService changeSet,
         IConfiguration configuration,
         MutableMemoryConfigurationProvider liveSettings,
         IAgentConfigStore configStore,
@@ -604,21 +603,21 @@ public sealed class DashboardViewModel : ObservableObject
             _logger.LogInformation("Step 1: running change-set sync.");
             var result = await _changeSet.RunOnceAsync().ConfigureAwait(true);
             _logger.LogInformation(
-                "Step 2: RunOnceAsync returned. Success={Success}, Tables={Tables}, New={New}, Changed={Changed}, Deleted={Deleted}, DurationMs={Duration}.",
-                result.Success, result.TablesScanned, result.NewRowsPushed, result.ChangedRowsPushed,
-                result.DeletedRowsPushed, result.DurationMs);
+                "Step 2: RunOnceAsync returned. Success={Success}, Tables={Tables}, Upserts={Upserts}, Deletes={Deletes}, DurationMs={Duration}.",
+                result.Success, result.TablesTouched, result.UpsertRowsPushed,
+                result.DeleteRowsPushed, result.DurationMs);
 
             if (result.Success)
             {
-                var totalRows = result.NewRowsPushed + result.ChangedRowsPushed + result.DeletedRowsPushed;
+                var totalRows = result.TotalRowsPushed;
                 if (totalRows == 0)
                 {
                     // Değişen kayıt yok: bu mutlaka başarı değil, sadece "boş iş".
                     // Operatör "boşuna tıkladım" demesin diye net bir mesaj.
                     LastRunSummaryDisplay = string.Format(
                         CultureInfo.CurrentCulture,
-                        "Değişiklik yok · {0} tablo tarandı · {1} ms",
-                        result.TablesScanned, result.DurationMs);
+                        "Değişiklik yok · {0} ms",
+                        result.DurationMs);
                     LastRunStatusDisplay = "✓ Değişiklik yok";
                     LastRunStatusBrush = SuccessBadgeBrush;
                     LastErrorDisplay = string.Empty;
@@ -627,17 +626,15 @@ public sealed class DashboardViewModel : ObservableObject
                 {
                     LastRunSummaryDisplay = string.Format(
                         CultureInfo.CurrentCulture,
-                        "{0} satır değişiklik gönderildi (yeni={1} değişen={2} silinen={3}) · {4} ms",
-                        totalRows, result.NewRowsPushed, result.ChangedRowsPushed,
-                        result.DeletedRowsPushed, result.DurationMs);
+                        "{0} satır değişiklik gönderildi (güncelleme={1} silme={2}) · {3} ms",
+                        totalRows, result.UpsertRowsPushed, result.DeleteRowsPushed, result.DurationMs);
                     LastRunStatusDisplay = "✓ Senkronize";
                     LastRunStatusBrush = SuccessBadgeBrush;
                     LastErrorDisplay = string.Empty;
                 }
                 _logger.LogInformation(
-                    "Manual delta sync succeeded. Tables={Tables}, New={New}, Changed={Changed}, Deleted={Deleted}, DurationMs={Duration}.",
-                    result.TablesScanned, result.NewRowsPushed, result.ChangedRowsPushed,
-                    result.DeletedRowsPushed, result.DurationMs);
+                    "Manual delta sync succeeded. Tables={Tables}, Upserts={Upserts}, Deletes={Deletes}, DurationMs={Duration}.",
+                    result.TablesTouched, result.UpsertRowsPushed, result.DeleteRowsPushed, result.DurationMs);
             }
             else
             {

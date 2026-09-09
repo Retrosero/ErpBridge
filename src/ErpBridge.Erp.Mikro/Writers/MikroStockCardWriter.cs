@@ -1,10 +1,11 @@
 using System.Data;
 using Dapper;
-using ErpBridge.Core.Domain;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Versioning;
+using ErpBridge.Erp.Sql;
 using ErpBridge.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -43,6 +44,7 @@ namespace ErpBridge.Erp.Mikro.Writers;
 public sealed class MikroStockCardWriter
 {
     private readonly MikroConnectionFactory _connectionFactory;
+    private readonly SqlServerFieldWidthProvider _widths;
     private readonly MikroVersionDetector _versionDetector;
     private readonly MikroIdentityStrategySelector _strategySelector;
     private readonly ILogger<MikroStockCardWriter> _logger;
@@ -61,21 +63,20 @@ public sealed class MikroStockCardWriter
     /// self-link UPDATE that runs inside the same transaction.
     /// </summary>
     internal const string StoklarInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO STOKLAR (
     sto_RECid_DBCno, sto_RECid_RECno,
-    sto_firmano, sto_sube_no,
-    sto_kod, sto_isim,
-    sto_birim1_ad, sto_kdv_orani, sto_grup_no,
-    sto_satisfiyat1, sto_satisfiyat2, sto_satisfiyat3,
-    sto_anadepo_no
+    sto_kod, sto_isim, sto_kisa_ismi,
+    sto_birim1_ad, sto_birim1_katsayi,
+    sto_perakende_vergi, sto_toptan_vergi,
+    sto_anagrup_kod, sto_cins
 )
 VALUES (
-    @ActiveDbNo, @StoRecno,
-    @FirmNo, @BranchNo,
-    @StockCode, @StockName,
-    @Unit, @VatRate, @GroupCode,
-    @SalePrice1, @SalePrice2, @SalePrice3,
-    @WarehouseNo
+    @ActiveDbNo, @SelfLinkSeed,
+    @StockCode, @StockName, @ShortName,
+    @Unit, 1,
+    @VatRate, @VatRate,
+    @GroupCode, @Cins
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -87,19 +88,17 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     internal const string StoklarInsertSqlV16 = @"
 INSERT INTO STOKLAR (
     sto_Guid,
-    sto_firmano, sto_sube_no,
-    sto_kod, sto_isim,
-    sto_birim1_ad, sto_kdv_orani, sto_grup_no,
-    sto_satisfiyat1, sto_satisfiyat2, sto_satisfiyat3,
-    sto_anadepo_no
+    sto_kod, sto_isim, sto_kisa_ismi,
+    sto_birim1_ad, sto_birim1_katsayi,
+    sto_perakende_vergi, sto_toptan_vergi,
+    sto_anagrup_kod, sto_cins
 )
 VALUES (
     @HeaderGuid,
-    @FirmNo, @BranchNo,
-    @StockCode, @StockName,
-    @Unit, @VatRate, @GroupCode,
-    @SalePrice1, @SalePrice2, @SalePrice3,
-    @WarehouseNo
+    @StockCode, @StockName, @ShortName,
+    @Unit, 1,
+    @VatRate, @VatRate,
+    @GroupCode, @Cins
 );";
 
     /// <summary>
@@ -119,13 +118,17 @@ WHERE sto_RECno = @StoRecno;";
     /// V15 duplicate-key probe — runs against <c>STOKLAR</c> before the INSERT
     /// path so a second call with the same <c>sto_kod</c> short-circuits to the
     /// existing <c>sto_RECno</c>.
+    ///
+    /// <para>
+    /// <c>sto_kod</c> alone is the key: unlike <c>CARI_HESAPLAR</c>, <c>STOKLAR</c>
+    /// is firm-independent in Mikro (a product is shared across firms), so it has
+    /// no <c>sto_firmano</c> / <c>sto_sube_no</c> columns to filter on.
+    /// </para>
     /// </summary>
     internal const string StoklarSelectByCodeSqlV15 = @"
 SELECT CAST(sto_RECno AS INT) AS Recno
 FROM STOKLAR
-WHERE sto_kod = @StockCode
-  AND sto_firmano = @FirmNo
-  AND sto_sube_no = @BranchNo;";
+WHERE sto_kod = @StockCode;";
 
     /// <summary>
     /// V16 duplicate-key probe — same shape as V15 but returns the Guid identity.
@@ -133,9 +136,7 @@ WHERE sto_kod = @StockCode
     internal const string StoklarSelectByCodeSqlV16 = @"
 SELECT CAST(sto_Guid AS UNIQUEIDENTIFIER) AS Uid
 FROM STOKLAR
-WHERE sto_kod = @StockCode
-  AND sto_firmano = @FirmNo
-  AND sto_sube_no = @BranchNo;";
+WHERE sto_kod = @StockCode;";
 
     /// <summary>
     /// V15 INSERT into <c>BARKOD_TANIMLARI</c> — only fired when the request
@@ -144,15 +145,14 @@ WHERE sto_kod = @StockCode
     /// stock card through its <c>sto_RECno</c>.
     /// </summary>
     internal const string BarkodInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO BARKOD_TANIMLARI (
     bar_RECid_DBCno, bar_RECid_RECno,
-    bar_firmano, bar_sube_no,
-    bar_kodu, bar_stokkodu, bar_stok_RECid_DBCno, bar_stok_RECid_RECno
+    bar_kodu, bar_stokkodu, bar_birimpntr, bar_barkodtipi
 )
 VALUES (
-    @ActiveDbNo, @BarRecno,
-    @FirmNo, @BranchNo,
-    @Barcode, @StockCode, @ActiveDbNo, @StoRecno
+    @ActiveDbNo, @SelfLinkSeed,
+    @Barcode, @StockCode, 1, 0
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -162,12 +162,12 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// </summary>
     internal const string BarkodInsertSqlV16 = @"
 INSERT INTO BARKOD_TANIMLARI (
-    bar_Guid, bar_firmano, bar_sube_no,
-    bar_kodu, bar_stokkodu, bar_stok_uid
+    bar_Guid,
+    bar_kodu, bar_stokkodu, bar_birimpntr, bar_barkodtipi
 )
 VALUES (
-    @BarGuid, @FirmNo, @BranchNo,
-    @Barcode, @StockCode, @StoUid
+    @BarGuid,
+    @Barcode, @StockCode, 1, 0
 );";
 
     /// <summary>
@@ -179,6 +179,9 @@ VALUES (
     /// </summary>
     internal const short DefaultActiveDbNo = 0;
 
+    /// <summary><c>sto_cins</c> — 0 is a normal stock card (not hizmet/depozito).</summary>
+    internal const byte StockCardCins = 0;
+
     public MikroStockCardWriter(
         MikroConnectionFactory connectionFactory,
         MikroVersionDetector versionDetector,
@@ -186,6 +189,7 @@ VALUES (
         ILogger<MikroStockCardWriter> logger)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        _widths = new SqlServerFieldWidthProvider(() => _connectionFactory.BuildConnectionStringFromActive());
         _versionDetector = versionDetector ?? throw new ArgumentNullException(nameof(versionDetector));
         _strategySelector = strategySelector ?? throw new ArgumentNullException(nameof(strategySelector));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -321,7 +325,7 @@ VALUES (
             // table. Returns null when no row matches.
             var probeParameters = new
             {
-                StockCode = req.StockCode,
+                StockCode = ErpFieldText.Identifier(req.StockCode, await _widths.GetMaxLengthAsync("STOKLAR", "sto_kod", ct).ConfigureAwait(false), "STOKLAR.sto_kod"),
                 FirmNo = connectionSettings.CompanyNo,
                 BranchNo = connectionSettings.BranchNo,
             };
@@ -368,7 +372,7 @@ VALUES (
                 // follow-up UPDATE inside the same transaction.
                 var recno = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
                     StoklarInsertSqlV15,
-                    BuildInsertParameters(req, headerGuid, connectionSettings),
+                    await BuildInsertParametersAsync(req, headerGuid, connectionSettings, ct).ConfigureAwait(false),
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
 
@@ -387,13 +391,11 @@ VALUES (
                 {
                     var barcodeParameters = new
                     {
-                        ActiveDbNo = DefaultActiveDbNo,
                         BarRecno = 0,
                         FirmNo = connectionSettings.CompanyNo,
                         BranchNo = connectionSettings.BranchNo,
                         Barcode = req.Barcode,
                         StockCode = req.StockCode,
-                        StoRecno = recno,
                     };
 
                     await conn.ExecuteAsync(new CommandDefinition(
@@ -410,7 +412,7 @@ VALUES (
             // V16 — pre-generated Guid.
             await conn.ExecuteAsync(new CommandDefinition(
                 StoklarInsertSqlV16,
-                BuildInsertParameters(req, headerGuid, connectionSettings),
+                await BuildInsertParametersAsync(req, headerGuid, connectionSettings, ct).ConfigureAwait(false),
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
 
@@ -455,10 +457,11 @@ VALUES (
         }
     }
 
-    private static object BuildInsertParameters(
+    private async Task<object> BuildInsertParametersAsync(
         CreateStockRequest req,
         Guid? headerGuid,
-        MikroConnectionSettings connectionSettings)
+        MikroConnectionSettings connectionSettings,
+        CancellationToken ct)
     {
         return new
         {
@@ -470,8 +473,12 @@ VALUES (
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
             StockCode = req.StockCode,
-            StockName = req.StockName,
-            Unit = req.Unit,
+            ShortName = (req.StockName ?? string.Empty).Length <= 40
+                ? req.StockName ?? string.Empty
+                : req.StockName![..40],
+            Cins = StockCardCins,
+            StockName = ErpFieldText.FreeText(req.StockName, await _widths.GetMaxLengthAsync("STOKLAR", "sto_isim", ct).ConfigureAwait(false)),
+            Unit = ErpFieldText.FreeText(req.Unit, await _widths.GetMaxLengthAsync("STOKLAR", "sto_birim1_ad", ct).ConfigureAwait(false)),
             VatRate = req.VatRate,
             GroupCode = req.GroupCode,
             SalePrice1 = req.SalePrice1,

@@ -1,14 +1,19 @@
+using ErpBridge.Erp.Abstractions.Connection;
 using ErpBridge.Erp.Abstractions;
+using ErpBridge.Erp.Abstractions.ChangeLog;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
+using ErpBridge.Erp.Mikro.ChangeLog;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
-using ErpBridge.Erp.Mikro.Trigger;
+using ErpBridge.Erp.Sql;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
 using ErpBridge.Shared;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace ErpBridge.Erp.Mikro.Adapters;
@@ -21,7 +26,7 @@ namespace ErpBridge.Erp.Mikro.Adapters;
 /// </summary>
 public sealed class MikroAdapter : IErpAdapter
 {
-    private readonly IMikroConnectionTestOrchestrator _orchestrator;
+    private readonly IErpConnectionTestOrchestrator _orchestrator;
     private readonly MikroVersionDetector _versionDetector;
     private readonly MikroIdentityStrategySelector _strategySelector;
     private readonly MikroSalesOrderWriter _salesOrderWriter;
@@ -31,9 +36,26 @@ public sealed class MikroAdapter : IErpAdapter
     private readonly IMikroDbReader _dbReader;
     private readonly MikroConnectionFactory _connectionFactory;
     private readonly IServiceProvider _serviceProvider;
+    private readonly Lazy<IErpChangeLogSource> _changeLog;
 
     /// <summary>Settings supplied at construction time — the adapter is bound to one DB.</summary>
     public MikroConnectionSettings ConnectionSettings { get; }
+
+    /// <summary>
+    /// Mikro captures INSERT / UPDATE / DELETE through its <c>_ERPB_SYNC</c> +
+    /// <c>_ERPB_SYNC_DEL</c> shadow tables, so it offers the strongest mode.
+    /// The timestamp path (<see cref="ReadBootstrapChangesAsync"/> over
+    /// <c>*_lastup_date</c>) remains available as a fallback but cannot see
+    /// deletes, which is why it is not what the adapter advertises.
+    /// </summary>
+    public ChangeDetectionCapability ChangeDetection => ChangeDetectionCapability.ShadowTableChangeLog;
+
+    /// <summary>
+    /// Vendor-neutral change log: the shared <see cref="SqlServerShadowTableChangeLog"/>
+    /// engine, configured with Mikro's 49-table catalog and its recno/guid key
+    /// projection. Built lazily so constructing an adapter never touches SQL.
+    /// </summary>
+    public IErpChangeLogSource? ChangeLog => _changeLog.Value;
 
     /// <summary>
     /// Build an adapter; the connection settings identify the Mikro database.
@@ -50,7 +72,7 @@ public sealed class MikroAdapter : IErpAdapter
     /// </remarks>
     public MikroAdapter(
         MikroConnectionSettings connectionSettings,
-        IMikroConnectionTestOrchestrator orchestrator,
+        IErpConnectionTestOrchestrator orchestrator,
         MikroVersionDetector versionDetector,
         MikroIdentityStrategySelector strategySelector,
         MikroSalesOrderWriter salesOrderWriter,
@@ -72,6 +94,21 @@ public sealed class MikroAdapter : IErpAdapter
         _dbReader = dbReader ?? throw new ArgumentNullException(nameof(dbReader));
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+
+        // The resolver runs per call so a credential change saved in the WPF
+        // settings window is picked up without rebuilding the adapter graph.
+        _changeLog = new Lazy<IErpChangeLogSource>(() => new SqlServerShadowTableChangeLog(
+            // The catalog is version-specific: V15 keys on int *_RECno, V16 on
+            // *_Guid. Detection is cached by the selector, so this probe is cheap.
+            catalog: MikroTrackedTableCatalog.For(
+                _versionDetector.DetectAsync(
+                    _connectionFactory.BuildConnectionString(ConnectionSettings),
+                    CancellationToken.None).GetAwaiter().GetResult().Version),
+            connectionStringResolver: () => _connectionFactory.BuildConnectionString(ConnectionSettings),
+            projection: KeyKindProjection.RecnoOrGuid,
+            options: ShadowTableOptions.Default,
+            logger: (_serviceProvider.GetService(typeof(ILogger<SqlServerShadowTableChangeLog>))
+                     as ILogger<SqlServerShadowTableChangeLog>)));
 
         // Push the active settings into the factory so collaborators that don't
         // carry a MikroConnectionSettings reference (notably MikroDbReader) can
@@ -462,118 +499,80 @@ public sealed class MikroAdapter : IErpAdapter
         return _salesOrderWriter.WriteAsync(payload, _mappingStore, ConnectionSettings, ct);
     }
 
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteInvoiceAsync(InvoicePayload payload, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return _serviceProvider.GetRequiredService<MikroInvoiceWriter>()
+            .WriteInvoiceAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteCollectionAsync(CollectionPayload payload, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return _serviceProvider.GetRequiredService<MikroCollectionWriter>()
+            .WriteAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteDispatchNoteAsync(DispatchNotePayload payload, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return _serviceProvider.GetRequiredService<MikroDispatchNoteWriter>()
+            .WriteDispatchNoteAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WritePaymentOrderAsync(PaymentOrderPayload payload, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return _serviceProvider.GetRequiredService<MikroPaymentOrderWriter>()
+            .WriteAsync(payload, _mappingStore, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteCustomerCardAsync(CreateCustomerRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return RunCardWriteAsync(
+            () => _serviceProvider.GetRequiredService<MikroCustomerCardWriter>()
+                .CreateCustomerAsync(request, _mappingStore, ConnectionSettings, ct));
+    }
+
+    /// <inheritdoc />
+    public Task<ErpWriteResult> WriteStockCardAsync(CreateStockRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return RunCardWriteAsync(
+            () => _serviceProvider.GetRequiredService<MikroStockCardWriter>()
+                .CreateStockAsync(request, _mappingStore, ConnectionSettings, ct));
+    }
+
     /// <summary>
-    /// Read one trigger-based change set from Mikro. For each tracked table
-    /// the adapter issues the three <see cref="IChangeSetReader"/> queries
-    /// (new / changed / deleted) in parallel, paginates by
-    /// <paramref name="packetSize"/>, and returns a <see cref="SyncChangeSet"/>
-    /// ready to push to the central API.
+    /// Adapt the card writers' <see cref="CreateResult"/> + throw-on-invalid contract
+    /// to the uniform <see cref="ErpWriteResult"/> the adapter interface returns.
     /// </summary>
-    /// <remarks>
-    /// Concurrency: all 49 tables are processed in parallel — the cost is
-    /// one short-lived <see cref="Microsoft.Data.SqlClient.SqlConnection"/>
-    /// per table inside the change-set reader, so the SQL Server end sees a
-    /// burst of 49 short reads. The burst is well under the
-    /// <c>Max Pool Size = 100</c> default. The caller should still throttle
-    /// (the agent worker runs this at most every 60 s).
-    /// </remarks>
-    public async Task<SyncChangeSet> ReadChangeSetAsync(
-        string tenantId,
-        IReadOnlyDictionary<int, int> lastTriggerByTabloId,
-        int packetSize,
-        CancellationToken ct = default)
+    private static async Task<ErpWriteResult> RunCardWriteAsync(Func<Task<CreateResult>> write)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
-        ArgumentNullException.ThrowIfNull(lastTriggerByTabloId);
-        if (packetSize <= 0) throw new ArgumentOutOfRangeException(nameof(packetSize));
-
-        // Ensure the change-set reader is bound to the active settings. The
-        // factory pulls credentials on every call, so this keeps Mikro DB
-        // swaps (rare but possible across tenants) from leaking into the
-        // trigger pipeline.
-        _connectionFactory.SetActiveSettings(ConnectionSettings);
-
-        var changeReader = _serviceProvider.GetService(typeof(IChangeSetReader)) as IChangeSetReader
-            ?? throw new InvalidOperationException(
-                "IChangeSetReader is not registered. Call AddErpBridgeMikro() with the trigger services enabled.");
-
-        var pulledAtUtc = DateTimeOffset.UtcNow;
-        var perTableTasks = TrackedTableCatalog.All
-            .Select(async schema =>
-            {
-                ct.ThrowIfCancellationRequested();
-                var previous = lastTriggerByTabloId.TryGetValue(schema.TabloID, out var prev) ? prev : 0;
-
-                // All three directions use the monotonic TriggerRECno cursor.
-                // The reader filters Islem=2 for inserts, Islem=1 for updates
-                // and Islem=0 for deletes, so a delta run never scans the
-                // whole Mikro source table when the watermark is zero.
-                var newTask = changeReader.ReadNewAsync(
-                    schema, previous, packetSize, schema.Fields, ct);
-                var changedTask = changeReader.ReadChangedAsync(
-                    schema, previous, packetSize, schema.Fields, ct);
-                var deletedTask = changeReader.ReadDeletedAsync(
-                    schema, previous, packetSize, ct);
-                await Task.WhenAll(newTask, changedTask, deletedTask).ConfigureAwait(false);
-
-                var newChunk = await newTask.ConfigureAwait(false);
-                var changedChunk = await changedTask.ConfigureAwait(false);
-                var deletedChunk = await deletedTask.ConfigureAwait(false);
-
-                var newLast = Max(newChunk.HighestTriggerRecNo, changedChunk.HighestTriggerRecNo, deletedChunk.HighestTriggerRecNo);
-                var descriptor = new SyncTableDescriptor(
-                    TabloID: schema.TabloID,
-                    TabloAdi: schema.TabloAdi,
-                    RecnoField: schema.RecnoField,
-                    Fields: schema.Fields,
-                    RequiresSoftDeleteFilter: schema.RequiresSoftDeleteFilter);
-
-                return new SyncTableChangeSet(
-                    Table: descriptor,
-                    New: ToSyncNew(newChunk),
-                    Changed: ToSyncChanged(changedChunk),
-                    Deleted: ToSyncDeleted(deletedChunk),
-                    PreviousLastTriggerRecNo: previous,
-                    NewLastTriggerRecNo: newLast);
-            });
-
-        var tables = await Task.WhenAll(perTableTasks).ConfigureAwait(false);
-        return new SyncChangeSet(
-            TenantId: tenantId,
-            SourceDatabase: ConnectionSettings.DatabaseName,
-            PulledAtUtc: pulledAtUtc,
-            Tables: tables);
+        try
+        {
+            var result = await write().ConfigureAwait(false);
+            return new ErpWriteResult(
+                Ok: true,
+                ErpRecno: result.NewRECno == 0 ? null : result.NewRECno,
+                ErpGuid: result.NewUid);
+        }
+        catch (MikroCardValidationException ex)
+        {
+            return new ErpWriteResult(
+                Ok: false,
+                ErrorCode: ErpWriteResult.ErrorCodeValidationFailed,
+                ErrorMessage: ex.Message);
+        }
     }
 
-    private static int Max(params int[] values) => values.Length == 0 ? 0 : values.Max();
-
-    private static SyncTableDescriptor ToDescriptor(TrackedTableSchema schema) =>
-        new SyncTableDescriptor(
-            TabloID: schema.TabloID,
-            TabloAdi: schema.TabloAdi,
-            RecnoField: schema.RecnoField,
-            Fields: schema.Fields,
-            RequiresSoftDeleteFilter: schema.RequiresSoftDeleteFilter);
-
-    private static SyncNewChunk? ToSyncNew(TriggerChunk c)
-    {
-        if (c.Rows.Count == 0 && !c.MoreAvailable) return null;
-        return new SyncNewChunk(ToDescriptor(c.Table), c.Rows, c.HighestTriggerRecNo, c.MoreAvailable);
-    }
-
-    private static SyncChangedChunk? ToSyncChanged(TriggerChunk c)
-    {
-        if (c.Rows.Count == 0 && !c.MoreAvailable) return null;
-        return new SyncChangedChunk(ToDescriptor(c.Table), c.Rows, c.HighestTriggerRecNo, c.MoreAvailable);
-    }
-
-    private static SyncDeletedChunk? ToSyncDeleted(TriggerChunk c)
-    {
-        if (c.Rows.Count == 0 && !c.MoreAvailable) return null;
-        // The deleted chunk always carries (KayitRECno, TriggerRECno) columns.
-        var rows = c.Rows
-            .Select(r => (KayitRecNo: Convert.ToInt32(r["KayitRECno"]), TriggerRecNo: Convert.ToInt32(r["TriggerRECno"])))
-            .ToList();
-        return new SyncDeletedChunk(ToDescriptor(c.Table), rows, c.HighestTriggerRecNo, c.MoreAvailable);
-    }
+    // Legacy trigger-based ReadChangeSetAsync removed in Faz 20. The
+    // vendor-neutral change log (SqlServerShadowTableChangeLog, exposed via
+    // ChangeLog above) is now the only change-capture path.
 }

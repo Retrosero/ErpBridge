@@ -32,7 +32,7 @@ public static class AgentConfigMasker
             SqlServer = config.SqlServer,
             SqlUserName = config.UseWindowsAuth ? "(Integrated Security)" : config.SqlUserName,
             SqlPassword = ConnectionStringMasker.RedactedMarker,
-            MikroDatabaseName = config.MikroDatabaseName,
+            ErpDatabaseName = config.ErpDatabaseName,
             CompanyNo = config.CompanyNo,
             BranchNo = config.BranchNo,
             ApiBaseUrl = config.ApiBaseUrl,

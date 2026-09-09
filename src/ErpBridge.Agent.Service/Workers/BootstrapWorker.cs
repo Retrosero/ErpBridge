@@ -1,6 +1,5 @@
 using ErpBridge.Agent.Service.Configuration;
 using ErpBridge.Core.Stores;
-using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -109,7 +108,7 @@ public sealed class BootstrapWorker : BackgroundService
 
     /// <summary>
     /// Open a DI scope, resolve either <see cref="IBootstrapSyncService"/>
-    /// or <see cref="IChangeSetSyncService"/> based on the operator's
+    /// or <see cref="IErpChangeLogSyncService"/> based on the operator's
     /// <see cref="AgentServiceOptions.UseTriggerBasedSync"/> toggle, and run
     /// a single cycle. Surfaces every result via the logger so the operator
     /// can correlate log lines with the corresponding checkpoint.
@@ -122,6 +121,15 @@ public sealed class BootstrapWorker : BackgroundService
             if (_options.UseTriggerBasedSync)
             {
                 await RunTriggerIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+
+                // The change-log path carries deletes to the mobile master-data
+                // consumers but not inserts/updates — those still travel as
+                // snapshot deltas. Run that cycle too unless the operator opted
+                // out (e.g. an ERP with no *_lastup_date).
+                if (_options.RefreshSnapshotInTriggerMode)
+                {
+                    await RunLegacyIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+                }
             }
             else
             {
@@ -173,60 +181,33 @@ public sealed class BootstrapWorker : BackgroundService
 
     private async Task RunTriggerIterationAsync(IServiceScope scope, CancellationToken stoppingToken)
     {
-        // First-time setup: install the shadow table + per-table triggers.
-        // The installer is idempotent so a warm Mikro takes no time. The
-        // operator can also trigger the same call from the WPF UI button.
-        if (_options.TriggerInstallOnStartup)
-        {
-            try
-            {
-                var installer = scope.ServiceProvider.GetService<TriggerInstaller>();
-                if (installer is not null)
-                {
-                    var settings = ResolveMikroSettings(scope);
-                    if (settings is not null)
-                    {
-                        _ = await installer.InstallAllAsync(settings, stoppingToken).ConfigureAwait(false);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Installation failure must NOT kill the loop. The trigger
-                // path can still attempt a read; the change-set reader will
-                // surface a clean "shadow table missing" error per call.
-                _logger.LogWarning(ex,
-                    "Trigger installation skipped or failed; change-set reads may fail until triggers are present.");
-            }
-        }
-
-        var sync = scope.ServiceProvider.GetRequiredService<IChangeSetSyncService>();
+        // The sync service owns installation now: it checks the change log's
+        // own IsInstalledAsync and installs when missing, so the worker no
+        // longer reaches for a Mikro-specific installer. That is what lets this
+        // method stay free of any vendor type.
+        var sync = scope.ServiceProvider.GetRequiredService<IErpChangeLogSyncService>();
         var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+
         if (!result.Success)
         {
             _logger.LogWarning(
-                "Change-set sync failed: code={Code} message={Message} duration={D}ms",
+                "Change-log sync failed: code={Code} message={Message} duration={D}ms",
                 result.ErrorCode, result.ErrorMessage, result.DurationMs);
             return;
         }
-        if (result.NewRowsPushed == 0 && result.ChangedRowsPushed == 0 && result.DeletedRowsPushed == 0)
+
+        if (result.TotalRowsPushed == 0)
         {
-            _logger.LogDebug("Change-set sync skipped (no Mikro changes).");
+            _logger.LogDebug("Change-log sync skipped (no ERP changes).");
             return;
         }
+
         _logger.LogInformation(
-            "Change-set sync completed: ok={Ok} tables={T} new={N} changed={C} deleted={D} duration={Ms}ms",
-            result.Success, result.TablesScanned, result.NewRowsPushed, result.ChangedRowsPushed,
-            result.DeletedRowsPushed, result.DurationMs);
+            "Change-log sync completed: tables={T} upserts={U} deletes={D} more={More} duration={Ms}ms",
+            result.TablesTouched, result.UpsertRowsPushed, result.DeleteRowsPushed,
+            result.MoreAvailable, result.DurationMs);
     }
 
-    private static ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings? ResolveMikroSettings(IServiceScope scope)
-    {
-        // The settings are registered as a singleton in AddErpBridgeMikro. We
-        // pull them straight from the scope so the installer sees the same
-        // values the adapter will use.
-        return scope.ServiceProvider.GetService<ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings>();
-    }
 
     /// <inheritdoc />
     public override async Task StopAsync(CancellationToken cancellationToken)

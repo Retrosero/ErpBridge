@@ -79,6 +79,7 @@ public sealed class CentralApiDbContext : DbContext
         modelBuilder.Entity<Job>(b =>
         {
             b.ToTable("jobs");
+            b.Property(x => x.ErpType).IsRequired().HasMaxLength(32).HasDefaultValue("Mikro");
             b.HasKey(x => x.Id);
             b.Property(x => x.ExternalId).IsRequired().HasMaxLength(128);
             b.Property(x => x.DocumentType).IsRequired().HasMaxLength(64);
@@ -271,14 +272,16 @@ public sealed class CentralApiDbContext : DbContext
         {
             b.ToTable("change_sets");
             b.HasKey(x => x.Id);
+            b.Property(x => x.ErpType).IsRequired().HasMaxLength(32).HasDefaultValue("Mikro");
             b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
+            b.Property(x => x.TableKey).IsRequired().HasMaxLength(128);
             b.Property(x => x.TableName).IsRequired().HasMaxLength(128);
             b.Property(x => x.PayloadJson).HasColumnType("jsonb");
             b.HasOne(x => x.Tenant)
                 .WithMany()
                 .HasForeignKey(x => x.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
-            b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.LastTriggerRecNo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.LastTriggerRecNo, x.LastDeleteRecNo }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.TableName, x.PulledAtUtc });
         });
 
@@ -308,7 +311,9 @@ public sealed class CentralApiDbContext : DbContext
         {
             b.ToTable("change_set_audit_log");
             b.HasKey(x => x.Id);
+            b.Property(x => x.ErpType).IsRequired().HasMaxLength(32).HasDefaultValue("Mikro");
             b.Property(x => x.SourceDatabase).IsRequired().HasMaxLength(128);
+            b.Property(x => x.TableKey).IsRequired().HasMaxLength(128);
             b.Property(x => x.TableName).IsRequired().HasMaxLength(128);
             b.Property(x => x.Direction).IsRequired().HasMaxLength(16);
             b.Property(x => x.PayloadJson).HasColumnType("jsonb");

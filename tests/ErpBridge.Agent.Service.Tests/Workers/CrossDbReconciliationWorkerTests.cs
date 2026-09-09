@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions.Reconciliation;
 using ErpBridge.Agent.Service.Configuration.Reconciliation;
 using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core.Domain;
@@ -53,7 +54,7 @@ public class CrossDbReconciliationWorkerTests
 
     private static CrossDbReconciliationWorker BuildWorker(
         Mock<IMappingHistoryQuery> history,
-        Mock<IReconciliationProbe> probe,
+        Mock<IErpReconciliationProbe> probe,
         ReconciliationOptions? options = null)
     {
         var monitor = new StaticOptionsMonitor<ReconciliationOptions>(options ?? DefaultOptions());
@@ -74,8 +75,8 @@ public class CrossDbReconciliationWorkerTests
         var history = new Mock<IMappingHistoryQuery>();
         history.Setup(h => h.GetRecentAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                .ReturnsAsync(new[] { mapping });
-        var probe = new Mock<IReconciliationProbe>();
-        probe.Setup(p => p.ProbeAsync(mapping, It.IsAny<CancellationToken>()))
+        var probe = new Mock<IErpReconciliationProbe>();
+        probe.Setup(p => p.ProbeAsync(It.Is<ErpDocumentRef>(d => d.ExternalId == mapping.ExternalId), It.IsAny<CancellationToken>()))
              .ReturnsAsync(ReconciliationProbeResult.Missing("row not found"));
 
         var worker = BuildWorker(history, probe);
@@ -86,7 +87,7 @@ public class CrossDbReconciliationWorkerTests
         report.Orphans.Should().Be(1);
         report.ProbeErrors.Should().Be(0);
         report.ThresholdExceeded.Should().BeFalse();
-        probe.Verify(p => p.ProbeAsync(mapping, It.IsAny<CancellationToken>()), Times.Once);
+        probe.Verify(p => p.ProbeAsync(It.Is<ErpDocumentRef>(d => d.ExternalId == mapping.ExternalId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ---------------------------------------------------------------------
@@ -100,8 +101,8 @@ public class CrossDbReconciliationWorkerTests
         var history = new Mock<IMappingHistoryQuery>();
         history.Setup(h => h.GetRecentAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                .ReturnsAsync(new[] { mapping1, mapping2 });
-        var probe = new Mock<IReconciliationProbe>();
-        probe.Setup(p => p.ProbeAsync(It.IsAny<MappingRecord>(), It.IsAny<CancellationToken>()))
+        var probe = new Mock<IErpReconciliationProbe>();
+        probe.Setup(p => p.ProbeAsync(It.IsAny<ErpDocumentRef>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync(ReconciliationProbeResult.Exists());
 
         var worker = BuildWorker(history, probe);
@@ -131,7 +132,7 @@ public class CrossDbReconciliationWorkerTests
         var history = new Mock<IMappingHistoryQuery>();
         history.Setup(h => h.GetRecentAsync(0, It.IsAny<CancellationToken>()))
                .ReturnsAsync(Array.Empty<MappingRecord>());
-        var probe = new Mock<IReconciliationProbe>(MockBehavior.Strict);
+        var probe = new Mock<IErpReconciliationProbe>(MockBehavior.Strict);
 
         var worker = BuildWorker(history, probe, new ReconciliationOptions
         {
@@ -164,9 +165,9 @@ public class CrossDbReconciliationWorkerTests
         var mappings = Enumerable.Range(1, 6).Select(i => NewMapping(recno: i)).ToArray();
         history.Setup(h => h.GetRecentAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                .ReturnsAsync(mappings);
-        var probe = new Mock<IReconciliationProbe>();
-        probe.Setup(p => p.ProbeAsync(It.IsAny<MappingRecord>(), It.IsAny<CancellationToken>()))
-             .ReturnsAsync((MappingRecord _, CancellationToken _) =>
+        var probe = new Mock<IErpReconciliationProbe>();
+        probe.Setup(p => p.ProbeAsync(It.IsAny<ErpDocumentRef>(), It.IsAny<CancellationToken>()))
+             .ReturnsAsync((ErpDocumentRef _, CancellationToken _) =>
                  ReconciliationProbeResult.Missing("row not found"));
 
         var options = new ReconciliationOptions
@@ -202,8 +203,8 @@ public class CrossDbReconciliationWorkerTests
         var history = new Mock<IMappingHistoryQuery>();
         history.Setup(h => h.GetRecentAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                .ReturnsAsync(mappings);
-        var probe = new Mock<IReconciliationProbe>();
-        probe.Setup(p => p.ProbeAsync(It.IsAny<MappingRecord>(), It.IsAny<CancellationToken>()))
+        var probe = new Mock<IErpReconciliationProbe>();
+        probe.Setup(p => p.ProbeAsync(It.IsAny<ErpDocumentRef>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync(ReconciliationProbeResult.Error("Mikro connection refused"));
 
         var worker = BuildWorker(history, probe);

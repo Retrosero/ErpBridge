@@ -1,4 +1,5 @@
 using ErpBridge.Core.Domain;
+using ErpBridge.Erp.Abstractions;
 using ErpBridge.Shared;
 using FluentAssertions;
 
@@ -18,7 +19,7 @@ public class AgentConfigMaskerTests
             SqlServer = "MIKROSQL\\MIKRO",
             SqlUserName = "sa",
             SqlPassword = "topsecret",
-            MikroDatabaseName = "MIKRO16",
+            ErpDatabaseName = "MIKRO16",
         };
 
         var masked = AgentConfigMasker.Mask(config);
@@ -26,7 +27,7 @@ public class AgentConfigMaskerTests
         masked.SqlPassword.Should().Be(ConnectionStringMasker.RedactedMarker);
         masked.SqlServer.Should().Be(config.SqlServer);
         masked.SqlUserName.Should().Be(config.SqlUserName);
-        masked.MikroDatabaseName.Should().Be(config.MikroDatabaseName);
+        masked.ErpDatabaseName.Should().Be(config.ErpDatabaseName);
     }
 
     [Fact]
@@ -63,7 +64,7 @@ public class AgentConfigMaskerTests
             SqlServer = "srv",
             SqlUserName = "u",
             SqlPassword = "secret",
-            MikroDatabaseName = "MIKRO16",
+            ErpDatabaseName = "MIKRO16",
             CompanyNo = 5,
             BranchNo = 2,
             ApiBaseUrl = "https://api.erpbridge.local",

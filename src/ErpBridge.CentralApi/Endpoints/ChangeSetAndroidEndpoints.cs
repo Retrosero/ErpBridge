@@ -82,6 +82,7 @@ public static class ChangeSetAndroidEndpoints
     private static async Task<IResult> ReadMobileQueueAsync(
         [FromQuery] long? cursor,
         [FromQuery] string? entity,
+        [FromQuery] string? operation,
         [FromQuery] int? size,
         HttpContext http,
         [FromServices] CentralApiDbContext db,
@@ -95,10 +96,19 @@ public static class ChangeSetAndroidEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest,
                 new ApiError { ErrorCode = "INVALID_ENTITY", Message = "entity must be product, customer, invoice or collection." });
 
+        if (operation is not null && operation is not ("upsert" or "delete"))
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "INVALID_OPERATION", Message = "operation must be upsert or delete." });
+
         var start = cursor ?? 0;
         var pageSize = ClampPageSize(size);
         var query = db.MobileSyncQueue.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Sequence > start);
+
+        // The delete-queue consumer passes operation=delete so a burst of
+        // upsert rows cannot starve delete propagation on a paged drain.
+        if (operation is not null)
+            query = query.Where(x => x.Operation == operation);
 
         if (entity == "product")
             query = query.Where(x => x.EntityType == "product");
@@ -141,11 +151,12 @@ public static class ChangeSetAndroidEndpoints
 
         var rows = await db.ChangeSets.AsNoTracking()
             .Where(c => c.TenantId == tenantId)
-            .GroupBy(c => new { c.TableName, c.TabloId })
+            .GroupBy(c => new { c.TableKey, c.TableName, c.ErpType })
             .Select(g => new
             {
                 table = g.Key.TableName,
-                tabloId = g.Key.TabloId,
+                tableKey = g.Key.TableKey,
+                erpType = g.Key.ErpType,
                 lastTriggerRecNo = g.Max(x => x.LastTriggerRecNo),
                 lastPulledAtUtc = g.Max(x => x.PulledAtUtc),
                 acceptedBundles = g.Count(),
@@ -203,15 +214,17 @@ public static class ChangeSetAndroidEndpoints
         var pageSize = ClampPageSize(size);
         var startCursor = cursor ?? 0;
 
+        // The deleted stream pages by the delete high-water mark — a delete-only
+        // cycle advances LastDeleteRecNo while LastTriggerRecNo stays put.
         var rows = await db.ChangeSets.AsNoTracking()
             .Where(c => c.TenantId == tenantId &&
                         c.TableName == table &&
-                        c.LastTriggerRecNo > startCursor)
-            .OrderBy(c => c.LastTriggerRecNo)
+                        c.LastDeleteRecNo > startCursor)
+            .OrderBy(c => c.LastDeleteRecNo)
             .Take(pageSize)
             .Select(c => new
             {
-                triggerRecNo = c.LastTriggerRecNo,
+                triggerRecNo = c.LastDeleteRecNo,
                 payload = c.PayloadJson,
             })
             .ToListAsync(ct);
@@ -236,11 +249,11 @@ public static class ChangeSetAndroidEndpoints
                 }
                 foreach (var element in rowsElement.EnumerateArray())
                 {
-                    if (element.TryGetProperty("KayitRecNo", out var kayit) && kayit.TryGetInt32(out var kayitValue) &&
-                        element.TryGetProperty("TriggerRecNo", out var tr) && tr.TryGetInt32(out var trValue))
+                    if (element.TryGetProperty("RecordKey", out var keyEl) && keyEl.ValueKind == JsonValueKind.String &&
+                        element.TryGetProperty("Sequence", out var seq) && seq.TryGetInt64(out var seqValue))
                     {
-                        flat.Add(new { kayitRecNo = kayitValue, triggerRecNo = trValue });
-                        if (trValue > maxCursor) maxCursor = trValue;
+                        flat.Add(new { recordKey = keyEl.GetString(), sequence = seqValue });
+                        if (seqValue > maxCursor) maxCursor = seqValue;
                     }
                 }
             }
@@ -395,7 +408,13 @@ public static class ChangeSetAndroidEndpoints
                 }
                 foreach (var element in rowsElement.EnumerateArray())
                 {
-                    merged.Add(JsonSerializer.Deserialize<JsonElement>(element.GetRawText()));
+                    // Faz 20 — each upsert row is { RecordKey, Columns }. Mobile
+                    // consumers want the flat column map, so unwrap Columns when
+                    // present and fall back to the raw element otherwise.
+                    var payload = element.TryGetProperty("Columns", out var cols) && cols.ValueKind == JsonValueKind.Object
+                        ? cols
+                        : element;
+                    merged.Add(JsonSerializer.Deserialize<JsonElement>(payload.GetRawText()));
                 }
                 maxCursor = Math.Max(maxCursor, row.triggerRecNo);
             }

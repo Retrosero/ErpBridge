@@ -25,15 +25,16 @@ public sealed class AndroidMobileSyncQueueTests : IClassFixture<CentralApiFactor
 
         var table = new
         {
-            tabloID = 51,
-            tabloAdi = "CARI_HESAP_HAREKETLERI",
-            recnoField = "cha_RECno",
+            tableKey = "CARI_HESAP_HAREKETLERI",
+            tableName = "CARI_HESAP_HAREKETLERI",
+            keyField = "cha_RECno",
             fields = Array.Empty<string>(),
             requiresSoftDeleteFilter = false,
         };
         var ingest = await client.PostJsonAsync("/api/v1/ingest/changeset", new
         {
             tenantId = tenant.Id,
+            erpType = "Mikro",
             sourceDatabase = "MIKRO_Q",
             pulledAtUtc = DateTimeOffset.UtcNow,
             tables = new[]
@@ -45,13 +46,15 @@ public sealed class AndroidMobileSyncQueueTests : IClassFixture<CentralApiFactor
                     changed = new
                     {
                         table,
-                        rows = new[] { new { KeyValue = "CHA-1", TriggerRECno = 42, cha_RECno = 1001 } },
-                        highestTriggerRecNo = 42,
+                        rows = new[] { new { recordKey = "CHA-1", columns = new { cha_RECno = 1001 } } },
+                        highestSequence = 42,
                         moreAvailable = false,
                     },
                     deleted = (object?)null,
-                    previousLastTriggerRecNo = 0,
-                    newLastTriggerRecNo = 42,
+                    previousUpsertSequence = 0,
+                    newUpsertSequence = 42,
+                    previousDeleteSequence = 0,
+                    newDeleteSequence = 0,
                 },
             },
         }, agentToken);
@@ -80,6 +83,75 @@ public sealed class AndroidMobileSyncQueueTests : IClassFixture<CentralApiFactor
         var itemJson = document.RootElement.GetProperty("items")[0];
         itemJson.GetProperty("operation").GetString().Should().Be("upsert");
         itemJson.GetProperty("recordKey").GetString().Should().Be("CHA-1");
+
+        // operation=delete filter must exclude the upsert row
+        var deleteOnly = await client.GetAsync("/api/v1/android/sync/queue?operation=delete&size=10");
+        using var deleteDoc = JsonDocument.Parse(await deleteOnly.Content.ReadAsStringAsync());
+        deleteDoc.RootElement.GetProperty("items").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Delete_only_change_set_cycle_is_not_dropped_as_a_duplicate()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"DEL-ONLY-{suffix}", $"Del only {suffix}");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, $"DEL-ONLY-MACHINE-{suffix}");
+        var agentToken = _factory.IssueTestJwt(agent.Id, tenant.Id);
+        var (_, apiKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-DEL-ONLY-{suffix}", scopes: new[] { "mobile:read" });
+
+        var table = new
+        {
+            tableKey = "STOKLAR",
+            tableName = "STOKLAR",
+            keyField = "sto_RECno",
+            fields = Array.Empty<string>(),
+            requiresSoftDeleteFilter = false,
+        };
+
+        async Task<HttpResponseMessage> PushDeleteCycle(string key, int deleteSeq) =>
+            await client.PostJsonAsync("/api/v1/ingest/changeset", new
+            {
+                tenantId = tenant.Id,
+                erpType = "Mikro",
+                sourceDatabase = "MIKRO_D",
+                pulledAtUtc = DateTimeOffset.UtcNow,
+                tables = new[]
+                {
+                    new
+                    {
+                        table,
+                        @new = (object?)null,
+                        changed = (object?)null,
+                        deleted = new
+                        {
+                            table,
+                            rows = new[] { new { recordKey = key, sequence = deleteSeq } },
+                            highestSequence = deleteSeq,
+                            moreAvailable = false,
+                        },
+                        previousUpsertSequence = 0,
+                        newUpsertSequence = 0,
+                        previousDeleteSequence = deleteSeq - 1,
+                        newDeleteSequence = deleteSeq,
+                    },
+                },
+            }, agentToken);
+
+        // Two consecutive delete-only cycles: the upsert watermark stays 0 for
+        // both, so before Faz 20's delete high-water fix the second one was
+        // rejected as a duplicate and its delete was lost.
+        (await PushDeleteCycle("100", 5)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await PushDeleteCycle("200", 6)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+        var changes = await db.ChangeSets.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        changes.Should().HaveCount(2);
+        var deletes = await db.MobileSyncQueue.AsNoTracking()
+            .Where(x => x.TenantId == tenant.Id && x.Operation == "delete").ToListAsync();
+        deletes.Select(d => d.RecordKey).Should().BeEquivalentTo(new[] { "100", "200" });
     }
 
     [Fact]

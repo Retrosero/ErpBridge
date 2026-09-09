@@ -55,7 +55,7 @@ public sealed class AgentConfigMapper : IAgentConfigToErpSettingsMapper
     /// <summary>
     /// Strongly-typed mapping. Performs strict null/empty checks on the fields
     /// the Mikro adapter actually needs (<c>SqlServer</c>, <c>SqlUserName</c>,
-    /// <c>MikroDatabaseName</c>). Returns <c>null</c> when any required field
+    /// <c>ErpDatabaseName</c>). Returns <c>null</c> when any required field
     /// is missing — <c>Password</c> may legitimately be empty (trusted auth /
     /// integrated security on the customer's network).
     /// </summary>
@@ -73,7 +73,7 @@ public sealed class AgentConfigMapper : IAgentConfigToErpSettingsMapper
         ArgumentNullException.ThrowIfNull(config);
 
         if (string.IsNullOrWhiteSpace(config.SqlServer)) return null;
-        if (string.IsNullOrWhiteSpace(config.MikroDatabaseName)) return null;
+        if (string.IsNullOrWhiteSpace(config.ErpDatabaseName)) return null;
 
         // SQL-auth path requires a user name; Windows-auth path does not.
         if (!config.UseWindowsAuth && string.IsNullOrWhiteSpace(config.SqlUserName)) return null;
@@ -89,7 +89,7 @@ public sealed class AgentConfigMapper : IAgentConfigToErpSettingsMapper
             Server: config.SqlServer.Trim(),
             UserId: config.UseWindowsAuth ? string.Empty : (config.SqlUserName ?? string.Empty).Trim(),
             Password: config.UseWindowsAuth ? string.Empty : (config.SqlPassword ?? string.Empty),
-            DatabaseName: config.MikroDatabaseName.Trim(),
+            DatabaseName: config.ErpDatabaseName.Trim(),
             IntegratedSecurity: config.UseWindowsAuth,
             CompanyNo: companyNo,
             BranchNo: branchNo,

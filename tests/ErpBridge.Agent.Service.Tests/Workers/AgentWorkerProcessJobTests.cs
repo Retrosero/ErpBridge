@@ -11,12 +11,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 
-// Both Core.Domain.ErpType and ErpBridge.Erp.Abstractions.ErpType exist with
-// identical numeric values. The Core.Domain version is what AgentConfig
-// carries (persisted in SQLite); the Abstractions version is what
-// IErpAdapterFactory consumes. Make them both reachable under unambiguous
-// short names so Moq setups don't accidentally bind to the wrong enum.
-using CoreErpType = ErpBridge.Core.Domain.ErpType;
+// ErpType has a single definition in ErpBridge.Erp.Abstractions — AgentConfig
+// carries it and IErpAdapterFactory consumes the same type (no cast).
+using CoreErpType = ErpBridge.Erp.Abstractions.ErpType;
 using AdapterErpType = ErpBridge.Erp.Abstractions.ErpType;
 
 namespace ErpBridge.Agent.Service.Tests.Workers;
@@ -47,7 +44,7 @@ public class AgentWorkerProcessJobTests
         SqlServer = "localhost",
         SqlUserName = "sa",
         SqlPassword = "secret-not-logged",
-        MikroDatabaseName = "MIKRO_DEMO",
+        ErpDatabaseName = "MIKRO_DEMO",
         CompanyNo = 1,
         BranchNo = 1,
         ApiBaseUrl = "https://api.example.test",
@@ -245,7 +242,7 @@ public class AgentWorkerProcessJobTests
     {
         var (worker, remoteApi, localQueue, _, adapterFactory, adapter) = Build();
 
-        await worker.ProcessJobAsync(NewJob("invoice"), NewConfig(), CancellationToken.None);
+        await worker.ProcessJobAsync(NewJob("weird_unknown_type"), NewConfig(), CancellationToken.None);
 
         remoteApi.Verify(r => r.SendAckAsync(
             It.Is<JobAck>(a =>
@@ -253,18 +250,74 @@ public class AgentWorkerProcessJobTests
                 && a.Status == "failed"
                 && a.ErrorCode == "UNSUPPORTED_DOCUMENT_TYPE"
                 && a.ErrorMessage != null
-                && a.ErrorMessage.Contains("invoice")),
+                && a.ErrorMessage.Contains("weird_unknown_type")),
             It.IsAny<CancellationToken>()),
             Times.Once);
 
         // The factory is never even asked — unknown document types must not
-        // open a Mikro connection.
+        // open an ERP connection.
         adapterFactory.Verify(f => f.Create(It.IsAny<AdapterErpType>()), Times.Never);
         adapter.Verify(a => a.WriteSalesOrderAsync(It.IsAny<SalesOrderPayload>(), It.IsAny<CancellationToken>()), Times.Never);
 
         // Audit-trail enqueue still runs.
         localQueue.Verify(l => l.EnqueueAsync(
-            It.Is<LocalJob>(j => j.JobType == "invoice"),
+            It.Is<LocalJob>(j => j.JobType == "weird_unknown_type"),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // ---------------------------------------------------------------------
+    // 4b) invoice document type → generic dispatch calls WriteInvoiceAsync
+    // ---------------------------------------------------------------------
+    [Fact]
+    public async Task ProcessJobAsync_invoice_ok_calls_adapter_and_sends_succeeded_ack()
+    {
+        var (worker, remoteApi, _, _, adapterFactory, adapter) = Build(configureAdapter: a =>
+            a.Setup(x => x.WriteInvoiceAsync(It.IsAny<ErpBridge.Erp.Abstractions.Documents.InvoicePayload>(), It.IsAny<CancellationToken>()))
+             .ReturnsAsync(new ErpWriteResult(Ok: true, ErpRecno: 77)));
+
+        var job = new RemoteJob
+        {
+            JobId = JobId,
+            ExternalId = ExternalId,
+            DocumentType = "invoice",
+            Payload = "{ \"TenantId\": \"00000000-0000-0000-0000-000000000001\", \"ExternalId\": \"ext-uuid-001\", \"CustomerCode\": \"120.01.0001\" }",
+            EnqueuedAtUtc = DateTimeOffset.UtcNow,
+        };
+
+        await worker.ProcessJobAsync(job, NewConfig(), CancellationToken.None);
+
+        adapterFactory.Verify(f => f.Create(It.IsAny<AdapterErpType>()), Times.Once);
+        adapter.Verify(a => a.WriteInvoiceAsync(It.IsAny<ErpBridge.Erp.Abstractions.Documents.InvoicePayload>(), It.IsAny<CancellationToken>()), Times.Once);
+        remoteApi.Verify(r => r.SendAckAsync(
+            It.Is<JobAck>(a => a.JobId == JobId && a.Status == "succeeded" && a.ErpRecno == 77),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // ---------------------------------------------------------------------
+    // 4c) collection document type + adapter rejects → failed ack, code propagated
+    // ---------------------------------------------------------------------
+    [Fact]
+    public async Task ProcessJobAsync_collection_rejected_sends_failed_ack_with_code()
+    {
+        var (worker, remoteApi, _, _, _, _) = Build(configureAdapter: a =>
+            a.Setup(x => x.WriteCollectionAsync(It.IsAny<ErpBridge.Erp.Abstractions.Documents.CollectionPayload>(), It.IsAny<CancellationToken>()))
+             .ReturnsAsync(new ErpWriteResult(Ok: false, ErrorCode: ErpWriteResult.ErrorCodeMissingLookup, ErrorMessage: "cari yok")));
+
+        var job = new RemoteJob
+        {
+            JobId = JobId,
+            ExternalId = ExternalId,
+            DocumentType = "collection",
+            Payload = "{ \"TenantId\": \"00000000-0000-0000-0000-000000000001\", \"ExternalId\": \"ext-uuid-001\" }",
+            EnqueuedAtUtc = DateTimeOffset.UtcNow,
+        };
+
+        await worker.ProcessJobAsync(job, NewConfig(), CancellationToken.None);
+
+        remoteApi.Verify(r => r.SendAckAsync(
+            It.Is<JobAck>(a => a.JobId == JobId && a.Status == "failed" && a.ErrorCode == ErpWriteResult.ErrorCodeMissingLookup),
             It.IsAny<CancellationToken>()),
             Times.Once);
     }

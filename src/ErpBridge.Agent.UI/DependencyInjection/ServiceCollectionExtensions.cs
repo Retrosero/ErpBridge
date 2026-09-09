@@ -2,7 +2,6 @@ using ErpBridge.Agent.UI.Services;
 using ErpBridge.Agent.UI.ViewModels;
 using ErpBridge.Core;
 using ErpBridge.Erp.Mikro.DependencyInjection;
-using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.LocalStore;
 using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -31,6 +30,8 @@ public static class ServiceCollectionExtensions
         services.AddErpBridgeCore();
 
         services.AddErpBridgeLocalStore(configuration);
+        // Faz 18.5: ERP-neutral resume cursor for the change-log sync service.
+        services.AddSingleton<ErpBridge.Erp.Abstractions.ChangeLog.IErpSyncCursorStore, ErpBridge.LocalStore.Stores.SqliteErpSyncCursorStore>();
 
         // Remote API client — used by BootstrapSyncService to push snapshots
         // through IRemoteApiClient.PushBootstrapDataAsync. Agent.Service wires
@@ -43,13 +44,19 @@ public static class ServiceCollectionExtensions
         // IConfiguration's "Mikro" section; TestConnectionAsync re-reads the
         // section on every call so the WPF "Bağlantıyı test et" button observes
         // the user's latest typed-in values without a process restart.
-        services.AddErpBridgeMikro(configuration);
+        // Same registration switch the Windows Service uses — the WPF host does
+        // not name a vendor either.
+        services.AddErpBridgeErpAdapter(
+            Enum.TryParse<ErpBridge.Erp.Abstractions.ErpType>(
+                configuration["Agent:ErpType"], ignoreCase: true, out var erp)
+                ? erp
+                : ErpBridge.Erp.Abstractions.ErpType.Mikro,
+            configuration);
 
         // The trigger sync service is also used by the DashboardViewModel.
         // Agent.Service registers its SQLite watermark store in its own
         // composition root; the WPF composition root must register the
         // desktop equivalent as well or DashboardView construction fails.
-        services.AddSingleton<ITriggerWatermarkStore, SqliteTriggerWatermarkStore>();
 
         services.AddSingleton<AgentSettingsViewModel>();
         services.AddSingleton<DashboardViewModel>();

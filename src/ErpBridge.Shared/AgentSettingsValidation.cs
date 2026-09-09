@@ -12,7 +12,7 @@ namespace ErpBridge.Shared;
 /// <remarks>
 /// Rules enforced:
 /// <list type="number">
-///   <item><c>SqlServer</c>, <c>SqlUserName</c>, <c>MikroDatabaseName</c> — required, whitespace counts as missing.</item>
+///   <item><c>SqlServer</c>, <c>SqlUserName</c>, <c>ErpDatabaseName</c> — required, whitespace counts as missing.</item>
 ///   <item><c>CompanyNo</c>, <c>BranchNo</c> — must parse as a non-negative
 ///         32-bit integer; the form passes them as text so we tolerate locale
 ///         settings explicitly via <see cref="CultureInfo.InvariantCulture"/>.</item>
@@ -30,13 +30,13 @@ public static class AgentSettingsValidation
     /// </summary>
     /// <param name="sqlServer">SQL Server host or instance name (required).</param>
     /// <param name="sqlUserName">SQL login (required only when <paramref name="useWindowsAuth"/> is false).</param>
-    /// <param name="mikroDatabaseName">Mikro database (required).</param>
+    /// <param name="erpDatabaseName">ERP database (required).</param>
     /// <param name="useWindowsAuth">True for Windows-auth / Trusted_Connection mode (SQL user/password are optional).</param>
     /// <param name="error">Populated with a Turkish user-visible error message when the method returns <c>false</c>.</param>
     public static bool TryValidate(
         string? sqlServer,
         string? sqlUserName,
-        string? mikroDatabaseName,
+        string? erpDatabaseName,
         bool useWindowsAuth,
         out string error)
     {
@@ -52,9 +52,9 @@ public static class AgentSettingsValidation
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(mikroDatabaseName))
+        if (string.IsNullOrWhiteSpace(erpDatabaseName))
         {
-            error = "Mikro database adı boş olamaz.";
+            error = "ERP veritabanı adı boş olamaz.";
             return false;
         }
 
@@ -69,13 +69,13 @@ public static class AgentSettingsValidation
     public static bool TryValidate(
         string? sqlServer,
         string? sqlUserName,
-        string? mikroDatabaseName,
+        string? erpDatabaseName,
         string? companyNo,
         string? branchNo,
         bool useWindowsAuth,
         out string error)
     {
-        if (!TryValidate(sqlServer, sqlUserName, mikroDatabaseName, useWindowsAuth, out error))
+        if (!TryValidate(sqlServer, sqlUserName, erpDatabaseName, useWindowsAuth, out error))
             return false;
 
         if (!TryParseNonNegativeInt("Firma no", companyNo, out error))

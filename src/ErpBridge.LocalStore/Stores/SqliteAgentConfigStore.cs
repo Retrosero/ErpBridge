@@ -1,6 +1,7 @@
 using Dapper;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
+using ErpBridge.Erp.Abstractions;
 using ErpBridge.LocalStore.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -62,7 +63,7 @@ public sealed class SqliteAgentConfigStore : IAgentConfigStore
         nameof(AgentConfig.ErpType),
         nameof(AgentConfig.SqlServer),
         nameof(AgentConfig.SqlUserName),
-        nameof(AgentConfig.MikroDatabaseName),
+        nameof(AgentConfig.ErpDatabaseName),
         nameof(AgentConfig.CompanyNo),
         nameof(AgentConfig.BranchNo),
         nameof(AgentConfig.WarehouseNo),
@@ -260,8 +261,8 @@ FROM agent_config;";
             case nameof(AgentConfig.SqlPassword):
                 config.SqlPassword = effective;
                 break;
-            case nameof(AgentConfig.MikroDatabaseName):
-                config.MikroDatabaseName = effective;
+            case nameof(AgentConfig.ErpDatabaseName):
+                config.ErpDatabaseName = effective;
                 break;
             case nameof(AgentConfig.CompanyNo):
                 if (int.TryParse(row.Value, out var company))
@@ -301,7 +302,7 @@ FROM agent_config;";
         nameof(AgentConfig.SqlServer) => config.SqlServer,
         nameof(AgentConfig.SqlUserName) => config.SqlUserName,
         nameof(AgentConfig.SqlPassword) => config.SqlPassword,
-        nameof(AgentConfig.MikroDatabaseName) => config.MikroDatabaseName,
+        nameof(AgentConfig.ErpDatabaseName) => config.ErpDatabaseName,
         nameof(AgentConfig.CompanyNo) => config.CompanyNo.ToString(System.Globalization.CultureInfo.InvariantCulture),
         nameof(AgentConfig.BranchNo) => config.BranchNo.ToString(System.Globalization.CultureInfo.InvariantCulture),
         nameof(AgentConfig.WarehouseNo) => config.WarehouseNo.ToString(System.Globalization.CultureInfo.InvariantCulture),

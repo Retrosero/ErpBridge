@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ErpBridge.Erp.Sql</RootNamespace>
+    <AssemblyName>ErpBridge.Erp.Sql</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    ErpBridge.Erp.Sql — reusable SQL Server change-capture engine.
+
+    This project owns the shadow-table + trigger mechanism that was originally
+    written for Mikro. It is driven entirely by IErpTrackedTableCatalog and
+    IErpKeyProjection, so Logo and Netsis adapters can reuse the identical
+    working logic with nothing but their own table catalog and key projection.
+
+    Dependencies:
+      - ErpBridge.Shared           (Result<T> / masking helpers)
+      - ErpBridge.Erp.Abstractions (IErpChangeLogSource / ErpTrackedTable / cursor)
+      - Dapper + Microsoft.Data.SqlClient
+
+    MUST NOT reference:
+      - ErpBridge.Erp.Mikro / .Logo / .Netsis  (vendor adapters depend on THIS, not the reverse)
+      - ErpBridge.Core, .LocalStore, .RemoteApi, .Agent.*
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
+    <ProjectReference Include="..\ErpBridge.Erp.Abstractions\ErpBridge.Erp.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+  </ItemGroup>
+
+</Project>

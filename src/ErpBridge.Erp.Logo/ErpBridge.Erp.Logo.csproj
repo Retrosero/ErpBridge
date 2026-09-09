@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ErpBridge.Erp.Logo</RootNamespace>
+    <AssemblyName>ErpBridge.Erp.Logo</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    ErpBridge.Erp.Logo — skeleton (Faz 21).
+
+    This project exists to prove the adapter seam holds before anyone invests in
+    a full Logo implementation. It references exactly what the Mikro adapter
+    does minus Core: the abstractions contract and the shared SQL Server
+    change-capture engine. If a Logo adapter needed anything else, that would be
+    the signal that the abstraction is still leaking.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
+    <ProjectReference Include="..\ErpBridge.Erp.Abstractions\ErpBridge.Erp.Abstractions.csproj" />
+    <ProjectReference Include="..\ErpBridge.Erp.Sql\ErpBridge.Erp.Sql.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>

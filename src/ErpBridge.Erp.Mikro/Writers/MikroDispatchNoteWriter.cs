@@ -1,6 +1,6 @@
 using System.Data;
 using Dapper;
-using ErpBridge.Core.Domain;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Stores;
@@ -63,17 +63,26 @@ public sealed class MikroDispatchNoteWriter
     /// same database; for a header row this is the freshly generated identity.
     /// </summary>
     internal const string StokHareketleriInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO STOK_HAREKETLERI (
-    sto_stok_kod, sto_cari_kod, sto_evrakno_seri, sto_evrakno_sira,
-    sto_tarih, sto_miktar, sto_birim, sto_birim_fiyat, sto_kdv_orani,
-    sto_kdv_dahil, sto_aciklama, sto_firmano, sto_sube_no, sto_depo_no,
-    sto_RECid_RECno
+    sth_RECid_DBCno, sth_RECid_RECno,
+    sth_firmano, sth_subeno,
+    sth_tarih, sth_tip, sth_cins, sth_normal_iade, sth_evraktip,
+    sth_evrakno_seri, sth_evrakno_sira, sth_satirno,
+    sth_stok_kod, sth_cari_kodu,
+    sth_miktar, sth_birim_pntr, sth_tutar,
+    sth_vergi_pntr, sth_aciklama,
+    sth_cikis_depo_no, sth_giris_depo_no
 )
 VALUES (
-    @StockCode, @CustomerCode, @DocumentSerial, @DocumentSequence,
-    @TransactionDate, @Quantity, @Unit, @UnitPrice, @KdvRate,
-    @KdvIncluded, @Description, @FirmNo, @BranchNo, @WarehouseNo,
-    SCOPE_IDENTITY()
+    @ActiveDbNo, @SelfLinkSeed,
+    @FirmNo, @BranchNo,
+    @TransactionDate, @Tip, @Cins, @NormalIade, @EvrakTip,
+    @DocumentSerial, @DocumentSequence, @LineNo,
+    @StockCode, @CustomerCode,
+    @Quantity, @UnitPointer, @LineTotal,
+    @TaxPointer, @Description,
+    @WarehouseNo, @InboundWarehouseNo
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -84,14 +93,25 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     /// </summary>
     internal const string StokHareketleriInsertSqlV16 = @"
 INSERT INTO STOK_HAREKETLERI (
-    sto_Guid, sto_stok_kod, sto_cari_kod, sto_evrakno_seri, sto_evrakno_sira,
-    sto_tarih, sto_miktar, sto_birim, sto_birim_fiyat, sto_kdv_orani,
-    sto_kdv_dahil, sto_aciklama, sto_firmano, sto_sube_no, sto_depo_no
+    sth_Guid,
+    sth_firmano, sth_subeno,
+    sth_tarih, sth_tip, sth_cins, sth_normal_iade, sth_evraktip,
+    sth_evrakno_seri, sth_evrakno_sira, sth_satirno,
+    sth_stok_kod, sth_cari_kodu,
+    sth_miktar, sth_birim_pntr, sth_tutar,
+    sth_vergi_pntr, sth_aciklama,
+    sth_cikis_depo_no, sth_giris_depo_no
 )
 VALUES (
-    @HeaderGuid, @StockCode, @CustomerCode, @DocumentSerial, @DocumentSequence,
-    @TransactionDate, @Quantity, @Unit, @UnitPrice, @KdvRate,
-    @KdvIncluded, @Description, @FirmNo, @BranchNo, @WarehouseNo);";
+    @HeaderGuid,
+    @FirmNo, @BranchNo,
+    @TransactionDate, @Tip, @Cins, @NormalIade, @EvrakTip,
+    @DocumentSerial, @DocumentSequence, @LineNo,
+    @StockCode, @CustomerCode,
+    @Quantity, @UnitPointer, @LineTotal,
+    @TaxPointer, @Description,
+    @WarehouseNo, @InboundWarehouseNo
+);";
 
     public MikroDispatchNoteWriter(
         MikroConnectionFactory connectionFactory,
@@ -311,6 +331,16 @@ VALUES (
             DocumentSerial = payload.DocumentSerial,
             DocumentSequence = payload.DocumentSequence,
             TransactionDate = EnsureUtcDate(payload.TransactionDate),
+            ActiveDbNo = MikroSelfLink.ActiveDbNo,
+            Tip = MikroStockMovementCodes.OutboundTip,
+            Cins = MikroStockMovementCodes.NormalCins,
+            NormalIade = MikroStockMovementCodes.NormalMovement,
+            EvrakTip = MikroStockMovementCodes.DispatchEvrakTip,
+            LineNo = 1,
+            UnitPointer = MikroStockMovementCodes.DefaultUnitPointer,
+            TaxPointer = MikroStockMovementCodes.DefaultTaxPointer,
+            InboundWarehouseNo = 0,
+            LineTotal = payload.Quantity * payload.UnitPrice,
             Quantity = payload.Quantity,
             Unit = payload.Unit ?? "ADET",
             UnitPrice = payload.UnitPrice,

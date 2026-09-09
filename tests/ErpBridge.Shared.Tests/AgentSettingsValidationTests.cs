@@ -19,7 +19,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "MIKROSQL\\MIKRO",
             sqlUserName: "sa",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
@@ -35,7 +35,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "   ",
             sqlUserName: "sa",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
@@ -51,7 +51,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: null,
             sqlUserName: "sa",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
@@ -67,7 +67,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "host",
             sqlUserName: "",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
@@ -85,7 +85,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "host",
             sqlUserName: "",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: true,
@@ -96,19 +96,19 @@ public class AgentSettingsValidationTests
     }
 
     [Fact]
-    public void TryValidate_rejects_blank_MikroDatabaseName()
+    public void TryValidate_rejects_blank_ErpDatabaseName()
     {
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "host",
             sqlUserName: "sa",
-            mikroDatabaseName: "  ",
+            erpDatabaseName: "  ",
             companyNo: "1",
             branchNo: "1",
             useWindowsAuth: false,
             error: out var error);
 
         ok.Should().BeFalse();
-        error.Should().Contain("database adı");
+        error.Should().Contain("veritabanı adı");
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "host",
             sqlUserName: "sa",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "abc",
             branchNo: "1",
             useWindowsAuth: false,
@@ -133,7 +133,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "host",
             sqlUserName: "sa",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "1",
             branchNo: "   ",
             useWindowsAuth: false,
@@ -153,7 +153,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "host",
             sqlUserName: "sa",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "1,5",
             branchNo: "1",
             useWindowsAuth: false,
@@ -171,7 +171,7 @@ public class AgentSettingsValidationTests
         var ok = AgentSettingsValidation.TryValidate(
             sqlServer: "host",
             sqlUserName: "sa",
-            mikroDatabaseName: "MIKRO16",
+            erpDatabaseName: "MIKRO16",
             companyNo: "0",
             branchNo: "0",
             useWindowsAuth: false,

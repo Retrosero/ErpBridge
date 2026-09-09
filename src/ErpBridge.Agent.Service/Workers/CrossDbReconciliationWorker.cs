@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions.Reconciliation;
 using ErpBridge.Agent.Service.Configuration.Reconciliation;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -53,7 +54,7 @@ public sealed class CrossDbReconciliationWorker : BackgroundService
     internal static readonly TimeSpan DailyWindow = TimeSpan.FromHours(24);
 
     private readonly IMappingHistoryQuery _history;
-    private readonly IReconciliationProbe _probe;
+    private readonly IErpReconciliationProbe _probe;
     private readonly ILogger<CrossDbReconciliationWorker> _logger;
     private readonly IOptionsMonitor<ReconciliationOptions> _optionsMonitor;
 
@@ -69,7 +70,7 @@ public sealed class CrossDbReconciliationWorker : BackgroundService
 
     public CrossDbReconciliationWorker(
         IMappingHistoryQuery history,
-        IReconciliationProbe probe,
+        IErpReconciliationProbe probe,
         IOptionsMonitor<ReconciliationOptions> optionsMonitor,
         ILogger<CrossDbReconciliationWorker> logger)
     {
@@ -169,7 +170,18 @@ public sealed class CrossDbReconciliationWorker : BackgroundService
         {
             ct.ThrowIfCancellationRequested();
 
-            var result = await _probe.ProbeAsync(mapping, ct).ConfigureAwait(false);
+            // Project the persisted mapping onto the adapter-facing document
+            // reference. The probe only needs enough to find the row again and
+            // to name it in the alarm, so it stays free of either MappingRecord.
+            var document = new ErpDocumentRef(
+                TenantId: mapping.TenantId,
+                DocumentType: mapping.DocumentType,
+                ExternalId: mapping.ExternalId,
+                DatabaseName: mapping.ErpDatabaseName ?? string.Empty,
+                Recno: mapping.Recno,
+                Guid: Guid.TryParse(mapping.Guid, out var mappedGuid) ? mappedGuid : null);
+
+            var result = await _probe.ProbeAsync(document, ct).ConfigureAwait(false);
             switch (result.Outcome)
             {
                 case ReconciliationProbeOutcome.Exists:

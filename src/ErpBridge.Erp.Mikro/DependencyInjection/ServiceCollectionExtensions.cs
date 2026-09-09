@@ -1,17 +1,16 @@
+using ErpBridge.Erp.Abstractions.Connection;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.DependencyInjection;
 using ErpBridge.Erp.Mikro.Adapters;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
-using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace ErpBridge.Erp.Mikro.DependencyInjection;
 
@@ -108,10 +107,10 @@ public static class ServiceCollectionExtensions
         // Faz 3 Track 2: connection-test orchestrator — single seam for the WPF
         // "Bağlantıyı test et" button, the redetect command, and the service
         // pre-flight check. Singleton so the version cache is process-wide.
-        services.AddSingleton<IMikroConnectionTestOrchestrator, MikroConnectionTestOrchestrator>();
+        services.AddSingleton<IErpConnectionTestOrchestrator, MikroConnectionTestOrchestrator>();
 
         // Faz 3 Track 1: orchestrator that owns quick/full probes + version cache TTL.
-        services.AddSingleton<IMikroConnectionTestOrchestrator, MikroConnectionTestOrchestrator>();
+        services.AddSingleton<IErpConnectionTestOrchestrator, MikroConnectionTestOrchestrator>();
 
         // Faz 2 Track 1: map AgentConfig → MikroConnectionSettings. The Core
         // contract keeps Mikro types out of the domain layer.
@@ -123,6 +122,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWarehouseLookup>(_ => new InMemoryWarehouseLookup());
 
         services.AddSingleton<MikroSalesOrderWriter>();
+        // Faz 17: fatura + irsaliye yazıcıları da IErpAdapter sözleşmesi üzerinden akıyor.
+        services.AddSingleton<MikroInvoiceWriter>();
+        services.AddSingleton<MikroDispatchNoteWriter>();
         // Tahsilat (Wave 4): CARI_HESAP_HAREKETLERI + ODEME_EMIRLERI writers.
         services.AddSingleton<MikroCollectionWriter>();
         services.AddSingleton<MikroPaymentOrderWriter>();
@@ -138,64 +140,17 @@ public static class ServiceCollectionExtensions
         // because the implementation is stateless aside from its dependencies.
         services.AddSingleton<IMikroDbReader, MikroDbReader>();
 
-        // Faz 11.2: trigger installer — owns the shadow table + per-table triggers.
-        services.AddSingleton<TriggerInstaller>();
-        // Faz 11.4: three-way change-set reader (new/changed/deleted).
-        services.AddSingleton<IChangeSetReader, TriggerChangeSetReader>();
+        // Faz 19: the reconciliation probe is a Mikro implementation, so it is
+        // registered here rather than by the host. The worker resolves it
+        // through the abstraction and never names this type.
+        services.AddSingleton<ErpBridge.Erp.Abstractions.Reconciliation.IErpReconciliationProbe,
+            ErpBridge.Erp.Mikro.Reconciliation.MikroReconciliationProbe>();
+        services.TryAddSingleton<ILogger<ErpBridge.Erp.Mikro.Reconciliation.MikroReconciliationProbe>>(sp =>
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<ErpBridge.Erp.Mikro.Reconciliation.MikroReconciliationProbe>());
 
-        // Faz 15.2: opt-in FORA-compatible trigger installer. The runner
-        // (DapperSqlCommandRunner) is always registered so the interface
-        // resolves cleanly even when the installer is disabled; the
-        // installer itself is only added when its Enabled flag is set.
-        // Disabled-by-default means existing agents keep using the
-        // _ERPB_SENKRONIZASYON pipeline until the operator opts in.
-        services.TryAddSingleton<ISqlCommandRunner, DapperSqlCommandRunner>();
-        // Keep this binding explicit: the project references configuration
-        // abstractions, but must also build when Binder extension assets are
-        // unavailable in a locked/offline restore.
-        var installerOptionsSection = configuration.GetSection(NewSchemaTriggerInstallerOptions.ConfigurationSection);
-        services.Configure<NewSchemaTriggerInstallerOptions>(opts =>
-        {
-            if (bool.TryParse(installerOptionsSection["Enabled"], out var enabled)) opts.Enabled = enabled;
-            if (bool.TryParse(installerOptionsSection["DropOnUninstall"], out var drop)) opts.DropOnUninstall = drop;
-            opts.TrackedTables = installerOptionsSection.GetSection("TrackedTables")
-                .GetChildren().Select(x => x.Value).Where(x => !string.IsNullOrWhiteSpace(x)).ToArray()!;
-        });
-        services.AddSingleton<NewSchemaTriggerInstaller>(sp =>
-        {
-            var opts = sp.GetRequiredService<IOptions<NewSchemaTriggerInstallerOptions>>().Value;
-            if (!opts.Enabled)
-            {
-                return null!;
-            }
-
-            var factory = sp.GetRequiredService<MikroConnectionFactory>();
-            var runner = sp.GetRequiredService<ISqlCommandRunner>();
-            var logger = sp.GetRequiredService<ILogger<NewSchemaTriggerInstaller>>();
-            var options = sp.GetRequiredService<IOptions<NewSchemaTriggerInstallerOptions>>();
-            // The resolver reads the active settings slot on every call so
-            // the installer reconnects with the latest credentials without
-            // having to be rebuilt. When the active slot is empty the
-            // factory's BuildConnectionString will throw a descriptive
-            // ArgumentException — surfaced as a clean startup error rather
-            // than a silent no-op.
-            return new NewSchemaTriggerInstaller(
-                connectionStringResolver: _ => factory.BuildConnectionStringFromActive(),
-                sqlRunner: runner,
-                logger: logger,
-                options: options);
-        });
-        // Faz 11.3: ITriggerWatermarkStore — the interface lives in Mikro (it's
-        // Mikro-specific by design), but the SQLite-backed implementation lives
-        // in ErpBridge.Agent.Service because it depends on ErpBridge.LocalStore,
-        // which Mikro is not allowed to reference. The Agent.Service container
-        // registers the concrete implementation below.
-        // Faz 12.4: change-set sync service. Registered here (not in Core) because
-        // the implementation lives in Mikro and depends on Mikro-specific types
-        // like IChangeSetReader.
-        services.AddSingleton<IChangeSetSyncService, TriggerChangeSetSyncService>();
-        services.TryAddSingleton<ILogger<TriggerChangeSetSyncService>>(sp =>
-            sp.GetRequiredService<ILoggerFactory>().CreateLogger<TriggerChangeSetSyncService>());
+        // The change-log capture path is owned by SqlServerShadowTableChangeLog
+        // (Erp.Sql), resolved lazily by MikroAdapter — no per-table trigger
+        // installer or change-set reader is registered here anymore (Faz 20).
 
         // Factory closed over the connection settings + IConfiguration; uses the
         // container for everything else.
@@ -208,6 +163,8 @@ public static class ServiceCollectionExtensions
         services.TryAddSingletonLogger<MikroVersionDetector>(services);
         services.TryAddSingletonLogger<MikroIdentityStrategySelector>(services);
         services.TryAddSingletonLogger<MikroSalesOrderWriter>(services);
+        services.TryAddSingletonLogger<MikroInvoiceWriter>(services);
+        services.TryAddSingletonLogger<MikroDispatchNoteWriter>(services);
         services.TryAddSingletonLogger<MikroCollectionWriter>(services);
         services.TryAddSingletonLogger<MikroPaymentOrderWriter>(services);
         services.TryAddSingletonLogger<MikroCustomerCardWriter>(services);
@@ -216,9 +173,6 @@ public static class ServiceCollectionExtensions
         services.TryAddSingletonLogger<MikroDbReader>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
-        services.TryAddSingletonLogger<TriggerInstaller>(services);
-        services.TryAddSingletonLogger<TriggerChangeSetReader>(services);
-        services.TryAddSingletonLogger<NewSchemaTriggerInstaller>(services);
 
         return services;
     }

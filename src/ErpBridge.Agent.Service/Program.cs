@@ -3,8 +3,8 @@ using ErpBridge.Agent.Service.Configuration.Reconciliation;
 using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core;
 using ErpBridge.Core.Jobs;
+using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Mikro.DependencyInjection;
-using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.LocalStore;
 using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -22,6 +22,15 @@ namespace ErpBridge.Agent.Service;
 /// </summary>
 public static class Program
 {
+    /// <summary>
+    /// Read the configured ERP from <c>Agent:ErpType</c>. Defaults to Mikro so an
+    /// existing deployment keeps working without a settings edit.
+    /// </summary>
+    private static ErpType ResolveErpType(IConfiguration configuration) =>
+        Enum.TryParse<ErpType>(configuration["Agent:ErpType"], ignoreCase: true, out var erp)
+            ? erp
+            : ErpType.Mikro;
+
     public static void Main(string[] args)
     {
         var builder = Host.CreateDefaultBuilder(args)
@@ -65,13 +74,19 @@ public static class Program
                 // "Mikro" section; TestConnectionAsync re-reads that section on
                 // every call. The WPF UI is responsible for keeping the section
                 // populated as the user types into the settings window.
-                services.AddErpBridgeMikro(ctx.Configuration);
+                // The ERP is chosen by configuration, not hard-wired here. The
+                // registration switch throws at startup for an ERP with no
+                // adapter, which beats a process that accepts jobs it cannot write.
+                services.AddErpBridgeErpAdapter(
+                    ResolveErpType(ctx.Configuration), ctx.Configuration);
 
                 // Faz 11.3: SQLite-backed trigger watermark store. The interface
                 // lives in ErpBridge.Erp.Mikro (Mikro-specific contract), but the
                 // implementation depends on ErpBridge.LocalStore which Mikro is
                 // not allowed to reference. Register the concrete here.
-                services.AddSingleton<ITriggerWatermarkStore, SqliteTriggerWatermarkStore>();
+
+                // Faz 18.5: ERP-neutral resume cursor for the change-log sync service.
+                services.AddSingleton<ErpBridge.Erp.Abstractions.ChangeLog.IErpSyncCursorStore, ErpBridge.LocalStore.Stores.SqliteErpSyncCursorStore>();
 
                 // IBootstrapSyncService is registered by AddErpBridgeCore as a
                 // singleton; the worker only resolves it through CreateScope.
@@ -82,11 +97,9 @@ public static class Program
                 // Phase-6 boundary reconciliation: read-only safety net that
                 // scans recent SQLite mappings and asks Mikro whether the
                 // document still exists. Alarm-only — never modifies the ERP
-                // or the mapping store. The probe is Mikro-specific; the
-                // history query is SQLite-specific; both are wired here so
-                // the worker is a pure coordinator.
+                // or the mapping store. The probe is registered by the ERP
+                // adapter module; only the SQLite history query is wired here.
                 services.AddSingleton<IMappingHistoryQuery, SqliteMappingHistoryQuery>();
-                services.AddSingleton<IReconciliationProbe, MikroReconciliationProbe>();
                 services.AddHostedService<CrossDbReconciliationWorker>();
             })
             .UseSerilog((ctx, sp, lc) => lc

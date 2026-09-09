@@ -1,3 +1,5 @@
+using ErpBridge.Erp.Abstractions.ChangeLog;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Sync;
 
@@ -10,6 +12,20 @@ namespace ErpBridge.Erp.Abstractions;
 /// </summary>
 public interface IErpAdapter
 {
+    /// <summary>
+    /// How this adapter can report changes. The agent picks its sync strategy
+    /// from this value and must never assume a mechanism is available.
+    /// Defaults to <see cref="ChangeDetectionCapability.FullSnapshotOnly"/>.
+    /// </summary>
+    ChangeDetectionCapability ChangeDetection => ChangeDetectionCapability.FullSnapshotOnly;
+
+    /// <summary>
+    /// The adapter's change-log source, or <c>null</c> when
+    /// <see cref="ChangeDetection"/> is not
+    /// <see cref="ChangeDetectionCapability.ShadowTableChangeLog"/>.
+    /// </summary>
+    IErpChangeLogSource? ChangeLog => null;
+
     /// <summary>Open a short-lived connection to validate credentials and reachability.</summary>
     Task<ErpConnectionTestResult> TestConnectionAsync(CancellationToken ct = default);
 
@@ -37,22 +53,6 @@ public interface IErpAdapter
         => ReadBootstrapDataAsync(ct);
 
     /// <summary>
-    /// Read a trigger-based <c>SyncChangeSet</c> from the ERP. This is the
-    /// new (Faz 11-12) path that uses Mikro's
-    /// <c>_ERPB_SENKRONIZASYON</c> shadow table to surface
-    /// INSERT/UPDATE/DELETE events. Implementations that do not support
-    /// trigger-based sync throw <see cref="NotSupportedException"/>; the
-    /// caller is expected to gate on a config flag.
-    /// </summary>
-    Task<ErpBridge.Shared.SyncChangeSet> ReadChangeSetAsync(
-        string tenantId,
-        IReadOnlyDictionary<int, int> lastTriggerByTabloId,
-        int packetSize,
-        CancellationToken ct = default)
-        => throw new NotSupportedException(
-            "This ERP adapter does not provide a trigger-based change-set reader.");
-
-    /// <summary>
     /// Read a single reference-data section from the ERP and return it wrapped
     /// in a <see cref="SyncPackage"/> with all other sections empty. Used by
     /// the WPF "Her Tablo" diagnostic buttons when the bulk
@@ -73,4 +73,22 @@ public interface IErpAdapter
     Task<ErpWriteResult> WriteSalesOrderAsync(
         SalesOrderPayload payload,
         CancellationToken ct = default);
+
+    /// <summary>Write a sales invoice (header + N stock lines) inside a single transaction.</summary>
+    Task<ErpWriteResult> WriteInvoiceAsync(InvoicePayload payload, CancellationToken ct = default);
+
+    /// <summary>Write a collection (tahsilat) document.</summary>
+    Task<ErpWriteResult> WriteCollectionAsync(CollectionPayload payload, CancellationToken ct = default);
+
+    /// <summary>Write a dispatch note (irsaliye).</summary>
+    Task<ErpWriteResult> WriteDispatchNoteAsync(DispatchNotePayload payload, CancellationToken ct = default);
+
+    /// <summary>Write a payment order (ödeme emri / tediye).</summary>
+    Task<ErpWriteResult> WritePaymentOrderAsync(PaymentOrderPayload payload, CancellationToken ct = default);
+
+    /// <summary>Open a new customer card in the ERP (idempotent by external id + code).</summary>
+    Task<ErpWriteResult> WriteCustomerCardAsync(CreateCustomerRequest request, CancellationToken ct = default);
+
+    /// <summary>Open a new stock card in the ERP (idempotent by external id + code).</summary>
+    Task<ErpWriteResult> WriteStockCardAsync(CreateStockRequest request, CancellationToken ct = default);
 }

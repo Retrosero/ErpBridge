@@ -1,6 +1,6 @@
 using System.Data;
 using Dapper;
-using ErpBridge.Core.Domain;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Stores;
@@ -68,17 +68,20 @@ public sealed class MikroInvoiceWriter
     /// line side too).
     /// </summary>
     internal const string CariHesapHareketleriInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAP_HAREKETLERI (
     cha_RECid_DBCno, cha_RECid_RECno,
-    cha_firmano, cha_sube_no,
-    cha_cari_kod, cha_evrakno_seri, cha_evrakno_sira,
-    cha_tarih, cha_borc, cha_alacak, cha_kdv, cha_doviz_kodu, cha_aciklama
+    cha_firmano, cha_subeno, cha_tarihi, cha_kod,
+    cha_meblag, cha_d_cins, cha_aciklama,
+    cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
+    cha_evrakno_seri, cha_evrakno_sira, cha_satir_no
 )
 VALUES (
-    @ChaDbcNo, @ChaRecno,
-    @FirmNo, @BranchNo,
-    @CustomerCode, @DocumentSerial, @DocumentSequence,
-    @InvoiceDate, @Borc, @Alacak, @Kdv, @Currency, @Description
+    @ActiveDbNo, @SelfLinkSeed,
+    @FirmNo, @BranchNo, @InvoiceDate, @CustomerCode,
+    @TotalAmount, @Currency, @Description,
+    @EvrakTip, @Tip, @Cinsi, @NormalIade,
+    @DocumentSerial, @DocumentSequence, @LineNo
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -90,15 +93,18 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     internal const string CariHesapHareketleriInsertSqlV16 = @"
 INSERT INTO CARI_HESAP_HAREKETLERI (
     cha_Guid,
-    cha_firmano, cha_sube_no,
-    cha_cari_kod, cha_evrakno_seri, cha_evrakno_sira,
-    cha_tarih, cha_borc, cha_alacak, cha_kdv, cha_doviz_kodu, cha_aciklama
+    cha_firmano, cha_subeno, cha_tarihi, cha_kod,
+    cha_meblag, cha_d_cins, cha_aciklama,
+    cha_evrak_tip, cha_tip, cha_cinsi, cha_normal_Iade,
+    cha_evrakno_seri, cha_evrakno_sira, cha_satir_no
 )
 VALUES (
     @HeaderGuid,
-    @FirmNo, @BranchNo,
-    @CustomerCode, @DocumentSerial, @DocumentSequence,
-    @InvoiceDate, @Borc, @Alacak, @Kdv, @Currency, @Description);";
+    @FirmNo, @BranchNo, @InvoiceDate, @CustomerCode,
+    @TotalAmount, @Currency, @Description,
+    @EvrakTip, @Tip, @Cinsi, @NormalIade,
+    @DocumentSerial, @DocumentSequence, @LineNo
+);";
 
     /// <summary>
     /// V15 INSERT into <c>STOK_HAREKETLERI</c> for one fatura line. The
@@ -107,19 +113,28 @@ VALUES (
     /// to 0 (same database owns both rows).
     /// </summary>
     internal const string StokHareketleriLineInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO STOK_HAREKETLERI (
-    sto_RECid_DBCno, sto_RECid_RECno,
-    sto_firmano, sto_sube_no,
-    sto_stok_kod, sto_cari_kod, sto_evrakno_seri, sto_evrakno_sira,
-    sto_tarih, sto_miktar, sto_birim, sto_birim_fiyat, sto_kdv_orani,
-    sto_aciklama, sto_depo_no
+    sth_RECid_DBCno, sth_RECid_RECno,
+    sth_firmano, sth_subeno,
+    sth_tarih, sth_tip, sth_cins, sth_normal_iade, sth_evraktip,
+    sth_evrakno_seri, sth_evrakno_sira, sth_satirno,
+    sth_stok_kod, sth_cari_kodu,
+    sth_miktar, sth_birim_pntr, sth_tutar,
+    sth_vergi_pntr, sth_aciklama,
+    sth_cikis_depo_no, sth_giris_depo_no
 )
 VALUES (
-    @StoDbcNo, @ParentRecno,
+    @ActiveDbNo, @SelfLinkSeed,
     @FirmNo, @BranchNo,
-    @StockCode, @CustomerCode, @DocumentSerial, @DocumentSequence,
-    @InvoiceDate, @Quantity, @Unit, @UnitPrice, @KdvRate,
-    @Description, @WarehouseNo);";
+    @InvoiceDate, @Tip, @Cins, @NormalIade, @EvrakTip,
+    @DocumentSerial, @DocumentSequence, @LineNo,
+    @StockCode, @CustomerCode,
+    @Quantity, @UnitPointer, @LineTotal,
+    @TaxPointer, @Description,
+    @WarehouseNo, @InboundWarehouseNo
+);
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
     /// <summary>
     /// V16 sibling of <see cref="StokHareketleriLineInsertSqlV15"/> — the parent
@@ -127,16 +142,25 @@ VALUES (
     /// </summary>
     internal const string StokHareketleriLineInsertSqlV16 = @"
 INSERT INTO STOK_HAREKETLERI (
-    sto_firmano, sto_sube_no,
-    sto_stok_kod, sto_cari_kod, sto_evrakno_seri, sto_evrakno_sira,
-    sto_tarih, sto_miktar, sto_birim, sto_birim_fiyat, sto_kdv_orani,
-    sto_aciklama, sto_depo_no, sto_cha_uid
+    sth_Guid,
+    sth_firmano, sth_subeno,
+    sth_tarih, sth_tip, sth_cins, sth_normal_iade, sth_evraktip,
+    sth_evrakno_seri, sth_evrakno_sira, sth_satirno,
+    sth_stok_kod, sth_cari_kodu,
+    sth_miktar, sth_birim_pntr, sth_tutar,
+    sth_vergi_pntr, sth_aciklama,
+    sth_cikis_depo_no, sth_giris_depo_no
 )
 VALUES (
+    @LineGuid,
     @FirmNo, @BranchNo,
-    @StockCode, @CustomerCode, @DocumentSerial, @DocumentSequence,
-    @InvoiceDate, @Quantity, @Unit, @UnitPrice, @KdvRate,
-    @Description, @WarehouseNo, @ParentUid);";
+    @InvoiceDate, @Tip, @Cins, @NormalIade, @EvrakTip,
+    @DocumentSerial, @DocumentSequence, @LineNo,
+    @StockCode, @CustomerCode,
+    @Quantity, @UnitPointer, @LineTotal,
+    @TaxPointer, @Description,
+    @WarehouseNo, @InboundWarehouseNo
+);";
 
     /// <summary>
     /// Active-DB number used for the V15 self-link columns. Pinned to 0 because
@@ -430,8 +454,16 @@ VALUES (
         var parameters = new
         {
             // V15 parent-link parameters.
-            StoDbcNo = DefaultActiveDbNo,
-            ParentRecno = (object?)headerRecno,
+            ActiveDbNo = MikroSelfLink.ActiveDbNo,
+            Tip = MikroStockMovementCodes.OutboundTip,
+            Cins = MikroStockMovementCodes.NormalCins,
+            NormalIade = MikroStockMovementCodes.NormalMovement,
+            EvrakTip = MikroStockMovementCodes.InvoiceEvrakTip,
+            LineNo = lineNo,
+            UnitPointer = MikroStockMovementCodes.DefaultUnitPointer,
+            TaxPointer = MikroStockMovementCodes.DefaultTaxPointer,
+            InboundWarehouseNo = 0,
+            LineTotal = line.Quantity * line.UnitPrice,
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
             StockCode = line.StockCode,
@@ -446,7 +478,7 @@ VALUES (
             Description = line.Description ?? string.Empty,
             WarehouseNo = header.WarehouseNo,
             // V16 parent-link parameter.
-            ParentUid = headerGuid ?? Guid.Empty,
+            LineGuid = Guid.NewGuid(),
         };
 
         var sql = strategy is RecnoStrategy

@@ -1,10 +1,11 @@
 using System.Data;
 using Dapper;
-using ErpBridge.Core.Domain;
+using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Versioning;
+using ErpBridge.Erp.Sql;
 using ErpBridge.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -58,6 +59,7 @@ public sealed record CreateResult(int NewRECno, Guid? NewUid, bool Created);
 public sealed class MikroCustomerCardWriter
 {
     private readonly MikroConnectionFactory _connectionFactory;
+    private readonly SqlServerFieldWidthProvider _widths;
     private readonly MikroVersionDetector _versionDetector;
     private readonly MikroIdentityStrategySelector _strategySelector;
     private readonly ILogger<MikroCustomerCardWriter> _logger;
@@ -76,22 +78,19 @@ public sealed class MikroCustomerCardWriter
     /// self-link UPDATE that runs inside the same transaction.
     /// </summary>
     internal const string CariHesapInsertSqlV15 = @"
+DECLARE @SelfLinkSeed INT = -ABS(CHECKSUM(NEWID()));
 INSERT INTO CARI_HESAPLAR (
     cari_RECid_DBCno, cari_RECid_RECno,
-    cari_firmano, cari_sube_no,
     cari_kod, cari_unvan1,
     cari_vdaire_no, cari_vdaire_adi,
-    cari_adres, cari_tel1, cari_tel2,
-    cari_EMail, cari_yetkili,
-    cari_doviz_cinsi, cari_odeme_gun, cari_cari_grup
+    cari_EMail, cari_CepTel,
+    cari_doviz_cinsi, cari_odeme_gunu, cari_grup_kodu
 )
 VALUES (
-    @ActiveDbNo, @CariRecno,
-    @FirmNo, @BranchNo,
+    @ActiveDbNo, @SelfLinkSeed,
     @CustomerCode, @CustomerName,
     @TaxNumber, @TaxOffice,
-    @Address, @Phone1, @Phone2,
-    @Email, @ContactPerson,
+    @Email, @Phone1,
     @Currency, @PaymentTermDays, @GroupCode
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
@@ -104,20 +103,16 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     internal const string CariHesapInsertSqlV16 = @"
 INSERT INTO CARI_HESAPLAR (
     cari_Guid,
-    cari_firmano, cari_sube_no,
     cari_kod, cari_unvan1,
     cari_vdaire_no, cari_vdaire_adi,
-    cari_adres, cari_tel1, cari_tel2,
-    cari_EMail, cari_yetkili,
-    cari_doviz_cinsi, cari_odeme_gun, cari_cari_grup
+    cari_EMail, cari_CepTel,
+    cari_doviz_cinsi, cari_odeme_gunu, cari_grup_kodu
 )
 VALUES (
     @HeaderGuid,
-    @FirmNo, @BranchNo,
     @CustomerCode, @CustomerName,
     @TaxNumber, @TaxOffice,
-    @Address, @Phone1, @Phone2,
-    @Email, @ContactPerson,
+    @Email, @Phone1,
     @Currency, @PaymentTermDays, @GroupCode
 );";
 
@@ -142,9 +137,7 @@ WHERE cari_RECno = @CariRecno;";
     internal const string CariHesapSelectByCodeSqlV15 = @"
 SELECT CAST(cari_RECno AS INT) AS Recno
 FROM CARI_HESAPLAR
-WHERE cari_kod = @CustomerCode
-  AND cari_firmano = @FirmNo
-  AND cari_sube_no = @BranchNo;";
+WHERE cari_kod = @CustomerCode;";
 
     /// <summary>
     /// V16 duplicate-key probe — same shape as V15 but returns the Guid identity.
@@ -152,9 +145,7 @@ WHERE cari_kod = @CustomerCode
     internal const string CariHesapSelectByCodeSqlV16 = @"
 SELECT CAST(cari_Guid AS UNIQUEIDENTIFIER) AS Uid
 FROM CARI_HESAPLAR
-WHERE cari_kod = @CustomerCode
-  AND cari_firmano = @FirmNo
-  AND cari_sube_no = @BranchNo;";
+WHERE cari_kod = @CustomerCode;";
 
     /// <summary>
     /// Default aktif-DB number used for the <c>cari_RECid_DBCno</c> link in V15
@@ -172,6 +163,7 @@ WHERE cari_kod = @CustomerCode
         ILogger<MikroCustomerCardWriter> logger)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        _widths = new SqlServerFieldWidthProvider(() => _connectionFactory.BuildConnectionStringFromActive());
         _versionDetector = versionDetector ?? throw new ArgumentNullException(nameof(versionDetector));
         _strategySelector = strategySelector ?? throw new ArgumentNullException(nameof(strategySelector));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -306,7 +298,7 @@ WHERE cari_kod = @CustomerCode
             // table. Returns null when no row matches.
             var probeParameters = new
             {
-                CustomerCode = req.CustomerCode,
+                CustomerCode = ErpFieldText.Identifier(req.CustomerCode, await _widths.GetMaxLengthAsync("CARI_HESAPLAR", "cari_kod", ct).ConfigureAwait(false), "CARI_HESAPLAR.cari_kod"),
                 FirmNo = connectionSettings.CompanyNo,
                 BranchNo = connectionSettings.BranchNo,
             };
@@ -353,7 +345,7 @@ WHERE cari_kod = @CustomerCode
                 // by the follow-up UPDATE inside the same transaction.
                 var recno = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
                     CariHesapInsertSqlV15,
-                    BuildInsertParameters(req, headerGuid, connectionSettings),
+                    await BuildInsertParametersAsync(req, headerGuid, connectionSettings, ct).ConfigureAwait(false),
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
 
@@ -374,9 +366,10 @@ WHERE cari_kod = @CustomerCode
             // V16 — pre-generated Guid.
             await conn.ExecuteAsync(new CommandDefinition(
                 CariHesapInsertSqlV16,
-                BuildInsertParameters(req, headerGuid, connectionSettings),
+                await BuildInsertParametersAsync(req, headerGuid, connectionSettings, ct).ConfigureAwait(false),
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
+
 
             await tx.CommitAsync(ct).ConfigureAwait(false);
             return new InsertOutcome(0, headerGuid, Created: true);
@@ -399,10 +392,11 @@ WHERE cari_kod = @CustomerCode
         }
     }
 
-    private static object BuildInsertParameters(
+    private async Task<object> BuildInsertParametersAsync(
         CreateCustomerRequest req,
         Guid? headerGuid,
-        MikroConnectionSettings connectionSettings)
+        MikroConnectionSettings connectionSettings,
+        CancellationToken ct)
     {
         return new
         {
@@ -414,15 +408,15 @@ WHERE cari_kod = @CustomerCode
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
             CustomerCode = req.CustomerCode,
-            CustomerName = req.CustomerName,
-            TaxNumber = req.TaxNumber ?? string.Empty,
+            CustomerName = ErpFieldText.FreeText(req.CustomerName, await _widths.GetMaxLengthAsync("CARI_HESAPLAR", "cari_unvan1", ct).ConfigureAwait(false)),
+            TaxNumber = ErpFieldText.FreeText(req.TaxNumber, await _widths.GetMaxLengthAsync("CARI_HESAPLAR", "cari_vdaire_no", ct).ConfigureAwait(false)),
             TaxOffice = req.TaxOffice ?? string.Empty,
             Address = req.Address ?? string.Empty,
-            Phone1 = req.Phone1 ?? string.Empty,
+            Phone1 = ErpFieldText.FreeText(req.Phone1, await _widths.GetMaxLengthAsync("CARI_HESAPLAR", "cari_CepTel", ct).ConfigureAwait(false)),
             Phone2 = req.Phone2 ?? string.Empty,
-            Email = req.Email ?? string.Empty,
+            Email = ErpFieldText.FreeText(req.Email, await _widths.GetMaxLengthAsync("CARI_HESAPLAR", "cari_EMail", ct).ConfigureAwait(false)),
             ContactPerson = req.ContactPerson ?? string.Empty,
-            Currency = req.Currency,
+            Currency = MikroCurrency.ToMikroCode(req.Currency),
             PaymentTermDays = req.PaymentTermDays,
             GroupCode = req.GroupCode,
         };

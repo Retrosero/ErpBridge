@@ -14,11 +14,13 @@ public sealed class AgentServiceOptions
     public string ServiceName { get; set; } = "ErpBridge Agent";
 
     /// <summary>
-    /// How often <c>BootstrapWorker</c> pulls deltas from Mikro and pushes to
-    /// the central API. Phase 9 default: 60 seconds. Operators can speed this
-    /// up to (say) 30 s in a test environment, or down to 300 s on a slow WAN.
+    /// How often <c>BootstrapWorker</c> pulls deltas from the ERP and pushes to
+    /// the central API. Default: 20 seconds — the mobile client is now woken by
+    /// the <c>/api/v1/android/notify</c> long-poll, so this interval is the main
+    /// contributor to end-to-end change latency. Operators can raise it to
+    /// 120-300 s on a slow WAN; a delta cycle with no changes is cheap.
     /// </summary>
-    public int BootstrapIntervalSeconds { get; set; } = 60;
+    public int BootstrapIntervalSeconds { get; set; } = 20;
 
     /// <summary>
     /// Initial delay after the host starts before the first bootstrap push
@@ -30,12 +32,24 @@ public sealed class AgentServiceOptions
 
     /// <summary>
     /// Faz 11/12: enable the trigger-based change-set path. When true the
-    /// <c>BootstrapWorker</c> invokes <see cref="Stores.IChangeSetSyncService"/>
+    /// <c>BootstrapWorker</c> invokes <see cref="ErpBridge.Core.Stores.IErpChangeLogSyncService"/>
     /// instead of <see cref="Stores.IBootstrapSyncService"/>. The WPF
     /// "Trigger tabanlı (önerilen)" toggle in the settings window writes this
     /// value. Default: <c>true</c>.
     /// </summary>
     public bool UseTriggerBasedSync { get; set; } = true;
+
+    /// <summary>
+    /// When <see cref="UseTriggerBasedSync"/> is on, also run the
+    /// <c>*_lastup_date</c> snapshot-delta cycle each iteration so the central
+    /// API's <c>bootstrap_snapshots</c> (which the mobile client's
+    /// <c>sync/urun</c> / <c>sync/cari</c> master-data endpoints read) keeps
+    /// getting insert/update changes. The change-log path alone only carries
+    /// deletes to those consumers. Default: <c>true</c>. Set to <c>false</c>
+    /// for an ERP with no reliable modification timestamp (the change-log
+    /// upsert queue is the fallback there).
+    /// </summary>
+    public bool RefreshSnapshotInTriggerMode { get; set; } = true;
 
     /// <summary>
     /// Faz 11/12: packet size for the change-set reader. One Mikro query

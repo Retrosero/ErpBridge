@@ -329,6 +329,13 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("ErpType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Mikro");
+
                     b.Property<long>("FirstTriggerRecNo")
                         .HasColumnType("bigint");
 
@@ -363,13 +370,15 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<string>("TableName")
+                    b.Property<string>("TableKey")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<int>("TabloId")
-                        .HasColumnType("integer");
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -392,6 +401,16 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ErpType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Mikro");
+
+                    b.Property<long>("LastDeleteRecNo")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("LastTriggerRecNo")
                         .HasColumnType("bigint");
 
@@ -410,13 +429,15 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<string>("TableName")
+                    b.Property<string>("TableKey")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<int>("TabloId")
-                        .HasColumnType("integer");
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -425,7 +446,7 @@ namespace ErpBridge.CentralApi.Data.Migrations
 
                     b.HasIndex("TenantId", "TableName", "PulledAtUtc");
 
-                    b.HasIndex("TenantId", "SourceDatabase", "TableName", "LastTriggerRecNo")
+                    b.HasIndex("TenantId", "SourceDatabase", "TableName", "LastTriggerRecNo", "LastDeleteRecNo")
                         .IsUnique();
 
                     b.ToTable("change_sets", (string)null);
@@ -494,6 +515,13 @@ namespace ErpBridge.CentralApi.Data.Migrations
 
                     b.Property<DateTimeOffset>("EnqueuedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErpType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Mikro");
 
                     b.Property<string>("ExternalId")
                         .IsRequired()
@@ -641,6 +669,10 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("SourceRecordKey")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("TableName")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -655,6 +687,8 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.HasKey("Sequence");
 
                     b.HasIndex("TenantId", "Sequence");
+
+                    b.HasIndex("TenantId", "SourceDatabase", "TableName", "SourceRecordKey");
 
                     b.HasIndex("TenantId", "SourceDatabase", "TableName", "TriggerRecNo", "Operation", "RecordKey")
                         .IsUnique();
