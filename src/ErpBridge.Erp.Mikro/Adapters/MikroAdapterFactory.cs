@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions.Connection;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Mikro.Connection;
@@ -76,7 +77,7 @@ public sealed class MikroAdapterFactory : IErpAdapterFactory
 
         return new MikroAdapter(
             connectionSettings: liveSettings,
-            orchestrator: services.GetRequiredService<IMikroConnectionTestOrchestrator>(),
+            orchestrator: services.GetRequiredService<IErpConnectionTestOrchestrator>(),
             versionDetector: services.GetRequiredService<MikroVersionDetector>(),
             strategySelector: services.GetRequiredService<MikroIdentityStrategySelector>(),
             salesOrderWriter: services.GetRequiredService<MikroSalesOrderWriter>(),

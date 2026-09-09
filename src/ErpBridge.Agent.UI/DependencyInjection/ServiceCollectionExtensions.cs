@@ -44,7 +44,14 @@ public static class ServiceCollectionExtensions
         // IConfiguration's "Mikro" section; TestConnectionAsync re-reads the
         // section on every call so the WPF "Bağlantıyı test et" button observes
         // the user's latest typed-in values without a process restart.
-        services.AddErpBridgeMikro(configuration);
+        // Same registration switch the Windows Service uses — the WPF host does
+        // not name a vendor either.
+        services.AddErpBridgeErpAdapter(
+            Enum.TryParse<ErpBridge.Erp.Abstractions.ErpType>(
+                configuration["Agent:ErpType"], ignoreCase: true, out var erp)
+                ? erp
+                : ErpBridge.Erp.Abstractions.ErpType.Mikro,
+            configuration);
 
         // The trigger sync service is also used by the DashboardViewModel.
         // Agent.Service registers its SQLite watermark store in its own

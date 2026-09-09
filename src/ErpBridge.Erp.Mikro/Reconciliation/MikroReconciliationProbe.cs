@@ -1,14 +1,14 @@
-using ErpBridge.Core.Domain;
+using ErpBridge.Erp.Abstractions.Reconciliation;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
-namespace ErpBridge.Agent.Service.Workers;
+namespace ErpBridge.Erp.Mikro.Reconciliation;
 
 /// <summary>
-/// <see cref="IReconciliationProbe"/> implementation that asks the live Mikro
+/// <see cref="IErpReconciliationProbe"/> implementation that asks the live Mikro
 /// SQL Server whether the document behind a mapping row still exists. The
 /// dispatch is version-specific: V15 looks the row up by <c>sip_RECno</c> and
 /// V16 by <c>sip_Guid</c> (matching the write path in
@@ -29,7 +29,7 @@ namespace ErpBridge.Agent.Service.Workers;
 /// <see cref="ReconciliationProbeOutcome.Error"/> so the worker can log the
 /// drift without aborting the rest of the scan.
 /// </remarks>
-public sealed class MikroReconciliationProbe : IReconciliationProbe
+public sealed class MikroReconciliationProbe : IErpReconciliationProbe
 {
     private readonly MikroConnectionFactory _connectionFactory;
     private readonly MikroVersionDetector _versionDetector;
@@ -54,14 +54,14 @@ public sealed class MikroReconciliationProbe : IReconciliationProbe
     }
 
     /// <inheritdoc />
-    public async Task<ReconciliationProbeResult> ProbeAsync(MappingRecord mapping, CancellationToken ct)
+    public async Task<ReconciliationProbeResult> ProbeAsync(ErpDocumentRef document, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(mapping);
+        ArgumentNullException.ThrowIfNull(document);
 
         // No identifier at all — the writer never produced a usable anchor.
         // This is a "missing mapping" candidate, not an orphan, so we return
         // Exists so the worker does not double-count.
-        if (!mapping.Recno.HasValue && string.IsNullOrWhiteSpace(mapping.Guid))
+        if (document.HasNoIdentity)
         {
             return ReconciliationProbeResult.Exists();
         }
@@ -70,24 +70,24 @@ public sealed class MikroReconciliationProbe : IReconciliationProbe
         {
             var connectionString = _connectionFactory.BuildConnectionStringFromActive();
             var versionInfo = await _versionDetector.DetectAsync(connectionString, ct).ConfigureAwait(false);
-            var strategy = _strategySelector.GetFor(mapping.ErpDatabaseName ?? string.Empty, versionInfo);
+            var strategy = _strategySelector.GetFor(document.DatabaseName, versionInfo);
 
             await using var conn = new SqlConnection(connectionString);
             await conn.OpenAsync(ct).ConfigureAwait(false);
 
             var exists = strategy switch
             {
-                RecnoStrategy when mapping.Recno.HasValue =>
-                    await CheckByRecnoAsync(conn, mapping.Recno.Value, ct).ConfigureAwait(false),
-                GuidStrategy when !string.IsNullOrWhiteSpace(mapping.Guid) =>
-                    await CheckByGuidAsync(conn, mapping.Guid!, ct).ConfigureAwait(false),
+                RecnoStrategy when document.Recno.HasValue =>
+                    await CheckByRecnoAsync(conn, document.Recno.Value, ct).ConfigureAwait(false),
+                GuidStrategy when document.Guid.HasValue =>
+                    await CheckByGuidAsync(conn, document.Guid!.Value, ct).ConfigureAwait(false),
                 _ => false, // mismatch (V15 mapping + V16 DB or vice versa) — flag as missing
             };
 
             return exists
                 ? ReconciliationProbeResult.Exists()
                 : ReconciliationProbeResult.Missing(
-                    $"Mapping for tenantId={mapping.TenantId}, documentType={mapping.DocumentType}, externalId={mapping.ExternalId} references a Mikro record that no longer exists.");
+                    $"Mapping for tenantId={document.TenantId}, documentType={document.DocumentType}, externalId={document.ExternalId} references a Mikro record that no longer exists.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -101,7 +101,7 @@ public sealed class MikroReconciliationProbe : IReconciliationProbe
             var masked = ConnectionStringMasker.MaskForLog(ex.Message);
             _logger.LogWarning(ex,
                 "Reconciliation probe failed for tenantId={TenantId}, documentType={DocumentType}, externalId={ExternalId}: {Error}",
-                mapping.TenantId, mapping.DocumentType, mapping.ExternalId, masked);
+                document.TenantId, document.DocumentType, document.ExternalId, masked);
             return ReconciliationProbeResult.Error(masked);
         }
     }
@@ -120,16 +120,10 @@ public sealed class MikroReconciliationProbe : IReconciliationProbe
     }
 
     /// <summary>
-    /// V16 lookup — bound by <c>sip_Guid</c>. The Guid is parsed defensively
-    /// because the SQLite <c>mappings</c> table stores the value as text.
+    /// V16 lookup — bound by <c>sip_Guid</c> as a native uniqueidentifier.
     /// </summary>
-    private static async Task<bool> CheckByGuidAsync(SqlConnection conn, string guidText, CancellationToken ct)
+    private static async Task<bool> CheckByGuidAsync(SqlConnection conn, Guid guid, CancellationToken ct)
     {
-        if (!Guid.TryParse(guidText, out var guid))
-        {
-            return false;
-        }
-
         const string sql = "SELECT CAST(CASE WHEN EXISTS (SELECT 1 FROM SIPARISLER WHERE sip_Guid = @Uid) THEN 1 ELSE 0 END AS BIT);";
         await using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.Add(new SqlParameter("@Uid", System.Data.SqlDbType.UniqueIdentifier) { Value = guid });

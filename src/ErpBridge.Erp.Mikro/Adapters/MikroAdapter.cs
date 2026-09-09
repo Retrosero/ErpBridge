@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions.Connection;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.ChangeLog;
 using ErpBridge.Erp.Abstractions.Documents;
@@ -26,7 +27,7 @@ namespace ErpBridge.Erp.Mikro.Adapters;
 /// </summary>
 public sealed class MikroAdapter : IErpAdapter
 {
-    private readonly IMikroConnectionTestOrchestrator _orchestrator;
+    private readonly IErpConnectionTestOrchestrator _orchestrator;
     private readonly MikroVersionDetector _versionDetector;
     private readonly MikroIdentityStrategySelector _strategySelector;
     private readonly MikroSalesOrderWriter _salesOrderWriter;
@@ -72,7 +73,7 @@ public sealed class MikroAdapter : IErpAdapter
     /// </remarks>
     public MikroAdapter(
         MikroConnectionSettings connectionSettings,
-        IMikroConnectionTestOrchestrator orchestrator,
+        IErpConnectionTestOrchestrator orchestrator,
         MikroVersionDetector versionDetector,
         MikroIdentityStrategySelector strategySelector,
         MikroSalesOrderWriter salesOrderWriter,

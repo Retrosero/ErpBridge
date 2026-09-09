@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions.Connection;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -7,8 +8,6 @@ using ErpBridge.Agent.UI.DependencyInjection;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
-using ErpBridge.Erp.Mikro.Adapters;
-using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Shared;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -19,7 +18,7 @@ namespace ErpBridge.Agent.UI.ViewModels;
 /// <summary>
 /// Backing view-model for the agent settings window. Mirrors the
 /// <see cref="AgentConfig"/> shape so a two-way binding is straightforward.
-/// "Bağlantıyı test et" wires through <see cref="IMikroConnectionTestOrchestrator"/>
+/// "Bağlantıyı test et" wires through <see cref="IErpConnectionTestOrchestrator"/>
 /// (the single seam owned by <c>Erp.Mikro</c>); "Kaydet" persists through
 /// <see cref="IAgentConfigStore"/> and refreshes the live
 /// <see cref="IConfiguration"/> so subsequent adapter calls see fresh values.
@@ -49,7 +48,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
 {
     private readonly IAgentConfigStore _store;
     private readonly IAgentConfigToErpSettingsMapper _configToErpSettings;
-    private readonly IMikroConnectionTestOrchestrator _orchestrator;
+    private readonly IErpConnectionTestOrchestrator _orchestrator;
     private readonly IConfiguration _configuration;
     private readonly MutableMemoryConfigurationProvider _liveSettings;
     private readonly ILogger<AgentSettingsViewModel> _logger;
@@ -141,7 +140,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
     public AgentSettingsViewModel(
         IAgentConfigStore store,
         IAgentConfigToErpSettingsMapper configToErpSettings,
-        IMikroConnectionTestOrchestrator orchestrator,
+        IErpConnectionTestOrchestrator orchestrator,
         IConfiguration configuration,
         MutableMemoryConfigurationProvider liveSettings,
         ILogger<AgentSettingsViewModel> logger)
@@ -858,9 +857,14 @@ public sealed class AgentSettingsViewModel : ObservableObject
                 return;
             }
 
-            if (settings is not MikroConnectionSettings)
+            // The mapper returns an adapter-specific settings bag as `object` so
+            // Core stays free of vendor types; a null here means the config is
+            // incomplete for the selected ERP. The view-model deliberately does
+            // not type-check the concrete bag — that would re-couple the UI to
+            // one adapter.
+            if (settings is null)
             {
-                Status = "Adapter ayarları beklenen formatta değil (Mikro değil?).";
+                Status = "Adapter ayarları eksik: seçili ERP için zorunlu alanları doldurun.";
                 HasConnectionTestResult = false;
                 ResetBadge();
                 return;
@@ -1546,7 +1550,7 @@ public sealed class AgentSettingsViewModel : ObservableObject
         _liveSettings[prefix + "DatabaseName"] = config.ErpDatabaseName ?? string.Empty;
         _liveSettings[prefix + "IntegratedSecurity"] = config.UseWindowsAuth ? "true" : "false";
         // Faz 10: propagate the multi-firm numbers into the live Mikro
-        // section so MikroConnectionSettings.FromConfiguration sees them on
+        // section so the adapter's settings binder sees them on
         // the next adapter construction (and the test-connection button
         // uses the same values as the bootstrap reader).
         _liveSettings[prefix + "CompanyNo"] = config.CompanyNo.ToString(CultureInfo.InvariantCulture);

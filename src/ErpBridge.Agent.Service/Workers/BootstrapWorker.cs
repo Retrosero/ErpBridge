@@ -199,13 +199,6 @@ public sealed class BootstrapWorker : BackgroundService
             result.MoreAvailable, result.DurationMs);
     }
 
-    private static ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings? ResolveMikroSettings(IServiceScope scope)
-    {
-        // The settings are registered as a singleton in AddErpBridgeMikro. We
-        // pull them straight from the scope so the installer sees the same
-        // values the adapter will use.
-        return scope.ServiceProvider.GetService<ErpBridge.Erp.Mikro.Connection.MikroConnectionSettings>();
-    }
 
     /// <inheritdoc />
     public override async Task StopAsync(CancellationToken cancellationToken)

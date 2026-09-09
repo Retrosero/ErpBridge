@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using ErpBridge.Erp.Abstractions;
+using ErpBridge.Erp.Abstractions.Connection;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Shared;
@@ -9,54 +10,9 @@ using Microsoft.Extensions.Logging;
 
 namespace ErpBridge.Erp.Mikro.Adapters;
 
-/// <summary>
-/// Coordinates the three Mikro connection-test phases (quick probe, version detection,
-/// full diagnostic) and owns the short-lived cache that keeps repeated probes cheap.
-/// </summary>
-/// <remarks>
-/// The orchestrator is the single seam used by the WPF "Bağlantıyı test et" button,
-/// the Windows Service pre-flight check, and the <see cref="MikroAdapter"/> test
-/// methods. Centralising the logic here means:
-/// <list type="bullet">
-///   <item>The cache TTL is owned in one place (<c>MikroConnectionTestOrchestrator.CacheTtl</c>) and is
-///         invalidatable from any caller via <see cref="InvalidateCache"/>.</item>
-///   <item>Password masking is applied at every error boundary, not just inside
-///         <see cref="MikroAdapter"/>.</item>
-///   <item>The <see cref="ErpConnectionTestResult"/> is filled in once, with all
-///         rich fields (DetectedMikroVersion, IdentityStrategyName, LatencyMs) in
-///         a single shape.</item>
-/// </list>
-/// </remarks>
-public interface IMikroConnectionTestOrchestrator
-{
-    /// <summary>
-    /// Run the full diagnostic — quick probe + version detection + strategy cache warming —
-    /// and return the consolidated <see cref="ErpConnectionTestResult"/>. Always returns;
-    /// never throws: failures are surfaced via <see cref="ErpConnectionTestResult.Ok"/>.
-    /// </summary>
-    Task<ErpConnectionTestResult> RunFullTestAsync(CancellationToken ct = default);
-
-    /// <summary>
-    /// Open a short-lived <see cref="SqlConnection"/> and report only
-    /// <see cref="ErpConnectionTestResult.Ok"/> + <see cref="ErpConnectionTestResult.ServerVersion"/>.
-    /// </summary>
-    Task<ErpConnectionTestResult> RunQuickTestAsync(CancellationToken ct = default);
-
-    /// <summary>
-    /// Probe Mikro SQL for V15 vs V16, returning the cached result when fresh. Side-effect:
-    /// warms <see cref="MikroIdentityStrategySelector"/> so subsequent writers don't re-probe.
-    /// </summary>
-    Task<ErpVersionInfo> RunVersionDetectionAsync(CancellationToken ct = default);
-
-    /// <summary>
-    /// Drop every cached entry so the next test forces a re-probe. Called when the WPF
-    /// operator saves new connection settings or explicitly requests a refresh.
-    /// </summary>
-    void InvalidateCache();
-}
 
 /// <summary>
-/// Default implementation of <see cref="IMikroConnectionTestOrchestrator"/>.
+/// Default implementation of <see cref="IErpConnectionTestOrchestrator"/>.
 /// </summary>
 /// <remarks>
 /// Lifetime: registered as a singleton — the cache is process-wide. The TTL is intentionally
@@ -64,7 +20,7 @@ public interface IMikroConnectionTestOrchestrator
 /// write bursts but short enough that a server-side schema upgrade is picked up within a
 /// reasonable window.
 /// </remarks>
-public sealed class MikroConnectionTestOrchestrator : IMikroConnectionTestOrchestrator
+public sealed class MikroConnectionTestOrchestrator : IErpConnectionTestOrchestrator
 {
     /// <summary>
     /// How long a cached <see cref="ErpVersionInfo"/> stays valid. The probe is cheap

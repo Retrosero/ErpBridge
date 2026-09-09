@@ -1,3 +1,4 @@
+using ErpBridge.Erp.Abstractions.Connection;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.DependencyInjection;
@@ -108,10 +109,10 @@ public static class ServiceCollectionExtensions
         // Faz 3 Track 2: connection-test orchestrator — single seam for the WPF
         // "Bağlantıyı test et" button, the redetect command, and the service
         // pre-flight check. Singleton so the version cache is process-wide.
-        services.AddSingleton<IMikroConnectionTestOrchestrator, MikroConnectionTestOrchestrator>();
+        services.AddSingleton<IErpConnectionTestOrchestrator, MikroConnectionTestOrchestrator>();
 
         // Faz 3 Track 1: orchestrator that owns quick/full probes + version cache TTL.
-        services.AddSingleton<IMikroConnectionTestOrchestrator, MikroConnectionTestOrchestrator>();
+        services.AddSingleton<IErpConnectionTestOrchestrator, MikroConnectionTestOrchestrator>();
 
         // Faz 2 Track 1: map AgentConfig → MikroConnectionSettings. The Core
         // contract keeps Mikro types out of the domain layer.
@@ -140,6 +141,14 @@ public static class ServiceCollectionExtensions
         // Faz 5 Track 2: MikroDbReader — Dapper-backed bootstrap reader. Singleton
         // because the implementation is stateless aside from its dependencies.
         services.AddSingleton<IMikroDbReader, MikroDbReader>();
+
+        // Faz 19: the reconciliation probe is a Mikro implementation, so it is
+        // registered here rather than by the host. The worker resolves it
+        // through the abstraction and never names this type.
+        services.AddSingleton<ErpBridge.Erp.Abstractions.Reconciliation.IErpReconciliationProbe,
+            ErpBridge.Erp.Mikro.Reconciliation.MikroReconciliationProbe>();
+        services.TryAddSingleton<ILogger<ErpBridge.Erp.Mikro.Reconciliation.MikroReconciliationProbe>>(sp =>
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<ErpBridge.Erp.Mikro.Reconciliation.MikroReconciliationProbe>());
 
         // Faz 11.2: trigger installer — owns the shadow table + per-table triggers.
         services.AddSingleton<TriggerInstaller>();
