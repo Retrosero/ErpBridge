@@ -172,7 +172,14 @@ için Room `deleteById(recordKey)` ile uygulanır. **Değişiklik (update) veril
 ile ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sayfa döner.
 `BootstrapWorker` trigger modunda (`UseTriggerBasedSync=true`) her iterasyonda
 **hem** change-log **hem** snapshot-delta cycle'ını çalıştırır
-(`RefreshSnapshotInTriggerMode=true`, `BootstrapIntervalSeconds=20`). Trigger-only
+(`RefreshSnapshotInTriggerMode=true`, `BootstrapIntervalSeconds=20`). WPF
+"Senkronize Et" butonu (`DashboardViewModel.RunSyncDeltaAsync`) de 2026-09-10'dan
+itibaren aynı sırayı izler: change-log push → `IBootstrapSyncService.InvalidateAsync`
+(yalnızca 30 sn idempotency penceresini açar) → `RunOnceAsync` (sunucuda snapshot
+varken artımlı). Önceden buton yalnızca change-log gönderiyordu; sunucu upsert
+olaylarını snapshot'a uygulamadığı ve Android `/sync/faturaHareket`'i snapshot'tan
+okuduğu için **yeni kesilen fatura cihaza hiç inmiyordu, silmeler ise
+`SnapshotDeleteApplier` sayesinde iniyordu**. Trigger-only
 mod (delete-only) yalnızca `*_lastup_date`'i olmayan bir ERP'de mantıklı; o zaman
 shadow-log `upsert` kuyruğu Android tarafına bağlanmalı (ileride
 `/android/changeset/*/new_or_changed`).
