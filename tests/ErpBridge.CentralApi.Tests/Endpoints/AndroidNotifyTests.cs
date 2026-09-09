@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
+using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace ErpBridge.CentralApi.Tests.Endpoints;
@@ -43,7 +45,20 @@ public sealed class AndroidNotifyTests : IClassFixture<CentralApiFactory>
 
         // Register the waiter first so the hub has a subscriber before publish.
         var notifyTask = mobile.GetAsync("/api/v1/android/notify?wait=10");
-        await Task.Delay(250);
+
+        // A fixed sleep here raced the HTTP pipeline reaching NotifyAsync and
+        // calling hub.WaitAsync — under CI load the subscriber sometimes was
+        // not registered yet when Publish ran, and Publish is a no-op with no
+        // one listening, so the waiter timed out at the full 10s and the test
+        // flaked. Poll the hub's own subscriber count instead: it is exact,
+        // so the ingest below only fires once the wait is actually parked.
+        var hub = (BootstrapNotificationHub)_factory.Services.GetRequiredService<IBootstrapNotificationHub>();
+        for (var attempt = 0; attempt < 300 && hub.GetWaiterCount(tenant.Id) == 0; attempt++)
+        {
+            await Task.Delay(10);
+        }
+        hub.GetWaiterCount(tenant.Id).Should().BeGreaterThan(0,
+            "the long-poll must have registered its subscriber before the change set is pushed");
 
         var table = new
         {
