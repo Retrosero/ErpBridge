@@ -56,7 +56,7 @@ public static class ChangeSetEndpoints
     /// </summary>
     internal static string ComputeIdempotencyKey(SyncChangeSet body, SyncTableChangeSet table)
     {
-        var raw = $"{body.SourceDatabase}|{table.Table.TabloAdi}|{table.PreviousLastTriggerRecNo}|{table.NewLastTriggerRecNo}|{body.PulledAtUtc.UtcTicks}";
+        var raw = $"{body.SourceDatabase}|{table.Table.TableName}|{table.PreviousSequence}|{table.NewSequence}|{body.PulledAtUtc.UtcTicks}";
         var bytes = Encoding.UTF8.GetBytes(raw);
         var hash = SHA256.HashData(bytes);
         return Convert.ToHexString(hash).ToLowerInvariant();
@@ -131,7 +131,7 @@ public static class ChangeSetEndpoints
         foreach (var table in body.Tables)
         {
             ct.ThrowIfCancellationRequested();
-            if (table.NewLastTriggerRecNo <= 0) continue;
+            if (table.NewSequence <= 0) continue;
 
             var json = JsonSerializer.Serialize(table, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             // The unique index on (TenantId, SourceDatabase, TableName, LastTriggerRecNo)
@@ -141,8 +141,8 @@ public static class ChangeSetEndpoints
             var exists = await db.ChangeSets.AsNoTracking().AnyAsync(c =>
                     c.TenantId == tenantId &&
                     c.SourceDatabase == body.SourceDatabase &&
-                    c.TableName == table.Table.TabloAdi &&
-                    c.LastTriggerRecNo == table.NewLastTriggerRecNo,
+                    c.TableName == table.Table.TableName &&
+                    c.LastTriggerRecNo == table.NewSequence,
                 ct);
             if (exists)
             {
@@ -153,10 +153,11 @@ public static class ChangeSetEndpoints
             db.ChangeSets.Add(new ChangeSetRecord
             {
                 TenantId = tenantId,
+                ErpType = string.IsNullOrWhiteSpace(body.ErpType) ? "Mikro" : body.ErpType,
                 SourceDatabase = body.SourceDatabase,
-                TableName = table.Table.TabloAdi,
-                TabloId = table.Table.TabloID,
-                LastTriggerRecNo = table.NewLastTriggerRecNo,
+                TableKey = table.Table.TableKey,
+                TableName = table.Table.TableName,
+                LastTriggerRecNo = table.NewSequence,
                 PayloadJson = json,
                 PulledAtUtc = body.PulledAtUtc,
             });
@@ -166,10 +167,11 @@ public static class ChangeSetEndpoints
             // Faz 15.6: append one audit row per non-empty direction. The
             // (TenantId, IdempotencyKey, Direction) unique index makes a
             // retry of the same bundle a no-op on the audit side too.
-            var tableKey = ComputeIdempotencyKey(body, table);
-            AppendAuditIfPresent(db, tenantId, body.SourceDatabase, table, "new", tableKey, json, body.PulledAtUtc, agentId, idempotencyKey);
-            AppendAuditIfPresent(db, tenantId, body.SourceDatabase, table, "changed", tableKey, json, body.PulledAtUtc, agentId, idempotencyKey);
-            AppendAuditIfPresent(db, tenantId, body.SourceDatabase, table, "deleted", tableKey, json, body.PulledAtUtc, agentId, idempotencyKey);
+            var auditKey = ComputeIdempotencyKey(body, table);
+            var erp = string.IsNullOrWhiteSpace(body.ErpType) ? "Mikro" : body.ErpType;
+            AppendAuditIfPresent(db, tenantId, erp, body.SourceDatabase, table, "new", auditKey, json, body.PulledAtUtc, agentId, idempotencyKey);
+            AppendAuditIfPresent(db, tenantId, erp, body.SourceDatabase, table, "changed", auditKey, json, body.PulledAtUtc, agentId, idempotencyKey);
+            AppendAuditIfPresent(db, tenantId, erp, body.SourceDatabase, table, "deleted", auditKey, json, body.PulledAtUtc, agentId, idempotencyKey);
 
             accepted++;
         }
@@ -198,7 +200,7 @@ public static class ChangeSetEndpoints
         SyncTableChangeSet table,
         CancellationToken ct)
     {
-        var entity = table.Table.TabloAdi switch
+        var entity = table.Table.TableName switch
         {
             "STOKLAR" => "product",
             "CARI_HESAPLAR" => "customer",
@@ -210,89 +212,71 @@ public static class ChangeSetEndpoints
         if (entity is null) return;
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var row in table.New?.Rows ?? Array.Empty<IReadOnlyDictionary<string, object?>>())
-            AddRow(db, tenantId, sourceDatabase, table, entity, "upsert", row, Serialize(row), seen);
-        foreach (var row in table.Changed?.Rows ?? Array.Empty<IReadOnlyDictionary<string, object?>>())
-            AddRow(db, tenantId, sourceDatabase, table, entity, "upsert", row, Serialize(row), seen);
-        foreach (var row in table.Deleted?.Rows ?? Array.Empty<(int KayitRecNo, int TriggerRecNo)>())
+        // Faz 20: upsert rows carry an explicit RecordKey, so the queue item's
+        // identity no longer depends on guessing a "*RECno" column — which
+        // GUID-keyed tables (Mikro V16, Logo) do not have.
+        var upsertSequence = Math.Max(table.New?.HighestSequence ?? 0, table.Changed?.HighestSequence ?? 0);
+        foreach (var row in table.New?.Rows ?? Array.Empty<SyncUpsertRow>())
+            AddUpsertRow(db, tenantId, sourceDatabase, table, entity, row, upsertSequence, seen);
+        foreach (var row in table.Changed?.Rows ?? Array.Empty<SyncUpsertRow>())
+            AddUpsertRow(db, tenantId, sourceDatabase, table, entity, row, upsertSequence, seen);
+
+        foreach (var row in table.Deleted?.Rows ?? Array.Empty<SyncDeletedRow>())
         {
-            var sourceRecordKey = row.KayitRecNo.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var sourceRecordKey = row.RecordKey;
             var recordKey = await db.MobileSyncQueue
                 .Where(x => x.TenantId == tenantId && x.SourceDatabase == sourceDatabase &&
-                            x.TableName == table.Table.TabloAdi && x.SourceRecordKey == sourceRecordKey)
+                            x.TableName == table.Table.TableName && x.SourceRecordKey == sourceRecordKey)
                 .OrderByDescending(x => x.Sequence)
                 .Select(x => x.RecordKey)
                 .FirstOrDefaultAsync(ct) ?? sourceRecordKey;
-            if (!seen.Add($"{recordKey}:delete:{row.TriggerRecNo}")) continue;
-            var payload = JsonSerializer.Serialize(new { recordKey, sourceRecordKey, triggerRecNo = row.TriggerRecNo });
+            if (!seen.Add($"{recordKey}:delete:{row.Sequence}")) continue;
+            var payload = JsonSerializer.Serialize(new { recordKey, sourceRecordKey, sequence = row.Sequence });
             db.MobileSyncQueue.Add(new MobileSyncQueueItem
             {
                 TenantId = tenantId,
                 SourceDatabase = sourceDatabase,
-                TableName = table.Table.TabloAdi,
+                TableName = table.Table.TableName,
                 EntityType = entity,
                 Operation = "delete",
                 RecordKey = recordKey,
                 SourceRecordKey = sourceRecordKey,
-                TriggerRecNo = row.TriggerRecNo,
+                TriggerRecNo = row.Sequence,
                 PayloadJson = payload,
             });
         }
     }
 
-    private static void AddRow(
+    private static void AddUpsertRow(
         CentralApiDbContext db,
         Guid tenantId,
         string sourceDatabase,
         SyncTableChangeSet table,
         string entity,
-        string operation,
-        IReadOnlyDictionary<string, object?> row,
-        string payload,
+        SyncUpsertRow row,
+        long sequence,
         HashSet<string> seen)
     {
-        var keyValue = row.FirstOrDefault(x => x.Key.Equals("KeyValue", StringComparison.OrdinalIgnoreCase)).Value;
-        var key = ValueAsString(keyValue)
-            ?? ValueAsString(row.FirstOrDefault(x => x.Key.EndsWith("RECno", StringComparison.OrdinalIgnoreCase)).Value);
-        var sourceRecordKey = ValueAsString(row.FirstOrDefault(x => x.Key.EndsWith("RECno", StringComparison.OrdinalIgnoreCase)).Value);
-        var triggerValue = row.FirstOrDefault(x => x.Key.Equals("TriggerRECno", StringComparison.OrdinalIgnoreCase)).Value;
-        var trigger = ValueAsLong(triggerValue);
-        if (string.IsNullOrWhiteSpace(key) || trigger <= 0) return;
-        if (!seen.Add($"{key}:{operation}:{trigger}")) return;
+        var key = row.RecordKey;
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (!seen.Add($"{key}:upsert:{sequence}")) return;
 
         db.MobileSyncQueue.Add(new MobileSyncQueueItem
         {
             TenantId = tenantId,
             SourceDatabase = sourceDatabase,
-            TableName = table.Table.TabloAdi,
+            TableName = table.Table.TableName,
             EntityType = entity,
-            Operation = operation,
+            Operation = "upsert",
             RecordKey = key,
-            SourceRecordKey = sourceRecordKey,
-            TriggerRecNo = trigger,
-            PayloadJson = payload,
+            SourceRecordKey = key,
+            TriggerRecNo = sequence,
+            PayloadJson = Serialize(row.Columns),
         });
     }
 
     private static string Serialize(IReadOnlyDictionary<string, object?> row) =>
         JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-
-    private static string? ValueAsString(object? value) => value switch
-    {
-        null => null,
-        JsonElement element when element.ValueKind == JsonValueKind.Null => null,
-        JsonElement element => element.ToString(),
-        _ => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
-    };
-
-    private static long ValueAsLong(object? value) => value switch
-    {
-        JsonElement element when element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out var number) => number,
-        JsonElement element when long.TryParse(element.ToString(), out var parsed) => parsed,
-        null => 0,
-        _ when long.TryParse(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), out var parsed) => parsed,
-        _ => 0,
-    };
 
     private static string ComputeIdempotencyKeyForBundle(SyncChangeSet body, HttpContext http)
     {
@@ -307,6 +291,7 @@ public static class ChangeSetEndpoints
     private static void AppendAuditIfPresent(
         CentralApiDbContext db,
         Guid tenantId,
+        string erpType,
         string sourceDatabase,
         SyncTableChangeSet table,
         string direction,
@@ -317,55 +302,50 @@ public static class ChangeSetEndpoints
         string bundleIdempotencyKey)
     {
         object perDirection;
-        long highestTriggerRecNo;
+        long highestSequence;
         int rowCount;
         if (direction == "new" && table.New is { Rows.Count: > 0 } newChunk)
         {
             perDirection = new
             {
-                table.Table.TabloAdi,
-                table.Table.TabloID,
-                table.Table.RecnoField,
+                table.Table.TableKey,
+                table.Table.TableName,
+                table.Table.KeyField,
                 table.Table.Fields,
                 direction,
                 rows = newChunk.Rows,
-                newChunk.HighestRecNo,
+                newChunk.HighestSequence,
             };
-            highestTriggerRecNo = newChunk.HighestRecNo;
+            highestSequence = newChunk.HighestSequence;
             rowCount = newChunk.Rows.Count;
         }
         else if (direction == "changed" && table.Changed is { Rows.Count: > 0 } changedChunk)
         {
             perDirection = new
             {
-                table.Table.TabloAdi,
-                table.Table.TabloID,
-                table.Table.RecnoField,
+                table.Table.TableKey,
+                table.Table.TableName,
+                table.Table.KeyField,
                 table.Table.Fields,
                 direction,
                 rows = changedChunk.Rows,
-                changedChunk.HighestTriggerRecNo,
+                changedChunk.HighestSequence,
             };
-            highestTriggerRecNo = changedChunk.HighestTriggerRecNo;
+            highestSequence = changedChunk.HighestSequence;
             rowCount = changedChunk.Rows.Count;
         }
         else if (direction == "deleted" && table.Deleted is { Rows.Count: > 0 } deletedChunk)
         {
-            // Deleted chunks carry a tuple list (KayitRecNo, TriggerRecNo);
-            // project to a JSON-friendly anonymous shape.
-            var rows = deletedChunk.Rows
-                .Select(t => new { KayitRecNo = t.KayitRecNo, TriggerRecNo = t.TriggerRecNo })
-                .ToList();
             perDirection = new
             {
-                table.Table.TabloAdi,
-                table.Table.TabloID,
-                table.Table.RecnoField,
+                table.Table.TableKey,
+                table.Table.TableName,
+                table.Table.KeyField,
                 direction,
-                rows,
-                deletedChunk.HighestTriggerRecNo,
+                rows = deletedChunk.Rows,
+                deletedChunk.HighestSequence,
             };
-            highestTriggerRecNo = deletedChunk.HighestTriggerRecNo;
+            highestSequence = deletedChunk.HighestSequence;
             rowCount = deletedChunk.Rows.Count;
         }
         else
@@ -378,12 +358,13 @@ public static class ChangeSetEndpoints
         db.ChangeSetAuditEntries.Add(new ChangeSetAuditEntry
         {
             TenantId = tenantId,
+            ErpType = string.IsNullOrWhiteSpace(erpType) ? "Mikro" : erpType,
             SourceDatabase = sourceDatabase,
-            TableName = table.Table.TabloAdi,
-            TabloId = table.Table.TabloID,
+            TableKey = table.Table.TableKey,
+            TableName = table.Table.TableName,
             Direction = direction,
-            FirstTriggerRecNo = highestTriggerRecNo,
-            LastTriggerRecNo = highestTriggerRecNo,
+            FirstTriggerRecNo = highestSequence,
+            LastTriggerRecNo = highestSequence,
             RowCount = rowCount,
             PayloadJson = perDirectionJson,
             PayloadSha256 = ComputePayloadSha256(perDirectionJson),
@@ -412,11 +393,12 @@ public static class ChangeSetEndpoints
         }
 
         var rows = await query
-            .GroupBy(c => new { c.TableName, c.TabloId, c.SourceDatabase })
+            .GroupBy(c => new { c.TableKey, c.TableName, c.ErpType, c.SourceDatabase })
             .Select(g => new
             {
                 table = g.Key.TableName,
-                tabloId = g.Key.TabloId,
+                tableKey = g.Key.TableKey,
+                erpType = g.Key.ErpType,
                 sourceDatabase = g.Key.SourceDatabase,
                 lastTriggerRecNo = g.Max(x => x.LastTriggerRecNo),
                 lastPulledAtUtc = g.Max(x => x.PulledAtUtc),

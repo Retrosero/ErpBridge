@@ -223,9 +223,9 @@ public class ErpChangeLogSyncServiceTests
         pushed.Should().NotBeNull();
         var table = pushed!.Tables.Single();
         table.Changed!.Rows.Should().HaveCount(1);
-        table.Deleted!.Rows.Should().ContainSingle().Which.KayitRecNo.Should().Be(9);
-        table.PreviousLastTriggerRecNo.Should().Be(100);
-        table.NewLastTriggerRecNo.Should().Be(120);
+        table.Deleted!.Rows.Should().ContainSingle().Which.RecordKey.Should().Be("9");
+        table.PreviousSequence.Should().Be(100);
+        table.NewSequence.Should().Be(120);
     }
 
     [Fact]

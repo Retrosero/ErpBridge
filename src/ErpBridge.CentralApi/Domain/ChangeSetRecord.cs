@@ -16,16 +16,23 @@ public sealed class ChangeSetRecord
 
     public Tenant? Tenant { get; set; }
 
-    /// <summary>Mikro database the change-set came from (e.g. <c>MikroDB_V15_02</c>).</summary>
+    /// <summary>Source ERP kind (e.g. <c>Mikro</c>, <c>Logo</c>). Faz 20 — ERP-neutral.</summary>
+    public string ErpType { get; set; } = "Mikro";
+
+    /// <summary>Source database the change-set came from (e.g. <c>MikroDB_V15_02</c>).</summary>
     public string SourceDatabase { get; set; } = string.Empty;
 
-    /// <summary>Tracked table name (e.g. <c>STOKLAR</c>, <c>CARI_HESAPLAR</c>).</summary>
+    /// <summary>
+    /// Stable ERP-neutral table identifier minted by the adapter's catalog
+    /// (Mikro: the physical table name; Logo: a firm/period-independent
+    /// logical name). Replaces the old Mikro-only <c>TabloId</c> int.
+    /// </summary>
+    public string TableKey { get; set; } = string.Empty;
+
+    /// <summary>Physical table the change was captured from (e.g. <c>STOKLAR</c>).</summary>
     public string TableName { get; set; } = string.Empty;
 
-    /// <summary>Stable Mikro-side numeric identifier (matches ErpBridge's <c>TrackedTableCatalog</c>).</summary>
-    public int TabloId { get; set; }
-
-    /// <summary>Highest <c>TriggerRECno</c> the agent observed for this table. The unique-key component that makes the row idempotent.</summary>
+    /// <summary>Highest change-log sequence the agent observed for this table. The unique-key component that makes the row idempotent.</summary>
     public long LastTriggerRecNo { get; set; }
 
     /// <summary>JSON-serialised <see cref="ErpBridge.Shared.SyncTableChangeSet"/>.</summary>

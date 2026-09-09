@@ -141,11 +141,12 @@ public static class ChangeSetAndroidEndpoints
 
         var rows = await db.ChangeSets.AsNoTracking()
             .Where(c => c.TenantId == tenantId)
-            .GroupBy(c => new { c.TableName, c.TabloId })
+            .GroupBy(c => new { c.TableKey, c.TableName, c.ErpType })
             .Select(g => new
             {
                 table = g.Key.TableName,
-                tabloId = g.Key.TabloId,
+                tableKey = g.Key.TableKey,
+                erpType = g.Key.ErpType,
                 lastTriggerRecNo = g.Max(x => x.LastTriggerRecNo),
                 lastPulledAtUtc = g.Max(x => x.PulledAtUtc),
                 acceptedBundles = g.Count(),
@@ -236,11 +237,11 @@ public static class ChangeSetAndroidEndpoints
                 }
                 foreach (var element in rowsElement.EnumerateArray())
                 {
-                    if (element.TryGetProperty("KayitRecNo", out var kayit) && kayit.TryGetInt32(out var kayitValue) &&
-                        element.TryGetProperty("TriggerRecNo", out var tr) && tr.TryGetInt32(out var trValue))
+                    if (element.TryGetProperty("RecordKey", out var keyEl) && keyEl.ValueKind == JsonValueKind.String &&
+                        element.TryGetProperty("Sequence", out var seq) && seq.TryGetInt64(out var seqValue))
                     {
-                        flat.Add(new { kayitRecNo = kayitValue, triggerRecNo = trValue });
-                        if (trValue > maxCursor) maxCursor = trValue;
+                        flat.Add(new { recordKey = keyEl.GetString(), sequence = seqValue });
+                        if (seqValue > maxCursor) maxCursor = seqValue;
                     }
                 }
             }
@@ -395,7 +396,13 @@ public static class ChangeSetAndroidEndpoints
                 }
                 foreach (var element in rowsElement.EnumerateArray())
                 {
-                    merged.Add(JsonSerializer.Deserialize<JsonElement>(element.GetRawText()));
+                    // Faz 20 — each upsert row is { RecordKey, Columns }. Mobile
+                    // consumers want the flat column map, so unwrap Columns when
+                    // present and fall back to the raw element otherwise.
+                    var payload = element.TryGetProperty("Columns", out var cols) && cols.ValueKind == JsonValueKind.Object
+                        ? cols
+                        : element;
+                    merged.Add(JsonSerializer.Deserialize<JsonElement>(payload.GetRawText()));
                 }
                 maxCursor = Math.Max(maxCursor, row.triggerRecNo);
             }

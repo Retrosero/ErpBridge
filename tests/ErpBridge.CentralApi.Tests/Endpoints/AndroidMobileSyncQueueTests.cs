@@ -25,15 +25,16 @@ public sealed class AndroidMobileSyncQueueTests : IClassFixture<CentralApiFactor
 
         var table = new
         {
-            tabloID = 51,
-            tabloAdi = "CARI_HESAP_HAREKETLERI",
-            recnoField = "cha_RECno",
+            tableKey = "CARI_HESAP_HAREKETLERI",
+            tableName = "CARI_HESAP_HAREKETLERI",
+            keyField = "cha_RECno",
             fields = Array.Empty<string>(),
             requiresSoftDeleteFilter = false,
         };
         var ingest = await client.PostJsonAsync("/api/v1/ingest/changeset", new
         {
             tenantId = tenant.Id,
+            erpType = "Mikro",
             sourceDatabase = "MIKRO_Q",
             pulledAtUtc = DateTimeOffset.UtcNow,
             tables = new[]
@@ -45,13 +46,13 @@ public sealed class AndroidMobileSyncQueueTests : IClassFixture<CentralApiFactor
                     changed = new
                     {
                         table,
-                        rows = new[] { new { KeyValue = "CHA-1", TriggerRECno = 42, cha_RECno = 1001 } },
-                        highestTriggerRecNo = 42,
+                        rows = new[] { new { recordKey = "CHA-1", columns = new { cha_RECno = 1001 } } },
+                        highestSequence = 42,
                         moreAvailable = false,
                     },
                     deleted = (object?)null,
-                    previousLastTriggerRecNo = 0,
-                    newLastTriggerRecNo = 42,
+                    previousSequence = 0,
+                    newSequence = 42,
                 },
             },
         }, agentToken);

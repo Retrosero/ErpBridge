@@ -26,11 +26,14 @@ public sealed class ChangeSetAuditEntry
     /// <summary>Mikro database the change-set came from (e.g. <c>MikroDB_V15_02</c>).</summary>
     public string SourceDatabase { get; set; } = string.Empty;
 
-    /// <summary>Tracked table name (e.g. <c>STOKLAR</c>, <c>CARI_HESAPLAR</c>).</summary>
-    public string TableName { get; set; } = string.Empty;
+    /// <summary>Source ERP kind (e.g. <c>Mikro</c>, <c>Logo</c>). Faz 20 — ERP-neutral.</summary>
+    public string ErpType { get; set; } = "Mikro";
 
-    /// <summary>Stable Mikro-side numeric identifier (matches ErpBridge's <c>TrackedTableCatalog</c>).</summary>
-    public int TabloId { get; set; }
+    /// <summary>ERP-neutral table identifier minted by the adapter's catalog. Replaces the old Mikro-only <c>TabloId</c> int.</summary>
+    public string TableKey { get; set; } = string.Empty;
+
+    /// <summary>Physical table the change was captured from (e.g. <c>STOKLAR</c>).</summary>
+    public string TableName { get; set; } = string.Empty;
 
     /// <summary>One of <c>new</c>, <c>changed</c>, <c>deleted</c>.</summary>
     public string Direction { get; set; } = string.Empty;

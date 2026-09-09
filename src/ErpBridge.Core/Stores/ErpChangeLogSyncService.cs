@@ -212,9 +212,9 @@ public sealed class ErpChangeLogSyncService : IErpChangeLogSyncService
             }
 
             var descriptor = new SyncTableDescriptor(
-                TabloID: table.TableId,
-                TabloAdi: table.TableKey,
-                RecnoField: table.EffectiveKeyField,
+                TableKey: table.TableKey,
+                TableName: table.TableName,
+                KeyField: table.EffectiveKeyField,
                 Fields: table.Fields,
                 RequiresSoftDeleteFilter: table.RequiresSoftDeleteFilter);
 
@@ -227,7 +227,7 @@ public sealed class ErpChangeLogSyncService : IErpChangeLogSyncService
                 ? null
                 : new SyncChangedChunk(
                     descriptor,
-                    upserts.Select(r => r.Columns).ToList(),
+                    upserts.Select(r => new SyncUpsertRow(StripKeyTag(r.KeyValue), r.Columns)).ToList(),
                     position.NextUpsert,
                     MoreAvailable: batch.MoreAvailable);
 
@@ -235,7 +235,7 @@ public sealed class ErpChangeLogSyncService : IErpChangeLogSyncService
                 ? null
                 : new SyncDeletedChunk(
                     descriptor,
-                    deletes.Select(r => (KayitRecNo: ParseRecno(r.KeyValue), TriggerRecNo: position.NextDelete)).ToList(),
+                    deletes.Select(r => new SyncDeletedRow(StripKeyTag(r.KeyValue), position.NextDelete)).ToList(),
                     position.NextDelete,
                     MoreAvailable: batch.MoreAvailable);
 
@@ -244,28 +244,27 @@ public sealed class ErpChangeLogSyncService : IErpChangeLogSyncService
                 New: null,
                 Changed: changed,
                 Deleted: deleted,
-                PreviousLastTriggerRecNo: position.PreviousUpsert,
-                NewLastTriggerRecNo: position.NextUpsert));
+                PreviousSequence: position.PreviousUpsert,
+                NewSequence: position.NextUpsert));
         }
 
         return new SyncChangeSet(
             TenantId: tenantId,
+            ErpType: config.ErpType.ToString(),
             SourceDatabase: config.ErpDatabaseName ?? string.Empty,
             PulledAtUtc: DateTimeOffset.UtcNow,
             Tables: tables);
     }
 
     /// <summary>
-    /// Strip the tag off a key value and read the numeric part. Guid-keyed rows
-    /// have no int form, so they report <c>0</c> — the wire's string
-    /// <c>recordKey</c> carries the real identity for those.
+    /// Drop the <c>recno:</c> / <c>guid:</c> tag off a projected key value,
+    /// leaving the bare identity string the wire's <c>recordKey</c> carries.
+    /// Int- and GUID-keyed tables both round-trip losslessly this way.
     /// </summary>
-    private static int ParseRecno(string keyValue)
+    private static string StripKeyTag(string keyValue)
     {
         var idx = keyValue.IndexOf(':', StringComparison.Ordinal);
-        var raw = idx >= 0 ? keyValue[(idx + 1)..] : keyValue;
-        return int.TryParse(raw, System.Globalization.NumberStyles.Integer,
-            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
+        return idx >= 0 ? keyValue[(idx + 1)..] : keyValue;
     }
 
     private static string ResolveTenantId(AgentConfig config) =>
