@@ -512,24 +512,25 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// One-shot toast shown the first time the operator minimizes the
-    /// window in this run — confirms the agent keeps running in the tray
-    /// and how to bring it back. Called from
-    /// <see cref="MainWindow.MainWindow_StateChanged"/>.
+    /// One-shot toast on the first minimize of this run — tells the operator
+    /// the agent is still running and where the window went. Windows 11 files
+    /// new tray icons into the hidden-icons overflow, so without this the
+    /// window can look like it simply vanished.
     /// </summary>
     public static void NotifyMinimizedToTray()
     {
-        var app = Current as App;
-        var tray = app?._tray;
+        var tray = (Current as App)?._tray;
         if (tray is null) return;
         try
         {
             tray.ShowNotification(
-                title: "ErpBridge Agent arka planda çalışıyor",
-                message: "Pencere gizlendi; ajan ve senkronizasyon arka planda çalışmaya devam ediyor.\nGeri açmak için sistem tepsisindeki simgeye çift tıklayın.");
+                title: "ErpBridge Agent bildirim alanında",
+                message: "Pencere gizlendi; ajan ve senkronizasyon arka planda çalışmaya devam ediyor.\nGeri açmak için görev çubuğundaki ^ okuna tıklayıp ErpBridge simgesine tıklayın.");
         }
         catch (Exception ex)
         {
+            // Focus Assist / notifications disabled — the tray icon is still
+            // there, so the operator is not stranded.
             System.Diagnostics.Debug.WriteLine($"Minimize notification failed: {ex.Message}");
         }
     }

@@ -147,21 +147,20 @@ public partial class MainWindow : Window
     private bool _minimizeHintShown;
 
     /// <summary>
-    /// Window state changes. Minimizing hides the window entirely and
-    /// leaves it running from the system-tray icon (built in
-    /// <c>App.BuildTrayIcon</c>) — double-clicking the tray icon, or its
-    /// "Pencereyi Göster" menu item, brings the window back exactly where
-    /// it was. The live clock, heartbeat and sync services all keep running
-    /// on the DI-resolved singletons regardless of window visibility, so
-    /// nothing is paused while the window is hidden.
+    /// Minimize sends the window to the notification area instead of the
+    /// taskbar. This only works because the tray icon's <c>System.Drawing.Icon</c>
+    /// is now held in a field on <c>App</c>; while it was collectable its
+    /// finalizer destroyed the HICON, the icon vanished, and a minimized window
+    /// became unreachable. The clock, heartbeat and sync services keep running
+    /// on DI singletons regardless of window visibility.
     /// </summary>
     private void MainWindow_StateChanged(object sender, System.EventArgs e)
     {
         if (WindowState != WindowState.Minimized) return;
 
-        // Restore to Normal before hiding — otherwise Show() later would
-        // "restore" into a minimized, invisible window instead of popping
-        // back up at its previous size/position.
+        // Restore to Normal before hiding — otherwise a later Show() would
+        // "restore" into a minimized, invisible window instead of popping back
+        // up at its previous size and position.
         WindowState = WindowState.Normal;
         Hide();
 
