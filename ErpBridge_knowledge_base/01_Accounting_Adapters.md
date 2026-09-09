@@ -145,13 +145,26 @@ satır kimliği `(TenantId, SourceDatabase, TableName, LastTriggerRecNo, LastDel
 Tek bir sayıya katlamak, **sadece silme içeren bir döngüyü** önceki döngünün
 kopyası gibi gösterip silmeleri sessizce düşürürdü.
 
+### Olay-güdümlü sync (long-poll)
+
+`GET /api/v1/android/notify?wait=30` — mobil uzun-yoklama ucu. WPF için olan
+`bootstrap/notify` ile aynı `IBootstrapNotificationHub`'ı paylaşır ama API-key ile
+kimliklenir ve **hem bootstrap snapshot yüklemesi hem agent change-set push'u**
+(`ChangeSetEndpoints.IngestAsync` → `hub.Publish`) ile uyanır.
+
+Android tarafında `LiveSyncManager.run(context)` uygulama ön plandayken
+(`repeatOnLifecycle(STARTED)`) bu ucu yoklar; sinyal gelince anında
+`SyncManager.startSyncAll` tetikler. Arka planda `PeriodicSyncWorker` (15 dk)
+yedek kalır. Sonuç: ERP değişikliği cihaza **saatlik yerine ~5-20 sn**'de ulaşır.
+
 ### Android silme kuyruğu
 
 Android `sync/queue?operation=delete` çağırır; `BridgeSyncHelper.syncMobileDeleteQueue`
 her sayfayı tek koşuda drenaj eder (cursor ilerlemediğinde durur). Silmeler
 `STOKLAR`/`CARI_HESAPLAR`/`CARI_HESAP_HAREKETLERI`/`STOK_HAREKETLERI`/`SIPARISLER`
 için Room `deleteById(recordKey)` ile uygulanır. **Değişiklik (update) verileri
-Android'e artımlı DEĞİL, bir sonraki tam bootstrap snapshot'ı ile ulaşır** —
-`sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sayfa döner. Kuyruğa
-yazılan `upsert` satırlarının bir Android tüketicisi henüz yok (ileride
-`/android/changeset/*/new_or_changed` bağlanabilir).
+Android'e `*_lastup_date` tabanlı bootstrap-delta (60 sn / notify tetiklemesi) ile
+ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sayfa döner.
+Shadow-log kuyruğuna yazılan `upsert` satırlarının doğrudan bir Android tüketicisi
+henüz yok (ERP-nötr bir ikinci adaptörde `*_lastup_date` olmayınca bağlanmalı —
+ileride `/android/changeset/*/new_or_changed`).

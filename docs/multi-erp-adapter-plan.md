@@ -311,6 +311,11 @@ yalnızca DI extension dosyaları. WPF'den Mikro'ya bağlanma + bootstrap + sync
       migration'ının unuttuğu `SourceRecordKey` kolonu da bu migration'da toparlandı).
       `ChangeSetEndpoints` / `ChangeSetAndroidEndpoints` / `AdminAuditEndpoints` yeni şekle göre.
 - [x] Mobil URL sözleşmesi (`sync/cari`, `sync/urun`, `sync/queue`) korundu.
+- [x] **20.E — Olay-güdümlü sync (long-poll).** `GET /api/v1/android/notify`
+      (API-key, `IBootstrapNotificationHub` paylaşımlı); `ChangeSetEndpoints.IngestAsync`
+      artık `hub.Publish` çağırıyor. Android `LiveSyncManager` ön planda uzun-yoklama
+      yapıp anında `startSyncAll` tetikliyor; `PeriodicSyncWorker` 1 sa → 15 dk yedek.
+      ERP değişikliği → cihaz: saatlik yerine ~5-20 sn. (`Siparis_Cepte` — 4 dosya)
 - [x] **20.D — Silme yolu düzeltmeleri.** `SyncTableChangeSet` upsert **ve** delete
       su-seviyesini ayrı taşıyor; `change_sets` kimliği `LastDeleteRecNo` içeriyor
       (migration `Faz20DeleteHighWaterMark`). Öncesinde sadece-silme içeren bir sync

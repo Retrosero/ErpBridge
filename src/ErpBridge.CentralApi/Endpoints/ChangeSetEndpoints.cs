@@ -77,6 +77,7 @@ public static class ChangeSetEndpoints
         [FromBody] SyncChangeSet body,
         HttpContext http,
         [FromServices] CentralApiDbContext db,
+        [FromServices] ErpBridge.CentralApi.Notifications.IBootstrapNotificationHub hub,
         CancellationToken ct)
     {
         if (body is null)
@@ -192,6 +193,13 @@ public static class ChangeSetEndpoints
                 // 23505 unique-violation is the expected outcome for the
                 // audit row; ignore so the rest of the bundle commits.
             }
+        }
+
+        // Wake any client long-polling /api/v1/android/notify so an ERP change
+        // reaches the device in seconds instead of on the next periodic sync.
+        if (accepted > 0)
+        {
+            hub.Publish(tenantId, body.PulledAtUtc);
         }
 
         return Results.Ok(new { accepted, duplicates });
