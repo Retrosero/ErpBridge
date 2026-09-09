@@ -22,6 +22,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ErpBridge.Erp.Sql\ErpBridge.Erp.Sql.csproj" />
+    <!-- The Logo skeleton is the seam test's subject: it proves a second vendor
+         plugs in without editing anything shared. -->
+    <ProjectReference Include="..\..\src\ErpBridge.Erp.Logo\ErpBridge.Erp.Logo.csproj" />
   </ItemGroup>
 
   <ItemGroup>

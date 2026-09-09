@@ -46,9 +46,17 @@ public static class ErpAdapterRegistration
         return erpType switch
         {
             ErpType.Mikro => services.AddErpBridgeMikro(configuration),
+
+            // Logo has a skeleton (Faz 21) that proves the seam but cannot read
+            // or write yet. Registering it would let the agent accept jobs it
+            // would then throw on, so it stays refused until implemented.
+            ErpType.Logo => throw new NotSupportedException(
+                "The Logo adapter is a skeleton: change capture works, but the read and " +
+                "write paths are not implemented. Enable it only once those land."),
+
             _ => throw new NotSupportedException(
                 $"No ERP adapter is wired for '{erpType}'. Mikro is implemented; " +
-                "Logo, Netsis and Paraşüt are reserved for later phases."),
+                "Logo has a skeleton; Netsis and Paraşüt are reserved for later phases."),
         };
     }
 }
