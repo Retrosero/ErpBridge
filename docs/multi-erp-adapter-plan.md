@@ -417,7 +417,7 @@ Amaç: Soyutlamanın gerçekten yeterli olduğunu, adaptör yazmadan kanıtlamak
 | 20 | CentralApi wire-format nötrleştirme | ⏳ açık |
 | 20.5 | Android — değişiklik gerekmiyor | ✅ (no-op) |
 | 21 | Logo iskeleti (seam doğrulama) | ✅ |
-| 22 | Dokümantasyon | ⏳ açık |
+| 22 | Dokümantasyon (`erp-adapter-contract.md`) | ✅ |
 
 ### Canlı doğrulama (MikroDB_V15_02 + MikroDB_V16_03)
 | Kontrol | Önce | Şimdi |
@@ -430,14 +430,9 @@ Amaç: Soyutlamanın gerçekten yeterli olduğunu, adaptör yazmadan kanıtlamak
 ### Açık kalan işler
 1. **Faz 20** — CentralApi domain tipleri ve `change_sets.payload_json` hâlâ
    `TabloID` int taşıyor. Mobil sözleşme korunarak nötrleştirilebilir.
-2. **Faz 22** — `docs/erp-adapter-contract.md` (yeni adaptör checklist'i) + KB güncellemesi.
-3. **Evrak seri/sıra çakışma kontrolü** — referans dokümanın 5. adımı. Şu an
-   writer payload'daki seri/sırayı olduğu gibi kullanıyor; Mikro'nun unique
-   index'i çakışmayı sert hatayla reddediyor. Merkezi ve idempotent bir numara
-   üreticisi gerekiyor.
-4. **String alan uzunluk doğrulaması** — referans doküman schema discovery ile
-   kolon uzunluklarını bulup trim/validate etmeyi şart koşuyor. Şu an uzun bir
-   ad SQL truncation hatası verir.
+2. **KB güncellemesi** — `ErpBridge_knowledge_base/01_Accounting_Adapters.md` hâlâ eski mimariyi anlatıyor.
+3. ~~Evrak seri/sıra çakışma kontrolü~~ ✅ `MikroDocumentNumberAllocator`
+4. ~~String alan uzunluk doğrulaması~~ ✅ `SqlServerFieldWidthProvider` + `ErpFieldText`
 5. **Gerçek Logo katalogu** — iskeletteki 4 tablo temsilî. Canlı bir Logo
    veritabanından türetilmeli; tahmin etmek Mikro'da 142 hataya mal olmuştu.
 6. **Logo'da trigger riski** — Logo kurulumlarında trigger eklemek vendor'un
