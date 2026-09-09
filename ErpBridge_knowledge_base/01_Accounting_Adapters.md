@@ -170,3 +170,65 @@ ile ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sa
 mod (delete-only) yalnızca `*_lastup_date`'i olmayan bir ERP'de mantıklı; o zaman
 shadow-log `upsert` kuyruğu Android tarafına bağlanmalı (ileride
 `/android/changeset/*/new_or_changed`).
+
+---
+
+## ERP'de Silinen Satırların Snapshot'tan Düşürülmesi (Faz 21)
+
+### Sorunun kaynağı
+
+Aktif bootstrap snapshot'ı, `MergeIncrementalChunksAsync` tarafından **anahtara göre birleştirilen** bir projeksiyondur: her artımlı yükleme satırlarını bir öncekinin üzerine upsert eder. Birleştirme bir `isDeleted` tombstone'unu anlar (`AddItems` → `records.Remove(key)`), ama **bunu üreten hiçbir şey yoktu**:
+
+- `MikroDbReader` iptal satırlarını `WHERE ISNULL(*_iptal, 0) = 0` ile sonuç kümesinden **eler**, silinmiş olarak bildirmez.
+- ERP'den tamamen kalkmış bir satır ise delta'da hiç görünmez — yokluk, birleştirme için "değişmedi" demektir.
+
+Sonuç: ERP'de silinen satır snapshot'ta **süresiz** kalır ve `/sync/cari`, `/sync/urun`, `/sync/faturaHareket` tarafından her cihaza servis edilmeye devam eder. Android tarafındaki silme kuyruğu düzgün çalışsa bile bir sonraki tam indirmede satır geri gelirdi.
+
+### Çözüm: `SnapshotDeleteApplier`
+
+Shadow-log hangi satırların kalktığını zaten biliyor. `ChangeSetEndpoints.IngestAsync` artık bir bundle'daki silme olaylarını toplayıp aktif snapshot'tan da düşürüyor:
+
+```text
+_ERPB_SYNC_DEL  ──>  /api/v1/ingest/changeset
+                          │
+                          ├─> mobile_sync_queue  (operation=delete)   [mobil kuyruk]
+                          └─> SnapshotDeleteApplier                    [YENİ]
+                                    │
+                                    ▼
+                          bootstrap_snapshot_chunks'tan satırı çıkar
+                          + snapshot.PulledAtUtc'yi ilerlet
+```
+
+- Eviction `SaveChangesAsync`'ten **önce** çalışır; kuyruk satırı, change-set kaydı ve snapshot yeniden yazımı tek transaction'dadır. Cihaz, snapshot eviction'ı kaybolmuş bir silme olayını asla göremez.
+- `PulledAtUtc` ilerletilir — yoksa cihazlar paketi "değişmedi" sayıp bayat kopyalarını korurdu.
+- Hiçbir satır eşleşmezse bölüm yeniden yazılmaz (`removed == 0` → no-op).
+
+### Kimlik çevirimi
+
+Silme olayı yalnızca **fiziksel satır kimliğini** taşır. Bölüm bazında hangi kimliğin kullanıldığı farklıdır:
+
+| ERP tablosu | Snapshot bölümü | Eşleşme alanı | Çeviri gerekli mi |
+|---|---|---|---|
+| `STOKLAR` | `stocks`, `barcodes`, `prices`, `inventory`, `salesConditions` | `stockCode` | **Evet** — `sto_RECno` → `sto_kod` |
+| `CARI_HESAPLAR` | `customers`, `customerAddresses`, `customerContacts`, `salesConditions` | `customerCode` | **Evet** — `cari_RECno` → `cari_kod` |
+| `STOK_HAREKETLERI` | `stockTransactions` | `id` | Hayır — `id` zaten `sth_RECno` |
+| `CARI_HESAP_HAREKETLERI` | `customerTransactions` | `id` | Hayır — `id` zaten `cha_RECno` |
+
+Çeviri `AddMobileQueueItems` içinde iki kademeli yapılır:
+1. Aynı bundle'ın kendi upsert satırları (aynı pencerede oluşup silinen kayıt için tek kaynak).
+2. `mobile_sync_queue`'daki en son `upsert` satırının `PayloadJson`'u — `sto_kod`/`cari_kod` orada durur.
+
+> **Eski hata:** bu arama `PayloadJson` yerine `RecordKey` kolonunu seçiyordu; `RecordKey == SourceRecordKey` olduğu için işlem no-op'tu ve mobil silme hiçbir satırı tutturamıyordu. Bu düzeltme, mobil tarafında `erp_record_map` bulunmayan eski uygulama sürümleri için de silmeyi doğru hale getirir.
+
+### Kasıtlı olarak yapılmayanlar
+
+- **Hareketler kaskad edilmez.** Mikro'da stok kartı silindiğinde `STOK_HAREKETLERI` satırları durur; uygulama da ERP'nin hâlâ sahip olduğu evrakları göstermeye devam etmelidir. Hareket satırı ancak kendisi silindiğinde düşer.
+- `openOrders`, `cashAndBank`, `lookups` bölümleri kapsam dışıdır; ilgili tablolar shadow-log kataloğunda silme takibi yapmıyor.
+
+### Açık kalan: ana veride gerçek artımlı okuma
+
+Ajan tarafı **zaten artımlı** (`ReadBootstrapChangesAsync`, `*_lastup_date` filtresi) ve boş delta yeni snapshot yaratmaz (`BootstrapSyncService`, `IsEmpty(package)` kontrolü) — yani `PulledAtUtc` yalnızca ERP gerçekten değiştiğinde ilerler.
+
+Asimetri **okuma** tarafındadır: `CustomersAsync` / `ProductCatalogAsync` / `SectionAsync` `AndroidPageRequest.Since` alanını hiç okumaz ve her istekte birleştirilmiş bölümün tamamını sayfalayarak döner. Bu yüzden tek bir satışın yarattığı küçük delta, cihazda tam katalog indirmesine dönüşür.
+
+`mobile_sync_queue`'nun `operation=upsert` akışı bu boşluğu kapatacak veriyi taşır (satır + tüm kolonları), ancak Android'de bunu **veri olarak uygulayan** bir tüketici yoktur — mevcut tüketici yalnızca kimlik haritası için anahtar çıkarır.
