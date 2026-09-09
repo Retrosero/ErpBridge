@@ -42,6 +42,33 @@ public class AdminLicensesTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Create_with_a_non_UTC_expiry_normalises_the_offset_to_zero()
+    {
+        // The admin panel's date picker sends a DateTimeOffset carrying the
+        // browser's local offset (e.g. +03:00). PostgreSQL's `timestamp with
+        // time zone` only accepts offset 0, so the endpoint must normalise —
+        // otherwise Npgsql throws and the request 500s. (The in-memory test
+        // provider does not enforce that, so this asserts the normalisation
+        // directly rather than relying on a provider error.)
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync();
+
+        var localExpiry = new DateTimeOffset(2027, 1, 1, 12, 0, 0, TimeSpan.FromHours(3));
+        var response = await client.PostJsonAsync(
+            "/api/v1/admin/licenses",
+            new { tenantId = tenant.Id, expiresAtUtc = localExpiry },
+            token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var license = await response.ReadAsJsonAsync<LicenseDto>();
+        license.ExpiresAtUtc.Should().NotBeNull();
+        license.ExpiresAtUtc!.Value.Offset.Should().Be(TimeSpan.Zero);
+        license.ExpiresAtUtc.Value.Should().Be(localExpiry.ToUniversalTime());
+    }
+
+    [Fact]
     public async Task Create_tenant_persists_selected_device_limit()
     {
         var client = _factory.CreateClient();

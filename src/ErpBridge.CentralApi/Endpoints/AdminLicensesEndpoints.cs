@@ -69,7 +69,11 @@ public static class AdminLicensesEndpoints
             TenantId = body.TenantId,
             LicenseKey = GenerateLicenseKey(),
             IssuedAtUtc = DateTimeOffset.UtcNow,
-            ExpiresAtUtc = body.ExpiresAtUtc,
+            // The admin panel's date picker sends a DateTimeOffset carrying the
+            // browser's local offset (e.g. +03:00). Npgsql's `timestamp with
+            // time zone` only accepts offset 0, so normalise to UTC — same
+            // instant, offset 0 — before persisting.
+            ExpiresAtUtc = body.ExpiresAtUtc?.ToUniversalTime(),
             IsActive = true,
         };
         db.Licenses.Add(license);

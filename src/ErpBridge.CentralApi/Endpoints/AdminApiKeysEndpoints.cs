@@ -110,7 +110,9 @@ public static class AdminApiKeysEndpoints
             Scopes = scopes,
             IsActive = true,
             CreatedAtUtc = DateTimeOffset.UtcNow,
-            ExpiresAtUtc = body.ExpiresAtUtc,
+            // Normalise to UTC (offset 0) — the panel's picker sends a local
+            // offset which Npgsql's `timestamp with time zone` rejects.
+            ExpiresAtUtc = body.ExpiresAtUtc?.ToUniversalTime(),
         };
         db.ApiKeys.Add(key);
         await db.SaveChangesAsync(ct);
