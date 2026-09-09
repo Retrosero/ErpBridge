@@ -58,10 +58,17 @@ public sealed record ErpChangeRow(
 /// been durably accepted downstream.
 /// </param>
 /// <param name="MoreAvailable">True when the source has more pages ready right now.</param>
+/// <param name="Positions">
+/// Per-table monotonic positions this page moved through. The opaque
+/// <paramref name="CursorAfter"/> is what the agent persists; these are the
+/// same information in a form the wire protocol can carry, because the central
+/// API and the mobile client both page by a numeric high-water mark.
+/// </param>
 public sealed record ErpChangeBatch(
     IReadOnlyList<ErpChangeRow> Rows,
     ErpSyncCursor CursorAfter,
-    bool MoreAvailable)
+    bool MoreAvailable,
+    IReadOnlyList<ErpTableCursorPosition>? Positions = null)
 {
     /// <summary>An empty page that leaves the cursor where it was.</summary>
     public static ErpChangeBatch Empty(ErpSyncCursor cursor) =>
@@ -69,4 +76,36 @@ public sealed record ErpChangeBatch(
 
     /// <summary>Total events in this page.</summary>
     public int Count => Rows.Count;
+
+    /// <summary>Per-table positions, never null.</summary>
+    public IReadOnlyList<ErpTableCursorPosition> TablePositions =>
+        Positions ?? Array.Empty<ErpTableCursorPosition>();
+}
+
+/// <summary>
+/// How far a single table advanced during one <see cref="ErpChangeBatch"/>.
+///
+/// <para>
+/// A monotonic integer position is the common shape across the back-ends that
+/// support a real change log: a SQL Server shadow table's IDENTITY column, a
+/// <c>CHANGE_TRACKING_CURRENT_VERSION()</c> value, or a webhook feed's sequence
+/// number. Exposing it separately from the opaque cursor lets the wire protocol
+/// — which the mobile client pages by — stay unchanged while the agent's own
+/// resume token remains adapter-defined.
+/// </para>
+/// </summary>
+/// <param name="TableKey">The table these positions belong to.</param>
+/// <param name="PreviousUpsert">Insert/update high-water mark before this batch.</param>
+/// <param name="NextUpsert">Insert/update high-water mark after this batch.</param>
+/// <param name="PreviousDelete">Delete high-water mark before this batch.</param>
+/// <param name="NextDelete">Delete high-water mark after this batch.</param>
+public sealed record ErpTableCursorPosition(
+    string TableKey,
+    int PreviousUpsert,
+    int NextUpsert,
+    int PreviousDelete,
+    int NextDelete)
+{
+    /// <summary>True when this batch moved either direction forward for the table.</summary>
+    public bool Advanced => NextUpsert > PreviousUpsert || NextDelete > PreviousDelete;
 }

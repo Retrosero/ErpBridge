@@ -2,7 +2,6 @@ using ErpBridge.Agent.UI.Services;
 using ErpBridge.Agent.UI.ViewModels;
 using ErpBridge.Core;
 using ErpBridge.Erp.Mikro.DependencyInjection;
-using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.LocalStore;
 using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -31,6 +30,8 @@ public static class ServiceCollectionExtensions
         services.AddErpBridgeCore();
 
         services.AddErpBridgeLocalStore(configuration);
+        // Faz 18.5: ERP-neutral resume cursor for the change-log sync service.
+        services.AddSingleton<ErpBridge.Erp.Abstractions.ChangeLog.IErpSyncCursorStore, ErpBridge.LocalStore.Stores.SqliteErpSyncCursorStore>();
 
         // Remote API client — used by BootstrapSyncService to push snapshots
         // through IRemoteApiClient.PushBootstrapDataAsync. Agent.Service wires
@@ -49,7 +50,6 @@ public static class ServiceCollectionExtensions
         // Agent.Service registers its SQLite watermark store in its own
         // composition root; the WPF composition root must register the
         // desktop equivalent as well or DashboardView construction fails.
-        services.AddSingleton<ITriggerWatermarkStore, SqliteTriggerWatermarkStore>();
 
         services.AddSingleton<AgentSettingsViewModel>();
         services.AddSingleton<DashboardViewModel>();

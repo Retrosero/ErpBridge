@@ -30,7 +30,7 @@ public sealed class AgentServiceOptions
 
     /// <summary>
     /// Faz 11/12: enable the trigger-based change-set path. When true the
-    /// <c>BootstrapWorker</c> invokes <see cref="Stores.IChangeSetSyncService"/>
+    /// <c>BootstrapWorker</c> invokes <see cref="ErpBridge.Core.Stores.IErpChangeLogSyncService"/>
     /// instead of <see cref="Stores.IBootstrapSyncService"/>. The WPF
     /// "Trigger tabanlı (önerilen)" toggle in the settings window writes this
     /// value. Default: <c>true</c>.

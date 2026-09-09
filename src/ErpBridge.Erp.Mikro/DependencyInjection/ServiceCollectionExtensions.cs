@@ -188,17 +188,6 @@ public static class ServiceCollectionExtensions
                 logger: logger,
                 options: options);
         });
-        // Faz 11.3: ITriggerWatermarkStore — the interface lives in Mikro (it's
-        // Mikro-specific by design), but the SQLite-backed implementation lives
-        // in ErpBridge.Agent.Service because it depends on ErpBridge.LocalStore,
-        // which Mikro is not allowed to reference. The Agent.Service container
-        // registers the concrete implementation below.
-        // Faz 12.4: change-set sync service. Registered here (not in Core) because
-        // the implementation lives in Mikro and depends on Mikro-specific types
-        // like IChangeSetReader.
-        services.AddSingleton<IChangeSetSyncService, TriggerChangeSetSyncService>();
-        services.TryAddSingleton<ILogger<TriggerChangeSetSyncService>>(sp =>
-            sp.GetRequiredService<ILoggerFactory>().CreateLogger<TriggerChangeSetSyncService>());
 
         // Factory closed over the connection settings + IConfiguration; uses the
         // container for everything else.

@@ -4,7 +4,6 @@ using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core;
 using ErpBridge.Core.Jobs;
 using ErpBridge.Erp.Mikro.DependencyInjection;
-using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.LocalStore;
 using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -71,7 +70,9 @@ public static class Program
                 // lives in ErpBridge.Erp.Mikro (Mikro-specific contract), but the
                 // implementation depends on ErpBridge.LocalStore which Mikro is
                 // not allowed to reference. Register the concrete here.
-                services.AddSingleton<ITriggerWatermarkStore, SqliteTriggerWatermarkStore>();
+
+                // Faz 18.5: ERP-neutral resume cursor for the change-log sync service.
+                services.AddSingleton<ErpBridge.Erp.Abstractions.ChangeLog.IErpSyncCursorStore, ErpBridge.LocalStore.Stores.SqliteErpSyncCursorStore>();
 
                 // IBootstrapSyncService is registered by AddErpBridgeCore as a
                 // singleton; the worker only resolves it through CreateScope.

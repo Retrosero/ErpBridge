@@ -175,7 +175,9 @@ public sealed class SqlServerShadowTableChangeLog : IErpChangeLogSource
         }
 
         var position = ShadowCursor.Parse(cursor);
+        var before = ShadowCursor.Parse(cursor);
         var rows = new List<ErpChangeRow>(Math.Min(maxRows, 1024));
+        var touched = new List<ErpTrackedTable>();
         var moreAvailable = false;
 
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
@@ -189,6 +191,7 @@ public sealed class SqlServerShadowTableChangeLog : IErpChangeLogSource
             }
 
             var budget = maxRows - rows.Count;
+            touched.Add(table);
 
             var deleted = await ReadDeletesAsync(conn, table, position, budget, ct).ConfigureAwait(false);
             rows.AddRange(deleted.Rows);
@@ -205,7 +208,18 @@ public sealed class SqlServerShadowTableChangeLog : IErpChangeLogSource
             moreAvailable |= upserts.More;
         }
 
-        return new ErpChangeBatch(rows, position.ToCursor(), moreAvailable);
+        // Report where each visited table started and ended so the wire
+        // protocol can carry a numeric high-water mark without the caller
+        // having to decode the opaque cursor.
+        var positions = touched
+            .Select(t => new ErpTableCursorPosition(
+                t.TableKey,
+                before.Upsert(t.TableKey), position.Upsert(t.TableKey),
+                before.Delete(t.TableKey), position.Delete(t.TableKey)))
+            .Where(p => p.Advanced)
+            .ToList();
+
+        return new ErpChangeBatch(rows, position.ToCursor(), moreAvailable, positions);
     }
 
     private async Task<(List<ErpChangeRow> Rows, bool More)> ReadUpsertsAsync(
