@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore tools (dotnet-ef)
+        run: dotnet tool restore
+
+      - name: Restore
+        run: dotnet restore ErpBridge.sln
+
+      - name: Build (TreatWarningsAsErrors)
+        run: dotnet build ErpBridge.sln -c Release --no-restore
+
+      - name: Test (hermetic — integration tests skip without ERPBridge_RUN_INTEGRATION)
+        run: dotnet test ErpBridge.sln -c Release --no-build --verbosity minimal
+
+      # Guards against the 2026-09 incident: a DbContext model change with no
+      # matching migration crashes `--migrate` on every deploy (silently, because
+      # the entrypoint starts the app anyway). Fail the build instead.
+      - name: EF model snapshot is up to date (CentralApi)
+        run: >
+          dotnet tool run dotnet-ef migrations has-pending-model-changes
+          --project src/ErpBridge.CentralApi
+          --startup-project src/ErpBridge.CentralApi
+          --configuration Release --no-build
