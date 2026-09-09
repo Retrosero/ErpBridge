@@ -638,8 +638,8 @@ public sealed class DashboardViewModel : ObservableObject
                     // görür, yeni/güncel kayıtları görmez. Bunu başarı gibi gösterme.
                     LastRunSummaryDisplay = string.Format(
                         CultureInfo.CurrentCulture,
-                        "{0} satır değişiklik gönderildi, ancak mobil paket yenilenemedi: {1}",
-                        totalRows, snapshotResult.ErrorCode ?? "UNKNOWN");
+                        "{0} satır değişiklik gönderildi, ancak mobil paket yenilenemedi: {1} (JSON {2:F2} MB)",
+                        totalRows, snapshotResult.ErrorCode ?? "UNKNOWN", snapshotResult.PayloadMegabytes);
                     LastRunStatusDisplay = "⚠ Kısmi";
                     LastRunStatusBrush = WarningBadgeBrush;
                     LastErrorDisplay = snapshotResult.ErrorMessage ?? "Snapshot delta başarısız";
@@ -663,15 +663,17 @@ public sealed class DashboardViewModel : ObservableObject
                 {
                     LastRunSummaryDisplay = string.Format(
                         CultureInfo.CurrentCulture,
-                        "{0} satır değişiklik gönderildi (güncelleme={1} silme={2}) · mobil pakete {3} satır işlendi · {4} ms",
-                        totalRows, result.UpsertRowsPushed, result.DeleteRowsPushed, snapshotRows, durationMs);
+                        "{0} satır değişiklik gönderildi (güncelleme={1} silme={2}) · mobil pakete {3} satır / {4:F2} MB işlendi · {5} ms",
+                        totalRows, result.UpsertRowsPushed, result.DeleteRowsPushed,
+                        snapshotRows, snapshotResult.PayloadMegabytes, durationMs);
                     LastRunStatusDisplay = "✓ Senkronize";
                     LastRunStatusBrush = SuccessBadgeBrush;
                     LastErrorDisplay = string.Empty;
                 }
                 _logger.LogInformation(
-                    "Manual delta sync succeeded. Tables={Tables}, Upserts={Upserts}, Deletes={Deletes}, SnapshotRows={SnapshotRows}, DurationMs={Duration}.",
-                    result.TablesTouched, result.UpsertRowsPushed, result.DeleteRowsPushed, snapshotRows, durationMs);
+                    "Manual delta sync succeeded. Tables={Tables}, Upserts={Upserts}, Deletes={Deletes}, SnapshotRows={SnapshotRows}, PayloadBytes={PayloadBytes}, DurationMs={Duration}.",
+                    result.TablesTouched, result.UpsertRowsPushed, result.DeleteRowsPushed,
+                    snapshotRows, snapshotResult.PayloadBytes, durationMs);
             }
             else
             {
@@ -759,14 +761,14 @@ public sealed class DashboardViewModel : ObservableObject
                     + result.StockTransactionsCount;
                 LastRunSummaryDisplay = string.Format(
                     CultureInfo.CurrentCulture,
-                    "{0} satır aktarıldı · {1} ms",
-                    totalRows, result.DurationMs);
+                    "{0} satır aktarıldı · JSON {1:F2} MB · {2} ms",
+                    totalRows, result.PayloadMegabytes, result.DurationMs);
                 LastRunStatusDisplay = "✓ Başarılı";
                 LastRunStatusBrush = SuccessBadgeBrush;
                 LastErrorDisplay = string.Empty;
                 _logger.LogInformation(
-                    "Manual bootstrap succeeded. TotalRows={TotalRows}, DurationMs={Duration}.",
-                    totalRows, result.DurationMs);
+                    "Manual bootstrap succeeded. TotalRows={TotalRows}, PayloadBytes={PayloadBytes}, DurationMs={Duration}.",
+                    totalRows, result.PayloadBytes, result.DurationMs);
             }
             else
             {
@@ -860,8 +862,8 @@ public sealed class DashboardViewModel : ObservableObject
                     + result.StockTransactionsCount;
                 LastRunSummaryDisplay = string.Format(
                     CultureInfo.CurrentCulture,
-                    "{0}: {1} satır aktarıldı · {2} ms",
-                    displayLabel, totalRows, result.DurationMs);
+                    "{0}: {1} satır aktarıldı · JSON {2:F2} MB · {3} ms",
+                    displayLabel, totalRows, result.PayloadMegabytes, result.DurationMs);
                 LastRunStatusDisplay = "✓ " + displayLabel;
                 LastRunStatusBrush = SuccessBadgeBrush;
                 LastErrorDisplay = string.Empty;

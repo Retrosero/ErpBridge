@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Polly;
 using Polly.Retry;
+using System.Text.Json;
 using Xunit;
 
 namespace ErpBridge.Core.Tests;
@@ -178,6 +179,11 @@ public class BootstrapSyncServiceTests
         result.CustomerContactsCount.Should().Be(1);
         result.BarcodesCount.Should().Be(1);
         result.SalesConditionsCount.Should().Be(1);
+        result.PayloadBytes.Should().Be(
+            JsonSerializer.SerializeToUtf8Bytes(
+                package,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)).LongLength);
+        result.PayloadMegabytes.Should().Be(result.PayloadBytes / (1024d * 1024d));
 
         // Verify checkpoint was saved with scope "bootstrap" and the right timestamp.
         checkpointStore.Verify(

@@ -168,7 +168,12 @@ public class ErpChangeLogSyncServiceTests
 
         await service.RunOnceAsync();
 
+        log.Verify(l => l.IsInstalledAsync(It.IsAny<CancellationToken>()), Times.Once);
         log.Verify(l => l.InstallAsync(It.IsAny<CancellationToken>()), Times.Once);
+        log.Verify(l => l.ReadChangesAsync(
+            It.IsAny<ErpSyncCursor>(),
+            It.IsAny<int>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
