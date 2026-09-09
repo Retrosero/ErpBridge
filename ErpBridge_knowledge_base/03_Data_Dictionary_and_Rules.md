@@ -54,7 +54,8 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 - `licenses`: Ajan lisansları (`id`, `tenant_id`, `license_key`, `expires_at`, `max_agents`).
 - `agents`: Kayıtlı Windows Sync Agent'lar (`id`, `tenant_id`, `machine_id`, `last_heartbeat_at`).
 - `jobs`: Mobil → Agent yazma iş kuyruğu (`id`, `tenant_id`, `document_type`, `payload`, `status`).
-- `change_sets`: Agent → merkez değişiklik paketleri (`TabloID`, `TableName`, `LastTriggerRecNo`, `PayloadJson`). *(Faz 20'de `TabloID` → `tableKey` string'e çevrilecek.)*
+- `change_sets`: Agent → merkez değişiklik paketleri (`ErpType`, `TableKey`, `TableName`, `LastTriggerRecNo`, `PayloadJson`). *(Faz 20 — ERP-nötr: eski `TabloID` int kaldırıldı, `TableKey` string + `ErpType` eklendi.)*
+- `jobs`: Mobil → Agent yazma iş kuyruğu — Faz 20'de `ErpType` kolonu eklendi (çok-ERP tenant'ta doğru adaptöre yönlendirme).
 - `change_set_audit_log`: Senkronizasyon denetim izleri.
 - `mobile_sync_queue`: ERP → Android olay günlüğü (`sequence`, `entity`, `operation`, `recordKey`, `payload`).
 - `parameter_records`: Müşteri bazlı konfigürasyon parametreleri.

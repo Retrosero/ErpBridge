@@ -292,20 +292,31 @@ yalnızca DI extension dosyaları. WPF'den Mikro'ya bağlanma + bootstrap + sync
 
 ---
 
-## Faz 20 — CentralApi & Wire-Format ERP-Nötrleştirme
-**Boyut:** M · **Risk:** Orta · **Tahmini:** ~1 hafta
+## Faz 20 — CentralApi & Wire-Format ERP-Nötrleştirme ✅
+**Boyut:** M · **Risk:** Orta · **Durum:** Tamamlandı · Commit `2c239cb`(A) + Slice B/C
 
-- [ ] `CentralApi/Domain` Mikro geçen tipler (`ChangeSetRecord`, `BootstrapPackage`,
-      `ErpCompany`, `Job`, `JobAckRecord`, `ParameterRecord`) — alan/yorum isimleri generic.
-- [ ] `jobs` + `change_sets` tablolarına `erp_type` kolonu (mapping'de zaten var).
-- [ ] `change_sets.payload_json` şeması `TabloID` → `tableKey` string.
-- [ ] `AndroidEndpoints` / `ParameterEndpoints`: mobil URL sözleşmesi
-      (`sync/cari`, `sync/urun`) korunur; içerik ERP-nötr DTO'ya çevrilir.
-- [ ] **Not (kapsam dışı):** `Siparis_Cepte` (Android) bu turda dokunulmuyor.
-      CentralApi, mobilin beklediği JSON şeklini bozmadan üretmeye devam etmeli;
-      mobil tarafın ERP-nötrleştirmesi ayrı bir iş kalemi.
+- [x] **20.A — Eski trigger yolunu sil.** `src/ErpBridge.Erp.Mikro/Trigger/` (8 dosya),
+      `Shared/TrackedTableSchema.cs`, `Core/Domain/TriggerChangeSet.cs`,
+      `IErpAdapter.ReadChangeSetAsync(Dictionary<int,int>)` + Mikro impl kaldırıldı.
+      Vendor-nötr `SqlServerShadowTableChangeLog` (Erp.Sql) tek change-capture yolu.
+- [x] **20.B — Wire tipleri.** `SyncTableDescriptor.TabloID`(int) → `TableKey`(string)
+      + `TableName`; `RecnoField` → `KeyField`. `SyncChangeSet`/`SyncTableChangeSet`'e
+      `ErpType`. `SyncDeletedChunk` tuple → `SyncDeletedRow(string RecordKey, long Sequence)`
+      — **V16 GUID-keyli silme olayları artık `0` yerine gerçek kimliği taşıyor.**
+      Upsert satırları açık `RecordKey` taşıyor (`SyncUpsertRow`) — mobil kuyruk
+      fan-out'u artık `*RECno` kolonu tahmin etmiyor.
+- [x] **20.C — CentralApi persistans.** `change_sets` / `change_set_audit_log`:
+      `TabloId` kaldırıldı, `TableKey` + `ErpType` eklendi. `jobs`: `ErpType` kolonu.
+      EF migration `Faz20ErpNeutralChangeSets` (boş `AddMobileSyncSourceRecordKey`
+      migration'ının unuttuğu `SourceRecordKey` kolonu da bu migration'da toparlandı).
+      `ChangeSetEndpoints` / `ChangeSetAndroidEndpoints` / `AdminAuditEndpoints` yeni şekle göre.
+- [x] Mobil URL sözleşmesi (`sync/cari`, `sync/urun`, `sync/queue`) korundu — `Siparis_Cepte` bu turda dokunulmadı.
 
-**Doğrulama:** `CentralApi.Tests` yeşil; Android emülatörü mevcut şemayla sync olur.
+**Doğrulama:** build 0/0, 665 hermetik test yeşil (`CentralApi.Tests` 190/190).
+
+**Kapsam dışı bırakılan (ileride):** `BootstrapPackage`/`ErpCompany`/`ParameterRecord`
+yorum-seviyesi Mikro göndermeleri (fonksiyonel değil); `AndroidEndpoints` bootstrap
+DTO içeriğinin tam ERP-nötrleştirmesi.
 
 ---
 
@@ -414,7 +425,7 @@ Amaç: Soyutlamanın gerçekten yeterli olduğunu, adaptör yazmadan kanıtlamak
 | 18.6 | Mikro adaptörünü motora bağlama (V15+V16 katalog) | ✅ |
 | **18.7** | **Writer SQL onarımı (plansızdı — canlı DB ortaya çıkardı)** | ✅ |
 | 19 | Host'u Mikro'dan koparma | ✅ |
-| 20 | CentralApi wire-format nötrleştirme | ⏳ açık |
+| 20 | CentralApi wire-format nötrleştirme (eski trigger yolu silindi, `tableKey`+`erp_type`) | ✅ |
 | 20.5 | Android — değişiklik gerekmiyor | ✅ (no-op) |
 | 21 | Logo iskeleti (seam doğrulama) | ✅ |
 | 22 | Dokümantasyon (`erp-adapter-contract.md`) | ✅ |
@@ -428,8 +439,10 @@ Amaç: Soyutlamanın gerçekten yeterli olduğunu, adaptör yazmadan kanıtlamak
 | Build uyarısı | 0 | 0 |
 
 ### Açık kalan işler
-1. **Faz 20** — CentralApi domain tipleri ve `change_sets.payload_json` hâlâ
-   `TabloID` int taşıyor. Mobil sözleşme korunarak nötrleştirilebilir.
+1. ~~**Faz 20**~~ ✅ Eski trigger yolu silindi; `SyncChangeSet` wire tipleri +
+   `change_sets`/`change_set_audit_log`/`jobs` tabloları ERP-nötr (`TableKey`+`ErpType`).
+   Kalan (fonksiyonel değil): `BootstrapPackage`/`ParameterRecord` yorum-seviyesi
+   Mikro göndermeleri, `AndroidEndpoints` bootstrap DTO içeriğinin tam nötrleştirmesi.
 2. ~~**KB güncellemesi**~~ ✅ `ErpBridge_knowledge_base/` (6 dosya, commit `2c239cb`) +
    kök `knowledge_base/` 00–01 çok-ERP mimarisine göre yeniden yazıldı; mobil KB no-op.
 3. ~~Evrak seri/sıra çakışma kontrolü~~ ✅ `MikroDocumentNumberAllocator`
