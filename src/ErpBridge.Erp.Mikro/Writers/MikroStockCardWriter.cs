@@ -118,13 +118,17 @@ WHERE sto_RECno = @StoRecno;";
     /// V15 duplicate-key probe — runs against <c>STOKLAR</c> before the INSERT
     /// path so a second call with the same <c>sto_kod</c> short-circuits to the
     /// existing <c>sto_RECno</c>.
+    ///
+    /// <para>
+    /// <c>sto_kod</c> alone is the key: unlike <c>CARI_HESAPLAR</c>, <c>STOKLAR</c>
+    /// is firm-independent in Mikro (a product is shared across firms), so it has
+    /// no <c>sto_firmano</c> / <c>sto_sube_no</c> columns to filter on.
+    /// </para>
     /// </summary>
     internal const string StoklarSelectByCodeSqlV15 = @"
 SELECT CAST(sto_RECno AS INT) AS Recno
 FROM STOKLAR
-WHERE sto_kod = @StockCode
-  AND sto_firmano = @FirmNo
-  AND sto_sube_no = @BranchNo;";
+WHERE sto_kod = @StockCode;";
 
     /// <summary>
     /// V16 duplicate-key probe — same shape as V15 but returns the Guid identity.
@@ -132,9 +136,7 @@ WHERE sto_kod = @StockCode
     internal const string StoklarSelectByCodeSqlV16 = @"
 SELECT CAST(sto_Guid AS UNIQUEIDENTIFIER) AS Uid
 FROM STOKLAR
-WHERE sto_kod = @StockCode
-  AND sto_firmano = @FirmNo
-  AND sto_sube_no = @BranchNo;";
+WHERE sto_kod = @StockCode;";
 
     /// <summary>
     /// V15 INSERT into <c>BARKOD_TANIMLARI</c> — only fired when the request

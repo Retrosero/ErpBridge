@@ -125,12 +125,15 @@ public class MikroSchemaContractTests
     }
 
     /// <summary>
-    /// Every column named in a writer's INSERT must exist. This is the guard
-    /// that the original write path lacked.
+    /// Every column named in a writer's SQL must exist. Covers <c>INSERT</c>
+    /// column lists, <c>UPDATE … SET</c> assignments and <c>WHERE</c> predicates —
+    /// the last of these is what let <c>MikroStockCardWriter</c>'s duplicate-key
+    /// probe ship a <c>WHERE sto_firmano = …</c> against a table that has no such
+    /// column.
     /// </summary>
     [Theory]
     [MemberData(nameof(DatabaseCases))]
-    public async Task Writer_insert_columns_exist_in_the_live_schema(string database)
+    public async Task Writer_sql_columns_exist_in_the_live_schema(string database)
     {
         if (!GateOpen)
         {
@@ -148,7 +151,7 @@ public class MikroSchemaContractTests
         var targetVersion = database.Contains("V16", StringComparison.OrdinalIgnoreCase) ? "V16" : "V15";
 
         var problems = new List<string>();
-        foreach (var (constant, table, column) in EnumerateWriterInsertColumns())
+        foreach (var (constant, table, column) in EnumerateWriterSqlColumns())
         {
             if (!constant.EndsWith(targetVersion, StringComparison.OrdinalIgnoreCase))
             {
@@ -173,7 +176,7 @@ public class MikroSchemaContractTests
         }
 
         problems.Should().BeEmpty(
-            $"{database}: a writer INSERT naming a non-existent column fails at runtime");
+            $"{database}: a writer SQL naming a non-existent column fails at runtime");
     }
 
     public static TheoryData<string> DatabaseCases()
@@ -188,37 +191,61 @@ public class MikroSchemaContractTests
     }
 
     /// <summary>
-    /// Parse <c>INSERT INTO &lt;TABLE&gt; (col, col, …)</c> out of the writer
-    /// sources. Reading the SQL text rather than executing it keeps the test
-    /// read-only — it never writes to the customer's ERP.
+    /// Parse the writer SQL constants and yield (constant, table, column) for
+    /// every column reference: <c>INSERT</c> lists, <c>UPDATE … SET</c>
+    /// assignments, and prefix-matched columns in <c>WHERE</c> / probe clauses.
+    /// Reading the text rather than executing it keeps the test read-only.
     /// </summary>
-    private static IEnumerable<(string Constant, string Table, string Column)> EnumerateWriterInsertColumns()
+    private static IEnumerable<(string Constant, string Table, string Column)> EnumerateWriterSqlColumns()
     {
+        // Mikro column prefixes — a token like `sto_firmano` in any clause is a
+        // column reference, so once we know the statement's table we can check it.
+        const string prefixes = "cari|cha|sto|sth|sip|bar|kas|ban|dep|sck|ode|adr|mye";
+
         var writersDir = ResolveWritersDirectory();
         foreach (var file in Directory.EnumerateFiles(writersDir, "*.cs"))
         {
             var text = File.ReadAllText(file);
 
-            // Capture the constant that owns each statement so the caller can tell
-            // a V15 statement from a V16 one. The verbatim-string body contains
-            // semicolons, so the match runs to the closing `";` rather than the
-            // first one.
+            // The verbatim-string body contains semicolons, so match to the
+            // closing `";` rather than the first one.
             foreach (Match c in Regex.Matches(
                          text, "(?:const|readonly)\\s+string\\s+(\\w+)\\s*=\\s*@\"((?:[^\"]|\"\")*)\""))
             {
                 var constant = c.Groups[1].Value;
-                foreach (Match m in Regex.Matches(
-                             c.Groups[2].Value, @"INSERT\s+INTO\s+([A-Z_0-9]+)\s*\(([^)]*)\)", RegexOptions.IgnoreCase))
+                var body = c.Groups[2].Value;
+
+                // A single statement constant targets one table. Take the table
+                // from INSERT INTO / UPDATE / FROM, whichever appears.
+                var tableMatch = Regex.Match(
+                    body, @"(?:INSERT\s+INTO|UPDATE|FROM)\s+([A-Z_0-9]+)", RegexOptions.IgnoreCase);
+                if (!tableMatch.Success)
                 {
-                    var table = m.Groups[1].Value;
-                    foreach (var raw in m.Groups[2].Value.Split(','))
+                    continue;
+                }
+
+                var table = tableMatch.Groups[1].Value;
+
+                // INSERT column list — explicit, comma-separated.
+                foreach (Match ins in Regex.Matches(
+                             body, @"INSERT\s+INTO\s+[A-Z_0-9]+\s*\(([^)]*)\)", RegexOptions.IgnoreCase))
+                {
+                    foreach (var raw in ins.Groups[1].Value.Split(','))
                     {
-                        var column = raw.Trim().Trim('\r', '\n');
-                        if (Regex.IsMatch(column, "^[A-Za-z_0-9]+$"))
+                        var col = raw.Trim().Trim('\r', '\n');
+                        if (Regex.IsMatch(col, "^[A-Za-z_0-9]+$"))
                         {
-                            yield return (constant, table, column);
+                            yield return (constant, table, col);
                         }
                     }
+                }
+
+                // Every other prefixed column token anywhere in the body:
+                // SET assignments, WHERE predicates, SELECT lists.
+                foreach (Match col in Regex.Matches(
+                             body, $@"\b((?:{prefixes})_[A-Za-z0-9_]+)\b"))
+                {
+                    yield return (constant, table, col.Groups[1].Value);
                 }
             }
         }
