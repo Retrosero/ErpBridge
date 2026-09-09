@@ -82,6 +82,7 @@ public static class ChangeSetAndroidEndpoints
     private static async Task<IResult> ReadMobileQueueAsync(
         [FromQuery] long? cursor,
         [FromQuery] string? entity,
+        [FromQuery] string? operation,
         [FromQuery] int? size,
         HttpContext http,
         [FromServices] CentralApiDbContext db,
@@ -95,10 +96,19 @@ public static class ChangeSetAndroidEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest,
                 new ApiError { ErrorCode = "INVALID_ENTITY", Message = "entity must be product, customer, invoice or collection." });
 
+        if (operation is not null && operation is not ("upsert" or "delete"))
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "INVALID_OPERATION", Message = "operation must be upsert or delete." });
+
         var start = cursor ?? 0;
         var pageSize = ClampPageSize(size);
         var query = db.MobileSyncQueue.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Sequence > start);
+
+        // The delete-queue consumer passes operation=delete so a burst of
+        // upsert rows cannot starve delete propagation on a paged drain.
+        if (operation is not null)
+            query = query.Where(x => x.Operation == operation);
 
         if (entity == "product")
             query = query.Where(x => x.EntityType == "product");
@@ -204,15 +214,17 @@ public static class ChangeSetAndroidEndpoints
         var pageSize = ClampPageSize(size);
         var startCursor = cursor ?? 0;
 
+        // The deleted stream pages by the delete high-water mark — a delete-only
+        // cycle advances LastDeleteRecNo while LastTriggerRecNo stays put.
         var rows = await db.ChangeSets.AsNoTracking()
             .Where(c => c.TenantId == tenantId &&
                         c.TableName == table &&
-                        c.LastTriggerRecNo > startCursor)
-            .OrderBy(c => c.LastTriggerRecNo)
+                        c.LastDeleteRecNo > startCursor)
+            .OrderBy(c => c.LastDeleteRecNo)
             .Take(pageSize)
             .Select(c => new
             {
-                triggerRecNo = c.LastTriggerRecNo,
+                triggerRecNo = c.LastDeleteRecNo,
                 payload = c.PayloadJson,
             })
             .ToListAsync(ct);

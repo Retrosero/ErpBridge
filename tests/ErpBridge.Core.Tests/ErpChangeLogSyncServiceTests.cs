@@ -224,8 +224,37 @@ public class ErpChangeLogSyncServiceTests
         var table = pushed!.Tables.Single();
         table.Changed!.Rows.Should().HaveCount(1);
         table.Deleted!.Rows.Should().ContainSingle().Which.RecordKey.Should().Be("9");
-        table.PreviousSequence.Should().Be(100);
-        table.NewSequence.Should().Be(120);
+        table.PreviousUpsertSequence.Should().Be(100);
+        table.NewUpsertSequence.Should().Be(120);
+        table.PreviousDeleteSequence.Should().Be(5);
+        table.NewDeleteSequence.Should().Be(7);
+    }
+
+    [Fact]
+    public async Task Delete_only_cycle_still_carries_the_delete_high_water()
+    {
+        // Regression: a cycle with no inserts/updates must not be swallowed by
+        // the central API's idempotency check just because the upsert
+        // watermark did not move.
+        var batch = new ErpChangeBatch(
+            new[] { ErpChangeRow.Deleted("STOKLAR", "recno:9") },
+            new ErpSyncCursor("""{"u":{"STOKLAR":0},"d":{"STOKLAR":7}}"""),
+            MoreAvailable: false,
+            new[] { new ErpTableCursorPosition("STOKLAR", 0, 0, 5, 7) });
+
+        var (service, _, remote, _) = Build(batch);
+        SyncChangeSet? pushed = null;
+        remote.Setup(r => r.PushChangeSetAsync(It.IsAny<SyncChangeSet>(), It.IsAny<CancellationToken>()))
+              .Callback<SyncChangeSet, CancellationToken>((cs, _) => pushed = cs)
+              .Returns(Task.CompletedTask);
+
+        await service.RunOnceAsync();
+
+        var table = pushed!.Tables.Single();
+        table.Changed.Should().BeNull();
+        table.NewUpsertSequence.Should().Be(0);
+        table.NewDeleteSequence.Should().Be(7);
+        table.Deleted!.Rows.Should().ContainSingle().Which.RecordKey.Should().Be("9");
     }
 
     [Fact]

@@ -82,14 +82,26 @@ public sealed record SyncDeletedChunk(
 /// Per-table snapshot of the three change-tracking directions. The central
 /// API persists the chunk lists verbatim in <c>change_sets.payload_json</c>;
 /// each downstream consumer pulls the direction it needs.
+///
+/// <para>
+/// <b>Upsert and delete carry independent high-water marks.</b> A SQL Server
+/// change log feeds inserts/updates from one shadow table and deletes from
+/// another, each with its own IDENTITY sequence, so a cycle can advance one
+/// without the other (e.g. a delete-only cycle). Both marks travel on the
+/// wire and both form part of the persisted row's identity — folding them
+/// into one number would make a delete-only cycle look like a duplicate of
+/// the previous cycle and silently drop the deletes.
+/// </para>
 /// </summary>
 public sealed record SyncTableChangeSet(
     SyncTableDescriptor Table,
     SyncNewChunk? New,
     SyncChangedChunk? Changed,
     SyncDeletedChunk? Deleted,
-    long PreviousSequence,
-    long NewSequence);
+    long PreviousUpsertSequence,
+    long NewUpsertSequence,
+    long PreviousDeleteSequence,
+    long NewDeleteSequence);
 
 /// <summary>
 /// One agent → central API push. The bundle is the smallest unit of work

@@ -281,7 +281,7 @@ public sealed class CentralApiDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(x => x.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
-            b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.LastTriggerRecNo }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.LastTriggerRecNo, x.LastDeleteRecNo }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.TableName, x.PulledAtUtc });
         });
 

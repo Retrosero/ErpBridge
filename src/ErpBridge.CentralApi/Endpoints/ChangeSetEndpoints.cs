@@ -56,7 +56,7 @@ public static class ChangeSetEndpoints
     /// </summary>
     internal static string ComputeIdempotencyKey(SyncChangeSet body, SyncTableChangeSet table)
     {
-        var raw = $"{body.SourceDatabase}|{table.Table.TableName}|{table.PreviousSequence}|{table.NewSequence}|{body.PulledAtUtc.UtcTicks}";
+        var raw = $"{body.SourceDatabase}|{table.Table.TableName}|{table.PreviousUpsertSequence}|{table.NewUpsertSequence}|{table.PreviousDeleteSequence}|{table.NewDeleteSequence}|{body.PulledAtUtc.UtcTicks}";
         var bytes = Encoding.UTF8.GetBytes(raw);
         var hash = SHA256.HashData(bytes);
         return Convert.ToHexString(hash).ToLowerInvariant();
@@ -131,18 +131,21 @@ public static class ChangeSetEndpoints
         foreach (var table in body.Tables)
         {
             ct.ThrowIfCancellationRequested();
-            if (table.NewSequence <= 0) continue;
+            // A cycle that only deleted rows advances NewDeleteSequence while
+            // NewUpsertSequence stays put — so gate on both, never just upserts.
+            if (table.NewUpsertSequence <= 0 && table.NewDeleteSequence <= 0) continue;
 
             var json = JsonSerializer.Serialize(table, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            // The unique index on (TenantId, SourceDatabase, TableName, LastTriggerRecNo)
-            // makes a duplicate push a no-op. EF's SaveChanges swallows the
-            // unique-violation via the 23505 SQLState for PostgreSQL; we check
-            // first to avoid an exception round-trip on the hot path.
+            // The unique index on (TenantId, SourceDatabase, TableName,
+            // LastTriggerRecNo, LastDeleteRecNo) makes a duplicate push a no-op.
+            // EF's SaveChanges swallows the 23505 unique-violation for
+            // PostgreSQL; we check first to avoid an exception round-trip.
             var exists = await db.ChangeSets.AsNoTracking().AnyAsync(c =>
                     c.TenantId == tenantId &&
                     c.SourceDatabase == body.SourceDatabase &&
                     c.TableName == table.Table.TableName &&
-                    c.LastTriggerRecNo == table.NewSequence,
+                    c.LastTriggerRecNo == table.NewUpsertSequence &&
+                    c.LastDeleteRecNo == table.NewDeleteSequence,
                 ct);
             if (exists)
             {
@@ -157,7 +160,8 @@ public static class ChangeSetEndpoints
                 SourceDatabase = body.SourceDatabase,
                 TableKey = table.Table.TableKey,
                 TableName = table.Table.TableName,
-                LastTriggerRecNo = table.NewSequence,
+                LastTriggerRecNo = table.NewUpsertSequence,
+                LastDeleteRecNo = table.NewDeleteSequence,
                 PayloadJson = json,
                 PulledAtUtc = body.PulledAtUtc,
             });
@@ -401,6 +405,7 @@ public static class ChangeSetEndpoints
                 erpType = g.Key.ErpType,
                 sourceDatabase = g.Key.SourceDatabase,
                 lastTriggerRecNo = g.Max(x => x.LastTriggerRecNo),
+                lastDeleteRecNo = g.Max(x => x.LastDeleteRecNo),
                 lastPulledAtUtc = g.Max(x => x.PulledAtUtc),
             })
             .ToListAsync(ct);

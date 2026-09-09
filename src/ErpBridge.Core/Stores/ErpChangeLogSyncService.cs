@@ -244,8 +244,10 @@ public sealed class ErpChangeLogSyncService : IErpChangeLogSyncService
                 New: null,
                 Changed: changed,
                 Deleted: deleted,
-                PreviousSequence: position.PreviousUpsert,
-                NewSequence: position.NextUpsert));
+                PreviousUpsertSequence: position.PreviousUpsert,
+                NewUpsertSequence: position.NextUpsert,
+                PreviousDeleteSequence: position.PreviousDelete,
+                NewDeleteSequence: position.NextDelete));
         }
 
         return new SyncChangeSet(

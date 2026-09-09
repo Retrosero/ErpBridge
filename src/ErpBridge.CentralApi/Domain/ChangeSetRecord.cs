@@ -32,8 +32,17 @@ public sealed class ChangeSetRecord
     /// <summary>Physical table the change was captured from (e.g. <c>STOKLAR</c>).</summary>
     public string TableName { get; set; } = string.Empty;
 
-    /// <summary>Highest change-log sequence the agent observed for this table. The unique-key component that makes the row idempotent.</summary>
+    /// <summary>Highest insert/update change-log sequence the agent observed for this table. Part of the idempotency key.</summary>
     public long LastTriggerRecNo { get; set; }
+
+    /// <summary>
+    /// Highest delete change-log sequence the agent observed for this table.
+    /// Separate from <see cref="LastTriggerRecNo"/> because deletes come from
+    /// their own shadow sequence — a delete-only cycle advances this while
+    /// <see cref="LastTriggerRecNo"/> stays put, so both are needed to tell
+    /// one bundle from the next.
+    /// </summary>
+    public long LastDeleteRecNo { get; set; }
 
     /// <summary>JSON-serialised <see cref="ErpBridge.Shared.SyncTableChangeSet"/>.</summary>
     public string PayloadJson { get; set; } = "{}";
