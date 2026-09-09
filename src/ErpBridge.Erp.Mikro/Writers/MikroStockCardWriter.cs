@@ -5,6 +5,7 @@ using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Versioning;
+using ErpBridge.Erp.Sql;
 using ErpBridge.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -43,6 +44,7 @@ namespace ErpBridge.Erp.Mikro.Writers;
 public sealed class MikroStockCardWriter
 {
     private readonly MikroConnectionFactory _connectionFactory;
+    private readonly SqlServerFieldWidthProvider _widths;
     private readonly MikroVersionDetector _versionDetector;
     private readonly MikroIdentityStrategySelector _strategySelector;
     private readonly ILogger<MikroStockCardWriter> _logger;
@@ -185,6 +187,7 @@ VALUES (
         ILogger<MikroStockCardWriter> logger)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        _widths = new SqlServerFieldWidthProvider(() => _connectionFactory.BuildConnectionStringFromActive());
         _versionDetector = versionDetector ?? throw new ArgumentNullException(nameof(versionDetector));
         _strategySelector = strategySelector ?? throw new ArgumentNullException(nameof(strategySelector));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -320,7 +323,7 @@ VALUES (
             // table. Returns null when no row matches.
             var probeParameters = new
             {
-                StockCode = req.StockCode,
+                StockCode = ErpFieldText.Identifier(req.StockCode, await _widths.GetMaxLengthAsync("STOKLAR", "sto_kod", ct).ConfigureAwait(false), "STOKLAR.sto_kod"),
                 FirmNo = connectionSettings.CompanyNo,
                 BranchNo = connectionSettings.BranchNo,
             };
@@ -367,7 +370,7 @@ VALUES (
                 // follow-up UPDATE inside the same transaction.
                 var recno = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
                     StoklarInsertSqlV15,
-                    BuildInsertParameters(req, headerGuid, connectionSettings),
+                    await BuildInsertParametersAsync(req, headerGuid, connectionSettings, ct).ConfigureAwait(false),
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
 
@@ -407,7 +410,7 @@ VALUES (
             // V16 — pre-generated Guid.
             await conn.ExecuteAsync(new CommandDefinition(
                 StoklarInsertSqlV16,
-                BuildInsertParameters(req, headerGuid, connectionSettings),
+                await BuildInsertParametersAsync(req, headerGuid, connectionSettings, ct).ConfigureAwait(false),
                 transaction: tx,
                 cancellationToken: ct)).ConfigureAwait(false);
 
@@ -452,10 +455,11 @@ VALUES (
         }
     }
 
-    private static object BuildInsertParameters(
+    private async Task<object> BuildInsertParametersAsync(
         CreateStockRequest req,
         Guid? headerGuid,
-        MikroConnectionSettings connectionSettings)
+        MikroConnectionSettings connectionSettings,
+        CancellationToken ct)
     {
         return new
         {
@@ -471,8 +475,8 @@ VALUES (
                 ? req.StockName ?? string.Empty
                 : req.StockName![..40],
             Cins = StockCardCins,
-            StockName = req.StockName,
-            Unit = req.Unit,
+            StockName = ErpFieldText.FreeText(req.StockName, await _widths.GetMaxLengthAsync("STOKLAR", "sto_isim", ct).ConfigureAwait(false)),
+            Unit = ErpFieldText.FreeText(req.Unit, await _widths.GetMaxLengthAsync("STOKLAR", "sto_birim1_ad", ct).ConfigureAwait(false)),
             VatRate = req.VatRate,
             GroupCode = req.GroupCode,
             SalePrice1 = req.SalePrice1,

@@ -5,6 +5,7 @@ using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Versioning;
+using ErpBridge.Erp.Sql;
 using ErpBridge.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -40,6 +41,7 @@ namespace ErpBridge.Erp.Mikro.Writers;
 public sealed class MikroSalesOrderWriter
 {
     private readonly MikroConnectionFactory _connectionFactory;
+    private readonly SqlServerFieldWidthProvider _widths;
     private readonly MikroVersionDetector _versionDetector;
     private readonly MikroIdentityStrategySelector _strategySelector;
     private readonly ICustomerLookup _customerLookup;
@@ -176,6 +178,9 @@ VALUES (
         ILogger<MikroSalesOrderWriter> logger)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        // Widths are read from the live schema, not hard-coded: sto_isim is 50
+        // characters on V15 and 127 on V16, so constants would be wrong for one.
+        _widths = new SqlServerFieldWidthProvider(() => _connectionFactory.BuildConnectionStringFromActive());
         _versionDetector = versionDetector ?? throw new ArgumentNullException(nameof(versionDetector));
         _strategySelector = strategySelector ?? throw new ArgumentNullException(nameof(strategySelector));
         _customerLookup = customerLookup ?? throw new ArgumentNullException(nameof(customerLookup));
@@ -351,6 +356,16 @@ VALUES (
 
         try
         {
+            // Resolve the evrak sıra inside the transaction so a concurrent
+            // writer on the same series waits rather than duplicating it.
+            var series = ErpFieldText.Identifier(
+                payload.DocumentSeries,
+                await _widths.GetMaxLengthAsync("SIPARISLER", "sip_evrakno_seri", ct).ConfigureAwait(false),
+                "SIPARISLER.sip_evrakno_seri");
+
+            var documentNumber = await MikroDocumentNumberAllocator.ResolveAsync(
+                conn, tx, "SIPARISLER", "sip", series, payload.DocumentNumber, ct).ConfigureAwait(false);
+
             // One SIPARISLER row per line. The first row's identifier is the one
             // reported back as the document's ERP identity — Mikro has no
             // separate header record, so the first line stands for the order.
@@ -359,7 +374,8 @@ VALUES (
             {
                 var lineGuid = strategy is GuidStrategy ? (Guid?)Guid.NewGuid() : null;
                 var recno = await InsertLineAsync(
-                        conn, tx, payload, payload.Lines[i], i + 1, strategy, lineGuid, connectionSettings, ct)
+                        conn, tx, payload, payload.Lines[i], i + 1, strategy, lineGuid,
+                        connectionSettings, series, documentNumber, ct)
                     .ConfigureAwait(false);
 
                 if (i == 0)
@@ -406,8 +422,25 @@ VALUES (
         IMikroIdentityStrategy strategy,
         Guid? lineGuid,
         MikroConnectionSettings connectionSettings,
+        string series,
+        int documentNumber,
         CancellationToken ct)
     {
+        // Identifiers are validated, never truncated: a shortened cari or stok
+        // code would post the line against a different record.
+        var customerCode = ErpFieldText.Identifier(
+            header.CustomerCode,
+            await _widths.GetMaxLengthAsync("SIPARISLER", "sip_musteri_kod", ct).ConfigureAwait(false),
+            "SIPARISLER.sip_musteri_kod");
+        var stockCode = ErpFieldText.Identifier(
+            line.StockCode,
+            await _widths.GetMaxLengthAsync("SIPARISLER", "sip_stok_kod", ct).ConfigureAwait(false),
+            "SIPARISLER.sip_stok_kod");
+        var salespersonCode = ErpFieldText.Identifier(
+            header.SalespersonCode,
+            await _widths.GetMaxLengthAsync("SIPARISLER", "sip_satici_kod", ct).ConfigureAwait(false),
+            "SIPARISLER.sip_satici_kod");
+
         var parameters = new
         {
             ActiveDbNo = DefaultActiveDbNo,
@@ -416,12 +449,12 @@ VALUES (
             OccurredAt = EnsureUtcDate(header.OccurredAt),
             OrderTip = SalesOrderTip,
             OrderCins = SalesOrderCins,
-            Series = header.DocumentSeries,
-            Number = header.DocumentNumber,
+            Series = series,
+            Number = documentNumber,
             LineNo = lineNo,
-            CustomerCode = header.CustomerCode,
-            SalespersonCode = header.SalespersonCode ?? string.Empty,
-            StockCode = line.StockCode,
+            CustomerCode = customerCode,
+            SalespersonCode = salespersonCode,
+            StockCode = stockCode,
             UnitPrice = line.UnitPrice,
             Quantity = line.Quantity,
             UnitPointer = line.UnitPointer,

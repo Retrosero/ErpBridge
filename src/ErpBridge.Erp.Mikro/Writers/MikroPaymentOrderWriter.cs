@@ -6,6 +6,7 @@ using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Versioning;
+using ErpBridge.Erp.Sql;
 using ErpBridge.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -39,6 +40,7 @@ namespace ErpBridge.Erp.Mikro.Writers;
 public sealed class MikroPaymentOrderWriter
 {
     private readonly MikroConnectionFactory _connectionFactory;
+    private readonly SqlServerFieldWidthProvider _widths;
     private readonly MikroVersionDetector _versionDetector;
     private readonly MikroIdentityStrategySelector _strategySelector;
     private readonly ILogger<MikroPaymentOrderWriter> _logger;
@@ -67,15 +69,20 @@ public sealed class MikroPaymentOrderWriter
 
     /// <summary>
     /// Fold the channel and the description into <c>sck_refno</c> — the only
-    /// free-text field <c>ODEME_EMIRLERI</c> offers. Trimmed to the column width.
+    /// free-text field <c>ODEME_EMIRLERI</c> offers.
     /// </summary>
-    internal static string BuildReference(PaymentOrderPayload payload)
+    /// <param name="payload">Source document.</param>
+    /// <param name="maxLength">
+    /// Discovered width of <c>sck_refno</c> (25 on the V15 and V16 databases
+    /// measured). Truncation is correct here: this is a human-readable
+    /// reference, not an identifier.
+    /// </param>
+    internal static string BuildReference(PaymentOrderPayload payload, int? maxLength)
     {
         var parts = new[] { payload.Channel, payload.Description }
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x!.Trim());
-        var joined = string.Join(" / ", parts);
-        return joined.Length <= 40 ? joined : joined[..40];
+        return ErpFieldText.FreeText(string.Join(" / ", parts), maxLength);
     }
 
     /// <summary>
@@ -130,6 +137,7 @@ VALUES (
         ILogger<MikroPaymentOrderWriter> logger)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        _widths = new SqlServerFieldWidthProvider(() => _connectionFactory.BuildConnectionStringFromActive());
         _versionDetector = versionDetector ?? throw new ArgumentNullException(nameof(versionDetector));
         _strategySelector = strategySelector ?? throw new ArgumentNullException(nameof(strategySelector));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -278,7 +286,7 @@ VALUES (
             {
                 var recno = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
                     OdemeEmirleriInsertSqlV15,
-                    BuildParameters(payload, headerGuid, connectionSettings),
+                    await BuildParametersAsync(payload, headerGuid, connectionSettings, ct).ConfigureAwait(false),
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
 
@@ -296,7 +304,7 @@ VALUES (
             {
                 await conn.ExecuteAsync(new CommandDefinition(
                     OdemeEmirleriInsertSqlV16,
-                    BuildParameters(payload, headerGuid, connectionSettings),
+                    await BuildParametersAsync(payload, headerGuid, connectionSettings, ct).ConfigureAwait(false),
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
 
@@ -327,11 +335,24 @@ VALUES (
         }
     }
 
-    private static object BuildParameters(
+    private async Task<object> BuildParametersAsync(
         PaymentOrderPayload payload,
         Guid? headerGuid,
-        MikroConnectionSettings connectionSettings)
+        MikroConnectionSettings connectionSettings,
+        CancellationToken ct)
     {
+        // The cari code is an identifier: too long means the ödeme emri would
+        // point at a different account, so it is validated rather than trimmed.
+        var customerCode = ErpFieldText.Identifier(
+            payload.CustomerCode,
+            await _widths.GetMaxLengthAsync("ODEME_EMIRLERI", "sck_sahip_cari_kodu", ct).ConfigureAwait(false),
+            "ODEME_EMIRLERI.sck_sahip_cari_kodu");
+        var bankCode = ErpFieldText.Identifier(
+            payload.BankCode,
+            await _widths.GetMaxLengthAsync("ODEME_EMIRLERI", "sck_bankano", ct).ConfigureAwait(false),
+            "ODEME_EMIRLERI.sck_bankano");
+        var refNoWidth = await _widths.GetMaxLengthAsync("ODEME_EMIRLERI", "sck_refno", ct).ConfigureAwait(false);
+
         return new
         {
             HeaderGuid = headerGuid ?? Guid.Empty,
@@ -339,8 +360,8 @@ VALUES (
             FirmNo = connectionSettings.CompanyNo,
             BranchNo = connectionSettings.BranchNo,
             OrderDate = EnsureUtcDate(payload.OrderDate),
-            CustomerCode = payload.CustomerCode ?? string.Empty,
-            BankCode = payload.BankCode ?? string.Empty,
+            CustomerCode = customerCode,
+            BankCode = bankCode,
             Amount = payload.Amount,
             // sck_doviz is a tinyint döviz code, not the ISO string.
             Currency = MikroCurrency.ToMikroCode(payload.Currency),
@@ -348,7 +369,7 @@ VALUES (
             // description are folded into sck_refno, the free-text reference
             // Mikro shows on the ödeme emri. sck_tip carries the instrument kind.
             Tip = ResolvePaymentTip(payload.Channel),
-            RefNo = BuildReference(payload),
+            RefNo = BuildReference(payload, refNoWidth),
             DueDate = EnsureUtcDate(payload.DueDate),
         };
     }
