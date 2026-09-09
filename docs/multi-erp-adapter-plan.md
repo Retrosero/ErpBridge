@@ -430,7 +430,8 @@ Amaç: Soyutlamanın gerçekten yeterli olduğunu, adaptör yazmadan kanıtlamak
 ### Açık kalan işler
 1. **Faz 20** — CentralApi domain tipleri ve `change_sets.payload_json` hâlâ
    `TabloID` int taşıyor. Mobil sözleşme korunarak nötrleştirilebilir.
-2. **KB güncellemesi** — `ErpBridge_knowledge_base/01_Accounting_Adapters.md` hâlâ eski mimariyi anlatıyor.
+2. ~~**KB güncellemesi**~~ ✅ `ErpBridge_knowledge_base/` (6 dosya, commit `2c239cb`) +
+   kök `knowledge_base/` 00–01 çok-ERP mimarisine göre yeniden yazıldı; mobil KB no-op.
 3. ~~Evrak seri/sıra çakışma kontrolü~~ ✅ `MikroDocumentNumberAllocator`
 4. ~~String alan uzunluk doğrulaması~~ ✅ `SqlServerFieldWidthProvider` + `ErpFieldText`
 5. **Gerçek Logo katalogu** — iskeletteki 4 tablo temsilî. Canlı bir Logo
@@ -447,7 +448,7 @@ Amaç: Soyutlamanın gerçekten yeterli olduğunu, adaptör yazmadan kanıtlamak
 - [ ] `docs/erp-adapter-contract.md` — yeni adaptör eklemek için checklist
       (hangi arayüzler, hangi capability, katalog/PK stratejisi, testler).
 - [ ] `docs/mikro-v15-v16-rules.md` — yeni soyutlamaya göre güncelle.
-- [ ] `ErpBridge_knowledge_base/01_Accounting_Adapters.md` + kök `knowledge_base` — güncelle.
+- [x] `ErpBridge_knowledge_base/` (6 dosya) + kök `knowledge_base/` — güncellendi (commit `2c239cb`).
 - [ ] `development-roadmap.md` — Faz 16–22 özeti eklenir.
 
 ---
