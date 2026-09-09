@@ -135,3 +135,23 @@ bağlı. Bir cycle: change log oku → merkeze push → **push kabul edildikten 
 cursor'u ilerlet. Arada crash → sayfa tekrar oynatılır (her olay idempotent
 upsert veya anahtarlı delete). Mikro'ya bağlı eski `TriggerChangeSetSyncService`
 kaldırıldı.
+
+### Silme ve değişiklik su-seviyeleri ayrıdır (Faz 20.D)
+
+SQL Server change-log'da insert/update olayları `_ERPB_SYNC`, delete olayları
+`_ERPB_SYNC_DEL` tablosundan gelir — **ayrı IDENTITY dizileri**. `SyncTableChangeSet`
+her ikisini de taşır (`New/UpsertSequence` + `New/DeleteSequence`) ve `change_sets`
+satır kimliği `(TenantId, SourceDatabase, TableName, LastTriggerRecNo, LastDeleteRecNo)`.
+Tek bir sayıya katlamak, **sadece silme içeren bir döngüyü** önceki döngünün
+kopyası gibi gösterip silmeleri sessizce düşürürdü.
+
+### Android silme kuyruğu
+
+Android `sync/queue?operation=delete` çağırır; `BridgeSyncHelper.syncMobileDeleteQueue`
+her sayfayı tek koşuda drenaj eder (cursor ilerlemediğinde durur). Silmeler
+`STOKLAR`/`CARI_HESAPLAR`/`CARI_HESAP_HAREKETLERI`/`STOK_HAREKETLERI`/`SIPARISLER`
+için Room `deleteById(recordKey)` ile uygulanır. **Değişiklik (update) verileri
+Android'e artımlı DEĞİL, bir sonraki tam bootstrap snapshot'ı ile ulaşır** —
+`sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sayfa döner. Kuyruğa
+yazılan `upsert` satırlarının bir Android tüketicisi henüz yok (ileride
+`/android/changeset/*/new_or_changed` bağlanabilir).

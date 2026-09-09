@@ -310,7 +310,14 @@ yalnızca DI extension dosyaları. WPF'den Mikro'ya bağlanma + bootstrap + sync
       EF migration `Faz20ErpNeutralChangeSets` (boş `AddMobileSyncSourceRecordKey`
       migration'ının unuttuğu `SourceRecordKey` kolonu da bu migration'da toparlandı).
       `ChangeSetEndpoints` / `ChangeSetAndroidEndpoints` / `AdminAuditEndpoints` yeni şekle göre.
-- [x] Mobil URL sözleşmesi (`sync/cari`, `sync/urun`, `sync/queue`) korundu — `Siparis_Cepte` bu turda dokunulmadı.
+- [x] Mobil URL sözleşmesi (`sync/cari`, `sync/urun`, `sync/queue`) korundu.
+- [x] **20.D — Silme yolu düzeltmeleri.** `SyncTableChangeSet` upsert **ve** delete
+      su-seviyesini ayrı taşıyor; `change_sets` kimliği `LastDeleteRecNo` içeriyor
+      (migration `Faz20DeleteHighWaterMark`). Öncesinde sadece-silme içeren bir sync
+      döngüsü `IngestAsync`'te atlanıyor veya "duplicate" diye reddediliyordu →
+      silmeler kayboluyordu. `sync/queue?operation=delete` filtresi + Android
+      `syncMobileDeleteQueue` tek koşuda tüm sayfaları drenaj ediyor
+      (`Siparis_Cepte` — 2 dosya).
 
 **Doğrulama:** build 0/0, 665 hermetik test yeşil (`CentralApi.Tests` 190/190).
 
