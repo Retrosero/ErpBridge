@@ -162,9 +162,11 @@ yedek kalır. Sonuç: ERP değişikliği cihaza **saatlik yerine ~5-20 sn**'de u
 Android `sync/queue?operation=delete` çağırır; `BridgeSyncHelper.syncMobileDeleteQueue`
 her sayfayı tek koşuda drenaj eder (cursor ilerlemediğinde durur). Silmeler
 `STOKLAR`/`CARI_HESAPLAR`/`CARI_HESAP_HAREKETLERI`/`STOK_HAREKETLERI`/`SIPARISLER`
-için Room `deleteById(recordKey)` ile uygulanır. **Değişiklik (update) verileri
-Android'e `*_lastup_date` tabanlı bootstrap-delta (60 sn / notify tetiklemesi) ile
-ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sayfa döner.
-Shadow-log kuyruğuna yazılan `upsert` satırlarının doğrudan bir Android tüketicisi
-henüz yok (ERP-nötr bir ikinci adaptörde `*_lastup_date` olmayınca bağlanmalı —
-ileride `/android/changeset/*/new_or_changed`).
+için Room `deleteById(recordKey)` ile uygulanır. **Değişiklik (update) verileri Android'e `*_lastup_date` tabanlı bootstrap-delta
+ile ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sayfa döner.
+`BootstrapWorker` trigger modunda (`UseTriggerBasedSync=true`) her iterasyonda
+**hem** change-log **hem** snapshot-delta cycle'ını çalıştırır
+(`RefreshSnapshotInTriggerMode=true`, `BootstrapIntervalSeconds=20`). Trigger-only
+mod (delete-only) yalnızca `*_lastup_date`'i olmayan bir ERP'de mantıklı; o zaman
+shadow-log `upsert` kuyruğu Android tarafına bağlanmalı (ileride
+`/android/changeset/*/new_or_changed`).

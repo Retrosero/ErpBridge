@@ -316,6 +316,13 @@ yalnızca DI extension dosyaları. WPF'den Mikro'ya bağlanma + bootstrap + sync
       artık `hub.Publish` çağırıyor. Android `LiveSyncManager` ön planda uzun-yoklama
       yapıp anında `startSyncAll` tetikliyor; `PeriodicSyncWorker` 1 sa → 15 dk yedek.
       ERP değişikliği → cihaz: saatlik yerine ~5-20 sn. (`Siparis_Cepte` — 4 dosya)
+- [x] **20.F — Update'ler tekrar akıyor.** Tespit: `UseTriggerBasedSync=true`
+      (varsayılan) modunda `BootstrapWorker` yalnızca change-log'u çalıştırıyordu →
+      `bootstrap_snapshots` tazelenmiyor → cari/ürün **güncellemeleri Android'e hiç
+      ulaşmıyordu** (yalnızca ilk bootstrap + silmeler). Düzeltme: trigger modunda
+      `*_lastup_date` snapshot-delta cycle'ı da her iterasyonda çalışıyor
+      (`RefreshSnapshotInTriggerMode=true`); `BootstrapIntervalSeconds` 60 → 20.
+      Android tarafı değişmedi (mevcut `sync/urun`/`sync/cari` tüketicileri yeterli).
 - [x] **20.D — Silme yolu düzeltmeleri.** `SyncTableChangeSet` upsert **ve** delete
       su-seviyesini ayrı taşıyor; `change_sets` kimliği `LastDeleteRecNo` içeriyor
       (migration `Faz20DeleteHighWaterMark`). Öncesinde sadece-silme içeren bir sync

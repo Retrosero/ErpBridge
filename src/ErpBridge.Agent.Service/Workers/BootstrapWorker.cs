@@ -121,6 +121,15 @@ public sealed class BootstrapWorker : BackgroundService
             if (_options.UseTriggerBasedSync)
             {
                 await RunTriggerIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+
+                // The change-log path carries deletes to the mobile master-data
+                // consumers but not inserts/updates — those still travel as
+                // snapshot deltas. Run that cycle too unless the operator opted
+                // out (e.g. an ERP with no *_lastup_date).
+                if (_options.RefreshSnapshotInTriggerMode)
+                {
+                    await RunLegacyIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+                }
             }
             else
             {
