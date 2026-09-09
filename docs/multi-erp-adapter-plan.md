@@ -258,8 +258,8 @@ push eder; cursor ilerler; yeniden başlatmada tekrar göndermez.
 
 ---
 
-## Faz 19 — Host'u (Agent.Service + Agent.UI) Mikro Assembly'sinden Koparma
-**Boyut:** M · **Risk:** Orta (WPF) · **Tahmini:** 1–2 hafta
+## Faz 19 — Host'u Mikro Assembly'sinden Koparma ✅
+**Durum:** Tamamlandı · Commit `86da76e`
 
 Amaç: `Agent.Service` ve `Agent.UI` kod gövdesinde `using ErpBridge.Erp.Mikro`
 sıfır (yalnızca DI extension'da referans).
@@ -383,8 +383,8 @@ Android istemci incelendi. Wire sözleşmesi **zaten ERP-nötr materyalize DTO'l
 
 ---
 
-## Faz 21 — Logo / Netsis İskeleti *(kod yok — seam doğrulama)*
-**Boyut:** S · **Risk:** Düşük · **Tahmini:** 3–5 gün
+## Faz 21 — Logo İskeleti (seam doğrulama) ✅
+**Durum:** Tamamlandı · Commit `ba6f6d1`
 
 Amaç: Soyutlamanın gerçekten yeterli olduğunu, adaptör yazmadan kanıtlamak.
 
@@ -399,6 +399,50 @@ Amaç: Soyutlamanın gerçekten yeterli olduğunu, adaptör yazmadan kanıtlamak
       Faz 18/19'a geri dön, düzelt. Bu fazın asıl çıktısı **gap listesi**.
 
 **Doğrulama:** Çözüm 12 → 15 projeyle derlenir; `dotnet test` yeşil; gap listesi dokümante.
+
+---
+
+## 📊 Nerede Kaldık
+
+| Faz | Konu | Durum |
+|---|---|---|
+| 16 | Kimlik & sürüm soyutlaması | ✅ |
+| 17 | Yazım sözleşmesi (7 evrak tipi) | ✅ |
+| 18.1–18.2 | Change-log sözleşmeleri + `ErpBridge.Erp.Sql` motoru | ✅ |
+| 18.4 | ERP-bağımsız cursor deposu | ✅ |
+| 18.5 | ERP-bağımsız sync servisi | ✅ |
+| 18.6 | Mikro adaptörünü motora bağlama (V15+V16 katalog) | ✅ |
+| **18.7** | **Writer SQL onarımı (plansızdı — canlı DB ortaya çıkardı)** | ✅ |
+| 19 | Host'u Mikro'dan koparma | ✅ |
+| 20 | CentralApi wire-format nötrleştirme | ⏳ açık |
+| 20.5 | Android — değişiklik gerekmiyor | ✅ (no-op) |
+| 21 | Logo iskeleti (seam doğrulama) | ✅ |
+| 22 | Dokümantasyon | ⏳ açık |
+
+### Canlı doğrulama (MikroDB_V15_02 + MikroDB_V16_03)
+| Kontrol | Önce | Şimdi |
+|---|---|---|
+| Writer INSERT kolonları | 179 geçersiz | **0** |
+| Tracked-table katalog kolonları | 142 geçersiz | **0** |
+| Hermetik test | 607 | **694** |
+| Build uyarısı | 0 | 0 |
+
+### Açık kalan işler
+1. **Faz 20** — CentralApi domain tipleri ve `change_sets.payload_json` hâlâ
+   `TabloID` int taşıyor. Mobil sözleşme korunarak nötrleştirilebilir.
+2. **Faz 22** — `docs/erp-adapter-contract.md` (yeni adaptör checklist'i) + KB güncellemesi.
+3. **Evrak seri/sıra çakışma kontrolü** — referans dokümanın 5. adımı. Şu an
+   writer payload'daki seri/sırayı olduğu gibi kullanıyor; Mikro'nun unique
+   index'i çakışmayı sert hatayla reddediyor. Merkezi ve idempotent bir numara
+   üreticisi gerekiyor.
+4. **String alan uzunluk doğrulaması** — referans doküman schema discovery ile
+   kolon uzunluklarını bulup trim/validate etmeyi şart koşuyor. Şu an uzun bir
+   ad SQL truncation hatası verir.
+5. **Gerçek Logo katalogu** — iskeletteki 4 tablo temsilî. Canlı bir Logo
+   veritabanından türetilmeli; tahmin etmek Mikro'da 142 hataya mal olmuştu.
+6. **Logo'da trigger riski** — Logo kurulumlarında trigger eklemek vendor'un
+   desteklenen konfigürasyonu dışında kalabilir. SQL Server Change Tracking
+   daha düşük etkili alternatif olarak değerlendirilmeli.
 
 ---
 
