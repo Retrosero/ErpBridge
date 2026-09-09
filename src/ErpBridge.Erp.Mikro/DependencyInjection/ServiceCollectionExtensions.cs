@@ -5,14 +5,12 @@ using ErpBridge.Erp.Abstractions.DependencyInjection;
 using ErpBridge.Erp.Mikro.Adapters;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
-using ErpBridge.Erp.Mikro.Trigger;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace ErpBridge.Erp.Mikro.DependencyInjection;
 
@@ -150,53 +148,9 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ILogger<ErpBridge.Erp.Mikro.Reconciliation.MikroReconciliationProbe>>(sp =>
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<ErpBridge.Erp.Mikro.Reconciliation.MikroReconciliationProbe>());
 
-        // Faz 11.2: trigger installer — owns the shadow table + per-table triggers.
-        services.AddSingleton<TriggerInstaller>();
-        // Faz 11.4: three-way change-set reader (new/changed/deleted).
-        services.AddSingleton<IChangeSetReader, TriggerChangeSetReader>();
-
-        // Faz 15.2: opt-in FORA-compatible trigger installer. The runner
-        // (DapperSqlCommandRunner) is always registered so the interface
-        // resolves cleanly even when the installer is disabled; the
-        // installer itself is only added when its Enabled flag is set.
-        // Disabled-by-default means existing agents keep using the
-        // _ERPB_SENKRONIZASYON pipeline until the operator opts in.
-        services.TryAddSingleton<ISqlCommandRunner, DapperSqlCommandRunner>();
-        // Keep this binding explicit: the project references configuration
-        // abstractions, but must also build when Binder extension assets are
-        // unavailable in a locked/offline restore.
-        var installerOptionsSection = configuration.GetSection(NewSchemaTriggerInstallerOptions.ConfigurationSection);
-        services.Configure<NewSchemaTriggerInstallerOptions>(opts =>
-        {
-            if (bool.TryParse(installerOptionsSection["Enabled"], out var enabled)) opts.Enabled = enabled;
-            if (bool.TryParse(installerOptionsSection["DropOnUninstall"], out var drop)) opts.DropOnUninstall = drop;
-            opts.TrackedTables = installerOptionsSection.GetSection("TrackedTables")
-                .GetChildren().Select(x => x.Value).Where(x => !string.IsNullOrWhiteSpace(x)).ToArray()!;
-        });
-        services.AddSingleton<NewSchemaTriggerInstaller>(sp =>
-        {
-            var opts = sp.GetRequiredService<IOptions<NewSchemaTriggerInstallerOptions>>().Value;
-            if (!opts.Enabled)
-            {
-                return null!;
-            }
-
-            var factory = sp.GetRequiredService<MikroConnectionFactory>();
-            var runner = sp.GetRequiredService<ISqlCommandRunner>();
-            var logger = sp.GetRequiredService<ILogger<NewSchemaTriggerInstaller>>();
-            var options = sp.GetRequiredService<IOptions<NewSchemaTriggerInstallerOptions>>();
-            // The resolver reads the active settings slot on every call so
-            // the installer reconnects with the latest credentials without
-            // having to be rebuilt. When the active slot is empty the
-            // factory's BuildConnectionString will throw a descriptive
-            // ArgumentException — surfaced as a clean startup error rather
-            // than a silent no-op.
-            return new NewSchemaTriggerInstaller(
-                connectionStringResolver: _ => factory.BuildConnectionStringFromActive(),
-                sqlRunner: runner,
-                logger: logger,
-                options: options);
-        });
+        // The change-log capture path is owned by SqlServerShadowTableChangeLog
+        // (Erp.Sql), resolved lazily by MikroAdapter — no per-table trigger
+        // installer or change-set reader is registered here anymore (Faz 20).
 
         // Factory closed over the connection settings + IConfiguration; uses the
         // container for everything else.
@@ -219,9 +173,6 @@ public static class ServiceCollectionExtensions
         services.TryAddSingletonLogger<MikroDbReader>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
         services.TryAddSingletonLogger<MikroConnectionTestOrchestrator>(services);
-        services.TryAddSingletonLogger<TriggerInstaller>(services);
-        services.TryAddSingletonLogger<TriggerChangeSetReader>(services);
-        services.TryAddSingletonLogger<NewSchemaTriggerInstaller>(services);
 
         return services;
     }
