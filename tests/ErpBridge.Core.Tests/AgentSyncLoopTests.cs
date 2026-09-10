@@ -1,3 +1,4 @@
+using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Stores;
 using ErpBridge.Core.Sync;
 using FluentAssertions;
@@ -17,12 +18,23 @@ public class AgentSyncLoopTests
 {
     private static ServiceProvider BuildProvider(
         Mock<IBootstrapSyncService> bootstrap,
-        Mock<IErpChangeLogSyncService> changeLog)
+        Mock<IErpChangeLogSyncService> changeLog,
+        Mock<IAgentTokenService>? tokens = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(bootstrap.Object);
         services.AddSingleton(changeLog.Object);
+        // The loop renews the bearer token before each iteration; without a
+        // usable token it deliberately does no work at all.
+        services.AddSingleton((tokens ?? ValidToken()).Object);
         return services.BuildServiceProvider();
+    }
+
+    private static Mock<IAgentTokenService> ValidToken()
+    {
+        var mock = new Mock<IAgentTokenService>();
+        mock.Setup(t => t.EnsureValidAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        return mock;
     }
 
     private static Mock<IBootstrapSyncService> NewBootstrap()
@@ -93,6 +105,28 @@ public class AgentSyncLoopTests
 
         changeLog.Verify(s => s.RunOnceAsync(It.IsAny<CancellationToken>()), Times.Never);
         bootstrap.Verify(s => s.RunOnceAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task An_iteration_is_skipped_when_no_usable_token_can_be_obtained()
+    {
+        // Pushing with a dead token is how the agent used to spend every cycle
+        // preparing a full snapshot the server then rejected with 401.
+        var bootstrap = NewBootstrap();
+        var changeLog = NewChangeLog();
+        var tokens = new Mock<IAgentTokenService>();
+        tokens.Setup(t => t.EnsureValidAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        using var provider = BuildProvider(bootstrap, changeLog, tokens);
+
+        var loop = new AgentSyncLoop(
+            provider,
+            new AgentSyncLoopOptions(UseTriggerBasedSync: true),
+            NullLogger<AgentSyncLoop>.Instance);
+
+        await loop.RunSingleIterationAsync(CancellationToken.None);
+
+        changeLog.Verify(s => s.RunOnceAsync(It.IsAny<CancellationToken>()), Times.Never);
+        bootstrap.Verify(s => s.RunOnceAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

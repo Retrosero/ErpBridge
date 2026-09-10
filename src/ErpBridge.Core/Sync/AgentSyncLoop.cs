@@ -1,3 +1,4 @@
+using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Stores;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -102,6 +103,18 @@ public sealed class AgentSyncLoop
         try
         {
             using var scope = _services.CreateScope();
+
+            // Renew the bearer token before doing anything with it. The central
+            // API issues 60-minute tokens and has no refresh endpoint for
+            // agents, so without this the loop spent every tick after the first
+            // hour preparing work that the server rejected with 401.
+            var tokens = scope.ServiceProvider.GetRequiredService<IAgentTokenService>();
+            if (!await tokens.EnsureValidAsync(stoppingToken).ConfigureAwait(false))
+            {
+                _logger.LogWarning("Skipping sync iteration: no usable agent token.");
+                return;
+            }
+
             if (_options.UseTriggerBasedSync)
             {
                 await RunChangeLogIterationAsync(scope, stoppingToken).ConfigureAwait(false);

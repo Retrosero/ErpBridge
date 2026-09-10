@@ -1,3 +1,4 @@
+using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Stores;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -22,6 +23,12 @@ public static class ServiceCollectionExtensions
         // Mikro adapter and pushes it to the central API under a Polly v8
         // exponential-backoff retry policy. Singleton so the canonical
         // ResiliencePipeline + TimeProvider are reused across worker iterations.
+        // The agent's bearer token: one holder for the process and one service
+        // that keeps it fresh. Singletons because a second copy would let one
+        // half of the process run on a token the other half already replaced.
+        services.TryAddSingleton<IAgentTokenSource, InMemoryAgentTokenSource>();
+        services.TryAddSingleton<IAgentTokenService, AgentTokenService>();
+
         services.TryAddSingleton<IBootstrapSyncService, BootstrapSyncService>();
         services.TryAddSingleton<ILogger<BootstrapSyncService>>(sp =>
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<BootstrapSyncService>());

@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using ErpBridge.Agent.UI.DependencyInjection;
+using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
@@ -37,6 +38,7 @@ public sealed class DashboardViewModel : ObservableObject
     private readonly MutableMemoryConfigurationProvider _liveSettings;
     private readonly IAgentConfigStore _configStore;
     private readonly IErpAdapterFactory _adapterFactory;
+    private readonly IAgentTokenService _tokens;
     private readonly ILogger<DashboardViewModel> _logger;
 
     private string _lastSyncAtDisplay = "Henüz senkronizasyon yapılmamış";
@@ -87,6 +89,7 @@ public sealed class DashboardViewModel : ObservableObject
         MutableMemoryConfigurationProvider liveSettings,
         IAgentConfigStore configStore,
         IErpAdapterFactory adapterFactory,
+        IAgentTokenService tokens,
         ILogger<DashboardViewModel> logger)
     {
         _bootstrap = bootstrap ?? throw new ArgumentNullException(nameof(bootstrap));
@@ -95,6 +98,7 @@ public sealed class DashboardViewModel : ObservableObject
         _liveSettings = liveSettings ?? throw new ArgumentNullException(nameof(liveSettings));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _adapterFactory = adapterFactory ?? throw new ArgumentNullException(nameof(adapterFactory));
+        _tokens = tokens ?? throw new ArgumentNullException(nameof(tokens));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         RefreshCommand = new AsyncRelayCommand(_ => RefreshAsync());
@@ -177,95 +181,27 @@ public sealed class DashboardViewModel : ObservableObject
     /// yeni JWT'yi okur (IOptionsMonitor her read'de taze değer verir). Başarılıysa
     /// <c>true</c>, başarısızsa <c>false</c> döner.
     /// </summary>
+    /// <summary>
+    /// Make sure the agent holds a usable bearer token before a push.
+    ///
+    /// <para>This used to register inline here with its own <c>HttpClient</c>,
+    /// and it skipped the call whenever a token string was already present —
+    /// expired or not. Since the central API issues 60-minute tokens and offers
+    /// agents no refresh endpoint, an agent left open past that hour had every
+    /// request rejected with 401, and pressing this screen's buttons could not
+    /// recover it: the stale token was non-empty, so registration was skipped
+    /// every time. <see cref="IAgentTokenService"/> now owns that lifecycle for
+    /// the whole process.</para>
+    /// </summary>
     private async Task<bool> EnsureRegisteredAsync()
     {
-        var config = await _configStore.LoadAsync().ConfigureAwait(true);
-        if (config is null || string.IsNullOrWhiteSpace(config.LicenseKey))
-        {
-            _logger.LogWarning("Auto-register skipped: AgentConfig.LicenseKey is empty.");
-            return false;
-        }
-        var apiBaseUrl = (config.ApiBaseUrl ?? string.Empty).TrimEnd('/');
-        if (string.IsNullOrEmpty(apiBaseUrl))
-        {
-            _logger.LogWarning("Auto-register skipped: AgentConfig.ApiBaseUrl is empty.");
-            return false;
-        }
-
-        // The persisted setting is the operator's source of truth. Keep the
-        // IOptionsMonitor-backed remote client aligned with it before either
-        // using an existing token or obtaining a new one.
-        _liveSettings["CentralApi:BaseUrl"] = apiBaseUrl;
-
-        var existingJwt = _configuration["CentralApi:Jwt"];
-        if (!string.IsNullOrWhiteSpace(existingJwt) && !string.IsNullOrWhiteSpace(config.TenantId))
-        {
-            // Both the JWT and the tenant id are persisted. Skip register.
-            _logger.LogDebug("JWT + tenantId already set; skipping auto-register.");
-            return true;
-        }
-        if (!string.IsNullOrWhiteSpace(existingJwt) && string.IsNullOrWhiteSpace(config.TenantId))
-        {
-            // JWT exists but tenantId was never persisted (e.g. legacy install,
-            // or first register response didn't carry the field). Force a
-            // re-register so the change-set push can resolve the tenant.
-            _logger.LogWarning(
-                "JWT present but TenantId is empty in AgentConfig; forcing re-register to recover tenantId.");
-            _liveSettings["CentralApi:Jwt"] = string.Empty;
-        }
-
-        var licenseKey = config.LicenseKey!.Trim();
-        var machineId = (Environment.MachineName ?? "unknown").Trim();
-        if (string.IsNullOrEmpty(machineId)) machineId = "unknown";
-
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            var url = apiBaseUrl + "/api/v1/agents/register";
-            using var request = new HttpRequestMessage(HttpMethod.Post, url)
-            {
-                Content = JsonContent.Create(new { licenseKey, machineId }),
-            };
-            request.Headers.Accept.ParseAdd("application/json");
-
-            using var response = await http.SendAsync(request).ConfigureAwait(true);
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning(
-                    "Auto-register failed: HTTP {Status} for {Url}.",
-                    (int)response.StatusCode, url);
-                return false;
-            }
-
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(true));
-            var jwt = doc.RootElement.TryGetProperty("jwt", out var jt) && jt.ValueKind == JsonValueKind.String
-                ? jt.GetString() ?? string.Empty
-                : string.Empty;
-            if (string.IsNullOrWhiteSpace(jwt))
-            {
-                _logger.LogWarning("Auto-register response missing jwt field.");
-                return false;
-            }
-
-            _liveSettings["CentralApi:Jwt"] = jwt;
-            var tenantId = doc.RootElement.TryGetProperty("tenantId", out var tenantElement)
-                && tenantElement.ValueKind == JsonValueKind.String
-                ? tenantElement.GetString()
-                : null;
-            if (!string.IsNullOrWhiteSpace(tenantId)
-                && !string.Equals(config.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
-            {
-                config.TenantId = tenantId;
-                await _configStore.SaveAsync(config).ConfigureAwait(true);
-            }
-            _logger.LogInformation(
-                "Auto-register succeeded. MachineId={MachineId}, TenantPersisted={TenantPersisted}, JwtLength={Len}.",
-                machineId, !string.IsNullOrWhiteSpace(tenantId), jwt.Length);
-            return true;
+            return await _tokens.EnsureValidAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Auto-register threw an exception.");
+            _logger.LogError(ex, "Agent token check threw an exception.");
             _ = App.ReportExceptionAsync(ex, "Automatic agent registration");
             return false;
         }
