@@ -114,7 +114,11 @@ anahtar projeksiyonu + kendi `ShadowTableOptions`'ını verir.
   benzersiz olmalı, yayınlandıktan sonra asla yeniden numaralanmaz. Referansta
   `STOK_KATEGORILERI`/`STOK_SEKTORLERI` id 8'i paylaşıyordu; ErpBridge birine
   benzersiz id verdi.
-- `_ERPB_SYNC` / `_ERPB_SYNC_DEL` AFTER trigger'ları. Katalog her kurulumun
+- Genel SQL Server adaptöründe `_ERPB_SYNC` / `_ERPB_SYNC_DEL` AFTER trigger'ları.
+  **Mikro V15 bu genel kurulum yolunu kullanmaz:** mevcut
+  `_ERPB_SENKRONIZASYON` tablosunu (`Islem`: 0 silme, 1 güncelleme, 2 ekleme)
+  salt okunur kaynak olarak tüketir ve ERP'de yeni tablo/trigger oluşturmaz.
+  Katalog her kurulumun
   **üst kümesidir** (Mikro yalnızca lisanslı modülleri kurar), bu yüzden
   `InstallAsync`, `IsInstalledAsync` **ve** `ReadChangesAsync` üçü de
   `sys.tables`'da bulunmayan tabloları atlar. Bu filtre okuma tarafında
@@ -142,14 +146,12 @@ cursor'u ilerlet. Arada crash → sayfa tekrar oynatılır (her olay idempotent
 upsert veya anahtarlı delete). Mikro'ya bağlı eski `TriggerChangeSetSyncService`
 kaldırıldı.
 
-### Silme ve değişiklik su-seviyeleri ayrıdır (Faz 20.D)
+### Silme ve değişiklik su-seviyeleri
 
-SQL Server change-log'da insert/update olayları `_ERPB_SYNC`, delete olayları
-`_ERPB_SYNC_DEL` tablosundan gelir — **ayrı IDENTITY dizileri**. `SyncTableChangeSet`
-her ikisini de taşır (`New/UpsertSequence` + `New/DeleteSequence`) ve `change_sets`
-satır kimliği `(TenantId, SourceDatabase, TableName, LastTriggerRecNo, LastDeleteRecNo)`.
-Tek bir sayıya katlamak, **sadece silme içeren bir döngüyü** önceki döngünün
-kopyası gibi gösterip silmeleri sessizce düşürürdü.
+Mikro V15'te insert/update/delete olaylarının tamamı `_ERPB_SENKRONIZASYON`
+tablosundaki tek `TriggerRECno` dizisini paylaşır. Okuyucu her `TabloID` için bu
+ortak sırayı cursor olarak saklar. Genel SQL Server adaptöründe ise upsert ve
+delete tablolarının ayrı su-seviyeleri korunur.
 
 ### Olay-güdümlü sync (long-poll)
 
@@ -173,13 +175,7 @@ ile ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sa
 `BootstrapWorker` trigger modunda (`UseTriggerBasedSync=true`) her iterasyonda
 **hem** change-log **hem** snapshot-delta cycle'ını çalıştırır
 (`RefreshSnapshotInTriggerMode=true`, `BootstrapIntervalSeconds=20`). WPF
-"Senkronize Et" butonu (`DashboardViewModel.RunSyncDeltaAsync`) de 2026-09-10'dan
-itibaren aynı sırayı izler: change-log push → `IBootstrapSyncService.InvalidateAsync`
-(yalnızca 30 sn idempotency penceresini açar) → `RunOnceAsync` (sunucuda snapshot
-varken artımlı). Önceden buton yalnızca change-log gönderiyordu; sunucu upsert
-olaylarını snapshot'a uygulamadığı ve Android `/sync/faturaHareket`'i snapshot'tan
-okuduğu için **yeni kesilen fatura cihaza hiç inmiyordu, silmeler ise
-`SnapshotDeleteApplier` sayesinde iniyordu**. Trigger-only
-mod (delete-only) yalnızca `*_lastup_date`'i olmayan bir ERP'de mantıklı; o zaman
-shadow-log `upsert` kuyruğu Android tarafına bağlanmalı (ileride
-`/android/changeset/*/new_or_changed`).
+"Senkronize Et" butonu (`DashboardViewModel.RunSyncDeltaAsync`) ise operatörün
+isteğiyle yalnızca `_ERPB_SENKRONIZASYON` change-log push'unu çalıştırır;
+bootstrap snapshot yenilemez. Tam snapshot veya boyut ölçümlü aktarım ayrı
+"Bootstrap" butonundadır.

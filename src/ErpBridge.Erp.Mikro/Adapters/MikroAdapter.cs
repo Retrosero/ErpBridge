@@ -8,7 +8,6 @@ using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.Erp.Mikro.ChangeLog;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
-using ErpBridge.Erp.Sql;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
 using ErpBridge.Shared;
@@ -42,8 +41,8 @@ public sealed class MikroAdapter : IErpAdapter
     public MikroConnectionSettings ConnectionSettings { get; }
 
     /// <summary>
-    /// Mikro captures INSERT / UPDATE / DELETE through its <c>_ERPB_SYNC</c> +
-    /// <c>_ERPB_SYNC_DEL</c> shadow tables, so it offers the strongest mode.
+    /// Mikro captures INSERT / UPDATE / DELETE through the existing
+    /// <c>_ERPB_SENKRONIZASYON</c> table, so it offers the strongest mode.
     /// The timestamp path (<see cref="ReadBootstrapChangesAsync"/> over
     /// <c>*_lastup_date</c>) remains available as a fallback but cannot see
     /// deletes, which is why it is not what the adapter advertises.
@@ -51,9 +50,9 @@ public sealed class MikroAdapter : IErpAdapter
     public ChangeDetectionCapability ChangeDetection => ChangeDetectionCapability.ShadowTableChangeLog;
 
     /// <summary>
-    /// Vendor-neutral change log: the shared <see cref="SqlServerShadowTableChangeLog"/>
-    /// engine, configured with Mikro's 49-table catalog and its recno/guid key
-    /// projection. Built lazily so constructing an adapter never touches SQL.
+    /// Mikro V15 change log backed only by the existing
+    /// <c>_ERPB_SENKRONIZASYON</c> table. Built lazily so constructing an
+    /// adapter never touches SQL.
     /// </summary>
     public IErpChangeLogSource? ChangeLog => _changeLog.Value;
 
@@ -97,18 +96,22 @@ public sealed class MikroAdapter : IErpAdapter
 
         // The resolver runs per call so a credential change saved in the WPF
         // settings window is picked up without rebuilding the adapter graph.
-        _changeLog = new Lazy<IErpChangeLogSource>(() => new SqlServerShadowTableChangeLog(
-            // The catalog is version-specific: V15 keys on int *_RECno, V16 on
-            // *_Guid. Detection is cached by the selector, so this probe is cheap.
-            catalog: MikroTrackedTableCatalog.For(
-                _versionDetector.DetectAsync(
-                    _connectionFactory.BuildConnectionString(ConnectionSettings),
-                    CancellationToken.None).GetAwaiter().GetResult().Version),
-            connectionStringResolver: () => _connectionFactory.BuildConnectionString(ConnectionSettings),
-            projection: KeyKindProjection.RecnoOrGuid,
-            options: ShadowTableOptions.Default,
-            logger: (_serviceProvider.GetService(typeof(ILogger<SqlServerShadowTableChangeLog>))
-                     as ILogger<SqlServerShadowTableChangeLog>)));
+        _changeLog = new Lazy<IErpChangeLogSource>(() =>
+        {
+            var version = _versionDetector.DetectAsync(
+                _connectionFactory.BuildConnectionString(ConnectionSettings),
+                CancellationToken.None).GetAwaiter().GetResult().Version;
+            if (version != MikroVersion.V15)
+            {
+                throw new NotSupportedException(
+                    "The existing dbo._ERPB_SENKRONIZASYON feed is supported only for Mikro V15 RECno keys.");
+            }
+
+            return new MikroLegacySynchronizationChangeLog(
+                connectionStringResolver: () => _connectionFactory.BuildConnectionString(ConnectionSettings),
+                logger: (_serviceProvider.GetService(typeof(ILogger<MikroLegacySynchronizationChangeLog>))
+                         as ILogger<MikroLegacySynchronizationChangeLog>));
+        });
 
         // Push the active settings into the factory so collaborators that don't
         // carry a MikroConnectionSettings reference (notably MikroDbReader) can
@@ -572,7 +575,6 @@ public sealed class MikroAdapter : IErpAdapter
         }
     }
 
-    // Legacy trigger-based ReadChangeSetAsync removed in Faz 20. The
-    // vendor-neutral change log (SqlServerShadowTableChangeLog, exposed via
-    // ChangeLog above) is now the only change-capture path.
+    // The current change-log path is exposed through ChangeLog above and reads
+    // the existing dbo._ERPB_SENKRONIZASYON feed without installing ERP objects.
 }

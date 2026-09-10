@@ -61,9 +61,8 @@ public sealed class AgentServiceOptions
 
     /// <summary>
     /// Legacy compatibility option retained for existing configuration files.
-    /// The active change-log service now verifies and repairs the
-    /// <c>_ERPB_SYNC</c> / <c>_ERPB_SYNC_DEL</c> tables and their per-table
-    /// triggers at the start of every synchronization cycle.
+    /// Mikro now consumes the existing <c>_ERPB_SENKRONIZASYON</c> feed and
+    /// never installs ERP objects, so this value is ignored for Mikro.
     /// </summary>
     public bool TriggerInstallOnStartup { get; set; } = true;
 }
