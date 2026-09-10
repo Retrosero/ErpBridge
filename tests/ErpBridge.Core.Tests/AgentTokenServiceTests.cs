@@ -141,14 +141,81 @@ public class AgentTokenServiceTests
                 TenantId = Guid.NewGuid(),
                 ExpiresAtUtc = Now.AddHours(1),
             });
-        var sut = Build(ConfigStore(), api, source, new FixedClock(Now));
+        var clock = new FixedClock(Now);
+        var sut = Build(ConfigStore(), api, source, clock);
 
         await sut.EnsureValidAsync();
         source.CurrentJwt.Should().Be("jwt-1");
 
+        // Past the cooldown that keeps a rejected token from turning every
+        // failing request into another registration.
+        clock.Advance(AgentTokenService.RefreshCooldown + TimeSpan.FromSeconds(1));
         await sut.RefreshAsync();
 
         source.CurrentJwt.Should().Be("jwt-2");
+    }
+
+    [Fact]
+    public async Task Repeated_refreshes_are_throttled_into_one_registration()
+    {
+        // Production regression: every 401 triggered a refresh, and the notify
+        // long-poll reconnects the instant it fails. That reached ~100
+        // registrations a minute until the central API answered with 429.
+        var source = new InMemoryAgentTokenSource();
+        var api = RemoteApi(Now.AddHours(1));
+        var clock = new FixedClock(Now);
+        var sut = Build(ConfigStore(), api, source, clock);
+
+        await sut.EnsureValidAsync();
+        for (var i = 0; i < 50; i++) await sut.RefreshAsync();
+
+        api.Verify(
+            a => a.RegisterAgentAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once,
+            "a burst of rejected requests must not become a burst of registrations");
+    }
+
+    [Fact]
+    public async Task A_refresh_is_allowed_again_once_the_cooldown_passes()
+    {
+        var source = new InMemoryAgentTokenSource();
+        var api = RemoteApi(Now.AddHours(1));
+        var clock = new FixedClock(Now);
+        var sut = Build(ConfigStore(), api, source, clock);
+
+        await sut.EnsureValidAsync();
+        await sut.RefreshAsync();
+        clock.Advance(AgentTokenService.RefreshCooldown + TimeSpan.FromSeconds(1));
+        await sut.RefreshAsync();
+
+        api.Verify(
+            a => a.RegisterAgentAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2),
+            "throttling must delay recovery, not prevent it");
+    }
+
+    [Fact]
+    public async Task A_failed_refresh_keeps_the_existing_token_rather_than_going_unauthenticated()
+    {
+        // Clearing before registering made IJwtTokenProvider fall back to the
+        // statically configured token — the very one being rejected — for
+        // every request in flight during the attempt.
+        var source = new InMemoryAgentTokenSource();
+        var api = new Mock<IRemoteApiClient>();
+        var calls = 0;
+        api.Setup(a => a.RegisterAgentAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => ++calls == 1
+                ? new AgentRegistrationResult { Success = true, Jwt = "jwt-1", TenantId = Guid.NewGuid(), ExpiresAtUtc = Now.AddHours(1) }
+                : new AgentRegistrationResult { Success = false, ErrorCode = "NETWORK" });
+        var clock = new FixedClock(Now);
+        var sut = Build(ConfigStore(), api, source, clock);
+
+        await sut.EnsureValidAsync();
+        clock.Advance(AgentTokenService.RefreshCooldown + TimeSpan.FromSeconds(1));
+        var ok = await sut.RefreshAsync();
+
+        ok.Should().BeFalse();
+        source.CurrentJwt.Should().Be("jwt-1", "a failed renewal must not leave the agent with no token at all");
     }
 
     [Fact]

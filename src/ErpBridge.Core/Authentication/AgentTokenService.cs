@@ -25,12 +25,25 @@ public sealed class AgentTokenService : IAgentTokenService
     /// </summary>
     private static readonly TimeSpan AssumedLifetime = TimeSpan.FromMinutes(15);
 
+    /// <summary>
+    /// Shortest gap between two reactive refreshes.
+    ///
+    /// <para>Without it a 401 that renewal cannot cure — a request the server
+    /// rejects for some reason other than the token's age — turns every failing
+    /// call into another registration. The notify long-poll reconnects the
+    /// instant it fails, so in production this reached ~100 registrations a
+    /// minute and the central API rate-limited the agent with 429s. Renewing at
+    /// most once every 30 s still recovers within a single sync tick.</para>
+    /// </summary>
+    public static readonly TimeSpan RefreshCooldown = TimeSpan.FromSeconds(30);
+
     private readonly IAgentConfigStore _configStore;
     private readonly IRemoteApiClient _remoteApi;
     private readonly IAgentTokenSource _tokenSource;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<AgentTokenService> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private DateTimeOffset? _lastRegisterAttemptUtc;
 
     /// <summary>DI constructor.</summary>
     public AgentTokenService(
@@ -83,7 +96,18 @@ public sealed class AgentTokenService : IAgentTokenService
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            _tokenSource.Clear();
+            if (_lastRegisterAttemptUtc is { } last
+                && _timeProvider.GetUtcNow() - last < RefreshCooldown)
+            {
+                _logger.LogDebug(
+                    "Skipping token refresh: the previous attempt was less than {Cooldown} ago.", RefreshCooldown);
+                return false;
+            }
+
+            // The current token is deliberately left in place until a new one
+            // arrives. Clearing first would make IJwtTokenProvider fall back to
+            // the statically configured token — which is exactly the stale one
+            // that is being rejected — for every request in flight meanwhile.
             return await RegisterAsync(ct).ConfigureAwait(false);
         }
         finally
@@ -113,6 +137,10 @@ public sealed class AgentTokenService : IAgentTokenService
 
         var machineId = Environment.MachineName?.Trim();
         if (string.IsNullOrEmpty(machineId)) machineId = "unknown";
+
+        // Stamped before the call, so a failing registration throttles the next
+        // attempt just as a successful one does.
+        _lastRegisterAttemptUtc = _timeProvider.GetUtcNow();
 
         AgentRegistrationResult result;
         try
