@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using ErpBridge.Core.Stores;
 using Microsoft.Extensions.Logging;
 using Application = System.Windows.Application;
@@ -29,6 +30,20 @@ public sealed class BootstrapSignalService : IDesktopSignalService
 
     /// <summary>Reconnect delay after a transient network / server error.</summary>
     public static readonly TimeSpan ReconnectBackoff = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// A healthy long-poll occupies the server for <see cref="LongPollWait"/>
+    /// before answering. One that comes back almost immediately did not wait —
+    /// it failed, and <c>WaitForBootstrapUpdateAsync</c> reports every failure
+    /// (401, 5xx, network) as a plain "no update" so the loop stays simple.
+    ///
+    /// <para>Reconnecting instantly on those turned a rejected token into a
+    /// hot loop: in production this produced roughly five requests a second,
+    /// and once each 401 also triggered a token renewal the central API
+    /// rate-limited the agent outright. Anything faster than this is treated as
+    /// a failure and backed off.</para>
+    /// </summary>
+    public static readonly TimeSpan MinimumHealthyPoll = TimeSpan.FromSeconds(1);
 
     private readonly IRemoteApiClient _remoteApi;
     private readonly ILogger<BootstrapSignalService> _logger;
@@ -147,9 +162,11 @@ public sealed class BootstrapSignalService : IDesktopSignalService
 
             try
             {
+                var startedAt = Stopwatch.GetTimestamp();
                 var signal = await _remoteApi
                     .WaitForBootstrapUpdateAsync(LongPollWait, ct)
                     .ConfigureAwait(false);
+                var elapsed = Stopwatch.GetElapsedTime(startedAt);
 
                 if (signal.Updated)
                 {
@@ -158,7 +175,16 @@ public sealed class BootstrapSignalService : IDesktopSignalService
                         signal.LastPulledAtUtc);
                     await DispatchToUiAsync(callback, signal.LastPulledAtUtc).ConfigureAwait(false);
                 }
-                // Updated=false => timeout or no signal; loop continues immediately.
+                else if (elapsed < MinimumHealthyPoll)
+                {
+                    // Did not actually wait: the call failed and was reported
+                    // as "no update". Back off instead of hammering.
+                    _logger.LogDebug(
+                        "Bootstrap notify returned after {Elapsed} without waiting; backing off.", elapsed);
+                    await DelaySafe(ReconnectBackoff, ct).ConfigureAwait(false);
+                }
+                // Otherwise Updated=false is a genuine long-poll timeout;
+                // reconnect immediately as before.
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

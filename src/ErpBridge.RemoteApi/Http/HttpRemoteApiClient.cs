@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using ErpBridge.Core.Domain;
+using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.RemoteApi.Options;
@@ -36,13 +37,19 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
 
     private readonly HttpClient _http;
     private readonly IOptionsMonitor<CentralApiOptions> _options;
+    private readonly IAgentTokenSource _tokenSource;
     private readonly ILogger<HttpRemoteApiClient> _logger;
 
     /// <summary>Creates a new client bound to the supplied <paramref name="http"/> and <paramref name="options"/>.</summary>
-    public HttpRemoteApiClient(HttpClient http, IOptionsMonitor<CentralApiOptions> options, ILogger<HttpRemoteApiClient> logger)
+    public HttpRemoteApiClient(
+        HttpClient http,
+        IOptionsMonitor<CentralApiOptions> options,
+        IAgentTokenSource tokenSource,
+        ILogger<HttpRemoteApiClient> logger)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _tokenSource = tokenSource ?? throw new ArgumentNullException(nameof(tokenSource));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -556,9 +563,16 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
             _http.BaseAddress = new Uri(baseUrl + "/", UriKind.Absolute);
         }
 
-        if (!string.IsNullOrEmpty(opts.Jwt))
+        // The renewed token wins over the statically configured one. Reading
+        // only the configured value meant the agent kept presenting whatever
+        // token it started with: the central API issues 60-minute tokens, so
+        // every call after that hour came back 401 while IAgentTokenService
+        // quietly held a valid replacement nobody sent.
+        var bearer = _tokenSource.CurrentJwt;
+        if (string.IsNullOrWhiteSpace(bearer)) bearer = opts.Jwt;
+        if (!string.IsNullOrEmpty(bearer))
         {
-            request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + opts.Jwt);
+            request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
         }
 
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
