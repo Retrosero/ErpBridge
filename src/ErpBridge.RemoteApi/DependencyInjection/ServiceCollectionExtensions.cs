@@ -50,7 +50,7 @@ public static class ServiceCollectionExtensions
             // here made one slow upload wait through both retry schedules
             // (several minutes) before the UI reported a timeout.
             .AddPolicyHandler((Func<HttpRequestMessage, IAsyncPolicy<HttpResponseMessage>>)(request =>
-                IsBootstrapRequest(request)
+                SkipsTransportRetry(request)
                     ? Policy.NoOpAsync<HttpResponseMessage>()
                     : BuildRetryPolicy()));
 
@@ -63,11 +63,42 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IAsyncPolicy<HttpResponseMessage> BuildRetryPolicy() => BuildRetryPolicy(CanonicalRetryDelays);
 
-    private static bool IsBootstrapRequest(HttpRequestMessage request) =>
-        string.Equals(
-            request.RequestUri?.AbsolutePath.TrimEnd('/'),
-            "/api/v1/bootstrap",
-            StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// True for the requests whose caller already owns a retry cadence, so the
+    /// HttpClient policy must stand down and let the failure surface at once.
+    ///
+    /// <para>Bootstrap <b>writes</b> — the legacy single-shot
+    /// <c>POST /api/v1/bootstrap</c> and every <c>/bootstrap/upload/...</c>
+    /// route — belong to <c>BootstrapSyncService</c>'s pipeline. Matching only
+    /// the legacy path left the chunked upload on the transport policy as well:
+    /// a failing <c>/complete</c> burned 5+15+60+300 s here before the
+    /// service's own 5/15/60 s pipeline even saw the first failure, and the
+    /// nine-section fallback repeated that, turning a manual bootstrap into an
+    /// hour of silence in the UI.</para>
+    ///
+    /// <para>The <c>/bootstrap/notify</c> long-poll drives its own reconnect
+    /// loop and treats a failure as "no update", so a transport retry would
+    /// only stall that loop.</para>
+    ///
+    /// <para><c>GET /bootstrap/status</c> is deliberately <b>not</b> here. It
+    /// runs before the push pipeline and <c>BootstrapSyncService</c> swallows
+    /// its failure as "status unavailable", which downgrades an incremental
+    /// cycle to a full snapshot — for a tenant with years of ledger movements
+    /// that costs far more than retrying one small GET.</para>
+    /// </summary>
+    public static bool SkipsTransportRetry(HttpRequestMessage request)
+    {
+        var path = request.RequestUri?.AbsolutePath.TrimEnd('/');
+        if (path is null) return false;
+        return string.Equals(path, BootstrapRoutePrefix, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(path, BootstrapUploadRoutePrefix, StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith(BootstrapUploadRoutePrefix + "/", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(path, BootstrapNotifyRoute, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private const string BootstrapRoutePrefix = "/api/v1/bootstrap";
+    private const string BootstrapUploadRoutePrefix = BootstrapRoutePrefix + "/upload";
+    private const string BootstrapNotifyRoute = BootstrapRoutePrefix + "/notify";
 
     /// <summary>Canonical 5/15/60/300-second backoff schedule.</summary>
     public static readonly IReadOnlyList<TimeSpan> CanonicalRetryDelays = new[]

@@ -115,6 +115,7 @@ ELSE
         // Clearing the row from the upsert shadow first stops a deleted record
         // being reported as "changed" on the same cursor pass.
         return
+            DropTriggerIfExists(o, trigger) +
             "EXEC('" +
             $"CREATE TRIGGER [{o.SchemaName}].[{trigger}] " +
             $"ON [{table.SchemaName}].[{table.TableName}] " +
@@ -124,7 +125,8 @@ ELSE
             $"DELETE {shadow} WHERE TabloID = @TabloID AND {key} IN (SELECT [{src}] FROM deleted); " +
             $"INSERT INTO {shadowDel} (TabloID, {key}, Tarih) " +
             $"SELECT @TabloID, [{src}], GETDATE() FROM deleted; " +
-            "END')";
+            "END')" +
+            CompleteTriggerReplacement();
     }
 
     /// <summary>
@@ -140,6 +142,7 @@ ELSE
         var id = table.TableId.ToString(CultureInfo.InvariantCulture);
 
         return
+            DropTriggerIfExists(o, trigger) +
             "EXEC('" +
             $"CREATE TRIGGER [{o.SchemaName}].[{trigger}] " +
             $"ON [{table.SchemaName}].[{table.TableName}] " +
@@ -149,7 +152,8 @@ ELSE
             $"DELETE {shadow} WHERE TabloID = @TabloID AND {key} IN (SELECT [{src}] FROM {pseudoTable}); " +
             $"INSERT INTO {shadow} (TabloID, {key}, Tarih) " +
             $"SELECT @TabloID, [{src}], GETDATE() FROM {pseudoTable}; " +
-            "END')";
+            "END')" +
+            CompleteTriggerReplacement();
     }
 
     /// <summary>
@@ -171,12 +175,22 @@ IF OBJECT_ID(N'[{o.SchemaName}].[{o.SyncDelTriggerName(table.TableName)}]', 'TR'
     DROP TRIGGER [{o.SchemaName}].[{o.SyncDelTriggerName(table.TableName)}];
 ";
 
-    /// <summary>Query returning the names of every trigger this installation owns that currently exists.</summary>
+    /// <summary>
+    /// Query returning only compatible triggers owned by this installation.
+    /// Trigger names alone are insufficient: the retired
+    /// <c>_ERPB_SENKRONIZASYON</c> trigger used the same upsert suffix and would
+    /// otherwise make installation look complete while <c>_ERPB_SYNC</c>
+    /// remained empty.
+    /// </summary>
     public static string ListInstalledTriggers(ShadowTableOptions o) => $@"
 SELECT t.name
 FROM sys.triggers t
-WHERE t.name LIKE '%{o.TriggerSuffix}'
-   OR t.name LIKE '%{o.DeleteTriggerSuffix}';
+WHERE
+    (RIGHT(t.name, LEN(N'{o.DeleteTriggerSuffix}')) = N'{o.DeleteTriggerSuffix}'
+     AND CHARINDEX(N'{o.QualifiedSyncDelTable}', OBJECT_DEFINITION(t.object_id)) > 0)
+ OR (RIGHT(t.name, LEN(N'{o.TriggerSuffix}')) = N'{o.TriggerSuffix}'
+     AND RIGHT(t.name, LEN(N'{o.DeleteTriggerSuffix}')) <> N'{o.DeleteTriggerSuffix}'
+     AND CHARINDEX(N'{o.QualifiedSyncTable}', OBJECT_DEFINITION(t.object_id)) > 0);
 ";
 
     /// <summary>Query returning 1 when both shadow tables exist.</summary>
@@ -189,4 +203,21 @@ THEN 1 ELSE 0 END;
 
     private static string Unprefixed(string tableName) =>
         tableName.StartsWith('_') ? tableName[1..] : tableName;
+
+    private static string DropTriggerIfExists(ShadowTableOptions o, string trigger) => $@"
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+BEGIN TRY
+IF OBJECT_ID(N'[{o.SchemaName}].[{trigger}]', 'TR') IS NOT NULL
+    DROP TRIGGER [{o.SchemaName}].[{trigger}];
+";
+
+    private static string CompleteTriggerReplacement() => @"
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
+";
 }

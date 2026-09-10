@@ -609,52 +609,15 @@ public sealed class DashboardViewModel : ObservableObject
 
             if (result.Success)
             {
-                // Change-log push'u yalnızca mobile_sync_queue'yu besler; Android'in
-                // /sync/faturaHareket, /sync/cari, /sync/urun uçları ise bootstrap
-                // snapshot'ından okur ve sunucu upsert olaylarını snapshot'a
-                // uygulamaz. Yeni kesilen bir fatura bu yüzden cihazda görünmezdi
-                // (silmeler görünüyordu, çünkü SnapshotDeleteApplier onları
-                // snapshot'tan düşürüyor). BootstrapWorker trigger modunda iki
-                // döngüyü de çalıştırır (RefreshSnapshotInTriggerMode); butonun
-                // da aynı şeyi yapması gerekir. Invalidate yalnızca 30 sn'lik
-                // idempotency penceresini açar — sunucuda snapshot varken okuma
-                // yine *_lastup_date > cursor ile artımlıdır ve boş delta yeni
-                // snapshot yaratmaz.
-                _logger.LogInformation("Step 3: refreshing bootstrap snapshot delta.");
-                LastRunSummaryDisplay = "Değişiklikler mobil paketine (snapshot) işleniyor…";
-                await _bootstrap.InvalidateAsync().ConfigureAwait(true);
-                var snapshotResult = await _bootstrap.RunOnceAsync().ConfigureAwait(true);
-                var snapshotRows = SnapshotRowCount(snapshotResult);
-                _logger.LogInformation(
-                    "Step 4: snapshot delta returned. Success={Success}, Rows={Rows}, CustomerTransactions={Cha}, StockTransactions={Sth}, DurationMs={Duration}.",
-                    snapshotResult.Success, snapshotRows, snapshotResult.CustomerTransactionsCount,
-                    snapshotResult.StockTransactionsCount, snapshotResult.DurationMs);
-
                 var totalRows = result.TotalRowsPushed;
-                var durationMs = result.DurationMs + snapshotResult.DurationMs;
-                if (!snapshotResult.Success)
-                {
-                    // Change-log gitti ama snapshot yenilenemedi: Android silmeleri
-                    // görür, yeni/güncel kayıtları görmez. Bunu başarı gibi gösterme.
-                    LastRunSummaryDisplay = string.Format(
-                        CultureInfo.CurrentCulture,
-                        "{0} satır değişiklik gönderildi, ancak mobil paket yenilenemedi: {1}",
-                        totalRows, snapshotResult.ErrorCode ?? "UNKNOWN");
-                    LastRunStatusDisplay = "⚠ Kısmi";
-                    LastRunStatusBrush = WarningBadgeBrush;
-                    LastErrorDisplay = snapshotResult.ErrorMessage ?? "Snapshot delta başarısız";
-                    _logger.LogWarning(
-                        "Manual delta sync: change-log accepted but snapshot refresh FAILED. ErrorCode={ErrorCode}, Message={Message}.",
-                        snapshotResult.ErrorCode, snapshotResult.ErrorMessage);
-                }
-                else if (totalRows == 0 && snapshotRows == 0)
+                if (totalRows == 0)
                 {
                     // Değişen kayıt yok: bu mutlaka başarı değil, sadece "boş iş".
                     // Operatör "boşuna tıkladım" demesin diye net bir mesaj.
                     LastRunSummaryDisplay = string.Format(
                         CultureInfo.CurrentCulture,
                         "Değişiklik yok · {0} ms",
-                        durationMs);
+                        result.DurationMs);
                     LastRunStatusDisplay = "✓ Değişiklik yok";
                     LastRunStatusBrush = SuccessBadgeBrush;
                     LastErrorDisplay = string.Empty;
@@ -663,15 +626,15 @@ public sealed class DashboardViewModel : ObservableObject
                 {
                     LastRunSummaryDisplay = string.Format(
                         CultureInfo.CurrentCulture,
-                        "{0} satır değişiklik gönderildi (güncelleme={1} silme={2}) · mobil pakete {3} satır işlendi · {4} ms",
-                        totalRows, result.UpsertRowsPushed, result.DeleteRowsPushed, snapshotRows, durationMs);
+                        "{0} satır değişiklik gönderildi (güncelleme={1} silme={2}) · {3} ms",
+                        totalRows, result.UpsertRowsPushed, result.DeleteRowsPushed, result.DurationMs);
                     LastRunStatusDisplay = "✓ Senkronize";
                     LastRunStatusBrush = SuccessBadgeBrush;
                     LastErrorDisplay = string.Empty;
                 }
                 _logger.LogInformation(
-                    "Manual delta sync succeeded. Tables={Tables}, Upserts={Upserts}, Deletes={Deletes}, SnapshotRows={SnapshotRows}, DurationMs={Duration}.",
-                    result.TablesTouched, result.UpsertRowsPushed, result.DeleteRowsPushed, snapshotRows, durationMs);
+                    "Manual delta sync succeeded from _ERPB_SENKRONIZASYON. Tables={Tables}, Upserts={Upserts}, Deletes={Deletes}, DurationMs={Duration}.",
+                    result.TablesTouched, result.UpsertRowsPushed, result.DeleteRowsPushed, result.DurationMs);
             }
             else
             {
@@ -699,13 +662,6 @@ public sealed class DashboardViewModel : ObservableObject
             IsBusy = false;
         }
     }
-
-    /// <summary>Total rows the snapshot cycle pushed, across every section.</summary>
-    private static int SnapshotRowCount(BootstrapSyncResult r) =>
-        r.CustomersCount + r.StocksCount + r.PricesCount + r.InventoryCount
-        + r.OpenOrdersCount + r.CashAndBankCount + r.LookupsCount
-        + r.CustomerAddressesCount + r.CustomerContactsCount + r.BarcodesCount
-        + r.SalesConditionsCount + r.CustomerTransactionsCount + r.StockTransactionsCount;
 
     public async Task RunBootstrapAsync()
     {
@@ -759,14 +715,14 @@ public sealed class DashboardViewModel : ObservableObject
                     + result.StockTransactionsCount;
                 LastRunSummaryDisplay = string.Format(
                     CultureInfo.CurrentCulture,
-                    "{0} satır aktarıldı · {1} ms",
-                    totalRows, result.DurationMs);
+                    "{0} satır aktarıldı · JSON {1:F2} MB · {2} ms",
+                    totalRows, result.PayloadMegabytes, result.DurationMs);
                 LastRunStatusDisplay = "✓ Başarılı";
                 LastRunStatusBrush = SuccessBadgeBrush;
                 LastErrorDisplay = string.Empty;
                 _logger.LogInformation(
-                    "Manual bootstrap succeeded. TotalRows={TotalRows}, DurationMs={Duration}.",
-                    totalRows, result.DurationMs);
+                    "Manual bootstrap succeeded. TotalRows={TotalRows}, PayloadBytes={PayloadBytes}, DurationMs={Duration}.",
+                    totalRows, result.PayloadBytes, result.DurationMs);
             }
             else
             {
@@ -860,8 +816,8 @@ public sealed class DashboardViewModel : ObservableObject
                     + result.StockTransactionsCount;
                 LastRunSummaryDisplay = string.Format(
                     CultureInfo.CurrentCulture,
-                    "{0}: {1} satır aktarıldı · {2} ms",
-                    displayLabel, totalRows, result.DurationMs);
+                    "{0}: {1} satır aktarıldı · JSON {2:F2} MB · {3} ms",
+                    displayLabel, totalRows, result.PayloadMegabytes, result.DurationMs);
                 LastRunStatusDisplay = "✓ " + displayLabel;
                 LastRunStatusBrush = SuccessBadgeBrush;
                 LastErrorDisplay = string.Empty;

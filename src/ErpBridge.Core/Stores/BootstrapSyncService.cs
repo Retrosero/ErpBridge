@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using ErpBridge.Core.Domain;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Sync;
@@ -35,6 +36,8 @@ namespace ErpBridge.Core.Stores;
 /// </summary>
 public sealed class BootstrapSyncService : IBootstrapSyncService
 {
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new(JsonSerializerDefaults.Web);
+
     /// <summary>Checkpoint scope used by the bootstrap orchestrator. Stable string — do not rename.</summary>
     public const string BootstrapScope = "bootstrap";
 
@@ -211,6 +214,12 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 return new BootstrapSyncResult(true, 0, 0, 0, 0, 0, 0, 0, stopwatch.ElapsedMilliseconds);
             }
 
+            var payloadBytes = MeasurePayloadBytes(package);
+            _logger.LogInformation(
+                "Bootstrap package prepared: {PayloadBytes} bytes ({PayloadMegabytes:F2} MiB), incremental={IsIncremental}, section={Section}.",
+                payloadBytes, payloadBytes / (1024d * 1024d), package.IsIncremental,
+                package.PartialSection ?? "all");
+
             // 2) Push to central API under the retry pipeline. The IRemoteApiClient
             //    signature is PushBootstrapDataAsync(ErpBridge.Erp.Abstractions.Sync.SyncPackage),
             //    which is exactly the type the adapter returns, so no mapper is
@@ -225,7 +234,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             {
                 _logger.LogWarning("Bootstrap push rejected with 4xx ({Code}): {Message}",
                     ex.ErrorCode, ex.Message);
-                return Failed(stopwatch, ex.ErrorCode, ex.Message);
+                return Failed(stopwatch, ex.ErrorCode, ex.Message, payloadBytes);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -300,7 +309,8 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 BarcodesCount: SafeCount(package.Barcodes),
                 SalesConditionsCount: SafeCount(package.SalesConditions),
                 CustomerTransactionsCount: SafeCount(package.CustomerTransactions),
-                StockTransactionsCount: SafeCount(package.StockTransactions));
+                StockTransactionsCount: SafeCount(package.StockTransactions),
+                PayloadBytes: payloadBytes);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -435,6 +445,11 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     "Adapter returned a null SyncPackage.");
             }
 
+            var payloadBytes = MeasurePayloadBytes(package);
+            _logger.LogInformation(
+                "Bootstrap section {Section} prepared: {PayloadBytes} bytes ({PayloadMegabytes:F2} MiB).",
+                sectionName, payloadBytes, payloadBytes / (1024d * 1024d));
+
             // 2) Push to central API under the same retry pipeline as the bulk
             //    flow. The endpoint (POST /api/v1/bootstrap) accepts the partial
             //    package as-is; the server stores it as JSON in bootstrap_packages.
@@ -448,7 +463,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             {
                 _logger.LogWarning("Section {Section} push rejected with 4xx ({Code}): {Message}",
                     sectionName, ex.ErrorCode, ex.Message);
-                return Failed(stopwatch, ex.ErrorCode, ex.Message);
+                return Failed(stopwatch, ex.ErrorCode, ex.Message, payloadBytes);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -458,7 +473,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             {
                 _logger.LogError(ex, "Section {Section} push failed after retries.", sectionName);
                 return Failed(stopwatch, ErrorCode.TransientUpstream,
-                    $"Push failed after retries: {ex.Message}");
+                    $"Push failed after retries: {ex.Message}", payloadBytes);
             }
 
             // 3) Persist checkpoint on success. We update LastSuccessAt so the
@@ -529,7 +544,8 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 BarcodesCount: package.Barcodes.Count,
                 SalesConditionsCount: package.SalesConditions.Count,
                 CustomerTransactionsCount: customerTransactionsCount,
-                StockTransactionsCount: stockTransactionsCount);
+                StockTransactionsCount: stockTransactionsCount,
+                PayloadBytes: payloadBytes);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -544,6 +560,9 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
 
     private static int SafeCount<T>(IReadOnlyList<T> list) => list?.Count ?? 0;
 
+    private static long MeasurePayloadBytes(SyncPackage package) =>
+        JsonSerializer.SerializeToUtf8Bytes(package, PayloadJsonOptions).LongLength;
+
     private static bool IsEmpty(SyncPackage package) =>
         SafeCount(package.Customers) + SafeCount(package.CustomerAddresses) + SafeCount(package.CustomerContacts)
         + SafeCount(package.Stocks) + SafeCount(package.Barcodes) + SafeCount(package.Prices)
@@ -554,7 +573,11 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     private static string ResolveTenantId(AgentConfig config) =>
         string.IsNullOrWhiteSpace(config.TenantId) ? "unknown" : config.TenantId;
 
-    private static BootstrapSyncResult Failed(Stopwatch stopwatch, string code, string message) =>
+    private static BootstrapSyncResult Failed(
+        Stopwatch stopwatch,
+        string code,
+        string message,
+        long payloadBytes = 0) =>
         new(
             Success: false,
             CustomersCount: 0,
@@ -566,7 +589,8 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             LookupsCount: 0,
             DurationMs: stopwatch.ElapsedMilliseconds,
             ErrorCode: code,
-            ErrorMessage: message);
+            ErrorMessage: message,
+            PayloadBytes: payloadBytes);
 
     /// <summary>
     /// Build the canonical Polly v8 exponential-backoff pipeline.

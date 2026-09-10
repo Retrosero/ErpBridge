@@ -114,7 +114,11 @@ anahtar projeksiyonu + kendi `ShadowTableOptions`'ını verir.
   benzersiz olmalı, yayınlandıktan sonra asla yeniden numaralanmaz. Referansta
   `STOK_KATEGORILERI`/`STOK_SEKTORLERI` id 8'i paylaşıyordu; ErpBridge birine
   benzersiz id verdi.
-- `_ERPB_SYNC` / `_ERPB_SYNC_DEL` AFTER trigger'ları. Katalog her kurulumun
+- Genel SQL Server adaptöründe `_ERPB_SYNC` / `_ERPB_SYNC_DEL` AFTER trigger'ları.
+  **Mikro V15 bu genel kurulum yolunu kullanmaz:** mevcut
+  `_ERPB_SENKRONIZASYON` tablosunu (`Islem`: 0 silme, 1 güncelleme, 2 ekleme)
+  salt okunur kaynak olarak tüketir ve ERP'de yeni tablo/trigger oluşturmaz.
+  Katalog her kurulumun
   **üst kümesidir** (Mikro yalnızca lisanslı modülleri kurar), bu yüzden
   `InstallAsync`, `IsInstalledAsync` **ve** `ReadChangesAsync` üçü de
   `sys.tables`'da bulunmayan tabloları atlar. Bu filtre okuma tarafında
@@ -142,14 +146,12 @@ cursor'u ilerlet. Arada crash → sayfa tekrar oynatılır (her olay idempotent
 upsert veya anahtarlı delete). Mikro'ya bağlı eski `TriggerChangeSetSyncService`
 kaldırıldı.
 
-### Silme ve değişiklik su-seviyeleri ayrıdır (Faz 20.D)
+### Silme ve değişiklik su-seviyeleri
 
-SQL Server change-log'da insert/update olayları `_ERPB_SYNC`, delete olayları
-`_ERPB_SYNC_DEL` tablosundan gelir — **ayrı IDENTITY dizileri**. `SyncTableChangeSet`
-her ikisini de taşır (`New/UpsertSequence` + `New/DeleteSequence`) ve `change_sets`
-satır kimliği `(TenantId, SourceDatabase, TableName, LastTriggerRecNo, LastDeleteRecNo)`.
-Tek bir sayıya katlamak, **sadece silme içeren bir döngüyü** önceki döngünün
-kopyası gibi gösterip silmeleri sessizce düşürürdü.
+Mikro V15'te insert/update/delete olaylarının tamamı `_ERPB_SENKRONIZASYON`
+tablosundaki tek `TriggerRECno` dizisini paylaşır. Okuyucu her `TabloID` için bu
+ortak sırayı cursor olarak saklar. Genel SQL Server adaptöründe ise upsert ve
+delete tablolarının ayrı su-seviyeleri korunur.
 
 ### Olay-güdümlü sync (long-poll)
 
@@ -173,13 +175,113 @@ ile ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sa
 `BootstrapWorker` trigger modunda (`UseTriggerBasedSync=true`) her iterasyonda
 **hem** change-log **hem** snapshot-delta cycle'ını çalıştırır
 (`RefreshSnapshotInTriggerMode=true`, `BootstrapIntervalSeconds=20`). WPF
-"Senkronize Et" butonu (`DashboardViewModel.RunSyncDeltaAsync`) de 2026-09-10'dan
-itibaren aynı sırayı izler: change-log push → `IBootstrapSyncService.InvalidateAsync`
-(yalnızca 30 sn idempotency penceresini açar) → `RunOnceAsync` (sunucuda snapshot
-varken artımlı). Önceden buton yalnızca change-log gönderiyordu; sunucu upsert
-olaylarını snapshot'a uygulamadığı ve Android `/sync/faturaHareket`'i snapshot'tan
-okuduğu için **yeni kesilen fatura cihaza hiç inmiyordu, silmeler ise
-`SnapshotDeleteApplier` sayesinde iniyordu**. Trigger-only
-mod (delete-only) yalnızca `*_lastup_date`'i olmayan bir ERP'de mantıklı; o zaman
-shadow-log `upsert` kuyruğu Android tarafına bağlanmalı (ileride
-`/android/changeset/*/new_or_changed`).
+"Senkronize Et" butonu (`DashboardViewModel.RunSyncDeltaAsync`) ise operatörün
+isteğiyle yalnızca `_ERPB_SENKRONIZASYON` change-log push'unu çalıştırır;
+bootstrap snapshot yenilemez. Tam snapshot veya boyut ölçümlü aktarım ayrı
+"Bootstrap" butonundadır.
+
+### Chunked bootstrap upload — bölüm bazlı merge (2026-09-10 düzeltmesi)
+
+`HttpRemoteApiClient.PushChunkedBootstrapDataAsync` her push'ta (otomatik
+`BootstrapWorker` döngüsü dahil) **tüm 13 bölümü** gönderir — değişmeyen
+bölümler tek boş chunk (`items: []`) olarak "placeholder" gider
+(`SendChunksAsync`). `POST /bootstrap/upload/{id}/complete`
+(`BootstrapUploadEndpoints.CompleteAsync` → `MergeIncrementalChunksAsync`),
+staged snapshot'ta görünen **her** bölümü önceki aktif snapshot'la JSON
+seviyesinde eşitleyip (parse + `Dictionary<key, JsonNode>` + yeniden
+serileştirme) yeni chunk satırları yazıyordu.
+
+**Bug (2026-09-10 öncesi):** `customerTransactions`/`stockTransactions` gibi
+"yıllarca ledger hareketi" içerebilen bölümlerde bu tam-yeniden-inşa her
+20-60 sn'lik döngüde tekrarlanıyordu — hiçbir satır değişmese bile. Ayrıca
+`PushSectionAsync` ile tek bölüm push'u (`/complete`'in yalnızca gönderilen
+bölümleri gezmesi yüzünden) **gönderilmeyen diğer bölümlerin verisini
+sessizce siliyordu** — `previous` snapshot cascade-delete ile kaldırılırken o
+bölümler hiç `staged`'a taşınmamış oluyordu.
+
+**Düzeltme:** `MergeIncrementalChunksAsync` artık önce o bölümde **gerçek
+(ItemCount > 0) bir değişiklik var mı** diye bakıyor. Yoksa (bölüm hiç
+gönderilmemiş VEYA boş placeholder olarak gelmiş) pahalı JSON round-trip'i
+atlayıp önceki snapshot'ın chunk satırlarını ucuz bir `SnapshotId`
+güncellemesiyle yeni snapshot'a **taşıyor**. Gerçek değişiklik olan bölümler
+hâlâ tam merge'den geçiyor (anahtar bazlı upsert/delete mantığı bozulmadı).
+Bkz. `tests/ErpBridge.CentralApi.Tests/Endpoints/BootstrapUploadTests.cs`
+(`Single_section_incremental_push_does_not_wipe_other_sections`,
+`Incremental_push_with_no_changes_in_a_section_carries_its_chunk_rows_forward_unchanged`).
+
+### `/bootstrap/upload/{id}/complete` HTTP 500 ve WPF "kitlenmesi" (2026-09-10)
+
+`ui-20260910.log`'daki asıl arıza yukarıdaki merge maliyeti **değildi**:
+`/complete` her seferinde ~0,2–3,9 sn içinde HTTP 500 dönüyordu (zaman aşımı
+olsa 30 sn+ sürerdi). İki ayrı hata üst üste biniyordu.
+
+**1) Sunucu — aktif snapshot benzersiz indeksi ihlali.**
+`bootstrap_snapshots` üzerinde `(TenantId) WHERE "IsActive" = true` filtreli
+**unique** indeks var (`IX_bootstrap_snapshots_TenantId_Active`).
+`CompleteAsync` ise önceki snapshot'ı pasifleştirmeyi ve staged snapshot'ı
+aktifleştirmeyi **tek `SaveChangesAsync`** içinde yapıyordu. EF Core bir
+batch'teki aynı-tablo UPDATE'lerini birincil anahtara göre sıralar; sıra
+`staged.IsActive = true` önce gelecek şekilde çıktığında PostgreSQL 23505
+verip endpoint 500 dönüyordu. GUID'lere bağlı olduğu için **denemelerin
+yaklaşık yarısında** patlıyor, aynı `uploadId`'nin her retry'ında ise aynı
+sırayla tekrar patlıyordu.
+*Düzeltme:* önceki snapshot'lar kendi round-trip'inde silinip flush ediliyor,
+staged ancak ondan sonra aktifleştiriliyor (ikisi de aynı transaction'da).
+
+**2) Ajan — çift retry katmanı.**
+`ServiceCollectionExtensions.IsBootstrapRequest` yalnızca eski tekil uç olan
+`/api/v1/bootstrap` yolunu tanıyordu; chunked upload yolları
+(`/api/v1/bootstrap/upload/...`) HttpClient'ın 5+15+60+300 sn'lik Polly
+politikasına takılıyordu. Bu, `BootstrapSyncService`'in kendi 5/15/60 sn'lik
+pipeline'ının **altına** yerleşiyor, üstüne bir de 9 bölümlük fallback
+geliyordu: tek bir `/complete` POST'u logda `397986 ms` sürüyor, "customers"
+fallback'i 51 dakika sonra hata veriyordu. WPF'te "kitleniyor" denen şey buydu
+(UI thread bloke değil — `RunBootstrapAsync` tamamen async; buton saatlerce
+`IsBusy` kalıyordu).
+*Düzeltme:* `SkipsTransportRetry` (eski adı `IsBootstrapRequest`) artık
+bootstrap **yazma** yollarını (`/api/v1/bootstrap` + `/bootstrap/upload/...`) ve
+kendi yeniden bağlanma döngüsü olan `/bootstrap/notify` long-poll'unu kapsıyor.
+
+> ⚠️ `GET /bootstrap/status` bilerek **dışarıda**. O sonda kendi retry'ı olmayan
+> tek bootstrap çağrısı: `BootstrapSyncService.RunOnceAsync` hatayı "status
+> unavailable" diye yutup döngüyü **tam snapshot'a** düşürüyor. Yıllarca hareket
+> taşıyan bir tenant'ta bu, küçük bir GET'i yeniden denemekten çok daha pahalı.
+> Alt ağacın tamamını kapsamak bu regresyonu yaratmıştı (PR #19 kod incelemesi).
+
+**Test altyapısı notu:** `CentralApiFactory` EF Core **InMemory** sağlayıcısını
+kullanır; InMemory unique index'leri uygulamaz ve transaction desteği yoktur —
+bu yüzden yukarıdaki 500 testlerden kaçtı. Yeni
+`SqliteCentralApiFactory` (`ConfigureDatabase` hook'u ile) aynı host'u ilişkisel
+bir SQLite dosyası üzerinde ayağa kaldırır;
+`Endpoints/BootstrapUploadRelationalTests` 20 farklı tenant üzerinden
+`/complete`'i koşturarak sıralamaya bağlı ihlali yakalar. **Kısıt/benzersizlik
+davranışına dayanan yeni CentralApi testleri InMemory factory'ye değil bu
+ilişkisel factory'ye yazılmalı.**
+
+### `MikroAdapter.ChangeLog` asla fırlatmaz (2026-09-10)
+
+`ErpChangeLogSyncService.RunOnceAsync`, `adapter.ChangeLog`'u **try bloğunun
+dışında** dereference ediyor; `BootstrapWorker.RunSingleIterationAsync` ise
+`catch (Exception)` ile **tüm iterasyonu** sarıyor — trigger modunda change-log
+pass'inden *sonra* çalışan snapshot-delta pass'i dahil.
+
+Dolayısıyla bu property'den kaçan bir istisna sadece change-log senkronunu
+kapatmıyor, **iterasyonun tamamını** iptal ediyor: o veritabanı bootstrap
+yenilemesi de almıyor. İki tetikleyicisi vardı:
+
+1. **V16 veritabanı.** `_ERPB_SENKRONIZASYON` feed'i V15 RECno anahtarlarına
+   dayanıyor; V16 Guid kullanıyor. Eski kod `NotSupportedException` fırlatıyordu,
+   ama `ChangeDetection` hâlâ `ShadowTableChangeLog` ilan ettiği için tüketici
+   zarif düşüş yapamıyordu.
+2. **Geçici bağlantı hatası.** `MikroVersionDetector.DetectAsync` bağlantıyı
+   `try/catch` olmadan açar — sunucu bir an erişilemezse `SqlException` fırlar.
+   `Lazy<T>` istisnayı **kalıcı olarak cache'lediği** için tek bir kesinti,
+   süreç yeniden başlatılana kadar senkronu öldürüyordu. ("Defaulting to V15"
+   uyarısı yalnızca bağlantı *kurulduktan* sonraki belirsiz sürüm için çıkar,
+   bağlantı hatası için değil.)
+
+**Düzeltme:** `ChangeLog` artık `null` döner, fırlatmaz. V16 kesin bir cevaptır
+ve cache'lenir; probe hatası **kesin değildir** ve cache'lenmez, sonraki cycle
+yeniden dener. Tüketici zaten `ChangeLog is not { } changeLog` kontrolüyle
+"change log yok" deyip snapshot yoluna düşüyor. Bkz.
+`tests/ErpBridge.Erp.Mikro.Tests/Adapters/MikroAdapterChangeLogTests.cs`.
