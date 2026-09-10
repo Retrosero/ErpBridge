@@ -267,6 +267,53 @@ public sealed class ChangeSetAuditPagedResult
     [JsonPropertyName("items")] public IReadOnlyList<ChangeSetAuditEntryDto> Items { get; set; } = Array.Empty<ChangeSetAuditEntryDto>();
 }
 
+// ----- Faz 25: mobile_sync_queue (ERP -> mobil olay akisi) -----
+
+/// <summary>One row of <c>mobile_sync_queue</c>.</summary>
+public sealed class SyncQueueItemDto
+{
+    [JsonPropertyName("sequence")] public long Sequence { get; set; }
+    [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
+    [JsonPropertyName("table")] public string Table { get; set; } = string.Empty;
+    [JsonPropertyName("entity")] public string Entity { get; set; } = string.Empty;
+    [JsonPropertyName("operation")] public string Operation { get; set; } = string.Empty;
+    [JsonPropertyName("recordKey")] public string RecordKey { get; set; } = string.Empty;
+    [JsonPropertyName("sourceRecordKey")] public string? SourceRecordKey { get; set; }
+    [JsonPropertyName("triggerRecNo")] public long TriggerRecNo { get; set; }
+    [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
+}
+
+/// <summary>A page of sync-queue rows.</summary>
+public sealed class SyncQueuePagedResult
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("size")] public int Size { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("items")] public IReadOnlyList<SyncQueueItemDto> Items { get; set; } = Array.Empty<SyncQueueItemDto>();
+}
+
+/// <summary>Per-entity/operation counts for the sync queue.</summary>
+public sealed class SyncQueueGroupDto
+{
+    [JsonPropertyName("entity")] public string Entity { get; set; } = string.Empty;
+    [JsonPropertyName("operation")] public string Operation { get; set; } = string.Empty;
+    [JsonPropertyName("count")] public int Count { get; set; }
+    [JsonPropertyName("lastCreatedAtUtc")] public DateTimeOffset LastCreatedAtUtc { get; set; }
+}
+
+/// <summary>
+/// Sync-queue health at a glance. A stale <see cref="LastCreatedAtUtc"/> is the
+/// signal that the agent stopped pushing.
+/// </summary>
+public sealed class SyncQueueSummaryResult
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("lastCreatedAtUtc")] public DateTimeOffset? LastCreatedAtUtc { get; set; }
+    [JsonPropertyName("groups")] public IReadOnlyList<SyncQueueGroupDto> Groups { get; set; } = Array.Empty<SyncQueueGroupDto>();
+}
+
 // ----- Faz 15.8: Parametreler (_ERPB_PARAMETRELER mirror) -----
 
 public sealed class ParameterRecordDto
@@ -491,6 +538,34 @@ public sealed class CentralApiClient
         CancellationToken ct = default)
         => SendAsync<ChangeSetAuditPagedResult>(() => _http.GetAsync(
             BuildChangeSetAuditQuery(tenantId, table, direction, fromUtc, toUtc, page, pageSize), ct), ct);
+
+    /// <summary>
+    /// Faz 25 — list a page of <c>mobile_sync_queue</c> rows (ERP → mobile
+    /// event stream). The endpoint always scopes to the JWT tenant.
+    /// </summary>
+    public Task<SyncQueuePagedResult> ListSyncQueueAsync(
+        Guid tenantId,
+        string? entity = null,
+        string? operation = null,
+        string? table = null,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        var qs = new List<string> { $"tenantId={tenantId}" };
+        if (!string.IsNullOrWhiteSpace(entity)) qs.Add($"entity={Uri.EscapeDataString(entity)}");
+        if (!string.IsNullOrWhiteSpace(operation)) qs.Add($"operation={Uri.EscapeDataString(operation)}");
+        if (!string.IsNullOrWhiteSpace(table)) qs.Add($"table={Uri.EscapeDataString(table)}");
+        qs.Add($"page={Math.Max(1, page)}");
+        qs.Add($"size={Math.Clamp(pageSize, 1, 500)}");
+        var url = "/api/v1/admin/sync-queue/?" + string.Join("&", qs);
+        return SendAsync<SyncQueuePagedResult>(() => _http.GetAsync(url, ct), ct);
+    }
+
+    /// <summary>Faz 25 — per-entity counts plus the newest queue timestamp.</summary>
+    public Task<SyncQueueSummaryResult> GetSyncQueueSummaryAsync(Guid tenantId, CancellationToken ct = default)
+        => SendAsync<SyncQueueSummaryResult>(
+            () => _http.GetAsync($"/api/v1/admin/sync-queue/summary?tenantId={tenantId}", ct), ct);
 
     /// <summary>
     /// Faz 15.8 — fetch the same change-set audit query as CSV. Used by the

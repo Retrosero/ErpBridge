@@ -610,6 +610,65 @@ public class BootstrapSyncServiceTests
     }
 
     [Fact]
+    public async Task RebuildSnapshotAsync_ignores_the_remote_cursor_and_pushes_a_full_package()
+    {
+        // The rebuild is the only way a row deleted in the ERP ever leaves the
+        // central snapshot: an incremental read cannot express absence, so the
+        // server-side merge keeps the stale row forever. It therefore must NOT
+        // consult the remote cursor, and the package it pushes must be
+        // non-incremental so the server replaces rather than merges.
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);
+        var cursor = fixedNow.AddMinutes(-1);
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+
+        var checkpointStore = new Mock<ICheckpointStore>();
+        // Inside the 30 s idempotency window: a normal RunOnceAsync would skip.
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CheckpointRecord
+            {
+                TenantId = TenantId,
+                SyncScope = BootstrapSyncService.BootstrapScope,
+                LastSuccessAt = fixedNow.AddSeconds(-1).UtcDateTime,
+                UpdatedAt = fixedNow.AddSeconds(-1).UtcDateTime,
+            });
+
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage());
+        adapter.Setup(a => a.ReadBootstrapChangesAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage() with { IsIncremental = true });
+
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapRemoteStatus(true, cursor));
+        SyncPackage? pushed = null;
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .Callback<SyncPackage, CancellationToken>((p, _) => pushed = p)
+            .Returns(Task.CompletedTask);
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        var result = await sut.RebuildSnapshotAsync();
+
+        result.Success.Should().BeTrue();
+        adapter.Verify(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()), Times.Once);
+        adapter.Verify(a => a.ReadBootstrapChangesAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        remoteApi.Verify(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()), Times.Never);
+        pushed.Should().NotBeNull();
+        pushed!.IsIncremental.Should().BeFalse("a merged package can never evict a deleted row");
+    }
+
+    [Fact]
     public async Task RunOnceAsync_does_not_push_an_empty_delta()
     {
         var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);

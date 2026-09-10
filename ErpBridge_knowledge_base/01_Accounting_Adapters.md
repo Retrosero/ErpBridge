@@ -285,3 +285,58 @@ ve cache'lenir; probe hatası **kesin değildir** ve cache'lenmez, sonraki cycle
 yeniden dener. Tüketici zaten `ChangeLog is not { } changeLog` kontrolüyle
 "change log yok" deyip snapshot yoluna düşüyor. Bkz.
 `tests/ErpBridge.Erp.Mikro.Tests/Adapters/MikroAdapterChangeLogTests.cs`.
+
+---
+
+## Faz 25 — Silinen kayıtların ölümsüzlüğü ve arka plan senkronizasyonu
+
+### Neden ERP'de silinen kayıt mobilde geri geliyordu
+
+Sistemde iki bağımsız veri yolu var ve **silme yalnızca birine yazılıyordu**:
+
+| Yol | Ne taşır | Silme bilgisi | Anahtar |
+|---|---|---|---|
+| `change_sets` + `mobile_sync_queue` | olay akışı | **Var** (`operation="delete"`) | `sto_RECno` |
+| `bootstrap_snapshots` + `_chunks` | tam durum (cihazın sıfırdan çektiği) | **Yok** | `sto_kod` |
+
+Zincir:
+
+1. `BootstrapSyncService`, `remoteStatus.HasSnapshot` true olduğu sürece **kalıcı olarak artımlı** moddadır. İlk bootstrap'tan sonra bir daha asla tam paket göndermez.
+2. Artımlı okuma silinmiş satırı **üretemez** — `MikroDbReader` sorgusu onu zaten seçmez.
+3. Sunucu merge'i "gelmedi = silindi" **varsaymaz**; gelmeyen anahtar olduğu gibi korunur.
+4. `BootstrapUploadEndpoints.AddItems` içindeki `isDeleted` tombstone dalı **ölü koddur** — repoda `isDeleted:true` üreten hiçbir yer yok, bootstrap DTO'larında böyle bir alan bile yok.
+
+Sonuç: snapshot'a bir kez girmiş kayıt orada sonsuza dek kalır ve sıfırdan bootstrap çeken her cihaza servis edilir. `sto_iptal=1` / `sto_pasif_fl=1` ile iptal/pasif yapılanlar da aynı sebeple kalır — üstelik onlar hard-delete olmadığı için shadow-log'a `Islem=0` değil `Islem=1` düşer, yani delete kuyruğuna hiç girmezler.
+
+### Düzeltme: `RebuildSnapshotAsync` ("Sıfırdan Kur")
+
+Sunucu tam değişimi **zaten destekliyordu**: `CompleteAsync`, `IsIncremental == false` ise merge'i hiç çalıştırmaz, eski snapshot'ı `RemoveRange(old)` ile siler ve yalnızca gelen satırları aktif yapar. Eksik olan tek şey ajanın bunu tetikleyebilmesiydi — **yeni sunucu ucu gerekmedi.**
+
+`IBootstrapSyncService.RebuildSnapshotAsync()` uzaktaki cursor'u ve `MinimumIntervalSeconds` penceresini atlar, `ReadBootstrapDataAsync` ile tam okur ve paketi non-incremental gönderir. WPF Dashboard'daki **"Sıfırdan Kur"** butonu bunu onay diyaloğuyla çağırır.
+
+> Bu, yalnızca ileriye dönük silme düzeltmesinin (bkz. `SnapshotDeleteApplier`, PR #15) **kapatamadığı** durumu çözer: ERP'si çoktan silinmiş kayıtlar için yeni bir delete olayı asla gelmeyeceğinden, birikmiş kiri ancak tam değişim temizler.
+
+Testler: `BootstrapUploadRelationalTests.Non_incremental_upload_replaces_the_snapshot_and_drops_stale_rows`,
+`BootstrapSyncServiceTests.RebuildSnapshotAsync_ignores_the_remote_cursor_and_pushes_a_full_package`.
+
+### WPF ajanı artık arka planda senkronize oluyor
+
+**Eski durum:** `AddHostedService` `src/ErpBridge.Agent.UI/` altında hiç geçmiyordu. `BootstrapWorker` yalnızca `Agent.Service/Program.cs`'te kayıtlıydı; WPF `App.xaml.cs` çıplak bir `ServiceCollection` kurduğu için Generic Host yoktu ve **hiçbir periyodik senkron çalışmıyordu**. Change-set yalnızca operatör butona bastığında gidiyordu (`ui-20260910.log`: 129 heartbeat, ~350 bootstrap isteği, **3 adet** `/api/v1/ingest/changeset`).
+
+`UseTriggerBasedSync=true` ve `BootstrapIntervalSeconds=20` varsayılanları doğruydu — ama onları okuyan worker o süreçte yoktu.
+
+**Düzeltme:** Döngü mantığı `ErpBridge.Core/Sync/AgentSyncLoop.cs`'e taşındı. `Core`'a `Microsoft.Extensions.Hosting` **eklenmedi** — sınıf Hosting'e bağımlı değil, böylece referans grafiği korunuyor:
+
+- `Agent.Service` → `BootstrapWorker` artık `AgentSyncLoop`'un ince bir `BackgroundService` sarmalayıcısı.
+- `Agent.UI` → `DesktopBackgroundSyncService` döngüyü kendi CTS'i ile `Task.Run` üzerinde çalıştırır; `App.OnStartup`'ta `Start()`, `OnExit`'te `StopAsync()`.
+- `AgentService:BackgroundSyncEnabled` (varsayılan `true`) ile kapatılabilir.
+
+### Admin panelinde senkron kuyruğu
+
+`mobile_sync_queue` yalnızca `GET /api/v1/android/sync/queue` üzerinden, **mobil API anahtarıyla** okunabiliyordu; admin tarafında ne uç ne sayfa vardı. Bootstrap'ın ikisi de olduğu için "bootstrap görünüyor ama kuyruk görünmüyor" tablosu ortaya çıkıyordu.
+
+Yeni: `AdminSyncQueueEndpoints` → `GET /api/v1/admin/sync-queue/` ve `/summary`, Blazor sayfası `Pages/SyncQueue.razor` ("Senkron kuyruğu"). Özet, son olay 15 dakikadan eskiyse uyarı gösterir — ajanın push'u durdurduğunun en hızlı göstergesi.
+
+> ⚠️ **Admin token'ında tenant claim'i YOKTUR.** `IJwtIssuer.IssueForAdmin` yalnızca `sub`, `scope=admin`, `jti` üretir. Bu yüzden admin uçları tenant'ı **query parametresinden** almalıdır (`AdminBootstrapEndpoints` deseni), `http.User.TryGetTenantId` **değil**.
+>
+> **Mevcut hata:** `AdminAuditEndpoints` (`/api/v1/admin/audit/changeset`) tenant'ı JWT'den okuyor, dolayısıyla her admin isteğine 401 dönüyor olmalı — "Sync geçmişi" sayfası bu yüzden hiçbir zaman veri gösteremez. Ayrı bir iş olarak düzeltilmeli.

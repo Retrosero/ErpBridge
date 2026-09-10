@@ -105,7 +105,22 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     }
 
     /// <inheritdoc />
-    public async Task<BootstrapSyncResult> RunOnceAsync(CancellationToken ct = default)
+    public Task<BootstrapSyncResult> RunOnceAsync(CancellationToken ct = default)
+        => RunCycleAsync(forceFullSnapshot: false, ct);
+
+    /// <inheritdoc />
+    public Task<BootstrapSyncResult> RebuildSnapshotAsync(CancellationToken ct = default)
+        => RunCycleAsync(forceFullSnapshot: true, ct);
+
+    /// <summary>
+    /// One bootstrap cycle. <paramref name="forceFullSnapshot"/> turns it into
+    /// the operator-triggered rebuild: the remote cursor and the idempotency
+    /// window are both ignored and the package goes up non-incrementally, which
+    /// makes the central API replace the active snapshot instead of merging
+    /// into it. That replacement is the only thing that can evict rows deleted
+    /// in the ERP, because an incremental read cannot express a row's absence.
+    /// </summary>
+    private async Task<BootstrapSyncResult> RunCycleAsync(bool forceFullSnapshot, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
         try
@@ -122,7 +137,9 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             // Idempotency window: skip the cycle if the last successful push
             // is still inside the minimum interval. The worker (or operator
             // via UI) can call InvalidateAsync() to force a re-run.
-            var last = await _checkpointStore.LoadAsync(tenantId, BootstrapScope, ct).ConfigureAwait(false);
+            var last = forceFullSnapshot
+                ? null
+                : await _checkpointStore.LoadAsync(tenantId, BootstrapScope, ct).ConfigureAwait(false);
             if (last?.LastSuccessAt is { } lastAt)
             {
                 var age = _timeProvider.GetUtcNow().UtcDateTime - lastAt;
@@ -164,18 +181,30 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             // The central API is authoritative for whether it already has a
             // snapshot. A local checkpoint alone cannot detect that the
             // central store was reset while this agent stayed online.
+            // A forced rebuild deliberately ignores the cursor: pretending the
+            // tenant has no snapshot is what selects the full read below and
+            // marks the package non-incremental for the upload.
             BootstrapRemoteStatus remoteStatus;
-            try
+            if (forceFullSnapshot)
             {
-                remoteStatus = await _remoteApi.GetBootstrapStatusAsync(ct).ConfigureAwait(false)
-                    ?? new BootstrapRemoteStatus(false, null);
-            }
-            catch (Exception ex)
-            {
-                // Old servers without the status endpoint must remain safe:
-                // use a full package rather than risk a partial first upload.
-                _logger.LogWarning(ex, "Bootstrap status unavailable; using a full snapshot.");
+                _logger.LogInformation(
+                    "Bootstrap rebuild requested; ignoring the remote cursor and replacing the active snapshot.");
                 remoteStatus = new BootstrapRemoteStatus(false, null);
+            }
+            else
+            {
+                try
+                {
+                    remoteStatus = await _remoteApi.GetBootstrapStatusAsync(ct).ConfigureAwait(false)
+                        ?? new BootstrapRemoteStatus(false, null);
+                }
+                catch (Exception ex)
+                {
+                    // Old servers without the status endpoint must remain safe:
+                    // use a full package rather than risk a partial first upload.
+                    _logger.LogWarning(ex, "Bootstrap status unavailable; using a full snapshot.");
+                    remoteStatus = new BootstrapRemoteStatus(false, null);
+                }
             }
 
             // Pull a complete package only for an empty central tenant.

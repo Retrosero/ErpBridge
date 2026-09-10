@@ -64,6 +64,10 @@
                         Style="{StaticResource TintedButtonStyle}"
                         MinWidth="106" Padding="14,7" Margin="0,0,8,0"
                         ToolTip="Tüm referans veriyi baştan okuyup gönderir (60 dk idempotency penceresini bypass eder)." />
+                <Button Content="Sıfırdan Kur"
+                        Command="{Binding RebuildSnapshotCommand}"
+                        MinWidth="112" Padding="14,7" Margin="0,0,8,0"
+                        ToolTip="Sunucudaki snapshot'ı silip Mikro'dan baştan kurar. ERP'de silinmiş kayıtlar mobilde görünmeye devam ediyorsa bunu kullanın." />
                 <Button Content="Yenile"
                         Command="{Binding RefreshCommand}"
                         MinWidth="84" Padding="14,7"

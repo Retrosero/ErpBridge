@@ -484,6 +484,7 @@ public partial class Program
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();
+        app.MapAdminSyncQueueEndpoints();
         app.MapAdminAuthEndpoints();
         app.MapAdminTenantsEndpoints();
         app.MapAdminErpCompaniesEndpoints();

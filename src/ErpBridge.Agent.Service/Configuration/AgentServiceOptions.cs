@@ -1,3 +1,5 @@
+using ErpBridge.Core.Sync;
+
 namespace ErpBridge.Agent.Service.Configuration;
 
 /// <summary>
@@ -65,4 +67,14 @@ public sealed class AgentServiceOptions
     /// never installs ERP objects, so this value is ignored for Mikro.
     /// </summary>
     public bool TriggerInstallOnStartup { get; set; } = true;
+
+    /// <summary>
+    /// Project the sync-cadence subset onto <see cref="AgentSyncLoopOptions"/>,
+    /// which is what both hosts (Windows Service and WPF agent) actually drive.
+    /// </summary>
+    public AgentSyncLoopOptions ToSyncLoopOptions() => new(
+        IntervalSeconds: BootstrapIntervalSeconds,
+        FirstRunDelaySeconds: BootstrapFirstRunDelaySeconds,
+        UseTriggerBasedSync: UseTriggerBasedSync,
+        RefreshSnapshotInTriggerMode: RefreshSnapshotInTriggerMode);
 }

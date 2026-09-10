@@ -66,6 +66,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDesktopSignalService, BootstrapSignalService>();
         services.AddSingleton<DesktopAgentTelemetryReporter>();
         services.AddSingleton<DesktopHeartbeatService>();
+
+        // Periodic ERP change-log + snapshot-delta cycle. The Windows Service
+        // gets this through BootstrapWorker; the WPF process has no generic
+        // host, so it owns the loop directly.
+        services.AddSingleton<DesktopBackgroundSyncService>();
         // Live UI clock: drives the tray tooltip + the status-bar clock.
         services.AddSingleton<IDesktopClockService, DesktopClockService>();
 
