@@ -347,3 +347,81 @@ Ajan tarafı **zaten artımlı** (`ReadBootstrapChangesAsync`, `*_lastup_date` f
 Asimetri **okuma** tarafındadır: `CustomersAsync` / `ProductCatalogAsync` / `SectionAsync` `AndroidPageRequest.Since` alanını hiç okumaz ve her istekte birleştirilmiş bölümün tamamını sayfalayarak döner. Bu yüzden tek bir satışın yarattığı küçük delta, cihazda tam katalog indirmesine dönüşür.
 
 `mobile_sync_queue`'nun `operation=upsert` akışı bu boşluğu kapatacak veriyi taşır (satır + tüm kolonları), ancak Android'de bunu **veri olarak uygulayan** bir tüketici yoktur — mevcut tüketici yalnızca kimlik haritası için anahtar çıkarır.
+
+---
+
+## Faz 25 — Silinen kayıtların ölümsüzlüğü ve arka plan senkronizasyonu
+
+### Neden ERP'de silinen kayıt mobilde geri geliyordu
+
+Sistemde iki bağımsız veri yolu var ve **silme yalnızca birine yazılıyordu**:
+
+| Yol | Ne taşır | Silme bilgisi | Anahtar |
+|---|---|---|---|
+| `change_sets` + `mobile_sync_queue` | olay akışı | **Var** (`operation="delete"`) | `sto_RECno` |
+| `bootstrap_snapshots` + `_chunks` | tam durum (cihazın sıfırdan çektiği) | **Yok** | `sto_kod` |
+
+Zincir:
+
+1. `BootstrapSyncService`, `remoteStatus.HasSnapshot` true olduğu sürece **kalıcı olarak artımlı** moddadır. İlk bootstrap'tan sonra bir daha asla tam paket göndermez.
+2. Artımlı okuma silinmiş satırı **üretemez** — `MikroDbReader` sorgusu onu zaten seçmez.
+3. Sunucu merge'i "gelmedi = silindi" **varsaymaz**; gelmeyen anahtar olduğu gibi korunur.
+4. `BootstrapUploadEndpoints.AddItems` içindeki `isDeleted` tombstone dalı **ölü koddur** — repoda `isDeleted:true` üreten hiçbir yer yok, bootstrap DTO'larında böyle bir alan bile yok.
+
+Sonuç: snapshot'a bir kez girmiş kayıt orada sonsuza dek kalır ve sıfırdan bootstrap çeken her cihaza servis edilir. `sto_iptal=1` / `sto_pasif_fl=1` ile iptal/pasif yapılanlar da aynı sebeple kalır — üstelik onlar hard-delete olmadığı için shadow-log'a `Islem=0` değil `Islem=1` düşer, yani delete kuyruğuna hiç girmezler.
+
+### Düzeltme: `RebuildSnapshotAsync` ("Sıfırdan Kur")
+
+Sunucu tam değişimi **zaten destekliyordu**: `CompleteAsync`, `IsIncremental == false` ise merge'i hiç çalıştırmaz, eski snapshot'ı `RemoveRange(old)` ile siler ve yalnızca gelen satırları aktif yapar. Eksik olan tek şey ajanın bunu tetikleyebilmesiydi — **yeni sunucu ucu gerekmedi.**
+
+`IBootstrapSyncService.RebuildSnapshotAsync()` uzaktaki cursor'u ve `MinimumIntervalSeconds` penceresini atlar, `ReadBootstrapDataAsync` ile tam okur ve paketi non-incremental gönderir. WPF Dashboard'daki **"Sıfırdan Kur"** butonu bunu onay diyaloğuyla çağırır.
+
+> Bu, yalnızca ileriye dönük silme düzeltmesinin (bkz. `SnapshotDeleteApplier`, PR #15) **kapatamadığı** durumu çözer: ERP'si çoktan silinmiş kayıtlar için yeni bir delete olayı asla gelmeyeceğinden, birikmiş kiri ancak tam değişim temizler.
+
+Testler: `BootstrapUploadRelationalTests.Non_incremental_upload_replaces_the_snapshot_and_drops_stale_rows`,
+`BootstrapSyncServiceTests.RebuildSnapshotAsync_ignores_the_remote_cursor_and_pushes_a_full_package`.
+
+#### Hız limiti: bootstrap yüklemesinin kendi bütçesi var
+
+Tam yeniden kurulum **~210 chunk POST**'u (≈105k satır / 500) demek. Ajan başına
+varsayılan limit **100 istek/dakika** (`QueueLimit = 0`, yani anında 429), dolayısıyla
+yeniden kurulum **yapısal olarak** limite sığmıyordu ve her denemede `HTTP_429`
+ile düşüyordu. Üstelik 20 sn'lik arka plan döngüsü tek başına dakikada ~60 istek
+harcıyor — tavan yeniden kurulum olmadan da dardı.
+
+Chunked upload uçları (`/upload/start`, `/chunks`, `/complete`) artık ayrı bir
+politika kullanıyor: `Program.BootstrapUploadRateLimitPolicy`,
+**600 istek/dakika**. Diğer tüm ajan uçları dar varsayılanda kalıyor.
+
+İstemci tarafında `SkipsTransportRetry` artık `NoOpAsync` yerine
+`BuildThrottleOnlyPolicy()` döndürüyor: **yalnızca 429**'u bekleyip tekrar
+deniyor (1/3/10 sn, sunucunun `Retry-After` başlığı varsa ve daha kısaysa o).
+429 bir hata değil, hız işaretidir — fatal saymak koca yüklemeyi iptal ediyordu.
+
+> ⚠️ 5xx ve transport istisnaları burada hâlâ **tekrar denenmiyor**. Onları
+> `BootstrapSyncService`'in kendi pipeline'ının altına yığmak, sağlıksız bir
+> sunucuyu arayüzde bir saatlik sessizliğe çeviren şeydi (bkz. yukarıdaki
+> çift retry katmanı bölümü). Bu ayrım `ThrottleOnlyPolicy_does_not_retry_5xx`
+> testiyle sabitlendi.
+
+### WPF ajanı artık arka planda senkronize oluyor
+
+**Eski durum:** `AddHostedService` `src/ErpBridge.Agent.UI/` altında hiç geçmiyordu. `BootstrapWorker` yalnızca `Agent.Service/Program.cs`'te kayıtlıydı; WPF `App.xaml.cs` çıplak bir `ServiceCollection` kurduğu için Generic Host yoktu ve **hiçbir periyodik senkron çalışmıyordu**. Change-set yalnızca operatör butona bastığında gidiyordu (`ui-20260910.log`: 129 heartbeat, ~350 bootstrap isteği, **3 adet** `/api/v1/ingest/changeset`).
+
+`UseTriggerBasedSync=true` ve `BootstrapIntervalSeconds=20` varsayılanları doğruydu — ama onları okuyan worker o süreçte yoktu.
+
+**Düzeltme:** Döngü mantığı `ErpBridge.Core/Sync/AgentSyncLoop.cs`'e taşındı. `Core`'a `Microsoft.Extensions.Hosting` **eklenmedi** — sınıf Hosting'e bağımlı değil, böylece referans grafiği korunuyor:
+
+- `Agent.Service` → `BootstrapWorker` artık `AgentSyncLoop`'un ince bir `BackgroundService` sarmalayıcısı.
+- `Agent.UI` → `DesktopBackgroundSyncService` döngüyü kendi CTS'i ile `Task.Run` üzerinde çalıştırır; `App.OnStartup`'ta `Start()`, `OnExit`'te `StopAsync()`.
+- `AgentService:BackgroundSyncEnabled` (varsayılan `true`) ile kapatılabilir.
+
+### Admin panelinde senkron kuyruğu
+
+`mobile_sync_queue` yalnızca `GET /api/v1/android/sync/queue` üzerinden, **mobil API anahtarıyla** okunabiliyordu; admin tarafında ne uç ne sayfa vardı. Bootstrap'ın ikisi de olduğu için "bootstrap görünüyor ama kuyruk görünmüyor" tablosu ortaya çıkıyordu.
+
+Yeni: `AdminSyncQueueEndpoints` → `GET /api/v1/admin/sync-queue/` ve `/summary`, Blazor sayfası `Pages/SyncQueue.razor` ("Senkron kuyruğu"). Özet, son olay 15 dakikadan eskiyse uyarı gösterir — ajanın push'u durdurduğunun en hızlı göstergesi.
+
+> ⚠️ **Admin token'ında tenant claim'i YOKTUR.** `IJwtIssuer.IssueForAdmin` yalnızca `sub`, `scope=admin`, `jti` üretir. Bu yüzden admin uçları tenant'ı **query parametresinden** almalıdır (`AdminBootstrapEndpoints` deseni), `http.User.TryGetTenantId` **değil**.
+>
+> Aynı hata `AdminAuditEndpoints`'te de vardı ve "Sync geçmişi" sayfasının hiçbir zaman veri gösterememesine yol açıyordu; PR #21 ile düzeltildi. Kural artık `00_System_Overview.md`'de 9. madde olarak bağlayıcı.

@@ -69,6 +69,21 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     private readonly ResiliencePipeline _retryPipeline;
 
     /// <summary>
+    /// Serializes every bootstrap upload this process starts.
+    ///
+    /// <para>The central API's <c>/bootstrap/upload/start</c> deletes every
+    /// inactive snapshot the tenant has before staging a new one, so two
+    /// overlapping uploads destroy each other: the second start removes the
+    /// first one's staging row and the first one's chunk and complete calls
+    /// then fail. That became reachable the moment the desktop agent grew a
+    /// 20-second background loop — a manual "Sıfırdan Kur", which clears its
+    /// checkpoint and runs for 45-60 s, would be joined mid-flight by the loop.
+    /// The service is a singleton, so one gate covers the loop and every UI
+    /// button.</para>
+    /// </summary>
+    private readonly SemaphoreSlim _uploadGate = new(1, 1);
+
+    /// <summary>
     /// Default constructor used by DI. Builds the canonical Polly v8
     /// exponential-backoff pipeline (5s / 15s / 60s cap, 3 attempts total).
     /// </summary>
@@ -105,7 +120,43 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     }
 
     /// <inheritdoc />
-    public async Task<BootstrapSyncResult> RunOnceAsync(CancellationToken ct = default)
+    public Task<BootstrapSyncResult> RunOnceAsync(CancellationToken ct = default)
+        => RunExclusiveAsync(() => RunCycleAsync(forceFullSnapshot: false, ct), ct);
+
+    /// <inheritdoc />
+    public Task<BootstrapSyncResult> RebuildSnapshotAsync(CancellationToken ct = default)
+        => RunExclusiveAsync(() => RunCycleAsync(forceFullSnapshot: true, ct), ct);
+
+    /// <summary>
+    /// Run <paramref name="operation"/> with the upload gate held. Callers that
+    /// are already inside the gate (the section fallback) must call the inner
+    /// method directly — the semaphore is not reentrant.
+    /// </summary>
+    private async Task<BootstrapSyncResult> RunExclusiveAsync(
+        Func<Task<BootstrapSyncResult>> operation,
+        CancellationToken ct)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        await _uploadGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await operation().ConfigureAwait(false);
+        }
+        finally
+        {
+            _uploadGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// One bootstrap cycle. <paramref name="forceFullSnapshot"/> turns it into
+    /// the operator-triggered rebuild: the remote cursor and the idempotency
+    /// window are both ignored and the package goes up non-incrementally, which
+    /// makes the central API replace the active snapshot instead of merging
+    /// into it. That replacement is the only thing that can evict rows deleted
+    /// in the ERP, because an incremental read cannot express a row's absence.
+    /// </summary>
+    private async Task<BootstrapSyncResult> RunCycleAsync(bool forceFullSnapshot, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
         try
@@ -122,7 +173,9 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             // Idempotency window: skip the cycle if the last successful push
             // is still inside the minimum interval. The worker (or operator
             // via UI) can call InvalidateAsync() to force a re-run.
-            var last = await _checkpointStore.LoadAsync(tenantId, BootstrapScope, ct).ConfigureAwait(false);
+            var last = forceFullSnapshot
+                ? null
+                : await _checkpointStore.LoadAsync(tenantId, BootstrapScope, ct).ConfigureAwait(false);
             if (last?.LastSuccessAt is { } lastAt)
             {
                 var age = _timeProvider.GetUtcNow().UtcDateTime - lastAt;
@@ -164,18 +217,30 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             // The central API is authoritative for whether it already has a
             // snapshot. A local checkpoint alone cannot detect that the
             // central store was reset while this agent stayed online.
+            // A forced rebuild deliberately ignores the cursor: pretending the
+            // tenant has no snapshot is what selects the full read below and
+            // marks the package non-incremental for the upload.
             BootstrapRemoteStatus remoteStatus;
-            try
+            if (forceFullSnapshot)
             {
-                remoteStatus = await _remoteApi.GetBootstrapStatusAsync(ct).ConfigureAwait(false)
-                    ?? new BootstrapRemoteStatus(false, null);
-            }
-            catch (Exception ex)
-            {
-                // Old servers without the status endpoint must remain safe:
-                // use a full package rather than risk a partial first upload.
-                _logger.LogWarning(ex, "Bootstrap status unavailable; using a full snapshot.");
+                _logger.LogInformation(
+                    "Bootstrap rebuild requested; ignoring the remote cursor and replacing the active snapshot.");
                 remoteStatus = new BootstrapRemoteStatus(false, null);
+            }
+            else
+            {
+                try
+                {
+                    remoteStatus = await _remoteApi.GetBootstrapStatusAsync(ct).ConfigureAwait(false)
+                        ?? new BootstrapRemoteStatus(false, null);
+                }
+                catch (Exception ex)
+                {
+                    // Old servers without the status endpoint must remain safe:
+                    // use a full package rather than risk a partial first upload.
+                    _logger.LogWarning(ex, "Bootstrap status unavailable; using a full snapshot.");
+                    remoteStatus = new BootstrapRemoteStatus(false, null);
+                }
             }
 
             // Pull a complete package only for an empty central tenant.
@@ -240,6 +305,19 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             {
                 throw;
             }
+            catch (Exception ex) when (forceFullSnapshot)
+            {
+                // The section fallback below uploads each section with
+                // PartialSection set, which HttpRemoteApiClient marks as
+                // incremental — the server would MERGE it into the snapshot we
+                // were asked to replace. The rows deleted in the ERP would
+                // survive and the dashboard would still report "rebuilt", which
+                // is precisely the false success this feature exists to end.
+                // A failed rebuild has to stay failed.
+                _logger.LogError(ex, "Snapshot rebuild failed; not falling back to mergeable sections.");
+                return Failed(stopwatch, ErrorCode.TransientUpstream,
+                    $"Snapshot rebuild failed: {ex.Message}", payloadBytes);
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
@@ -250,7 +328,9 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                 // original request reached the API but its response was lost.
                 foreach (var sectionName in FallbackSectionNames)
                 {
-                    var sectionResult = await PushSectionAsync(sectionName, ct).ConfigureAwait(false);
+                    // Already holding the gate: calling the public wrapper
+                    // here would deadlock on the non-reentrant semaphore.
+                    var sectionResult = await PushSectionCoreAsync(sectionName, ct).ConfigureAwait(false);
                     if (!sectionResult.Success)
                     {
                         return Failed(stopwatch, sectionResult.ErrorCode ?? ErrorCode.TransientUpstream,
@@ -382,7 +462,14 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     }
 
     /// <inheritdoc />
-    public async Task<BootstrapSyncResult> PushSectionAsync(string sectionName, CancellationToken ct = default)
+    public Task<BootstrapSyncResult> PushSectionAsync(string sectionName, CancellationToken ct = default)
+        => RunExclusiveAsync(() => PushSectionCoreAsync(sectionName, ct), ct);
+
+    /// <summary>
+    /// <see cref="PushSectionAsync"/> without the gate. Only for callers that
+    /// already hold it, i.e. the section fallback inside a cycle.
+    /// </summary>
+    private async Task<BootstrapSyncResult> PushSectionCoreAsync(string sectionName, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
         if (string.IsNullOrWhiteSpace(sectionName))

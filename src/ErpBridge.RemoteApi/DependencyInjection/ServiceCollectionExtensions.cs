@@ -51,7 +51,7 @@ public static class ServiceCollectionExtensions
             // (several minutes) before the UI reported a timeout.
             .AddPolicyHandler((Func<HttpRequestMessage, IAsyncPolicy<HttpResponseMessage>>)(request =>
                 SkipsTransportRetry(request)
-                    ? Policy.NoOpAsync<HttpResponseMessage>()
+                    ? BuildThrottleOnlyPolicy()
                     : BuildRetryPolicy()));
 
         return services;
@@ -99,6 +99,53 @@ public static class ServiceCollectionExtensions
     private const string BootstrapRoutePrefix = "/api/v1/bootstrap";
     private const string BootstrapUploadRoutePrefix = BootstrapRoutePrefix + "/upload";
     private const string BootstrapNotifyRoute = BootstrapRoutePrefix + "/notify";
+
+    /// <summary>Short backoff used only for 429 throttling: 1 s, 3 s, 10 s.</summary>
+    public static readonly IReadOnlyList<TimeSpan> ThrottleRetryDelays = new[]
+    {
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(3),
+        TimeSpan.FromSeconds(10),
+    };
+
+    /// <summary>
+    /// Policy for the routes whose caller owns the retry cadence. It waits out a
+    /// <c>429 Too Many Requests</c> and nothing else.
+    ///
+    /// <para>429 is a pacing signal, not a failure: the request was well-formed
+    /// and will succeed once the window rolls over. Treating it as fatal made a
+    /// full snapshot rebuild — roughly 210 chunk POSTs — abort partway through,
+    /// which is what the operator saw as <c>HTTP_429</c>. Honouring
+    /// <c>Retry-After</c> here costs seconds; failing costs the whole upload.</para>
+    ///
+    /// <para>5xx and transport exceptions are deliberately still <b>not</b>
+    /// retried here: stacking those under BootstrapSyncService's own pipeline is
+    /// what once turned an unhealthy server into an hour of silence in the UI.</para>
+    /// </summary>
+    public static IAsyncPolicy<HttpResponseMessage> BuildThrottleOnlyPolicy() =>
+        BuildThrottleOnlyPolicy(ThrottleRetryDelays);
+
+    /// <summary>Throttle policy with a custom schedule. Exposed for tests that need fast retries.</summary>
+    public static IAsyncPolicy<HttpResponseMessage> BuildThrottleOnlyPolicy(IEnumerable<TimeSpan> delays)
+    {
+        var schedule = delays.ToArray();
+        return Policy<HttpResponseMessage>
+            .HandleResult(r => r.StatusCode == HttpStatusCode.TooManyRequests)
+            .WaitAndRetryAsync(
+                schedule.Length,
+                (attempt, outcome, _) =>
+                {
+                    // Prefer the server's own Retry-After when it sends one, but
+                    // never wait longer than the schedule's cap — a hostile or
+                    // buggy header must not park the agent for minutes.
+                    var cap = schedule[Math.Min(attempt, schedule.Length) - 1];
+                    var advised = outcome.Result?.Headers.RetryAfter?.Delta;
+                    return advised is { } wait && wait > TimeSpan.Zero && wait < cap ? wait : cap;
+                },
+                onRetryAsync: static (_, _, _, _) => Task.CompletedTask);
+    }
+
+    /// <summary>Canonical 5/15/60/300-second backoff schedule.</summary>
 
     /// <summary>Canonical 5/15/60/300-second backoff schedule.</summary>
     public static readonly IReadOnlyList<TimeSpan> CanonicalRetryDelays = new[]

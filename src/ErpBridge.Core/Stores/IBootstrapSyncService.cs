@@ -17,6 +17,25 @@ public interface IBootstrapSyncService
     Task<BootstrapSyncResult> RunOnceAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Rebuild the central snapshot from scratch: read every section in full
+    /// and upload it as a <b>non-incremental</b> package, so the central API
+    /// replaces the active snapshot instead of merging into it.
+    ///
+    /// <para>The routine cycle can never do this. Once the tenant has an active
+    /// snapshot the agent stays in incremental mode forever, and an incremental
+    /// read cannot report a row that was deleted in the ERP — the row is simply
+    /// absent from the delta, which the server-side merge reads as "unchanged".
+    /// Rows deleted (or cancelled / deactivated) in the ERP therefore survive in
+    /// the snapshot indefinitely and keep being served to every device that
+    /// bootstraps from scratch.</para>
+    ///
+    /// <para>This is the operator's escape hatch for that drift. It ignores the
+    /// remote snapshot cursor and the minimum-interval window, so it is safe to
+    /// invoke on demand but expensive — the whole dataset goes over the wire.</para>
+    /// </summary>
+    Task<BootstrapSyncResult> RebuildSnapshotAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// UTC timestamp of the last successful push (read from the local
     /// checkpoint). <c>null</c> when no successful push has ever been recorded.
     /// </summary>

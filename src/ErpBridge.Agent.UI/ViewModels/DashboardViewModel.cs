@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Media;
 using ErpBridge.Agent.UI.DependencyInjection;
 using ErpBridge.Core.Domain;
@@ -99,6 +100,15 @@ public sealed class DashboardViewModel : ObservableObject
         RefreshCommand = new AsyncRelayCommand(_ => RefreshAsync());
         RunBootstrapCommand = new AsyncRelayCommand(
             execute: _ => RunBootstrapAsync(),
+            canExecute: () => !IsBusy);
+        // "Sıfırdan Kur" — sunucudaki snapshot'ı tamamen değiştirir.
+        // Rutin döngü bunu yapamaz: tenant'ın aktif snapshot'ı olduğu sürece
+        // ajan kalıcı olarak artımlı moddadır ve artımlı okuma ERP'den silinmiş
+        // bir satırı bildiremez (satır delta'da yoktur, sunucu bunu
+        // "değişmedi" diye okur). Silinen/iptal edilen kayıtlar bu yüzden
+        // snapshot'ta kalır ve sıfırdan kurulan her cihaza servis edilir.
+        RebuildSnapshotCommand = new AsyncRelayCommand(
+            execute: _ => RebuildSnapshotAsync(),
             canExecute: () => !IsBusy);
         // "Senkronize Et" — Faz 12 trigger tabanlı change-set yolu.
         // Son sync'ten bu yana değişen INSERT/UPDATE/DELETE satırlarını
@@ -351,6 +361,9 @@ public sealed class DashboardViewModel : ObservableObject
 
     /// <summary>Trigger a refresh — used on tab open and on the "Yenile" button.</summary>
     public System.Windows.Input.ICommand RunBootstrapCommand { get; }
+
+    /// <summary>Replaces the central snapshot with a freshly read full package.</summary>
+    public System.Windows.Input.ICommand RebuildSnapshotCommand { get; }
     public System.Windows.Input.ICommand PushCustomersCommand { get; }
     public System.Windows.Input.ICommand PushStocksCommand { get; }
     public System.Windows.Input.ICommand PushOpenOrdersCommand { get; }
@@ -656,6 +669,94 @@ public sealed class DashboardViewModel : ObservableObject
             LastRunStatusBrush = DangerBadgeBrush;
             LastErrorDisplay = ex.Message;
             _logger.LogError(ex, "RunSyncDeltaAsync crashed.");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Rebuild the central snapshot from scratch. Destructive on the server
+    /// side — the active snapshot is replaced, not merged into — so the
+    /// operator confirms first.
+    /// </summary>
+    public async Task RebuildSnapshotAsync()
+    {
+        _logger.LogInformation("RebuildSnapshotAsync invoked from UI.");
+
+        var confirmed = MessageBox.Show(
+            "Sunucudaki snapshot tamamen silinip Mikro'dan baştan kurulacak."
+            + Environment.NewLine + Environment.NewLine
+            + "Bunu, ERP'de silinmiş kayıtlar mobil uygulamada görünmeye devam ettiğinde kullanın. "
+            + "Tüm veri yeniden gönderileceği için birkaç dakika sürebilir."
+            + Environment.NewLine + Environment.NewLine
+            + "Devam edilsin mi?",
+            "Snapshot'ı sıfırdan kur",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirmed != MessageBoxResult.Yes)
+        {
+            _logger.LogInformation("Snapshot rebuild cancelled by the operator.");
+            return;
+        }
+
+        LastRunStatusDisplay = "▶ Sıfırdan kuruluyor…";
+        LastRunStatusBrush = WarningBadgeBrush;
+        LastRunSummaryDisplay = "Snapshot baştan kuruluyor, bu birkaç dakika sürebilir…";
+        LastErrorDisplay = string.Empty;
+        IsBusy = true;
+        try
+        {
+            var registered = await EnsureRegisteredAsync().ConfigureAwait(true);
+            if (!registered)
+            {
+                LastRunSummaryDisplay = "Agent kayıt edilemedi — Ayarlar sekmesinden lisans anahtarını doğrulayın.";
+                LastRunStatusDisplay = "✗ Kayıt gerekli";
+                LastRunStatusBrush = DangerBadgeBrush;
+                LastErrorDisplay = "Central API'ye kayıt yapılamadı.";
+                _logger.LogWarning("RebuildSnapshotAsync aborted: auto-register failed.");
+                return;
+            }
+
+            await _bootstrap.InvalidateAsync().ConfigureAwait(true);
+            var result = await _bootstrap.RebuildSnapshotAsync().ConfigureAwait(true);
+            _logger.LogInformation(
+                "Snapshot rebuild returned. Success={Success}, Customers={Customers}, Stocks={Stocks}, DurationMs={Duration}.",
+                result.Success, result.CustomersCount, result.StocksCount, result.DurationMs);
+
+            if (result.Success)
+            {
+                LastRunSummaryDisplay = string.Format(
+                    CultureInfo.CurrentCulture,
+                    "Snapshot sıfırdan kuruldu · {0} cari · {1} stok · JSON {2:F2} MB · {3} ms",
+                    result.CustomersCount, result.StocksCount, result.PayloadMegabytes, result.DurationMs);
+                LastRunStatusDisplay = "✓ Sıfırdan kuruldu";
+                LastRunStatusBrush = SuccessBadgeBrush;
+                LastErrorDisplay = string.Empty;
+            }
+            else
+            {
+                LastRunSummaryDisplay = "Hata: " + (result.ErrorCode ?? "UNKNOWN");
+                LastRunStatusDisplay = "✗ Başarısız";
+                LastRunStatusBrush = DangerBadgeBrush;
+                LastErrorDisplay = result.ErrorMessage ?? "Bilinmeyen hata";
+                _logger.LogWarning(
+                    "Snapshot rebuild FAILED. ErrorCode={ErrorCode}, Message={Message}.",
+                    result.ErrorCode, result.ErrorMessage);
+            }
+
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Snapshot rebuild invocation crashed.");
+            _ = App.ReportExceptionAsync(ex, "Snapshot rebuild");
+            LastRunSummaryDisplay = "Hata: " + ex.GetType().Name + " — " + ex.Message;
+            LastRunStatusDisplay = "✗ Başarısız";
+            LastRunStatusBrush = DangerBadgeBrush;
+            LastErrorDisplay = "Snapshot sıfırdan kurulamadı: " + ex.Message;
         }
         finally
         {

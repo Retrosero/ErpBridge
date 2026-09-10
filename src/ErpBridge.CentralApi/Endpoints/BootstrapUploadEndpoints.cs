@@ -24,9 +24,9 @@ public static class BootstrapUploadEndpoints
     public static IEndpointRouteBuilder MapBootstrapUploadEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/bootstrap/upload").WithTags("Bootstrap");
-        group.MapPost("/start", StartAsync).RequireAuthorization(Program.AgentPolicy).RequireRateLimiting(Program.PerAgentRateLimitPolicy);
-        group.MapPost("/{uploadId:guid}/chunks", ChunkAsync).RequireAuthorization(Program.AgentPolicy).RequireRateLimiting(Program.PerAgentRateLimitPolicy);
-        group.MapPost("/{uploadId:guid}/complete", CompleteAsync).RequireAuthorization(Program.AgentPolicy).RequireRateLimiting(Program.PerAgentRateLimitPolicy);
+        group.MapPost("/start", StartAsync).RequireAuthorization(Program.AgentPolicy).RequireRateLimiting(Program.BootstrapUploadRateLimitPolicy);
+        group.MapPost("/{uploadId:guid}/chunks", ChunkAsync).RequireAuthorization(Program.AgentPolicy).RequireRateLimiting(Program.BootstrapUploadRateLimitPolicy);
+        group.MapPost("/{uploadId:guid}/complete", CompleteAsync).RequireAuthorization(Program.AgentPolicy).RequireRateLimiting(Program.BootstrapUploadRateLimitPolicy);
         return routes;
     }
 

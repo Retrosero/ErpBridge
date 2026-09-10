@@ -65,6 +65,49 @@ public sealed class BootstrapUploadRelationalTests : IClassFixture<SqliteCentral
         }
     }
 
+    [Fact]
+    public async Task Non_incremental_upload_replaces_the_snapshot_and_drops_stale_rows()
+    {
+        // The operator-triggered rebuild ("Sifirdan Kur") exists because the
+        // routine cycle can never evict a row: once the tenant has a snapshot
+        // the agent stays incremental forever, and an incremental read cannot
+        // report a row deleted in the ERP -- it is simply absent, which the
+        // merge reads as "unchanged". A non-incremental upload must therefore
+        // replace the snapshot outright rather than merge into it.
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"BOOT-REBUILD-{suffix}", $"Tenant-REBUILD-{suffix}");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, $"MACHINE-REBUILD-{suffix}");
+        var client = _factory.CreateClient();
+        var token = _factory.IssueTestJwt(agent.Id, tenant.Id);
+
+        var first = await StartAsync(client, token, isIncremental: false);
+        await ChunkAsync(client, token, first, "stocks", 0,
+            [new { stockCode = "KALICI" }, new { stockCode = "SILINECEK" }]);
+        (await CompleteAsync(client, token, first)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // "SILINECEK" is now gone from the ERP, so a full re-read simply does
+        // not contain it.
+        var rebuild = await StartAsync(client, token, isIncremental: false);
+        await ChunkAsync(client, token, rebuild, "stocks", 0, [new { stockCode = "KALICI" }]);
+        (await CompleteAsync(client, token, rebuild)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+        var active = await db.BootstrapSnapshots.SingleAsync(x => x.TenantId == tenant.Id && x.IsActive);
+        active.Id.Should().Be(rebuild);
+
+        var payload = await db.BootstrapSnapshotChunks
+            .Where(x => x.SnapshotId == rebuild && x.Section == "stocks")
+            .Select(x => x.PayloadJson)
+            .SingleAsync();
+        payload.Should().Contain("KALICI");
+        payload.Should().NotContain("SILINECEK", "a rebuild replaces the snapshot instead of merging into it");
+
+        // The superseded snapshot and its chunks must be gone, not orphaned.
+        (await db.BootstrapSnapshots.CountAsync(x => x.TenantId == tenant.Id)).Should().Be(1);
+        (await db.BootstrapSnapshotChunks.CountAsync(x => x.SnapshotId == first)).Should().Be(0);
+    }
+
     private static async Task<Guid> StartAsync(HttpClient client, string token, bool isIncremental)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/bootstrap/upload/start")

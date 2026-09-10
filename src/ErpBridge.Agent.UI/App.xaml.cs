@@ -59,6 +59,7 @@ public partial class App : Application
     private TaskbarIcon? _tray;
     private IDesktopSignalService? _signalService;
     private DesktopHeartbeatService? _heartbeatService;
+    private DesktopBackgroundSyncService? _backgroundSync;
     private IDesktopClockService? _clockService;
     private System.Windows.Threading.DispatcherTimer? _heartbeatTimer;
     private DateTime _lastHeartbeatNotification = DateTime.MinValue;
@@ -229,6 +230,21 @@ public partial class App : Application
 
         _heartbeatService = _services.GetRequiredService<DesktopHeartbeatService>();
         _heartbeatService.Start();
+
+        // Periodic sync. Until this existed the desktop agent pushed a
+        // change-set only when the operator clicked a button, so ERP edits
+        // reached the mobile clients at human cadence or not at all.
+        try
+        {
+            _backgroundSync = _services.GetRequiredService<DesktopBackgroundSyncService>();
+            _backgroundSync.Start();
+        }
+        catch (Exception ex)
+        {
+            startupLogger.LogError(ex,
+                "Failed to start background sync. The UI still works but ERP changes will only travel when the operator syncs manually.");
+            _ = ReportExceptionAsync(ex, "Background sync startup");
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -250,6 +266,20 @@ public partial class App : Application
         // Stop the long-poll loop before disposing the DI container so the
         // background task doesn't try to resolve services that are already torn
         // down.
+        if (_backgroundSync is not null)
+        {
+            try
+            {
+                _backgroundSync.StopAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Background sync stop failed: {ex.Message}");
+            }
+            _backgroundSync.Dispose();
+            _backgroundSync = null;
+        }
+
         if (_signalService is not null)
         {
             try

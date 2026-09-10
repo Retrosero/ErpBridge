@@ -64,6 +64,10 @@
                         Style="{StaticResource TintedButtonStyle}"
                         MinWidth="106" Padding="14,7" Margin="0,0,8,0"
                         ToolTip="Tüm referans veriyi baştan okuyup gönderir (60 dk idempotency penceresini bypass eder)." />
+                <Button Content="Sıfırdan Kur"
+                        Command="{Binding RebuildSnapshotCommand}"
+                        MinWidth="112" Padding="14,7" Margin="0,0,8,0"
+                        ToolTip="Sunucudaki snapshot'ı silip Mikro'dan baştan kurar. ERP'de silinmiş kayıtlar mobilde görünmeye devam ediyorsa bunu kullanın." />
                 <Button Content="Yenile"
                         Command="{Binding RefreshCommand}"
                         MinWidth="84" Padding="14,7"
@@ -120,17 +124,21 @@
                      her zaman görünür dikey çubuğunun genişliği — ayrılmazsa
                      başlıklar veri sütunlarına göre kayıyor. -->
                 <Grid Grid.Row="1" Margin="0,16,17,0">
+                    <!-- Isim sutunu siniri: yildiz genislik tam ekranda tum
+                         bosluğu yutup sayi ve aksiyon sutunlarini sag kenara
+                         sikistiriyordu. MaxWidth ile tablo sola toplaniyor. -->
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MaxWidth="380" />
+                        <ColumnDefinition Width="120" />
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="100" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="110" />
-                        <ColumnDefinition Width="110" />
-                        <ColumnDefinition Width="92" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="TABLO" Style="{StaticResource TableHeaderCellStyle}" />
                     <TextBlock Grid.Column="1" Text="MIKRODB" Style="{StaticResource TableHeaderCellStyle}" HorizontalAlignment="Right" />
                     <TextBlock Grid.Column="2" Text="SON GÖNDERİM" Style="{StaticResource TableHeaderCellStyle}" HorizontalAlignment="Right" />
                     <TextBlock Grid.Column="3" Text="" Style="{StaticResource TableHeaderCellStyle}" />
-                    <Border Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" Margin="0,0,0,-6" />
+                    <Border Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" Margin="0,0,0,-6" />
                 </Grid>
 
                 <!-- Satırlar. Her satır: etiket + Mikro tablo adı (alt satır),
@@ -140,11 +148,14 @@
                      bunu söyleyen soluk bir not durur. -->
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled" Margin="0,10,0,0">
                     <Grid>
+                        <!-- Basliktaki sutun genislikleriyle birebir ayni
+                             kalmali; yoksa basliklar verilerden kayar. -->
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MaxWidth="380" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="100" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="110" />
-                            <ColumnDefinition Width="110" />
-                            <ColumnDefinition Width="92" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="34" />
@@ -170,7 +181,7 @@
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding MikroCustomersCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding LastCustomersCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <Button Grid.Row="0" Grid.Column="3" Content="Gönder" Command="{Binding PushCustomersCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="0" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="0" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 2 · Cari adresleri -->
                         <StackPanel Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">
@@ -180,7 +191,7 @@
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MikroCustomerAddressesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding LastCustomerAddressesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="1" Grid.Column="3" Text="Carilerle" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="1" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="1" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 3 · Cari yetkilileri -->
                         <StackPanel Grid.Row="2" Grid.Column="0" VerticalAlignment="Center">
@@ -190,7 +201,7 @@
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MikroCustomerContactsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding LastCustomerContactsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="2" Grid.Column="3" Text="Carilerle" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="2" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="2" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 4 · Cari hareketleri -->
                         <StackPanel Grid.Row="3" Grid.Column="0" VerticalAlignment="Center">
@@ -200,7 +211,7 @@
                         <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MikroCustomerTransactionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding LastCustomerTransactionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <Button Grid.Row="3" Grid.Column="3" Content="Gönder" Command="{Binding PushCustomerTransactionsCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="3" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="3" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 5 · Stoklar -->
                         <StackPanel Grid.Row="4" Grid.Column="0" VerticalAlignment="Center">
@@ -210,7 +221,7 @@
                         <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding MikroStocksCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding LastStocksCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <Button Grid.Row="4" Grid.Column="3" Content="Gönder" Command="{Binding PushStocksCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="4" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="4" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 6 · Barkodlar -->
                         <StackPanel Grid.Row="5" Grid.Column="0" VerticalAlignment="Center">
@@ -220,7 +231,7 @@
                         <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding MikroBarcodesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="5" Grid.Column="2" Text="{Binding LastBarcodesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="5" Grid.Column="3" Text="Stoklarla" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="5" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="5" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 7 · Stok hareketleri -->
                         <StackPanel Grid.Row="6" Grid.Column="0" VerticalAlignment="Center">
@@ -230,7 +241,7 @@
                         <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding MikroStockTransactionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="6" Grid.Column="2" Text="{Binding LastStockTransactionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <Button Grid.Row="6" Grid.Column="3" Content="Gönder" Command="{Binding PushStockTransactionsCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="6" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="6" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 8 · Envanter -->
                         <StackPanel Grid.Row="7" Grid.Column="0" VerticalAlignment="Center">
@@ -240,7 +251,7 @@
                         <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding MikroInventoryCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="7" Grid.Column="2" Text="—" Style="{StaticResource TableNumberCellStyle}" Foreground="{DynamicResource MutedTextBrush}" />
                         <Button Grid.Row="7" Grid.Column="3" Content="Gönder" Command="{Binding PushInventoryCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="7" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="7" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 9 · Fiyatlar -->
                         <StackPanel Grid.Row="8" Grid.Column="0" VerticalAlignment="Center">
@@ -250,7 +261,7 @@
                         <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding MikroPricesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="8" Grid.Column="2" Text="{Binding LastPricesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <Button Grid.Row="8" Grid.Column="3" Content="Gönder" Command="{Binding PushPricesCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="8" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="8" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 10 · Açık siparişler -->
                         <StackPanel Grid.Row="9" Grid.Column="0" VerticalAlignment="Center">
@@ -260,7 +271,7 @@
                         <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding MikroOpenOrdersCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="9" Grid.Column="2" Text="{Binding LastOpenOrdersCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <Button Grid.Row="9" Grid.Column="3" Content="Gönder" Command="{Binding PushOpenOrdersCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="9" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="9" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 11 · Satış şartları -->
                         <StackPanel Grid.Row="10" Grid.Column="0" VerticalAlignment="Center">
@@ -270,7 +281,7 @@
                         <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding MikroSalesConditionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="10" Grid.Column="2" Text="{Binding LastSalesConditionsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="10" Grid.Column="3" Text="Carilerle" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="10" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="10" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 12 · Kasa / Banka -->
                         <StackPanel Grid.Row="11" Grid.Column="0" VerticalAlignment="Center">
@@ -280,7 +291,7 @@
                         <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding MikroCashAndBankCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="11" Grid.Column="2" Text="—" Style="{StaticResource TableNumberCellStyle}" Foreground="{DynamicResource MutedTextBrush}" />
                         <Button Grid.Row="11" Grid.Column="3" Content="Gönder" Command="{Binding PushCashAndBankCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
-                        <Border Grid.Row="11" Grid.ColumnSpan="4" Style="{StaticResource TableRowDividerStyle}" />
+                        <Border Grid.Row="11" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
 
                         <!-- 13 · Lookup -->
                         <StackPanel Grid.Row="12" Grid.Column="0" VerticalAlignment="Center">

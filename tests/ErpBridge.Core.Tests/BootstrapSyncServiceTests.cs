@@ -610,6 +610,153 @@ public class BootstrapSyncServiceTests
     }
 
     [Fact]
+    public async Task RebuildSnapshotAsync_ignores_the_remote_cursor_and_pushes_a_full_package()
+    {
+        // The rebuild is the only way a row deleted in the ERP ever leaves the
+        // central snapshot: an incremental read cannot express absence, so the
+        // server-side merge keeps the stale row forever. It therefore must NOT
+        // consult the remote cursor, and the package it pushes must be
+        // non-incremental so the server replaces rather than merges.
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);
+        var cursor = fixedNow.AddMinutes(-1);
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+
+        var checkpointStore = new Mock<ICheckpointStore>();
+        // Inside the 30 s idempotency window: a normal RunOnceAsync would skip.
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CheckpointRecord
+            {
+                TenantId = TenantId,
+                SyncScope = BootstrapSyncService.BootstrapScope,
+                LastSuccessAt = fixedNow.AddSeconds(-1).UtcDateTime,
+                UpdatedAt = fixedNow.AddSeconds(-1).UtcDateTime,
+            });
+
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage());
+        adapter.Setup(a => a.ReadBootstrapChangesAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage() with { IsIncremental = true });
+
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapRemoteStatus(true, cursor));
+        SyncPackage? pushed = null;
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .Callback<SyncPackage, CancellationToken>((p, _) => pushed = p)
+            .Returns(Task.CompletedTask);
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        var result = await sut.RebuildSnapshotAsync();
+
+        result.Success.Should().BeTrue();
+        adapter.Verify(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()), Times.Once);
+        adapter.Verify(a => a.ReadBootstrapChangesAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        remoteApi.Verify(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()), Times.Never);
+        pushed.Should().NotBeNull();
+        pushed!.IsIncremental.Should().BeFalse("a merged package can never evict a deleted row");
+    }
+
+    [Fact]
+    public async Task RebuildSnapshotAsync_fails_instead_of_falling_back_to_mergeable_sections()
+    {
+        // The section fallback uploads each section with PartialSection set,
+        // which the client marks incremental — the server would merge it into
+        // the very snapshot we were asked to replace, the ERP-deleted rows
+        // would survive, and the dashboard would still say "rebuilt". A failed
+        // rebuild must stay failed.
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+        var checkpointStore = new Mock<ICheckpointStore>();
+
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage());
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TransientPushException("upstream down"));
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        var result = await sut.RebuildSnapshotAsync();
+
+        result.Success.Should().BeFalse("a partial-section fallback cannot evict deleted rows");
+        result.ErrorMessage.Should().Contain("rebuild");
+        // Exactly one push attempt: the full one. No per-section fallback.
+        remoteApi.Verify(
+            r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Bootstrap_uploads_are_serialized_against_each_other()
+    {
+        // /bootstrap/upload/start deletes every inactive snapshot the tenant
+        // has, so two overlapping uploads destroy each other's staging row.
+        // The desktop agent's 20 s background loop made that reachable against
+        // a 45-60 s manual rebuild.
+        var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewAgentConfig());
+        var checkpointStore = new Mock<ICheckpointStore>();
+
+        var adapter = new Mock<IErpAdapter>();
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage());
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Returns(adapter.Object);
+
+        var inFlight = 0;
+        var maxObserved = 0;
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapRemoteStatus(false, null));
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                maxObserved = Math.Max(maxObserved, Interlocked.Increment(ref inFlight));
+                await Task.Delay(30);
+                Interlocked.Decrement(ref inFlight);
+            });
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        await Task.WhenAll(
+            sut.RebuildSnapshotAsync(),
+            sut.RunOnceAsync(),
+            sut.PushSectionAsync("customers"));
+
+        maxObserved.Should().Be(1, "overlapping uploads delete each other's staging snapshot");
+    }
+
+    [Fact]
     public async Task RunOnceAsync_does_not_push_an_empty_delta()
     {
         var fixedNow = new DateTimeOffset(2026, 7, 9, 19, 0, 0, TimeSpan.Zero);

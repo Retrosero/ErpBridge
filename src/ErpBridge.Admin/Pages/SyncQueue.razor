@@ -1,0 +1,221 @@
+@page "/sync-queue"
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Senkron Kuyruğu — ErpBridge Yönetim</PageTitle>
+
+<AdminPageHeader Title="Senkron kuyruğu"
+                 Description="ERP'den mobil cihazlara akan anlık olay kuyruğu (mobile_sync_queue). Bootstrap tam durumu taşır; bu kuyruk aradaki tek tek değişiklikleri taşır." />
+
+@if (_summary is not null && !string.IsNullOrEmpty(_tenantId))
+{
+    <div class="admin-filter-bar mb-3">
+        <div>
+            <label class="form-label">Toplam olay</label>
+            <p class="form-control-plaintext" data-testid="queue-total">@_summary.Total</p>
+        </div>
+        <div>
+            <label class="form-label">Son olay</label>
+            <p class="form-control-plaintext @(IsStale ? "text-danger fw-semibold" : "")" data-testid="queue-last">
+                @(_summary.LastCreatedAtUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") ?? "—")
+            </p>
+        </div>
+    </div>
+
+    @if (_summary.Total == 0)
+    {
+        <AdminState Title="Kuyruk boş"
+                    Message="Ajan hiç değişiklik göndermemiş. Masaüstü ajanın açık olduğunu ve arka plan senkronizasyonunun kapatılmadığını (AgentService:BackgroundSyncEnabled) doğrulayın." />
+    }
+    else if (IsStale)
+    {
+        <div class="alert alert-warning" role="alert" data-testid="queue-stale">
+            Son olay 15 dakikadan eski. Ajan çalışıyorsa değişiklik göndermeyi durdurmuş olabilir — ajan loglarında
+            <code>/api/v1/ingest/changeset</code> isteklerini kontrol edin.
+        </div>
+    }
+}
+
+<div class="admin-filter-bar mb-3">
+    <div>
+        <label class="form-label" for="queue-tenant">Müşteri</label>
+        <select id="queue-tenant" class="form-select" @bind="_tenantId" aria-label="Müşteri seçin">
+            <option value="">Müşteri seçin…</option>
+            @foreach (var t in _tenants)
+            {
+                <option value="@t.Id">@t.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="form-label" for="queue-entity">Varlık</label>
+        <select id="queue-entity" class="form-select" @bind="_entity" aria-label="Varlık seçin">
+            <option value="">Tümü</option>
+            <option value="product">Ürün</option>
+            <option value="customer">Cari</option>
+            <option value="invoice">Evrak</option>
+            <option value="collection">Tahsilat</option>
+        </select>
+    </div>
+    <div>
+        <label class="form-label" for="queue-operation">İşlem</label>
+        <select id="queue-operation" class="form-select" @bind="_operation" aria-label="İşlem seçin">
+            <option value="">Tümü</option>
+            <option value="upsert">Ekleme / güncelleme</option>
+            <option value="delete">Silme</option>
+        </select>
+    </div>
+    <div>
+        <label class="form-label" for="queue-table">Tablo <small class="text-muted">(opsiyonel)</small></label>
+        <input id="queue-table" class="form-control" @bind="_table" placeholder="örn. STOKLAR" />
+    </div>
+    <div class="align-self-end">
+        <button class="btn btn-primary" id="queue-load" @onclick="LoadFirstPageAsync" disabled="@_loading">
+            @(_loading ? "Yükleniyor…" : "Olayları getir")
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+@if (_result is not null)
+{
+    @if (_result.Items.Count == 0)
+    {
+        <AdminState Title="Sonuç yok" Message="Bu filtreyle eşleşen olay bulunamadı." />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table admin-table">
+                <thead>
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Zaman</th>
+                        <th scope="col">Varlık</th>
+                        <th scope="col">İşlem</th>
+                        <th scope="col">Tablo</th>
+                        <th scope="col">Kayıt anahtarı</th>
+                        <th scope="col">ERP satır no</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _result.Items)
+                    {
+                        <tr>
+                            <td data-label="#">@item.Sequence</td>
+                            <td data-label="Zaman">@item.CreatedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</td>
+                            <td data-label="Varlık">@item.Entity</td>
+                            <td data-label="İşlem">
+                                <span class="badge @(item.Operation == "delete" ? "bg-danger" : "bg-success")">@item.Operation</span>
+                            </td>
+                            <td data-label="Tablo">@item.Table</td>
+                            <td data-label="Kayıt anahtarı"><code>@item.RecordKey</code></td>
+                            <td data-label="ERP satır no">@item.SourceRecordKey</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <div>
+                <button class="btn btn-outline-secondary btn-sm me-2" id="queue-prev" @onclick="PrevPageAsync" disabled="@(_page <= 1 || _loading)">‹ Önceki</button>
+                <button class="btn btn-outline-secondary btn-sm" id="queue-next" @onclick="NextPageAsync" disabled="@(_page >= TotalPages || _loading)">Sonraki ›</button>
+            </div>
+            <span class="text-muted small">@_result.Total olay · sayfa @_page / @TotalPages</span>
+        </div>
+    }
+}
+
+else if (!_loading && string.IsNullOrEmpty(_error) && string.IsNullOrEmpty(_tenantId))
+{
+    <AdminState Title="Bir müşteri seçin" Message="Senkron kuyruğunu görmek için yukarıdan müşteri seçin ve 'Olayları getir' düğmesine basın." />
+}
+
+@code {
+    private const int PageSize = 50;
+
+    /// <summary>The agent's default cadence is 20 s; 15 minutes without an event means it stopped.</summary>
+    private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(15);
+
+    private string _tenantId = string.Empty;
+    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
+    private string _entity = string.Empty;
+    private string _operation = string.Empty;
+    private string _table = string.Empty;
+
+    private ErpBridge.Admin.Api.SyncQueuePagedResult? _result;
+    private ErpBridge.Admin.Api.SyncQueueSummaryResult? _summary;
+    private bool _loading;
+    private string? _error;
+    private int _page = 1;
+
+    private int TotalPages => _result is null || _result.Total == 0
+        ? 1
+        : (int)Math.Ceiling(_result.Total / (double)PageSize);
+
+    private bool IsStale => _summary?.LastCreatedAtUtc is { } last
+        && DateTimeOffset.UtcNow - last > StaleAfter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _tenants = await Api.ListTenantsAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadFirstPageAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PrevPageAsync()
+    {
+        if (_page <= 1) return;
+        _page--;
+        await LoadAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (_page >= TotalPages) return;
+        _page++;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!Guid.TryParse(_tenantId, out var tenantId))
+        {
+            _error = "Önce bir müşteri seçin.";
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+        try
+        {
+            _summary = await Api.GetSyncQueueSummaryAsync(tenantId);
+            _result = await Api.ListSyncQueueAsync(
+                tenantId,
+                entity: string.IsNullOrWhiteSpace(_entity) ? null : _entity,
+                operation: string.IsNullOrWhiteSpace(_operation) ? null : _operation,
+                table: string.IsNullOrWhiteSpace(_table) ? null : _table,
+                page: _page,
+                pageSize: PageSize);
+        }
+        catch (Exception ex)
+        {
+            _error = "Kuyruk okunamadı: " + ex.Message;
+            _result = null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
