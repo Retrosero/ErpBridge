@@ -131,6 +131,7 @@ public partial class Program
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
+        builder.Services.AddMemoryCache();
 
         var allowTestDefaults = IsTestEnvironment(builder.Environment.EnvironmentName);
         ValidateRuntimeConfiguration(cfg, allowTestDefaults);

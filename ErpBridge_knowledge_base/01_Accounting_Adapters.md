@@ -425,3 +425,13 @@ Yeni: `AdminSyncQueueEndpoints` → `GET /api/v1/admin/sync-queue/` ve `/summary
 > ⚠️ **Admin token'ında tenant claim'i YOKTUR.** `IJwtIssuer.IssueForAdmin` yalnızca `sub`, `scope=admin`, `jti` üretir. Bu yüzden admin uçları tenant'ı **query parametresinden** almalıdır (`AdminBootstrapEndpoints` deseni), `http.User.TryGetTenantId` **değil**.
 >
 > Aynı hata `AdminAuditEndpoints`'te de vardı ve "Sync geçmişi" sayfasının hiçbir zaman veri gösterememesine yol açıyordu; PR #21 ile düzeltildi. Kural artık `00_System_Overview.md`'de 9. madde olarak bağlayıcı.
+
+### Büyük tabloda senkronun "tıkanması" — sayfa başına tüm snapshot yeniden kuruluyordu (2026-09-10)
+
+**Belirti:** Saha Senkronizasyonu ekranında büyük tablolarda (`Stok Hareketleri`, 47k+ satır) senkron ilerlemiyormuş gibi görünüyor, "kontrol ediliyor... Karar=FULL... indiriliyor..." adımında uzun süre takılı kalıyordu. Daha küçük `FaturaHareket` (~11k satır) tablosu da anormal yavaştı.
+
+**Kök neden:** `AndroidEndpoints.StockMovementsAsync` ve `InvoiceMovementsAsync`, her tek sayfa (`page`) isteğinde `GetAndroidDocumentAsync` → `BuildSnapshotDocumentAsync` üzerinden **ilgili bölümün tüm `BootstrapSnapshotChunks` satırlarını DB'den yeniden okuyup, her chunk'ı yeniden JSON parse edip** (`JsonNode` ile) tam bir bellek-içi dizi kuruyordu — sayfalama bu tam diziyi baştan tarayıp `offset`'e atlıyordu. `InvoiceMovementsAsync` ayrıca kullanılmayan `stockTransactions` bölümünü de (47k+ satır) her `faturaHareket` sayfasında gereksiz yere birlikte kuruyordu. Sonuç: N satırlık bir tablo için sayfa sayısı arttıkça iş yükü O(N²) büyüyordu — mobil `SyncManager.kt`'deki "Hız: X sn/kayıt" etiketi de yanıltıcı (aslında kayıt/sn) ama gerçek yavaşlığı gizlemiyordu.
+
+**Düzeltme:** `GetAndroidDocumentAsync`, aktif snapshot'ın birleştirilmiş bölüm JSON'ını `IMemoryCache`'te `snapshot.Id + bölüm adları` anahtarıyla (10 dk mutlak / 3 dk kayan süre) önbelleğe alıyor. Bir senkron koşusu aynı bölümleri onlarca kez sayfa sayfa istese bile DB + JSON yeniden kurma maliyeti **sadece bir kez** ödeniyor; yeni bir agent yüklemesi yeni bir `snapshot.Id` ürettiği için önbellek otomatik geçersizleşiyor (eski veri asla sızmıyor — bkz. `Stock_movement_reflects_a_newly_activated_snapshot_instead_of_a_stale_cached_one` testi). `Program.cs`'e `builder.Services.AddMemoryCache()` eklendi.
+
+> ⚠️ `GetAndroidDocumentAsync` kullanan yeni bir paged endpoint eklersen bu önbellekten otomatik faydalanırsın — ama endpoint kendi içinde `BuildSnapshotDocumentAsync`'i **doğrudan** çağırırsa (bkz. `CollectionsAsync`/`PaymentOrdersAsync`/`DispatchNotesAsync`/`PullAsync`) önbelleğin dışında kalır. Bu dördü küçük bölümler olduğu için şimdilik dokunulmadı.

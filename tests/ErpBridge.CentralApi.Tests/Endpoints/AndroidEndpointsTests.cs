@@ -2,8 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ErpBridge.CentralApi.Tests.Endpoints;
 
@@ -361,6 +364,116 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var response = await client.PostAsync("/api/v1/android/pull", content: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Stock_movement_pages_from_a_snapshot_are_consistent_across_repeated_requests()
+    {
+        // Regression test for the "tıkanıyor" (stuck) sync bug: when the
+        // data comes from a BootstrapSnapshot (chunk storage, the live
+        // production path — not the legacy single-package fallback used by
+        // the other tests in this file), each page request used to rebuild
+        // the whole merged section from every stored chunk again. For a
+        // large stockTransactions table that made a multi-page sync run
+        // (SyncManager pages through stokHareketleri 250 rows at a time)
+        // dramatically slower as the page count grew. The merged document
+        // is now cached per snapshot, so this asserts every page still
+        // returns the correct, distinct slice of data.
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-SNAP-MOVE-{suffix}", "Snapshot movement tenant");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-SNAP-MOVE-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var items = Enumerable.Range(1, 5)
+            .Select(i => new { id = $"SH-{i:000}", stokKod = "S001", updatedAt = $"2026-01-0{i}T00:00:00Z" })
+            .ToArray();
+        SeedSnapshot(tenant.Id, "stockTransactions", items);
+
+        var page1 = await client.PostAsJsonAsync("/api/v1/android/sync/stokHareketleri", new { page = 1, pageSize = 2 });
+        var page2 = await client.PostAsJsonAsync("/api/v1/android/sync/stokHareketleri", new { page = 2, pageSize = 2 });
+        var page3 = await client.PostAsJsonAsync("/api/v1/android/sync/stokHareketleri", new { page = 3, pageSize = 2 });
+
+        foreach (var response in new[] { page1, page2, page3 })
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var doc1 = JsonDocument.Parse(await page1.Content.ReadAsStringAsync());
+        using var doc2 = JsonDocument.Parse(await page2.Content.ReadAsStringAsync());
+        using var doc3 = JsonDocument.Parse(await page3.Content.ReadAsStringAsync());
+
+        doc1.RootElement.GetProperty("total").GetInt32().Should().Be(5);
+        Ids(doc1).Should().Equal("SH-001", "SH-002");
+        Ids(doc2).Should().Equal("SH-003", "SH-004");
+        Ids(doc3).Should().Equal("SH-005");
+
+        static string[] Ids(JsonDocument document) => document.RootElement.GetProperty("items")
+            .EnumerateArray().Select(item => item.GetProperty("id").GetString()!).ToArray();
+    }
+
+    [Fact]
+    public async Task Stock_movement_reflects_a_newly_activated_snapshot_instead_of_a_stale_cached_one()
+    {
+        // A new agent upload deactivates the old BootstrapSnapshot and
+        // activates a new one (new Id). The per-request document cache is
+        // keyed by snapshot id, so this proves a fresh upload is never
+        // masked by a previous snapshot's cached section.
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-SNAP-REFRESH-{suffix}", "Snapshot refresh tenant");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-SNAP-REFRESH-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var firstSnapshotId = SeedSnapshot(tenant.Id, "stockTransactions",
+            new[] { new { id = "SH-OLD", stokKod = "S001" } });
+
+        var firstResponse = await client.PostAsJsonAsync("/api/v1/android/sync/stokHareketleri", new { page = 1, pageSize = 50 });
+        (await firstResponse.Content.ReadAsStringAsync()).Should().Contain("SH-OLD");
+
+        DeactivateSnapshot(firstSnapshotId);
+        SeedSnapshot(tenant.Id, "stockTransactions", new[] { new { id = "SH-NEW", stokKod = "S001" } });
+
+        var secondResponse = await client.PostAsJsonAsync("/api/v1/android/sync/stokHareketleri", new { page = 1, pageSize = 50 });
+        var secondBody = await secondResponse.Content.ReadAsStringAsync();
+        secondBody.Should().Contain("SH-NEW").And.NotContain("SH-OLD");
+    }
+
+    private Guid SeedSnapshot(Guid tenantId, string section, object[] items)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = new BootstrapSnapshot
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            SourceDatabase = "MIKRO-TEST",
+            PulledAtUtc = now,
+            ReceivedAtUtc = now,
+            IsActive = true,
+        };
+        db.BootstrapSnapshots.Add(snapshot);
+        db.BootstrapSnapshotChunks.Add(new BootstrapSnapshotChunk
+        {
+            Id = Guid.NewGuid(),
+            SnapshotId = snapshot.Id,
+            Section = section,
+            ChunkIndex = 0,
+            ItemCount = items.Length,
+            PayloadJson = JsonSerializer.Serialize(items, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+        });
+        db.SaveChanges();
+        return snapshot.Id;
+    }
+
+    private void DeactivateSnapshot(Guid snapshotId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var snapshot = db.BootstrapSnapshots.Single(x => x.Id == snapshotId);
+        snapshot.IsActive = false;
+        db.SaveChanges();
     }
 
     private static void Authorize(HttpClient client, Guid tenantId, string rawKey)
