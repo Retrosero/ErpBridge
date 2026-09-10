@@ -6,6 +6,8 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ErpBridge.CentralApi.Endpoints;
 
@@ -876,8 +878,23 @@ public static class AndroidEndpoints
             .Where(x => x.TenantId == mobile.TenantId && x.IsActive).FirstOrDefaultAsync(ct);
         if (snapshot is not null)
         {
-            var document = await BuildSnapshotDocumentAsync(db, snapshot, sections, ct);
-            return new(document, snapshot, null);
+            // A single sync run re-requests the same section set page after
+            // page (e.g. stok hareketleri paging through a 40k+ row table).
+            // Without caching, every page rebuilt the full merged document
+            // from every stored chunk again, turning a large table into an
+            // O(pages^2) database + JSON-parsing cost that made the sync
+            // appear to hang. The cache key includes the snapshot id, so a
+            // newly uploaded snapshot naturally invalidates the old entry.
+            var cache = http.RequestServices.GetRequiredService<IMemoryCache>();
+            var cacheKey = $"android-doc:{snapshot.Id}:{string.Join(",", sections.OrderBy(s => s, StringComparer.Ordinal))}";
+            var json = await cache.GetOrCreateAsync(cacheKey, async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10);
+                entry.SlidingExpiration = TimeSpan.FromMinutes(3);
+                using var built = await BuildSnapshotDocumentAsync(db, snapshot, sections, ct);
+                return built.RootElement.GetRawText();
+            });
+            return new(JsonDocument.Parse(json!), snapshot, null);
         }
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return new(null, null, access.Error);
