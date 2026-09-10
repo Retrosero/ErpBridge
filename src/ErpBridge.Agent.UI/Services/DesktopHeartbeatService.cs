@@ -1,3 +1,4 @@
+using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Agent.UI.DependencyInjection;
@@ -12,23 +13,20 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
     private readonly IRemoteApiClient _remoteApi;
     private readonly IAgentConfigStore _configStore;
+    private readonly IAgentTokenService _tokens;
     private readonly ILogger<DesktopHeartbeatService> _logger;
-    private readonly IConfiguration _configuration;
-    private readonly MutableMemoryConfigurationProvider _liveSettings;
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
     public DesktopHeartbeatService(
         IRemoteApiClient remoteApi,
         IAgentConfigStore configStore,
-        IConfiguration configuration,
-        MutableMemoryConfigurationProvider liveSettings,
+        IAgentTokenService tokens,
         ILogger<DesktopHeartbeatService> logger)
     {
         _remoteApi = remoteApi;
         _configStore = configStore;
-        _configuration = configuration;
-        _liveSettings = liveSettings;
+        _tokens = tokens;
         _logger = logger;
     }
 
@@ -59,8 +57,9 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
                 var config = await _configStore.LoadAsync(ct).ConfigureAwait(false);
                 if (config is not null)
                 {
-                    await EnsureRegisteredAsync(config, ct).ConfigureAwait(false);
-                    if (string.IsNullOrWhiteSpace(_configuration["CentralApi:Jwt"]))
+                    // Delegates to the shared token service, which renews an
+                    // expiring token instead of only filling in a missing one.
+                    if (!await _tokens.EnsureValidAsync(ct).ConfigureAwait(false))
                     {
                         await DelaySafe(ct).ConfigureAwait(false);
                         continue;
@@ -80,24 +79,6 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
 
             await DelaySafe(ct).ConfigureAwait(false);
         }
-    }
-
-    private async Task EnsureRegisteredAsync(AgentConfig config, CancellationToken ct)
-    {
-        if (!string.IsNullOrWhiteSpace(_configuration["CentralApi:Jwt"])) return;
-        if (string.IsNullOrWhiteSpace(config.LicenseKey)) return;
-
-        var registration = await _remoteApi.RegisterAgentAsync(config.LicenseKey, Environment.MachineName, ct).ConfigureAwait(false);
-        if (!registration.Success || string.IsNullOrWhiteSpace(registration.Jwt))
-        {
-            _logger.LogWarning("Desktop heartbeat could not register the agent. ErrorCode={ErrorCode}.", registration.ErrorCode);
-            return;
-        }
-
-        _liveSettings["CentralApi:Jwt"] = registration.Jwt;
-        config.TenantId = registration.TenantId.ToString();
-        await _configStore.SaveAsync(config, ct).ConfigureAwait(false);
-        _logger.LogInformation("Desktop heartbeat registered agent for machine {MachineId}.", Environment.MachineName);
     }
 
     private static async Task DelaySafe(CancellationToken ct)

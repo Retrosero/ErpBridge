@@ -33,6 +33,7 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddSingleton<IJwtTokenProvider, JwtTokenProvider>();
+        services.AddTransient<AgentTokenRefreshHandler>();
 
         services.AddHttpClient<IRemoteApiClient, HttpRemoteApiClient>((sp, client) =>
             {
@@ -52,7 +53,11 @@ public static class ServiceCollectionExtensions
             .AddPolicyHandler((Func<HttpRequestMessage, IAsyncPolicy<HttpResponseMessage>>)(request =>
                 SkipsTransportRetry(request)
                     ? BuildThrottleOnlyPolicy()
-                    : BuildRetryPolicy()));
+                    : BuildRetryPolicy()))
+            // Registered after the policy handler so it runs outside it and
+            // observes the final status: a 401 that survived the retries means
+            // the token really is dead, not momentarily unlucky.
+            .AddHttpMessageHandler<AgentTokenRefreshHandler>();
 
         return services;
     }

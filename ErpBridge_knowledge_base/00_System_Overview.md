@@ -108,7 +108,21 @@ registration ayrı bir composition projesine taşınır.
    ile filtrelenir; Windows'ta DPAPI ile şifrelenir.
 8. **Kimlik alanı taşarsa reddet.** `ErpFieldText.Identifier` exception atar
    (kısaltılmış `cari_kod` başka hesapla eşleşebilir); serbest metin kırpılır.
-9. **Admin uçlarında tenant query'den gelir, token'dan DEĞİL.**
+9. **Ajan token'ı süreli; "token var mı" kontrolü yeterli DEĞİL.**
+   Central API ajanlara **60 dakikalık** JWT veriyor ve ajanlar için bir refresh
+   ucu yok — yeni token almanın tek yolu yeniden `register` olmak. Bir token
+   string'inin dolu olması onun geçerli olduğunu göstermez.
+   *2026-09-10: `EnsureRegisteredAsync` (WPF), `DesktopHeartbeatService` ve
+   `JwtTokenProvider`'ın üçü de yalnızca "JWT dolu mu" diye bakıyordu. Sonuç:
+   ajan başladıktan 60 dk sonra kalıcı olarak ölüyordu — upload, status probe ve
+   notify long-poll hepsi 401 alıyor, arayüzdeki hiçbir buton kurtaramıyordu
+   (stale token dolu olduğu için kayıt atlanıyordu). Ayrıca notify 401'i anında
+   döndüğü için döngü saniyede ~5 istekle sunucuyu dövüyordu.*
+   Token yaşam döngüsü artık tek yerde: `IAgentTokenService` (Core). Süre
+   dolmadan 5 dk önce proaktif yeniler; `AgentTokenRefreshHandler` da 401 gören
+   her çağrıdan sonra reaktif olarak tazeler. Yeni bir "kayıtlı mıyım" kontrolü
+   yazma — `EnsureValidAsync` çağır.
+10. **Admin uçlarında tenant query'den gelir, token'dan DEĞİL.**
    `IJwtIssuer.IssueForAdmin` yalnızca `sub`, `scope=admin`, `jti` üretir —
    **`tenant` claim'i yoktur.** Bir admin ucunda `http.User.TryGetTenantId`
    çağırmak, her isteği 401 ile reddetmek demektir. Doğru desen
