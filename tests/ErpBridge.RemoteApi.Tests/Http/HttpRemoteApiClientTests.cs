@@ -170,6 +170,64 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
+    public async Task ThrottleOnlyPolicy_waits_out_a_429()
+    {
+        // A full snapshot rebuild is ~210 chunk POSTs. Treating the rate
+        // limiter's 429 as fatal aborted the whole upload; it is a pacing
+        // signal, so the transport waits and retries.
+        var calls = 0;
+        var policy = ServiceCollectionExtensions.BuildThrottleOnlyPolicy(
+            [TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1)]);
+
+        var response = await policy.ExecuteAsync(() =>
+        {
+            calls++;
+            return Task.FromResult(new HttpResponseMessage(
+                calls < 3 ? HttpStatusCode.TooManyRequests : HttpStatusCode.NoContent));
+        });
+
+        calls.Should().Be(3, "two 429s should be waited out, then the third call succeeds");
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task ThrottleOnlyPolicy_does_not_retry_5xx()
+    {
+        // Stacking transport 5xx retries under BootstrapSyncService's own
+        // pipeline is what once turned an unhealthy server into an hour of
+        // silence in the UI. That must stay fixed.
+        var calls = 0;
+        var policy = ServiceCollectionExtensions.BuildThrottleOnlyPolicy(
+            [TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1)]);
+
+        var response = await policy.ExecuteAsync(() =>
+        {
+            calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        });
+
+        calls.Should().Be(1, "5xx belongs to the caller's retry pipeline, not the transport");
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+    }
+
+    [Fact]
+    public async Task ThrottleOnlyPolicy_gives_up_after_the_schedule_is_exhausted()
+    {
+        var calls = 0;
+        var policy = ServiceCollectionExtensions.BuildThrottleOnlyPolicy(
+            [TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1)]);
+
+        var response = await policy.ExecuteAsync(() =>
+        {
+            calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.TooManyRequests));
+        });
+
+        calls.Should().Be(3, "1 initial call + 2 scheduled retries");
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
     public async Task BuildRetryPolicy_retries_4_times_after_5xx()
     {
         // Verifies the canonical retry policy from DI extension: 1 initial call

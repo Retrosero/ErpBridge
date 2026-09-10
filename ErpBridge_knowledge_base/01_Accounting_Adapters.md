@@ -319,6 +319,29 @@ Sunucu tam değişimi **zaten destekliyordu**: `CompleteAsync`, `IsIncremental =
 Testler: `BootstrapUploadRelationalTests.Non_incremental_upload_replaces_the_snapshot_and_drops_stale_rows`,
 `BootstrapSyncServiceTests.RebuildSnapshotAsync_ignores_the_remote_cursor_and_pushes_a_full_package`.
 
+#### Hız limiti: bootstrap yüklemesinin kendi bütçesi var
+
+Tam yeniden kurulum **~210 chunk POST**'u (≈105k satır / 500) demek. Ajan başına
+varsayılan limit **100 istek/dakika** (`QueueLimit = 0`, yani anında 429), dolayısıyla
+yeniden kurulum **yapısal olarak** limite sığmıyordu ve her denemede `HTTP_429`
+ile düşüyordu. Üstelik 20 sn'lik arka plan döngüsü tek başına dakikada ~60 istek
+harcıyor — tavan yeniden kurulum olmadan da dardı.
+
+Chunked upload uçları (`/upload/start`, `/chunks`, `/complete`) artık ayrı bir
+politika kullanıyor: `Program.BootstrapUploadRateLimitPolicy`,
+**600 istek/dakika**. Diğer tüm ajan uçları dar varsayılanda kalıyor.
+
+İstemci tarafında `SkipsTransportRetry` artık `NoOpAsync` yerine
+`BuildThrottleOnlyPolicy()` döndürüyor: **yalnızca 429**'u bekleyip tekrar
+deniyor (1/3/10 sn, sunucunun `Retry-After` başlığı varsa ve daha kısaysa o).
+429 bir hata değil, hız işaretidir — fatal saymak koca yüklemeyi iptal ediyordu.
+
+> ⚠️ 5xx ve transport istisnaları burada hâlâ **tekrar denenmiyor**. Onları
+> `BootstrapSyncService`'in kendi pipeline'ının altına yığmak, sağlıksız bir
+> sunucuyu arayüzde bir saatlik sessizliğe çeviren şeydi (bkz. yukarıdaki
+> çift retry katmanı bölümü). Bu ayrım `ThrottleOnlyPolicy_does_not_retry_5xx`
+> testiyle sabitlendi.
+
 ### WPF ajanı artık arka planda senkronize oluyor
 
 **Eski durum:** `AddHostedService` `src/ErpBridge.Agent.UI/` altında hiç geçmiyordu. `BootstrapWorker` yalnızca `Agent.Service/Program.cs`'te kayıtlıydı; WPF `App.xaml.cs` çıplak bir `ServiceCollection` kurduğu için Generic Host yoktu ve **hiçbir periyodik senkron çalışmıyordu**. Change-set yalnızca operatör butona bastığında gidiyordu (`ui-20260910.log`: 129 heartbeat, ~350 bootstrap isteği, **3 adet** `/api/v1/ingest/changeset`).

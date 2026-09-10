@@ -69,6 +69,20 @@ public partial class Program
     /// <summary>Permits per minute for admin endpoints.</summary>
     public const int AdminPermitsPerMinute = 60;
 
+    /// <summary>Rate-limit policy for the chunked bootstrap upload routes.</summary>
+    public const string BootstrapUploadRateLimitPolicy = "bootstrap-upload";
+
+    /// <summary>
+    /// Permits per minute for the chunked bootstrap upload. A full snapshot of a
+    /// real Mikro database is roughly 210 chunk POSTs (~105k rows at 500 rows a
+    /// chunk), which cannot fit in <see cref="DefaultPermitsPerMinute"/> — the
+    /// operator's "rebuild snapshot" action failed with HTTP 429 every time. The
+    /// periodic cycle adds to that: at a 20 s cadence it spends ~60 requests a
+    /// minute on its own. Bulk transfer therefore gets its own, wider budget
+    /// while every other agent route keeps the tighter default.
+    /// </summary>
+    public const int BootstrapUploadPermitsPerMinute = 600;
+
     /// <summary>
     /// Host entry point. Builds the WebApplication and runs the host. Database
     /// migrations are an explicit release operation invoked with <c>--migrate</c>.
@@ -349,6 +363,20 @@ public partial class Program
                 return RateLimitPartition.GetFixedWindowLimiter("agent:" + agentId, _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = DefaultPermitsPerMinute,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
+            opt.AddPolicy(BootstrapUploadRateLimitPolicy, httpContext =>
+            {
+                var agentId = httpContext.User?.FindFirst("sub")?.Value
+                    ?? httpContext.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? "anonymous";
+                return RateLimitPartition.GetFixedWindowLimiter("bootstrap:" + agentId, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = BootstrapUploadPermitsPerMinute,
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0,
                     AutoReplenishment = true,
