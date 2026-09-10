@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Snapshots;
 using ErpBridge.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -78,6 +79,7 @@ public static class ChangeSetEndpoints
         HttpContext http,
         [FromServices] CentralApiDbContext db,
         [FromServices] ErpBridge.CentralApi.Notifications.IBootstrapNotificationHub hub,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (body is null)
@@ -124,7 +126,12 @@ public static class ChangeSetEndpoints
 
         var accepted = 0;
         var duplicates = 0;
+        // Rows the ERP no longer has. They are evicted from the active
+        // bootstrap snapshot below so the mobile read endpoints stop serving
+        // them; without that the snapshot keeps every deleted row forever.
+        var snapshotDeletes = new List<SnapshotDeleteApplier.DeletedRow>();
         var idempotencyKey = ComputeIdempotencyKeyForBundle(body, http);
+        var logger = loggerFactory.CreateLogger(typeof(ChangeSetEndpoints));
         var agentId = http.User.FindFirst("sub")?.Value
                        ?? http.User.Identity?.Name
                        ?? string.Empty;
@@ -167,7 +174,8 @@ public static class ChangeSetEndpoints
                 PulledAtUtc = body.PulledAtUtc,
             });
 
-            await AddMobileQueueItems(db, tenantId, body.SourceDatabase, table, ct);
+            snapshotDeletes.AddRange(
+                await AddMobileQueueItems(db, tenantId, body.SourceDatabase, table, ct));
 
             // Faz 15.6: append one audit row per non-empty direction. The
             // (TenantId, IdempotencyKey, Direction) unique index makes a
@@ -183,6 +191,16 @@ public static class ChangeSetEndpoints
 
         if (accepted > 0)
         {
+            // Evicting before SaveChanges keeps the queue rows, the change-set
+            // record and the snapshot rewrite in one transaction: a device can
+            // never observe a delete event whose snapshot eviction was lost.
+            var evicted = await SnapshotDeleteApplier.ApplyAsync(db, tenantId, snapshotDeletes, ct);
+            if (evicted > 0)
+            {
+                logger.LogInformation(
+                    "Evicted {Count} ERP-deleted rows from the active snapshot for tenant {TenantId}.",
+                    evicted, tenantId);
+            }
             try
             {
                 await db.SaveChangesAsync(ct);
@@ -205,13 +223,69 @@ public static class ChangeSetEndpoints
         return Results.Ok(new { accepted, duplicates });
     }
 
-    private static async Task AddMobileQueueItems(
+    /// <summary>
+    /// Business-code column per tracked table. A delete event can only name the
+    /// physical row key, but every consumer downstream — the snapshot, the
+    /// mobile projection — is keyed by the business code, so the code has to be
+    /// recovered from an upsert that mentioned the same row.
+    /// </summary>
+    private static readonly Dictionary<string, string> BusinessKeyColumns =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["STOKLAR"] = "sto_kod",
+            ["CARI_HESAPLAR"] = "cari_kod",
+        };
+
+    private static string? ReadBusinessKey(IReadOnlyDictionary<string, object?>? columns, string tableName)
+    {
+        if (columns is null) return null;
+        if (!BusinessKeyColumns.TryGetValue(tableName, out var column)) return null;
+        foreach (var pair in columns)
+        {
+            if (!string.Equals(pair.Key, column, StringComparison.OrdinalIgnoreCase)) continue;
+            var text = pair.Value switch
+            {
+                null => null,
+                JsonElement element => element.ValueKind == JsonValueKind.String ? element.GetString() : element.ToString(),
+                _ => pair.Value.ToString(),
+            };
+            return string.IsNullOrWhiteSpace(text) ? null : text!.Trim();
+        }
+        return null;
+    }
+
+    private static string? ReadBusinessKeyFromJson(string? payloadJson, string tableName)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson)) return null;
+        if (!BusinessKeyColumns.TryGetValue(tableName, out var column)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!string.Equals(property.Name, column, StringComparison.OrdinalIgnoreCase)) continue;
+                var text = property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString()
+                    : property.Value.ToString();
+                return string.IsNullOrWhiteSpace(text) ? null : text!.Trim();
+            }
+        }
+        catch (JsonException)
+        {
+            // A corrupted queue payload must not fail the whole ingest.
+        }
+        return null;
+    }
+
+    private static async Task<List<SnapshotDeleteApplier.DeletedRow>> AddMobileQueueItems(
         CentralApiDbContext db,
         Guid tenantId,
         string sourceDatabase,
         SyncTableChangeSet table,
         CancellationToken ct)
     {
+        var deletes = new List<SnapshotDeleteApplier.DeletedRow>();
         var entity = table.Table.TableName switch
         {
             "STOKLAR" => "product",
@@ -221,13 +295,25 @@ public static class ChangeSetEndpoints
             "ODEME_EMIRLERI" => "collection",
             _ => null,
         };
-        if (entity is null) return;
+        if (entity is null) return deletes;
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         // Faz 20: upsert rows carry an explicit RecordKey, so the queue item's
         // identity no longer depends on guessing a "*RECno" column — which
         // GUID-keyed tables (Mikro V16, Logo) do not have.
         var upsertSequence = Math.Max(table.New?.HighestSequence ?? 0, table.Changed?.HighestSequence ?? 0);
+        // A row created and deleted inside the same bundle is only ever
+        // described here, so this bundle's own upserts are the first place to
+        // look for its business code.
+        var codesInBundle = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var row in (table.New?.Rows ?? Array.Empty<SyncUpsertRow>())
+                     .Concat(table.Changed?.Rows ?? Array.Empty<SyncUpsertRow>()))
+        {
+            var code = ReadBusinessKey(row.Columns, table.Table.TableName);
+            if (code is not null && !string.IsNullOrWhiteSpace(row.RecordKey))
+                codesInBundle[row.RecordKey] = code;
+        }
+
         foreach (var row in table.New?.Rows ?? Array.Empty<SyncUpsertRow>())
             AddUpsertRow(db, tenantId, sourceDatabase, table, entity, row, upsertSequence, seen);
         foreach (var row in table.Changed?.Rows ?? Array.Empty<SyncUpsertRow>())
@@ -236,13 +322,27 @@ public static class ChangeSetEndpoints
         foreach (var row in table.Deleted?.Rows ?? Array.Empty<SyncDeletedRow>())
         {
             var sourceRecordKey = row.RecordKey;
-            var recordKey = await db.MobileSyncQueue
-                .Where(x => x.TenantId == tenantId && x.SourceDatabase == sourceDatabase &&
-                            x.TableName == table.Table.TableName && x.SourceRecordKey == sourceRecordKey)
-                .OrderByDescending(x => x.Sequence)
-                .Select(x => x.RecordKey)
-                .FirstOrDefaultAsync(ct) ?? sourceRecordKey;
+            // The stored queue rows are the durable half of the translation:
+            // every upsert this tenant ever pushed kept the row's columns, and
+            // the business code is in there. Reading `RecordKey` back instead —
+            // as this used to — returned the RECno unchanged, so the mobile
+            // delete never matched anything.
+            var businessKey = codesInBundle.GetValueOrDefault(sourceRecordKey);
+            if (businessKey is null)
+            {
+                var storedPayload = await db.MobileSyncQueue.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.SourceDatabase == sourceDatabase &&
+                                x.TableName == table.Table.TableName &&
+                                x.SourceRecordKey == sourceRecordKey && x.Operation == "upsert")
+                    .OrderByDescending(x => x.Sequence)
+                    .Select(x => x.PayloadJson)
+                    .FirstOrDefaultAsync(ct);
+                businessKey = ReadBusinessKeyFromJson(storedPayload, table.Table.TableName);
+            }
+
+            var recordKey = businessKey ?? sourceRecordKey;
             if (!seen.Add($"{recordKey}:delete:{row.Sequence}")) continue;
+            deletes.Add(new SnapshotDeleteApplier.DeletedRow(table.Table.TableName, sourceRecordKey, businessKey));
             var payload = JsonSerializer.Serialize(new { recordKey, sourceRecordKey, sequence = row.Sequence });
             db.MobileSyncQueue.Add(new MobileSyncQueueItem
             {
@@ -257,6 +357,8 @@ public static class ChangeSetEndpoints
                 PayloadJson = payload,
             });
         }
+
+        return deletes;
     }
 
     private static void AddUpsertRow(
