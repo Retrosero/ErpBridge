@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using ErpBridge.Core.Domain;
+using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.RemoteApi.DependencyInjection;
@@ -717,8 +718,46 @@ public class HttpRemoteApiClientTests
         var client = new HttpRemoteApiClient(
             http,
             StubOptions(maxAttempts: retries),
+            new InMemoryAgentTokenSource(),
             NullLogger<HttpRemoteApiClient>.Instance);
         return (client, handler);
+    }
+
+    [Fact]
+    public async Task The_renewed_token_is_what_actually_goes_on_the_wire()
+    {
+        // The link that was missing: AgentTokenService kept a valid token in
+        // IAgentTokenSource while BuildRequest still read the configured one,
+        // so the agent presented whatever token it started with. Since the
+        // central API issues 60-minute tokens, every call after that hour came
+        // back 401 with a good replacement sitting unused in memory.
+        string? sentAuthorization = null;
+        var handler = new Mock<HttpMessageHandler>(MockBehavior.Strict);
+        handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>((req, _) =>
+            {
+                sentAuthorization = req.Headers.TryGetValues("Authorization", out var values)
+                    ? string.Join(",", values)
+                    : null;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+            });
+
+        var tokenSource = new InMemoryAgentTokenSource();
+        tokenSource.Set("renewed-token", DateTimeOffset.UtcNow.AddHours(1));
+        var http = new HttpClient(handler.Object) { BaseAddress = new Uri(BaseUrl + "/") };
+        var client = new HttpRemoteApiClient(
+            http, StubOptions(), tokenSource, NullLogger<HttpRemoteApiClient>.Instance);
+
+        await client.SendHeartbeatAsync(new AgentHeartbeat
+        {
+            AgentId = "agent-1", TenantId = Guid.NewGuid().ToString(), Status = "running",
+        });
+
+        sentAuthorization.Should().Be("Bearer renewed-token",
+            "the renewed token must win over the statically configured one");
     }
 
     private static (HttpRemoteApiClient Client, Mock<HttpMessageHandler> Handler) BuildClient(
@@ -734,7 +773,8 @@ public class HttpRemoteApiClientTests
             .Returns<HttpRequestMessage, CancellationToken>((req, _) => responder(req));
 
         var http = new HttpClient(handler.Object) { BaseAddress = new Uri(BaseUrl + "/") };
-        var client = new HttpRemoteApiClient(http, StubOptions(), NullLogger<HttpRemoteApiClient>.Instance);
+        var client = new HttpRemoteApiClient(
+            http, StubOptions(), new InMemoryAgentTokenSource(), NullLogger<HttpRemoteApiClient>.Instance);
         return (client, handler);
     }
 
