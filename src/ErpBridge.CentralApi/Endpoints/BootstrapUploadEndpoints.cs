@@ -158,9 +158,61 @@ public static class BootstrapUploadEndpoints
             .Where(x => x.SnapshotId == staged.Id)
             .OrderBy(x => x.Section).ThenBy(x => x.ChunkIndex)
             .ToListAsync(ct);
-        var sections = incoming.Select(x => x.Section).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var previousSections = await db.BootstrapSnapshotChunks.AsNoTracking()
+            .Where(x => x.SnapshotId == previous.Id)
+            .Select(x => x.Section)
+            .Distinct()
+            .ToListAsync(ct);
+        // The full incremental path (SendAllBootstrapChunksAsync) always sends
+        // every section, padding untouched ones with a single empty chunk; a
+        // manual single-section push (PushSectionAsync) omits the other
+        // sections entirely. Either way, a section with no real incoming rows
+        // has nothing to merge — union both sets so we still visit sections
+        // that only exist in the previous snapshot (otherwise their chunks
+        // would be silently lost when `previous` is deleted below).
+        var sections = incoming.Select(x => x.Section)
+            .Concat(previousSections)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         foreach (var section in sections)
         {
+            var incomingSectionChunks = incoming
+                .Where(x => string.Equals(x.Section, section, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var hasIncomingChanges = incomingSectionChunks.Any(x => x.ItemCount > 0);
+
+            if (!hasIncomingChanges)
+            {
+                // Nothing changed for this section in this push. Re-point the
+                // previous snapshot's chunks onto the staged snapshot instead
+                // of re-parsing and re-serializing the whole section on every
+                // cycle — for customerTransactions/stockTransactions (years of
+                // ledger movements) that full round-trip was expensive enough
+                // to time out the request on every periodic sync, and the
+                // agent would then restart the entire upload from scratch.
+                if (incomingSectionChunks.Count > 0)
+                {
+                    // Drop the empty placeholder chunk(s) first so re-pointing
+                    // the previous chunks below can't collide with them on
+                    // the (SnapshotId, Section, ChunkIndex) unique index.
+                    var placeholders = await db.BootstrapSnapshotChunks
+                        .Where(x => x.SnapshotId == staged.Id && x.Section == section)
+                        .ToListAsync(ct);
+                    db.BootstrapSnapshotChunks.RemoveRange(placeholders);
+                    await db.SaveChangesAsync(ct);
+                }
+
+                var carryForward = await db.BootstrapSnapshotChunks
+                    .Where(x => x.SnapshotId == previous.Id && x.Section == section)
+                    .ToListAsync(ct);
+                foreach (var chunk in carryForward)
+                {
+                    chunk.SnapshotId = staged.Id;
+                }
+                continue;
+            }
+
             var oldChunks = await db.BootstrapSnapshotChunks.AsNoTracking()
                 .Where(x => x.SnapshotId == previous.Id && x.Section == section)
                 .OrderBy(x => x.ChunkIndex).ToListAsync(ct);
@@ -168,7 +220,7 @@ public static class BootstrapUploadEndpoints
             var anonymous = new List<JsonNode>();
             foreach (var chunk in oldChunks)
                 AddItems(chunk.PayloadJson, section, records, anonymous);
-            foreach (var chunk in incoming.Where(x => x.Section == section))
+            foreach (var chunk in incomingSectionChunks)
                 AddItems(chunk.PayloadJson, section, records, anonymous);
 
             var merged = records.Values.Concat(anonymous).ToArray();

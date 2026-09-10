@@ -179,3 +179,37 @@ ile ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sa
 isteğiyle yalnızca `_ERPB_SENKRONIZASYON` change-log push'unu çalıştırır;
 bootstrap snapshot yenilemez. Tam snapshot veya boyut ölçümlü aktarım ayrı
 "Bootstrap" butonundadır.
+
+### Chunked bootstrap upload — bölüm bazlı merge (2026-09-10 düzeltmesi)
+
+`HttpRemoteApiClient.PushChunkedBootstrapDataAsync` her push'ta (otomatik
+`BootstrapWorker` döngüsü dahil) **tüm 13 bölümü** gönderir — değişmeyen
+bölümler tek boş chunk (`items: []`) olarak "placeholder" gider
+(`SendChunksAsync`). `POST /bootstrap/upload/{id}/complete`
+(`BootstrapUploadEndpoints.CompleteAsync` → `MergeIncrementalChunksAsync`),
+staged snapshot'ta görünen **her** bölümü önceki aktif snapshot'la JSON
+seviyesinde eşitleyip (parse + `Dictionary<key, JsonNode>` + yeniden
+serileştirme) yeni chunk satırları yazıyordu.
+
+**Bug (2026-09-10 öncesi):** `customerTransactions`/`stockTransactions` gibi
+"yıllarca ledger hareketi" içerebilen bölümlerde bu tam-yeniden-inşa her
+20-60 sn'lik döngüde tekrarlanıyordu — hiçbir satır değişmese bile. Sonuç:
+`/complete` çağrısı zaman aşımına uğrayıp HTTP 500 dönüyor,
+`BootstrapSyncService`'in Polly retry'ı + bölüm fallback'i her seferinde
+**yeni bir `uploadId` ile** (`NewIdempotencyKey`) sıfırdan upload başlatıyor,
+WPF "Bootstrap" hiç bitmeyen bir döngüye giriyordu (kullanıcı ekranında
+"kitleniyor kalıyor" olarak görünüyor). Ayrıca `PushSectionAsync` ile tek
+bölüm push'u (`/complete`'in yalnızca gönderilen bölümleri gezmesi
+yüzünden) **gönderilmeyen diğer bölümlerin verisini sessizce siliyordu** —
+`previous` snapshot cascade-delete ile kaldırılırken o bölümler hiç
+`staged`'a taşınmamış oluyordu.
+
+**Düzeltme:** `MergeIncrementalChunksAsync` artık önce o bölümde **gerçek
+(ItemCount > 0) bir değişiklik var mı** diye bakıyor. Yoksa (bölüm hiç
+gönderilmemiş VEYA boş placeholder olarak gelmiş) pahalı JSON round-trip'i
+atlayıp önceki snapshot'ın chunk satırlarını ucuz bir `SnapshotId`
+güncellemesiyle yeni snapshot'a **taşıyor**. Gerçek değişiklik olan bölümler
+hâlâ tam merge'den geçiyor (anahtar bazlı upsert/delete mantığı bozulmadı).
+Bkz. `tests/ErpBridge.CentralApi.Tests/Endpoints/BootstrapUploadTests.cs`
+(`Single_section_incremental_push_does_not_wipe_other_sections`,
+`Incremental_push_with_no_changes_in_a_section_carries_its_chunk_rows_forward_unchanged`).
