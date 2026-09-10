@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ErpBridge.CentralApi.Tests.Endpoints;
@@ -439,6 +440,94 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         secondBody.Should().Contain("SH-NEW").And.NotContain("SH-OLD");
     }
 
+    [Fact]
+    public async Task Large_section_cache_is_shared_across_endpoints_that_request_it_together_or_alone()
+    {
+        // StockMovementsAsync asks for ["stockTransactions"] alone;
+        // InvoiceMovementsAsync asks for ["stocks","customerTransactions",
+        // "stockTransactions"]. Caching per section-SET (the original #22 fix)
+        // stored the shared section twice — for a tenant with tens of
+        // thousands of movement rows, that doubles the memory cost of exactly
+        // the table the cache exists to make cheap. Caching per SECTION means
+        // both endpoints must read the exact same cached string instance.
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-SHARE-{suffix}", "Shared section tenant");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-SHARE-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var snapshotId = SeedSnapshotSections(tenant.Id,
+            ("stockTransactions", new object[] { new { id = "SH-1", stokKod = "S001", faturaRecno = 1 } }),
+            ("stocks", Array.Empty<object>()),
+            ("customerTransactions", Array.Empty<object>()));
+
+        var cache = (MemoryCache)_factory.Services.GetRequiredService<IMemoryCache>();
+        var sectionKey = $"android-section:{snapshotId}:stockTransactions";
+
+        var stockResponse = await client.PostAsJsonAsync(
+            "/api/v1/android/sync/stokHareketleri", new { page = 1, pageSize = 50 });
+        stockResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        cache.TryGetValue(sectionKey, out var afterStock).Should().BeTrue();
+
+        var invoiceResponse = await client.PostAsJsonAsync(
+            "/api/v1/android/sync/faturaHareket", new { page = 1, pageSize = 50 });
+        invoiceResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        cache.TryGetValue(sectionKey, out var afterInvoice).Should().BeTrue();
+
+        afterInvoice.Should().BeSameAs(afterStock,
+            "iki uç da aynı büyük bölümü paylaşmalı, ayrı ayrı kopyalamamalı");
+    }
+
+    [Fact]
+    public async Task Invoice_line_grouping_is_cached_once_and_reused_across_pages()
+    {
+        // linesByInvoiceRecNo (a GroupBy over the whole stockTransactions
+        // section) used to be rebuilt on every single invoice page request,
+        // even after the per-request document cache made the underlying JSON
+        // build cheap. This proves the grouped result itself is cached and
+        // reused rather than recomputed per page.
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-INVGROUP-{suffix}", "Invoice grouping tenant");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-INVGROUP-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var snapshotId = SeedSnapshotSections(tenant.Id,
+            ("stocks", Array.Empty<object>()),
+            ("customerTransactions", new object[]
+            {
+                new { erpRef = "CH-1", cariKod = "C001", cha_recno = 1 },
+                new { erpRef = "CH-2", cariKod = "C001", cha_recno = 2 },
+            }),
+            ("stockTransactions", new object[]
+            {
+                new { erpRef = "SH-1", stokKod = "S001", faturaRecno = 1 },
+                new { erpRef = "SH-2", stokKod = "S001", faturaRecno = 2 },
+            }));
+
+        var cache = (MemoryCache)_factory.Services.GetRequiredService<IMemoryCache>();
+        var groupingKey = $"android-invoice-lines:{snapshotId}";
+
+        var page1 = await client.PostAsJsonAsync(
+            "/api/v1/android/sync/faturaHareket", new { page = 1, pageSize = 1 });
+        page1.StatusCode.Should().Be(HttpStatusCode.OK);
+        cache.TryGetValue(groupingKey, out var afterPage1).Should().BeTrue();
+
+        var page2 = await client.PostAsJsonAsync(
+            "/api/v1/android/sync/faturaHareket", new { page = 2, pageSize = 1 });
+        page2.StatusCode.Should().Be(HttpStatusCode.OK);
+        cache.TryGetValue(groupingKey, out var afterPage2).Should().BeTrue();
+
+        afterPage2.Should().BeSameAs(afterPage1,
+            "aynı snapshot'ın fatura sayfaları arasında satır gruplaması yeniden hesaplanmamalı");
+
+        using var doc2 = JsonDocument.Parse(await page2.Content.ReadAsStringAsync());
+        doc2.RootElement.GetProperty("total").GetInt32().Should().Be(2);
+        doc2.RootElement.GetProperty("items")[0].GetProperty("erpRef").GetString().Should().Be("CH-2");
+    }
+
     private Guid SeedSnapshot(Guid tenantId, string section, object[] items)
     {
         using var scope = _factory.Services.CreateScope();
@@ -463,6 +552,37 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
             ItemCount = items.Length,
             PayloadJson = JsonSerializer.Serialize(items, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
         });
+        db.SaveChanges();
+        return snapshot.Id;
+    }
+
+    private Guid SeedSnapshotSections(Guid tenantId, params (string Section, object[] Items)[] sections)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = new BootstrapSnapshot
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            SourceDatabase = "MIKRO-TEST",
+            PulledAtUtc = now,
+            ReceivedAtUtc = now,
+            IsActive = true,
+        };
+        db.BootstrapSnapshots.Add(snapshot);
+        foreach (var (section, items) in sections)
+        {
+            db.BootstrapSnapshotChunks.Add(new BootstrapSnapshotChunk
+            {
+                Id = Guid.NewGuid(),
+                SnapshotId = snapshot.Id,
+                Section = section,
+                ChunkIndex = 0,
+                ItemCount = items.Length,
+                PayloadJson = JsonSerializer.Serialize(items, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            });
+        }
         db.SaveChanges();
         return snapshot.Id;
     }
