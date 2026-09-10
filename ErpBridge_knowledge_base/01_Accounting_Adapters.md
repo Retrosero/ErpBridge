@@ -238,8 +238,15 @@ geliyordu: tek bir `/complete` POST'u logda `397986 ms` sürüyor, "customers"
 fallback'i 51 dakika sonra hata veriyordu. WPF'te "kitleniyor" denen şey buydu
 (UI thread bloke değil — `RunBootstrapAsync` tamamen async; buton saatlerce
 `IsBusy` kalıyordu).
-*Düzeltme:* `IsBootstrapRequest` tüm `/api/v1/bootstrap` alt ağacını kapsıyor;
-retry cadence'i tek sahibi olan `BootstrapSyncService`'te kalıyor.
+*Düzeltme:* `SkipsTransportRetry` (eski adı `IsBootstrapRequest`) artık
+bootstrap **yazma** yollarını (`/api/v1/bootstrap` + `/bootstrap/upload/...`) ve
+kendi yeniden bağlanma döngüsü olan `/bootstrap/notify` long-poll'unu kapsıyor.
+
+> ⚠️ `GET /bootstrap/status` bilerek **dışarıda**. O sonda kendi retry'ı olmayan
+> tek bootstrap çağrısı: `BootstrapSyncService.RunOnceAsync` hatayı "status
+> unavailable" diye yutup döngüyü **tam snapshot'a** düşürüyor. Yıllarca hareket
+> taşıyan bir tenant'ta bu, küçük bir GET'i yeniden denemekten çok daha pahalı.
+> Alt ağacın tamamını kapsamak bu regresyonu yaratmıştı (PR #19 kod incelemesi).
 
 **Test altyapısı notu:** `CentralApiFactory` EF Core **InMemory** sağlayıcısını
 kullanır; InMemory unique index'leri uygulamaz ve transaction desteği yoktur —
@@ -250,3 +257,31 @@ bir SQLite dosyası üzerinde ayağa kaldırır;
 `/complete`'i koşturarak sıralamaya bağlı ihlali yakalar. **Kısıt/benzersizlik
 davranışına dayanan yeni CentralApi testleri InMemory factory'ye değil bu
 ilişkisel factory'ye yazılmalı.**
+
+### `MikroAdapter.ChangeLog` asla fırlatmaz (2026-09-10)
+
+`ErpChangeLogSyncService.RunOnceAsync`, `adapter.ChangeLog`'u **try bloğunun
+dışında** dereference ediyor; `BootstrapWorker.RunSingleIterationAsync` ise
+`catch (Exception)` ile **tüm iterasyonu** sarıyor — trigger modunda change-log
+pass'inden *sonra* çalışan snapshot-delta pass'i dahil.
+
+Dolayısıyla bu property'den kaçan bir istisna sadece change-log senkronunu
+kapatmıyor, **iterasyonun tamamını** iptal ediyor: o veritabanı bootstrap
+yenilemesi de almıyor. İki tetikleyicisi vardı:
+
+1. **V16 veritabanı.** `_ERPB_SENKRONIZASYON` feed'i V15 RECno anahtarlarına
+   dayanıyor; V16 Guid kullanıyor. Eski kod `NotSupportedException` fırlatıyordu,
+   ama `ChangeDetection` hâlâ `ShadowTableChangeLog` ilan ettiği için tüketici
+   zarif düşüş yapamıyordu.
+2. **Geçici bağlantı hatası.** `MikroVersionDetector.DetectAsync` bağlantıyı
+   `try/catch` olmadan açar — sunucu bir an erişilemezse `SqlException` fırlar.
+   `Lazy<T>` istisnayı **kalıcı olarak cache'lediği** için tek bir kesinti,
+   süreç yeniden başlatılana kadar senkronu öldürüyordu. ("Defaulting to V15"
+   uyarısı yalnızca bağlantı *kurulduktan* sonraki belirsiz sürüm için çıkar,
+   bağlantı hatası için değil.)
+
+**Düzeltme:** `ChangeLog` artık `null` döner, fırlatmaz. V16 kesin bir cevaptır
+ve cache'lenir; probe hatası **kesin değildir** ve cache'lenmez, sonraki cycle
+yeniden dener. Tüketici zaten `ChangeLog is not { } changeLog` kontrolüyle
+"change log yok" deyip snapshot yoluna düşüyor. Bkz.
+`tests/ErpBridge.Erp.Mikro.Tests/Adapters/MikroAdapterChangeLogTests.cs`.
