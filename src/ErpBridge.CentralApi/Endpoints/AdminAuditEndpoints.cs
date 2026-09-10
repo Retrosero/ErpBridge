@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
@@ -46,6 +45,7 @@ public static class AdminAuditEndpoints
     }
 
     private static async Task<IResult> ListAsync(
+        [FromQuery] Guid? tenantId,
         [FromQuery] string? sourceDatabase,
         [FromQuery] string? table,
         [FromQuery] string? direction,
@@ -54,13 +54,17 @@ public static class AdminAuditEndpoints
         [FromQuery] int? page,
         [FromQuery] int? size,
         [FromServices] CentralApiDbContext db,
-        HttpContext http,
         CancellationToken ct)
     {
-        if (!http.User.TryGetTenantId(out var tenantId))
+        // The tenant travels in the query string, not the token: an admin
+        // principal has no tenant claim (IJwtIssuer.IssueForAdmin mints
+        // sub/scope/jti only), so reading it from the token rejected every
+        // admin request with 401 and left the console's "Sync gecmisi" page
+        // permanently empty. This mirrors AdminBootstrapEndpoints.
+        if (!tenantId.HasValue || tenantId.Value == Guid.Empty)
         {
-            return JsonResults.Status(StatusCodes.Status401Unauthorized,
-                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." });
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "MISSING_TENANT", Message = "tenantId query parameter is required." });
         }
 
         var pageSize = Math.Clamp(size ?? DefaultPageSize, 1, MaxPageSize);
@@ -68,7 +72,7 @@ public static class AdminAuditEndpoints
         var (from, to) = ParseDateRange(fromUtc, toUtc);
 
         var query = db.ChangeSetAuditEntries.AsNoTracking()
-            .Where(c => c.TenantId == tenantId);
+            .Where(c => c.TenantId == tenantId.Value);
 
         if (!string.IsNullOrWhiteSpace(sourceDatabase))
             query = query.Where(c => c.SourceDatabase == sourceDatabase);
@@ -115,18 +119,23 @@ public static class AdminAuditEndpoints
 
     private static async Task<IResult> GetByIdAsync(
         Guid id,
+        [FromQuery] Guid? tenantId,
         [FromServices] CentralApiDbContext db,
-        HttpContext http,
         CancellationToken ct)
     {
-        if (!http.User.TryGetTenantId(out var tenantId))
+        // The tenant travels in the query string, not the token: an admin
+        // principal has no tenant claim (IJwtIssuer.IssueForAdmin mints
+        // sub/scope/jti only), so reading it from the token rejected every
+        // admin request with 401 and left the console's "Sync gecmisi" page
+        // permanently empty. This mirrors AdminBootstrapEndpoints.
+        if (!tenantId.HasValue || tenantId.Value == Guid.Empty)
         {
-            return JsonResults.Status(StatusCodes.Status401Unauthorized,
-                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." });
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "MISSING_TENANT", Message = "tenantId query parameter is required." });
         }
 
         var entry = await db.ChangeSetAuditEntries.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId, ct);
+            .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId.Value, ct);
         if (entry is null)
         {
             return JsonResults.Status(StatusCodes.Status404NotFound,
@@ -170,20 +179,25 @@ public static class AdminAuditEndpoints
         [FromQuery] string? table,
         [FromQuery(Name = "from")] string? fromUtc,
         [FromQuery(Name = "to")] string? toUtc,
+        [FromQuery] Guid? tenantId,
         [FromServices] CentralApiDbContext db,
-        HttpContext http,
         CancellationToken ct)
     {
-        if (!http.User.TryGetTenantId(out var tenantId))
+        // The tenant travels in the query string, not the token: an admin
+        // principal has no tenant claim (IJwtIssuer.IssueForAdmin mints
+        // sub/scope/jti only), so reading it from the token rejected every
+        // admin request with 401 and left the console's "Sync gecmisi" page
+        // permanently empty. This mirrors AdminBootstrapEndpoints.
+        if (!tenantId.HasValue || tenantId.Value == Guid.Empty)
         {
-            return JsonResults.Status(StatusCodes.Status401Unauthorized,
-                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." });
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "MISSING_TENANT", Message = "tenantId query parameter is required." });
         }
 
         var (from, to) = ParseDateRange(fromUtc, toUtc);
 
         var query = db.ChangeSetAuditEntries.AsNoTracking()
-            .Where(c => c.TenantId == tenantId);
+            .Where(c => c.TenantId == tenantId.Value);
         if (!string.IsNullOrWhiteSpace(sourceDatabase))
             query = query.Where(c => c.SourceDatabase == sourceDatabase);
         if (!string.IsNullOrWhiteSpace(table))
