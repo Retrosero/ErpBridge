@@ -3,6 +3,7 @@ using ErpBridge.CentralApi.Domain;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -72,9 +73,19 @@ public class CentralApiFactory : WebApplicationFactory<Program>
             var descriptor = services.SingleOrDefault(d =>
                 d.ServiceType == typeof(DbContextOptions<CentralApiDbContext>));
             if (descriptor is not null) services.Remove(descriptor);
+            // EF 9+ applies each AddDbContext call through its own
+            // IDbContextOptionsConfiguration entry. Leaving the production one
+            // behind would stack the fallback provider's extension on top of
+            // whatever ConfigureDatabase registers, and EF then refuses a
+            // DbContext configured with two providers.
+            foreach (var configuration in services
+                         .Where(d => d.ServiceType == typeof(IDbContextOptionsConfiguration<CentralApiDbContext>))
+                         .ToList())
+            {
+                services.Remove(configuration);
+            }
             services.RemoveAll<CentralApiDbContext>();
-            services.AddDbContext<CentralApiDbContext>(opt =>
-                opt.UseInMemoryDatabase(_databaseName));
+            ConfigureDatabase(services);
 
             if (_disableRateLimiter)
             {
@@ -84,6 +95,19 @@ public class CentralApiFactory : WebApplicationFactory<Program>
                 RemoveRateLimiterServices(services);
             }
         });
+    }
+
+    /// <summary>
+    /// Register the test <see cref="CentralApiDbContext"/> provider. The
+    /// default is EF Core's in-memory store; <see cref="SqliteCentralApiFactory"/>
+    /// overrides this with a relational provider so tests can assert on
+    /// constraints the in-memory provider does not enforce. Overriders must
+    /// register exactly one provider — EF refuses a container that holds two.
+    /// </summary>
+    protected virtual void ConfigureDatabase(IServiceCollection services)
+    {
+        services.AddDbContext<CentralApiDbContext>(opt =>
+            opt.UseInMemoryDatabase(_databaseName));
     }
 
     /// <summary>

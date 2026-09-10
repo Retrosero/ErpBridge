@@ -193,16 +193,11 @@ serileştirme) yeni chunk satırları yazıyordu.
 
 **Bug (2026-09-10 öncesi):** `customerTransactions`/`stockTransactions` gibi
 "yıllarca ledger hareketi" içerebilen bölümlerde bu tam-yeniden-inşa her
-20-60 sn'lik döngüde tekrarlanıyordu — hiçbir satır değişmese bile. Sonuç:
-`/complete` çağrısı zaman aşımına uğrayıp HTTP 500 dönüyor,
-`BootstrapSyncService`'in Polly retry'ı + bölüm fallback'i her seferinde
-**yeni bir `uploadId` ile** (`NewIdempotencyKey`) sıfırdan upload başlatıyor,
-WPF "Bootstrap" hiç bitmeyen bir döngüye giriyordu (kullanıcı ekranında
-"kitleniyor kalıyor" olarak görünüyor). Ayrıca `PushSectionAsync` ile tek
-bölüm push'u (`/complete`'in yalnızca gönderilen bölümleri gezmesi
-yüzünden) **gönderilmeyen diğer bölümlerin verisini sessizce siliyordu** —
-`previous` snapshot cascade-delete ile kaldırılırken o bölümler hiç
-`staged`'a taşınmamış oluyordu.
+20-60 sn'lik döngüde tekrarlanıyordu — hiçbir satır değişmese bile. Ayrıca
+`PushSectionAsync` ile tek bölüm push'u (`/complete`'in yalnızca gönderilen
+bölümleri gezmesi yüzünden) **gönderilmeyen diğer bölümlerin verisini
+sessizce siliyordu** — `previous` snapshot cascade-delete ile kaldırılırken o
+bölümler hiç `staged`'a taşınmamış oluyordu.
 
 **Düzeltme:** `MergeIncrementalChunksAsync` artık önce o bölümde **gerçek
 (ItemCount > 0) bir değişiklik var mı** diye bakıyor. Yoksa (bölüm hiç
@@ -213,3 +208,45 @@ hâlâ tam merge'den geçiyor (anahtar bazlı upsert/delete mantığı bozulmad�
 Bkz. `tests/ErpBridge.CentralApi.Tests/Endpoints/BootstrapUploadTests.cs`
 (`Single_section_incremental_push_does_not_wipe_other_sections`,
 `Incremental_push_with_no_changes_in_a_section_carries_its_chunk_rows_forward_unchanged`).
+
+### `/bootstrap/upload/{id}/complete` HTTP 500 ve WPF "kitlenmesi" (2026-09-10)
+
+`ui-20260910.log`'daki asıl arıza yukarıdaki merge maliyeti **değildi**:
+`/complete` her seferinde ~0,2–3,9 sn içinde HTTP 500 dönüyordu (zaman aşımı
+olsa 30 sn+ sürerdi). İki ayrı hata üst üste biniyordu.
+
+**1) Sunucu — aktif snapshot benzersiz indeksi ihlali.**
+`bootstrap_snapshots` üzerinde `(TenantId) WHERE "IsActive" = true` filtreli
+**unique** indeks var (`IX_bootstrap_snapshots_TenantId_Active`).
+`CompleteAsync` ise önceki snapshot'ı pasifleştirmeyi ve staged snapshot'ı
+aktifleştirmeyi **tek `SaveChangesAsync`** içinde yapıyordu. EF Core bir
+batch'teki aynı-tablo UPDATE'lerini birincil anahtara göre sıralar; sıra
+`staged.IsActive = true` önce gelecek şekilde çıktığında PostgreSQL 23505
+verip endpoint 500 dönüyordu. GUID'lere bağlı olduğu için **denemelerin
+yaklaşık yarısında** patlıyor, aynı `uploadId`'nin her retry'ında ise aynı
+sırayla tekrar patlıyordu.
+*Düzeltme:* önceki snapshot'lar kendi round-trip'inde silinip flush ediliyor,
+staged ancak ondan sonra aktifleştiriliyor (ikisi de aynı transaction'da).
+
+**2) Ajan — çift retry katmanı.**
+`ServiceCollectionExtensions.IsBootstrapRequest` yalnızca eski tekil uç olan
+`/api/v1/bootstrap` yolunu tanıyordu; chunked upload yolları
+(`/api/v1/bootstrap/upload/...`) HttpClient'ın 5+15+60+300 sn'lik Polly
+politikasına takılıyordu. Bu, `BootstrapSyncService`'in kendi 5/15/60 sn'lik
+pipeline'ının **altına** yerleşiyor, üstüne bir de 9 bölümlük fallback
+geliyordu: tek bir `/complete` POST'u logda `397986 ms` sürüyor, "customers"
+fallback'i 51 dakika sonra hata veriyordu. WPF'te "kitleniyor" denen şey buydu
+(UI thread bloke değil — `RunBootstrapAsync` tamamen async; buton saatlerce
+`IsBusy` kalıyordu).
+*Düzeltme:* `IsBootstrapRequest` tüm `/api/v1/bootstrap` alt ağacını kapsıyor;
+retry cadence'i tek sahibi olan `BootstrapSyncService`'te kalıyor.
+
+**Test altyapısı notu:** `CentralApiFactory` EF Core **InMemory** sağlayıcısını
+kullanır; InMemory unique index'leri uygulamaz ve transaction desteği yoktur —
+bu yüzden yukarıdaki 500 testlerden kaçtı. Yeni
+`SqliteCentralApiFactory` (`ConfigureDatabase` hook'u ile) aynı host'u ilişkisel
+bir SQLite dosyası üzerinde ayağa kaldırır;
+`Endpoints/BootstrapUploadRelationalTests` 20 farklı tenant üzerinden
+`/complete`'i koşturarak sıralamaya bağlı ihlali yakalar. **Kısıt/benzersizlik
+davranışına dayanan yeni CentralApi testleri InMemory factory'ye değil bu
+ilişkisel factory'ye yazılmalı.**

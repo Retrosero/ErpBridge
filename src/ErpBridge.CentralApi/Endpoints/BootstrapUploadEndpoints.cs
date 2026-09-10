@@ -134,16 +134,27 @@ public static class BootstrapUploadEndpoints
         var old = await db.BootstrapSnapshots.Where(x => x.TenantId == tenantId && x.IsActive).ToListAsync(ct);
         if (staged.IsIncremental && old.Count > 0)
             await MergeIncrementalChunksAsync(db, old[0], staged, ct);
-        foreach (var previous in old) previous.IsActive = false;
+
+        // Retire the previous snapshots in their own round trip, before the
+        // staged one is activated. `bootstrap_snapshots` carries a unique index
+        // on (TenantId) filtered to IsActive, and a single SaveChangesAsync
+        // batches row updates in an order EF does not guarantee: whenever it
+        // happened to issue "staged.IsActive = true" ahead of the previous
+        // row's "IsActive = false", PostgreSQL rejected the batch and the
+        // endpoint answered HTTP 500. The agent then retried the whole upload,
+        // which is what made "bootstrap verisini oluştur" appear to hang.
+        // Deleting instead of deactivating keeps this to one statement — the
+        // rows were removed a few lines below anyway — and cascades to the
+        // chunks that MergeIncrementalChunksAsync did not carry forward.
+        db.BootstrapSnapshots.RemoveRange(old);
+        await db.SaveChangesAsync(ct);
+
         staged.IsActive = true;
         staged.ActivatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        foreach (var previous in old)
-            db.BootstrapSnapshots.Remove(previous);
-        await db.SaveChangesAsync(ct);
         hub.Publish(tenantId, staged.PulledAtUtc);
         return Results.NoContent();
     }

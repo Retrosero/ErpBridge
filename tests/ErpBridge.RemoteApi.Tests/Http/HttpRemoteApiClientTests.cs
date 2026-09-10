@@ -143,6 +143,28 @@ public class HttpRemoteApiClientTests
         callCount.Should().Be(1, "no Polly policy attached → no retries");
     }
 
+    [Theory]
+    // The legacy single-shot endpoint and every chunked-upload route belong to
+    // BootstrapSyncService's own retry pipeline. Leaving the upload routes on
+    // the HttpClient policy stacked 5+15+60+300 s of transport retries under
+    // each of the service's three attempts and under all nine fallback
+    // sections, so one failing /complete kept the WPF UI busy for an hour.
+    [InlineData("/api/v1/bootstrap", true)]
+    [InlineData("/api/v1/bootstrap/", true)]
+    [InlineData("/api/v1/bootstrap/upload/start", true)]
+    [InlineData("/api/v1/bootstrap/upload/3f2504e0-4f89-11d3-9a0c-0305e82c3301/chunks", true)]
+    [InlineData("/api/v1/bootstrap/upload/3f2504e0-4f89-11d3-9a0c-0305e82c3301/complete", true)]
+    [InlineData("/api/v1/bootstrap/status", true)]
+    [InlineData("/api/v1/bootstrap/notify", true)]
+    [InlineData("/api/v1/ingest/changeset", false)]
+    [InlineData("/api/v1/agents/heartbeat", false)]
+    public void IsBootstrapRequest_covers_the_whole_bootstrap_subtree(string path, bool expected)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri("https://central.test" + path));
+
+        ServiceCollectionExtensions.IsBootstrapRequest(request).Should().Be(expected);
+    }
+
     [Fact]
     public async Task BuildRetryPolicy_retries_4_times_after_5xx()
     {

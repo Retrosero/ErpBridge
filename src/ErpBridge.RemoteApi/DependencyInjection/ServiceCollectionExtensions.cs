@@ -63,11 +63,27 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IAsyncPolicy<HttpResponseMessage> BuildRetryPolicy() => BuildRetryPolicy(CanonicalRetryDelays);
 
-    private static bool IsBootstrapRequest(HttpRequestMessage request) =>
-        string.Equals(
-            request.RequestUri?.AbsolutePath.TrimEnd('/'),
-            "/api/v1/bootstrap",
-            StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// True for every bootstrap route, not just the legacy single-shot
+    /// <c>POST /api/v1/bootstrap</c>. The chunked upload lives under
+    /// <c>/api/v1/bootstrap/upload/...</c>, so an exact match let those
+    /// requests keep the HttpClient retry policy on top of the one
+    /// BootstrapSyncService already runs: a failing <c>/complete</c> burned
+    /// 5+15+60+300 s here before the service's own 5/15/60 s pipeline even saw
+    /// the first failure, and the nine-section fallback repeated that. One
+    /// unhealthy server turned a manual "bootstrap verisini oluştur" into an
+    /// hour of silence in the UI. Bootstrap callers (upload, status probe,
+    /// notify long-poll) all own their retry cadence.
+    /// </summary>
+    public static bool IsBootstrapRequest(HttpRequestMessage request)
+    {
+        var path = request.RequestUri?.AbsolutePath.TrimEnd('/');
+        return path is not null
+               && (string.Equals(path, BootstrapRoutePrefix, StringComparison.OrdinalIgnoreCase)
+                   || path.StartsWith(BootstrapRoutePrefix + "/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private const string BootstrapRoutePrefix = "/api/v1/bootstrap";
 
     /// <summary>Canonical 5/15/60/300-second backoff schedule.</summary>
     public static readonly IReadOnlyList<TimeSpan> CanonicalRetryDelays = new[]
