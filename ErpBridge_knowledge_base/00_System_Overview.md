@@ -108,6 +108,17 @@ registration ayrı bir composition projesine taşınır.
    ile filtrelenir; Windows'ta DPAPI ile şifrelenir.
 8. **Kimlik alanı taşarsa reddet.** `ErpFieldText.Identifier` exception atar
    (kısaltılmış `cari_kod` başka hesapla eşleşebilir); serbest metin kırpılır.
+9. **Admin uçlarında tenant query'den gelir, token'dan DEĞİL.**
+   `IJwtIssuer.IssueForAdmin` yalnızca `sub`, `scope=admin`, `jti` üretir —
+   **`tenant` claim'i yoktur.** Bir admin ucunda `http.User.TryGetTenantId`
+   çağırmak, her isteği 401 ile reddetmek demektir. Doğru desen
+   `AdminBootstrapEndpoints`'tedir: `[FromQuery] Guid? tenantId` + boşsa
+   `400 MISSING_TENANT`. (Ajan uçları farklıdır: agent JWT'si `tenant` claim'i
+   taşır, orada `TryGetTenantId` doğrudur.)
+   *2026-09-10: `AdminAuditEndpoints`'in üç ucu da bu hatayı taşıyordu; "Sync
+   geçmişi" sayfası bu yüzden hiçbir zaman veri gösteremiyordu. Uçların hiç
+   testi olmadığı için hata fark edilmemişti — bkz.
+   `tests/ErpBridge.CentralApi.Tests/Endpoints/AdminAuditTests.cs`.*
 
 ---
 
