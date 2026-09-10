@@ -96,9 +96,15 @@ public sealed class SqlServerShadowTableChangeLog : IErpChangeLogSource
             .ConfigureAwait(false))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // Absent tables can never carry a trigger, so counting them as "missing"
+        // would keep this method returning false forever and re-run InstallAsync
+        // on every sync. Match the InstallAsync filter.
+        var present = await ReadPresentTablesAsync(conn, ct).ConfigureAwait(false);
+
         var missing = Catalog.Tables.Count(t =>
-            !installed.Contains(_options.SyncTriggerName(t.TableName)) ||
-            !installed.Contains(_options.SyncDelTriggerName(t.TableName)));
+            present.Contains(t.TableName) &&
+            (!installed.Contains(_options.SyncTriggerName(t.TableName)) ||
+             !installed.Contains(_options.SyncDelTriggerName(t.TableName))));
 
         if (missing > 0)
         {
@@ -182,8 +188,19 @@ public sealed class SqlServerShadowTableChangeLog : IErpChangeLogSource
 
         await using var conn = await OpenAsync(ct).ConfigureAwait(false);
 
+        // The catalog is a superset of any one installation. Joining the shadow
+        // back to a table this customer does not have raises SQL error 208 and
+        // aborts the whole batch, so the cursor never advances and delta sync is
+        // permanently stuck. InstallAsync already skips these; do the same here.
+        var present = await ReadPresentTablesAsync(conn, ct).ConfigureAwait(false);
+
         foreach (var table in Catalog.Tables)
         {
+            if (!present.Contains(table.TableName))
+            {
+                continue;
+            }
+
             if (rows.Count >= maxRows)
             {
                 moreAvailable = true;

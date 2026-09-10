@@ -143,6 +143,32 @@ public class HttpRemoteApiClientTests
         callCount.Should().Be(1, "no Polly policy attached → no retries");
     }
 
+    [Theory]
+    // Bootstrap writes belong to BootstrapSyncService's own retry pipeline.
+    // Leaving the chunked-upload routes on the HttpClient policy stacked
+    // 5+15+60+300 s of transport retries under each of the service's three
+    // attempts and under all nine fallback sections, so one failing /complete
+    // kept the WPF UI busy for an hour.
+    [InlineData("/api/v1/bootstrap", true)]
+    [InlineData("/api/v1/bootstrap/", true)]
+    [InlineData("/api/v1/bootstrap/upload/start", true)]
+    [InlineData("/api/v1/bootstrap/upload/3f2504e0-4f89-11d3-9a0c-0305e82c3301/chunks", true)]
+    [InlineData("/api/v1/bootstrap/upload/3f2504e0-4f89-11d3-9a0c-0305e82c3301/complete", true)]
+    // The notify long-poll owns its reconnect loop; a transport retry stalls it.
+    [InlineData("/api/v1/bootstrap/notify", true)]
+    // The status probe owns NO retry: BootstrapSyncService swallows its failure
+    // as "status unavailable" and downgrades the cycle to a full snapshot, so
+    // it must keep the transport policy.
+    [InlineData("/api/v1/bootstrap/status", false)]
+    [InlineData("/api/v1/ingest/changeset", false)]
+    [InlineData("/api/v1/agents/heartbeat", false)]
+    public void SkipsTransportRetry_covers_bootstrap_writes_but_not_the_status_probe(string path, bool expected)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri("https://central.test" + path));
+
+        ServiceCollectionExtensions.SkipsTransportRetry(request).Should().Be(expected);
+    }
+
     [Fact]
     public async Task BuildRetryPolicy_retries_4_times_after_5xx()
     {

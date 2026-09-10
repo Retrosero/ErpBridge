@@ -78,4 +78,13 @@ public sealed record BootstrapSyncResult(
     int BarcodesCount = 0,
     int SalesConditionsCount = 0,
     int CustomerTransactionsCount = 0,
-    int StockTransactionsCount = 0);
+    int StockTransactionsCount = 0,
+    long PayloadBytes = 0)
+{
+    /// <summary>
+    /// UTF-8 JSON size of the logical bootstrap package sent to the central API,
+    /// expressed in mebibytes (1 MiB = 1,048,576 bytes). Transport headers and
+    /// retry duplicates are intentionally excluded.
+    /// </summary>
+    public double PayloadMegabytes => PayloadBytes / (1024d * 1024d);
+}

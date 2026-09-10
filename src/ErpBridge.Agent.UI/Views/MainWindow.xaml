@@ -711,58 +711,67 @@
             </TabItem>
         </TabControl>
 
-        <!-- Alt durum çubuğu: her zaman görünür; canlı saat solda, son bootstrap zamanı
-             sağda. Operator pencereyi her açtığında buradan ajanın "yaşıyor" olduğunu
-             görür, tray'e bakmak zorunda kalmaz. -->
+        <!-- Alt durum çubuğu: solda canlı saat + "ajan ayakta" noktası, ortada
+             son işlem mesajı, sağda son senkronizasyon zamanı. Son senk. bilgisi
+             Dashboard'daki büyük karttan buraya taşındı — her sekmede görünür
+             kalıyor ve ana içerik alanını işgal etmiyor. -->
         <Border Grid.Row="1"
                 Background="{DynamicResource StatusBackgroundBrush}"
                 BorderBrush="{DynamicResource StatusBorderBrush}"
                 BorderThickness="0,1,0,0"
-                Padding="12,4">
+                Padding="16,6">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0"
-                           x:Name="ClockText"
-                           Text="--:--:--"
-                           FontFamily="Consolas, Lucida Console, monospace"
-                           FontWeight="SemiBold"
-                           FontSize="13"
-                           Foreground="{DynamicResource HeaderBrush}"
-                           VerticalAlignment="Center"
-                           ToolTip="Yerel saat — canlı (App.DispatcherTimer, 1 sn)" />
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="7" Height="7"
+                             Fill="{DynamicResource ToggleOnBrush}"
+                             VerticalAlignment="Center"
+                             Margin="0,0,7,0"
+                             ToolTip="Ajan çalışıyor" />
+                    <TextBlock x:Name="ClockText"
+                               Text="--:--:--"
+                               FontFamily="Consolas, Lucida Console, monospace"
+                               FontSize="12"
+                               Foreground="{DynamicResource SubtleHeaderBrush}"
+                               VerticalAlignment="Center"
+                               ToolTip="Yerel saat — canlı (1 sn)" />
+                </StackPanel>
+
                 <TextBlock Grid.Column="1"
                            x:Name="StatusText"
                            Text="Hazır"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource MutedTextBrush}"
-                           FontSize="11" />
-                <Border Grid.Column="2"
-                        Background="{DynamicResource AccentBrush}"
-                        CornerRadius="10"
-                        Padding="8,2"
-                        VerticalAlignment="Center"
-                        ToolTip="Central API'ye gönderilen en son başarılı bootstrap yüklemesi">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="SON SENK."
-                                   Foreground="White"
-                                   FontSize="10"
-                                   FontWeight="SemiBold"
-                                   Margin="0,0,6,0"
-                                   VerticalAlignment="Center" />
-                        <TextBlock x:Name="LastBootstrapText"
-                                   Text="—"
-                                   Foreground="White"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   FontFamily="Consolas, Lucida Console, monospace"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
+                           FontSize="11.5"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="16,0" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                            ToolTip="Central API'ye gönderilen en son başarılı senkronizasyon">
+                    <TextBlock Text="Son senk."
+                               FontSize="11.5"
+                               Foreground="{DynamicResource MutedTextBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,7,0" />
+                    <TextBlock x:Name="LastBootstrapText"
+                               Text="—"
+                               FontSize="11.5"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource HeaderBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="LastBootstrapRelativeText"
+                               Text=""
+                               FontSize="11.5"
+                               Foreground="{DynamicResource AccentBrush}"
+                               VerticalAlignment="Center"
+                               Margin="7,0,0,0" />
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

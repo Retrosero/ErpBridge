@@ -60,11 +60,9 @@ public sealed class AgentServiceOptions
     public int TriggerPacketSize { get; set; } = 1000;
 
     /// <summary>
-    /// Faz 11/12: when true the worker installs the <c>_ERPB_SENKRONIZASYON</c>
-    /// shadow table and per-table triggers on the very first iteration. The
-    /// WPF "Trigger'ları Mikro'ya kur" button also calls this on demand. Set
-    /// to <c>false</c> for read-only Mikro installations where a DBA has to
-    /// install the triggers by hand.
+    /// Legacy compatibility option retained for existing configuration files.
+    /// Mikro now consumes the existing <c>_ERPB_SENKRONIZASYON</c> feed and
+    /// never installs ERP objects, so this value is ignored for Mikro.
     /// </summary>
     public bool TriggerInstallOnStartup { get; set; } = true;
 }

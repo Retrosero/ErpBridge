@@ -8,7 +8,6 @@ using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.Erp.Mikro.ChangeLog;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Readers;
-using ErpBridge.Erp.Sql;
 using ErpBridge.Erp.Mikro.Versioning;
 using ErpBridge.Erp.Mikro.Writers;
 using ErpBridge.Shared;
@@ -36,14 +35,21 @@ public sealed class MikroAdapter : IErpAdapter
     private readonly IMikroDbReader _dbReader;
     private readonly MikroConnectionFactory _connectionFactory;
     private readonly IServiceProvider _serviceProvider;
-    private readonly Lazy<IErpChangeLogSource> _changeLog;
+    /// <summary>
+    /// Resolves the change-log feed. <c>Definitive</c> is false when the version
+    /// probe itself failed, so the answer must not be cached.
+    /// </summary>
+    private readonly Func<(IErpChangeLogSource? Source, bool Definitive)> _changeLogFactory;
+    private readonly Lock _changeLogGate = new();
+    private IErpChangeLogSource? _changeLogCache;
+    private bool _changeLogResolved;
 
     /// <summary>Settings supplied at construction time — the adapter is bound to one DB.</summary>
     public MikroConnectionSettings ConnectionSettings { get; }
 
     /// <summary>
-    /// Mikro captures INSERT / UPDATE / DELETE through its <c>_ERPB_SYNC</c> +
-    /// <c>_ERPB_SYNC_DEL</c> shadow tables, so it offers the strongest mode.
+    /// Mikro captures INSERT / UPDATE / DELETE through the existing
+    /// <c>_ERPB_SENKRONIZASYON</c> table, so it offers the strongest mode.
     /// The timestamp path (<see cref="ReadBootstrapChangesAsync"/> over
     /// <c>*_lastup_date</c>) remains available as a fallback but cannot see
     /// deletes, which is why it is not what the adapter advertises.
@@ -51,11 +57,36 @@ public sealed class MikroAdapter : IErpAdapter
     public ChangeDetectionCapability ChangeDetection => ChangeDetectionCapability.ShadowTableChangeLog;
 
     /// <summary>
-    /// Vendor-neutral change log: the shared <see cref="SqlServerShadowTableChangeLog"/>
-    /// engine, configured with Mikro's 49-table catalog and its recno/guid key
-    /// projection. Built lazily so constructing an adapter never touches SQL.
+    /// Mikro V15 change log backed only by the existing
+    /// <c>_ERPB_SENKRONIZASYON</c> table. Built lazily so constructing an
+    /// adapter never touches SQL.
+    ///
+    /// <para>Returns <see langword="null"/> — never throws — when the connected
+    /// database cannot serve it (a V16 Guid-keyed database, or a version probe
+    /// that failed). <c>ErpChangeLogSyncService</c> dereferences this property
+    /// <b>outside</b> its try block and <c>BootstrapWorker</c> catches around
+    /// the whole iteration, so throwing here aborted the iteration before the
+    /// snapshot-delta cycle could run: a V16 tenant got no change-log sync
+    /// <b>and</b> no bootstrap refresh at all. Null instead lets the caller log
+    /// "no change log" and fall through to the snapshot path.</para>
     /// </summary>
-    public IErpChangeLogSource? ChangeLog => _changeLog.Value;
+    public IErpChangeLogSource? ChangeLog => ResolveChangeLog();
+
+    private IErpChangeLogSource? ResolveChangeLog()
+    {
+        lock (_changeLogGate)
+        {
+            if (_changeLogResolved) return _changeLogCache;
+            var (source, definitive) = _changeLogFactory();
+            // An indefinite answer means the probe failed, not that the feed is
+            // unavailable. Leave it uncached so the next cycle retries instead
+            // of losing change-log sync until the process restarts.
+            if (!definitive) return null;
+            _changeLogCache = source;
+            _changeLogResolved = true;
+            return _changeLogCache;
+        }
+    }
 
     /// <summary>
     /// Build an adapter; the connection settings identify the Mikro database.
@@ -97,18 +128,41 @@ public sealed class MikroAdapter : IErpAdapter
 
         // The resolver runs per call so a credential change saved in the WPF
         // settings window is picked up without rebuilding the adapter graph.
-        _changeLog = new Lazy<IErpChangeLogSource>(() => new SqlServerShadowTableChangeLog(
-            // The catalog is version-specific: V15 keys on int *_RECno, V16 on
-            // *_Guid. Detection is cached by the selector, so this probe is cheap.
-            catalog: MikroTrackedTableCatalog.For(
-                _versionDetector.DetectAsync(
+        _changeLogFactory = () =>
+        {
+            MikroVersion version;
+            try
+            {
+                version = _versionDetector.DetectAsync(
                     _connectionFactory.BuildConnectionString(ConnectionSettings),
-                    CancellationToken.None).GetAwaiter().GetResult().Version),
-            connectionStringResolver: () => _connectionFactory.BuildConnectionString(ConnectionSettings),
-            projection: KeyKindProjection.RecnoOrGuid,
-            options: ShadowTableOptions.Default,
-            logger: (_serviceProvider.GetService(typeof(ILogger<SqlServerShadowTableChangeLog>))
-                     as ILogger<SqlServerShadowTableChangeLog>)));
+                    CancellationToken.None).GetAwaiter().GetResult().Version;
+            }
+            catch (Exception ex)
+            {
+                // A probe failure is transient, not a verdict. Report "no change
+                // log" for this cycle so the caller degrades to a snapshot-only
+                // pass, and leave the result uncached so the next cycle retries.
+                _logger.LogWarning(ex,
+                    "Mikro version probe failed; skipping the change-log feed for this cycle.");
+                return (null, false);
+            }
+
+            if (version != MikroVersion.V15)
+            {
+                // V16 keys rows by Guid, which the existing RECno-based
+                // dbo._ERPB_SENKRONIZASYON feed cannot express. Snapshot-delta
+                // sync still covers this database.
+                _logger.LogInformation(
+                    "Mikro {Version} detected; dbo._ERPB_SENKRONIZASYON needs V15 RECno keys, so this database syncs by snapshot delta only.",
+                    version);
+                return (null, true);
+            }
+
+            return (new MikroLegacySynchronizationChangeLog(
+                connectionStringResolver: () => _connectionFactory.BuildConnectionString(ConnectionSettings),
+                logger: (_serviceProvider.GetService(typeof(ILogger<MikroLegacySynchronizationChangeLog>))
+                         as ILogger<MikroLegacySynchronizationChangeLog>)), true);
+        };
 
         // Push the active settings into the factory so collaborators that don't
         // carry a MikroConnectionSettings reference (notably MikroDbReader) can
@@ -572,7 +626,6 @@ public sealed class MikroAdapter : IErpAdapter
         }
     }
 
-    // Legacy trigger-based ReadChangeSetAsync removed in Faz 20. The
-    // vendor-neutral change log (SqlServerShadowTableChangeLog, exposed via
-    // ChangeLog above) is now the only change-capture path.
+    // The current change-log path is exposed through ChangeLog above and reads
+    // the existing dbo._ERPB_SENKRONIZASYON feed without installing ERP objects.
 }

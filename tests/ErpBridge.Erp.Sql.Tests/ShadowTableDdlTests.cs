@@ -51,6 +51,18 @@ public class ShadowTableDdlTests
     }
 
     [Fact]
+    public void Sync_trigger_replaces_a_same_named_legacy_trigger()
+    {
+        var sql = ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, Stoklar());
+
+        sql.Should().Contain("IF OBJECT_ID(N'[dbo].[STOKLAR_ERPB_SYNC]', 'TR') IS NOT NULL")
+           .And.Contain("DROP TRIGGER [dbo].[STOKLAR_ERPB_SYNC]")
+           .And.Contain("INSERT INTO [dbo].[_ERPB_SYNC]")
+           .And.Contain("BEGIN TRANSACTION")
+           .And.Contain("ROLLBACK TRANSACTION");
+    }
+
+    [Fact]
     public void Sync_trigger_replaces_an_earlier_row_for_the_same_key()
     {
         var sql = ShadowTableDdl.CreateSyncTrigger(ShadowTableOptions.Default, Stoklar());
@@ -72,6 +84,17 @@ public class ShadowTableDdlTests
            .And.Contain("DELETE [dbo].[_ERPB_SYNC]")
            .And.Contain("INSERT INTO [dbo].[_ERPB_SYNC_DEL]")
            .And.Contain("FROM deleted");
+    }
+
+    [Fact]
+    public void Installed_trigger_query_validates_the_trigger_target_not_only_its_name()
+    {
+        var sql = ShadowTableDdl.ListInstalledTriggers(ShadowTableOptions.Default);
+
+        sql.Should().Contain("OBJECT_DEFINITION(t.object_id)")
+           .And.Contain("[dbo].[_ERPB_SYNC]")
+           .And.Contain("[dbo].[_ERPB_SYNC_DEL]")
+           .And.NotContain("_ERPB_SENKRONIZASYON");
     }
 
     [Fact]
