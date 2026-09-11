@@ -282,12 +282,17 @@ public sealed class MobileSyncPullTests : IClassFixture<SqliteCentralApiFactory>
         var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
         var record = await db.MobileRecords
             .SingleAsync(x => x.TenantId == ctx.TenantId && x.Entity == entity && x.RecordKey == key);
+
+        // Inside a transaction because ReserveAsync insists on one: a position
+        // handed out and committed on its own could be overtaken by a later one.
+        await using var transaction = await db.Database.BeginTransactionAsync();
         record.IsDeleted = true;
         record.PayloadJson = null;
         record.PayloadSha256 = null;
         record.UpdatedAtUtc = DateTime.UtcNow;
         record.UpdatedSeq = await MobileRecordProjector.ReserveAsync(db, ctx.TenantId, 1, default);
         await db.SaveChangesAsync();
+        await transaction.CommitAsync();
     }
 
     private sealed class SyncPage

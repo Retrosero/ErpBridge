@@ -294,10 +294,23 @@ public sealed class MobileRecordProjector
         ArgumentNullException.ThrowIfNull(db);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
 
+        // The row lock only orders anything for as long as a transaction holds
+        // it. Reserving outside one returns the block immediately and releases
+        // the lock with it, which silently restores the very reordering this
+        // allocator exists to prevent — and the damage would only show up as a
+        // device that quietly missed a row. Refusing is the one way a future
+        // writer cannot get this wrong by omission.
+        if (db.Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException(
+                "Mobile cursor positions must be reserved inside an open transaction, so the counter row " +
+                "stays locked until the records that use them are committed. Call BeginTransactionAsync first.");
+        }
+
         var connection = db.Database.GetDbConnection();
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(ct).ConfigureAwait(false);
-        var transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+        var transaction = db.Database.CurrentTransaction.GetDbTransaction();
 
         await using (var seed = connection.CreateCommand())
         {
