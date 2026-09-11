@@ -806,7 +806,7 @@ public static class AndroidEndpoints
         return int.TryParse(value.ToString(), out number) ? number : null;
     }
 
-    private static bool? GetBoolean(JsonElement item, string propertyName)
+    internal static bool? GetBoolean(JsonElement item, string propertyName)
     {
         if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return null;
@@ -817,7 +817,7 @@ public static class AndroidEndpoints
             : int.TryParse(value.ToString(), out var numeric) ? numeric != 0 : null;
     }
 
-    private static double? GetDouble(JsonElement item, string propertyName)
+    internal static double? GetDouble(JsonElement item, string propertyName)
     {
         if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return null;

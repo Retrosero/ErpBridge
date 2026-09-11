@@ -174,8 +174,15 @@ registration ayrı bir composition projesine taşınır.
    taşıyabilir (bir stok kartı + 3 barkodu + 5 fiyatı tek üründür) ve bazen hiç
    taşımaz. Döngüyü `changes.size` değil **`hasMore`** sürdürür.
 
-   İstemcinin henüz okumadığı bölümler değişiklik üretmez ama imleç yine de
-   üzerlerinden geçer. Bu yüzden ileride yeni bir varlık eklenirse
+   **Akışın ürettiği varlıklar:** `urun`, `cari` (montajlı); `cariAdresleri`,
+   `bankalar`, `kasalar`, `kasaYonetim`, `fiyatTanim`, `cariHareketleri`,
+   `stokHareketleri` (düz eşleme). `stokSeviye` ve `fiyatListesi` ayrı varlık
+   değildir — `urun` içinde gelirler. Bir kasa satırı **iki** kayıt üretir
+   (`kasalar` + `kasaYonetim`), çünkü uygulama onu iki tabloda tutuyor.
+   `faturaHareket` henüz akışta yok; eski ucundan gelmeye devam ediyor.
+
+   İstemcinin henüz okumadığı bölümler (`openOrders`, `salesConditions`)
+   değişiklik üretmez ama imleç yine de üzerlerinden geçer. Bu yüzden ileride yeni bir varlık eklenirse
    `SyncCursor.FormatVersion` **yükseltilmelidir** — yoksa mevcut cihazlar o
    geçmişi sessizce kaçırır.
 13. **Aynı satırı yeniden göndermek bir değişiklik değildir.**
