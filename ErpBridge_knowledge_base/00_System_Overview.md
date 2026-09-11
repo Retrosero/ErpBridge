@@ -160,6 +160,24 @@ registration ayrı bir composition projesine taşınır.
    `nextCursor` son sayfada bile doludur, "bitti" bilgisini `hasMore` taşır.
    Bu uç `mobile:read` kapsamıyla çalışır: silme bir *okuma* olayı olduğu için
    cihazın yerelinden kayıt düşürmesi için ayrı bir yazma kapsamı gerekmez.
+
+   **Birleştirme sunucuda kalır.** `mobile_records` ERP şeklindedir (`stocks`,
+   `barcodes`, `prices`, `inventory` ayrı satırlar); uygulamanın ürün satırı ise
+   denormalizedir — biri değişince ürünün tamamı yeniden kurulup `urun` olarak
+   gönderilir (`MobileEntityAssembler`). Ham bölümleri cihaza akıtmak bu birleşimi
+   Kotlin'e taşırdı: fiyat ve fiyat-listesi adları için yeni Room tabloları, artı
+   herhangi bir parça değişince ürünü yeniden hesaplama mantığı. Sunucu bu join'i
+   zaten yapıyordu; fark, artık tüm katalog yerine yalnızca delta'nın dokunduğu
+   kayıtlar için çalışması.
+
+   Bir sayfa, imlecin üzerinden geçtiği ham satır sayısından **daha az** değişiklik
+   taşıyabilir (bir stok kartı + 3 barkodu + 5 fiyatı tek üründür) ve bazen hiç
+   taşımaz. Döngüyü `changes.size` değil **`hasMore`** sürdürür.
+
+   İstemcinin henüz okumadığı bölümler değişiklik üretmez ama imleç yine de
+   üzerlerinden geçer. Bu yüzden ileride yeni bir varlık eklenirse
+   `SyncCursor.FormatVersion` **yükseltilmelidir** — yoksa mevcut cihazlar o
+   geçmişi sessizce kaçırır.
 13. **Aynı satırı yeniden göndermek bir değişiklik değildir.**
    Ajan her döngüde aynı satırları yükler. `PayloadSha256` değişmediyse
    `UpdatedSeq` ilerletilmez — ilerletilirse tüm filo 30 saniyede bir katalogun
