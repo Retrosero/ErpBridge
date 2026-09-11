@@ -118,6 +118,16 @@ anahtar projeksiyonu + kendi `ShadowTableOptions`'ını verir.
   **Mikro V15 bu genel kurulum yolunu kullanmaz:** mevcut
   `_ERPB_SENKRONIZASYON` tablosunu (`Islem`: 0 silme, 1 güncelleme, 2 ekleme)
   salt okunur kaynak olarak tüketir ve ERP'de yeni tablo/trigger oluşturmaz.
+  **Kalıntı tuzağı (2026-09-11, MikroDB_V15_02):** 09-09 öncesi denemeler bu
+  DB'ye `_ERPB_SYNC`, `_ERPB_SYNC_DEL` ve 50 tabloya `*_ERPB_SYNC_DEL` tetikleyicisi
+  bırakmış; 14 tablonun `*_ERPB_SYNC` tetikleyicisi de (ör. `ODEME_EMIRLERI`)
+  legacy gövde yerine `[_ERPB_SYNC]`'e yazan yeni gövdeyi taşıyor. Bu tabloları
+  **kimse okumaz**: o 14 tablonun değişiklikleri `_ERPB_SENKRONIZASYON`'a hiç
+  düşmez, yani akışa girmez. Bir kurulumda `sys.sql_modules` içinde
+  `_ERPB_SENKRONIZASYON` geçmeyen `*_ERPB_SYNC` tetikleyicisi görülürse legacy
+  gövdeyle değiştirilmeli, `_ERPB_SYNC*` tabloları ve `*_ERPB_SYNC_DEL`
+  tetikleyicileri kaldırılmalıdır. STOKLAR/CARI_HESAPLAR bu DB'de legacy gövdede,
+  yani etkilenmiyor (geri alınan INSERT/DELETE testiyle doğrulandı).
   Katalog her kurulumun
   **üst kümesidir** (Mikro yalnızca lisanslı modülleri kurar), bu yüzden
   `InstallAsync`, `IsInstalledAsync` **ve** `ReadChangesAsync` üçü de
@@ -168,9 +178,22 @@ yedek kalır. Sonuç: ERP değişikliği cihaza **saatlik yerine ~5-20 sn**'de u
 ### Android silme kuyruğu
 
 Android `sync/queue?operation=delete` çağırır; `BridgeSyncHelper.syncMobileDeleteQueue`
-her sayfayı tek koşuda drenaj eder (cursor ilerlemediğinde durur). Silmeler
-`STOKLAR`/`CARI_HESAPLAR`/`CARI_HESAP_HAREKETLERI`/`STOK_HAREKETLERI`/`SIPARISLER`
-için Room `deleteById(recordKey)` ile uygulanır. **Değişiklik (update) verileri Android'e `*_lastup_date` tabanlı bootstrap-delta
+her sayfayı tek koşuda drenaj eder (cursor ilerlemediğinde durur). Kuyruk
+yalnızca `STOKLAR`/`CARI_HESAPLAR`/`CARI_HESAP_HAREKETLERI`/`STOK_HAREKETLERI`/
+`ODEME_EMIRLERI` için üretilir (`ChangeSetEndpoints.AddMobileQueueItems`);
+`SIPARISLER` olayı hiç üretilmez. Cihazda uygulanışı:
+- `CARI_HESAP_HAREKETLERI` (anahtar `cha_RECno`): ledger satırı + `faturaRecno`
+  ile bağlı `stok_hareketleri` satırları + satış fişi projeksiyonu
+  (`wms_orders`/`wms_order_items`, `InvoiceProjectionCleanup`, 2026-09-11).
+- `STOK_HAREKETLERI` (anahtar `sth_RECno`): hareket satırı + projeksiyondaki satır.
+- `STOKLAR`/`CARI_HESAPLAR`: kuyruk `recordKey`'i ancak aynı RECno daha önce
+  change-set **upsert**'i olarak `mobile_sync_queue`'ya girdiyse `sto_kod`/`cari_kod`'a
+  çevrilir; yalnızca bootstrap ile gelmiş ve tetikleyiciden sonra hiç düzenlenmemiş
+  bir kart için anahtar RECno olarak kalır ve **hiçbir yerde eşleşmez** (snapshot
+  eviction, tombstone, kuyruk). Ayrıca cihaz RECno'yu `deleteByReference` ile
+  koda karşı arar; salt rakamdan oluşan ürün kodları (V15_02'de 1505 adet) yanlış
+  ürünü silebilir. Açık iş: bootstrap `stocks`/`customers` satırlarına RECno
+  eklenip çeviri bu alandan yapılmalı. **Değişiklik (update) verileri Android'e `*_lastup_date` tabanlı bootstrap-delta
 ile ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sayfa döner.
 `BootstrapWorker` trigger modunda (`UseTriggerBasedSync=true`) her iterasyonda
 **hem** change-log **hem** snapshot-delta cycle'ını çalıştırır

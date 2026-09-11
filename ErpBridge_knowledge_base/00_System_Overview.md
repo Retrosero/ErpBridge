@@ -5,7 +5,12 @@
 >
 > **Durum:** Çok-ERP dönüşümü Faz 16–22 boyunca yapıldı. Mikro tam
 > implementasyon; `Erp.Sql` ortak SQL Server change-log motoru; `Erp.Logo`
-> iskelet. Detay: [`docs/multi-erp-adapter-plan.md`](../docs/multi-erp-adapter-plan.md)
+> iskelet.
+>
+> **Karar (2026-09-11):** Mikro V15'te değişiklik akışının **tek kaynağı**
+> `dbo._ERPB_SENKRONIZASYON`'dur (`MikroLegacySynchronizationChangeLog`, ERP
+> nesnesi yaratmaz). `Erp.Sql` gölge motoru (`_ERPB_SYNC` / `_ERPB_SYNC_DEL`)
+> kodda durur ama V15 üretiminde **kullanılmaz**; ayrıntı [[01_Accounting_Adapters]] §4. Detay: [`docs/multi-erp-adapter-plan.md`](../docs/multi-erp-adapter-plan.md)
 
 İlgili diğer modüller:
 - ERP Entegrasyon Adaptörleri: [[01_Accounting_Adapters]]
