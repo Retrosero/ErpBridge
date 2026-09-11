@@ -34,9 +34,10 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
 
         var page = await PullAsync(ctx, null);
 
-        var product = page.Changes.Should().ContainSingle().Subject;
-        product.Entity.Should().Be("urun", "the client stores products, not ERP sections");
+        var product = page.Changes.Should().ContainSingle(c => c.Entity == "urun").Subject;
         product.Key.Should().Be("S-1");
+        page.Changes.Should().Contain(c => c.Entity == "fiyatTanim",
+            "a price-list lookup is a record the client stores in its own right");
 
         var data = product.Data!.Value;
         data.GetProperty("name").GetString().Should().Be("Kursun Kalem");
@@ -139,13 +140,14 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
     [Fact]
     public async Task Sections_the_client_does_not_read_yet_still_move_the_cursor()
     {
-        // Their positions pass under the cursor without producing a change. That
-        // is why adding an entity later has to raise the cursor format version:
-        // devices must resync rather than silently miss the history.
+        // Open orders have no client entity. Their positions pass under the cursor
+        // without producing a change, which is why adding an entity later has to
+        // raise the cursor format version: devices must resync rather than
+        // silently miss the history.
         var ctx = await SeedAsync("SKIP");
         await UploadAsync(ctx, incremental: false,
             ("stocks", [Stock("S-1", "Kalem")]),
-            ("cashAndBank", [CashAndBank("bank", "B-1", "Ziraat")]));
+            ("openOrders", [OpenOrder("A", "1", 1)]));
 
         var page = await PullAsync(ctx, null);
 
@@ -155,8 +157,88 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
         var stored = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
-            .CountAsync(db.MobileRecords.Where(x => x.TenantId == ctx.TenantId && x.Entity == "cashAndBank"));
+            .CountAsync(db.MobileRecords.Where(x => x.TenantId == ctx.TenantId && x.Entity == "openOrders"));
         stored.Should().Be(1, "the row is stored and numbered even though nothing reads it yet");
+    }
+
+    [Fact]
+    public async Task A_cash_register_becomes_two_records_but_a_bank_becomes_one()
+    {
+        // The app stores cash registers twice: once as definitions, once for
+        // accounting. Banks have no such second view.
+        var ctx = await SeedAsync("KASA");
+        await UploadAsync(ctx, incremental: false,
+            ("cashAndBank", [CashAndBank("cash", "K-1", "Merkez Kasa"), CashAndBank("bank", "B-1", "Ziraat")]));
+
+        var page = await PullAsync(ctx, null);
+
+        page.Changes.Where(c => c.Key == "K-1").Select(c => c.Entity)
+            .Should().BeEquivalentTo(["kasalar", "kasaYonetim"]);
+        page.Changes.Where(c => c.Key == "B-1").Select(c => c.Entity)
+            .Should().BeEquivalentTo(["bankalar"]);
+
+        var bank = page.Changes.Single(c => c.Entity == "bankalar");
+        bank.Data!.Value.GetProperty("isim").GetString().Should().Be("Ziraat");
+        bank.Data!.Value.GetProperty("tip").GetInt32().Should().Be(1, "a bank is type 1, a cash register type 0");
+    }
+
+    [Fact]
+    public async Task An_address_arrives_under_the_field_names_the_app_stores()
+    {
+        // Handing over the raw payload here would leave cariKod, il and sokak
+        // empty, because the app's Room columns use the Turkish names.
+        var ctx = await SeedAsync("ADRES");
+        await UploadAsync(ctx, incremental: false,
+            ("customerAddresses", [Address("C-1", 1, "Istanbul", "Kadikoy")]));
+
+        var page = await PullAsync(ctx, null);
+
+        var address = page.Changes.Should().ContainSingle().Subject;
+        address.Entity.Should().Be("cariAdresleri");
+        address.Data!.Value.GetProperty("cariKod").GetString().Should().Be("C-1");
+        address.Data!.Value.GetProperty("il").GetString().Should().Be("Istanbul");
+        address.Data!.Value.GetProperty("ilce").GetString().Should().Be("Kadikoy");
+        address.Data!.Value.GetProperty("erpRef").GetString().Should().Be("ADR-C-1-1");
+    }
+
+    [Fact]
+    public async Task Movements_pass_straight_through()
+    {
+        // The app stores them exactly as the ERP sends them, so renaming anything
+        // here would be a change the client did not ask for.
+        var ctx = await SeedAsync("HAREKET");
+        await UploadAsync(ctx, incremental: false,
+            ("customerTransactions", [Movement("CHA-1", "C-1")]),
+            ("stockTransactions", [Movement("STH-1", "S-1")]));
+
+        var page = await PullAsync(ctx, null);
+
+        var customerMovement = page.Changes.Should().ContainSingle(c => c.Entity == "cariHareketleri").Subject;
+        customerMovement.Key.Should().Be("CHA-1");
+        customerMovement.Data!.Value.GetProperty("id").GetString().Should().Be("CHA-1");
+
+        page.Changes.Should().ContainSingle(c => c.Entity == "stokHareketleri" && c.Key == "STH-1");
+    }
+
+    [Fact]
+    public async Task A_deleted_bank_arrives_as_a_deletion_of_the_right_entity()
+    {
+        // A tombstone carries no payload, so the only thing left to say whether it
+        // was a bank or a cash register is the record key.
+        var ctx = await SeedAsync("SILBANK");
+        await UploadAsync(ctx, incremental: false,
+            ("cashAndBank", [CashAndBank("bank", "B-1", "Ziraat"), CashAndBank("bank", "B-2", "Kalir")]));
+        var cursor = (await PullAsync(ctx, null)).NextCursor;
+
+        await UploadAsync(ctx, incremental: false,
+            ("cashAndBank", [CashAndBank("bank", "B-2", "Kalir")]));
+
+        var page = await PullAsync(ctx, cursor);
+
+        var gone = page.Changes.Should().ContainSingle(c => c.Key == "B-1").Subject;
+        gone.Entity.Should().Be("bankalar");
+        gone.Deleted.Should().BeTrue();
+        gone.Data.Should().BeNull();
     }
 
     // ---- fixtures -------------------------------------------------------
@@ -168,6 +250,10 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
         new { stockCode, warehouseNo, quantity };
     private static object Lookup(string kind, string code, string name) => new { kind, code, name };
     private static object CashAndBank(string kind, string code, string name) => new { kind, code, name };
+    private static object OpenOrder(string series, string number, int lineNo) => new { series, number, lineNo };
+    private static object Address(string customerCode, int addressNo, string city, string district) =>
+        new { customerCode, addressNo, city, district };
+    private static object Movement(string id, string code) => new { id, code, tutar = 10m };
     private static object Customer(string code, string title, string taxOffice) =>
         new { customerCode = code, title1 = title, taxOffice, balance = 0m };
 
