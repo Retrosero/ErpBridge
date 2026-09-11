@@ -35,6 +35,16 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<ChangeSetRecord> ChangeSets => Set<ChangeSetRecord>();
     public DbSet<MobileSyncQueueItem> MobileSyncQueue => Set<MobileSyncQueueItem>();
 
+    /// <summary>
+    /// Faz 26 — current state of everything a mobile device may hold, one row per
+    /// record, ordered by when it last changed. Devices page it with a single
+    /// cursor, so a fresh install and a routine delta run the same query.
+    /// </summary>
+    public DbSet<MobileRecord> MobileRecords => Set<MobileRecord>();
+
+    /// <summary>Faz 26 — per-tenant allocator for <see cref="MobileRecord.UpdatedSeq"/>.</summary>
+    public DbSet<TenantSyncCounter> TenantSyncCounters => Set<TenantSyncCounter>();
+
     /// <summary>Faz 15.6 — append-only audit log of every change-set bundle the central API accepts.</summary>
     public DbSet<ChangeSetAuditEntry> ChangeSetAuditEntries => Set<ChangeSetAuditEntry>();
 
@@ -301,6 +311,38 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.Sequence });
             b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.SourceRecordKey });
             b.HasIndex(x => new { x.TenantId, x.SourceDatabase, x.TableName, x.TriggerRecNo, x.Operation, x.RecordKey }).IsUnique();
+        });
+
+        // Faz 26: the table mobile devices page through. The unique index on
+        // (TenantId, UpdatedSeq) is what lets a device resume from a cursor: it
+        // orders the feed and, being unique, guarantees a page boundary can never
+        // split two rows that share a position.
+        modelBuilder.Entity<MobileRecord>(b =>
+        {
+            b.ToTable("mobile_records");
+            b.HasKey(x => new { x.TenantId, x.Entity, x.RecordKey });
+            b.Property(x => x.Entity).IsRequired().HasMaxLength(32);
+            b.Property(x => x.RecordKey).IsRequired().HasMaxLength(255);
+            b.Property(x => x.StockKey).HasMaxLength(255);
+            b.Property(x => x.CustomerKey).HasMaxLength(255);
+            b.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            b.Property(x => x.PayloadSha256).HasMaxLength(64);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq }).IsUnique();
+            // Cascading a stock or customer deletion to the record's children is
+            // an indexed lookup rather than a scan of every section.
+            b.HasIndex(x => new { x.TenantId, x.StockKey });
+            b.HasIndex(x => new { x.TenantId, x.CustomerKey });
+            // Tombstone retention sweeps by age.
+            b.HasIndex(x => new { x.TenantId, x.IsDeleted, x.UpdatedAtUtc });
+        });
+
+        modelBuilder.Entity<TenantSyncCounter>(b =>
+        {
+            b.ToTable("tenant_sync_counter");
+            b.HasKey(x => x.TenantId);
+            b.Property(x => x.TenantId).ValueGeneratedNever();
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Faz 15.6: append-only audit log. The unique index on

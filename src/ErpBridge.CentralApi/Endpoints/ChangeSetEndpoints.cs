@@ -7,6 +7,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Snapshots;
+using ErpBridge.CentralApi.Sync;
 using ErpBridge.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -79,6 +80,7 @@ public static class ChangeSetEndpoints
         HttpContext http,
         [FromServices] CentralApiDbContext db,
         [FromServices] ErpBridge.CentralApi.Notifications.IBootstrapNotificationHub hub,
+        [FromServices] MobileRecordProjector projector,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -123,6 +125,16 @@ public static class ChangeSetEndpoints
             return JsonResults.Status(StatusCodes.Status413PayloadTooLarge,
                 new ApiError { ErrorCode = "BUNDLE_TOO_LARGE", Message = $"At most {maxTablesPerBundle} tables per bundle." });
         }
+
+        // One transaction for the whole bundle. The change-set rows, the queue
+        // rows, the snapshot eviction and the mobile tombstones all describe the
+        // same deletion; committing some of them without the rest would leave a
+        // device told about a change it can never reconcile. It is also what the
+        // cursor allocator needs — its row lock is only meaningful while a
+        // transaction is open.
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
 
         var accepted = 0;
         var duplicates = 0;
@@ -211,7 +223,29 @@ public static class ChangeSetEndpoints
                 // 23505 unique-violation is the expected outcome for the
                 // audit row; ignore so the rest of the bundle commits.
             }
+
+            // Faz 26: the same deletions, as tombstones on the cursor feed. This
+            // is the only path that learns a row is gone — an incremental read
+            // cannot report a row that is no longer there — so a device finds out
+            // here or not at all.
+            //
+            // Reserving the cursor block locks the tenant's counter row until
+            // commit, which is why it runs after the snapshot rewrite above
+            // rather than around it.
+            var tombstoned = await projector.ApplyDeletesAsync(db, tenantId, snapshotDeletes
+                .Select(x => new MobileRecordProjector.DeletedRecord(
+                    x.TableName, string.IsNullOrWhiteSpace(x.BusinessKey) ? x.RecordKey : x.BusinessKey!))
+                .ToList(), ct);
+            if (tombstoned > 0)
+            {
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation(
+                    "Tombstoned {Count} mobile records for tenant {TenantId}.", tombstoned, tenantId);
+            }
         }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
 
         // Wake any client long-polling /api/v1/android/notify so an ERP change
         // reaches the device in seconds instead of on the next periodic sync.

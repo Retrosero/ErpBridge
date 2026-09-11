@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Notifications;
+using ErpBridge.CentralApi.Sync;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -111,6 +112,7 @@ public static class BootstrapUploadEndpoints
         HttpContext http,
         CentralApiDbContext db,
         [FromServices] IBootstrapNotificationHub hub,
+        [FromServices] MobileRecordProjector projector,
         CancellationToken ct)
     {
         if (!http.User.TryGetTenantId(out var tenantId))
@@ -130,6 +132,12 @@ public static class BootstrapUploadEndpoints
         var chunkCount = await db.BootstrapSnapshotChunks.CountAsync(x => x.SnapshotId == uploadId, ct);
         if (chunkCount == 0)
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "BOOTSTRAP_UPLOAD_EMPTY", Message = "At least one bootstrap chunk is required." });
+
+        // Read what the agent actually sent before the merge rewrites the staged
+        // chunks into the full merged state. Projecting the merged result would
+        // mean re-hashing the whole catalogue on every 30-second incremental
+        // cycle; projecting the delta keeps the cost proportional to the change.
+        var uploaded = await ReadStagedSectionsAsync(db, staged.Id, ct);
 
         var old = await db.BootstrapSnapshots.Where(x => x.TenantId == tenantId && x.IsActive).ToListAsync(ct);
         if (staged.IsIncremental && old.Count > 0)
@@ -152,11 +160,52 @@ public static class BootstrapUploadEndpoints
         staged.IsActive = true;
         staged.ActivatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        // Projected last, and inside this transaction. Reserving the cursor block
+        // locks the tenant's counter row until commit, which blocks every other
+        // writer for this tenant — so it happens after the snapshot rewrite above,
+        // not around it.
+        await projector.ProjectAsync(db, tenantId, uploaded, fullUpload: !staged.IsIncremental, ct);
+        await db.SaveChangesAsync(ct);
+
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
         hub.Publish(tenantId, staged.PulledAtUtc);
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Groups a staged upload's chunks into the per-section row lists the mobile
+    /// projection consumes. Elements are cloned because they outlive the
+    /// <see cref="JsonDocument"/> they were parsed from.
+    /// </summary>
+    private static async Task<List<MobileRecordProjector.SectionRows>> ReadStagedSectionsAsync(
+        CentralApiDbContext db, Guid snapshotId, CancellationToken ct)
+    {
+        var chunks = await db.BootstrapSnapshotChunks.AsNoTracking()
+            .Where(x => x.SnapshotId == snapshotId)
+            .OrderBy(x => x.Section).ThenBy(x => x.ChunkIndex)
+            .Select(x => new { x.Section, x.PayloadJson })
+            .ToListAsync(ct);
+
+        var bySection = new Dictionary<string, List<JsonElement>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var chunk in chunks)
+        {
+            if (!bySection.TryGetValue(chunk.Section, out var rows))
+            {
+                rows = [];
+                bySection[chunk.Section] = rows;
+            }
+            using var document = JsonDocument.Parse(chunk.PayloadJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) continue;
+            foreach (var element in document.RootElement.EnumerateArray())
+                rows.Add(element.Clone());
+        }
+
+        return bySection
+            .Select(pair => new MobileRecordProjector.SectionRows(pair.Key, pair.Value))
+            .ToList();
     }
 
     private static async Task MergeIncrementalChunksAsync(
@@ -267,28 +316,11 @@ public static class BootstrapUploadEndpoints
         }
     }
 
-    private static string? RowKey(string section, JsonElement item)
-    {
-        string? Value(string name) => item.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null ? value.ToString() : null;
-        string? Join(params string[] names)
-        {
-            var values = names.Select(Value).ToArray();
-            return values.Any(string.IsNullOrWhiteSpace) ? null : string.Join('|', values);
-        }
-        return section.ToLowerInvariant() switch
-        {
-            "customers" => Join("customerCode"),
-            "customeraddresses" => Join("customerCode", "addressNo"),
-            "customercontacts" => Join("customerCode", "email", "mobile"),
-            "stocks" => Join("stockCode"),
-            "barcodes" => Join("barcode"),
-            "prices" => Join("stockCode", "listNumber"),
-            "salesconditions" => Join("stockCode", "customerCode", "warehouseNo", "paymentPlanNo"),
-            "inventory" => Join("stockCode", "warehouseNo"),
-            "openorders" => Join("series", "number", "lineNo"),
-            "cashandbank" or "lookups" => Join("kind", "code"),
-            "customertransactions" or "stocktransactions" => Join("id"),
-            _ => null,
-        };
-    }
+    /// <summary>
+    /// Identity of a snapshot row. Delegates to <see cref="MobileRecordKey"/>:
+    /// the snapshot merge and the mobile projection must agree on what makes two
+    /// rows the same row, or a deletion recorded against one key would leave the
+    /// other copy in place.
+    /// </summary>
+    private static string? RowKey(string section, JsonElement item) => MobileRecordKey.For(section, item);
 }
