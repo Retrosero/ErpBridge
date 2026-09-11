@@ -677,6 +677,7 @@ public static class AndroidEndpoints
         var snapshot = access.Snapshot!;
         using var document = access.Document!;
         var root = document.RootElement;
+        var cache = http.RequestServices.GetRequiredService<IMemoryCache>();
 
         var stockNames = GetArray(root, "stocks")
             .Select(stock => new
@@ -688,11 +689,13 @@ public static class AndroidEndpoints
             .GroupBy(stock => stock.Code!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First().Name, StringComparer.OrdinalIgnoreCase);
 
-        var linesByInvoiceRecNo = GetArray(root, "stockTransactions")
-            .Select(line => new { Line = line, InvoiceRecNo = GetInt32(line, "faturaRecno") })
-            .Where(item => item.InvoiceRecNo is > 0)
-            .GroupBy(item => item.InvoiceRecNo!.Value)
-            .ToDictionary(group => group.Key, group => group.Select(item => item.Line).ToArray());
+        // Grouping the whole stockTransactions section by invoice was, even
+        // after the per-request document cache, still recomputed on every
+        // single invoice page (a GroupBy + dictionary build over every row in
+        // the largest section, for this tenant ~90k). Cached per snapshot so
+        // one sync run pays for it once, the same as StockMovementsAsync's
+        // per-page cost profile.
+        var linesByInvoiceRecNo = await GetOrGroupInvoiceLinesAsync(cache, snapshot.Id, GetArray(root, "stockTransactions"));
 
         var rawSince = request.Since?.Trim();
         var hasWatermark = DateTimeOffset.TryParse(rawSince, out var watermark);
@@ -883,18 +886,23 @@ public static class AndroidEndpoints
             // Without caching, every page rebuilt the full merged document
             // from every stored chunk again, turning a large table into an
             // O(pages^2) database + JSON-parsing cost that made the sync
-            // appear to hang. The cache key includes the snapshot id, so a
-            // newly uploaded snapshot naturally invalidates the old entry.
+            // appear to hang.
+            //
+            // Cached per SECTION, not per section-SET: StockMovementsAsync
+            // asks for ["stockTransactions"] alone while InvoiceMovementsAsync
+            // asks for ["stocks","customerTransactions","stockTransactions"] —
+            // the same (often the largest) section. Keying by the whole set
+            // stored that section's chunk-merge result twice, doubling the
+            // memory cost of exactly the table this cache exists to make
+            // cheap. Each section is now built and cached once per snapshot
+            // and reused by every combination that includes it; the cache key
+            // includes the snapshot id, so a newly uploaded snapshot naturally
+            // invalidates every entry from the previous one.
             var cache = http.RequestServices.GetRequiredService<IMemoryCache>();
-            var cacheKey = $"android-doc:{snapshot.Id}:{string.Join(",", sections.OrderBy(s => s, StringComparer.Ordinal))}";
-            var json = await cache.GetOrCreateAsync(cacheKey, async entry =>
-            {
-                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10);
-                entry.SlidingExpiration = TimeSpan.FromMinutes(3);
-                using var built = await BuildSnapshotDocumentAsync(db, snapshot, sections, ct);
-                return built.RootElement.GetRawText();
-            });
-            return new(JsonDocument.Parse(json!), snapshot, null);
+            var combined = new JsonObject();
+            foreach (var section in sections)
+                combined[section] = JsonNode.Parse(await GetCachedSectionArrayAsync(cache, db, snapshot.Id, section, ct));
+            return new(JsonDocument.Parse(combined.ToJsonString()), snapshot, null);
         }
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return new(null, null, access.Error);
@@ -1118,22 +1126,79 @@ public static class AndroidEndpoints
     {
         var root = new JsonObject();
         foreach (var section in sections)
-        {
-            var chunks = await db.BootstrapSnapshotChunks.AsNoTracking()
-                .Where(x => x.SnapshotId == snapshot.Id && x.Section == section)
-                .OrderBy(x => x.ChunkIndex)
-                .Select(x => x.PayloadJson)
-                .ToListAsync(ct);
-            var array = new JsonArray();
-            foreach (var chunk in chunks)
-            {
-                using var document = JsonDocument.Parse(chunk);
-                foreach (var item in document.RootElement.EnumerateArray())
-                    array.Add(JsonNode.Parse(item.GetRawText()));
-            }
-            root[section] = array;
-        }
+            root[section] = JsonNode.Parse(await MergeSectionChunksAsync(db, snapshot.Id, section, ct));
         return JsonDocument.Parse(root.ToJsonString());
+    }
+
+    /// <summary>
+    /// <see cref="InvoiceMovementsAsync"/>'s stockTransactions-by-invoice
+    /// grouping, cached per snapshot. Lines are <see cref="JsonElement.Clone"/>d
+    /// before caching: a clone owns its own memory and stays valid after the
+    /// request that built it disposes its <see cref="JsonDocument"/>, so later
+    /// requests can safely read a cached entry built by an earlier one.
+    /// </summary>
+    private static Task<Dictionary<int, JsonElement[]>> GetOrGroupInvoiceLinesAsync(
+        IMemoryCache cache, Guid snapshotId, IEnumerable<JsonElement> stockTransactions)
+    {
+        var key = $"android-invoice-lines:{snapshotId}";
+        return cache.GetOrCreateAsync(key, entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10);
+            entry.SlidingExpiration = TimeSpan.FromMinutes(3);
+            var grouped = stockTransactions
+                .Select(line => new { Line = line, InvoiceRecNo = GetInt32(line, "faturaRecno") })
+                .Where(item => item.InvoiceRecNo is > 0)
+                .GroupBy(item => item.InvoiceRecNo!.Value)
+                .ToDictionary(group => group.Key, group => group.Select(item => item.Line.Clone()).ToArray());
+            return Task.FromResult(grouped);
+        })!;
+    }
+
+    /// <summary>
+    /// Read every chunk of one snapshot section, in chunk order, and merge
+    /// them into a single JSON array's text. Shared by
+    /// <see cref="BuildSnapshotDocumentAsync"/> (uncached, used by the
+    /// handful of callers that fetch one section directly) and
+    /// <see cref="GetCachedSectionArrayAsync"/> (cached, used by
+    /// <see cref="GetAndroidDocumentAsync"/>).
+    /// </summary>
+    private static async Task<string> MergeSectionChunksAsync(
+        CentralApiDbContext db, Guid snapshotId, string section, CancellationToken ct)
+    {
+        var chunks = await db.BootstrapSnapshotChunks.AsNoTracking()
+            .Where(x => x.SnapshotId == snapshotId && x.Section == section)
+            .OrderBy(x => x.ChunkIndex)
+            .Select(x => x.PayloadJson)
+            .ToListAsync(ct);
+        var array = new JsonArray();
+        foreach (var chunk in chunks)
+        {
+            using var document = JsonDocument.Parse(chunk);
+            foreach (var item in document.RootElement.EnumerateArray())
+                array.Add(JsonNode.Parse(item.GetRawText()));
+        }
+        return array.ToJsonString();
+    }
+
+    /// <summary>
+    /// <see cref="MergeSectionChunksAsync"/>, cached per (snapshot, section) so
+    /// that a section requested by several different endpoints -- or paged
+    /// through repeatedly by one -- pays the DB-read + chunk-reparse cost only
+    /// once per snapshot. 10-minute absolute / 3-minute sliding expiry matches
+    /// the pace of a sync run without holding large tables in memory
+    /// indefinitely; a fresh agent upload gets a new snapshot id, so stale
+    /// entries are never served, only outlived.
+    /// </summary>
+    private static Task<string> GetCachedSectionArrayAsync(
+        IMemoryCache cache, CentralApiDbContext db, Guid snapshotId, string section, CancellationToken ct)
+    {
+        var key = $"android-section:{snapshotId}:{section}";
+        return cache.GetOrCreateAsync(key, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10);
+            entry.SlidingExpiration = TimeSpan.FromMinutes(3);
+            return await MergeSectionChunksAsync(db, snapshotId, section, ct);
+        })!;
     }
 
     private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, DateTimeOffset? Since = null);
