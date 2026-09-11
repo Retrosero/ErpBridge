@@ -166,6 +166,13 @@ public partial class Program
         // signals consumed by the WPF desktop UI's long-poll loop. Single
         // replica only — multi-instance scale would need a Redis backplane.
         builder.Services.AddSingleton<IBootstrapNotificationHub, BootstrapNotificationHub>();
+
+        // Faz 26: the single writer of mobile_records. Stateless apart from its
+        // logger, but scoped so it reads naturally alongside the DbContext it is
+        // always handed.
+        builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordProjector>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordBackfill>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordRetention>();
     }
 
     /// <summary>
@@ -507,6 +514,7 @@ public partial class Program
         app.MapIngestEndpoints();
         app.MapChangeSetEndpoints();
         app.MapChangeSetAndroidEndpoints();
+        app.MapMobileSyncPullEndpoints();
         app.MapAndroidNotifyEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileTelemetryEndpoints();
@@ -521,6 +529,7 @@ public partial class Program
         app.MapAdminAgentsEndpoints();
         app.MapAdminJobsEndpoints();
         app.MapAdminBootstrapEndpoints();
+        app.MapAdminMobileRecordsEndpoints();
         app.MapAdminApiKeysEndpoints();
         app.MapAdminWebhooksEndpoints();
         app.MapAdminTelemetryEndpoints();

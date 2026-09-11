@@ -134,6 +134,37 @@ registration ayrı bir composition projesine taşınır.
    testi olmadığı için hata fark edilmemişti — bkz.
    `tests/ErpBridge.CentralApi.Tests/Endpoints/AdminAuditTests.cs`.*
 
+11. **`mobile_records.UpdatedSeq` asla identity kolonu olmaz.**
+   Identity değeri `INSERT` anında atanır, commit sonra olur. T1 seq=100 alır,
+   T2 seq=101 alır ve **önce** commit ederse, `cursor=99` ile okuyan cihaz 101'i
+   görüp imlecini ilerletir; T1 commit ettiğinde 100 **kalıcı olarak atlanmış**
+   olur. İmleç tek doğruluk kaynağı olduğu için bu sessiz, kalıcı veri kaybıdır.
+   Doğru yol `MobileRecordProjector.ReserveAsync`: `tenant_sync_counter` satırını
+   `UPDATE … RETURNING` ile kilitleyip blok ayırmak. Satır kilidi transaction
+   sonuna kadar durur, yani **tahsis sırası = commit sırası**.
+   Bundan çıkan üç bağlayıcı kural:
+   - `mobile_records`'a yazan **her** yol açık bir transaction içinde olmalı ve
+     bloğunu bu sayaçtan almalı. Yeni bir yazar eklerken atlamak, boşluğu geri
+     getirir.
+   - Sayaç **mümkün olan en geç anda** tahsis edilir. Kilit tenant'ın tüm
+     yazarlarını bekletir; snapshot yeniden-yazımı gibi uzun işler kilitten
+     **önce** bitmiş olmalı.
+   - Rollback sayaçta boşluk bırakır; bu zararsızdır. Zararlı olan tek şey
+     yeniden sıralamadır.
+12. **Mobil okuma yolu tek uçtur: `POST /api/v1/android/sync/pull`.**
+   Yeni bir `/sync/<bölüm>` ucu **eklenmez**. Cihaz imleç göndermezse her şeyi,
+   gönderirse yalnızca sonrasını alır — ikisi de aynı sorgu, aynı tablo.
+   Silme de aynı akışta bir tombstone'dur; artımlı bir ERP okuması zaten yok
+   olmuş satırı bildiremez, dolayısıyla cihazın silmeyi öğrenebileceği başka
+   yer yoktur. İmleç **opak token**'dır (`SyncCursor`), çıplak sayı değil;
+   `nextCursor` son sayfada bile doludur, "bitti" bilgisini `hasMore` taşır.
+   Bu uç `mobile:read` kapsamıyla çalışır: silme bir *okuma* olayı olduğu için
+   cihazın yerelinden kayıt düşürmesi için ayrı bir yazma kapsamı gerekmez.
+13. **Aynı satırı yeniden göndermek bir değişiklik değildir.**
+   Ajan her döngüde aynı satırları yükler. `PayloadSha256` değişmediyse
+   `UpdatedSeq` ilerletilmez — ilerletilirse tüm filo 30 saniyede bir katalogun
+   tamamını yeniden indirir.
+
 ---
 
 ## 4. Yeni ERP Adaptörü Eklemek

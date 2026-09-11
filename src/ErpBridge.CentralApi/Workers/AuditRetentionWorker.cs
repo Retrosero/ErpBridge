@@ -6,11 +6,13 @@ using Microsoft.Extensions.Options;
 namespace ErpBridge.CentralApi.Workers;
 
 /// <summary>
-/// Faz 15.6 — periodically deletes audit-log rows older than
-/// <see cref="AuditRetentionOptions.RetentionDays"/>. The audit table is
-/// append-only by design; this worker is the only code path that removes
-/// rows. It runs at most once per day and caps the delete batch so a
-/// misconfigured clock cannot wipe the table in a single tick.
+/// Daily retention pass. Deletes audit-log rows older than
+/// <see cref="AuditRetentionOptions.RetentionDays"/> and expired mobile
+/// tombstones older than <see cref="AuditRetentionOptions.MobileTombstoneDays"/>.
+/// Both tables are append-only by design; this worker is the only code path that
+/// removes rows from either. The two share a tick because they want the same
+/// thing — one quiet daily pass — not because they are the same concern; each
+/// caps its own batch so a misconfigured clock cannot empty a table in one go.
 /// </summary>
 public sealed class AuditRetentionWorker : BackgroundService
 {
@@ -69,6 +71,8 @@ public sealed class AuditRetentionWorker : BackgroundService
             return;
         }
 
+        await PurgeMobileTombstonesAsync(scope, options, ct).ConfigureAwait(false);
+
         var cutoff = DateTimeOffset.UtcNow.AddDays(-Math.Max(1, options.RetentionDays));
         var toDelete = await db.ChangeSetAuditEntries
             .Where(c => c.ReceivedAtUtc < cutoff)
@@ -98,6 +102,16 @@ public sealed class AuditRetentionWorker : BackgroundService
             "AuditRetentionWorker deleted {Count} audit rows older than {Cutoff:o}.",
             toDelete.Count,
             cutoff);
+    }
+
+    private static async Task PurgeMobileTombstonesAsync(
+        IServiceScope scope, AuditRetentionOptions options, CancellationToken ct)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var retention = scope.ServiceProvider.GetRequiredService<Sync.MobileRecordRetention>();
+        await retention
+            .RunOnceAsync(db, options.MobileTombstoneDays, options.MaxDeletesPerRun, ct)
+            .ConfigureAwait(false);
     }
 
     private static async Task WaitUntilNextRunAsync(int hourUtc, CancellationToken ct)

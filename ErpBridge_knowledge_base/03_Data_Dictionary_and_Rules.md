@@ -57,7 +57,10 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 - `change_sets`: Agent → merkez değişiklik paketleri (`ErpType`, `TableKey`, `TableName`, `LastTriggerRecNo`, `PayloadJson`). *(Faz 20 — ERP-nötr: eski `TabloID` int kaldırıldı, `TableKey` string + `ErpType` eklendi.)*
 - `jobs`: Mobil → Agent yazma iş kuyruğu — Faz 20'de `ErpType` kolonu eklendi (çok-ERP tenant'ta doğru adaptöre yönlendirme).
 - `change_set_audit_log`: Senkronizasyon denetim izleri.
-- `mobile_sync_queue`: ERP → Android olay günlüğü (`sequence`, `entity`, `operation`, `recordKey`, `payload`).
+- `mobile_sync_queue`: ERP → Android olay günlüğü (`sequence`, `entity`, `operation`, `recordKey`, `payload`). *(Faz 26 ile yerini `mobile_records`'a bırakıyor; geçiş süresince ikisine de yazılır.)*
+- `bootstrap_snapshots` + `bootstrap_snapshot_chunks`: Android'in sıfırdan çektiği tam durum. Chunk'lar `jsonb` dizileri; `(TenantId)` üzerinde `IsActive = true` ile filtrelenmiş **kısmi unique index** var — aktif snapshot'ı değiştiren her kod bunu tek `SaveChanges` içinde yapmamalı (bkz. `BootstrapUploadEndpoints.CompleteAsync`).
+- `mobile_records` *(Faz 26)*: Mobilin gördüğü her kaydın **güncel hâli** — olay günlüğü değil, `(TenantId, Entity, RecordKey)` başına tek satır. `Entity` = bootstrap bölüm adı (`stocks`, `customers`, `prices`…). Cihaz `UpdatedSeq` sırasına göre sayfalar; **ilk kurulum ile günlük delta aynı sorgudur** (`UpdatedSeq > cursor`). `IsDeleted` tombstone, `PayloadSha256` değişmemiş satırın imleci ilerletmesini engeller, `StockKey`/`CustomerKey` ebeveyn silmesinin indeksli cascade'ini taşır.
+- `tenant_sync_counter` *(Faz 26)*: `mobile_records.UpdatedSeq` için tenant başına tahsis sayacı (`LastSeq`, `TombstoneHorizonSeq`).
 - `parameter_records`: Müşteri bazlı konfigürasyon parametreleri.
 
 ---
