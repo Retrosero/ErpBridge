@@ -784,20 +784,20 @@ public static class AndroidEndpoints
             ? value.EnumerateArray()
             : [];
 
-    private static string? GetString(JsonElement item, string propertyName)
+    internal static string? GetString(JsonElement item, string propertyName)
     {
         if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return null;
         return value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
     }
 
-    private static string GetFirstString(JsonElement item, params string[] propertyNames) =>
+    internal static string GetFirstString(JsonElement item, params string[] propertyNames) =>
         propertyNames
             .Select(propertyName => GetString(item, propertyName)?.Trim())
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
         ?? string.Empty;
 
-    private static int? GetInt32(JsonElement item, string propertyName)
+    internal static int? GetInt32(JsonElement item, string propertyName)
     {
         if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return null;
@@ -828,13 +828,13 @@ public static class AndroidEndpoints
             : null;
     }
 
-    private static string? JoinAddressLine(params string?[] values)
+    internal static string? JoinAddressLine(params string?[] values)
     {
         var result = string.Join(" ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()));
         return string.IsNullOrWhiteSpace(result) ? null : result;
     }
 
-    private static decimal? GetDecimal(JsonElement item, string propertyName)
+    internal static decimal? GetDecimal(JsonElement item, string propertyName)
     {
         if (!item.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return null;
