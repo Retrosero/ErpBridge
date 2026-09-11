@@ -48,6 +48,31 @@ public sealed class MikroDbReader : IMikroDbReader
     private static DateTime? MikroDateTime(DateTimeOffset? utc) =>
         utc is { } value ? TimeZoneInfo.ConvertTime(value, MikroTimeZone).DateTime : null;
 
+    /// <summary>
+    /// Same conversion as <see cref="MikroDateTime"/>, widened by a lookback
+    /// margin for tables whose "changed since" fallback can be coarser than
+    /// the caller's watermark.
+    ///
+    /// <para><c>SIPARISLER</c> and <c>CARI_HESAP_HAREKETLERI</c> are not on the
+    /// verified critical-column list for a maintained <c>*_lastup_date</c>
+    /// column (see the knowledge base data dictionary). Their readers fall
+    /// back to <c>*_create_date</c> or, for the latter, the document date
+    /// <c>cha_tarihi</c> — a field Mikro's own entry screens usually store
+    /// with a midnight time component. Once <c>changedSinceUtc</c> moves past
+    /// midnight on the day a row was entered (i.e. after that day's first
+    /// successful pull), a plain <c>&gt; @changedSinceUtc</c> comparison
+    /// silently excludes that row for the rest of the day — a freshly entered
+    /// order or tahsilat reads back as "no changes". The margin below keeps
+    /// re-scanning the current day (cheap: re-sent rows are idempotent
+    /// downstream, see rule 13 in <c>00_System_Overview.md</c>) instead of
+    /// silently losing same-day inserts.</para>
+    /// </summary>
+    private static DateTime? MikroDateTimeWithLookback(DateTimeOffset? utc, TimeSpan margin) =>
+        utc is { } value ? TimeZoneInfo.ConvertTime(value - margin, MikroTimeZone).DateTime : null;
+
+    /// <summary>26h: a full calendar day plus margin for the day-boundary case above.</summary>
+    private static readonly TimeSpan CoarseWatermarkLookback = TimeSpan.FromHours(26);
+
     private static TimeZoneInfo ResolveMikroTimeZone()
     {
         try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"); }
@@ -329,9 +354,14 @@ FROM SIPARISLER
 WHERE sip_firmano = @firmNo
   AND ISNULL(sip_iptal, 0) = 0
   AND sip_kapat_fl = 0
-  AND (@changedSinceUtc IS NULL OR COALESCE(sip_lastup_date, sip_create_date) > @changedSinceUtc)";
+  AND (@changedSinceUtc IS NULL
+       OR COALESCE(sip_lastup_date, sip_create_date) IS NULL
+       OR COALESCE(sip_lastup_date, sip_create_date) > @changedSinceUtc)";
 
-        var rows = await QueryAsync<OpenOrderPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
+        // sip_lastup_date/sip_create_date are not on the verified critical-column
+        // list for this table — widen with a lookback margin so a same-day order
+        // is never silently dropped once the watermark passes midnight.
+        var rows = await QueryAsync<OpenOrderPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTimeWithLookback(changedSinceUtc, CoarseWatermarkLookback) }, ct).ConfigureAwait(false);
         var result = rows.ToList();
         _logger.LogInformation("Read {Count} open orders for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -514,10 +544,17 @@ SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
        CAST(ISNULL(cha_normal_Iade, 0) AS BIT) AS IsReturn
 FROM CARI_HESAP_HAREKETLERI
 WHERE ISNULL(cha_iptal, 0) = 0
-  AND (@changedSinceUtc IS NULL OR COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) > @changedSinceUtc)
+  AND (@changedSinceUtc IS NULL
+       OR COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) IS NULL
+       OR COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) > @changedSinceUtc)
 ORDER BY cha_RECno";
 
-        var result = (await QueryAsync<CustomerTransactionPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false)).ToList();
+        // cha_lastup_date/cha_create_date are not on the verified critical-column
+        // list for this table; the fallback (cha_tarihi, the document date) is
+        // typically stored at midnight. Widen with a lookback margin so a
+        // same-day tahsilat/invoice line is never silently dropped once the
+        // watermark passes midnight — see MikroDateTimeWithLookback.
+        var result = (await QueryAsync<CustomerTransactionPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTimeWithLookback(changedSinceUtc, CoarseWatermarkLookback) }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} customer transactions for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
