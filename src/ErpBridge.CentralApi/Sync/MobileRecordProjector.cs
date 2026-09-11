@@ -88,7 +88,7 @@ public sealed class MobileRecordProjector
         if (!IsSupported(db)) return default;
 
         var runId = Guid.NewGuid();
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTime.UtcNow;
 
         // Work out everything that changes before touching the counter. The
         // counter lock blocks every other writer for this tenant, so it is taken
@@ -262,7 +262,7 @@ public sealed class MobileRecordProjector
         if (distinct.Count == 0) return 0;
 
         var block = await ReserveAsync(db, tenantId, distinct.Count, ct).ConfigureAwait(false);
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTime.UtcNow;
         foreach (var record in distinct)
         {
             record.IsDeleted = true;

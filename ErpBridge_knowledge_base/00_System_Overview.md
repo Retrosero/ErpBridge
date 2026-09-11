@@ -151,7 +151,16 @@ registration ayrı bir composition projesine taşınır.
      **önce** bitmiş olmalı.
    - Rollback sayaçta boşluk bırakır; bu zararsızdır. Zararlı olan tek şey
      yeniden sıralamadır.
-12. **Aynı satırı yeniden göndermek bir değişiklik değildir.**
+12. **Mobil okuma yolu tek uçtur: `POST /api/v1/android/sync/pull`.**
+   Yeni bir `/sync/<bölüm>` ucu **eklenmez**. Cihaz imleç göndermezse her şeyi,
+   gönderirse yalnızca sonrasını alır — ikisi de aynı sorgu, aynı tablo.
+   Silme de aynı akışta bir tombstone'dur; artımlı bir ERP okuması zaten yok
+   olmuş satırı bildiremez, dolayısıyla cihazın silmeyi öğrenebileceği başka
+   yer yoktur. İmleç **opak token**'dır (`SyncCursor`), çıplak sayı değil;
+   `nextCursor` son sayfada bile doludur, "bitti" bilgisini `hasMore` taşır.
+   Bu uç `mobile:read` kapsamıyla çalışır: silme bir *okuma* olayı olduğu için
+   cihazın yerelinden kayıt düşürmesi için ayrı bir yazma kapsamı gerekmez.
+13. **Aynı satırı yeniden göndermek bir değişiklik değildir.**
    Ajan her döngüde aynı satırları yükler. `PayloadSha256` değişmediyse
    `UpdatedSeq` ilerletilmez — ilerletilirse tüm filo 30 saniyede bir katalogun
    tamamını yeniden indirir.

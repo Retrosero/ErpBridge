@@ -171,6 +171,8 @@ public partial class Program
         // logger, but scoped so it reads naturally alongside the DbContext it is
         // always handed.
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordProjector>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordBackfill>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordRetention>();
     }
 
     /// <summary>
@@ -512,6 +514,7 @@ public partial class Program
         app.MapIngestEndpoints();
         app.MapChangeSetEndpoints();
         app.MapChangeSetAndroidEndpoints();
+        app.MapMobileSyncPullEndpoints();
         app.MapAndroidNotifyEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileTelemetryEndpoints();
@@ -526,6 +529,7 @@ public partial class Program
         app.MapAdminAgentsEndpoints();
         app.MapAdminJobsEndpoints();
         app.MapAdminBootstrapEndpoints();
+        app.MapAdminMobileRecordsEndpoints();
         app.MapAdminApiKeysEndpoints();
         app.MapAdminWebhooksEndpoints();
         app.MapAdminTelemetryEndpoints();

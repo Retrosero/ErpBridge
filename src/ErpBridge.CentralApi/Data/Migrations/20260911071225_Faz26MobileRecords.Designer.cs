@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ErpBridge.CentralApi.Data.Migrations
 {
     [DbContext(typeof(CentralApiDbContext))]
-    [Migration("20260911065611_Faz26MobileRecords")]
+    [Migration("20260911071225_Faz26MobileRecords")]
     partial class Faz26MobileRecords
     {
         /// <inheritdoc />
@@ -668,7 +668,7 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
-                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                    b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("UpdatedSeq")

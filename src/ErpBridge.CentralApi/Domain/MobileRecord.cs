@@ -72,8 +72,16 @@ public sealed class MobileRecord
     /// <summary>True once the ERP no longer has the row. The device deletes it and moves on.</summary>
     public bool IsDeleted { get; set; }
 
-    /// <summary>When the row last changed. Drives tombstone retention.</summary>
-    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    /// <summary>
+    /// When the row last changed, in UTC. Drives tombstone retention.
+    ///
+    /// <para>A plain <see cref="DateTime"/> rather than the
+    /// <see cref="DateTimeOffset"/> used elsewhere in this schema: the value is
+    /// always UTC, so the offset would carry no information, and SQLite — which
+    /// backs the relational tests — cannot translate a <c>DateTimeOffset</c>
+    /// comparison, which is exactly what the retention sweep is.</para>
+    /// </summary>
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 
     /// <summary>
     /// Identifies the full upload that last touched this row. A full (non-incremental)

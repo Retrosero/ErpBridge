@@ -24,7 +24,7 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     PayloadSha256 = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
                     UpdatedSeq = table.Column<long>(type: "bigint", nullable: false),
                     IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     LastSeenRunId = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
