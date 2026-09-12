@@ -52,6 +52,15 @@ public sealed class MobileRecord
     /// </summary>
     public string? CustomerKey { get; set; }
 
+    /// <summary>
+    /// The ERP's physical identity for this row (RECno or Guid, lower-cased)
+    /// when the upload carried one. A delete event names a row by nothing else,
+    /// and a card that never changed after the trigger install has no queue
+    /// upsert to translate it through — this column is what makes such a
+    /// deletion reach the devices.
+    /// </summary>
+    public string? SourceRecordKey { get; set; }
+
     /// <summary>The mobile-shaped row. Null once the record is a tombstone.</summary>
     public string? PayloadJson { get; set; }
 

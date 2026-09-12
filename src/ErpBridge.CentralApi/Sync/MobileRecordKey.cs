@@ -69,6 +69,24 @@ public static class MobileRecordKey
     }
 
     /// <summary>
+    /// The ERP's physical identity the upload carried for this row (RECno or
+    /// Guid), normalised for lookup; null when the section does not carry one.
+    /// </summary>
+    public static string? SourceKey(string section, JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object) return null;
+        if (!item.TryGetProperty("recordKey", out var value) || value.ValueKind == JsonValueKind.Null) return null;
+        return NormalizeSourceKey(value.ToString());
+    }
+
+    /// <summary>
+    /// One spelling for an ERP identity on both sides of the lookup: the change
+    /// log renders a Guid lower-case, SQL Server renders it upper-case.
+    /// </summary>
+    public static string? NormalizeSourceKey(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+
+    /// <summary>
     /// The stock card and customer this row hangs off, so a parent's deletion can
     /// cascade with an indexed update. Either part is null when the entity has no
     /// such parent.

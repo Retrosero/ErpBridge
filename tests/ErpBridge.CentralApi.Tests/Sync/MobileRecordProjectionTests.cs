@@ -185,9 +185,58 @@ public sealed class MobileRecordProjectionTests : IClassFixture<SqliteCentralApi
         entities.Should().BeEquivalentTo(["stocks"]);
     }
 
+    [Fact]
+    public async Task A_card_only_bootstrap_carried_is_still_tombstoned_when_the_erp_deletes_it()
+    {
+        // Most of a catalogue never changes after the trigger install, so its
+        // cards have no change-set upsert to read the code back from. The delete
+        // event names the card by RECno alone; the bootstrap row carries that
+        // identity, and that is what the translation goes through.
+        var ctx = await SeedAsync("BOOT-DEL");
+
+        await UploadAsync(ctx, incremental: false, ("stocks",
+            [StockWithIdentity("S-1", "Kalem", "7001"), StockWithIdentity("S-2", "Silgi", "7002")]));
+
+        await IngestAsync(ctx, "STOKLAR", upsert: null, delete: "7001");
+
+        (await SingleRecordAsync(ctx, "stocks", "S-1")).IsDeleted.Should().BeTrue();
+        (await SingleRecordAsync(ctx, "stocks", "S-2")).IsDeleted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_guid_identity_matches_regardless_of_case()
+    {
+        // SQL Server renders a uniqueidentifier upper-case, the change log
+        // tags it lower-case; a V16 deletion must not fall between the two.
+        var ctx = await SeedAsync("GUID-DEL");
+
+        await UploadAsync(ctx, incremental: false, ("customers",
+            [CustomerWithIdentity("C-1", "6F9619FF-8B86-D011-B42D-00C04FC964FF")]));
+
+        await IngestAsync(ctx, "CARI_HESAPLAR", upsert: null, delete: "6f9619ff-8b86-d011-b42d-00c04fc964ff");
+
+        (await SingleRecordAsync(ctx, "customers", "C-1")).IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_delete_nothing_can_translate_tombstones_nothing()
+    {
+        // Keyed by an identity the server has never seen, the delete must not
+        // guess a code.
+        var ctx = await SeedAsync("UNKNOWN-DEL");
+
+        await UploadAsync(ctx, incremental: false, ("stocks", [StockWithIdentity("S-1", "Kalem", "7001")]));
+
+        await IngestAsync(ctx, "STOKLAR", upsert: null, delete: "9999");
+
+        (await SingleRecordAsync(ctx, "stocks", "S-1")).IsDeleted.Should().BeFalse();
+    }
+
     // ---- fixtures -------------------------------------------------------
 
     private static object Stock(string code, string name) => new { stockCode = code, name };
+    private static object StockWithIdentity(string code, string name, string recordKey) => new { stockCode = code, name, recordKey };
+    private static object CustomerWithIdentity(string code, string recordKey) => new { customerCode = code, title = code, recordKey };
     private static object Customer(string code) => new { customerCode = code, title = code };
     private static object Barcode(string barcode, string stockCode) => new { barcode, stockCode };
     private static object Price(string stockCode, int listNumber, decimal price) => new { stockCode, listNumber, price };

@@ -373,6 +373,19 @@ public static class ChangeSetEndpoints
                     .FirstOrDefaultAsync(ct);
                 businessKey = ReadBusinessKeyFromJson(storedPayload, table.Table.TableName);
             }
+            if (businessKey is null
+                && MobileRecordKey.DeleteTargetFor(table.Table.TableName) is { BusinessKeyColumn: not null } target
+                && MobileRecordKey.NormalizeSourceKey(sourceRecordKey) is { } normalizedKey)
+            {
+                // Most of a catalogue never changes after the trigger install,
+                // so its cards have no queue upsert to read the code back from.
+                // The bootstrap row carries the ERP identity; without this the
+                // delete stayed keyed by RECno and matched nothing anywhere.
+                businessKey = await db.MobileRecords.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.Entity == target.Entity && x.SourceRecordKey == normalizedKey)
+                    .Select(x => x.RecordKey)
+                    .FirstOrDefaultAsync(ct);
+            }
 
             var recordKey = businessKey ?? sourceRecordKey;
             if (!seen.Add($"{recordKey}:delete:{row.Sequence}")) continue;

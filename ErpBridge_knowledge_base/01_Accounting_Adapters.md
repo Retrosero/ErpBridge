@@ -189,11 +189,16 @@ yalnızca `STOKLAR`/`CARI_HESAPLAR`/`CARI_HESAP_HAREKETLERI`/`STOK_HAREKETLERI`/
 - `STOKLAR`/`CARI_HESAPLAR`: kuyruk `recordKey`'i ancak aynı RECno daha önce
   change-set **upsert**'i olarak `mobile_sync_queue`'ya girdiyse `sto_kod`/`cari_kod`'a
   çevrilir; yalnızca bootstrap ile gelmiş ve tetikleyiciden sonra hiç düzenlenmemiş
-  bir kart için anahtar RECno olarak kalır ve **hiçbir yerde eşleşmez** (snapshot
-  eviction, tombstone, kuyruk). Ayrıca cihaz RECno'yu `deleteByReference` ile
-  koda karşı arar; salt rakamdan oluşan ürün kodları (V15_02'de 1505 adet) yanlış
-  ürünü silebilir. Açık iş: bootstrap `stocks`/`customers` satırlarına RECno
-  eklenip çeviri bu alandan yapılmalı. **Değişiklik (update) verileri Android'e `*_lastup_date` tabanlı bootstrap-delta
+  bir kart için kuyruk satırı yoktur. **2026-09-12 düzeltmesi:** bootstrap
+  `stocks`/`customers` satırları artık `recordKey` (V15 `*_RECno`, V16 `*_Guid`;
+  `MikroDbReader.IdentityExpressionAsync` kolonu INFORMATION_SCHEMA'dan seçer)
+  taşır; `mobile_records.SourceRecordKey` (küçük harf) olarak saklanır ve
+  `ChangeSetEndpoints` kuyrukta bulamadığı anahtarı bu kolondan çözer. Çözüm yine
+  olmazsa kuyruk satırı `recordKey = sourceRecordKey` ile gider; cihaz
+  (`ErpDeleteQueueKeys.isUnresolved`) böyle bir satırı **atlar** — aksi hâlde
+  RECno koda karşı aranır ve salt rakamlı ürün kodları (V15_02'de 1505 adet)
+  yanlış ürünü silerdi. Mevcut kurulumlarda kolonun dolması için bir tam bootstrap
+  yüklemesi gerekir (payload değiştiği için katalog bir kez yeniden iner). **Değişiklik (update) verileri Android'e `*_lastup_date` tabanlı bootstrap-delta
 ile ulaşır** — `sync/urun`/`sync/cari` uçları `bootstrap_snapshots`'tan sayfa döner.
 `BootstrapWorker` trigger modunda (`UseTriggerBasedSync=true`) her iterasyonda
 **hem** change-log **hem** snapshot-delta cycle'ını çalıştırır
