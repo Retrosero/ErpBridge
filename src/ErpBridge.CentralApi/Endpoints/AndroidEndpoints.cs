@@ -123,7 +123,26 @@ public static class AndroidEndpoints
         var snapshot = await db.BootstrapSnapshots.AsNoTracking()
             .Where(x => x.TenantId == mobile.TenantId && x.IsActive).FirstOrDefaultAsync(ct);
         if (snapshot is not null)
-            return Results.Ok(new { tenantId = snapshot.TenantId, sourceDatabase = snapshot.SourceDatabase, pulledAtUtc = snapshot.PulledAtUtc, receivedAtUtc = snapshot.ReceivedAtUtc });
+        {
+            // Per-section versions. An incremental upload re-points the chunks of
+            // untouched sections onto the new snapshot unchanged (see
+            // BootstrapUploadEndpoints.MergeIncrementalChunksAsync), so the newest
+            // chunk ReceivedAtUtc of a section only moves when that section
+            // actually received rows. The device compares these instead of the
+            // package-wide pulledAtUtc, so a three-line invoice no longer makes it
+            // re-download the customer and product catalogues.
+            var sectionVersions = await db.BootstrapSnapshotChunks.AsNoTracking()
+                .Where(x => x.SnapshotId == snapshot.Id)
+                .GroupBy(x => x.Section)
+                .Select(group => new { Section = group.Key, Version = group.Max(x => x.ReceivedAtUtc) })
+                .ToListAsync(ct);
+            return Results.Ok(new
+            {
+                tenantId = snapshot.TenantId, sourceDatabase = snapshot.SourceDatabase,
+                pulledAtUtc = snapshot.PulledAtUtc, receivedAtUtc = snapshot.ReceivedAtUtc,
+                sectionVersions = sectionVersions.ToDictionary(x => x.Section, x => x.Version, StringComparer.OrdinalIgnoreCase),
+            });
+        }
 
         var access = await GetLatestPackageAsync(http, db, ct);
         if (access.Error is not null) return access.Error;

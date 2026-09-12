@@ -439,6 +439,54 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         secondBody.Should().Contain("SH-NEW").And.NotContain("SH-OLD");
     }
 
+    [Fact]
+    public async Task Bootstrap_reports_a_version_per_snapshot_section()
+    {
+        // An incremental upload carries the chunks of untouched sections forward
+        // unchanged, so the newest chunk ReceivedAtUtc of a section is that
+        // section's version. The device compares these per table instead of the
+        // package-wide pulledAtUtc, so a small invoice no longer re-downloads
+        // the customer and product catalogues.
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-SNAP-VER-{suffix}", "Snapshot version tenant");
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-SNAP-VER-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var older = new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero);
+        var newer = new DateTimeOffset(2026, 9, 12, 9, 30, 0, TimeSpan.Zero);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var snapshot = new BootstrapSnapshot
+            {
+                Id = Guid.NewGuid(), TenantId = tenant.Id, SourceDatabase = "MIKRO-TEST",
+                PulledAtUtc = newer, ReceivedAtUtc = newer, IsActive = true,
+            };
+            db.BootstrapSnapshots.Add(snapshot);
+            db.BootstrapSnapshotChunks.AddRange(
+                Chunk(snapshot.Id, "customers", 0, older),
+                Chunk(snapshot.Id, "stockTransactions", 0, older),
+                Chunk(snapshot.Id, "stockTransactions", 1, newer));
+            db.SaveChanges();
+        }
+
+        var response = await client.PostAsJsonAsync("/api/v1/android/bootstrap", new { });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        document.RootElement.GetProperty("pulledAtUtc").GetDateTimeOffset().Should().Be(newer);
+        var versions = document.RootElement.GetProperty("sectionVersions");
+        versions.GetProperty("customers").GetDateTimeOffset().Should().Be(older);
+        versions.GetProperty("stockTransactions").GetDateTimeOffset().Should().Be(newer);
+
+        static BootstrapSnapshotChunk Chunk(Guid snapshotId, string section, int index, DateTimeOffset receivedAtUtc) => new()
+        {
+            Id = Guid.NewGuid(), SnapshotId = snapshotId, Section = section, ChunkIndex = index,
+            ItemCount = 1, PayloadJson = "[{\"id\":\"X\"}]", ReceivedAtUtc = receivedAtUtc,
+        };
+    }
+
     private Guid SeedSnapshot(Guid tenantId, string section, object[] items)
     {
         using var scope = _factory.Services.CreateScope();
