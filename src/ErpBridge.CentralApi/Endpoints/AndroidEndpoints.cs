@@ -20,6 +20,20 @@ public static class AndroidEndpoints
 {
     private const string MobileReadScope = "mobile:read";
 
+    /// <summary>
+    /// Mikro movement timestamps fall back to the document date at midnight
+    /// (<c>COALESCE(cha_lastup_date, cha_create_date, cha_tarihi)</c>), so rows
+    /// added later the same day carry exactly the cursor's timestamp and a
+    /// strict "newer than" filter would drop them for good. The since filters
+    /// therefore start one day earlier; the device upserts by id, so re-sent
+    /// rows only cost bytes. Same width as the agent's
+    /// <c>MikroDbReader.CoarseWatermarkLookback</c>.
+    /// </summary>
+    private static readonly TimeSpan MovementCursorOverlap = TimeSpan.FromHours(26);
+
+    private static DateTimeOffset WithOverlap(DateTimeOffset since) =>
+        since > DateTimeOffset.MinValue + MovementCursorOverlap ? since - MovementCursorOverlap : since;
+
     public static IEndpointRouteBuilder MapAndroidEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/android").WithTags("Android");
@@ -570,6 +584,7 @@ public static class AndroidEndpoints
         var rawSince = request.Since?.Trim();
         var hasWatermark = DateTimeOffset.TryParse(rawSince, out var watermark);
         var stockCode = hasWatermark ? null : rawSince;
+        var cutoff = hasWatermark ? WithOverlap(watermark) : watermark;
         var offset = (page - 1) * pageSize;
         var total = 0;
         string? latestWatermark = rawSince;
@@ -577,7 +592,7 @@ public static class AndroidEndpoints
         foreach (var item in GetArray(document.RootElement, "stockTransactions"))
         {
             var updatedAt = GetString(item, "updatedAt") ?? GetString(item, "sth_lastup_date") ?? GetString(item, "tarih");
-            if (hasWatermark && (!DateTimeOffset.TryParse(updatedAt, out var updated) || updated <= watermark)) continue;
+            if (hasWatermark && (!DateTimeOffset.TryParse(updatedAt, out var updated) || updated <= cutoff)) continue;
             if (!string.IsNullOrWhiteSpace(stockCode)
                 && !string.Equals(GetString(item, "stokKod"), stockCode, StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(GetString(item, "urunKod"), stockCode, StringComparison.OrdinalIgnoreCase)) continue;
@@ -709,8 +724,9 @@ public static class AndroidEndpoints
         var snapshot = access.Snapshot!;
         using var document = access.Document!;
 
+        var cutoff = WithOverlap(since);
         var newer = GetArray(document.RootElement, propertyName)
-            .Where(item => IsNewer(item, since))
+            .Where(item => IsNewer(item, cutoff))
             .ToArray();
         var page = Math.Max(1, request.Page);
         var pageSize = Math.Clamp(request.PageSize, 1, 500);
@@ -771,7 +787,7 @@ public static class AndroidEndpoints
             .Where(transaction =>
                 string.IsNullOrWhiteSpace(customerCode)
                 || string.Equals(GetString(transaction, "cariKod"), customerCode, StringComparison.OrdinalIgnoreCase))
-            .Where(transaction => !hasWatermark || IsNewer(transaction, watermark))
+            .Where(transaction => !hasWatermark || IsNewer(transaction, WithOverlap(watermark)))
             .Select(transaction => new
             {
                 Transaction = transaction,

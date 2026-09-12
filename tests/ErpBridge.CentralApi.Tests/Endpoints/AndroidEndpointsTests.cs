@@ -248,7 +248,10 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     public async Task Customer_movement_section_returns_only_rows_newer_than_since_with_a_watermark()
     {
         // The device sends the newest cha_lastup_date it holds; the server used
-        // to ignore it and page all 14k rows on every sync.
+        // to ignore it and page all 14k rows on every sync. The filter starts a
+        // day before the cursor (MovementCursorOverlap): Mikro falls back to the
+        // document date at midnight, so a row added later the same day carries
+        // exactly the cursor's timestamp and a strict filter would lose it.
         var client = _factory.CreateClient();
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-CH-SINCE-{suffix}", "Customer movement since tenant");
@@ -272,11 +275,11 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        document.RootElement.GetProperty("total").GetInt32().Should().Be(2);
+        document.RootElement.GetProperty("total").GetInt32().Should().Be(3);
         document.RootElement.GetProperty("watermark").GetString().Should().Be("2026-09-12T11:30:00");
         var ids = document.RootElement.GetProperty("items").EnumerateArray()
             .Select(item => item.GetProperty("id").GetString()).ToArray();
-        ids.Should().BeEquivalentTo("NEW1", "NEW2");
+        ids.Should().BeEquivalentTo(new[] { "EDGE", "NEW1", "NEW2" }, "a row stamped exactly at the cursor must be re-sent; only rows older than the overlap are dropped");
 
         var unfiltered = await client.PostAsJsonAsync("/api/v1/android/sync/cariHareketleri", new { page = 1, pageSize = 500 });
         using var all = JsonDocument.Parse(await unfiltered.Content.ReadAsStringAsync());
