@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ErpBridge.CentralApi.Data.Migrations
 {
     [DbContext(typeof(CentralApiDbContext))]
-    [Migration("20260912073007_Faz29MobileRecordSourceKey")]
+    [Migration("20260912091040_Faz29MobileRecordSourceKey")]
     partial class Faz29MobileRecordSourceKey
     {
         /// <inheritdoc />
@@ -664,6 +664,10 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("SourceDatabase")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("SourceRecordKey")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
@@ -687,9 +691,9 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.HasIndex("TenantId", "UpdatedSeq")
                         .IsUnique();
 
-                    b.HasIndex("TenantId", "Entity", "SourceRecordKey");
-
                     b.HasIndex("TenantId", "IsDeleted", "UpdatedAtUtc");
+
+                    b.HasIndex("TenantId", "Entity", "SourceDatabase", "SourceRecordKey");
 
                     b.ToTable("mobile_records", (string)null);
                 });

@@ -61,6 +61,14 @@ public sealed class MobileRecord
     /// </summary>
     public string? SourceRecordKey { get; set; }
 
+    /// <summary>
+    /// The ERP database this row's identity was read from. A tenant with more
+    /// than one active ERP database can have the same RECno in each; without
+    /// this a lookup by <see cref="SourceRecordKey"/> alone could match a card
+    /// from a different database entirely and tombstone the wrong one.
+    /// </summary>
+    public string? SourceDatabase { get; set; }
+
     /// <summary>The mobile-shaped row. Null once the record is a tombstone.</summary>
     public string? PayloadJson { get; set; }
 

@@ -382,7 +382,8 @@ public static class ChangeSetEndpoints
                 // The bootstrap row carries the ERP identity; without this the
                 // delete stayed keyed by RECno and matched nothing anywhere.
                 businessKey = await db.MobileRecords.AsNoTracking()
-                    .Where(x => x.TenantId == tenantId && x.Entity == target.Entity && x.SourceRecordKey == normalizedKey)
+                    .Where(x => x.TenantId == tenantId && x.Entity == target.Entity
+                                && x.SourceDatabase == sourceDatabase && x.SourceRecordKey == normalizedKey)
                     .Select(x => x.RecordKey)
                     .FirstOrDefaultAsync(ct);
             }

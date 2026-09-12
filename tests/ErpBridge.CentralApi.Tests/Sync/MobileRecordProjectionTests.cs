@@ -219,6 +219,25 @@ public sealed class MobileRecordProjectionTests : IClassFixture<SqliteCentralApi
     }
 
     [Fact]
+    public async Task A_recno_from_a_different_source_database_does_not_cross_resolve()
+    {
+        // A tenant with more than one active ERP database can have the same
+        // RECno in each. Without scoping by source database, deleting RECno
+        // "7001" in one database would tombstone an unrelated card uploaded
+        // from another.
+        var ctx = await SeedAsync("MULTI-DB-DEL");
+
+        await UploadAsync(ctx, incremental: true, "MIKRO-A", ("stocks", [StockWithIdentity("S-1", "Kalem", "7001")]));
+        await UploadAsync(ctx, incremental: true, "MIKRO-B", ("stocks", [StockWithIdentity("S-2", "Silgi", "7001")]));
+
+        await IngestAsync(ctx, "STOKLAR", upsert: null, delete: "7001", sourceDatabase: "MIKRO-B");
+
+        (await SingleRecordAsync(ctx, "stocks", "S-2")).IsDeleted.Should().BeTrue();
+        (await SingleRecordAsync(ctx, "stocks", "S-1")).IsDeleted
+            .Should().BeFalse("its RECno collides with a different database's card, not this deletion's");
+    }
+
+    [Fact]
     public async Task A_delete_nothing_can_translate_tombstones_nothing()
     {
         // Keyed by an identity the server has never seen, the delete must not
@@ -253,9 +272,13 @@ public sealed class MobileRecordProjectionTests : IClassFixture<SqliteCentralApi
     }
 
     private static async Task UploadAsync(
-        TenantContext ctx, bool incremental, params (string Section, object[] Items)[] sections)
+        TenantContext ctx, bool incremental, params (string Section, object[] Items)[] sections) =>
+        await UploadAsync(ctx, incremental, "MIKRO", sections);
+
+    private static async Task UploadAsync(
+        TenantContext ctx, bool incremental, string sourceDatabase, params (string Section, object[] Items)[] sections)
     {
-        var uploadId = await StartAsync(ctx, incremental);
+        var uploadId = await StartAsync(ctx, incremental, sourceDatabase);
         foreach (var section in sections)
             await ChunkAsync(ctx, uploadId, section.Section, section.Items);
 
@@ -268,13 +291,13 @@ public sealed class MobileRecordProjectionTests : IClassFixture<SqliteCentralApi
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
-    private static async Task<Guid> StartAsync(TenantContext ctx, bool incremental)
+    private static async Task<Guid> StartAsync(TenantContext ctx, bool incremental, string sourceDatabase = "MIKRO")
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/bootstrap/upload/start")
         {
             Content = JsonContent.Create(new
             {
-                sourceDatabase = "MIKRO",
+                sourceDatabase,
                 pulledAtUtc = DateTimeOffset.UtcNow,
                 isIncremental = incremental,
             }),
@@ -302,7 +325,11 @@ public sealed class MobileRecordProjectionTests : IClassFixture<SqliteCentralApi
     /// for <paramref name="tableName"/>.
     /// </summary>
     private static async Task IngestAsync(
-        TenantContext ctx, string tableName, (string RecordKey, object Columns)? upsert, string? delete)
+        TenantContext ctx, string tableName, (string RecordKey, object Columns)? upsert, string? delete) =>
+        await IngestAsync(ctx, tableName, upsert, delete, sourceDatabase: "MIKRO");
+
+    private static async Task IngestAsync(
+        TenantContext ctx, string tableName, (string RecordKey, object Columns)? upsert, string? delete, string sourceDatabase)
     {
         var table = new
         {
@@ -317,7 +344,7 @@ public sealed class MobileRecordProjectionTests : IClassFixture<SqliteCentralApi
         {
             tenantId = ctx.TenantId,
             erpType = "Mikro",
-            sourceDatabase = "MIKRO",
+            sourceDatabase,
             pulledAtUtc = DateTimeOffset.UtcNow,
             tables = new[]
             {

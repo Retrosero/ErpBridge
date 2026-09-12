@@ -165,7 +165,7 @@ public static class BootstrapUploadEndpoints
         // locks the tenant's counter row until commit, which blocks every other
         // writer for this tenant — so it happens after the snapshot rewrite above,
         // not around it.
-        await projector.ProjectAsync(db, tenantId, uploaded, fullUpload: !staged.IsIncremental, ct);
+        await projector.ProjectAsync(db, tenantId, uploaded, fullUpload: !staged.IsIncremental, staged.SourceDatabase, ct);
         await db.SaveChangesAsync(ct);
 
         if (transaction is not null)

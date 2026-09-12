@@ -11,6 +11,13 @@ namespace ErpBridge.CentralApi.Data.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
+                name: "SourceDatabase",
+                table: "mobile_records",
+                type: "character varying(255)",
+                maxLength: 255,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
                 name: "SourceRecordKey",
                 table: "mobile_records",
                 type: "character varying(255)",
@@ -18,16 +25,20 @@ namespace ErpBridge.CentralApi.Data.Migrations
                 nullable: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_mobile_records_TenantId_Entity_SourceRecordKey",
+                name: "IX_mobile_records_TenantId_Entity_SourceDatabase_SourceRecordK~",
                 table: "mobile_records",
-                columns: new[] { "TenantId", "Entity", "SourceRecordKey" });
+                columns: new[] { "TenantId", "Entity", "SourceDatabase", "SourceRecordKey" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(
-                name: "IX_mobile_records_TenantId_Entity_SourceRecordKey",
+                name: "IX_mobile_records_TenantId_Entity_SourceDatabase_SourceRecordK~",
+                table: "mobile_records");
+
+            migrationBuilder.DropColumn(
+                name: "SourceDatabase",
                 table: "mobile_records");
 
             migrationBuilder.DropColumn(

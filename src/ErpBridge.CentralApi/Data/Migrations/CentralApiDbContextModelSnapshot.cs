@@ -661,6 +661,10 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("SourceDatabase")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("SourceRecordKey")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
@@ -684,9 +688,9 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.HasIndex("TenantId", "UpdatedSeq")
                         .IsUnique();
 
-                    b.HasIndex("TenantId", "Entity", "SourceRecordKey");
-
                     b.HasIndex("TenantId", "IsDeleted", "UpdatedAtUtc");
+
+                    b.HasIndex("TenantId", "Entity", "SourceDatabase", "SourceRecordKey");
 
                     b.ToTable("mobile_records", (string)null);
                 });
