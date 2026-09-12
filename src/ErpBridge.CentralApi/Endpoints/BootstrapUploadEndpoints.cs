@@ -140,8 +140,9 @@ public static class BootstrapUploadEndpoints
         var uploaded = await ReadStagedSectionsAsync(db, staged.Id, ct);
 
         var old = await db.BootstrapSnapshots.Where(x => x.TenantId == tenantId && x.IsActive).ToListAsync(ct);
+        var changed = true;
         if (staged.IsIncremental && old.Count > 0)
-            await MergeIncrementalChunksAsync(db, old[0], staged, ct);
+            changed = await MergeIncrementalChunksAsync(db, old[0], staged, ct);
 
         // Retire the previous snapshots in their own round trip, before the
         // staged one is activated. `bootstrap_snapshots` carries a unique index
@@ -171,7 +172,12 @@ public static class BootstrapUploadEndpoints
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        hub.Publish(tenantId, staged.PulledAtUtc);
+        // The agent re-reads a lookback window every cycle (Mikro's coarse
+        // *_lastup_date makes that necessary), so most incremental uploads only
+        // repeat rows the server already holds. Waking every device for those
+        // started a full sync round on each phone every few minutes.
+        if (changed)
+            hub.Publish(tenantId, staged.PulledAtUtc);
         return Results.NoContent();
     }
 
@@ -208,7 +214,14 @@ public static class BootstrapUploadEndpoints
             .ToList();
     }
 
-    private static async Task MergeIncrementalChunksAsync(
+    /// <summary>
+    /// Merges the staged incremental chunks over the previous snapshot. Returns
+    /// whether any section actually changed; a section whose incoming rows are
+    /// identical to the stored ones keeps its old chunks (and their
+    /// <see cref="BootstrapSnapshotChunk.ReceivedAtUtc"/>, which the device
+    /// treats as the section's version).
+    /// </summary>
+    private static async Task<bool> MergeIncrementalChunksAsync(
         CentralApiDbContext db,
         BootstrapSnapshot previous,
         BootstrapSnapshot staged,
@@ -235,6 +248,36 @@ public static class BootstrapUploadEndpoints
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        // Re-points the previous snapshot's chunks onto the staged snapshot
+        // instead of re-parsing and re-serializing the whole section on every
+        // cycle — for customerTransactions/stockTransactions (years of ledger
+        // movements) that full round-trip was expensive enough to time out the
+        // request on every periodic sync, and the agent would then restart the
+        // entire upload from scratch. Staged chunks for the section (empty
+        // placeholders or rows that turned out identical) are dropped first so
+        // the re-pointed chunks can't collide with them on the
+        // (SnapshotId, Section, ChunkIndex) unique index.
+        async Task CarryForwardAsync(string section, bool hasStagedChunks)
+        {
+            if (hasStagedChunks)
+            {
+                var stagedChunks = await db.BootstrapSnapshotChunks
+                    .Where(x => x.SnapshotId == staged.Id && x.Section == section)
+                    .ToListAsync(ct);
+                db.BootstrapSnapshotChunks.RemoveRange(stagedChunks);
+                await db.SaveChangesAsync(ct);
+            }
+
+            var carryForward = await db.BootstrapSnapshotChunks
+                .Where(x => x.SnapshotId == previous.Id && x.Section == section)
+                .ToListAsync(ct);
+            foreach (var chunk in carryForward)
+            {
+                chunk.SnapshotId = staged.Id;
+            }
+        }
+
+        var anyChanged = false;
         foreach (var section in sections)
         {
             var incomingSectionChunks = incoming
@@ -244,32 +287,8 @@ public static class BootstrapUploadEndpoints
 
             if (!hasIncomingChanges)
             {
-                // Nothing changed for this section in this push. Re-point the
-                // previous snapshot's chunks onto the staged snapshot instead
-                // of re-parsing and re-serializing the whole section on every
-                // cycle — for customerTransactions/stockTransactions (years of
-                // ledger movements) that full round-trip was expensive enough
-                // to time out the request on every periodic sync, and the
-                // agent would then restart the entire upload from scratch.
-                if (incomingSectionChunks.Count > 0)
-                {
-                    // Drop the empty placeholder chunk(s) first so re-pointing
-                    // the previous chunks below can't collide with them on
-                    // the (SnapshotId, Section, ChunkIndex) unique index.
-                    var placeholders = await db.BootstrapSnapshotChunks
-                        .Where(x => x.SnapshotId == staged.Id && x.Section == section)
-                        .ToListAsync(ct);
-                    db.BootstrapSnapshotChunks.RemoveRange(placeholders);
-                    await db.SaveChangesAsync(ct);
-                }
-
-                var carryForward = await db.BootstrapSnapshotChunks
-                    .Where(x => x.SnapshotId == previous.Id && x.Section == section)
-                    .ToListAsync(ct);
-                foreach (var chunk in carryForward)
-                {
-                    chunk.SnapshotId = staged.Id;
-                }
+                // Nothing sent for this section in this push.
+                await CarryForwardAsync(section, incomingSectionChunks.Count > 0);
                 continue;
             }
 
@@ -280,8 +299,23 @@ public static class BootstrapUploadEndpoints
             var anonymous = new List<JsonNode>();
             foreach (var chunk in oldChunks)
                 AddItems(chunk.PayloadJson, section, records, anonymous);
+            var changed = false;
             foreach (var chunk in incomingSectionChunks)
-                AddItems(chunk.PayloadJson, section, records, anonymous);
+            {
+                if (AddItems(chunk.PayloadJson, section, records, anonymous))
+                    changed = true;
+            }
+
+            if (!changed)
+            {
+                // Every incoming row is already stored byte-for-byte: the agent's
+                // lookback window re-sent it. Rewriting the section would give
+                // its chunks a new ReceivedAtUtc, which every device reads as
+                // "this section changed" and answers with a full re-download.
+                await CarryForwardAsync(section, hasStagedChunks: true);
+                continue;
+            }
+            anyChanged = true;
 
             var merged = records.Values.Concat(anonymous).ToArray();
             var stagedChunks = await db.BootstrapSnapshotChunks.Where(x => x.SnapshotId == staged.Id && x.Section == section).ToListAsync(ct);
@@ -300,20 +334,39 @@ public static class BootstrapUploadEndpoints
             }
         }
         await db.SaveChangesAsync(ct);
+        return anyChanged;
     }
 
-    private static void AddItems(string payload, string section, IDictionary<string, JsonNode> records, ICollection<JsonNode> anonymous)
+    /// <summary>
+    /// Folds one chunk into the merge state. Returns whether the chunk altered
+    /// it: a row identical to the stored one under the same key, or a delete
+    /// for a key that is not there, changes nothing. Rows without a key cannot
+    /// be de-duplicated and always count as a change.
+    /// </summary>
+    private static bool AddItems(string payload, string section, IDictionary<string, JsonNode> records, ICollection<JsonNode> anonymous)
     {
+        var changed = false;
         using var document = JsonDocument.Parse(payload);
         foreach (var element in document.RootElement.EnumerateArray())
         {
             var node = JsonNode.Parse(element.GetRawText())!;
             var key = RowKey(section, element);
             var deleted = element.ValueKind == JsonValueKind.Object && element.TryGetProperty("isDeleted", out var flag) && flag.ValueKind == JsonValueKind.True;
-            if (key is null) { if (!deleted) anonymous.Add(node); continue; }
-            if (deleted) records.Remove(key);
-            else records[key] = node;
+            if (key is null)
+            {
+                if (!deleted) { anonymous.Add(node); changed = true; }
+                continue;
+            }
+            if (deleted)
+            {
+                if (records.Remove(key)) changed = true;
+                continue;
+            }
+            if (records.TryGetValue(key, out var existing) && JsonNode.DeepEquals(existing, node)) continue;
+            records[key] = node;
+            changed = true;
         }
+        return changed;
     }
 
     /// <summary>

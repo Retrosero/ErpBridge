@@ -245,6 +245,45 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task Customer_movement_section_returns_only_rows_newer_than_since_with_a_watermark()
+    {
+        // The device sends the newest cha_lastup_date it holds; the server used
+        // to ignore it and page all 14k rows on every sync.
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-CH-SINCE-{suffix}", "Customer movement since tenant");
+        const string payload = """
+            {
+              "customerTransactions": [
+                {"id":"OLD","cariKod":"C1","updatedAt":"2026-09-01T10:00:00"},
+                {"id":"EDGE","cariKod":"C1","updatedAt":"2026-09-10T10:00:00"},
+                {"id":"NEW1","cariKod":"C1","updatedAt":"2026-09-12T09:00:00"},
+                {"id":"NEW2","cariKod":"C2","updatedAt":"2026-09-12T11:30:00"}
+              ]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-CH-SINCE-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsJsonAsync("/api/v1/android/sync/cariHareketleri",
+            new { page = 1, pageSize = 500, since = "2026-09-10T10:00:00" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        document.RootElement.GetProperty("total").GetInt32().Should().Be(2);
+        document.RootElement.GetProperty("watermark").GetString().Should().Be("2026-09-12T11:30:00");
+        var ids = document.RootElement.GetProperty("items").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString()).ToArray();
+        ids.Should().BeEquivalentTo("NEW1", "NEW2");
+
+        var unfiltered = await client.PostAsJsonAsync("/api/v1/android/sync/cariHareketleri", new { page = 1, pageSize = 500 });
+        using var all = JsonDocument.Parse(await unfiltered.Content.ReadAsStringAsync());
+        all.RootElement.GetProperty("total").GetInt32().Should().Be(4, "no cursor still means the full section");
+    }
+
+    [Fact]
     public async Task Stock_movement_section_filters_by_legacy_stock_code_without_materialising_the_full_snapshot()
     {
         var client = _factory.CreateClient();

@@ -642,6 +642,12 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
+        // The movement feeds send the newest `updatedAt` they hold as `since`.
+        // This handler used to page the whole section regardless, so every
+        // notify made a device download all of its customer transactions again.
+        if (DateTimeOffset.TryParse(request.Since?.Trim(), out var since))
+            return await PagedSectionSinceAsync(propertyName, request, since, http, db, ct);
+
         var mobile = await AuthorizeMobileAsync(http, db, ct);
         if (mobile.Error is not null) return mobile.Error;
         var snapshot = await db.BootstrapSnapshots.AsNoTracking()
@@ -682,6 +688,51 @@ public static class AndroidEndpoints
             total = allItems.Length,
             since = package.PulledAtUtc,
             items,
+        });
+    }
+
+    /// <summary>
+    /// Incremental page of a movement section: only rows whose <c>updatedAt</c>
+    /// is newer than <paramref name="since"/>, plus the newest timestamp among
+    /// them as <c>watermark</c> so the device can advance its cursor.
+    /// </summary>
+    private static async Task<IResult> PagedSectionSinceAsync(
+        string propertyName,
+        AndroidPageRequest request,
+        DateTimeOffset since,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetAndroidDocumentAsync(http, db, [propertyName], ct);
+        if (access.Error is not null) return access.Error;
+        var snapshot = access.Snapshot!;
+        using var document = access.Document!;
+
+        var newer = GetArray(document.RootElement, propertyName)
+            .Where(item => IsNewer(item, since))
+            .ToArray();
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = newer.Skip((page - 1) * pageSize).Take(pageSize).Select(item => item.Clone()).ToArray();
+
+        string? watermark = null;
+        var latest = since;
+        foreach (var item in newer)
+        {
+            var raw = GetString(item, "updatedAt") ?? GetString(item, "cha_lastup_date") ?? GetString(item, "tarih");
+            if (DateTimeOffset.TryParse(raw, out var candidate) && candidate > latest)
+            {
+                latest = candidate;
+                watermark = raw;
+            }
+        }
+
+        return Results.Ok(new
+        {
+            entity = propertyName, sourceDatabase = snapshot.SourceDatabase,
+            pulledAtUtc = snapshot.PulledAtUtc, page, pageSize,
+            total = newer.Length, since = request.Since, watermark, items,
         });
     }
 
@@ -1155,7 +1206,10 @@ public static class AndroidEndpoints
         return JsonDocument.Parse(root.ToJsonString());
     }
 
-    private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, DateTimeOffset? Since = null);
+    // `Since` stays a string: the device echoes the cursor it last received,
+    // which is not always strict ISO 8601, and a bind failure would turn the
+    // whole request into a 400 instead of a full page.
+    private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, string? Since = null);
     private sealed record AndroidStockMovementRequest(int Page = 1, int PageSize = 50, string? Since = null);
     private sealed record AndroidInvoiceRequest(int Page = 1, int PageSize = 200, string? Since = null);
 }
