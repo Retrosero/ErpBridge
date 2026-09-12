@@ -325,6 +325,8 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.RecordKey).IsRequired().HasMaxLength(255);
             b.Property(x => x.StockKey).HasMaxLength(255);
             b.Property(x => x.CustomerKey).HasMaxLength(255);
+            b.Property(x => x.SourceRecordKey).HasMaxLength(255);
+            b.Property(x => x.SourceDatabase).HasMaxLength(255);
             b.Property(x => x.PayloadJson).HasColumnType("jsonb");
             b.Property(x => x.PayloadSha256).HasMaxLength(64);
             b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
@@ -333,6 +335,9 @@ public sealed class CentralApiDbContext : DbContext
             // an indexed lookup rather than a scan of every section.
             b.HasIndex(x => new { x.TenantId, x.StockKey });
             b.HasIndex(x => new { x.TenantId, x.CustomerKey });
+            // A delete event is translated from the ERP identity to the code
+            // with one indexed lookup.
+            b.HasIndex(x => new { x.TenantId, x.Entity, x.SourceDatabase, x.SourceRecordKey });
             // Tombstone retention sweeps by age.
             b.HasIndex(x => new { x.TenantId, x.IsDeleted, x.UpdatedAtUtc });
         });

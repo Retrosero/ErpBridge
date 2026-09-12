@@ -3,6 +3,7 @@ using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.Erp.Mikro.Connection;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Data;
 
 namespace ErpBridge.Erp.Mikro.Readers;
@@ -24,6 +25,9 @@ public sealed class MikroDbReader : IMikroDbReader
 {
     private static readonly TimeZoneInfo MikroTimeZone = ResolveMikroTimeZone();
     private readonly MikroConnectionFactory _factory;
+
+    /// <summary>Identity column expression per (database, table); probed once.</summary>
+    private readonly ConcurrentDictionary<string, string> _identityExpressions = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger<MikroDbReader> _logger;
 
     static MikroDbReader()
@@ -127,7 +131,8 @@ SELECT
     /// <inheritdoc />
     public async Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
-        const string sql = @"
+        var customerKey = await IdentityExpressionAsync("CARI_HESAPLAR", "cari_RECno", "cari_Guid", ct).ConfigureAwait(false);
+        var sql = $@"
 SELECT
     CAST(ISNULL(cari_kod, '') AS NVARCHAR(50))       AS CustomerCode,
     CAST(ISNULL(cari_unvan1, '') AS NVARCHAR(200))    AS Title1,
@@ -143,7 +148,8 @@ SELECT
     CAST(ISNULL(cari_efatura_fl, 0) AS BIT)           AS IsEInvoiceEnabled,
     CAST(cari_CepTel AS NVARCHAR(50))                 AS Phone,
     CAST(cari_EMail AS NVARCHAR(200))                 AS Email,
-    CAST(ISNULL(ledger.Balance, 0) AS DECIMAL(18,6))   AS Balance
+    CAST(ISNULL(ledger.Balance, 0) AS DECIMAL(18,6))   AS Balance,
+    {customerKey} AS RecordKey
 FROM CARI_HESAPLAR
 LEFT JOIN (
     -- The official cari balance is determined by accounting direction, not
@@ -184,7 +190,8 @@ WHERE ISNULL(cari_iptal, 0) = 0
                 c.Email,
                 Array.Empty<CustomerAddressPayload>(),
                 Array.Empty<CustomerContactPayload>(),
-                c.Balance))
+                c.Balance,
+                c.RecordKey))
             .ToList();
         _logger.LogInformation("Read {Count} customers for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -250,7 +257,8 @@ WHERE ISNULL(mye_iptal, 0) = 0
     /// <inheritdoc />
     public async Task<IReadOnlyList<StockPayload>> ReadStocksAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
-        const string sql = @"
+        var stockKey = await IdentityExpressionAsync("STOKLAR", "sto_RECno", "sto_Guid", ct).ConfigureAwait(false);
+        var sql = $@"
 SELECT
     CAST(ISNULL(sto_kod, '') AS NVARCHAR(50))         AS StockCode,
     CAST(ISNULL(sto_isim, '') AS NVARCHAR(200))       AS Name,
@@ -275,7 +283,8 @@ SELECT
     CAST(ISNULL(sto_bedenli_takip, 0) AS BIT)         AS BedenliTakip,
     CAST(ISNULL(sto_renkDetayli, 0) AS BIT)           AS RenkDetayli,
     CAST(NULL AS DECIMAL(18,6))                       AS StandardCost,
-    CAST(NULL AS NVARCHAR(10))                        AS Currency
+    CAST(NULL AS NVARCHAR(10))                        AS Currency,
+    {stockKey} AS RecordKey
 FROM STOKLAR
 WHERE ISNULL(sto_iptal, 0) = 0
   AND ISNULL(sto_pasif_fl, 0) = 0
@@ -308,7 +317,8 @@ WHERE ISNULL(sto_iptal, 0) = 0
                 s.Currency,
                 Array.Empty<BarcodePayload>(),
                 s.PackageCode,
-                s.CartonCode))
+                s.CartonCode,
+                s.RecordKey))
             .ToList();
         _logger.LogInformation("Read {Count} stocks for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -599,6 +609,33 @@ ORDER BY sth_RECno";
     }
 
     /// <summary>
+    /// SQL that renders a card's physical row identity as text: <c>*_RECno</c> on
+    /// V15, <c>*_Guid</c> on V16 (lower-cased, matching how the change log tags
+    /// Guids). A delete event carries only this identity, and a card that never
+    /// changed after the trigger install has no change-set upsert to read the
+    /// business code back from — so the bootstrap row has to carry it. Column
+    /// presence is probed once per database and table; the column names are
+    /// compile-time literals from the callers, never user input.
+    /// </summary>
+    private async Task<string> IdentityExpressionAsync(string table, string recnoColumn, string guidColumn, CancellationToken ct)
+    {
+        var cacheKey = $"{_factory.BuildConnectionStringFromActive().GetHashCode()}|{table}";
+        if (_identityExpressions.TryGetValue(cacheKey, out var cached)) return cached;
+
+        var present = (await QueryAsync<string>(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table AND COLUMN_NAME IN (@recno, @guid)",
+                new { table, recno = recnoColumn, guid = guidColumn },
+                ct).ConfigureAwait(false))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var expression = present.Contains(recnoColumn) ? $"CAST({recnoColumn} AS NVARCHAR(50))"
+            : present.Contains(guidColumn) ? $"LOWER(CAST({guidColumn} AS NVARCHAR(50)))"
+            : "CAST(NULL AS NVARCHAR(50))";
+        _identityExpressions[cacheKey] = expression;
+        return expression;
+    }
+
+    /// <summary>
     /// Open a fresh connection, run <paramref name="sql"/> with
     /// <paramref name="parameters"/>, and materialise the rows. Errors are
     /// logged at <c>Error</c> and rethrown so the bootstrap pipeline surfaces
@@ -694,7 +731,8 @@ ORDER BY sth_RECno";
         bool IsEInvoiceEnabled,
         string? Phone,
         string? Email,
-        decimal Balance);
+        decimal Balance,
+        string? RecordKey);
 
     private sealed record StockRow(
         string StockCode,
@@ -720,7 +758,8 @@ ORDER BY sth_RECno";
         bool BedenliTakip,
         bool RenkDetayli,
         decimal? StandardCost,
-        string? Currency);
+        string? Currency,
+        string? RecordKey);
 
     private sealed record SalesConditionRow(
         string? StockCode,

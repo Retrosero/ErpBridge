@@ -80,6 +80,7 @@ public sealed class MobileRecordProjector
         Guid tenantId,
         IReadOnlyCollection<SectionRows> sections,
         bool fullUpload,
+        string? sourceDatabase,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -137,7 +138,8 @@ public sealed class MobileRecordProjector
 
                 var parents = MobileRecordKey.Parents(section.Section, pair.Value);
                 pending.Add(new PendingWrite(
-                    current, section.Section, pair.Key, payload, hash, parents.StockKey, parents.CustomerKey));
+                    current, section.Section, pair.Key, payload, hash, parents.StockKey, parents.CustomerKey,
+                    MobileRecordKey.SourceKey(section.Section, pair.Value), sourceDatabase));
             }
 
             if (fullUpload)
@@ -171,6 +173,8 @@ public sealed class MobileRecordProjector
             record.PayloadSha256 = write.PayloadSha256;
             record.StockKey = write.StockKey;
             record.CustomerKey = write.CustomerKey;
+            record.SourceRecordKey = write.SourceRecordKey;
+            record.SourceDatabase = write.SourceDatabase;
             record.IsDeleted = write.IsTombstone;
             record.UpdatedAtUtc = now;
             record.UpdatedSeq = block++;
@@ -460,9 +464,12 @@ public sealed class MobileRecordProjector
         string? PayloadSha256,
         string? StockKey,
         string? CustomerKey,
+        string? SourceRecordKey,
+        string? SourceDatabase,
         bool IsTombstone = false)
     {
         public static PendingWrite Tombstone(MobileRecord record) =>
-            new(record, record.Entity, record.RecordKey, null, null, record.StockKey, record.CustomerKey, true);
+            new(record, record.Entity, record.RecordKey, null, null, record.StockKey, record.CustomerKey,
+                record.SourceRecordKey, record.SourceDatabase, true);
     }
 }

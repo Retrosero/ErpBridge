@@ -51,7 +51,7 @@ public sealed class MobileRecordBackfill
 
         var snapshot = await db.BootstrapSnapshots.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.IsActive)
-            .Select(x => new { x.Id })
+            .Select(x => new { x.Id, x.SourceDatabase })
             .FirstOrDefaultAsync(ct);
         if (snapshot is null) return new BackfillResult(null, 0, 0, 0);
 
@@ -83,7 +83,7 @@ public sealed class MobileRecordBackfill
             ? await db.Database.BeginTransactionAsync(ct)
             : null;
 
-        var result = await _projector.ProjectAsync(db, tenantId, sections, fullUpload: false, ct);
+        var result = await _projector.ProjectAsync(db, tenantId, sections, fullUpload: false, snapshot.SourceDatabase, ct);
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
 

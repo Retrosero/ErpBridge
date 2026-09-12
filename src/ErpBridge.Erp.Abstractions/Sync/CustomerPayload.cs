@@ -24,6 +24,7 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <param name="Addresses">All addresses attached to the cari (often one).</param>
 /// <param name="Contacts">All contact persons attached to the cari.</param>
 /// <param name="Balance">Official local-currency ledger balance from Mikro; positive means debit/customer owes us.</param>
+/// <param name="RecordKey">Physical row identity the ERP uses for this card (V15 <c>cari_RECno</c>, V16 <c>cari_Guid</c>) rendered as text; the only thing a delete event names the card by.</param>
 public sealed record CustomerPayload(
     string CustomerCode,
     string Title1,
@@ -41,7 +42,8 @@ public sealed record CustomerPayload(
     string? Email,
     IReadOnlyList<CustomerAddressPayload> Addresses,
     IReadOnlyList<CustomerContactPayload> Contacts,
-    decimal Balance = 0m);
+    decimal Balance = 0m,
+    string? RecordKey = null);
 
 /// <summary>
 /// One address attached to a <see cref="CustomerPayload"/>. Lat/long are
