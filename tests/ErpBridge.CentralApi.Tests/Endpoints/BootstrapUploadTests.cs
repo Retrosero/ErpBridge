@@ -140,6 +140,57 @@ public sealed class BootstrapUploadTests : IClassFixture<CentralApiFactory>
         }
     }
 
+    [Fact]
+    public async Task Incremental_push_that_repeats_stored_rows_keeps_the_section_chunk_and_does_not_notify()
+    {
+        // The agent reads Mikro with a lookback window, so every 20-second cycle
+        // re-sends the last day of customer transactions. Those rows are
+        // already stored byte-for-byte; rewriting the section gave its chunks a
+        // new ReceivedAtUtc (the per-section version devices compare) and the
+        // notify woke every phone into a full re-download, round after round.
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: $"BOOT-SAME-{suffix}");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, $"MACHINE-SAME-{suffix}");
+        var client = _factory.CreateClient();
+        var token = _factory.IssueTestJwt(agent.Id, tenant.Id);
+        var hub = _factory.Services.GetRequiredService<ErpBridge.CentralApi.Notifications.IBootstrapNotificationHub>();
+
+        var row = new { id = "CH-1", cariKod = "C-1", tutar = 10.5, updatedAt = "2026-09-12T10:00:00" };
+        var fullUploadId = await UploadAsync(client, token, isIncremental: false, sections: new()
+        {
+            ["customerTransactions"] = new object[] { row },
+        });
+        await CompleteAsync(client, token, fullUploadId);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+        var originalChunkId = (await db.BootstrapSnapshotChunks.AsNoTracking()
+            .SingleAsync(x => x.Section == "customerTransactions" && x.Snapshot!.TenantId == tenant.Id)).Id;
+
+        var waiter = hub.WaitAsync(tenant.Id, TimeSpan.FromSeconds(2), CancellationToken.None);
+        var repeatUploadId = await UploadAsync(client, token, isIncremental: true, sections: new()
+        {
+            ["customerTransactions"] = new object[] { row },
+        });
+        await CompleteAsync(client, token, repeatUploadId);
+
+        var carried = await db.BootstrapSnapshotChunks.AsNoTracking()
+            .SingleAsync(x => x.Section == "customerTransactions" && x.Snapshot!.TenantId == tenant.Id);
+        carried.Id.Should().Be(originalChunkId, "identical rows must not rewrite the section");
+        carried.SnapshotId.Should().Be(repeatUploadId);
+        (await waiter).Should().Be(DateTimeOffset.MinValue, "a no-op incremental upload must not wake the devices");
+
+        var changedUploadId = await UploadAsync(client, token, isIncremental: true, sections: new()
+        {
+            ["customerTransactions"] = new object[] { row with { tutar = 99.0 } },
+        });
+        await CompleteAsync(client, token, changedUploadId);
+        var rewritten = await db.BootstrapSnapshotChunks.AsNoTracking()
+            .SingleAsync(x => x.Section == "customerTransactions" && x.Snapshot!.TenantId == tenant.Id);
+        rewritten.Id.Should().NotBe(originalChunkId, "a real change must still rewrite the section");
+        rewritten.PayloadJson.Should().Contain("99");
+    }
+
     private async Task<Guid> UploadAsync(
         HttpClient client,
         string token,

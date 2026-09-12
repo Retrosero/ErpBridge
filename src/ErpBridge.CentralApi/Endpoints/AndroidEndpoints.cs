@@ -20,6 +20,20 @@ public static class AndroidEndpoints
 {
     private const string MobileReadScope = "mobile:read";
 
+    /// <summary>
+    /// Mikro movement timestamps fall back to the document date at midnight
+    /// (<c>COALESCE(cha_lastup_date, cha_create_date, cha_tarihi)</c>), so rows
+    /// added later the same day carry exactly the cursor's timestamp and a
+    /// strict "newer than" filter would drop them for good. The since filters
+    /// therefore start one day earlier; the device upserts by id, so re-sent
+    /// rows only cost bytes. Same width as the agent's
+    /// <c>MikroDbReader.CoarseWatermarkLookback</c>.
+    /// </summary>
+    private static readonly TimeSpan MovementCursorOverlap = TimeSpan.FromHours(26);
+
+    private static DateTimeOffset WithOverlap(DateTimeOffset since) =>
+        since > DateTimeOffset.MinValue + MovementCursorOverlap ? since - MovementCursorOverlap : since;
+
     public static IEndpointRouteBuilder MapAndroidEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/android").WithTags("Android");
@@ -570,6 +584,7 @@ public static class AndroidEndpoints
         var rawSince = request.Since?.Trim();
         var hasWatermark = DateTimeOffset.TryParse(rawSince, out var watermark);
         var stockCode = hasWatermark ? null : rawSince;
+        var cutoff = hasWatermark ? WithOverlap(watermark) : watermark;
         var offset = (page - 1) * pageSize;
         var total = 0;
         string? latestWatermark = rawSince;
@@ -577,7 +592,7 @@ public static class AndroidEndpoints
         foreach (var item in GetArray(document.RootElement, "stockTransactions"))
         {
             var updatedAt = GetString(item, "updatedAt") ?? GetString(item, "sth_lastup_date") ?? GetString(item, "tarih");
-            if (hasWatermark && (!DateTimeOffset.TryParse(updatedAt, out var updated) || updated <= watermark)) continue;
+            if (hasWatermark && (!DateTimeOffset.TryParse(updatedAt, out var updated) || updated <= cutoff)) continue;
             if (!string.IsNullOrWhiteSpace(stockCode)
                 && !string.Equals(GetString(item, "stokKod"), stockCode, StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(GetString(item, "urunKod"), stockCode, StringComparison.OrdinalIgnoreCase)) continue;
@@ -642,6 +657,12 @@ public static class AndroidEndpoints
         CentralApiDbContext db,
         CancellationToken ct)
     {
+        // The movement feeds send the newest `updatedAt` they hold as `since`.
+        // This handler used to page the whole section regardless, so every
+        // notify made a device download all of its customer transactions again.
+        if (DateTimeOffset.TryParse(request.Since?.Trim(), out var since))
+            return await PagedSectionSinceAsync(propertyName, request, since, http, db, ct);
+
         var mobile = await AuthorizeMobileAsync(http, db, ct);
         if (mobile.Error is not null) return mobile.Error;
         var snapshot = await db.BootstrapSnapshots.AsNoTracking()
@@ -685,6 +706,52 @@ public static class AndroidEndpoints
         });
     }
 
+    /// <summary>
+    /// Incremental page of a movement section: only rows whose <c>updatedAt</c>
+    /// is newer than <paramref name="since"/>, plus the newest timestamp among
+    /// them as <c>watermark</c> so the device can advance its cursor.
+    /// </summary>
+    private static async Task<IResult> PagedSectionSinceAsync(
+        string propertyName,
+        AndroidPageRequest request,
+        DateTimeOffset since,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetAndroidDocumentAsync(http, db, [propertyName], ct);
+        if (access.Error is not null) return access.Error;
+        var snapshot = access.Snapshot!;
+        using var document = access.Document!;
+
+        var cutoff = WithOverlap(since);
+        var newer = GetArray(document.RootElement, propertyName)
+            .Where(item => IsNewer(item, cutoff))
+            .ToArray();
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var items = newer.Skip((page - 1) * pageSize).Take(pageSize).Select(item => item.Clone()).ToArray();
+
+        string? watermark = null;
+        var latest = since;
+        foreach (var item in newer)
+        {
+            var raw = GetString(item, "updatedAt") ?? GetString(item, "cha_lastup_date") ?? GetString(item, "tarih");
+            if (DateTimeOffset.TryParse(raw, out var candidate) && candidate > latest)
+            {
+                latest = candidate;
+                watermark = raw;
+            }
+        }
+
+        return Results.Ok(new
+        {
+            entity = propertyName, sourceDatabase = snapshot.SourceDatabase,
+            pulledAtUtc = snapshot.PulledAtUtc, page, pageSize,
+            total = newer.Length, since = request.Since, watermark, items,
+        });
+    }
+
     private static async Task<IResult> InvoiceMovementsAsync(
         AndroidInvoiceRequest request,
         HttpContext http,
@@ -720,7 +787,7 @@ public static class AndroidEndpoints
             .Where(transaction =>
                 string.IsNullOrWhiteSpace(customerCode)
                 || string.Equals(GetString(transaction, "cariKod"), customerCode, StringComparison.OrdinalIgnoreCase))
-            .Where(transaction => !hasWatermark || IsNewer(transaction, watermark))
+            .Where(transaction => !hasWatermark || IsNewer(transaction, WithOverlap(watermark)))
             .Select(transaction => new
             {
                 Transaction = transaction,
@@ -1155,7 +1222,10 @@ public static class AndroidEndpoints
         return JsonDocument.Parse(root.ToJsonString());
     }
 
-    private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, DateTimeOffset? Since = null);
+    // `Since` stays a string: the device echoes the cursor it last received,
+    // which is not always strict ISO 8601, and a bind failure would turn the
+    // whole request into a 400 instead of a full page.
+    private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, string? Since = null);
     private sealed record AndroidStockMovementRequest(int Page = 1, int PageSize = 50, string? Since = null);
     private sealed record AndroidInvoiceRequest(int Page = 1, int PageSize = 200, string? Since = null);
 }
