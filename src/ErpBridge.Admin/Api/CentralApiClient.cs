@@ -240,6 +240,114 @@ public sealed class ApiErrorDto
     [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
 }
 
+// ----- Faz 32: Mobil koltuklar -----
+
+/// <summary>Seat capacity and subscription state (<c>active</c>, <c>grace</c>, <c>expired</c>, <c>none</c>).</summary>
+public sealed class SeatUsageDto
+{
+    [JsonPropertyName("max")] public int Max { get; set; }
+    [JsonPropertyName("used")] public int Used { get; set; }
+    [JsonPropertyName("endsAtUtc")] public DateTimeOffset? EndsAtUtc { get; set; }
+    [JsonPropertyName("status")] public string Status { get; set; } = "none";
+}
+
+public sealed class MobileUserDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
+    [JsonPropertyName("fullName")] public string FullName { get; set; } = string.Empty;
+    [JsonPropertyName("role")] public string Role { get; set; } = string.Empty;
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
+    [JsonPropertyName("lastLoginAtUtc")] public DateTimeOffset? LastLoginAtUtc { get; set; }
+}
+
+public sealed class SubscriptionDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("seats")] public int Seats { get; set; }
+    [JsonPropertyName("startsAtUtc")] public DateTimeOffset StartsAtUtc { get; set; }
+    [JsonPropertyName("endsAtUtc")] public DateTimeOffset? EndsAtUtc { get; set; }
+    [JsonPropertyName("source")] public string Source { get; set; } = string.Empty;
+    [JsonPropertyName("reference")] public string? Reference { get; set; }
+    [JsonPropertyName("note")] public string? Note { get; set; }
+    [JsonPropertyName("isCurrent")] public bool IsCurrent { get; set; }
+    [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
+}
+
+public sealed class MobileDeviceDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("deviceId")] public string DeviceId { get; set; } = string.Empty;
+    [JsonPropertyName("lastUsername")] public string? LastUsername { get; set; }
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("firstSeenAtUtc")] public DateTimeOffset FirstSeenAtUtc { get; set; }
+    [JsonPropertyName("lastSeenAtUtc")] public DateTimeOffset LastSeenAtUtc { get; set; }
+}
+
+public sealed class TenantMobileOverviewDto
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
+    [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
+    [JsonPropertyName("subscriptions")] public SubscriptionDto[] Subscriptions { get; set; } = Array.Empty<SubscriptionDto>();
+    [JsonPropertyName("users")] public MobileUserDto[] Users { get; set; } = Array.Empty<MobileUserDto>();
+    [JsonPropertyName("devices")] public MobileDeviceDto[] Devices { get; set; } = Array.Empty<MobileDeviceDto>();
+}
+
+public sealed class SetSubscriptionRequest
+{
+    [JsonPropertyName("seats")] public int Seats { get; set; }
+    [JsonPropertyName("endsAtUtc")] public DateTimeOffset? EndsAtUtc { get; set; }
+    [JsonPropertyName("source")] public string? Source { get; set; }
+    [JsonPropertyName("reference")] public string? Reference { get; set; }
+    [JsonPropertyName("note")] public string? Note { get; set; }
+}
+
+public sealed class CreateMobileUserRequest
+{
+    [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
+    [JsonPropertyName("fullName")] public string FullName { get; set; } = string.Empty;
+    [JsonPropertyName("password")] public string Password { get; set; } = string.Empty;
+    [JsonPropertyName("role")] public string Role { get; set; } = "SALES";
+}
+
+/// <summary>Partial update; null fields are omitted from the JSON and stay unchanged on the server.</summary>
+public sealed class UpdateMobileUserRequest
+{
+    [JsonPropertyName("fullName"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? FullName { get; set; }
+    [JsonPropertyName("password"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Password { get; set; }
+    [JsonPropertyName("role"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Role { get; set; }
+    [JsonPropertyName("isActive"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? IsActive { get; set; }
+}
+
+/// <summary>
+/// Turkish text for the seat error codes. The central API answers in English
+/// with a stable <c>errorCode</c>; the console tells operators what to do next.
+/// </summary>
+public static class MobileSeatMessages
+{
+    public static string For(Exception error) => error is not ApiCallException api ? error.Message : api.ErrorCode switch
+    {
+        "SEAT_LIMIT_REACHED" => "Tüm koltuklar dolu. Önce bir kullanıcıyı pasifleştirin veya silin ya da koltuk sayısını artırın.",
+        "SEATS_BELOW_ACTIVE_USERS" => "Koltuk sayısı aktif kullanıcı sayısının altına indirilemez. Önce kullanıcı pasifleştirin veya silin.",
+        "SUBSCRIPTION_REQUIRED" => "Bu firmanın aboneliği yok. Önce ödeme kaydedip koltuk tanımlayın.",
+        "SUBSCRIPTION_EXPIRED" => "Aboneliğin süresi dolmuş. Yeni ödeme kaydedip bitiş tarihini uzatın.",
+        "LAST_ADMIN" => "Firmada en az bir aktif yönetici kalmalı. Önce başka bir kullanıcıyı yönetici yapın.",
+        "USERNAME_TAKEN" => "Bu kullanıcı adı bu firmada zaten kullanılıyor.",
+        "INVALID_USERNAME" => "Kullanıcı adı 3-64 karakter olmalı; yalnızca küçük harf, rakam, nokta, alt çizgi ve tire.",
+        "INVALID_PASSWORD" => "Parola en az 6 karakter olmalı.",
+        "INVALID_FULL_NAME" => "Ad soyad zorunludur (en fazla 120 karakter).",
+        "INVALID_SEATS" => "Koltuk sayısı 1 ile 10000 arasında olmalı.",
+        "INVALID_END_DATE" => "Bitiş tarihi bugünden sonra olmalı.",
+        "USER_NOT_FOUND" => "Kullanıcı bulunamadı; liste yenilendi.",
+        "DEVICE_NOT_FOUND" => "Cihaz bulunamadı; liste yenilendi.",
+        "TENANT_NOT_FOUND" => "Müşteri bulunamadı.",
+        _ => api.Message,
+    };
+}
+
 // ----- Faz 15.8: Sync Geçmişi (change-set audit log) -----
 
 public sealed class ChangeSetAuditEntryDto
@@ -461,6 +569,28 @@ public sealed class CentralApiClient
 
     public Task<TenantDto> UpdateTenantAsync(Guid id, bool? isActive = null, int? maxDeviceCount = null, CancellationToken ct = default) =>
         SendAsync<TenantDto>(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{id}", new UpdateTenantRequest { IsActive = isActive, MaxDeviceCount = maxDeviceCount }, ct), ct);
+
+
+    // ----- Faz 32: Mobil koltuklar -----
+
+    public Task<TenantMobileOverviewDto> GetTenantMobileAsync(Guid tenantId, CancellationToken ct = default) =>
+        SendAsync<TenantMobileOverviewDto>(() => _http.GetAsync($"/api/v1/admin/tenants/{tenantId}/mobile", ct), ct);
+
+    public Task<SubscriptionDto> SetSubscriptionAsync(Guid tenantId, SetSubscriptionRequest body, CancellationToken ct = default) =>
+        SendAsync<SubscriptionDto>(() => _http.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/subscription", body, ct), ct);
+
+    public Task<MobileUserDto> CreateMobileUserAsync(Guid tenantId, CreateMobileUserRequest body, CancellationToken ct = default) =>
+        SendAsync<MobileUserDto>(() => _http.PostAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/users", body, ct), ct);
+
+    public Task<MobileUserDto> UpdateMobileUserAsync(Guid tenantId, Guid userId, UpdateMobileUserRequest body, CancellationToken ct = default) =>
+        SendAsync<MobileUserDto>(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/users/{userId}", body, ct), ct);
+
+    /// <summary>204 No Content on success, so the raw sender is used (the JSON sender rejects empty bodies).</summary>
+    public Task DeleteMobileUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        SendRawStringAsync(() => _http.DeleteAsync($"/api/v1/admin/tenants/{tenantId}/mobile/users/{userId}", ct), ct);
+
+    public Task SetMobileDeviceActiveAsync(Guid tenantId, Guid deviceId, bool isActive, CancellationToken ct = default) =>
+        SendRawStringAsync(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/devices/{deviceId}", new { isActive }, ct), ct);
 
     public Task<IReadOnlyList<LicenseDto>> ListLicensesAsync(Guid? tenantId = null, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<LicenseDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/licenses", tenantId), ct), ct);

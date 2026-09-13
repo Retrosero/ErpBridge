@@ -224,7 +224,9 @@ registration ayrı bir composition projesine taşınır.
      değil satırdan okunur. Pasifleştirme ve cihaz engelleme token süresini
      beklemeden etkili olur.
    - Koltuklar Play Store dışında satılır; uygulamada satın alma yoktur
-     (Siparis_Cepte `docs/PLAN_CALISMA_MODLARI.md` §7).
+     (Siparis_Cepte `docs/PLAN_CALISMA_MODLARI.md` §7). Operatör ekranı:
+     Admin konsolu `/tenants/{id}/mobile` (`Pages/TenantMobile.razor`); API hata
+     kodlarının Türkçe karşılığı tek yerde, `Api/MobileSeatMessages`.
 
 ## 4. Yeni ERP Adaptörü Eklemek
 
