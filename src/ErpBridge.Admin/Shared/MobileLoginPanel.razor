@@ -1,0 +1,161 @@
+@namespace ErpBridge.Admin.Shared
+@using ErpBridge.Admin.Api
+@inject CentralApiClient Api
+
+@* Creates the username and password a company's staff type on the phone,
+   next to the license they bought. Seat rules are enforced by the central API. *@
+<section class="mobile-login" aria-label="Telefon girişi">
+    @if (_loading)
+    {
+        <p class="mobile-login__hint" role="status">Telefon girişi bilgileri yükleniyor…</p>
+    }
+    else if (_overview is null)
+    {
+        <p class="mobile-login__error" role="alert">@(_error ?? "Bilgiler alınamadı.")</p>
+    }
+    else
+    {
+        var seats = _overview.Seats;
+        var canWork = seats.Status is "active" or "grace";
+        var full = seats.Max > 0 && seats.Used >= seats.Max;
+
+        <div class="mobile-login__summary">
+            <div><span>Firma kodu</span><strong class="mobile-login__code">@(_overview.TenantCode ?? "—")</strong></div>
+            <div><span>Kullanıcı hakkı</span><strong class="mobile-login__seats">@seats.Used / @seats.Max</strong></div>
+            <a class="mobile-login__link" href="@($"tenants/{TenantId}/mobile")">Tüm kullanıcılar ve telefonlar →</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="mobile-login__error" role="alert">@_error</p>
+        }
+        @if (_created is not null)
+        {
+            <div class="mobile-login__created" role="status">
+                <strong>Telefon girişi hazır</strong>
+                <p>Uygulamada “Firma hesabıyla giriş” seçilir ve şu bilgiler girilir:</p>
+                <dl>
+                    <div><dt>Firma kodu</dt><dd><code>@_overview.TenantCode</code></dd></div>
+                    <div><dt>Kullanıcı adı</dt><dd><code>@_created.Username</code></dd></div>
+                    <div><dt>Parola</dt><dd>Az önce belirlediğiniz parola (burada tekrar gösterilmez)</dd></div>
+                </dl>
+            </div>
+        }
+
+        @if (!canWork)
+        {
+            <p class="mobile-login__hint">Telefon kullanıcısı açmak için önce kullanıcı hakkı tanımlayın.</p>
+            <div class="mobile-login__form">
+                <label><span>Kullanıcı hakkı</span><input id="@($"ml-seats-{TenantId}")" class="form-control" type="number" min="1" max="10000" @bind="_seats" /></label>
+                <label><span>Bitiş tarihi <em>(boş = süresiz)</em></span><input class="form-control" type="date" @bind="_endsAt" /></label>
+                <button id="@($"ml-seats-save-{TenantId}")" class="btn btn-primary" disabled="@(_busy || _seats < 1)" @onclick="SaveSeatsAsync">Hakkı kaydet</button>
+            </div>
+        }
+        else if (full)
+        {
+            <p class="mobile-login__hint" id="@($"ml-full-{TenantId}")">Tüm kullanıcı hakları dolu. Yeni kullanıcı için hakkı artırın ya da bir kullanıcıyı pasifleştirin.</p>
+        }
+        else
+        {
+            <div class="mobile-login__form">
+                <label><span>Kullanıcı adı</span><input id="@($"ml-username-{TenantId}")" class="form-control" maxlength="64" autocomplete="off" @bind="_username" /></label>
+                <label><span>Ad soyad</span><input id="@($"ml-fullname-{TenantId}")" class="form-control" maxlength="120" @bind="_fullName" /></label>
+                <label><span>Parola</span><input id="@($"ml-password-{TenantId}")" class="form-control" type="password" autocomplete="new-password" @bind="_password" /></label>
+                <label>
+                    <span>Rol</span>
+                    <select class="form-select" @bind="_role">
+                        <option value="ADMIN">Yönetici</option>
+                        <option value="SALES">Saha kullanıcısı</option>
+                    </select>
+                </label>
+                <button id="@($"ml-create-{TenantId}")" class="btn btn-primary" disabled="@_busy" @onclick="CreateAsync">Telefon girişi oluştur</button>
+            </div>
+        }
+
+        @if (_overview.Users.Length > 0)
+        {
+            <ul class="mobile-login__users">
+                @foreach (var user in _overview.Users)
+                {
+                    <li>
+                        <code>@user.Username</code>
+                        <span>@user.FullName</span>
+                        <AdminStatusBadge Text="@(user.Role == "ADMIN" ? "Yönetici" : "Saha")" Tone="info" />
+                        @if (!user.IsActive) { <AdminStatusBadge Text="Pasif" Tone="muted" /> }
+                    </li>
+                }
+            </ul>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid TenantId { get; set; }
+
+    private TenantMobileOverviewDto? _overview;
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private MobileUserDto? _created;
+    private string _username = string.Empty;
+    private string _fullName = string.Empty;
+    private string _password = string.Empty;
+    private string _role = "ADMIN";
+    private int _seats = 1;
+    private DateTime? _endsAt = DateTime.Today.AddYears(1);
+
+    protected override async Task OnParametersSetAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = _overview is null;
+        try
+        {
+            _overview = await Api.GetTenantMobileAsync(TenantId);
+            // The company's first phone user is its administrator; later ones are field users.
+            _role = _overview.Users.Length == 0 ? "ADMIN" : "SALES";
+        }
+        catch (Exception ex) { _error = MobileSeatMessages.For(ex); }
+        finally { _loading = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _error = null;
+        _created = null;
+        try
+        {
+            _created = await Api.CreateMobileUserAsync(TenantId, new CreateMobileUserRequest
+            {
+                Username = _username.Trim().ToLowerInvariant(),
+                FullName = _fullName.Trim(),
+                Password = _password,
+                Role = _role,
+            });
+            _username = _fullName = _password = string.Empty;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = MobileSeatMessages.For(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveSeatsAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Api.SetSubscriptionAsync(TenantId, new SetSubscriptionRequest
+            {
+                Seats = _seats,
+                EndsAtUtc = _endsAt is { } day ? new DateTimeOffset(DateTime.SpecifyKind(day.Date.AddDays(1).AddSeconds(-1), DateTimeKind.Local)) : null,
+                Source = "manual",
+                Note = "Lisans sayfasından tanımlandı",
+            });
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = MobileSeatMessages.For(ex); }
+        finally { _busy = false; }
+    }
+}

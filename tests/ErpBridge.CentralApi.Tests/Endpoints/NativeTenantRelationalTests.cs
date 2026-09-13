@@ -279,6 +279,46 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
     }
 
     [Fact]
+    public async Task An_excel_import_batch_books_every_valid_card_and_notes_the_skipped_rows()
+    {
+        var t = await NativeTenantAsync();
+
+        var products = await PostAsync(t.AdminToken, t, "stock_card_batch", "IMPORT-S-1", new
+        {
+            cards = new object[]
+            {
+                new { stockCode = "UN-1", name = "Un 5 kg", barcode = "8690000000101", price = 120, openingQuantity = 10 },
+                new { stockCode = "SUT-1", name = "Süt 1 L", price = 35, openingQuantity = 24 },
+                new { stockCode = "", name = "Kodsuz satır" },
+            },
+        });
+        var customers = await PostAsync(t.SalesToken, t, "customer_card_batch", "IMPORT-C-1", new
+        {
+            cards = new object[] { new { customerCode = "C-101", title = "Market Bir" }, new { customerCode = "C-102", title = "Market İki", openingBalance = 250 } },
+        });
+
+        products.Status.Should().Be("Succeeded");
+        customers.Status.Should().Be("Succeeded");
+        var feed = await PullAllAsync(t.SalesToken, t);
+        feed.Where(c => c.Entity == "urun").Select(c => c.Key).Should().BeEquivalentTo("UN-1", "SUT-1");
+        feed.Single(c => c.Entity == "urun" && c.Key == "SUT-1").Data.GetProperty("stok").GetInt32().Should().Be(24);
+        feed.Single(c => c.Entity == "cari" && c.Key == "C-102").Data.GetProperty("bakiye").GetDecimal().Should().Be(250m);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        (await db.Jobs.SingleAsync(j => j.TenantId == t.Id && j.ExternalId == "IMPORT-S-1")).LastError.Should().Contain("1 skipped");
+    }
+
+    [Fact]
+    public async Task A_field_user_cannot_import_products()
+    {
+        var t = await NativeTenantAsync();
+
+        var batch = await PostAsync(t.SalesToken, t, "stock_card_batch", "IMPORT-S-SALES", new { cards = new[] { new { stockCode = "X-1", name = "X" } } });
+
+        batch.Status.Should().Be("Failed");
+    }
+
+    [Fact]
     public async Task An_erp_tenant_keeps_documents_for_its_agent_and_refuses_cards()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
