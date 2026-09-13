@@ -39,7 +39,7 @@ public static class MobileSyncPullEndpoints
             .WithTags("AndroidMobileSync")
             .Produces<SyncPullResponse>(StatusCodes.Status200OK)
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         return routes;

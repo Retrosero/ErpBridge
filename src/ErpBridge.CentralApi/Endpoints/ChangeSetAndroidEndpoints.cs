@@ -37,7 +37,7 @@ public static class ChangeSetAndroidEndpoints
 
         group.MapGet("/tables", ListTablesAsync)
             .WithName("AndroidChangeSetTables")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         // Faz 15.7 — primary direction. Mirrors the FORA semantic of "new +
@@ -45,35 +45,35 @@ public static class ChangeSetAndroidEndpoints
         // /changed) are kept as aliases below for backwards compatibility.
         group.MapGet("/{table}/new_or_changed", ReadNewOrChangedAsync)
             .WithName("AndroidChangeSetNewOrChanged")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         group.MapGet("/{table}/new", ReadNewAsync)
             .WithName("AndroidChangeSetNew")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         group.MapGet("/{table}/changed", ReadChangedAsync)
             .WithName("AndroidChangeSetChanged")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         group.MapGet("/{table}/deleted", ReadDeletedAsync)
             .WithName("AndroidChangeSetDeleted")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         // Faz 15.7 — discovery endpoint. Reports the highest TriggerRECno
         // the central API has accepted for a table plus a "has data" flag.
         group.MapGet("/{table}/status", StatusAsync)
             .WithName("AndroidChangeSetStatus")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         routes.MapGet("/api/v1/android/sync/queue", ReadMobileQueueAsync)
             .WithName("AndroidMobileSyncQueue")
             .WithTags("AndroidMobileSync")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         return routes;

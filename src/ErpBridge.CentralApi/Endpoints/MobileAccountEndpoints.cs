@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
@@ -152,33 +151,18 @@ public static class MobileAccountEndpoints
     }
 
     /// <summary>
-    /// Re-validates a signed token against current state: a disabled or deleted
-    /// user, a blocked device, a disabled tenant or an expired subscription loses
-    /// access at once, without waiting for the token to expire. The role is read
-    /// from the database, not the token, so a demotion also applies immediately.
+    /// Re-validates the token against current state (see <see cref="MobileUserAccess"/>)
+    /// and, for user management, requires the administrator role — read from the
+    /// database, not the token, so a demotion applies immediately.
     /// </summary>
     internal static async Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeAsync(
         HttpContext http, CentralApiDbContext db, bool requireAdmin, CancellationToken ct)
     {
-        if (!Guid.TryParse(http.User.FindFirstValue("sub"), out var userId)
-            || !http.User.TryGetTenantId(out var tenantId)
-            || http.User.FindFirstValue(CentralApiClaims.DeviceId) is not { Length: > 0 } deviceId)
-            return (null, null, Error(401, "INVALID_TOKEN", "Mobile user token is malformed."));
-
-        var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
-        var user = await db.MobileUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && u.DeletedAtUtc == null, ct);
-        if (tenant is null || user is null) return (null, null, Error(401, "SESSION_REVOKED", "The user no longer exists."));
-        if (!tenant.IsActive) return (null, null, Error(403, "TENANT_INACTIVE", "The company account is disabled."));
-        if (!user.IsActive) return (null, null, Error(403, "USER_INACTIVE", "This user is disabled."));
-        var deviceActive = await db.MobileDevices.AsNoTracking().AnyAsync(d => d.TenantId == tenantId && d.DeviceId == deviceId && d.IsActive, ct);
-        if (!deviceActive) return (null, null, Error(403, "DEVICE_REVOKED", "This device has been blocked for the company."));
-        var subscription = await db.TenantSubscriptions.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.IsCurrent, ct);
-        var status = MobileSeatService.SubscriptionStatus(subscription, DateTimeOffset.UtcNow);
-        if (!MobileSeatService.AllowsWork(status))
-            return (null, null, Error(403, status == "none" ? "SUBSCRIPTION_REQUIRED" : "SUBSCRIPTION_EXPIRED", "The company has no active subscription."));
-        if (requireAdmin && user.Role != MobileUserRoles.Admin)
+        var access = await MobileUserAccess.CheckAsync(http.User, db, ct);
+        if (!access.Allowed) return (null, null, Error(access.StatusCode, access.ErrorCode!, access.Message!));
+        if (requireAdmin && access.User!.Role != MobileUserRoles.Admin)
             return (null, null, Error(403, "ADMIN_REQUIRED", "Only company administrators can manage users."));
-        return (tenant, user, null);
+        return (access.Tenant, access.User, null);
     }
 
     private static async Task<MobileSessionDto> SessionAsync(CentralApiDbContext db, MobileSeatService seats, Tenant tenant, MobileUser user, CancellationToken ct) => new()

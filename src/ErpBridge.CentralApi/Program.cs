@@ -49,6 +49,13 @@ public partial class Program
     /// <summary>Signed-in mobile app user (<c>scope=mobile-user</c> JWT).</summary>
     public const string MobileUserPolicy = "MobileUser";
 
+    /// <summary>
+    /// Mobile read/telemetry surface: a tenant API key (<c>scope=apikey</c>, the
+    /// original ERP activation) or a signed-in mobile user whose user, device,
+    /// tenant and subscription are still valid.
+    /// </summary>
+    public const string MobileClientPolicy = "MobileClient";
+
     private const string ProductionCorsPolicy = "production-origins";
 
     /// <summary>Rate-limit policy name partitioned by the JWT <c>sub</c> (agent id).</summary>
@@ -230,6 +237,8 @@ public partial class Program
                 options.SigningKey = signingKey;
         });
         services.AddSingleton<IJwtIssuer, JwtIssuer>();
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, MobileUserStateHandler>();
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, MobileUserAuthorizationResultHandler>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -297,7 +306,18 @@ public partial class Program
             options.AddPolicy(MobileUserPolicy, policy => policy
                 .RequireAuthenticatedUser()
                 .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
-                .RequireClaim("scope", CentralApiClaims.MobileUserScope));
+                .RequireClaim("scope", CentralApiClaims.MobileUserScope)
+                .AddRequirements(new MobileUserStateRequirement()));
+
+            options.AddPolicy(MobileClientPolicy, policy => policy
+                .RequireAuthenticatedUser()
+                .AddAuthenticationSchemes(
+                    JwtBearerDefaults.AuthenticationScheme,
+                    ApiKeyAuthenticationHandler.SchemeName)
+                .RequireAssertion(ctx =>
+                    ctx.User.HasClaim("scope", "apikey") ||
+                    ctx.User.HasClaim("scope", CentralApiClaims.MobileUserScope))
+                .AddRequirements(new MobileUserStateRequirement()));
 
             options.AddPolicy(AgentOrApiKeyPolicy, policy => policy
                 .RequireAuthenticatedUser()
@@ -306,7 +326,11 @@ public partial class Program
                     ApiKeyAuthenticationHandler.SchemeName)
                 .RequireAssertion(ctx =>
                     ctx.User.HasClaim("scope", "agent") ||
-                    ctx.User.HasClaim("scope", "apikey")));
+                    ctx.User.HasClaim("scope", "apikey") ||
+                    ctx.User.HasClaim("scope", CentralApiClaims.MobileUserScope))
+                // A signed-in mobile user sends sales and collections through the
+                // same ingest endpoints the API-key app used; they must still be valid.
+                .AddRequirements(new MobileUserStateRequirement()));
         });
     }
 

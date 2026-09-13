@@ -212,6 +212,41 @@ public sealed class MobileSeatsRelationalTests : IClassFixture<SqliteCentralApiF
         (await db.MobileUsers.CountAsync(u => u.TenantId == t.Id && u.IsActive && u.DeletedAtUtc == null)).Should().Be(2);
     }
 
+    [Fact]
+    public async Task A_signed_in_user_reads_and_sends_documents_with_the_same_token_until_disabled()
+    {
+        var t = await NewTenantAsync(seats: 3);
+        var ali = await (await CreateUserAsync(t, "ali")).ReadAsJsonAsync<MobileUserDto>();
+        var token = await TokenAsync(t.Code, "ali", "DEVICE-ALI");
+
+        // The app keeps sending the tenant header it always sent; the JWT is what authenticates.
+        (await SendAsMobileAsync(HttpMethod.Post, "/api/v1/android/sync/pull", new { cursor = (string?)null }, token, t.Id))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var ingest = await SendAsMobileAsync(HttpMethod.Post, "/api/v1/ingest/jobs",
+            new { externalId = "SIP-ALI-1", documentType = "sales_order", payload = new { ok = true } }, token, t.Id);
+        ingest.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Created);
+
+        (await Client().PatchAsync($"{AdminBase(t)}/users/{ali.Id}", new { isActive = false }, t.AdminToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await ShouldFailAsync(await SendAsMobileAsync(HttpMethod.Post, "/api/v1/android/sync/pull", new { cursor = (string?)null }, token, t.Id),
+            HttpStatusCode.Forbidden, "USER_INACTIVE");
+        await ShouldFailAsync(await SendAsMobileAsync(HttpMethod.Post, "/api/v1/ingest/jobs",
+            new { externalId = "SIP-ALI-2", documentType = "sales_order", payload = new { ok = true } }, token, t.Id),
+            HttpStatusCode.Forbidden, "USER_INACTIVE");
+    }
+
+    [Fact]
+    public async Task An_expired_subscription_stops_data_sync_for_signed_in_users()
+    {
+        var t = await NewTenantAsync(seats: 2);
+        var token = await TokenAsync(t.Code, "patron", "DEVICE-1");
+
+        await SetCurrentSubscriptionEndAsync(t.Id, DateTimeOffset.UtcNow.AddDays(-30));
+
+        await ShouldFailAsync(await SendAsMobileAsync(HttpMethod.Post, "/api/v1/android/sync/pull", new { cursor = (string?)null }, token, t.Id),
+            HttpStatusCode.Forbidden, "SUBSCRIPTION_EXPIRED");
+    }
+
     // ---- helpers -----------------------------------------------------------
 
     private sealed record TestTenant(Guid Id, string Code, string AdminToken, Guid AdminUserId);
@@ -264,6 +299,17 @@ public sealed class MobileSeatsRelationalTests : IClassFixture<SqliteCentralApiF
             Content = new StringContent(JsonSerializer.Serialize(value, Web), Encoding.UTF8, "application/json"),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await Client().SendAsync(request);
+    }
+
+    private async Task<HttpResponseMessage> SendAsMobileAsync(HttpMethod method, string path, object body, string token, Guid tenantId)
+    {
+        var request = new HttpRequestMessage(method, path)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(body, Web), Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("X-Tenant-Id", tenantId.ToString());
         return await Client().SendAsync(request);
     }
 

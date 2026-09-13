@@ -20,7 +20,7 @@ public static class MobileTelemetryEndpoints
         routes.MapPost("/api/v1/mobile/telemetry/batch", IngestAsync)
             .WithName("MobileTelemetryBatch")
             .WithTags("Mobile telemetry")
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy)
             .Produces<MobileTelemetryBatchResponse>(StatusCodes.Status200OK)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
@@ -38,12 +38,18 @@ public static class MobileTelemetryEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "EVENTS_REQUIRED", Message = "At least one telemetry event is required." });
         if (body.Events.Count > MaxBatchSize)
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "BATCH_TOO_LARGE", Message = $"A telemetry batch may contain at most {MaxBatchSize} events." });
-        if (!http.User.TryGetTenantId(out var tenantId)
-            || !Guid.TryParse(http.User.FindFirst(ApiKeyClaims.ApiKeyId)?.Value, out var keyId))
-            return JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_API_KEY", Message = "API key identity is missing." });
+        if (!http.User.TryGetTenantId(out var tenantId))
+            return JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." });
 
-        var allowed = await db.ApiKeys.AsNoTracking().AnyAsync(key => key.Id == keyId && key.TenantId == tenantId && key.IsActive
-            && (key.Scopes.Contains(TelemetryScope) || key.Scopes.Contains(LegacyMobileScope) || key.Scopes.Contains("*")), ct);
+        // A signed-in mobile user reports for their own tenant (state checked by MobileClientPolicy).
+        var allowed = ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User);
+        if (!allowed)
+        {
+            if (!Guid.TryParse(http.User.FindFirst(ApiKeyClaims.ApiKeyId)?.Value, out var keyId))
+                return JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_API_KEY", Message = "API key identity is missing." });
+            allowed = await db.ApiKeys.AsNoTracking().AnyAsync(key => key.Id == keyId && key.TenantId == tenantId && key.IsActive
+                && (key.Scopes.Contains(TelemetryScope) || key.Scopes.Contains(LegacyMobileScope) || key.Scopes.Contains("*")), ct);
+        }
         if (!allowed)
             return JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "MOBILE_TELEMETRY_SCOPE_REQUIRED", Message = "API key requires the mobile:telemetry scope." });
 

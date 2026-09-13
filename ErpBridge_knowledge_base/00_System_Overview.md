@@ -223,6 +223,18 @@ registration ayrı bir composition projesine taşınır.
      cihaz, tenant ve aboneliği veritabanından yeniden doğrular; rol token'dan
      değil satırdan okunur. Pasifleştirme ve cihaz engelleme token süresini
      beklemeden etkili olur.
+   - **Aynı token veri ve belge uçlarında da geçer.** Telefonun okuduğu uçlar
+     (`/android/*`, `/android/sync/pull`, notify, change-set, telemetri)
+     `MobileClientPolicy`, belge gönderdiği `/ingest/*` uçları
+     `AgentOrApiKeyPolicy` ile korunur; ikisi de API anahtarı **veya**
+     `scope=mobile-user` kabul eder ve `MobileUserStateRequirement` ile
+     kullanıcı/cihaz/tenant/abonelik durumunu her istekte doğrular. Red,
+     `MobileUserAuthorizationResultHandler` ile hata kodlu `ApiError` gövdesi
+     döner (`USER_INACTIVE`, `SUBSCRIPTION_EXPIRED`…) ki uygulama doğru mesajla
+     oturumu kapatsın. Yeni bir mobil uç eklenirse bu iki politikadan biri
+     kullanılır; yalnızca `ApiKeyPolicy` kullanan uç firma hesabıyla giren
+     kullanıcıya kapalı kalır. API anahtarı yolu (eski ERP aktivasyonu) aynen
+     çalışır.
    - Koltuklar Play Store dışında satılır; uygulamada satın alma yoktur
      (Siparis_Cepte `docs/PLAN_CALISMA_MODLARI.md` §7). Operatör ekranı:
      Admin konsolu `/tenants/{id}/mobile` (`Pages/TenantMobile.razor`); API hata
