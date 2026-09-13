@@ -59,6 +59,22 @@ else
 
     <section class="admin-panel seat-panel">
         <div class="admin-panel__header">
+            <div><h2>Veri kaynağı</h2><p>ERP'li firmada ürün, cari, stok ve bakiye ERP'den gelir. ERP'siz firmada ürün ve carileri telefondan yönetici girer; satış ve tahsilatları merkez sunucu işler.</p></div>
+        </div>
+        <div class="admin-panel__body seat-form">
+            <label>
+                <span>Firma kullanımı</span>
+                <select id="data-source" class="form-select" @bind="_dataSource">
+                    <option value="erp">ERP bağlantılı</option>
+                    <option value="native">ERP'siz (telefondan yönetim)</option>
+                </select>
+            </label>
+            <button id="data-source-save" class="btn btn-outline-primary" @onclick="SaveDataSourceAsync" disabled="@(_busy || _dataSource == _overview.DataSource)">Kaydet</button>
+        </div>
+    </section>
+
+    <section class="admin-panel seat-panel">
+        <div class="admin-panel__header">
             <div><h2>Ödeme kaydet / koltuk güncelle</h2><p>Her kayıt yeni bir abonelik satırı açar; önceki satırlar geçmişte kalır.</p></div>
         </div>
         <div class="admin-panel__body seat-form">
@@ -234,6 +250,7 @@ else
     private string _resetPassword = string.Empty;
     private SubscriptionForm _subscription = new();
     private CreateMobileUserRequest _newUser = new() { Role = "ADMIN" };
+    private string _dataSource = "erp";
 
     private sealed class SubscriptionForm
     {
@@ -259,6 +276,7 @@ else
             _subscription = current is null
                 ? new SubscriptionForm { EndsAtLocal = DateTime.Today.AddYears(1) }
                 : new SubscriptionForm { Seats = current.Seats, EndsAtLocal = current.EndsAtUtc?.LocalDateTime.Date, Source = current.Source };
+            _dataSource = _overview.DataSource;
             // The first user of a company is its administrator; later ones default to field users.
             _newUser = new CreateMobileUserRequest { Role = _overview.Users.Length == 0 ? "ADMIN" : "SALES" };
         }
@@ -299,6 +317,10 @@ else
         Reference = _subscription.Reference,
         Note = _subscription.Note,
     }), $"Abonelik kaydedildi: {_subscription.Seats} koltuk.");
+
+    private Task SaveDataSourceAsync() =>
+        RunAsync(() => Api.SetTenantDataSourceAsync(TenantId, _dataSource),
+            _dataSource == "native" ? "Firma ERP'siz kullanıma alındı." : "Firma ERP bağlantılı kullanıma alındı.");
 
     private Task CreateUserAsync() =>
         RunAsync(() => Api.CreateMobileUserAsync(TenantId, _newUser), $"{_newUser.Username} kullanıcısı eklendi.");

@@ -290,6 +290,7 @@ public sealed class TenantMobileOverviewDto
 {
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
+    [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
     [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
     [JsonPropertyName("subscriptions")] public SubscriptionDto[] Subscriptions { get; set; } = Array.Empty<SubscriptionDto>();
     [JsonPropertyName("users")] public MobileUserDto[] Users { get; set; } = Array.Empty<MobileUserDto>();
@@ -344,6 +345,8 @@ public static class MobileSeatMessages
         "USER_NOT_FOUND" => "Kullanıcı bulunamadı; liste yenilendi.",
         "DEVICE_NOT_FOUND" => "Cihaz bulunamadı; liste yenilendi.",
         "TENANT_NOT_FOUND" => "Müşteri bulunamadı.",
+        "TENANT_HAS_ERP_DATA" => "Bu firmada ERP ajanı veya ERP'den gelmiş veri var; ERP'siz kullanıma geçirilemez.",
+        "TENANT_HAS_NATIVE_DATA" => "Bu firmada telefondan girilmiş ürün veya cari var; ERP bağlantılı kullanıma geçirilemez.",
         _ => api.Message,
     };
 }
@@ -588,6 +591,9 @@ public sealed class CentralApiClient
     /// <summary>204 No Content on success, so the raw sender is used (the JSON sender rejects empty bodies).</summary>
     public Task DeleteMobileUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
         SendRawStringAsync(() => _http.DeleteAsync($"/api/v1/admin/tenants/{tenantId}/mobile/users/{userId}", ct), ct);
+
+    public Task SetTenantDataSourceAsync(Guid tenantId, string dataSource, CancellationToken ct = default) =>
+        SendRawStringAsync(() => _http.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/data-source", new { dataSource }, ct), ct);
 
     public Task SetMobileDeviceActiveAsync(Guid tenantId, Guid deviceId, bool isActive, CancellationToken ct = default) =>
         SendRawStringAsync(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/devices/{deviceId}", new { isActive }, ct), ct);

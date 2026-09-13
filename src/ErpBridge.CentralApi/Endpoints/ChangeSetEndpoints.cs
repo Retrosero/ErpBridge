@@ -111,6 +111,8 @@ public static class ChangeSetEndpoints
             return JsonResults.Status(StatusCodes.Status403Forbidden,
                 new ApiError { ErrorCode = "TENANT_INACTIVE", Message = "Tenant is inactive." });
         }
+        if (tenant.DataSource == TenantDataSources.Native)
+            return ErpBridge.CentralApi.Native.NativeTenantGuard.Rejection();
 
         if (body.Tables is null || body.Tables.Count == 0)
         {

@@ -96,6 +96,8 @@ public static class BootstrapEndpoints
         if (!http.User.TryGetTenantId(out var tenantId))
             return JsonResults.Status(StatusCodes.Status401Unauthorized,
                 new ApiError { ErrorCode = "INVALID_TOKEN", Message = "JWT missing tenant claim." });
+        if (await ErpBridge.CentralApi.Native.NativeTenantGuard.RejectErpWriteAsync(db, tenantId, ct) is { } nativeTenant)
+            return nativeTenant;
 
         var payloadJson = body.Payload is null
             ? "{}"

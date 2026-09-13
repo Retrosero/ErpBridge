@@ -184,6 +184,7 @@ public partial class Program
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordBackfill>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordRetention>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Mobile.MobileSeatService>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
     }
 
     /// <summary>

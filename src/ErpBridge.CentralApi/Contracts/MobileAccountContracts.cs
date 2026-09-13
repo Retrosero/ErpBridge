@@ -28,6 +28,9 @@ public sealed class MobileSessionDto
     [JsonPropertyName("tenantName")] public string TenantName { get; set; } = string.Empty;
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
     [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
+
+    /// <summary><c>erp</c> (data comes from the company's ERP) or <c>native</c> (the phones create it).</summary>
+    [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
 }
 
 /// <summary>Seat capacity and subscription state of a tenant.</summary>
@@ -125,6 +128,7 @@ public sealed class TenantMobileOverviewResponse
 {
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
+    [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
     [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
     [JsonPropertyName("subscriptions")] public SubscriptionDto[] Subscriptions { get; set; } = Array.Empty<SubscriptionDto>();
     [JsonPropertyName("users")] public MobileUserDto[] Users { get; set; } = Array.Empty<MobileUserDto>();
@@ -135,4 +139,10 @@ public sealed class TenantMobileOverviewResponse
 public sealed class UpdateMobileDeviceRequest
 {
     [JsonPropertyName("isActive")] public bool? IsActive { get; set; }
+}
+
+/// <summary>PUT /api/v1/admin/tenants/{id}/mobile/data-source body.</summary>
+public sealed class SetDataSourceRequest
+{
+    [JsonPropertyName("dataSource")] public string? DataSource { get; set; }
 }

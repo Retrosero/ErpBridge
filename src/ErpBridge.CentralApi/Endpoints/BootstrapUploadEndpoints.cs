@@ -41,6 +41,8 @@ public static class BootstrapUploadEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_BOOTSTRAP_UPLOAD", Message = "sourceDatabase is required." });
         if (!http.User.TryGetTenantId(out var tenantId))
             return JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_TOKEN", Message = "JWT missing tenant claim." });
+        if (await ErpBridge.CentralApi.Native.NativeTenantGuard.RejectErpWriteAsync(db, tenantId, ct) is { } nativeTenant)
+            return nativeTenant;
 
         var idempotencyKey = http.Request.Headers["Idempotency-Key"].FirstOrDefault();
         var uploadId = Guid.TryParse(idempotencyKey?.Split(':').LastOrDefault(), out var parsedUploadId)
@@ -117,6 +119,9 @@ public static class BootstrapUploadEndpoints
     {
         if (!http.User.TryGetTenantId(out var tenantId))
             return JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_TOKEN", Message = "JWT missing tenant claim." });
+        // Re-checked at completion: the tenant may have been switched after the upload started.
+        if (await ErpBridge.CentralApi.Native.NativeTenantGuard.RejectErpWriteAsync(db, tenantId, ct) is { } nativeTenant)
+            return nativeTenant;
 
         await using var transaction = db.Database.IsRelational()
             ? await db.Database.BeginTransactionAsync(ct)

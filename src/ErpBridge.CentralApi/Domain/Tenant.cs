@@ -33,7 +33,30 @@ public sealed class Tenant
     /// </summary>
     public long SeatLockVersion { get; set; }
 
+    /// <summary>
+    /// Where the tenant's business data comes from: <see cref="TenantDataSources.Erp"/>
+    /// (an agent uploads it from the customer's ERP, the default) or
+    /// <see cref="TenantDataSources.Native"/> (no ERP: phones create cards and the
+    /// central API itself books sales and collections). Set by an operator.
+    /// </summary>
+    public string DataSource { get; set; } = TenantDataSources.Erp;
+
+    /// <summary>
+    /// Bumped at the start of every native document transaction so a tenant's
+    /// stock and balance updates are applied one document at a time.
+    /// </summary>
+    public long NativeLockVersion { get; set; }
+
     public ICollection<License> Licenses { get; set; } = new List<License>();
 
     public ICollection<Agent> Agents { get; set; } = new List<Agent>();
+}
+
+/// <summary>Values of <see cref="Tenant.DataSource"/>.</summary>
+public static class TenantDataSources
+{
+    public const string Erp = "erp";
+    public const string Native = "native";
+
+    public static bool IsValid(string? value) => value is Erp or Native;
 }
