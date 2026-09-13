@@ -15,8 +15,14 @@ public static class CentralApiClaims
     /// <summary>The tenant id claim. Used to scope every authenticated query.</summary>
     public const string TenantId = "tenant";
 
-    /// <summary>The scope claim. Currently always <c>"agent"</c>.</summary>
+    /// <summary>The scope claim: <c>agent</c>, <c>admin</c>, <c>apikey</c> or <c>mobile-user</c>.</summary>
     public const string Scope = "scope";
+
+    /// <summary>Scope value of a mobile app user token.</summary>
+    public const string MobileUserScope = "mobile-user";
+
+    /// <summary>The installation id a mobile user token was issued to.</summary>
+    public const string DeviceId = "device";
 
     /// <summary>Read the agent id claim from <paramref name="user"/>. Returns <c>false</c> when missing/malformed.</summary>
     public static bool TryGetAgentId(this ClaimsPrincipal user, out Guid agentId) =>

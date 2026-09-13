@@ -46,6 +46,9 @@ public partial class Program
     /// </summary>
     public const string AgentOrApiKeyPolicy = "AgentOrApiKey";
 
+    /// <summary>Signed-in mobile app user (<c>scope=mobile-user</c> JWT).</summary>
+    public const string MobileUserPolicy = "MobileUser";
+
     private const string ProductionCorsPolicy = "production-origins";
 
     /// <summary>Rate-limit policy name partitioned by the JWT <c>sub</c> (agent id).</summary>
@@ -173,6 +176,7 @@ public partial class Program
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordProjector>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordBackfill>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordRetention>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Mobile.MobileSeatService>();
     }
 
     /// <summary>
@@ -286,6 +290,15 @@ public partial class Program
             // single-policy requirement — the previous setup only allowed
             // ApiKey, which broke the bootstrap change-set push on existing
             // installations (regression introduced in Wave 8).
+            // The "MobileUser" policy accepts only a token minted by the mobile
+            // sign-in endpoint. It proves the signature and scope; whether the
+            // user, device, tenant and subscription are still valid is checked
+            // against the database on every call (MobileUserAccess).
+            options.AddPolicy(MobileUserPolicy, policy => policy
+                .RequireAuthenticatedUser()
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                .RequireClaim("scope", CentralApiClaims.MobileUserScope));
+
             options.AddPolicy(AgentOrApiKeyPolicy, policy => policy
                 .RequireAuthenticatedUser()
                 .AddAuthenticationSchemes(
@@ -518,6 +531,7 @@ public partial class Program
         app.MapAndroidNotifyEndpoints();
         app.MapAndroidEndpoints();
         app.MapMobileTelemetryEndpoints();
+        app.MapMobileAccountEndpoints();
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();
@@ -533,6 +547,7 @@ public partial class Program
         app.MapAdminApiKeysEndpoints();
         app.MapAdminWebhooksEndpoints();
         app.MapAdminTelemetryEndpoints();
+        app.MapAdminMobileSeatsEndpoints();
     }
 
     /// <summary>

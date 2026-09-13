@@ -18,6 +18,9 @@ public sealed record IssuedToken(string Token, Guid AgentId, Guid TenantId, Date
 /// <summary>Result of an admin token issuance; mirrors <see cref="IssuedToken"/> for the admin flow.</summary>
 public sealed record IssuedAdminToken(string Token, Guid AdminId, DateTimeOffset ExpiresAtUtc);
 
+/// <summary>Result of a mobile user sign-in token issuance.</summary>
+public sealed record IssuedMobileUserToken(string Token, Guid UserId, Guid TenantId, DateTimeOffset ExpiresAtUtc);
+
 /// <summary>
 /// Mints HS256 JWTs for registered agents and admins. Signing/validation keys
 /// live in <see cref="JwtOptions"/>. Agent tokens carry
@@ -31,6 +34,14 @@ public interface IJwtIssuer
 
     /// <summary>Issue a token for an admin.</summary>
     IssuedAdminToken IssueForAdmin(Guid adminId);
+
+    /// <summary>
+    /// Issue a token for a mobile app user on one device. Carries <c>sub=userId</c>,
+    /// <c>tenant</c>, <c>scope=mobile-user</c> and <c>device</c>. Long-lived because
+    /// the app works offline for days; revocation does not rely on expiry — every
+    /// authorized call re-checks the user, device, tenant and subscription rows.
+    /// </summary>
+    IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId);
 
     /// <summary>Validate a token. Returns <c>null</c> when invalid/expired.</summary>
     ClaimsPrincipal? Validate(string token);
@@ -99,6 +110,36 @@ public sealed class JwtIssuer : IJwtIssuer
 
         var serialized = new JwtSecurityTokenHandler().WriteToken(token);
         return new IssuedAdminToken(serialized, adminId, expires);
+    }
+
+    /// <summary>Lifetime of a mobile user token, in days.</summary>
+    public const int MobileUserTokenDays = 30;
+
+    /// <inheritdoc />
+    public IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId)
+    {
+        var opts = _options.CurrentValue;
+        var keyBytes = EnsureKey(opts);
+        var expires = DateTimeOffset.UtcNow.AddDays(MobileUserTokenDays);
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            new Claim(CentralApiClaims.TenantId, tenantId.ToString()),
+            new Claim(CentralApiClaims.Scope, CentralApiClaims.MobileUserScope),
+            new Claim(CentralApiClaims.DeviceId, deviceId),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+        };
+        var creds = new SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            issuer: opts.Issuer,
+            audience: opts.Audience,
+            claims: claims,
+            notBefore: DateTime.UtcNow,
+            expires: expires.UtcDateTime,
+            signingCredentials: creds);
+
+        var serialized = new JwtSecurityTokenHandler().WriteToken(token);
+        return new IssuedMobileUserToken(serialized, userId, tenantId, expires);
     }
 
     private static byte[] EnsureKey(JwtOptions opts)

@@ -197,6 +197,35 @@ registration ayrı bir composition projesine taşınır.
 
 ---
 
+14. **Mobil koltuk kuralları tek sınıftadır: `Mobile/MobileSeatService` (Faz 32, 2026-09-13).**
+   Telefon (`/api/v1/android/account/*`, firma admini) ve Admin konsolu
+   (`/api/v1/admin/tenants/{id}/mobile/*`, operatör) aynı servisi çağırır;
+   kural bir uçta yeniden yazılmaz.
+   - **Koltuk = aktif ve silinmemiş kullanıcı, admin dahil.** Ekleme ve yeniden
+     etkinleştirme yalnızca boş koltuk varken ve abonelik `active`/`grace`
+     iken olur (`SEAT_LIMIT_REACHED`, `SUBSCRIPTION_REQUIRED/EXPIRED`).
+     Koltuk sayısı aktif kullanıcının altına indirilemez
+     (`SEATS_BELOW_ACTIVE_USERS`); tenant'ta her zaman bir aktif admin kalır
+     (`LAST_ADMIN`).
+   - **Kilitlenme:** koltuğu değiştiren her işlem transaction içinde önce
+     `tenants.SeatLockVersion`'ı artırır; bu UPDATE tenant satır kilidini alır
+     ve eşzamanlı iki "kullanıcı ekle" isteğinin aynı son koltuğu almasını
+     engeller. Kilitten önce sayım yapan bir kod bu garantiyi bozar.
+   - **Abonelik satırları düzenlenmez.** `tenant_subscriptions`'a her değişiklik
+     yeni satır ekler ve öncekinin `IsCurrent`'ını kapatır (tenant başına tek
+     current, kısmi unique index). Önce eski satır kaydedilir, sonra yenisi
+     eklenir — ikisi aynı `SaveChanges` batch'inde olursa index reddeder
+     (bootstrap snapshot'taki aynı tuzak).
+   - **Silme yumuşaktır** (`DeletedAtUtc`); kullanıcı adı unique index'i silinmiş
+     satırları yok sayar, ad yeniden kullanılabilir, geçmiş kalır.
+   - **Mobil kullanıcı token'ı** (`scope=mobile-user`, 30 gün) yalnızca imzayı
+     kanıtlar. `MobileAccountEndpoints.AuthorizeAsync` her çağrıda kullanıcı,
+     cihaz, tenant ve aboneliği veritabanından yeniden doğrular; rol token'dan
+     değil satırdan okunur. Pasifleştirme ve cihaz engelleme token süresini
+     beklemeden etkili olur.
+   - Koltuklar Play Store dışında satılır; uygulamada satın alma yoktur
+     (Siparis_Cepte `docs/PLAN_CALISMA_MODLARI.md` §7).
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:
