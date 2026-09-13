@@ -1,3 +1,28 @@
+# Faz 34 — ERP'siz firmada ürün kartı düzenleme ve silme — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Native/NativeDocumentProcessor.cs`: `stock_card_delete` (yalnız yönetici, hareket görmüş ürün reddedilir); `stock_card` güncellemesinde eski barkod kayıtlarının düşürülmesi; satış satırı `LastMovementAtUtc` işaretler.
+- `src/ErpBridge.CentralApi/Sync/MobileRecordProjector.cs`: `TombstoneAsync` (bilinen satırları imleç bloğuyla düşürür); `ApplyDeletesAsync` bunu kullanır.
+- `src/ErpBridge.CentralApi/Domain/NativeLedger.cs`, `Data/Migrations/*_Faz34NativeStockMovementMark.cs`: `native_stock_levels.LastMovementAtUtc` (yalnızca ekleme).
+- `ErpBridge_knowledge_base/00_System_Overview.md` (kural 15), `03_Data_Dictionary_and_Rules.md`.
+
+## Davranış
+
+- Yönetici ürün kartını aynı kodla yeniden gönderince ad, fiyat ve barkod tüm cihazlarda güncellenir; stok değişmez; eski barkodla satış reddedilir.
+- Hareketi olmayan ürün silinince kart, barkod, fiyat ve stok satırları düşer, cihazlara silinmiş gider.
+- Satışı olan ürün ve saha kullanıcısının silme isteği `Failed` kaydedilir. ERP tenant'ında silme belgesi 409.
+
+## Testler
+
+- `NativeTenantRelationalTests`: 3 yeni test (toplam 16). Eski barkod temizliği mutasyonla doğrulandı.
+
+## Derleme çıktısı
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı, 0 hata. `dotnet test ErpBridge.sln`: tümü başarılı. `has-pending-model-changes`: değişiklik yok.
+
+---
+
 # Faz 33 — ERP'siz firma (native tenant) — Teslimat
 
 ## Değişen dosyalar

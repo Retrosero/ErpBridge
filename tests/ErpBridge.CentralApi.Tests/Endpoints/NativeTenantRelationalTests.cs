@@ -218,6 +218,67 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
     }
 
     [Fact]
+    public async Task An_edited_product_card_reaches_devices_and_its_old_barcode_stops_selling()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+        var cursor = await CursorAtEndAsync(t);
+
+        (await PostAsync(t.AdminToken, t, "stock_card", "CARD-S1-EDIT", new { stockCode = "CAY-1", name = "Çay 1 kg Tiryaki", barcode = "8690000000099", price = 175, openingQuantity = 999 }))
+            .Status.Should().Be("Succeeded");
+
+        var product = (await PullAllAsync(t.SalesToken, t, cursor)).Single(c => c.Entity == "urun" && c.Key == "CAY-1").Data;
+        product.GetProperty("name").GetString().Should().Be("Çay 1 kg Tiryaki");
+        product.GetProperty("satis_fiyati").GetDecimal().Should().Be(175m);
+        product.GetProperty("barkod").GetString().Should().Be("8690000000099");
+        product.GetProperty("stok").GetInt32().Should().Be(40, "an edit never resets stock");
+
+        var byOldBarcode = await PostAsync(t.SalesToken, t, "sales_order", "MOB-SO-OLDBAR", new
+        {
+            mobileDocumentId = "MOB-SO-OLDBAR", customerCode = "C-001", amount = 10,
+            lines = new[] { new { barcode = "8690000000011", quantity = 1, unitPrice = 10 } },
+        });
+        byOldBarcode.Status.Should().Be("Failed");
+    }
+
+    [Fact]
+    public async Task A_product_without_movements_is_deleted_on_every_device()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+        var cursor = await CursorAtEndAsync(t);
+
+        (await PostAsync(t.AdminToken, t, "stock_card_delete", "DEL-S1", new { stockCode = "CAY-1" })).Status.Should().Be("Succeeded");
+
+        var change = (await PullAllAsync(t.SalesToken, t, cursor)).Single(c => c.Entity == "urun" && c.Key == "CAY-1");
+        change.Deleted.Should().BeTrue();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        (await db.NativeStockLevels.AnyAsync(l => l.TenantId == t.Id && l.StockCode == "CAY-1")).Should().BeFalse();
+        (await db.MobileRecords.AnyAsync(r => r.TenantId == t.Id && r.StockKey == "CAY-1" && !r.IsDeleted)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_product_that_was_sold_cannot_be_deleted_and_a_field_user_cannot_delete_at_all()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+        (await PostAsync(t.SalesToken, t, "sales_order", "MOB-SO-KEEP", Sale("MOB-SO-KEEP", "C-001", quantity: 1, unitPrice: 150, paymentType: "Cari Borç")))
+            .Status.Should().Be("Succeeded");
+
+        var byAdmin = await PostAsync(t.AdminToken, t, "stock_card_delete", "DEL-S1-SOLD", new { stockCode = "CAY-1" });
+        var byFieldUser = await PostAsync(t.SalesToken, t, "stock_card_delete", "DEL-S1-SALES", new { stockCode = "CAY-1" });
+
+        byAdmin.Status.Should().Be("Failed");
+        byFieldUser.Status.Should().Be("Failed");
+        (await StockAsync(t.Id, "CAY-1")).Should().Be(39m);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        (await db.Jobs.SingleAsync(j => j.TenantId == t.Id && j.ExternalId == "DEL-S1-SOLD")).LastError.Should().Contain("movements");
+        (await db.MobileRecords.AnyAsync(r => r.TenantId == t.Id && r.Entity == "stocks" && r.RecordKey == "CAY-1" && !r.IsDeleted)).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task An_erp_tenant_keeps_documents_for_its_agent_and_refuses_cards()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -228,6 +289,9 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
         var card = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "CARD-1", documentType = "stock_card", payload = new { stockCode = "S", name = "S" } });
         card.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await card.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("CARDS_REQUIRE_NATIVE_TENANT");
+        // ERP data is changed in the ERP only: no product can be deleted from a phone either.
+        var delete = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "DEL-1", documentType = "stock_card_delete", payload = new { stockCode = "S" } });
+        delete.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
         var sale = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "SO-1", documentType = "sales_order", payload = new { ok = true } });
         (await sale.ReadAsJsonAsync<IngestJobResponse>()).Status.Should().Be("Pending");

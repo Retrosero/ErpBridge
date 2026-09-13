@@ -284,6 +284,17 @@ registration ayrı bir composition projesine taşınır.
    - `native`'e geçiş, ajan veya ERP verisinin yanında **bekleyen/işlenen iş**
      (`jobs` Pending/Processing) varken de reddedilir; o belgeleri ne ajan ne
      işleyici alırdı.
+   - **Ürün kartı düzenleme ve silme (Faz 34, 2026-09-13).** `stock_card` aynı
+     `stockCode` ile yeniden gelirse kartı günceller; kod kimliktir, değişmez.
+     Kart tek barkod listeler: aynı ürüne ait **eski barkod kayıtları**
+     `MobileRecordProjector.TombstoneAsync` ile düşürülür, yoksa eski barkod
+     kasada hâlâ bu ürüne çözülürdü. Açılış miktarı düzenlemede yok sayılır.
+     `stock_card_delete` (yalnız yönetici) kartı `ApplyDeletesAsync("STOKLAR")`
+     ile barkod/fiyat/stok satırlarıyla birlikte düşürür ve stok satırını siler;
+     cihazlara `urun` silinmiş olarak gider. **Hareket görmüş ürün silinemez:**
+     her satış satırı `native_stock_levels.LastMovementAtUtc`'yi işaretler, dolu
+     ise silme `Failed` olur (satış geçmişi var olmayan ürüne işaret ederdi).
+     ERP tenant'ında `stock_card_delete` de 409 `CARDS_REQUIRE_NATIVE_TENANT`.
    - Satış doğrulaması: satır `quantity > 0`, ürün kartı `mobile_records`
      `stocks`'ta **var olmalı** (kod doğrudan gelse bile), fiyat ve toplam eksi
      olamaz. Telefon kuyruğu `createdAt` sırasıyla gönderdiği için yeni ürünün

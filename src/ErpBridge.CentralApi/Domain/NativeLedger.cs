@@ -21,6 +21,12 @@ public sealed class NativeStockLevel
     /// <summary>May go negative: a sale made offline is never refused after the fact.</summary>
     public decimal Quantity { get; set; }
 
+    /// <summary>
+    /// When a document last moved this product. A product that has moved cannot be
+    /// deleted: its sales history would point at a product that no longer exists.
+    /// </summary>
+    public DateTimeOffset? LastMovementAtUtc { get; set; }
+
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 

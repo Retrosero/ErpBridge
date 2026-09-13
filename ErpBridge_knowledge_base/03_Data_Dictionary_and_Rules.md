@@ -68,7 +68,7 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 - `mobile_devices` *(Faz 32)*: Tenant'a giriş yapmış telefonlar (`DeviceId` uygulamanın kurulum kimliği, `LastUserId`, `AppVersion`, `IsActive`, `FirstSeenAtUtc`, `LastSeenAtUtc`). UNIQUE `(TenantId, DeviceId)`. Koltuk değildir; destek ve kayıp telefon engelleme içindir.
 - `tenant_subscriptions` *(Faz 32)*: Koltuk satın alımları, yalnızca ekleme (`Seats`, `StartsAtUtc`, `EndsAtUtc` null = süresiz, `Source`, `Reference` fatura/dekont, `Note`, `IsCurrent`, `CreatedByAdminId`). UNIQUE `(TenantId) WHERE IsCurrent`. Bitişten sonra 7 gün `grace`, sonra `expired` (giriş kapanır, kullanıcı silinmez).
 - `tenants.Code` *(Faz 32)*: Telefonda yazılan 8 karakterlik firma kodu (ilk abonelikte üretilir, yenilemede değişmez). `tenants.SeatLockVersion`: koltuk transaction'larının satır kilidi sayacı (bkz. 00 kural 14).
-- `native_stock_levels` *(Faz 33)*: ERP'siz firmada stok miktarı (`TenantId, StockCode, WarehouseNo` PK, `Quantity decimal(18,4)`, eksi olabilir). Yalnızca `NativeDocumentProcessor` yazar.
+- `native_stock_levels` *(Faz 33)*: ERP'siz firmada stok miktarı (`TenantId, StockCode, WarehouseNo` PK, `Quantity decimal(18,4)`, eksi olabilir). `LastMovementAtUtc` (Faz 34): son hareketin zamanı; doluysa ürün silinemez. Yalnızca `NativeDocumentProcessor` yazar.
 - `native_customer_balances` *(Faz 33)*: ERP'siz firmada cari bakiye (`TenantId, CustomerCode` PK, `Balance decimal(18,2)`, pozitif = cari borçlu). Yalnızca `NativeDocumentProcessor` yazar.
 - `tenants.DataSource` *(Faz 33)*: `erp` | `native`. `tenants.NativeLockVersion`: native belge transaction'larının satır kilidi sayacı (bkz. 00 kural 15).
 - `parameter_records`: Müşteri bazlı konfigürasyon parametreleri.
