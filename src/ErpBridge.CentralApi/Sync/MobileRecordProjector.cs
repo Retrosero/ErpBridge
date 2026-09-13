@@ -257,9 +257,29 @@ public sealed class MobileRecordProjector
             }
         }
 
+        return await TombstoneAsync(db, tenantId, victims, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Marks the given rows deleted so devices drop them, reserving their cursor
+    /// positions like every other write. For a writer that already knows exactly
+    /// which rows are gone — e.g. the barcodes a product card no longer lists.
+    /// Must run inside the caller's transaction.
+    /// </summary>
+    public async Task<int> TombstoneAsync(
+        CentralApiDbContext db,
+        Guid tenantId,
+        IReadOnlyCollection<MobileRecord> victims,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(victims);
+        if (!IsSupported(db)) return 0;
+
         // A sales condition belongs to a stock card and a customer at once, so
         // deleting both in one bundle can reach the same row twice.
         var distinct = victims
+            .Where(x => x.TenantId == tenantId && !x.IsDeleted)
             .GroupBy(x => x.Entity + MobileRecordKey.Separator + x.RecordKey, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .ToList();

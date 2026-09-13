@@ -29,6 +29,7 @@ namespace ErpBridge.CentralApi.Native;
 public sealed class NativeDocumentProcessor
 {
     public const string StockCard = "stock_card";
+    public const string StockCardDelete = "stock_card_delete";
     public const string CustomerCard = "customer_card";
     public const string SalesOrder = "sales_order";
     public const string Collection = "collection";
@@ -37,7 +38,7 @@ public sealed class NativeDocumentProcessor
     public const string SourceName = "native";
 
     /// <summary>Document types only a native tenant accepts; an ERP agent would not know them.</summary>
-    public static readonly IReadOnlySet<string> CardTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { StockCard, CustomerCard };
+    public static readonly IReadOnlySet<string> CardTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { StockCard, StockCardDelete, CustomerCard };
 
     /// <summary>Payment types that settle a sale on the spot, so the sale leaves no open balance.</summary>
     private static readonly HashSet<string> ImmediatePayments = new(StringComparer.OrdinalIgnoreCase)
@@ -82,6 +83,9 @@ public sealed class NativeDocumentProcessor
                 StockCard => callerIsAdmin
                     ? await BookStockCardAsync(db, booking, document.RootElement, ct)
                     : "Only company administrators can create or change products.",
+                StockCardDelete => callerIsAdmin
+                    ? await BookStockCardDeleteAsync(db, booking, document.RootElement, ct)
+                    : "Only company administrators can delete products.",
                 CustomerCard => await BookCustomerCardAsync(db, booking, document.RootElement, ct),
                 SalesOrder => await BookSaleAsync(db, booking, document.RootElement, ct),
                 Collection => await BookCollectionAsync(db, booking, document.RootElement, ct),
@@ -100,6 +104,7 @@ public sealed class NativeDocumentProcessor
         db.Jobs.Add(job);
         await db.SaveChangesAsync(ct);
 
+        var devicesAffected = false;
         if (error is null && booking.Sections.Count > 0)
         {
             var sections = booking.Sections
@@ -107,11 +112,21 @@ public sealed class NativeDocumentProcessor
                 .ToList();
             await _projector.ProjectAsync(db, tenantId, sections, fullUpload: false, SourceName, ct);
             await db.SaveChangesAsync(ct);
+            devicesAffected = true;
+        }
+
+        if (error is null && (booking.DeletedStockCodes.Count > 0 || booking.StaleRecords.Count > 0))
+        {
+            var removed = await _projector.ApplyDeletesAsync(db, tenantId,
+                booking.DeletedStockCodes.Select(code => new MobileRecordProjector.DeletedRecord("STOKLAR", code)).ToList(), ct);
+            removed += await _projector.TombstoneAsync(db, tenantId, booking.StaleRecords, ct);
+            await db.SaveChangesAsync(ct);
+            devicesAffected |= removed > 0;
         }
 
         if (transaction is not null) await transaction.CommitAsync(ct);
 
-        if (error is null && booking.Sections.Count > 0)
+        if (devicesAffected)
             _hub.Publish(tenantId, now);
         else if (error is not null)
             _logger.LogWarning("Native {DocumentType} {ExternalId} for tenant {TenantId} was not booked: {Error}",
@@ -143,7 +158,15 @@ public sealed class NativeDocumentProcessor
             ["updatedAt"] = booking.Stamp,
         });
         if (barcode is not null)
+        {
             booking.Add("barcodes", new JsonObject { ["barcode"] = barcode, ["stockCode"] = code });
+            // The card lists one barcode. One it listed before would keep resolving to
+            // this product at the till, so it is removed when the barcode changes.
+            booking.StaleRecords.AddRange(await db.MobileRecords
+                .Where(r => r.TenantId == booking.TenantId && r.Entity == "barcodes" && r.StockKey == code
+                            && r.RecordKey != barcode && !r.IsDeleted)
+                .ToListAsync(ct));
+        }
         if (Number(card, "price") is { } price and > 0)
             booking.Add("prices", new JsonObject { ["stockCode"] = code, ["listNumber"] = 1, ["price"] = price });
 
@@ -153,6 +176,23 @@ public sealed class NativeDocumentProcessor
         if (level.IsNew && Number(card, "openingQuantity") is { } opening)
             level.Row.Quantity = opening;
         booking.AddInventory(level.Row);
+        return null;
+    }
+
+    private async Task<string?> BookStockCardDeleteAsync(CentralApiDbContext db, Booking booking, JsonElement card, CancellationToken ct)
+    {
+        var code = Text(card, "stockCode", "productCode", "code");
+        if (code is null) return "stockCode is required.";
+        if (!await StockCardExistsAsync(db, booking.TenantId, code, ct)) return "The product does not exist.";
+
+        var level = await db.NativeStockLevels.Where(l => l.TenantId == booking.TenantId && l.StockCode == code).ToListAsync(ct);
+        if (level.Any(l => l.LastMovementAtUtc is not null))
+            return "The product has sales or other movements and cannot be deleted.";
+
+        db.NativeStockLevels.RemoveRange(level);
+        // The card, its barcodes, prices and stock are tombstoned together; devices
+        // receive the product as deleted.
+        booking.DeletedStockCodes.Add(code);
         return null;
     }
 
@@ -216,6 +256,7 @@ public sealed class NativeDocumentProcessor
             var level = await LevelAsync(db, booking.TenantId, stockCode, ct);
             level.Row.Quantity -= quantity;
             level.Row.UpdatedAtUtc = booking.Now;
+            level.Row.LastMovementAtUtc = booking.Now;
             booking.AddInventory(level.Row);
             booking.Add("stockTransactions", new JsonObject
             {
@@ -307,7 +348,7 @@ public sealed class NativeDocumentProcessor
             {
                 entry.State = EntityState.Detached;
             }
-            else if (entry.State == EntityState.Modified)
+            else if (entry.State is EntityState.Modified or EntityState.Deleted)
             {
                 entry.CurrentValues.SetValues(entry.OriginalValues);
                 entry.State = EntityState.Unchanged;
@@ -417,6 +458,8 @@ public sealed class NativeDocumentProcessor
         public Dictionary<string, List<JsonElement>> Sections { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, JsonObject> Customers { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, NativeCustomerBalance> CustomerBalances { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<string> DeletedStockCodes { get; } = [];
+        public List<MobileRecord> StaleRecords { get; } = [];
         private readonly Dictionary<string, NativeStockLevel> _levels = new(StringComparer.OrdinalIgnoreCase);
 
         public void Add(string section, JsonObject row)
