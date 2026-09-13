@@ -1,3 +1,28 @@
+# Faz 35 — Toplu kart aktarımı ve lisans sayfasında telefon girişi — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Native/NativeDocumentProcessor.cs`: `stock_card_batch` (yalnız yönetici), `customer_card_batch`; geçersiz kart atlanır ve iş notuna yazılır.
+- `src/ErpBridge.Admin/Shared/MobileLoginPanel.razor` (+ `.razor.css`): firma kodu, hak kullanımı, hak tanımlama, kullanıcı adı/parola/rol ile telefon girişi oluşturma.
+- `src/ErpBridge.Admin/Pages/Licenses.razor` (+ `.razor.css`): her lisans kartında "Telefon girişi oluştur" düğmesi ve paneli.
+- `ErpBridge_knowledge_base/00_System_Overview.md` (kural 14, 15).
+
+## Davranış
+
+- Excel ile gelen yüzlerce kart birkaç belgeyle işlenir; boş satır diğer kartları engellemez.
+- Operatör lisans sayfasından doğrudan telefon kullanıcısı açar; ekranda firma kodu ve kullanıcı adı özetlenir, parola tekrar gösterilmez. Hak yoksa önce hak tanımlanır.
+
+## Testler
+
+- `NativeTenantRelationalTests`: 2 yeni test (toplam 18).
+- `MobileLoginPanelTests`: 3 bUnit testi.
+
+## Derleme çıktısı
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı, 0 hata. `dotnet test ErpBridge.sln`: tümü başarılı. Şema değişikliği yok.
+
+---
+
 # Faz 34 — ERP'siz firmada ürün kartı düzenleme ve silme — Teslimat
 
 ## Değişen dosyalar

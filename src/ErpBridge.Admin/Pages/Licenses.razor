@@ -56,7 +56,14 @@
                             <div class="license-card__topline"><span class="license-status @(l.IsActive ? "license-status--active" : "license-status--inactive")"><span aria-hidden="true">●</span>@(l.IsActive ? "Aktif" : "Pasif")</span><span class="license-card__tenant">@(TenantName(l.TenantId))</span></div>
                             <code class="license-card__key">@l.LicenseKey</code>
                             <dl class="license-card__details"><div><dt>Oluşturulma</dt><dd>@l.IssuedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</dd></div><div><dt>Bitiş</dt><dd>@(l.ExpiresAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "Süresiz")</dd></div></dl>
-                            @if (l.IsActive) { <button class="btn license-revoke" @onclick="() => RevokeAsync(l.Id)" disabled="@_busy">Lisansı iptal et</button> }
+                            <div class="license-card__actions">
+                                <button class="btn btn-outline-primary license-mobile-toggle" @onclick="() => ToggleMobileLogin(l.Id)" aria-expanded="@(_mobileLoginFor == l.Id)">@(_mobileLoginFor == l.Id ? "Telefon girişini kapat" : "Telefon girişi oluştur")</button>
+                                @if (l.IsActive) { <button class="btn license-revoke" @onclick="() => RevokeAsync(l.Id)" disabled="@_busy">Lisansı iptal et</button> }
+                            </div>
+                            @if (_mobileLoginFor == l.Id)
+                            {
+                                <ErpBridge.Admin.Shared.MobileLoginPanel TenantId="l.TenantId" />
+                            }
                         </article>
                     }
                 </div>
@@ -74,6 +81,9 @@
     private string? _error;
     private readonly CreateModel _create = new();
     private sealed class CreateModel { public string TenantIdString { get; set; } = string.Empty; public DateTime? ExpiresAtLocal { get; set; } public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty; }
+    // One license at a time shows the phone-login panel; each panel loads its tenant on demand.
+    private Guid? _mobileLoginFor;
+    private void ToggleMobileLogin(Guid licenseId) => _mobileLoginFor = _mobileLoginFor == licenseId ? null : licenseId;
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
     protected override async Task OnInitializedAsync() => await ReloadAsync();
     private async Task ReloadAsync() { _loading = true; _error = null; try { _tenants = await Api.ListTenantsAsync(); _licenses = await Api.ListLicensesAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }

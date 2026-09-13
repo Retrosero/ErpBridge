@@ -238,7 +238,11 @@ registration ayrı bir composition projesine taşınır.
    - Koltuklar Play Store dışında satılır; uygulamada satın alma yoktur
      (Siparis_Cepte `docs/PLAN_CALISMA_MODLARI.md` §7). Operatör ekranı:
      Admin konsolu `/tenants/{id}/mobile` (`Pages/TenantMobile.razor`); API hata
-     kodlarının Türkçe karşılığı tek yerde, `Api/MobileSeatMessages`.
+     kodlarının Türkçe karşılığı tek yerde, `Api/MobileSeatMessages`. Lisans
+     sayfasında her lisans kartında "Telefon girişi oluştur" paneli
+     (`Shared/MobileLoginPanel.razor`, Faz 35): firma kodu, hak kullanımı; hak
+     yoksa hak tanımlama, varsa kullanıcı adı/parola/rol ile giriş oluşturma ve
+     telefonda girilecek bilgilerin özeti. Parola geri gösterilmez.
 
 15. **ERP'siz firmada defter merkez sunucudur: `Native/NativeDocumentProcessor` (Faz 33, 2026-09-13).**
    `tenants.DataSource` = `erp` (varsayılan, veriyi ajan getirir) veya `native`
@@ -295,6 +299,14 @@ registration ayrı bir composition projesine taşınır.
      her satış satırı `native_stock_levels.LastMovementAtUtc`'yi işaretler, dolu
      ise silme `Failed` olur (satış geçmişi var olmayan ürüne işaret ederdi).
      ERP tenant'ında `stock_card_delete` de 409 `CARDS_REQUIRE_NATIVE_TENANT`.
+   - **Toplu kart (Faz 35, 2026-09-13).** Excel içe aktarma `stock_card_batch`
+     (yalnız yönetici) ve `customer_card_batch` belgeleriyle gelir:
+     `{ "cards": [...] }`, belge başına en fazla 500 kart (telefon 200 gönderir).
+     Tek kart belgesiyle 1000 satır, ingest'in kullanıcı başına dakikada 100
+     istek sınırına takılırdı. Her kart tekil kartla aynı doğrulamadan geçer;
+     geçersiz kart **atlanır**, iş `Succeeded` kalır ve `LastError`'a
+     "N booked, M skipped" notu düşülür. Hiçbir kart geçerli değilse `Failed`.
+     Doğrulama deftere dokunmadan önce yapıldığı için atlanan kart iz bırakmaz.
    - Satış doğrulaması: satır `quantity > 0`, ürün kartı `mobile_records`
      `stocks`'ta **var olmalı** (kod doğrudan gelse bile), fiyat ve toplam eksi
      olamaz. Telefon kuyruğu `createdAt` sırasıyla gönderdiği için yeni ürünün

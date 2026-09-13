@@ -30,6 +30,11 @@ public sealed class NativeDocumentProcessor
 {
     public const string StockCard = "stock_card";
     public const string StockCardDelete = "stock_card_delete";
+    public const string StockCardBatch = "stock_card_batch";
+    public const string CustomerCardBatch = "customer_card_batch";
+
+    /// <summary>Cards per batch document; keeps a batch well inside the ingest payload cap.</summary>
+    public const int MaxCardsPerBatch = 500;
     public const string CustomerCard = "customer_card";
     public const string SalesOrder = "sales_order";
     public const string Collection = "collection";
@@ -38,7 +43,7 @@ public sealed class NativeDocumentProcessor
     public const string SourceName = "native";
 
     /// <summary>Document types only a native tenant accepts; an ERP agent would not know them.</summary>
-    public static readonly IReadOnlySet<string> CardTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { StockCard, StockCardDelete, CustomerCard };
+    public static readonly IReadOnlySet<string> CardTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { StockCard, StockCardDelete, CustomerCard, StockCardBatch, CustomerCardBatch };
 
     /// <summary>Payment types that settle a sale on the spot, so the sale leaves no open balance.</summary>
     private static readonly HashSet<string> ImmediatePayments = new(StringComparer.OrdinalIgnoreCase)
@@ -87,6 +92,12 @@ public sealed class NativeDocumentProcessor
                     ? await BookStockCardDeleteAsync(db, booking, document.RootElement, ct)
                     : "Only company administrators can delete products.",
                 CustomerCard => await BookCustomerCardAsync(db, booking, document.RootElement, ct),
+                // An Excel import sends hundreds of cards; one document per card would
+                // take minutes against the per-user rate limit.
+                StockCardBatch => callerIsAdmin
+                    ? await BookBatchAsync(booking, document.RootElement, card => BookStockCardAsync(db, booking, card, ct))
+                    : "Only company administrators can create or change products.",
+                CustomerCardBatch => await BookBatchAsync(booking, document.RootElement, card => BookCustomerCardAsync(db, booking, card, ct)),
                 SalesOrder => await BookSaleAsync(db, booking, document.RootElement, ct),
                 Collection => await BookCollectionAsync(db, booking, document.RootElement, ct),
                 // Cash movements, expenses and counts are kept as records but move
@@ -99,7 +110,7 @@ public sealed class NativeDocumentProcessor
         else DiscardLedgerChanges(db);
 
         job.Status = error is null ? JobStatus.Succeeded : JobStatus.Failed;
-        job.LastError = error;
+        job.LastError = error ?? booking.Warning;
         job.CompletedAtUtc = now;
         db.Jobs.Add(job);
         await db.SaveChangesAsync(ct);
@@ -176,6 +187,34 @@ public sealed class NativeDocumentProcessor
         if (level.IsNew && Number(card, "openingQuantity") is { } opening)
             level.Row.Quantity = opening;
         booking.AddInventory(level.Row);
+        return null;
+    }
+
+    /// <summary>
+    /// Books every valid card of a batch. A card that fails validation is skipped and
+    /// named in the job's note rather than failing its neighbours — one empty Excel row
+    /// must not discard the other few hundred. Validation happens before a card
+    /// touches the ledger, so a skipped card leaves nothing behind.
+    /// </summary>
+    private static async Task<string?> BookBatchAsync(Booking booking, JsonElement batch, Func<JsonElement, Task<string?>> bookCard)
+    {
+        if (!batch.TryGetProperty("cards", out var cards) || cards.ValueKind != JsonValueKind.Array || cards.GetArrayLength() == 0)
+            return "A batch needs a non-empty cards array.";
+        if (cards.GetArrayLength() > MaxCardsPerBatch)
+            return $"A batch may carry at most {MaxCardsPerBatch} cards.";
+
+        var skipped = new List<string>();
+        var booked = 0;
+        var index = 0;
+        foreach (var card in cards.EnumerateArray())
+        {
+            index++;
+            if (await bookCard(card) is { } problem) skipped.Add($"#{index}: {problem}");
+            else booked++;
+        }
+        if (booked == 0) return "No card in the batch could be booked. " + string.Join(" ", skipped.Take(10));
+        if (skipped.Count > 0)
+            booking.Warning = $"{booked} cards booked, {skipped.Count} skipped. " + string.Join(" ", skipped.Take(20));
         return null;
     }
 
@@ -459,6 +498,9 @@ public sealed class NativeDocumentProcessor
         public Dictionary<string, JsonObject> Customers { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, NativeCustomerBalance> CustomerBalances { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> DeletedStockCodes { get; } = [];
+
+        /// <summary>A note kept on a succeeded job, e.g. the rows a batch skipped.</summary>
+        public string? Warning { get; set; }
         public List<MobileRecord> StaleRecords { get; } = [];
         private readonly Dictionary<string, NativeStockLevel> _levels = new(StringComparer.OrdinalIgnoreCase);
 

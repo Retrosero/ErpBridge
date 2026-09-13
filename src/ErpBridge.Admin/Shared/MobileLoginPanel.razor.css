@@ -1,0 +1,118 @@
+.mobile-login {
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    margin-top: .75rem;
+    padding-top: .75rem;
+}
+
+.mobile-login__summary {
+    align-items: end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.25rem;
+}
+
+.mobile-login__summary span,
+.mobile-login__form label span {
+    color: var(--muted);
+    display: block;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.mobile-login__summary strong {
+    font-size: 1.05rem;
+}
+
+.mobile-login__code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .08em;
+}
+
+.mobile-login__link {
+    font-size: .8rem;
+    margin-left: auto;
+}
+
+.mobile-login__form {
+    align-items: end;
+    display: grid;
+    gap: .5rem .75rem;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+.mobile-login__form label {
+    margin: 0;
+}
+
+.mobile-login__form label em {
+    font-style: normal;
+    font-weight: 500;
+}
+
+.mobile-login__hint {
+    color: var(--muted);
+    font-size: .82rem;
+    margin: 0;
+}
+
+.mobile-login__error {
+    background: var(--danger-soft);
+    border-radius: .5rem;
+    color: #9f1239;
+    font-size: .82rem;
+    margin: 0;
+    padding: .55rem .75rem;
+}
+
+.mobile-login__created {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-radius: .5rem;
+    color: #065f46;
+    font-size: .82rem;
+    padding: .6rem .8rem;
+}
+
+.mobile-login__created p {
+    margin: .2rem 0 .4rem;
+}
+
+.mobile-login__created dl {
+    display: grid;
+    gap: .2rem;
+    margin: 0;
+}
+
+.mobile-login__created dl div {
+    display: flex;
+    gap: .5rem;
+}
+
+.mobile-login__created dt {
+    font-weight: 700;
+    min-width: 6.5rem;
+}
+
+.mobile-login__created dd {
+    margin: 0;
+}
+
+.mobile-login__users {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.mobile-login__users li {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    font-size: .82rem;
+}
