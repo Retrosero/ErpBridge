@@ -172,6 +172,7 @@ public static class MobileAccountEndpoints
         TenantName = tenant.Name,
         TenantCode = tenant.Code,
         Seats = await seats.GetUsageAsync(tenant.Id, ct),
+        DataSource = tenant.DataSource,
     };
 
     internal static MobileUserDto ToDto(MobileUser u) => new()

@@ -60,8 +60,32 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Seat purchases; append-only history with one current row per tenant.</summary>
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
 
+    /// <summary>Stock on hand for tenants without an ERP (the central API is the book of record).</summary>
+    public DbSet<NativeStockLevel> NativeStockLevels => Set<NativeStockLevel>();
+
+    /// <summary>Customer balances for tenants without an ERP.</summary>
+    public DbSet<NativeCustomerBalance> NativeCustomerBalances => Set<NativeCustomerBalance>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<NativeStockLevel>(b =>
+        {
+            b.ToTable("native_stock_levels");
+            b.HasKey(x => new { x.TenantId, x.StockCode, x.WarehouseNo });
+            b.Property(x => x.StockCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Quantity).HasPrecision(18, 4);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NativeCustomerBalance>(b =>
+        {
+            b.ToTable("native_customer_balances");
+            b.HasKey(x => new { x.TenantId, x.CustomerCode });
+            b.Property(x => x.CustomerCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Balance).HasPrecision(18, 2);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<MobileUser>(b =>
         {
             b.ToTable("mobile_users");
@@ -108,6 +132,7 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.MaxDeviceCount).HasDefaultValue(1);
             b.HasIndex(x => x.Name).IsUnique();
             b.Property(x => x.Code).HasMaxLength(16);
+            b.Property(x => x.DataSource).IsRequired().HasMaxLength(16).HasDefaultValue(TenantDataSources.Erp);
             b.HasIndex(x => x.Code).IsUnique();
         });
 

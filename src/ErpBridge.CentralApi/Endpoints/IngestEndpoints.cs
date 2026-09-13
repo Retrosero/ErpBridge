@@ -248,6 +248,52 @@ public static class IngestEndpoints
             Status = JobStatus.Pending,
             EnqueuedAtUtc = DateTimeOffset.UtcNow,
         };
+
+        // ---- 6. A tenant without an ERP is booked here, not by an agent. ----
+        if (tenant.DataSource == TenantDataSources.Native)
+        {
+            var processor = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
+            try
+            {
+                var booked = await processor.IngestAsync(db, tenantId, job, await CallerIsAdminAsync(http, db, ct), ct);
+                return JsonResults.Status(StatusCodes.Status201Created, new IngestJobResponse
+                {
+                    JobId = booked.Id,
+                    TenantId = booked.TenantId,
+                    ExternalId = booked.ExternalId,
+                    DocumentType = booked.DocumentType,
+                    Status = booked.Status.ToString(),
+                    Idempotent = false,
+                });
+            }
+            catch (DbUpdateException)
+            {
+                // The same document raced in from a retry; the winner already booked it.
+                db.ChangeTracker.Clear();
+                var winner = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j =>
+                    j.TenantId == tenantId && j.DocumentType == documentType && j.ExternalId == body.ExternalId, ct);
+                if (winner is null) throw;
+                return JsonResults.Ok(new IngestJobResponse
+                {
+                    JobId = winner.Id,
+                    TenantId = winner.TenantId,
+                    ExternalId = winner.ExternalId,
+                    DocumentType = winner.DocumentType,
+                    Status = winner.Status.ToString(),
+                    Idempotent = true,
+                });
+            }
+        }
+
+        // Product and customer cards are created in the ERP for an ERP tenant; an
+        // agent has no writer for them, so they would sit in its queue forever.
+        if (ErpBridge.CentralApi.Native.NativeDocumentProcessor.CardTypes.Contains(documentType))
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
+            {
+                ErrorCode = "CARDS_REQUIRE_NATIVE_TENANT",
+                Message = "Product and customer cards can only be created from the phone for a company without an ERP.",
+            });
+
         db.Jobs.Add(job);
 
         try
@@ -286,5 +332,17 @@ public static class IngestEndpoints
             Status = job.Status.ToString(),
             Idempotent = false,
         });
+    }
+
+    /// <summary>
+    /// A signed-in mobile user is an administrator only if their row says so now;
+    /// API keys and agents act for the whole tenant.
+    /// </summary>
+    private static async Task<bool> CallerIsAdminAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    {
+        if (!ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)) return true;
+        if (!Guid.TryParse(http.User.FindFirst("sub")?.Value, out var userId)) return false;
+        return await db.MobileUsers.AsNoTracking()
+            .AnyAsync(u => u.Id == userId && u.Role == MobileUserRoles.Admin && u.IsActive && u.DeletedAtUtc == null, ct);
     }
 }

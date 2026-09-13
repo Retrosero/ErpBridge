@@ -240,6 +240,42 @@ registration ayrı bir composition projesine taşınır.
      Admin konsolu `/tenants/{id}/mobile` (`Pages/TenantMobile.razor`); API hata
      kodlarının Türkçe karşılığı tek yerde, `Api/MobileSeatMessages`.
 
+15. **ERP'siz firmada defter merkez sunucudur: `Native/NativeDocumentProcessor` (Faz 33, 2026-09-13).**
+   `tenants.DataSource` = `erp` (varsayılan, veriyi ajan getirir) veya `native`
+   (ERP yok; telefonlar kart girer, satış/tahsilatı sunucu işler). Operatör
+   Admin konsolundaki koltuk ekranından seçer. `native`'e geçiş, ajan veya ERP
+   verisi varsa; `erp`'ye geçiş, telefondan girilmiş veri varsa reddedilir —
+   iki kaynak birbirinin üstüne sessizce yazardı.
+   - **Aynı okuma yolu.** İşleyici ajanın üreteceği ERP şeklindeki satırları
+     (`stocks`, `barcodes`, `prices`, `inventory`, `customers`,
+     `customerTransactions`, `stockTransactions`) `MobileRecordProjector` ile
+     `mobile_records`'a yazar (`SourceDatabase = native`). Cihazlar bunları
+     `sync/pull` ile alır; birleştiriciye özel durum eklenmez.
+   - **Tek transaction, tenant kilidi.** `/ingest/*` native tenant'ta belgeyi
+     kuyruğa değil işleyiciye verir: `tenants.NativeLockVersion` artırılır (satır
+     kilidi), belge işlenir, `jobs` satırı `Succeeded`/`Failed` yazılır,
+     projeksiyon yapılır, commit, `hub.Publish`. İş kayıtsız etki, etki kayıtsız
+     iş olamaz. Aynı `externalId` tekrar gelirse ingest'in idempotency kontrolü
+     etkiyi ikinci kez uygulatmaz.
+   - **Sayısal gerçekler tipli tablolarda.** `native_stock_levels` (depo 1) ve
+     `native_customer_balances` kesin decimal ile güncellenir; `mobile_records`
+     yalnızca sonucun kopyasıdır.
+   - **Belge kuralları:** `stock_card` yalnızca firma yöneticisi (açılış miktarı
+     yalnızca stok satırı yokken alınır); `customer_card` herkes (açılış bakiyesi
+     yalnızca bakiye satırı yokken). `sales_order`: her satır stok düşer, cari
+     borçlanır; ödeme şekli anında ödeme ise (`Nakit`, `Kredi Kartı`, `EFT /
+     Havale`…) aynı tutarda tahsilat hareketi de yazılır, açık bakiye değişmez.
+     `collection`: cari alacaklanır. Diğer türler kayıt olarak saklanır, etki
+     yapmaz. **Stok eksiye düşebilir** — çevrimdışı yapılmış satış sonradan
+     reddedilmez.
+   - **Kısmen işlenmiş belge olmaz.** Bir satır geçersizse belge `Failed`
+     kaydedilir ve bellekteki tüm stok/bakiye değişiklikleri geri alınır
+     (`DiscardLedgerChanges`); telefon yeniden denemez, hata Admin konsolunun iş
+     kuyruğunda görünür. Cari `customerCode` ile, eski sürümler için yalnızca
+     **tek** eşleşen `counterparty` unvanıyla çözülür.
+   - ERP tenant'ında `stock_card`/`customer_card` 409 `CARDS_REQUIRE_NATIVE_TENANT`
+     ile reddedilir (ajanın bu türler için yazıcısı yok).
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:
