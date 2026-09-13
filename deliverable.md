@@ -1,3 +1,27 @@
+# Faz 36 — ERP'siz firmada iade ve alışın stoğa etkisi — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Native/NativeDocumentProcessor.cs`: `sales_return`, `purchase_receipt`; satış/iade/alış satırları için ortak `BookLinesAsync` (önce tüm satırları doğrular); `NativeDocumentTypes`.
+- `src/ErpBridge.CentralApi/Endpoints/IngestEndpoints.cs`: ERP tenant'ında iade/alış belgesi 409 `DOCUMENT_REQUIRES_NATIVE_TENANT`.
+- `ErpBridge_knowledge_base/00_System_Overview.md` (kural 15).
+
+## Davranış
+
+- İade: stok girer, cari alacaklanır; nakit veya bankayla geri ödenirse açık bakiye değişmez.
+- Alış: stok girer, tedarikçi alacaklanır; peşin ödenirse açık bakiye değişmez. Katalog dışı kalem stoğa girmez ama tutarı tedarikçiye yazılır.
+- Bilinmeyen ürün satırı olan belge hiçbir stok veya bakiyeyi değiştirmez. İade veya alış görmüş ürün silinemez.
+
+## Testler
+
+- `NativeTenantRelationalTests`: 4 yeni test (toplam 22); mevcut satış testleri ortak satır koduyla geçer.
+
+## Derleme çıktısı
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı, 0 hata. `dotnet test ErpBridge.sln`: tümü başarılı. Şema değişikliği yok.
+
+---
+
 # Faz 35 — Toplu kart aktarımı ve lisans sayfasında telefon girişi — Teslimat
 
 ## Değişen dosyalar
