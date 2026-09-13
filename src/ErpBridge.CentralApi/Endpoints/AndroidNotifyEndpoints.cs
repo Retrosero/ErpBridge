@@ -34,7 +34,7 @@ public static class AndroidNotifyEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
-            .RequireAuthorization(Program.ApiKeyPolicy)
+            .RequireAuthorization(Program.MobileClientPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         return routes;
     }

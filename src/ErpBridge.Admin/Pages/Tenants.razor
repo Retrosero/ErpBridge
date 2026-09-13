@@ -49,6 +49,7 @@ else
                     <td data-label="Oluşturulma">@t.CreatedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
                     <td data-label="Durum"><AdminStatusBadge Text="@(t.IsActive ? "Aktif" : "Pasif")" Tone="@(t.IsActive ? "success" : "muted")" /></td>
                     <td data-label="İşlem" class="admin-data-table__action">
+                        <a class="btn btn-sm btn-outline-primary" href="@($"tenants/{t.Id}/mobile")">Mobil koltuklar</a>
                         @if (t.IsActive)
                         {
                             <button class="btn btn-sm btn-warning" @onclick="() => DeactivateAsync(t.Id)">Pasifleştir</button>

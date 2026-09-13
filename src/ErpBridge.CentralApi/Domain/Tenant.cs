@@ -20,6 +20,19 @@ public sealed class Tenant
     /// </summary>
     public int MaxDeviceCount { get; set; } = 1;
 
+    /// <summary>
+    /// Short company code people type on the phone's sign-in screen, instead of
+    /// the tenant GUID. Assigned when the tenant gets its first mobile seats.
+    /// </summary>
+    public string? Code { get; set; }
+
+    /// <summary>
+    /// Bumped at the start of every seat-changing transaction. The UPDATE takes
+    /// the tenant row lock, so two concurrent "add user" requests are serialized
+    /// and cannot both pass the same seat count.
+    /// </summary>
+    public long SeatLockVersion { get; set; }
+
     public ICollection<License> Licenses { get; set; } = new List<License>();
 
     public ICollection<Agent> Agents { get; set; } = new List<Agent>();

@@ -39,64 +39,64 @@ public static class AndroidEndpoints
         var group = routes.MapGroup("/api/v1/android").WithTags("Android");
 
         group.MapPost("/bootstrap", BootstrapAsync).WithName("AndroidBootstrap")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/pull", PullAsync).WithName("AndroidPull")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         group.MapPost("/sync/cari", CustomersAsync)
             .WithName("AndroidCustomers")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/urun", ProductCatalogAsync)
             .WithName("AndroidProductCatalog")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/stokSeviye", "inventory");
         group.MapPost("/sync/fiyatlar", PriceListRowsAsync)
             .WithName("AndroidPrices")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/stokSatisFiyatListeleri", PriceListRowsAsync)
             .WithName("AndroidPriceListRows")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/stokSatisFiyatListeTanimlari", PriceListDefinitionsAsync)
             .WithName("AndroidPriceListDefinitions")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/acikSiparisler", "openOrders");
         group.MapPost("/sync/cariAdresler", CustomerAddressesAsync)
             .WithName("AndroidCustomerAddresses")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         // Android has used both the Turkish plural spelling and the older
         // singular alias. Keep all three routes on the same contract so an
         // app update cannot turn address sync into a 404.
         group.MapPost("/sync/cariAdresleri", CustomerAddressesAsync)
             .WithName("AndroidCustomerAddressesPlural")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/cariAdres", CustomerAddressesAsync)
             .WithName("AndroidCustomerAddress")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapSection(group, "/sync/cariYetkililer", "customerContacts");
         MapSection(group, "/sync/barkodlar", "barcodes");
         MapSection(group, "/sync/satisSartlari", "salesConditions");
         group.MapPost("/sync/bankalar", (AndroidPageRequest? request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
                 CashAndBankSectionAsync("bank", "bankalar", request ?? new AndroidPageRequest(), http, db, ct))
             .WithName("AndroidBanks")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/kasalar", (AndroidPageRequest? request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
                 CashAndBankSectionAsync("cash", "kasalar", request ?? new AndroidPageRequest(), http, db, ct))
             .WithName("AndroidCashRegisters")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/kasaYonetim", (AndroidPageRequest? request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
                 CashAndBankSectionAsync("cash", "kasaYonetim", request ?? new AndroidPageRequest(), http, db, ct))
             .WithName("AndroidCashManagement")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
         group.MapPost("/sync/stokHareket", StockMovementsAsync)
             .WithName("AndroidStockMovements")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/stokHareketleri", StockMovementsAsync)
             .WithName("AndroidStockMovementsPlural")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/faturaHareket", InvoiceMovementsAsync)
             .WithName("AndroidInvoiceMovements")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
         // Tahsilat (Wave 4): Android tarafı için okuma endpoint'leri. Bu
         // sürümde Microservice tarafı henüz Mikro'dan okuma yapmıyor —
@@ -105,16 +105,16 @@ public static class AndroidEndpoints
         // track'te yapılacak.
         group.MapPost("/sync/collections", CollectionsAsync)
             .WithName("AndroidCollections")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/sync/payment-orders", PaymentOrdersAsync)
             .WithName("AndroidPaymentOrders")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         // İrsaliye (Wave 4A): Android tarafı için okuma endpoint'i.
         // Collections / payment-orders ile aynı kalıbı izler — snapshot'taki
         // "dispatchNotes" bölümünü arar, bulamazsa boş array + not döner.
         group.MapPost("/sync/dispatch-notes", DispatchNotesAsync)
             .WithName("AndroidDispatchNotes")
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         return routes;
     }
 
@@ -122,13 +122,13 @@ public static class AndroidEndpoints
         group.MapPost(route, (AndroidPageRequest? request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
                 SectionAsync(propertyName, request ?? new AndroidPageRequest(), http, db, ct))
             .WithName("Android" + propertyName)
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
     private static void MapPagedSection(RouteGroupBuilder group, string route, string propertyName) =>
         group.MapPost(route, (AndroidPageRequest request, HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
                 PagedSectionAsync(propertyName, request, http, db, ct))
             .WithName("AndroidPaged" + route.Replace("/", string.Empty))
-            .RequireAuthorization(Program.ApiKeyPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
 
     private static async Task<IResult> BootstrapAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {
@@ -936,11 +936,14 @@ public static class AndroidEndpoints
         if (!http.User.TryGetTenantId(out var tenantId))
             return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." }));
 
-        var keyIdText = http.User.FindFirst(ApiKeyClaims.ApiKeyId)?.Value;
-        if (!Guid.TryParse(keyIdText, out var keyId))
-            return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_API_KEY", Message = "API key identity is missing." }));
-
-        var allowed = await db.ApiKeys.AsNoTracking().AnyAsync(key => key.Id == keyId && key.TenantId == tenantId && key.IsActive && (key.Scopes.Contains(MobileReadScope) || key.Scopes.Contains("*")), ct);
+        var allowed = ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User);
+        if (!allowed)
+        {
+            var keyIdText = http.User.FindFirst(ApiKeyClaims.ApiKeyId)?.Value;
+            if (!Guid.TryParse(keyIdText, out var keyId))
+                return (null, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_API_KEY", Message = "API key identity is missing." }));
+            allowed = await db.ApiKeys.AsNoTracking().AnyAsync(key => key.Id == keyId && key.TenantId == tenantId && key.IsActive && (key.Scopes.Contains(MobileReadScope) || key.Scopes.Contains("*")), ct);
+        }
         if (!allowed)
             return (null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "MOBILE_READ_SCOPE_REQUIRED", Message = "API key requires the mobile:read scope." }));
 
@@ -1153,6 +1156,10 @@ public static class AndroidEndpoints
     {
         if (!http.User.TryGetTenantId(out var tenantId))
             return (Guid.Empty, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Authentication missing tenant claim." }));
+        // A signed-in mobile user reads their own tenant; MobileClientPolicy has
+        // already re-checked the user, device, tenant and subscription.
+        if (ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User))
+            return (tenantId, null);
         var keyIdText = http.User.FindFirst(ApiKeyClaims.ApiKeyId)?.Value;
         if (!Guid.TryParse(keyIdText, out var keyId))
             return (Guid.Empty, JsonResults.Status(StatusCodes.Status401Unauthorized, new ApiError { ErrorCode = "INVALID_API_KEY", Message = "API key identity is missing." }));

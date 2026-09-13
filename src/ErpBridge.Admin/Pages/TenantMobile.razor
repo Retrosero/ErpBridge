@@ -1,0 +1,351 @@
+@page "/tenants/{TenantId:guid}/mobile"
+@using ErpBridge.Admin.Api
+@inject CentralApiClient Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Mobil koltuklar — ErpBridge Yönetim</PageTitle>
+
+<AdminPageHeader Title="@($"{_tenantName} · Mobil koltuklar")" Description="Ödeme kaydedin, koltuk sayısını ve bitiş tarihini belirleyin, firma kullanıcılarını ve telefonlarını yönetin.">
+    <Actions>
+        <a class="btn btn-outline-secondary" href="tenants">← Müşteriler</a>
+        <button class="btn btn-outline-primary" @onclick="ReloadAsync" disabled="@_loading">↻ Yenile</button>
+    </Actions>
+</AdminPageHeader>
+
+@if (_loading && _overview is null)
+{
+    <AdminLoading Text="Koltuk bilgileri yükleniyor…" />
+}
+else if (_overview is null)
+{
+    <AdminState Tone="error" Icon="!" Title="Koltuk bilgileri alınamadı" Message="@_error" />
+}
+else
+{
+    var seats = _overview.Seats;
+    var full = seats.Max > 0 && seats.Used >= seats.Max;
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="seat-notice seat-notice--error" role="alert">@_error</div>
+    }
+    @if (!string.IsNullOrEmpty(_notice))
+    {
+        <div class="seat-notice seat-notice--success" role="status">@_notice</div>
+    }
+
+    <div class="admin-grid admin-grid--stats">
+        <div class="admin-stat">
+            <span class="admin-stat__label">Firma kodu</span>
+            <strong class="tenant-code">@(_overview.TenantCode ?? "—")</strong>
+            <small>@(_overview.TenantCode is null ? "İlk ödeme kaydında üretilir" : "Telefonda girişte yazılır")</small>
+        </div>
+        <div class="admin-stat @(full ? "admin-stat--warning" : "")">
+            <span class="admin-stat__label">Koltuk kullanımı</span>
+            <strong class="seat-usage">@seats.Used / @seats.Max</strong>
+            <small>@(full ? "Tüm koltuklar dolu" : $"{Math.Max(0, seats.Max - seats.Used)} boş koltuk")</small>
+        </div>
+        <div class="admin-stat @StatusStatClass(seats.Status)">
+            <span class="admin-stat__label">Abonelik</span>
+            <strong class="subscription-status">@StatusText(seats.Status)</strong>
+            <small>@(seats.EndsAtUtc is { } ends ? $"Bitiş: {ends.LocalDateTime:dd MMM yyyy}" : seats.Status == "none" ? "Kayıt yok" : "Süresiz")</small>
+        </div>
+        <div class="admin-stat">
+            <span class="admin-stat__label">Telefonlar</span>
+            <strong>@_overview.Devices.Count(d => d.IsActive)</strong>
+            <small>@_overview.Devices.Count(d => !d.IsActive) engelli</small>
+        </div>
+    </div>
+
+    <section class="admin-panel seat-panel">
+        <div class="admin-panel__header">
+            <div><h2>Ödeme kaydet / koltuk güncelle</h2><p>Her kayıt yeni bir abonelik satırı açar; önceki satırlar geçmişte kalır.</p></div>
+        </div>
+        <div class="admin-panel__body seat-form">
+            <label><span>Koltuk sayısı</span><input id="seat-form-seats" class="form-control" type="number" min="1" max="10000" @bind="_subscription.Seats" /></label>
+            <label><span>Bitiş tarihi <em>(boş = süresiz)</em></span><input id="seat-form-ends" class="form-control" type="date" @bind="_subscription.EndsAtLocal" /></label>
+            <label>
+                <span>Ödeme şekli</span>
+                <select id="seat-form-source" class="form-select" @bind="_subscription.Source">
+                    <option value="bank_transfer">Havale / EFT</option>
+                    <option value="card">Kredi kartı</option>
+                    <option value="cash">Nakit</option>
+                    <option value="manual">Diğer / manuel</option>
+                </select>
+            </label>
+            <label><span>Dekont / fatura no</span><input id="seat-form-reference" class="form-control" maxlength="128" @bind="_subscription.Reference" /></label>
+            <label class="seat-form__wide"><span>Not</span><input id="seat-form-note" class="form-control" maxlength="500" @bind="_subscription.Note" /></label>
+            <button id="seat-form-save" class="btn btn-primary" @onclick="SaveSubscriptionAsync" disabled="@(_busy || _subscription.Seats < 1)">@(_busy ? "Kaydediliyor…" : "Kaydet")</button>
+        </div>
+    </section>
+
+    <section class="admin-panel seat-panel">
+        <div class="admin-panel__header">
+            <div><h2>Kullanıcılar</h2><p>Aktif her kullanıcı bir koltuk kullanır, yönetici dahil. Pasifleştirilen veya silinen kullanıcı koltuğu boşaltır.</p></div>
+        </div>
+        <div class="admin-panel__body">
+            @if (seats.Status is "none" or "expired")
+            {
+                <p class="seat-hint" id="user-form-blocked">Kullanıcı eklemek için önce geçerli bir ödeme kaydedin.</p>
+            }
+            else if (full)
+            {
+                <p class="seat-hint" id="user-form-blocked">Tüm koltuklar dolu. Yeni kullanıcı için birini pasifleştirin, silin ya da koltuk sayısını artırın.</p>
+            }
+            else
+            {
+                <div class="seat-form">
+                    <label><span>Kullanıcı adı</span><input id="user-form-username" class="form-control" maxlength="64" autocomplete="off" @bind="_newUser.Username" /></label>
+                    <label><span>Ad soyad</span><input id="user-form-fullname" class="form-control" maxlength="120" @bind="_newUser.FullName" /></label>
+                    <label><span>Parola</span><input id="user-form-password" class="form-control" type="password" autocomplete="new-password" @bind="_newUser.Password" /></label>
+                    <label>
+                        <span>Rol</span>
+                        <select id="user-form-role" class="form-select" @bind="_newUser.Role">
+                            <option value="ADMIN">Yönetici</option>
+                            <option value="SALES">Saha kullanıcısı</option>
+                        </select>
+                    </label>
+                    <button id="user-form-create" class="btn btn-primary" @onclick="CreateUserAsync" disabled="@_busy">Kullanıcı ekle</button>
+                </div>
+                @if (_overview.Users.Length == 0)
+                {
+                    <p class="seat-hint">İlk kullanıcı firmanın yöneticisi olmalıdır; telefondan diğer kullanıcıları o ekler.</p>
+                }
+            }
+        </div>
+        @if (_overview.Users.Length > 0)
+        {
+            <div class="admin-data-surface seat-table">
+                <table class="table admin-data-table">
+                    <thead><tr><th>Kullanıcı</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th>İşlem</th></tr></thead>
+                    <tbody>
+                        @foreach (var u in _overview.Users)
+                        {
+                            <tr class="user-row" data-username="@u.Username">
+                                <td data-label="Kullanıcı"><strong>@u.FullName</strong><br /><code>@u.Username</code></td>
+                                <td data-label="Rol">@(u.Role == "ADMIN" ? "Yönetici" : "Saha kullanıcısı")</td>
+                                <td data-label="Durum"><AdminStatusBadge Text="@(u.IsActive ? "Aktif" : "Pasif")" Tone="@(u.IsActive ? "success" : "muted")" /></td>
+                                <td data-label="Son giriş">@(u.LastLoginAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "Hiç girmedi")</td>
+                                <td data-label="İşlem" class="admin-data-table__action seat-actions">
+                                    <button class="btn btn-sm @(u.IsActive ? "btn-outline-warning" : "btn-outline-success") user-toggle" disabled="@_busy" @onclick="() => ToggleActiveAsync(u)">@(u.IsActive ? "Pasifleştir" : "Etkinleştir")</button>
+                                    <button class="btn btn-sm btn-outline-secondary user-role" disabled="@_busy" @onclick="() => ToggleRoleAsync(u)">@(u.Role == "ADMIN" ? "Saha kullanıcısı yap" : "Yönetici yap")</button>
+                                    @if (_resetUserId == u.Id)
+                                    {
+                                        <input class="form-control form-control-sm seat-reset-input" type="password" placeholder="Yeni parola" autocomplete="new-password" @bind="_resetPassword" />
+                                        <button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="() => ResetPasswordAsync(u)">Parolayı kaydet</button>
+                                        <button class="btn btn-sm btn-link" @onclick="() => _resetUserId = null">Vazgeç</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="() => StartPasswordReset(u)">Parola sıfırla</button>
+                                    }
+                                    @if (_confirmDeleteId == u.Id)
+                                    {
+                                        <button class="btn btn-sm btn-danger user-delete-confirm" disabled="@_busy" @onclick="() => DeleteUserAsync(u)">Silmeyi onayla</button>
+                                        <button class="btn btn-sm btn-link" @onclick="() => _confirmDeleteId = null">Vazgeç</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger user-delete" disabled="@_busy" @onclick="() => _confirmDeleteId = u.Id">Sil</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="admin-panel seat-panel">
+        <div class="admin-panel__header">
+            <div><h2>Telefonlar</h2><p>Engellenen telefon, oturumu açık olsa bile hemen erişimini kaybeder. Telefonlar koltuk sayılmaz.</p></div>
+        </div>
+        @if (_overview.Devices.Length == 0)
+        {
+            <div class="admin-panel__body"><p class="seat-hint">Henüz giriş yapan telefon yok.</p></div>
+        }
+        else
+        {
+            <div class="admin-data-surface seat-table">
+                <table class="table admin-data-table">
+                    <thead><tr><th>Cihaz kimliği</th><th>Son kullanıcı</th><th>Uygulama sürümü</th><th>Son görülme</th><th>Durum</th><th>İşlem</th></tr></thead>
+                    <tbody>
+                        @foreach (var d in _overview.Devices)
+                        {
+                            <tr>
+                                <td data-label="Cihaz kimliği"><code>@d.DeviceId</code></td>
+                                <td data-label="Son kullanıcı">@(d.LastUsername ?? "—")</td>
+                                <td data-label="Uygulama sürümü">@(d.AppVersion ?? "—")</td>
+                                <td data-label="Son görülme">@d.LastSeenAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
+                                <td data-label="Durum"><AdminStatusBadge Text="@(d.IsActive ? "Aktif" : "Engelli")" Tone="@(d.IsActive ? "success" : "danger")" /></td>
+                                <td data-label="İşlem" class="admin-data-table__action">
+                                    <button class="btn btn-sm @(d.IsActive ? "btn-outline-danger" : "btn-outline-success")" disabled="@_busy" @onclick="() => SetDeviceAsync(d)">@(d.IsActive ? "Engelle" : "Engeli kaldır")</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="admin-panel seat-panel">
+        <div class="admin-panel__header"><div><h2>Abonelik geçmişi</h2><p>Kim, ne zaman, hangi ödemeyle koltuk tanımladı.</p></div></div>
+        @if (_overview.Subscriptions.Length == 0)
+        {
+            <div class="admin-panel__body"><p class="seat-hint">Henüz ödeme kaydı yok.</p></div>
+        }
+        else
+        {
+            <div class="admin-data-surface seat-table">
+                <table class="table admin-data-table">
+                    <thead><tr><th>Kayıt tarihi</th><th>Koltuk</th><th>Bitiş</th><th>Ödeme</th><th>Dekont / not</th><th>Durum</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in _overview.Subscriptions)
+                        {
+                            <tr class="subscription-row">
+                                <td data-label="Kayıt tarihi">@s.CreatedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
+                                <td data-label="Koltuk"><strong>@s.Seats</strong></td>
+                                <td data-label="Bitiş">@(s.EndsAtUtc?.LocalDateTime.ToString("dd MMM yyyy") ?? "Süresiz")</td>
+                                <td data-label="Ödeme">@SourceText(s.Source)</td>
+                                <td data-label="Dekont / not">@s.Reference @if (!string.IsNullOrEmpty(s.Note)) { <br /><small class="text-muted">@s.Note</small> }</td>
+                                <td data-label="Durum"><AdminStatusBadge Text="@(s.IsCurrent ? "Geçerli" : "Geçmiş")" Tone="@(s.IsCurrent ? "success" : "muted")" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public Guid TenantId { get; set; }
+
+    private TenantMobileOverviewDto? _overview;
+    private string _tenantName = "Müşteri";
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+    private Guid? _confirmDeleteId;
+    private Guid? _resetUserId;
+    private string _resetPassword = string.Empty;
+    private SubscriptionForm _subscription = new();
+    private CreateMobileUserRequest _newUser = new() { Role = "ADMIN" };
+
+    private sealed class SubscriptionForm
+    {
+        public int Seats { get; set; } = 1;
+        public DateTime? EndsAtLocal { get; set; }
+        public string Source { get; set; } = "bank_transfer";
+        public string? Reference { get; set; }
+        public string? Note { get; set; }
+    }
+
+    protected override async Task OnParametersSetAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var tenants = await Api.ListTenantsAsync();
+            _tenantName = tenants.FirstOrDefault(t => t.Id == TenantId)?.Name ?? "Müşteri";
+            _overview = await Api.GetTenantMobileAsync(TenantId);
+            // Pre-fill the form with the current purchase so a renewal only changes what differs.
+            var current = _overview.Subscriptions.FirstOrDefault(s => s.IsCurrent);
+            _subscription = current is null
+                ? new SubscriptionForm { EndsAtLocal = DateTime.Today.AddYears(1) }
+                : new SubscriptionForm { Seats = current.Seats, EndsAtLocal = current.EndsAtUtc?.LocalDateTime.Date, Source = current.Source };
+            // The first user of a company is its administrator; later ones default to field users.
+            _newUser = new CreateMobileUserRequest { Role = _overview.Users.Length == 0 ? "ADMIN" : "SALES" };
+        }
+        catch (Exception ex) { _error = MobileSeatMessages.For(ex); }
+        finally { _loading = false; }
+    }
+
+    private async Task RunAsync(Func<Task> action, string successNotice)
+    {
+        _busy = true;
+        _error = null;
+        _notice = null;
+        try
+        {
+            await action();
+            _notice = successNotice;
+            _confirmDeleteId = null;
+            _resetUserId = null;
+            await ReloadAsync();
+        }
+        catch (ApiCallException ex) when (ex.ErrorCode is "USER_NOT_FOUND" or "DEVICE_NOT_FOUND")
+        {
+            _error = MobileSeatMessages.For(ex);
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = MobileSeatMessages.For(ex); }
+        finally { _busy = false; }
+    }
+
+    private Task SaveSubscriptionAsync() => RunAsync(() => Api.SetSubscriptionAsync(TenantId, new SetSubscriptionRequest
+    {
+        Seats = _subscription.Seats,
+        // A paid period covers the whole chosen day.
+        EndsAtUtc = _subscription.EndsAtLocal is { } day
+            ? new DateTimeOffset(DateTime.SpecifyKind(day.Date.AddDays(1).AddSeconds(-1), DateTimeKind.Local))
+            : null,
+        Source = _subscription.Source,
+        Reference = _subscription.Reference,
+        Note = _subscription.Note,
+    }), $"Abonelik kaydedildi: {_subscription.Seats} koltuk.");
+
+    private Task CreateUserAsync() =>
+        RunAsync(() => Api.CreateMobileUserAsync(TenantId, _newUser), $"{_newUser.Username} kullanıcısı eklendi.");
+
+    private Task ToggleActiveAsync(MobileUserDto user) =>
+        RunAsync(() => Api.UpdateMobileUserAsync(TenantId, user.Id, new UpdateMobileUserRequest { IsActive = !user.IsActive }),
+            user.IsActive ? $"{user.Username} pasifleştirildi; koltuğu boşaldı." : $"{user.Username} etkinleştirildi.");
+
+    private Task ToggleRoleAsync(MobileUserDto user) =>
+        RunAsync(() => Api.UpdateMobileUserAsync(TenantId, user.Id, new UpdateMobileUserRequest { Role = user.Role == "ADMIN" ? "SALES" : "ADMIN" }),
+            $"{user.Username} rolü değiştirildi.");
+
+    private void StartPasswordReset(MobileUserDto user)
+    {
+        _resetUserId = user.Id;
+        _resetPassword = string.Empty;
+    }
+
+    private Task ResetPasswordAsync(MobileUserDto user) =>
+        RunAsync(() => Api.UpdateMobileUserAsync(TenantId, user.Id, new UpdateMobileUserRequest { Password = _resetPassword }), $"{user.Username} parolası değiştirildi.");
+
+    private Task DeleteUserAsync(MobileUserDto user) =>
+        RunAsync(() => Api.DeleteMobileUserAsync(TenantId, user.Id), $"{user.Username} silindi; koltuğu boşaldı.");
+
+    private Task SetDeviceAsync(MobileDeviceDto device) =>
+        RunAsync(() => Api.SetMobileDeviceActiveAsync(TenantId, device.Id, !device.IsActive), device.IsActive ? "Telefon engellendi." : "Telefonun engeli kaldırıldı.");
+
+    private static string StatusText(string status) => status switch
+    {
+        "active" => "Aktif",
+        "grace" => "Ek süre",
+        "expired" => "Süresi doldu",
+        _ => "Yok",
+    };
+
+    private static string StatusStatClass(string status) => status switch
+    {
+        "active" => "admin-stat--success",
+        "grace" => "admin-stat--warning",
+        _ => "admin-stat--danger",
+    };
+
+    private static string SourceText(string source) => source switch
+    {
+        "bank_transfer" => "Havale / EFT",
+        "card" => "Kredi kartı",
+        "cash" => "Nakit",
+        _ => "Manuel",
+    };
+}

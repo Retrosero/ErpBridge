@@ -51,8 +51,55 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Faz 15.5 — Mikro <c>_ERPB_PARAMETRELER</c> snapshot mirror, one row per parameter.</summary>
     public DbSet<ParameterRecord> Parameters => Set<ParameterRecord>();
 
+    /// <summary>Mobile app users; one active user is one paid seat.</summary>
+    public DbSet<MobileUser> MobileUsers => Set<MobileUser>();
+
+    /// <summary>Phones that signed in to a tenant, for support and revocation.</summary>
+    public DbSet<MobileDevice> MobileDevices => Set<MobileDevice>();
+
+    /// <summary>Seat purchases; append-only history with one current row per tenant.</summary>
+    public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<MobileUser>(b =>
+        {
+            b.ToTable("mobile_users");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Username).IsRequired().HasMaxLength(64);
+            b.Property(x => x.FullName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.PasswordHash).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Role).IsRequired().HasMaxLength(16);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // A deleted user's name is free again; live names stay unique.
+            b.HasIndex(x => new { x.TenantId, x.Username }).IsUnique().HasFilter("\"DeletedAtUtc\" IS NULL");
+            b.HasIndex(x => new { x.TenantId, x.IsActive });
+        });
+
+        modelBuilder.Entity<MobileDevice>(b =>
+        {
+            b.ToTable("mobile_devices");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.DeviceId).IsRequired().HasMaxLength(128);
+            b.Property(x => x.AppVersion).HasMaxLength(64);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.LastUser).WithMany().HasForeignKey(x => x.LastUserId).OnDelete(DeleteBehavior.SetNull);
+            b.HasIndex(x => new { x.TenantId, x.DeviceId }).IsUnique();
+            b.HasIndex(x => x.LastUserId);
+        });
+
+        modelBuilder.Entity<TenantSubscription>(b =>
+        {
+            b.ToTable("tenant_subscriptions");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Source).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Reference).HasMaxLength(128);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.TenantId).IsUnique().HasFilter("\"IsCurrent\" = true");
+            b.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
+        });
+
         modelBuilder.Entity<Tenant>(b =>
         {
             b.ToTable("tenants");
@@ -60,6 +107,8 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.Name).IsRequired().HasMaxLength(255);
             b.Property(x => x.MaxDeviceCount).HasDefaultValue(1);
             b.HasIndex(x => x.Name).IsUnique();
+            b.Property(x => x.Code).HasMaxLength(16);
+            b.HasIndex(x => x.Code).IsUnique();
         });
 
         modelBuilder.Entity<License>(b =>
