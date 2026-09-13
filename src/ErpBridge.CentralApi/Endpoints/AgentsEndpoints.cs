@@ -92,6 +92,11 @@ public static class AgentsEndpoints
                 new ApiError { ErrorCode = "LICENSE_EXPIRED", Message = resolution.Reason ?? "License expired." });
 
         var license = resolution.License!;
+        // A company without an ERP must never get an agent: its uploads would
+        // overwrite the cards, stock and balances the phones created.
+        if (license.Tenant!.DataSource == TenantDataSources.Native)
+            return ErpBridge.CentralApi.Native.NativeTenantGuard.Rejection();
+
         var existing = await db.Agents.FirstOrDefaultAsync(a => a.TenantId == license.TenantId && a.MachineId == body.MachineId, ct);
         Agent agent;
         if (existing is null)
@@ -100,6 +105,17 @@ public static class AgentsEndpoints
             if (registeredDeviceCount >= license.Tenant!.MaxDeviceCount)
                 return JsonResults.Status(StatusCodes.Status409Conflict,
                     new ApiError { ErrorCode = "DEVICE_LIMIT_REACHED", Message = "The device limit for this customer has been reached." });
+
+            await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+            if (db.Database.IsRelational())
+            {
+                // Takes the tenant row lock and re-reads the data source under it, so
+                // a concurrent switch to native cannot slip in between check and insert.
+                var stillErp = await db.Tenants
+                    .Where(t => t.Id == license.TenantId && t.DataSource == TenantDataSources.Erp)
+                    .ExecuteUpdateAsync(s => s.SetProperty(t => t.NativeLockVersion, t => t.NativeLockVersion + 1), ct);
+                if (stillErp == 0) return ErpBridge.CentralApi.Native.NativeTenantGuard.Rejection();
+            }
 
             agent = new Agent
             {
@@ -110,6 +126,7 @@ public static class AgentsEndpoints
             };
             db.Agents.Add(agent);
             await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
         }
         else
         {

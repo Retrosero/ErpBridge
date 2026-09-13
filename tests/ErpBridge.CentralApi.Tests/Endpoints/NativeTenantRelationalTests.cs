@@ -160,6 +160,64 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
     }
 
     [Fact]
+    public async Task A_sale_of_an_unknown_product_or_with_a_negative_total_is_refused()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+
+        var phantom = await PostAsync(t.SalesToken, t, "sales_order", "MOB-SO-PHANTOM", new
+        {
+            mobileDocumentId = "MOB-SO-PHANTOM", customerCode = "C-001", amount = 10,
+            lines = new[] { new { productCode = "YOK-BOYLE-URUN", quantity = 1, unitPrice = 10 } },
+        });
+        var negative = await PostAsync(t.SalesToken, t, "sales_order", "MOB-SO-NEG", Sale("MOB-SO-NEG", "C-001", quantity: 1, unitPrice: -100, paymentType: "Cari Borç"));
+
+        phantom.Status.Should().Be("Failed");
+        negative.Status.Should().Be("Failed");
+        (await BalanceAsync(t.Id, "C-001")).Should().Be(0m);
+        (await StockAsync(t.Id, "CAY-1")).Should().Be(40m);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        (await db.NativeStockLevels.AnyAsync(l => l.TenantId == t.Id && l.StockCode == "YOK-BOYLE-URUN")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task An_erp_agent_cannot_register_or_upload_for_a_company_without_an_erp()
+    {
+        var t = await NativeTenantAsync();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var licenseKey = $"NATIVE-LIC-{Guid.NewGuid():N}";
+        db.Licenses.Add(new License { TenantId = t.Id, LicenseKey = licenseKey, IsActive = true, ExpiresAtUtc = DateTimeOffset.UtcNow.AddYears(1) });
+        await db.SaveChangesAsync();
+        var client = _factory.CreateClient();
+
+        var register = await client.PostJsonAsync("/api/v1/agents/register", new { licenseKey, machineId = "MACHINE-X", agentVersion = "1.0.0" });
+        register.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await register.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("TENANT_IS_NATIVE");
+
+        // An agent token minted before the switch must not be able to upload either.
+        var agentToken = _factory.IssueTestJwt(Guid.NewGuid(), t.Id);
+        var upload = await client.PostJsonAsync("/api/v1/bootstrap/upload/start", new { sourceDatabase = "MIKRO_DB", isIncremental = false }, agentToken);
+        upload.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await db.Agents.AnyAsync(a => a.TenantId == t.Id)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_tenant_with_documents_waiting_for_an_agent_cannot_be_switched_to_native()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"QUEUED-{suffix}", $"Queued tenant {suffix}");
+        await _factory.SeedJobAsync(tenant.Id, $"SO-QUEUED-{suffix}");
+        var adminToken = await AdminTokenAsync();
+
+        var switched = await PutAsync($"/api/v1/admin/tenants/{tenant.Id}/mobile/data-source", new { dataSource = "native" }, adminToken);
+
+        switched.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await switched.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("TENANT_HAS_ERP_DATA");
+    }
+
+    [Fact]
     public async Task An_erp_tenant_keeps_documents_for_its_agent_and_refuses_cards()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];

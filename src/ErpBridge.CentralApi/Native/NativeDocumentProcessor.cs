@@ -204,9 +204,13 @@ public sealed class NativeDocumentProcessor
             var quantity = Number(line, "quantity") ?? 0;
             if (quantity <= 0) return $"Line {lineNo} has no quantity.";
             var stockCode = Text(line, "productCode") ?? await StockCodeForBarcodeAsync(db, booking.TenantId, Text(line, "barcode"), ct);
-            if (stockCode is null) return $"Line {lineNo} names no known product.";
+            // A code that names no product card would move stock of a product nobody
+            // can see. The phone sends cards before sales, so a real product is known.
+            if (stockCode is null || !await StockCardExistsAsync(db, booking.TenantId, stockCode, ct))
+                return $"Line {lineNo} names no known product.";
             var unitPrice = Number(line, "unitPrice") ?? 0;
             var lineTotal = Number(line, "lineTotal") ?? quantity * unitPrice;
+            if (unitPrice < 0 || lineTotal < 0) return $"Line {lineNo} has a negative price.";
             linesTotal += lineTotal;
 
             var level = await LevelAsync(db, booking.TenantId, stockCode, ct);
@@ -235,6 +239,8 @@ public sealed class NativeDocumentProcessor
         }
 
         var amount = decimal.Round(Number(sale, "amount") ?? linesTotal, 2);
+        // A negative debit would silently reduce the customer's debt.
+        if (amount < 0) return "A sale cannot have a negative total.";
         await PostToCustomerAsync(db, booking, customer, amount, debit: true, "Satış", documentNo, occurredAt, description, suffix: "sale", ct);
 
         // A sale paid on the spot is also a collection of the same amount: the
@@ -352,6 +358,10 @@ public sealed class NativeDocumentProcessor
         using var document = JsonDocument.Parse(payload);
         return Text(document.RootElement, "stockCode");
     }
+
+    private static Task<bool> StockCardExistsAsync(CentralApiDbContext db, Guid tenantId, string stockCode, CancellationToken ct) =>
+        db.MobileRecords.AsNoTracking()
+            .AnyAsync(r => r.TenantId == tenantId && r.Entity == "stocks" && r.RecordKey == stockCode && !r.IsDeleted, ct);
 
     private static async Task<(NativeStockLevel Row, bool IsNew)> LevelAsync(CentralApiDbContext db, Guid tenantId, string stockCode, CancellationToken ct)
     {

@@ -275,6 +275,19 @@ registration ayrı bir composition projesine taşınır.
      **tek** eşleşen `counterparty` unvanıyla çözülür.
    - ERP tenant'ında `stock_card`/`customer_card` 409 `CARDS_REQUIRE_NATIVE_TENANT`
      ile reddedilir (ajanın bu türler için yazıcısı yok).
+   - **ERP yazıcıları native tenant'a yazamaz** (`Native/NativeTenantGuard`, 409
+     `TENANT_IS_NATIVE`): ajan kaydı, legacy `/bootstrap`, `/bootstrap/upload`
+     start **ve** complete, `/ingest/changeset`. Ajan kaydı ve veri kaynağı
+     değişimi aynı tenant satır kilidini (`NativeLockVersion`) alır; kayıt veri
+     kaynağını kilit altında `WHERE DataSource = 'erp'` ile yeniden okur. Yeni bir
+     ERP yazma ucu eklenirse bu koruma da eklenir.
+   - `native`'e geçiş, ajan veya ERP verisinin yanında **bekleyen/işlenen iş**
+     (`jobs` Pending/Processing) varken de reddedilir; o belgeleri ne ajan ne
+     işleyici alırdı.
+   - Satış doğrulaması: satır `quantity > 0`, ürün kartı `mobile_records`
+     `stocks`'ta **var olmalı** (kod doğrudan gelse bile), fiyat ve toplam eksi
+     olamaz. Telefon kuyruğu `createdAt` sırasıyla gönderdiği için yeni ürünün
+     kartı satıştan önce gider.
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

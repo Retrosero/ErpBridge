@@ -126,13 +126,24 @@ public static class AdminMobileSeatsEndpoints
         var value = body?.DataSource?.Trim().ToLowerInvariant();
         if (!TenantDataSources.IsValid(value))
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_DATA_SOURCE", Message = "dataSource must be erp or native." });
+        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        if (db.Database.IsRelational())
+        {
+            // Same lock agent registration takes, so the checks below and a
+            // registration cannot interleave.
+            await db.Tenants.Where(t => t.Id == tenantId)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.NativeLockVersion, t => t.NativeLockVersion + 1), ct);
+        }
         var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return TenantNotFound();
         if (tenant.DataSource == value) return Results.NoContent();
 
         if (value == TenantDataSources.Native)
         {
+            // Documents already waiting for an agent would never be booked by the
+            // native processor, nor reach an ERP any more.
             var hasErpData = await db.Agents.AnyAsync(a => a.TenantId == tenantId, ct)
+                || await db.Jobs.AnyAsync(j => j.TenantId == tenantId && (j.Status == JobStatus.Pending || j.Status == JobStatus.Processing), ct)
                 || await db.BootstrapSnapshots.AnyAsync(s => s.TenantId == tenantId, ct)
                 || await db.BootstrapPackages.AnyAsync(p => p.TenantId == tenantId, ct)
                 || await db.MobileRecords.AnyAsync(r => r.TenantId == tenantId && r.SourceDatabase != Native.NativeDocumentProcessor.SourceName, ct);
@@ -146,6 +157,7 @@ public static class AdminMobileSeatsEndpoints
 
         tenant.DataSource = value!;
         await db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
         return Results.NoContent();
     }
 
