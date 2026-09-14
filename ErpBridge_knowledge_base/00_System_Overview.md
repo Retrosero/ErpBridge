@@ -373,7 +373,9 @@ registration ayrı bir composition projesine taşınır.
      sebep. Önceden sunucuya ulaşmış belge ikinci kez işlenmez. Ürün kartı
      onayında onay, kartın istediği admin yetkisinin yerine geçer.
    - **Kendi talebi:** onaycı kendi talebini onaylayamaz (403
-     `SELF_APPROVAL_NOT_ALLOWED`); firmada başka aktif onaycı yoksa onaylayabilir.
+     `SELF_APPROVAL_NOT_ALLOWED`); firmada başka aktif onaycı yoksa onaylayabilir. `GET /summary`
+     bunu `canApproveOwnRequests` olarak döner; telefon sunucunun reddedeceği
+     Onayla düğmesini göstermez.
    - **Durumlar:** `Pending` → `Approved` | `Rejected` | `Withdrawn` (yalnız
      talep eden). `Rejected` → `Pending` (onaycı "tekrar aç") veya
      `Resubmitted` (talep eden düzeltip `replacesRequestId` ile yeni talep

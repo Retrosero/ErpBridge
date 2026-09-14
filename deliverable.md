@@ -1,3 +1,21 @@
+# Düzeltme — Onay özeti: kendi talebini onaylayabilir mi — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Contracts/ApprovalContracts.cs`, `Approvals/ApprovalService.cs`: `GET /api/v1/android/approvals/summary` yanıtına `canApproveOwnRequests` (onaycı ve firmada başka aktif onaycı yok).
+- `tests/.../ApprovalCentreRelationalTests.cs`: özet alanı iki durumda doğrulanır.
+- `ErpBridge_knowledge_base/00_System_Overview.md` (kural 16).
+
+## Davranış
+
+- İki cihazlı testte, başka onaycı varken talep sahibine sunucunun reddedeceği Onayla düğmesi gösteriliyordu; telefon bu alanla düğmeyi gizler. Alan eklemedir, eski uygulamalar etkilenmez.
+
+## Testler / derleme
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; `ApprovalCentreRelationalTests` 17/17.
+
+---
+
 # Düzeltme — Koltuk kaydında bitiş tarihi UTC'ye çevrilir — Teslimat
 
 ## Değişen dosyalar

@@ -67,6 +67,12 @@ public sealed class ApprovalSummaryDto
     [JsonPropertyName("latestUpdatedSeq")] public long LatestUpdatedSeq { get; set; }
 
     [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
+
+    /// <summary>
+    /// Whether the caller may approve their own requests: an approver in a company with
+    /// no other active approver. Lets the phone hide an Approve button the server would refuse.
+    /// </summary>
+    [JsonPropertyName("canApproveOwnRequests")] public bool CanApproveOwnRequests { get; set; }
 }
 
 /// <summary>The company's approval rules.</summary>
