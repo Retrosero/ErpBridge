@@ -336,6 +336,56 @@ registration ayrı bir composition projesine taşınır.
      olamaz. Telefon kuyruğu `createdAt` sırasıyla gönderdiği için yeni ürünün
      kartı satıştan önce gider.
 
+16. **Onay merkezi sunucudadır: `Approvals/ApprovalService` (Faz 38, 2026-09-14).**
+   Telefon belleğindeki onay listesinin yerini aldı; firmanın tüm onaycıları aynı
+   kuyruğu görür, uygulama kapansa da talep kaybolmaz.
+   - **Roller:** `mobile_users.Role` = `ADMIN` | `MANAGER` | `SALES`. Admin her
+     şeyi yapar. Yöneticiye (`MANAGER`) admin iki yetki verir: `CanApprove`
+     (onay/red/tekrar açma) ve `CanManageApprovalRules`. Satış kullanıcısında ve
+     admin'de bu bayraklar tutulmaz (rol değişince temizlenir; yeniden verilir).
+     Karar `ApprovalPermissions` ile her istekte **veritabanındaki satırdan**
+     okunur, token'dan değil.
+   - **Kurallar:** `tenant_approval_rules`, 8 tür: `sale`, `purchase`, `return`,
+     `collection`, `disbursement`, `stock_count`, `product_card`,
+     `customer_card`. Satır yoksa **hepsi açık**. Kimse muaf değildir (admin
+     dahil). Session (`/account/me`, login) `approvalRules` taşır.
+   - **Zorlama:** mobil kullanıcı kuralı açık bir türde belgeyi doğrudan
+     `/ingest/*`'a gönderirse 409 `APPROVAL_REQUIRED`. Tür belge tipinden
+     (`ApprovalKinds.ForDocumentType`) ya da payload'daki `approvalKind`'dan
+     çıkar — alışın kasa ödemesi `disbursement` belgesidir ama `purchase`
+     kuralına uyar. API anahtarı ve ajan kişi taşımadığı için muaftır; Excel
+     batch'leri ve gider/diğer kasa hareketleri kural dışıdır.
+   - **Talep:** telefon kuyruğundan `documentType = approval_request`, payload
+     `{ kind, counterpartyName, amount, summary, documents: [{ documentType,
+     externalId, payload }], replacesRequestId? }` (1–20 belge). Belgeler,
+     onaysız akışta aynen gönderilecek olanlardır. Kart türleri yalnız kendi kart
+     belgelerini, diğer türler kart dışı belgeleri taşır; iç içe talep ve batch
+     yok. ERP tenant'ında kart talebi 409 `CARDS_REQUIRE_NATIVE_TENANT`. Aynı
+     `externalId` tekrar gelirse aynı talep döner. Yalnız mobil kullanıcı talep
+     gönderir (API anahtarı 403 `APPROVAL_REQUIRES_MOBILE_USER`).
+   - **Tek karar:** her geçiş `ExecuteUpdate … WHERE Status = <beklenen>` ile
+     yapılır (`ClaimAsync`); aynı anda basan ikinci onaycı 409
+     `APPROVAL_ALREADY_DECIDED` ("… by <ad>") alır. Onay, belgeleri **aynı
+     transaction'da** işler: native tenant'ta `NativeDocumentProcessor.IngestAsync`
+     dış transaction'a katılır (commit ve `hub.Publish` onay servisindedir), ERP
+     tenant'ında `Pending` job açılır. Belgelerden biri `Failed` olursa her şey
+     geri alınır, talep **beklemede kalır**, 422 `APPROVAL_DOCUMENT_FAILED` +
+     sebep. Önceden sunucuya ulaşmış belge ikinci kez işlenmez. Ürün kartı
+     onayında onay, kartın istediği admin yetkisinin yerine geçer.
+   - **Kendi talebi:** onaycı kendi talebini onaylayamaz (403
+     `SELF_APPROVAL_NOT_ALLOWED`); firmada başka aktif onaycı yoksa onaylayabilir.
+   - **Durumlar:** `Pending` → `Approved` | `Rejected` | `Withdrawn` (yalnız
+     talep eden). `Rejected` → `Pending` (onaycı "tekrar aç") veya
+     `Resubmitted` (talep eden düzeltip `replacesRequestId` ile yeni talep
+     gönderir; ikisi aynı transaction'da). Her adım `approval_request_events`'e
+     yazılır.
+   - **Uçlar:** `/api/v1/android/approvals` — `GET ?status=pending,rejected|all
+     &changedSinceSeq` (onaycı hepsini, diğerleri kendi taleplerini görür),
+     `GET /{id}` (belgeler, geçmiş, native'de stok uyarısı; onay engellenmez),
+     `GET /summary`, `POST /{id}/approve|reject|reopen|withdraw {note}`,
+     `GET|PUT /rules`. Konsol: `GET /api/v1/admin/tenants/{id}/mobile/approvals`
+     (salt okunur) ve overview'da `approvalRules`.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

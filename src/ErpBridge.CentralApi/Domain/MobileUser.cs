@@ -21,8 +21,14 @@ public sealed class MobileUser
     /// <summary>BCrypt hash; the plain password is never stored or logged.</summary>
     public string PasswordHash { get; set; } = string.Empty;
 
-    /// <summary><see cref="MobileUserRoles.Admin"/> or <see cref="MobileUserRoles.Sales"/>.</summary>
+    /// <summary>One of <see cref="MobileUserRoles"/>.</summary>
     public string Role { get; set; } = MobileUserRoles.Sales;
+
+    /// <summary>A manager the administrator allowed to approve and reject requests. Administrators always may.</summary>
+    public bool CanApprove { get; set; }
+
+    /// <summary>A manager the administrator allowed to change the approval rules. Administrators always may.</summary>
+    public bool CanManageApprovalRules { get; set; }
 
     /// <summary>Inactive users keep their history but release their seat and cannot sign in.</summary>
     public bool IsActive { get; set; } = true;
@@ -44,7 +50,21 @@ public sealed class MobileUser
 public static class MobileUserRoles
 {
     public const string Admin = "ADMIN";
+
+    /// <summary>A field user whose approval rights the administrator grants one by one.</summary>
+    public const string Manager = "MANAGER";
+
     public const string Sales = "SALES";
 
-    public static bool IsValid(string? role) => role is Admin or Sales;
+    public static bool IsValid(string? role) => role is Admin or Manager or Sales;
+}
+
+/// <summary>What a user may do in the approval centre, from their current row.</summary>
+public static class ApprovalPermissions
+{
+    public static bool CanDecide(MobileUser user) =>
+        user.Role == MobileUserRoles.Admin || (user.Role == MobileUserRoles.Manager && user.CanApprove);
+
+    public static bool CanManageRules(MobileUser user) =>
+        user.Role == MobileUserRoles.Admin || (user.Role == MobileUserRoles.Manager && user.CanManageApprovalRules);
 }

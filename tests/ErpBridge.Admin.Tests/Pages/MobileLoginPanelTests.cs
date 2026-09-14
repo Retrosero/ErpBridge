@@ -73,6 +73,38 @@ public sealed class MobileLoginPanelTests : BunitContext
         cut.FindAll($"#ml-create-{TenantId}").Should().BeEmpty();
     }
 
+    [Fact]
+    public void An_operator_sets_a_new_password_for_the_company_administrator()
+    {
+        var patron = new MobileUserDto { Id = Guid.NewGuid(), Username = "patron", FullName = "Patron", Role = "ADMIN", IsActive = true };
+        var api = Register(Overview(status: "active", max: 1, users: [patron]));
+
+        var cut = Render<MobileLoginPanel>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find($"#ml-password-{patron.Id}"));
+        cut.Find($"#ml-password-{patron.Id}").Click();
+        cut.Find($"#ml-new-password-{patron.Id}").Change("123");
+        cut.Find($"#ml-password-save-{patron.Id}").HasAttribute("disabled").Should().BeTrue("a password needs at least 6 characters");
+        cut.Find($"#ml-new-password-{patron.Id}").Change("yeniparola1");
+        cut.Find($"#ml-password-save-{patron.Id}").Click();
+
+        cut.WaitForAssertion(() => cut.Find(".mobile-login__notice").TextContent.Should().Contain("patron"));
+        api.LastPatchedUserId.Should().Be(patron.Id);
+        var body = api.LastPatch!.Value;
+        body.GetProperty("password").GetString().Should().Be("yeniparola1");
+        body.EnumerateObject().Select(p => p.Name).Should().Equal("password");
+        cut.Markup.Should().NotContain("yeniparola1", "the password is never shown back");
+    }
+
+    [Fact]
+    public void The_first_login_of_a_company_is_offered_as_its_administrator()
+    {
+        Register(Overview(status: "active", max: 3, users: []));
+
+        var cut = Render<MobileLoginPanel>(p => p.Add(x => x.TenantId, TenantId));
+
+        cut.WaitForAssertion(() => cut.Find(".mobile-login__form-title").TextContent.Should().Be("Firma admini oluştur"));
+    }
+
     private FakeApi Register(TenantMobileOverviewDto overview)
     {
         var api = new FakeApi(overview);
@@ -100,6 +132,8 @@ public sealed class MobileLoginPanelTests : BunitContext
         public TenantMobileOverviewDto? OverviewAfterWrite { get; set; }
         public JsonElement? LastSubscription { get; private set; }
         public JsonElement? LastCreatedUser { get; private set; }
+        public JsonElement? LastPatch { get; private set; }
+        public Guid? LastPatchedUserId { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -117,6 +151,12 @@ public sealed class MobileLoginPanelTests : BunitContext
                 LastCreatedUser = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
                 _overview = OverviewAfterWrite ?? _overview;
                 return Json(HttpStatusCode.Created, new MobileUserDto { Id = Guid.NewGuid(), Username = "patron", FullName = "Firma Sahibi", Role = "ADMIN", IsActive = true });
+            }
+            if (request.Method == HttpMethod.Patch && path.StartsWith($"{basePath}/users/", StringComparison.Ordinal))
+            {
+                LastPatchedUserId = Guid.Parse(path[(path.LastIndexOf('/') + 1)..]);
+                LastPatch = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
+                return Json(HttpStatusCode.OK, _overview.Users.First(u => u.Id == LastPatchedUserId));
             }
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         }

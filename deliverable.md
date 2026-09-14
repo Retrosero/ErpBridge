@@ -1,3 +1,39 @@
+# Faz 38 — Sunucuda onay merkezi (çok onaycılı, kalıcı) — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Domain/ApprovalRequest.cs`: `ApprovalRequest`, `ApprovalRequestEvent`, `TenantApprovalRules`, `ApprovalStatuses`, `ApprovalActions`, `ApprovalKinds`.
+- `src/ErpBridge.CentralApi/Domain/MobileUser.cs`: `MANAGER` rolü, `CanApprove`, `CanManageApprovalRules`, `ApprovalPermissions`.
+- `src/ErpBridge.CentralApi/Approvals/ApprovalService.cs`: talep, onay/red, tekrar açma, geri çekme, düzeltip yeniden gönderme, kurallar.
+- `src/ErpBridge.CentralApi/Endpoints/MobileApprovalEndpoints.cs`: `/api/v1/android/approvals/*`.
+- `src/ErpBridge.CentralApi/Endpoints/IngestEndpoints.cs`: `approval_request` belgesi; kuralı açık türde doğrudan belge 409 `APPROVAL_REQUIRED`.
+- `src/ErpBridge.CentralApi/Native/NativeDocumentProcessor.cs`: dış transaction'a katılma; `StockShortagesAsync`.
+- `src/ErpBridge.CentralApi/Mobile/MobileSeatService.cs`, `Contracts/*`, `Endpoints/MobileAccountEndpoints.cs`, `Endpoints/AdminMobileSeatsEndpoints.cs`: rol/yetki alanları, session `approvalRules`, konsol onay listesi.
+- `src/ErpBridge.CentralApi/Data/CentralApiDbContext.cs`, migration `Faz38ApprovalCentre`.
+- `src/ErpBridge.Admin/Api/CentralApiClient.cs`, `Pages/TenantMobile.razor(.css)`, `Shared/MobileLoginPanel.razor`: Admin/Yönetici/Saha rolleri, yönetici yetkileri, salt okunur onay merkezi bölümü.
+- `src/ErpBridge.Admin/Shared/MobileLoginPanel.razor(.css)`: lisans sayfasında her telefon kullanıcısına (firma admini dahil) parola belirleme; ilk kullanıcı "Firma admini oluştur" olarak sunulur.
+- `ErpBridge_knowledge_base/00_System_Overview.md` (kural 16), `03_Data_Dictionary_and_Rules.md`.
+
+## Davranış
+
+- Onay talepleri ve kuralları PostgreSQL'de; admin ve yetkili yöneticiler aynı kuyruğu görür, diğer kullanıcılar yalnız kendi taleplerini.
+- Karar tek seferliktir; onay belgeleri aynı transaction'da işler, işlenemeyen belge talebi beklemede bırakır.
+- Reddedilen talep tekrar açılabilir veya talep eden tarafından düzeltilip yeniden gönderilir; bekleyen talep geri çekilebilir.
+- Kural açıkken telefon onayı atlayamaz (409). Eski uygulama sürümleri kural açık türlerde 409 alır; telefon sürümü aynı gün yayımlanmalı.
+
+## Testler
+
+- `ApprovalCentreRelationalTests`: 17 test (SQLite).
+- `TenantMobilePageTests`: 2 yeni test (toplam 6).
+- `MobileLoginPanelTests`: 2 yeni test (toplam 5).
+- `NativeTenantRelationalTests`, `MobileSeatsRelationalTests`: doğrudan belge gönderen testler kuralları kapatarak / kural dışı tür kullanarak güncellendi.
+
+## Derleme çıktısı
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı, 0 hata. `dotnet test ErpBridge.sln`: tümü başarılı (CentralApi 321, Admin 39; canlı Mikro testleri atlandı). `dotnet ef migrations has-pending-model-changes`: değişiklik yok.
+
+---
+
 # Faz 37 — ERP'siz firmada sayımın stoğa etkisi — Teslimat
 
 ## Değişen dosyalar

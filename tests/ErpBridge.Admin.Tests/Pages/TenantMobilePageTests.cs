@@ -79,6 +79,52 @@ public sealed class TenantMobilePageTests : BunitContext
         cut.WaitForAssertion(() => api.DeletedUserIds.Should().Equal(ali.Id));
     }
 
+    [Fact]
+    public void A_manager_is_created_with_the_approval_rights_the_operator_ticks()
+    {
+        var api = Register(Overview(max: 3, users: [User("patron", "ADMIN")]));
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find("#user-form-role"));
+        cut.FindAll("#user-form-can-approve").Should().BeEmpty("rights are offered for managers only");
+        cut.Find("#user-form-username").Change("mehmet");
+        cut.Find("#user-form-fullname").Change("Mehmet Müdür");
+        cut.Find("#user-form-password").Change("parola123");
+        cut.Find("#user-form-role").Change("MANAGER");
+        cut.Find("#user-form-can-approve").Change(true);
+        cut.Find("#user-form-create").Click();
+
+        cut.WaitForAssertion(() => api.LastCreatedUserBody.Should().NotBeNull());
+        var body = api.LastCreatedUserBody!.Value;
+        body.GetProperty("role").GetString().Should().Be("MANAGER");
+        body.GetProperty("canApprove").GetBoolean().Should().BeTrue();
+        body.GetProperty("canManageApprovalRules").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Shows_the_company_approval_rules_and_requests_read_only()
+    {
+        var mehmet = User("mehmet", "MANAGER");
+        mehmet.CanApprove = true;
+        var overview = Overview(max: 3, users: [User("patron", "ADMIN"), mehmet]);
+        overview.ApprovalRules = new ApprovalRulesDto { Rules = new() { ["sale"] = true, ["stock_count"] = false }, UpdatedByName = "Patron" };
+        var api = Register(overview);
+        api.Approvals =
+        [
+            new ApprovalRequestDto { Id = Guid.NewGuid(), Kind = "sale", CounterpartyName = "Bakkal Ali", Amount = 450, Status = "Pending", RequestedByName = "Ali", RequestedAtUtc = DateTimeOffset.UtcNow },
+            new ApprovalRequestDto { Id = Guid.NewGuid(), Kind = "collection", CounterpartyName = "Bakkal Ali", Amount = 100, Status = "Rejected", RequestedByName = "Ali", DecidedByName = "Patron", DecisionNote = "tutar yanlış", RequestedAtUtc = DateTimeOffset.UtcNow },
+        ];
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+
+        cut.WaitForAssertion(() => cut.FindAll(".approval-row").Count.Should().Be(2));
+        cut.Find(".approval-rule[data-kind='sale']").TextContent.Should().Contain("Onaya düşer");
+        cut.Find(".approval-rule[data-kind='stock_count']").TextContent.Should().Contain("Doğrudan işlenir");
+        cut.FindAll(".approval-row")[1].TextContent.Should().Contain("Reddedildi").And.Contain("tutar yanlış");
+        cut.FindAll(".user-row")[1].QuerySelector(".user-rights")!.TextContent.Should().Be("Onay verir");
+        cut.FindAll("button").Should().NotContain(b => b.TextContent.Contains("Onayla"), "the console never decides for a company");
+    }
+
     // ---- helpers -----------------------------------------------------------
 
     private FakeApi Register(TenantMobileOverviewDto overview)
@@ -121,6 +167,8 @@ public sealed class TenantMobilePageTests : BunitContext
         public Func<HttpResponseMessage>? SubscriptionResponse { get; set; }
         public JsonElement? LastSubscriptionBody { get; private set; }
         public List<Guid> DeletedUserIds { get; } = new();
+        public JsonElement? LastCreatedUserBody { get; private set; }
+        public ApprovalRequestDto[] Approvals { get; set; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -135,6 +183,13 @@ public sealed class TenantMobilePageTests : BunitContext
             {
                 LastSubscriptionBody = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
                 return SubscriptionResponse?.Invoke() ?? Json(HttpStatusCode.OK, _overview.Subscriptions[0]);
+            }
+            if (request.Method == HttpMethod.Get && path == $"{mobileBase}/approvals")
+                return Json(HttpStatusCode.OK, Approvals);
+            if (request.Method == HttpMethod.Post && path == $"{mobileBase}/users")
+            {
+                LastCreatedUserBody = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
+                return Json(HttpStatusCode.Created, new MobileUserDto { Id = Guid.NewGuid(), Username = "mehmet", Role = "MANAGER", IsActive = true });
             }
             if (request.Method == HttpMethod.Delete && path.StartsWith($"{mobileBase}/users/", StringComparison.Ordinal))
             {

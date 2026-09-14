@@ -66,8 +66,56 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Customer balances for tenants without an ERP.</summary>
     public DbSet<NativeCustomerBalance> NativeCustomerBalances => Set<NativeCustomerBalance>();
 
+    /// <summary>Company approval queue shared by all approvers.</summary>
+    public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+
+    /// <summary>History of every approval request.</summary>
+    public DbSet<ApprovalRequestEvent> ApprovalRequestEvents => Set<ApprovalRequestEvent>();
+
+    /// <summary>Which operations of a company need approval.</summary>
+    public DbSet<TenantApprovalRules> TenantApprovalRules => Set<TenantApprovalRules>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ApprovalRequest>(b =>
+        {
+            b.ToTable("approval_requests");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ExternalId).IsRequired().HasMaxLength(128);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(16);
+            b.Property(x => x.CounterpartyName).IsRequired().HasMaxLength(200);
+            b.Property(x => x.Amount).HasPrecision(18, 2);
+            b.Property(x => x.SummaryJson).HasColumnType("jsonb");
+            b.Property(x => x.DocumentsJson).HasColumnType("jsonb");
+            b.Property(x => x.Status).IsRequired().HasMaxLength(16);
+            b.Property(x => x.RequestedByName).HasMaxLength(120);
+            b.Property(x => x.DecidedByName).HasMaxLength(120);
+            b.Property(x => x.DecisionNote).HasMaxLength(500);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.ExternalId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Status, x.RequestedSeq });
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq });
+        });
+
+        modelBuilder.Entity<ApprovalRequestEvent>(b =>
+        {
+            b.ToTable("approval_request_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Action).IsRequired().HasMaxLength(16);
+            b.Property(x => x.ByName).HasMaxLength(120);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.HasOne(x => x.Request).WithMany().HasForeignKey(x => x.RequestId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.RequestId, x.AtSeq });
+        });
+
+        modelBuilder.Entity<TenantApprovalRules>(b =>
+        {
+            b.ToTable("tenant_approval_rules");
+            b.HasKey(x => x.TenantId);
+            b.Property(x => x.UpdatedByName).HasMaxLength(120);
+            b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantApprovalRules>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<NativeStockLevel>(b =>
         {
             b.ToTable("native_stock_levels");

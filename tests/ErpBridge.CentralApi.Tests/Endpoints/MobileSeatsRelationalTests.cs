@@ -223,7 +223,7 @@ public sealed class MobileSeatsRelationalTests : IClassFixture<SqliteCentralApiF
         (await SendAsMobileAsync(HttpMethod.Post, "/api/v1/android/sync/pull", new { cursor = (string?)null }, token, t.Id))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         var ingest = await SendAsMobileAsync(HttpMethod.Post, "/api/v1/ingest/jobs",
-            new { externalId = "SIP-ALI-1", documentType = "sales_order", payload = new { ok = true } }, token, t.Id);
+            new { externalId = "SIP-ALI-1", documentType = "expense", payload = new { ok = true } }, token, t.Id);
         ingest.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Created);
 
         (await Client().PatchAsync($"{AdminBase(t)}/users/{ali.Id}", new { isActive = false }, t.AdminToken)).StatusCode.Should().Be(HttpStatusCode.OK);
@@ -231,7 +231,7 @@ public sealed class MobileSeatsRelationalTests : IClassFixture<SqliteCentralApiF
         await ShouldFailAsync(await SendAsMobileAsync(HttpMethod.Post, "/api/v1/android/sync/pull", new { cursor = (string?)null }, token, t.Id),
             HttpStatusCode.Forbidden, "USER_INACTIVE");
         await ShouldFailAsync(await SendAsMobileAsync(HttpMethod.Post, "/api/v1/ingest/jobs",
-            new { externalId = "SIP-ALI-2", documentType = "sales_order", payload = new { ok = true } }, token, t.Id),
+            new { externalId = "SIP-ALI-2", documentType = "expense", payload = new { ok = true } }, token, t.Id),
             HttpStatusCode.Forbidden, "USER_INACTIVE");
     }
 

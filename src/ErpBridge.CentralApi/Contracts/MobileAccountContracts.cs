@@ -31,6 +31,9 @@ public sealed class MobileSessionDto
 
     /// <summary><c>erp</c> (data comes from the company's ERP) or <c>native</c> (the phones create it).</summary>
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
+
+    /// <summary>Operations that go to the approval centre, keyed by approval kind.</summary>
+    [JsonPropertyName("approvalRules")] public Dictionary<string, bool> ApprovalRules { get; set; } = new();
 }
 
 /// <summary>Seat capacity and subscription state of a tenant.</summary>
@@ -55,6 +58,12 @@ public sealed class MobileUserDto
     [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
     [JsonPropertyName("fullName")] public string FullName { get; set; } = string.Empty;
     [JsonPropertyName("role")] public string Role { get; set; } = string.Empty;
+
+    /// <summary>Effective right to approve: always true for an administrator.</summary>
+    [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
+
+    /// <summary>Effective right to change the approval rules: always true for an administrator.</summary>
+    [JsonPropertyName("canManageApprovalRules")] public bool CanManageApprovalRules { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("lastLoginAtUtc")] public DateTimeOffset? LastLoginAtUtc { get; set; }
@@ -74,6 +83,12 @@ public sealed class CreateMobileUserRequest
     [JsonPropertyName("fullName")] public string? FullName { get; set; }
     [JsonPropertyName("password")] public string? Password { get; set; }
     [JsonPropertyName("role")] public string? Role { get; set; }
+
+    /// <summary>For a manager only; ignored for other roles.</summary>
+    [JsonPropertyName("canApprove")] public bool? CanApprove { get; set; }
+
+    /// <summary>For a manager only; ignored for other roles.</summary>
+    [JsonPropertyName("canManageApprovalRules")] public bool? CanManageApprovalRules { get; set; }
 }
 
 /// <summary>Partial update; omitted fields stay unchanged.</summary>
@@ -83,6 +98,12 @@ public sealed class UpdateMobileUserRequest
     [JsonPropertyName("password")] public string? Password { get; set; }
     [JsonPropertyName("role")] public string? Role { get; set; }
     [JsonPropertyName("isActive")] public bool? IsActive { get; set; }
+
+    /// <summary>For a manager only; a user who stops being a manager loses both rights.</summary>
+    [JsonPropertyName("canApprove")] public bool? CanApprove { get; set; }
+
+    /// <summary>For a manager only; a user who stops being a manager loses both rights.</summary>
+    [JsonPropertyName("canManageApprovalRules")] public bool? CanManageApprovalRules { get; set; }
 }
 
 /// <summary>PUT /api/v1/admin/tenants/{id}/subscription body — records a new seat purchase.</summary>
@@ -129,6 +150,7 @@ public sealed class TenantMobileOverviewResponse
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
+    [JsonPropertyName("approvalRules")] public ApprovalRulesDto ApprovalRules { get; set; } = new();
     [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
     [JsonPropertyName("subscriptions")] public SubscriptionDto[] Subscriptions { get; set; } = Array.Empty<SubscriptionDto>();
     [JsonPropertyName("users")] public MobileUserDto[] Users { get; set; } = Array.Empty<MobileUserDto>();

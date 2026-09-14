@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Notifications;
@@ -80,7 +81,11 @@ public sealed class NativeDocumentProcessor
     /// <param name="callerIsAdmin">Whether the signed-in user is a company administrator; product cards need one.</param>
     public async Task<Job> IngestAsync(CentralApiDbContext db, Guid tenantId, Job job, bool callerIsAdmin, CancellationToken ct)
     {
-        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        // An approval posts its documents inside its own transaction; the booking joins
+        // it so a failed document rolls the approval back too. The caller then commits
+        // and wakes the devices.
+        var ownsTransaction = db.Database.IsRelational() && db.Database.CurrentTransaction is null;
+        await using var transaction = ownsTransaction ? await db.Database.BeginTransactionAsync(ct) : null;
         if (db.Database.IsRelational())
         {
             await db.Tenants.Where(t => t.Id == tenantId)
@@ -149,7 +154,7 @@ public sealed class NativeDocumentProcessor
 
         if (transaction is not null) await transaction.CommitAsync(ct);
 
-        if (devicesAffected)
+        if (devicesAffected && ownsTransaction)
             _hub.Publish(tenantId, now);
         else if (error is not null)
             _logger.LogWarning("Native {DocumentType} {ExternalId} for tenant {TenantId} was not booked: {Error}",
@@ -587,6 +592,47 @@ public sealed class NativeDocumentProcessor
     {
         using var document = JsonDocument.Parse(payload);
         return Text(document.RootElement, "title1");
+    }
+
+    /// <summary>
+    /// Products the sales documents in <paramref name="documents"/> (an approval
+    /// request's <c>[{ documentType, payload }]</c>) ask more of than is on hand. Stock
+    /// may go negative, so this only warns the approver.
+    /// </summary>
+    public static async Task<IReadOnlyList<StockWarningDto>> StockShortagesAsync(
+        CentralApiDbContext db, Guid tenantId, JsonElement documents, CancellationToken ct)
+    {
+        var wanted = new Dictionary<string, StockWarningDto>(StringComparer.Ordinal);
+        if (documents.ValueKind != JsonValueKind.Array) return [];
+        foreach (var item in documents.EnumerateArray())
+        {
+            if (!string.Equals(Text(item, "documentType"), SalesOrder, StringComparison.OrdinalIgnoreCase)
+                || !item.TryGetProperty("payload", out var payload)
+                || !payload.TryGetProperty("lines", out var lines) || lines.ValueKind != JsonValueKind.Array)
+                continue;
+            foreach (var line in lines.EnumerateArray())
+            {
+                var code = Text(line, "productCode") ?? await StockCodeForBarcodeAsync(db, tenantId, Text(line, "barcode"), ct);
+                var quantity = Number(line, "quantity") ?? 0;
+                if (code is null || quantity <= 0) continue;
+                if (!wanted.TryGetValue(code, out var entry))
+                    wanted[code] = entry = new StockWarningDto { StockCode = code, Title = Text(line, "productTitle") ?? code };
+                entry.Requested += quantity;
+            }
+        }
+
+        var shortages = new List<StockWarningDto>();
+        foreach (var entry in wanted.Values)
+        {
+            // Summed in memory: SQLite cannot aggregate decimal columns.
+            var levels = await db.NativeStockLevels.AsNoTracking()
+                .Where(l => l.TenantId == tenantId && l.StockCode == entry.StockCode)
+                .Select(l => l.Quantity)
+                .ToListAsync(ct);
+            entry.OnHand = levels.Sum();
+            if (entry.OnHand < entry.Requested) shortages.Add(entry);
+        }
+        return shortages;
     }
 
     private static async Task<string?> StockCodeForBarcodeAsync(CentralApiDbContext db, Guid tenantId, string? barcode, CancellationToken ct)

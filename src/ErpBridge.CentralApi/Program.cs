@@ -185,6 +185,7 @@ public partial class Program
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordRetention>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Mobile.MobileSeatService>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Approvals.ApprovalService>();
     }
 
     /// <summary>
@@ -557,6 +558,7 @@ public partial class Program
         app.MapAndroidEndpoints();
         app.MapMobileTelemetryEndpoints();
         app.MapMobileAccountEndpoints();
+        app.MapMobileApprovalEndpoints();
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();

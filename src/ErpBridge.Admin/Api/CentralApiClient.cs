@@ -257,9 +257,86 @@ public sealed class MobileUserDto
     [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
     [JsonPropertyName("fullName")] public string FullName { get; set; } = string.Empty;
     [JsonPropertyName("role")] public string Role { get; set; } = string.Empty;
+    [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
+    [JsonPropertyName("canManageApprovalRules")] public bool CanManageApprovalRules { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("lastLoginAtUtc")] public DateTimeOffset? LastLoginAtUtc { get; set; }
+}
+
+/// <summary>Turkish names of the mobile roles.</summary>
+public static class MobileRoles
+{
+    public const string Admin = "ADMIN";
+    public const string Manager = "MANAGER";
+    public const string Sales = "SALES";
+
+    public static string Text(string role) => role switch
+    {
+        Admin => "Admin",
+        Manager => "Yönetici",
+        _ => "Saha kullanıcısı",
+    };
+}
+
+/// <summary>A company's approval rules, read-only in the console.</summary>
+public sealed class ApprovalRulesDto
+{
+    [JsonPropertyName("rules")] public Dictionary<string, bool> Rules { get; set; } = new();
+    [JsonPropertyName("updatedByName")] public string? UpdatedByName { get; set; }
+    [JsonPropertyName("updatedAtUtc")] public DateTimeOffset? UpdatedAtUtc { get; set; }
+}
+
+/// <summary>An approval request of a company, as support reads it.</summary>
+public sealed class ApprovalRequestDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("counterpartyName")] public string CounterpartyName { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("requestedByName")] public string? RequestedByName { get; set; }
+    [JsonPropertyName("requestedAtUtc")] public DateTimeOffset RequestedAtUtc { get; set; }
+    [JsonPropertyName("decidedByName")] public string? DecidedByName { get; set; }
+    [JsonPropertyName("decidedAtUtc")] public DateTimeOffset? DecidedAtUtc { get; set; }
+    [JsonPropertyName("decisionNote")] public string? DecisionNote { get; set; }
+}
+
+/// <summary>Turkish names for approval kinds and statuses.</summary>
+public static class ApprovalTexts
+{
+    public static readonly IReadOnlyList<string> Kinds = ["sale", "purchase", "return", "collection", "disbursement", "stock_count", "product_card", "customer_card"];
+
+    public static string Kind(string kind) => kind switch
+    {
+        "sale" => "Satış",
+        "purchase" => "Alış",
+        "return" => "İade",
+        "collection" => "Tahsilat",
+        "disbursement" => "Tediye",
+        "stock_count" => "Sayım",
+        "product_card" => "Ürün kartı",
+        "customer_card" => "Müşteri kartı",
+        _ => kind,
+    };
+
+    public static string Status(string status) => status switch
+    {
+        "Pending" => "Bekliyor",
+        "Approved" => "Onaylandı",
+        "Rejected" => "Reddedildi",
+        "Withdrawn" => "Geri çekildi",
+        "Resubmitted" => "Düzeltilip yeniden gönderildi",
+        _ => status,
+    };
+
+    public static string Tone(string status) => status switch
+    {
+        "Pending" => "warning",
+        "Approved" => "success",
+        "Rejected" => "danger",
+        _ => "muted",
+    };
 }
 
 public sealed class SubscriptionDto
@@ -291,6 +368,7 @@ public sealed class TenantMobileOverviewDto
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
+    [JsonPropertyName("approvalRules")] public ApprovalRulesDto ApprovalRules { get; set; } = new();
     [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
     [JsonPropertyName("subscriptions")] public SubscriptionDto[] Subscriptions { get; set; } = Array.Empty<SubscriptionDto>();
     [JsonPropertyName("users")] public MobileUserDto[] Users { get; set; } = Array.Empty<MobileUserDto>();
@@ -312,6 +390,12 @@ public sealed class CreateMobileUserRequest
     [JsonPropertyName("fullName")] public string FullName { get; set; } = string.Empty;
     [JsonPropertyName("password")] public string Password { get; set; } = string.Empty;
     [JsonPropertyName("role")] public string Role { get; set; } = "SALES";
+
+    /// <summary>For a manager only.</summary>
+    [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
+
+    /// <summary>For a manager only.</summary>
+    [JsonPropertyName("canManageApprovalRules")] public bool CanManageApprovalRules { get; set; }
 }
 
 /// <summary>Partial update; null fields are omitted from the JSON and stay unchanged on the server.</summary>
@@ -321,6 +405,8 @@ public sealed class UpdateMobileUserRequest
     [JsonPropertyName("password"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Password { get; set; }
     [JsonPropertyName("role"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Role { get; set; }
     [JsonPropertyName("isActive"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? IsActive { get; set; }
+    [JsonPropertyName("canApprove"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? CanApprove { get; set; }
+    [JsonPropertyName("canManageApprovalRules"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? CanManageApprovalRules { get; set; }
 }
 
 /// <summary>
@@ -335,7 +421,8 @@ public static class MobileSeatMessages
         "SEATS_BELOW_ACTIVE_USERS" => "Koltuk sayısı aktif kullanıcı sayısının altına indirilemez. Önce kullanıcı pasifleştirin veya silin.",
         "SUBSCRIPTION_REQUIRED" => "Bu firmanın aboneliği yok. Önce ödeme kaydedip koltuk tanımlayın.",
         "SUBSCRIPTION_EXPIRED" => "Aboneliğin süresi dolmuş. Yeni ödeme kaydedip bitiş tarihini uzatın.",
-        "LAST_ADMIN" => "Firmada en az bir aktif yönetici kalmalı. Önce başka bir kullanıcıyı yönetici yapın.",
+        "LAST_ADMIN" => "Firmada en az bir aktif admin kalmalı. Önce başka bir kullanıcıyı admin yapın.",
+        "INVALID_ROLE" => "Rol Admin, Yönetici veya Saha kullanıcısı olmalı.",
         "USERNAME_TAKEN" => "Bu kullanıcı adı bu firmada zaten kullanılıyor.",
         "INVALID_USERNAME" => "Kullanıcı adı 3-64 karakter olmalı; yalnızca küçük harf, rakam, nokta, alt çizgi ve tire.",
         "INVALID_PASSWORD" => "Parola en az 6 karakter olmalı.",
@@ -594,6 +681,9 @@ public sealed class CentralApiClient
 
     public Task SetTenantDataSourceAsync(Guid tenantId, string dataSource, CancellationToken ct = default) =>
         SendRawStringAsync(() => _http.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/data-source", new { dataSource }, ct), ct);
+
+    public Task<ApprovalRequestDto[]> GetTenantApprovalsAsync(Guid tenantId, string status = "all", CancellationToken ct = default) =>
+        SendAsync<ApprovalRequestDto[]>(() => _http.GetAsync($"/api/v1/admin/tenants/{tenantId}/mobile/approvals?status={Uri.EscapeDataString(status)}&take=50", ct), ct);
 
     public Task SetMobileDeviceActiveAsync(Guid tenantId, Guid deviceId, bool isActive, CancellationToken ct = default) =>
         SendRawStringAsync(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/devices/{deviceId}", new { isActive }, ct), ct);
