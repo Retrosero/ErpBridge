@@ -118,11 +118,14 @@ public sealed class ApprovalService
     public static async Task<ApprovalSummaryDto> SummaryAsync(CentralApiDbContext db, Guid tenantId, MobileUser viewer, CancellationToken ct)
     {
         var visible = Visible(db, tenantId, viewer);
+        var canDecide = ApprovalPermissions.CanDecide(viewer);
         return new ApprovalSummaryDto
         {
             PendingCount = await visible.CountAsync(r => r.Status == ApprovalStatuses.Pending, ct),
             LatestUpdatedSeq = await visible.Select(r => (long?)r.UpdatedSeq).MaxAsync(ct) ?? 0,
-            CanApprove = ApprovalPermissions.CanDecide(viewer),
+            CanApprove = canDecide,
+            // The same rule DecideAsync enforces with SELF_APPROVAL_NOT_ALLOWED.
+            CanApproveOwnRequests = canDecide && !await OtherApproverExistsAsync(db, tenantId, viewer.Id, ct),
         };
     }
 

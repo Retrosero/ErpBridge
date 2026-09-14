@@ -41,6 +41,7 @@ public sealed class ApprovalCentreRelationalTests : IClassFixture<SqliteCentralA
         var summary = await GetJsonAsync<ApprovalSummaryDto>(c.Ayse, "/api/v1/android/approvals/summary");
         summary.PendingCount.Should().Be(1);
         summary.CanApprove.Should().BeTrue();
+        summary.CanApproveOwnRequests.Should().BeFalse("Patron, Mehmet and Veli could approve Ayşe's requests");
         summary.LatestUpdatedSeq.Should().BeGreaterThan(0);
     }
 
@@ -167,6 +168,7 @@ public sealed class ApprovalCentreRelationalTests : IClassFixture<SqliteCentralA
         // A company with a single approver is not locked out of its own work.
         var solo = await CompanyAsync(soloApprover: true);
         var soloRequest = await SubmitSaleAsync(solo, solo.Patron, "APR-O2", quantity: 1);
+        (await GetJsonAsync<ApprovalSummaryDto>(solo.Patron, "/api/v1/android/approvals/summary")).CanApproveOwnRequests.Should().BeTrue();
         (await DecideAsync(solo, solo.Patron, soloRequest.Id, "approve")).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
