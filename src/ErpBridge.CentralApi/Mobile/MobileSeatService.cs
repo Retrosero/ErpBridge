@@ -245,7 +245,9 @@ public sealed partial class MobileSeatService
             TenantId = tenantId,
             Seats = body.Seats,
             StartsAtUtc = now,
-            EndsAtUtc = body.EndsAtUtc,
+            // Normalise to UTC (offset 0) — the console's date picker sends a local
+            // offset, which Npgsql's `timestamp with time zone` rejects with a 500.
+            EndsAtUtc = body.EndsAtUtc?.ToUniversalTime(),
             Source = source,
             Reference = string.IsNullOrWhiteSpace(body.Reference) ? null : body.Reference.Trim(),
             Note = string.IsNullOrWhiteSpace(body.Note) ? null : body.Note.Trim(),

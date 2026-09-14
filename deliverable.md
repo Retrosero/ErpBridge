@@ -1,3 +1,20 @@
+# Düzeltme — Koltuk kaydında bitiş tarihi UTC'ye çevrilir — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Mobile/MobileSeatService.cs`: `SetSubscriptionAsync` bitiş tarihini `ToUniversalTime()` ile kaydeder.
+- `tests/ErpBridge.CentralApi.Tests/Endpoints/MobileSeatsRelationalTests.cs`: yerel saatle (+03:00) gönderilen bitiş tarihinin UTC olarak saklandığı test.
+
+## Davranış
+
+- Konsol bitiş tarihini Türkiye saatiyle gönderiyordu; PostgreSQL (`timestamp with time zone`, Npgsql) yalnızca UTC kabul ettiği için bitiş tarihli her koltuk kaydı 500 dönüyordu. API anahtarı ve lisans uçları aynı dönüşümü zaten yapıyordu.
+
+## Testler / derleme
+
+- Yeni test düzeltmeden önce başarısız (offset 3 saat), sonra başarılı. `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; CentralApi testleri 322/322.
+
+---
+
 # Faz 38 — Sunucuda onay merkezi (çok onaycılı, kalıcı) — Teslimat
 
 ## Değişen dosyalar
