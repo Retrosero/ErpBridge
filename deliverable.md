@@ -11,6 +11,7 @@
 - `src/ErpBridge.CentralApi/Mobile/MobileSeatService.cs`, `Contracts/*`, `Endpoints/MobileAccountEndpoints.cs`, `Endpoints/AdminMobileSeatsEndpoints.cs`: rol/yetki alanları, session `approvalRules`, konsol onay listesi.
 - `src/ErpBridge.CentralApi/Data/CentralApiDbContext.cs`, migration `Faz38ApprovalCentre`.
 - `src/ErpBridge.Admin/Api/CentralApiClient.cs`, `Pages/TenantMobile.razor(.css)`, `Shared/MobileLoginPanel.razor`: Admin/Yönetici/Saha rolleri, yönetici yetkileri, salt okunur onay merkezi bölümü.
+- `src/ErpBridge.Admin/Shared/MobileLoginPanel.razor(.css)`: lisans sayfasında her telefon kullanıcısına (firma admini dahil) parola belirleme; ilk kullanıcı "Firma admini oluştur" olarak sunulur.
 - `ErpBridge_knowledge_base/00_System_Overview.md` (kural 16), `03_Data_Dictionary_and_Rules.md`.
 
 ## Davranış
@@ -24,6 +25,7 @@
 
 - `ApprovalCentreRelationalTests`: 17 test (SQLite).
 - `TenantMobilePageTests`: 2 yeni test (toplam 6).
+- `MobileLoginPanelTests`: 2 yeni test (toplam 5).
 - `NativeTenantRelationalTests`, `MobileSeatsRelationalTests`: doğrudan belge gönderen testler kuralları kapatarak / kural dışı tür kullanarak güncellendi.
 
 ## Derleme çıktısı

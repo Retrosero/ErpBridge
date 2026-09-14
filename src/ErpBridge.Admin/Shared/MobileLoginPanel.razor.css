@@ -109,6 +109,33 @@
     padding: 0;
 }
 
+.mobile-login__form-title {
+    font-size: .85rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.mobile-login__notice {
+    color: var(--admin-success, #146c43);
+    font-size: .85rem;
+    margin: 0;
+}
+
+.mobile-login__password {
+    align-items: center;
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+}
+
+.mobile-login__password input {
+    max-width: 12rem;
+}
+
+.mobile-login__password-button {
+    margin-left: auto;
+}
+
 .mobile-login__users li {
     align-items: center;
     display: flex;
