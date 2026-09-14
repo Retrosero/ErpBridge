@@ -283,7 +283,13 @@ public sealed class ApprovalService
         AddEvent(db, request, approve ? ApprovalActions.Approved : ApprovalActions.Rejected, actor, note, now);
 
         if (approve && await PostDocumentsAsync(db, tenant, request, now, ct) is { } failure)
-            return failure; // disposing the transaction rolls the approval back
+        {
+            // On a relational database disposing the transaction rolls the approval back.
+            // A provider without transactions (the in-memory test host) already saved it
+            // together with the failed booking, so it is put back to pending explicitly.
+            if (transaction is null) await RevertClaimAsync(db, request, ct);
+            return failure;
+        }
 
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
@@ -400,6 +406,21 @@ public sealed class ApprovalService
         tracked.Status = to;
         tracked.UpdatedSeq = seq;
         return tracked;
+    }
+
+    private static async Task RevertClaimAsync(CentralApiDbContext db, ApprovalRequest request, CancellationToken ct)
+    {
+        request.Status = ApprovalStatuses.Pending;
+        request.DecidedByUserId = null;
+        request.DecidedByName = null;
+        request.DecidedAtUtc = null;
+        request.DecisionNote = null;
+        var decided = db.ChangeTracker.Entries<ApprovalRequestEvent>()
+            .Where(e => e.Entity.RequestId == request.Id && e.Entity.Action == ApprovalActions.Approved)
+            .Select(e => e.Entity)
+            .ToList();
+        db.ApprovalRequestEvents.RemoveRange(decided);
+        await db.SaveChangesAsync(ct);
     }
 
     private static void AddEvent(CentralApiDbContext db, ApprovalRequest request, string action, MobileUser actor, string? note, DateTimeOffset now) =>
