@@ -313,6 +313,16 @@ registration ayrı bir composition projesine taşınır.
      tenant'ında bu türler 409 `DOCUMENT_REQUIRES_NATIVE_TENANT` (ajanın yazıcısı
      yok). Telefonun kasa defterinden gelen satırsız `return` / `disbursement`
      belgeleri etkisiz kayıt olarak kalır.
+   - **Sayım (Faz 37, 2026-09-14).** `stock_count` (yalnızca `status =
+     COMPLETED`) her satırda stoğu **fark kadar** oynatır:
+     `countedQuantity - expectedQuantity`. Sayılan sayıya eşitlemez: sayım
+     çevrimdışı yapılıp sonra yüklenir; sayımdan sonra başka telefonun işlediği
+     satış eşitlemede silinirdi, farkta korunur. Farkı olmayan satır hareket
+     yazmaz; fark hareketi tutarsızdır (`birimFiyat`/`tutar` 0), açıklamada
+     sayılan miktar ve sayan kişi. Satırlar önce tamamen doğrulanır. Bilinen
+     sınır: telefonun `expectedQuantity`'si sayım anında eskiyse fark da o kadar
+     sapar (sayımdan önce senkron alınmalı). ERP tenant'ında `stock_count`
+     eskisi gibi ajan kuyruğuna gider.
    - **Toplu kart (Faz 35, 2026-09-13).** Excel içe aktarma `stock_card_batch`
      (yalnız yönetici) ve `customer_card_batch` belgeleriyle gelir:
      `{ "cards": [...] }`, belge başına en fazla 500 kart (telefon 200 gönderir).

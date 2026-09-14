@@ -406,6 +406,56 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
     }
 
     [Fact]
+    public async Task A_stock_count_applies_the_difference_it_found_and_keeps_sales_booked_after_it()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t); // 40 in stock
+        (await PostAsync(t.AdminToken, t, "stock_card", "CARD-S2", new { stockCode = "SU-1", name = "Su", price = 5, openingQuantity = 100 })).Status.Should().Be("Succeeded");
+
+        // Counted offline while 40 were expected; another phone sells 5 before the count arrives.
+        await PostAsync(t.SalesToken, t, "sales_order", "MOB-SO-DURING", Sale("MOB-SO-DURING", "C-001", quantity: 5, unitPrice: 10, paymentType: "Cari Borç"));
+        var cursor = await CursorAtEndAsync(t);
+
+        var count = await PostAsync(t.SalesToken, t, "stock_count", "COUNT-1", new
+        {
+            mobileDocumentId = "COUNT-1", status = "COMPLETED", countedBy = "ali",
+            lines = new object[]
+            {
+                new { productCode = "CAY-1", expectedQuantity = 40, countedQuantity = 30 },
+                new { barcode = (string?)null, productCode = "SU-1", expectedQuantity = 100, countedQuantity = 100 },
+            },
+        });
+
+        count.Status.Should().Be("Succeeded");
+        (await StockAsync(t.Id, "CAY-1")).Should().Be(25m, "40 - 5 sold - 10 missing");
+        (await StockAsync(t.Id, "SU-1")).Should().Be(100m);
+        var movements = (await PullAllAsync(t.SalesToken, t, cursor)).Where(c => c.Entity == "stokHareketleri").ToList();
+        movements.Should().ContainSingle("a line without a difference writes no movement");
+        movements[0].Data.GetProperty("cikisMiktar").GetDecimal().Should().Be(10m);
+    }
+
+    [Fact]
+    public async Task A_stock_count_with_an_unknown_product_or_not_completed_changes_nothing()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+
+        var unknown = await PostAsync(t.SalesToken, t, "stock_count", "COUNT-BAD", new
+        {
+            status = "COMPLETED",
+            lines = new object[] { new { productCode = "CAY-1", expectedQuantity = 40, countedQuantity = 0 }, new { productCode = "YOK", expectedQuantity = 1, countedQuantity = 2 } },
+        });
+        var pending = await PostAsync(t.SalesToken, t, "stock_count", "COUNT-PENDING", new
+        {
+            status = "PENDING", lines = new[] { new { productCode = "CAY-1", expectedQuantity = 40, countedQuantity = 0 } },
+        });
+
+        unknown.Status.Should().Be("Failed");
+        pending.Status.Should().Be("Failed");
+        (await StockAsync(t.Id, "CAY-1")).Should().Be(40m);
+    }
+
+    [Fact]
     public async Task An_erp_tenant_keeps_documents_for_its_agent_and_refuses_cards()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];

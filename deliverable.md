@@ -1,3 +1,25 @@
+# Faz 37 — ERP'siz firmada sayımın stoğa etkisi — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Native/NativeDocumentProcessor.cs`: `stock_count` (COMPLETED); satır başına sayılan − beklenen farkı stoğa uygulanır, fark hareketi yazılır.
+- `ErpBridge_knowledge_base/00_System_Overview.md` (kural 15).
+
+## Davranış
+
+- Sayım farkı stoğu artırır veya azaltır; sayımdan sonra işlenen satışlar korunur.
+- Farksız satır hareket yazmaz. Bilinmeyen ürünlü veya tamamlanmamış sayım hiçbir stoğu değiştirmez.
+
+## Testler
+
+- `NativeTenantRelationalTests`: 2 yeni test (toplam 24).
+
+## Derleme çıktısı
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı, 0 hata. `dotnet test ErpBridge.sln`: tümü başarılı. Şema değişikliği yok.
+
+---
+
 # Faz 36 — ERP'siz firmada iade ve alışın stoğa etkisi — Teslimat
 
 ## Değişen dosyalar

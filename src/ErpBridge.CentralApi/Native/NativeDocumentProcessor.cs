@@ -40,6 +40,7 @@ public sealed class NativeDocumentProcessor
     public const string Collection = "collection";
     public const string SalesReturn = "sales_return";
     public const string PurchaseReceipt = "purchase_receipt";
+    public const string StockCount = "stock_count";
 
     /// <summary>
     /// Line-carrying documents only the central API books. An ERP agent has no
@@ -110,6 +111,7 @@ public sealed class NativeDocumentProcessor
                 Collection => await BookCollectionAsync(db, booking, document.RootElement, ct),
                 SalesReturn => await BookSalesReturnAsync(db, booking, document.RootElement, ct),
                 PurchaseReceipt => await BookPurchaseReceiptAsync(db, booking, document.RootElement, ct),
+                StockCount => await BookStockCountAsync(db, booking, document.RootElement, ct),
                 // Cash movements, expenses and counts are kept as records but move
                 // neither stock nor a customer balance yet.
                 _ => null,
@@ -422,6 +424,71 @@ public sealed class NativeDocumentProcessor
         await PostToCustomerAsync(db, booking, supplier, amount, debit: false, "Alış", documentNo, occurredAt, description, suffix: "purchase", ct);
         if (Text(document, "paymentType") is { } paymentType && ImmediatePayments.Contains(paymentType.Trim()))
             await PostToCustomerAsync(db, booking, supplier, amount, debit: true, "Tediye", documentNo, occurredAt, paymentType, suffix: "payment", ct);
+        return null;
+    }
+
+    /// <summary>
+    /// A completed stock count. Each line moves stock by the difference the counter
+    /// found — <c>countedQuantity - expectedQuantity</c> — not to the counted number.
+    ///
+    /// <para>Counts are made offline and uploaded later. A sale another phone booked
+    /// after the count must survive it: setting stock to the counted number would
+    /// erase that sale, while applying the difference keeps it. Lines without a
+    /// difference are skipped. Every line is validated before the ledger moves.</para>
+    /// </summary>
+    private async Task<string?> BookStockCountAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        if (Text(document, "status") is { } status && !string.Equals(status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+            return "Only a completed stock count changes stock.";
+        if (!document.TryGetProperty("lines", out var lines) || lines.ValueKind != JsonValueKind.Array || lines.GetArrayLength() == 0)
+            return "A stock count needs at least one line.";
+
+        var documentNo = Text(document, "mobileDocumentId") ?? booking.ExternalId;
+        var occurredAt = Text(document, "occurredAt") ?? booking.Stamp;
+        var countedBy = Text(document, "countedBy");
+        var differences = new List<(string StockCode, decimal Difference, decimal Counted)>();
+        var lineNo = 0;
+        foreach (var line in lines.EnumerateArray())
+        {
+            lineNo++;
+            var stockCode = Text(line, "productCode") ?? await StockCodeForBarcodeAsync(db, booking.TenantId, Text(line, "barcode"), ct);
+            if (stockCode is null || !await StockCardExistsAsync(db, booking.TenantId, stockCode, ct))
+                return $"Line {lineNo} names no known product.";
+            if (Number(line, "countedQuantity") is not { } counted || counted < 0)
+                return $"Line {lineNo} has no counted quantity.";
+            var expected = Number(line, "expectedQuantity") ?? 0;
+            if (counted != expected) differences.Add((stockCode, counted - expected, counted));
+        }
+
+        lineNo = 0;
+        foreach (var (stockCode, difference, counted) in differences)
+        {
+            lineNo++;
+            var level = await LevelAsync(db, booking.TenantId, stockCode, ct);
+            level.Row.Quantity += difference;
+            level.Row.UpdatedAtUtc = booking.Now;
+            level.Row.LastMovementAtUtc = booking.Now;
+            booking.AddInventory(level.Row);
+            var incoming = difference > 0;
+            booking.Add("stockTransactions", new JsonObject
+            {
+                ["id"] = $"{booking.ExternalId}|{lineNo}",
+                ["erp"] = "NATIVE",
+                ["stokKod"] = stockCode,
+                ["urunKod"] = stockCode,
+                ["tarih"] = occurredAt,
+                ["tip"] = incoming ? 0 : 1,
+                ["cins"] = 0,
+                ["evrakNo"] = documentNo,
+                [incoming ? "girisMiktar" : "cikisMiktar"] = Math.Abs(difference),
+                ["miktar"] = difference,
+                ["birimFiyat"] = 0,
+                ["tutar"] = 0,
+                [incoming ? "girisDepoNo" : "cikisDepoNo"] = NativeLedgerDefaults.WarehouseNo,
+                ["aciklama"] = $"Sayım farkı (sayılan {counted}){(countedBy is null ? "" : $" · {countedBy}")}",
+                ["updatedAt"] = booking.Stamp,
+            });
+        }
         return null;
     }
 
