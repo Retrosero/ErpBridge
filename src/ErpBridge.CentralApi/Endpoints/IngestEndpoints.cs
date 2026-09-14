@@ -214,6 +214,31 @@ public static class IngestEndpoints
             return JsonResults.Status(StatusCodes.Status413PayloadTooLarge,
                 new ApiError { ErrorCode = "PAYLOAD_TOO_LARGE", Message = $"Payload exceeds {MaxPayloadBytes} bytes." });
 
+        // ---- 4b. An approval request waits for a company administrator. ----
+        if (string.Equals(documentType, ErpBridge.CentralApi.Approvals.ApprovalService.DocumentType, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)
+                || !Guid.TryParse(http.User.FindFirst("sub")?.Value, out var requesterId))
+                return JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError
+                {
+                    ErrorCode = "APPROVAL_REQUIRES_MOBILE_USER",
+                    Message = "Approval requests are sent by signed-in company users.",
+                });
+            var requester = await db.MobileUsers.AsNoTracking().FirstAsync(u => u.Id == requesterId, ct);
+            var approvals = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Approvals.ApprovalService>();
+            var submitted = await approvals.SubmitAsync(db, tenant, requester, body.ExternalId, payloadJson, ct);
+            if (!submitted.Succeeded) return JsonResults.Status(submitted.StatusCode, submitted.Error);
+            return JsonResults.Status(submitted.StatusCode, new IngestJobResponse
+            {
+                JobId = submitted.Value!.Id,
+                TenantId = tenant.Id,
+                ExternalId = submitted.Value.ExternalId,
+                DocumentType = ErpBridge.CentralApi.Approvals.ApprovalService.DocumentType,
+                Status = submitted.Value.Status,
+                Idempotent = submitted.StatusCode == StatusCodes.Status200OK,
+            });
+        }
+
         // ---- 5. Idempotent insert. The unique index on
         //         (TenantId, DocumentType, ExternalId) backs this up; we
         //         also do an explicit lookup so we can return the existing
@@ -237,6 +262,17 @@ public static class IngestEndpoints
                 Idempotent = true,
             });
         }
+
+        // ---- 5b. A signed-in user cannot post around the company's approval rules.
+        //          API keys and agents carry no person, so no rule applies to them. ----
+        if (ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)
+            && ApprovalKinds.ForDocument(documentType, payloadJson) is { } approvalKind
+            && (await ErpBridge.CentralApi.Approvals.ApprovalService.RulesAsync(db, tenantId, ct)).Requires(approvalKind))
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
+            {
+                ErrorCode = "APPROVAL_REQUIRED",
+                Message = $"The company requires approval for {approvalKind}; send it as an approval_request.",
+            });
 
         var job = new Job
         {

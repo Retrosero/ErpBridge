@@ -64,7 +64,8 @@
                 <label>
                     <span>Rol</span>
                     <select class="form-select" @bind="_role">
-                        <option value="ADMIN">Yönetici</option>
+                        <option value="ADMIN">Admin</option>
+                        <option value="MANAGER">Yönetici</option>
                         <option value="SALES">Saha kullanıcısı</option>
                     </select>
                 </label>
@@ -80,7 +81,7 @@
                     <li>
                         <code>@user.Username</code>
                         <span>@user.FullName</span>
-                        <AdminStatusBadge Text="@(user.Role == "ADMIN" ? "Yönetici" : "Saha")" Tone="info" />
+                        <AdminStatusBadge Text="@MobileRoles.Text(user.Role)" Tone="info" />
                         @if (!user.IsActive) { <AdminStatusBadge Text="Pasif" Tone="muted" /> }
                     </li>
                 }

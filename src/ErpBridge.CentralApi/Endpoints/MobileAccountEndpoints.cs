@@ -173,6 +173,7 @@ public static class MobileAccountEndpoints
         TenantCode = tenant.Code,
         Seats = await seats.GetUsageAsync(tenant.Id, ct),
         DataSource = tenant.DataSource,
+        ApprovalRules = (await ErpBridge.CentralApi.Approvals.ApprovalService.RulesAsync(db, tenant.Id, ct)).ToMap(),
     };
 
     internal static MobileUserDto ToDto(MobileUser u) => new()
@@ -181,6 +182,8 @@ public static class MobileAccountEndpoints
         Username = u.Username,
         FullName = u.FullName,
         Role = u.Role,
+        CanApprove = ApprovalPermissions.CanDecide(u),
+        CanManageApprovalRules = ApprovalPermissions.CanManageRules(u),
         IsActive = u.IsActive,
         CreatedAtUtc = u.CreatedAtUtc,
         LastLoginAtUtc = u.LastLoginAtUtc,

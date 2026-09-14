@@ -34,7 +34,26 @@ public static class AdminMobileSeatsEndpoints
         group.MapDelete("/users/{userId:guid}", DeleteUserAsync).WithName("AdminMobileDeleteUser");
         group.MapPatch("/devices/{deviceId:guid}", UpdateDeviceAsync).WithName("AdminMobileUpdateDevice");
         group.MapPut("/data-source", SetDataSourceAsync).WithName("AdminMobileSetDataSource");
+        group.MapGet("/approvals", ApprovalsAsync).WithName("AdminMobileApprovals");
         return routes;
+    }
+
+    /// <summary>
+    /// Read-only view of the tenant's approval queue for support. <c>status</c> takes the
+    /// same values as the phone's list; default <c>all</c>. Deciding stays with the company.
+    /// </summary>
+    private static async Task<IResult> ApprovalsAsync(Guid tenantId, [FromServices] CentralApiDbContext db, string? status, int? take, CancellationToken ct)
+    {
+        if (!await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId, ct)) return TenantNotFound();
+        var statuses = MobileApprovalEndpoints.ParseStatuses(string.IsNullOrWhiteSpace(status) ? "all" : status);
+        if (statuses is null)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_STATUS", Message = "Unknown status." });
+        var rows = await db.ApprovalRequests.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && statuses.Contains(r.Status))
+            .OrderByDescending(r => r.RequestedSeq)
+            .Take(Math.Clamp(take ?? MobileApprovalEndpoints.DefaultTake, 1, MobileApprovalEndpoints.MaxTake))
+            .ToListAsync(ct);
+        return JsonResults.Ok(rows.Select(ErpBridge.CentralApi.Approvals.ApprovalService.ToDto).ToArray());
     }
 
     private static async Task<IResult> OverviewAsync(Guid tenantId, [FromServices] CentralApiDbContext db, [FromServices] MobileSeatService seats, CancellationToken ct)
@@ -57,6 +76,7 @@ public static class AdminMobileSeatsEndpoints
             TenantId = tenant.Id,
             TenantCode = tenant.Code,
             DataSource = tenant.DataSource,
+            ApprovalRules = MobileApprovalEndpoints.RulesDto(await ErpBridge.CentralApi.Approvals.ApprovalService.RulesAsync(db, tenantId, ct), viewer: null),
             Seats = await seats.GetUsageAsync(tenantId, ct),
             Subscriptions = subscriptions.Select(ToDto).ToArray(),
             Users = users.Select(MobileAccountEndpoints.ToDto).ToArray(),

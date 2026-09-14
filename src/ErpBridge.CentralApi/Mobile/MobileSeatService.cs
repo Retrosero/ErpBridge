@@ -92,7 +92,7 @@ public sealed partial class MobileSeatService
             return SeatResult<MobileUser>.Fail(400, "INVALID_PASSWORD", passwordError);
         var role = string.IsNullOrWhiteSpace(body.Role) ? MobileUserRoles.Sales : body.Role.Trim().ToUpperInvariant();
         if (!MobileUserRoles.IsValid(role))
-            return SeatResult<MobileUser>.Fail(400, "INVALID_ROLE", "role must be ADMIN or SALES.");
+            return SeatResult<MobileUser>.Fail(400, "INVALID_ROLE", "role must be ADMIN, MANAGER or SALES.");
 
         await using var transaction = await BeginSeatTransactionAsync(ct);
         if (!await LockTenantAsync(tenantId, ct))
@@ -111,6 +111,8 @@ public sealed partial class MobileSeatService
             FullName = fullName,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
             Role = role,
+            CanApprove = role == MobileUserRoles.Manager && body.CanApprove == true,
+            CanManageApprovalRules = role == MobileUserRoles.Manager && body.CanManageApprovalRules == true,
             IsActive = true,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
@@ -137,7 +139,7 @@ public sealed partial class MobileSeatService
         {
             role = body.Role.Trim().ToUpperInvariant();
             if (!MobileUserRoles.IsValid(role))
-                return SeatResult<MobileUser>.Fail(400, "INVALID_ROLE", "role must be ADMIN or SALES.");
+                return SeatResult<MobileUser>.Fail(400, "INVALID_ROLE", "role must be ADMIN, MANAGER or SALES.");
         }
 
         await using var transaction = await BeginSeatTransactionAsync(ct);
@@ -161,6 +163,18 @@ public sealed partial class MobileSeatService
         if (body.Password is not null) user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password);
         if (role is not null) user.Role = role;
         if (body.IsActive is { } isActive) user.IsActive = isActive;
+        // Approval rights belong to managers; an administrator has them by role and a
+        // sales user has none, so the flags are cleared for every other role.
+        if (user.Role == MobileUserRoles.Manager)
+        {
+            if (body.CanApprove is { } canApprove) user.CanApprove = canApprove;
+            if (body.CanManageApprovalRules is { } canManage) user.CanManageApprovalRules = canManage;
+        }
+        else
+        {
+            user.CanApprove = false;
+            user.CanManageApprovalRules = false;
+        }
         user.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);

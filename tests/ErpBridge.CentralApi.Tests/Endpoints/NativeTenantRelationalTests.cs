@@ -523,8 +523,11 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
         (await client.PostJsonAsync($"{basePath}/users", new { username = "ali", fullName = "Ali Saha", password = Password, role = "SALES" }, adminToken)).StatusCode.Should().Be(HttpStatusCode.Created);
         var overview = await (await client.GetAsync(basePath, adminToken)).ReadAsJsonAsync<TenantMobileOverviewResponse>();
 
-        return new NativeTenant(tenant.Id, overview.TenantCode!,
-            await LoginAsync(overview.TenantCode!, "patron", $"DEV-P-{suffix}"),
+        var patron = await LoginAsync(overview.TenantCode!, "patron", $"DEV-P-{suffix}");
+        // These tests book documents directly; the approval centre has its own tests.
+        var rules = ApprovalKinds.All.ToDictionary(kind => kind, _ => false);
+        (await PutAsync("/api/v1/android/approvals/rules", new { rules }, patron)).StatusCode.Should().Be(HttpStatusCode.OK);
+        return new NativeTenant(tenant.Id, overview.TenantCode!, patron,
             await LoginAsync(overview.TenantCode!, "ali", $"DEV-A-{suffix}"));
     }
 

@@ -88,3 +88,42 @@
         justify-content: flex-start;
     }
 }
+
+.seat-check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    align-self: end;
+    padding-bottom: 0.45rem;
+}
+
+.approval-rules {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+}
+
+.approval-rule {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid var(--admin-border, #dee2e6);
+    border-radius: 0.5rem;
+}
+
+.approval-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    max-width: 16rem;
+}
+
+.user-role {
+    width: auto;
+    display: inline-block;
+}

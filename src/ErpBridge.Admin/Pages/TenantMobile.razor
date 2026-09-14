@@ -59,7 +59,7 @@ else
 
     <section class="admin-panel seat-panel">
         <div class="admin-panel__header">
-            <div><h2>Veri kaynağı</h2><p>ERP'li firmada ürün, cari, stok ve bakiye ERP'den gelir. ERP'siz firmada ürün ve carileri telefondan yönetici girer; satış ve tahsilatları merkez sunucu işler.</p></div>
+            <div><h2>Veri kaynağı</h2><p>ERP'li firmada ürün, cari, stok ve bakiye ERP'den gelir. ERP'siz firmada ürün ve carileri telefondan firma kullanıcıları girer; satış ve tahsilatları merkez sunucu işler.</p></div>
         </div>
         <div class="admin-panel__body seat-form">
             <label>
@@ -97,7 +97,7 @@ else
 
     <section class="admin-panel seat-panel">
         <div class="admin-panel__header">
-            <div><h2>Kullanıcılar</h2><p>Aktif her kullanıcı bir koltuk kullanır, yönetici dahil. Pasifleştirilen veya silinen kullanıcı koltuğu boşaltır.</p></div>
+            <div><h2>Kullanıcılar</h2><p>Aktif her kullanıcı bir koltuk kullanır, admin dahil. Pasifleştirilen veya silinen kullanıcı koltuğu boşaltır. Yöneticiye onay yetkilerini admin verir.</p></div>
         </div>
         <div class="admin-panel__body">
             @if (seats.Status is "none" or "expired")
@@ -117,15 +117,21 @@ else
                     <label>
                         <span>Rol</span>
                         <select id="user-form-role" class="form-select" @bind="_newUser.Role">
-                            <option value="ADMIN">Yönetici</option>
+                            <option value="ADMIN">Admin</option>
+                            <option value="MANAGER">Yönetici</option>
                             <option value="SALES">Saha kullanıcısı</option>
                         </select>
                     </label>
+                    @if (_newUser.Role == MobileRoles.Manager)
+                    {
+                        <label class="seat-check"><input id="user-form-can-approve" type="checkbox" @bind="_newUser.CanApprove" /> <span>Onay verebilir</span></label>
+                        <label class="seat-check"><input id="user-form-can-manage-rules" type="checkbox" @bind="_newUser.CanManageApprovalRules" /> <span>Onay kurallarını değiştirebilir</span></label>
+                    }
                     <button id="user-form-create" class="btn btn-primary" @onclick="CreateUserAsync" disabled="@_busy">Kullanıcı ekle</button>
                 </div>
                 @if (_overview.Users.Length == 0)
                 {
-                    <p class="seat-hint">İlk kullanıcı firmanın yöneticisi olmalıdır; telefondan diğer kullanıcıları o ekler.</p>
+                    <p class="seat-hint">İlk kullanıcı firmanın admini olmalıdır; telefondan diğer kullanıcıları o ekler.</p>
                 }
             }
         </div>
@@ -139,12 +145,27 @@ else
                         {
                             <tr class="user-row" data-username="@u.Username">
                                 <td data-label="Kullanıcı"><strong>@u.FullName</strong><br /><code>@u.Username</code></td>
-                                <td data-label="Rol">@(u.Role == "ADMIN" ? "Yönetici" : "Saha kullanıcısı")</td>
+                                <td data-label="Rol">
+                                    <span class="user-role-text">@MobileRoles.Text(u.Role)</span>
+                                    @if (u.Role == MobileRoles.Manager)
+                                    {
+                                        <br /><small class="text-muted user-rights">@RightsText(u)</small>
+                                    }
+                                </td>
                                 <td data-label="Durum"><AdminStatusBadge Text="@(u.IsActive ? "Aktif" : "Pasif")" Tone="@(u.IsActive ? "success" : "muted")" /></td>
                                 <td data-label="Son giriş">@(u.LastLoginAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "Hiç girmedi")</td>
                                 <td data-label="İşlem" class="admin-data-table__action seat-actions">
                                     <button class="btn btn-sm @(u.IsActive ? "btn-outline-warning" : "btn-outline-success") user-toggle" disabled="@_busy" @onclick="() => ToggleActiveAsync(u)">@(u.IsActive ? "Pasifleştir" : "Etkinleştir")</button>
-                                    <button class="btn btn-sm btn-outline-secondary user-role" disabled="@_busy" @onclick="() => ToggleRoleAsync(u)">@(u.Role == "ADMIN" ? "Saha kullanıcısı yap" : "Yönetici yap")</button>
+                                    <select class="form-select form-select-sm user-role" disabled="@_busy" value="@u.Role" @onchange="e => ChangeRoleAsync(u, e.Value?.ToString())">
+                                        <option value="ADMIN">Admin</option>
+                                        <option value="MANAGER">Yönetici</option>
+                                        <option value="SALES">Saha kullanıcısı</option>
+                                    </select>
+                                    @if (u.Role == MobileRoles.Manager)
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary user-can-approve" disabled="@_busy" @onclick="() => ToggleCanApproveAsync(u)">@(u.CanApprove ? "Onay yetkisini al" : "Onay yetkisi ver")</button>
+                                        <button class="btn btn-sm btn-outline-secondary user-can-manage-rules" disabled="@_busy" @onclick="() => ToggleCanManageRulesAsync(u)">@(u.CanManageApprovalRules ? "Kural yetkisini al" : "Kural yetkisi ver")</button>
+                                    }
                                     @if (_resetUserId == u.Id)
                                     {
                                         <input class="form-control form-control-sm seat-reset-input" type="password" placeholder="Yeni parola" autocomplete="new-password" @bind="_resetPassword" />
@@ -165,6 +186,68 @@ else
                                         <button class="btn btn-sm btn-outline-danger user-delete" disabled="@_busy" @onclick="() => _confirmDeleteId = u.Id">Sil</button>
                                     }
                                 </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="admin-panel seat-panel" id="approvals">
+        <div class="admin-panel__header">
+            <div><h2>Onay merkezi</h2><p>Firmanın onay kuralları ve son talepleri. Kararları firmanın admin ve yetkili yöneticileri telefondan verir; burası yalnızca destek için okunur.</p></div>
+        </div>
+        <div class="admin-panel__body">
+            <ul class="approval-rules">
+                @foreach (var kind in ApprovalTexts.Kinds)
+                {
+                    var required = !_overview.ApprovalRules.Rules.TryGetValue(kind, out var value) || value;
+                    <li class="approval-rule" data-kind="@kind">
+                        <span>@ApprovalTexts.Kind(kind)</span>
+                        <AdminStatusBadge Text="@(required ? "Onaya düşer" : "Doğrudan işlenir")" Tone="@(required ? "warning" : "muted")" />
+                    </li>
+                }
+            </ul>
+            @if (_overview.ApprovalRules.UpdatedByName is not null)
+            {
+                <p class="seat-hint">Son değişiklik: @_overview.ApprovalRules.UpdatedByName, @(_overview.ApprovalRules.UpdatedAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm"))</p>
+            }
+            <label class="approval-filter">
+                <span>Talepler</span>
+                <select id="approval-status" class="form-select" value="@_approvalStatus" @onchange="OnApprovalStatusChangedAsync">
+                    <option value="all">Tümü</option>
+                    <option value="pending">Bekleyen</option>
+                    <option value="approved">Onaylanan</option>
+                    <option value="rejected,resubmitted">Reddedilen</option>
+                    <option value="withdrawn">Geri çekilen</option>
+                </select>
+            </label>
+        </div>
+        @if (_approvalsError is not null)
+        {
+            <div class="admin-panel__body"><p class="seat-hint" id="approvals-error">@_approvalsError</p></div>
+        }
+        else if (_approvals.Length == 0)
+        {
+            <div class="admin-panel__body"><p class="seat-hint" id="approvals-empty">Bu filtrede talep yok.</p></div>
+        }
+        else
+        {
+            <div class="admin-data-surface seat-table">
+                <table class="table admin-data-table">
+                    <thead><tr><th>Tarih</th><th>İşlem</th><th>Cari / kart</th><th>Tutar</th><th>İsteyen</th><th>Durum</th><th>Karar</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in _approvals)
+                        {
+                            <tr class="approval-row" data-status="@r.Status">
+                                <td data-label="Tarih">@r.RequestedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</td>
+                                <td data-label="İşlem">@ApprovalTexts.Kind(r.Kind)</td>
+                                <td data-label="Cari / kart">@r.CounterpartyName</td>
+                                <td data-label="Tutar">@r.Amount.ToString("N2")</td>
+                                <td data-label="İsteyen">@(r.RequestedByName ?? "—")</td>
+                                <td data-label="Durum"><AdminStatusBadge Text="@ApprovalTexts.Status(r.Status)" Tone="@ApprovalTexts.Tone(r.Status)" /></td>
+                                <td data-label="Karar">@(r.DecidedByName ?? "—")@if (!string.IsNullOrEmpty(r.DecisionNote)) { <br /><small class="text-muted">@r.DecisionNote</small> }</td>
                             </tr>
                         }
                     </tbody>
@@ -251,6 +334,9 @@ else
     private SubscriptionForm _subscription = new();
     private CreateMobileUserRequest _newUser = new() { Role = "ADMIN" };
     private string _dataSource = "erp";
+    private ApprovalRequestDto[] _approvals = Array.Empty<ApprovalRequestDto>();
+    private string _approvalStatus = "all";
+    private string? _approvalsError;
 
     private sealed class SubscriptionForm
     {
@@ -282,6 +368,25 @@ else
         }
         catch (Exception ex) { _error = MobileSeatMessages.For(ex); }
         finally { _loading = false; }
+        if (_overview is not null) await LoadApprovalsAsync(_approvalStatus);
+    }
+
+    private Task OnApprovalStatusChangedAsync(ChangeEventArgs e) => LoadApprovalsAsync(e.Value?.ToString() ?? "all");
+
+    /// <summary>Loaded on its own so a failing list never hides the seat screen.</summary>
+    private async Task LoadApprovalsAsync(string status)
+    {
+        _approvalStatus = status;
+        try
+        {
+            _approvals = await Api.GetTenantApprovalsAsync(TenantId, status);
+            _approvalsError = null;
+        }
+        catch (Exception ex)
+        {
+            _approvals = Array.Empty<ApprovalRequestDto>();
+            _approvalsError = "Onay talepleri alınamadı: " + MobileSeatMessages.For(ex);
+        }
     }
 
     private async Task RunAsync(Func<Task> action, string successNotice)
@@ -329,9 +434,27 @@ else
         RunAsync(() => Api.UpdateMobileUserAsync(TenantId, user.Id, new UpdateMobileUserRequest { IsActive = !user.IsActive }),
             user.IsActive ? $"{user.Username} pasifleştirildi; koltuğu boşaldı." : $"{user.Username} etkinleştirildi.");
 
-    private Task ToggleRoleAsync(MobileUserDto user) =>
-        RunAsync(() => Api.UpdateMobileUserAsync(TenantId, user.Id, new UpdateMobileUserRequest { Role = user.Role == "ADMIN" ? "SALES" : "ADMIN" }),
-            $"{user.Username} rolü değiştirildi.");
+    private Task ChangeRoleAsync(MobileUserDto user, string? role) =>
+        string.IsNullOrEmpty(role) || role == user.Role
+            ? Task.CompletedTask
+            : RunAsync(() => Api.UpdateMobileUserAsync(TenantId, user.Id, new UpdateMobileUserRequest { Role = role }),
+                $"{user.Username} artık {MobileRoles.Text(role)}.");
+
+    private Task ToggleCanApproveAsync(MobileUserDto user) =>
+        RunAsync(() => Api.UpdateMobileUserAsync(TenantId, user.Id, new UpdateMobileUserRequest { CanApprove = !user.CanApprove }),
+            user.CanApprove ? $"{user.Username} artık onay veremez." : $"{user.Username} artık onay verebilir.");
+
+    private Task ToggleCanManageRulesAsync(MobileUserDto user) =>
+        RunAsync(() => Api.UpdateMobileUserAsync(TenantId, user.Id, new UpdateMobileUserRequest { CanManageApprovalRules = !user.CanManageApprovalRules }),
+            user.CanManageApprovalRules ? $"{user.Username} artık onay kurallarını değiştiremez." : $"{user.Username} artık onay kurallarını değiştirebilir.");
+
+    private static string RightsText(MobileUserDto user) => (user.CanApprove, user.CanManageApprovalRules) switch
+    {
+        (true, true) => "Onay verir, kuralları değiştirir",
+        (true, false) => "Onay verir",
+        (false, true) => "Kuralları değiştirir",
+        _ => "Onay yetkisi yok",
+    };
 
     private void StartPasswordReset(MobileUserDto user)
     {
