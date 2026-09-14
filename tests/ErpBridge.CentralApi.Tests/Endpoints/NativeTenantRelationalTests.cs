@@ -319,6 +319,93 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
     }
 
     [Fact]
+    public async Task A_return_on_account_puts_stock_back_and_credits_the_customer()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t); // 40 in stock
+        await PostAsync(t.SalesToken, t, "sales_order", "MOB-SO-R", Sale("MOB-SO-R", "C-001", quantity: 5, unitPrice: 100, paymentType: "Cari Borç"));
+        var cursor = await CursorAtEndAsync(t);
+
+        var result = await PostAsync(t.SalesToken, t, "sales_return", "MOB-SR-1", new
+        {
+            mobileDocumentId = "MOB-SR-1", customerCode = "C-001", paymentType = "Cari Alacak", amount = 180,
+            lines = new[] { new { productCode = "CAY-1", quantity = 2, unitPrice = 100, lineTotal = 180, reason = "Hasarlı" } },
+        });
+
+        result.Status.Should().Be("Succeeded");
+        (await StockAsync(t.Id, "CAY-1")).Should().Be(37m);
+        (await BalanceAsync(t.Id, "C-001")).Should().Be(320m);
+        var feed = await PullAllAsync(t.SalesToken, t, cursor);
+        var movement = feed.Single(c => c.Entity == "stokHareketleri").Data;
+        movement.GetProperty("tip").GetInt32().Should().Be(2);
+        movement.GetProperty("girisMiktar").GetDecimal().Should().Be(2m);
+        feed.Single(c => c.Entity == "cariHareketleri").Data.GetProperty("type").GetString().Should().Be("İade");
+    }
+
+    [Fact]
+    public async Task A_return_paid_back_in_cash_moves_stock_but_not_the_open_balance()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+
+        (await PostAsync(t.SalesToken, t, "sales_return", "MOB-SR-CASH", new
+        {
+            mobileDocumentId = "MOB-SR-CASH", customerCode = "C-001", paymentType = "Nakit",
+            lines = new[] { new { productCode = "CAY-1", quantity = 1, unitPrice = 150 } },
+        })).Status.Should().Be("Succeeded");
+
+        (await StockAsync(t.Id, "CAY-1")).Should().Be(41m);
+        (await BalanceAsync(t.Id, "C-001")).Should().Be(0m);
+    }
+
+    [Fact]
+    public async Task A_purchase_adds_stock_owes_the_supplier_and_makes_the_product_undeletable()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+        (await PostAsync(t.AdminToken, t, "customer_card", "CARD-SUP", new { customerCode = "T-001", title = "Toptancı Çay A.Ş." })).Status.Should().Be("Succeeded");
+
+        var onAccount = await PostAsync(t.AdminToken, t, "purchase_receipt", "MOB-PR-1", new
+        {
+            mobileDocumentId = "MOB-PR-1", invoiceNo = "ALS-0001", supplierCode = "T-001",
+            lines = new[] { new { productCode = "CAY-1", quantity = 60, unitPrice = 90 } },
+        });
+        var paid = await PostAsync(t.AdminToken, t, "purchase_receipt", "MOB-PR-2", new
+        {
+            mobileDocumentId = "MOB-PR-2", supplierCode = "T-001", paymentType = "EFT / Havale",
+            lines = new[] { new { productCode = "CAY-1", quantity = 10, unitPrice = 90 } },
+        });
+
+        onAccount.Status.Should().Be("Succeeded");
+        paid.Status.Should().Be("Succeeded");
+        (await StockAsync(t.Id, "CAY-1")).Should().Be(110m);
+        (await BalanceAsync(t.Id, "T-001")).Should().Be(-5400m, "the company owes the supplier for the purchase on account only");
+        (await PostAsync(t.AdminToken, t, "stock_card_delete", "DEL-AFTER-PURCHASE", new { stockCode = "CAY-1" })).Status.Should().Be("Failed");
+    }
+
+    [Fact]
+    public async Task A_return_or_purchase_with_an_unknown_product_changes_nothing()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+
+        var badReturn = await PostAsync(t.SalesToken, t, "sales_return", "MOB-SR-BAD", new
+        {
+            customerCode = "C-001",
+            lines = new object[] { new { productCode = "CAY-1", quantity = 1, unitPrice = 10 }, new { productCode = "YOK", quantity = 1, unitPrice = 10 } },
+        });
+        var badPurchase = await PostAsync(t.AdminToken, t, "purchase_receipt", "MOB-PR-BAD", new
+        {
+            supplierCode = "C-001", lines = new[] { new { productCode = "YOK", quantity = 5, unitPrice = 1 } },
+        });
+
+        badReturn.Status.Should().Be("Failed");
+        badPurchase.Status.Should().Be("Failed");
+        (await StockAsync(t.Id, "CAY-1")).Should().Be(40m);
+        (await BalanceAsync(t.Id, "C-001")).Should().Be(0m);
+    }
+
+    [Fact]
     public async Task An_erp_tenant_keeps_documents_for_its_agent_and_refuses_cards()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -329,6 +416,11 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
         var card = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "CARD-1", documentType = "stock_card", payload = new { stockCode = "S", name = "S" } });
         card.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await card.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("CARDS_REQUIRE_NATIVE_TENANT");
+        // Returns and purchases are booked by the central API only; an agent could not write them.
+        var salesReturn = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "SR-1", documentType = "sales_return", payload = new { ok = true } });
+        salesReturn.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await salesReturn.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("DOCUMENT_REQUIRES_NATIVE_TENANT");
+
         // ERP data is changed in the ERP only: no product can be deleted from a phone either.
         var delete = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "DEL-1", documentType = "stock_card_delete", payload = new { stockCode = "S" } });
         delete.StatusCode.Should().Be(HttpStatusCode.Conflict);

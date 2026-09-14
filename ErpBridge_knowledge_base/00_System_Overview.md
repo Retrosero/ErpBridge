@@ -299,6 +299,20 @@ registration ayrı bir composition projesine taşınır.
      her satış satırı `native_stock_levels.LastMovementAtUtc`'yi işaretler, dolu
      ise silme `Failed` olur (satış geçmişi var olmayan ürüne işaret ederdi).
      ERP tenant'ında `stock_card_delete` de 409 `CARDS_REQUIRE_NATIVE_TENANT`.
+   - **İade ve alış (Faz 36, 2026-09-14).** Satırlı iki belge:
+     `sales_return` (stok **girer**, hareket `tip 2` iade giriş, cari
+     **alacaklanır** "İade"; `paymentType` anında ödeme ise — `Nakit`,
+     `Banka İade`, `EFT / Havale`… — "İade Ödemesi" borç hareketi de yazılır,
+     açık bakiye değişmez) ve `purchase_receipt` (stok girer, `tip 0` giriş,
+     tedarikçi — bir cari kartı, `supplierCode` — alacaklanır "Alış"; anında
+     ödemede "Tediye" borç hareketi). Alışta satır **isteğe bağlıdır** (katalogda
+     olmayan kalem tedarikçiye yine borç yazar), verilen her satır bilinen ürün
+     olmalıdır; iadede satır zorunludur. İkisi de ürünü `LastMovementAtUtc` ile
+     işaretler (silinemez). Satış, iade ve alış satırları tek yerde
+     (`BookLinesAsync`) önce **tamamen doğrulanır**, sonra deftere yazılır. ERP
+     tenant'ında bu türler 409 `DOCUMENT_REQUIRES_NATIVE_TENANT` (ajanın yazıcısı
+     yok). Telefonun kasa defterinden gelen satırsız `return` / `disbursement`
+     belgeleri etkisiz kayıt olarak kalır.
    - **Toplu kart (Faz 35, 2026-09-13).** Excel içe aktarma `stock_card_batch`
      (yalnız yönetici) ve `customer_card_batch` belgeleriyle gelir:
      `{ "cards": [...] }`, belge başına en fazla 500 kart (telefon 200 gönderir).

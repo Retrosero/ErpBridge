@@ -38,6 +38,14 @@ public sealed class NativeDocumentProcessor
     public const string CustomerCard = "customer_card";
     public const string SalesOrder = "sales_order";
     public const string Collection = "collection";
+    public const string SalesReturn = "sales_return";
+    public const string PurchaseReceipt = "purchase_receipt";
+
+    /// <summary>
+    /// Line-carrying documents only the central API books. An ERP agent has no
+    /// writer for them, so for an ERP tenant they would wait in its queue forever.
+    /// </summary>
+    public static readonly IReadOnlySet<string> NativeDocumentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesReturn, PurchaseReceipt };
 
     /// <summary>Marks rows this class produced, the way an agent marks rows with its ERP name.</summary>
     public const string SourceName = "native";
@@ -48,7 +56,7 @@ public sealed class NativeDocumentProcessor
     /// <summary>Payment types that settle a sale on the spot, so the sale leaves no open balance.</summary>
     private static readonly HashSet<string> ImmediatePayments = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Nakit", "Kredi Kartı", "Kredi Karti", "Bank Kartı", "Banka Kartı", "EFT / Havale", "Havale", "EFT", "POS",
+        "Nakit", "Kredi Kartı", "Kredi Karti", "Bank Kartı", "Banka Kartı", "EFT / Havale", "Havale", "EFT", "POS", "Banka İade",
     };
 
     private readonly MobileRecordProjector _projector;
@@ -100,6 +108,8 @@ public sealed class NativeDocumentProcessor
                 CustomerCardBatch => await BookBatchAsync(booking, document.RootElement, card => BookCustomerCardAsync(db, booking, card, ct)),
                 SalesOrder => await BookSaleAsync(db, booking, document.RootElement, ct),
                 Collection => await BookCollectionAsync(db, booking, document.RootElement, ct),
+                SalesReturn => await BookSalesReturnAsync(db, booking, document.RootElement, ct),
+                PurchaseReceipt => await BookPurchaseReceiptAsync(db, booking, document.RootElement, ct),
                 // Cash movements, expenses and counts are kept as records but move
                 // neither stock nor a customer balance yet.
                 _ => null,
@@ -265,35 +275,55 @@ public sealed class NativeDocumentProcessor
 
     // ---- documents -------------------------------------------------------
 
-    private async Task<string?> BookSaleAsync(CentralApiDbContext db, Booking booking, JsonElement sale, CancellationToken ct)
-    {
-        var customer = await ResolveCustomerAsync(db, booking.TenantId, sale, ct);
-        if (customer is null) return "The sale names no known customer (customerCode or an exact customer title is required).";
-        if (!sale.TryGetProperty("lines", out var lines) || lines.ValueKind != JsonValueKind.Array || lines.GetArrayLength() == 0)
-            return "A sale needs at least one line.";
+    /// <summary>Which way a document moves stock, and how its movement rows are written.</summary>
+    private readonly record struct StockDirection(int Sign, int MovementType, string QuantityField, string WarehouseField);
 
-        var documentNo = Text(sale, "mobileDocumentId") ?? booking.ExternalId;
-        var occurredAt = Text(sale, "occurredAt") ?? booking.Stamp;
-        var description = Text(sale, "description");
-        decimal linesTotal = 0;
+    /// <summary>Stock leaves the warehouse (sale).</summary>
+    private static readonly StockDirection Outgoing = new(-1, 1, "cikisMiktar", "cikisDepoNo");
+
+    /// <summary>Stock enters the warehouse (purchase).</summary>
+    private static readonly StockDirection Incoming = new(+1, 0, "girisMiktar", "girisDepoNo");
+
+    /// <summary>A customer's goods come back into the warehouse (sales return).</summary>
+    private static readonly StockDirection ReturnedIn = new(+1, 2, "girisMiktar", "girisDepoNo");
+
+    /// <summary>
+    /// Validates every line first, then moves stock and writes one movement row per
+    /// line. Returns the error, or null and the lines' total. Nothing touches the
+    /// ledger until all lines are known to be valid, so a bad third line cannot
+    /// leave the first two booked.
+    /// </summary>
+    private async Task<(string? Error, decimal Total)> BookLinesAsync(
+        CentralApiDbContext db, Booking booking, JsonElement document, StockDirection direction,
+        string partyCode, string documentNo, string occurredAt, string? description, bool linesRequired, CancellationToken ct)
+    {
+        if (!document.TryGetProperty("lines", out var lines) || lines.ValueKind != JsonValueKind.Array || lines.GetArrayLength() == 0)
+            return (linesRequired ? "The document needs at least one line." : null, 0);
+
+        var parsed = new List<(string StockCode, decimal Quantity, decimal UnitPrice, decimal LineTotal, string? Note)>();
         var lineNo = 0;
         foreach (var line in lines.EnumerateArray())
         {
             lineNo++;
             var quantity = Number(line, "quantity") ?? 0;
-            if (quantity <= 0) return $"Line {lineNo} has no quantity.";
+            if (quantity <= 0) return ($"Line {lineNo} has no quantity.", 0);
             var stockCode = Text(line, "productCode") ?? await StockCodeForBarcodeAsync(db, booking.TenantId, Text(line, "barcode"), ct);
             // A code that names no product card would move stock of a product nobody
-            // can see. The phone sends cards before sales, so a real product is known.
+            // can see. The phone sends cards before documents, so a real product is known.
             if (stockCode is null || !await StockCardExistsAsync(db, booking.TenantId, stockCode, ct))
-                return $"Line {lineNo} names no known product.";
+                return ($"Line {lineNo} names no known product.", 0);
             var unitPrice = Number(line, "unitPrice") ?? 0;
             var lineTotal = Number(line, "lineTotal") ?? quantity * unitPrice;
-            if (unitPrice < 0 || lineTotal < 0) return $"Line {lineNo} has a negative price.";
-            linesTotal += lineTotal;
+            if (unitPrice < 0 || lineTotal < 0) return ($"Line {lineNo} has a negative price.", 0);
+            parsed.Add((stockCode, quantity, unitPrice, lineTotal, Text(line, "reason")));
+        }
 
-            var level = await LevelAsync(db, booking.TenantId, stockCode, ct);
-            level.Row.Quantity -= quantity;
+        lineNo = 0;
+        foreach (var line in parsed)
+        {
+            lineNo++;
+            var level = await LevelAsync(db, booking.TenantId, line.StockCode, ct);
+            level.Row.Quantity += direction.Sign * line.Quantity;
             level.Row.UpdatedAtUtc = booking.Now;
             level.Row.LastMovementAtUtc = booking.Now;
             booking.AddInventory(level.Row);
@@ -301,22 +331,35 @@ public sealed class NativeDocumentProcessor
             {
                 ["id"] = $"{booking.ExternalId}|{lineNo}",
                 ["erp"] = "NATIVE",
-                ["stokKod"] = stockCode,
-                ["urunKod"] = stockCode,
+                ["stokKod"] = line.StockCode,
+                ["urunKod"] = line.StockCode,
                 ["tarih"] = occurredAt,
-                ["tip"] = 1,
+                ["tip"] = direction.MovementType,
                 ["cins"] = 0,
                 ["evrakNo"] = documentNo,
-                ["cikisMiktar"] = quantity,
-                ["miktar"] = -quantity,
-                ["birimFiyat"] = unitPrice,
-                ["tutar"] = lineTotal,
-                ["cariKod"] = customer,
-                ["cikisDepoNo"] = NativeLedgerDefaults.WarehouseNo,
-                ["aciklama"] = description,
+                [direction.QuantityField] = line.Quantity,
+                ["miktar"] = direction.Sign * line.Quantity,
+                ["birimFiyat"] = line.UnitPrice,
+                ["tutar"] = line.LineTotal,
+                ["cariKod"] = partyCode,
+                [direction.WarehouseField] = NativeLedgerDefaults.WarehouseNo,
+                ["aciklama"] = line.Note ?? description,
                 ["updatedAt"] = booking.Stamp,
             });
         }
+        return (null, parsed.Sum(line => line.LineTotal));
+    }
+
+    private async Task<string?> BookSaleAsync(CentralApiDbContext db, Booking booking, JsonElement sale, CancellationToken ct)
+    {
+        var customer = await ResolveCustomerAsync(db, booking.TenantId, sale, ct);
+        if (customer is null) return "The sale names no known customer (customerCode or an exact customer title is required).";
+
+        var documentNo = Text(sale, "mobileDocumentId") ?? booking.ExternalId;
+        var occurredAt = Text(sale, "occurredAt") ?? booking.Stamp;
+        var description = Text(sale, "description");
+        var (error, linesTotal) = await BookLinesAsync(db, booking, sale, Outgoing, customer, documentNo, occurredAt, description, linesRequired: true, ct);
+        if (error is not null) return error;
 
         var amount = decimal.Round(Number(sale, "amount") ?? linesTotal, 2);
         // A negative debit would silently reduce the customer's debt.
@@ -327,6 +370,58 @@ public sealed class NativeDocumentProcessor
         // customer's history shows both and the open balance does not move.
         if (Text(sale, "paymentType") is { } paymentType && ImmediatePayments.Contains(paymentType.Trim()))
             await PostToCustomerAsync(db, booking, customer, amount, debit: false, "Tahsilat", documentNo, occurredAt, paymentType, suffix: "payment", ct);
+        return null;
+    }
+
+    /// <summary>
+    /// A customer returns goods: stock comes back in and the customer is credited.
+    /// When the money is handed back on the spot (cash, bank transfer) a payment to
+    /// the customer is booked as well, so the open balance does not move.
+    /// </summary>
+    private async Task<string?> BookSalesReturnAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var customer = await ResolveCustomerAsync(db, booking.TenantId, document, ct);
+        if (customer is null) return "The return names no known customer (customerCode or an exact customer title is required).";
+
+        var documentNo = Text(document, "mobileDocumentId") ?? booking.ExternalId;
+        var occurredAt = Text(document, "occurredAt") ?? booking.Stamp;
+        var description = Text(document, "description");
+        var (error, linesTotal) = await BookLinesAsync(db, booking, document, ReturnedIn, customer, documentNo, occurredAt, description, linesRequired: true, ct);
+        if (error is not null) return error;
+
+        var amount = decimal.Round(Number(document, "amount") ?? linesTotal, 2);
+        if (amount < 0) return "A return cannot have a negative total.";
+        await PostToCustomerAsync(db, booking, customer, amount, debit: false, "İade", documentNo, occurredAt, description, suffix: "return", ct);
+        if (Text(document, "paymentType") is { } paymentType && ImmediatePayments.Contains(paymentType.Trim()))
+            await PostToCustomerAsync(db, booking, customer, amount, debit: true, "İade Ödemesi", documentNo, occurredAt, paymentType, suffix: "refund", ct);
+        return null;
+    }
+
+    /// <summary>
+    /// Goods bought from a supplier: stock comes in and the supplier (a customer card)
+    /// is credited, i.e. the company owes it. Paid on the spot, a payment to the
+    /// supplier is booked as well. Lines are optional — a purchase of items that are
+    /// not in the catalogue still owes the supplier — but every line given must name
+    /// a known product.
+    /// </summary>
+    private async Task<string?> BookPurchaseReceiptAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var supplier = Text(document, "supplierCode") is { } code
+            ? await ResolveCustomerAsync(db, booking.TenantId, JsonSerializer.SerializeToElement(new { customerCode = code }), ct)
+            : await ResolveCustomerAsync(db, booking.TenantId, document, ct);
+        if (supplier is null) return "The purchase names no known supplier (supplierCode or an exact supplier title is required).";
+
+        var documentNo = Text(document, "invoiceNo") ?? Text(document, "mobileDocumentId") ?? booking.ExternalId;
+        var occurredAt = Text(document, "occurredAt") ?? booking.Stamp;
+        var description = Text(document, "description");
+        var (error, linesTotal) = await BookLinesAsync(db, booking, document, Incoming, supplier, documentNo, occurredAt, description, linesRequired: false, ct);
+        if (error is not null) return error;
+
+        var amount = decimal.Round(Number(document, "amount") ?? linesTotal, 2);
+        if (amount <= 0) return "A purchase needs a positive total.";
+        await PostToCustomerAsync(db, booking, supplier, amount, debit: false, "Alış", documentNo, occurredAt, description, suffix: "purchase", ct);
+        if (Text(document, "paymentType") is { } paymentType && ImmediatePayments.Contains(paymentType.Trim()))
+            await PostToCustomerAsync(db, booking, supplier, amount, debit: true, "Tediye", documentNo, occurredAt, paymentType, suffix: "payment", ct);
         return null;
     }
 
