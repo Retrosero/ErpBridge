@@ -96,6 +96,26 @@ public sealed class MobileSeatsRelationalTests : IClassFixture<SqliteCentralApiF
     }
 
     [Fact]
+    public async Task An_end_date_picked_in_local_time_is_stored_in_utc()
+    {
+        // The console sends the chosen day in Turkish time (+03:00). PostgreSQL's
+        // `timestamp with time zone` accepts offset 0 only; a local offset made every
+        // renewal with an end date answer 500. SQLite keeps the offset it is given, so
+        // the stored value shows whether it was normalised.
+        var t = await NewTenantAsync(seats: 2);
+        var endsLocal = new DateTimeOffset(2027, 9, 14, 23, 59, 59, TimeSpan.FromHours(3));
+
+        (await PutAsync($"{AdminBase(t)}/subscription", new { seats = 4, endsAtUtc = endsLocal }, t.AdminToken))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var current = await db.TenantSubscriptions.AsNoTracking().SingleAsync(s => s.TenantId == t.Id && s.IsCurrent);
+        current.EndsAtUtc!.Value.Offset.Should().Be(TimeSpan.Zero);
+        current.EndsAtUtc.Value.Should().Be(endsLocal, "the same moment, only written in UTC");
+    }
+
+    [Fact]
     public async Task The_last_active_admin_cannot_be_deactivated_demoted_or_deleted()
     {
         var t = await NewTenantAsync(seats: 3);
