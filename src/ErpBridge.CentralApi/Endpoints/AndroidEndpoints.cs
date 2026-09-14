@@ -5,6 +5,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Snapshots;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
@@ -200,12 +201,33 @@ public static class AndroidEndpoints
         {
             var page = Math.Max(1, request.Page);
             var pageSize = Math.Clamp(request.PageSize, 1, 500);
+            // Sections without an ERP timestamp (inventory) are versioned by the
+            // server: a row's `changedAtUtc` stamp, else the time of its chunk.
+            // With `since` only rows newer than that come back; `watermark` is
+            // the newest version in the whole section, for the device's cursor.
+            if (DateTimeOffset.TryParse(request.Since?.Trim(), out var since))
+            {
+                var delta = await ReadSnapshotSectionSinceAsync(db, snapshot, propertyName, since, page, pageSize, ct);
+                return Results.Ok(new
+                {
+                    entity = propertyName, sourceDatabase = snapshot.SourceDatabase,
+                    pulledAtUtc = snapshot.PulledAtUtc, page, pageSize,
+                    total = delta.Total, since = request.Since, watermark = delta.Watermark, items = delta.Items,
+                });
+            }
             var result = await ReadSnapshotSectionPageAsync(db, snapshot, propertyName, page, pageSize, ct);
+            // No stamp can be newer than the chunk that holds the row, so the
+            // newest chunk time bounds every row version the device just read.
+            var newestChunk = await db.BootstrapSnapshotChunks.AsNoTracking()
+                .Where(x => x.SnapshotId == snapshot.Id && x.Section == propertyName)
+                .MaxAsync(x => (DateTimeOffset?)x.ReceivedAtUtc, ct);
             return Results.Ok(new
             {
                 entity = propertyName, sourceDatabase = snapshot.SourceDatabase,
                 pulledAtUtc = snapshot.PulledAtUtc, page, pageSize,
-                total = result.Total, items = result.Items,
+                total = result.Total,
+                watermark = newestChunk is { } bound ? SnapshotRowVersion.Format(bound) : null,
+                items = result.Items,
             });
         }
 
@@ -1201,6 +1223,47 @@ public static class AndroidEndpoints
             }
         }
         return (total, items.ToArray());
+    }
+
+    /// <summary>
+    /// Rows of a section whose server version is newer than <paramref name="since"/>,
+    /// paged, plus the newest version in the whole section as the watermark.
+    /// Scans every chunk of the section: the version of an unstamped row is the
+    /// time of the chunk it lives in, which the cached merged document does not
+    /// carry.
+    /// </summary>
+    private static async Task<(int Total, JsonElement[] Items, string? Watermark)> ReadSnapshotSectionSinceAsync(
+        CentralApiDbContext db,
+        BootstrapSnapshot snapshot,
+        string section,
+        DateTimeOffset since,
+        int page,
+        int pageSize,
+        CancellationToken ct)
+    {
+        var cutoff = SnapshotRowVersion.Truncate(since);
+        var skip = (page - 1) * pageSize;
+        var total = 0;
+        var items = new List<JsonElement>(pageSize);
+        DateTimeOffset? newest = null;
+        await foreach (var chunk in db.BootstrapSnapshotChunks.AsNoTracking()
+            .Where(x => x.SnapshotId == snapshot.Id && x.Section == section)
+            .OrderBy(x => x.ChunkIndex)
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            using var document = JsonDocument.Parse(chunk.PayloadJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) continue;
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                var version = SnapshotRowVersion.Of(item, chunk.ReceivedAtUtc);
+                if (newest is null || version > newest) newest = version;
+                if (version <= cutoff) continue;
+                if (total++ < skip) continue;
+                if (items.Count < pageSize) items.Add(item.Clone());
+            }
+        }
+        return (total, items.ToArray(), newest is { } value ? SnapshotRowVersion.Format(value) : null);
     }
 
     private static async Task<JsonDocument> BuildSnapshotDocumentAsync(

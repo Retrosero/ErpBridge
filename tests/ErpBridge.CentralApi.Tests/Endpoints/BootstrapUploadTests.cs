@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using System.Net.Http.Json;
 using ErpBridge.CentralApi.Tests.Support;
@@ -189,6 +190,69 @@ public sealed class BootstrapUploadTests : IClassFixture<CentralApiFactory>
             .SingleAsync(x => x.Section == "customerTransactions" && x.Snapshot!.TenantId == tenant.Id);
         rewritten.Id.Should().NotBe(originalChunkId, "a real change must still rewrite the section");
         rewritten.PayloadJson.Should().Contain("99");
+    }
+
+    [Fact]
+    public async Task Incremental_merge_stamps_changed_rows_and_the_section_endpoint_pages_only_them_after_since()
+    {
+        // Inventory rows have no ERP timestamp, so the device could only ever
+        // re-download all 4.5k of them. The merge now stamps each rewritten
+        // row with the time it changed; unchanged rows keep the version they
+        // had (their old chunk's time), and /sync/stokSeviye?since returns
+        // just the newer ones with a watermark for the device's cursor.
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: $"BOOT-INV-{suffix}");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, $"MACHINE-INV-{suffix}");
+        var client = _factory.CreateClient();
+        var token = _factory.IssueTestJwt(agent.Id, tenant.Id);
+
+        var fullUploadId = await UploadAsync(client, token, isIncremental: false, sections: new()
+        {
+            ["inventory"] = new object[]
+            {
+                new { stockCode = "A", warehouseNo = 1, quantity = 1.0 },
+                new { stockCode = "B", warehouseNo = 1, quantity = 2.0 },
+            },
+        });
+        await CompleteAsync(client, token, fullUploadId);
+
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, $"AK-INV-{suffix}", scopes: new[] { "mobile:read" });
+        var mobile = _factory.CreateClient();
+        mobile.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", rawKey);
+        mobile.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.Id.ToString());
+
+        // First (full) read hands the device a watermark bounding every row.
+        var full = await mobile.PostAsJsonAsync("/api/v1/android/sync/stokSeviye", new { page = 1, pageSize = 500 });
+        full.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var fullDoc = JsonDocument.Parse(await full.Content.ReadAsStringAsync());
+        fullDoc.RootElement.GetProperty("total").GetInt32().Should().Be(2);
+        var watermark = fullDoc.RootElement.GetProperty("watermark").GetString();
+        watermark.Should().NotBeNullOrEmpty();
+
+        await Task.Delay(20); // the stamp is millisecond-precise; make the change provably later
+        var incrementalUploadId = await UploadAsync(client, token, isIncremental: true, sections: new()
+        {
+            ["inventory"] = new object[]
+            {
+                new { stockCode = "A", warehouseNo = 1, quantity = 5.0 },
+                new { stockCode = "B", warehouseNo = 1, quantity = 2.0 },
+            },
+        });
+        await CompleteAsync(client, token, incrementalUploadId);
+
+        var delta = await mobile.PostAsJsonAsync("/api/v1/android/sync/stokSeviye", new { page = 1, pageSize = 500, since = watermark });
+        delta.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var deltaDoc = JsonDocument.Parse(await delta.Content.ReadAsStringAsync());
+        deltaDoc.RootElement.GetProperty("total").GetInt32().Should().Be(1, "only A changed; B keeps the version of the chunk it came from");
+        var rows = deltaDoc.RootElement.GetProperty("items").EnumerateArray().ToArray();
+        rows[0].GetProperty("stockCode").GetString().Should().Be("A");
+        rows[0].GetProperty("quantity").GetDouble().Should().Be(5.0);
+        var newWatermark = deltaDoc.RootElement.GetProperty("watermark").GetString();
+        DateTimeOffset.Parse(newWatermark!).Should().BeAfter(DateTimeOffset.Parse(watermark!));
+
+        var quiet = await mobile.PostAsJsonAsync("/api/v1/android/sync/stokSeviye", new { page = 1, pageSize = 500, since = newWatermark });
+        using var quietDoc = JsonDocument.Parse(await quiet.Content.ReadAsStringAsync());
+        quietDoc.RootElement.GetProperty("total").GetInt32().Should().Be(0, "nothing changed after the new watermark");
     }
 
     private async Task<Guid> UploadAsync(

@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Notifications;
+using ErpBridge.CentralApi.Snapshots;
 using ErpBridge.CentralApi.Sync;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -302,12 +303,14 @@ public static class BootstrapUploadEndpoints
                 .OrderBy(x => x.ChunkIndex).ToListAsync(ct);
             var records = new Dictionary<string, JsonNode>(StringComparer.OrdinalIgnoreCase);
             var anonymous = new List<JsonNode>();
+            var versions = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
             foreach (var chunk in oldChunks)
-                AddItems(chunk.PayloadJson, section, records, anonymous);
+                AddItems(chunk.PayloadJson, section, records, anonymous, chunk.ReceivedAtUtc, versions, changedKeys: null);
+            var changedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var changed = false;
             foreach (var chunk in incomingSectionChunks)
             {
-                if (AddItems(chunk.PayloadJson, section, records, anonymous))
+                if (AddItems(chunk.PayloadJson, section, records, anonymous, chunk.ReceivedAtUtc, versions, changedKeys))
                     changed = true;
             }
 
@@ -321,6 +324,25 @@ public static class BootstrapUploadEndpoints
                 continue;
             }
             anyChanged = true;
+
+            // Row-level version. Sections such as inventory carry no ERP
+            // timestamp, so the server records when it last saw each row
+            // change; the section endpoints filter on it when the device sends
+            // `since`. A row that did not change keeps the version it had (an
+            // explicit stamp, or the time of the chunk it lived in), so a
+            // rewrite of the section does not make every row look new.
+            var now = SnapshotRowVersion.Truncate(DateTimeOffset.UtcNow);
+            foreach (var (key, node) in records)
+            {
+                if (node is not JsonObject row) continue;
+                var version = changedKeys.Contains(key) || !versions.TryGetValue(key, out var known) ? now : known;
+                row[SnapshotRowVersion.PropertyName] = SnapshotRowVersion.Format(version);
+            }
+            foreach (var node in anonymous)
+            {
+                if (node is JsonObject row && row[SnapshotRowVersion.PropertyName] is null)
+                    row[SnapshotRowVersion.PropertyName] = SnapshotRowVersion.Format(now);
+            }
 
             var merged = records.Values.Concat(anonymous).ToArray();
             var stagedChunks = await db.BootstrapSnapshotChunks.Where(x => x.SnapshotId == staged.Id && x.Section == section).ToListAsync(ct);
@@ -348,7 +370,23 @@ public static class BootstrapUploadEndpoints
     /// for a key that is not there, changes nothing. Rows without a key cannot
     /// be de-duplicated and always count as a change.
     /// </summary>
-    private static bool AddItems(string payload, string section, IDictionary<string, JsonNode> records, ICollection<JsonNode> anonymous)
+    /// <param name="versions">
+    /// Version each stored row had before this merge: its explicit
+    /// <see cref="SnapshotRowVersion.PropertyName"/> stamp, else the time of the
+    /// chunk it was read from. Filled while reading the previous chunks.
+    /// </param>
+    /// <param name="changedKeys">
+    /// When reading incoming chunks, receives the keys whose row differs from the
+    /// stored one. Null while reading the previous snapshot's own chunks.
+    /// </param>
+    private static bool AddItems(
+        string payload,
+        string section,
+        IDictionary<string, JsonNode> records,
+        ICollection<JsonNode> anonymous,
+        DateTimeOffset chunkReceivedAtUtc,
+        IDictionary<string, DateTimeOffset> versions,
+        ISet<string>? changedKeys)
     {
         var changed = false;
         using var document = JsonDocument.Parse(payload);
@@ -367,8 +405,16 @@ public static class BootstrapUploadEndpoints
                 if (records.Remove(key)) changed = true;
                 continue;
             }
-            if (records.TryGetValue(key, out var existing) && JsonNode.DeepEquals(existing, node)) continue;
+            if (changedKeys is null)
+            {
+                // Previous snapshot's own row: remember its version, no diffing.
+                versions[key] = SnapshotRowVersion.Of(element, chunkReceivedAtUtc);
+                records[key] = node;
+                continue;
+            }
+            if (records.TryGetValue(key, out var existing) && SnapshotRowVersion.SameRow(existing, node)) continue;
             records[key] = node;
+            changedKeys.Add(key);
             changed = true;
         }
         return changed;
