@@ -21,11 +21,15 @@ namespace ErpBridge.CentralApi.Endpoints;
 ///
 /// <para><b>Board.</b> The token reads only <c>/display/board</c> and <c>/display/events</c>. Every call checks
 /// the device row: a revoked TV (or an inactive company) gets 401 <c>DISPLAY_REVOKED</c> and goes back to its
-/// pairing screen. A TV takes no seat.</para>
+/// pairing screen; a company without a current subscription gets 403 <c>SUBSCRIPTION_*</c> and the screen waits,
+/// still paired. A TV takes no seat.</para>
 /// </summary>
 public static class DisplayEndpoints
 {
     public static readonly TimeSpan PairingLifetime = TimeSpan.FromMinutes(10);
+
+    /// <summary>Cards per column the board receives; the column head still shows the full count.</summary>
+    public const int MaxCardsPerColumn = 200;
     public const int MaxNameLength = 80;
 
     /// <summary>The board's long-poll never outlives a revocation by more than this (the acceptance asks ≤ 1 min).</summary>
@@ -137,7 +141,15 @@ public static class DisplayEndpoints
         var (device, error) = await AuthorizeDisplayAsync(http, db, ct);
         if (error is not null) return error;
         var cursor = await FulfillmentService.LatestSeqAsync(db, device!.TenantId, ct);
-        var queue = await FulfillmentService.ListAsync(db, device.TenantId, FulfillmentStatuses.Open, changedSinceSeq: null, FulfillmentService.MaxListSize, ct);
+        var items = new List<FulfillmentDto>();
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        // Per status: a long pending queue must not hide what is being prepared or waits on the ramp (Codex, PR #61).
+        foreach (var status in FulfillmentStatuses.Open)
+        {
+            var open = db.OrderFulfillments.AsNoTracking().Where(f => f.TenantId == device.TenantId && f.Status == status);
+            counts[status] = await open.CountAsync(ct);
+            items.AddRange((await open.OrderBy(f => f.QueuedSeq).Take(MaxCardsPerColumn).ToListAsync(ct)).Select(FulfillmentService.ToDto));
+        }
         return JsonResults.Ok(new DisplayBoardResponse
         {
             TenantName = device.Tenant?.Name ?? string.Empty,
@@ -145,7 +157,8 @@ public static class DisplayEndpoints
             Settings = await FulfillmentService.SettingsAsync(db, device.TenantId, ct),
             LatestSeq = cursor,
             ServerTimeUtc = DateTimeOffset.UtcNow,
-            Items = queue.Items,
+            Items = [.. items],
+            Counts = counts,
         });
     }
 
@@ -189,9 +202,9 @@ public static class DisplayEndpoints
             return Error(400, "INVALID_DISPLAY_NAME", $"name is required (at most {MaxNameLength} characters).");
         var code = body?.Code?.Replace(" ", string.Empty, StringComparison.Ordinal).Trim();
 
-        var pairing = string.IsNullOrEmpty(code) ? null : await db.DisplayPairingCodes.FirstOrDefaultAsync(c => c.Code == code, ct);
+        var pairing = string.IsNullOrEmpty(code) ? null : await db.DisplayPairingCodes.AsNoTracking().FirstOrDefaultAsync(c => c.Code == code, ct);
         if (pairing is null || pairing.DisplayDeviceId is not null || pairing.ExpiresAtUtc <= DateTimeOffset.UtcNow)
-            return Error(404, "PAIRING_NOT_FOUND", "No TV is waiting with this code. Check the code on the screen; it changes every ten minutes.");
+            return NoWaitingScreen();
 
         var now = DateTimeOffset.UtcNow;
         var device = new DisplayDevice
@@ -202,10 +215,17 @@ public static class DisplayEndpoints
             CreatedByUserId = user!.Id,
             CreatedAtUtc = now,
         };
+        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        // One claim per code: two managers entering the same code at once must not both create a screen
+        // (the loser's would never connect). The WHERE on the empty device is the lock (Codex, PR #61).
+        var claimed = db.Database.IsRelational()
+            ? await db.DisplayPairingCodes.Where(c => c.Code == pairing.Code && c.DisplayDeviceId == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.DisplayDeviceId, device.Id).SetProperty(c => c.ClaimedAtUtc, now), ct)
+            : await ClaimTrackedAsync(db, pairing.Code, device.Id, now, ct);
+        if (claimed == 0) return NoWaitingScreen();
         db.DisplayDevices.Add(device);
-        pairing.DisplayDeviceId = device.Id;
-        pairing.ClaimedAtUtc = now;
         await db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
         return JsonResults.Status(StatusCodes.Status201Created, ToDto(device));
     }
 
@@ -224,6 +244,19 @@ public static class DisplayEndpoints
 
     // ---- helpers ----------------------------------------------------------------------------
 
+    private static IResult NoWaitingScreen() =>
+        Error(404, "PAIRING_NOT_FOUND", "No TV is waiting with this code. Check the code on the screen; it changes every ten minutes.");
+
+    /// <summary>The in-memory test host has no conditional update; the claim is a plain tracked change there.</summary>
+    private static async Task<int> ClaimTrackedAsync(CentralApiDbContext db, string code, Guid deviceId, DateTimeOffset now, CancellationToken ct)
+    {
+        var row = await db.DisplayPairingCodes.FirstOrDefaultAsync(c => c.Code == code && c.DisplayDeviceId == null, ct);
+        if (row is null) return 0;
+        row.DisplayDeviceId = deviceId;
+        row.ClaimedAtUtc = now;
+        return 1;
+    }
+
     private static async Task<(DisplayDevice? Device, IResult? Error)> AuthorizeDisplayAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {
         if (!Guid.TryParse(http.User.FindFirst("sub")?.Value, out var deviceId) || !http.User.TryGetTenantId(out var tenantId))
@@ -232,6 +265,12 @@ public static class DisplayEndpoints
             .FirstOrDefaultAsync(d => d.Id == deviceId && d.TenantId == tenantId, ct);
         if (device is null || device.RevokedAtUtc is not null || device.Tenant is not { IsActive: true })
             return (null, Error(401, "DISPLAY_REVOKED", "This screen is no longer paired."));
+        // Same rule as the company's users: no board without a current subscription (Codex, PR #61). 403 rather
+        // than 401 — the screen keeps its pairing and comes back once the subscription is renewed.
+        var seats = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Mobile.MobileSeatService>();
+        var status = ErpBridge.CentralApi.Mobile.MobileSeatService.SubscriptionStatus(await seats.GetCurrentSubscriptionAsync(tenantId, ct), DateTimeOffset.UtcNow);
+        if (!ErpBridge.CentralApi.Mobile.MobileSeatService.AllowsWork(status))
+            return (null, Error(403, status == "none" ? "SUBSCRIPTION_REQUIRED" : "SUBSCRIPTION_EXPIRED", "The company has no active subscription."));
 
         var now = DateTimeOffset.UtcNow;
         if (device.LastSeenAtUtc is not { } seen || now - seen >= LastSeenResolution)

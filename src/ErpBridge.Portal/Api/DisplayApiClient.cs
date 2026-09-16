@@ -42,7 +42,8 @@ public sealed class DisplayApiClient(HttpClient http)
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var response = await http.SendAsync(request, ct);
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) throw new DisplayRevokedException();
+        // 401 only: a 403 (no current subscription) leaves the screen paired until the company renews.
+        if (response.StatusCode == HttpStatusCode.Unauthorized) throw new DisplayRevokedException();
         return await ReadAsync<T>(response, ct);
     }
 
@@ -85,6 +86,9 @@ public sealed class DisplayBoardDto
     [JsonPropertyName("latestSeq")] public long LatestSeq { get; set; }
     [JsonPropertyName("serverTimeUtc")] public DateTimeOffset ServerTimeUtc { get; set; }
     [JsonPropertyName("items")] public FulfillmentDto[] Items { get; set; } = [];
+
+    /// <summary>Every open order per status, including those beyond the cards sent; empty from an older server.</summary>
+    [JsonPropertyName("counts")] public Dictionary<string, int> Counts { get; set; } = new();
 }
 
 /// <summary>An order in the warehouse queue (mirror of the central API's <c>FulfillmentDto</c>).</summary>

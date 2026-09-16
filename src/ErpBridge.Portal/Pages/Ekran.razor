@@ -34,6 +34,14 @@ else if (_mode == KioskMode.Pairing)
         }
     </div>
 }
+else if (_mode == KioskMode.Suspended)
+{
+    <div class="kiosk-center" id="kiosk-suspended">
+        <div class="kiosk-brand">Sipariş Cepte · Depo panosu</div>
+        <h1 class="kiosk-pair-title">Pano şu an kapalı</h1>
+        <p class="kiosk-pair-help">Firmanın kullanım süresi dolmuş. Süre yenilenince pano kendiliğinden açılır; ekranı yeniden eşleştirmeniz gerekmez.</p>
+    </div>
+}
 else if (_board is { } board)
 {
     var now = Now;
@@ -62,13 +70,14 @@ else if (_board is { } board)
             @foreach (var column in Columns(board))
             {
                 var cards = column.Items;
+                var total = board.Counts.TryGetValue(column.Status, out var counted) ? Math.Max(counted, cards.Count) : cards.Count;
                 var pages = Math.Max(1, (int)Math.Ceiling(cards.Count / (double)Timing.CardsPerPage));
                 var page = _rotation % pages;
                 var late = cards.Count(card => ToneOf(column, card, now) != Tone.Normal);
                 <section class="kiosk-column" data-column="@column.Status">
                     <header class="kiosk-column-head">
                         <span class="kiosk-column-title">@column.Title</span>
-                        <span class="kiosk-column-count" data-count>@cards.Count</span>
+                        <span class="kiosk-column-count" data-count>@total</span>
                         @if (late > 0)
                         {
                             <span class="kiosk-late-count" data-late>@late geciken</span>
@@ -113,7 +122,7 @@ else if (_board is { } board)
 }
 
 @code {
-    public enum KioskMode { Starting, Pairing, Board }
+    public enum KioskMode { Starting, Pairing, Board, Suspended }
 
     private enum Tone { Normal, Warn, Critical }
 
@@ -200,10 +209,17 @@ else if (_board is { } board)
                     return session;
                 }
             }
+            catch (PortalApiException refused) when (refused.Status is 404 or 410)
+            {
+                // Expired, or gone: ask for a new code.
+                _pairing = null;
+            }
             catch (PortalApiException)
             {
-                // Expired, or taken by a race: ask for a new code.
-                _pairing = null;
+                // Throttled (429) or a server error: the code is still good. Every TV pairs through the portal
+                // server's one address, so retrying at once would keep the shared limit exhausted (Codex, PR #61).
+                await OnlineAsync(false);
+                await Task.Delay(Timing.Retry, token);
             }
             catch (HttpRequestException)
             {
@@ -239,6 +255,14 @@ else if (_board is { } board)
                 await OnlineAsync(true);
                 reload = events.Changed;
                 await Task.Delay(Timing.MinPollGap, token);
+            }
+            catch (PortalApiException refused) when (refused.Code.StartsWith("SUBSCRIPTION_", StringComparison.Ordinal))
+            {
+                // No current subscription: nothing of the company stays on the wall, the pairing is kept.
+                _board = null;
+                reload = true;
+                await ShowAsync(KioskMode.Suspended);
+                await Task.Delay(Timing.Retry, token);
             }
             catch (Exception ex) when (ex is PortalApiException or HttpRequestException || (ex is TaskCanceledException && !token.IsCancellationRequested))
             {

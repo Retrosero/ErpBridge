@@ -711,14 +711,21 @@ registration ayrı bir composition projesine taşınır.
      `CanManageWarehouse`; kod boşluklu yazılabilir) ile sahiplenir. TV'nin sonraki yoklaması `scope=display`
      token'ı **bir kez** alır, kod satırı aynı kayıtta silinir (ikinci yoklama 404). Yanlış gizli anahtar
      bilinmeyen kodla aynı cevabı alır (404 `PAIRING_NOT_FOUND`); süresi dolmuş sahiplenilmemiş kod 410
-     `PAIRING_EXPIRED`. Kodlar 10 dk yaşar; yeni kod üretilirken süresi dolanlar silinir (tablo küçük olduğu
+     `PAIRING_EXPIRED`. **Sahiplenme tek kazananlıdır:** `ExecuteUpdate … WHERE Code = @kod AND DisplayDeviceId IS NULL`
+     ile ekran satırı aynı transaction'da; aynı kodu aynı anda giren ikinci yönetici 404 alır, boşta ekran kalmaz
+     (Codex, PR #61). Kodlar 10 dk yaşar; yeni kod üretilirken süresi dolanlar silinir (tablo küçük olduğu
      için bellekte süzülür — SQLite `DateTimeOffset` karşılaştıramaz). Gizli anahtar yalnız SHA-256 olarak saklanır.
    - **Token:** `JwtIssuer.IssueForDisplay`: `sub=displayDeviceId`, `tenant`, `scope=display`, 365 gün.
      `Program.DisplayPolicy` yalnız bu kapsamı kabul eder; başka hiçbir uç (portal, telefon) display token'ı
      kabul etmez. Her pano çağrısı `display_devices` satırına bakar: iptal edilmiş, silinmiş ya da firması pasif
-     ekran 401 `DISPLAY_REVOKED`. `LastSeenAtUtc` en çok dakikada bir yazılır.
+     ekran 401 `DISPLAY_REVOKED`. **Abonelik de kontrol edilir** (`MobileSeatService.SubscriptionStatus`/`AllowsWork`,
+     kullanıcılarla aynı kural): güncel aboneliği olmayan firmanın ekranı 403 `SUBSCRIPTION_EXPIRED|REQUIRED` alır —
+     401 değil, çünkü ekran eşleşmiş kalır ve süre yenilenince kendiliğinden açılır (Codex, PR #61).
+     `LastSeenAtUtc` en çok dakikada bir yazılır.
    - **Pano uçları:** `GET /api/v1/display/board` → firma ve ekran adı, depo ayarları (eşikler), `latestSeq`
-     (satırlardan önce okunur), `serverTimeUtc`, açık siparişler (PENDING/PREPARING/PACKED, `QueuedSeq` sırası).
+     (satırlardan önce okunur), `serverTimeUtc`, açık siparişler **durum başına en çok `MaxCardsPerColumn` (200)**
+     (`QueuedSeq` sırası; uzun bekleyen kuyruğu hazırlananları panodan itmesin) ve `counts` (durum başına gerçek
+     toplam; kolon başlığı bunu gösterir — 500'de sessizce kırpılmaz, Codex PR #61).
      `GET /api/v1/display/events?sinceSeq&wait=0-25` depo konusunun long-poll'u (kural 21). **Hız sınırı ekran
      başınadır** (`PerDisplayRateLimitPolicy`, 60/dk): firma başına ortak `PerTenantRateLimitPolicy` (100/dk,
      telefon + portal paylaşır) duvardaki panolarla tükenmesin.
@@ -731,7 +738,10 @@ registration ayrı bir composition projesine taşınır.
      (başlamadan), **Paketlendi** (paketlemeden; yalnız sarı). Eşik geçen kart sarı, kritik kırmızı ve yavaş
      yanıp söner (`prefers-reduced-motion` ile durur); kolon başında sayı ve "N geciken"; `CardsPerPage` (6)
      aşılınca `Rotate` (10 sn) aralıkla sayfa döner. Süreler API saatine göre (`serverTimeUtc` farkı). Bağlantı
-     koparsa son pano kalır, kırmızı nokta + şerit, 10 sn'de bir dener. `wwwroot/js/portal-kiosk.js`: Wake Lock
+     koparsa son pano kalır, kırmızı nokta + şerit, 10 sn'de bir dener. Eşleştirme yoklamasında yalnız 404/410
+     kodu yeniler; 429/5xx'te kod korunur ve beklenir — tüm TV'ler panel sunucusunun tek IP'sinden 60/dk anonim
+     sınırı paylaştığı için hemen yeni kod istemek sınırı kilitli tutardı (Codex, PR #61). Abonelik 403'ünde pano
+     verisi silinir, "Pano şu an kapalı" gösterilir, eşleştirme korunur (`KioskMode.Suspended`). `wwwroot/js/portal-kiosk.js`: Wake Lock
      ve Blazor bağlantısı kalıcı düşünce (`components-reconnect-failed/rejected`) sayfayı yeniden yükleme.
      Zamanlamalar `KioskTiming` servisinden (testler kısaltır).
      - **Tuzak:** arka plan döngüsünden değişen durum sayfayı kendiliğinden yeniden çizmez; saat tiki 5 sn

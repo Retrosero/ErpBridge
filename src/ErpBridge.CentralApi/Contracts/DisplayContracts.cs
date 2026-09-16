@@ -58,6 +58,12 @@ public sealed class DisplayBoardResponse
     /// <summary>The API's clock: durations on the board are counted from it, not the TV's.</summary>
     [JsonPropertyName("serverTimeUtc")] public DateTimeOffset ServerTimeUtc { get; set; }
 
-    /// <summary>Open orders (pending, preparing, packed), oldest first.</summary>
+    /// <summary>
+    /// Open orders, oldest first: up to <c>DisplayEndpoints.MaxCardsPerColumn</c> of each status, so a flood of
+    /// pending orders never pushes the preparing and packed ones off the board.
+    /// </summary>
     [JsonPropertyName("items")] public FulfillmentDto[] Items { get; set; } = [];
+
+    /// <summary>Every open order per status (PENDING, PREPARING, PACKED), including those beyond the cards sent.</summary>
+    [JsonPropertyName("counts")] public Dictionary<string, int> Counts { get; set; } = new();
 }

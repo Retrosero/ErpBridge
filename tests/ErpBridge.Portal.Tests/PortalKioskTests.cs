@@ -110,10 +110,17 @@ public sealed class PortalKioskTests : PortalPageTestContext
 
         var cut = Render<Ekran>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-column=PENDING] [data-page]").TextContent.Should().Be("1/2"));
-        cut.FindAll("[data-column=PENDING] .kiosk-card").Should().HaveCount(3);
-        cut.WaitForAssertion(() => cut.Find("[data-column=PENDING] [data-page]").TextContent.Should().Be("2/2"), TimeSpan.FromSeconds(2));
-        cut.FindAll("[data-column=PENDING] .kiosk-card").Should().HaveCount(2);
+        // Page label and cards are checked on the same render: the page may turn between two separate checks.
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("[data-column=PENDING] [data-page]").TextContent.Should().Be("1/2");
+            cut.FindAll("[data-column=PENDING] .kiosk-card").Should().HaveCount(3);
+        }, TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("[data-column=PENDING] [data-page]").TextContent.Should().Be("2/2");
+            cut.FindAll("[data-column=PENDING] .kiosk-card").Should().HaveCount(2);
+        }, TimeSpan.FromSeconds(2));
     }
 
     [Fact]
@@ -163,6 +170,59 @@ public sealed class PortalKioskTests : PortalPageTestContext
 
         cut.WaitForAssertion(() => cut.Find("#kiosk-code").TextContent.Should().Be("105 006"), TimeSpan.FromSeconds(2));
         store.Stored.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_throttled_pairing_poll_keeps_its_code_and_waits_instead_of_asking_for_new_ones()
+    {
+        var (api, _) = Kiosk(stored: null, ticking: false);
+        api.Answer("/api/v1/display/pairings", new { code = "222333", secret = "gizli", expiresAtUtc = PortalTestSetup.Now.AddMinutes(10) });
+        api.Fail("/api/v1/display/pairings/222333/token", HttpStatusCode.TooManyRequests, "HTTP_429");
+
+        var cut = Render<Ekran>();
+
+        cut.WaitForAssertion(() => cut.Find("#kiosk-code").TextContent.Should().Be("222 333"));
+        SpinWait.SpinUntil(() => api.Requests.ToArray().Count(r => r.PathAndQuery.EndsWith("/token")) >= 3, TimeSpan.FromSeconds(2)).Should().BeTrue();
+        api.Requests.ToArray().Count(r => r.PathAndQuery == "/api/v1/display/pairings").Should().Be(1, "a still-valid code is not thrown away on 429");
+        cut.WaitForAssertion(() => cut.Find("#kiosk-offline"));
+    }
+
+    [Fact]
+    public void Without_a_subscription_the_board_hides_the_orders_and_comes_back_without_pairing_again()
+    {
+        var (api, store) = Kiosk(new DisplaySession("tok-tv", "Ege Dağıtım", "Depo girişi"), ticking: false);
+        api.Fail(Board, HttpStatusCode.Forbidden, "SUBSCRIPTION_EXPIRED");
+
+        var cut = Render<Ekran>();
+
+        cut.WaitForAssertion(() => cut.Find("#kiosk-suspended"), TimeSpan.FromSeconds(2));
+        cut.FindAll("[data-order]").Should().BeEmpty();
+        store.Stored.Should().NotBeNull("the screen stays paired");
+
+        api.Answer(Board, BoardOf(Order("SO-BACK", "PENDING", 1)));
+        api.Answer(Events, new { latestSeq = 40, changed = false });
+        cut.WaitForAssertion(() => cut.Find("[data-order=SO-BACK]"), TimeSpan.FromSeconds(2));
+        api.Requests.Should().NotContain(r => r.PathAndQuery == "/api/v1/display/pairings");
+    }
+
+    [Fact]
+    public void A_column_head_counts_every_open_order_even_beyond_the_cards_sent()
+    {
+        var (api, _) = Kiosk(new DisplaySession("tok-tv", "Ege Dağıtım", "Depo girişi"));
+        api.Answer(Board, new
+        {
+            tenantName = "Ege Dağıtım", displayName = "Depo girişi",
+            settings = new { enabled = true, pendingWarnMinutes = 15, pendingCriticalMinutes = 30, preparingWarnMinutes = 20, preparingCriticalMinutes = 45, packedWarnMinutes = 60 },
+            latestSeq = 40, serverTimeUtc = PortalTestSetup.Now,
+            items = new[] { Order("SO-A", "PENDING", 3), Order("SO-B", "PENDING", 2) },
+            // A dictionary, as the API sends it: its keys are not camel-cased like property names.
+            counts = new Dictionary<string, int> { ["PENDING"] = 250, ["PREPARING"] = 0, ["PACKED"] = 0 },
+        });
+        api.Answer(Events, new { latestSeq = 40, changed = false });
+
+        var cut = Render<Ekran>();
+
+        cut.WaitForAssertion(() => cut.Find("[data-column=PENDING] [data-count]").TextContent.Should().Be("250"));
     }
 
     private static AngleSharp.Dom.IElement Card(IRenderedComponent<Ekran> cut, string orderNo) => cut.Find($"[data-order={orderNo}]");

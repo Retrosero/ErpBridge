@@ -19,7 +19,8 @@
 ## Testler / derleme
 
 - `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; `has-pending-model-changes`: yok.
-- CentralApi 401, Portal 98; tüm çözüm yeşil. Zamanlamaya dayalı pano testleri 5 turda kararlı.
+- CentralApi 404, Portal 109; tüm çözüm yeşil. Zamanlamaya dayalı pano testleri 5 turda kararlı.
+- Codex (PR #61) dört bulgu düzeltildi: eşleştirme 429/5xx'te kodu atmadan bekler; display token abonelik kontrolünden geçer (403, eşleşme korunur); kod sahiplenme koşullu tek güncelleme; pano durum başına kart + gerçek sayılar. CI'da kırılan sayfa dönüşü testi aynı render'da kontrol edecek şekilde düzeltildi.
 - Yerelde tarayıcıda: `/ekran` kodu → `/ekranlar`'dan eşleştirme → pano; API'den "başla" → kart Hazırlanıyor'a geçti; `/ekranlar`'dan iptal → ~4 sn'de pano kapandı, eşleştirme silindi; yeniden eşleşen TV sayfa yenilemede panoya döndü; kritik kartlar kırmızı. Bu sırada bulunan hata düzeltildi: kod ekranı saat tikini (5 sn) bekliyordu.
 
 ---

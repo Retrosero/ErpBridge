@@ -481,6 +481,72 @@ public sealed class WarehouseFulfillmentRelationalTests : IClassFixture<SqliteCe
         (await ErrorAsync(GetAsync("/api/v1/display/events?sinceSeq=0&wait=0", token))).Should().Be("DISPLAY_REVOKED");
     }
 
+    [Fact]
+    public async Task A_board_needs_a_current_subscription_and_keeps_its_pairing_while_it_waits()
+    {
+        var c = await NativeCompanyAsync();
+        await SellAsync(c, "SO-SUB", quantity: 1);
+        var (_, token) = await PairedDisplayAsync(c, "Abonelik TV");
+
+        // The console refuses an end date in the past, so time passes in the database instead.
+        await SetSubscriptionEndAsync(c.Id, DateTimeOffset.UtcNow.AddYears(-1));
+        var expired = await GetAsync("/api/v1/display/board", token);
+        expired.StatusCode.Should().Be(HttpStatusCode.Forbidden, "403, not 401: the screen stays paired");
+        (await expired.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("SUBSCRIPTION_EXPIRED");
+        (await ErrorAsync(GetAsync("/api/v1/display/events?sinceSeq=0", token))).Should().Be("SUBSCRIPTION_EXPIRED");
+
+        await SetSubscriptionEndAsync(c.Id, DateTimeOffset.UtcNow.AddYears(1));
+        (await BoardAsync(token)).Items.Should().ContainSingle();
+    }
+
+    private async Task SetSubscriptionEndAsync(Guid tenantId, DateTimeOffset endsAt)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var current = await db.TenantSubscriptions.SingleAsync(s => s.TenantId == tenantId && s.IsCurrent);
+        current.EndsAtUtc = endsAt;
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Two_managers_entering_the_same_code_at_once_create_one_screen()
+    {
+        var c = await NativeCompanyAsync();
+        var other = await NativeCompanyAsync();
+        var pairing = await PairingAsync();
+
+        var both = await Task.WhenAll(
+            PostAsync("/api/v1/portal/displays", new { code = pairing.Code, name = "Birinci" }, c.Patron),
+            PostAsync("/api/v1/portal/displays", new { code = pairing.Code, name = "İkinci" }, other.Patron));
+
+        both.Select(r => r.StatusCode).Should().BeEquivalentTo([HttpStatusCode.Created, HttpStatusCode.NotFound]);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var created = await db.DisplayDevices.AsNoTracking().Where(d => d.TenantId == c.Id || d.TenantId == other.Id).ToListAsync();
+        created.Should().ContainSingle("the losing request leaves no orphan screen");
+        (await db.DisplayPairingCodes.AsNoTracking().SingleAsync(p => p.Code == pairing.Code)).DisplayDeviceId.Should().Be(created.Single().Id);
+        (await TakeTokenAsync(pairing.Code, pairing.Secret)).DisplayName.Should().Be(created.Single().Name);
+    }
+
+    [Fact]
+    public async Task The_board_counts_every_open_order_per_column()
+    {
+        var c = await NativeCompanyAsync();
+        await SellAsync(c, "SO-C1", quantity: 1);
+        await SellAsync(c, "SO-C2", quantity: 1);
+        await SellAsync(c, "SO-C3", quantity: 1);
+        var ids = (await ListAsync(c.Depot)).Items.Select(i => i.Id).ToList();
+        await ActAsync(c.Depot, ids[0], "start");
+        await ActAsync(c.Depot, ids[1], "start");
+        await ActAsync(c.Depot, ids[1], "pack");
+        var (_, token) = await PairedDisplayAsync(c, "Sayım TV");
+
+        var board = await BoardAsync(token);
+
+        board.Counts.Should().BeEquivalentTo(new Dictionary<string, int> { ["PENDING"] = 1, ["PREPARING"] = 1, ["PACKED"] = 1 });
+        board.Items.Select(i => i.Status).Should().BeEquivalentTo("PENDING", "PREPARING", "PACKED");
+    }
+
     private async Task<DisplayPairingResponse> PairingAsync()
     {
         var response = await _factory.CreateClient().PostJsonAsync("/api/v1/display/pairings", new { });
