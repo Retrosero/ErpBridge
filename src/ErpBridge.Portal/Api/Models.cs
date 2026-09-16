@@ -16,6 +16,9 @@ public sealed class LoginRequest
 
     /// <summary>Tells the server this is the portal: portal-only roles may sign in, documents may not be posted.</summary>
     [JsonPropertyName("client")] public string Client { get; set; } = "portal";
+
+    /// <summary>True: a 30-day token the browser keeps; false: a 12-hour token for this tab.</summary>
+    [JsonPropertyName("rememberMe")] public bool RememberMe { get; set; }
 }
 
 public sealed class LoginResponse
@@ -52,10 +55,16 @@ public sealed class UserDto
 
     /// <summary>Every role (ADMIN, MANAGER, ACCOUNTING, WAREHOUSE, SALES); empty from a server before multi-role accounts.</summary>
     [JsonPropertyName("roles")] public string[] Roles { get; set; } = [];
+
+    /// <summary>The server's effective right to decide approvals: admin, approving manager or accounting.</summary>
     [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
     [JsonPropertyName("canManageApprovalRules")] public bool CanManageApprovalRules { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
     [JsonPropertyName("lastLoginAtUtc")] public DateTimeOffset? LastLoginAtUtc { get; set; }
+
+    /// <summary>The roles, or the single role a server before multi-role accounts sends.</summary>
+    public IReadOnlyList<string> EffectiveRoles() =>
+        Roles.Length > 0 ? Roles : string.IsNullOrWhiteSpace(Role) ? [] : [Role];
 }
 
 public sealed class UserListResponse
@@ -69,8 +78,23 @@ public sealed class CreateUserRequest
     [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
     [JsonPropertyName("fullName")] public string FullName { get; set; } = string.Empty;
     [JsonPropertyName("password")] public string Password { get; set; } = string.Empty;
-    [JsonPropertyName("role")] public string Role { get; set; } = "SALES";
+    [JsonPropertyName("roles")] public List<string> Roles { get; set; } = [];
+
+    /// <summary>Meaningful for a manager only; the server ignores it otherwise.</summary>
     [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
+}
+
+/// <summary>Replaces a user's roles (PATCH). The server keeps the last administrator.</summary>
+public sealed class UpdateUserRolesRequest
+{
+    [JsonPropertyName("roles")] public List<string> Roles { get; set; } = [];
+
+    /// <summary>
+    /// The manager's own right to decide every kind; <c>null</c> keeps it as stored. The user list
+    /// carries only the effective right (accounting approves money documents without this flag), so
+    /// the editor sends a value only when the administrator changed the switch.
+    /// </summary>
+    [JsonPropertyName("canApprove")] public bool? CanApprove { get; set; }
 }
 
 public sealed class ApprovalDto

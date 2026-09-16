@@ -41,7 +41,7 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     /// </summary>
     public static string DeviceIdFor(string username) => "web-portal:" + username.Trim().ToLowerInvariant();
 
-    public async Task<LoginResponse> LoginAsync(string tenantCode, string username, string password, CancellationToken ct = default)
+    public async Task<LoginResponse> LoginAsync(string tenantCode, string username, string password, bool rememberMe = false, CancellationToken ct = default)
     {
         var body = new LoginRequest
         {
@@ -50,6 +50,7 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
             Password = password,
             DeviceId = DeviceIdFor(username),
             AppVersion = "portal",
+            RememberMe = rememberMe,
         };
         using var response = await http.PostAsJsonAsync("api/v1/android/account/login", body, Json, ct);
         if (!response.IsSuccessStatusCode)
@@ -60,6 +61,10 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
         }
         return (await response.Content.ReadFromJsonAsync<LoginResponse>(Json, ct))!;
     }
+
+    /// <summary>The signed-in user as the server sees them now: roles an administrator changed take effect.</summary>
+    public Task<SessionDto> MeAsync(CancellationToken ct = default) =>
+        GetAsync<SessionDto>("api/v1/android/account/me", ct);
 
     public Task<SummaryResponse> SummaryAsync(DateOnly day, CancellationToken ct = default) =>
         GetAsync<SummaryResponse>($"api/v1/portal/summary?date={Day(day)}", ct);
@@ -90,6 +95,9 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
 
     public Task<UserDto> SetUserActiveAsync(Guid userId, bool active, CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Patch, $"api/v1/android/account/users/{userId}", new { isActive = active }, ct);
+
+    public Task<UserDto> SetUserRolesAsync(Guid userId, UpdateUserRolesRequest request, CancellationToken ct = default) =>
+        SendAsync<UserDto>(HttpMethod.Patch, $"api/v1/android/account/users/{userId}", request, ct);
 
     // ---- plumbing ------------------------------------------------------------
 

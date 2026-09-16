@@ -1,6 +1,6 @@
 # Goal Plan — Çoklu Rol, Muhasebe Onayı, Canlı Depo Ekranı ve Performans Paneli
 
-Durum: **Onaylandı — Adım 2 sürüyor** · Tarih: 2026-09-16 · Kapsam: ErpBridge.CentralApi + ErpBridge.Portal
+Durum: **Onaylandı — Adım 3 bitti, sırada Adım 4** · Tarih: 2026-09-16 · Kapsam: ErpBridge.CentralApi + ErpBridge.Portal
 (Sipariş Cepte telefon uygulamasında değişiklik yok.)
 
 ---
@@ -306,8 +306,8 @@ bildirim (SMS/push) · e-fatura · çoklu depo/şube ayrımı · CSV/Excel dış
 | Adım | Durum | PR | Not |
 |---|---|---|---|
 | 1 — Kalıcı oturum anahtarı + şema kontrolü | ✅ | [#49](https://github.com/Retrosero/ErpBridge/pull/49) | Canlıda `/health/schema` current (20 migration); `lisans-portal` için `/app/keys` volume eklendi, açılışta uyarı yok |
-| 2 — Çoklu rol altyapısı | 🔄 sürüyor | — | `mobile_users.Role` öncelikli rol değil, eski uygulamalar için ADMIN/MANAGER/SALES türetilmiş değer olarak tutuldu (plan 2.1 taslağından sapma, daha güvenli). Telefon uygulamasına `ROLE_NOT_ALLOWED_ON_PHONE` Türkçe metni sonraki telefon sürümüne |
-| 3 — Beni Hatırla + rol bazlı arayüz | ⬜ | — | |
+| 2 — Çoklu rol altyapısı | ✅ | [#50](https://github.com/Retrosero/ErpBridge/pull/50) | `mobile_users.Role` öncelikli rol değil, eski uygulamalar için ADMIN/MANAGER/SALES türetilmiş değer olarak tutuldu (plan 2.1 taslağından sapma, daha güvenli). Telefon uygulamasına `ROLE_NOT_ALLOWED_ON_PHONE` Türkçe metni sonraki telefon sürümüne |
+| 3 — Beni Hatırla + rol bazlı arayüz | ✅ | Faz 46 | Sunucu: login `rememberMe` → panelde 30 gün / 12 saat. Panel: şifreli `localStorage` ya da `sessionStorage`, rol birleşimine göre menü ve `PortalPageBase.Requires`, çoklu rol çipleri (ekle + düzenle). **Sapmalar:** muhasebenin açılış sayfası `/onaylar` (`/muhasebe` adım 5'te gelince değişecek); `/depo` şimdilik yer tutucu (adım 6); admin kendi rollerini panelden değiştiremez. Yerelde tarayıcıda doğrulandı (muhasebe/depo/admin, yeni sekmede hatırlanan oturum, rol kaydı) |
 | 4 — Sipariş hazırlık çekirdeği | ⬜ | — | |
 | 5 — Muhasebe onay ekranı | ⬜ | — | |
 | 6 — Depo personeli sayfası | ⬜ | — | |

@@ -28,7 +28,7 @@
                 <li><MudIcon Icon="@Icons.Material.Rounded.FactCheck" Size="Size.Small" /> Onay bekleyen işlemleri tek tıkla sonuçlandırma</li>
             </ul>
 
-            <div class="login-brand-foot">Veriler firmanıza özeldir; oturum yalnızca bu tarayıcı sekmesinde saklanır.</div>
+            <div class="login-brand-foot">Veriler firmanıza özeldir; oturum şifreli saklanır, "Beni hatırla" seçilmezse sekmeyle biter.</div>
         </div>
     </section>
 
@@ -41,7 +41,7 @@
 
             <MudText Typo="Typo.h4" HtmlTag="h1">Hoş geldiniz</MudText>
             <MudText Typo="Typo.body2" Class="text-muted login-lead">
-                Telefondaki firma hesabınızla giriş yapın. Panel firma admini ve yöneticiler içindir.
+                Telefondaki firma hesabınızla giriş yapın. Panel admin, yönetici, muhasebe ve depo rolleri içindir.
             </MudText>
 
             @if (!string.IsNullOrEmpty(_notice))
@@ -58,6 +58,11 @@
                               Immediate="true" InputType="@(_showPassword ? InputType.Text : InputType.Password)" autocomplete="current-password"
                               Adornment="Adornment.End" AdornmentIcon="@(_showPassword ? Icons.Material.Rounded.VisibilityOff : Icons.Material.Rounded.Visibility)"
                               AdornmentAriaLabel="Parolayı göster veya gizle" OnAdornmentClick="() => _showPassword = !_showPassword" />
+
+                <div class="login-remember" id="login-remember">
+                    <MudCheckBox T="bool" @bind-Value="_rememberMe" Color="Color.Primary" Dense="true" Label="Beni hatırla" />
+                    <span class="login-remember-hint" id="login-remember-hint">@(_rememberMe ? "Bu tarayıcıda 30 gün açık kalır. Ortak bilgisayarda işaretlemeyin." : "Sekmeyi kapatınca oturum biter.")</span>
+                </div>
 
                 <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true"
                            Disabled="@_busy" Class="login-submit" id="login-submit">
@@ -92,6 +97,7 @@
     private string _username = string.Empty;
     private string _password = string.Empty;
     private bool _showPassword;
+    private bool _rememberMe;
     private bool _busy;
     private string? _error;
     private string? _notice;
@@ -112,20 +118,26 @@
         _error = null;
         try
         {
-            var login = await Api.LoginAsync(_tenantCode ?? string.Empty, _username ?? string.Empty, _password ?? string.Empty);
+            var login = await Api.LoginAsync(_tenantCode ?? string.Empty, _username ?? string.Empty, _password ?? string.Empty, _rememberMe);
             var user = login.Session.User;
-            // The server refuses a salesperson on every portal call; saying so here is kinder.
-            if (!PortalSession.Roles.MayUsePortal(user.Role))
+            var roles = user.EffectiveRoles().ToArray();
+            // The server refuses a field-only account at login and on every call; an older server
+            // did not refuse at login, so the portal checks too.
+            if (!PortalRoles.MayUsePortal(roles))
             {
-                _error = PortalMessages.For("PORTAL_REQUIRES_MANAGER");
+                _error = PortalMessages.For("PORTAL_SALES_ONLY");
                 return;
             }
             var state = new PortalSessionState(
                 login.Token, login.ExpiresAtUtc, login.Session.TenantName, login.Session.TenantCode ?? _tenantCode!.Trim().ToUpperInvariant(),
-                login.Session.DataSource, user.Username, user.FullName, user.Role, user.CanApprove);
-            Session.SignIn(state);
+                login.Session.DataSource, user.Username, user.FullName, user.Role, user.CanApprove, roles, _rememberMe);
+            Session.SignIn(state, fresh: true);
             await Persistence.SaveAsync(state);
-            Nav.NavigateTo("");
+            Nav.NavigateTo(Session.HomePage);
+        }
+        catch (PortalApiException failed) when (failed.Code == "PORTAL_REQUIRES_MANAGER")
+        {
+            _error = PortalMessages.For("PORTAL_SALES_ONLY");
         }
         catch (PortalApiException failed)
         {

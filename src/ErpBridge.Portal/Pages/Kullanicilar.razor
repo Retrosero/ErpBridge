@@ -9,7 +9,7 @@
 }
 else
 {
-    <PageHeader Title="Kullanıcılar" Eyebrow="Yönetim" Subtitle="Telefon ve panel hesapları" Busy="Busy" />
+    <PageHeader Title="Kullanıcılar" Eyebrow="Yönetim" Subtitle="Telefon ve panel hesapları, rolleri" Busy="Busy" />
 
     @if (Notice is not null)
     {
@@ -29,7 +29,7 @@ else
                     <div class="panel-head">
                         <div>
                             <MudText Typo="Typo.h6">Hesaplar</MudText>
-                            <MudText Typo="Typo.body2" Class="text-muted">Devre dışı bırakılan kullanıcı telefondan ve panelden giriş yapamaz.</MudText>
+                            <MudText Typo="Typo.body2" Class="text-muted">Devre dışı bırakılan kullanıcı telefondan ve panelden giriş yapamaz. Rol değişikliği bir sonraki işlemde geçerli olur.</MudText>
                         </div>
                     </div>
                     <div class="table-scroll">
@@ -37,7 +37,7 @@ else
                             <thead>
                                 <tr>
                                     <th>Kullanıcı</th>
-                                    <th>Rol</th>
+                                    <th>Roller</th>
                                     <th>Son giriş</th>
                                     <th>Durum</th>
                                     <th class="num"></th>
@@ -46,8 +46,9 @@ else
                             <tbody>
                                 @foreach (var user in _list.Users)
                                 {
-                                    var self = string.Equals(user.Username, Session.Username, StringComparison.OrdinalIgnoreCase);
-                                    <tr data-user="@user.Username">
+                                    var self = IsSelf(user);
+                                    var roles = user.EffectiveRoles();
+                                    <tr data-user="@user.Username" class="@(_editing?.Id == user.Id ? "is-editing" : null)">
                                         <td>
                                             <div class="person">
                                                 <MudAvatar Size="Size.Small" Color="@(user.IsActive ? Color.Primary : Color.Default)" Variant="Variant.Outlined">@Fmt.Initials(user.FullName)</MudAvatar>
@@ -58,18 +59,25 @@ else
                                             </div>
                                         </td>
                                         <td>
-                                            <span class="badge badge--@RoleTone(user.Role)">@Fmt.Role(user.Role)</span>
-                                            @if (user.Role == PortalSession.Roles.Manager && user.CanApprove)
-                                            {
-                                                <span class="badge badge--muted">onaylayabilir</span>
-                                            }
+                                            <div class="role-badges">
+                                                @foreach (var role in roles)
+                                                {
+                                                    <span class="badge badge--@RoleTone(role)" data-role="@role">@Fmt.Role(role)</span>
+                                                }
+                                                @if (ApprovalFlagIsKnown(roles) && roles.Contains(PortalRoles.Manager) && user.CanApprove)
+                                                {
+                                                    <span class="badge badge--muted">onaylayabilir</span>
+                                                }
+                                            </div>
                                         </td>
                                         <td class="nowrap">@(user.LastLoginAtUtc is { } at ? Fmt.Time(at) : "—")</td>
                                         <td><span class="badge @(user.IsActive ? "badge--ok" : "badge--off")">@(user.IsActive ? "Aktif" : "Pasif")</span></td>
-                                        <td class="num">
+                                        <td class="num nowrap">
                                             @if (!self)
                                             {
-                                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="@(user.IsActive ? Color.Error : Color.Success)" Disabled="@Busy"
+                                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="roles-btn"
+                                                           OnClick="() => StartEditing(user)">Roller</MudButton>
+                                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="@(user.IsActive ? Color.Error : Color.Success)" Disabled="@Busy" Class="active-btn"
                                                            OnClick="() => ToggleAsync(user)">
                                                     @(user.IsActive ? "Devre dışı bırak" : "Etkinleştir")
                                                 </MudButton>
@@ -85,6 +93,36 @@ else
 
             <MudItem xs="12" lg="4">
                 <div class="side-stack">
+                    @if (_editing is not null)
+                    {
+                        <MudPaper Outlined="true" Class="panel" id="user-roles-edit">
+                            <div class="panel-head">
+                                <div>
+                                    <MudText Typo="Typo.h6">Rolleri düzenle</MudText>
+                                    <MudText Typo="Typo.body2" Class="text-muted">@_editing.FullName · @_editing.Username</MudText>
+                                </div>
+                                <MudIcon Icon="@Icons.Material.Rounded.Badge" Color="Color.Primary" />
+                            </div>
+                            <form class="stack-form" @onsubmit="SaveRolesAsync" @onsubmit:preventDefault>
+                                <RolePicker Id="edit-roles" @bind-Selected="_editRoles" Disabled="@Busy" />
+                                @if (_editRoles.Contains(PortalRoles.Manager) && !_editRoles.Contains(PortalRoles.Admin))
+                                {
+                                    <div id="edit-can-approve">
+                                        <MudSwitch T="bool" Value="_editCanApprove" ValueChanged="ChangeEditCanApprove" Color="Color.Primary" Label="Onay verebilsin" />
+                                        @if (!_editCanApproveKnown && !_editCanApproveTouched)
+                                        {
+                                            <div class="field-hint" id="edit-can-approve-kept">Muhasebe rolü finansal onayları zaten verir. Bu anahtar yöneticinin tüm türleri onaylamasıdır; dokunmazsanız mevcut ayar korunur.</div>
+                                        }
+                                    </div>
+                                }
+                                <div class="form-actions">
+                                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="StopEditing" id="edit-cancel">Vazgeç</MudButton>
+                                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="edit-save">Kaydet</MudButton>
+                                </div>
+                            </form>
+                        </MudPaper>
+                    }
+
                     <MudPaper Outlined="true" Class="panel">
                         <div class="panel-head">
                             <MudText Typo="Typo.h6">Kullanıcı hakkı</MudText>
@@ -92,7 +130,7 @@ else
                         </div>
                         <MudProgressLinear Color="@(_list.Seats.Used >= _list.Seats.Max ? Color.Warning : Color.Primary)" Rounded="true" Size="Size.Medium" Value="@seatRate" />
                         <MudText Typo="Typo.caption" Class="text-muted panel-note">
-                            Kullanıcı hakkı sayısı ErpBridge ile yapılan anlaşmaya göre belirlenir; buradan satın alma yapılmaz.
+                            Rolü ne olursa olsun her aktif kullanıcı bir kullanıcı hakkı kullanır. Hak sayısı ErpBridge ile yapılan anlaşmaya göre belirlenir; buradan satın alma yapılmaz.
                         </MudText>
                     </MudPaper>
 
@@ -107,13 +145,9 @@ else
                                           MaxLength="64" autocomplete="off" HelperText="Küçük harf, rakam, nokta, alt çizgi, tire" />
                             <MudTextField T="string" @bind-Value="_new.Password" Label="Parola" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="new-password"
                                           InputType="InputType.Password" autocomplete="new-password" HelperText="En az 6 karakter" />
-                            <div class="field-label">Rol</div>
-                            <MudToggleGroup T="string" @bind-Value="_new.Role" Color="Color.Primary" Size="Size.Small" CheckMark="false" id="new-role" Class="role-toggle">
-                                <MudToggleItem Value="@("SALES")" Text="Saha" />
-                                <MudToggleItem Value="@("MANAGER")" Text="Yönetici" />
-                                <MudToggleItem Value="@("ADMIN")" Text="Admin" />
-                            </MudToggleGroup>
-                            @if (_new.Role == PortalSession.Roles.Manager)
+                            <div class="field-label">Roller</div>
+                            <RolePicker Id="new-roles" @bind-Selected="_newRoles" Disabled="@Busy" />
+                            @if (_newRoles.Contains(PortalRoles.Manager) && !_newRoles.Contains(PortalRoles.Admin))
                             {
                                 <div id="new-can-approve">
                                     <MudSwitch T="bool" @bind-Value="_new.CanApprove" Color="Color.Primary" Label="Onay verebilsin" />
@@ -130,14 +164,25 @@ else
 }
 
 @code {
+    protected override PortalArea Requires => PortalArea.Users;
+
     private UserListResponse? _list;
     private CreateUserRequest _new = new();
+    private IReadOnlyCollection<string> _newRoles = [PortalRoles.Sales];
+
+    private UserDto? _editing;
+    private IReadOnlyCollection<string> _editRoles = [];
+    private bool _editCanApprove;
+
+    /// <summary>Whether the switch starts from the manager's real flag rather than the effective right.</summary>
+    private bool _editCanApproveKnown;
+    private bool _editCanApproveTouched;
 
     private string? Notice { get; set; }
 
-    protected override bool AdminOnly => true;
-
     protected override async Task LoadAsync() => _list = await Api.UsersAsync();
+
+    private bool IsSelf(UserDto user) => string.Equals(user.Username, Session.Username, StringComparison.OrdinalIgnoreCase);
 
     private async Task ToggleAsync(UserDto user)
     {
@@ -150,9 +195,64 @@ else
         });
     }
 
+    private void StartEditing(UserDto user)
+    {
+        Notice = null;
+        Error = null;
+        _editing = user;
+        _editRoles = user.EffectiveRoles().ToArray();
+        _editCanApproveKnown = ApprovalFlagIsKnown(_editRoles);
+        _editCanApprove = _editCanApproveKnown && _editRoles.Contains(PortalRoles.Manager) && user.CanApprove;
+        _editCanApproveTouched = false;
+    }
+
+    private void ChangeEditCanApprove(bool value)
+    {
+        _editCanApprove = value;
+        _editCanApproveTouched = true;
+    }
+
+    /// <summary>
+    /// The list's <c>canApprove</c> is the effective right. Only for a user who is neither administrator
+    /// nor accounting does it equal the manager's own flag.
+    /// </summary>
+    private static bool ApprovalFlagIsKnown(IEnumerable<string> roles) =>
+        !roles.Contains(PortalRoles.Admin) && !roles.Contains(PortalRoles.Accounting);
+
+    private void StopEditing() => _editing = null;
+
+    private async Task SaveRolesAsync()
+    {
+        if (_editing is null) return;
+        Notice = null;
+        if (_editRoles.Count == 0)
+        {
+            Error = PortalMessages.For("INVALID_ROLE");
+            return;
+        }
+        var user = _editing;
+        await RunAsync(async () =>
+        {
+            var updated = await Api.SetUserRolesAsync(user.Id, new UpdateUserRolesRequest
+            {
+                Roles = [.. _editRoles],
+                // Never derived from the effective right: saving unchanged roles must not grant anything.
+                CanApprove = _editCanApproveTouched ? IsApprovingManager(_editRoles, _editCanApprove) : null,
+            });
+            _editing = null;
+            await LoadAsync();
+            Notice = $"{updated.FullName} için roller kaydedildi: {Fmt.Roles(updated.EffectiveRoles())}.";
+        });
+    }
+
     private async Task CreateAsync()
     {
         Notice = null;
+        if (_newRoles.Count == 0)
+        {
+            Error = PortalMessages.For("INVALID_ROLE");
+            return;
+        }
         await RunAsync(async () =>
         {
             var request = new CreateUserRequest
@@ -160,20 +260,30 @@ else
                 FullName = (_new.FullName ?? string.Empty).Trim(),
                 Username = (_new.Username ?? string.Empty).Trim().ToLowerInvariant(),
                 Password = _new.Password ?? string.Empty,
-                Role = _new.Role,
-                CanApprove = _new.Role == PortalSession.Roles.Manager && _new.CanApprove,
+                Roles = [.. _newRoles],
+                CanApprove = IsApprovingManager(_newRoles, _new.CanApprove),
             };
             var created = await Api.CreateUserAsync(request);
+            var phone = request.Roles.Any(r => r is PortalRoles.Admin or PortalRoles.Manager or PortalRoles.Sales);
+            var portal = PortalRoles.MayUsePortal(request.Roles);
+            var where = phone && portal ? "Telefonda ve panelde" : phone ? "Telefonda" : "Panelde";
             _new = new CreateUserRequest();
+            _newRoles = [PortalRoles.Sales];
             await LoadAsync();
-            Notice = $"{created.FullName} eklendi. Telefonda firma kodu, kullanıcı adı ve parolasıyla giriş yapabilir.";
+            Notice = $"{created.FullName} eklendi. {where} firma kodu, kullanıcı adı ve parolasıyla giriş yapabilir.";
         });
     }
 
+    /// <summary>The approval switch belongs to a manager; an administrator approves by role.</summary>
+    private static bool IsApprovingManager(IReadOnlyCollection<string> roles, bool canApprove) =>
+        canApprove && roles.Contains(PortalRoles.Manager) && !roles.Contains(PortalRoles.Admin);
+
     private static string RoleTone(string role) => role switch
     {
-        "ADMIN" => "violet",
-        "MANAGER" => "primary",
+        PortalRoles.Admin => "violet",
+        PortalRoles.Manager => "primary",
+        PortalRoles.Accounting => "info",
+        PortalRoles.Warehouse => "warning",
         _ => "muted",
     };
 }

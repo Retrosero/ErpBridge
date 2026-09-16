@@ -69,16 +69,18 @@ public static class PortalTestSetup
 {
     public static readonly DateTimeOffset Now = new(2026, 9, 21, 9, 0, 0, TimeSpan.Zero);
 
-    public static PortalSessionState State(string role = "ADMIN", string token = "tok-patron") =>
-        new(token, Now.AddDays(30), "Ege Dağıtım", "EGE123", "native", "patron", "Firma Sahibi", role, CanApprove: true);
+    public static PortalSessionState State(string role = "ADMIN", string token = "tok-patron", string[]? roles = null) =>
+        new(token, Now.AddDays(30), "Ege Dağıtım", "EGE123", "native", "patron", "Firma Sahibi", role, CanApprove: true, Roles: roles ?? [role]);
 
     /// <summary>Registers the portal's services around a fake API; returns the pieces a test inspects.</summary>
-    public static (FakeCentralApi Api, PortalSession Session, MemorySessionPersistence Storage) Register(BunitContext context, PortalSessionState? signedIn = null, PortalSessionState? inTab = null)
+    /// <param name="popoverProvider">False when the test renders the layout, which brings its own.</param>
+    public static (FakeCentralApi Api, PortalSession Session, MemorySessionPersistence Storage) Register(BunitContext context, PortalSessionState? signedIn = null, PortalSessionState? inTab = null, bool popoverProvider = true)
     {
         var api = new FakeCentralApi();
         var clock = new TestClock(Now);
         var session = new PortalSession(clock);
-        if (signedIn is not null) session.SignIn(signedIn);
+        // A test's signed-in session has just come from the server; a tab session is restored.
+        if (signedIn is not null) session.SignIn(signedIn, fresh: true);
         var storage = new MemorySessionPersistence { Stored = inTab };
         context.Services.AddSingleton<TimeProvider>(clock);
         context.Services.AddSingleton(session);
@@ -87,7 +89,7 @@ public static class PortalTestSetup
         // MudBlazor components call into their JS module; the tests only check markup and API calls.
         context.Services.AddMudServices();
         context.JSInterop.Mode = JSRuntimeMode.Loose;
-        context.Render<MudPopoverProvider>();
+        if (popoverProvider) context.Render<MudPopoverProvider>();
         return (api, session, storage);
     }
 }

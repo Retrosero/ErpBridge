@@ -227,8 +227,10 @@ registration ayrı bir composition projesine taşınır.
      (bootstrap snapshot'taki aynı tuzak).
    - **Silme yumuşaktır** (`DeletedAtUtc`); kullanıcı adı unique index'i silinmiş
      satırları yok sayar, ad yeniden kullanılabilir, geçmiş kalır.
-   - **Mobil kullanıcı token'ı** (`scope=mobile-user`, 30 gün) yalnızca imzayı
-     kanıtlar. `MobileAccountEndpoints.AuthorizeAsync` her çağrıda kullanıcı,
+   - **Mobil kullanıcı token'ı** (`scope=mobile-user`) yalnızca imzayı
+     kanıtlar. Süre: telefon her zaman **30 gün** (günlerce çevrimdışı çalışır); panel
+     (`client=portal`) login gövdesinde `rememberMe=true` ise 30 gün, değilse **12 saat**
+     (`JwtIssuer.PortalSessionHours`, Faz 46). Telefonun gönderdiği `rememberMe` yok sayılır. `MobileAccountEndpoints.AuthorizeAsync` her çağrıda kullanıcı,
      cihaz, tenant ve aboneliği veritabanından yeniden doğrular; rol token'dan
      değil satırdan okunur. Pasifleştirme ve cihaz engelleme token süresini
      beklemeden etkili olur.
@@ -505,13 +507,33 @@ registration ayrı bir composition projesine taşınır.
    - **Oturum devre (circuit) başınadır:** `PortalSession` `Scoped` kayıtlıdır, asla
      `Singleton` değil — tek süreç birçok firmaya hizmet eder; singleton bir firmanın
      token'ını tüm ziyaretçilere sızdırır (test: `PortalSessionTests.Two_circuits_never_share_a_session`).
-     Token yalnızca sekmenin `ProtectedSessionStorage`'ında durur (sekme kapanınca biter,
-     sunucu diskine/DB'ye yazılmaz).
+   - **"Beni hatırla" (Faz 46):** `Session/ProtectedBrowserPersistence` oturumu Data Protection ile
+     şifreleyip ya sekmenin `sessionStorage`'ına (kutu boş: sekme kapanınca biter, token 12 saat) ya da
+     tarayıcının `localStorage`'ına (kutu işaretli: token 30 gün) yazar. Bir depoya yazmak diğerini
+     siler — sonradan "hatırlama" seçilmeden yapılan giriş tarayıcıda 30 günlük token bırakmaz. Okuma
+     önce sekmeye, sonra tarayıcıya bakar; **süresi dolmuş kayıt döndürülmez, silinir** — yoksa başka
+     sekmede "Beni hatırla" ile açılmış geçerli oturumu sayfa temizlerdi (Codex, PR #51). Çıkış ikisini de temizler. Token sunucu diskine/DB'ye
+     yazılmaz. Okunamayan değer (anahtar değişti) oturumsuz sayılır. Saklanan durum `Roles[]` ve
+     `RememberMe` taşır; bu alanlar olmadan kaydedilmiş eski durum tek `Role`'e düşer.
    - **Giriş:** `POST /api/v1/android/account/login`, `deviceId = "web-portal:" + kullanıcı adı`
      (kullanıcı başına tek cihaz satırı: operatör paneli girişini telefon gibi engelleyebilir,
      her girişte yeni cihaz birikmez). Panel cihazı da koltuk/cihaz sayımına girer.
-     `SALES` rolü girişte reddedilir (istemci) ve portal uçları 403 `PORTAL_REQUIRES_MANAGER`
+     Yalnız `SALES` rolü olan hesap girişte reddedilir (sunucu 403 `PORTAL_REQUIRES_MANAGER`, istemci de
+     rol setine bakar; panelde "Saha hesapları telefonda çalışır" metni) ve portal uçları aynı kodu
      döner (sunucu — asıl kapı budur).
+   - **Rol bazlı arayüz (Faz 46):** `Session/PortalRoles` sunucudaki `RolePermissions`'ın panel
+     karşılığıdır; menü yalnız sunucunun vereceği bölümleri gösterir. Her sayfa
+     `PortalPageBase.Requires` ile bir `PortalArea` bildirir: `Reports` (Özet, Plasiyerler, Ziyaretler —
+     ADMIN, MANAGER), `Ledger` (Cariler, Stok — + ACCOUNTING), `Approvals` (Onaylar — ADMIN, MANAGER,
+     ACCOUNTING), `Warehouse` (Depo — ADMIN, MANAGER, WAREHOUSE), `Users` (Kullanıcılar — ADMIN). Rolün
+     açmadığı adres (yer imi, elle yazılan URL) API'ye hiç sormadan kullanıcının **açılış sayfasına**
+     gider: raporları görebilen `/`, muhasebe `/onaylar`, depo `/depo`. Girişten sonra da oraya gidilir.
+     `PortalRoles` ile `RolePermissions` birlikte değişir; panel yalnız kolaylıktır, kapı sunucudadır.
+   - **Roller tazelenir (Faz 46):** tarayıcıdan geri yüklenen oturumun rolleri günler öncesine ait olabilir.
+     `PortalPageBase`, roller bir dakikadan eskiyse (`PortalSession.RoleRefreshInterval`; girişte taze sayılır)
+     sayfa kapısından **önce** `GET /api/v1/android/account/me` okur, oturumu ve saklanan durumu günceller;
+     menü `Changed` ile yeniden çizilir. `/me` 403 `PORTAL_REQUIRES_MANAGER` dönerse (panel rolü kalmadı)
+     oturum kapanır, `login?reason=PORTAL_SALES_ONLY`. Ağ/diğer hata eldeki rollerle devam eder.
    - **Oturumu bitiren kodlar** (`INVALID_TOKEN`, `USER_INACTIVE`, `DEVICE_REVOKED`,
      `SUBSCRIPTION_*`, `TENANT_INACTIVE`, `SESSION_REVOKED`, her 401) sekmeyi temizleyip
      `login?reason=<kod>`'a döner; diğer retler oturumu korur ve Türkçe mesaj gösterir
@@ -548,10 +570,24 @@ registration ayrı bir composition projesine taşınır.
    - **Sayfalar:** Özet (`/`), Plasiyerler (aralık ≤ 92 gün, sunucuya sormadan reddedilir),
      Ziyaretler (`?date=`), Cariler (yaşlandırma yok — sayfada açıkça yazar), Stok (tükenenler
      filtresi), Onaylar (onay yetkisi yoksa salt görüntüleme; "başkası sonuçlandırdı" kodlarında
-     liste yeniden okunur), Kullanıcılar (yalnız `ADMIN`; kişi kendini devre dışı bırakamaz,
+     liste yeniden okunur), Depo (Faz 46'da yer tutucu; sipariş kuyruğu plan adım 6),
+     Kullanıcılar (yalnız `ADMIN`; `Shared/RolePicker` ile çoklu rol çipleri ve rol açıklamaları,
+     hem eklemede hem "Roller" ile düzenlemede `roles[]` gönderir — tek `role` göndermez; "Onay
+     verebilsin" yalnız yönetici rolünde görünür. **Listedeki `canApprove` etkin haktır** (admin ve
+     muhasebe için bayraktan bağımsız true); yöneticinin kendi bayrağı değildir. Bu yüzden düzenleyici
+     anahtara dokunulmadıkça `canApprove: null` (sunucuda değişmez) gönderir; admin/muhasebe rolü olan
+     kişide anahtar boş başlar ve "dokunmazsanız mevcut ayar korunur" yazar, "onaylayabilir" rozeti de
+     yalnız bayrağın bilinebildiği kişide görünür (Codex, PR #51: eskisi rolleri değiştirmeden kaydetmekle
+     muhasebeci yöneticiye tüm türleri onaylama yetkisi veriyordu); kişi kendini devre dışı bırakamaz ve kendi rollerini
+     değiştiremez — kendini kilitlememesi için; son admin kuralı sunucudan `LAST_ADMIN` olarak gelir;
      satın alma metni yok).
    - Testler: `tests/ErpBridge.Portal.Tests` (bUnit) — oturum yalıtımı, rol kapısı, oturum
-     bitişi, sayfa davranışları.
+     bitişi, sayfa davranışları; `PortalRolesTests` (rol → bölüm/açılış sayfası, eski oturum biçimi,
+     hangi deponun kullanıldığı — sahte `IJSRuntime` ile gerçek `ProtectedLocalStorage`/`ProtectedSessionStorage`),
+     `PortalLayoutTests` (menü). Menü testleri `Register(..., popoverProvider: false)` ister: layout kendi
+     `MudPopoverProvider`'ını getirir, ikincisi hata verir.
+   - **Tarayıcıda deneme notu:** Claude'un tarayıcı bölmesinde "Enter" tuşu düz bir HTML formunu da
+     göndermiyor (araç kısıtı); girişi denemek için "Giriş yap" düğmesine tıklanır.
 
 20. **Şema durumu görünürdür: `GET /health/schema` (Faz 44, 2026-09-16).**
    Konteyner açılışta `--migrate` çalıştırır ama başarısız olursa uygulama **yine açılır** ve eski

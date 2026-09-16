@@ -108,6 +108,8 @@ else
 }
 
 @code {
+    protected override PortalArea Requires => PortalArea.Reports;
+
     private DateOnly _day;
     private SummaryResponse? _summary;
 

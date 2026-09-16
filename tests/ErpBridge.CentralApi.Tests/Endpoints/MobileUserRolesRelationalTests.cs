@@ -94,6 +94,22 @@ public sealed class MobileUserRolesRelationalTests : IClassFixture<SqliteCentral
     }
 
     [Fact]
+    public async Task A_portal_sign_in_lasts_a_workday_unless_remembered_and_a_phone_always_a_month()
+    {
+        var c = await CompanyAsync();
+        var before = DateTimeOffset.UtcNow;
+
+        var tab = await (await LoginResponseAsync(c.Code, "patron", "web-portal:patron", client: "portal")).ReadAsJsonAsync<MobileLoginResponse>();
+        var remembered = await (await LoginResponseAsync(c.Code, "patron", "web-portal:patron", client: "portal", rememberMe: true)).ReadAsJsonAsync<MobileLoginResponse>();
+        var phone = await (await LoginResponseAsync(c.Code, "ali", "DEV-ALI-REMEMBER", client: null, rememberMe: false)).ReadAsJsonAsync<MobileLoginResponse>();
+
+        tab.ExpiresAtUtc.Should().BeCloseTo(before.AddHours(12), TimeSpan.FromMinutes(1));
+        remembered.ExpiresAtUtc.Should().BeCloseTo(before.AddDays(30), TimeSpan.FromMinutes(1));
+        phone.ExpiresAtUtc.Should().BeCloseTo(before.AddDays(30), TimeSpan.FromMinutes(1), "a phone works offline for days whatever it sends");
+        (await GetAsync("/api/v1/portal/summary", tab.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task Taking_away_the_phone_role_ends_a_signed_in_phone_at_its_next_call()
     {
         var c = await CompanyAsync();
@@ -280,9 +296,9 @@ public sealed class MobileUserRolesRelationalTests : IClassFixture<SqliteCentral
         return (await response.ReadAsJsonAsync<IngestJobResponse>()).JobId;
     }
 
-    private Task<HttpResponseMessage> LoginResponseAsync(string code, string username, string deviceId, string? client) =>
+    private Task<HttpResponseMessage> LoginResponseAsync(string code, string username, string deviceId, string? client, bool? rememberMe = null) =>
         _factory.CreateClient().PostJsonAsync("/api/v1/android/account/login",
-            new { tenantCode = code, username, password = Password, deviceId, appVersion = "test", client });
+            new { tenantCode = code, username, password = Password, deviceId, appVersion = "test", client, rememberMe });
 
     private async Task<string> LoginAsync(string code, string username, string deviceId, string? client = null)
     {

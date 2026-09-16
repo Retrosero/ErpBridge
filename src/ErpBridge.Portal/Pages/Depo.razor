@@ -1,0 +1,25 @@
+@page "/depo"
+@inherits PortalPageBase
+
+<PageTitle>Depo — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Depo" Eyebrow="İşlemler" Subtitle="Sipariş hazırlama, paketleme ve araca yükleme" Busy="Busy" />
+
+    <MudPaper Outlined="true" Class="panel">
+        <EmptyState Id="warehouse-coming" Icon="@Icons.Material.Rounded.Warehouse" Title="Depo sipariş kuyruğu yakında burada."
+                    Hint="Onaylanan satışlar bu sayfada hazırlanacak sırayla listelenecek. Şimdilik yapmanız gereken bir şey yok." />
+    </MudPaper>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Warehouse;
+
+    // The order queue arrives with plan step 6; the page exists now so warehouse staff have a home.
+    protected override Task LoadAsync() => Task.CompletedTask;
+}

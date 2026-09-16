@@ -12,13 +12,13 @@ namespace ErpBridge.Portal.Tests;
 /// <summary>Login and the day summary as a manager sees them.</summary>
 public sealed class PortalPagesTests : PortalPageTestContext
 {
-    private static object LoginAnswer(string role) => new
+    private static object LoginAnswer(string role, string[]? roles = null) => new
     {
         token = "tok-new",
         expiresAtUtc = PortalTestSetup.Now.AddDays(30),
         session = new
         {
-            user = new { username = role == "SALES" ? "ali" : "patron", fullName = "Test", role, canApprove = role != "SALES" },
+            user = new { username = role == "SALES" ? "ali" : "patron", fullName = "Test", role, roles = roles ?? [role], canApprove = role != "SALES" },
             tenantName = "Ege Dağıtım",
             tenantCode = "EGE123",
             dataSource = "native",
@@ -58,9 +58,69 @@ public sealed class PortalPagesTests : PortalPageTestContext
         var cut = Render<Login>();
         SignInThrough(cut);
 
-        cut.WaitForAssertion(() => cut.Find("#login-error").TextContent.Should().Contain("yalnızca firma admini ve yöneticiler"));
+        cut.WaitForAssertion(() => cut.Find("#login-error").TextContent.Should().Contain("Saha hesapları telefonda çalışır"));
         session.IsSignedIn.Should().BeFalse();
         storage.Stored.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_salesperson_refused_by_the_server_reads_the_same_explanation()
+    {
+        var (api, session, _) = PortalTestSetup.Register(this);
+        api.Fail("/api/v1/android/account/login", HttpStatusCode.Forbidden, "PORTAL_REQUIRES_MANAGER");
+
+        var cut = Render<Login>();
+        SignInThrough(cut);
+
+        cut.WaitForAssertion(() => cut.Find("#login-error").TextContent.Should().Contain("Saha hesapları telefonda çalışır"));
+        session.IsSignedIn.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Without_remember_me_the_session_stays_in_the_tab()
+    {
+        var (api, _, storage) = PortalTestSetup.Register(this);
+        api.Answer("/api/v1/android/account/login", LoginAnswer("ADMIN"));
+
+        var cut = Render<Login>();
+        cut.Find("#login-remember-hint").TextContent.Should().Contain("Sekmeyi kapatınca");
+        SignInThrough(cut);
+
+        cut.WaitForAssertion(() => storage.Stored.Should().NotBeNull());
+        storage.Stored!.RememberMe.Should().BeFalse();
+        api.Requests.Single().Body.Should().Contain("\"rememberMe\":false");
+    }
+
+    [Fact]
+    public void Remember_me_asks_for_a_long_session_and_the_browser_keeps_it()
+    {
+        var (api, session, storage) = PortalTestSetup.Register(this);
+        api.Answer("/api/v1/android/account/login", LoginAnswer("ADMIN"));
+
+        var cut = Render<Login>();
+        cut.Find("#login-remember input").Change(true);
+        cut.Find("#login-remember-hint").TextContent.Should().Contain("30 gün");
+        SignInThrough(cut);
+
+        cut.WaitForAssertion(() => session.RememberMe.Should().BeTrue());
+        storage.Stored!.RememberMe.Should().BeTrue();
+        api.Requests.Single().Body.Should().Contain("\"rememberMe\":true");
+    }
+
+    [Theory]
+    [InlineData("ACCOUNTING", "/onaylar")]
+    [InlineData("WAREHOUSE", "/depo")]
+    public void Office_roles_land_on_their_own_page(string role, string home)
+    {
+        var (api, session, _) = PortalTestSetup.Register(this);
+        api.Answer("/api/v1/android/account/login", LoginAnswer("SALES", [role]));
+        var nav = Services.GetRequiredService<NavigationManager>();
+
+        var cut = Render<Login>();
+        SignInThrough(cut);
+
+        cut.WaitForAssertion(() => nav.Uri.Should().EndWith(home));
+        session.Roles.Should().Equal(role);
     }
 
     [Fact]
