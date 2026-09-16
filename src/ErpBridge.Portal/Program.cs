@@ -27,6 +27,15 @@ builder.Services.AddHttpClient<PortalApiClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
+// Warehouse TV boards (plan step 7): anonymous pairing and the screen's own token, never a person's session.
+builder.Services.AddHttpClient<DisplayApiClient>(client =>
+{
+    client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(40);
+});
+builder.Services.AddScoped<IDisplaySessionStore, ProtectedDisplaySessionStore>();
+builder.Services.AddSingleton(new KioskTiming());
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())

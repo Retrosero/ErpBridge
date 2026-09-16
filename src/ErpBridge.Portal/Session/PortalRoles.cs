@@ -17,6 +17,9 @@ public enum PortalArea
 
     /// <summary>Users and their roles (Kullanıcılar).</summary>
     Users,
+
+    /// <summary>Warehouse TV boards and the warehouse thresholds (Ekranlar).</summary>
+    Displays,
 }
 
 /// <summary>
@@ -65,6 +68,7 @@ public static class PortalRoles
         PortalArea.Approvals => roles.Any(r => r is Admin or Manager or Accounting),
         PortalArea.Warehouse => roles.Any(r => r is Admin or Manager or Warehouse),
         PortalArea.Users => roles.Contains(Admin),
+        PortalArea.Displays => roles.Any(r => r is Admin or Manager),
         _ => false,
     };
 

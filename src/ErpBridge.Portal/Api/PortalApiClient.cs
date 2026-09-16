@@ -132,6 +132,21 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<ApprovalDto> DecideAsync(Guid requestId, bool approve, string? note, CancellationToken ct = default) =>
         SendAsync<ApprovalDto>(HttpMethod.Post, $"api/v1/android/approvals/{requestId}/{(approve ? "approve" : "reject")}", new { note }, ct);
 
+    public Task<DisplayDeviceDto[]> DisplaysAsync(CancellationToken ct = default) =>
+        GetAsync<DisplayDeviceDto[]>("api/v1/portal/displays", ct);
+
+    public Task<DisplayDeviceDto> PairDisplayAsync(string code, string name, CancellationToken ct = default) =>
+        SendAsync<DisplayDeviceDto>(HttpMethod.Post, "api/v1/portal/displays", new { code, name }, ct);
+
+    public Task<DisplayDeviceDto> RevokeDisplayAsync(Guid displayId, CancellationToken ct = default) =>
+        SendAsync<DisplayDeviceDto>(HttpMethod.Post, $"api/v1/portal/displays/{displayId}/revoke", new { }, ct);
+
+    public Task<WarehouseSettingsDto> WarehouseSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<WarehouseSettingsDto>("api/v1/portal/warehouse/settings", ct);
+
+    public Task<WarehouseSettingsDto> SaveWarehouseSettingsAsync(WarehouseSettingsDto settings, CancellationToken ct = default) =>
+        SendAsync<WarehouseSettingsDto>(HttpMethod.Put, "api/v1/portal/warehouse/settings", settings, ct);
+
     public Task<UserListResponse> UsersAsync(CancellationToken ct = default) =>
         GetAsync<UserListResponse>("api/v1/android/account/users", ct);
 

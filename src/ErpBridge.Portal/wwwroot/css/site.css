@@ -431,6 +431,55 @@ h1:focus, h1:focus-visible { outline: none; }
     .portal-appbar-code { display: none; }
 }
 
+/* ---------- displays page (plan step 7) ---------- */
+.pair-steps { margin: 0 0 12px; padding-left: 20px; font-size: .88rem; color: var(--ink-2); }
+.pair-steps li { margin: 4px 0; }
+.threshold-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ---------- warehouse TV board (plan step 7) ---------- */
+.kiosk-shell { min-height: 100vh; background: #0b1220; color: #e6edf7; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.kiosk-center { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 24px; }
+.kiosk-brand { font-size: 1.1rem; letter-spacing: .12em; text-transform: uppercase; color: #7b8db3; }
+.kiosk-pair-title { font-size: 2.6rem; margin: 0; }
+.kiosk-code { font: 700 clamp(4rem, 14vw, 10rem)/1 ui-monospace, Consolas, monospace; letter-spacing: .08em; color: #fff; background: #16213a; border-radius: 24px; padding: 24px 48px; }
+.kiosk-pair-help { font-size: 1.4rem; max-width: 900px; margin: 0; }
+.kiosk-muted { color: #8a9bbd; font-size: 1.1rem; }
+.kiosk-offline { color: #fca5a5; font-size: 1.2rem; }
+.kiosk-board { min-height: 100vh; display: flex; flex-direction: column; padding: 18px 22px; gap: 14px; box-sizing: border-box; }
+.kiosk-head { display: flex; justify-content: space-between; align-items: center; }
+.kiosk-tenant { font-size: 1.8rem; font-weight: 700; }
+.kiosk-head-side { display: flex; align-items: center; gap: 14px; }
+.kiosk-clock { font: 700 2.4rem ui-monospace, Consolas, monospace; }
+.kiosk-dot { width: 16px; height: 16px; border-radius: 50%; display: inline-block; }
+.kiosk-dot.is-online { background: #22c55e; box-shadow: 0 0 12px #22c55e; }
+.kiosk-dot.is-offline { background: #ef4444; box-shadow: 0 0 12px #ef4444; }
+.kiosk-banner { background: #3b2f10; color: #fcd34d; border-radius: 12px; padding: 10px 16px; font-size: 1.2rem; }
+.kiosk-banner--offline { background: #3b1414; color: #fca5a5; }
+.kiosk-columns { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.kiosk-column { background: #111a2e; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.kiosk-column-head { display: flex; align-items: center; gap: 12px; }
+.kiosk-column-title { font-size: 1.6rem; font-weight: 700; flex: 1; }
+.kiosk-column-count { font-size: 1.6rem; font-weight: 700; background: #1e2a45; border-radius: 10px; padding: 2px 12px; }
+.kiosk-late-count { font-size: 1.1rem; font-weight: 700; color: #fecaca; background: #7f1d1d; border-radius: 10px; padding: 3px 10px; }
+.kiosk-page { font-size: 1rem; color: #8a9bbd; }
+.kiosk-cards { display: flex; flex-direction: column; gap: 10px; }
+.kiosk-card { background: #1a253f; border-left: 8px solid #3b82f6; border-radius: 12px; padding: 12px 14px; }
+.kiosk-card.is-warn { border-left-color: #f59e0b; background: #2b2412; }
+.kiosk-card.is-critical { border-left-color: #ef4444; background: #3a1414; animation: kiosk-blink 2.4s ease-in-out infinite; }
+@keyframes kiosk-blink { 50% { background: #5b1a1a; } }
+@media (prefers-reduced-motion: reduce) { .kiosk-card.is-critical { animation: none; } }
+.kiosk-card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.kiosk-order { font: 700 1.5rem ui-monospace, Consolas, monospace; }
+.kiosk-duration { font-size: 1.5rem; font-weight: 700; white-space: nowrap; }
+.kiosk-card.is-warn .kiosk-duration { color: #fcd34d; }
+.kiosk-card.is-critical .kiosk-duration { color: #fca5a5; }
+.kiosk-customer { font-size: 1.35rem; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kiosk-card-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 1.05rem; color: #a9b8d6; margin-top: 4px; }
+.kiosk-assignee { color: #e6edf7; font-weight: 600; }
+.kiosk-erp { color: #fecaca; background: #7f1d1d; border-radius: 6px; padding: 0 8px; font-weight: 700; }
+.kiosk-empty { color: #4b5b7c; font-size: 2rem; text-align: center; padding: 20px 0; }
+@media (max-width: 900px) { .kiosk-columns { grid-template-columns: 1fr; } }
+
 /* ---------- approval desk (plan step 5) ---------- */
 .desk { display: grid; grid-template-columns: minmax(340px, 5fr) 7fr; gap: 16px; align-items: start; }
 .desk .panel { padding: 0; overflow: hidden; }
