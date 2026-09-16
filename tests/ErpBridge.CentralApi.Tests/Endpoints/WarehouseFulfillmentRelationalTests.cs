@@ -388,6 +388,203 @@ public sealed class WarehouseFulfillmentRelationalTests : IClassFixture<SqliteCe
         return await response.ReadAsJsonAsync<PortalEventsResponse>();
     }
 
+    // ---- warehouse TV (Faz 49, plan step 7) --------------------------------------------------
+
+    [Fact]
+    public async Task A_tv_pairs_with_its_code_reads_only_its_companys_board_and_stops_when_revoked()
+    {
+        var c = await NativeCompanyAsync();
+        var other = await NativeCompanyAsync();
+        await SellAsync(c, "SO-TV-1", quantity: 2);
+        await SellAsync(c, "SO-TV-2", quantity: 3);
+        await SellAsync(other, "SO-OTHER", quantity: 1);
+        var started = (await ListAsync(c.Depot)).Items.Single(i => i.OrderNo == "SO-TV-2").Id;
+        await ActAsync(c.Depot, started, "start");
+
+        var pairing = await PairingAsync();
+        pairing.Code.Should().MatchRegex("^[0-9]{6}$");
+        (await TakeTokenAsync(pairing.Code, pairing.Secret)).Status.Should().Be("waiting");
+
+        (await ErrorAsync(PostAsync("/api/v1/portal/displays", new { code = pairing.Code, name = "Depo girişi" }, c.Depot))).Should().Be("WAREHOUSE_MANAGER_REQUIRED");
+        (await ErrorAsync(PostAsync("/api/v1/portal/displays", new { code = "000000", name = "Depo girişi" }, c.Patron))).Should().Be("PAIRING_NOT_FOUND");
+        var spaced = pairing.Code[..3] + " " + pairing.Code[3..];
+        var paired = await PostAsync("/api/v1/portal/displays", new { code = spaced, name = "Depo girişi" }, c.Patron);
+        paired.StatusCode.Should().Be(HttpStatusCode.Created);
+        var display = await paired.ReadAsJsonAsync<DisplayDeviceDto>();
+
+        (await TokenResponseAsync(pairing.Code, "yanlis-gizli")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var token = await TakeTokenAsync(pairing.Code, pairing.Secret);
+        token.Status.Should().Be("paired");
+        token.DisplayName.Should().Be("Depo girişi");
+        (await TokenResponseAsync(pairing.Code, pairing.Secret)).StatusCode.Should().Be(HttpStatusCode.NotFound, "the token is handed out once");
+
+        var board = await BoardAsync(token.Token!);
+        board.DisplayName.Should().Be("Depo girişi");
+        board.Items.Select(i => i.OrderNo).Should().BeEquivalentTo("SO-TV-1", "SO-TV-2");
+        board.Items.Single(i => i.OrderNo == "SO-TV-2").AssigneeName.Should().Be("Depocu Hasan");
+        board.Settings.Enabled.Should().BeTrue();
+        board.LatestSeq.Should().BeGreaterThan(0);
+
+        (await GetAsync("/api/v1/portal/fulfillments", token.Token!)).IsSuccessStatusCode.Should().BeFalse("a TV reads the board and nothing else");
+        (await GetAsync("/api/v1/android/account/me", token.Token!)).IsSuccessStatusCode.Should().BeFalse();
+
+        var listed = await (await GetAsync("/api/v1/portal/displays", c.Patron)).ReadAsJsonAsync<DisplayDeviceDto[]>();
+        listed.Should().ContainSingle().Which.LastSeenAtUtc.Should().NotBeNull();
+        (await ErrorAsync(PostAsync($"/api/v1/portal/displays/{display.Id}/revoke", new { }, other.Patron))).Should().Be("DISPLAY_NOT_FOUND");
+
+        (await PostAsync($"/api/v1/portal/displays/{display.Id}/revoke", new { }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ErrorAsync(GetAsync("/api/v1/display/board", token.Token!))).Should().Be("DISPLAY_REVOKED");
+        (await ErrorAsync(GetAsync("/api/v1/display/events?sinceSeq=0", token.Token!))).Should().Be("DISPLAY_REVOKED");
+    }
+
+    [Fact]
+    public async Task An_expired_code_can_neither_be_paired_nor_polled()
+    {
+        var c = await NativeCompanyAsync();
+        var pairing = await PairingAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var row = await db.DisplayPairingCodes.SingleAsync(p => p.Code == pairing.Code);
+            row.ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync();
+        }
+
+        (await ErrorAsync(PostAsync("/api/v1/portal/displays", new { code = pairing.Code, name = "Eski" }, c.Patron))).Should().Be("PAIRING_NOT_FOUND");
+        (await ErrorAsync(TokenResponseAsync(pairing.Code, pairing.Secret))).Should().Be("PAIRING_EXPIRED");
+    }
+
+    [Fact]
+    public async Task The_board_wakes_when_staff_start_an_order_and_a_revocation_reaches_it_within_one_wait()
+    {
+        var c = await NativeCompanyAsync();
+        await SellAsync(c, "SO-TV-LIVE", quantity: 1);
+        var id = (await ListAsync(c.Depot)).Items.Single().Id;
+        var (displayId, token) = await PairedDisplayAsync(c, "Rampa TV");
+        var board = await BoardAsync(token);
+
+        var clock = Stopwatch.StartNew();
+        var waiting = DisplayEventsAsync(token, board.LatestSeq, wait: 20);
+        await Task.Delay(300);
+        waiting.IsCompleted.Should().BeFalse();
+        await ActAsync(c.Depot, id, "start");
+        (await waiting).Changed.Should().BeTrue();
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+        (await BoardAsync(token)).Items.Single().Status.Should().Be("PREPARING");
+
+        var quiet = DisplayEventsAsync(token, (await BoardAsync(token)).LatestSeq, wait: 20);
+        await Task.Delay(300);
+        clock.Restart();
+        (await PostAsync($"/api/v1/portal/displays/{displayId}/revoke", new { }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.OK);
+        await quiet;
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10), "revoking wakes the board");
+        (await ErrorAsync(GetAsync("/api/v1/display/events?sinceSeq=0&wait=0", token))).Should().Be("DISPLAY_REVOKED");
+    }
+
+    [Fact]
+    public async Task A_board_needs_a_current_subscription_and_keeps_its_pairing_while_it_waits()
+    {
+        var c = await NativeCompanyAsync();
+        await SellAsync(c, "SO-SUB", quantity: 1);
+        var (_, token) = await PairedDisplayAsync(c, "Abonelik TV");
+
+        // The console refuses an end date in the past, so time passes in the database instead.
+        await SetSubscriptionEndAsync(c.Id, DateTimeOffset.UtcNow.AddYears(-1));
+        var expired = await GetAsync("/api/v1/display/board", token);
+        expired.StatusCode.Should().Be(HttpStatusCode.Forbidden, "403, not 401: the screen stays paired");
+        (await expired.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("SUBSCRIPTION_EXPIRED");
+        (await ErrorAsync(GetAsync("/api/v1/display/events?sinceSeq=0", token))).Should().Be("SUBSCRIPTION_EXPIRED");
+
+        await SetSubscriptionEndAsync(c.Id, DateTimeOffset.UtcNow.AddYears(1));
+        (await BoardAsync(token)).Items.Should().ContainSingle();
+    }
+
+    private async Task SetSubscriptionEndAsync(Guid tenantId, DateTimeOffset endsAt)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var current = await db.TenantSubscriptions.SingleAsync(s => s.TenantId == tenantId && s.IsCurrent);
+        current.EndsAtUtc = endsAt;
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Two_managers_entering_the_same_code_at_once_create_one_screen()
+    {
+        var c = await NativeCompanyAsync();
+        var other = await NativeCompanyAsync();
+        var pairing = await PairingAsync();
+
+        var both = await Task.WhenAll(
+            PostAsync("/api/v1/portal/displays", new { code = pairing.Code, name = "Birinci" }, c.Patron),
+            PostAsync("/api/v1/portal/displays", new { code = pairing.Code, name = "İkinci" }, other.Patron));
+
+        both.Select(r => r.StatusCode).Should().BeEquivalentTo([HttpStatusCode.Created, HttpStatusCode.NotFound]);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var created = await db.DisplayDevices.AsNoTracking().Where(d => d.TenantId == c.Id || d.TenantId == other.Id).ToListAsync();
+        created.Should().ContainSingle("the losing request leaves no orphan screen");
+        (await db.DisplayPairingCodes.AsNoTracking().SingleAsync(p => p.Code == pairing.Code)).DisplayDeviceId.Should().Be(created.Single().Id);
+        (await TakeTokenAsync(pairing.Code, pairing.Secret)).DisplayName.Should().Be(created.Single().Name);
+    }
+
+    [Fact]
+    public async Task The_board_counts_every_open_order_per_column()
+    {
+        var c = await NativeCompanyAsync();
+        await SellAsync(c, "SO-C1", quantity: 1);
+        await SellAsync(c, "SO-C2", quantity: 1);
+        await SellAsync(c, "SO-C3", quantity: 1);
+        var ids = (await ListAsync(c.Depot)).Items.Select(i => i.Id).ToList();
+        await ActAsync(c.Depot, ids[0], "start");
+        await ActAsync(c.Depot, ids[1], "start");
+        await ActAsync(c.Depot, ids[1], "pack");
+        var (_, token) = await PairedDisplayAsync(c, "Sayım TV");
+
+        var board = await BoardAsync(token);
+
+        board.Counts.Should().BeEquivalentTo(new Dictionary<string, int> { ["PENDING"] = 1, ["PREPARING"] = 1, ["PACKED"] = 1 });
+        board.Items.Select(i => i.Status).Should().BeEquivalentTo("PENDING", "PREPARING", "PACKED");
+    }
+
+    private async Task<DisplayPairingResponse> PairingAsync()
+    {
+        var response = await _factory.CreateClient().PostJsonAsync("/api/v1/display/pairings", new { });
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        return await response.ReadAsJsonAsync<DisplayPairingResponse>();
+    }
+
+    private Task<HttpResponseMessage> TokenResponseAsync(string code, string secret) =>
+        _factory.CreateClient().PostJsonAsync($"/api/v1/display/pairings/{code}/token", new { secret });
+
+    private async Task<DisplayTokenResponse> TakeTokenAsync(string code, string secret)
+    {
+        var response = await TokenResponseAsync(code, secret);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.ReadAsJsonAsync<DisplayTokenResponse>();
+    }
+
+    private async Task<(Guid Id, string Token)> PairedDisplayAsync(Company c, string name)
+    {
+        var pairing = await PairingAsync();
+        var paired = await (await PostAsync("/api/v1/portal/displays", new { code = pairing.Code, name }, c.Patron)).ReadAsJsonAsync<DisplayDeviceDto>();
+        return (paired.Id, (await TakeTokenAsync(pairing.Code, pairing.Secret)).Token!);
+    }
+
+    private async Task<DisplayBoardResponse> BoardAsync(string token)
+    {
+        var response = await GetAsync("/api/v1/display/board", token);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.ReadAsJsonAsync<DisplayBoardResponse>();
+    }
+
+    private async Task<PortalEventsResponse> DisplayEventsAsync(string token, long sinceSeq, int wait)
+    {
+        var response = await GetAsync($"/api/v1/display/events?sinceSeq={sinceSeq}&wait={wait}", token);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.ReadAsJsonAsync<PortalEventsResponse>();
+    }
+
     // ---- helpers ------------------------------------------------------------------------
 
     private sealed record Company(Guid Id, string Code, string Patron, string Ali, Guid AliId, string Depot, string Depot2, Guid Depot2Id, string Accounting, string Board);

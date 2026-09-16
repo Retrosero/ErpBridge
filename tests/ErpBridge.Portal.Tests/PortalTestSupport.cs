@@ -28,11 +28,20 @@ public sealed class FakeCentralApi : HttpMessageHandler
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
     private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _answers = new(StringComparer.OrdinalIgnoreCase);
 
-    public List<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body)> Requests { get; } = [];
+    private readonly List<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body)> _requests = [];
+
+    /// <summary>
+    /// A snapshot of what was sent so far. Pages with live loops (desk, TV board) call the API from background
+    /// tasks while the test reads, so the log is copied under a lock rather than exposed as a live list.
+    /// </summary>
+    public IReadOnlyList<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body)> Requests
+    {
+        get { lock (_requests) return [.. _requests]; }
+    }
 
     public FakeCentralApi Answer(string pathAndQuery, object body, HttpStatusCode status = HttpStatusCode.OK)
     {
-        _answers[pathAndQuery] = (status, JsonSerializer.Serialize(body, Web));
+        lock (_answers) _answers[pathAndQuery] = (status, JsonSerializer.Serialize(body, Web));
         return this;
     }
 
@@ -53,9 +62,11 @@ public sealed class FakeCentralApi : HttpMessageHandler
     {
         var path = request.RequestUri!.PathAndQuery;
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-        Requests.Add((request.Method, path, request.Headers.Authorization?.ToString(), body));
+        lock (_requests) _requests.Add((request.Method, path, request.Headers.Authorization?.ToString(), body));
         if (_holds.Remove(path, out var gate)) await gate.Task.WaitAsync(cancellationToken);
-        var (status, json) = _answers.TryGetValue(path, out var answer) ? answer : (HttpStatusCode.NotFound, "{\"errorCode\":\"NOT_FOUND\"}");
+        (HttpStatusCode Status, string Body) found;
+        lock (_answers) found = _answers.TryGetValue(path, out var answer) ? answer : (HttpStatusCode.NotFound, "{\"errorCode\":\"NOT_FOUND\"}");
+        var (status, json) = found;
         return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
     }
 }
@@ -66,6 +77,15 @@ public sealed class MemorySessionPersistence : ISessionPersistence
     public PortalSessionState? Stored { get; set; }
     public Task SaveAsync(PortalSessionState state) { Stored = state; return Task.CompletedTask; }
     public Task<PortalSessionState?> LoadAsync() => Task.FromResult(Stored);
+    public Task ClearAsync() { Stored = null; return Task.CompletedTask; }
+}
+
+/// <summary>A TV's stored pairing, in memory.</summary>
+public sealed class MemoryDisplaySessionStore : IDisplaySessionStore
+{
+    public DisplaySession? Stored { get; set; }
+    public Task<DisplaySession?> LoadAsync() => Task.FromResult(Stored);
+    public Task SaveAsync(DisplaySession session) { Stored = session; return Task.CompletedTask; }
     public Task ClearAsync() { Stored = null; return Task.CompletedTask; }
 }
 
@@ -85,7 +105,8 @@ public static class PortalTestSetup
 
     /// <summary>Registers the portal's services around a fake API; returns the pieces a test inspects.</summary>
     /// <param name="popoverProvider">False when the test renders the layout, which brings its own.</param>
-    public static (FakeCentralApi Api, PortalSession Session, MemorySessionPersistence Storage) Register(BunitContext context, PortalSessionState? signedIn = null, PortalSessionState? inTab = null, bool popoverProvider = true)
+    /// <param name="kioskTiming">The TV board's rhythm; by default shortened to a few dozen milliseconds.</param>
+    public static (FakeCentralApi Api, PortalSession Session, MemorySessionPersistence Storage) Register(BunitContext context, PortalSessionState? signedIn = null, PortalSessionState? inTab = null, bool popoverProvider = true, KioskTiming? kioskTiming = null)
     {
         var api = new FakeCentralApi();
         var clock = new TestClock(Now);
@@ -97,6 +118,18 @@ public static class PortalTestSetup
         context.Services.AddSingleton(session);
         context.Services.AddSingleton<ISessionPersistence>(storage);
         context.Services.AddSingleton(new PortalApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }, session));
+        context.Services.AddSingleton(new DisplayApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }));
+        context.Services.AddSingleton<IDisplaySessionStore>(new MemoryDisplaySessionStore());
+        // The board's rhythm, shortened so a test sees pairing, polling and page turns within a second.
+        context.Services.AddSingleton(kioskTiming ?? new KioskTiming
+        {
+            PairingPoll = TimeSpan.FromMilliseconds(40),
+            MinPollGap = TimeSpan.FromMilliseconds(40),
+            Retry = TimeSpan.FromMilliseconds(40),
+            Tick = TimeSpan.FromMilliseconds(40),
+            Rotate = TimeSpan.FromMilliseconds(150),
+            CardsPerPage = 3,
+        });
         // MudBlazor components call into their JS module; the tests only check markup and API calls.
         context.Services.AddMudServices();
         context.JSInterop.Mode = JSRuntimeMode.Loose;

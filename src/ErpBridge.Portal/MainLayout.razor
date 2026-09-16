@@ -67,7 +67,7 @@
                     </MudNavMenu>
                 }
 
-                @if (Session.Allows(PortalArea.Approvals) || Session.Allows(PortalArea.Warehouse) || Session.Allows(PortalArea.Users))
+                @if (Session.Allows(PortalArea.Approvals) || Session.Allows(PortalArea.Warehouse) || Session.Allows(PortalArea.Displays) || Session.Allows(PortalArea.Users))
                 {
                     <div class="portal-nav-label">İşlemler</div>
                     <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
@@ -79,6 +79,10 @@
                         @if (Session.Allows(PortalArea.Warehouse))
                         {
                             <MudNavLink Href="depo" Icon="@Icons.Material.Rounded.Warehouse">Depo</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.Displays))
+                        {
+                            <MudNavLink Href="ekranlar" Icon="@Icons.Material.Rounded.Tv">Ekranlar</MudNavLink>
                         }
                         @if (Session.Allows(PortalArea.Users))
                         {

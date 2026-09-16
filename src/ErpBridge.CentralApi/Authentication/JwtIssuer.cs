@@ -44,6 +44,12 @@ public interface IJwtIssuer
     /// <param name="lifetime">Defaults to <see cref="JwtIssuer.MobileUserTokenDays"/> days.</param>
     IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId, string client = CentralApiClaims.PhoneClient, TimeSpan? lifetime = null);
 
+    /// <summary>
+    /// Issue a token for a paired warehouse TV: <c>sub=displayDeviceId</c>, <c>tenant</c>, <c>scope=display</c>.
+    /// Long-lived (a TV stays on the wall); revocation is checked against the device row on every call.
+    /// </summary>
+    IssuedMobileUserToken IssueForDisplay(Guid displayDeviceId, Guid tenantId);
+
     /// <summary>Validate a token. Returns <c>null</c> when invalid/expired.</summary>
     ClaimsPrincipal? Validate(string token);
 }
@@ -145,6 +151,27 @@ public sealed class JwtIssuer : IJwtIssuer
 
         var serialized = new JwtSecurityTokenHandler().WriteToken(token);
         return new IssuedMobileUserToken(serialized, userId, tenantId, expires);
+    }
+
+    /// <summary>Lifetime of a warehouse TV token, in days.</summary>
+    public const int DisplayTokenDays = 365;
+
+    /// <inheritdoc />
+    public IssuedMobileUserToken IssueForDisplay(Guid displayDeviceId, Guid tenantId)
+    {
+        var opts = _options.CurrentValue;
+        var keyBytes = EnsureKey(opts);
+        var expires = DateTimeOffset.UtcNow.AddDays(DisplayTokenDays);
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, displayDeviceId.ToString()),
+            new Claim(CentralApiClaims.TenantId, tenantId.ToString()),
+            new Claim(CentralApiClaims.Scope, CentralApiClaims.DisplayScope),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+        };
+        var creds = new SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(opts.Issuer, opts.Audience, claims, DateTime.UtcNow, expires.UtcDateTime, creds);
+        return new IssuedMobileUserToken(new JwtSecurityTokenHandler().WriteToken(token), displayDeviceId, tenantId, expires);
     }
 
     private static byte[] EnsureKey(JwtOptions opts)

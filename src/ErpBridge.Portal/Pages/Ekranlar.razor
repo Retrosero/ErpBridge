@@ -1,0 +1,178 @@
+@page "/ekranlar"
+@inherits PortalPageBase
+
+<PageTitle>Ekranlar — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Depo ekranları" Eyebrow="İşlemler" Subtitle="Depodaki TV panolarını eşleştirin, gecikme eşiklerini ayarlayın" Busy="Busy" />
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" lg="7">
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="panel-head">
+                    <div>
+                        <MudText Typo="Typo.h6">Eşleşmiş ekranlar</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted">Ekranlar kullanıcı hakkı kullanmaz. İptal edilen ekran bir dakika içinde eşleştirme koduna döner.</MudText>
+                    </div>
+                </div>
+                @if (_displays.Count == 0)
+                {
+                    <EmptyState Id="displays-empty" Icon="@Icons.Material.Rounded.Tv" Title="Henüz ekran yok." Hint="Sağdaki adımlarla ilk ekranı ekleyin." />
+                }
+                else
+                {
+                    <div class="table-scroll">
+                        <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="displays-table">
+                            <thead><tr><th>Ekran</th><th>Eklenme</th><th>Son görülme</th><th>Durum</th><th class="num"></th></tr></thead>
+                            <tbody>
+                                @foreach (var display in _displays)
+                                {
+                                    var state = StateOf(display);
+                                    <tr data-display="@display.Id">
+                                        <td class="person-name">@display.Name</td>
+                                        <td class="nowrap">@Fmt.Time(display.CreatedAtUtc)</td>
+                                        <td class="nowrap">@(display.LastSeenAtUtc is { } seen ? Fmt.Time(seen) : "—")</td>
+                                        <td><span class="badge @state.Css" data-state>@state.Label</span></td>
+                                        <td class="num">
+                                            @if (display.RevokedAtUtc is null)
+                                            {
+                                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error" Disabled="@Busy" Class="revoke-btn" OnClick="() => RevokeAsync(display)">İptal et</MudButton>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </div>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" lg="5">
+            <div class="side-stack">
+                <MudPaper Outlined="true" Class="panel" id="display-pair">
+                    <div class="panel-head">
+                        <MudText Typo="Typo.h6">Ekran ekle</MudText>
+                        <MudIcon Icon="@Icons.Material.Rounded.AddToQueue" Color="Color.Primary" />
+                    </div>
+                    <ol class="pair-steps">
+                        <li>TV'nin tarayıcısında <strong class="mono" id="kiosk-address">@KioskAddress</strong> adresini açın.</li>
+                        <li>Ekranda çıkan 6 haneli kodu ve ekranın adını aşağıya yazın.</li>
+                    </ol>
+                    <form class="stack-form" @onsubmit="PairAsync" @onsubmit:preventDefault>
+                        <MudTextField T="string" @bind-Value="_code" Label="Ekrandaki kod" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="pair-code" MaxLength="7" autocomplete="off" />
+                        <MudTextField T="string" @bind-Value="_name" Label="Ekran adı" Placeholder="Depo girişi TV" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="pair-name" MaxLength="80" />
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="@Busy" id="pair-submit">Eşleştir</MudButton>
+                    </form>
+                </MudPaper>
+
+                <MudPaper Outlined="true" Class="panel" id="warehouse-settings">
+                    <div class="panel-head">
+                        <MudText Typo="Typo.h6">Depo modülü ve eşikler</MudText>
+                        <MudIcon Icon="@Icons.Material.Rounded.Timer" Color="Color.Primary" />
+                    </div>
+                    <form class="stack-form" @onsubmit="SaveSettingsAsync" @onsubmit:preventDefault>
+                        <div id="settings-enabled">
+                            <MudSwitch T="bool" @bind-Value="_settings.Enabled" Color="Color.Primary" Label="Satışlar depo kuyruğuna girsin" />
+                        </div>
+                        <div class="field-label">Bekliyor (dakika)</div>
+                        <div class="threshold-row">
+                            <MudNumericField T="int" @bind-Value="_settings.PendingWarnMinutes" Label="Sarı" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="1440" id="pending-warn" />
+                            <MudNumericField T="int" @bind-Value="_settings.PendingCriticalMinutes" Label="Kırmızı" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="1440" id="pending-critical" />
+                        </div>
+                        <div class="field-label">Hazırlanıyor (dakika)</div>
+                        <div class="threshold-row">
+                            <MudNumericField T="int" @bind-Value="_settings.PreparingWarnMinutes" Label="Sarı" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="1440" id="preparing-warn" />
+                            <MudNumericField T="int" @bind-Value="_settings.PreparingCriticalMinutes" Label="Kırmızı" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="1440" id="preparing-critical" />
+                        </div>
+                        <div class="field-label">Paketlendi, yüklenmedi (dakika)</div>
+                        <MudNumericField T="int" @bind-Value="_settings.PackedWarnMinutes" Label="Sarı" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="1440" id="packed-warn" />
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="@Busy" id="settings-save">Kaydet</MudButton>
+                    </form>
+                </MudPaper>
+            </div>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Displays;
+
+    [Inject] private TimeProvider Clock { get; set; } = default!;
+
+    /// <summary>A board that has not called for this long is shown as offline (its long-poll returns every 25 s).</summary>
+    private static readonly TimeSpan OfflineAfter = TimeSpan.FromMinutes(3);
+
+    private List<DisplayDeviceDto> _displays = [];
+    private WarehouseSettingsDto _settings = new();
+    private string? _code;
+    private string? _name;
+
+    private string? Notice { get; set; }
+
+    private string KioskAddress => Nav.BaseUri.TrimEnd('/') + "/ekran";
+
+    protected override async Task LoadAsync()
+    {
+        _displays = [.. await Api.DisplaysAsync()];
+        _settings = await Api.WarehouseSettingsAsync();
+    }
+
+    private async Task PairAsync()
+    {
+        Notice = null;
+        var code = new string((_code ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (code.Length != 6 || string.IsNullOrWhiteSpace(_name))
+        {
+            Error = "Ekrandaki 6 haneli kodu ve ekranın adını yazın.";
+            return;
+        }
+        await RunAsync(async () =>
+        {
+            var display = await Api.PairDisplayAsync(code, _name!.Trim());
+            _code = _name = null;
+            _displays = [.. _displays.Append(display).OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)];
+            Notice = $"{display.Name} eşleşti. Ekran birkaç saniye içinde panoya geçer.";
+        });
+    }
+
+    private async Task RevokeAsync(DisplayDeviceDto display)
+    {
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            var revoked = await Api.RevokeDisplayAsync(display.Id);
+            _displays = [.. _displays.Select(d => d.Id == revoked.Id ? revoked : d)];
+            Notice = $"{display.Name} iptal edildi.";
+        });
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            _settings = await Api.SaveWarehouseSettingsAsync(_settings);
+            Notice = _settings.Enabled ? "Depo ayarları kaydedildi." : "Depo ayarları kaydedildi. Modül kapalı: yeni satışlar kuyruğa girmez.";
+        });
+    }
+
+    private (string Label, string Css) StateOf(DisplayDeviceDto display) =>
+        display.RevokedAtUtc is not null ? ("İptal edildi", "badge--off")
+        : display.LastSeenAtUtc is { } seen && Clock.GetUtcNow() - seen <= OfflineAfter ? ("Açık", "badge--ok")
+        : ("Görülmüyor", "badge--warn");
+}
