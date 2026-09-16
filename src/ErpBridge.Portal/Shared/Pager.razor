@@ -1,0 +1,54 @@
+@* Page range, page size and first/previous/next/last buttons under a server-paged table. *@
+<div class="table-foot pager" id="@Id">
+    <span class="pager-range">@RangeText</span>
+    <label class="inline-field">
+        Sayfada
+        <select class="portal-select portal-select--short pager-size" value="@PageSize" @onchange="SizeChangedAsync" disabled="@Busy">
+            @foreach (var size in Sizes)
+            {
+                <option value="@size">@size</option>
+            }
+        </select>
+    </label>
+    <span class="pager-buttons">
+        <MudIconButton Icon="@Icons.Material.Rounded.FirstPage" Size="Size.Small" Disabled="@(Busy || Page <= 1)" OnClick="() => GoAsync(1)" aria-label="İlk sayfa" Class="pager-first" />
+        <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" Size="Size.Small" Disabled="@(Busy || Page <= 1)" OnClick="() => GoAsync(Page - 1)" aria-label="Önceki sayfa" Class="pager-prev" />
+        <span class="pager-page">Sayfa @Page / @PageCount</span>
+        <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" Size="Size.Small" Disabled="@(Busy || Page >= PageCount)" OnClick="() => GoAsync(Page + 1)" aria-label="Sonraki sayfa" Class="pager-next" />
+        <MudIconButton Icon="@Icons.Material.Rounded.LastPage" Size="Size.Small" Disabled="@(Busy || Page >= PageCount)" OnClick="() => GoAsync(PageCount)" aria-label="Son sayfa" Class="pager-last" />
+    </span>
+</div>
+
+@code {
+    public static readonly int[] Sizes = [25, 50, 100, 250];
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 50;
+    [Parameter] public int Total { get; set; }
+    [Parameter] public bool Busy { get; set; }
+
+    /// <summary>What is being counted, e.g. "cari", "hareket".</summary>
+    [Parameter] public string Unit { get; set; } = "kayıt";
+
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+    [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(Total / (double)PageSize));
+
+    private string RangeText
+    {
+        get
+        {
+            if (Total == 0) return $"0 {Unit}";
+            var first = (Page - 1) * PageSize + 1;
+            var last = Math.Min(Total, Page * PageSize);
+            return $"{first.ToString("N0", Fmt.Turkish)}–{last.ToString("N0", Fmt.Turkish)} / {Total.ToString("N0", Fmt.Turkish)} {Unit}";
+        }
+    }
+
+    private Task GoAsync(int page) => PageChanged.InvokeAsync(Math.Clamp(page, 1, PageCount));
+
+    private Task SizeChangedAsync(ChangeEventArgs e) =>
+        int.TryParse(e.Value?.ToString(), out var size) && Sizes.Contains(size) ? PageSizeChanged.InvokeAsync(size) : Task.CompletedTask;
+}

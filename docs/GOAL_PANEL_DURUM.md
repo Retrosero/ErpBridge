@@ -1,6 +1,6 @@
 # Goal Durumu — Yönetim Paneli Geliştirmeleri
 
-Son güncelleme: 2026-09-16 (P2 bitti, sırada P3a)
+Son güncelleme: 2026-09-16 (P3 bitti, sırada P4a)
 Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -15,12 +15,12 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P0 — Hazırlık | 2 | 2 | ✅ |
 | P1 — Onaylar | 3 | 3 | ✅ |
 | P2 — Stok | 3 | 3 | ✅ |
-| P3 — Cariler | 5 | 0 | ⬜ |
+| P3 — Cariler | 5 | 5 | ✅ |
 | P4 — Depo sunucu + panel | 4 | 0 | ⬜ |
 | P5 — Telefon Depo ekranı | 5 | 0 | ⬜ |
 | P6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P3a
+**Şu anki görev:** P4a
 
 ---
 
@@ -36,11 +36,11 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P2a | Stok arama ucu (sayfalı, filtreli) | ✅ | [#60](https://github.com/Retrosero/ErpBridge/pull/60) | P2a+b+c tek PR. `Portal/PortalStockCatalog` + `GET /portal/stock/search`; önbellek anahtarı stok varlıklarının `MAX(UpdatedSeq)`+sayısı (#54 Codex bulgusu). 3 ilişkisel test (ERP alanları, hatalı sorgu/yetki, ERP'siz kart + yeni kart/satış/silme anında görünür). **Codex (#60):** Mikro okuyucusu depo bazlı miktar, rezerve ve son hareket üretmiyor → depo seçeneği yalnız envanterde >1 depo varken, son hareket `stockTransactions`'tan türetildi; tam yeniden okuma yerine artımlı **kayıt aynası** (`PortalRecordMirror`). **Ölçüm (SQLite, 20.000 ürün + 200.000 hareket):** ilk 2,4 sn, değişmemiş 0,17 sn, tek satış sonrası 0,35 sn, ~130 MB |
 | P2b | Stok filtre seçenekleri ucu | ✅ | [#60](https://github.com/Retrosero/ErpBridge/pull/60) | `GET /portal/stock/facets`: grup/alt grup (üst grubuyla)/marka/reyon sayılarıyla, depo ve fiyat listesi adları, `hasMovementDates`, `hasReserved` |
 | P2c | Stok sayfası | ✅ | [#60](https://github.com/Retrosero/ErpBridge/pull/60) | Sunucu sayfalı tablo (25/50/100/250; ilk/önceki/sonraki/son), kolon başlığıyla sıralama (sayılarda ilk tık azalan), durum sekmeleri (Tümü/Stokta/Tükenen/Eksi/Eşik altı + eşik), sağdan filtre paneli (depo, fiyat listesi, miktar/fiyat aralığı, hareketsizlik — yalnız ERP; aramalı çoklu seçim grup/alt grup/marka/reyon), etkin filtre çipleri, depo kolonları anahtarı, satır açılınca depo/fiyat/barkod. Durum URL'de (`Api/StockFilter`). 200 sınırı kalktı. bUnit +9. Yerelde Docker PostgreSQL ile 133 ürünlük tohumda filtre/sıralama/URL doğrulandı |
-| P3a | Sayfalı cari listesi ucu | ⬜ | | |
-| P3b | Cari kartı + ekstre ucu | ⬜ | | |
-| P3c | Fatura detay ucu | ⬜ | | |
-| P3d | Cariler + cari detay sayfaları | ⬜ | | |
-| P3e | Telefon ERP'siz ekstre tutarı bulgusu (doğrulama) | ⬜ | | |
+| P3a | Sayfalı cari listesi ucu | ✅ | #PR | P3a–e tek PR. `GET /portal/customers` (kod/unvan/telefon araması, bakiye filtresi, sıralama, sayfa); toplamlar filtrenin tamamı. Kayıt aynası "customers" |
+| P3b | Cari kartı + ekstre ucu | ✅ | #PR | **Sapma:** yol yerine sorgu (`/customers/card?code=`, `/customers/ledger?code=`) — Mikro kodu `/` içerebilir. **Sapma (D7):** devir = kart bakiyesi − aralıktaki hareketler (plan: aralık öncesi toplam); ERP'siz `openingBalance` hareket olarak yazılmadığı ve ayna eksik geçmiş taşıyabileceği için ekstre her zaman kart bakiyesinde biter. Türkçe tür adları tr-TR büyük harfle eşlenir (Invariant "Satış"ı eşlemiyordu, testte yakalandı) |
+| P3c | Fatura detay ucu | ✅ | #PR | `GET /customers/document?code=&key=`; Mikro `r{recno}`, ERP'siz `d{cari}|{evrakNo}`. `jobs` payload yedeği gerekmedi: ERP'siz satış/iade/alış satırları her zaman `stockTransactions`'a yazılıyor; satırı olmayan hareket açılamaz görünür |
+| P3d | Cariler + cari detay sayfaları | ✅ | #PR | `/cariler` sayfalı tablo (bakiye sekmeleri, başlıktan sıralama, satıra tıkla → `/cari?kod=…&liste=…`, geri dönüşte liste korunur). `/cari`: kart (bakiye, telefon, vergi, adres), tarih aralığı (varsayılan bu yıl; Bu yıl/Son 3 ay/Tümü), tür düğmeleri, devir/borç/alacak/dönem sonu, sayfalı ekstre, kalemli satıra tıklayınca çekmecede kalemler. Ortak `Shared/Pager`. bUnit +2 (eski bakiye testi değişti). Yerelde PostgreSQL'de onaylanan satışın ekstresi ve kalemi doğrulandı |
+| P3e | Telefon ERP'siz ekstre tutarı bulgusu (doğrulama) | ✅ | #PR | **Hata yok:** telefon API hareketinde `tutar ?: meblag ?: cha_meblag ?: amount …` okuyor (`FieldOpsApiService.kt:506`) |
 | P4a | Depo geri doldurma ucu | ⬜ | | |
 | P4b | Depocu telefona girişi + sunucu kısıtları | ⬜ | | |
 | P4c | Panel depo ayarları | ⬜ | | |

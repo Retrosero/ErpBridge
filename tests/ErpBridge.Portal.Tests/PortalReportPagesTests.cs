@@ -77,38 +77,4 @@ public sealed class PortalReportPagesTests : PortalPageTestContext
         cut.Find("tr[data-customer=C9]").TextContent.Should().Contain("Plan dışı").And.Contain("Atlandı");
         cut.Find("#visits-count").TextContent.Should().Be("1 ziyaret edildi · 2 planlı durak");
     }
-
-    [Fact]
-    public void Balances_show_totals_warn_when_cut_and_search_by_the_typed_text()
-    {
-        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
-        api.Answer("/api/v1/portal/balances", new
-        {
-            totalReceivable = 15000m, totalPayable = 1200m, truncated = true,
-            rows = new object[]
-            {
-                new { customerCode = "C1", title = "Bakkal Veli", balance = 15000m },
-                new { customerCode = "S1", title = "Toptancı", balance = -1200m },
-            },
-        });
-        api.Answer("/api/v1/portal/balances?search=Bakkal%20Veli", new
-        {
-            totalReceivable = 15000m, totalPayable = 0m, truncated = false,
-            rows = new object[] { new { customerCode = "C1", title = "Bakkal Veli", balance = 15000m } },
-        });
-
-        var cut = Render<Cariler>();
-
-        cut.WaitForAssertion(() => cut.Find("#total-receivable strong").TextContent.Should().Be("15.000,00 TL"));
-        cut.Find("#total-payable strong").TextContent.Should().Be("1.200,00 TL");
-        cut.Find("tr[data-customer=S1] td.num").ClassList.Should().Contain("portal-negative");
-        cut.Find("#balances-truncated");
-
-        cut.Find("#balances-search").Change("  Bakkal Veli ");
-        cut.Find("form").Submit();
-
-        cut.WaitForAssertion(() => cut.FindAll("#balances-table tbody tr").Should().HaveCount(1));
-        cut.FindAll("#balances-truncated").Should().BeEmpty();
-        api.Requests.Last().PathAndQuery.Should().Be("/api/v1/portal/balances?search=Bakkal%20Veli");
-    }
 }

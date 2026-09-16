@@ -35,6 +35,10 @@ public static class PortalEndpoints
         group.MapGet("/stock", StockAsync).WithName("PortalStock");
         group.MapGet("/stock/search", StockSearchAsync).WithName("PortalStockSearch");
         group.MapGet("/stock/facets", StockFacetsAsync).WithName("PortalStockFacets");
+        group.MapGet("/customers", CustomersAsync).WithName("PortalCustomers");
+        group.MapGet("/customers/card", CustomerCardAsync).WithName("PortalCustomerCard");
+        group.MapGet("/customers/ledger", CustomerLedgerAsync).WithName("PortalCustomerLedger");
+        group.MapGet("/customers/document", CustomerDocumentAsync).WithName("PortalCustomerDocument");
         return routes;
     }
 
@@ -172,6 +176,85 @@ public static class PortalEndpoints
         if (error is not null) return error;
         return JsonResults.Ok(PortalStockCatalog.Facets(await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct)));
     }
+
+    /// <summary>Every customer, paged. Codes travel in the query, not the path: Mikro codes may hold a slash.</summary>
+    private static async Task<IResult> CustomersAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        string? q, string? balance, string? sort, string? dir, int? page, int? pageSize, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+        balance = string.IsNullOrWhiteSpace(balance) ? "all" : balance.Trim();
+        sort = string.IsNullOrWhiteSpace(sort) ? "title" : sort.Trim();
+        if (balance is not ("all" or "receivable" or "payable" or "nonzero")) return BadQuery("balance must be all, receivable, payable or nonzero.");
+        if (sort is not ("title" or "code" or "balance" or "absBalance")) return BadQuery("sort must be title, code, balance or absBalance.");
+        if (dir is not (null or "asc" or "desc")) return BadQuery("dir must be asc or desc.");
+
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, ct);
+        return JsonResults.Ok(PortalLedger.Search(customers, q, balance, sort, dir == "desc",
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
+    }
+
+    private static async Task<IResult> CustomerCardAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        string? code, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
+        return customer is null ? CustomerNotFound() : JsonResults.Ok(PortalLedger.Card(customer, tenant.DataSource));
+    }
+
+    /// <summary>A customer's statement: <c>from</c>/<c>to</c> (yyyy-MM-dd, both optional), repeated <c>kind</c>, newest first.</summary>
+    private static async Task<IResult> CustomerLedgerAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        string? code, string? from, string? to, string[]? kind, int? page, int? pageSize, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+        DateOnly? start = null, end = null;
+        if (!string.IsNullOrWhiteSpace(from))
+        {
+            if (!TryDay(from, out var day)) return BadDate("from");
+            start = day;
+        }
+        if (!string.IsNullOrWhiteSpace(to))
+        {
+            if (!TryDay(to, out var day)) return BadDate("to");
+            end = day;
+        }
+        if (start is not null && end is not null && end < start)
+            return JsonResults.Status(400, new ApiError { ErrorCode = "INVALID_RANGE", Message = "to is before from." });
+        var kinds = Values(kind);
+        if (kinds.FirstOrDefault(k => !PortalLedger.Kinds.Contains(k, StringComparer.Ordinal)) is { } unknown)
+            return BadQuery($"kind '{unknown}' is not one of: " + string.Join(", ", PortalLedger.Kinds) + ".");
+
+        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
+        if (customer is null) return CustomerNotFound();
+        var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
+        return JsonResults.Ok(PortalLedger.Statement(customer, movements, start, end, kinds,
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
+    }
+
+    private static async Task<IResult> CustomerDocumentAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        string? code, string? key, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
+        if (customer is null) return CustomerNotFound();
+        var document = string.IsNullOrWhiteSpace(key) ? null : PortalLedger.Document(customer, await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct), key);
+        return document is null
+            ? JsonResults.Status(404, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with lines under that key for this customer." })
+            : JsonResults.Ok(document);
+    }
+
+    private static async Task<PortalLedger.Customer?> FindCustomerAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, string? code, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenantId, ct);
+        return customers.TryGetValue(code.Trim(), out var customer) ? customer : null;
+    }
+
+    private static IResult CustomerNotFound() =>
+        JsonResults.Status(404, new ApiError { ErrorCode = "CUSTOMER_NOT_FOUND", Message = "No customer with that code." });
 
     public sealed class StockSearchParameters
     {

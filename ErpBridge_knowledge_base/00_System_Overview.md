@@ -506,6 +506,20 @@ registration ayrı bir composition projesine taşınır.
      envanterde birden çok depo varken sunulur (lookup'taki boş depolar listelenmez), rezerve yalnız sıfırdan farklıysa
      gösterilir, **son hareket** ürünün `stockTransactions` aynasındaki en yeni `tarih`'tir (ERP'de tam STOK_HAREKETLERI
      geçmişi, ERP'sizde her kayıtlı satır). Gerçek depo bazlı miktar ajan değişikliği ister (kapsam dışı).
+     **Cariler ve ekstre (panel goal P3, 2026-09-17):** `GET /api/v1/portal/customers` (sayfalı; `q` kod/unvan/telefon,
+     `balance=all|receivable|payable|nonzero`, `sort=title|code|balance|absBalance`, `dir`; toplam alacak/borç filtrenin tamamı),
+     `GET /customers/card?code=`, `GET /customers/ledger?code=&from=&to=&kind=…&page&pageSize` (yeni hareket üstte;
+     `kind` = `sale|sale_return|purchase|purchase_return|collection|payment|other`), `GET /customers/document?code=&key=`
+     (fatura kalemleri). **Cari kodu sorguda taşınır, yolda değil:** Mikro kodları `/` içerebilir. Kaynak `PortalLedger`:
+     "customers" (`customers/customerAddresses`), "ledger" (`customerTransactions`), "lines" (`stockTransactions`) aynaları.
+     **Tür eşlemesi:** Mikro `type` (SATIS, SATIS_IADE, ALIS, ALIS_IADE, TAHSILAT, TEDIYE, HAREKET — `MikroDbReader`
+     `cha_evrak_tip/cha_tip/cha_normal_Iade`'den türetir), ERP'siz `type` Türkçe (Satış, İade, Alış, Tahsilat, Tediye, İade
+     Ödemesi) — **büyük harfe tr-TR kültürüyle çevrilir**, InvariantCulture "ı"yı değiştirmez ve "Satış" eşleşmez. Tutar
+     `tutar ?? meblag ?? amount`, yön `borcMu ?? tip==0`. **Belge anahtarı:** Mikro `r{cha_recno}` = satırların
+     `faturaRecno`'su; ERP'siz `d{CARİ}|{evrakNo}` (satış ile peşin tahsilatı aynı `evrakNo`'yu taşır, yalnız satış/iade/alış
+     türleri açılır). Satırı aynada olmayan hareket açılmaz. **Yürüyen bakiye kart bakiyesine sabitlenir:** devir =
+     kart bakiyesi − `from`'dan bugüne hareketler; böylece ERP'siz `openingBalance` (hareket olarak yazılmaz) ve eksik
+     geçmiş de doğru biter. Tür filtresi bakiye kolonunu değiştirmez.
      Varsayılan fiyat listesi 1 (yoksa en küçük). Ölçüm (SQLite, 20.000 ürün + 200.000 hareket): ilk yükleme ~2,4 sn,
      değişmemişken ~0,17 sn, tek satış sonrası ~0,35 sn; bellek ~130 MB. Eski `/portal/stock` (200 satır) sözleşme için
      duruyor, panel kullanmıyor.
