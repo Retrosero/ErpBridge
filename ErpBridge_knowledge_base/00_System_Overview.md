@@ -517,7 +517,7 @@ registration ayrı bir composition projesine taşınır.
      Ödemesi) — **büyük harfe tr-TR kültürüyle çevrilir**, InvariantCulture "ı"yı değiştirmez ve "Satış" eşleşmez. Tutar
      `tutar ?? meblag ?? amount`, yön `borcMu ?? tip==0`. **Belge anahtarı:** Mikro `r{cha_recno}` = satırların
      `faturaRecno`'su; ERP'siz `d{CARİ}|{evrakNo}` (satış ile peşin tahsilatı aynı `evrakNo`'yu taşır, yalnız satış/iade/alış
-     türleri açılır). Satırı aynada olmayan hareket açılmaz. **Yürüyen bakiye kart bakiyesine sabitlenir:** devir =
+     türleri açılır). Satırı aynada olmayan fatura da açılır: boş liste + `linesAvailable=false` (Codex #62). Aynı gün Mikro hareketleri `cha_recno`'ya **sayı olarak** sıralanır ("2" < "10"). **Yürüyen bakiye kart bakiyesine sabitlenir:** devir =
      kart bakiyesi − `from`'dan bugüne hareketler; böylece ERP'siz `openingBalance` (hareket olarak yazılmaz) ve eksik
      geçmiş de doğru biter. Tür filtresi bakiye kolonunu değiştirmez.
      Varsayılan fiyat listesi 1 (yoksa en küçük). Ölçüm (SQLite, 20.000 ürün + 200.000 hareket): ilk yükleme ~2,4 sn,

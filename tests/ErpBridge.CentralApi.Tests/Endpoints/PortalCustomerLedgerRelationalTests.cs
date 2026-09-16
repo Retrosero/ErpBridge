@@ -54,7 +54,7 @@ public sealed class PortalCustomerLedgerRelationalTests : IClassFixture<SqliteCe
         ledger.Opening.Should().Be(0m);
         ledger.Closing.Should().Be(700m, "the statement ends on the card balance");
         ledger.Items.Single(i => i.Id == "m1").Should().Match<PortalLedgerRow>(i => i.DocumentKey == "r11" && i.Debit == 1000m && i.DocumentNo == "A-1" && i.Date == "2026-01-05");
-        ledger.Items.Single(i => i.Id == "m3").DocumentKey.Should().BeNull("no lines mirror that invoice");
+        ledger.Items.Single(i => i.Id == "m3").DocumentKey.Should().Be("r12", "an invoice opens even when no lines are mirrored");
         ledger.Items.Single(i => i.Id == "m2").DocumentKey.Should().BeNull("a collection has no lines");
 
         var thisYear = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C%2F1&from=2026-01-01");
@@ -78,7 +78,25 @@ public sealed class PortalCustomerLedgerRelationalTests : IClassFixture<SqliteCe
         invoice.Lines.Should().ContainSingle().Which.Should().Match<PortalDocumentLine>(l =>
             l.StockCode == "CAY-1" && l.Name == "Çay 1 kg" && l.Quantity == 5m && l.UnitPrice == 200m && l.Amount == 1000m && l.Tax == 180m && l.WarehouseNo == 1);
 
-        await ExpectAsync(c.Patron, "/api/v1/portal/customers/document?code=C%2F1&key=r12", HttpStatusCode.NotFound, "DOCUMENT_NOT_FOUND");
+        var noLines = await GetJsonAsync<PortalDocumentResponse>(c.Patron, "/api/v1/portal/customers/document?code=C%2F1&key=r12");
+        noLines.Should().Match<PortalDocumentResponse>(d => !d.LinesAvailable && d.Lines.Count == 0 && d.Kind == "sale_return" && d.Amount == 100m);
+        await ExpectAsync(c.Patron, "/api/v1/portal/customers/document?code=C%2F1&key=r20", HttpStatusCode.NotFound, "DOCUMENT_NOT_FOUND");
+
+        // Same-day Mikro movements follow their record number as a number: 9 before 10.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var seq = 2_100_000L;
+            foreach (var (id, recNo, amount) in new[] { ("10", 10, 40m), ("9", 9, 30m) })
+                db.MobileRecords.Add(new MobileRecord
+                {
+                    TenantId = c.Id, Entity = "customerTransactions", RecordKey = id, UpdatedSeq = ++seq,
+                    PayloadJson = JsonSerializer.Serialize(new { id, erp = "MIKRO", cariKod = "C-3", tarih = "2026-04-01T00:00:00", tutar = amount, borcMu = true, type = "SATIS", cha_recno = recNo }, Web),
+                });
+            await db.SaveChangesAsync();
+        }
+        var sameDay = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-3");
+        sameDay.Items.Select(i => (i.Id, i.Balance)).Should().Equal(("10", 0m), ("9", -40m));
         await ExpectAsync(c.Patron, "/api/v1/portal/customers/document?code=C-2&key=r11", HttpStatusCode.NotFound, "DOCUMENT_NOT_FOUND");
         await ExpectAsync(c.Patron, "/api/v1/portal/customers/card?code=NOPE", HttpStatusCode.NotFound, "CUSTOMER_NOT_FOUND");
         await ExpectAsync(c.Patron, "/api/v1/portal/customers/ledger?code=C%2F1&kind=gift", HttpStatusCode.BadRequest, "INVALID_QUERY");

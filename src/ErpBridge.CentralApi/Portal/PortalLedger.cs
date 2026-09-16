@@ -33,9 +33,22 @@ public static class PortalLedger
         string Code, string Title, decimal Balance, string? Phone, string? Email, string? TaxOffice, string? TaxNo,
         string? SalespersonCode, string? RegionCode, string? GroupCode, string? Currency, bool IsLocked, string? City, string? Address);
 
+    /// <param name="RecNo">Mikro's <c>cha_recno</c>: the order of movements on the same day (null for native rows).</param>
     public sealed record Movement(
         string Customer, string Id, DateTime Date, string Kind, string? SourceType, string? DocumentNo, string? Description,
-        decimal Debit, decimal Credit, string? DocumentKey);
+        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null);
+
+    /// <summary>
+    /// Oldest first. Mikro movements of one day share a midnight timestamp, so they follow their record
+    /// number as a number ("2" before "10"; Codex, PR #62); native rows carry the time of day.
+    /// </summary>
+    private static int Chronological(Movement a, Movement b)
+    {
+        var byDate = a.Date.CompareTo(b.Date);
+        if (byDate != 0) return byDate;
+        var byRecord = (a.RecNo ?? long.MaxValue).CompareTo(b.RecNo ?? long.MaxValue);
+        return byRecord != 0 ? byRecord : string.CompareOrdinal(a.Id, b.Id);
+    }
 
     public sealed record Movements(
         IReadOnlyDictionary<string, List<Movement>> ByCustomer,
@@ -106,13 +119,12 @@ public static class PortalLedger
         var byCustomer = new Dictionary<string, List<Movement>>(StringComparer.OrdinalIgnoreCase);
         foreach (var movement in ledger!)
         {
-            // A movement opens only when its lines are actually in the mirror.
-            var shown = movement.DocumentKey is not null && !linesByDocument.ContainsKey(movement.DocumentKey) ? movement with { DocumentKey = null } : movement;
-            if (!byCustomer.TryGetValue(shown.Customer, out var list)) byCustomer[shown.Customer] = list = [];
-            list.Add(shown);
+            // An invoice keeps its key even when no lines are mirrored: it opens and says so (Codex, PR #62).
+            if (!byCustomer.TryGetValue(movement.Customer, out var list)) byCustomer[movement.Customer] = list = [];
+            list.Add(movement);
         }
         foreach (var list in byCustomer.Values)
-            list.Sort((a, b) => a.Date != b.Date ? a.Date.CompareTo(b.Date) : string.CompareOrdinal(a.Id, b.Id));
+            list.Sort(Chronological);
 
         var stockNames = stock!.OfType<PortalRecords.CardPart>()
             .Where(c => c.Name.Length > 0)
@@ -167,12 +179,13 @@ public static class PortalLedger
         var amount = Math.Abs(AndroidEndpoints.GetDecimal(row, "tutar") ?? AndroidEndpoints.GetDecimal(row, "meblag") ?? AndroidEndpoints.GetDecimal(row, "amount") ?? 0m);
         var debit = AndroidEndpoints.GetBoolean(row, "borcMu") ?? AndroidEndpoints.GetInt32(row, "tip") == 0;
         var documentNo = PortalRecords.Blank(AndroidEndpoints.GetString(row, "evrakNo"));
+        var recNo = native ? null : AndroidEndpoints.GetInt32(row, "cha_recno") is { } number and > 0 ? number : (int?)null;
         string? documentKey = null;
         if (DocumentKinds.Contains(kind))
         {
             documentKey = native
                 ? documentNo is null ? null : PortalRecords.NativeDocumentKey(customer, documentNo)
-                : AndroidEndpoints.GetInt32(row, "cha_recno") is { } recNo and > 0 ? PortalRecords.ErpDocumentKey(recNo) : null;
+                : recNo is { } invoiceRecNo ? PortalRecords.ErpDocumentKey(invoiceRecNo) : null;
         }
         return new Movement(
             customer,
@@ -184,7 +197,8 @@ public static class PortalLedger
             PortalRecords.Blank(AndroidEndpoints.GetString(row, "aciklama")),
             debit ? amount : 0m,
             debit ? 0m : amount,
-            documentKey);
+            documentKey,
+            recNo);
     }
 
     // ---- queries --------------------------------------------------------------
