@@ -13,7 +13,7 @@ else
         <h1>Günün özeti</h1>
         <label>
             Tarih
-            <input type="date" id="summary-date" value="@_day.ToString("yyyy-MM-dd")" @onchange="ChangeDayAsync" />
+            <input type="date" id="summary-date" value="@Fmt.IsoDay(_day)" @onchange="ChangeDayAsync" />
         </label>
     </div>
     <p class="portal-subtitle">@Fmt.Day(_day)</p>
@@ -46,7 +46,7 @@ else
                 <strong>@Fmt.Money(_summary.Returns.Amount)</strong>
                 <small>@_summary.Returns.Count belge</small>
             </div>
-            <a class="portal-card portal-stat" id="stat-visits" href="ziyaretler?date=@_day.ToString("yyyy-MM-dd")">
+            <a class="portal-card portal-stat" id="stat-visits" href="ziyaretler?date=@Fmt.IsoDay(_day)">
                 <span>Ziyaret</span>
                 <strong>@_summary.VisitsCompleted / @_summary.VisitsPlanned</strong>
                 <small>tamamlanan / planlanan · @_summary.VisitsSkipped atlandı</small>
@@ -68,21 +68,14 @@ else
     private DateOnly _day;
     private SummaryResponse? _summary;
 
-    protected override void OnInitialized() =>
-        _day = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Istanbul()).DateTime);
+    protected override void OnInitialized() => _day = Fmt.Today();
 
     protected override async Task LoadAsync() => _summary = await Api.SummaryAsync(_day);
 
     private async Task ChangeDayAsync(ChangeEventArgs e)
     {
-        if (!DateOnly.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var day)) return;
+        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
         _day = day;
         await RunAsync(LoadAsync);
-    }
-
-    private static TimeZoneInfo Istanbul()
-    {
-        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"); }
-        catch (TimeZoneNotFoundException) { return TimeZoneInfo.CreateCustomTimeZone("Istanbul", TimeSpan.FromHours(3), "Istanbul", "Istanbul"); }
     }
 }

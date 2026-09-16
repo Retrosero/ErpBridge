@@ -1,0 +1,84 @@
+@page "/stok"
+@inherits PortalPageBase
+
+<PageTitle>Stok — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <p class="portal-empty">Yükleniyor…</p>
+}
+else
+{
+    <div class="portal-toolbar">
+        <h1>Stok durumu</h1>
+        <form class="portal-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+            <input type="search" id="stock-search" placeholder="Stok kodu veya ürün adı" @bind="_search" />
+            <label class="portal-check">
+                <input type="checkbox" id="stock-out-only" @bind="_outOnly" />
+                Yalnızca tükenenler
+            </label>
+            <button type="submit" class="portal-button portal-button--secondary" disabled="@Busy">Göster</button>
+        </form>
+    </div>
+
+    @if (Error is not null)
+    {
+        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+    }
+
+    @if (_stock is not null)
+    {
+        @if (_stock.Rows.Count == 0)
+        {
+            <p class="portal-empty" id="stock-empty">Listeye uyan ürün yok.</p>
+        }
+        else
+        {
+            <div class="portal-table-wrap">
+                <table class="portal-table" id="stock-table">
+                    <thead>
+                        <tr>
+                            <th>Kod</th>
+                            <th>Ürün</th>
+                            <th class="num">Miktar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _stock.Rows)
+                        {
+                            <tr data-stock="@row.StockCode">
+                                <td>@row.StockCode</td>
+                                <td>@row.Name</td>
+                                <td class="num">
+                                    @if (row.Quantity <= 0)
+                                    {
+                                        <span class="badge badge--off">@Fmt.Quantity(row.Quantity)</span>
+                                    }
+                                    else
+                                    {
+                                        @Fmt.Quantity(row.Quantity)
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (_stock.Truncated)
+            {
+                <p class="portal-hint" id="stock-truncated">İlk @_stock.Rows.Count ürün gösteriliyor. Belirli bir ürün için arama yapın.</p>
+            }
+        }
+        <p class="portal-hint">Miktar tüm depoların toplamıdır.</p>
+    }
+}
+
+@code {
+    private string? _search;
+    private bool _outOnly;
+    private StockResponse? _stock;
+
+    protected override async Task LoadAsync() => _stock = await Api.StockAsync(_search, _outOnly);
+
+    private Task SearchAsync() => RunAsync(LoadAsync);
+}

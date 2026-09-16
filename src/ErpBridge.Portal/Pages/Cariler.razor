@@ -1,0 +1,86 @@
+@page "/cariler"
+@inherits PortalPageBase
+
+<PageTitle>Cariler — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <p class="portal-empty">Yükleniyor…</p>
+}
+else
+{
+    <div class="portal-toolbar">
+        <h1>Cari bakiyeler</h1>
+        <form class="portal-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+            <input type="search" id="balances-search" placeholder="Cari kodu veya unvan" @bind="_search" />
+            <button type="submit" class="portal-button portal-button--secondary" disabled="@Busy">Ara</button>
+        </form>
+    </div>
+
+    @if (Error is not null)
+    {
+        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+    }
+
+    @if (_balances is not null)
+    {
+        <section class="portal-grid portal-grid--compact">
+            <div class="portal-card portal-stat" id="total-receivable">
+                <span>Toplam alacak</span>
+                <strong>@Fmt.Money(_balances.TotalReceivable)</strong>
+            </div>
+            <div class="portal-card portal-stat" id="total-payable">
+                <span>Toplam borç</span>
+                <strong>@Fmt.Money(_balances.TotalPayable)</strong>
+            </div>
+        </section>
+
+        @if (_balances.Rows.Count == 0)
+        {
+            <p class="portal-empty" id="balances-empty">@(_searched is null ? "Bakiyesi olan cari yok." : "Aramaya uyan cari yok.")</p>
+        }
+        else
+        {
+            <div class="portal-table-wrap">
+                <table class="portal-table" id="balances-table">
+                    <thead>
+                        <tr>
+                            <th>Kod</th>
+                            <th>Unvan</th>
+                            <th class="num">Bakiye</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _balances.Rows)
+                        {
+                            <tr data-customer="@row.CustomerCode">
+                                <td>@row.CustomerCode</td>
+                                <td>@row.Title</td>
+                                <td class="num @(row.Balance < 0 ? "portal-negative" : "")">@Fmt.Money(row.Balance)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (_balances.Truncated)
+            {
+                <p class="portal-hint" id="balances-truncated">İlk @_balances.Rows.Count cari gösteriliyor. Belirli bir cari için arama yapın.</p>
+            }
+        }
+        <p class="portal-hint">Pozitif bakiye firmanın alacağıdır. Vade bilgisi telefonlara taşınmadığı için yaşlandırma (vadesi geçen tutar) gösterilmez.</p>
+    }
+}
+
+@code {
+    private string? _search;
+    private string? _searched;
+    private BalancesResponse? _balances;
+
+    protected override async Task LoadAsync() => _balances = await Api.BalancesAsync(_searched);
+
+    private async Task SearchAsync()
+    {
+        _searched = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
+        await RunAsync(LoadAsync);
+    }
+}

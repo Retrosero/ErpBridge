@@ -53,6 +53,50 @@ public static class Fmt
 
     public static string Day(DateOnly day) => day.ToString("d MMMM yyyy, dddd", Turkish);
 
+    /// <summary>Today in Istanbul — the business day every report counts by.</summary>
+    public static DateOnly Today() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Istanbul).DateTime);
+
+    /// <summary>A day as the <c>yyyy-MM-dd</c> the date inputs and the API use.</summary>
+    public static string IsoDay(DateOnly day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    public static bool TryIsoDay(string? value, out DateOnly day) =>
+        DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day);
+
+    /// <summary>Istanbul wall-clock time of an instant.</summary>
+    public static string Time(DateTimeOffset instant) => TimeZoneInfo.ConvertTime(instant, Istanbul).ToString("dd.MM.yyyy HH:mm", Turkish);
+
+    /// <summary>Istanbul time of day for Unix milliseconds (the phone's visit time).</summary>
+    public static string ClockTime(long? unixMs) =>
+        unixMs is { } ms ? TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(ms), Istanbul).ToString("HH:mm", Turkish) : "—";
+
+    public static string ApprovalKind(string kind) => kind switch
+    {
+        "sale" => "Satış",
+        "purchase" => "Alış",
+        "return" => "İade",
+        "collection" => "Tahsilat",
+        "disbursement" => "Tediye",
+        "stock_count" => "Sayım",
+        "product_card" => "Ürün kartı",
+        "customer_card" => "Cari kartı",
+        _ => kind,
+    };
+
+    public static string VisitStatus(string status) => status switch
+    {
+        "COMPLETED" => "Ziyaret edildi",
+        "SKIPPED" => "Atlandı",
+        _ => "Bekliyor",
+    };
+
+    private static readonly TimeZoneInfo Istanbul = ResolveIstanbul();
+
+    private static TimeZoneInfo ResolveIstanbul()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.CreateCustomTimeZone("Istanbul", TimeSpan.FromHours(3), "Istanbul", "Istanbul"); }
+    }
+
     public static string Role(string role) => role switch
     {
         "ADMIN" => "Admin",

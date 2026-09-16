@@ -1,0 +1,132 @@
+@page "/plasiyerler"
+@inherits PortalPageBase
+
+<PageTitle>Plasiyerler — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <p class="portal-empty">Yükleniyor…</p>
+}
+else
+{
+    <div class="portal-toolbar">
+        <h1>Plasiyer performansı</h1>
+        <div class="portal-filters">
+            <label>
+                Başlangıç
+                <input type="date" id="activity-from" value="@Fmt.IsoDay(_from)" @onchange="ChangeFromAsync" />
+            </label>
+            <label>
+                Bitiş
+                <input type="date" id="activity-to" value="@Fmt.IsoDay(_to)" @onchange="ChangeToAsync" />
+            </label>
+        </div>
+    </div>
+    <p class="portal-subtitle">@Fmt.Day(_from) – @Fmt.Day(_to)</p>
+
+    @if (Error is not null)
+    {
+        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+    }
+
+    @if (_activity is not null)
+    {
+        @if (_activity.Users.Count == 0)
+        {
+            <p class="portal-empty" id="activity-empty">Bu aralıkta kullanıcı yok.</p>
+        }
+        else
+        {
+            <div class="portal-table-wrap">
+                <table class="portal-table" id="activity-table">
+                    <thead>
+                        <tr>
+                            <th>Kullanıcı</th>
+                            <th class="num">Satış</th>
+                            <th class="num">Tahsilat</th>
+                            <th class="num">Tediye</th>
+                            <th class="num">İade</th>
+                            <th class="num">Ziyaret</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in _activity.Users)
+                        {
+                            <tr data-user="@user.Username">
+                                <td>
+                                    @(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName)
+                                    @if (!string.IsNullOrWhiteSpace(user.Role))
+                                    {
+                                        <span class="badge">@Fmt.Role(user.Role)</span>
+                                    }
+                                </td>
+                                <td class="num">@Fmt.Money(user.Sales.Amount)<small> · @user.Sales.Count</small></td>
+                                <td class="num">@Fmt.Money(user.Collections.Amount)<small> · @user.Collections.Count</small></td>
+                                <td class="num">@Fmt.Money(user.Disbursements.Amount)<small> · @user.Disbursements.Count</small></td>
+                                <td class="num">@Fmt.Money(user.Returns.Amount)<small> · @user.Returns.Count</small></td>
+                                <td class="num">@user.VisitsCompleted<small> · @user.VisitsSkipped atlandı</small></td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr id="activity-total">
+                            <th>Toplam</th>
+                            <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Sales.Amount))</th>
+                            <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Collections.Amount))</th>
+                            <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Disbursements.Amount))</th>
+                            <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Returns.Amount))</th>
+                            <th class="num">@_activity.Users.Sum(u => u.VisitsCompleted)</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <p class="portal-hint">Tutarlar belgeyi telefondan gönderen kullanıcıya yazılır. Adet: belge sayısı.</p>
+        }
+    }
+}
+
+@code {
+    /// <summary>The server allows at most this many days in one request.</summary>
+    private const int MaxDays = 92;
+
+    private DateOnly _from;
+    private DateOnly _to;
+    private ActivityResponse? _activity;
+
+    protected override void OnInitialized()
+    {
+        _to = Fmt.Today();
+        _from = _to.AddDays(-6);
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (_to < _from)
+        {
+            _activity = null;
+            Error = PortalMessages.For("INVALID_RANGE");
+            return;
+        }
+        if (_to.DayNumber - _from.DayNumber + 1 > MaxDays)
+        {
+            _activity = null;
+            Error = PortalMessages.For("RANGE_TOO_LONG");
+            return;
+        }
+        _activity = await Api.ActivityAsync(_from, _to);
+    }
+
+    private async Task ChangeFromAsync(ChangeEventArgs e)
+    {
+        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
+        _from = day;
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task ChangeToAsync(ChangeEventArgs e)
+    {
+        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
+        _to = day;
+        await RunAsync(LoadAsync);
+    }
+}

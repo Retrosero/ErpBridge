@@ -1,0 +1,142 @@
+@page "/kullanicilar"
+@inherits PortalPageBase
+
+<PageTitle>Kullanıcılar — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <p class="portal-empty">Yükleniyor…</p>
+}
+else
+{
+    <div class="portal-toolbar">
+        <h1>Kullanıcılar</h1>
+        @if (_list is not null)
+        {
+            <span class="badge @(_list.Seats.Used >= _list.Seats.Max ? "badge--warn" : "")" id="seats">@_list.Seats.Used / @_list.Seats.Max kullanıcı hakkı</span>
+        }
+    </div>
+    <p class="portal-subtitle">Kullanıcı hakkı sayısı ErpBridge ile yapılan anlaşmaya göre belirlenir; buradan satın alma yapılmaz.</p>
+
+    @if (Notice is not null)
+    {
+        <div class="portal-alert" id="page-notice">@Notice</div>
+    }
+    @if (Error is not null)
+    {
+        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+    }
+
+    @if (_list is not null)
+    {
+        <div class="portal-table-wrap">
+            <table class="portal-table" id="users-table">
+                <thead>
+                    <tr>
+                        <th>Ad soyad</th>
+                        <th>Kullanıcı adı</th>
+                        <th>Rol</th>
+                        <th>Son giriş</th>
+                        <th>Durum</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in _list.Users)
+                    {
+                        var self = string.Equals(user.Username, Session.Username, StringComparison.OrdinalIgnoreCase);
+                        <tr data-user="@user.Username">
+                            <td>@user.FullName</td>
+                            <td>@user.Username</td>
+                            <td>
+                                @Fmt.Role(user.Role)
+                                @if (user.Role == PortalSession.Roles.Manager && user.CanApprove)
+                                {
+                                    <span class="badge">onaylayabilir</span>
+                                }
+                            </td>
+                            <td>@(user.LastLoginAtUtc is { } at ? Fmt.Time(at) : "—")</td>
+                            <td><span class="badge @(user.IsActive ? "badge--ok" : "badge--off")">@(user.IsActive ? "Aktif" : "Pasif")</span></td>
+                            <td>
+                                @if (!self)
+                                {
+                                    <button type="button" class="portal-link" disabled="@Busy" @onclick="() => ToggleAsync(user)">
+                                        @(user.IsActive ? "Devre dışı bırak" : "Etkinleştir")
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <section class="portal-card portal-create" id="user-create">
+            <h2>Yeni kullanıcı</h2>
+            <form class="portal-form portal-form--grid" @onsubmit="CreateAsync" @onsubmit:preventDefault>
+                <label for="new-fullname">Ad soyad</label>
+                <input id="new-fullname" @bind="_new.FullName" maxlength="120" required />
+                <label for="new-username">Kullanıcı adı</label>
+                <input id="new-username" @bind="_new.Username" maxlength="64" autocomplete="off" required />
+                <label for="new-password">Parola</label>
+                <input id="new-password" type="password" @bind="_new.Password" minlength="6" autocomplete="new-password" required />
+                <label for="new-role">Rol</label>
+                <select id="new-role" @bind="_new.Role">
+                    <option value="SALES">Saha</option>
+                    <option value="MANAGER">Yönetici</option>
+                    <option value="ADMIN">Admin</option>
+                </select>
+                @if (_new.Role == PortalSession.Roles.Manager)
+                {
+                    <label class="portal-check">
+                        <input type="checkbox" id="new-can-approve" @bind="_new.CanApprove" />
+                        Onay verebilsin
+                    </label>
+                }
+                <button type="submit" class="portal-button" id="new-submit" disabled="@Busy">Kullanıcı ekle</button>
+            </form>
+        </section>
+    }
+}
+
+@code {
+    private UserListResponse? _list;
+    private CreateUserRequest _new = new();
+
+    private string? Notice { get; set; }
+
+    protected override bool AdminOnly => true;
+
+    protected override async Task LoadAsync() => _list = await Api.UsersAsync();
+
+    private async Task ToggleAsync(UserDto user)
+    {
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            var updated = await Api.SetUserActiveAsync(user.Id, !user.IsActive);
+            await LoadAsync();
+            Notice = $"{updated.FullName} {(updated.IsActive ? "etkinleştirildi" : "devre dışı bırakıldı")}.";
+        });
+    }
+
+    private async Task CreateAsync()
+    {
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            var request = new CreateUserRequest
+            {
+                FullName = _new.FullName.Trim(),
+                Username = _new.Username.Trim().ToLowerInvariant(),
+                Password = _new.Password,
+                Role = _new.Role,
+                CanApprove = _new.Role == PortalSession.Roles.Manager && _new.CanApprove,
+            };
+            var created = await Api.CreateUserAsync(request);
+            _new = new CreateUserRequest();
+            await LoadAsync();
+            Notice = $"{created.FullName} eklendi. Telefonda firma kodu, kullanıcı adı ve parolasıyla giriş yapabilir.";
+        });
+    }
+}

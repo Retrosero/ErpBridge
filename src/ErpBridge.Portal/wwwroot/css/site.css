@@ -80,6 +80,26 @@ table.portal-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .badge--warn { background: var(--attention-soft); color: var(--attention); }
 .badge--off { background: var(--danger-soft); color: var(--danger); }
 
+.portal-filters, .portal-search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.portal-search input[type="search"] { min-width: 0; width: 240px; max-width: 100%; }
+.portal-check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text); }
+.portal-grid--compact { margin-bottom: 16px; }
+.portal-section { font-size: 16px; margin: 20px 0 8px; }
+.portal-table td.portal-wrap { white-space: normal; min-width: 160px; }
+.portal-negative { color: var(--danger); }
+.portal-table tfoot th { background: #fafbfc; border-top: 1px solid var(--border); border-bottom: none; color: var(--text); }
+.portal-table small { color: var(--muted); }
+
+.portal-list { display: flex; flex-direction: column; gap: 10px; }
+.portal-approval header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.portal-approval-amount { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.portal-approval .portal-hint { margin: 6px 0 0; }
+.portal-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.portal-note { flex: 1 1 220px; min-width: 0; }
+
+.portal-create { margin-top: 20px; max-width: 520px; }
+.portal-create h2 { margin: 0 0 8px; font-size: 16px; }
+
 #blazor-error-ui { display: none; position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; background: #fffbe6; box-shadow: 0 -1px 2px rgba(0,0,0,.2); }
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: 12px; top: 8px; }
 

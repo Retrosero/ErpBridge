@@ -496,6 +496,11 @@ registration ayrı bir composition projesine taşınır.
    - **Yerel çalıştırma:** `dotnet run` ile `--environment Development` verilmeli; Production
      ortamında `dotnet run` çerçeve betiğini (`_framework/blazor.server.js`) sunmaz (404, boş
      sayfa). Yayımlanmış imajda dosya `wwwroot/_framework` altındadır, sorun yoktur.
+   - **Sayfalar:** Özet (`/`), Plasiyerler (aralık ≤ 92 gün, sunucuya sormadan reddedilir),
+     Ziyaretler (`?date=`), Cariler (yaşlandırma yok — sayfada açıkça yazar), Stok (tükenenler
+     filtresi), Onaylar (onay yetkisi yoksa salt görüntüleme; "başkası sonuçlandırdı" kodlarında
+     liste yeniden okunur), Kullanıcılar (yalnız `ADMIN`; kişi kendini devre dışı bırakamaz,
+     satın alma metni yok).
    - Testler: `tests/ErpBridge.Portal.Tests` (bUnit) — oturum yalıtımı, rol kapısı, oturum
      bitişi, sayfa davranışları.
 
