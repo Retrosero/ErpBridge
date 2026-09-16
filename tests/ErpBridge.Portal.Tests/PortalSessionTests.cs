@@ -113,10 +113,10 @@ public sealed class PortalSessionTests
     {
         var session = new PortalSession(new TestClock(PortalTestSetup.Now));
         session.SignIn(PortalTestSetup.State());
-        var api = new FakeCentralApi().Fail("/api/v1/portal/stock", status, code);
+        var api = new FakeCentralApi().Fail("/api/v1/portal/stock/facets", status, code);
         var client = new PortalApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }, session);
 
-        var call = () => client.StockAsync(null, outOfStockOnly: false);
+        var call = () => client.StockFacetsAsync();
 
         (await call.Should().ThrowAsync<SessionEndedException>()).Which.Code.Should().Be(code);
     }

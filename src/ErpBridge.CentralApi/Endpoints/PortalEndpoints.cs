@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Portal;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ErpBridge.CentralApi.Endpoints;
 
@@ -32,6 +33,8 @@ public static class PortalEndpoints
         group.MapGet("/visits", VisitsAsync).WithName("PortalVisits");
         group.MapGet("/balances", BalancesAsync).WithName("PortalBalances");
         group.MapGet("/stock", StockAsync).WithName("PortalStock");
+        group.MapGet("/stock/search", StockSearchAsync).WithName("PortalStockSearch");
+        group.MapGet("/stock/facets", StockFacetsAsync).WithName("PortalStockFacets");
         return routes;
     }
 
@@ -135,7 +138,70 @@ public static class PortalEndpoints
         return JsonResults.Ok(await PortalReports.StockAsync(db, tenant!.Id, search, outOfStock == true, ct));
     }
 
+    /// <summary>
+    /// The stock page: every product, filtered, sorted and paged on the server. Multi-value
+    /// filters repeat their parameter (<c>?brand=A&amp;brand=B</c>).
+    /// </summary>
+    private static async Task<IResult> StockSearchAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        [AsParameters] StockSearchParameters p, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+
+        var status = string.IsNullOrWhiteSpace(p.Status) ? "all" : p.Status.Trim();
+        var sort = string.IsNullOrWhiteSpace(p.Sort) ? "name" : p.Sort.Trim();
+        if (!StockQuery.Statuses.Contains(status, StringComparer.Ordinal))
+            return BadQuery("status must be one of: " + string.Join(", ", StockQuery.Statuses) + ".");
+        if (!StockQuery.Sorts.Contains(sort, StringComparer.Ordinal))
+            return BadQuery("sort must be one of: " + string.Join(", ", StockQuery.Sorts) + ".");
+        if (p.Dir is not (null or "asc" or "desc")) return BadQuery("dir must be asc or desc.");
+        if (p.IdleDays is < 0) return BadQuery("idleDays cannot be negative.");
+
+        var query = new StockQuery(
+            p.Q, Values(p.MainGroup), Values(p.SubGroup), Values(p.Brand), Values(p.Shelf),
+            p.Warehouse, p.PriceList, p.MinQty, p.MaxQty, p.MinPrice, p.MaxPrice,
+            status, p.Below, p.IdleDays, sort, p.Dir == "desc",
+            Math.Max(1, p.Page ?? 1), Math.Clamp(p.PageSize ?? 50, 1, StockQuery.MaxPageSize));
+        var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
+        return JsonResults.Ok(PortalStockCatalog.Search(catalog, query, PortalReports.BusinessDate(null, DateTimeOffset.UtcNow)));
+    }
+
+    private static async Task<IResult> StockFacetsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+        return JsonResults.Ok(PortalStockCatalog.Facets(await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct)));
+    }
+
+    public sealed class StockSearchParameters
+    {
+        [FromQuery] public string? Q { get; set; }
+        [FromQuery] public string[]? MainGroup { get; set; }
+        [FromQuery] public string[]? SubGroup { get; set; }
+        [FromQuery] public string[]? Brand { get; set; }
+        [FromQuery] public string[]? Shelf { get; set; }
+        [FromQuery] public int? Warehouse { get; set; }
+        [FromQuery] public int? PriceList { get; set; }
+        [FromQuery] public decimal? MinQty { get; set; }
+        [FromQuery] public decimal? MaxQty { get; set; }
+        [FromQuery] public decimal? MinPrice { get; set; }
+        [FromQuery] public decimal? MaxPrice { get; set; }
+        [FromQuery] public string? Status { get; set; }
+        [FromQuery] public decimal? Below { get; set; }
+        [FromQuery] public int? IdleDays { get; set; }
+        [FromQuery] public string? Sort { get; set; }
+        [FromQuery] public string? Dir { get; set; }
+        [FromQuery] public int? Page { get; set; }
+        [FromQuery] public int? PageSize { get; set; }
+    }
+
     // ---- helpers --------------------------------------------------------------
+
+    private static string[] Values(string[]? values) =>
+        values is null ? [] : values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    private static IResult BadQuery(string message) =>
+        JsonResults.Status(400, new ApiError { ErrorCode = "INVALID_QUERY", Message = message });
 
     private static Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeManagerAsync(
         HttpContext http, CentralApiDbContext db, CancellationToken ct) =>

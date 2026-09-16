@@ -111,35 +111,4 @@ public sealed class PortalReportPagesTests : PortalPageTestContext
         cut.FindAll("#balances-truncated").Should().BeEmpty();
         api.Requests.Last().PathAndQuery.Should().Be("/api/v1/portal/balances?search=Bakkal%20Veli");
     }
-
-    [Fact]
-    public void Stock_can_be_narrowed_to_what_has_run_out()
-    {
-        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
-        api.Answer("/api/v1/portal/stock", new
-        {
-            truncated = false,
-            rows = new object[]
-            {
-                new { stockCode = "S1", name = "Çay 1 kg", quantity = 12m },
-                new { stockCode = "S2", name = "Şeker", quantity = 0m },
-            },
-        });
-        api.Answer("/api/v1/portal/stock?outOfStock=true", new
-        {
-            truncated = false,
-            rows = new object[] { new { stockCode = "S2", name = "Şeker", quantity = 0m } },
-        });
-
-        var cut = Render<Stok>();
-
-        cut.WaitForAssertion(() => cut.FindAll("#stock-table tbody tr").Should().HaveCount(2));
-        cut.Find("tr[data-stock=S2] .badge--off").TextContent.Should().Be("0");
-
-        cut.Find("#stock-out-only input").Change(true);
-        cut.Find("form").Submit();
-
-        cut.WaitForAssertion(() => cut.FindAll("#stock-table tbody tr").Should().ContainSingle());
-        api.Requests.Last().PathAndQuery.Should().Be("/api/v1/portal/stock?outOfStock=true");
-    }
 }

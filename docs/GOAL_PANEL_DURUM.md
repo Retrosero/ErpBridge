@@ -1,6 +1,6 @@
 # Goal Durumu — Yönetim Paneli Geliştirmeleri
 
-Son güncelleme: 2026-09-16 (P1 bitti, sırada P2a)
+Son güncelleme: 2026-09-16 (P2 bitti, sırada P3a)
 Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -14,13 +14,13 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 |---|---|---|---|
 | P0 — Hazırlık | 2 | 2 | ✅ |
 | P1 — Onaylar | 3 | 3 | ✅ |
-| P2 — Stok | 3 | 0 | ⬜ |
+| P2 — Stok | 3 | 3 | ✅ |
 | P3 — Cariler | 5 | 0 | ⬜ |
 | P4 — Depo sunucu + panel | 4 | 0 | ⬜ |
 | P5 — Telefon Depo ekranı | 5 | 0 | ⬜ |
 | P6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P2a
+**Şu anki görev:** P3a
 
 ---
 
@@ -33,9 +33,9 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P1a | Onay listesi sayfalama + tür filtresi (sunucu) | ✅ | [#56](https://github.com/Retrosero/ErpBridge/pull/56) | `beforeSeq` + `beforeExternalId` imleci (Codex: aynı ms'de gelen talepler aynı `requestedSeq`'i alır → eşitlikte `externalId` bağı çözer) + `kind` (bilinmeyen → 400 `INVALID_KIND`); DTO'ya `requestedSeq` eklendi (sayfalama imleci için, yalnız ekleme). Sözleşme testi: parametresiz liste aynı. CentralApi onay testleri 19/19 |
 | P1b | Onaylar sekmeleri | ✅ | [#58](https://github.com/Retrosero/ErpBridge/pull/58) | P1c ile tek PR (aynı sayfa). Sekmeler Bekleyen/Onaylanan/Reddedilen (`rejected,resubmitted`)/Tümü, tür filtresi (yerel `select`), 50'lik sayfa + "Daha fazla yükle" (`beforeSeq`+`beforeExternalId`), bekleyen sayısı rozeti (`/approvals/summary`, hata olursa yalnız rozet gizlenir). Sekme/tür/açık talep URL'de (`durum`, `tur`, `talep`) |
 | P1c | Onay detay çekmecesi | ✅ | [#58](https://github.com/Retrosero/ErpBridge/pull/58) | Yeniden kullanılabilir `Shared/DetailSheet` (sağdan panel, dar ekranda tam ekran, Esc/arka plan kapatır). `Api/ApprovalDocuments` belge JSON'unu başlık alanları + satır tablosu + "Diğer bilgiler"e çevirir (tanınmayan alan düşmez), tarih `dd.MM.yyyy HH:mm`. Stok uyarısı, geçmiş zaman çizelgesi, çekmecede not + Onayla/Reddet; satırda varsa iskonto/KDV/iade durum oranı kolonları. Codex: geç gelen eski detay yanıtı yok sayılır, iskonto/KDV eklendi. bUnit 79→87. Tarayıcıda (yerel) bekleyen detay, reddedilen sekmesi, 400 px doğrulandı. **Yerel kısıt:** bellek içi DB'de onay kaydı yapılamıyor ("no known customer") — ilişkisel testler yeşil, yerel tohumda yalnız reddetme kullanıldı |
-| P2a | Stok arama ucu (sayfalı, filtreli) | ⬜ | | |
-| P2b | Stok filtre seçenekleri ucu | ⬜ | | |
-| P2c | Stok sayfası | ⬜ | | |
+| P2a | Stok arama ucu (sayfalı, filtreli) | ✅ | [#60](https://github.com/Retrosero/ErpBridge/pull/60) | P2a+b+c tek PR. `Portal/PortalStockCatalog` + `GET /portal/stock/search`; önbellek anahtarı stok varlıklarının `MAX(UpdatedSeq)`+sayısı (#54 Codex bulgusu). 3 ilişkisel test (ERP alanları, hatalı sorgu/yetki, ERP'siz kart + yeni kart/satış/silme anında görünür). **Codex (#60):** Mikro okuyucusu depo bazlı miktar, rezerve ve son hareket üretmiyor → depo seçeneği yalnız envanterde >1 depo varken, son hareket `stockTransactions`'tan türetildi; tam yeniden okuma yerine artımlı **kayıt aynası** (`PortalRecordMirror`). **Ölçüm (SQLite, 20.000 ürün + 200.000 hareket):** ilk 2,4 sn, değişmemiş 0,17 sn, tek satış sonrası 0,35 sn, ~130 MB |
+| P2b | Stok filtre seçenekleri ucu | ✅ | [#60](https://github.com/Retrosero/ErpBridge/pull/60) | `GET /portal/stock/facets`: grup/alt grup (üst grubuyla)/marka/reyon sayılarıyla, depo ve fiyat listesi adları, `hasMovementDates`, `hasReserved` |
+| P2c | Stok sayfası | ✅ | [#60](https://github.com/Retrosero/ErpBridge/pull/60) | Sunucu sayfalı tablo (25/50/100/250; ilk/önceki/sonraki/son), kolon başlığıyla sıralama (sayılarda ilk tık azalan), durum sekmeleri (Tümü/Stokta/Tükenen/Eksi/Eşik altı + eşik), sağdan filtre paneli (depo, fiyat listesi, miktar/fiyat aralığı, hareketsizlik — yalnız ERP; aramalı çoklu seçim grup/alt grup/marka/reyon), etkin filtre çipleri, depo kolonları anahtarı, satır açılınca depo/fiyat/barkod. Durum URL'de (`Api/StockFilter`). 200 sınırı kalktı. bUnit +9. Yerelde Docker PostgreSQL ile 133 ürünlük tohumda filtre/sıralama/URL doğrulandı |
 | P3a | Sayfalı cari listesi ucu | ⬜ | | |
 | P3b | Cari kartı + ekstre ucu | ⬜ | | |
 | P3c | Fatura detay ucu | ⬜ | | |
@@ -65,11 +65,12 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 ## Karar günlüğü
 
-_(Planın varsayılan kararlarından sapmalar ve gerekçeleri)_
+- **2026-09-17 — Yerel doğrulama PostgreSQL ile:** Test ortamının bellek içi DB'si ERP'siz belge kayıtlarını (`mobile_records`) yazamıyor (onay "no known customer", stok boş). Docker Desktop açılıp `eb-panel-pg` (postgres:16-alpine, port 55433, yalnız yerel) kuruldu, `--migrate` uygulandı; kök `.claude/launch.json` → `eb-panel-centralapi-pg`. Tohum betiği oturum scratchpad'inde (`seed_panel.py`).
+- **2026-09-17 — Main derleme kırığı (#59):** #57 (başka oturum, muhasebe onay masası) ile #58 aynı model sınıflarını ekledi, metin çakışması olmadığı için ikisi de birleşti ve main derlenmedi. Çift kopyalar #59 ile silindi (CI yeşil, merge). Çalışma kuralı 9 güncellendi: merge'den hemen önce rebase + yerel build.
 
 ## Bulgular
 
-_(Kapsam dışı ama not edilmesi gerekenler)_
+- **Mikro depo bazlı stok yok (2026-09-17, Codex #60):** `MikroDbReader.ReadInventoryAsync` `STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW`'den firma toplamını ajanın depo numarasıyla gönderiyor; `ReservedQuantity = 0`, `LastMovementDate = NULL` sabit. Telefonda "Depo N" kırılımı da bu yüzden tek satır. Gerçek depo bazlı miktar için ajan okuyucusunun depo kırılımlı bir kaynağa geçmesi gerekir (ajan müşteride kurulu → ayrı iş, kullanıcı kararı).
 
 ## Seni Bekleyenler
 

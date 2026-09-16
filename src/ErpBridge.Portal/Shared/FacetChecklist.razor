@@ -1,0 +1,64 @@
+@* A titled checkbox list of filter values with counts; a search box appears once the list is long. *@
+<fieldset class="facet" id="@Id">
+    <legend class="facet-title">
+        @Title
+        @if (Selected.Count > 0)
+        {
+            <span class="seg-count">@Selected.Count</span>
+        }
+    </legend>
+    @if (Options.Count == 0)
+    {
+        <p class="facet-empty">@EmptyText</p>
+    }
+    else
+    {
+        @if (Options.Count > 8)
+        {
+            <input type="search" class="facet-search" placeholder="Ara" aria-label="@($"{Title} içinde ara")" @bind="_filter" @bind:event="oninput" />
+        }
+        <div class="facet-options">
+            @foreach (var option in Visible)
+            {
+                var chosen = Selected.Contains(option.Code, StringComparer.OrdinalIgnoreCase);
+                <label class="facet-option @(chosen ? "is-selected" : null)" data-value="@option.Code">
+                    <input type="checkbox" checked="@chosen" @onchange="e => Toggle(option.Code, e)" />
+                    <span class="facet-code">@option.Code</span>
+                    @if (option.Parent is not null && ShowParent)
+                    {
+                        <small class="text-muted">@option.Parent</small>
+                    }
+                    <span class="facet-count">@option.Count</span>
+                </label>
+            }
+        </div>
+    }
+</fieldset>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public IReadOnlyList<FacetValueDto> Options { get; set; } = [];
+
+    /// <summary>Changed in place; the owner reads it when the filters are applied.</summary>
+    [Parameter] public List<string> Selected { get; set; } = [];
+
+    /// <summary>Raised after a value is ticked or cleared, so the owner can redraw what depends on it.</summary>
+    [Parameter] public EventCallback Changed { get; set; }
+
+    [Parameter] public bool ShowParent { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "Kayıt yok.";
+
+    private string? _filter;
+
+    private IEnumerable<FacetValueDto> Visible => string.IsNullOrWhiteSpace(_filter)
+        ? Options
+        : Options.Where(o => o.Code.Contains(_filter.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+    private Task Toggle(string code, ChangeEventArgs e)
+    {
+        Selected.RemoveAll(s => string.Equals(s, code, StringComparison.OrdinalIgnoreCase));
+        if (e.Value is true) Selected.Add(code);
+        return Changed.InvokeAsync();
+    }
+}
