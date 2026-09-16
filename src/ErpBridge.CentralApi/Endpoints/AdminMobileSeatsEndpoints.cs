@@ -61,7 +61,7 @@ public static class AdminMobileSeatsEndpoints
         var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return TenantNotFound();
 
-        var users = await db.MobileUsers.AsNoTracking()
+        var users = await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
             .Where(u => u.TenantId == tenantId && u.DeletedAtUtc == null)
             .OrderBy(u => u.Username).ToListAsync(ct);
         // DateTimeOffset ordering is applied in memory: SQLite (used by the

@@ -83,7 +83,11 @@ public sealed class ApprovalService
     public static IQueryable<ApprovalRequest> Visible(CentralApiDbContext db, Guid tenantId, MobileUser viewer)
     {
         var query = db.ApprovalRequests.AsNoTracking().Where(r => r.TenantId == tenantId);
-        return ApprovalPermissions.CanDecide(viewer) ? query : query.Where(r => r.RequestedByUserId == viewer.Id);
+        // Approvers see the kinds they decide plus their own requests; everyone else only their own.
+        var kinds = ApprovalPermissions.DecidableKinds(viewer);
+        if (kinds is null) return query;
+        var decidable = kinds.ToList();
+        return query.Where(r => r.RequestedByUserId == viewer.Id || decidable.Contains(r.Kind));
     }
 
     public async Task<ApprovalResult<ApprovalRequestDetailDto>> DetailAsync(
@@ -125,7 +129,7 @@ public sealed class ApprovalService
             LatestUpdatedSeq = await visible.Select(r => (long?)r.UpdatedSeq).MaxAsync(ct) ?? 0,
             CanApprove = canDecide,
             // The same rule DecideAsync enforces with SELF_APPROVAL_NOT_ALLOWED.
-            CanApproveOwnRequests = canDecide && !await OtherApproverExistsAsync(db, tenantId, viewer.Id, ct),
+            CanApproveOwnRequests = canDecide && !await OtherApproverExistsAsync(db, tenantId, viewer.Id, kind: null, ct),
         };
     }
 
@@ -264,11 +268,13 @@ public sealed class ApprovalService
         var current = await db.ApprovalRequests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId && r.TenantId == tenant.Id, ct);
         if (current is null)
             return ApprovalResult<ApprovalRequest>.Fail(404, "APPROVAL_NOT_FOUND", "Approval request not found.");
+        if (!ApprovalPermissions.CanDecide(actor, current.Kind))
+            return ApprovalResult<ApprovalRequest>.Fail(403, "APPROVER_REQUIRED", "You are not allowed to decide this kind of request.");
         if (current.Status != ApprovalStatuses.Pending)
             return AlreadyDecided(current);
         // Nobody approves their own request while someone else could; a company with a
         // single approver would otherwise be locked out of its own work.
-        if (approve && current.RequestedByUserId == actor.Id && await OtherApproverExistsAsync(db, tenant.Id, actor.Id, ct))
+        if (approve && current.RequestedByUserId == actor.Id && await OtherApproverExistsAsync(db, tenant.Id, actor.Id, current.Kind, ct))
             return ApprovalResult<ApprovalRequest>.Fail(403, "SELF_APPROVAL_NOT_ALLOWED", "Your own request must be approved by another approver.");
 
         note = CleanNote(note);
@@ -306,6 +312,9 @@ public sealed class ApprovalService
     {
         if (!ApprovalPermissions.CanDecide(actor))
             return ApprovalResult<ApprovalRequest>.Fail(403, "APPROVER_REQUIRED", "You are not allowed to reopen requests.");
+        var rejected = await db.ApprovalRequests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId && r.TenantId == tenant.Id, ct);
+        if (rejected is not null && !ApprovalPermissions.CanDecide(actor, rejected.Kind))
+            return ApprovalResult<ApprovalRequest>.Fail(403, "APPROVER_REQUIRED", "You are not allowed to reopen this kind of request.");
         return await TransitionAsync(db, tenant, actor, requestId, ApprovalStatuses.Rejected, ApprovalStatuses.Pending, ApprovalActions.Reopened, note,
             request => request.DecidedByUserId = null, requesterOnly: false, ct);
     }
@@ -441,9 +450,17 @@ public sealed class ApprovalService
             Note = note,
         });
 
-    private static Task<bool> OtherApproverExistsAsync(CentralApiDbContext db, Guid tenantId, Guid userId, CancellationToken ct) =>
-        db.MobileUsers.AsNoTracking().AnyAsync(u => u.TenantId == tenantId && u.Id != userId && u.IsActive && u.DeletedAtUtc == null
-            && (u.Role == MobileUserRoles.Admin || (u.Role == MobileUserRoles.Manager && u.CanApprove)), ct);
+    /// <summary>
+    /// Another active user who could decide a request of <paramref name="kind"/>; with no kind, one who
+    /// decides anything (the summary's hint for the phone).
+    /// </summary>
+    private static async Task<bool> OtherApproverExistsAsync(CentralApiDbContext db, Guid tenantId, Guid userId, string? kind, CancellationToken ct)
+    {
+        var others = await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
+            .Where(u => u.TenantId == tenantId && u.Id != userId && u.IsActive && u.DeletedAtUtc == null)
+            .ToListAsync(ct);
+        return others.Any(u => kind is null ? ApprovalPermissions.CanDecide(u) : ApprovalPermissions.CanDecide(u, kind));
+    }
 
     private static ApprovalResult<ApprovalRequest> AlreadyDecided(ApprovalRequest request) =>
         ApprovalResult<ApprovalRequest>.Fail(409, "APPROVAL_ALREADY_DECIDED",

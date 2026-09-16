@@ -60,11 +60,15 @@ public static class MobileAccountEndpoints
             return Error(400, "INVALID_REQUEST", "tenantCode, username, password and deviceId are required.");
         if (deviceId.Length > 128)
             return Error(400, "INVALID_DEVICE_ID", "deviceId must be at most 128 characters.");
+        var client = string.IsNullOrWhiteSpace(body.Client) ? CentralApiClaims.PhoneClient : body.Client.Trim().ToLowerInvariant();
+        if (client is not (CentralApiClaims.PhoneClient or CentralApiClaims.PortalClient))
+            return Error(400, "INVALID_CLIENT", "client must be android or portal.");
 
         var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Code == tenantCode, ct);
         var user = tenant is null || username is null
             ? null
-            : await db.MobileUsers.FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Username == username && u.DeletedAtUtc == null, ct);
+            : await db.MobileUsers.Include(u => u.Roles)
+                .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Username == username && u.DeletedAtUtc == null, ct);
         var passwordOk = BCrypt.Net.BCrypt.Verify(body.Password, user?.PasswordHash ?? DummyPasswordHash);
         if (tenant is null || user is null || !passwordOk)
             return Error(401, "INVALID_CREDENTIALS", "Company code, username or password is wrong.");
@@ -73,6 +77,11 @@ public static class MobileAccountEndpoints
         // specific reasons below are safe to disclose.
         if (!tenant.IsActive) return Error(403, "TENANT_INACTIVE", "The company account is disabled.");
         if (!user.IsActive) return Error(403, "USER_INACTIVE", "This user is disabled.");
+        // Before a device row or token exists: a warehouse-only user never gets a phone session.
+        var loginPrincipal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [new System.Security.Claims.Claim(CentralApiClaims.Client, client)]));
+        if (MobileUserAccess.ClientDenial(loginPrincipal, user) is { } denied)
+            return Error(denied.StatusCode, denied.ErrorCode!, denied.Message!);
         var subscription = await seats.GetCurrentSubscriptionAsync(tenant.Id, ct);
         var status = MobileSeatService.SubscriptionStatus(subscription, DateTimeOffset.UtcNow);
         if (!MobileSeatService.AllowsWork(status))
@@ -93,7 +102,7 @@ public static class MobileAccountEndpoints
         user.LastLoginAtUtc = now;
         await db.SaveChangesAsync(ct);
 
-        var token = jwt.IssueForMobileUser(user.Id, tenant.Id, deviceId);
+        var token = jwt.IssueForMobileUser(user.Id, tenant.Id, deviceId, client);
         return JsonResults.Ok(new MobileLoginResponse
         {
             Token = token.Token,
@@ -113,7 +122,7 @@ public static class MobileAccountEndpoints
     {
         var access = await AuthorizeAsync(http, db, requireAdmin: true, ct);
         if (access.Error is not null) return access.Error;
-        var users = await db.MobileUsers.AsNoTracking()
+        var users = await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
             .Where(u => u.TenantId == access.Tenant!.Id && u.DeletedAtUtc == null)
             .OrderBy(u => u.Username)
             .ToListAsync(ct);
@@ -129,7 +138,7 @@ public static class MobileAccountEndpoints
         var access = await AuthorizeAsync(http, db, requireAdmin: true, ct);
         if (access.Error is not null) return access.Error;
         if (body is null) return Error(400, "INVALID_BODY", "Body required.");
-        var result = await seats.CreateUserAsync(access.Tenant!.Id, body, ct);
+        var result = await seats.CreateUserAsync(access.Tenant!.Id, body, ct, access.User!.Id);
         return result.Succeeded ? JsonResults.Status(StatusCodes.Status201Created, ToDto(result.Value!)) : JsonResults.Status(result.StatusCode, result.Error);
     }
 
@@ -138,7 +147,7 @@ public static class MobileAccountEndpoints
         var access = await AuthorizeAsync(http, db, requireAdmin: true, ct);
         if (access.Error is not null) return access.Error;
         if (body is null) return Error(400, "INVALID_BODY", "Body required.");
-        var result = await seats.UpdateUserAsync(access.Tenant!.Id, id, body, ct);
+        var result = await seats.UpdateUserAsync(access.Tenant!.Id, id, body, ct, access.User!.Id);
         return result.Succeeded ? JsonResults.Ok(ToDto(result.Value!)) : JsonResults.Status(result.StatusCode, result.Error);
     }
 
@@ -160,7 +169,7 @@ public static class MobileAccountEndpoints
     {
         var access = await MobileUserAccess.CheckAsync(http.User, db, ct);
         if (!access.Allowed) return (null, null, Error(access.StatusCode, access.ErrorCode!, access.Message!));
-        if (requireAdmin && access.User!.Role != MobileUserRoles.Admin)
+        if (requireAdmin && !RolePermissions.CanManageUsers(access.User!))
             return (null, null, Error(403, "ADMIN_REQUIRED", "Only company administrators can manage users."));
         return (access.Tenant, access.User, null);
     }
@@ -181,7 +190,8 @@ public static class MobileAccountEndpoints
         Id = u.Id,
         Username = u.Username,
         FullName = u.FullName,
-        Role = u.Role,
+        Role = MobileUserRoles.Legacy(RolePermissions.Of(u)),
+        Roles = MobileUserRoles.All.Where(RolePermissions.Of(u).Contains).ToArray(),
         CanApprove = ApprovalPermissions.CanDecide(u),
         CanManageApprovalRules = ApprovalPermissions.CanManageRules(u),
         IsActive = u.IsActive,

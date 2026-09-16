@@ -10,6 +10,9 @@ public sealed class MobileLoginRequest
     [JsonPropertyName("password")] public string? Password { get; set; }
     [JsonPropertyName("deviceId")] public string? DeviceId { get; set; }
     [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+
+    /// <summary><c>android</c> (default, what phones send by omitting it) or <c>portal</c>.</summary>
+    [JsonPropertyName("client")] public string? Client { get; set; }
 }
 
 /// <summary>Successful sign-in: a bearer token plus the session the app shows.</summary>
@@ -57,7 +60,11 @@ public sealed class MobileUserDto
     [JsonPropertyName("id")] public Guid Id { get; set; }
     [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
     [JsonPropertyName("fullName")] public string FullName { get; set; } = string.Empty;
+    /// <summary>ADMIN, MANAGER or SALES — the one role an app built before multi-role accounts understands.</summary>
     [JsonPropertyName("role")] public string Role { get; set; } = string.Empty;
+
+    /// <summary>Every role: ADMIN, MANAGER, ACCOUNTING, WAREHOUSE, SALES (precedence order).</summary>
+    [JsonPropertyName("roles")] public string[] Roles { get; set; } = [];
 
     /// <summary>Effective right to approve: always true for an administrator.</summary>
     [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
@@ -82,7 +89,12 @@ public sealed class CreateMobileUserRequest
     [JsonPropertyName("username")] public string? Username { get; set; }
     [JsonPropertyName("fullName")] public string? FullName { get; set; }
     [JsonPropertyName("password")] public string? Password { get; set; }
+
+    /// <summary>A single role (older callers). Ignored when <see cref="Roles"/> is given.</summary>
     [JsonPropertyName("role")] public string? Role { get; set; }
+
+    /// <summary>Every role the user gets; at least one.</summary>
+    [JsonPropertyName("roles")] public string[]? Roles { get; set; }
 
     /// <summary>For a manager only; ignored for other roles.</summary>
     [JsonPropertyName("canApprove")] public bool? CanApprove { get; set; }
@@ -96,7 +108,15 @@ public sealed class UpdateMobileUserRequest
 {
     [JsonPropertyName("fullName")] public string? FullName { get; set; }
     [JsonPropertyName("password")] public string? Password { get; set; }
+    /// <summary>
+    /// Replaces the user's field/management role (ADMIN, MANAGER or SALES) and keeps ACCOUNTING and
+    /// WAREHOUSE, so an older screen that knows only one role does not strip the others.
+    /// Ignored when <see cref="Roles"/> is given.
+    /// </summary>
     [JsonPropertyName("role")] public string? Role { get; set; }
+
+    /// <summary>Replaces every role; at least one.</summary>
+    [JsonPropertyName("roles")] public string[]? Roles { get; set; }
     [JsonPropertyName("isActive")] public bool? IsActive { get; set; }
 
     /// <summary>For a manager only; a user who stops being a manager loses both rights.</summary>

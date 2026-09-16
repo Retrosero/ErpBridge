@@ -123,26 +123,35 @@ public static class PortalEndpoints
 
     private static async Task<IResult> BalancesAsync(HttpContext http, [FromServices] CentralApiDbContext db, string? search, CancellationToken ct)
     {
-        var (tenant, _, error) = await AuthorizeManagerAsync(http, db, ct);
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
         return JsonResults.Ok(await PortalReports.BalancesAsync(db, tenant!.Id, search, ct));
     }
 
     private static async Task<IResult> StockAsync(HttpContext http, [FromServices] CentralApiDbContext db, string? search, bool? outOfStock, CancellationToken ct)
     {
-        var (tenant, _, error) = await AuthorizeManagerAsync(http, db, ct);
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
         return JsonResults.Ok(await PortalReports.StockAsync(db, tenant!.Id, search, outOfStock == true, ct));
     }
 
     // ---- helpers --------------------------------------------------------------
 
-    private static async Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeManagerAsync(
-        HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    private static Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeManagerAsync(
+        HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
+        AuthorizeAsync(http, db, RolePermissions.CanViewReports, ct);
+
+    /// <summary>Balances and stock: managers and accounting.</summary>
+    private static Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeLedgerAsync(
+        HttpContext http, CentralApiDbContext db, CancellationToken ct) =>
+        AuthorizeAsync(http, db, RolePermissions.CanViewLedger, ct);
+
+    private static async Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeAsync(
+        HttpContext http, CentralApiDbContext db, Func<MobileUser, bool> allowed, CancellationToken ct)
     {
         var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
         if (access.Error is not null) return access;
-        if (access.User!.Role is not (MobileUserRoles.Admin or MobileUserRoles.Manager))
+        if (!allowed(access.User!))
             return (null, null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError
             {
                 ErrorCode = "PORTAL_REQUIRES_MANAGER",

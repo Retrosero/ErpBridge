@@ -41,7 +41,7 @@ public interface IJwtIssuer
     /// the app works offline for days; revocation does not rely on expiry — every
     /// authorized call re-checks the user, device, tenant and subscription rows.
     /// </summary>
-    IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId);
+    IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId, string client = CentralApiClaims.PhoneClient);
 
     /// <summary>Validate a token. Returns <c>null</c> when invalid/expired.</summary>
     ClaimsPrincipal? Validate(string token);
@@ -116,7 +116,7 @@ public sealed class JwtIssuer : IJwtIssuer
     public const int MobileUserTokenDays = 30;
 
     /// <inheritdoc />
-    public IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId)
+    public IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId, string client = CentralApiClaims.PhoneClient)
     {
         var opts = _options.CurrentValue;
         var keyBytes = EnsureKey(opts);
@@ -127,6 +127,7 @@ public sealed class JwtIssuer : IJwtIssuer
             new Claim(CentralApiClaims.TenantId, tenantId.ToString()),
             new Claim(CentralApiClaims.Scope, CentralApiClaims.MobileUserScope),
             new Claim(CentralApiClaims.DeviceId, deviceId),
+            new Claim(CentralApiClaims.Client, client),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
         };
         var creds = new SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256);

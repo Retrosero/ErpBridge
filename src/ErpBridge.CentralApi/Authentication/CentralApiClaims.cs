@@ -24,6 +24,18 @@ public static class CentralApiClaims
     /// <summary>The installation id a mobile user token was issued to.</summary>
     public const string DeviceId = "device";
 
+    /// <summary>Which app a mobile user token was issued to: <see cref="PhoneClient"/> or <see cref="PortalClient"/>.</summary>
+    public const string Client = "client";
+
+    /// <summary>The phone app; also assumed for tokens issued before the claim existed.</summary>
+    public const string PhoneClient = "android";
+
+    public const string PortalClient = "portal";
+
+    /// <summary>The client a token was issued to; tokens without the claim came from the phone.</summary>
+    public static string ClientOf(System.Security.Claims.ClaimsPrincipal principal) =>
+        principal.FindFirst(Client)?.Value == PortalClient ? PortalClient : PhoneClient;
+
     /// <summary>Read the agent id claim from <paramref name="user"/>. Returns <c>false</c> when missing/malformed.</summary>
     public static bool TryGetAgentId(this ClaimsPrincipal user, out Guid agentId) =>
         Guid.TryParse(user.FindFirstValue(AgentId), out agentId);

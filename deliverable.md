@@ -1,3 +1,31 @@
+# Faz 45 — Çoklu rol altyapısı (Plan Adım 2) — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Domain/MobileUser.cs`: `MobileUserRole`, `MobileUserRoles` (ACCOUNTING, WAREHOUSE, `Normalize`, `Legacy`), `RolePermissions`, `ApprovalPermissions` (tür bazlı).
+- `Data/CentralApiDbContext.cs`, `Data/Migrations/*_Faz45MobileUserRoles.cs`: `mobile_user_roles` + mevcut rollerin taşınması.
+- `Mobile/MobileSeatService.cs`: rol setiyle oluşturma/güncelleme, tek `role` ile uyumlu güncelleme, son admin kuralı.
+- `Mobile/MobileUserAccess.cs`, `Authentication/CentralApiClaims.cs`, `Authentication/JwtIssuer.cs`: `client` iddiası, telefon/panel rol kapısı.
+- `Endpoints/MobileAccountEndpoints.cs`, `AdminMobileSeatsEndpoints.cs`, `IngestEndpoints.cs`, `PortalEndpoints.cs`, `Approvals/ApprovalService.cs`, `Team/TeamDocumentProcessor.cs`: izinler `RolePermissions`'tan; panel oturumu belge gönderemez; muhasebe finansal türler.
+- `Contracts/MobileAccountContracts.cs`: `client`, `roles`.
+- `src/ErpBridge.Portal/Api/Models.cs`: login `client=portal`, kullanıcı `roles`.
+- `Authentication/MobileUserStateHandler.cs`, `Program.cs`: `MobileClientPolicy` panel oturumunu reddeder (`PhoneClientOnly`).
+- Testler: `MobileUserRolesRelationalTests` (13), `PortalSessionTests` güncellendi.
+- KB kural 14/16/17/18, 03 veri sözlüğü, `docs/PLAN_ROLLER_VE_DEPO.md`.
+
+## Davranış
+
+- Mevcut kullanıcıların yetkisi değişmez (migration eski rolü satır olarak ekler; eski uygulamalar aynı `role` alanını görür).
+- Panel oturumu telefonun veri akışını (sync/pull, bootstrap, notify…) okuyamaz (Codex incelemesi).
+- Yalnız depo/muhasebe rolü olan kullanıcı telefondan giremez; yalnız saha rolü olan panelden giremez; rol kaldırılınca bir sonraki istekte etkili.
+
+## Testler / derleme
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; `has-pending-model-changes`: yok.
+- Mevcut testler değişmeden geçti (CentralApi 366); yeni rol testleri 13/13. İki koruma bilinçli bozulunca 4 test kırıldı.
+
+---
+
 # Faz 44 — Kalıcı portal oturum anahtarı ve şema durumu (Plan Adım 1) — Teslimat
 
 ## Değişen dosyalar

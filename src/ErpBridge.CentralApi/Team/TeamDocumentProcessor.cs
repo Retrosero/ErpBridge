@@ -60,8 +60,7 @@ public sealed class TeamDocumentProcessor
         _logger = logger;
     }
 
-    public static bool CanPlanRoutes(MobileUser user) =>
-        user.Role == MobileUserRoles.Admin || user.Role == MobileUserRoles.Manager;
+    public static bool CanPlanRoutes(MobileUser user) => RolePermissions.CanPlanRoutes(user);
 
     /// <summary>
     /// Stores <paramref name="job"/> and books it. A document that cannot be booked is

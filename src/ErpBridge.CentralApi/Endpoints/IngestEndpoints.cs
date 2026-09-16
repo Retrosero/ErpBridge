@@ -214,6 +214,16 @@ public static class IngestEndpoints
             return JsonResults.Status(StatusCodes.Status413PayloadTooLarge,
                 new ApiError { ErrorCode = "PAYLOAD_TOO_LARGE", Message = $"Payload exceeds {MaxPayloadBytes} bytes." });
 
+        // ---- 4a. Documents come from the phone app. A portal session decides and reports;
+        //          it never books sales or cash movements in someone's name. ----
+        if (ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)
+            && CentralApiClaims.ClientOf(http.User) == CentralApiClaims.PortalClient)
+            return JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError
+            {
+                ErrorCode = "PORTAL_CANNOT_SUBMIT_DOCUMENTS",
+                Message = "Documents are sent from the phone app, not the web portal.",
+            });
+
         // ---- 4b. An approval request waits for a company administrator. ----
         if (string.Equals(documentType, ErpBridge.CentralApi.Approvals.ApprovalService.DocumentType, StringComparison.OrdinalIgnoreCase))
         {
@@ -224,7 +234,7 @@ public static class IngestEndpoints
                     ErrorCode = "APPROVAL_REQUIRES_MOBILE_USER",
                     Message = "Approval requests are sent by signed-in company users.",
                 });
-            var requester = await db.MobileUsers.AsNoTracking().FirstAsync(u => u.Id == requesterId, ct);
+            var requester = await db.MobileUsers.AsNoTracking().Include(u => u.Roles).FirstAsync(u => u.Id == requesterId, ct);
             var approvals = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Approvals.ApprovalService>();
             var submitted = await approvals.SubmitAsync(db, tenant, requester, body.ExternalId, payloadJson, ct);
             if (!submitted.Succeeded) return JsonResults.Status(submitted.StatusCode, submitted.Error);
@@ -298,7 +308,7 @@ public static class IngestEndpoints
                     ErrorCode = "TEAM_DOCUMENT_REQUIRES_MOBILE_USER",
                     Message = "Route plans and visits are sent by signed-in company users.",
                 });
-            var caller = await db.MobileUsers.AsNoTracking().FirstAsync(u => u.Id == callerId, ct);
+            var caller = await db.MobileUsers.AsNoTracking().Include(u => u.Roles).FirstAsync(u => u.Id == callerId, ct);
             var team = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Team.TeamDocumentProcessor>();
             try
             {
@@ -432,6 +442,6 @@ public static class IngestEndpoints
         if (!ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)) return true;
         if (!Guid.TryParse(http.User.FindFirst("sub")?.Value, out var userId)) return false;
         return await db.MobileUsers.AsNoTracking()
-            .AnyAsync(u => u.Id == userId && u.Role == MobileUserRoles.Admin && u.IsActive && u.DeletedAtUtc == null, ct);
+            .AnyAsync(u => u.Id == userId && u.Roles.Any(r => r.Role == MobileUserRoles.Admin) && u.IsActive && u.DeletedAtUtc == null, ct);
     }
 }

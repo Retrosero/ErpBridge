@@ -33,11 +33,14 @@ public static class MobileUserAccess
             return Deny(401, "INVALID_TOKEN", "Mobile user token is malformed.");
 
         var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
-        var user = await db.MobileUsers.AsNoTracking()
+        var user = await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
             .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && u.DeletedAtUtc == null, ct);
         if (tenant is null || user is null) return Deny(401, "SESSION_REVOKED", "The user no longer exists.");
         if (!tenant.IsActive) return Deny(403, "TENANT_INACTIVE", "The company account is disabled.");
         if (!user.IsActive) return Deny(403, "USER_INACTIVE", "This user is disabled.");
+
+        // Roles decide which app a person may work in; checked on every call so removing a role applies at once.
+        if (ClientDenial(principal, user) is { } denial) return denial;
 
         var deviceActive = await db.MobileDevices.AsNoTracking()
             .AnyAsync(d => d.TenantId == tenantId && d.DeviceId == deviceId && d.IsActive, ct);
@@ -51,6 +54,12 @@ public static class MobileUserAccess
 
         return new MobileUserAccessResult(tenant, user, 200, null, null);
     }
+
+    /// <summary>A portal-only user on the phone app, or a field-only user in the portal.</summary>
+    public static MobileUserAccessResult? ClientDenial(ClaimsPrincipal principal, MobileUser user) =>
+        CentralApiClaims.ClientOf(principal) == CentralApiClaims.PortalClient
+            ? RolePermissions.CanUsePortal(user) ? null : Deny(403, "PORTAL_REQUIRES_MANAGER", "The web portal is not open to this user's roles.")
+            : RolePermissions.CanUsePhone(user) ? null : Deny(403, "ROLE_NOT_ALLOWED_ON_PHONE", "This user's roles work in the web portal, not the phone app.");
 
     private static MobileUserAccessResult Deny(int status, string code, string message) => new(null, null, status, code, message);
 }
