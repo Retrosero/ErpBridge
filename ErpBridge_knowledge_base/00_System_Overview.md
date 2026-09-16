@@ -435,7 +435,9 @@ registration ayrı bir composition projesine taşınır.
      gönderir; ikisi aynı transaction'da). Her adım `approval_request_events`'e
      yazılır.
    - **Uçlar:** `/api/v1/android/approvals` — `GET ?status=pending,rejected|all
-     &changedSinceSeq` (onaycı hepsini, diğerleri kendi taleplerini görür),
+     &changedSinceSeq&beforeSeq&kind=sale,collection&take` (onaycı hepsini, diğerleri kendi taleplerini
+     görür; `beforeSeq` = ekrandaki son talebin `requestedSeq`'i ile eskiye sayfalama, `kind` bilinmezse
+     400 `INVALID_KIND`; yeni parametreler olmadan liste eskisiyle aynı — panel goal P1a),
      `GET /{id}` (belgeler, geçmiş, native'de stok uyarısı; onay engellenmez),
      `GET /summary`, `POST /{id}/approve|reject|reopen|withdraw {note}`,
      `GET|PUT /rules`. Konsol: `GET /api/v1/admin/tenants/{id}/mobile/approvals`

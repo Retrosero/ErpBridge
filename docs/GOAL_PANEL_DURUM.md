@@ -1,6 +1,6 @@
 # Goal Durumu — Yönetim Paneli Geliştirmeleri
 
-Son güncelleme: 2026-09-16 (P0 bitti, sırada P1a)
+Son güncelleme: 2026-09-16 (P1a bitti, sırada P1b)
 Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -13,14 +13,14 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
 | P0 — Hazırlık | 2 | 2 | ✅ |
-| P1 — Onaylar | 3 | 0 | ⬜ |
+| P1 — Onaylar | 3 | 1 | 🔄 |
 | P2 — Stok | 3 | 0 | ⬜ |
 | P3 — Cariler | 5 | 0 | ⬜ |
 | P4 — Depo sunucu + panel | 4 | 0 | ⬜ |
 | P5 — Telefon Depo ekranı | 5 | 0 | ⬜ |
 | P6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P1a
+**Şu anki görev:** P1b
 
 ---
 
@@ -30,7 +30,7 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 |---|---|---|---|---|
 | P0a | Plan dalını main'e al | ✅ | [#54](https://github.com/Retrosero/ErpBridge/pull/54) | Codex 3 bulgu, üçü de planda düzeltildi: DURUM güncellemesi merge'den önce; P4b sürüm kapısı her istekte; stok önbelleği yalnız stok verisiyle geçersizlenir |
 | P0b | Zemin + launch yapılandırmaları | ✅ | [#54](https://github.com/Retrosero/ErpBridge/pull/54) | `eb-panel-centralapi-local` (5281) + `eb-panel-portal-local` (5295) eklendi; yerelde giriş sayfası açılıyor |
-| P1a | Onay listesi sayfalama + tür filtresi (sunucu) | ⬜ | | |
+| P1a | Onay listesi sayfalama + tür filtresi (sunucu) | ✅ | #PR | `beforeSeq` + `kind` (bilinmeyen → 400 `INVALID_KIND`); DTO'ya `requestedSeq` eklendi (sayfalama imleci için, yalnız ekleme). Sözleşme testi: parametresiz liste aynı. CentralApi onay testleri 19/19 |
 | P1b | Onaylar sekmeleri | ⬜ | | |
 | P1c | Onay detay çekmecesi | ⬜ | | |
 | P2a | Stok arama ucu (sayfalı, filtreli) | ⬜ | | |

@@ -56,10 +56,12 @@ public static class MobileApprovalEndpoints
     /// <summary>
     /// <c>status</c> is a comma-separated list (pending, approved, rejected, withdrawn,
     /// resubmitted) or <c>all</c>; default pending. <c>changedSinceSeq</c> returns only
-    /// requests whose <c>updatedSeq</c> is at least that value.
+    /// requests whose <c>updatedSeq</c> is at least that value. <c>beforeSeq</c> pages back through
+    /// older requests (the <c>requestedSeq</c> of the last one on screen); <c>kind</c> is a
+    /// comma-separated list of request kinds. Without them the list is unchanged.
     /// </summary>
     private static async Task<IResult> ListAsync(HttpContext http, [FromServices] CentralApiDbContext db,
-        string? status, long? changedSinceSeq, int? take, CancellationToken ct)
+        string? status, long? changedSinceSeq, int? take, long? beforeSeq, string? kind, CancellationToken ct)
     {
         var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
         if (access.Error is not null) return access.Error;
@@ -72,8 +74,18 @@ public static class MobileApprovalEndpoints
                 Message = "status must be all or a comma-separated list of: " + string.Join(", ", ApprovalStatuses.All.Select(s => s.ToLowerInvariant())) + ".",
             });
 
+        var kinds = ParseKinds(kind);
+        if (kinds is null)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError
+            {
+                ErrorCode = "INVALID_KIND",
+                Message = "kind must be a comma-separated list of: " + string.Join(", ", ApprovalKinds.All) + ".",
+            });
+
         var query = ApprovalService.Visible(db, access.Tenant!.Id, access.User!).Where(r => statuses.Contains(r.Status));
         if (changedSinceSeq is { } since) query = query.Where(r => r.UpdatedSeq >= since);
+        if (beforeSeq is { } before) query = query.Where(r => r.RequestedSeq < before);
+        if (kinds.Count > 0) query = query.Where(r => kinds.Contains(r.Kind));
         var rows = await query.OrderByDescending(r => r.RequestedSeq).Take(Math.Clamp(take ?? DefaultTake, 1, MaxTake)).ToListAsync(ct);
         return JsonResults.Ok(rows.Select(ApprovalService.ToDto).ToArray());
     }
@@ -116,6 +128,20 @@ public static class MobileApprovalEndpoints
         UpdatedByName = rules.UpdatedByName,
         UpdatedAtUtc = rules.UpdatedAtUtc,
     };
+
+    /// <summary>An absent kind means every kind (empty list); an unknown one is refused (null).</summary>
+    internal static List<string>? ParseKinds(string? kind)
+    {
+        if (string.IsNullOrWhiteSpace(kind)) return [];
+        var parsed = new List<string>();
+        foreach (var part in kind.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var match = ApprovalKinds.All.FirstOrDefault(k => k.Equals(part, StringComparison.OrdinalIgnoreCase));
+            if (match is null) return null;
+            if (!parsed.Contains(match)) parsed.Add(match);
+        }
+        return parsed;
+    }
 
     internal static List<string>? ParseStatuses(string? status)
     {
