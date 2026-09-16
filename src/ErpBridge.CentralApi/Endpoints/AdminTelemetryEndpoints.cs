@@ -34,8 +34,15 @@ public static class AdminTelemetryEndpoints
         if (!string.IsNullOrWhiteSpace(severity))
             query = query.Where(row => row.Severity == severity.Trim().ToUpperInvariant());
         // SYNC_ROUND (INFO) would otherwise be buried under screen views; Faz 0 reads it on its own.
+        // Kinds are stored as the producer sent them: the phone writes SYNC_ROUND, the agent
+        // desktop_exception. PostgreSQL equality is case-sensitive, and upper-casing the column
+        // follows the server culture (Turkish "i" becomes "İ"), so match both plain forms.
         if (!string.IsNullOrWhiteSpace(kind))
-            query = query.Where(row => row.Kind == kind.Trim().ToUpperInvariant());
+        {
+            var upper = kind.Trim().ToUpperInvariant();
+            var lower = kind.Trim().ToLowerInvariant();
+            query = query.Where(row => row.Kind == upper || row.Kind == lower);
+        }
         var rows = await query.OrderByDescending(row => row.OccurredAtUtc).Take(count).ToListAsync(ct);
         return JsonResults.Ok(rows.Select(row => new MobileTelemetryEventDto
         {
