@@ -1,0 +1,37 @@
+@* A key figure: icon, label, value and a short caption. Links when Href is set. *@
+@if (string.IsNullOrEmpty(Href))
+{
+    <div id="@Id" class="@CssClass">@Content</div>
+}
+else
+{
+    <a id="@Id" class="@CssClass" href="@Href">@Content</a>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Value { get; set; } = string.Empty;
+    [Parameter] public string? Caption { get; set; }
+    [Parameter] public string Icon { get; set; } = Icons.Material.Rounded.Insights;
+
+    /// <summary>One of: primary, success, info, warning, danger, violet.</summary>
+    [Parameter] public string Tone { get; set; } = "primary";
+
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public bool Attention { get; set; }
+
+    private string CssClass => $"portal-stat portal-stat--{Tone}" + (Attention ? " portal-stat--attention" : string.Empty) + (string.IsNullOrEmpty(Href) ? string.Empty : " portal-stat--link");
+
+    private RenderFragment Content => @<text>
+        <div class="portal-stat-top">
+            <span class="portal-stat-label">@Label</span>
+            <span class="portal-stat-icon"><MudIcon Icon="@Icon" Size="Size.Small" /></span>
+        </div>
+        <strong class="portal-stat-value">@Value</strong>
+        @if (!string.IsNullOrEmpty(Caption))
+        {
+            <small class="portal-stat-caption">@Caption</small>
+        }
+    </text>;
+}

@@ -1,11 +1,18 @@
 using ErpBridge.Portal.Api;
 using ErpBridge.Portal.Session;
+using MudBlazor;
+using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddMudServices(options =>
+{
+    options.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight;
+    options.SnackbarConfiguration.VisibleStateDuration = 4000;
+});
 
 // One session per circuit. Never a singleton: that would share one company's token with
 // every visitor (see PortalSession).

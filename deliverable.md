@@ -1,3 +1,51 @@
+# Faz 43 — Yönetici paneline kurumsal arayüz (MudBlazor) — Teslimat
+
+## Değişen dosyalar
+
+- `Directory.Packages.props`, `src/ErpBridge.Portal/ErpBridge.Portal.csproj`: `MudBlazor` 9.9.0 (MIT).
+- `src/ErpBridge.Portal/Program.cs`, `Pages/_Host.cshtml`, `_Imports.razor`: MudBlazor servisleri ve kendi sunucumuzdan CSS/JS.
+- `src/ErpBridge.Portal/Shared/PortalTheme.cs`, `PageHeader.razor`, `StatCard.razor`, `EmptyState.razor`, `PageLoading.razor`: tema ve ortak parçalar.
+- `src/ErpBridge.Portal/MainLayout.razor`: sol menü, üst bar, kullanıcı menüsü.
+- `src/ErpBridge.Portal/Pages/*.razor`: giriş, özet, plasiyerler, ziyaretler, cariler, stok, onaylar, kullanıcılar yeniden tasarlandı.
+- `src/ErpBridge.Portal/Api/PortalMessages.cs`: `Fmt.Initials`.
+- `src/ErpBridge.Portal/wwwroot/css/site.css`: kurumsal görünüm katmanı ve mobil kırılımlar.
+- `tests/ErpBridge.Portal.Tests/*`: `PortalPageTestContext` (MudBlazor `PopoverService` yalnız async dispose edilir), seçiciler MudBlazor çıktısına uyarlandı.
+- `ErpBridge_knowledge_base/00_System_Overview.md` (kural 19).
+
+## Davranış
+
+- Veri akışı, API çağrıları ve yetki kuralları değişmedi; CentralApi ve veritabanına dokunulmadı.
+- Giriş düğmesi alanlar boşken pasif değil: pasif gönder düğmesi tarayıcının Enter gönderimini engelliyordu. Boş alan kontrolü `SignInAsync` içinde, Türkçe mesajla.
+
+## Testler / derleme
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata. Portal testleri 37/37, CentralApi 363/363, çözümün tamamı yeşil.
+- Yerel CentralApi + deneme verisiyle tarayıcıda giriş (Enter dahil), özet, plasiyerler, onaylar, kullanıcılar ekranları kontrol edildi. Telefon genişliği görsel olarak doğrulanmadı.
+
+---
+
+# Faz 42 — Firma yönetici paneli (`ErpBridge.Portal`) — Teslimat
+
+## Değişen dosyalar
+
+- `ErpBridge.sln`, `src/ErpBridge.Portal/*` (yeni Blazor Server uygulaması), `Dockerfile.portal` (port 4003).
+- `tests/ErpBridge.Portal.Tests/*` (bUnit): oturum yalıtımı, rol kapısı, oturum bitişi, sayfa davranışları.
+- `ErpBridge_knowledge_base/00_System_Overview.md` (kural 19).
+
+## Davranış
+
+- Firmanın admini/yöneticisi telefondaki hesabıyla tarayıcıdan girer; plasiyer istemcide ve sunucuda (`PORTAL_REQUIRES_MANAGER`) reddedilir.
+- Oturum devre başına (`Scoped`), token yalnız sekmenin şifreli `sessionStorage`'ında.
+- Yeni sunucu ucu yok: Faz 41 portal uçları ile mevcut onay ve kullanıcı uçları kullanılır.
+- Canlıda Coolify uygulaması `lisans-portal`, `https://panel.admin.lisans.appsgo.cloud`.
+
+## Testler / derleme
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; Portal testleri 37/37, CentralApi 363/363.
+- Yerel CentralApi'ye karşı tarayıcıda uçtan uca: plasiyer reddi, özet rakamları, kullanıcı ekleme/devre dışı bırakma (telefon girişi 403), onay/red notuyla.
+
+---
+
 # Düzeltme — Onay özeti: kendi talebini onaylayabilir mi — Teslimat
 
 ## Değişen dosyalar

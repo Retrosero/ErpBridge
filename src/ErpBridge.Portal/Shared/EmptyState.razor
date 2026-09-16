@@ -1,0 +1,16 @@
+@* A friendly "nothing here" block with an icon. *@
+<div class="empty-state" id="@Id">
+    <span class="empty-state-icon"><MudIcon Icon="@Icon" /></span>
+    <p class="empty-state-title">@Title</p>
+    @if (!string.IsNullOrEmpty(Hint))
+    {
+        <p class="empty-state-hint">@Hint</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Icon { get; set; } = Icons.Material.Rounded.Inbox;
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Hint { get; set; }
+}

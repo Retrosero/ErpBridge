@@ -5,97 +5,127 @@
 
 @if (!Ready)
 {
-    <p class="portal-empty">Yükleniyor…</p>
+    <PageLoading />
 }
 else
 {
-    <div class="portal-toolbar">
-        <h1>Kullanıcılar</h1>
-        @if (_list is not null)
-        {
-            <span class="badge @(_list.Seats.Used >= _list.Seats.Max ? "badge--warn" : "")" id="seats">@_list.Seats.Used / @_list.Seats.Max kullanıcı hakkı</span>
-        }
-    </div>
-    <p class="portal-subtitle">Kullanıcı hakkı sayısı ErpBridge ile yapılan anlaşmaya göre belirlenir; buradan satın alma yapılmaz.</p>
+    <PageHeader Title="Kullanıcılar" Eyebrow="Yönetim" Subtitle="Telefon ve panel hesapları" Busy="Busy" />
 
     @if (Notice is not null)
     {
-        <div class="portal-alert" id="page-notice">@Notice</div>
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
     }
     @if (Error is not null)
     {
-        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
     @if (_list is not null)
     {
-        <div class="portal-table-wrap">
-            <table class="portal-table" id="users-table">
-                <thead>
-                    <tr>
-                        <th>Ad soyad</th>
-                        <th>Kullanıcı adı</th>
-                        <th>Rol</th>
-                        <th>Son giriş</th>
-                        <th>Durum</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var user in _list.Users)
-                    {
-                        var self = string.Equals(user.Username, Session.Username, StringComparison.OrdinalIgnoreCase);
-                        <tr data-user="@user.Username">
-                            <td>@user.FullName</td>
-                            <td>@user.Username</td>
-                            <td>
-                                @Fmt.Role(user.Role)
-                                @if (user.Role == PortalSession.Roles.Manager && user.CanApprove)
+        var seatRate = _list.Seats.Max > 0 ? Math.Min(100.0, 100.0 * _list.Seats.Used / _list.Seats.Max) : 0;
+        <MudGrid Spacing="3">
+            <MudItem xs="12" lg="8">
+                <MudPaper Outlined="true" Class="panel panel--table">
+                    <div class="panel-head">
+                        <div>
+                            <MudText Typo="Typo.h6">Hesaplar</MudText>
+                            <MudText Typo="Typo.body2" Class="text-muted">Devre dışı bırakılan kullanıcı telefondan ve panelden giriş yapamaz.</MudText>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Kullanıcı</th>
+                                    <th>Rol</th>
+                                    <th>Son giriş</th>
+                                    <th>Durum</th>
+                                    <th class="num"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var user in _list.Users)
                                 {
-                                    <span class="badge">onaylayabilir</span>
+                                    var self = string.Equals(user.Username, Session.Username, StringComparison.OrdinalIgnoreCase);
+                                    <tr data-user="@user.Username">
+                                        <td>
+                                            <div class="person">
+                                                <MudAvatar Size="Size.Small" Color="@(user.IsActive ? Color.Primary : Color.Default)" Variant="Variant.Outlined">@Fmt.Initials(user.FullName)</MudAvatar>
+                                                <div>
+                                                    <div class="person-name">@user.FullName @(self ? "(siz)" : "")</div>
+                                                    <div class="person-sub">@user.Username</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="badge badge--@RoleTone(user.Role)">@Fmt.Role(user.Role)</span>
+                                            @if (user.Role == PortalSession.Roles.Manager && user.CanApprove)
+                                            {
+                                                <span class="badge badge--muted">onaylayabilir</span>
+                                            }
+                                        </td>
+                                        <td class="nowrap">@(user.LastLoginAtUtc is { } at ? Fmt.Time(at) : "—")</td>
+                                        <td><span class="badge @(user.IsActive ? "badge--ok" : "badge--off")">@(user.IsActive ? "Aktif" : "Pasif")</span></td>
+                                        <td class="num">
+                                            @if (!self)
+                                            {
+                                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="@(user.IsActive ? Color.Error : Color.Success)" Disabled="@Busy"
+                                                           OnClick="() => ToggleAsync(user)">
+                                                    @(user.IsActive ? "Devre dışı bırak" : "Etkinleştir")
+                                                </MudButton>
+                                            }
+                                        </td>
+                                    </tr>
                                 }
-                            </td>
-                            <td>@(user.LastLoginAtUtc is { } at ? Fmt.Time(at) : "—")</td>
-                            <td><span class="badge @(user.IsActive ? "badge--ok" : "badge--off")">@(user.IsActive ? "Aktif" : "Pasif")</span></td>
-                            <td>
-                                @if (!self)
-                                {
-                                    <button type="button" class="portal-link" disabled="@Busy" @onclick="() => ToggleAsync(user)">
-                                        @(user.IsActive ? "Devre dışı bırak" : "Etkinleştir")
-                                    </button>
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+                            </tbody>
+                        </MudSimpleTable>
+                    </div>
+                </MudPaper>
+            </MudItem>
 
-        <section class="portal-card portal-create" id="user-create">
-            <h2>Yeni kullanıcı</h2>
-            <form class="portal-form portal-form--grid" @onsubmit="CreateAsync" @onsubmit:preventDefault>
-                <label for="new-fullname">Ad soyad</label>
-                <input id="new-fullname" @bind="_new.FullName" maxlength="120" required />
-                <label for="new-username">Kullanıcı adı</label>
-                <input id="new-username" @bind="_new.Username" maxlength="64" autocomplete="off" required />
-                <label for="new-password">Parola</label>
-                <input id="new-password" type="password" @bind="_new.Password" minlength="6" autocomplete="new-password" required />
-                <label for="new-role">Rol</label>
-                <select id="new-role" @bind="_new.Role">
-                    <option value="SALES">Saha</option>
-                    <option value="MANAGER">Yönetici</option>
-                    <option value="ADMIN">Admin</option>
-                </select>
-                @if (_new.Role == PortalSession.Roles.Manager)
-                {
-                    <label class="portal-check">
-                        <input type="checkbox" id="new-can-approve" @bind="_new.CanApprove" />
-                        Onay verebilsin
-                    </label>
-                }
-                <button type="submit" class="portal-button" id="new-submit" disabled="@Busy">Kullanıcı ekle</button>
-            </form>
-        </section>
+            <MudItem xs="12" lg="4">
+                <div class="side-stack">
+                    <MudPaper Outlined="true" Class="panel">
+                        <div class="panel-head">
+                            <MudText Typo="Typo.h6">Kullanıcı hakkı</MudText>
+                            <span class="badge @(_list.Seats.Used >= _list.Seats.Max ? "badge--warn" : "badge--ok")" id="seats">@_list.Seats.Used / @_list.Seats.Max kullanıcı hakkı</span>
+                        </div>
+                        <MudProgressLinear Color="@(_list.Seats.Used >= _list.Seats.Max ? Color.Warning : Color.Primary)" Rounded="true" Size="Size.Medium" Value="@seatRate" />
+                        <MudText Typo="Typo.caption" Class="text-muted panel-note">
+                            Kullanıcı hakkı sayısı ErpBridge ile yapılan anlaşmaya göre belirlenir; buradan satın alma yapılmaz.
+                        </MudText>
+                    </MudPaper>
+
+                    <MudPaper Outlined="true" Class="panel" id="user-create">
+                        <div class="panel-head">
+                            <MudText Typo="Typo.h6">Yeni kullanıcı</MudText>
+                            <MudIcon Icon="@Icons.Material.Rounded.PersonAdd" Color="Color.Primary" />
+                        </div>
+                        <form class="stack-form" @onsubmit="CreateAsync" @onsubmit:preventDefault>
+                            <MudTextField T="string" @bind-Value="_new.FullName" Label="Ad soyad" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="new-fullname" MaxLength="120" />
+                            <MudTextField T="string" @bind-Value="_new.Username" Label="Kullanıcı adı" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="new-username"
+                                          MaxLength="64" autocomplete="off" HelperText="Küçük harf, rakam, nokta, alt çizgi, tire" />
+                            <MudTextField T="string" @bind-Value="_new.Password" Label="Parola" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="new-password"
+                                          InputType="InputType.Password" autocomplete="new-password" HelperText="En az 6 karakter" />
+                            <div class="field-label">Rol</div>
+                            <MudToggleGroup T="string" @bind-Value="_new.Role" Color="Color.Primary" Size="Size.Small" CheckMark="false" id="new-role" Class="role-toggle">
+                                <MudToggleItem Value="@("SALES")" Text="Saha" />
+                                <MudToggleItem Value="@("MANAGER")" Text="Yönetici" />
+                                <MudToggleItem Value="@("ADMIN")" Text="Admin" />
+                            </MudToggleGroup>
+                            @if (_new.Role == PortalSession.Roles.Manager)
+                            {
+                                <div id="new-can-approve">
+                                    <MudSwitch T="bool" @bind-Value="_new.CanApprove" Color="Color.Primary" Label="Onay verebilsin" />
+                                </div>
+                            }
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.PersonAdd"
+                                       FullWidth="true" Disabled="@Busy" id="new-submit">Kullanıcı ekle</MudButton>
+                        </form>
+                    </MudPaper>
+                </div>
+            </MudItem>
+        </MudGrid>
     }
 }
 
@@ -127,9 +157,9 @@ else
         {
             var request = new CreateUserRequest
             {
-                FullName = _new.FullName.Trim(),
-                Username = _new.Username.Trim().ToLowerInvariant(),
-                Password = _new.Password,
+                FullName = (_new.FullName ?? string.Empty).Trim(),
+                Username = (_new.Username ?? string.Empty).Trim().ToLowerInvariant(),
+                Password = _new.Password ?? string.Empty,
                 Role = _new.Role,
                 CanApprove = _new.Role == PortalSession.Roles.Manager && _new.CanApprove,
             };
@@ -139,4 +169,11 @@ else
             Notice = $"{created.FullName} eklendi. Telefonda firma kodu, kullanıcı adı ve parolasıyla giriş yapabilir.";
         });
     }
+
+    private static string RoleTone(string role) => role switch
+    {
+        "ADMIN" => "violet",
+        "MANAGER" => "primary",
+        _ => "muted",
+    };
 }

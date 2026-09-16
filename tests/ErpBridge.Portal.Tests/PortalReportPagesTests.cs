@@ -9,7 +9,7 @@ using Xunit;
 namespace ErpBridge.Portal.Tests;
 
 /// <summary>The read-only report pages: salespeople, visits, balances, stock.</summary>
-public sealed class PortalReportPagesTests : BunitContext
+public sealed class PortalReportPagesTests : PortalPageTestContext
 {
     private static string Iso(DateOnly day) => Fmt.IsoDay(day);
 
@@ -47,7 +47,7 @@ public sealed class PortalReportPagesTests : BunitContext
         cut.WaitForAssertion(() => cut.Find("#activity-empty"));
         var before = api.Requests.Count;
 
-        cut.Find("#activity-from").Change(Iso(today.AddDays(-120)));
+        cut.Find("#activity-from").Change(today.AddDays(-120).ToString("dd.MM.yyyy", Fmt.Turkish));
 
         cut.WaitForAssertion(() => cut.Find("#page-error").TextContent.Should().Contain("92"));
         api.Requests.Should().HaveCount(before);
@@ -136,7 +136,7 @@ public sealed class PortalReportPagesTests : BunitContext
         cut.WaitForAssertion(() => cut.FindAll("#stock-table tbody tr").Should().HaveCount(2));
         cut.Find("tr[data-stock=S2] .badge--off").TextContent.Should().Be("0");
 
-        cut.Find("#stock-out-only").Change(true);
+        cut.Find("#stock-out-only input").Change(true);
         cut.Find("form").Submit();
 
         cut.WaitForAssertion(() => cut.FindAll("#stock-table tbody tr").Should().ContainSingle());

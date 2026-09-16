@@ -4,41 +4,99 @@
 @inject ISessionPersistence Persistence
 @inject NavigationManager Nav
 
-<div class="portal">
-    @if (Session.IsSignedIn)
-    {
-        <header class="portal-header">
-            <div class="portal-brand">
-                <strong>@Session.TenantName</strong>
-                <span>Yönetim Paneli</span>
+<MudThemeProvider Theme="PortalTheme.Theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+@if (Session.IsSignedIn)
+{
+    <MudLayout Class="portal-shell">
+        <MudAppBar Elevation="0" Class="portal-appbar" Gutters="true">
+            <MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" aria-label="Menüyü aç veya kapat" />
+            <div class="portal-appbar-title">
+                <span class="portal-appbar-tenant">@Session.TenantName</span>
+                <span class="portal-appbar-code">Firma kodu @Session.TenantCode</span>
             </div>
-            <nav class="portal-nav">
-                <NavLink href="" Match="NavLinkMatch.All">Özet</NavLink>
-                <NavLink href="plasiyerler">Plasiyerler</NavLink>
-                <NavLink href="ziyaretler">Ziyaretler</NavLink>
-                <NavLink href="cariler">Cariler</NavLink>
-                <NavLink href="stok">Stok</NavLink>
-                <NavLink href="onaylar">Onaylar</NavLink>
+            <MudSpacer />
+            <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true" aria-label="Hesap menüsü">
+                <ActivatorContent>
+                    <div class="portal-user">
+                        <MudAvatar Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">@Initials</MudAvatar>
+                        <div class="portal-user-text">
+                            <span class="portal-user-name">@Session.FullName</span>
+                            <span class="portal-user-role">@Fmt.Role(Session.Role)</span>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Rounded.ExpandMore" Size="Size.Small" />
+                    </div>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem Icon="@Icons.Material.Rounded.Logout" OnClick="SignOutAsync" id="logout">Çıkış yap</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        </MudAppBar>
+
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="0" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Never" Class="portal-drawer">
+            <div class="portal-brand">
+                <div class="portal-brand-mark">
+                    <MudIcon Icon="@Icons.Material.Rounded.Insights" />
+                </div>
+                <div>
+                    <div class="portal-brand-name">Sipariş Cepte</div>
+                    <div class="portal-brand-sub">Yönetim Paneli</div>
+                </div>
+            </div>
+
+            <div class="portal-nav-label">Genel bakış</div>
+            <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.SpaceDashboard">Özet</MudNavLink>
+                <MudNavLink Href="plasiyerler" Icon="@Icons.Material.Rounded.Leaderboard">Plasiyerler</MudNavLink>
+                <MudNavLink Href="ziyaretler" Icon="@Icons.Material.Rounded.Route">Ziyaretler</MudNavLink>
+            </MudNavMenu>
+
+            <div class="portal-nav-label">Kayıtlar</div>
+            <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                <MudNavLink Href="cariler" Icon="@Icons.Material.Rounded.AccountBalanceWallet">Cariler</MudNavLink>
+                <MudNavLink Href="stok" Icon="@Icons.Material.Rounded.Inventory2">Stok</MudNavLink>
+            </MudNavMenu>
+
+            <div class="portal-nav-label">Yönetim</div>
+            <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                <MudNavLink Href="onaylar" Icon="@Icons.Material.Rounded.FactCheck">Onaylar</MudNavLink>
                 @if (Session.IsAdmin)
                 {
-                    <NavLink href="kullanicilar">Kullanıcılar</NavLink>
+                    <MudNavLink Href="kullanicilar" Icon="@Icons.Material.Rounded.ManageAccounts">Kullanıcılar</MudNavLink>
                 }
-            </nav>
-            <div class="portal-user">
-                <span>@Session.FullName · @Fmt.Role(Session.Role)</span>
-                <button type="button" class="portal-link" id="logout" @onclick="SignOutAsync">Çıkış</button>
+            </MudNavMenu>
+
+            <div class="portal-drawer-footer">
+                <MudIcon Icon="@Icons.Material.Rounded.Lock" Size="Size.Small" />
+                <span>Oturum bu sekmeye özeldir</span>
             </div>
-        </header>
-    }
-    <main class="portal-main">
-        @Body
-    </main>
-</div>
+        </MudDrawer>
+
+        <MudMainContent Class="portal-main">
+            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="portal-container">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </MudLayout>
+}
+else
+{
+    @Body
+}
 
 @code {
+    private bool _drawerOpen = true;
+
+    private string Initials => Fmt.Initials(string.IsNullOrWhiteSpace(Session.FullName) ? Session.Username : Session.FullName);
+
     protected override void OnInitialized() => Session.Changed += Redraw;
 
     private void Redraw() => InvokeAsync(StateHasChanged);
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
     private async Task SignOutAsync()
     {

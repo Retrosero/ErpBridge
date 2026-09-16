@@ -5,8 +5,22 @@ using Bunit;
 using ErpBridge.Portal.Api;
 using ErpBridge.Portal.Session;
 using Microsoft.Extensions.DependencyInjection;
+using MudBlazor;
+using MudBlazor.Services;
+using Xunit;
 
 namespace ErpBridge.Portal.Tests;
+
+/// <summary>
+/// bUnit context for portal pages. MudBlazor's popover service can only be disposed
+/// asynchronously, so the container is released through xUnit's async hook first.
+/// </summary>
+public abstract class PortalPageTestContext : BunitContext, IAsyncLifetime
+{
+    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
+
+    Task IAsyncLifetime.DisposeAsync() => DisposeAsync().AsTask();
+}
 
 /// <summary>A central API that answers by path and records what it was sent.</summary>
 public sealed class FakeCentralApi : HttpMessageHandler
@@ -70,6 +84,10 @@ public static class PortalTestSetup
         context.Services.AddSingleton(session);
         context.Services.AddSingleton<ISessionPersistence>(storage);
         context.Services.AddSingleton(new PortalApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }, session));
+        // MudBlazor components call into their JS module; the tests only check markup and API calls.
+        context.Services.AddMudServices();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        context.Render<MudPopoverProvider>();
         return (api, session, storage);
     }
 }

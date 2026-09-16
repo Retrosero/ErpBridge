@@ -6,34 +6,83 @@
 
 <PageTitle>Giriş — Yönetim Paneli</PageTitle>
 
-<div class="portal-login">
-    <h1>Yönetim Paneli</h1>
-    <p>Telefondaki firma hesabınızla giriş yapın. Panel firma admini ve yöneticiler içindir.</p>
+<div class="login-shell">
+    <section class="login-brand" aria-hidden="true">
+        <div class="login-brand-inner">
+            <div class="portal-brand">
+                <div class="portal-brand-mark"><MudIcon Icon="@Icons.Material.Rounded.Insights" /></div>
+                <div>
+                    <div class="portal-brand-name">Sipariş Cepte</div>
+                    <div class="portal-brand-sub">Yönetim Paneli</div>
+                </div>
+            </div>
 
-    @if (!string.IsNullOrEmpty(_notice))
-    {
-        <div class="portal-alert" id="login-notice">@_notice</div>
-    }
+            <div class="login-brand-copy">
+                <h2>Sahadaki ekibiniz,<br />tek ekranda.</h2>
+                <p>Plasiyerlerinizin satış, tahsilat ve ziyaretlerini telefonlarla aynı anda, aynı rakamlarla izleyin.</p>
+            </div>
 
-    <form class="portal-card portal-form" @onsubmit="SignInAsync" @onsubmit:preventDefault>
-        <label for="login-code">Firma kodu</label>
-        <input id="login-code" autocomplete="organization" @bind="_tenantCode" @bind:event="oninput" />
+            <ul class="login-brand-points">
+                <li><MudIcon Icon="@Icons.Material.Rounded.TrendingUp" Size="Size.Small" /> Günlük satış ve tahsilat özeti</li>
+                <li><MudIcon Icon="@Icons.Material.Rounded.Route" Size="Size.Small" /> Plasiyer performansı ve rota takibi</li>
+                <li><MudIcon Icon="@Icons.Material.Rounded.FactCheck" Size="Size.Small" /> Onay bekleyen işlemleri tek tıkla sonuçlandırma</li>
+            </ul>
 
-        <label for="login-username">Kullanıcı adı</label>
-        <input id="login-username" autocomplete="username" @bind="_username" @bind:event="oninput" />
+            <div class="login-brand-foot">Veriler firmanıza özeldir; oturum yalnızca bu tarayıcı sekmesinde saklanır.</div>
+        </div>
+    </section>
 
-        <label for="login-password">Parola</label>
-        <input id="login-password" type="password" autocomplete="current-password" @bind="_password" @bind:event="oninput" />
+    <section class="login-panel">
+        <div class="login-card">
+            <div class="login-card-mobile-brand">
+                <div class="portal-brand-mark"><MudIcon Icon="@Icons.Material.Rounded.Insights" /></div>
+                <span>Sipariş Cepte</span>
+            </div>
 
-        <button type="submit" id="login-submit" class="portal-button" disabled="@(_busy || !CanSubmit)">
-            @(_busy ? "Giriş yapılıyor…" : "Giriş yap")
-        </button>
-    </form>
+            <MudText Typo="Typo.h4" HtmlTag="h1">Hoş geldiniz</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted login-lead">
+                Telefondaki firma hesabınızla giriş yapın. Panel firma admini ve yöneticiler içindir.
+            </MudText>
 
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <div class="portal-alert portal-alert--error" id="login-error">@_error</div>
-    }
+            @if (!string.IsNullOrEmpty(_notice))
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true" Class="login-alert" id="login-notice">@_notice</MudAlert>
+            }
+
+            <form class="login-form" @onsubmit="SignInAsync" @onsubmit:preventDefault novalidate>
+                <MudTextField T="string" @bind-Value="_tenantCode" Label="Firma kodu" Variant="Variant.Outlined" InputId="login-code" ShrinkLabel="true"
+                              Immediate="true" autocomplete="organization" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Business" />
+                <MudTextField T="string" @bind-Value="_username" Label="Kullanıcı adı" Variant="Variant.Outlined" InputId="login-username" ShrinkLabel="true"
+                              Immediate="true" autocomplete="username" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Person" />
+                <MudTextField T="string" @bind-Value="_password" Label="Parola" Variant="Variant.Outlined" InputId="login-password" ShrinkLabel="true"
+                              Immediate="true" InputType="@(_showPassword ? InputType.Text : InputType.Password)" autocomplete="current-password"
+                              Adornment="Adornment.End" AdornmentIcon="@(_showPassword ? Icons.Material.Rounded.VisibilityOff : Icons.Material.Rounded.Visibility)"
+                              AdornmentAriaLabel="Parolayı göster veya gizle" OnAdornmentClick="() => _showPassword = !_showPassword" />
+
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true"
+                           Disabled="@_busy" Class="login-submit" id="login-submit">
+                    @if (_busy)
+                    {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Inherit" Class="mr-2" />
+                        <span>Giriş yapılıyor…</span>
+                    }
+                    else
+                    {
+                        <span>Giriş yap</span>
+                    }
+                </MudButton>
+            </form>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true" Class="login-alert" id="login-error">@_error</MudAlert>
+            }
+
+            <div class="login-help">
+                Hesabınız yoksa veya parolanızı unuttuysanız firmanızın admin kullanıcısıyla görüşün.
+            </div>
+        </div>
+    </section>
 </div>
 
 @code {
@@ -42,23 +91,28 @@
     private string _tenantCode = string.Empty;
     private string _username = string.Empty;
     private string _password = string.Empty;
+    private bool _showPassword;
     private bool _busy;
     private string? _error;
     private string? _notice;
 
-    private bool CanSubmit => !string.IsNullOrWhiteSpace(_tenantCode) && !string.IsNullOrWhiteSpace(_username) && _password.Length > 0;
+    private bool CanSubmit => !string.IsNullOrWhiteSpace(_tenantCode) && !string.IsNullOrWhiteSpace(_username) && !string.IsNullOrEmpty(_password);
 
     protected override void OnParametersSet() =>
         _notice = string.IsNullOrWhiteSpace(Reason) ? null : PortalMessages.For(Reason);
 
     private async Task SignInAsync()
     {
-        if (!CanSubmit) return;
+        if (!CanSubmit)
+        {
+            _error = "Firma kodu, kullanıcı adı ve parolayı girin.";
+            return;
+        }
         _busy = true;
         _error = null;
         try
         {
-            var login = await Api.LoginAsync(_tenantCode, _username, _password);
+            var login = await Api.LoginAsync(_tenantCode ?? string.Empty, _username ?? string.Empty, _password ?? string.Empty);
             var user = login.Session.User;
             // The server refuses a salesperson on every portal call; saying so here is kinder.
             if (!PortalSession.Roles.MayUsePortal(user.Role))
@@ -67,7 +121,7 @@
                 return;
             }
             var state = new PortalSessionState(
-                login.Token, login.ExpiresAtUtc, login.Session.TenantName, login.Session.TenantCode ?? _tenantCode.Trim().ToUpperInvariant(),
+                login.Token, login.ExpiresAtUtc, login.Session.TenantName, login.Session.TenantCode ?? _tenantCode!.Trim().ToUpperInvariant(),
                 login.Session.DataSource, user.Username, user.FullName, user.Role, user.CanApprove);
             Session.SignIn(state);
             await Persistence.SaveAsync(state);

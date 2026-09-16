@@ -9,7 +9,7 @@ using Xunit;
 namespace ErpBridge.Portal.Tests;
 
 /// <summary>The pages that change something: approvals and users.</summary>
-public sealed class PortalManagementPagesTests : BunitContext
+public sealed class PortalManagementPagesTests : PortalPageTestContext
 {
     private static readonly Guid SaleId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid ReturnId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -31,14 +31,13 @@ public sealed class PortalManagementPagesTests : BunitContext
         api.Answer($"/api/v1/android/approvals/{SaleId}/approve", Request(SaleId, "sale", "Bakkal Veli", 12450.5m));
 
         var cut = Render<Onaylar>();
-        cut.WaitForAssertion(() => cut.FindAll("article[data-request]").Should().HaveCount(2));
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
 
-        var sale = cut.Find($"article[data-request='{SaleId}']");
-        sale.QuerySelector("input.portal-note")!.Change(" Fiyat uygun ");
-        cut.Find($"article[data-request='{SaleId}'] .portal-button:not(.portal-button--danger)").Click();
+        cut.Find($"[data-request='{SaleId}'] .portal-note input").Change(" Fiyat uygun ");
+        cut.Find($"[data-request='{SaleId}'] .approve-btn").Click();
 
-        cut.WaitForAssertion(() => cut.FindAll("article[data-request]").Should().ContainSingle());
-        cut.Find("#page-notice").TextContent.Should().Be("Bakkal Veli — satış talebi onaylandı.");
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().ContainSingle());
+        cut.Find("#page-notice").TextContent.Trim().Should().Be("Bakkal Veli — satış talebi onaylandı.");
         var decision = api.Requests.Single(r => r.PathAndQuery.EndsWith("/approve"));
         decision.Method.Should().Be(HttpMethod.Post);
         decision.Body.Should().Contain("\"note\":\"Fiyat uygun\"");
@@ -52,13 +51,13 @@ public sealed class PortalManagementPagesTests : BunitContext
         api.Fail($"/api/v1/android/approvals/{ReturnId}/reject", HttpStatusCode.Conflict, "APPROVAL_ALREADY_DECIDED");
 
         var cut = Render<Onaylar>();
-        cut.WaitForAssertion(() => cut.FindAll("article[data-request]").Should().HaveCount(2));
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
         api.Answer("/api/v1/android/approvals?status=pending", new[] { Request(SaleId, "sale", "Bakkal Veli", 12450.5m) });
 
-        cut.Find($"article[data-request='{ReturnId}'] .portal-button--danger").Click();
+        cut.Find($"[data-request='{ReturnId}'] .reject-btn").Click();
 
         cut.WaitForAssertion(() => cut.Find("#page-error").TextContent.Should().Contain("başka bir yetkili"));
-        cut.FindAll("article[data-request]").Should().ContainSingle();
+        cut.FindAll("[data-request]").Should().ContainSingle();
     }
 
     [Fact]
@@ -69,11 +68,11 @@ public sealed class PortalManagementPagesTests : BunitContext
         api.Fail($"/api/v1/android/approvals/{SaleId}/approve", HttpStatusCode.Forbidden, "SELF_APPROVAL_NOT_ALLOWED");
 
         var cut = Render<Onaylar>();
-        cut.WaitForAssertion(() => cut.FindAll("article[data-request]").Should().HaveCount(2));
-        cut.Find($"article[data-request='{SaleId}'] .portal-button:not(.portal-button--danger)").Click();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
+        cut.Find($"[data-request='{SaleId}'] .approve-btn").Click();
 
         cut.WaitForAssertion(() => cut.Find("#page-error").TextContent.Should().Contain("başka bir onay yetkilisi"));
-        cut.FindAll("article[data-request]").Should().HaveCount(2);
+        cut.FindAll("[data-request]").Should().HaveCount(2);
         session.IsSignedIn.Should().BeTrue();
     }
 
@@ -85,9 +84,9 @@ public sealed class PortalManagementPagesTests : BunitContext
 
         var cut = Render<Onaylar>();
 
-        cut.WaitForAssertion(() => cut.FindAll("article[data-request]").Should().HaveCount(2));
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
         cut.Find("#approvals-readonly");
-        cut.FindAll("article .portal-button").Should().BeEmpty();
+        cut.FindAll("[data-request] .approve-btn, [data-request] .reject-btn").Should().BeEmpty();
     }
 
     // ---- users ------------------------------------------------------------------------
@@ -142,7 +141,7 @@ public sealed class PortalManagementPagesTests : BunitContext
 
         cut.Find("tr[data-user=ali] button").Click();
 
-        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Be("Ali Yılmaz devre dışı bırakıldı."));
+        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Trim().Should().Be("Ali Yılmaz devre dışı bırakıldı."));
         cut.Find("tr[data-user=ali] .badge--off").TextContent.Should().Be("Pasif");
         api.Requests.Single(r => r.Method == HttpMethod.Patch).Body.Should().Contain("\"isActive\":false");
     }
@@ -160,11 +159,11 @@ public sealed class PortalManagementPagesTests : BunitContext
         cut.Find("#new-fullname").Change(" Satış Şefi ");
         cut.Find("#new-username").Change(" Sef ");
         cut.Find("#new-password").Change("parola123");
-        cut.Find("#new-role").Change("MANAGER");
-        cut.Find("#new-can-approve").Change(true);
+        cut.FindAll("#new-role .mud-toggle-item").Single(b => b.TextContent.Contains("Yönetici")).Click();
+        cut.Find("#new-can-approve input").Change(true);
         cut.Find("#user-create form").Submit();
 
-        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().StartWith("Satış Şefi eklendi."));
+        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Trim().Should().StartWith("Satış Şefi eklendi."));
         var body = api.Requests.Single(r => r.Method == HttpMethod.Post).Body!;
         body.Should().Contain("\"username\":\"sef\"").And.Contain("\"role\":\"MANAGER\"").And.Contain("\"canApprove\":true");
         cut.Find("#new-username").GetAttribute("value").Should().BeNullOrEmpty();

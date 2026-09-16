@@ -491,8 +491,20 @@ registration ayrı bir composition projesine taşınır.
      `/api/v1/android/approvals` ve `/api/v1/android/account/users` uçlarını kullanır.
      Yetki kuralları (onaylayıcı, son admin, koltuk) sunucudadır; panel onları tekrar yazmaz.
    - **Dağıtım:** `Dockerfile.portal` (port 4003, yalnız `CentralApi__BaseUrl` gerekir, gizli
-     anahtar yok). `docker-compose.coolify.yml`'a **eklenmedi** — main'e push production'a
-     otomatik dağıtır; Coolify servisi ve alan adı operatörün kararıdır.
+     anahtar yok). Coolify'da ayrı uygulama `lisans-portal` →
+     `https://panel.admin.lisans.appsgo.cloud` (2026-09-16; main'e push'ta otomatik dağıtılır).
+     `docker-compose.coolify.yml`'da yoktur. Cloudflare kaydı **DNS only** olmalı: iki seviyeli
+     alt alan adı Cloudflare'in ücretsiz sertifikasına girmez, proxied olursa TLS kırılır.
+   - **Arayüz: MudBlazor (MIT, Faz 43).** Tema `Shared/PortalTheme.cs`, kurumsal katman
+     `wwwroot/css/site.css`; ortak parçalar `Shared/PageHeader`, `StatCard`, `EmptyState`,
+     `PageLoading`. Varlıklar `_content/MudBlazor` altından kendi sunucumuzdan gelir; web fontu
+     indirilmez (firma tarayıcısından üçüncü tarafa istek yok). Tablolar `MudSimpleTable` —
+     satırlara `data-*` verilebilsin diye (testler bunlara bakar). `MudText Color.Secondary`
+     marka ikincil rengi (turkuaz) demektir; soluk metin için `Class="text-muted"`.
+     Giriş düğmesi alanlar boşken pasifleştirilmez: pasif gönder düğmesi tarayıcının Enter ile
+     gönderimini engeller; boş alan kontrolü `SignInAsync` içinde yapılır.
+     bUnit: `PortalPageTestContext` (MudBlazor `PopoverService` yalnız async dispose edilebilir),
+     `AddMudServices` + `JSInterop.Mode = Loose` + `MudPopoverProvider`.
    - **Yerel çalıştırma:** `dotnet run` ile `--environment Development` verilmeli; Production
      ortamında `dotnet run` çerçeve betiğini (`_framework/blazor.server.js`) sunmaz (404, boş
      sayfa). Yayımlanmış imajda dosya `wwwroot/_framework` altındadır, sorun yoktur.

@@ -10,7 +10,7 @@ using Xunit;
 namespace ErpBridge.Portal.Tests;
 
 /// <summary>Login and the day summary as a manager sees them.</summary>
-public sealed class PortalPagesTests : BunitContext
+public sealed class PortalPagesTests : PortalPageTestContext
 {
     private static object LoginAnswer(string role) => new
     {
@@ -72,7 +72,7 @@ public sealed class PortalPagesTests : BunitContext
         var cut = Render<Login>();
         SignInThrough(cut);
 
-        cut.WaitForAssertion(() => cut.Find("#login-error").TextContent.Should().Be("Firma kodu, kullanıcı adı veya parola hatalı."));
+        cut.WaitForAssertion(() => cut.Find("#login-error").TextContent.Trim().Should().Be("Firma kodu, kullanıcı adı veya parola hatalı."));
     }
 
     [Fact]
