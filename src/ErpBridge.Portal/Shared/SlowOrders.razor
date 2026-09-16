@@ -27,7 +27,7 @@
                     {
                         <tr data-order="@order.OrderNo">
                             <td>
-                                <a class="person-name" href="@($"depo-performans/siparis/{order.Id}")">@order.OrderNo</a>
+                                <a class="person-name" href="@($"depo-performans/siparis/{order.Id}{RangeQuery}")">@order.OrderNo</a>
                                 <div class="person-sub">@order.CustomerName</div>
                             </td>
                             <td>@Fmt.FulfillmentStatus(order.Status)</td>
@@ -47,4 +47,7 @@
     [Parameter] public string? Hint { get; set; }
     [Parameter, EditorRequired] public List<WarehouseSlowOrderDto> Orders { get; set; } = [];
     [Parameter, EditorRequired] public Func<WarehouseSlowOrderDto, long?> Seconds { get; set; } = _ => null;
+
+    /// <summary>The report's range (<c>?from=…&amp;to=…</c>), carried to the timeline so its back link returns to it.</summary>
+    [Parameter] public string RangeQuery { get; set; } = string.Empty;
 }

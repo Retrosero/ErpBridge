@@ -103,7 +103,7 @@ public sealed class PortalWarehouseReportTests : PortalPageTestContext
         cut.Find("#stat-loading strong").TextContent.Should().Be("1 sa 30 dk");
         var hasan = cut.Find("tr[data-staff='Depocu Hasan']").TextContent;
         hasan.Should().Contain("3").And.Contain("5 adet").And.Contain("20 dk").And.Contain("1 sa");
-        cut.Find("#longest-waits a").GetAttribute("href").Should().Be($"depo-performans/siparis/{SlowOrder}");
+        cut.Find("#longest-waits a").GetAttribute("href").Should().Be($"depo-performans/siparis/{SlowOrder}?from=2026-09-10&to=2026-09-11", "the timeline returns to the chosen range");
         cut.Find("#longest-waits tr[data-order=SO-P2]").TextContent.Should().Contain("Paketlendi").And.Contain("20 dk");
         cut.Find("#longest-preparations-empty");
         cut.FindAll("#days-table tbody tr").Should().HaveCount(2);
@@ -127,7 +127,7 @@ public sealed class PortalWarehouseReportTests : PortalPageTestContext
             },
             times = new { waitSeconds = 1200, netPreparationSeconds = 2400, startedByName = "Depocu Veli", packedByName = "Depocu Hasan" },
         });
-        Services.GetRequiredService<NavigationManager>().NavigateTo($"depo-performans/siparis/{SlowOrder}");
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"depo-performans/siparis/{SlowOrder}?from=2026-09-10&to=2026-09-11");
 
         var cut = Render<DepoSiparis>(p => p.Add(x => x.Id, SlowOrder));
 
@@ -136,6 +136,7 @@ public sealed class PortalWarehouseReportTests : PortalPageTestContext
         cut.Find("#time-wait").TextContent.Should().Contain("Depocu Veli");
         cut.Find("#time-preparation strong").TextContent.Should().Be("40 dk");
         cut.Find("#time-loading strong").TextContent.Should().Be("—");
+        cut.Find("#back-to-report").GetAttribute("href").Should().Be("depo-performans?from=2026-09-10&to=2026-09-11");
         var rows = cut.FindAll("#timeline tbody tr");
         rows[0].TextContent.Should().Contain("10.09.2026 09:05").And.Contain("Kuyruğa girdi").And.Contain("—");
         rows[2].TextContent.Should().Contain("Geri alındı").And.Contain("+2 dk");

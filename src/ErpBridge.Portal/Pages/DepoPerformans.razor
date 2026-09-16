@@ -100,11 +100,11 @@ else
 
                 <MudItem xs="12" lg="6">
                     <SlowOrders Id="longest-waits" Title="En uzun bekleyenler" Hint="Kuyruktan ilk başlamaya kadar geçen süre"
-                                Orders="r.LongestWaits" Seconds="o => o.Times.WaitSeconds" />
+                                Orders="r.LongestWaits" Seconds="o => o.Times.WaitSeconds" RangeQuery="@RangeQuery" />
                 </MudItem>
                 <MudItem xs="12" lg="6">
                     <SlowOrders Id="longest-preparations" Title="En uzun hazırlananlar" Hint="Net hazırlama süresi"
-                                Orders="r.LongestPreparations" Seconds="o => o.Times.NetPreparationSeconds" />
+                                Orders="r.LongestPreparations" Seconds="o => o.Times.NetPreparationSeconds" RangeQuery="@RangeQuery" />
                 </MudItem>
 
                 @if (ActiveDays(r) is { Count: > 1 } days)
@@ -196,6 +196,8 @@ else
         _to = DateOnly.FromDateTime(date);
         await RunAsync(LoadAsync);
     }
+
+    private string RangeQuery => $"?from={Fmt.IsoDay(_from)}&to={Fmt.IsoDay(_to)}";
 
     private static List<WarehouseDayDto> ActiveDays(WarehousePerformanceDto report) =>
         report.Days.Where(d => d.Queued + d.Packed > 0 || d.AverageWaitSeconds is not null).ToList();

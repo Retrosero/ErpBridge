@@ -12,7 +12,7 @@ else
     <PageHeader Title="@(_detail is null ? "Sipariş" : $"Sipariş {_detail.Fulfillment.OrderNo}")" Eyebrow="Depo performansı"
                 Subtitle="@_detail?.Fulfillment.CustomerName" Busy="Busy">
         <Actions>
-            <MudButton Href="depo-performans" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack">Rapora dön</MudButton>
+            <MudButton Href="@BackLink" id="back-to-report" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack">Rapora dön</MudButton>
         </Actions>
     </PageHeader>
 
@@ -76,6 +76,14 @@ else
     protected override PortalArea Requires => PortalArea.Reports;
 
     [Parameter] public Guid Id { get; set; }
+
+    [SupplyParameterFromQuery(Name = "from")] public string? FromQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "to")] public string? ToQuery { get; set; }
+
+    /// <summary>Back to the report with the range it was opened from (Codex, PR #64).</summary>
+    private string BackLink => Fmt.TryIsoDay(FromQuery, out var from) && Fmt.TryIsoDay(ToQuery, out var to)
+        ? $"depo-performans?from={Fmt.IsoDay(from)}&to={Fmt.IsoDay(to)}"
+        : "depo-performans";
 
     private FulfillmentDetailDto? _detail;
 
