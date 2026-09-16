@@ -155,6 +155,7 @@ public sealed class ApprovalService
             RequestedByUserId = r.RequestedByUserId,
             RequestedByName = r.RequestedByName,
             RequestedAtUtc = r.RequestedAtUtc,
+            RequestedSeq = r.RequestedSeq,
             UpdatedSeq = r.UpdatedSeq,
             DecidedByName = r.DecidedByName,
             DecidedAtUtc = r.DecidedAtUtc,

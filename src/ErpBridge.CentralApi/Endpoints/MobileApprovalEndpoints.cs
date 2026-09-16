@@ -56,13 +56,16 @@ public static class MobileApprovalEndpoints
     /// <summary>
     /// <c>status</c> is a comma-separated list (pending, approved, rejected, withdrawn,
     /// resubmitted) or <c>all</c>; default pending. <c>changedSinceSeq</c> returns only
-    /// requests whose <c>updatedSeq</c> is at least that value. <c>order</c>: <c>newest</c>
-    /// (default) or <c>oldest</c> — the portal's approval desk works the longest-waiting requests
-    /// first, and with more than <c>take</c> pending the oldest must not fall outside the page.
-    /// Every row carries <c>canDecide</c> for the caller.
+    /// requests whose <c>updatedSeq</c> is at least that value. <c>beforeSeq</c> and
+    /// <c>beforeExternalId</c> page back through older requests: pass the <c>requestedSeq</c> and
+    /// <c>externalId</c> of the last one on screen (two requests can share a millisecond sequence,
+    /// the external id breaks the tie). <c>kind</c> is a comma-separated list of request kinds.
+    /// <c>order</c>: <c>newest</c> (default) or <c>oldest</c> — the portal's approval desk works the
+    /// longest-waiting requests first, and with more than <c>take</c> pending the oldest must not fall
+    /// outside the page. Without these the list is unchanged. Every row carries <c>canDecide</c> for the caller.
     /// </summary>
     private static async Task<IResult> ListAsync(HttpContext http, [FromServices] CentralApiDbContext db,
-        string? status, long? changedSinceSeq, int? take, string? order, CancellationToken ct)
+        string? status, long? changedSinceSeq, int? take, long? beforeSeq, string? beforeExternalId, string? kind, string? order, CancellationToken ct)
     {
         var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
         if (access.Error is not null) return access.Error;
@@ -75,13 +78,29 @@ public static class MobileApprovalEndpoints
                 Message = "status must be all or a comma-separated list of: " + string.Join(", ", ApprovalStatuses.All.Select(s => s.ToLowerInvariant())) + ".",
             });
 
+        var kinds = ParseKinds(kind);
+        if (kinds is null)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError
+            {
+                ErrorCode = "INVALID_KIND",
+                Message = "kind must be a comma-separated list of: " + string.Join(", ", ApprovalKinds.All) + ".",
+            });
         var oldestFirst = string.Equals(order, "oldest", StringComparison.OrdinalIgnoreCase);
         if (!oldestFirst && !string.IsNullOrWhiteSpace(order) && !string.Equals(order, "newest", StringComparison.OrdinalIgnoreCase))
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_ORDER", Message = "order must be newest or oldest." });
 
         var query = ApprovalService.Visible(db, access.Tenant!.Id, access.User!).Where(r => statuses.Contains(r.Status));
         if (changedSinceSeq is { } since) query = query.Where(r => r.UpdatedSeq >= since);
-        query = oldestFirst ? query.OrderBy(r => r.RequestedSeq) : query.OrderByDescending(r => r.RequestedSeq);
+        if (beforeSeq is { } before)
+        {
+            query = string.IsNullOrEmpty(beforeExternalId)
+                ? query.Where(r => r.RequestedSeq < before)
+                : query.Where(r => r.RequestedSeq < before || (r.RequestedSeq == before && string.Compare(r.ExternalId, beforeExternalId) < 0));
+        }
+        if (kinds.Count > 0) query = query.Where(r => kinds.Contains(r.Kind));
+        query = oldestFirst
+            ? query.OrderBy(r => r.RequestedSeq).ThenBy(r => r.ExternalId)
+            : query.OrderByDescending(r => r.RequestedSeq).ThenByDescending(r => r.ExternalId);
         var rows = await query.Take(Math.Clamp(take ?? DefaultTake, 1, MaxTake)).ToListAsync(ct);
         var viewer = access.User!;
         return JsonResults.Ok(rows.Select(row =>
@@ -130,6 +149,20 @@ public static class MobileApprovalEndpoints
         UpdatedByName = rules.UpdatedByName,
         UpdatedAtUtc = rules.UpdatedAtUtc,
     };
+
+    /// <summary>An absent kind means every kind (empty list); an unknown one is refused (null).</summary>
+    internal static List<string>? ParseKinds(string? kind)
+    {
+        if (string.IsNullOrWhiteSpace(kind)) return [];
+        var parsed = new List<string>();
+        foreach (var part in kind.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var match = ApprovalKinds.All.FirstOrDefault(k => k.Equals(part, StringComparison.OrdinalIgnoreCase));
+            if (match is null) return null;
+            if (!parsed.Contains(match)) parsed.Add(match);
+        }
+        return parsed;
+    }
 
     internal static List<string>? ParseStatuses(string? status)
     {

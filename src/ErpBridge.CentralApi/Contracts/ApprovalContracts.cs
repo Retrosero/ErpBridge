@@ -17,6 +17,8 @@ public sealed class ApprovalRequestDto
     [JsonPropertyName("requestedByUserId")] public Guid? RequestedByUserId { get; set; }
     [JsonPropertyName("requestedByName")] public string? RequestedByName { get; set; }
     [JsonPropertyName("requestedAtUtc")] public DateTimeOffset RequestedAtUtc { get; set; }
+    /// <summary>Order of arrival; pass the last one on screen as <c>beforeSeq</c> to read older requests.</summary>
+    [JsonPropertyName("requestedSeq")] public long RequestedSeq { get; set; }
     [JsonPropertyName("updatedSeq")] public long UpdatedSeq { get; set; }
     [JsonPropertyName("decidedByName")] public string? DecidedByName { get; set; }
     [JsonPropertyName("decidedAtUtc")] public DateTimeOffset? DecidedAtUtc { get; set; }

@@ -370,6 +370,58 @@ public sealed class ApprovalCentreRelationalTests : IClassFixture<SqliteCentralA
     }
 
     [Fact]
+    public async Task The_portal_pages_back_through_decided_requests_and_filters_them_by_kind()
+    {
+        var c = await CompanyAsync();
+        var first = await SubmitSaleAsync(c, c.Ali, "APR-P1", quantity: 1);
+        var second = await SubmitSaleAsync(c, c.Ali, "APR-P2", quantity: 1);
+        var third = await SubmitSaleAsync(c, c.Ali, "APR-P3", quantity: 1);
+        var collection = await SubmitAsync(c, c.Ali, "APR-P4", new
+        {
+            kind = "collection",
+            counterpartyName = "Bakkal Ali",
+            amount = 50,
+            documents = new object[] { new { documentType = "collection", externalId = "MOB-COL-APR-P4", payload = new { mobileDocumentId = "MOB-COL-APR-P4", customerCode = "C-001", amount = 50, paymentType = "Nakit" } } },
+        });
+        foreach (var request in new[] { first, second, third })
+            (await DecideAsync(c, c.Patron, request.Id, "approve")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Without the new parameters the list is what the phone always received.
+        (await ListAsync(c.Ayse)).Select(r => r.Id).Should().Equal(collection.Id);
+
+        var page = await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, "/api/v1/android/approvals?status=approved&take=2");
+        page.Select(r => r.Id).Should().Equal(third.Id, second.Id);
+        page.Should().OnlyContain(r => r.RequestedSeq > 0 && r.DecidedByName == "Patron");
+        var older = await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, $"/api/v1/android/approvals?status=approved&take=2&beforeSeq={page[^1].RequestedSeq}");
+        older.Select(r => r.Id).Should().Equal(first.Id);
+
+        // Requests sent in the same millisecond share a sequence; the external id keeps paging from skipping one.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var sameMoment = await db.ApprovalRequests.SingleAsync(r => r.Id == second.Id);
+            await db.ApprovalRequests.Where(r => r.Id == first.Id || r.Id == third.Id)
+                .ExecuteUpdateAsync(u => u.SetProperty(r => r.RequestedSeq, sameMoment.RequestedSeq));
+        }
+        var seen = new List<Guid>();
+        var cursor = string.Empty;
+        for (var i = 0; i < 4; i++)
+        {
+            var one = await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, "/api/v1/android/approvals?status=approved&take=1" + cursor);
+            if (one.Length == 0) break;
+            seen.Add(one[0].Id);
+            cursor = $"&beforeSeq={one[0].RequestedSeq}&beforeExternalId={Uri.EscapeDataString(one[0].ExternalId)}";
+        }
+        seen.Should().BeEquivalentTo([first.Id, second.Id, third.Id]);
+
+        (await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, "/api/v1/android/approvals?status=all&kind=collection")).Select(r => r.Id).Should().Equal(collection.Id);
+        (await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, "/api/v1/android/approvals?status=all&kind=SALE,collection")).Should().HaveCount(4);
+        var unknown = await _factory.CreateClient().GetAsync("/api/v1/android/approvals?kind=gift", c.Ayse);
+        unknown.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await unknown.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("INVALID_KIND");
+    }
+
+    [Fact]
     public async Task A_user_who_stops_being_a_manager_loses_the_approval_rights()
     {
         var c = await CompanyAsync();
