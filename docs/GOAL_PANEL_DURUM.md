@@ -1,6 +1,6 @@
 # Goal Durumu — Yönetim Paneli Geliştirmeleri
 
-Son güncelleme: 2026-09-16 (plan yazıldı, başlatılmadı)
+Son güncelleme: 2026-09-16 (P0 bitti, sırada P1a)
 Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -12,7 +12,7 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| P0 — Hazırlık | 2 | 0 | ⬜ |
+| P0 — Hazırlık | 2 | 2 | ✅ |
 | P1 — Onaylar | 3 | 0 | ⬜ |
 | P2 — Stok | 3 | 0 | ⬜ |
 | P3 — Cariler | 5 | 0 | ⬜ |
@@ -20,7 +20,7 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P5 — Telefon Depo ekranı | 5 | 0 | ⬜ |
 | P6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P0a
+**Şu anki görev:** P1a
 
 ---
 
@@ -28,8 +28,8 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 | ID | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| P0a | Plan dalını main'e al | ⬜ | | |
-| P0b | Zemin + launch yapılandırmaları | ⬜ | | |
+| P0a | Plan dalını main'e al | ✅ | [#54](https://github.com/Retrosero/ErpBridge/pull/54) | Codex 3 bulgu, üçü de planda düzeltildi: DURUM güncellemesi merge'den önce; P4b sürüm kapısı her istekte; stok önbelleği yalnız stok verisiyle geçersizlenir |
+| P0b | Zemin + launch yapılandırmaları | ✅ | [#54](https://github.com/Retrosero/ErpBridge/pull/54) | `eb-panel-centralapi-local` (5281) + `eb-panel-portal-local` (5295) eklendi; yerelde giriş sayfası açılıyor |
 | P1a | Onay listesi sayfalama + tür filtresi (sunucu) | ⬜ | | |
 | P1b | Onaylar sekmeleri | ⬜ | | |
 | P1c | Onay detay çekmecesi | ⬜ | | |
@@ -58,7 +58,10 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 ## Zemin
 
-_(P0b'de doldurulur: build süresi/uyarı, test sayıları, yerel panel durumu)_
+`main` @ 33298cb (Faz 47 dahil), 2026-09-16:
+- `dotnet build`: **0 uyarı, 0 hata, 40 sn**
+- `dotnet test` (~105 sn): CentralApi **392**, Portal **79**, Core 100, Mikro 188 (+16 atlanan entegrasyon), Erp.Sql 64, LocalStore 60, Admin 41, RemoteApi 39, Shared 22, Agent.Service 15 — başarısız 0
+- Yerel build bazı projelerin `packages.lock.json` dosyalarını değiştiriyor (Windows yan etkisi) → commit'e **alınmaz**, `git checkout --` ile geri alınır
 
 ## Karar günlüğü
 
