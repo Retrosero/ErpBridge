@@ -141,6 +141,24 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<DisplayDeviceDto> RevokeDisplayAsync(Guid displayId, CancellationToken ct = default) =>
         SendAsync<DisplayDeviceDto>(HttpMethod.Post, $"api/v1/portal/displays/{displayId}/revoke", new { }, ct);
 
+    /// <summary><paramref name="status"/>: <c>open</c> (pending, preparing, packed), <c>all</c> or a comma-separated list.</summary>
+    public Task<FulfillmentListDto> FulfillmentsAsync(string status, bool newest = false, int take = 500, CancellationToken ct = default) =>
+        GetAsync<FulfillmentListDto>("api/v1/portal/fulfillments" + Query(
+            ("status", status), ("take", take.ToString(CultureInfo.InvariantCulture)), ("newest", newest ? "true" : null)), ct);
+
+    public Task<FulfillmentDetailDto> FulfillmentDetailAsync(Guid id, CancellationToken ct = default) =>
+        GetAsync<FulfillmentDetailDto>($"api/v1/portal/fulfillments/{id}", ct);
+
+    /// <summary>start, pack, load, undo, cancel or reassign.</summary>
+    public Task<FulfillmentDto> FulfillmentActionAsync(Guid id, string action, string? note = null, string? vehiclePlate = null, Guid? assigneeUserId = null, CancellationToken ct = default) =>
+        SendAsync<FulfillmentDto>(HttpMethod.Post, $"api/v1/portal/fulfillments/{id}/{action}", new { note, vehiclePlate, assigneeUserId }, ct);
+
+    public Task<PortalEventsDto> WarehouseEventsAsync(long sinceSeq, int waitSeconds, CancellationToken ct = default) =>
+        GetAsync<PortalEventsDto>($"api/v1/portal/events?sinceSeq={sinceSeq}&wait={waitSeconds}", ct);
+
+    public Task<WarehouseBackfillDto> WarehouseBackfillAsync(int days, CancellationToken ct = default) =>
+        SendAsync<WarehouseBackfillDto>(HttpMethod.Post, "api/v1/portal/warehouse/backfill", new { days }, ct);
+
     public Task<WarehouseSettingsDto> WarehouseSettingsAsync(CancellationToken ct = default) =>
         GetAsync<WarehouseSettingsDto>("api/v1/portal/warehouse/settings", ct);
 

@@ -156,6 +156,48 @@ public sealed class PortalEventsDto
     [JsonPropertyName("changed")] public bool Changed { get; set; }
 }
 
+/// <summary><c>GET /api/v1/portal/fulfillments</c>.</summary>
+public sealed class FulfillmentListDto
+{
+    [JsonPropertyName("latestSeq")] public long LatestSeq { get; set; }
+    [JsonPropertyName("hasMore")] public bool HasMore { get; set; }
+    [JsonPropertyName("items")] public FulfillmentDto[] Items { get; set; } = [];
+}
+
+public sealed class FulfillmentEventDto
+{
+    [JsonPropertyName("action")] public string Action { get; set; } = string.Empty;
+    [JsonPropertyName("fromStatus")] public string? FromStatus { get; set; }
+    [JsonPropertyName("toStatus")] public string ToStatus { get; set; } = string.Empty;
+    [JsonPropertyName("actorUserId")] public Guid? ActorUserId { get; set; }
+    [JsonPropertyName("actorName")] public string ActorName { get; set; } = string.Empty;
+    [JsonPropertyName("note")] public string? Note { get; set; }
+    [JsonPropertyName("occurredAtUtc")] public DateTimeOffset OccurredAtUtc { get; set; }
+}
+
+/// <summary>A line of an order's pick list.</summary>
+public sealed class PickItemDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+}
+
+/// <summary><c>GET /api/v1/portal/fulfillments/{id}</c>.</summary>
+public sealed class FulfillmentDetailDto
+{
+    [JsonPropertyName("fulfillment")] public FulfillmentDto Fulfillment { get; set; } = new();
+    [JsonPropertyName("items")] public PickItemDto[] Items { get; set; } = [];
+    [JsonPropertyName("events")] public FulfillmentEventDto[] Events { get; set; } = [];
+}
+
+public sealed class WarehouseBackfillDto
+{
+    [JsonPropertyName("days")] public int Days { get; set; }
+    [JsonPropertyName("queued")] public int Queued { get; set; }
+}
+
 public sealed class ApprovalSummaryDto
 {
     [JsonPropertyName("pendingCount")] public int PendingCount { get; set; }

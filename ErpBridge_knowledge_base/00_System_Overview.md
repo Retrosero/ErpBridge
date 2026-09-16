@@ -688,7 +688,16 @@ registration ayrı bir composition projesine taşınır.
      günlerin kuyrukta olmayan `sales_order` job'larını `EnqueueAsync` ile ekler — tek transaction, en çok 2000.
      `QueuedAtUtc` = job'ın geliş anı. Native'de yalnız `Succeeded`; ERP'de `ErpState` job durumundan (Succeeded →
      WRITTEN, Failed/DeadLetter → FAILED, diğer → PENDING). Onay bekleyen/reddedilen talep job değildir, girmez.
-     İdempotent; `{days, queued}` döner.
+     İdempotent; `{days, queued}` döner. Firma sayaç kilidi **aday seçiminden önce** alınır (eşzamanlı iki doldurma
+     UNIQUE'e çarpmaz); tür filtresi harfe duyarsız (`SALES_ORDER` da); PostgreSQL'de sınır SQL'de (Codex #63).
+   - **Panel `/depo` (panel goal P4d):** sekmeler Bekleyenler/Hazırlanıyor (yalnız benimkiler: `AssigneeName ==` oturum adı)
+     /Paketlenenler/Bugün yüklenenler (`status=loaded&newest=true&take=200`, İstanbul günü süzülür); kartta adıma göre
+     geçen süre firma eşikleriyle sarı/kırmızı, tek dokunuşla Başla → Paketlendi → Araca yüklendi; detayda toplama listesi
+     (işaretler yalnız tarayıcıda), olaylar, plaka, Geri al, yöneticiye İptal, admin'e Yeniden ata (kullanıcı listesi admin
+     ucu). Canlı: `events?sinceSeq&wait=25`, imleç listelerden önce okunur; hata olursa 15 sn sonra tekrar. 409'da liste
+     yenilenir ve "X siparişi az önce … durumuna aldı" gösterilir. Modül kapalıyken yönetici gün sayısıyla açar (ayar PUT +
+     backfill); aynı teklif `/ekranlar` ayar formunda modül açılırken çıkar (P4c). Liste ucu `newest=true` isteğe bağlı
+     parametresi: durum listesini `UpdatedSeq` azalan sıralar.
    - **Kuyruğa alma tek yerde:** `EnqueueAsync(db, tenant, job, approvalRequestId)` yalnız `sales_order`
      için, **belgeyi yazan transaction'ın içinde** çağrılır ve kaydetmez; çağıran commit'ten sonra
      `Notify(tenantId)` der. Çağıranlar: `/ingest/jobs` native dalı (uç kendi transaction'ını açar,

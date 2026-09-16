@@ -1,6 +1,6 @@
 # Goal Durumu — Yönetim Paneli Geliştirmeleri
 
-Son güncelleme: 2026-09-16 (P4a+P4b bitti, sırada P4c)
+Son güncelleme: 2026-09-16 (P4 bitti, sırada P5a)
 Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -16,11 +16,11 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P1 — Onaylar | 3 | 3 | ✅ |
 | P2 — Stok | 3 | 3 | ✅ |
 | P3 — Cariler | 5 | 5 | ✅ |
-| P4 — Depo sunucu + panel | 4 | 2 | 🔄 |
+| P4 — Depo sunucu + panel | 4 | 4 | ✅ |
 | P5 — Telefon Depo ekranı | 5 | 0 | ⬜ |
 | P6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P4c (#61 — TV panosu ve depo ayar ekranı — birleşince)
+**Şu anki görev:** P5a
 
 ---
 
@@ -43,8 +43,8 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P3e | Telefon ERP'siz ekstre tutarı bulgusu (doğrulama) | ✅ | [#62](https://github.com/Retrosero/ErpBridge/pull/62) | **Hata yok:** telefon API hareketinde `tutar ?: meblag ?: cha_meblag ?: amount …` okuyor (`FieldOpsApiService.kt:506`) |
 | P4a | Depo geri doldurma ucu | ✅ | [#63](https://github.com/Retrosero/ErpBridge/pull/63) | P4a+b tek PR (yalnız sunucu). `POST /portal/warehouse/backfill {days}`; `EnqueueAsync`'e isteğe bağlı `queuedAtUtc`. Test: kapalı modül 409, 31 gün 400, depocu 403, 2 günlük pencere (5 günlük eski sipariş ve reddedilen native satış dışarıda), ikinci çağrı 0, 7 gün eskiyi de alır, ERP durumları |
 | P4b | Depocu telefona girişi + sunucu kısıtları | ✅ | [#63](https://github.com/Retrosero/ErpBridge/pull/63) | **Sapma (D1):** sürüm `versionCode` yerine telefonun zaten gönderdiği `versionName` (`AppVersion`), ayar `Mobile:MinWarehousePhoneVersion` (ör. `1.5.240`), `System.Version` ile sayısal karşılaştırma. Kapı girişte ve her istekte cihazın kayıtlı sürümüyle (Codex P0 bulgusu). Yalnız depo rollü kullanıcı `/ingest/*` → 403 `ROLE_NOT_ALLOWED`. Ayar boşken eski davranış (depocu telefona giremez) sürer — P5d'de ayarlanacak |
-| P4c | Panel depo ayarları | ⬜ | | |
-| P4d | Panel depo sayfası | ⬜ | | |
+| P4c | Panel depo ayarları | ✅ | #PR | P4c+d tek PR. **Sapma:** modül anahtarı ve eşikler #61 (başka oturum, plan adım 7) ile `/ekranlar`'a geldi; oraya "son N günün siparişleri de kuyruğa alınsın" alanı eklendi (yalnız kapalıdan açığa geçerken görünür). `/depo` modül kapalıyken yöneticiye gün sayısıyla "Depo modülünü aç", depocuya bilgi |
+| P4d | Panel depo sayfası | ✅ | #PR | Sekmeler, kart (süre + eşik rengi, ERP rozeti, plaka), tek dokunuş adımlar, detay (toplama listesi, geçmiş, plaka, geri al, iptal, yeniden ata), 409 açıklaması, canlı long-poll, 30 sn süre tiki. Sunucuya `newest=true` (bugün yüklenenler için). bUnit +5 (eski yer tutucu testleri güncellendi). **Yerelde PostgreSQL'de uçtan uca:** modülü aç + 3 gün geri doldur (2 onaylı satış), başka kullanıcının API'den "başla"sı ~3 sn'de sayfaya geldi, toplama → Paketlendi → plakayla Araca yüklendi, 400 px |
 | P5a | Telefon: API + Room önbelleği | ⬜ | | |
 | P5b | Telefon: Depo ekranı sunucu kuyruğuna | ⬜ | | |
 | P5c | Telefon: yalnız depo rolü arayüzü | ⬜ | | |

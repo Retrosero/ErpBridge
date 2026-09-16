@@ -297,14 +297,20 @@ public sealed class PortalDisplaysPageTests : PortalPageTestContext
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
         api.Answer("/api/v1/portal/displays", Array.Empty<object>());
         api.Answer("/api/v1/portal/warehouse/settings", Settings(enabled: false));
+        api.Answer("/api/v1/portal/warehouse/backfill", new { days = 5, queued = 3 });
 
         var cut = Render<Ekranlar>();
         cut.WaitForAssertion(() => cut.Find("#warehouse-settings"));
+        cut.FindAll("#settings-backfill").Should().BeEmpty("the offer appears only while turning the module on");
         cut.Find("#settings-enabled input").Change(true);
+        cut.Find("#settings-backfill-days").Change("5");
+        api.Answer("/api/v1/portal/warehouse/settings", Settings(enabled: true)); // what the server saves
 
         cut.Find("#warehouse-settings form").Submit();
-        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Contain("kaydedildi"));
+        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Contain("son 5 günün 3 siparişi"));
         api.Requests.Single(r => r.Method == HttpMethod.Put).Body.Should().Contain("\"enabled\":true").And.Contain("\"pendingCriticalMinutes\":30");
+        api.Requests.Single(r => r.PathAndQuery.EndsWith("/warehouse/backfill")).Body.Should().Contain("\"days\":5");
+        cut.FindAll("#settings-backfill").Should().BeEmpty("the module is on now");
 
         api.Fail("/api/v1/portal/warehouse/settings", HttpStatusCode.BadRequest, "INVALID_WAREHOUSE_SETTINGS");
         cut.Find("#warehouse-settings form").Submit();
