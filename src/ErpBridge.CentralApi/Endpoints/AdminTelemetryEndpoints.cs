@@ -24,6 +24,7 @@ public static class AdminTelemetryEndpoints
         [FromQuery] Guid? tenantId,
         [FromQuery] string? severity,
         [FromQuery] int? take,
+        [FromQuery] string? kind,
         [FromServices] CentralApiDbContext db,
         CancellationToken ct)
     {
@@ -32,6 +33,9 @@ public static class AdminTelemetryEndpoints
         if (tenantId.HasValue) query = query.Where(row => row.TenantId == tenantId.Value);
         if (!string.IsNullOrWhiteSpace(severity))
             query = query.Where(row => row.Severity == severity.Trim().ToUpperInvariant());
+        // SYNC_ROUND (INFO) would otherwise be buried under screen views; Faz 0 reads it on its own.
+        if (!string.IsNullOrWhiteSpace(kind))
+            query = query.Where(row => row.Kind == kind.Trim().ToUpperInvariant());
         var rows = await query.OrderByDescending(row => row.OccurredAtUtc).Take(count).ToListAsync(ct);
         return JsonResults.Ok(rows.Select(row => new MobileTelemetryEventDto
         {

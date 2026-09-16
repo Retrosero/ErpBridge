@@ -709,8 +709,8 @@ public sealed class CentralApiClient
     public Task<IReadOnlyList<JobFailureDto>> ListJobFailuresAsync(Guid? tenantId = null, int take = 200, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<JobFailureDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/jobs/failures", tenantId, $"take={take}"), ct), ct);
 
-    public Task<IReadOnlyList<MobileTelemetryEventDto>> ListTelemetryAsync(Guid? tenantId = null, string? severity = "ERROR", int take = 200, CancellationToken ct = default) =>
-        SendAsync<IReadOnlyList<MobileTelemetryEventDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/telemetry", tenantId, $"severity={Uri.EscapeDataString(severity ?? string.Empty)}&take={take}"), ct), ct);
+    public Task<IReadOnlyList<MobileTelemetryEventDto>> ListTelemetryAsync(Guid? tenantId = null, string? severity = "ERROR", int take = 200, CancellationToken ct = default, string? kind = null) =>
+        SendAsync<IReadOnlyList<MobileTelemetryEventDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/telemetry", tenantId, $"severity={Uri.EscapeDataString(severity ?? string.Empty)}&kind={Uri.EscapeDataString(kind ?? string.Empty)}&take={take}"), ct), ct);
 
     public Task<JobDto> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<JobDto>(() => _http.PostAsync($"/api/v1/admin/jobs/{id}/retry", content: null, ct), ct);
