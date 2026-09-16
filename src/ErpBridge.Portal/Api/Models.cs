@@ -100,6 +100,7 @@ public sealed class UpdateUserRolesRequest
 public sealed class ApprovalDto
 {
     [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("externalId")] public string ExternalId { get; set; } = string.Empty;
     [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
     [JsonPropertyName("counterpartyName")] public string CounterpartyName { get; set; } = string.Empty;
     [JsonPropertyName("amount")] public decimal Amount { get; set; }
@@ -108,8 +109,40 @@ public sealed class ApprovalDto
     [JsonPropertyName("requestedByUserId")] public Guid? RequestedByUserId { get; set; }
     [JsonPropertyName("requestedByName")] public string? RequestedByName { get; set; }
     [JsonPropertyName("requestedAtUtc")] public DateTimeOffset RequestedAtUtc { get; set; }
+    [JsonPropertyName("requestedSeq")] public long RequestedSeq { get; set; }
     [JsonPropertyName("decidedByName")] public string? DecidedByName { get; set; }
+    [JsonPropertyName("decidedAtUtc")] public DateTimeOffset? DecidedAtUtc { get; set; }
     [JsonPropertyName("decisionNote")] public string? DecisionNote { get; set; }
+}
+
+/// <summary>One request with the documents it would post, its history and stock warnings.</summary>
+public sealed class ApprovalDetailDto
+{
+    [JsonPropertyName("request")] public ApprovalDto Request { get; set; } = new();
+    [JsonPropertyName("documents")] public JsonElement Documents { get; set; }
+    [JsonPropertyName("events")] public ApprovalEventDto[] Events { get; set; } = [];
+    [JsonPropertyName("warnings")] public StockWarningDto[] Warnings { get; set; } = [];
+}
+
+public sealed class ApprovalEventDto
+{
+    [JsonPropertyName("action")] public string Action { get; set; } = string.Empty;
+    [JsonPropertyName("byName")] public string? ByName { get; set; }
+    [JsonPropertyName("atUtc")] public DateTimeOffset AtUtc { get; set; }
+    [JsonPropertyName("note")] public string? Note { get; set; }
+}
+
+public sealed class StockWarningDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("requested")] public decimal Requested { get; set; }
+    [JsonPropertyName("onHand")] public decimal OnHand { get; set; }
+}
+
+public sealed class ApprovalSummaryDto
+{
+    [JsonPropertyName("pendingCount")] public int PendingCount { get; set; }
 }
 
 public sealed class MoneyLine

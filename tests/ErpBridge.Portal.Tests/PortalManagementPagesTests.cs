@@ -16,10 +16,12 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
 
     private static object Request(Guid id, string kind, string counterparty, decimal amount) => new
     {
-        id, kind, counterpartyName = counterparty, amount, status = "PENDING",
+        id, kind, counterpartyName = counterparty, amount, status = "Pending",
         requestedByName = "Ali Yılmaz", requestedAtUtc = PortalTestSetup.Now,
         summary = new { },
     };
+
+    private const string Pending = "/api/v1/android/approvals?status=pending&take=50";
 
     private static object PendingBoth() => new[] { Request(SaleId, "sale", "Bakkal Veli", 12450.5m), Request(ReturnId, "return", "Market Can", 300m) };
 
@@ -27,7 +29,7 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     public void Approving_sends_the_note_and_takes_the_request_off_the_list()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
-        api.Answer("/api/v1/android/approvals?status=pending", PendingBoth());
+        api.Answer(Pending, PendingBoth());
         api.Answer($"/api/v1/android/approvals/{SaleId}/approve", Request(SaleId, "sale", "Bakkal Veli", 12450.5m));
 
         var cut = Render<Onaylar>();
@@ -47,12 +49,12 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     public void A_request_someone_else_just_decided_refreshes_the_list_and_says_so()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
-        api.Answer("/api/v1/android/approvals?status=pending", PendingBoth());
+        api.Answer(Pending, PendingBoth());
         api.Fail($"/api/v1/android/approvals/{ReturnId}/reject", HttpStatusCode.Conflict, "APPROVAL_ALREADY_DECIDED");
 
         var cut = Render<Onaylar>();
         cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
-        api.Answer("/api/v1/android/approvals?status=pending", new[] { Request(SaleId, "sale", "Bakkal Veli", 12450.5m) });
+        api.Answer(Pending, new[] { Request(SaleId, "sale", "Bakkal Veli", 12450.5m) });
 
         cut.Find($"[data-request='{ReturnId}'] .reject-btn").Click();
 
@@ -64,7 +66,7 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     public void Refusing_ones_own_request_keeps_it_and_explains()
     {
         var (api, session, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
-        api.Answer("/api/v1/android/approvals?status=pending", PendingBoth());
+        api.Answer(Pending, PendingBoth());
         api.Fail($"/api/v1/android/approvals/{SaleId}/approve", HttpStatusCode.Forbidden, "SELF_APPROVAL_NOT_ALLOWED");
 
         var cut = Render<Onaylar>();
@@ -80,13 +82,144 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     public void A_manager_without_the_right_to_approve_sees_requests_but_no_buttons()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "MANAGER") with { CanApprove = false });
-        api.Answer("/api/v1/android/approvals?status=pending", PendingBoth());
+        api.Answer(Pending, PendingBoth());
 
         var cut = Render<Onaylar>();
 
         cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
         cut.Find("#approvals-readonly");
         cut.FindAll("[data-request] .approve-btn, [data-request] .reject-btn").Should().BeEmpty();
+    }
+
+    private static object Decided(Guid id, string status, string decidedBy, string? note, long seq = 7) => new
+    {
+        id, externalId = $"APR-{seq}", kind = "sale", counterpartyName = "Bakkal Veli", amount = 900m, status,
+        requestedByName = "Ali Yılmaz", requestedAtUtc = PortalTestSetup.Now.AddHours(-3), requestedSeq = seq,
+        decidedByName = decidedBy, decidedAtUtc = PortalTestSetup.Now.AddHours(-1), decisionNote = note,
+        summary = new { },
+    };
+
+    private static object SaleDetail(Guid id, string status = "Pending") => new
+    {
+        request = new
+        {
+            id, kind = "sale", counterpartyName = "Bakkal Veli", amount = 750m, status,
+            requestedByName = "Ali Yılmaz", requestedAtUtc = PortalTestSetup.Now, requestedSeq = 12, summary = new { },
+        },
+        documents = new object[]
+        {
+            new
+            {
+                documentType = "sales_order", externalId = "MOB-SO-1",
+                payload = new
+                {
+                    mobileDocumentId = "MOB-SO-1", customerCode = "C-001", counterparty = "Bakkal Veli", paymentType = "Cari Borç", amount = 750,
+                    campaign = "Eylül",
+                    lines = new object[] { new { productCode = "CAY-1", productTitle = "Çay 1 kg", quantity = 5, unitPrice = 150, lineTotal = 750 } },
+                },
+            },
+        },
+        events = new object[] { new { action = "Submitted", byName = "Ali Yılmaz", atUtc = PortalTestSetup.Now, note = (string?)null } },
+        warnings = new object[] { new { stockCode = "CAY-1", title = "Çay 1 kg", requested = 5m, onHand = 2m } },
+    };
+
+    [Fact]
+    public void The_approved_tab_lists_decisions_with_who_decided_and_no_buttons()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(Pending, PendingBoth());
+        api.Answer("/api/v1/android/approvals?status=approved&take=50", new[] { Decided(SaleId, "Approved", "Patron", "Fiyat uygun") });
+        api.Answer("/api/v1/android/approvals/summary", new { pendingCount = 2 });
+
+        var cut = Render<Onaylar>();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
+        cut.Find("#approvals-pending-count").TextContent.Should().Be("2");
+
+        cut.Find("[data-tab='onaylanan']").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().ContainSingle());
+        var card = cut.Find($"[data-request='{SaleId}']");
+        card.QuerySelector(".approval-status")!.TextContent.Should().Be("Onaylandı");
+        card.QuerySelector(".approval-decision")!.TextContent.Should().Contain("Patron").And.Contain("Fiyat uygun");
+        card.QuerySelectorAll(".approve-btn, .reject-btn").Should().BeEmpty();
+        cut.Find("[data-tab='onaylanan']").ClassList.Should().Contain("is-active");
+        Services.GetRequiredService<NavigationManager>().Uri.Should().Contain("durum=onaylanan");
+    }
+
+    [Fact]
+    public void The_rejected_tab_and_the_kind_filter_ask_the_server_and_more_pages_follow_the_last_request()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(Pending, PendingBoth());
+        api.Answer("/api/v1/android/approvals/summary", new { pendingCount = 2 });
+        var firstPage = Enumerable.Range(0, 50).Select(i => Decided(Guid.NewGuid(), "Rejected", "Patron", null, seq: 100 - i)).ToArray();
+        api.Answer("/api/v1/android/approvals?status=rejected%2Cresubmitted&take=50", firstPage);
+        api.Answer("/api/v1/android/approvals?status=rejected%2Cresubmitted&kind=collection&take=50", firstPage);
+        api.Answer("/api/v1/android/approvals?status=rejected%2Cresubmitted&kind=collection&beforeSeq=51&beforeExternalId=APR-51&take=50", new[] { Decided(SaleId, "Rejected", "Patron", "Eksik") });
+
+        var cut = Render<Onaylar>();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
+        cut.Find("[data-tab='reddedilen']").Click();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(50));
+
+        cut.Find("#approvals-kind").Change("collection");
+        cut.WaitForAssertion(() => api.Requests.Should().Contain(r => r.PathAndQuery.Contains("kind=collection&take=50")));
+        cut.WaitForAssertion(() => cut.Find("#approvals-more"));
+
+        cut.Find("#approvals-more").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(51));
+        cut.FindAll("#approvals-more").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Clicking_a_request_opens_its_lines_warnings_and_history_and_it_can_be_approved_there()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(Pending, PendingBoth());
+        api.Answer($"/api/v1/android/approvals/{SaleId}", SaleDetail(SaleId));
+        api.Answer($"/api/v1/android/approvals/{SaleId}/approve", Decided(SaleId, "Approved", "Firma Sahibi", null));
+
+        var cut = Render<Onaylar>();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
+
+        cut.Find($"[data-request='{SaleId}'] .approval-open").Click();
+
+        cut.WaitForAssertion(() => cut.Find("#approval-detail [data-line='CAY-1']"));
+        var sheet = cut.Find("#approval-detail");
+        sheet.QuerySelector(".sheet-title")!.TextContent.Should().Be("Bakkal Veli");
+        sheet.QuerySelector("#detail-status")!.TextContent.Should().Be("Bekliyor");
+        sheet.QuerySelector("[data-line='CAY-1']")!.TextContent.Should().Contain("Çay 1 kg").And.Contain("750,00 TL");
+        sheet.QuerySelector("#detail-warnings")!.TextContent.Should().Contain("stokta 2");
+        sheet.QuerySelector("#detail-events")!.TextContent.Should().Contain("Gönderildi");
+        sheet.TextContent.Should().Contain("Cari Borç").And.Contain("campaign");
+        Services.GetRequiredService<NavigationManager>().Uri.Should().Contain($"talep={SaleId}");
+
+        cut.Find("#detail-actions .approve-btn").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("#approval-detail").Should().BeEmpty());
+        cut.FindAll("[data-request]").Should().ContainSingle();
+        cut.Find("#page-notice").TextContent.Should().Contain("onaylandı");
+        Services.GetRequiredService<NavigationManager>().Uri.Should().NotContain("talep=");
+    }
+
+    [Fact]
+    public void A_link_with_a_request_opens_its_detail_and_a_decided_request_has_no_buttons()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer("/api/v1/android/approvals?status=all&take=50", new[] { Decided(SaleId, "Approved", "Patron", null) });
+        api.Answer($"/api/v1/android/approvals/{SaleId}", SaleDetail(SaleId, status: "Approved"));
+        api.Answer("/api/v1/android/approvals/summary", new { pendingCount = 0 });
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"onaylar?durum=tumu&talep={SaleId}");
+
+        var cut = Render<Onaylar>();
+
+        cut.WaitForAssertion(() => cut.Find("#approval-detail #detail-status").TextContent.Should().Be("Onaylandı"));
+        cut.FindAll("#detail-actions").Should().BeEmpty();
+        cut.Find("[data-tab='tumu']").ClassList.Should().Contain("is-active");
+
+        cut.Find("#approval-detail .sheet-close").Click();
+        cut.WaitForAssertion(() => cut.FindAll("#approval-detail").Should().BeEmpty());
     }
 
     // ---- users ------------------------------------------------------------------------
