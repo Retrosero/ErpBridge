@@ -5,7 +5,7 @@
 
 <PageTitle>Tanılama Kayıtları — ErpBridge Yönetim</PageTitle>
 <AdminPageHeader Title="Tanılama kayıtları" Description="Mobil uygulama ve Windows Agent için gizlilikten arındırılmış hata kayıtları." />
-<div class="admin-filter-bar mb-3 row g-2"><div class="col-auto"><select class="form-select" @bind="_tenantId"><option value="">Tüm müşteriler</option>@foreach (var tenant in _tenants) { <option value="@tenant.Id">@tenant.Name</option> }</select></div><div class="col-auto"><select class="form-select" @bind="_severity"><option value="ERROR">Hatalar</option><option value="FATAL">Kritik</option><option value="">Tümü</option></select></div><div class="col-auto"><button class="btn btn-primary" @onclick="ReloadAsync">Listele</button></div></div>
+<div class="admin-filter-bar mb-3 row g-2"><div class="col-auto"><select class="form-select" @bind="_tenantId"><option value="">Tüm müşteriler</option>@foreach (var tenant in _tenants) { <option value="@tenant.Id">@tenant.Name</option> }</select></div><div class="col-auto"><select class="form-select" @bind="_severity"><option value="ERROR">Hatalar</option><option value="FATAL">Kritik</option><option value="WARN">Uyarılar</option><option value="INFO">Bilgi</option><option value="">Tümü</option></select></div><div class="col-auto"><select class="form-select" aria-label="Kayıt türü" @bind="_kind" @bind:after="KindChanged"><option value="">Tüm türler</option><option value="CRASH">Çökme ve hata</option><option value="HTTP_ERROR">HTTP hatası</option><option value="SYNC_ROUND">Senkron turu</option></select></div><div class="col-auto"><button class="btn btn-primary" @onclick="ReloadAsync">Listele</button></div></div>
 
 @if (_loading) { <AdminLoading Text="Tanılama kayıtları yükleniyor…" /> }
 else if (!string.IsNullOrWhiteSpace(_error)) { <AdminState Tone="error" Icon="!" Title="Kayıtlar alınamadı" Message="@_error" /> }
@@ -17,21 +17,26 @@ else
         {
             var expanded = _expandedId == item.Id;
             var presentation = Present(item);
-            <article class="admin-record admin-record--error @(expanded ? "admin-record--expanded" : null)">
+            <article class="admin-record @(IsProblem(item) ? "admin-record--error" : null) @(expanded ? "admin-record--expanded" : null)">
                 <button class="admin-record__summary" @onclick="() => Toggle(item.Id)" aria-expanded="@expanded">
                     <span class="admin-record__primary"><strong>@presentation.Title</strong><span>@presentation.Summary</span></span><span class="admin-record__customer">@TenantName(item.TenantId) · @item.Source</span><code class="admin-record__code">@item.Severity</code><time datetime="@item.OccurredAtUtc.ToString("O")">@item.OccurredAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</time><span class="admin-record__chevron" aria-hidden="true">⌄</span>
                 </button>
-                @if (expanded) { <div class="admin-record__detail"><div class="admin-error-explainer"><strong>@presentation.Title</strong><p>@presentation.Detail</p><p><b>Önerilen işlem:</b> @presentation.Suggestion</p></div><dl class="admin-kv"><div><dt>Sürüm</dt><dd>@item.AppVersion</dd></div><div><dt>Cihaz</dt><dd>@item.DeviceModel / @item.AndroidVersion</dd></div></dl><details class="admin-technical-details"><summary>Teknik ayrıntıyı göster</summary><div class="admin-technical-details__header"><span>Ham hata ve iz kaydı</span><button class="admin-copy-button" type="button" title="Hata ayrıntılarını kopyala" aria-label="Hata ayrıntılarını kopyala" @onclick="() => CopyTechnicalDetailsAsync(item)"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1-2 2v8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2M6 7h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" /></svg><span class="visually-hidden">Hata ayrıntılarını kopyala</span></button></div>@if (_copiedId == item.Id) { <p class="admin-copy-status" role="status">Hata ayrıntıları panoya kopyalandı.</p> } else if (_copyErrorId == item.Id) { <p class="admin-copy-status admin-copy-status--error" role="alert">Tarayıcı pano erişimine izin vermedi. Metni seçerek kopyalayabilirsiniz.</p> }<dl class="admin-kv"><div class="admin-kv__wide"><dt>Ham hata</dt><dd><code>@RawError(item)</code></dd></div><div class="admin-kv__wide"><dt>İz kaydı</dt><dd><code>@item.StackTrace</code></dd></div></dl></details></div> }
+                @if (expanded) { <div class="admin-record__detail"><div class="admin-error-explainer"><strong>@presentation.Title</strong><p>@presentation.Detail</p><p><b>Önerilen işlem:</b> @presentation.Suggestion</p></div><dl class="admin-kv"><div><dt>Sürüm</dt><dd>@item.AppVersion</dd></div><div><dt>Cihaz</dt><dd>@item.DeviceModel / @item.AndroidVersion</dd></div><div><dt>Tür</dt><dd>@item.Kind · @item.Operation</dd></div>@if (!string.IsNullOrWhiteSpace(item.HttpRoute) || item.HttpStatus is not null) { <div><dt>HTTP</dt><dd><code>@HttpLine(item)</code></dd></div> }@if (item.Kind == SyncRoundKind) { <div class="admin-kv__wide"><dt>Ölçüm</dt><dd><code>@item.Message</code></dd></div> }</dl><details class="admin-technical-details"><summary>Teknik ayrıntıyı göster</summary><div class="admin-technical-details__header"><span>Ham hata ve iz kaydı</span><button class="admin-copy-button" type="button" title="Hata ayrıntılarını kopyala" aria-label="Hata ayrıntılarını kopyala" @onclick="() => CopyTechnicalDetailsAsync(item)"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1-2 2v8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2M6 7h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" /></svg><span class="visually-hidden">Hata ayrıntılarını kopyala</span></button></div>@if (_copiedId == item.Id) { <p class="admin-copy-status" role="status">Hata ayrıntıları panoya kopyalandı.</p> } else if (_copyErrorId == item.Id) { <p class="admin-copy-status admin-copy-status--error" role="alert">Tarayıcı pano erişimine izin vermedi. Metni seçerek kopyalayabilirsiniz.</p> }<dl class="admin-kv"><div class="admin-kv__wide"><dt>Ham hata</dt><dd><code>@RawError(item)</code></dd></div><div class="admin-kv__wide"><dt>İz kaydı</dt><dd><code>@item.StackTrace</code></dd></div></dl></details></div> }
             </article>
         }
     </div>
 }
 
 @code {
-    private bool _loading = true; private string _tenantId = string.Empty; private string _severity = "ERROR"; private Guid? _expandedId; private Guid? _copiedId; private Guid? _copyErrorId; private string? _error;
+    private const string SyncRoundKind = "SYNC_ROUND";
+    private bool _loading = true; private string _tenantId = string.Empty; private string _severity = "ERROR"; private string _kind = string.Empty; private Guid? _expandedId; private Guid? _copiedId; private Guid? _copyErrorId; private string? _error;
     private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>(); private IReadOnlyList<ErpBridge.Admin.Api.MobileTelemetryEventDto> _events = Array.Empty<ErpBridge.Admin.Api.MobileTelemetryEventDto>();
     protected override async Task OnInitializedAsync() { try { _tenants = await Api.ListTenantsAsync(); await ReloadAsync(); } catch (Exception ex) { _loading = false; _error = ex.Message; } }
-    private async Task ReloadAsync() { _loading = true; _error = null; _expandedId = null; try { _events = await Api.ListTelemetryAsync(Guid.TryParse(_tenantId, out var id) ? id : null, _severity); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
+    private async Task ReloadAsync() { _loading = true; _error = null; _expandedId = null; try { _events = await Api.ListTelemetryAsync(Guid.TryParse(_tenantId, out var id) ? id : null, _severity, take: 500, kind: _kind); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
+    // Sync rounds are INFO; keeping the "Hatalar" default would always show an empty list.
+    private void KindChanged() { if (_kind == SyncRoundKind) _severity = string.Empty; }
+    private static bool IsProblem(ErpBridge.Admin.Api.MobileTelemetryEventDto item) => item.Severity is "ERROR" or "FATAL";
+    private static string HttpLine(ErpBridge.Admin.Api.MobileTelemetryEventDto item) => $"{item.HttpStatus?.ToString() ?? "—"} {item.HttpMethod} {item.HttpRoute}".Trim();
     private void Toggle(Guid id) { _expandedId = _expandedId == id ? null : id; _copiedId = null; _copyErrorId = null; }
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString()[..8];
     private static string RawError(ErpBridge.Admin.Api.MobileTelemetryEventDto item) => string.IsNullOrWhiteSpace(item.ExceptionType) ? item.Message : $"{item.ExceptionType}: {item.Message}";
@@ -43,6 +48,13 @@ else
     }
     private static ErrorPresentation Present(ErpBridge.Admin.Api.MobileTelemetryEventDto item)
     {
+        if (item.Kind == SyncRoundKind)
+        {
+            var head = item.Message.Split(" | ")[0];
+            return new("Senkron turu", head, "Telefondaki bir senkron turunun süreleri: busyMs kullanıcının gördüğü süre, totalMs kalıcılaştırma dahil; sonrasında tablo:karar:ms:istek.", "Bilgi kaydıdır, işlem gerekmez.");
+        }
+        if (item.HttpStatus is int status)
+            return new($"HTTP {status} yanıtı", HttpLine(item), "Sunucu isteği başarısız bir durum koduyla yanıtladı.", status is 401 or 403 ? "Ayarlar üzerinden senkronizasyon bağlantısını yenileyin." : "Uç ve durum koduna göre sunucu günlüğünü inceleyin.");
         var raw = $"{item.ExceptionType} {item.Message}".ToLowerInvariant();
         if (raw.Contains("no jsonadapter") || raw.Contains("linkedhashmap") || raw.Contains("moshi"))
             return new("Belge verisi okunamadı", "Gönderilmek istenen belgedeki bir alan uygulama tarafından işlenemedi.", "Uygulamayı güncelleyin; devam ederse belgeyi yeniden kaydedip gönderin.");
