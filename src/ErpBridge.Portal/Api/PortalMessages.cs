@@ -42,6 +42,14 @@ public static class PortalMessages
         "INVALID_DISPLAY_NAME" => "Ekran adı zorunludur (en çok 80 karakter).",
         "WAREHOUSE_MANAGER_REQUIRED" => "Bu işlem firma admini ve yöneticiler içindir.",
         "WAREHOUSE_ROLE_REQUIRED" => "Rolünüz depo işlerini kapsamıyor.",
+        "FULFILLMENT_STATE_CHANGED" => "Sipariş az önce başka biri tarafından değiştirildi; liste yenilendi.",
+        "FULFILLMENT_CANNOT_UNDO" => "Bu adım geri alınamaz.",
+        "UNDO_NOT_ALLOWED" => "Adımı yalnızca atan kişi 5 dakika içinde ya da bir yönetici geri alabilir.",
+        "INVALID_ASSIGNEE" => "Seçilen kişi firmada aktif bir depo çalışanı değil.",
+        "UNKNOWN_FULFILLMENT_ACTION" => "Bu işlem tanınmıyor.",
+        "INVALID_VEHICLE_PLATE" => "Plaka en çok 16 karakter olabilir.",
+        "WAREHOUSE_DISABLED" => "Depo modülü kapalı. Önce modülü açın.",
+        "INVALID_BACKFILL_DAYS" => "0 ile 30 gün arasında bir değer girin.",
         "INVALID_WAREHOUSE_SETTINGS" => "Eşikler 1-1440 dakika olmalı ve her sarı eşik kırmızıdan küçük olmalı.",
         "INVALID_DATE" => "Tarih geçersiz.",
         "INVALID_RANGE" => "Bitiş tarihi başlangıçtan önce olamaz.",
@@ -61,6 +69,9 @@ public static class Fmt
         quantity == decimal.Truncate(quantity) ? quantity.ToString("N0", Turkish) : quantity.ToString("N2", Turkish);
 
     public static string Day(DateOnly day) => day.ToString("d MMMM yyyy, dddd", Turkish);
+
+    /// <summary>The Istanbul business day of an instant.</summary>
+    public static DateOnly DayOf(DateTimeOffset instant) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, Istanbul).DateTime);
 
     /// <summary>Today in Istanbul — the business day every report counts by.</summary>
     public static DateOnly Today() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Istanbul).DateTime);

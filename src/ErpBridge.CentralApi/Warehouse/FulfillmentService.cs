@@ -219,7 +219,7 @@ public sealed class FulfillmentService
     /// rather than being lost.</para>
     /// </summary>
     public static async Task<FulfillmentListResponse> ListAsync(
-        CentralApiDbContext db, Guid tenantId, IReadOnlyCollection<string> statuses, long? changedSinceSeq, int take, CancellationToken ct)
+        CentralApiDbContext db, Guid tenantId, IReadOnlyCollection<string> statuses, long? changedSinceSeq, int take, CancellationToken ct, bool newestFirst = false)
     {
         var limit = Math.Clamp(take, 1, MaxListSize);
         var query = db.OrderFulfillments.AsNoTracking().Where(f => f.TenantId == tenantId);
@@ -236,7 +236,10 @@ public sealed class FulfillmentService
         }
 
         var cursor = await LatestSeqAsync(db, tenantId, ct);
-        var rows = await query.Where(f => statuses.Contains(f.Status)).OrderBy(f => f.QueuedSeq).Take(limit + 1).ToListAsync(ct);
+        var filtered = query.Where(f => statuses.Contains(f.Status));
+        // Newest change first: "loaded today" reads the latest loads, not the oldest orders ever loaded (panel goal P4d).
+        var ordered = newestFirst ? filtered.OrderByDescending(f => f.UpdatedSeq) : filtered.OrderBy(f => f.QueuedSeq);
+        var rows = await ordered.Take(limit + 1).ToListAsync(ct);
         return new FulfillmentListResponse
         {
             LatestSeq = cursor,

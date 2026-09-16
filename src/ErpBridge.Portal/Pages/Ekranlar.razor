@@ -89,6 +89,15 @@ else
                         <div id="settings-enabled">
                             <MudSwitch T="bool" @bind-Value="_settings.Enabled" Color="Color.Primary" Label="Satışlar depo kuyruğuna girsin" />
                         </div>
+                        @if (_settings.Enabled && !_wasEnabled)
+                        {
+                            <label class="backfill-row" id="settings-backfill">
+                                Son
+                                <input type="number" min="0" max="30" step="1" class="portal-input portal-input--short" id="settings-backfill-days" value="@_backfillDays"
+                                       @onchange="e => _backfillDays = int.TryParse(e.Value?.ToString(), out var d) ? Math.Clamp(d, 0, 30) : 2" />
+                                günün siparişleri de kuyruğa alınsın
+                            </label>
+                        }
                         <div class="field-label">Bekliyor (dakika)</div>
                         <div class="threshold-row">
                             <MudNumericField T="int" @bind-Value="_settings.PendingWarnMinutes" Label="Sarı" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="1440" id="pending-warn" />
@@ -119,6 +128,10 @@ else
 
     private List<DisplayDeviceDto> _displays = [];
     private WarehouseSettingsDto _settings = new();
+
+    /// <summary>The module's saved state; turning it on offers to queue the last days' orders (panel goal P4c).</summary>
+    private bool _wasEnabled;
+    private int _backfillDays = 2;
     private string? _code;
     private string? _name;
 
@@ -130,6 +143,7 @@ else
     {
         _displays = [.. await Api.DisplaysAsync()];
         _settings = await Api.WarehouseSettingsAsync();
+        _wasEnabled = _settings.Enabled;
     }
 
     private async Task PairAsync()
@@ -166,8 +180,14 @@ else
         Notice = null;
         await RunAsync(async () =>
         {
+            var turningOn = _settings.Enabled && !_wasEnabled;
             _settings = await Api.SaveWarehouseSettingsAsync(_settings);
-            Notice = _settings.Enabled ? "Depo ayarları kaydedildi." : "Depo ayarları kaydedildi. Modül kapalı: yeni satışlar kuyruğa girmez.";
+            var queued = turningOn && _settings.Enabled && _backfillDays > 0 ? (await Api.WarehouseBackfillAsync(_backfillDays)).Queued : 0;
+            // Marked as on only after the back-fill went through: a failed one keeps the field, and saving again retries it (Codex, PR #65).
+            _wasEnabled = _settings.Enabled;
+            Notice = !_settings.Enabled ? "Depo ayarları kaydedildi. Modül kapalı: yeni satışlar kuyruğa girmez."
+                : queued > 0 ? $"Depo modülü açıldı; son {_backfillDays} günün {queued} siparişi kuyruğa alındı."
+                : "Depo ayarları kaydedildi.";
         });
     }
 

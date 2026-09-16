@@ -1,5 +1,7 @@
 @page "/depo"
 @inherits PortalPageBase
+@implements IAsyncDisposable
+@inject TimeProvider Clock
 
 <PageTitle>Depo — Yönetim Paneli</PageTitle>
 
@@ -9,17 +11,643 @@
 }
 else
 {
-    <PageHeader Title="Depo" Eyebrow="İşlemler" Subtitle="Sipariş hazırlama, paketleme ve araca yükleme" Busy="Busy" />
+    <PageHeader Title="Depo" Eyebrow="İşlemler" Subtitle="Siparişleri hazırlayın, paketleyin ve araca yükleyin" Busy="Busy">
+        <Actions>
+            @if (_settings?.Enabled == true)
+            {
+                <span class="live-state @(_liveOk ? "is-live" : "is-offline")" id="warehouse-live">@(_liveOk ? "Canlı" : "Bağlantı bekleniyor")</span>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Refresh" Disabled="@Busy" OnClick="RefreshAsync" id="warehouse-refresh">Yenile</MudButton>
+            }
+        </Actions>
+    </PageHeader>
 
-    <MudPaper Outlined="true" Class="panel">
-        <EmptyState Id="warehouse-coming" Icon="@Icons.Material.Rounded.Warehouse" Title="Depo sipariş kuyruğu yakında burada."
-                    Hint="Onaylanan satışlar bu sayfada hazırlanacak sırayla listelenecek. Şimdilik yapmanız gereken bir şey yok." />
-    </MudPaper>
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null && !_detailOpen)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_settings is { Enabled: false })
+    {
+        <MudPaper Outlined="true" Class="panel" id="warehouse-disabled">
+            <EmptyState Icon="@Icons.Material.Rounded.Warehouse" Title="Depo modülü kapalı."
+                        Hint="@(CanManage ? "Açıldığında yeni satışlar hazırlanmak üzere burada sıraya girer." : "Siparişlerin burada görünmesi için firma yöneticinizin depo modülünü açması gerekir.")" />
+            @if (CanManage)
+            {
+                <form class="enable-warehouse" @onsubmit="EnableAsync" @onsubmit:preventDefault>
+                    <label class="inline-field">
+                        Son
+                        <input type="number" min="0" max="30" step="1" class="portal-input portal-input--short" id="backfill-days" value="@_backfillDays"
+                               @onchange="e => _backfillDays = int.TryParse(e.Value?.ToString(), out var d) ? Math.Clamp(d, 0, 30) : 2" />
+                        günün siparişleri de kuyruğa alınsın
+                    </label>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="warehouse-enable">Depo modülünü aç</MudButton>
+                </form>
+            }
+        </MudPaper>
+    }
+    else if (_open is not null)
+    {
+        <div class="seg-tabs" role="tablist" id="warehouse-tabs">
+            @foreach (var (key, label) in Tabs)
+            {
+                var count = RowsOf(key).Count();
+                <button type="button" role="tab" class="seg-tab @(key == _tab ? "is-active" : null)" aria-selected="@(key == _tab ? "true" : "false")"
+                        data-tab="@key" @onclick="() => SelectTab(key)">
+                    @label
+                    <span class="seg-count seg-count--neutral">@count</span>
+                </button>
+            }
+        </div>
+        @if (_tab == "hazirlanan")
+        {
+            <label class="toolbar-switch mine-only" id="warehouse-mine">
+                <input type="checkbox" checked="@_mineOnly" @onchange="e => _mineOnly = e.Value is true" />
+                Yalnız benim hazırladıklarım
+            </label>
+        }
+
+        @if (_tab == "bekleyen" && _pendingTruncated)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="warehouse-truncated">En eski 500 bekleyen sipariş gösteriliyor; öncekiler hazırlandıkça yenileri listeye girer.</MudAlert>
+        }
+        @if (!Rows.Any())
+        {
+            <MudPaper Outlined="true" Class="panel">
+                <EmptyState Id="warehouse-empty" Icon="@Icons.Material.Rounded.Inventory" Title="@EmptyTitle" />
+            </MudPaper>
+        }
+        else
+        {
+            <div class="order-grid" id="warehouse-orders">
+                @foreach (var order in Rows)
+                {
+                    var tone = DelayTone(order);
+                    <MudPaper Outlined="true" Class="@($"order-card order-card--{tone}")" data-order="@order.Id" data-status="@order.Status">
+                        <div class="order-open" role="button" tabindex="0" @onclick="() => OpenAsync(order)" @onkeydown="e => OpenKeyAsync(e, order)">
+                            <div class="order-top">
+                                <strong class="mono">@order.OrderNo</strong>
+                                <span class="order-elapsed" data-elapsed>@Elapsed(order)</span>
+                            </div>
+                            <div class="order-customer">@order.CustomerName</div>
+                            <div class="order-meta">
+                                <span>@order.LineCount kalem · @Fmt.Quantity(order.ItemQuantity) adet</span>
+                                <span>@Fmt.Money(order.Amount)</span>
+                            </div>
+                            <div class="order-meta">
+                                <span>@(string.IsNullOrEmpty(order.SalespersonName) ? "—" : order.SalespersonName)</span>
+                                @if (order.AssigneeName is not null)
+                                {
+                                    <span class="badge badge--primary" data-assignee>@order.AssigneeName</span>
+                                }
+                                @if (order.ErpState == "FAILED")
+                                {
+                                    <span class="badge badge--danger" data-erp>ERP hatası</span>
+                                }
+                                else if (order.ErpState == "PENDING")
+                                {
+                                    <span class="badge badge--muted" data-erp>ERP'ye gidiyor</span>
+                                }
+                                @if (order.VehiclePlate is not null)
+                                {
+                                    <span class="badge badge--info">@order.VehiclePlate</span>
+                                }
+                            </div>
+                        </div>
+                        @if (PrimaryAction(order) is { } primary)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" Disabled="@Busy"
+                                       Class="order-action" OnClick="() => QuickAsync(order, primary.Action)">@primary.Label</MudButton>
+                        }
+                    </MudPaper>
+                }
+            </div>
+        }
+    }
+
+    <DetailSheet Id="order-detail" Open="_detailOpen" Busy="_detailBusy" Eyebrow="@(_opened is null ? "Sipariş" : StatusLabel(_opened.Status))"
+                 Title="@(_opened?.OrderNo ?? string.Empty)" OnClose="CloseDetail">
+        <ChildContent>
+            @if (_detailError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="detail-error">@_detailError</MudAlert>
+            }
+            @if (_detail is { } detail)
+            {
+                var order = detail.Fulfillment;
+                <dl class="detail-facts">
+                    <dt>Müşteri</dt><dd>@order.CustomerName <span class="mono text-muted">@order.CustomerCode</span></dd>
+                    <dt>Plasiyer</dt><dd>@(string.IsNullOrEmpty(order.SalespersonName) ? "—" : order.SalespersonName)</dd>
+                    <dt>Tutar</dt><dd>@Fmt.Money(order.Amount)</dd>
+                    <dt>Durum</dt><dd id="detail-status">@StatusLabel(order.Status)@(order.AssigneeName is null ? null : " · " + order.AssigneeName)</dd>
+                    <dt>Sıraya girdi</dt><dd>@Fmt.Time(order.QueuedAtUtc)</dd>
+                </dl>
+
+                <section class="detail-section">
+                    <h3 class="detail-section-title">Toplama listesi <span class="text-muted">(@_picked.Count / @detail.Items.Length)</span></h3>
+                    <ul class="pick-list" id="pick-list">
+                        @foreach (var (item, index) in detail.Items.Select((item, index) => (item, index)))
+                        {
+                            var key = $"{index}:{item.StockCode}";
+                            var done = _picked.Contains(key);
+                            <li class="pick-item @(done ? "is-picked" : null)" data-item="@item.StockCode">
+                                <label>
+                                    <input type="checkbox" checked="@done" @onchange="e => TogglePicked(key, e)" />
+                                    <span class="pick-name">@item.Name <span class="mono text-muted">@item.StockCode</span></span>
+                                    <strong class="pick-qty">@Fmt.Quantity(item.Quantity) @item.Unit</strong>
+                                </label>
+                            </li>
+                        }
+                    </ul>
+                    <p class="text-muted field-hint">İşaretler yalnızca bu cihazda tutulur.</p>
+                </section>
+
+                @if (detail.Events.Count > 0)
+                {
+                    <section class="detail-section">
+                        <h3 class="detail-section-title">Geçmiş</h3>
+                        <ol class="timeline" id="order-events">
+                            @foreach (var e in detail.Events)
+                            {
+                                <li class="timeline-item" data-event="@e.Action">
+                                    <span class="timeline-dot tone-@EventTone(e.Action)"></span>
+                                    <div>
+                                        <strong>@EventLabel(e.Action)</strong>
+                                        <span class="text-muted"> · @e.ActorName · @Fmt.Time(e.OccurredAtUtc)</span>
+                                        @if (!string.IsNullOrWhiteSpace(e.Note))
+                                        {
+                                            <div class="timeline-note">“@e.Note”</div>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ol>
+                    </section>
+                }
+            }
+        </ChildContent>
+        <Footer>
+            @if (_detail is { } shown)
+            {
+                var order = shown.Fulfillment;
+                <div class="order-actions" id="detail-actions">
+                    @if (order.Status == "PACKED")
+                    {
+                        <input class="portal-input" id="vehicle-plate" placeholder="Araç plakası (isteğe bağlı)" maxlength="16" value="@_plate" @onchange="e => _plate = e.Value?.ToString()" />
+                    }
+                    @if (PrimaryAction(order) is { } primary)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" Disabled="@(Busy || _detailBusy)"
+                                   Class="order-primary" OnClick="() => ActAsync(order, primary.Action)">@primary.Label</MudButton>
+                    }
+                    <div class="order-secondary">
+                        @if (order.Status is "PREPARING" or "PACKED")
+                        {
+                            <MudButton Variant="Variant.Outlined" Disabled="@(Busy || _detailBusy)" Class="order-undo" OnClick="() => ActAsync(order, FulfillmentActions.Undo)">Geri al</MudButton>
+                        }
+                        @if (CanManage && order.Status is "PENDING" or "PREPARING" or "PACKED")
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(Busy || _detailBusy)" Class="order-cancel" OnClick="() => ActAsync(order, FulfillmentActions.Cancel)">İptal et</MudButton>
+                        }
+                        @if (Session.IsAdmin && order.Status == "PREPARING")
+                        {
+                            <select class="portal-select order-reassign" aria-label="Yeniden ata" value="" @onchange="e => ReassignAsync(order, e)" disabled="@(Busy || _detailBusy)" @onfocus="LoadStaffAsync">
+                                <option value="">Yeniden ata…</option>
+                                @foreach (var person in _staff)
+                                {
+                                    <option value="@person.Id">@person.FullName</option>
+                                }
+                            </select>
+                        }
+                    </div>
+                    @if (CanManage && order.Status is "PENDING" or "PREPARING" or "PACKED")
+                    {
+                        <input class="portal-input" id="action-note" placeholder="Not (iptal ve geri alma için isteğe bağlı)" maxlength="500" value="@_note" @onchange="e => _note = e.Value?.ToString()" />
+                    }
+                </div>
+            }
+        </Footer>
+    </DetailSheet>
 }
 
 @code {
     protected override PortalArea Requires => PortalArea.Warehouse;
 
-    // The order queue arrives with plan step 6; the page exists now so warehouse staff have a home.
-    protected override Task LoadAsync() => Task.CompletedTask;
+    private const int LiveWaitSeconds = 25;
+
+    private static readonly (string Key, string Label)[] Tabs =
+        [("bekleyen", "Bekleyenler"), ("hazirlanan", "Hazırlanıyor"), ("paketlenen", "Paketlenenler"), ("yuklenen", "Bugün yüklenenler")];
+
+    private static class FulfillmentActions
+    {
+        public const string Start = "start";
+        public const string Pack = "pack";
+        public const string Load = "load";
+        public const string Undo = "undo";
+        public const string Cancel = "cancel";
+        public const string Reassign = "reassign";
+    }
+
+    private readonly CancellationTokenSource _live = new();
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _disposed;
+    private bool _liveOk = true;
+    private long _latestSeq;
+
+    private WarehouseSettingsDto? _settings;
+    private List<FulfillmentDto>? _open;
+    private bool _pendingTruncated;
+    private List<FulfillmentDto> _loaded = [];
+    private string _tab = "bekleyen";
+    private bool _mineOnly;
+    private int _backfillDays = 2;
+
+    private bool _detailOpen;
+    private bool _detailBusy;
+    private string? _detailError;
+    private FulfillmentDto? _opened;
+    private FulfillmentDetailDto? _detail;
+    private readonly HashSet<string> _picked = [];
+    private string? _plate;
+    private string? _note;
+    private List<UserDto> _staff = [];
+
+    private string? Notice { get; set; }
+
+    private bool CanManage => Session.Allows(PortalArea.Displays);
+
+    private IEnumerable<FulfillmentDto> RowsOf(string tab) => tab switch
+    {
+        "bekleyen" => (_open ?? []).Where(o => o.Status == "PENDING").OrderBy(o => o.QueuedAtUtc),
+        "hazirlanan" => (_open ?? []).Where(o => o.Status == "PREPARING" && (!_mineOnly || o.AssigneeName == Session.FullName)).OrderBy(o => o.StartedAtUtc),
+        "paketlenen" => (_open ?? []).Where(o => o.Status == "PACKED").OrderBy(o => o.PackedAtUtc),
+        _ => _loaded.OrderByDescending(o => o.LoadedAtUtc),
+    };
+
+    private IEnumerable<FulfillmentDto> Rows => RowsOf(_tab);
+
+    private string EmptyTitle => _tab switch
+    {
+        "bekleyen" => "Bekleyen sipariş yok.",
+        "hazirlanan" => _mineOnly ? "Hazırladığınız sipariş yok." : "Hazırlanan sipariş yok.",
+        "paketlenen" => "Yüklemeyi bekleyen paket yok.",
+        _ => "Bugün yüklenen sipariş yok.",
+    };
+
+    protected override async Task LoadAsync()
+    {
+        _settings = await Api.WarehouseSettingsAsync();
+        if (!_settings.Enabled) return;
+        await ReloadAsync();
+        if (_disposed) return;
+        _ = WatchAsync(_live.Token);
+        _ = TickAsync(_live.Token);
+    }
+
+    /// <summary>The cursor is read before the lists, so a change committed in between is read again rather than missed.</summary>
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _latestSeq = (await Api.WarehouseEventsAsync(0, 0)).LatestSeq;
+        }
+        catch (PortalApiException)
+        {
+            _liveOk = false;
+        }
+        // One call per step: a long waiting backlog must not push the orders being prepared or packed off the list (Codex, PR #65).
+        var pending = Api.FulfillmentsAsync("pending");
+        var preparing = Api.FulfillmentsAsync("preparing");
+        var packed = Api.FulfillmentsAsync("packed");
+        var waiting = await pending;
+        _pendingTruncated = waiting.HasMore;
+        _open = [.. waiting.Items, .. (await preparing).Items, .. (await packed).Items];
+        var today = Fmt.Today();
+        _loaded = [.. (await Api.FulfillmentsAsync("loaded", newest: true, take: 200)).Items.Where(o => o.LoadedAtUtc is { } at && Fmt.DayOf(at) == today)];
+        if (_detailOpen && _opened is { } opened && _detail is not null)
+        {
+            var current = _open.Concat(_loaded).FirstOrDefault(o => o.Id == opened.Id);
+            if (current is null || current.UpdatedSeq != _detail.Fulfillment.UpdatedSeq) await LoadDetailAsync(opened.Id);
+        }
+    }
+
+    private async Task WatchAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                var events = await Api.WarehouseEventsAsync(_latestSeq, LiveWaitSeconds, token);
+                if (!_liveOk)
+                {
+                    _liveOk = true;
+                    await InvokeAsync(StateHasChanged);
+                }
+                if (events.Changed) await InvokeAsync(() => GuardedAsync(ReloadAsync));
+                await Task.Delay(TimeSpan.FromSeconds(1), token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (SessionEndedException ended)
+            {
+                await InvokeAsync(() => RunAsync(() => throw ended));
+                return;
+            }
+            catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+            {
+                _liveOk = false;
+                await InvokeAsync(StateHasChanged);
+                try { await Task.Delay(TimeSpan.FromSeconds(15), token); }
+                catch (OperationCanceledException) { return; }
+            }
+        }
+    }
+
+    /// <summary>Waiting times move on screen without a server call.</summary>
+    private async Task TickAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token)) await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task GuardedAsync(Func<Task> action)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            await RunAsync(action);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private Task RefreshAsync()
+    {
+        Notice = null;
+        return GuardedAsync(ReloadAsync);
+    }
+
+    private void SelectTab(string tab) => _tab = tab;
+
+    private async Task EnableAsync()
+    {
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            var current = _settings ?? await Api.WarehouseSettingsAsync();
+            // A copy: the page keeps showing the form until everything went through.
+            var saved = await Api.SaveWarehouseSettingsAsync(new WarehouseSettingsDto
+            {
+                Enabled = true,
+                PendingWarnMinutes = current.PendingWarnMinutes,
+                PendingCriticalMinutes = current.PendingCriticalMinutes,
+                PreparingWarnMinutes = current.PreparingWarnMinutes,
+                PreparingCriticalMinutes = current.PreparingCriticalMinutes,
+                PackedWarnMinutes = current.PackedWarnMinutes,
+            });
+            // The page switches to the queue only once the back-fill also went through; a failure keeps the form to retry.
+            var queued = _backfillDays > 0 ? (await Api.WarehouseBackfillAsync(_backfillDays)).Queued : 0;
+            _settings = saved;
+            Notice = queued > 0 ? $"Depo modülü açıldı; son {_backfillDays} günün {queued} siparişi kuyruğa alındı." : "Depo modülü açıldı.";
+            await ReloadAsync();
+        });
+        if (_settings?.Enabled == true && !_disposed)
+        {
+            _ = WatchAsync(_live.Token);
+            _ = TickAsync(_live.Token);
+        }
+    }
+
+    // ---- an order ----------------------------------------------------------------------
+
+    private Task OpenKeyAsync(KeyboardEventArgs e, FulfillmentDto order) =>
+        e.Key is "Enter" or " " ? OpenAsync(order) : Task.CompletedTask;
+
+    private async Task OpenAsync(FulfillmentDto order)
+    {
+        if (_opened?.Id != order.Id)
+        {
+            _picked.Clear();
+            _plate = order.VehiclePlate;
+            _note = null;
+        }
+        _opened = order;
+        _detail = null;
+        _detailError = null;
+        _detailOpen = true;
+        await LoadDetailAsync(order.Id);
+    }
+
+    private async Task LoadDetailAsync(Guid id)
+    {
+        _detailBusy = true;
+        StateHasChanged();
+        bool Current() => _detailOpen && _opened?.Id == id;
+        try
+        {
+            var detail = await Api.FulfillmentDetailAsync(id);
+            if (!Current()) return;
+            _detail = detail;
+            _opened = detail.Fulfillment;
+            _detailError = null;
+        }
+        catch (PortalApiException failed)
+        {
+            if (Current()) _detailError = failed.Message;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            if (Current()) _detailError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
+        }
+        finally
+        {
+            if (Current()) _detailBusy = false;
+        }
+        StateHasChanged();
+    }
+
+    private void CloseDetail()
+    {
+        _detailOpen = false;
+        _detail = null;
+        _detailError = null;
+    }
+
+    private void TogglePicked(string key, ChangeEventArgs e)
+    {
+        if (e.Value is true) _picked.Add(key);
+        else _picked.Remove(key);
+    }
+
+    private Task QuickAsync(FulfillmentDto order, string action) => ActAsync(order, action);
+
+    private async Task ActAsync(FulfillmentDto order, string action, Guid? assignee = null)
+    {
+        Notice = null;
+        _detailError = null;
+        await _gate.WaitAsync();
+        try
+        {
+            await RunAsync(async () =>
+            {
+                try
+                {
+                    var plate = action == FulfillmentActions.Load && !string.IsNullOrWhiteSpace(_plate) ? _plate.Trim() : null;
+                    var note = action is FulfillmentActions.Cancel or FulfillmentActions.Undo && !string.IsNullOrWhiteSpace(_note) ? _note.Trim() : null;
+                    var changed = await Api.FulfillmentActionAsync(order.Id, action, note, plate, assignee);
+                    Replace(changed);
+                    Notice = $"{changed.OrderNo} — {ActionDone(action)}.";
+                    if (_detailOpen && _opened?.Id == changed.Id)
+                    {
+                        if (action == FulfillmentActions.Load || action == FulfillmentActions.Cancel) CloseDetail();
+                        else await LoadDetailAsync(changed.Id);
+                    }
+                }
+                catch (PortalApiException failed) when (failed.Code is "FULFILLMENT_STATE_CHANGED" or "FULFILLMENT_NOT_FOUND")
+                {
+                    await ReloadAsync();
+                    var now = (_open ?? []).Concat(_loaded).FirstOrDefault(o => o.Id == order.Id);
+                    Notice = now is null
+                        ? $"{order.OrderNo} artık kuyrukta değil."
+                        : $"{order.OrderNo}: {(now.AssigneeName ?? "başka biri")} siparişi az önce \"{StatusLabel(now.Status)}\" durumuna aldı.";
+                    if (_detailOpen && _opened?.Id == order.Id) await LoadDetailAsync(order.Id);
+                }
+                catch (PortalApiException failed) when (_detailOpen)
+                {
+                    _detailError = failed.Message;
+                }
+            });
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private void Replace(FulfillmentDto changed)
+    {
+        _open?.RemoveAll(o => o.Id == changed.Id);
+        _loaded.RemoveAll(o => o.Id == changed.Id);
+        if (changed.Status is "PENDING" or "PREPARING" or "PACKED") _open?.Add(changed);
+        else if (changed.Status == "LOADED") _loaded.Add(changed);
+    }
+
+    private async Task LoadStaffAsync()
+    {
+        if (_staff.Count > 0) return;
+        try
+        {
+            _staff = [.. (await Api.UsersAsync()).Users.Where(u => u.IsActive && u.EffectiveRoles().Any(r => r is "WAREHOUSE" or "ADMIN" or "MANAGER")).OrderBy(u => u.FullName)];
+        }
+        catch (PortalApiException)
+        {
+            // Only administrators read the user list; the others simply do not reassign.
+        }
+    }
+
+    private Task ReassignAsync(FulfillmentDto order, ChangeEventArgs e) =>
+        Guid.TryParse(e.Value?.ToString(), out var person) ? ActAsync(order, FulfillmentActions.Reassign, person) : Task.CompletedTask;
+
+    // ---- presentation ------------------------------------------------------------------
+
+    private static (string Action, string Label)? PrimaryAction(FulfillmentDto order) => order.Status switch
+    {
+        "PENDING" => (FulfillmentActions.Start, "Başla"),
+        "PREPARING" => (FulfillmentActions.Pack, "Paketlendi"),
+        "PACKED" => (FulfillmentActions.Load, "Araca yüklendi"),
+        _ => null,
+    };
+
+    /// <summary>Since the step began: queued, started or packed.</summary>
+    private DateTimeOffset? StepStart(FulfillmentDto order) => order.Status switch
+    {
+        "PENDING" => order.QueuedAtUtc,
+        "PREPARING" => order.StartedAtUtc ?? order.QueuedAtUtc,
+        "PACKED" => order.PackedAtUtc,
+        _ => null,
+    };
+
+    private string Elapsed(FulfillmentDto order)
+    {
+        if (order.Status == "LOADED") return order.LoadedAtUtc is { } at ? Fmt.Time(at)[^5..] : string.Empty;
+        if (StepStart(order) is not { } start) return string.Empty;
+        var minutes = Math.Max(0, (int)(Clock.GetUtcNow() - start).TotalMinutes);
+        return minutes < 60 ? $"{minutes} dk" : $"{minutes / 60} sa {minutes % 60} dk";
+    }
+
+    /// <summary>The company's thresholds: warn (yellow) and critical (red).</summary>
+    private string DelayTone(FulfillmentDto order)
+    {
+        if (_settings is null || StepStart(order) is not { } start) return "ok";
+        var minutes = (Clock.GetUtcNow() - start).TotalMinutes;
+        var (warn, critical) = order.Status switch
+        {
+            "PENDING" => (_settings.PendingWarnMinutes, _settings.PendingCriticalMinutes),
+            "PREPARING" => (_settings.PreparingWarnMinutes, _settings.PreparingCriticalMinutes),
+            "PACKED" => (_settings.PackedWarnMinutes, int.MaxValue),
+            _ => (int.MaxValue, int.MaxValue),
+        };
+        return minutes >= critical ? "critical" : minutes >= warn ? "warn" : "ok";
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "PENDING" => "Bekliyor",
+        "PREPARING" => "Hazırlanıyor",
+        "PACKED" => "Paketlendi",
+        "LOADED" => "Araca yüklendi",
+        "CANCELLED" => "İptal edildi",
+        _ => status,
+    };
+
+    private static string ActionDone(string action) => action switch
+    {
+        FulfillmentActions.Start => "hazırlamaya başlandı",
+        FulfillmentActions.Pack => "paketlendi",
+        FulfillmentActions.Load => "araca yüklendi",
+        FulfillmentActions.Undo => "son adım geri alındı",
+        FulfillmentActions.Cancel => "iptal edildi",
+        FulfillmentActions.Reassign => "yeniden atandı",
+        _ => action,
+    };
+
+    private static string EventLabel(string action) => action switch
+    {
+        "QUEUED" => "Sıraya girdi",
+        "START" => "Hazırlamaya başlandı",
+        "PACK" => "Paketlendi",
+        "LOAD" => "Araca yüklendi",
+        "UNDO" => "Geri alındı",
+        "CANCEL" => "İptal edildi",
+        "REASSIGN" => "Yeniden atandı",
+        "ERP_FAILED" => "ERP'ye yazılamadı",
+        _ => action,
+    };
+
+    private static string EventTone(string action) => action switch
+    {
+        "LOAD" or "PACK" => "success",
+        "CANCEL" or "ERP_FAILED" => "danger",
+        "START" or "QUEUED" => "primary",
+        _ => "warning",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        await _live.CancelAsync();
+    }
 }

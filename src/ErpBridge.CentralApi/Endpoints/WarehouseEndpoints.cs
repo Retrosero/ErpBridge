@@ -42,10 +42,11 @@ public static class WarehouseEndpoints
 
     /// <summary>
     /// <c>status</c>: comma-separated statuses, <c>open</c> (default: pending, preparing, packed) or <c>all</c>.
-    /// <c>changedSinceSeq</c>: every order changed after it, whatever its status.
+    /// <c>changedSinceSeq</c>: every order changed after it, whatever its status. <c>newest=true</c>: a status list
+    /// ordered by latest change instead of queue order.
     /// </summary>
     private static async Task<IResult> ListAsync(HttpContext http, [FromServices] CentralApiDbContext db,
-        string? status, long? changedSinceSeq, int? take, CancellationToken ct)
+        string? status, long? changedSinceSeq, int? take, bool? newest, CancellationToken ct)
     {
         var (tenant, _, error) = await AuthorizeAsync(http, db, RolePermissions.CanOperateWarehouse, ct);
         if (error is not null) return error;
@@ -56,7 +57,7 @@ public static class WarehouseEndpoints
                 ErrorCode = "INVALID_STATUS",
                 Message = "status must be open, all or a comma-separated list of: " + string.Join(", ", FulfillmentStatuses.All.Select(s => s.ToLowerInvariant())) + ".",
             });
-        return JsonResults.Ok(await FulfillmentService.ListAsync(db, tenant!.Id, statuses, changedSinceSeq, take ?? FulfillmentService.MaxListSize, ct));
+        return JsonResults.Ok(await FulfillmentService.ListAsync(db, tenant!.Id, statuses, changedSinceSeq, take ?? FulfillmentService.MaxListSize, ct, newest == true));
     }
 
     private static async Task<IResult> DetailAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)

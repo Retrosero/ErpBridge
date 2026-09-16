@@ -96,7 +96,9 @@ public sealed class FulfillmentDto
 {
     [JsonPropertyName("id")] public Guid Id { get; set; }
     [JsonPropertyName("orderNo")] public string OrderNo { get; set; } = string.Empty;
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
     [JsonPropertyName("customerName")] public string CustomerName { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
     [JsonPropertyName("salespersonName")] public string SalespersonName { get; set; } = string.Empty;
     [JsonPropertyName("lineCount")] public int LineCount { get; set; }
     [JsonPropertyName("itemQuantity")] public decimal ItemQuantity { get; set; }
@@ -105,11 +107,11 @@ public sealed class FulfillmentDto
     [JsonPropertyName("startedAtUtc")] public DateTimeOffset? StartedAtUtc { get; set; }
     [JsonPropertyName("packedAtUtc")] public DateTimeOffset? PackedAtUtc { get; set; }
     [JsonPropertyName("loadedAtUtc")] public DateTimeOffset? LoadedAtUtc { get; set; }
-    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
-    [JsonPropertyName("amount")] public decimal Amount { get; set; }
-    [JsonPropertyName("vehiclePlate")] public string? VehiclePlate { get; set; }
+    [JsonPropertyName("assigneeUserId")] public Guid? AssigneeUserId { get; set; }
     [JsonPropertyName("assigneeName")] public string? AssigneeName { get; set; }
+    [JsonPropertyName("vehiclePlate")] public string? VehiclePlate { get; set; }
     [JsonPropertyName("erpState")] public string ErpState { get; set; } = string.Empty;
+    [JsonPropertyName("updatedSeq")] public long UpdatedSeq { get; set; }
 }
 
 public sealed class WarehouseSettingsDto

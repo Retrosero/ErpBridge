@@ -483,11 +483,12 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
             user = new { username = "patron", fullName = "Firma Sahibi", role = "SALES", roles = new[] { "WAREHOUSE" }, canApprove = false },
             tenantName = "Ege Dağıtım",
         });
+        api.Answer("/api/v1/portal/warehouse/settings", new { enabled = false });
         var nav = Services.GetRequiredService<NavigationManager>();
 
         var cut = Render<Depo>();
 
-        cut.WaitForAssertion(() => cut.Find("#warehouse-coming"));
+        cut.WaitForAssertion(() => cut.Find("#warehouse-disabled"));
         nav.Uri.Should().NotEndWith("/onaylar", "the old accounting role no longer decides where the user goes");
         session.Roles.Should().Equal("WAREHOUSE");
         storage.Stored!.Roles.Should().Equal("WAREHOUSE");
@@ -512,11 +513,12 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     public void Roles_read_a_moment_ago_are_not_read_again()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "SALES", roles: ["WAREHOUSE"]));
+        api.Answer("/api/v1/portal/warehouse/settings", new { enabled = false });
 
         var cut = Render<Depo>();
 
-        cut.WaitForAssertion(() => cut.Find("#warehouse-coming"));
-        api.Requests.Should().BeEmpty();
+        cut.WaitForAssertion(() => cut.Find("#warehouse-disabled"));
+        api.Requests.Should().NotContain(r => r.PathAndQuery.Contains("/account/me"));
     }
 
     [Fact]
@@ -571,10 +573,12 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     [Fact]
     public void Warehouse_staff_see_their_page()
     {
-        PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "SALES", roles: ["WAREHOUSE"]));
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "SALES", roles: ["WAREHOUSE"]));
+        api.Answer("/api/v1/portal/warehouse/settings", new { enabled = false });
 
         var cut = Render<Depo>();
 
-        cut.WaitForAssertion(() => cut.Find("#warehouse-coming"));
+        cut.WaitForAssertion(() => cut.Find("#warehouse-disabled"));
+        cut.FindAll("#warehouse-enable").Should().BeEmpty("only managers turn the module on");
     }
 }
