@@ -83,6 +83,22 @@ public sealed class MobileUserRolesRelationalTests : IClassFixture<SqliteCentral
     }
 
     [Fact]
+    public async Task The_shipped_setting_lets_a_warehouse_only_user_in_from_the_first_phone_app_with_the_server_queue()
+    {
+        // This class keeps appsettings.json as shipped (panel goal P5d, Codex #66): 1.5.235 is the first
+        // Siparis Cepte build whose Depo screen reads the server queue and hides the sales screens.
+        var c = await CompanyAsync();
+        await CreateAsync(c, "depocu", roles: ["WAREHOUSE"]);
+
+        var old = await LoginResponseAsync(c.Code, "depocu", "DEV-DEPOCU-OLD", client: null, appVersion: "1.5.234");
+        old.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await old.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("ROLE_NOT_ALLOWED_ON_PHONE");
+
+        (await LoginResponseAsync(c.Code, "depocu", "DEV-DEPOCU", client: null, appVersion: "1.5.235"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task A_field_only_user_cannot_sign_in_to_the_portal()
     {
         var c = await CompanyAsync();
@@ -296,9 +312,9 @@ public sealed class MobileUserRolesRelationalTests : IClassFixture<SqliteCentral
         return (await response.ReadAsJsonAsync<IngestJobResponse>()).JobId;
     }
 
-    private Task<HttpResponseMessage> LoginResponseAsync(string code, string username, string deviceId, string? client, bool? rememberMe = null) =>
+    private Task<HttpResponseMessage> LoginResponseAsync(string code, string username, string deviceId, string? client, bool? rememberMe = null, string appVersion = "test") =>
         _factory.CreateClient().PostJsonAsync("/api/v1/android/account/login",
-            new { tenantCode = code, username, password = Password, deviceId, appVersion = "test", client, rememberMe });
+            new { tenantCode = code, username, password = Password, deviceId, appVersion, client, rememberMe });
 
     private async Task<string> LoginAsync(string code, string username, string deviceId, string? client = null)
     {

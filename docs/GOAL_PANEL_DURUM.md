@@ -1,6 +1,6 @@
 # Goal Durumu — Yönetim Paneli Geliştirmeleri
 
-Son güncelleme: 2026-09-16 (P4 bitti, sırada P5a)
+Son güncelleme: 2026-09-17 (goal bitti; insan kapıları "Seni Bekleyenler"de)
 Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -17,10 +17,10 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P2 — Stok | 3 | 3 | ✅ |
 | P3 — Cariler | 5 | 5 | ✅ |
 | P4 — Depo sunucu + panel | 4 | 4 | ✅ |
-| P5 — Telefon Depo ekranı | 5 | 0 | ⬜ |
-| P6 — Kapanış | 3 | 0 | ⬜ |
+| P5 — Telefon Depo ekranı | 5 | 4 | ✅ (P5e insan kapısı) |
+| P6 — Kapanış | 3 | 3 | ✅ (P6b gözle kontrol insan kapısı) |
 
-**Şu anki görev:** P5a
+**Şu anki görev:** — (tüm otonom görevler bitti)
 
 ---
 
@@ -45,14 +45,14 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P4b | Depocu telefona girişi + sunucu kısıtları | ✅ | [#63](https://github.com/Retrosero/ErpBridge/pull/63) | **Sapma (D1):** sürüm `versionCode` yerine telefonun zaten gönderdiği `versionName` (`AppVersion`), ayar `Mobile:MinWarehousePhoneVersion` (ör. `1.5.240`), `System.Version` ile sayısal karşılaştırma. Kapı girişte ve her istekte cihazın kayıtlı sürümüyle (Codex P0 bulgusu). Yalnız depo rollü kullanıcı `/ingest/*` → 403 `ROLE_NOT_ALLOWED`. Ayar boşken eski davranış (depocu telefona giremez) sürer — P5d'de ayarlanacak |
 | P4c | Panel depo ayarları | ✅ | [#65](https://github.com/Retrosero/ErpBridge/pull/65) | P4c+d tek PR. **Sapma:** modül anahtarı ve eşikler #61 (başka oturum, plan adım 7) ile `/ekranlar`'a geldi; oraya "son N günün siparişleri de kuyruğa alınsın" alanı eklendi (yalnız kapalıdan açığa geçerken görünür). `/depo` modül kapalıyken yöneticiye gün sayısıyla "Depo modülünü aç", depocuya bilgi |
 | P4d | Panel depo sayfası | ✅ | [#65](https://github.com/Retrosero/ErpBridge/pull/65) | Sekmeler, kart (süre + eşik rengi, ERP rozeti, plaka), tek dokunuş adımlar, detay (toplama listesi, geçmiş, plaka, geri al, iptal, yeniden ata), 409 açıklaması, canlı long-poll, 30 sn süre tiki. Sunucuya `newest=true` (bugün yüklenenler için). bUnit +5 (eski yer tutucu testleri güncellendi). **Yerelde PostgreSQL'de uçtan uca:** modülü aç + 3 gün geri doldur (2 onaylı satış), başka kullanıcının API'den "başla"sı ~3 sn'de sayfaya geldi, toplama → Paketlendi → plakayla Araca yüklendi, 400 px |
-| P5a | Telefon: API + Room önbelleği | ⬜ | | |
-| P5b | Telefon: Depo ekranı sunucu kuyruğuna | ⬜ | | |
-| P5c | Telefon: yalnız depo rolü arayüzü | ⬜ | | |
-| P5d | Sürüm + internal yükleme + EB sürüm ayarı | ⬜ | | |
-| P5e | Cihazda uçtan uca | ⬜ | | [K] |
-| P6a | KB ve sözleşme belgeleri | ⬜ | | |
-| P6b | Canlı kontrol | ⬜ | | [O→K] |
-| P6c | Plan tablosu + özet | ⬜ | | |
+| P5a | Telefon: API + Room önbelleği | ✅ | [siparis_cepte#67](https://github.com/Retrosero/siparis_cepte/pull/67) | P5a–c tek PR. `AccountApi` depo uçları (`warehouse/settings`, `fulfillments?status&take&newest`, `fulfillments/{id}`, adım POST'ları, `events` long-poll), `data/warehouse/WarehouseDtos`. Room 35→36 `warehouse_fulfillments` (`MIGRATION_35_36`, sunucu JSON'u + detay JSON'u; yazım `DataWriteCoordinator`). Test `WarehouseCacheMigrationTest` |
+| P5b | Telefon: Depo ekranı sunucu kuyruğuna | ✅ | [siparis_cepte#67](https://github.com/Retrosero/siparis_cepte/pull/67) | `WarehouseRepository` + yeniden yazılan `WarehouseScreen`: panelle aynı sekmeler/adımlar, adım başına ayrı okuma + bugün yüklenenler, detay (toplama listesi yalnız telefonda işaretlenir, geçmiş, plaka), 409 → liste yeniden okunur + "X az önce …" mesajı, long-poll ile canlı. Çevrimdışı son liste/detay, adımlar yalnız çevrimiçi. **Sahte yerel WMS akışı (`WarehouseViewModel`) silindi**; `wms_orders` tablolarına dokunulmadı (fatura projeksiyonu kullanıyor). Codex (#67): firma değişince durum sıfırlanır, oturumu bitiren hata ekrandan çıkış yaptırır, eski hata mesajı temizlenir |
+| P5c | Telefon: yalnız depo rolü arayüzü | ✅ | [siparis_cepte#67](https://github.com/Retrosero/siparis_cepte/pull/67) | Session `user.roles` saklanır; `WarehouseAccess.isWarehouseOnly` ise Splash doğrudan Depo'ya, `NavApp` başka rotaları Depo'ya döndürür, geri yerine Çıkış. `ROLE_NOT_ALLOWED_ON_PHONE` oturumu bitirir. Codex (#67): roller kullanıcı başına da saklanır, çevrimdışı girişte o kişinin son rolleri etkinleşir (`WarehouseRolesTest`). Android birim testleri 263 yeşil |
+| P5d | Sürüm + internal yükleme + EB sürüm ayarı | ✅ | [siparis_cepte#67](https://github.com/Retrosero/siparis_cepte/pull/67), bu PR | Sürüm **1.5.235** (versionCode 235) internal'a yüklendi. EB `appsettings.json` → `Mobile:MinWarehousePhoneVersion = 1.5.235` (Coolify'da `Mobile__MinWarehousePhoneVersion` ortam değişkeniyle ezilebilir). Yalnız depo rollü kullanıcı bu sürümden eski uygulamayla hâlâ giremez |
+| P5e | Cihazda uçtan uca | ⏭️ | | [K] insan kapısı → "Seni Bekleyenler" 1. Otonom karşılığı: sunucu ve panel tarafı yerelde PostgreSQL'de uçtan uca (P4d), telefon tarafı birim testleri (P5a–c) |
+| P6a | KB ve sözleşme belgeleri | ✅ | bu PR | Her görev kendi PR'ında KB'yi güncelledi; kontrol edildi: ErpBridge KB 00 (onay sayfalama, `stock/search`/`facets`, `customers/*` ekstre + belge anahtarı, `warehouse/backfill`, `newest`, K4/D1 sürüm kapısı, `PortalRecordMirror`), Sipariş Cepte KB kural 28 (Depo ekranı sunucuda). Yeni tablo/kolon yok → KB 03 değişmedi. `docs/api-contracts.md` yalnız ajan + Android veri okuma sözleşmesini tutuyor (panel ve depo uçları hiç orada değildi, KB 00'da) → değişiklik gerekmedi |
+| P6b | Canlı kontrol | ✅ / ⏭️ | bu PR | [O→K] 2026-09-17: `/health/schema` → `current`, 24 migration, bekleyen 0. Yeni uçlar canlıda (kimliksiz `portal/stock/search`, `customers/ledger`, `warehouse/backfill` → 401; olmayan uç 404). Gerçek bir firmada depo modülünü açmak ve ekranlara gözle bakmak müşteri verisini değiştirir/insan gözü ister → "Seni Bekleyenler" 2 |
+| P6c | Plan tablosu + özet | ✅ | bu PR | `PLAN_ROLLER_VE_DEPO.md` §8 Adım 6 ✅ (panel P4 + telefon P5), §7'den "telefon depo ekranını sunucuya bağlama" düştü; bu özet |
 
 ---
 
@@ -74,4 +74,19 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 ## Seni Bekleyenler
 
-_(İnsan kapıları; goal bitince burada toplanır)_
+1. **P5e — Cihazda uçtan uca (telefon):** Play internal'dan **1.5.235**'i bir telefona kur. Panelde yalnız
+   **Depo** rolü olan bir kullanıcı aç, telefonda onunla gir → yalnız Depo ekranı açılmalı (satış/cari menüsü yok,
+   geri tuşu yerine Çıkış). Başka bir telefondan satış gönder → `/muhasebe` veya `/onaylar`'da onayla → sipariş
+   depocu telefonunda "Bekleyenler"e düşmeli → telefonda **Başla** → panel `/depo`'da ~2 sn içinde "Hazırlanıyor"
+   → panelde **Paketlendi** → telefonda "Paketlenenler"e geçmeli → telefonda plakayla **Araca yüklendi**.
+   Eski sürümlü (≤ 1.5.234) telefonda aynı depocu girişinin "telefonda kullanılamaz" ile reddedildiğini gör.
+2. **P6b — Canlı panelde gözle kontrol:** gerçek firmada `/onaylar` (Onaylanan sekmesi, detay çekmecesi), `/stok`
+   (200 sınırı yok, sayfalama, filtreler), `/cariler` → cari → ekstre → fatura kalemleri, `/depo`. Depo modülü
+   kapalıysa `/ekranlar` veya `/depo`'dan açarken "son N gün" geri doldurmayı sen seç (müşteri verisine kuyruk ekler).
+3. **Mikro'da depo bazlı stok kararı** (bkz. Bulgular): ajan okuyucusu depo kırılımlı kaynağa geçsin mi? Ajan
+   müşteride kurulu olduğu için ayrı iş.
+4. **1.5.235'i production'a almak** senin kararın (bana yasak). Ondan önce 1. maddeyi yap. Sunucu ayarı
+   `Mobile:MinWarehousePhoneVersion` yalnız depo rollü kullanıcıları etkiler; satış/yönetici kullanıcılar eski
+   sürümle çalışmaya devam eder.
+5. siparis_cepte#67'nin Codex düzeltme commit'i (5 bulgu) Codex tarafından yeniden incelenmedi (Codex yalnız ilk
+   commit'i inceliyor); CI yeşil, 263 birim testi yeşil. İstersen PR'da `@codex review` yazarak yeniden inceletebilirsin.
