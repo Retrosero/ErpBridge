@@ -26,6 +26,11 @@ ilgili knowledge_base dosyasını da güncelle.
 - Commit mesajları Türkçe, ne + neden. Sonuna:
   `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
 - Push ve PR açma "onay gerektiren" işlerdir — kullanıcıya sormadan yapma.
+- **İstisna (2026-09-16):** `docs/GOAL_PANEL_GELISTIRMELERI.md` görevleri için dala push, PR açma,
+  CI yeşil ve inceleme yorumları çözülmüşken `main`'e squash-merge ve Sipariş Cepte sürümünü Play
+  **internal** kanalına yükleme **önceden onaylıdır** (kullanıcı `/goal` ile müdahalesiz çalıştırmak istedi).
+  Yalnız o belgenin görevlerini kapsar. Hiçbir koşulda: `--force` push, CI kırmızıyken merge, `main`'e
+  doğrudan push, Play production yayını.
 
 ## 3. Test / build
 
