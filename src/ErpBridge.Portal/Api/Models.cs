@@ -156,31 +156,6 @@ public sealed class PortalEventsDto
     [JsonPropertyName("changed")] public bool Changed { get; set; }
 }
 
-/// <summary>One request with the documents it would post, its history and stock warnings.</summary>
-public sealed class ApprovalDetailDto
-{
-    [JsonPropertyName("request")] public ApprovalDto Request { get; set; } = new();
-    [JsonPropertyName("documents")] public JsonElement Documents { get; set; }
-    [JsonPropertyName("events")] public ApprovalEventDto[] Events { get; set; } = [];
-    [JsonPropertyName("warnings")] public StockWarningDto[] Warnings { get; set; } = [];
-}
-
-public sealed class ApprovalEventDto
-{
-    [JsonPropertyName("action")] public string Action { get; set; } = string.Empty;
-    [JsonPropertyName("byName")] public string? ByName { get; set; }
-    [JsonPropertyName("atUtc")] public DateTimeOffset AtUtc { get; set; }
-    [JsonPropertyName("note")] public string? Note { get; set; }
-}
-
-public sealed class StockWarningDto
-{
-    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
-    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
-    [JsonPropertyName("requested")] public decimal Requested { get; set; }
-    [JsonPropertyName("onHand")] public decimal OnHand { get; set; }
-}
-
 public sealed class ApprovalSummaryDto
 {
     [JsonPropertyName("pendingCount")] public int PendingCount { get; set; }

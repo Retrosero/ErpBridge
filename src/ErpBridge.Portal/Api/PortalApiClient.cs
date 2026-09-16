@@ -88,9 +88,6 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
             ("beforeSeq", after?.RequestedSeq.ToString(CultureInfo.InvariantCulture)), ("beforeExternalId", after?.ExternalId),
             ("take", take.ToString(CultureInfo.InvariantCulture))), ct);
 
-    public Task<ApprovalDetailDto> ApprovalDetailAsync(Guid requestId, CancellationToken ct = default) =>
-        GetAsync<ApprovalDetailDto>($"api/v1/android/approvals/{requestId}", ct);
-
     public Task<ApprovalSummaryDto> ApprovalSummaryAsync(CancellationToken ct = default) =>
         GetAsync<ApprovalSummaryDto>("api/v1/android/approvals/summary", ct);
 
