@@ -38,11 +38,11 @@ public static class PortalMessages
         "PAIRING_NOT_FOUND" => "Bu kodla bekleyen ekran yok. Ekrandaki kodu kontrol edin; kod on dakikada bir yenilenir.",
         "PAIRING_EXPIRED" => "Kodun süresi doldu; ekran yeni kod gösterecek.",
         "DISPLAY_NOT_FOUND" => "Ekran bulunamadı.",
+        "FULFILLMENT_NOT_FOUND" => "Sipariş depo kuyruğunda bulunamadı.",
         "INVALID_DISPLAY_NAME" => "Ekran adı zorunludur (en çok 80 karakter).",
         "WAREHOUSE_MANAGER_REQUIRED" => "Bu işlem firma admini ve yöneticiler içindir.",
         "WAREHOUSE_ROLE_REQUIRED" => "Rolünüz depo işlerini kapsamıyor.",
         "FULFILLMENT_STATE_CHANGED" => "Sipariş az önce başka biri tarafından değiştirildi; liste yenilendi.",
-        "FULFILLMENT_NOT_FOUND" => "Sipariş bulunamadı.",
         "FULFILLMENT_CANNOT_UNDO" => "Bu adım geri alınamaz.",
         "UNDO_NOT_ALLOWED" => "Adımı yalnızca atan kişi 5 dakika içinde ya da bir yönetici geri alabilir.",
         "INVALID_ASSIGNEE" => "Seçilen kişi firmada aktif bir depo çalışanı değil.",
@@ -140,6 +140,41 @@ public static class Fmt
         if (waited < TimeSpan.FromDays(1)) return waited.Minutes == 0 ? $"{(int)waited.TotalHours} sa" : $"{(int)waited.TotalHours} sa {waited.Minutes} dk";
         return $"{(int)waited.TotalDays} gün";
     }
+
+    /// <summary>A measured duration: "—", "45 sn", "12 dk", "1 sa 5 dk", "2 gün 3 sa".</summary>
+    public static string Duration(long? seconds)
+    {
+        if (seconds is not { } value) return "—";
+        if (value < 60) return $"{Math.Max(value, 0)} sn";
+        var span = TimeSpan.FromSeconds(value);
+        if (span < TimeSpan.FromHours(1)) return $"{(int)span.TotalMinutes} dk";
+        if (span < TimeSpan.FromDays(1)) return span.Minutes == 0 ? $"{(int)span.TotalHours} sa" : $"{(int)span.TotalHours} sa {span.Minutes} dk";
+        return span.Hours == 0 ? $"{(int)span.TotalDays} gün" : $"{(int)span.TotalDays} gün {span.Hours} sa";
+    }
+
+    /// <summary>A warehouse step as the timeline names it.</summary>
+    public static string FulfillmentAction(string action) => action switch
+    {
+        "QUEUED" => "Kuyruğa girdi",
+        "START" => "Hazırlamaya başlandı",
+        "PACK" => "Paketlendi",
+        "LOAD" => "Araca yüklendi",
+        "UNDO" => "Geri alındı",
+        "CANCEL" => "İptal edildi",
+        "REASSIGN" => "Başkasına verildi",
+        "ERP_FAILED" => "ERP'ye yazılamadı",
+        _ => action,
+    };
+
+    public static string FulfillmentStatus(string status) => status switch
+    {
+        "PENDING" => "Bekliyor",
+        "PREPARING" => "Hazırlanıyor",
+        "PACKED" => "Paketlendi",
+        "LOADED" => "Yüklendi",
+        "CANCELLED" => "İptal",
+        _ => status,
+    };
 
     public static string PaymentMethod(string? method) => string.IsNullOrWhiteSpace(method) ? "—" : method;
 

@@ -38,6 +38,14 @@ public static class PortalReports
 
     // ---- dates ------------------------------------------------------------
 
+    /// <summary>The Istanbul day a server time falls on.</summary>
+    public static DateOnly IstanbulDay(DateTimeOffset instant) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, Istanbul).DateTime);
+
+    /// <summary>The UTC moment an Istanbul day starts; <c>day + 1</c> gives its (exclusive) end.</summary>
+    public static DateTimeOffset IstanbulDayStartUtc(DateOnly day) =>
+        new(TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), Istanbul), TimeSpan.Zero);
+
     /// <summary>
     /// The business day of a document: its <c>occurredAt</c> as the phone wrote it, in
     /// Istanbul time, or the day the server received it when that is missing or unreadable.

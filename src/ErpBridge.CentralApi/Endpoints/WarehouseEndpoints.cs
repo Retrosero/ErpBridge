@@ -2,8 +2,10 @@ using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
+using System.Globalization;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Notifications;
+using ErpBridge.CentralApi.Portal;
 using ErpBridge.CentralApi.Warehouse;
 using Microsoft.AspNetCore.Mvc;
 
@@ -31,6 +33,8 @@ public static class WarehouseEndpoints
         group.MapPost("/fulfillments/{id:guid}/{action}", ActAsync).WithName("WarehouseFulfillmentAction");
         group.MapGet("/warehouse/settings", GetSettingsAsync).WithName("WarehouseSettingsGet");
         group.MapPut("/warehouse/settings", PutSettingsAsync).WithName("WarehouseSettingsPut");
+        group.MapGet("/warehouse/dashboard", DashboardAsync).WithName("WarehouseDashboard");
+        group.MapGet("/warehouse/performance", PerformanceAsync).WithName("WarehousePerformance");
         group.MapPost("/warehouse/backfill", BackfillAsync).WithName("WarehouseBackfill");
         group.MapGet("/events", EventsAsync).WithName("PortalEvents");
         return routes;
@@ -88,6 +92,28 @@ public static class WarehouseEndpoints
         if (error is not null) return error;
         var result = await warehouse.UpdateSettingsAsync(db, tenant!.Id, user!, body, ct);
         return result.Succeeded ? JsonResults.Ok(result.Value) : JsonResults.Status(result.StatusCode, result.Error);
+    }
+
+    /// <summary>The warehouse today for the manager's home page (plan step 8). <c>date</c>: yyyy-MM-dd, default today in Istanbul.</summary>
+    private static async Task<IResult> DashboardAsync(HttpContext http, [FromServices] CentralApiDbContext db, string? date, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeReportsAsync(http, db, ct);
+        if (error is not null) return error;
+        if (!TryDay(date, out var day)) return BadDate("date");
+        return JsonResults.Ok(await FulfillmentReports.DashboardAsync(db, tenant!.Id, day, DateTimeOffset.UtcNow, ct));
+    }
+
+    /// <summary>Totals, packers and slowest orders of <c>from</c>..<c>to</c> (at most <see cref="PortalReports.MaxRangeDays"/> days).</summary>
+    private static async Task<IResult> PerformanceAsync(HttpContext http, [FromServices] CentralApiDbContext db, string? from, string? to, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeReportsAsync(http, db, ct);
+        if (error is not null) return error;
+        if (!TryDay(from, out var start)) return BadDate("from");
+        if (!TryDay(to, out var end)) return BadDate("to");
+        if (end < start) return JsonResults.Status(400, new ApiError { ErrorCode = "INVALID_RANGE", Message = "to is before from." });
+        if (end.DayNumber - start.DayNumber + 1 > PortalReports.MaxRangeDays)
+            return JsonResults.Status(400, new ApiError { ErrorCode = "RANGE_TOO_LONG", Message = $"At most {PortalReports.MaxRangeDays} days." });
+        return JsonResults.Ok(await FulfillmentReports.PerformanceAsync(db, tenant!.Id, start, end, ct));
     }
 
     /// <summary>Queues the sales orders of the last <c>days</c> (default 2, at most 30) that are not queued yet.</summary>
@@ -161,6 +187,35 @@ public static class WarehouseEndpoints
             }));
         return access;
     }
+
+    /// <summary>Warehouse reports are company reports: administrators and managers, like the other reports.</summary>
+    private static async Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeReportsAsync(
+        HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    {
+        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        if (access.Error is not null) return access;
+        if (!RolePermissions.CanViewReports(access.User!))
+            return (null, null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError
+            {
+                ErrorCode = "PORTAL_REQUIRES_MANAGER",
+                Message = "The manager portal is for company administrators and managers.",
+            }));
+        return access;
+    }
+
+    /// <summary>An absent day means today in Istanbul.</summary>
+    private static bool TryDay(string? value, out DateOnly day)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            day = PortalReports.IstanbulDay(DateTimeOffset.UtcNow);
+            return true;
+        }
+        return DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day);
+    }
+
+    private static IResult BadDate(string name) =>
+        JsonResults.Status(400, new ApiError { ErrorCode = "INVALID_DATE", Message = $"{name} must be yyyy-MM-dd." });
 
     private static IReadOnlyCollection<string>? ParseStatuses(string? value)
     {

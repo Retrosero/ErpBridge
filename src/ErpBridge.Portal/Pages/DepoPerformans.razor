@@ -1,0 +1,208 @@
+@page "/depo-performans"
+@inherits PortalPageBase
+
+<PageTitle>Depo performansı — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Depo performansı" Eyebrow="Genel bakış" Subtitle="@($"{Fmt.Day(_from)} – {Fmt.Day(_to)}")" Busy="Busy">
+        <Actions>
+            <MudDatePicker Label="Başlangıç" Date="@ToDateTime(_from)" DateChanged="ChangeFromAsync" Culture="Fmt.Turkish" DateFormat="dd.MM.yyyy"
+                           Editable="true" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="warehouse-from" Class="page-date" />
+            <MudDatePicker Label="Bitiş" Date="@ToDateTime(_to)" DateChanged="ChangeToAsync" Culture="Fmt.Turkish" DateFormat="dd.MM.yyyy"
+                           Editable="true" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="warehouse-to" Class="page-date" />
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_report is { } r)
+    {
+        <section class="stat-grid stat-grid--four" id="warehouse-totals">
+            <StatCard Id="stat-packed" Label="Paketlenen" Value="@r.Packed.ToString(Fmt.Turkish)"
+                      Caption="@($"{r.Queued} gelen · {r.Loaded} yüklenen · {r.Cancelled} iptal")" Icon="@Icons.Material.Rounded.Inventory" Tone="primary" />
+            <StatCard Id="stat-wait" Label="Ortalama bekleme" Value="@Fmt.Duration(r.AverageWaitSeconds)"
+                      Caption="@($"kuyruktan ilk başlamaya · ortanca {Fmt.Duration(r.MedianWaitSeconds)}")" Icon="@Icons.Material.Rounded.HourglassBottom" Tone="warning" />
+            <StatCard Id="stat-preparation" Label="Ortalama net hazırlama" Value="@Fmt.Duration(r.AverageNetPreparationSeconds)"
+                      Caption="@($"geri alınan iş sayılmaz · ortanca {Fmt.Duration(r.MedianNetPreparationSeconds)}")" Icon="@Icons.Material.Rounded.Speed" Tone="success" />
+            <StatCard Id="stat-loading" Label="Yüklemeye kadar" Value="@Fmt.Duration(r.AverageUntilLoadingSeconds)"
+                      Caption="paketten araca ortalama" Icon="@Icons.Material.Rounded.LocalShipping" Tone="info" />
+        </section>
+
+        @if (r.Queued + r.Packed + r.Loaded + r.Cancelled == 0 && r.LongestWaits.Count == 0)
+        {
+            <MudPaper Outlined="true" Class="panel mt-3">
+                <EmptyState Id="warehouse-empty" Icon="@Icons.Material.Rounded.Warehouse" Title="Bu aralıkta depo hareketi yok."
+                            Hint="Rakamlar siparişlerin depo adımlarından hesaplanır; depo modülü kapalıysa kuyruk oluşmaz." />
+            </MudPaper>
+        }
+        else
+        {
+            <MudGrid Spacing="3" Class="mt-1">
+                <MudItem xs="12">
+                    <MudPaper Outlined="true" Class="panel panel--table">
+                        <div class="panel-head">
+                            <div>
+                                <MudText Typo="Typo.h6">Personel</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">Sipariş, onu son paketleyen kişiye yazılır. Kalem başı: net hazırlama ÷ kalem sayısı.</MudText>
+                            </div>
+                        </div>
+                        @if (r.Staff.Count == 0)
+                        {
+                            <EmptyState Id="staff-empty" Icon="@Icons.Material.Rounded.Groups" Title="Bu aralıkta paketlenen sipariş yok." />
+                        }
+                        else
+                        {
+                            <div class="table-scroll">
+                                <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="staff-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Personel</th>
+                                            <th class="num">Paketlenen</th>
+                                            <th class="num">Kalem</th>
+                                            <th class="num">Ort. hazırlama</th>
+                                            <th class="num">Ortanca</th>
+                                            <th class="num">Kalem başı</th>
+                                            <th class="num">Toplam süre</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var person in r.Staff)
+                                        {
+                                            <tr data-staff="@person.Name">
+                                                <td>
+                                                    <div class="person">
+                                                        <MudAvatar Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@Fmt.Initials(person.Name)</MudAvatar>
+                                                        <div class="person-name">@person.Name</div>
+                                                    </div>
+                                                </td>
+                                                <td class="num">@person.PackedCount</td>
+                                                <td class="num">@person.LineCount<small> · @Fmt.Quantity(person.ItemQuantity) adet</small></td>
+                                                <td class="num">@Fmt.Duration(person.AverageNetPreparationSeconds)</td>
+                                                <td class="num">@Fmt.Duration(person.MedianNetPreparationSeconds)</td>
+                                                <td class="num">@Fmt.Duration(person.SecondsPerLine)</td>
+                                                <td class="num">@Fmt.Duration(person.TotalNetPreparationSeconds)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                            </div>
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" lg="6">
+                    <SlowOrders Id="longest-waits" Title="En uzun bekleyenler" Hint="Kuyruktan ilk başlamaya kadar geçen süre"
+                                Orders="r.LongestWaits" Seconds="o => o.Times.WaitSeconds" RangeQuery="@RangeQuery" />
+                </MudItem>
+                <MudItem xs="12" lg="6">
+                    <SlowOrders Id="longest-preparations" Title="En uzun hazırlananlar" Hint="Net hazırlama süresi"
+                                Orders="r.LongestPreparations" Seconds="o => o.Times.NetPreparationSeconds" RangeQuery="@RangeQuery" />
+                </MudItem>
+
+                @if (ActiveDays(r) is { Count: > 1 } days)
+                {
+                    <MudItem xs="12">
+                        <MudPaper Outlined="true" Class="panel panel--table">
+                            <div class="panel-head">
+                                <MudText Typo="Typo.h6">Günlere göre</MudText>
+                            </div>
+                            <div class="table-scroll">
+                                <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="days-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Gün</th>
+                                            <th class="num">Gelen</th>
+                                            <th class="num">Paketlenen</th>
+                                            <th class="num">Ort. bekleme</th>
+                                            <th class="num">Ort. hazırlama</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var day in days)
+                                        {
+                                            <tr data-day="@day.Date">
+                                                <td>@DayLabel(day.Date)</td>
+                                                <td class="num">@day.Queued</td>
+                                                <td class="num">@day.Packed</td>
+                                                <td class="num">@Fmt.Duration(day.AverageWaitSeconds)</td>
+                                                <td class="num">@Fmt.Duration(day.AverageNetPreparationSeconds)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Reports;
+
+    /// <summary>The server allows at most this many days in one request.</summary>
+    private const int MaxDays = 92;
+
+    [SupplyParameterFromQuery(Name = "from")] public string? FromQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "to")] public string? ToQuery { get; set; }
+
+    private DateOnly _from;
+    private DateOnly _to;
+    private WarehousePerformanceDto? _report;
+
+    protected override void OnInitialized()
+    {
+        _to = Fmt.TryIsoDay(ToQuery, out var to) ? to : Fmt.Today();
+        _from = Fmt.TryIsoDay(FromQuery, out var from) ? from : _to.AddDays(-6);
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (_to < _from)
+        {
+            _report = null;
+            Error = PortalMessages.For("INVALID_RANGE");
+            return;
+        }
+        if (_to.DayNumber - _from.DayNumber + 1 > MaxDays)
+        {
+            _report = null;
+            Error = PortalMessages.For("RANGE_TOO_LONG");
+            return;
+        }
+        _report = await Api.WarehousePerformanceAsync(_from, _to);
+    }
+
+    private async Task ChangeFromAsync(DateTime? value)
+    {
+        if (value is not { } date) return;
+        _from = DateOnly.FromDateTime(date);
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task ChangeToAsync(DateTime? value)
+    {
+        if (value is not { } date) return;
+        _to = DateOnly.FromDateTime(date);
+        await RunAsync(LoadAsync);
+    }
+
+    private string RangeQuery => $"?from={Fmt.IsoDay(_from)}&to={Fmt.IsoDay(_to)}";
+
+    private static List<WarehouseDayDto> ActiveDays(WarehousePerformanceDto report) =>
+        report.Days.Where(d => d.Queued + d.Packed > 0 || d.AverageWaitSeconds is not null).ToList();
+
+    private static string DayLabel(string iso) => Fmt.TryIsoDay(iso, out var day) ? day.ToString("d MMMM, ddd", Fmt.Turkish) : iso;
+
+    private static DateTime ToDateTime(DateOnly day) => day.ToDateTime(TimeOnly.MinValue);
+}
