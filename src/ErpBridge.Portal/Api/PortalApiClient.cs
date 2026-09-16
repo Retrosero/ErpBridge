@@ -62,6 +62,10 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
         return (await response.Content.ReadFromJsonAsync<LoginResponse>(Json, ct))!;
     }
 
+    /// <summary>The signed-in user as the server sees them now: roles an administrator changed take effect.</summary>
+    public Task<SessionDto> MeAsync(CancellationToken ct = default) =>
+        GetAsync<SessionDto>("api/v1/android/account/me", ct);
+
     public Task<SummaryResponse> SummaryAsync(DateOnly day, CancellationToken ct = default) =>
         GetAsync<SummaryResponse>($"api/v1/portal/summary?date={Day(day)}", ct);
 

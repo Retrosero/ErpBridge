@@ -64,7 +64,7 @@ else
                                                 {
                                                     <span class="badge badge--@RoleTone(role)" data-role="@role">@Fmt.Role(role)</span>
                                                 }
-                                                @if (roles.Contains(PortalRoles.Manager) && !roles.Contains(PortalRoles.Admin) && user.CanApprove)
+                                                @if (ApprovalFlagIsKnown(roles) && roles.Contains(PortalRoles.Manager) && user.CanApprove)
                                                 {
                                                     <span class="badge badge--muted">onaylayabilir</span>
                                                 }
@@ -108,7 +108,11 @@ else
                                 @if (_editRoles.Contains(PortalRoles.Manager) && !_editRoles.Contains(PortalRoles.Admin))
                                 {
                                     <div id="edit-can-approve">
-                                        <MudSwitch T="bool" @bind-Value="_editCanApprove" Color="Color.Primary" Label="Onay verebilsin" />
+                                        <MudSwitch T="bool" Value="_editCanApprove" ValueChanged="ChangeEditCanApprove" Color="Color.Primary" Label="Onay verebilsin" />
+                                        @if (!_editCanApproveKnown && !_editCanApproveTouched)
+                                        {
+                                            <div class="field-hint" id="edit-can-approve-kept">Muhasebe rolü finansal onayları zaten verir. Bu anahtar yöneticinin tüm türleri onaylamasıdır; dokunmazsanız mevcut ayar korunur.</div>
+                                        }
                                     </div>
                                 }
                                 <div class="form-actions">
@@ -170,6 +174,10 @@ else
     private IReadOnlyCollection<string> _editRoles = [];
     private bool _editCanApprove;
 
+    /// <summary>Whether the switch starts from the manager's real flag rather than the effective right.</summary>
+    private bool _editCanApproveKnown;
+    private bool _editCanApproveTouched;
+
     private string? Notice { get; set; }
 
     protected override async Task LoadAsync() => _list = await Api.UsersAsync();
@@ -193,8 +201,23 @@ else
         Error = null;
         _editing = user;
         _editRoles = user.EffectiveRoles().ToArray();
-        _editCanApprove = user.CanApprove;
+        _editCanApproveKnown = ApprovalFlagIsKnown(_editRoles);
+        _editCanApprove = _editCanApproveKnown && _editRoles.Contains(PortalRoles.Manager) && user.CanApprove;
+        _editCanApproveTouched = false;
     }
+
+    private void ChangeEditCanApprove(bool value)
+    {
+        _editCanApprove = value;
+        _editCanApproveTouched = true;
+    }
+
+    /// <summary>
+    /// The list's <c>canApprove</c> is the effective right. Only for a user who is neither administrator
+    /// nor accounting does it equal the manager's own flag.
+    /// </summary>
+    private static bool ApprovalFlagIsKnown(IEnumerable<string> roles) =>
+        !roles.Contains(PortalRoles.Admin) && !roles.Contains(PortalRoles.Accounting);
 
     private void StopEditing() => _editing = null;
 
@@ -213,7 +236,8 @@ else
             var updated = await Api.SetUserRolesAsync(user.Id, new UpdateUserRolesRequest
             {
                 Roles = [.. _editRoles],
-                CanApprove = IsApprovingManager(_editRoles, _editCanApprove),
+                // Never derived from the effective right: saving unchanged roles must not grant anything.
+                CanApprove = _editCanApproveTouched ? IsApprovingManager(_editRoles, _editCanApprove) : null,
             });
             _editing = null;
             await LoadAsync();

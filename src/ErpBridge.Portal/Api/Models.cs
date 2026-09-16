@@ -89,8 +89,12 @@ public sealed class UpdateUserRolesRequest
 {
     [JsonPropertyName("roles")] public List<string> Roles { get; set; } = [];
 
-    /// <summary>Meaningful for a manager only; a user who stops being a manager loses it.</summary>
-    [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
+    /// <summary>
+    /// The manager's own right to decide every kind; <c>null</c> keeps it as stored. The user list
+    /// carries only the effective right (accounting approves money documents without this flag), so
+    /// the editor sends a value only when the administrator changed the switch.
+    /// </summary>
+    [JsonPropertyName("canApprove")] public bool? CanApprove { get; set; }
 }
 
 public sealed class ApprovalDto

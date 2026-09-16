@@ -235,8 +235,125 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
         cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Trim().Should().Be("Ali Yılmaz için roller kaydedildi: Depo · Saha."));
         var patch = api.Requests.Single(r => r.Method == HttpMethod.Patch);
         patch.PathAndQuery.Should().EndWith(aliId.ToString());
-        patch.Body.Should().Contain("\"roles\":[\"WAREHOUSE\",\"SALES\"]").And.Contain("\"canApprove\":false");
+        patch.Body.Should().Contain("\"roles\":[\"WAREHOUSE\",\"SALES\"]").And.Contain("\"canApprove\":null");
         cut.FindAll("#user-roles-edit").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Saving_the_roles_of_an_accounting_manager_never_grants_the_managers_approval_right()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        var elifId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        api.Answer("/api/v1/android/account/users", new
+        {
+            seats = new { max = 5, used = 2, status = "active" },
+            // canApprove is the effective right: accounting approves money documents without the manager flag.
+            users = new object[] { new { id = elifId, username = "elif", fullName = "Elif Şef", role = "MANAGER", roles = new[] { "MANAGER", "ACCOUNTING" }, canApprove = true, isActive = true } },
+        });
+        api.Answer($"/api/v1/android/account/users/{elifId}", new { id = elifId, username = "elif", fullName = "Elif Şef", role = "MANAGER", roles = new[] { "MANAGER", "ACCOUNTING" }, canApprove = true, isActive = true });
+
+        var cut = Render<Kullanicilar>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-user=elif] .roles-btn"));
+        cut.Find("tr[data-user=elif]").TextContent.Should().NotContain("onaylayabilir", "the list cannot tell whether the manager flag is set");
+
+        cut.Find("tr[data-user=elif] .roles-btn").Click();
+        ((AngleSharp.Html.Dom.IHtmlInputElement)cut.Find("#edit-can-approve input")).IsChecked.Should().BeFalse();
+        cut.Find("#edit-can-approve-kept");
+        cut.Find("#user-roles-edit form").Submit();
+
+        cut.WaitForAssertion(() => api.Requests.Should().Contain(r => r.Method == HttpMethod.Patch));
+        api.Requests.Single(r => r.Method == HttpMethod.Patch).Body.Should().Contain("\"canApprove\":null");
+    }
+
+    [Fact]
+    public void Turning_the_approval_switch_on_sends_it()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        var elifId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        api.Answer("/api/v1/android/account/users", new
+        {
+            seats = new { max = 5, used = 2, status = "active" },
+            users = new object[] { new { id = elifId, username = "elif", fullName = "Elif Şef", role = "MANAGER", roles = new[] { "MANAGER", "ACCOUNTING" }, canApprove = true, isActive = true } },
+        });
+        api.Answer($"/api/v1/android/account/users/{elifId}", new { id = elifId, username = "elif", fullName = "Elif Şef", role = "MANAGER", roles = new[] { "MANAGER", "ACCOUNTING" }, canApprove = true, isActive = true });
+
+        var cut = Render<Kullanicilar>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-user=elif] .roles-btn"));
+        cut.Find("tr[data-user=elif] .roles-btn").Click();
+        cut.Find("#edit-can-approve input").Change(true);
+        cut.FindAll("#edit-can-approve-kept").Should().BeEmpty();
+        cut.Find("#user-roles-edit form").Submit();
+
+        cut.WaitForAssertion(() => api.Requests.Should().Contain(r => r.Method == HttpMethod.Patch));
+        api.Requests.Single(r => r.Method == HttpMethod.Patch).Body.Should().Contain("\"canApprove\":true");
+    }
+
+    [Fact]
+    public void A_manager_only_user_starts_from_their_own_approval_flag()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        var sefId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        api.Answer("/api/v1/android/account/users", new
+        {
+            seats = new { max = 5, used = 2, status = "active" },
+            users = new object[] { new { id = sefId, username = "sef", fullName = "Satış Şefi", role = "MANAGER", roles = new[] { "MANAGER" }, canApprove = true, isActive = true } },
+        });
+
+        var cut = Render<Kullanicilar>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-user=sef] .roles-btn"));
+        cut.Find("tr[data-user=sef]").TextContent.Should().Contain("onaylayabilir");
+        cut.Find("tr[data-user=sef] .roles-btn").Click();
+
+        ((AngleSharp.Html.Dom.IHtmlInputElement)cut.Find("#edit-can-approve input")).IsChecked.Should().BeTrue();
+        cut.FindAll("#edit-can-approve-kept").Should().BeEmpty();
+    }
+
+    // ---- roles changed while signed in ------------------------------------------------------
+
+    [Fact]
+    public void A_restored_session_reads_the_roles_again_and_follows_an_administrators_change()
+    {
+        var saved = PortalTestSetup.State(role: "SALES", roles: ["ACCOUNTING"]) with { RememberMe = true };
+        var (api, session, storage) = PortalTestSetup.Register(this, inTab: saved);
+        api.Answer("/api/v1/android/account/me", new
+        {
+            user = new { username = "patron", fullName = "Firma Sahibi", role = "SALES", roles = new[] { "WAREHOUSE" }, canApprove = false },
+            tenantName = "Ege Dağıtım",
+        });
+        var nav = Services.GetRequiredService<NavigationManager>();
+
+        var cut = Render<Depo>();
+
+        cut.WaitForAssertion(() => cut.Find("#warehouse-coming"));
+        nav.Uri.Should().NotEndWith("/onaylar", "the old accounting role no longer decides where the user goes");
+        session.Roles.Should().Equal("WAREHOUSE");
+        storage.Stored!.Roles.Should().Equal("WAREHOUSE");
+        storage.Stored.RememberMe.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_user_left_without_a_portal_role_is_signed_out_with_the_reason()
+    {
+        var (api, session, storage) = PortalTestSetup.Register(this, inTab: PortalTestSetup.State(role: "SALES", roles: ["WAREHOUSE"]));
+        api.Fail("/api/v1/android/account/me", HttpStatusCode.Forbidden, "PORTAL_REQUIRES_MANAGER");
+        var nav = Services.GetRequiredService<NavigationManager>();
+
+        Render<Depo>();
+
+        nav.Uri.Should().EndWith("/login?reason=PORTAL_SALES_ONLY");
+        session.IsSignedIn.Should().BeFalse();
+        storage.Stored.Should().BeNull();
+    }
+
+    [Fact]
+    public void Roles_read_a_moment_ago_are_not_read_again()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "SALES", roles: ["WAREHOUSE"]));
+
+        var cut = Render<Depo>();
+
+        cut.WaitForAssertion(() => cut.Find("#warehouse-coming"));
+        api.Requests.Should().BeEmpty();
     }
 
     [Fact]

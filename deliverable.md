@@ -18,12 +18,14 @@
 - "Beni hatırla" işaretli: tarayıcı kapatılıp açılsa da 30 gün oturum sürer. Boş: sekme kapanınca biter, açık sekmede de en çok 12 saat.
 - Menü ve sayfalar rol birleşimine göre: muhasebe Cariler/Stok/Onaylar, depo yalnız Depo, yönetici raporlar + onay + depo, admin hepsi. Yetkisiz adres açılış sayfasına yönlenir (muhasebe `/onaylar`, depo `/depo`).
 - Kullanıcılar sayfasında birden çok rol verilir ve düzenlenir; admin kendi rollerini değiştiremez.
+- Açık oturum rolleri bir dakikadan eskiyse `/account/me`'den tazelenir; panel rolü kalmayan kullanıcı çıkarılır.
+- Codex incelemesi (PR #51) üç bulgu: rol düzenleyici etkin onay hakkını yönetici bayrağı sanıyordu (artık dokunulmadıkça `canApprove: null`); süresi dolmuş sekme oturumu hatırlanan oturumu siliyordu; açık oturum eski rollerle kalıyordu. Üçü düzeltildi ve testlendi.
 - Migration yok.
 
 ## Testler / derleme
 
 - `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata.
-- CentralApi 380, Portal 72 test yeşil; diğer projeler değişmeden yeşil.
+- CentralApi 380, Portal 79 test yeşil; diğer projeler değişmeden yeşil.
 - Yerelde (Test ortamı + bellek içi DB) tarayıcıda: muhasebe ve depo girişi doğru sayfaya ve menüye; yetkisiz URL yönlendirmesi; "Beni hatırla" ile yeni sekmede ve panel yeniden başlatıldıktan sonra oturum sürüyor; rol düzenleme sunucuda kaydediliyor.
 
 ---

@@ -30,6 +30,17 @@ public sealed class PortalSession
     /// <summary>Whether the browser keeps the session after the tab closes ("Beni hatırla").</summary>
     public bool RememberMe { get; private set; }
 
+    /// <summary>
+    /// When the roles were last read from the server. A session restored from the browser may be
+    /// days old, and an administrator may have changed the roles since; see <see cref="NeedsRefresh"/>.
+    /// </summary>
+    public DateTimeOffset RolesReadAtUtc { get; private set; }
+
+    /// <summary>How long the roles a page trusts may be old before they are read again.</summary>
+    public static readonly TimeSpan RoleRefreshInterval = TimeSpan.FromMinutes(1);
+
+    public bool NeedsRefresh => _time.GetUtcNow() - RolesReadAtUtc >= RoleRefreshInterval;
+
     public bool IsSignedIn => Token is not null && ExpiresAtUtc > _time.GetUtcNow();
     public bool IsAdmin => Roles.Contains(PortalRoles.Admin);
 
@@ -41,7 +52,8 @@ public sealed class PortalSession
     /// <summary>Raised on sign-in and sign-out so the layout redraws.</summary>
     public event Action? Changed;
 
-    public void SignIn(PortalSessionState state)
+    /// <param name="fresh">True right after the server answered the login; false for a session restored from the browser.</param>
+    public void SignIn(PortalSessionState state, bool fresh = false)
     {
         ArgumentNullException.ThrowIfNull(state);
         Token = state.Token;
@@ -54,6 +66,18 @@ public sealed class PortalSession
         Roles = state.EffectiveRoles();
         CanApprove = state.CanApprove;
         RememberMe = state.RememberMe;
+        RolesReadAtUtc = fresh ? _time.GetUtcNow() : DateTimeOffset.MinValue;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Takes the user's current name, roles and approval right from the server.</summary>
+    public void Refresh(string fullName, IEnumerable<string> roles, bool canApprove)
+    {
+        var current = roles.ToHashSet(StringComparer.Ordinal);
+        FullName = fullName;
+        Roles = PortalRoles.All.Where(current.Contains).ToArray();
+        CanApprove = canApprove;
+        RolesReadAtUtc = _time.GetUtcNow();
         Changed?.Invoke();
     }
 
@@ -65,6 +89,7 @@ public sealed class PortalSession
         Roles = [];
         CanApprove = false;
         RememberMe = false;
+        RolesReadAtUtc = default;
         Changed?.Invoke();
     }
 

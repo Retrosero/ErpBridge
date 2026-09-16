@@ -131,7 +131,7 @@
             var state = new PortalSessionState(
                 login.Token, login.ExpiresAtUtc, login.Session.TenantName, login.Session.TenantCode ?? _tenantCode!.Trim().ToUpperInvariant(),
                 login.Session.DataSource, user.Username, user.FullName, user.Role, user.CanApprove, roles, _rememberMe);
-            Session.SignIn(state);
+            Session.SignIn(state, fresh: true);
             await Persistence.SaveAsync(state);
             Nav.NavigateTo(Session.HomePage);
         }

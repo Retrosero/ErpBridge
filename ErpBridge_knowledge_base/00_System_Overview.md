@@ -511,7 +511,8 @@ registration ayrı bir composition projesine taşınır.
      şifreleyip ya sekmenin `sessionStorage`'ına (kutu boş: sekme kapanınca biter, token 12 saat) ya da
      tarayıcının `localStorage`'ına (kutu işaretli: token 30 gün) yazar. Bir depoya yazmak diğerini
      siler — sonradan "hatırlama" seçilmeden yapılan giriş tarayıcıda 30 günlük token bırakmaz. Okuma
-     önce sekmeye, sonra tarayıcıya bakar; çıkış ikisini de temizler. Token sunucu diskine/DB'ye
+     önce sekmeye, sonra tarayıcıya bakar; **süresi dolmuş kayıt döndürülmez, silinir** — yoksa başka
+     sekmede "Beni hatırla" ile açılmış geçerli oturumu sayfa temizlerdi (Codex, PR #51). Çıkış ikisini de temizler. Token sunucu diskine/DB'ye
      yazılmaz. Okunamayan değer (anahtar değişti) oturumsuz sayılır. Saklanan durum `Roles[]` ve
      `RememberMe` taşır; bu alanlar olmadan kaydedilmiş eski durum tek `Role`'e düşer.
    - **Giriş:** `POST /api/v1/android/account/login`, `deviceId = "web-portal:" + kullanıcı adı`
@@ -528,6 +529,11 @@ registration ayrı bir composition projesine taşınır.
      açmadığı adres (yer imi, elle yazılan URL) API'ye hiç sormadan kullanıcının **açılış sayfasına**
      gider: raporları görebilen `/`, muhasebe `/onaylar`, depo `/depo`. Girişten sonra da oraya gidilir.
      `PortalRoles` ile `RolePermissions` birlikte değişir; panel yalnız kolaylıktır, kapı sunucudadır.
+   - **Roller tazelenir (Faz 46):** tarayıcıdan geri yüklenen oturumun rolleri günler öncesine ait olabilir.
+     `PortalPageBase`, roller bir dakikadan eskiyse (`PortalSession.RoleRefreshInterval`; girişte taze sayılır)
+     sayfa kapısından **önce** `GET /api/v1/android/account/me` okur, oturumu ve saklanan durumu günceller;
+     menü `Changed` ile yeniden çizilir. `/me` 403 `PORTAL_REQUIRES_MANAGER` dönerse (panel rolü kalmadı)
+     oturum kapanır, `login?reason=PORTAL_SALES_ONLY`. Ağ/diğer hata eldeki rollerle devam eder.
    - **Oturumu bitiren kodlar** (`INVALID_TOKEN`, `USER_INACTIVE`, `DEVICE_REVOKED`,
      `SUBSCRIPTION_*`, `TENANT_INACTIVE`, `SESSION_REVOKED`, her 401) sekmeyi temizleyip
      `login?reason=<kod>`'a döner; diğer retler oturumu korur ve Türkçe mesaj gösterir
@@ -567,7 +573,12 @@ registration ayrı bir composition projesine taşınır.
      liste yeniden okunur), Depo (Faz 46'da yer tutucu; sipariş kuyruğu plan adım 6),
      Kullanıcılar (yalnız `ADMIN`; `Shared/RolePicker` ile çoklu rol çipleri ve rol açıklamaları,
      hem eklemede hem "Roller" ile düzenlemede `roles[]` gönderir — tek `role` göndermez; "Onay
-     verebilsin" yalnız yönetici rolünde görünür; kişi kendini devre dışı bırakamaz ve kendi rollerini
+     verebilsin" yalnız yönetici rolünde görünür. **Listedeki `canApprove` etkin haktır** (admin ve
+     muhasebe için bayraktan bağımsız true); yöneticinin kendi bayrağı değildir. Bu yüzden düzenleyici
+     anahtara dokunulmadıkça `canApprove: null` (sunucuda değişmez) gönderir; admin/muhasebe rolü olan
+     kişide anahtar boş başlar ve "dokunmazsanız mevcut ayar korunur" yazar, "onaylayabilir" rozeti de
+     yalnız bayrağın bilinebildiği kişide görünür (Codex, PR #51: eskisi rolleri değiştirmeden kaydetmekle
+     muhasebeci yöneticiye tüm türleri onaylama yetkisi veriyordu); kişi kendini devre dışı bırakamaz ve kendi rollerini
      değiştiremez — kendini kilitlememesi için; son admin kuralı sunucudan `LAST_ADMIN` olarak gelir;
      satın alma metni yok).
    - Testler: `tests/ErpBridge.Portal.Tests` (bUnit) — oturum yalıtımı, rol kapısı, oturum

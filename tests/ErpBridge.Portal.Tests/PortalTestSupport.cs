@@ -79,7 +79,8 @@ public static class PortalTestSetup
         var api = new FakeCentralApi();
         var clock = new TestClock(Now);
         var session = new PortalSession(clock);
-        if (signedIn is not null) session.SignIn(signedIn);
+        // A test's signed-in session has just come from the server; a tab session is restored.
+        if (signedIn is not null) session.SignIn(signedIn, fresh: true);
         var storage = new MemorySessionPersistence { Stored = inTab };
         context.Services.AddSingleton<TimeProvider>(clock);
         context.Services.AddSingleton(session);

@@ -111,6 +111,24 @@ public sealed class PortalRolesTests
     }
 
     [Fact]
+    public async Task An_expired_tab_session_gives_way_to_a_remembered_one_from_another_tab()
+    {
+        var (persistence, js, clock) = PersistenceWithClock();
+        // This tab signed in for a workday; later another tab signed in with "Beni hatırla".
+        await persistence.SaveAsync(PortalTestSetup.State(token: "tok-day") with { ExpiresAtUtc = PortalTestSetup.Now.AddHours(12) });
+        var remembered = PortalTestSetup.State(token: "tok-month") with { RememberMe = true };
+        // The other tab cannot touch this tab's sessionStorage; it writes only the shared localStorage.
+        await new ProtectedLocalStorage(js, js.Keys).SetAsync("portal-session", remembered);
+        clock.Now = PortalTestSetup.Now.AddHours(13);
+
+        var loaded = await persistence.LoadAsync();
+
+        loaded!.Token.Should().Be("tok-month");
+        js.Items("sessionStorage").Should().BeEmpty("the stale tab session is removed, not returned");
+        js.Items("localStorage").Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task A_value_the_keys_cannot_read_is_a_signed_out_browser()
     {
         var (persistence, js) = Persistence();
@@ -121,15 +139,24 @@ public sealed class PortalRolesTests
 
     private static (ProtectedBrowserPersistence Persistence, BrowserStorageJs Js) Persistence()
     {
+        var (persistence, js, _) = PersistenceWithClock();
+        return (persistence, js);
+    }
+
+    private static (ProtectedBrowserPersistence Persistence, BrowserStorageJs Js, TestClock Clock) PersistenceWithClock()
+    {
         var js = new BrowserStorageJs();
-        var keys = new EphemeralDataProtectionProvider();
-        return (new ProtectedBrowserPersistence(new ProtectedSessionStorage(js, keys), new ProtectedLocalStorage(js, keys)), js);
+        var clock = new TestClock(PortalTestSetup.Now);
+        return (new ProtectedBrowserPersistence(new ProtectedSessionStorage(js, js.Keys), new ProtectedLocalStorage(js, js.Keys), clock), js, clock);
     }
 
     /// <summary><c>sessionStorage</c> and <c>localStorage</c> as the protected storage calls them.</summary>
     private sealed class BrowserStorageJs : IJSRuntime
     {
         private readonly Dictionary<string, Dictionary<string, string>> _stores = [];
+
+        /// <summary>The keys the portal's container holds; shared by every store of one test.</summary>
+        public IDataProtectionProvider Keys { get; } = new EphemeralDataProtectionProvider();
 
         public IReadOnlyDictionary<string, string> Items(string store) => Store(store);
 

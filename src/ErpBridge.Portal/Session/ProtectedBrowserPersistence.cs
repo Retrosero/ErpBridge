@@ -11,7 +11,7 @@ namespace ErpBridge.Portal.Session;
 /// clears the other, so a later sign-in without "remember me" does not leave a month-long token behind.
 /// A key change only means signing in again.
 /// </summary>
-public sealed class ProtectedBrowserPersistence(ProtectedSessionStorage tab, ProtectedLocalStorage browser) : ISessionPersistence
+public sealed class ProtectedBrowserPersistence(ProtectedSessionStorage tab, ProtectedLocalStorage browser, TimeProvider time) : ISessionPersistence
 {
     private const string Key = "portal-session";
 
@@ -24,8 +24,20 @@ public sealed class ProtectedBrowserPersistence(ProtectedSessionStorage tab, Pro
         await DeleteAsync(drop);
     }
 
-    /// <summary>The tab's own session first: it is the one this tab signed in with.</summary>
-    public async Task<PortalSessionState?> LoadAsync() => await ReadAsync(tab) ?? await ReadAsync(browser);
+    /// <summary>
+    /// The tab's own session first: it is the one this tab signed in with. An expired one is removed
+    /// rather than returned — another tab may have signed in with "Beni hatırla" since, and returning
+    /// the stale session would make the page clear that valid one too.
+    /// </summary>
+    public async Task<PortalSessionState?> LoadAsync() => await ReadValidAsync(tab) ?? await ReadValidAsync(browser);
+
+    private async Task<PortalSessionState?> ReadValidAsync(ProtectedBrowserStorage store)
+    {
+        var state = await ReadAsync(store);
+        if (state is null || state.ExpiresAtUtc > time.GetUtcNow()) return state;
+        await DeleteAsync(store);
+        return null;
+    }
 
     public async Task ClearAsync()
     {
