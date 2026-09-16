@@ -438,6 +438,36 @@ registration ayrı bir composition projesine taşınır.
      `mobile_records`'a yazan her yeni işleyicide gözden geçirilmelidir.
    - Testler: `TeamDocumentsRelationalTests` (her iki veri kaynağında).
 
+18. **Yönetici paneli uçları salt okunurdur: `Endpoints/PortalEndpoints` + `Portal/PortalReports` (Faz 41, 2026-09-16).**
+   `/api/v1/portal/{summary,activity,visits,balances,stock}` — firmanın yöneticisinin web
+   panelinden okuduğu rakamlar. Telefonla aynı hesapla giriş yapılır
+   (`/api/v1/android/account/login`); grup `MobileUserPolicy` ile korunur ve her çağrı
+   `MobileAccountEndpoints.AuthorizeAsync` ile kullanıcı/cihaz/abonelik doğrular.
+   - **Firma token'dan gelir**, istekten değil. Yalnızca `ADMIN` ve `MANAGER`; `SALES`
+     403 `PORTAL_REQUIRES_MANAGER`. Onaylar ve kullanıcılar için yeni uç yoktur:
+     panel mevcut `/api/v1/android/approvals` ve `/api/v1/android/account/users` uçlarını
+     kullanır (kuralları orada zaten var).
+   - **Kaynak telefonla aynıdır:** para belgeleri `jobs`'tan, cari/stok/rota
+     `mobile_records`'tan. Panel ile telefon farklı rakam gösteremez. Cari başlığı
+     `title1 + title2`, bakiye `balance`, stok miktarı `inventory` satırlarının toplamı.
+   - **Hangi belge sayılır:** ERP'siz firmada yalnızca `Succeeded`; ERP'li firmada
+     `Pending/Processing/Succeeded` (ajana yolda olan da satıştır), `Failed/DeadLetter`
+     asla. İade türü ERP'sizde `sales_return`, ERP'lide kasa defterinin `return`'ü.
+     `approvalKind = purchase` taşıyan tediye sayılmaz (alışa aittir).
+   - **İş günü:** yükteki `occurredAt` — telefon iki biçim yazar: ISO (satış) ve
+     `dd.MM.yyyy HH:mm` (kasa defteri); saat dilimi olmayan değer İstanbul duvar saati
+     sayılır, `Z`'li anlık değer İstanbul'a çevrilir. Okunamazsa sunucunun aldığı an
+     (İstanbul günü). **Çevrimdışı tolerans 7 gün:** o günden bir haftadan geç ulaşan
+     belge o güne sayılmaz (sorgu penceresi). Test: `PortalReportDatesTests`.
+   - **SQLite notu:** EF Core SQLite `DateTimeOffset` karşılaştırmasını çeviremez;
+     `MoneyDocumentsAsync` PostgreSQL'de pencereyi SQL'de, SQLite'ta (testler) bellekte
+     uygular. Aynı sonuç, production'da tüm geçmiş belleğe çekilmez.
+   - **Sınırlar:** `activity` en çok 92 gün; bakiye listesi 500, stok 200 satır
+     (`Truncated`). Bakiye **yaşlandırması yoktur** — akışta vade tarihi taşınmıyor;
+     "son hareket" gibi bir tahmin yaşlandırma diye gösterilmez.
+   - Testler: `PortalRelationalTests` (yetki, firma yalıtımı, ERP'li/ERP'siz sayım, kişi
+     bazlı atıf, rota günü, bakiye/stok, çevrimdışı tolerans).
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

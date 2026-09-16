@@ -39,6 +39,13 @@ public sealed class Job
     /// </summary>
     public string ErpType { get; set; } = "Mikro";
 
+    /// <summary>
+    /// The signed-in company user who sent the document, or who requested it when it came
+    /// through the approval centre (Faz 41). Null for API keys, agents and rows from before
+    /// the column existed. Lets the manager portal report per salesperson.
+    /// </summary>
+    public Guid? CreatedByUserId { get; set; }
+
     /// <summary>Document-typed payload serialized as JSON (stored as jsonb in PostgreSQL).</summary>
     public string PayloadJson { get; set; } = "{}";
 

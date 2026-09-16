@@ -323,6 +323,21 @@ public sealed class ApprovalCentreRelationalTests : IClassFixture<SqliteCentralA
     }
 
     [Fact]
+    public async Task An_approved_document_counts_as_the_work_of_the_salesperson_who_asked()
+    {
+        var c = await CompanyAsync();
+        var request = await SubmitSaleAsync(c, c.Ali, "REQ-ACTOR", quantity: 2);
+
+        (await DecideAsync(c, c.Patron, request.Id, "approve")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // The manager portal reports per salesperson (Faz 41); the approver did not make the sale.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var ali = await db.MobileUsers.SingleAsync(u => u.TenantId == c.Id && u.Username == "ali");
+        (await db.Jobs.SingleAsync(j => j.TenantId == c.Id && j.ExternalId == "MOB-SO-REQ-ACTOR")).CreatedByUserId.Should().Be(ali.Id);
+    }
+
+    [Fact]
     public async Task An_api_key_cannot_send_approval_requests_and_is_not_bound_by_the_rules()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
