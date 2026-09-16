@@ -28,11 +28,20 @@ public sealed class FakeCentralApi : HttpMessageHandler
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
     private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _answers = new(StringComparer.OrdinalIgnoreCase);
 
-    public List<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body)> Requests { get; } = [];
+    private readonly List<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body)> _requests = [];
+
+    /// <summary>
+    /// A snapshot of what was sent so far. Pages with live loops (desk, TV board) call the API from background
+    /// tasks while the test reads, so the log is copied under a lock rather than exposed as a live list.
+    /// </summary>
+    public IReadOnlyList<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body)> Requests
+    {
+        get { lock (_requests) return [.. _requests]; }
+    }
 
     public FakeCentralApi Answer(string pathAndQuery, object body, HttpStatusCode status = HttpStatusCode.OK)
     {
-        _answers[pathAndQuery] = (status, JsonSerializer.Serialize(body, Web));
+        lock (_answers) _answers[pathAndQuery] = (status, JsonSerializer.Serialize(body, Web));
         return this;
     }
 
@@ -53,9 +62,11 @@ public sealed class FakeCentralApi : HttpMessageHandler
     {
         var path = request.RequestUri!.PathAndQuery;
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-        Requests.Add((request.Method, path, request.Headers.Authorization?.ToString(), body));
+        lock (_requests) _requests.Add((request.Method, path, request.Headers.Authorization?.ToString(), body));
         if (_holds.Remove(path, out var gate)) await gate.Task.WaitAsync(cancellationToken);
-        var (status, json) = _answers.TryGetValue(path, out var answer) ? answer : (HttpStatusCode.NotFound, "{\"errorCode\":\"NOT_FOUND\"}");
+        (HttpStatusCode Status, string Body) found;
+        lock (_answers) found = _answers.TryGetValue(path, out var answer) ? answer : (HttpStatusCode.NotFound, "{\"errorCode\":\"NOT_FOUND\"}");
+        var (status, json) = found;
         return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
     }
 }

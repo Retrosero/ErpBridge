@@ -61,7 +61,7 @@ public sealed class PortalKioskTests : PortalPageTestContext
 
         cut.WaitForAssertion(() => cut.Find("#kiosk-code").TextContent.Should().Be("482 913"));
         // Polling does not redraw the page, so this waits on the requests themselves rather than on a render.
-        SpinWait.SpinUntil(() => api.Requests.ToArray().Count(r => r.PathAndQuery.EndsWith("/token")) > 1, TimeSpan.FromSeconds(2)).Should().BeTrue("the screen keeps polling while it waits");
+        SpinWait.SpinUntil(() => api.Requests.Count(r => r.PathAndQuery.EndsWith("/token")) > 1, TimeSpan.FromSeconds(2)).Should().BeTrue("the screen keeps polling while it waits");
         cut.FindAll("#kiosk-board").Should().BeEmpty();
 
         api.Answer("/api/v1/display/pairings/482913/token", new { status = "paired", token = "tok-tv", tenantName = "Ege Dağıtım", displayName = "Depo girişi" });
@@ -182,8 +182,8 @@ public sealed class PortalKioskTests : PortalPageTestContext
         var cut = Render<Ekran>();
 
         cut.WaitForAssertion(() => cut.Find("#kiosk-code").TextContent.Should().Be("222 333"));
-        SpinWait.SpinUntil(() => api.Requests.ToArray().Count(r => r.PathAndQuery.EndsWith("/token")) >= 3, TimeSpan.FromSeconds(2)).Should().BeTrue();
-        api.Requests.ToArray().Count(r => r.PathAndQuery == "/api/v1/display/pairings").Should().Be(1, "a still-valid code is not thrown away on 429");
+        SpinWait.SpinUntil(() => api.Requests.Count(r => r.PathAndQuery.EndsWith("/token")) >= 3, TimeSpan.FromSeconds(2)).Should().BeTrue();
+        api.Requests.Count(r => r.PathAndQuery == "/api/v1/display/pairings").Should().Be(1, "a still-valid code is not thrown away on 429");
         cut.WaitForAssertion(() => cut.Find("#kiosk-offline"));
     }
 
