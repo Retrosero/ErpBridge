@@ -185,6 +185,7 @@ public partial class Program
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordRetention>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Mobile.MobileSeatService>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Team.TeamDocumentProcessor>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Approvals.ApprovalService>();
     }
 
