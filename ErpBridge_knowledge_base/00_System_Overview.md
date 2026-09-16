@@ -805,6 +805,39 @@ registration ayrı bir composition projesine taşınır.
      uyanır), `PortalKioskTests` (kod → pano, kolon ve renkler, sayfa dönüşü, canlı değişiklik, bağlantı kaybı,
      iptal → yeni kod), `PortalDisplaysPageTests`.
 
+23. **Depo raporları yalnız olay günlüğünden hesaplanır: `Warehouse/FulfillmentMetrics` + `FulfillmentReports` (Faz 50, 2026-09-17).**
+   Plan adım 8. `order_fulfillments` satırındaki `StartedAtUtc/PackedAtUtc` **rapor için okunmaz** (geri almada
+   silinir/üzerine yazılır); her süre `order_fulfillment_events` üzerinden `FulfillmentMetrics.Measure` ile çıkar
+   (olaylar `Id` sırasında). Tanımlar:
+   - **Bekleme** = ilk `START` − `QUEUED`. Yanlışlıkla başlatılıp geri alınan sipariş de o anda ele alınmış sayılır.
+   - **Net hazırlama** = `PREPARING`'de geçen ve `PACKED` ile biten aralıkların toplamı. `UNDO` (→ PENDING) ya da
+     `CANCEL` ile biten aralık sayılmaz; `PACKED → PREPARING` geri almasından sonra ek hazırlama eklenir, paketli
+     beklenen süre eklenmez. Durumu değiştirmeyen olaylar (`REASSIGN`, `ERP_FAILED`) aralık açıp kapatmaz.
+   - **Yüklemeye kadar** = `LOAD` − son `PACK`. Paketleme/yükleme anı ancak sipariş hâlâ PACKED/LOADED ise sayılır;
+     sipariş **son paketleyene** yazılır (başlayana değil).
+   - **Gün ataması (İstanbul günü, `PortalReports.IstanbulDay/IstanbulDayStartUtc`):** her rakam ölçtüğü olayın
+     gününe düşer — bekleme ilk başlamanın, hazırlama geçerli paketlemenin, yükleme yüklemenin, "gelen" `QUEUED`
+     olayının, iptal `CANCEL` olayının günü. Aralığa en az bir olayı düşen siparişlerin **tüm geçmişi** okunur
+     (dün kuyruğa girip bugün paketlenen doğru ölçülür). Olay tablosuna `(TenantId, OccurredAtUtc)` indeksi.
+     SQLite testlerinde tarih süzmesi bellekte (kural 11 tuzağı).
+     Geriye dönük doldurulan siparişin (`/warehouse/backfill`) `QUEUED` olayı doldurma anındadır (satırın `QueuedAtUtc`'si
+     satışın zamanı): rapor beklemeyi depo siparişi görebildiği andan, yani olaydan ölçer.
+   - **Uçlar (ADMIN/MANAGER, `CanViewReports`; değilse 403 `PORTAL_REQUIRES_MANAGER`):**
+     `GET /api/v1/portal/warehouse/dashboard?date` → açık sayılar (bekliyor/hazırlanıyor/paketli), **geciken/kritik
+     şu an** (TV panosuyla aynı saatler ve eşikler: bekliyor kuyruğa girişten, hazırlanıyor başlamadan, paketli
+     paketlemeden; paketlide kritik yok), günün gelen/paketlenen/yüklenen sayısı, ortalama bekleme ve net hazırlama,
+     `enabled`. `GET /api/v1/portal/warehouse/performance?from&to` (en çok 92 gün; `INVALID_RANGE`,
+     `RANGE_TOO_LONG`, `INVALID_DATE`) → toplamlar, ortalama/ortanca, personel satırları (paketlenen, kalem, adet,
+     toplam/ortalama/ortanca net hazırlama, kalem başı = toplam ÷ kalem), günler, en uzun 10 bekleme ve 10 hazırlama.
+     Süreler tam saniye. `GET /portal/fulfillments/{id}` yanıtına `times` eklendi (zaman çizelgesi).
+   - **Panel:** Özet sayfasında modül açıksa üç depo kartı (açık, geciken, paketlenen/gelen; hata ya da eski
+     sunucuda kartlar gizlenir, özet bozulmaz). `/depo-performans` (Genel bakış menüsü, `PortalArea.Reports`;
+     `?from&to` kabul eder) ve `/depo-performans/siparis/{id}` zaman çizelgesi (adım, kim, önceki adımdan süre, not).
+     `Fmt.Duration` "45 sn / 12 dk / 1 sa 5 dk / 2 gün 3 sa".
+   - Testler: `FulfillmentMetricsTests` (düz akış, geri alınan başlama, geri alınan paketleme + yeniden atama,
+     iptal, ERP olayı, ortanca), `WarehouseFulfillmentRelationalTests` (+3: bilinen senaryonun rakamları gece
+     yarısı sınırıyla, geciken sayımı, yetki/aralık), `PortalWarehouseReportTests` (5).
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

@@ -271,6 +271,8 @@ public sealed class FulfillmentService
                 Note = e.Note,
                 OccurredAtUtc = e.OccurredAtUtc,
             }).ToArray(),
+            // Every order is written with its QUEUED event; an empty history would only be a damaged row.
+            Times = events.Count == 0 ? new FulfillmentTimesDto() : FulfillmentReports.ToDto(FulfillmentMetrics.Measure(id, events)),
         });
     }
 

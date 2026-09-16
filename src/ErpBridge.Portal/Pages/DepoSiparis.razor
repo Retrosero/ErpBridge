@@ -1,0 +1,91 @@
+@page "/depo-performans/siparis/{Id:guid}"
+@inherits PortalPageBase
+
+<PageTitle>Sipariş zaman çizelgesi — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="@(_detail is null ? "Sipariş" : $"Sipariş {_detail.Fulfillment.OrderNo}")" Eyebrow="Depo performansı"
+                Subtitle="@_detail?.Fulfillment.CustomerName" Busy="Busy">
+        <Actions>
+            <MudButton Href="@BackLink" id="back-to-report" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack">Rapora dön</MudButton>
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_detail is { } d)
+    {
+        <section class="stat-grid stat-grid--four" id="order-times">
+            <StatCard Id="time-wait" Label="Bekleme" Value="@Fmt.Duration(d.Times.WaitSeconds)"
+                      Caption="@(d.Times.StartedByName is { } starter ? $"ilk başlayan: {starter}" : "henüz başlanmadı")" Icon="@Icons.Material.Rounded.HourglassBottom" Tone="warning" />
+            <StatCard Id="time-preparation" Label="Net hazırlama" Value="@Fmt.Duration(d.Times.NetPreparationSeconds)"
+                      Caption="@(d.Times.PackedByName is { } packer ? $"paketleyen: {packer}" : "paketlenmedi")" Icon="@Icons.Material.Rounded.Speed" Tone="success" />
+            <StatCard Id="time-loading" Label="Yüklemeye kadar" Value="@Fmt.Duration(d.Times.UntilLoadingSeconds)"
+                      Caption="@(d.Fulfillment.VehiclePlate is { Length: > 0 } plate ? $"araç: {plate}" : "paketten araca")" Icon="@Icons.Material.Rounded.LocalShipping" Tone="info" />
+            <StatCard Id="order-status" Label="Durum" Value="@Fmt.FulfillmentStatus(d.Fulfillment.Status)"
+                      Caption="@($"{d.Fulfillment.LineCount} kalem · {Fmt.Quantity(d.Fulfillment.ItemQuantity)} adet · {d.Fulfillment.SalespersonName}")" Icon="@Icons.Material.Rounded.Inventory" Tone="primary" />
+        </section>
+
+        <MudPaper Outlined="true" Class="panel panel--table mt-3">
+            <div class="panel-head">
+                <div>
+                    <MudText Typo="Typo.h6">Zaman çizelgesi</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">Süreler bu adımlardan hesaplanır; saatler sunucu saatidir.</MudText>
+                </div>
+            </div>
+            <div class="table-scroll">
+                <MudSimpleTable Dense="true" Elevation="0" Class="data-table" id="timeline">
+                    <thead>
+                        <tr>
+                            <th>Saat</th>
+                            <th>Adım</th>
+                            <th>Kim</th>
+                            <th class="num">Önceki adımdan</th>
+                            <th>Not</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < d.Events.Count; i++)
+                        {
+                            var e = d.Events[i];
+                            long? gap = i == 0 ? null : (long)Math.Round((e.OccurredAtUtc - d.Events[i - 1].OccurredAtUtc).TotalSeconds);
+                            <tr data-action="@e.Action">
+                                <td>@Fmt.Time(e.OccurredAtUtc)</td>
+                                <td>@Fmt.FulfillmentAction(e.Action)<small> · @Fmt.FulfillmentStatus(e.ToStatus)</small></td>
+                                <td>@e.ActorName</td>
+                                <td class="num">@(gap is null ? "—" : "+" + Fmt.Duration(gap))</td>
+                                <td class="wrap">@e.Note</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </div>
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Reports;
+
+    [Parameter] public Guid Id { get; set; }
+
+    [SupplyParameterFromQuery(Name = "from")] public string? FromQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "to")] public string? ToQuery { get; set; }
+
+    /// <summary>Back to the report with the range it was opened from (Codex, PR #64).</summary>
+    private string BackLink => Fmt.TryIsoDay(FromQuery, out var from) && Fmt.TryIsoDay(ToQuery, out var to)
+        ? $"depo-performans?from={Fmt.IsoDay(from)}&to={Fmt.IsoDay(to)}"
+        : "depo-performans";
+
+    private FulfillmentDetailDto? _detail;
+
+    protected override async Task LoadAsync() => _detail = await Api.FulfillmentDetailAsync(Id);
+}

@@ -141,6 +141,15 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<DisplayDeviceDto> RevokeDisplayAsync(Guid displayId, CancellationToken ct = default) =>
         SendAsync<DisplayDeviceDto>(HttpMethod.Post, $"api/v1/portal/displays/{displayId}/revoke", new { }, ct);
 
+    public Task<WarehouseDashboardDto> WarehouseDashboardAsync(DateOnly day, CancellationToken ct = default) =>
+        GetAsync<WarehouseDashboardDto>($"api/v1/portal/warehouse/dashboard?date={Day(day)}", ct);
+
+    public Task<WarehousePerformanceDto> WarehousePerformanceAsync(DateOnly from, DateOnly to, CancellationToken ct = default) =>
+        GetAsync<WarehousePerformanceDto>($"api/v1/portal/warehouse/performance?from={Day(from)}&to={Day(to)}", ct);
+
+    public Task<FulfillmentDetailDto> FulfillmentDetailAsync(Guid id, CancellationToken ct = default) =>
+        GetAsync<FulfillmentDetailDto>($"api/v1/portal/fulfillments/{id}", ct);
+
     public Task<WarehouseSettingsDto> WarehouseSettingsAsync(CancellationToken ct = default) =>
         GetAsync<WarehouseSettingsDto>("api/v1/portal/warehouse/settings", ct);
 

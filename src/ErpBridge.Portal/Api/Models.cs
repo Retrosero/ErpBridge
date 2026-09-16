@@ -409,3 +409,104 @@ public sealed class CustomerDocumentDto
     [JsonPropertyName("lines")] public List<CustomerDocumentLineDto> Lines { get; set; } = [];
     [JsonPropertyName("linesAvailable")] public bool LinesAvailable { get; set; }
 }
+
+// ---- warehouse reports (Faz 50, plan step 8) ----------------------------------------------
+
+/// <summary>An order's times measured from its history; durations in seconds.</summary>
+public sealed class FulfillmentTimesDto
+{
+    [JsonPropertyName("waitSeconds")] public long? WaitSeconds { get; set; }
+    [JsonPropertyName("netPreparationSeconds")] public long NetPreparationSeconds { get; set; }
+    [JsonPropertyName("untilLoadingSeconds")] public long? UntilLoadingSeconds { get; set; }
+    [JsonPropertyName("firstStartedAtUtc")] public DateTimeOffset? FirstStartedAtUtc { get; set; }
+    [JsonPropertyName("startedByName")] public string? StartedByName { get; set; }
+    [JsonPropertyName("packedAtUtc")] public DateTimeOffset? PackedAtUtc { get; set; }
+    [JsonPropertyName("packedByName")] public string? PackedByName { get; set; }
+    [JsonPropertyName("loadedAtUtc")] public DateTimeOffset? LoadedAtUtc { get; set; }
+}
+
+public sealed class FulfillmentEventDto
+{
+    [JsonPropertyName("action")] public string Action { get; set; } = string.Empty;
+    [JsonPropertyName("fromStatus")] public string? FromStatus { get; set; }
+    [JsonPropertyName("toStatus")] public string ToStatus { get; set; } = string.Empty;
+    [JsonPropertyName("actorName")] public string ActorName { get; set; } = string.Empty;
+    [JsonPropertyName("note")] public string? Note { get; set; }
+    [JsonPropertyName("occurredAtUtc")] public DateTimeOffset OccurredAtUtc { get; set; }
+}
+
+/// <summary><c>GET /api/v1/portal/fulfillments/{id}</c>: an order, its history and its measured times.</summary>
+public sealed class FulfillmentDetailDto
+{
+    [JsonPropertyName("fulfillment")] public FulfillmentDto Fulfillment { get; set; } = new();
+    [JsonPropertyName("events")] public List<FulfillmentEventDto> Events { get; set; } = [];
+    [JsonPropertyName("times")] public FulfillmentTimesDto Times { get; set; } = new();
+}
+
+public sealed class WarehouseDashboardDto
+{
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; }
+    [JsonPropertyName("pending")] public int Pending { get; set; }
+    [JsonPropertyName("preparing")] public int Preparing { get; set; }
+    [JsonPropertyName("packed")] public int Packed { get; set; }
+    [JsonPropertyName("late")] public int Late { get; set; }
+    [JsonPropertyName("critical")] public int Critical { get; set; }
+    [JsonPropertyName("queuedOnDay")] public int QueuedOnDay { get; set; }
+    [JsonPropertyName("packedOnDay")] public int PackedOnDay { get; set; }
+    [JsonPropertyName("loadedOnDay")] public int LoadedOnDay { get; set; }
+    [JsonPropertyName("averageWaitSeconds")] public long? AverageWaitSeconds { get; set; }
+    [JsonPropertyName("averageNetPreparationSeconds")] public long? AverageNetPreparationSeconds { get; set; }
+}
+
+public sealed class WarehouseStaffDto
+{
+    [JsonPropertyName("userId")] public Guid? UserId { get; set; }
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("packedCount")] public int PackedCount { get; set; }
+    [JsonPropertyName("lineCount")] public int LineCount { get; set; }
+    [JsonPropertyName("itemQuantity")] public decimal ItemQuantity { get; set; }
+    [JsonPropertyName("totalNetPreparationSeconds")] public long TotalNetPreparationSeconds { get; set; }
+    [JsonPropertyName("averageNetPreparationSeconds")] public long AverageNetPreparationSeconds { get; set; }
+    [JsonPropertyName("medianNetPreparationSeconds")] public long MedianNetPreparationSeconds { get; set; }
+    [JsonPropertyName("secondsPerLine")] public long? SecondsPerLine { get; set; }
+}
+
+public sealed class WarehouseDayDto
+{
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("queued")] public int Queued { get; set; }
+    [JsonPropertyName("packed")] public int Packed { get; set; }
+    [JsonPropertyName("averageWaitSeconds")] public long? AverageWaitSeconds { get; set; }
+    [JsonPropertyName("averageNetPreparationSeconds")] public long? AverageNetPreparationSeconds { get; set; }
+}
+
+public sealed class WarehouseSlowOrderDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("orderNo")] public string OrderNo { get; set; } = string.Empty;
+    [JsonPropertyName("customerName")] public string CustomerName { get; set; } = string.Empty;
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("lineCount")] public int LineCount { get; set; }
+    [JsonPropertyName("queuedAtUtc")] public DateTimeOffset QueuedAtUtc { get; set; }
+    [JsonPropertyName("times")] public FulfillmentTimesDto Times { get; set; } = new();
+}
+
+public sealed class WarehousePerformanceDto
+{
+    [JsonPropertyName("from")] public string From { get; set; } = string.Empty;
+    [JsonPropertyName("to")] public string To { get; set; } = string.Empty;
+    [JsonPropertyName("queued")] public int Queued { get; set; }
+    [JsonPropertyName("packed")] public int Packed { get; set; }
+    [JsonPropertyName("loaded")] public int Loaded { get; set; }
+    [JsonPropertyName("cancelled")] public int Cancelled { get; set; }
+    [JsonPropertyName("averageWaitSeconds")] public long? AverageWaitSeconds { get; set; }
+    [JsonPropertyName("medianWaitSeconds")] public long? MedianWaitSeconds { get; set; }
+    [JsonPropertyName("averageNetPreparationSeconds")] public long? AverageNetPreparationSeconds { get; set; }
+    [JsonPropertyName("medianNetPreparationSeconds")] public long? MedianNetPreparationSeconds { get; set; }
+    [JsonPropertyName("averageUntilLoadingSeconds")] public long? AverageUntilLoadingSeconds { get; set; }
+    [JsonPropertyName("staff")] public List<WarehouseStaffDto> Staff { get; set; } = [];
+    [JsonPropertyName("days")] public List<WarehouseDayDto> Days { get; set; } = [];
+    [JsonPropertyName("longestWaits")] public List<WarehouseSlowOrderDto> LongestWaits { get; set; } = [];
+    [JsonPropertyName("longestPreparations")] public List<WarehouseSlowOrderDto> LongestPreparations { get; set; } = [];
+}

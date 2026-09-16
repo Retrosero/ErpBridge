@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -583,6 +584,138 @@ public sealed class WarehouseFulfillmentRelationalTests : IClassFixture<SqliteCe
         var response = await GetAsync($"/api/v1/display/events?sinceSeq={sinceSeq}&wait={wait}", token);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         return await response.ReadAsJsonAsync<PortalEventsResponse>();
+    }
+
+    // ---- reports (Faz 50, plan step 8) ---------------------------------------------------
+
+    [Fact]
+    public async Task The_performance_report_is_computed_from_the_event_log_on_istanbul_days()
+    {
+        var c = await NativeCompanyAsync();
+        await SellAsync(c, "SO-P1", quantity: 1);
+        await SellAsync(c, "SO-P2", quantity: 2);
+        await SellAsync(c, "SO-P3", quantity: 1);
+        var ids = (await ListAsync(c.Depot)).Items.ToDictionary(i => i.OrderNo, i => i.Id);
+
+        // P1: queued late on 9 September, picked up at midnight: the wait belongs to 10 September.
+        await ActAsync(c.Depot, ids["SO-P1"], "start");
+        await ActAsync(c.Depot, ids["SO-P1"], "pack");
+        await ActAsync(c.Depot2, ids["SO-P1"], "load");
+        await RetimeAsync(ids["SO-P1"], "2026-09-09 23:50", "2026-09-10 00:00", "2026-09-10 00:20", "2026-09-10 00:50");
+        // P2: Veli starts by mistake and takes it back; Hasan prepares it.
+        await ActAsync(c.Depot2, ids["SO-P2"], "start");
+        await ActAsync(c.Depot2, ids["SO-P2"], "undo");
+        await ActAsync(c.Depot, ids["SO-P2"], "start");
+        await ActAsync(c.Depot, ids["SO-P2"], "pack");
+        await RetimeAsync(ids["SO-P2"], "2026-09-10 09:05", "2026-09-10 09:25", "2026-09-10 09:27", "2026-09-10 09:40", "2026-09-10 10:20");
+        // P3: started, then cancelled by the manager.
+        await ActAsync(c.Depot2, ids["SO-P3"], "start");
+        await ActAsync(c.Patron, ids["SO-P3"], "cancel");
+        await RetimeAsync(ids["SO-P3"], "2026-09-10 09:10", "2026-09-10 09:20", "2026-09-10 09:30");
+
+        var report = await PerformanceAsync(c.Patron, "from=2026-09-10&to=2026-09-11");
+
+        report.Queued.Should().Be(2, "P1 was queued on the 9th");
+        report.Packed.Should().Be(2);
+        report.Loaded.Should().Be(1);
+        report.Cancelled.Should().Be(1);
+        report.AverageWaitSeconds.Should().Be(800, "waits are 10, 20 and 10 minutes");
+        report.MedianWaitSeconds.Should().Be(600);
+        report.AverageNetPreparationSeconds.Should().Be(1800, "20 and 40 minutes; the undone start does not count");
+        report.MedianNetPreparationSeconds.Should().Be(1800);
+        report.AverageUntilLoadingSeconds.Should().Be(1800);
+        var hasan = report.Staff.Should().ContainSingle().Subject;
+        hasan.Name.Should().Be("Depocu Hasan");
+        hasan.PackedCount.Should().Be(2);
+        hasan.LineCount.Should().Be(2);
+        hasan.ItemQuantity.Should().Be(3m);
+        hasan.TotalNetPreparationSeconds.Should().Be(3600);
+        hasan.SecondsPerLine.Should().Be(1800);
+        report.Days.Select(d => d.Date).Should().Equal("2026-09-10", "2026-09-11");
+        report.Days[0].Packed.Should().Be(2);
+        report.Days[1].Queued.Should().Be(0);
+        report.LongestWaits.Select(o => o.OrderNo).Should().Equal("SO-P2", "SO-P1", "SO-P3");
+        report.LongestPreparations[0].OrderNo.Should().Be("SO-P2");
+        report.LongestPreparations[0].Times.NetPreparationSeconds.Should().Be(2400);
+
+        (await PerformanceAsync(c.Patron, "from=2026-09-09&to=2026-09-09")).Queued.Should().Be(1);
+        var dashboard = await (await GetAsync("/api/v1/portal/warehouse/dashboard?date=2026-09-10", c.Patron)).ReadAsJsonAsync<WarehouseDashboardResponse>();
+        dashboard.Enabled.Should().BeTrue();
+        dashboard.QueuedOnDay.Should().Be(2);
+        dashboard.PackedOnDay.Should().Be(2);
+        dashboard.LoadedOnDay.Should().Be(1);
+        dashboard.AverageWaitSeconds.Should().Be(800);
+        dashboard.AverageNetPreparationSeconds.Should().Be(1800);
+        dashboard.Packed.Should().Be(1, "P2 is still waiting to be loaded");
+
+        var timeline = await DetailAsync(c.Patron, ids["SO-P2"]);
+        timeline.Times.WaitSeconds.Should().Be(1200);
+        timeline.Times.NetPreparationSeconds.Should().Be(2400);
+        timeline.Times.StartedByName.Should().Be("Depocu Veli");
+        timeline.Times.PackedByName.Should().Be("Depocu Hasan");
+    }
+
+    [Fact]
+    public async Task The_dashboard_counts_late_orders_with_the_board_thresholds()
+    {
+        var c = await NativeCompanyAsync();
+        await SellAsync(c, "SO-L1", quantity: 1);
+        await SellAsync(c, "SO-L2", quantity: 1);
+        await SellAsync(c, "SO-L3", quantity: 1);
+        var ids = (await ListAsync(c.Depot)).Items.ToDictionary(i => i.OrderNo, i => i.Id);
+        await ActAsync(c.Depot, ids["SO-L3"], "start");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var rows = await db.OrderFulfillments.Where(f => f.TenantId == c.Id).ToListAsync();
+            rows.Single(f => f.OrderNo == "SO-L1").QueuedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-40);
+            rows.Single(f => f.OrderNo == "SO-L2").QueuedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-20);
+            rows.Single(f => f.OrderNo == "SO-L3").StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5);
+            await db.SaveChangesAsync();
+        }
+
+        var dashboard = await (await GetAsync("/api/v1/portal/warehouse/dashboard", c.Patron)).ReadAsJsonAsync<WarehouseDashboardResponse>();
+
+        dashboard.Pending.Should().Be(2);
+        dashboard.Preparing.Should().Be(1);
+        dashboard.Late.Should().Be(2, "40 and 20 minutes are past the 15 minute warning");
+        dashboard.Critical.Should().Be(1, "only 40 minutes is past 30");
+        dashboard.QueuedOnDay.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Warehouse_reports_are_for_managers_and_ranges_are_checked()
+    {
+        var c = await NativeCompanyAsync();
+
+        (await ErrorAsync(GetAsync("/api/v1/portal/warehouse/performance", c.Depot))).Should().Be("PORTAL_REQUIRES_MANAGER");
+        (await ErrorAsync(GetAsync("/api/v1/portal/warehouse/dashboard", c.Accounting))).Should().Be("PORTAL_REQUIRES_MANAGER");
+        (await ErrorAsync(GetAsync("/api/v1/portal/warehouse/performance?from=2026-09-10&to=2026-09-01", c.Patron))).Should().Be("INVALID_RANGE");
+        (await ErrorAsync(GetAsync("/api/v1/portal/warehouse/performance?from=2026-01-01&to=2026-04-03", c.Patron))).Should().Be("RANGE_TOO_LONG");
+        (await ErrorAsync(GetAsync("/api/v1/portal/warehouse/dashboard?date=10.09.2026", c.Patron))).Should().Be("INVALID_DATE");
+        var empty = await PerformanceAsync(c.Patron, "from=2026-01-01&to=2026-04-01");
+        empty.Days.Should().HaveCount(91);
+        empty.AverageWaitSeconds.Should().BeNull();
+        empty.Staff.Should().BeEmpty();
+    }
+
+    private async Task<WarehousePerformanceResponse> PerformanceAsync(string token, string query)
+    {
+        var response = await GetAsync("/api/v1/portal/warehouse/performance?" + query, token);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        return await response.ReadAsJsonAsync<WarehousePerformanceResponse>();
+    }
+
+    /// <summary>Sets an order's event times, in log order, from Istanbul wall-clock times.</summary>
+    private async Task RetimeAsync(Guid fulfillmentId, params string[] istanbulTimes)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var events = await db.OrderFulfillmentEvents.Where(e => e.FulfillmentId == fulfillmentId).OrderBy(e => e.Id).ToListAsync();
+        events.Should().HaveCount(istanbulTimes.Length);
+        for (var i = 0; i < events.Count; i++)
+            events[i].OccurredAtUtc = new DateTimeOffset(DateTime.ParseExact(istanbulTimes[i], "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture), TimeSpan.FromHours(3)).ToUniversalTime();
+        await db.SaveChangesAsync();
     }
 
     // ---- helpers ------------------------------------------------------------------------
