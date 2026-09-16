@@ -103,7 +103,7 @@ değişikliklerle sürüyor. Bu yüzden:
 7. `gh pr checks <n> --watch`. Kırmızıysa düzelt; **3 denemede yeşillenmezse** ⛔ yazılır, sıradakine geçilir
    (bağımlı görevler de ⛔).
 8. **Codex inceleme yorumları** merge'u bloklar: geçerli bulgu düzeltilir, geçersizse gerekçeyle yanıtlanır, konuşma çözülür.
-9. **Merge'den hemen önce** `git fetch && git rebase origin/main`, yerelde `dotnet build` + ilgili testler (başka
+9. **Merge'den hemen önce** `git fetch` ve `origin/main` dala alınır — push edilmemiş dalda `rebase`, **push edilmiş dalda `git merge origin/main`** (force-push yasak) — yerelde `dotnet build` + ilgili testler (başka
    oturumların birleştirdiği işler metin çakışması olmadan derlemeyi bozabilir — #57 + #58 aynı sınıfları ekledi, #59
    ile düzeltildi); rebase bir şey getirdiyse push edilip CI yeniden beklenir.
    `GOAL_PANEL_DURUM.md` (görev ✅, PR numarası, not) ve gerekiyorsa KB aynı dala commit + push

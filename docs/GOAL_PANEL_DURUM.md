@@ -1,6 +1,6 @@
 # Goal Durumu — Yönetim Paneli Geliştirmeleri
 
-Son güncelleme: 2026-09-16 (P3 bitti, sırada P4a)
+Son güncelleme: 2026-09-16 (P4a+P4b bitti, sırada P4c)
 Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -16,11 +16,11 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P1 — Onaylar | 3 | 3 | ✅ |
 | P2 — Stok | 3 | 3 | ✅ |
 | P3 — Cariler | 5 | 5 | ✅ |
-| P4 — Depo sunucu + panel | 4 | 0 | ⬜ |
+| P4 — Depo sunucu + panel | 4 | 2 | 🔄 |
 | P5 — Telefon Depo ekranı | 5 | 0 | ⬜ |
 | P6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P4a
+**Şu anki görev:** P4c (#61 — TV panosu ve depo ayar ekranı — birleşince)
 
 ---
 
@@ -41,8 +41,8 @@ Görev listesi: [GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md)
 | P3c | Fatura detay ucu | ✅ | [#62](https://github.com/Retrosero/ErpBridge/pull/62) | `GET /customers/document?code=&key=`; Mikro `r{recno}`, ERP'siz `d{cari}|{evrakNo}`. `jobs` payload yedeği gerekmedi: ERP'siz satış/iade/alış satırları her zaman `stockTransactions`'a yazılıyor. Codex (#62): satırı olmayan fatura da açılır (`linesAvailable=false`), aynı gün Mikro hareketleri `cha_recno`'ya sayı olarak sıralanır |
 | P3d | Cariler + cari detay sayfaları | ✅ | [#62](https://github.com/Retrosero/ErpBridge/pull/62) | `/cariler` sayfalı tablo (bakiye sekmeleri, başlıktan sıralama, satıra tıkla → `/cari?kod=…&liste=…`, geri dönüşte liste korunur). `/cari`: kart (bakiye, telefon, vergi, adres), tarih aralığı (varsayılan bu yıl; Bu yıl/Son 3 ay/Tümü), tür düğmeleri, devir/borç/alacak/dönem sonu, sayfalı ekstre, kalemli satıra tıklayınca çekmecede kalemler. Ortak `Shared/Pager`. bUnit +2 (eski bakiye testi değişti). Yerelde PostgreSQL'de onaylanan satışın ekstresi ve kalemi doğrulandı |
 | P3e | Telefon ERP'siz ekstre tutarı bulgusu (doğrulama) | ✅ | [#62](https://github.com/Retrosero/ErpBridge/pull/62) | **Hata yok:** telefon API hareketinde `tutar ?: meblag ?: cha_meblag ?: amount …` okuyor (`FieldOpsApiService.kt:506`) |
-| P4a | Depo geri doldurma ucu | ⬜ | | |
-| P4b | Depocu telefona girişi + sunucu kısıtları | ⬜ | | |
+| P4a | Depo geri doldurma ucu | ✅ | [#63](https://github.com/Retrosero/ErpBridge/pull/63) | P4a+b tek PR (yalnız sunucu). `POST /portal/warehouse/backfill {days}`; `EnqueueAsync`'e isteğe bağlı `queuedAtUtc`. Test: kapalı modül 409, 31 gün 400, depocu 403, 2 günlük pencere (5 günlük eski sipariş ve reddedilen native satış dışarıda), ikinci çağrı 0, 7 gün eskiyi de alır, ERP durumları |
+| P4b | Depocu telefona girişi + sunucu kısıtları | ✅ | [#63](https://github.com/Retrosero/ErpBridge/pull/63) | **Sapma (D1):** sürüm `versionCode` yerine telefonun zaten gönderdiği `versionName` (`AppVersion`), ayar `Mobile:MinWarehousePhoneVersion` (ör. `1.5.240`), `System.Version` ile sayısal karşılaştırma. Kapı girişte ve her istekte cihazın kayıtlı sürümüyle (Codex P0 bulgusu). Yalnız depo rollü kullanıcı `/ingest/*` → 403 `ROLE_NOT_ALLOWED`. Ayar boşken eski davranış (depocu telefona giremez) sürer — P5d'de ayarlanacak |
 | P4c | Panel depo ayarları | ⬜ | | |
 | P4d | Panel depo sayfası | ⬜ | | |
 | P5a | Telefon: API + Room önbelleği | ⬜ | | |

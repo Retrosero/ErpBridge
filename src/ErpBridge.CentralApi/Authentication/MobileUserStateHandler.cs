@@ -52,7 +52,7 @@ public sealed class MobileUserStateHandler : AuthorizationHandler<MobileUserStat
         }
 
         var db = http.RequestServices.GetRequiredService<CentralApiDbContext>();
-        var access = await MobileUserAccess.CheckAsync(context.User, db, http.RequestAborted);
+        var access = await MobileUserAccess.CheckAsync(context.User, db, http.RequestAborted, MobileUserAccess.MinWarehousePhoneVersion(http.RequestServices));
         if (access.Allowed)
         {
             context.Succeed(requirement);

@@ -251,8 +251,12 @@ registration ayrı bir composition projesine taşınır.
      `Role`'ünü satır olarak ekler.
    - **Telefon mu panel mi (Faz 45):** login gövdesinde `client` = `android` (varsayılan; telefon
      göndermez) | `portal`; token'da `client` iddiası. `MobileUserAccess.ClientDenial` **her istekte**:
-     telefon oturumu `CanUsePhone` (ADMIN/MANAGER/SALES) ister, yoksa 403
-     `ROLE_NOT_ALLOWED_ON_PHONE`; panel oturumu `CanUsePortal` (SALES dışı) ister, yoksa 403
+     telefon oturumu `CanUsePhone` (ADMIN/MANAGER/SALES, **panel goal P4b'den beri WAREHOUSE da**) ister, yoksa 403
+     `ROLE_NOT_ALLOWED_ON_PHONE`. **Yalnız depo rollü telefon kullanıcısı** (`IsWarehouseOnlyOnPhone`: WAREHOUSE var,
+     ADMIN/MANAGER/SALES yok) ayrıca uygulama sürümü ister: cihazın kayıtlı `AppVersion`'ı (telefonun `versionName`'i,
+     ör. `1.5.240`) `Mobile:MinWarehousePhoneVersion` ayarından küçükse ya da ayar boşsa — girişte **ve her istekte** —
+     aynı 403 döner (eski uygulama depo rolünü tanımaz, tüm ekranları açardı; rolü sonradan daralan açık oturum da
+     kapanır). Bu kullanıcı `/ingest/*`'a hiç belge gönderemez: 403 `ROLE_NOT_ALLOWED`. Karma rollüler etkilenmez; panel oturumu `CanUsePortal` (SALES dışı) ister, yoksa 403
      `PORTAL_REQUIRES_MANAGER`. Login'de reddedilen istek cihaz satırı açmaz. Panel oturumu
      `/ingest/*`'a belge gönderemez (403 `PORTAL_CANNOT_SUBMIT_DOCUMENTS`) ve telefonun veri akışını
      okuyamaz: `MobileClientPolicy` (bootstrap, `sync/pull`, change set, notify, telemetri)
@@ -678,7 +682,13 @@ registration ayrı bir composition projesine taşınır.
    Satış siparişleri depoda hazırlanır, paketlenir, araca yüklenir; panel depo sayfası (plan adım 6),
    TV panosu (adım 7) ve performans raporu (adım 8) bu çekirdeği okur. Plan: `docs/PLAN_ROLLER_VE_DEPO.md`.
    - **Modül firma bazında açılır** (`tenant_warehouse_settings.Enabled`, varsayılan kapalı, V1). Kapalı
-     firmada hiçbir satış kuyruğa girmez; açılmadan önceki satışlar geriye dönük eklenmez.
+     firmada hiçbir satış kuyruğa girmez; açılmadan önceki satışlar kendiliğinden eklenmez.
+   - **Geri doldurma (panel goal P4a):** `POST /api/v1/portal/warehouse/backfill {days}` (varsayılan 2, en çok 30;
+     `CanManageWarehouse`, modül kapalıysa 409 `WAREHOUSE_DISABLED`, aralık dışı 400 `INVALID_BACKFILL_DAYS`) son
+     günlerin kuyrukta olmayan `sales_order` job'larını `EnqueueAsync` ile ekler — tek transaction, en çok 2000.
+     `QueuedAtUtc` = job'ın geliş anı. Native'de yalnız `Succeeded`; ERP'de `ErpState` job durumundan (Succeeded →
+     WRITTEN, Failed/DeadLetter → FAILED, diğer → PENDING). Onay bekleyen/reddedilen talep job değildir, girmez.
+     İdempotent; `{days, queued}` döner.
    - **Kuyruğa alma tek yerde:** `EnqueueAsync(db, tenant, job, approvalRequestId)` yalnız `sales_order`
      için, **belgeyi yazan transaction'ın içinde** çağrılır ve kaydetmez; çağıran commit'ten sonra
      `Notify(tenantId)` der. Çağıranlar: `/ingest/jobs` native dalı (uç kendi transaction'ını açar,
@@ -810,6 +820,8 @@ registration ayrı bir composition projesine taşınır.
      olayının, iptal `CANCEL` olayının günü. Aralığa en az bir olayı düşen siparişlerin **tüm geçmişi** okunur
      (dün kuyruğa girip bugün paketlenen doğru ölçülür). Olay tablosuna `(TenantId, OccurredAtUtc)` indeksi.
      SQLite testlerinde tarih süzmesi bellekte (kural 11 tuzağı).
+     Geriye dönük doldurulan siparişin (`/warehouse/backfill`) `QUEUED` olayı doldurma anındadır (satırın `QueuedAtUtc`'si
+     satışın zamanı): rapor beklemeyi depo siparişi görebildiği andan, yani olaydan ölçer.
    - **Uçlar (ADMIN/MANAGER, `CanViewReports`; değilse 403 `PORTAL_REQUIRES_MANAGER`):**
      `GET /api/v1/portal/warehouse/dashboard?date` → açık sayılar (bekliyor/hazırlanıyor/paketli), **geciken/kritik
      şu an** (TV panosuyla aynı saatler ve eşikler: bekliyor kuyruğa girişten, hazırlanıyor başlamadan, paketli

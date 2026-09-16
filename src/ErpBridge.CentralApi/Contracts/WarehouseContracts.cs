@@ -82,6 +82,20 @@ public sealed class FulfillmentActionRequest
     [JsonPropertyName("assigneeUserId")] public Guid? AssigneeUserId { get; set; }
 }
 
+/// <summary><c>POST /api/v1/portal/warehouse/backfill</c> body.</summary>
+public sealed class WarehouseBackfillRequest
+{
+    [JsonPropertyName("days")] public int? Days { get; set; }
+}
+
+public sealed class WarehouseBackfillResponse
+{
+    [JsonPropertyName("days")] public int Days { get; set; }
+
+    /// <summary>Orders newly queued; ones already in the queue are not counted.</summary>
+    [JsonPropertyName("queued")] public int Queued { get; set; }
+}
+
 /// <summary><c>GET|PUT /api/v1/portal/warehouse/settings</c>.</summary>
 public sealed class WarehouseSettingsDto
 {
