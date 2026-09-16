@@ -560,6 +560,7 @@ public partial class Program
         app.MapMobileTelemetryEndpoints();
         app.MapMobileAccountEndpoints();
         app.MapMobileApprovalEndpoints();
+        app.MapPortalEndpoints();
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();

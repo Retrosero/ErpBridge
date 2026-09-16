@@ -370,6 +370,8 @@ public sealed class ApprovalService
                 PayloadJson = item.GetProperty("payload").GetRawText(),
                 Status = JobStatus.Pending,
                 EnqueuedAtUtc = now,
+                // The salesperson who asked, not the approver: reports count their work.
+                CreatedByUserId = request.RequestedByUserId,
             };
             if (tenant.DataSource == TenantDataSources.Native)
             {

@@ -55,7 +55,7 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 - `agents`: Kayıtlı Windows Sync Agent'lar (`id`, `tenant_id`, `machine_id`, `last_heartbeat_at`).
 - `jobs`: Mobil → Agent yazma iş kuyruğu (`id`, `tenant_id`, `document_type`, `payload`, `status`).
 - `change_sets`: Agent → merkez değişiklik paketleri (`ErpType`, `TableKey`, `TableName`, `LastTriggerRecNo`, `PayloadJson`). *(Faz 20 — ERP-nötr: eski `TabloID` int kaldırıldı, `TableKey` string + `ErpType` eklendi.)*
-- `jobs`: Mobil → Agent yazma iş kuyruğu — Faz 20'de `ErpType` kolonu eklendi (çok-ERP tenant'ta doğru adaptöre yönlendirme).
+- `jobs`: Mobil → Agent yazma iş kuyruğu — Faz 20'de `ErpType` kolonu eklendi (çok-ERP tenant'ta doğru adaptöre yönlendirme). Faz 41'de `CreatedByUserId` (`uuid`, boş olabilir): belgeyi gönderen oturum açmış firma kullanıcısı; onay merkezinden gelen belgede **talep eden** (onaylayan değil). API anahtarı, ajan ve Faz 41 öncesi satırlarda boştur. Yönetici panelinin plasiyer bazlı raporu buna dayanır.
 - `change_set_audit_log`: Senkronizasyon denetim izleri.
 - `mobile_sync_queue`: ERP → Android olay günlüğü (`sequence`, `entity`, `operation`, `recordKey`, `payload`). *(Faz 26 ile yerini `mobile_records`'a bırakıyor; geçiş süresince ikisine de yazılır.)*
 - `bootstrap_snapshots` + `bootstrap_snapshot_chunks`: Android'in sıfırdan çektiği tam durum. Chunk'lar `jsonb` dizileri; `(TenantId)` üzerinde `IsActive = true` ile filtrelenmiş **kısmi unique index** var — aktif snapshot'ı değiştiren her kod bunu tek `SaveChanges` içinde yapmamalı (bkz. `BootstrapUploadEndpoints.CompleteAsync`).

@@ -283,6 +283,8 @@ public static class IngestEndpoints
             PayloadJson = payloadJson,
             Status = JobStatus.Pending,
             EnqueuedAtUtc = DateTimeOffset.UtcNow,
+            CreatedByUserId = ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)
+                && Guid.TryParse(http.User.FindFirst("sub")?.Value, out var senderId) ? senderId : null,
         };
 
         // ---- 5c. Route plans and visits are the team's, not the ERP's: booked here for
