@@ -1,0 +1,409 @@
+@page "/cari"
+@inherits PortalPageBase
+
+<PageTitle>@(_card?.Title ?? "Cari") — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="@(_card?.Title ?? _code ?? "Cari")" Eyebrow="Cari ekstresi" Subtitle="@_card?.CustomerCode" Busy="Busy">
+        <Actions>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.ArrowBack" Href="@BackHref" id="customer-back">Carilere dön</MudButton>
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_card is not null)
+    {
+        <MudPaper Outlined="true" Class="panel customer-card" id="customer-card">
+            <div class="customer-card-balance">
+                <span class="field-label">Güncel bakiye</span>
+                <strong class="@(_card.Balance < 0 ? "portal-negative" : null)" id="customer-balance">@Fmt.Money(_card.Balance)</strong>
+                <small class="text-muted">@(_card.Balance > 0 ? "firmanın alacağı" : _card.Balance < 0 ? "firmanın borcu" : "bakiye yok")</small>
+                @if (_card.IsLocked)
+                {
+                    <span class="badge badge--off">Kilitli</span>
+                }
+            </div>
+            <dl class="detail-facts customer-facts">
+                @Fact("Telefon", _card.Phone)
+                @Fact("E-posta", _card.Email)
+                @Fact("Vergi dairesi / no", Join(_card.TaxOffice, _card.TaxNo))
+                @Fact("Adres", _card.Address)
+                @Fact("Plasiyer", _card.SalespersonCode)
+                @Fact("Bölge / grup", Join(_card.RegionCode, _card.GroupCode))
+            </dl>
+        </MudPaper>
+
+        <div class="ledger-toolbar">
+            <label class="inline-field">
+                Başlangıç
+                <input type="date" class="portal-input portal-input--date" id="ledger-from" value="@Iso(_from)" @onchange="FromChangedAsync" disabled="@Busy" />
+            </label>
+            <label class="inline-field">
+                Bitiş
+                <input type="date" class="portal-input portal-input--date" id="ledger-to" value="@Iso(_to)" @onchange="ToChangedAsync" disabled="@Busy" />
+            </label>
+            <span class="ledger-presets">
+                <button type="button" class="link-button" data-preset="year" @onclick="() => PresetAsync(new DateOnly(Today.Year, 1, 1), Today)">Bu yıl</button>
+                <button type="button" class="link-button" data-preset="3m" @onclick="() => PresetAsync(Today.AddMonths(-3), Today)">Son 3 ay</button>
+                <button type="button" class="link-button" data-preset="all" @onclick="() => PresetAsync(null, null)">Tümü</button>
+            </span>
+        </div>
+        <div class="filter-chips" id="ledger-kinds" role="group" aria-label="Hareket türü">
+            @foreach (var (kind, label) in KindLabels)
+            {
+                var on = _kinds.Contains(kind);
+                <button type="button" class="kind-toggle @(on ? "is-active" : null)" aria-pressed="@(on ? "true" : "false")" data-kind="@kind" disabled="@Busy" @onclick="() => ToggleKindAsync(kind)">@label</button>
+            }
+            @if (_kinds.Count > 0)
+            {
+                <button type="button" class="link-button" id="ledger-kinds-clear" @onclick="ClearKindsAsync">Tüm türler</button>
+            }
+        </div>
+    }
+
+    @if (_ledger is not null)
+    {
+        <section class="stat-grid stat-grid--four">
+            <StatCard Id="ledger-opening" Label="Devir" Value="@Fmt.Money(_ledger.Opening)" Caption="@(_from is null ? "ilk hareketten önce" : $"{_from.Value.ToString("dd.MM.yyyy", Fmt.Turkish)} öncesi")" Icon="@Icons.Material.Rounded.History" Tone="primary" />
+            <StatCard Id="ledger-debit" Label="Borç" Value="@Fmt.Money(_ledger.TotalDebit)" Caption="satış, iade ödemesi…" Icon="@Icons.Material.Rounded.CallReceived" Tone="warning" />
+            <StatCard Id="ledger-credit" Label="Alacak" Value="@Fmt.Money(_ledger.TotalCredit)" Caption="tahsilat, iade…" Icon="@Icons.Material.Rounded.CallMade" Tone="success" />
+            <StatCard Id="ledger-closing" Label="Dönem sonu" Value="@Fmt.Money(_ledger.Closing)" Icon="@Icons.Material.Rounded.AccountBalanceWallet" Tone="violet" />
+        </section>
+
+        <MudPaper Outlined="true" Class="panel panel--table mt-3">
+            @if (_ledger.Items.Count == 0)
+            {
+                <EmptyState Id="ledger-empty" Icon="@Icons.Material.Rounded.ReceiptLong" Title="Bu aralıkta hareket yok." Hint="Tarih aralığını genişletin ya da tür filtresini kaldırın." />
+            }
+            else
+            {
+                <div class="table-scroll">
+                    <table class="data-table data-table--plain" id="ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Tarih</th>
+                                <th>Tür</th>
+                                <th>Belge no</th>
+                                <th>Açıklama</th>
+                                <th class="num">Borç</th>
+                                <th class="num">Alacak</th>
+                                <th class="num">Bakiye</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _ledger.Items)
+                            {
+                                var opens = row.DocumentKey is not null;
+                                <tr data-movement="@row.Id" class="@(opens ? "row-clickable" : null)" @onclick="() => OpenAsync(row)" title="@(opens ? "Kalemleri göster" : null)">
+                                    <td class="nowrap">@DayText(row.Date)</td>
+                                    <td>
+                                        <span class="badge badge--@KindTone(row.Kind)">@KindLabel(row)</span>
+                                        @if (opens)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Rounded.ListAlt" Size="Size.Small" Class="ledger-open-icon" />
+                                        }
+                                    </td>
+                                    <td class="mono">@(row.DocumentNo ?? "—")</td>
+                                    <td class="wrap">@row.Description</td>
+                                    <td class="num">@(row.Debit == 0 ? null : Fmt.Money(row.Debit))</td>
+                                    <td class="num">@(row.Credit == 0 ? null : Fmt.Money(row.Credit))</td>
+                                    <td class="num @(row.Balance < 0 ? "portal-negative" : null)">@Fmt.Money(row.Balance)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            <Pager Id="ledger-pager" Page="_page" PageSize="_pageSize" Total="_ledger.Total" Busy="Busy" Unit="hareket"
+                   PageChanged="GoToAsync" PageSizeChanged="PageSizeAsync" />
+        </MudPaper>
+        <MudText Typo="Typo.caption" Class="text-muted page-footnote">
+            En yeni hareket en üstte. Bakiye kolonu tür filtresinden bağımsız olarak tüm hareketlere göre yürür; bitiş tarihi seçilmediyse güncel cari bakiyesinde biter.
+        </MudText>
+    }
+
+    <DetailSheet Id="document-detail" Open="_documentOpen" Busy="_documentBusy" Eyebrow="@(_opened is null ? "Belge" : KindLabel(_opened))"
+                 Title="@(_opened?.DocumentNo ?? "Belge")" OnClose="CloseDocument">
+        @if (_documentError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="document-error">@_documentError</MudAlert>
+        }
+        @if (_document is { } document)
+        {
+            <div class="detail-summary">
+                <div class="detail-amount" id="document-amount">@Fmt.Money(document.Amount)</div>
+                <dl class="detail-facts">
+                    <dt>Tarih</dt><dd>@DayText(document.Date)</dd>
+                    @if (!string.IsNullOrWhiteSpace(document.Description))
+                    {
+                        <dt>Açıklama</dt><dd>@document.Description</dd>
+                    }
+                    <dt>Kalem</dt><dd>@document.Lines.Count</dd>
+                </dl>
+            </div>
+            @if (!document.LinesAvailable)
+            {
+                <EmptyState Id="document-no-lines" Icon="@Icons.Material.Rounded.ListAlt" Title="Bu belgenin kalem bilgisi yok." />
+            }
+            else
+            {
+                <div class="table-scroll">
+                    <table class="data-table detail-lines" id="document-lines">
+                        <thead>
+                            <tr>
+                                <th>Kod</th>
+                                <th>Ürün</th>
+                                <th class="num">Miktar</th>
+                                <th class="num">Birim fiyat</th>
+                                @if (document.Lines.Any(l => l.Tax is not null and not 0))
+                                {
+                                    <th class="num">KDV</th>
+                                }
+                                <th class="num">Tutar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in document.Lines)
+                            {
+                                <tr data-line="@line.StockCode">
+                                    <td class="mono">@line.StockCode</td>
+                                    <td class="cell-title">
+                                        @(line.Name ?? "—")
+                                        @if (line.Description is not null)
+                                        {
+                                            <div class="text-muted detail-line-note">@line.Description</div>
+                                        }
+                                    </td>
+                                    <td class="num">@Fmt.Quantity(line.Quantity)</td>
+                                    <td class="num">@Fmt.Money(line.UnitPrice)</td>
+                                    @if (document.Lines.Any(l => l.Tax is not null and not 0))
+                                    {
+                                        <td class="num">@(line.Tax is { } tax ? Fmt.Money(tax) : "—")</td>
+                                    }
+                                    <td class="num">@Fmt.Money(line.Amount)</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th colspan="@(document.Lines.Any(l => l.Tax is not null and not 0) ? 5 : 4)">Kalemler toplamı</th>
+                                <th class="num" id="document-lines-total">@Fmt.Money(document.Lines.Sum(l => l.Amount))</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+        }
+    </DetailSheet>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Ledger;
+
+    private static readonly (string Kind, string Label)[] KindLabels =
+    [
+        ("sale", "Satış"), ("sale_return", "Satış iadesi"), ("purchase", "Alış"), ("purchase_return", "Alış iadesi"),
+        ("collection", "Tahsilat"), ("payment", "Tediye"), ("other", "Diğer"),
+    ];
+
+    private string? _code;
+    private string? _listQuery;
+    private DateOnly? _from;
+    private DateOnly? _to;
+    private readonly List<string> _kinds = [];
+    private int _page = 1;
+    private int _pageSize = 50;
+
+    private CustomerCardDto? _card;
+    private LedgerResponse? _ledger;
+
+    private bool _documentOpen;
+    private bool _documentBusy;
+    private string? _documentError;
+    private LedgerRowDto? _opened;
+    private CustomerDocumentDto? _document;
+
+    private static DateOnly Today => Fmt.Today();
+
+    private string BackHref => "cariler" + (_listQuery ?? string.Empty);
+
+    protected override void OnInitialized()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        string? One(string name) => query.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v) ? v[^1]!.Trim() : null;
+        _code = One("kod");
+        _listQuery = One("liste") is { } list && list.StartsWith('?') ? list : null;
+        // A statement opens on this year, the way accounting reads it; "hepsi" asks for every movement.
+        var all = One("aralik") == "hepsi";
+        _from = all ? null : Fmt.TryIsoDay(One("bas"), out var from) ? from : new DateOnly(Today.Year, 1, 1);
+        _to = all ? null : Fmt.TryIsoDay(One("bit"), out var to) ? to : null;
+        if (query.TryGetValue("tur", out var kinds))
+            _kinds.AddRange(kinds.Where(k => KindLabels.Any(l => l.Kind == k)).Select(k => k!).Distinct());
+        if (int.TryParse(One("sayfa"), out var page) && page > 0) _page = page;
+        if (int.TryParse(One("boyut"), out var size) && Pager.Sizes.Contains(size)) _pageSize = size;
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_code))
+        {
+            Nav.NavigateTo("cariler");
+            return;
+        }
+        _card = await Api.CustomerCardAsync(_code);
+        await LoadLedgerAsync();
+    }
+
+    private async Task LoadLedgerAsync()
+    {
+        _ledger = await Api.LedgerAsync(_code!, _from, _to, _kinds, _page, _pageSize);
+        if (_ledger.Items.Count == 0 && _ledger.Total > 0 && _page > 1)
+        {
+            _page = Math.Max(1, (int)Math.Ceiling(_ledger.Total / (double)_pageSize));
+            _ledger = await Api.LedgerAsync(_code!, _from, _to, _kinds, _page, _pageSize);
+        }
+        SyncAddress();
+    }
+
+    private void SyncAddress()
+    {
+        var parts = new List<string> { "kod=" + Uri.EscapeDataString(_code!) };
+        if (_from is null && _to is null) parts.Add("aralik=hepsi");
+        if (_from is { } from && from != new DateOnly(Today.Year, 1, 1)) parts.Add("bas=" + Fmt.IsoDay(from));
+        if (_to is { } to) parts.Add("bit=" + Fmt.IsoDay(to));
+        parts.AddRange(_kinds.Select(k => "tur=" + k));
+        if (_page != 1) parts.Add("sayfa=" + _page);
+        if (_pageSize != 50) parts.Add("boyut=" + _pageSize);
+        if (_listQuery is not null) parts.Add("liste=" + Uri.EscapeDataString(_listQuery));
+        Nav.NavigateTo(new Uri(Nav.Uri).GetLeftPart(UriPartial.Path) + "?" + string.Join("&", parts), new NavigationOptions { ReplaceHistoryEntry = true });
+    }
+
+    private Task ReloadFromFirstPageAsync()
+    {
+        _page = 1;
+        return RunAsync(LoadLedgerAsync);
+    }
+
+    private Task FromChangedAsync(ChangeEventArgs e)
+    {
+        _from = Fmt.TryIsoDay(e.Value?.ToString(), out var day) ? day : null;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task ToChangedAsync(ChangeEventArgs e)
+    {
+        _to = Fmt.TryIsoDay(e.Value?.ToString(), out var day) ? day : null;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task PresetAsync(DateOnly? from, DateOnly? to)
+    {
+        _from = from;
+        _to = to;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task ToggleKindAsync(string kind)
+    {
+        if (!_kinds.Remove(kind)) _kinds.Add(kind);
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task ClearKindsAsync()
+    {
+        _kinds.Clear();
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task GoToAsync(int page)
+    {
+        _page = page;
+        return RunAsync(LoadLedgerAsync);
+    }
+
+    private Task PageSizeAsync(int size)
+    {
+        _pageSize = size;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private async Task OpenAsync(LedgerRowDto row)
+    {
+        if (row.DocumentKey is null) return;
+        _opened = row;
+        _document = null;
+        _documentError = null;
+        _documentOpen = true;
+        _documentBusy = true;
+        StateHasChanged();
+        bool Current() => _documentOpen && ReferenceEquals(_opened, row);
+        try
+        {
+            var document = await Api.CustomerDocumentAsync(_code!, row.DocumentKey);
+            if (Current()) _document = document;
+        }
+        catch (PortalApiException failed)
+        {
+            if (Current()) _documentError = failed.Message;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            if (Current()) _documentError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
+        }
+        catch (SessionEndedException)
+        {
+            _documentOpen = false;
+            await RunAsync(LoadLedgerAsync);
+        }
+        finally
+        {
+            if (Current()) _documentBusy = false;
+        }
+        StateHasChanged();
+    }
+
+    private void CloseDocument()
+    {
+        _documentOpen = false;
+        _opened = null;
+        _document = null;
+    }
+
+    private static string KindLabel(LedgerRowDto row) =>
+        row.Kind == "other" && !string.IsNullOrWhiteSpace(row.SourceType)
+            ? row.SourceType!
+            : KindLabels.FirstOrDefault(k => k.Kind == row.Kind).Label ?? row.Kind;
+
+    private static string KindTone(string kind) => kind switch
+    {
+        "sale" => "primary",
+        "collection" => "success",
+        "sale_return" or "purchase_return" => "danger",
+        "payment" or "purchase" => "warning",
+        _ => "muted",
+    };
+
+    private static string? Iso(DateOnly? day) => day is { } d ? Fmt.IsoDay(d) : null;
+
+    private static string DayText(string iso) =>
+        Fmt.TryIsoDay(iso, out var day) ? day.ToString("dd.MM.yyyy", Fmt.Turkish) : iso;
+
+    private static string? Join(string? a, string? b) =>
+        string.Join(" / ", new[] { a, b }.Where(v => !string.IsNullOrWhiteSpace(v))) is { Length: > 0 } joined ? joined : null;
+
+    private static RenderFragment Fact(string label, string? value) => __builder =>
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        <dt>@label</dt>
+        <dd>@value</dd>
+    };
+}

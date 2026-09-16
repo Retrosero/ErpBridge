@@ -78,6 +78,23 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<BalancesResponse> BalancesAsync(string? search, CancellationToken ct = default) =>
         GetAsync<BalancesResponse>("api/v1/portal/balances" + Query(("search", search)), ct);
 
+    public Task<CustomersResponse> CustomersAsync(string? search, string balance, string sort, bool descending, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<CustomersResponse>("api/v1/portal/customers" + Query(
+            ("q", search), ("balance", balance == "all" ? null : balance), ("sort", sort), ("dir", descending ? "desc" : "asc"),
+            ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
+
+    public Task<CustomerCardDto> CustomerCardAsync(string code, CancellationToken ct = default) =>
+        GetAsync<CustomerCardDto>("api/v1/portal/customers/card" + Query(("code", code)), ct);
+
+    public Task<LedgerResponse> LedgerAsync(string code, DateOnly? from, DateOnly? to, IEnumerable<string> kinds, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<LedgerResponse>("api/v1/portal/customers/ledger" + Query(
+            [("code", code), ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+             .. kinds.Select(k => ("kind", (string?)k)),
+             ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
+
+    public Task<CustomerDocumentDto> CustomerDocumentAsync(string code, string key, CancellationToken ct = default) =>
+        GetAsync<CustomerDocumentDto>("api/v1/portal/customers/document" + Query(("code", code), ("key", key)), ct);
+
     public Task<StockSearchResponse> StockSearchAsync(StockFilter filter, CancellationToken ct = default) =>
         GetAsync<StockSearchResponse>("api/v1/portal/stock/search" + filter.ToApiQuery(), ct);
 

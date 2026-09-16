@@ -9,66 +9,78 @@
 }
 else
 {
-    <PageHeader Title="Cari bakiyeler" Eyebrow="Kayıtlar" Subtitle="Müşteri ve tedarikçi hesaplarının güncel bakiyesi" Busy="Busy">
+    <PageHeader Title="Cariler" Eyebrow="Kayıtlar" Subtitle="Müşteri ve tedarikçi hesapları; ekstre için satıra tıklayın" Busy="Busy">
         <Actions>
             <form class="toolbar-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-                <MudTextField T="string" @bind-Value="_search" Placeholder="Cari kodu veya unvan" Variant="Variant.Outlined" Margin="Margin.Dense"
+                <MudTextField T="string" @bind-Value="_search" Placeholder="Cari kodu, unvan veya telefon" Variant="Variant.Outlined" Margin="Margin.Dense"
                               InputId="balances-search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Clearable="true" />
                 <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy">Ara</MudButton>
             </form>
         </Actions>
     </PageHeader>
 
+    <div class="stock-toolbar">
+        <div class="seg-tabs" role="tablist" id="customers-balance">
+            @foreach (var (value, label) in BalanceTabs)
+            {
+                <button type="button" role="tab" class="seg-tab @(value == _balance ? "is-active" : null)" aria-selected="@(value == _balance ? "true" : "false")"
+                        data-balance="@value" disabled="@Busy" @onclick="() => BalanceAsync(value)">@label</button>
+            }
+        </div>
+    </div>
+
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
-    @if (_balances is not null)
+    @if (_result is not null)
     {
         <section class="stat-grid stat-grid--three">
-            <StatCard Id="total-receivable" Label="Toplam alacak" Value="@Fmt.Money(_balances.TotalReceivable)" Caption="müşterilerden alınacak"
+            <StatCard Id="total-receivable" Label="Toplam alacak" Value="@Fmt.Money(_result.TotalReceivable)" Caption="müşterilerden alınacak"
                       Icon="@Icons.Material.Rounded.CallReceived" Tone="success" />
-            <StatCard Id="total-payable" Label="Toplam borç" Value="@Fmt.Money(_balances.TotalPayable)" Caption="tedarikçilere ödenecek"
+            <StatCard Id="total-payable" Label="Toplam borç" Value="@Fmt.Money(_result.TotalPayable)" Caption="tedarikçilere ödenecek"
                       Icon="@Icons.Material.Rounded.CallMade" Tone="danger" />
-            <StatCard Label="Net pozisyon" Value="@Fmt.Money(_balances.TotalReceivable - _balances.TotalPayable)" Caption="alacak − borç"
+            <StatCard Label="Net pozisyon" Value="@Fmt.Money(_result.TotalReceivable - _result.TotalPayable)" Caption="alacak − borç"
                       Icon="@Icons.Material.Rounded.AccountBalanceWallet" Tone="primary" />
         </section>
 
         <MudPaper Outlined="true" Class="panel panel--table mt-3">
-            @if (_balances.Rows.Count == 0)
+            @if (_result.Items.Count == 0)
             {
                 <EmptyState Id="balances-empty" Icon="@Icons.Material.Rounded.AccountBalanceWallet"
-                            Title="@(_searched is null ? "Bakiyesi olan cari yok." : "Aramaya uyan cari yok.")" />
+                            Title="@(string.IsNullOrEmpty(_searched) && _balance == "all" ? "Cari kaydı yok." : "Filtreye uyan cari yok.")" />
             }
             else
             {
                 <div class="table-scroll">
-                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="balances-table">
+                    <table class="data-table data-table--plain" id="balances-table">
                         <thead>
                             <tr>
-                                <th>Kod</th>
-                                <th>Unvan</th>
-                                <th class="num">Bakiye</th>
+                                @SortHeader("code", "Kod")
+                                @SortHeader("title", "Unvan")
+                                <th>Telefon</th>
+                                <th>Şehir</th>
+                                @SortHeader("balance", "Bakiye", numeric: true)
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var row in _balances.Rows)
+                            @foreach (var row in _result.Items)
                             {
-                                <tr data-customer="@row.CustomerCode">
+                                <tr data-customer="@row.CustomerCode" class="row-clickable" @onclick="() => Open(row.CustomerCode)">
                                     <td class="mono">@row.CustomerCode</td>
-                                    <td class="cell-title">@row.Title</td>
+                                    <td class="cell-title"><a href="@DetailHref(row.CustomerCode)" class="row-link" @onclick:preventDefault>@row.Title</a></td>
+                                    <td>@(row.Phone ?? "—")</td>
+                                    <td>@(row.City ?? "—")</td>
                                     <td class="num @(row.Balance < 0 ? "portal-negative" : "portal-positive")">@Fmt.Money(row.Balance)</td>
                                 </tr>
                             }
                         </tbody>
-                    </MudSimpleTable>
+                    </table>
                 </div>
-                @if (_balances.Truncated)
-                {
-                    <div class="table-foot" id="balances-truncated">İlk @_balances.Rows.Count cari gösteriliyor. Belirli bir cari için arama yapın.</div>
-                }
             }
+            <Pager Id="customers-pager" Page="_page" PageSize="_pageSize" Total="_result.Total" Busy="Busy" Unit="cari"
+                   PageChanged="GoToAsync" PageSizeChanged="PageSizeAsync" />
         </MudPaper>
         <MudText Typo="Typo.caption" Class="text-muted page-footnote">
             Pozitif bakiye firmanın alacağıdır. Vade bilgisi telefonlara taşınmadığı için yaşlandırma (vadesi geçen tutar) gösterilmez.
@@ -79,15 +91,111 @@ else
 @code {
     protected override PortalArea Requires => PortalArea.Ledger;
 
+    private static readonly (string Value, string Label)[] BalanceTabs =
+        [("all", "Tümü"), ("receivable", "Alacaklı"), ("payable", "Borçlu"), ("nonzero", "Bakiyeli")];
+    private static readonly string[] Sorts = ["title", "code", "balance"];
+
     private string? _search;
     private string? _searched;
-    private BalancesResponse? _balances;
+    private string _balance = "all";
+    private string _sort = "title";
+    private bool _descending;
+    private int _page = 1;
+    private int _pageSize = 50;
+    private CustomersResponse? _result;
 
-    protected override async Task LoadAsync() => _balances = await Api.BalancesAsync(_searched);
+    protected override void OnInitialized()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        string? One(string name) => query.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v) ? v[^1]!.Trim() : null;
+        _searched = _search = One("q");
+        if (BalanceTabs.Any(t => t.Value == One("bakiye"))) _balance = One("bakiye")!;
+        if (Sorts.Contains(One("sirala"))) _sort = One("sirala")!;
+        _descending = One("yon") == "azalan";
+        if (int.TryParse(One("sayfa"), out var page) && page > 0) _page = page;
+        if (int.TryParse(One("boyut"), out var size) && Pager.Sizes.Contains(size)) _pageSize = size;
+    }
 
-    private async Task SearchAsync()
+    protected override async Task LoadAsync()
+    {
+        _result = await Api.CustomersAsync(_searched, _balance, _sort, _descending, _page, _pageSize);
+        if (_result.Items.Count == 0 && _result.Total > 0 && _page > 1)
+        {
+            _page = Math.Max(1, (int)Math.Ceiling(_result.Total / (double)_pageSize));
+            _result = await Api.CustomersAsync(_searched, _balance, _sort, _descending, _page, _pageSize);
+        }
+        Nav.NavigateTo(new Uri(Nav.Uri).GetLeftPart(UriPartial.Path) + ListQuery, new NavigationOptions { ReplaceHistoryEntry = true });
+    }
+
+    /// <summary>The list's own address query, handed to the statement so "back" returns to the same page.</summary>
+    private string ListQuery
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(_searched)) parts.Add("q=" + Uri.EscapeDataString(_searched));
+            if (_balance != "all") parts.Add("bakiye=" + _balance);
+            if (_sort != "title") parts.Add("sirala=" + _sort);
+            if (_descending) parts.Add("yon=azalan");
+            if (_page != 1) parts.Add("sayfa=" + _page);
+            if (_pageSize != 50) parts.Add("boyut=" + _pageSize);
+            return parts.Count == 0 ? string.Empty : "?" + string.Join("&", parts);
+        }
+    }
+
+    private string DetailHref(string code) =>
+        "cari?kod=" + Uri.EscapeDataString(code) + (ListQuery.Length == 0 ? string.Empty : "&liste=" + Uri.EscapeDataString(ListQuery));
+
+    private void Open(string code) => Nav.NavigateTo(DetailHref(code));
+
+    private Task SearchAsync()
     {
         _searched = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
-        await RunAsync(LoadAsync);
+        _page = 1;
+        return RunAsync(LoadAsync);
     }
+
+    private Task BalanceAsync(string balance)
+    {
+        if (balance == _balance) return Task.CompletedTask;
+        _balance = balance;
+        _page = 1;
+        return RunAsync(LoadAsync);
+    }
+
+    private Task SortAsync(string sort)
+    {
+        if (_sort == sort) _descending = !_descending;
+        else
+        {
+            _sort = sort;
+            _descending = sort == "balance";
+        }
+        _page = 1;
+        return RunAsync(LoadAsync);
+    }
+
+    private Task GoToAsync(int page)
+    {
+        _page = page;
+        return RunAsync(LoadAsync);
+    }
+
+    private Task PageSizeAsync(int size)
+    {
+        _pageSize = size;
+        _page = 1;
+        return RunAsync(LoadAsync);
+    }
+
+    private RenderFragment SortHeader(string sort, string title, bool numeric = false) => __builder =>
+    {
+        var active = _sort == sort;
+        <th class="@(numeric ? "num" : null)" aria-sort="@(active ? (_descending ? "descending" : "ascending") : "none")">
+            <button type="button" class="sort-button @(active ? "is-active" : null)" data-sort="@sort" disabled="@Busy" @onclick="() => SortAsync(sort)">
+                @title
+                <span class="sort-arrow" aria-hidden="true">@(active ? (_descending ? "↓" : "↑") : "↕")</span>
+            </button>
+        </th>
+    };
 }

@@ -198,3 +198,110 @@ public sealed class PortalStockFacetsResponse
     public bool HasMovementDates { get; set; }
     public bool HasReserved { get; set; }
 }
+
+/// <summary>A customer row of GET /api/v1/portal/customers.</summary>
+public sealed class PortalCustomerRow
+{
+    public string CustomerCode { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public decimal Balance { get; set; }
+    public string? Phone { get; set; }
+    public string? City { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/customers — every customer, paged; totals cover the whole filter.</summary>
+public sealed class PortalCustomersResponse
+{
+    public List<PortalCustomerRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public decimal TotalReceivable { get; set; }
+    public decimal TotalPayable { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/customers/{code}</summary>
+public sealed class PortalCustomerCard
+{
+    public string CustomerCode { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public decimal Balance { get; set; }
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? TaxOffice { get; set; }
+    public string? TaxNo { get; set; }
+    public string? Address { get; set; }
+    public string? SalespersonCode { get; set; }
+    public string? RegionCode { get; set; }
+    public string? GroupCode { get; set; }
+    public string? Currency { get; set; }
+    public bool IsLocked { get; set; }
+    public string DataSource { get; set; } = string.Empty;
+}
+
+/// <summary>One movement of a customer statement.</summary>
+public sealed class PortalLedgerRow
+{
+    public string Id { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+
+    /// <summary>sale, sale_return, purchase, purchase_return, collection, payment, other.</summary>
+    public string Kind { get; set; } = "other";
+
+    /// <summary>What the ERP or the phone called it, for the rare kind "other".</summary>
+    public string? SourceType { get; set; }
+    public string? DocumentNo { get; set; }
+    public string? Description { get; set; }
+    public decimal Debit { get; set; }
+    public decimal Credit { get; set; }
+
+    /// <summary>The balance after this movement, counted over every movement of the range (not only the shown kinds).</summary>
+    public decimal Balance { get; set; }
+
+    /// <summary>Set when the movement has lines to open: GET …/documents/{documentKey}.</summary>
+    public string? DocumentKey { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/customers/{code}/ledger</summary>
+public sealed class PortalLedgerResponse
+{
+    public string CustomerCode { get; set; } = string.Empty;
+    public string? From { get; set; }
+    public string? To { get; set; }
+
+    /// <summary>Balance before the first movement of the range.</summary>
+    public decimal Opening { get; set; }
+    public decimal Closing { get; set; }
+    public decimal TotalDebit { get; set; }
+    public decimal TotalCredit { get; set; }
+    public List<PortalLedgerRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}
+
+public sealed class PortalDocumentLine
+{
+    public string StockCode { get; set; } = string.Empty;
+    public string? Name { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal Amount { get; set; }
+    public decimal? Tax { get; set; }
+    public int? WarehouseNo { get; set; }
+    public string? Description { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/customers/{code}/documents/{documentKey}</summary>
+public sealed class PortalDocumentResponse
+{
+    public string DocumentKey { get; set; } = string.Empty;
+    public string CustomerCode { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+    public string Kind { get; set; } = "other";
+    public string? DocumentNo { get; set; }
+    public string? Description { get; set; }
+    public decimal Amount { get; set; }
+    public List<PortalDocumentLine> Lines { get; set; } = [];
+    public bool LinesAvailable { get; set; }
+}
