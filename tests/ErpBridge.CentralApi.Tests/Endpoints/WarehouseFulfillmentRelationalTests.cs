@@ -311,6 +311,44 @@ public sealed class WarehouseFulfillmentRelationalTests : IClassFixture<SqliteCe
         clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
     }
 
+    [Fact]
+    public async Task The_approval_desk_follows_new_and_decided_requests_by_the_same_long_poll()
+    {
+        var c = await NativeCompanyAsync(saleNeedsApproval: true);
+
+        var quiet = await ApprovalEventsAsync(c.Accounting, approvalsSeq: 0, wait: 0);
+        quiet.Changed.Should().BeFalse();
+        quiet.LatestSeq.Should().Be(0, "accounting has no warehouse role");
+
+        var submitted = await SendToTenantAsync(c.Id, c.Ali, "/api/v1/ingest/jobs", new
+        {
+            externalId = "REQ-LIVE",
+            documentType = "approval_request",
+            payload = new { kind = "sale", counterpartyName = "Bakkal Ali", amount = 150, documents = new object[] { new { documentType = "sales_order", externalId = "SO-LIVE-A", payload = SalePayload("SO-LIVE-A", 1) } } },
+        });
+        var requestId = (await submitted.ReadAsJsonAsync<IngestJobResponse>()).JobId;
+        var arrived = await ApprovalEventsAsync(c.Accounting, approvalsSeq: 0, wait: 0);
+        arrived.Changed.Should().BeTrue();
+        arrived.ApprovalsSeq.Should().BeGreaterThan(0);
+
+        var clock = Stopwatch.StartNew();
+        var waiting = ApprovalEventsAsync(c.Accounting, arrived.ApprovalsSeq, wait: 20);
+        await Task.Delay(300);
+        waiting.IsCompleted.Should().BeFalse();
+        (await PostAsync($"/api/v1/android/approvals/{requestId}/reject", new { note = "fiyat yanlış" }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await waiting).Changed.Should().BeTrue();
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+        (await ErrorAsync(GetAsync("/api/v1/portal/events?approvalsSeq=0", c.Ali))).Should().Be("WAREHOUSE_ROLE_REQUIRED");
+    }
+
+    private async Task<PortalEventsResponse> ApprovalEventsAsync(string token, long approvalsSeq, int wait)
+    {
+        var response = await GetAsync($"/api/v1/portal/events?approvalsSeq={approvalsSeq}&wait={wait}", token);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.ReadAsJsonAsync<PortalEventsResponse>();
+    }
+
     // ---- helpers ------------------------------------------------------------------------
 
     private sealed record Company(Guid Id, string Code, string Patron, string Ali, Guid AliId, string Depot, string Depot2, Guid Depot2Id, string Accounting, string Board);

@@ -1,6 +1,6 @@
 # Goal Plan — Çoklu Rol, Muhasebe Onayı, Canlı Depo Ekranı ve Performans Paneli
 
-Durum: **Onaylandı — Adım 4 bitti, sırada Adım 5** · Tarih: 2026-09-16 · Kapsam: ErpBridge.CentralApi + ErpBridge.Portal
+Durum: **Onaylandı — Adım 5 bitti** (Adım 6 `GOAL_PANEL_GELISTIRMELERI.md` P4'e taşındı; sırada Adım 7) · Tarih: 2026-09-16 · Kapsam: ErpBridge.CentralApi + ErpBridge.Portal
 (Sipariş Cepte telefon uygulamasında değişiklik yok.)
 
 ---
@@ -309,7 +309,7 @@ bildirim (SMS/push) · e-fatura · çoklu depo/şube ayrımı · CSV/Excel dış
 | 2 — Çoklu rol altyapısı | ✅ | [#50](https://github.com/Retrosero/ErpBridge/pull/50) | `mobile_users.Role` öncelikli rol değil, eski uygulamalar için ADMIN/MANAGER/SALES türetilmiş değer olarak tutuldu (plan 2.1 taslağından sapma, daha güvenli). Telefon uygulamasına `ROLE_NOT_ALLOWED_ON_PHONE` Türkçe metni sonraki telefon sürümüne |
 | 3 — Beni Hatırla + rol bazlı arayüz | ✅ | Faz 46 | Sunucu: login `rememberMe` → panelde 30 gün / 12 saat. Panel: şifreli `localStorage` ya da `sessionStorage`, rol birleşimine göre menü ve `PortalPageBase.Requires`, çoklu rol çipleri (ekle + düzenle). **Sapmalar:** muhasebenin açılış sayfası `/onaylar` (`/muhasebe` adım 5'te gelince değişecek); `/depo` şimdilik yer tutucu (adım 6); admin kendi rollerini panelden değiştiremez. Yerelde tarayıcıda doğrulandı (muhasebe/depo/admin, yeni sekmede hatırlanan oturum, rol kaydı) |
 | 4 — Sipariş hazırlık çekirdeği | ✅ | Faz 47 | `order_fulfillments`, `order_fulfillment_events`, `tenant_warehouse_settings` (migration yalnız yeni tablo). `FulfillmentService` + `/api/v1/portal/fulfillments`, `/warehouse/settings`, `/events`; ingest (native + ERP) ve onay kuyruğa alır, ajan ack ve konsol retry ERP durumunu günceller. **Sapmalar:** `UpdatedSeq` mevcut `tenant_sync_counter`'dan (ayrı sıra açılmadı); kuyruk sırası için `QueuedSeq` eklendi (SQLite `DateTimeOffset` sıralayamaz), index `(TenantId, Status, QueuedSeq)`; `changedSinceSeq` durum filtresini yok sayar; hub mevcut bootstrap hub'ının ayrı bir örneği. 11 ilişkisel test |
-| 5 — Muhasebe onay ekranı | ⬜ | — | |
+| 5 — Muhasebe onay ekranı | ✅ | Faz 48 | `/muhasebe` onay masası: en eski üstte liste + detay (kalemler, ödemeler, stok uyarısı, cari bakiye, geçmiş), `portal-keys.js` ile tüm kısayollar, işaretle + onay pencereli toplu onay, `/portal/events?approvalsSeq` ile canlı liste. Muhasebenin açılış sayfası `/muhasebe`. **Sapmalar:** onaylar için ayrı hub yok — depo olay hub'ı ve `/events` iki konulu oldu; `/onaylar` kart sayfası kaldı (menüde ikisi de); canlı döngü sayfa başına (V5'teki firma başına ortak abonelik adım 7'ye). Tarayıcıda gerçek tuşlarla: 3 onay, notlu red, toplu onay, başka yetkilinin kararı ≤ 3 sn |
 | 6 — Depo personeli sayfası | ⬜ | — | |
 | 7 — Canlı Depo Ekranı | ⬜ | — | |
 | 8 — Yönetici & performans paneli | ⬜ | — | |

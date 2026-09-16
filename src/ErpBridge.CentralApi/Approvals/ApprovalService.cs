@@ -77,6 +77,7 @@ public sealed class ApprovalService
         rules.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         _hub.Publish(tenant.Id, rules.UpdatedAtUtc.Value);
+        _warehouse.Notify(tenant.Id);
         return ApprovalResult<TenantApprovalRules>.Ok(rules);
     }
 
@@ -257,6 +258,7 @@ public sealed class ApprovalService
         }
 
         _hub.Publish(tenant.Id, now);
+        _warehouse.Notify(tenant.Id);
         return ApprovalResult<ApprovalRequest>.Ok(request, 201);
     }
 
@@ -306,7 +308,8 @@ public sealed class ApprovalService
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
         _hub.Publish(tenant.Id, now);
-        if (approve) _warehouse.Notify(tenant.Id);
+        // The portal's approval desk and, for an approved sale, the warehouse queue.
+        _warehouse.Notify(tenant.Id);
         return ApprovalResult<ApprovalRequest>.Ok(request);
     }
 
@@ -355,6 +358,7 @@ public sealed class ApprovalService
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
         _hub.Publish(tenant.Id, now);
+        _warehouse.Notify(tenant.Id);
         return ApprovalResult<ApprovalRequest>.Ok(request);
     }
 

@@ -112,6 +112,18 @@ public static class Fmt
 
     public static string Role(string role) => Session.PortalRoles.Label(role);
 
+    /// <summary>How long a request has waited: "az önce", "12 dk", "3 sa 5 dk", "2 gün".</summary>
+    public static string Waiting(DateTimeOffset since, DateTimeOffset now)
+    {
+        var waited = now - since;
+        if (waited < TimeSpan.FromMinutes(1)) return "az önce";
+        if (waited < TimeSpan.FromHours(1)) return $"{(int)waited.TotalMinutes} dk";
+        if (waited < TimeSpan.FromDays(1)) return waited.Minutes == 0 ? $"{(int)waited.TotalHours} sa" : $"{(int)waited.TotalHours} sa {waited.Minutes} dk";
+        return $"{(int)waited.TotalDays} gün";
+    }
+
+    public static string PaymentMethod(string? method) => string.IsNullOrWhiteSpace(method) ? "—" : method;
+
     /// <summary>"Yönetici · Depo".</summary>
     public static string Roles(IEnumerable<string> roles) => string.Join(" · ", roles.Select(Role));
 }

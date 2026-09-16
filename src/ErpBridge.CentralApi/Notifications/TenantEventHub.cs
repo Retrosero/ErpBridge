@@ -1,16 +1,19 @@
 namespace ErpBridge.CentralApi.Notifications;
 
 /// <summary>
-/// Wakes the portal's long-poll (<c>GET /api/v1/portal/events</c>) when a company's warehouse queue
-/// changes. Kept apart from <see cref="IBootstrapNotificationHub"/> on purpose: that one wakes every
+/// Wakes the portal's long-poll (<c>GET /api/v1/portal/events</c>) when a company's warehouse queue or
+/// approval requests change. Kept apart from <see cref="IBootstrapNotificationHub"/> on purpose: that one wakes every
 /// phone of the company to pull data, and a warehouse click must not send the whole field team
 /// syncing. In memory, so it assumes one CentralApi container (plan step 4; scaling out needs
 /// PostgreSQL LISTEN or Redis).
 /// </summary>
 public interface ITenantEventHub
 {
-    /// <summary>Waits for <see cref="Publish"/> for the tenant, the timeout or cancellation; never throws.</summary>
-    Task WaitAsync(Guid tenantId, TimeSpan timeout, CancellationToken ct);
+    /// <summary>
+    /// Waits for <see cref="Publish"/> for the tenant, the timeout or cancellation; never throws. The waiter
+    /// is registered before this returns. True when a publish woke it.
+    /// </summary>
+    Task<bool> WaitAsync(Guid tenantId, TimeSpan timeout, CancellationToken ct);
 
     /// <summary>Call after the change has committed.</summary>
     void Publish(Guid tenantId);
@@ -23,7 +26,8 @@ public sealed class TenantEventHub : ITenantEventHub
 
     public TenantEventHub() => _waiters = new BootstrapNotificationHub();
 
-    public Task WaitAsync(Guid tenantId, TimeSpan timeout, CancellationToken ct) => _waiters.WaitAsync(tenantId, timeout, ct);
+    public async Task<bool> WaitAsync(Guid tenantId, TimeSpan timeout, CancellationToken ct) =>
+        await _waiters.WaitAsync(tenantId, timeout, ct).ConfigureAwait(false) != DateTimeOffset.MinValue;
 
     public void Publish(Guid tenantId) => _waiters.Publish(tenantId, DateTimeOffset.UtcNow);
 }

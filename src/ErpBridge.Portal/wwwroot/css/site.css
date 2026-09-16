@@ -308,3 +308,72 @@ h1:focus, h1:focus-visible { outline: none; }
     .approval-actions .mud-button-root { flex: 1; }
     .portal-appbar-code { display: none; }
 }
+
+/* ---------- approval desk (plan step 5) ---------- */
+.desk { display: grid; grid-template-columns: minmax(340px, 5fr) 7fr; gap: 16px; align-items: start; }
+.desk .panel { padding: 0; overflow: hidden; }
+.desk-list { display: flex; flex-direction: column; max-height: calc(100vh - 210px); }
+.desk-toolbar { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
+.desk-search { flex: 1; min-width: 0; font: inherit; font-size: .88rem; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.desk-search:focus { outline: 2px solid var(--brand-500); outline-offset: -1px; }
+.desk-filter { font: inherit; font-size: .8rem; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.desk-filter.is-active { background: var(--brand-50); border-color: var(--brand-500); color: var(--brand-600); font-weight: 600; }
+.desk-count { font-size: .78rem; color: var(--muted); padding: 8px 14px; border-bottom: 1px solid var(--line-soft); }
+.desk-checked { color: var(--brand-600); font-weight: 600; }
+.desk-rows { overflow-y: auto; }
+.desk-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 8px; border-bottom: 1px solid var(--line-soft); border-left: 3px solid transparent; cursor: pointer; }
+.desk-row:hover { background: #f8fafc; }
+.desk-row.is-current { background: var(--brand-50); border-left-color: var(--brand-600); }
+.desk-row.is-checked .desk-check { color: var(--brand-600); }
+.desk-check { color: #98a2b3; display: grid; place-items: center; padding: 2px; }
+.desk-row-main { flex: 1; min-width: 0; }
+.desk-row-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.desk-row-title strong { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desk-row-meta { display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--muted); margin-top: 2px; }
+.desk-has-note { color: var(--warning); display: inline-flex; }
+.desk-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.desk-amount { font-weight: 700; font-size: .88rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.desk-wait { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+.desk-wait.is-slow { color: var(--warning); font-weight: 600; }
+.desk-wait.is-late { color: var(--danger); font-weight: 700; }
+.desk-detail { padding: 18px 20px !important; min-height: 320px; }
+.desk-detail-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.desk-detail-kind { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .8rem; }
+.desk-detail-title { font-size: 1.3rem; margin: 6px 0 0; letter-spacing: -.01em; }
+.desk-detail-amount { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.desk-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
+.desk-actions kbd, .desk-keys kbd { font: 600 .7rem ui-monospace, Consolas, monospace; padding: 1px 5px; border-radius: 4px; border: 1px solid currentColor; opacity: .75; margin-left: 4px; }
+.desk-note { display: flex; gap: 6px; align-items: center; font-size: .85rem; background: var(--warning-50); color: var(--warning); padding: 6px 10px; border-radius: 8px; margin: 6px 0; }
+.desk-detail-progress { margin: 14px 0; }
+.desk-facts { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 4px; }
+.desk-fact { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 130px; }
+.desk-fact span { font-size: .72rem; color: var(--muted); }
+.desk-fact strong { font-size: .9rem; }
+.desk-fact--wide { flex: 1 1 100%; }
+.desk-block { margin-top: 16px; }
+.desk-block-title { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.desk-warnings { background: var(--danger-50); border-radius: 8px; padding: 10px 12px; }
+.desk-warning { font-size: .85rem; color: var(--danger); }
+.desk-lines { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.desk-lines th { text-align: left; font-size: .72rem; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.desk-lines td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.desk-lines .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.desk-payment { display: flex; justify-content: space-between; font-size: .88rem; padding: 4px 0; border-bottom: 1px solid var(--line-soft); }
+.desk-history { margin: 0; padding-left: 18px; font-size: .82rem; color: var(--ink-2); }
+.desk-history li { padding: 2px 0; }
+.desk-overlay { position: fixed; inset: 0; background: rgba(15, 27, 61, .38); display: grid; place-items: center; z-index: 1500; padding: 16px; }
+.desk-dialog:focus { outline: none; }
+.desk-dialog { width: min(520px, 100%); padding: 20px 22px !important; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-md); }
+.desk-dialog h3 { margin: 0 0 6px; font-size: 1.05rem; }
+.desk-dialog p { margin: 0 0 12px; font-size: .85rem; }
+.desk-dialog-input { width: 100%; box-sizing: border-box; font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; }
+.desk-dialog-input:focus { outline: 2px solid var(--brand-500); outline-offset: -1px; }
+.desk-bulk-list { max-height: 220px; overflow-y: auto; font-size: .85rem; padding-left: 18px; margin: 0 0 12px; }
+.desk-keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: .88rem; margin: 10px 0 14px; }
+.desk-keys dt { text-align: right; white-space: nowrap; }
+.desk-keys dd { margin: 0; }
+@media (max-width: 1100px) {
+    .desk { grid-template-columns: 1fr; }
+    .desk-list { max-height: 50vh; }
+    .desk-detail-head { flex-direction: column; }
+}

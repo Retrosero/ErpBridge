@@ -108,7 +108,7 @@ public sealed class PortalPagesTests : PortalPageTestContext
     }
 
     [Theory]
-    [InlineData("ACCOUNTING", "/onaylar")]
+    [InlineData("ACCOUNTING", "/muhasebe")]
     [InlineData("WAREHOUSE", "/depo")]
     public void Office_roles_land_on_their_own_page(string role, string home)
     {

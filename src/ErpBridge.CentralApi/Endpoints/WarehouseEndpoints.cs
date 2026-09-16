@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Warehouse;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Endpoints;
 
@@ -89,27 +90,52 @@ public static class WarehouseEndpoints
     }
 
     /// <summary>
-    /// Long-poll: answers at once when the queue changed after <c>sinceSeq</c>, otherwise waits up to
-    /// <c>wait</c> seconds (0-25) for a change. The page then reads <c>fulfillments?changedSinceSeq</c>.
+    /// Long-poll for the portal's live pages. Topics: the warehouse queue (<c>sinceSeq</c>, for a warehouse
+    /// role) and approval requests (<c>approvalsSeq</c>, the requests the caller may see; Faz 48). Answers at
+    /// once when a topic the caller asked about is past its value, otherwise waits up to <c>wait</c> seconds
+    /// (0-25). The page then reads the topic's list.
+    ///
+    /// <para>Approval sequence numbers are milliseconds, not a counter (rule 16), so a request that commits
+    /// late can carry a lower number than one already seen: a wake-up by a publish is therefore reported as
+    /// <c>changed</c> too, and the page reads its list again.</para>
     /// </summary>
     private static async Task<IResult> EventsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] ITenantEventHub events,
-        long? sinceSeq, int? wait, CancellationToken ct)
+        long? sinceSeq, long? approvalsSeq, int? wait, CancellationToken ct)
     {
-        var (tenant, _, error) = await AuthorizeAsync(http, db, RolePermissions.CanOperateWarehouse, ct);
+        var (tenant, user, error) = await AuthorizeAsync(http, db, CanFollowEvents, ct);
         if (error is not null) return error;
+        var warehouse = RolePermissions.CanOperateWarehouse(user!);
+        var watchWarehouse = warehouse && (sinceSeq is not null || approvalsSeq is null);
         var since = sinceSeq ?? 0;
         var seconds = Math.Clamp(wait ?? 0, 0, MaxWaitSeconds);
         // Subscribe before reading: a change that commits between the read and the wait still wakes us.
         // (WaitAsync registers the waiter before it returns.) An unused waiter ends with its timeout.
         var waiting = seconds > 0 ? events.WaitAsync(tenant!.Id, TimeSpan.FromSeconds(seconds), http.RequestAborted) : null;
-        var latest = await FulfillmentService.LatestSeqAsync(db, tenant!.Id, ct);
-        if (latest <= since && waiting is not null)
+
+        async Task<(long Queue, long Approvals)> ReadAsync() => (
+            warehouse ? await FulfillmentService.LatestSeqAsync(db, tenant!.Id, ct) : 0,
+            approvalsSeq is null ? 0 : await ErpBridge.CentralApi.Approvals.ApprovalService.Visible(db, tenant!.Id, user!).MaxAsync(r => (long?)r.UpdatedSeq, ct) ?? 0);
+        bool Moved((long Queue, long Approvals) now) =>
+            (watchWarehouse && now.Queue > since) || (approvalsSeq is { } seen && now.Approvals > seen);
+
+        var latest = await ReadAsync();
+        var woke = false;
+        if (!Moved(latest) && waiting is not null)
         {
-            await waiting;
-            latest = await FulfillmentService.LatestSeqAsync(db, tenant.Id, ct);
+            woke = await waiting && approvalsSeq is not null;
+            latest = await ReadAsync();
         }
-        return JsonResults.Ok(new PortalEventsResponse { LatestSeq = latest, Changed = latest > since });
+        return JsonResults.Ok(new PortalEventsResponse
+        {
+            LatestSeq = latest.Queue,
+            ApprovalsSeq = latest.Approvals,
+            Changed = Moved(latest) || woke,
+        });
     }
+
+    /// <summary>Anyone with a portal role follows the topics their roles open.</summary>
+    private static bool CanFollowEvents(MobileUser user) =>
+        RolePermissions.CanOperateWarehouse(user) || RolePermissions.CanUsePortal(user);
 
     private static async Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeAsync(
         HttpContext http, CentralApiDbContext db, Func<MobileUser, bool> allowed, CancellationToken ct)

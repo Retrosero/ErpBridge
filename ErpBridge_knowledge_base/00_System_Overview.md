@@ -530,7 +530,7 @@ registration ayrı bir composition projesine taşınır.
      ADMIN, MANAGER), `Ledger` (Cariler, Stok — + ACCOUNTING), `Approvals` (Onaylar — ADMIN, MANAGER,
      ACCOUNTING), `Warehouse` (Depo — ADMIN, MANAGER, WAREHOUSE), `Users` (Kullanıcılar — ADMIN). Rolün
      açmadığı adres (yer imi, elle yazılan URL) API'ye hiç sormadan kullanıcının **açılış sayfasına**
-     gider: raporları görebilen `/`, muhasebe `/onaylar`, depo `/depo`. Girişten sonra da oraya gidilir.
+     gider: raporları görebilen `/`, muhasebe `/muhasebe` (Faz 48), depo `/depo`. Girişten sonra da oraya gidilir.
      `PortalRoles` ile `RolePermissions` birlikte değişir; panel yalnız kolaylıktır, kapı sunucudadır.
    - **Roller tazelenir (Faz 46):** tarayıcıdan geri yüklenen oturumun rolleri günler öncesine ait olabilir.
      `PortalPageBase`, roller bir dakikadan eskiyse (`PortalSession.RoleRefreshInterval`; girişte taze sayılır)
@@ -573,7 +573,7 @@ registration ayrı bir composition projesine taşınır.
    - **Sayfalar:** Özet (`/`), Plasiyerler (aralık ≤ 92 gün, sunucuya sormadan reddedilir),
      Ziyaretler (`?date=`), Cariler (yaşlandırma yok — sayfada açıkça yazar), Stok (tükenenler
      filtresi), Onaylar (onay yetkisi yoksa salt görüntüleme; "başkası sonuçlandırdı" kodlarında
-     liste yeniden okunur), Depo (Faz 46'da yer tutucu; sipariş kuyruğu plan adım 6),
+     liste yeniden okunur), **Onay masası** (`/muhasebe`, Faz 48, aşağıda), Depo (Faz 46'da yer tutucu; sipariş kuyruğu plan adım 6),
      Kullanıcılar (yalnız `ADMIN`; `Shared/RolePicker` ile çoklu rol çipleri ve rol açıklamaları,
      hem eklemede hem "Roller" ile düzenlemede `roles[]` gönderir — tek `role` göndermez; "Onay
      verebilsin" yalnız yönetici rolünde görünür. **Listedeki `canApprove` etkin haktır** (admin ve
@@ -589,8 +589,35 @@ registration ayrı bir composition projesine taşınır.
      hangi deponun kullanıldığı — sahte `IJSRuntime` ile gerçek `ProtectedLocalStorage`/`ProtectedSessionStorage`),
      `PortalLayoutTests` (menü). Menü testleri `Register(..., popoverProvider: false)` ister: layout kendi
      `MudPopoverProvider`'ını getirir, ikincisi hata verir.
+   - **Onay masası (`Pages/Muhasebe.razor`, Faz 48, plan adım 5):** muhasebe (ve onay bölümü açık her rol)
+     için klavye odaklı ekran. Solda bekleyen talepler **en eski üstte** (tür, müşteri, plasiyer, tutar, bekleme;
+     30 dk sarı, 2 sa kırmızı), sağda detay: belge kalemleri (`documents[].payload.lines`), ödemeler
+     (`summary.payments`), ödeme türü/açıklama (`summary`), stok uyarıları, cari bakiye (`/portal/balances?search=
+     customerCode`, `Ledger` bölümü açıksa) ve geçmiş. Kuyruk `approvals?status=pending&take=500` ile bir kerede okunur.
+     Kısayollar: `↑↓`/`j k` gezin · `A` onayla (varsa notuyla) · `R` red penceresi (not) · `N` not · `Boşluk` işaretle
+     · `Shift+A` işaretlileri onay penceresiyle onayla · `/` ara · `F` tür filtresi · `Esc` kapat/işaretleri temizle
+     · `?` yardım. Onay yetkisi yoksa (`Session.CanApprove`) salt görüntüler. Karardan sonra sıradaki talebe geçer;
+     `APPROVAL_ALREADY_DECIDED`/`STATE_CHANGED`/`NOT_FOUND` kuyruğu yeniden okur.
+     - **Klavye:** `wwwroot/js/portal-keys.js` tek belge dinleyicisi; alanda yazarken yalnız `Esc` ve tek satırlık
+       alanda `Enter` geçer, odaklı düğmenin Enter/Boşluk'u düğmede kalır. Pencere açılınca odak **pencerenin
+       kendisine** (`tabindex=-1`) verilir, düğmeye değil — Enter her tarayıcıda kısayol olarak işlensin.
+       `attach` bir tutamaç döner, `detach(tutamaç)` yalnız kendi dinleyicisini söker. `e.code === 'Space'` de Boşluk sayılır.
+     - **Canlı:** sayfa `GET /api/v1/portal/events?approvalsSeq&wait=25` long-poll döngüsü tutar (aralarda en az 1 sn,
+       hatada 15 sn); `changed` gelince kuyruğu yeniden okur. İmleç satırlardan **önce** alınır. Açık talebi başkası
+       sonuçlandırdıysa "başka bir yetkili" bilgisi ve sıradaki talep. Kararlar ve yeniden okumalar bir `SemaphoreSlim`
+       ile sıraya girer.
+     - **Tuzak — sayfa kopyası yükleme ortasında atılır:** tarayıcıdan geri yüklenen oturumda `PortalPageBase`
+       `Session.SignIn` yapınca `MainLayout` oturum açık görünümüne geçer ve `@Body`'deki sayfa **yeni bir örnekle
+       değiştirilir**; ilk örneğin `LoadAsync`'i hâlâ sürerken `Dispose` çağrılır. Uzun ömürlü iş başlatan sayfa
+       (döngü, JS dinleyicisi) `_disposed` bayrağına bakmalı ve iptal kaynağını dispose etmemeli, yalnız iptal etmeli —
+       aksi hâlde `ObjectDisposedException` devreyi düşürür (Faz 48'de tarayıcıda yakalandı). Diğer sayfalar bu yüzden
+       ilk açılışta veriyi iki kez okuyabilir (bilinen verimsizlik).
+     - Testler: `PortalApprovalDeskTests` (10 talep klavyeyle en eskiden başlayarak, ok + not + red, işaretle + toplu onay,
+       başkası sonuçlandırmış 409, canlı güncelleme, arama + filtre, yetkisiz salt görüntü, yardım). Kuyruk sırası
+       bozulunca 8 testin 6'sı kırıldı.
    - **Tarayıcıda deneme notu:** Claude'un tarayıcı bölmesinde "Enter" tuşu düz bir HTML formunu da
-     göndermiyor (araç kısıtı); girişi denemek için "Giriş yap" düğmesine tıklanır.
+     göndermiyor (araç kısıtı); girişi denemek için "Giriş yap" düğmesine tıklanır. Tuş adı olarak `Return` ve `space` boş
+     `key` üretir; `Enter` çalışır, Boşluk bu araçla denenemez.
 
 20. **Şema durumu görünürdür: `GET /health/schema` (Faz 44, 2026-09-16).**
    Konteyner açılışta `--migrate` çalıştırır ama başarısız olursa uygulama **yine açılır** ve eski
@@ -645,10 +672,16 @@ registration ayrı bir composition projesine taşınır.
      kuyruk sırası `QueuedSeq`
      (`DateTimeOffset` SQLite'ta sıralanamaz). `GET /{id}` → sipariş + toplama listesi (`ItemsJson`:
      `stockCode, name, quantity, unit`) + olaylar.
-   - **Canlı akış (V5):** `GET /api/v1/portal/events?sinceSeq&wait=0-25` — değişiklik varsa hemen, yoksa
+   - **Canlı akış (V5):** `GET /api/v1/portal/events?sinceSeq&approvalsSeq&wait=0-25` — değişiklik varsa hemen, yoksa
      `ITenantEventHub` ile bekler, `{latestSeq, changed}` döner; sayfa sonra `changedSinceSeq` okur.
      **Bekleyici okumadan önce kaydolur** (`WaitAsync` dönmeden kuyruğa girer): okuma ile bekleme arasında
-     commit olan değişiklik de uyandırır (Codex, PR #52). Hub
+     commit olan değişiklik de uyandırır (Codex, PR #52).
+     **Onay konusu (Faz 48):** `approvalsSeq` verilirse `ApprovalService.Visible` içindeki en büyük `UpdatedSeq` de
+     izlenir ve `approvalsSeq` alanında döner; uç artık panel rolü olan herkese açık (`CanUsePortal` veya depo),
+     depo konusu yalnız depo rolüne. `ApprovalService` her değişiklikte (gönderim, karar, tekrar açma, geri çekme,
+     kurallar) bu hub'a da yayın yapar. Onay seq'i milisaniye olduğundan (kural 16) geç commit olan talep daha küçük
+     numara taşıyabilir: bu yüzden **yayınla uyanan istek `changed: true` döner**, sayfa listeyi yeniden okur.
+     `ITenantEventHub.WaitAsync` bu ayrım için `bool` (uyandı mı) döner. Hub
      **bellek içidir ve bootstrap hub'ından ayrıdır** (depo tıklaması telefonları senkrona uyandırmaz);
      CentralApi tek konteyner varsayar — yatay ölçek PostgreSQL LISTEN/Redis ister.
    - **Ayarlar:** `GET|PUT /api/v1/portal/warehouse/settings` (açık/kapalı + gecikme eşikleri dakika,

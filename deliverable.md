@@ -1,3 +1,28 @@
+# Faz 48 — Muhasebe onay masası (Plan Adım 5) — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.Portal/Pages/Muhasebe.razor` (yeni): `/muhasebe` onay masası — liste + detay, kısayollar, not/red/toplu onay pencereleri, canlı liste.
+- `src/ErpBridge.Portal/wwwroot/js/portal-keys.js` (yeni), `Pages/_Host.cshtml`: klavye dinleyicisi.
+- `Api/Models.cs`, `Api/PortalApiClient.cs`, `Api/PortalMessages.cs` (`Fmt.Waiting`), `Session/PortalRoles.cs` (muhasebe açılışı `/muhasebe`), `MainLayout.razor` (menüde "Onay masası"), `wwwroot/css/site.css`.
+- `src/ErpBridge.CentralApi/Endpoints/WarehouseEndpoints.cs`, `Contracts/WarehouseContracts.cs`, `Notifications/TenantEventHub.cs`, `Approvals/ApprovalService.cs`: `/portal/events` onay konusu (`approvalsSeq`), onay değişiklikleri portal hub'ına yayınlanır.
+- Testler: `PortalApprovalDeskTests` (8, yeni), `WarehouseFulfillmentRelationalTests` (+1 onay long-poll), açılış sayfası beklentileri güncellendi.
+- KB kural 19 (onay masası, klavye, sayfa kopyası tuzağı) ve 21 (onay konusu), `docs/PLAN_ROLLER_VE_DEPO.md`.
+
+## Davranış
+
+- Muhasebe girişte onay masasına düşer; fare kullanmadan gezinir, onaylar, notla reddeder, işaretleyip toplu onaylar.
+- Başka bir yetkilinin kararı ya da yeni talep sayfa yenilenmeden görünür.
+- Migration yok. Telefon uygulamasında değişiklik yok.
+
+## Testler / derleme
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata. CentralApi 393, Portal 87; tüm çözüm yeşil.
+- Kuyruk sırası bozulunca masa testlerinin 6/8'i kırıldı.
+- Yerelde tarayıcıda gerçek tuşlarla: `A` ile 3 onay, `↓` + `R` + yazı + `Enter` ile notlu red, işaret + `Shift+A` + `Enter` ile 2 talep toplu onay, başka yetkilinin API'den reddi ≤ 3 sn'de masada, geniş ekranda iki sütun. Bu denemede bulunan iki hata düzeltildi: geri yüklenen oturumda sayfa kopyası atılırken devre çöküyordu; toplu onay penceresinde Enter odaklı düğmeye takılıyordu.
+
+---
+
 # Faz 47 — Depo sipariş hazırlık çekirdeği (Plan Adım 4) — Teslimat
 
 ## Değişen dosyalar

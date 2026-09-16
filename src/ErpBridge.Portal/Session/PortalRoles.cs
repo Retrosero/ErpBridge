@@ -70,11 +70,11 @@ public static class PortalRoles
 
     /// <summary>
     /// Where a user lands after signing in, and where a page they may not open sends them:
-    /// the day summary for managers, the approvals for accounting, the order queue for the warehouse.
+    /// the day summary for managers, the approval desk for accounting, the order queue for the warehouse.
     /// </summary>
     public static string HomePage(IReadOnlyCollection<string> roles) =>
         Allows(roles, PortalArea.Reports) ? ""
-        : Allows(roles, PortalArea.Approvals) ? "onaylar"
+        : Allows(roles, PortalArea.Approvals) ? "muhasebe"
         : Allows(roles, PortalArea.Warehouse) ? "depo"
         : "login";
 }

@@ -28,9 +28,9 @@ public sealed class PortalRolesTests
     [Theory]
     [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users", "")]
     [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse", "")]
-    [InlineData(new[] { "ACCOUNTING" }, "Ledger,Approvals", "onaylar")]
+    [InlineData(new[] { "ACCOUNTING" }, "Ledger,Approvals", "muhasebe")]
     [InlineData(new[] { "WAREHOUSE" }, "Warehouse", "depo")]
-    [InlineData(new[] { "ACCOUNTING", "WAREHOUSE" }, "Ledger,Approvals,Warehouse", "onaylar")]
+    [InlineData(new[] { "ACCOUNTING", "WAREHOUSE" }, "Ledger,Approvals,Warehouse", "muhasebe")]
     [InlineData(new[] { "SALES" }, "", "login")]
     public void Roles_open_the_union_of_their_areas_and_decide_the_home_page(string[] roles, string areas, string home)
     {
@@ -215,7 +215,7 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         var cut = RenderLayout();
 
         cut.FindAll("#portal-nav a").Select(a => a.GetAttribute("href"))
-            .Should().Equal("", "plasiyerler", "ziyaretler", "cariler", "stok", "onaylar", "depo", "kullanicilar");
+            .Should().Equal("", "plasiyerler", "ziyaretler", "cariler", "stok", "muhasebe", "onaylar", "depo", "kullanicilar");
         cut.Find("#user-roles").TextContent.Should().Be("Admin · Muhasebe");
         cut.Find("#session-scope").TextContent.Should().Contain("sekmeye özeldir");
     }
