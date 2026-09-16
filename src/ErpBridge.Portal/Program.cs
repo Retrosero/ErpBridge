@@ -18,6 +18,7 @@ builder.Services.AddMudServices(options =>
 // every visitor (see PortalSession).
 builder.Services.AddScoped<PortalSession>();
 builder.Services.AddScoped<ISessionPersistence, ProtectedSessionPersistence>();
+var keysPath = builder.Services.AddPortalDataProtection(builder.Configuration);
 
 var baseUrl = builder.Configuration["CentralApi:BaseUrl"] ?? "https://localhost:7001";
 builder.Services.AddHttpClient<PortalApiClient>(client =>
@@ -27,6 +28,22 @@ builder.Services.AddHttpClient<PortalApiClient>(client =>
 });
 
 var app = builder.Build();
+
+if (!app.Environment.IsDevelopment())
+{
+    if (keysPath is null)
+    {
+        app.Logger.LogWarning(
+            "{Setting} is not set: session encryption keys live only in this container, so every redeploy signs every user out.",
+            PortalDataProtection.KeysPathSetting);
+    }
+    else if (PortalDataProtection.IsMountPoint(keysPath) == false)
+    {
+        app.Logger.LogWarning(
+            "Session encryption keys are written to {Path}, but no volume is mounted there: they are lost on redeploy and every user is signed out. Mount a persistent volume at {Path}.",
+            keysPath, keysPath);
+    }
+}
 
 if (!app.Environment.IsDevelopment())
 {

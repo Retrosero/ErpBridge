@@ -5,6 +5,7 @@ using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Endpoints;
+using ErpBridge.CentralApi.Health;
 using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Options;
 using ErpBridge.CentralApi.Security;
@@ -128,8 +129,33 @@ public partial class Program
             EnsureSeedAdmin(db, seed);
         }
 
+        WarnIfSchemaIsBehind(app);
         ConfigureApp(app);
         app.Run();
+    }
+
+    /// <summary>
+    /// A failed <c>--migrate</c> does not stop the container (see Dockerfile ENTRYPOINT); the app then
+    /// runs on an old schema. Say so loudly at startup instead of only through failing requests.
+    /// </summary>
+    private static void WarnIfSchemaIsBehind(WebApplication app)
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var schema = SchemaStatus.CheckAsync(db, CancellationToken.None).GetAwaiter().GetResult();
+            if (schema.Status == SchemaStatus.Pending)
+            {
+                app.Logger.LogCritical(
+                    "DATABASE SCHEMA IS BEHIND: {Pending} migration(s) pending, {Applied} applied. The --migrate step failed; see its output above. /health/schema returns 503 until fixed.",
+                    schema.Pending, schema.Applied);
+            }
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Could not check the database schema version at startup.");
+        }
     }
 
     /// <summary>
@@ -544,6 +570,25 @@ public partial class Program
                 return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
             }
         }).WithName("HealthReady").WithTags("System").AllowAnonymous();
+
+        // Schema drift: 503 while migrations are pending. Not the container healthcheck on purpose —
+        // an orchestrator restarting the app would not apply a migration that already failed.
+        app.MapGet("/health/schema", async (CentralApiDbContext db, CancellationToken ct) =>
+        {
+            try
+            {
+                var schema = await SchemaStatus.CheckAsync(db, ct);
+                var body = new { status = schema.Status, applied = schema.Applied, pending = schema.Pending };
+                return schema.Status == SchemaStatus.Pending
+                    ? Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable)
+                    : Results.Ok(body);
+            }
+            catch (Exception)
+            {
+                // Same rule as readiness: no provider diagnostics to anonymous callers.
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
+        }).WithName("HealthSchema").WithTags("System").AllowAnonymous();
 
         app.MapAgentsEndpoints();
         app.MapLicensesEndpoints();
