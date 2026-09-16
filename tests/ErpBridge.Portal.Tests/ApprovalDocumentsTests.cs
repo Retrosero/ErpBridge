@@ -36,6 +36,25 @@ public sealed class ApprovalDocumentsTests
         sale.Lines[1].Should().Match<DocumentLine>(l => l.Code == "869" && l.Name == "Kahve" && l.Quantity == 1.5m && l.Total == 14m);
         sale.Other.Should().ContainSingle(f => f.Label == "note2" && f.Value == "x");
         sale.IsCount.Should().BeFalse();
+        sale.HasDiscount.Should().BeFalse();
+        sale.HasVat.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Discount_vat_and_a_returned_items_condition_are_kept_when_the_line_carries_them()
+    {
+        var views = Read("""
+            [{"documentType":"sales_return","payload":{"lines":[
+              {"productCode":"A","quantity":1,"unitPrice":100,"discountPercent":10,"discountAmount":10,"vatRate":20,"conditionPercent":0.5,"lineTotal":45},
+              {"productCode":"B","quantity":1,"unitPrice":50,"kdvOrani":"8"}]}}]
+            """);
+
+        var document = views.Single();
+        document.HasDiscount.Should().BeTrue();
+        document.HasVat.Should().BeTrue();
+        document.HasCondition.Should().BeTrue();
+        document.Lines[0].Should().Match<DocumentLine>(l => l.DiscountPercent == 10m && l.DiscountAmount == 10m && l.VatRate == 20m && l.ConditionPercent == 0.5m);
+        document.Lines[1].VatRate.Should().Be(8m);
     }
 
     [Fact]

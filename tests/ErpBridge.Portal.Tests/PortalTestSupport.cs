@@ -36,6 +36,16 @@ public sealed class FakeCentralApi : HttpMessageHandler
         return this;
     }
 
+    private readonly Dictionary<string, TaskCompletionSource> _holds = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Holds the answer to a path until the returned source is completed: a slow server.</summary>
+    public TaskCompletionSource Hold(string pathAndQuery)
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _holds[pathAndQuery] = gate;
+        return gate;
+    }
+
     public FakeCentralApi Fail(string pathAndQuery, HttpStatusCode status, string errorCode) =>
         Answer(pathAndQuery, new { errorCode, message = errorCode }, status);
 
@@ -44,6 +54,7 @@ public sealed class FakeCentralApi : HttpMessageHandler
         var path = request.RequestUri!.PathAndQuery;
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
         Requests.Add((request.Method, path, request.Headers.Authorization?.ToString(), body));
+        if (_holds.Remove(path, out var gate)) await gate.Task.WaitAsync(cancellationToken);
         var (status, json) = _answers.TryGetValue(path, out var answer) ? answer : (HttpStatusCode.NotFound, "{\"errorCode\":\"NOT_FOUND\"}");
         return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
     }

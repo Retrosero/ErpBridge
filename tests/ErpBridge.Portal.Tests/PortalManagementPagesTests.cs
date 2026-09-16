@@ -204,6 +204,36 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     }
 
     [Fact]
+    public void A_slow_detail_of_a_request_the_user_left_does_not_replace_the_one_on_screen()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(Pending, PendingBoth());
+        api.Answer($"/api/v1/android/approvals/{SaleId}", SaleDetail(SaleId));
+        var slowSale = api.Hold($"/api/v1/android/approvals/{SaleId}");
+        var returnDetail = new
+        {
+            request = new { id = ReturnId, externalId = "APR-R", kind = "return", counterpartyName = "Market Can", amount = 300m, status = "Pending", requestedAtUtc = PortalTestSetup.Now, summary = new { } },
+            documents = Array.Empty<object>(), events = Array.Empty<object>(), warnings = Array.Empty<object>(),
+        };
+        api.Answer($"/api/v1/android/approvals/{ReturnId}", returnDetail);
+
+        var cut = Render<Onaylar>();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
+        cut.Find($"[data-request='{SaleId}'] .approval-open").Click();
+        cut.Find("#approval-detail .sheet-close").Click();
+        cut.Find($"[data-request='{ReturnId}'] .approval-open").Click();
+        cut.WaitForAssertion(() => cut.Find("#approval-detail #detail-amount").TextContent.Should().Be("300,00 TL"));
+
+        slowSale.SetResult();
+
+        cut.WaitForAssertion(() => api.Requests.Count(r => r.PathAndQuery == $"/api/v1/android/approvals/{SaleId}").Should().Be(1));
+        Thread.Sleep(200); // let the released answer finish; nothing on screen may change
+        cut.Find("#approval-detail .sheet-title").TextContent.Should().Be("Market Can");
+        cut.Find("#approval-detail #detail-amount").TextContent.Should().Be("300,00 TL");
+        cut.FindAll("#approval-detail [data-line]").Should().BeEmpty();
+    }
+
+    [Fact]
     public void A_link_with_a_request_opens_its_detail_and_a_decided_request_has_no_buttons()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());

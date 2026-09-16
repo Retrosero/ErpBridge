@@ -200,6 +200,18 @@ else
                                             {
                                                 <th class="num">Miktar</th>
                                                 <th class="num">Birim fiyat</th>
+                                                @if (document.HasDiscount)
+                                                {
+                                                    <th class="num">İskonto</th>
+                                                }
+                                                @if (document.HasVat)
+                                                {
+                                                    <th class="num">KDV</th>
+                                                }
+                                                @if (document.HasCondition)
+                                                {
+                                                    <th class="num">Durum</th>
+                                                }
                                                 <th class="num">Tutar</th>
                                             }
                                         </tr>
@@ -225,6 +237,18 @@ else
                                                 {
                                                     <td class="num">@Qty(line.Quantity)@(line.Unit is null ? null : " " + line.Unit)</td>
                                                     <td class="num">@(line.UnitPrice is { } price ? Fmt.Money(price) : "—")</td>
+                                                    @if (document.HasDiscount)
+                                                    {
+                                                        <td class="num" data-col="discount">@Discount(line)</td>
+                                                    }
+                                                    @if (document.HasVat)
+                                                    {
+                                                        <td class="num" data-col="vat">@Percent(line.VatRate)</td>
+                                                    }
+                                                    @if (document.HasCondition)
+                                                    {
+                                                        <td class="num" data-col="condition">@Condition(line.ConditionPercent)</td>
+                                                    }
                                                     <td class="num">@(line.Total is { } total ? Fmt.Money(total) : "—")</td>
                                                 }
                                             </tr>
@@ -419,21 +443,28 @@ else
         _detailBusy = true;
         SyncAddress();
         StateHasChanged();
+        // A slower answer for a request the user has already left must not replace the one on screen.
+        bool Current() => _detailOpen && _opened?.Id == request.Id;
         try
         {
-            _detail = await Api.ApprovalDetailAsync(request.Id);
-            _documents = ApprovalDocuments.Read(_detail.Documents);
+            var detail = await Api.ApprovalDetailAsync(request.Id);
+            if (!Current()) return;
+            _detail = detail;
+            _documents = ApprovalDocuments.Read(detail.Documents);
         }
         catch (PortalApiException failed)
         {
+            if (!Current()) return;
             _detailError = failed.Message;
         }
         catch (HttpRequestException)
         {
+            if (!Current()) return;
             _detailError = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
         }
         catch (TaskCanceledException)
         {
+            if (!Current()) return;
             _detailError = "Sunucu zamanında yanıt vermedi. Tekrar deneyin.";
         }
         catch (SessionEndedException)
@@ -444,7 +475,7 @@ else
         }
         finally
         {
-            _detailBusy = false;
+            if (Current()) _detailBusy = false;
         }
         StateHasChanged();
     }
@@ -488,6 +519,19 @@ else
     private static bool IsPending(ApprovalDto request) => string.Equals(request.Status, PendingStatus, StringComparison.OrdinalIgnoreCase);
 
     private static string Qty(decimal? value) => value is { } q ? Fmt.Quantity(q) : "—";
+
+    private static string Percent(decimal? value) => value is { } p ? "%" + p.ToString("0.##", Fmt.Turkish) : "—";
+
+    /// <summary>The phone sends the credited share as a fraction (0.5 = half the value).</summary>
+    private static string Condition(decimal? value) => value is { } v ? Percent(v <= 1 ? v * 100 : v) : "—";
+
+    private static string Discount(DocumentLine line) => (line.DiscountPercent, line.DiscountAmount) switch
+    {
+        ({ } percent, { } amount) => $"{Percent(percent)} · {Fmt.Money(amount)}",
+        ({ } percent, null) => Percent(percent),
+        (null, { } amount) => Fmt.Money(amount),
+        _ => "—",
+    };
 
     private static string StatusLabel(string status) => Canonical(status) switch
     {

@@ -8,12 +8,18 @@ public sealed record DocumentField(string Label, string Value);
 /// <summary>A document line as the phone sent it; absent numbers stay null.</summary>
 public sealed record DocumentLine(
     string Code, string Name, decimal? Quantity, string? Unit, decimal? UnitPrice, decimal? Total,
-    decimal? Expected, decimal? Counted, string? Note);
+    decimal? Expected, decimal? Counted, string? Note,
+    decimal? DiscountPercent = null, decimal? DiscountAmount = null, decimal? VatRate = null, decimal? ConditionPercent = null);
 
 /// <summary>One document of an approval request, laid out for reading.</summary>
 public sealed record DocumentView(string Title, IReadOnlyList<DocumentField> Fields, IReadOnlyList<DocumentLine> Lines, IReadOnlyList<DocumentField> Other)
 {
     public bool IsCount => Lines.Any(l => l.Expected is not null || l.Counted is not null);
+    public bool HasDiscount => Lines.Any(l => l.DiscountPercent is not null || l.DiscountAmount is not null);
+    public bool HasVat => Lines.Any(l => l.VatRate is not null);
+
+    /// <summary>A returned item's condition (share of its value credited back), sent by the phone's return form.</summary>
+    public bool HasCondition => Lines.Any(l => l.ConditionPercent is not null);
 }
 
 /// <summary>
@@ -126,7 +132,11 @@ public static class ApprovalDocuments
                     Number(line, "lineTotal") ?? (quantity is { } q && unitPrice is { } u ? q * u : null),
                     Number(line, "expectedQuantity"),
                     Number(line, "countedQuantity"),
-                    Text(line, "reason") ?? Text(line, "note")));
+                    Text(line, "reason") ?? Text(line, "note"),
+                    Number(line, "discountPercent") ?? Number(line, "discountRate") ?? Number(line, "iskontoOrani"),
+                    Number(line, "discountAmount") ?? Number(line, "discount") ?? Number(line, "iskontoTutari"),
+                    Number(line, "vatRate") ?? Number(line, "kdvOrani") ?? Number(line, "taxRate"),
+                    Number(line, "conditionPercent")));
             }
         }
 
