@@ -34,8 +34,14 @@ public sealed class FulfillmentDto
 /// <summary><c>GET /api/v1/portal/fulfillments</c>.</summary>
 public sealed class FulfillmentListResponse
 {
-    /// <summary>The highest change of the company's queue; ask again with <c>changedSinceSeq</c> set to it.</summary>
+    /// <summary>
+    /// Where to continue: ask again with <c>changedSinceSeq</c> set to it. A change page ends at its last
+    /// row, so no change is skipped; see <see cref="HasMore"/>.
+    /// </summary>
     [JsonPropertyName("latestSeq")] public long LatestSeq { get; set; }
+
+    /// <summary>More rows matched than were returned: for a change page, ask again at once from <see cref="LatestSeq"/>.</summary>
+    [JsonPropertyName("hasMore")] public bool HasMore { get; set; }
     [JsonPropertyName("items")] public FulfillmentDto[] Items { get; set; } = [];
 }
 

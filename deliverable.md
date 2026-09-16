@@ -24,7 +24,8 @@
 ## Testler / derleme
 
 - `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; `has-pending-model-changes`: yok.
-- CentralApi 391 (11 yeni), diğer projeler değişmeden yeşil.
+- CentralApi 392 (12 yeni), diğer projeler değişmeden yeşil.
+- Codex (PR #52): değişiklik sayfasının imleci dönen son satırda biter (`hasMore`); long-poll bekleyicisi okumadan önce kaydolur. İkisi düzeltildi.
 - Yarış testi, koşullu güncelleme kaldırılınca 3/3 kırıldı (testin kilidi gerçekten sınadığı doğrulandı).
 
 ---

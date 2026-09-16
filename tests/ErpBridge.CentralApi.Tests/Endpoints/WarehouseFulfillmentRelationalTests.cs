@@ -142,6 +142,32 @@ public sealed class WarehouseFulfillmentRelationalTests : IClassFixture<SqliteCe
     }
 
     [Fact]
+    public async Task Reading_changes_page_by_page_never_skips_one()
+    {
+        var c = await NativeCompanyAsync();
+        await SellAsync(c, "SO-P1", quantity: 1);
+        await SellAsync(c, "SO-P2", quantity: 1);
+        await SellAsync(c, "SO-P3", quantity: 1);
+
+        var first = await ListAsync(c.Depot, "changedSinceSeq=0&take=2");
+        first.Items.Select(i => i.OrderNo).Should().Equal("SO-P1", "SO-P2");
+        first.HasMore.Should().BeTrue();
+        first.LatestSeq.Should().Be(first.Items[^1].UpdatedSeq, "the cursor ends at the last row returned");
+
+        var second = await ListAsync(c.Depot, $"changedSinceSeq={first.LatestSeq}&take=2");
+        second.Items.Select(i => i.OrderNo).Should().Equal("SO-P3");
+        second.HasMore.Should().BeFalse();
+
+        var empty = await ListAsync(c.Depot, $"changedSinceSeq={second.LatestSeq}&take=2");
+        empty.Items.Should().BeEmpty();
+        empty.LatestSeq.Should().Be(second.LatestSeq, "an empty page keeps the cursor where it was");
+
+        var open = await ListAsync(c.Depot, "take=2");
+        open.HasMore.Should().BeTrue();
+        open.LatestSeq.Should().Be(second.LatestSeq);
+    }
+
+    [Fact]
     public async Task A_step_is_taken_back_by_whoever_took_it_within_five_minutes_or_by_a_manager()
     {
         var c = await NativeCompanyAsync();

@@ -145,21 +145,38 @@ public sealed class FulfillmentService
 
     /// <summary>
     /// The queue. With <paramref name="changedSinceSeq"/> every order changed after it is returned
-    /// whatever its status, so a page can also drop the ones that left its view; otherwise the orders
-    /// in <paramref name="statuses"/>, oldest first.
+    /// whatever its status, oldest change first, so a page can also drop the ones that left its view;
+    /// otherwise the orders in <paramref name="statuses"/>, oldest first.
+    ///
+    /// <para><see cref="FulfillmentListResponse.LatestSeq"/> is a cursor that never skips a change: for a
+    /// change page it is the last change returned (the caller asks again while <c>hasMore</c>); for a
+    /// status list it is read <b>before</b> the rows, so a change committed in between comes back again
+    /// rather than being lost.</para>
     /// </summary>
     public static async Task<FulfillmentListResponse> ListAsync(
         CentralApiDbContext db, Guid tenantId, IReadOnlyCollection<string> statuses, long? changedSinceSeq, int take, CancellationToken ct)
     {
+        var limit = Math.Clamp(take, 1, MaxListSize);
         var query = db.OrderFulfillments.AsNoTracking().Where(f => f.TenantId == tenantId);
-        query = changedSinceSeq is { } since
-            ? query.Where(f => f.UpdatedSeq > since).OrderBy(f => f.UpdatedSeq)
-            : query.Where(f => statuses.Contains(f.Status)).OrderBy(f => f.QueuedSeq);
-        var rows = await query.Take(Math.Clamp(take, 1, MaxListSize)).ToListAsync(ct);
+        if (changedSinceSeq is { } since)
+        {
+            var changes = await query.Where(f => f.UpdatedSeq > since).OrderBy(f => f.UpdatedSeq).Take(limit + 1).ToListAsync(ct);
+            var page = changes.Take(limit).ToList();
+            return new FulfillmentListResponse
+            {
+                LatestSeq = page.Count > 0 ? page[^1].UpdatedSeq : since,
+                HasMore = changes.Count > limit,
+                Items = page.Select(ToDto).ToArray(),
+            };
+        }
+
+        var cursor = await LatestSeqAsync(db, tenantId, ct);
+        var rows = await query.Where(f => statuses.Contains(f.Status)).OrderBy(f => f.QueuedSeq).Take(limit + 1).ToListAsync(ct);
         return new FulfillmentListResponse
         {
-            LatestSeq = await LatestSeqAsync(db, tenantId, ct),
-            Items = rows.Select(ToDto).ToArray(),
+            LatestSeq = cursor,
+            HasMore = rows.Count > limit,
+            Items = rows.Take(limit).Select(ToDto).ToArray(),
         };
     }
 

@@ -637,12 +637,18 @@ registration ayrı bir composition projesine taşınır.
      konsolun `/admin/jobs/{id}/retry`'ı `RecordErpResultAsync` çağırır (aynı transaction); başarısızlık
      `ERP_FAILED` olayı + hata metni. ERP hatası depo akışını durdurmaz.
    - **Okuma:** `GET /api/v1/portal/fulfillments?status=open|all|<liste>&changedSinceSeq&take≤500` →
-     `{latestSeq, items}`. `changedSinceSeq` verilince **durumdan bağımsız** değişen her sipariş döner
-     (sayfa listeden düşeni de görsün); verilmezse durum filtresi, kuyruk sırası `QueuedSeq`
+     `{latestSeq, hasMore, items}`. `changedSinceSeq` verilince **durumdan bağımsız** değişen her sipariş
+     `UpdatedSeq` sırasıyla döner (sayfa listeden düşeni de görsün) ve **`latestSeq` dönen son satırdır** —
+     `take` dolarsa `hasMore` true, kalan hemen aynı imleçle istenir; boş sayfada imleç yerinde kalır
+     (tablonun en büyük değeri dönülseydi sayfaya sığmayanlar kalıcı atlanırdı — Codex, PR #52). Durum
+     listesinde `latestSeq` satırlardan **önce** okunur (arada commit olan değişiklik tekrar gelir, kaybolmaz);
+     kuyruk sırası `QueuedSeq`
      (`DateTimeOffset` SQLite'ta sıralanamaz). `GET /{id}` → sipariş + toplama listesi (`ItemsJson`:
      `stockCode, name, quantity, unit`) + olaylar.
    - **Canlı akış (V5):** `GET /api/v1/portal/events?sinceSeq&wait=0-25` — değişiklik varsa hemen, yoksa
-     `ITenantEventHub` ile bekler, `{latestSeq, changed}` döner; sayfa sonra `changedSinceSeq` okur. Hub
+     `ITenantEventHub` ile bekler, `{latestSeq, changed}` döner; sayfa sonra `changedSinceSeq` okur.
+     **Bekleyici okumadan önce kaydolur** (`WaitAsync` dönmeden kuyruğa girer): okuma ile bekleme arasında
+     commit olan değişiklik de uyandırır (Codex, PR #52). Hub
      **bellek içidir ve bootstrap hub'ından ayrıdır** (depo tıklaması telefonları senkrona uyandırmaz);
      CentralApi tek konteyner varsayar — yatay ölçek PostgreSQL LISTEN/Redis ister.
    - **Ayarlar:** `GET|PUT /api/v1/portal/warehouse/settings` (açık/kapalı + gecikme eşikleri dakika,

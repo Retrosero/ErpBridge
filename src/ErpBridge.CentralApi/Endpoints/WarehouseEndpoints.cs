@@ -98,11 +98,14 @@ public static class WarehouseEndpoints
         var (tenant, _, error) = await AuthorizeAsync(http, db, RolePermissions.CanOperateWarehouse, ct);
         if (error is not null) return error;
         var since = sinceSeq ?? 0;
-        var latest = await FulfillmentService.LatestSeqAsync(db, tenant!.Id, ct);
         var seconds = Math.Clamp(wait ?? 0, 0, MaxWaitSeconds);
-        if (latest <= since && seconds > 0)
+        // Subscribe before reading: a change that commits between the read and the wait still wakes us.
+        // (WaitAsync registers the waiter before it returns.) An unused waiter ends with its timeout.
+        var waiting = seconds > 0 ? events.WaitAsync(tenant!.Id, TimeSpan.FromSeconds(seconds), http.RequestAborted) : null;
+        var latest = await FulfillmentService.LatestSeqAsync(db, tenant!.Id, ct);
+        if (latest <= since && waiting is not null)
         {
-            await events.WaitAsync(tenant.Id, TimeSpan.FromSeconds(seconds), ct);
+            await waiting;
             latest = await FulfillmentService.LatestSeqAsync(db, tenant.Id, ct);
         }
         return JsonResults.Ok(new PortalEventsResponse { LatestSeq = latest, Changed = latest > since });
