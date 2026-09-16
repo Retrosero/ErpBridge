@@ -96,6 +96,7 @@ public static class JobsEndpoints
         HttpContext http,
         [FromServices] CentralApiDbContext db,
         [FromServices] IWebhookDispatcher webhooks,
+        [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse,
         CancellationToken ct)
     {
         if (body is null) return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_BODY", Message = "Body required." });
@@ -159,7 +160,17 @@ public static class JobsEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_STATUS", Message = "status must be 'succeeded' or 'failed'." });
         }
 
-        await db.SaveChangesAsync(ct);
+        // The warehouse sees whether the order reached the ERP (V2, Faz 47); same transaction as the ack.
+        bool orderChanged;
+        await using (var transaction = db.Database.IsRelational() && ErpBridge.CentralApi.Warehouse.FulfillmentService.IsQueuedDocument(job.DocumentType)
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null)
+        {
+            orderChanged = await warehouse.RecordErpResultAsync(db, job, ct);
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+        }
+        if (orderChanged) warehouse.Notify(job.TenantId);
 
         // Fan out webhooks AFTER persisting the job state change so a
         // dispatcher failure can't roll back the ack. A misbehaving webhook

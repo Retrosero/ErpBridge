@@ -158,6 +158,10 @@ public static class RolePermissions
 
     public static bool CanOperateWarehouse(MobileUser user) =>
         Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager or MobileUserRoles.Warehouse);
+
+    /// <summary>Cancelling and reassigning orders, undoing anyone's step, the warehouse settings.</summary>
+    public static bool CanManageWarehouse(MobileUser user) =>
+        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager);
 }
 
 /// <summary>What a user may do in the approval centre, from their current row.</summary>
