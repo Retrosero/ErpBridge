@@ -157,6 +157,9 @@ registration ayrı bir composition projesine taşınır.
      **önce** bitmiş olmalı.
    - Rollback sayaçta boşluk bırakır; bu zararsızdır. Zararlı olan tek şey
      yeniden sıralamadır.
+   - **Sayacın ikinci kullanıcısı (Faz 47):** `order_fulfillments.UpdatedSeq` de bu sayaçtan
+     (`ReserveAsync(…, 1)`) alınır; portalın `changedSinceSeq` okuması aynı garantiye dayanır.
+     Değerler `mobile_records` ile aynı sayı uzayını paylaşır; cihaz imleçlerinde boşluk olur, zararsızdır.
 12. **Mobil okuma yolu tek uçtur: `POST /api/v1/android/sync/pull`.**
    Yeni bir `/sync/<bölüm>` ucu **eklenmez**. Cihaz imleç göndermezse her şeyi,
    gönderirse yalnızca sonrasını alır — ikisi de aynı sorgu, aynı tablo.
@@ -600,6 +603,63 @@ registration ayrı bir composition projesine taşınır.
      başarısız migration'ı uygulamaz, sonuç yeniden başlatma döngüsü olur. Migration içeren her
      dağıtımdan sonra `https://lisans.appsgo.cloud/health/schema` 200 `current` dönmelidir.
    - Testler: `HealthSchemaTests` (SQLite'ta geçmiş tablosu boş → pending; tüm migration kayıtlı → current).
+
+21. **Depo sipariş hazırlığı sunucudadır: `Warehouse/FulfillmentService` (Faz 47, 2026-09-16).**
+   Satış siparişleri depoda hazırlanır, paketlenir, araca yüklenir; panel depo sayfası (plan adım 6),
+   TV panosu (adım 7) ve performans raporu (adım 8) bu çekirdeği okur. Plan: `docs/PLAN_ROLLER_VE_DEPO.md`.
+   - **Modül firma bazında açılır** (`tenant_warehouse_settings.Enabled`, varsayılan kapalı, V1). Kapalı
+     firmada hiçbir satış kuyruğa girmez; açılmadan önceki satışlar geriye dönük eklenmez.
+   - **Kuyruğa alma tek yerde:** `EnqueueAsync(db, tenant, job, approvalRequestId)` yalnız `sales_order`
+     için, **belgeyi yazan transaction'ın içinde** çağrılır ve kaydetmez; çağıran commit'ten sonra
+     `Notify(tenantId)` der. Çağıranlar: `/ingest/jobs` native dalı (uç kendi transaction'ını açar,
+     `NativeDocumentProcessor` ona katılır — bu yüzden telefonları uyandıran `IBootstrapNotificationHub.Publish`
+     de uçtadır), `/ingest/jobs` ERP dalı (job `Pending` ile aynı transaction), `ApprovalService.PostDocumentsAsync`
+     (onaylanan satış, `ApprovalRequestId` dolu). Native'de yalnız `Succeeded` belge; ERP'de ajan yazmadan
+     önce (V2). **İdempotent:** `(TenantId, SourceJobId)` UNIQUE; telefonun tekrar gönderdiği ya da onayda
+     "zaten sunucuda" atlanan belge ikinci kez kuyruğa girmez.
+   - **Durumlar:** `PENDING → PREPARING → PACKED → LOADED`; `CANCELLED` yalnız açık siparişten.
+     Eylemler `POST /api/v1/portal/fulfillments/{id}/start|pack|load|undo|cancel|reassign`
+     (`{note, vehiclePlate, assigneeUserId}`). **Tek kazanan:** her geçiş önce sayaçtan seq ayırır, sonra
+     `ExecuteUpdate … WHERE Status = <beklenen>` (reassign'da `UpdatedSeq` de) — 0 satır = 409
+     `FULFILLMENT_STATE_CHANGED` ("… by <ad>"). Sayaç kilidi satır kilidinden önce alınır; ERP sonucu
+     da aynı sırayı izler, kilitlenme olmaz.
+   - **Geri alma (V6):** `PREPARING→PENDING` (atanan ve başlama silinir) ve `PACKED→PREPARING`. Adımı atan
+     kişi 5 dakika içinde (`UndoWindow`, adımın olayına bakılır) ya da ADMIN/MANAGER; aksi 403
+     `UNDO_NOT_ALLOWED`. Başka durumda 409 `FULFILLMENT_CANNOT_UNDO`.
+   - **Yetki (rol birleşimi, kural 14):** okuma, `events` ve adımlar `CanOperateWarehouse` (ADMIN, MANAGER,
+     WAREHOUSE) → 403 `WAREHOUSE_ROLE_REQUIRED`; iptal, yeniden atama ve ayar yazma `CanManageWarehouse`
+     (ADMIN, MANAGER) → 403 `WAREHOUSE_MANAGER_REQUIRED`. Yeniden atanan kişi firmada aktif ve depo rolü
+     olan biri olmalı (400 `INVALID_ASSIGNEE`). Başka firmanın siparişi 404 `FULFILLMENT_NOT_FOUND`.
+   - **Olay günlüğü:** `order_fulfillment_events` yalnız eklenir (QUEUED, START, PACK, LOAD, UNDO, CANCEL,
+     REASSIGN, ERP_FAILED); aktör, cihaz (token `device`), not, **sunucu saati**. Özet satır ile günlük
+     çelişirse günlük esastır; raporlar (adım 8) günlükten hesaplanır.
+   - **ERP durumu (V2):** `ErpState` NONE (native) | PENDING | WRITTEN | FAILED. Ajanın `/jobs/ack`'i ve
+     konsolun `/admin/jobs/{id}/retry`'ı `RecordErpResultAsync` çağırır (aynı transaction); başarısızlık
+     `ERP_FAILED` olayı + hata metni. ERP hatası depo akışını durdurmaz.
+   - **Okuma:** `GET /api/v1/portal/fulfillments?status=open|all|<liste>&changedSinceSeq&take≤500` →
+     `{latestSeq, hasMore, items}`. `changedSinceSeq` verilince **durumdan bağımsız** değişen her sipariş
+     `UpdatedSeq` sırasıyla döner (sayfa listeden düşeni de görsün) ve **`latestSeq` dönen son satırdır** —
+     `take` dolarsa `hasMore` true, kalan hemen aynı imleçle istenir; boş sayfada imleç yerinde kalır
+     (tablonun en büyük değeri dönülseydi sayfaya sığmayanlar kalıcı atlanırdı — Codex, PR #52). Durum
+     listesinde `latestSeq` satırlardan **önce** okunur (arada commit olan değişiklik tekrar gelir, kaybolmaz);
+     kuyruk sırası `QueuedSeq`
+     (`DateTimeOffset` SQLite'ta sıralanamaz). `GET /{id}` → sipariş + toplama listesi (`ItemsJson`:
+     `stockCode, name, quantity, unit`) + olaylar.
+   - **Canlı akış (V5):** `GET /api/v1/portal/events?sinceSeq&wait=0-25` — değişiklik varsa hemen, yoksa
+     `ITenantEventHub` ile bekler, `{latestSeq, changed}` döner; sayfa sonra `changedSinceSeq` okur.
+     **Bekleyici okumadan önce kaydolur** (`WaitAsync` dönmeden kuyruğa girer): okuma ile bekleme arasında
+     commit olan değişiklik de uyandırır (Codex, PR #52). Hub
+     **bellek içidir ve bootstrap hub'ından ayrıdır** (depo tıklaması telefonları senkrona uyandırmaz);
+     CentralApi tek konteyner varsayar — yatay ölçek PostgreSQL LISTEN/Redis ister.
+   - **Ayarlar:** `GET|PUT /api/v1/portal/warehouse/settings` (açık/kapalı + gecikme eşikleri dakika,
+     1–1440, uyarı < kritik).
+   - **Siparişteki alanlar:** `OrderNo` = `mobileDocumentId` (yoksa job `ExternalId`), müşteri
+     `customerCode` + `counterparty`, plasiyer = job `CreatedByUserId` (ad anlık kopya), satırlar
+     `productCode|stockCode|barcode`, `productTitle|name`, `quantity`, `unit`.
+   - Testler: `WarehouseFulfillmentRelationalTests` (SQLite; modül kapalı, idempotent kuyruk, onaydan kuyruk,
+     eşzamanlı başla → bir 409 — kilit kaldırılınca kırıldığı doğrulandı, tüm adımlar + günlük, geri alma
+     penceresi, yönetici işlemleri, yetki/firma yalıtımı, ayar doğrulaması, ERP başarısız/yeniden dene/yazıldı,
+     long-poll).
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

@@ -213,6 +213,9 @@ public partial class Program
         builder.Services.AddScoped<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Team.TeamDocumentProcessor>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Approvals.ApprovalService>();
+        // Faz 47: warehouse queue. The event hub is in memory: one CentralApi container (plan step 4).
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Notifications.ITenantEventHub, ErpBridge.CentralApi.Notifications.TenantEventHub>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Warehouse.FulfillmentService>();
     }
 
     /// <summary>
@@ -606,6 +609,7 @@ public partial class Program
         app.MapMobileAccountEndpoints();
         app.MapMobileApprovalEndpoints();
         app.MapPortalEndpoints();
+        app.MapWarehouseEndpoints();
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();

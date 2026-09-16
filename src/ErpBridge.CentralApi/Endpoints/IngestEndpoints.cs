@@ -4,6 +4,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Warehouse;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -348,7 +349,29 @@ public static class IngestEndpoints
             var processor = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
             try
             {
-                var booked = await processor.IngestAsync(db, tenantId, job, await CallerIsAdminAsync(http, db, ct), ct);
+                var callerIsAdmin = await CallerIsAdminAsync(http, db, ct);
+                Job booked;
+                if (FulfillmentService.IsQueuedDocument(documentType))
+                {
+                    // A booked sale enters the warehouse queue in the booking's own transaction (Faz 47).
+                    var warehouse = http.RequestServices.GetRequiredService<FulfillmentService>();
+                    OrderFulfillment? queued;
+                    await using (var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null)
+                    {
+                        booked = await processor.IngestAsync(db, tenantId, job, callerIsAdmin, ct);
+                        queued = await warehouse.EnqueueAsync(db, tenant, booked, approvalRequestId: null, ct);
+                        if (queued is not null) await db.SaveChangesAsync(ct);
+                        if (transaction is not null) await transaction.CommitAsync(ct);
+                    }
+                    // The booking joined this transaction, so waking the phones is left to the caller.
+                    if (booked.Status == JobStatus.Succeeded && db.Database.IsRelational())
+                        http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Notifications.IBootstrapNotificationHub>().Publish(tenantId, DateTimeOffset.UtcNow);
+                    if (queued is not null) warehouse.Notify(tenantId);
+                }
+                else
+                {
+                    booked = await processor.IngestAsync(db, tenantId, job, callerIsAdmin, ct);
+                }
                 return JsonResults.Status(StatusCodes.Status201Created, new IngestJobResponse
                 {
                     JobId = booked.Id,
@@ -394,14 +417,23 @@ public static class IngestEndpoints
             });
 
         db.Jobs.Add(job);
+        var erpWarehouse = http.RequestServices.GetRequiredService<FulfillmentService>();
+        OrderFulfillment? erpQueued = null;
 
         try
         {
+            // A sales order enters the warehouse queue before the agent writes it to the ERP (V2, Faz 47).
+            await using var transaction = FulfillmentService.IsQueuedDocument(documentType) && db.Database.IsRelational()
+                ? await db.Database.BeginTransactionAsync(ct)
+                : null;
+            erpQueued = await erpWarehouse.EnqueueAsync(db, tenant, job, approvalRequestId: null, ct);
             await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
         }
         catch (DbUpdateException)
         {
             // A concurrent insert beat us. Re-read the winner and return it.
+            db.ChangeTracker.Clear();
             var winner = await db.Jobs.AsNoTracking()
                 .FirstOrDefaultAsync(j =>
                     j.TenantId == tenantId &&
@@ -421,6 +453,7 @@ public static class IngestEndpoints
             }
             throw;
         }
+        if (erpQueued is not null) erpWarehouse.Notify(tenantId);
 
         return JsonResults.Status(StatusCodes.Status201Created, new IngestJobResponse
         {

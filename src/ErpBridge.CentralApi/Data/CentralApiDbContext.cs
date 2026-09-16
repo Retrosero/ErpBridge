@@ -76,6 +76,15 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Which operations of a company need approval.</summary>
     public DbSet<TenantApprovalRules> TenantApprovalRules => Set<TenantApprovalRules>();
 
+    /// <summary>Faz 47 — sales orders the warehouse prepares (plan step 4).</summary>
+    public DbSet<OrderFulfillment> OrderFulfillments => Set<OrderFulfillment>();
+
+    /// <summary>Faz 47 — the unchangeable history of every fulfillment.</summary>
+    public DbSet<OrderFulfillmentEvent> OrderFulfillmentEvents => Set<OrderFulfillmentEvent>();
+
+    /// <summary>Faz 47 — per-company warehouse module switch and delay thresholds.</summary>
+    public DbSet<TenantWarehouseSettings> TenantWarehouseSettings => Set<TenantWarehouseSettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -115,6 +124,53 @@ public sealed class CentralApiDbContext : DbContext
             b.HasKey(x => x.TenantId);
             b.Property(x => x.UpdatedByName).HasMaxLength(120);
             b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantApprovalRules>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OrderFulfillment>(b =>
+        {
+            b.ToTable("order_fulfillments");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.OrderNo).IsRequired().HasMaxLength(64);
+            b.Property(x => x.CustomerCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.CustomerName).IsRequired().HasMaxLength(200);
+            b.Property(x => x.SalespersonName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.Amount).HasPrecision(18, 2);
+            b.Property(x => x.ItemQuantity).HasPrecision(18, 3);
+            b.Property(x => x.ItemsJson).HasColumnType("jsonb");
+            b.Property(x => x.Status).IsRequired().HasMaxLength(16);
+            b.Property(x => x.AssigneeName).HasMaxLength(120);
+            b.Property(x => x.VehiclePlate).HasMaxLength(16);
+            b.Property(x => x.ErpState).IsRequired().HasMaxLength(16);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne<Job>().WithMany().HasForeignKey(x => x.SourceJobId).OnDelete(DeleteBehavior.Cascade);
+            // One order per job: a document retried by the phone or posted by an approval is queued once.
+            b.HasIndex(x => new { x.TenantId, x.SourceJobId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Status, x.QueuedSeq });
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq });
+            b.HasIndex(x => new { x.TenantId, x.AssigneeUserId, x.PackedAtUtc });
+        });
+
+        modelBuilder.Entity<OrderFulfillmentEvent>(b =>
+        {
+            b.ToTable("order_fulfillment_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedOnAdd();
+            b.Property(x => x.FromStatus).HasMaxLength(16);
+            b.Property(x => x.ToStatus).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Action).IsRequired().HasMaxLength(24);
+            b.Property(x => x.ActorName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.DeviceId).HasMaxLength(128);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.HasOne(x => x.Fulfillment).WithMany().HasForeignKey(x => x.FulfillmentId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.FulfillmentId, x.OccurredAtUtc });
+            b.HasIndex(x => new { x.TenantId, x.ActorUserId, x.OccurredAtUtc });
+        });
+
+        modelBuilder.Entity<TenantWarehouseSettings>(b =>
+        {
+            b.ToTable("tenant_warehouse_settings");
+            b.HasKey(x => x.TenantId);
+            b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantWarehouseSettings>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<NativeStockLevel>(b =>

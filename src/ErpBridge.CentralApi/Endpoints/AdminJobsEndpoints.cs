@@ -111,6 +111,7 @@ public static class AdminJobsEndpoints
     private static async Task<IResult> RetryAsync(
         Guid id,
         [FromServices] CentralApiDbContext db,
+        [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse,
         CancellationToken ct)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
@@ -124,7 +125,17 @@ public static class AdminJobsEndpoints
         job.RetryCount += 1;
         job.LastError = null;
         job.CompletedAtUtc = null;
-        await db.SaveChangesAsync(ct);
+        // A retried order is waiting for the ERP again (Faz 47).
+        bool orderChanged;
+        await using (var transaction = db.Database.IsRelational() && ErpBridge.CentralApi.Warehouse.FulfillmentService.IsQueuedDocument(job.DocumentType)
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null)
+        {
+            orderChanged = await warehouse.RecordErpResultAsync(db, job, ct);
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+        }
+        if (orderChanged) warehouse.Notify(job.TenantId);
         return JsonResults.Ok(ToDto(job));
     }
 

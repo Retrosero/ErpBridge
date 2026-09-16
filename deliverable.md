@@ -1,3 +1,35 @@
+# Faz 47 — Depo sipariş hazırlık çekirdeği (Plan Adım 4) — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Domain/OrderFulfillment.cs` (yeni): `OrderFulfillment`, `OrderFulfillmentEvent`, `TenantWarehouseSettings`, durum/eylem/ERP durumu sabitleri.
+- `Data/CentralApiDbContext.cs`, `Data/Migrations/*_Faz47OrderFulfillment.cs`: üç yeni tablo (mevcut tablolara dokunmaz).
+- `Warehouse/FulfillmentService.cs` (yeni): kuyruğa alma, geçişler (tek kazanan), geri alma penceresi, iptal, yeniden atama, ERP durumu, ayarlar.
+- `Endpoints/WarehouseEndpoints.cs` (yeni): `/api/v1/portal/fulfillments`, `/{id}`, `/{id}/{action}`, `/warehouse/settings`, `/events` (long-poll).
+- `Notifications/TenantEventHub.cs` (yeni): portal için ayrı bellek içi hub.
+- `Endpoints/IngestEndpoints.cs`, `Approvals/ApprovalService.cs`: satış siparişi yazıldığı transaction'da kuyruğa girer.
+- `Endpoints/JobsEndpoints.cs`, `Endpoints/AdminJobsEndpoints.cs`: ajan sonucu ve yeniden deneme ERP durumunu günceller.
+- `Domain/MobileUser.cs`: `RolePermissions.CanManageWarehouse`. `Program.cs`: kayıtlar ve uçlar.
+- Testler: `WarehouseFulfillmentRelationalTests` (11).
+- KB kural 11 (sayaç), yeni kural 21, 03 veri sözlüğü, `docs/PLAN_ROLLER_VE_DEPO.md`.
+
+## Davranış
+
+- Depo modülü firma bazında açılır (varsayılan kapalı). Açıkken telefondan doğrudan gelen ya da onaylanan her satış bir kez kuyruğa girer; ERP'li firmada ajan yazmadan önce.
+- Eşzamanlı iki "başla"dan biri 409 alır; her adım değişmez günlüğe yazılır; geri alma yalnız adımı atana 5 dk içinde ya da yöneticiye açıktır; iptal/yeniden atama yöneticidedir.
+- ERP'ye yazılamayan sipariş kartta `FAILED` olur, depo akışı durmaz.
+- Panel arayüzü yok (adım 5-7). Telefon uygulamasında değişiklik yok.
+- **Migration var** (`Faz47OrderFulfillment`, yalnız yeni tablolar): canlıda `/health/schema` 22 applied / 0 pending olmalı.
+
+## Testler / derleme
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; `has-pending-model-changes`: yok.
+- CentralApi 392 (12 yeni), diğer projeler değişmeden yeşil.
+- Codex (PR #52): değişiklik sayfasının imleci dönen son satırda biter (`hasMore`); long-poll bekleyicisi okumadan önce kaydolur. İkisi düzeltildi.
+- Yarış testi, koşullu güncelleme kaldırılınca 3/3 kırıldı (testin kilidi gerçekten sınadığı doğrulandı).
+
+---
+
 # Faz 46 — Panel: Beni Hatırla + rol bazlı arayüz (Plan Adım 3) — Teslimat
 
 ## Değişen dosyalar

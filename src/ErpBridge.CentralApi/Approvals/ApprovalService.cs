@@ -5,6 +5,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Native;
 using ErpBridge.CentralApi.Notifications;
+using ErpBridge.CentralApi.Warehouse;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Approvals;
@@ -39,11 +40,13 @@ public sealed class ApprovalService
 
     private readonly NativeDocumentProcessor _native;
     private readonly IBootstrapNotificationHub _hub;
+    private readonly FulfillmentService _warehouse;
 
-    public ApprovalService(NativeDocumentProcessor native, IBootstrapNotificationHub hub)
+    public ApprovalService(NativeDocumentProcessor native, IBootstrapNotificationHub hub, FulfillmentService warehouse)
     {
         _native = native;
         _hub = hub;
+        _warehouse = warehouse;
     }
 
     // ---- rules ----------------------------------------------------------------
@@ -303,6 +306,7 @@ public sealed class ApprovalService
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
         _hub.Publish(tenant.Id, now);
+        if (approve) _warehouse.Notify(tenant.Id);
         return ApprovalResult<ApprovalRequest>.Ok(request);
     }
 
@@ -394,6 +398,8 @@ public sealed class ApprovalService
             {
                 db.Jobs.Add(job);
             }
+            // An approved sale goes to the warehouse in the approval's transaction (Faz 47).
+            await _warehouse.EnqueueAsync(db, tenant, job, request.Id, ct);
         }
         return null;
     }
