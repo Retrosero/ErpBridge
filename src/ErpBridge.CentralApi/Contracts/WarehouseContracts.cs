@@ -91,11 +91,15 @@ public sealed class WarehouseSettingsDto
     [JsonPropertyName("updatedAtUtc")] public DateTimeOffset? UpdatedAtUtc { get; set; }
 }
 
-/// <summary><c>GET /api/v1/portal/events</c>: the queue's latest change, once it is past <c>sinceSeq</c> or the wait ends.</summary>
+/// <summary><c>GET /api/v1/portal/events</c>: the topics' latest changes, once one moved or the wait ends.</summary>
 public sealed class PortalEventsResponse
 {
+    /// <summary>The warehouse queue's latest change; 0 without a warehouse role.</summary>
     [JsonPropertyName("latestSeq")] public long LatestSeq { get; set; }
 
-    /// <summary>True when <see cref="LatestSeq"/> is past the caller's <c>sinceSeq</c>.</summary>
+    /// <summary>The company's approval change version; send it back as <c>approvalsVersion</c>.</summary>
+    [JsonPropertyName("approvalsVersion")] public long ApprovalsVersion { get; set; }
+
+    /// <summary>A topic the caller asked about moved.</summary>
     [JsonPropertyName("changed")] public bool Changed { get; set; }
 }

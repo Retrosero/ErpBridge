@@ -311,6 +311,83 @@ public sealed class WarehouseFulfillmentRelationalTests : IClassFixture<SqliteCe
         clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
     }
 
+    [Fact]
+    public async Task The_approval_desk_notices_every_published_change_even_between_two_polls()
+    {
+        var c = await NativeCompanyAsync(saleNeedsApproval: true);
+
+        var start = await ApprovalEventsAsync(c.Accounting, approvalsVersion: -1, wait: 0);
+        start.Changed.Should().BeTrue("a page that has seen nothing reads the list");
+        start.LatestSeq.Should().Be(0, "accounting has no warehouse role");
+        (await ApprovalEventsAsync(c.Accounting, start.ApprovalsVersion, wait: 0)).Changed.Should().BeFalse();
+
+        // Published while no poll is waiting: the version still tells.
+        var requestId = await RequestSaleAsync(c, "REQ-LIVE", "SO-LIVE-A");
+        var between = await ApprovalEventsAsync(c.Accounting, start.ApprovalsVersion, wait: 0);
+        between.Changed.Should().BeTrue();
+        between.ApprovalsVersion.Should().BeGreaterThan(start.ApprovalsVersion);
+
+        var clock = Stopwatch.StartNew();
+        var waiting = ApprovalEventsAsync(c.Accounting, between.ApprovalsVersion, wait: 20);
+        await Task.Delay(300);
+        waiting.IsCompleted.Should().BeFalse();
+        (await PostAsync($"/api/v1/android/approvals/{requestId}/reject", new { note = "fiyat yanlış" }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await waiting).Changed.Should().BeTrue();
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+        (await ErrorAsync(GetAsync("/api/v1/portal/events?approvalsVersion=0", c.Ali))).Should().Be("WAREHOUSE_ROLE_REQUIRED");
+    }
+
+    [Fact]
+    public async Task The_approval_list_can_start_from_the_oldest_and_says_which_requests_the_caller_decides()
+    {
+        var c = await NativeCompanyAsync(saleNeedsApproval: true);
+        var first = await RequestSaleAsync(c, "REQ-OLD-1", "SO-OLD-1");
+        await RequestSaleAsync(c, "REQ-OLD-2", "SO-OLD-2");
+        var third = await RequestSaleAsync(c, "REQ-OLD-3", "SO-OLD-3");
+        // A person who is both accounting and field staff sends a stock count: visible to them, not theirs to decide.
+        var created = await PostAsync("/api/v1/android/account/users", new { username = "karma", fullName = "Karma Kişi", password = Password, roles = new[] { "ACCOUNTING", "SALES" } }, c.Patron);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var karma = await LoginAsync(c.Code, "karma", "DEV-KARMA");
+        var count = await SendToTenantAsync(c.Id, karma, "/api/v1/ingest/jobs", new
+        {
+            externalId = "REQ-COUNT",
+            documentType = "approval_request",
+            payload = new { kind = "stock_count", counterpartyName = "Depo 1", amount = 0, documents = new object[] { new { documentType = "stock_count", externalId = "COUNT-1", payload = new { lines = new[] { new { productCode = "CAY-1", countedQuantity = 38 } } } } } },
+        });
+        count.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var oldest = await (await GetAsync("/api/v1/android/approvals?status=pending&order=oldest&take=2", c.Accounting)).ReadAsJsonAsync<ApprovalRequestDto[]>();
+        oldest.Select(r => r.ExternalId).Should().Equal("REQ-OLD-1", "REQ-OLD-2");
+        oldest.Should().OnlyContain(r => r.CanDecide == true);
+        var newest = await (await GetAsync("/api/v1/android/approvals?status=pending&take=1", c.Accounting)).ReadAsJsonAsync<ApprovalRequestDto[]>();
+        newest.Single().Id.Should().Be(third, "the default order is unchanged");
+        (await ErrorAsync(GetAsync("/api/v1/android/approvals?order=random", c.Accounting))).Should().Be("INVALID_ORDER");
+
+        var mine = await (await GetAsync("/api/v1/android/approvals?status=pending&order=oldest", karma)).ReadAsJsonAsync<ApprovalRequestDto[]>();
+        mine.Single(r => r.Kind == "stock_count").CanDecide.Should().BeFalse();
+        mine.Single(r => r.Id == first).CanDecide.Should().BeTrue();
+    }
+
+    private async Task<Guid> RequestSaleAsync(Company c, string requestId, string orderId)
+    {
+        var submitted = await SendToTenantAsync(c.Id, c.Ali, "/api/v1/ingest/jobs", new
+        {
+            externalId = requestId,
+            documentType = "approval_request",
+            payload = new { kind = "sale", counterpartyName = "Bakkal Ali", amount = 150, documents = new object[] { new { documentType = "sales_order", externalId = orderId, payload = SalePayload(orderId, 1) } } },
+        });
+        submitted.StatusCode.Should().Be(HttpStatusCode.Created);
+        return (await submitted.ReadAsJsonAsync<IngestJobResponse>()).JobId;
+    }
+
+    private async Task<PortalEventsResponse> ApprovalEventsAsync(string token, long approvalsVersion, int wait)
+    {
+        var response = await GetAsync($"/api/v1/portal/events?approvalsVersion={approvalsVersion}&wait={wait}", token);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.ReadAsJsonAsync<PortalEventsResponse>();
+    }
+
     // ---- helpers ------------------------------------------------------------------------
 
     private sealed record Company(Guid Id, string Code, string Patron, string Ali, Guid AliId, string Depot, string Depot2, Guid Depot2Id, string Accounting, string Board);

@@ -60,10 +60,12 @@ public static class MobileApprovalEndpoints
     /// <c>beforeExternalId</c> page back through older requests: pass the <c>requestedSeq</c> and
     /// <c>externalId</c> of the last one on screen (two requests can share a millisecond sequence,
     /// the external id breaks the tie). <c>kind</c> is a comma-separated list of request kinds.
-    /// Without them the list is unchanged.
+    /// <c>order</c>: <c>newest</c> (default) or <c>oldest</c> — the portal's approval desk works the
+    /// longest-waiting requests first, and with more than <c>take</c> pending the oldest must not fall
+    /// outside the page. Without these the list is unchanged. Every row carries <c>canDecide</c> for the caller.
     /// </summary>
     private static async Task<IResult> ListAsync(HttpContext http, [FromServices] CentralApiDbContext db,
-        string? status, long? changedSinceSeq, int? take, long? beforeSeq, string? beforeExternalId, string? kind, CancellationToken ct)
+        string? status, long? changedSinceSeq, int? take, long? beforeSeq, string? beforeExternalId, string? kind, string? order, CancellationToken ct)
     {
         var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
         if (access.Error is not null) return access.Error;
@@ -83,6 +85,9 @@ public static class MobileApprovalEndpoints
                 ErrorCode = "INVALID_KIND",
                 Message = "kind must be a comma-separated list of: " + string.Join(", ", ApprovalKinds.All) + ".",
             });
+        var oldestFirst = string.Equals(order, "oldest", StringComparison.OrdinalIgnoreCase);
+        if (!oldestFirst && !string.IsNullOrWhiteSpace(order) && !string.Equals(order, "newest", StringComparison.OrdinalIgnoreCase))
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_ORDER", Message = "order must be newest or oldest." });
 
         var query = ApprovalService.Visible(db, access.Tenant!.Id, access.User!).Where(r => statuses.Contains(r.Status));
         if (changedSinceSeq is { } since) query = query.Where(r => r.UpdatedSeq >= since);
@@ -93,8 +98,17 @@ public static class MobileApprovalEndpoints
                 : query.Where(r => r.RequestedSeq < before || (r.RequestedSeq == before && string.Compare(r.ExternalId, beforeExternalId) < 0));
         }
         if (kinds.Count > 0) query = query.Where(r => kinds.Contains(r.Kind));
-        var rows = await query.OrderByDescending(r => r.RequestedSeq).ThenByDescending(r => r.ExternalId).Take(Math.Clamp(take ?? DefaultTake, 1, MaxTake)).ToListAsync(ct);
-        return JsonResults.Ok(rows.Select(ApprovalService.ToDto).ToArray());
+        query = oldestFirst
+            ? query.OrderBy(r => r.RequestedSeq).ThenBy(r => r.ExternalId)
+            : query.OrderByDescending(r => r.RequestedSeq).ThenByDescending(r => r.ExternalId);
+        var rows = await query.Take(Math.Clamp(take ?? DefaultTake, 1, MaxTake)).ToListAsync(ct);
+        var viewer = access.User!;
+        return JsonResults.Ok(rows.Select(row =>
+        {
+            var dto = ApprovalService.ToDto(row);
+            dto.CanDecide = ApprovalPermissions.CanDecide(viewer, row.Kind);
+            return dto;
+        }).ToArray());
     }
 
     private static async Task<IResult> DetailAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] ApprovalService approvals, CancellationToken ct)

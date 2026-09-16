@@ -110,6 +110,47 @@ public sealed class ApprovalDto
     [JsonPropertyName("requestedAtUtc")] public DateTimeOffset RequestedAtUtc { get; set; }
     [JsonPropertyName("decidedByName")] public string? DecidedByName { get; set; }
     [JsonPropertyName("decisionNote")] public string? DecisionNote { get; set; }
+
+    /// <summary>Whether the signed-in user's roles decide this kind; null from a server before Faz 48.</summary>
+    [JsonPropertyName("canDecide")] public bool? CanDecide { get; set; }
+}
+
+/// <summary><c>GET /api/v1/android/approvals/{id}</c>: the request, its documents, history and stock warnings.</summary>
+public sealed class ApprovalDetailDto
+{
+    [JsonPropertyName("request")] public ApprovalDto Request { get; set; } = new();
+
+    /// <summary><c>[{ documentType, externalId, payload }]</c>, exactly as they are posted on approval.</summary>
+    [JsonPropertyName("documents")] public JsonElement Documents { get; set; }
+    [JsonPropertyName("events")] public ApprovalEventDto[] Events { get; set; } = [];
+    [JsonPropertyName("warnings")] public StockWarningDto[] Warnings { get; set; } = [];
+}
+
+public sealed class ApprovalEventDto
+{
+    [JsonPropertyName("action")] public string Action { get; set; } = string.Empty;
+    [JsonPropertyName("byName")] public string? ByName { get; set; }
+    [JsonPropertyName("atUtc")] public DateTimeOffset AtUtc { get; set; }
+    [JsonPropertyName("note")] public string? Note { get; set; }
+}
+
+/// <summary>A product the request would sell more of than is in stock (a warning; approval stays possible).</summary>
+public sealed class StockWarningDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("requested")] public decimal Requested { get; set; }
+    [JsonPropertyName("onHand")] public decimal OnHand { get; set; }
+}
+
+/// <summary><c>GET /api/v1/portal/events</c>.</summary>
+public sealed class PortalEventsDto
+{
+    [JsonPropertyName("latestSeq")] public long LatestSeq { get; set; }
+
+    /// <summary>The company's approval change version; sent back to ask for changes after it.</summary>
+    [JsonPropertyName("approvalsVersion")] public long ApprovalsVersion { get; set; }
+    [JsonPropertyName("changed")] public bool Changed { get; set; }
 }
 
 public sealed class MoneyLine

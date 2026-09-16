@@ -56,7 +56,7 @@ public sealed class FulfillmentService
         string.Equals(documentType, NativeDocumentProcessor.SalesOrder, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Wakes the portal pages waiting on the company's queue. Call after commit.</summary>
-    public void Notify(Guid tenantId) => _events.Publish(tenantId);
+    public void Notify(Guid tenantId) => _events.Publish(tenantId, TenantEventTopics.Warehouse);
 
     // ---- queueing ---------------------------------------------------------------------
 

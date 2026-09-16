@@ -89,27 +89,52 @@ public static class WarehouseEndpoints
     }
 
     /// <summary>
-    /// Long-poll: answers at once when the queue changed after <c>sinceSeq</c>, otherwise waits up to
-    /// <c>wait</c> seconds (0-25) for a change. The page then reads <c>fulfillments?changedSinceSeq</c>.
+    /// Long-poll for the portal's live pages. Topics: the warehouse queue (<c>sinceSeq</c>, its change
+    /// counter, for a warehouse role) and approval requests (<c>approvalsVersion</c>, the hub's publish
+    /// count for the tenant; Faz 48). Answers at once when a topic the caller asked about moved, otherwise
+    /// waits up to <c>wait</c> seconds (0-25). The page then reads the topic's list.
+    ///
+    /// <para>Approvals are followed by a version rather than their <c>UpdatedSeq</c>: those are milliseconds
+    /// taken before commit (rule 16), so a late commit can carry a smaller number than one already seen.
+    /// The version grows on every publish, so a change published between two polls — with no waiter
+    /// registered — still shows as a different version (Codex, PR #57).</para>
     /// </summary>
     private static async Task<IResult> EventsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] ITenantEventHub events,
-        long? sinceSeq, int? wait, CancellationToken ct)
+        long? sinceSeq, long? approvalsVersion, int? wait, CancellationToken ct)
     {
-        var (tenant, _, error) = await AuthorizeAsync(http, db, RolePermissions.CanOperateWarehouse, ct);
+        var (tenant, user, error) = await AuthorizeAsync(http, db, CanFollowEvents, ct);
         if (error is not null) return error;
+        var warehouse = RolePermissions.CanOperateWarehouse(user!);
+        var watchWarehouse = warehouse && (sinceSeq is not null || approvalsVersion is null);
         var since = sinceSeq ?? 0;
         var seconds = Math.Clamp(wait ?? 0, 0, MaxWaitSeconds);
         // Subscribe before reading: a change that commits between the read and the wait still wakes us.
         // (WaitAsync registers the waiter before it returns.) An unused waiter ends with its timeout.
         var waiting = seconds > 0 ? events.WaitAsync(tenant!.Id, TimeSpan.FromSeconds(seconds), http.RequestAborted) : null;
-        var latest = await FulfillmentService.LatestSeqAsync(db, tenant!.Id, ct);
-        if (latest <= since && waiting is not null)
+
+        async Task<(long Queue, long Approvals)> ReadAsync() => (
+            warehouse ? await FulfillmentService.LatestSeqAsync(db, tenant!.Id, ct) : 0,
+            events.Version(tenant!.Id, TenantEventTopics.Approvals));
+        bool Moved((long Queue, long Approvals) now) =>
+            (watchWarehouse && now.Queue > since) || (approvalsVersion is { } seen && now.Approvals != seen);
+
+        var latest = await ReadAsync();
+        if (!Moved(latest) && waiting is not null)
         {
             await waiting;
-            latest = await FulfillmentService.LatestSeqAsync(db, tenant.Id, ct);
+            latest = await ReadAsync();
         }
-        return JsonResults.Ok(new PortalEventsResponse { LatestSeq = latest, Changed = latest > since });
+        return JsonResults.Ok(new PortalEventsResponse
+        {
+            LatestSeq = latest.Queue,
+            ApprovalsVersion = latest.Approvals,
+            Changed = Moved(latest),
+        });
     }
+
+    /// <summary>Anyone with a portal role follows the topics their roles open.</summary>
+    private static bool CanFollowEvents(MobileUser user) =>
+        RolePermissions.CanOperateWarehouse(user) || RolePermissions.CanUsePortal(user);
 
     private static async Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeAsync(
         HttpContext http, CentralApiDbContext db, Func<MobileUser, bool> allowed, CancellationToken ct)

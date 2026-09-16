@@ -382,14 +382,14 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     // ---- role gates ------------------------------------------------------------------------
 
     [Fact]
-    public void Accounting_opening_the_day_summary_is_sent_to_the_approvals()
+    public void Accounting_opening_the_day_summary_is_sent_to_the_approval_desk()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "SALES", roles: ["ACCOUNTING"]));
         var nav = Services.GetRequiredService<NavigationManager>();
 
         var cut = Render<ErpBridge.Portal.Pages.Index>();
 
-        cut.WaitForAssertion(() => nav.Uri.Should().EndWith("/onaylar"));
+        cut.WaitForAssertion(() => nav.Uri.Should().EndWith("/muhasebe"));
         api.Requests.Should().BeEmpty("the summary is never asked for on behalf of a role the server refuses");
     }
 

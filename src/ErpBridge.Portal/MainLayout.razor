@@ -73,6 +73,7 @@
                     <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
                         @if (Session.Allows(PortalArea.Approvals))
                         {
+                            <MudNavLink Href="muhasebe" Icon="@Icons.Material.Rounded.Keyboard">Onay masası</MudNavLink>
                             <MudNavLink Href="onaylar" Icon="@Icons.Material.Rounded.FactCheck">Onaylar</MudNavLink>
                         }
                         @if (Session.Allows(PortalArea.Warehouse))

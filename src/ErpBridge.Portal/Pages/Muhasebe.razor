@@ -1,0 +1,870 @@
+@page "/muhasebe"
+@inherits PortalPageBase
+@implements IAsyncDisposable
+@using System.Text.Json
+@inject IJSRuntime JS
+@inject TimeProvider Clock
+
+<PageTitle>Onay masası — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Onay masası" Eyebrow="Muhasebe" Subtitle="Klavyeyle hızlı onay · ↑↓ gezin · A onayla · R reddet · ? kısayollar" Busy="Busy">
+        <Actions>
+            <span class="badge @(_liveOk ? "badge--ok" : "badge--muted")" id="desk-live" title="Başka yetkililerin kararları kendiliğinden görünür">
+                @(_liveOk ? "Canlı" : "Bağlanıyor")
+            </span>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Keyboard" OnClick="() => Open(DeskDialog.Help)" id="desk-help">Kısayollar</MudButton>
+        </Actions>
+    </PageHeader>
+
+    @if (!Session.CanApprove)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="page-alert" id="desk-readonly">
+            Talepleri görebilirsiniz; karar vermek için firma admininizin size onay yetkisi vermesi gerekir.
+        </MudAlert>
+    }
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Info is not null)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="page-alert" id="page-info">@Info</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    var rows = Rows;
+    <div class="desk" id="desk">
+        <section class="desk-list panel" aria-label="Bekleyen talepler">
+            <div class="desk-toolbar">
+                <input class="desk-search" id="desk-search" placeholder="Ara: müşteri, plasiyer  ( / )" autocomplete="off"
+                       @bind-value="_search" @bind-value:event="oninput" @bind-value:after="KeepCurrentVisibleAsync" />
+                <button type="button" class="desk-filter @(_kind is null ? null : "is-active")" id="desk-filter" @onclick="CycleFilterAsync" title="Tür filtresi (F)">
+                    @(_kind is null ? "Tüm türler" : Fmt.ApprovalKind(_kind))
+                </button>
+            </div>
+            <div class="desk-count" id="desk-count">
+                @rows.Count talep · @Fmt.Money(rows.Sum(r => r.Amount))
+                @if (_checked.Count > 0)
+                {
+                    <span class="desk-checked"> · @_checked.Count seçili (Shift+A onayla)</span>
+                }
+            </div>
+
+            @if (rows.Count == 0)
+            {
+                <EmptyState Id="desk-empty" Icon="@Icons.Material.Rounded.TaskAlt"
+                            Title="@(_all.Count == 0 ? "Bekleyen talep yok." : "Aramaya uyan talep yok.")"
+                            Hint="Sahadan onaya gönderilen işlemler burada, en eski en üstte listelenir." />
+            }
+            else
+            {
+                <div class="desk-rows" role="listbox" aria-activedescendant="@(_currentId is { } active ? "desk-row-" + active : null)">
+                    @foreach (var request in rows)
+                    {
+                        var current = request.Id == _currentId;
+                        var marked = _checked.Contains(request.Id);
+                        <div class="desk-row @(current ? "is-current" : null) @(marked ? "is-checked" : null)" id="desk-row-@request.Id"
+                             data-request="@request.Id" role="option" aria-selected="@(current ? "true" : "false")"
+                             @onclick="() => SelectAsync(request.Id)">
+                            <span class="desk-check @(CanDecide(request) ? null : "is-disabled")" @onclick="() => Toggle(request.Id)" @onclick:stopPropagation="true" aria-label="Seç">
+                                <MudIcon Icon="@(marked ? Icons.Material.Rounded.CheckBox : Icons.Material.Rounded.CheckBoxOutlineBlank)" Size="Size.Small" />
+                            </span>
+                            <div class="desk-row-main">
+                                <div class="desk-row-title">
+                                    <span class="badge badge--@KindTone(request.Kind)">@Fmt.ApprovalKind(request.Kind)</span>
+                                    <strong>@request.CounterpartyName</strong>
+                                </div>
+                                <div class="desk-row-meta">
+                                    <span>@(request.RequestedByName ?? "Bilinmeyen kullanıcı")</span>
+                                    @if (_notes.ContainsKey(request.Id))
+                                    {
+                                        <span class="desk-has-note" title="Not eklendi"><MudIcon Icon="@Icons.Material.Rounded.StickyNote2" Size="Size.Small" /></span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="desk-row-side">
+                                <span class="desk-amount">@Fmt.Money(request.Amount)</span>
+                                <span class="desk-wait @WaitTone(request)">@Fmt.Waiting(request.RequestedAtUtc, Clock.GetUtcNow())</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="desk-detail panel" id="desk-detail" aria-live="polite">
+            @if (Current is not { } selected)
+            {
+                <EmptyState Id="desk-detail-empty" Icon="@Icons.Material.Rounded.ManageSearch" Title="Talep seçilmedi." Hint="↑ ↓ ile bir talep seçin." />
+            }
+            else
+            {
+                <div class="desk-detail-head">
+                    <div>
+                        <div class="desk-detail-kind">
+                            <span class="badge badge--@KindTone(selected.Kind)">@Fmt.ApprovalKind(selected.Kind)</span>
+                            <span class="text-muted">@(selected.RequestedByName ?? "Bilinmeyen kullanıcı") · @Fmt.Time(selected.RequestedAtUtc) · @Fmt.Waiting(selected.RequestedAtUtc, Clock.GetUtcNow()) bekliyor</span>
+                        </div>
+                        <h2 class="desk-detail-title" id="desk-detail-title">@selected.CounterpartyName</h2>
+                    </div>
+                    <div class="desk-detail-amount">@Fmt.Money(selected.Amount)</div>
+                </div>
+
+                @if (!CanDecide(selected))
+                {
+                    <div class="desk-cannot-decide" id="desk-cannot-decide">Bu tür talebe karar yetkiniz yok; yalnız görüntüleyebilirsiniz.</div>
+                }
+                else
+                {
+                    <div class="desk-actions">
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Rounded.Check" Disabled="@Busy" id="desk-approve" OnClick="ApproveCurrentAsync">Onayla <kbd>A</kbd></MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Rounded.Close" Disabled="@Busy" id="desk-reject" OnClick="() => Open(DeskDialog.Reject)">Reddet <kbd>R</kbd></MudButton>
+                        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.StickyNote2" Disabled="@Busy" id="desk-note" OnClick="() => Open(DeskDialog.Note)">Not <kbd>N</kbd></MudButton>
+                    </div>
+                }
+                @if (_notes.TryGetValue(selected.Id, out var pendingNote))
+                {
+                    <div class="desk-note" id="desk-current-note"><MudIcon Icon="@Icons.Material.Rounded.StickyNote2" Size="Size.Small" /> @pendingNote</div>
+                }
+
+                @if (_detailLoading)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="desk-detail-progress" />
+                }
+                else if (_detailError is not null)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Text" Dense="true">@_detailError</MudAlert>
+                }
+                else if (_detail is { } detail && detail.Request.Id == selected.Id)
+                {
+                    @if (detail.Warnings.Length > 0)
+                    {
+                        <div class="desk-block desk-warnings" id="desk-warnings">
+                            <div class="desk-block-title">Stok uyarısı</div>
+                            @foreach (var warning in detail.Warnings)
+                            {
+                                <div class="desk-warning">@warning.Title (@warning.StockCode): istenen @Fmt.Quantity(warning.Requested), stokta @Fmt.Quantity(warning.OnHand)</div>
+                            }
+                        </div>
+                    }
+
+                    <div class="desk-facts">
+                        @if (_balance is { } balance)
+                        {
+                            <div class="desk-fact" id="desk-balance"><span>Cari bakiye</span><strong class="@(balance.Balance > 0 ? "text-danger" : null)">@Fmt.Money(balance.Balance)</strong></div>
+                        }
+                        @if (SummaryText(detail, "paymentType") is { } payment)
+                        {
+                            <div class="desk-fact"><span>Ödeme</span><strong>@payment</strong></div>
+                        }
+                        @if ((SummaryText(detail, "description") ?? SummaryText(detail, "note")) is { } description)
+                        {
+                            <div class="desk-fact desk-fact--wide"><span>Açıklama</span><strong>@description</strong></div>
+                        }
+                    </div>
+
+                    var lines = LinesOf(detail);
+                    @if (lines.Count > 0)
+                    {
+                        <div class="desk-block">
+                            <div class="desk-block-title">Kalemler</div>
+                            <table class="desk-lines" id="desk-lines">
+                                <thead><tr><th>Ürün</th><th class="num">Miktar</th><th class="num">Fiyat</th><th class="num">Tutar</th></tr></thead>
+                                <tbody>
+                                    @foreach (var line in lines)
+                                    {
+                                        <tr>
+                                            <td><div>@line.Title</div><div class="text-muted mono">@line.Code</div></td>
+                                            <td class="num">@Fmt.Quantity(line.Quantity)</td>
+                                            <td class="num">@(line.UnitPrice is { } price ? Fmt.Money(price) : "—")</td>
+                                            <td class="num">@(line.Total is { } total ? Fmt.Money(total) : "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    var payments = PaymentsOf(detail);
+                    @if (payments.Count > 0)
+                    {
+                        <div class="desk-block">
+                            <div class="desk-block-title">Ödemeler</div>
+                            @foreach (var line in payments)
+                            {
+                                <div class="desk-payment"><span>@line.Method</span><strong>@Fmt.Money(line.Amount)</strong></div>
+                            }
+                        </div>
+                    }
+
+                    <div class="desk-block">
+                        <div class="desk-block-title">Geçmiş</div>
+                        <ol class="desk-history" id="desk-history">
+                            @foreach (var item in detail.Events)
+                            {
+                                <li><strong>@EventLabel(item.Action)</strong> · @(item.ByName ?? "—") · @Fmt.Time(item.AtUtc)@(string.IsNullOrWhiteSpace(item.Note) ? "" : " · " + item.Note)</li>
+                            }
+                        </ol>
+                    </div>
+                }
+            }
+        </section>
+    </div>
+
+    @if (_dialog != DeskDialog.None)
+    {
+        <div class="desk-overlay" @onclick="Close">
+            <div class="desk-dialog panel" role="dialog" aria-modal="true" id="desk-dialog" tabindex="-1" data-dialog="@_dialog" @onclick:stopPropagation="true">
+                @switch (_dialog)
+                {
+                    case DeskDialog.Reject:
+                        <h3>Reddet: @Current?.CounterpartyName</h3>
+                        <p class="text-muted">Sebep sahadaki kişiye görünür. Enter reddeder, Esc vazgeçer.</p>
+                        <input class="desk-dialog-input" id="desk-dialog-input" maxlength="500" placeholder="Red sebebi (isteğe bağlı)" @bind-value="_dialogText" @bind-value:event="oninput" />
+                        <div class="form-actions">
+                            <MudButton Variant="Variant.Text" OnClick="Close">Vazgeç</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="@Busy" id="desk-dialog-confirm" OnClick="ConfirmAsync">Reddet</MudButton>
+                        </div>
+                        break;
+                    case DeskDialog.Note:
+                        <h3>Not: @Current?.CounterpartyName</h3>
+                        <p class="text-muted">Onaylarken ya da reddederken karara eklenir. Enter kaydeder, boş bırakırsanız not silinir.</p>
+                        <input class="desk-dialog-input" id="desk-dialog-input" maxlength="500" placeholder="Not" @bind-value="_dialogText" @bind-value:event="oninput" />
+                        <div class="form-actions">
+                            <MudButton Variant="Variant.Text" OnClick="Close">Vazgeç</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" id="desk-dialog-confirm" OnClick="ConfirmAsync">Kaydet</MudButton>
+                        </div>
+                        break;
+                    case DeskDialog.Bulk:
+                        var chosen = CheckedRows;
+                        <h3>@chosen.Count talep onaylansın mı?</h3>
+                        <p id="desk-bulk-summary">Toplam @Fmt.Money(chosen.Sum(r => r.Amount)). Notu olan talepler notuyla onaylanır. Enter onaylar, Esc vazgeçer.</p>
+                        <ul class="desk-bulk-list">
+                            @foreach (var request in chosen)
+                            {
+                                <li>@Fmt.ApprovalKind(request.Kind) · @request.CounterpartyName · @Fmt.Money(request.Amount)</li>
+                            }
+                        </ul>
+                        <div class="form-actions">
+                            <MudButton Variant="Variant.Text" OnClick="Close">Vazgeç</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@Busy" id="desk-dialog-confirm" OnClick="ConfirmAsync">Hepsini onayla</MudButton>
+                        </div>
+                        break;
+                    case DeskDialog.Help:
+                        <h3>Klavye kısayolları</h3>
+                        <dl class="desk-keys">
+                            <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Önceki / sonraki talep</dd>
+                            <dt><kbd>A</kbd></dt><dd>Seçili talebi onayla</dd>
+                            <dt><kbd>R</kbd></dt><dd>Reddet (sebep penceresi)</dd>
+                            <dt><kbd>N</kbd></dt><dd>Not yaz</dd>
+                            <dt><kbd>Boşluk</kbd></dt><dd>Talebi işaretle</dd>
+                            <dt><kbd>Shift</kbd>+<kbd>A</kbd></dt><dd>İşaretlileri onayla (onay penceresiyle)</dd>
+                            <dt><kbd>/</kbd></dt><dd>Ara</dd>
+                            <dt><kbd>F</kbd></dt><dd>Tür filtresini değiştir</dd>
+                            <dt><kbd>Esc</kbd></dt><dd>Pencereyi kapat / işaretleri temizle</dd>
+                            <dt><kbd>?</kbd></dt><dd>Bu yardım</dd>
+                        </dl>
+                        <div class="form-actions">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" id="desk-dialog-confirm" OnClick="Close">Tamam</MudButton>
+                        </div>
+                        break;
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Approvals;
+
+    public enum DeskDialog { None, Reject, Note, Bulk, Help }
+
+    /// <summary>Codes after which the queue on screen is stale and is read again.</summary>
+    private static readonly HashSet<string> StaleCodes = ["APPROVAL_ALREADY_DECIDED", "APPROVAL_STATE_CHANGED", "APPROVAL_NOT_FOUND"];
+
+    private static readonly string[] KindOrder = ["sale", "return", "collection", "disbursement", "purchase", "stock_count", "product_card", "customer_card"];
+
+    /// <summary>The longest one long-poll waits; the server caps it too.</summary>
+    private const int LiveWaitSeconds = 25;
+
+    private List<ApprovalDto> _all = [];
+    private readonly HashSet<Guid> _checked = [];
+    private readonly Dictionary<Guid, string> _notes = [];
+    /// <summary>Requests this page decided: their leaving the queue is not someone else's doing.</summary>
+    private readonly HashSet<Guid> _decidedHere = [];
+    private Guid? _currentId;
+    private string _search = string.Empty;
+    private string? _kind;
+
+    private ApprovalDetailDto? _detail;
+    private BalanceRow? _balance;
+    private bool _detailLoading;
+    private string? _detailError;
+    private int _detailVersion;
+
+    private DeskDialog _dialog;
+    private string _dialogText = string.Empty;
+    private string? _focusAfterRender;
+    private bool _revealCurrent;
+
+    /// <summary>The approval change version the queue on screen reflects; -1 before the first read.</summary>
+    private long _approvalsVersion = -1;
+    private bool _liveOk;
+    private readonly CancellationTokenSource _live = new();
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private DotNetObjectReference<Muhasebe>? _self;
+    /// <summary>The shortcut listener this instance attached; detaching never removes a newer instance's.</summary>
+    private int? _keysHandle;
+    /// <summary>
+    /// Set on disposal. A session restored from the browser switches the layout to its signed-in view,
+    /// which replaces this page with a new instance while the first one is still loading: the old one
+    /// must then neither start the live loop nor take over the keyboard.
+    /// </summary>
+    private bool _disposed;
+
+    private string? Notice { get; set; }
+    private string? Info { get; set; }
+
+    /// <summary>The queue as filtered, oldest request first: the one waiting longest is decided first.</summary>
+    private IReadOnlyList<ApprovalDto> Rows =>
+        _all.Where(r => _kind is null || r.Kind == _kind)
+            .Where(r => string.IsNullOrWhiteSpace(_search)
+                || r.CounterpartyName.Contains(_search.Trim(), StringComparison.CurrentCultureIgnoreCase)
+                || (r.RequestedByName ?? string.Empty).Contains(_search.Trim(), StringComparison.CurrentCultureIgnoreCase))
+            .ToList();
+
+    private ApprovalDto? Current => _currentId is { } id ? Rows.FirstOrDefault(r => r.Id == id) : null;
+
+    private List<ApprovalDto> CheckedRows => Rows.Where(r => _checked.Contains(r.Id) && CanDecide(r)).ToList();
+
+    /// <summary>
+    /// The user decides anything at all, and the server says they decide this kind (accounting: money
+    /// documents, not cards or stock counts); an older server sends no per-request answer.
+    /// </summary>
+    private bool CanDecide(ApprovalDto request) => Session.CanApprove && request.CanDecide != false;
+
+    // ---- loading ----------------------------------------------------------------------
+
+    protected override async Task LoadAsync()
+    {
+        await ReloadAsync();
+        if (_disposed) return;
+        try
+        {
+            _self = DotNetObjectReference.Create(this);
+            _keysHandle = await JS.InvokeAsync<int>("portalKeys.attach", _self);
+        }
+        catch (JSException)
+        {
+            // Without the script the buttons still work.
+        }
+        if (_disposed) return;
+        _ = WatchAsync(_live.Token);
+    }
+
+    /// <summary>
+    /// Reads the queue. The approval version is taken before the rows, so a change published in
+    /// between shows as a newer version and the queue is read again rather than missed.
+    /// </summary>
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _approvalsVersion = (await Api.ApprovalEventsAsync(-1, 0)).ApprovalsVersion;
+            _liveOk = true;
+        }
+        catch (PortalApiException)
+        {
+            // Live updates are a convenience; the queue itself still loads.
+            _liveOk = false;
+        }
+        var position = Math.Max(0, Rows.ToList().FindIndex(r => r.Id == _currentId));
+        var previous = _currentId;
+        _all = [.. (await Api.ApprovalQueueAsync()).OrderBy(r => r.RequestedAtUtc)];
+        _checked.IntersectWith(_all.Select(r => r.Id));
+        foreach (var gone in _notes.Keys.Where(id => _all.All(r => r.Id != id)).ToList()) _notes.Remove(gone);
+
+        if (previous is { } id && Current is null)
+        {
+            if (!_decidedHere.Contains(id))
+            {
+                Info = "Açık olan talep başka bir yetkili tarafından sonuçlandırıldı; sıradaki talebe geçildi.";
+                if (_dialog is DeskDialog.Reject or DeskDialog.Note) _dialog = DeskDialog.None;
+            }
+            SelectAt(position);
+            await LoadDetailAsync();
+        }
+        else if (Current is null)
+        {
+            SelectAt(0);
+            await LoadDetailAsync();
+        }
+    }
+
+    /// <summary>Follows other approvers' decisions and new requests until the page closes.</summary>
+    private async Task WatchAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                // The version, unlike a timestamp, also catches a change published between two polls (Codex, PR #57).
+                var events = await Api.ApprovalEventsAsync(_approvalsVersion, LiveWaitSeconds, token);
+                if (!_liveOk)
+                {
+                    _liveOk = true;
+                    await InvokeAsync(StateHasChanged);
+                }
+                if (events.Changed) await InvokeAsync(() => GuardedAsync(ReloadAsync));
+                // Never spin, even against a server that answers at once.
+                await Task.Delay(TimeSpan.FromSeconds(1), token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (SessionEndedException ended)
+            {
+                await InvokeAsync(() => RunAsync(() => throw ended));
+                return;
+            }
+            catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+            {
+                _liveOk = false;
+                await InvokeAsync(StateHasChanged);
+                try { await Task.Delay(TimeSpan.FromSeconds(15), token); }
+                catch (OperationCanceledException) { return; }
+            }
+        }
+    }
+
+    /// <summary>One queue change at a time: a live reload never interleaves with a decision.</summary>
+    private async Task GuardedAsync(Func<Task> action)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            await RunAsync(action);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task LoadDetailAsync()
+    {
+        var version = ++_detailVersion;
+        _detail = null;
+        _balance = null;
+        _detailError = null;
+        if (_currentId is not { } id)
+        {
+            _detailLoading = false;
+            return;
+        }
+        _detailLoading = true;
+        StateHasChanged();
+        try
+        {
+            var detail = await Api.ApprovalDetailAsync(id);
+            if (version != _detailVersion) return;
+            _detail = detail;
+            if (CustomerCodeOf(detail) is { } code && Session.Allows(PortalArea.Ledger))
+            {
+                try
+                {
+                    var balances = await Api.BalancesAsync(code);
+                    if (version == _detailVersion)
+                        _balance = balances.Rows.FirstOrDefault(b => string.Equals(b.CustomerCode, code, StringComparison.OrdinalIgnoreCase));
+                }
+                catch (PortalApiException)
+                {
+                    // The balance is extra information; the decision does not wait for it.
+                }
+            }
+        }
+        catch (PortalApiException)
+        {
+            if (version == _detailVersion) _detailError = "Talebin ayrıntısı okunamadı. Listeden yeniden seçin.";
+        }
+        finally
+        {
+            if (version == _detailVersion)
+            {
+                _detailLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    // ---- choosing ---------------------------------------------------------------------
+
+    private void SelectAt(int index)
+    {
+        var rows = Rows;
+        _currentId = rows.Count == 0 ? null : rows[Math.Clamp(index, 0, rows.Count - 1)].Id;
+        _revealCurrent = true;
+    }
+
+    private Task SelectAsync(Guid id)
+    {
+        if (_currentId == id) return Task.CompletedTask;
+        _currentId = id;
+        return GuardedAsync(LoadDetailAsync);
+    }
+
+    private Task MoveAsync(int step)
+    {
+        var rows = Rows;
+        if (rows.Count == 0) return Task.CompletedTask;
+        var index = rows.ToList().FindIndex(r => r.Id == _currentId);
+        var next = index < 0 ? 0 : Math.Clamp(index + step, 0, rows.Count - 1);
+        if (index == next) return Task.CompletedTask;
+        SelectAt(next);
+        return GuardedAsync(LoadDetailAsync);
+    }
+
+    private void Toggle(Guid id)
+    {
+        if (_checked.Remove(id)) return;
+        if (_all.FirstOrDefault(r => r.Id == id) is { } request && !CanDecide(request))
+        {
+            Info = "Bu tür talebe karar yetkiniz olmadığı için işaretlenemez.";
+            return;
+        }
+        _checked.Add(id);
+    }
+
+    private async Task KeepCurrentVisibleAsync()
+    {
+        if (Current is not null) return;
+        SelectAt(0);
+        await GuardedAsync(LoadDetailAsync);
+    }
+
+    private async Task CycleFilterAsync()
+    {
+        var kinds = KindOrder.Where(kind => _all.Any(r => r.Kind == kind)).ToList();
+        var index = _kind is null ? -1 : kinds.IndexOf(_kind);
+        _kind = index + 1 < kinds.Count ? kinds[index + 1] : null;
+        _checked.IntersectWith(Rows.Select(r => r.Id));
+        await KeepCurrentVisibleAsync();
+    }
+
+    // ---- deciding ---------------------------------------------------------------------
+
+    private Task ApproveCurrentAsync()
+    {
+        if (Current is not { } request) return Task.CompletedTask;
+        if (!CanDecide(request))
+        {
+            Error = CannotDecide;
+            return Task.CompletedTask;
+        }
+        return DecideAsync([request], approve: true, _notes.GetValueOrDefault(request.Id));
+    }
+
+    private const string CannotDecide = "Bu tür talebe karar yetkiniz yok. Firma admininizle görüşün.";
+
+    private async Task DecideAsync(IReadOnlyList<ApprovalDto> requests, bool approve, string? note)
+    {
+        if (requests.Count == 0) return;
+        if (!Session.CanApprove)
+        {
+            Error = PortalMessages.For("APPROVER_REQUIRED");
+            return;
+        }
+        await _gate.WaitAsync();
+        try
+        {
+            await RunAsync(async () =>
+            {
+                Notice = null;
+                Info = null;
+                var decided = new List<ApprovalDto>();
+                var failures = new List<string>();
+                var stale = false;
+                var position = Rows.ToList().FindIndex(r => r.Id == _currentId);
+                foreach (var request in requests)
+                {
+                    try
+                    {
+                        var text = requests.Count == 1 ? note : _notes.GetValueOrDefault(request.Id);
+                        await Api.DecideAsync(request.Id, approve, string.IsNullOrWhiteSpace(text) ? null : text.Trim());
+                        decided.Add(request);
+                        _decidedHere.Add(request.Id);
+                        _all.RemoveAll(r => r.Id == request.Id);
+                        _checked.Remove(request.Id);
+                        _notes.Remove(request.Id);
+                    }
+                    catch (PortalApiException failed)
+                    {
+                        failures.Add(requests.Count == 1 ? failed.Message : $"{request.CounterpartyName}: {failed.Message}");
+                        stale |= StaleCodes.Contains(failed.Code);
+                    }
+                }
+
+                var verb = approve ? "onaylandı" : "reddedildi";
+                Notice = decided.Count switch
+                {
+                    0 => null,
+                    1 => $"{decided[0].CounterpartyName} — {Fmt.ApprovalKind(decided[0].Kind).ToLower(Fmt.Turkish)} talebi {verb}.",
+                    _ => $"{decided.Count} talep {verb} · toplam {Fmt.Money(decided.Sum(r => r.Amount))}.",
+                };
+                if (stale) await ReloadAsync();
+                if (Current is null) SelectAt(Math.Max(position, 0));
+                await LoadDetailAsync();
+                // Set last: RunAsync clears the error only before the action runs.
+                Error = failures.Count == 0 ? null
+                    : failures.Count == 1 ? failures[0]
+                    : $"{failures.Count} talep sonuçlandırılamadı: " + string.Join(" · ", failures);
+            });
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    // ---- dialogs ----------------------------------------------------------------------
+
+    private void Open(DeskDialog dialog)
+    {
+        if (dialog is DeskDialog.Reject or DeskDialog.Note && Current is null) return;
+        if (dialog is DeskDialog.Reject or DeskDialog.Bulk && !Session.CanApprove)
+        {
+            Error = PortalMessages.For("APPROVER_REQUIRED");
+            return;
+        }
+        if (dialog == DeskDialog.Reject && Current is { } rejected && !CanDecide(rejected))
+        {
+            Error = CannotDecide;
+            return;
+        }
+        if (dialog == DeskDialog.Bulk && CheckedRows.Count == 0)
+        {
+            Info = "Önce Boşluk tuşuyla onaylanacak talepleri işaretleyin.";
+            return;
+        }
+        _dialog = dialog;
+        _dialogText = Current is { } request ? _notes.GetValueOrDefault(request.Id) ?? string.Empty : string.Empty;
+        // The dialog itself, not its button, takes focus: Enter then always reaches the desk's shortcut
+        // handler instead of depending on how a browser turns Enter on a focused button into a click.
+        _focusAfterRender = dialog is DeskDialog.Reject or DeskDialog.Note ? "#desk-dialog-input" : "#desk-dialog";
+    }
+
+    private void Close() => _dialog = DeskDialog.None;
+
+    private async Task ConfirmAsync()
+    {
+        var dialog = _dialog;
+        var text = _dialogText.Trim();
+        _dialog = DeskDialog.None;
+        switch (dialog)
+        {
+            case DeskDialog.Note when Current is { } request:
+                if (text.Length == 0) _notes.Remove(request.Id);
+                else _notes[request.Id] = text;
+                break;
+            case DeskDialog.Reject when Current is { } request:
+                await DecideAsync([request], approve: false, text);
+                break;
+            case DeskDialog.Bulk:
+                await DecideAsync(CheckedRows, approve: true, note: null);
+                break;
+        }
+    }
+
+    // ---- keyboard ---------------------------------------------------------------------
+
+    /// <summary>Called by <c>portal-keys.js</c> for the desk's keys; <paramref name="inField"/> when typing in a field.</summary>
+    [JSInvokable]
+    public async Task OnKey(string key, bool shift, bool ctrl, bool inField)
+    {
+        if (!Ready) return;
+        if (_dialog != DeskDialog.None)
+        {
+            if (key == "Escape") Close();
+            else if (key == "Enter") await ConfirmAsync();
+            StateHasChanged();
+            return;
+        }
+        if (inField)
+        {
+            // Enter or Escape in the search box hands the keys back to the queue.
+            await BlurAsync();
+            return;
+        }
+        switch (key)
+        {
+            case "ArrowDown" or "j":
+                await MoveAsync(1);
+                break;
+            case "ArrowUp" or "k":
+                await MoveAsync(-1);
+                break;
+            case "a" or "A" when shift:
+                Open(DeskDialog.Bulk);
+                break;
+            case "a" or "A":
+                await ApproveCurrentAsync();
+                break;
+            case "r" or "R":
+                Open(DeskDialog.Reject);
+                break;
+            case "n" or "N":
+                Open(DeskDialog.Note);
+                break;
+            case " ":
+                if (_currentId is { } id) Toggle(id);
+                break;
+            case "/":
+                _focusAfterRender = "#desk-search";
+                break;
+            case "f" or "F":
+                await CycleFilterAsync();
+                break;
+            case "?":
+                Open(DeskDialog.Help);
+                break;
+            case "Escape":
+                _checked.Clear();
+                Info = null;
+                break;
+        }
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        try
+        {
+            if (_focusAfterRender is { } selector)
+            {
+                _focusAfterRender = null;
+                await JS.InvokeVoidAsync("portalKeys.focus", selector);
+            }
+            if (_revealCurrent && _currentId is { } id)
+            {
+                _revealCurrent = false;
+                await JS.InvokeVoidAsync("portalKeys.reveal", "#desk-row-" + id);
+            }
+        }
+        catch (JSException)
+        {
+            // Focus and scrolling are niceties.
+        }
+    }
+
+    private async Task BlurAsync()
+    {
+        try { await JS.InvokeVoidAsync("portalKeys.blur"); }
+        catch (JSException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        // Cancelled, not disposed: a load still running on the old instance may yet read the token.
+        await _live.CancelAsync();
+        try
+        {
+            if (_keysHandle is { } handle) await JS.InvokeVoidAsync("portalKeys.detach", handle);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
+        {
+            // The tab is already gone.
+        }
+        _self?.Dispose();
+    }
+
+    // ---- reading a request ------------------------------------------------------------
+
+    private sealed record DocumentLine(string Code, string Title, decimal Quantity, decimal? UnitPrice, decimal? Total);
+
+    private sealed record PaymentLine(string Method, decimal Amount);
+
+    private static IEnumerable<JsonElement> Payloads(ApprovalDetailDto detail) =>
+        detail.Documents.ValueKind != JsonValueKind.Array ? []
+        : detail.Documents.EnumerateArray()
+            .Where(d => d.ValueKind == JsonValueKind.Object && d.TryGetProperty("payload", out var p) && p.ValueKind == JsonValueKind.Object)
+            .Select(d => d.GetProperty("payload"));
+
+    private static List<DocumentLine> LinesOf(ApprovalDetailDto detail) =>
+        Payloads(detail)
+            .Where(p => p.TryGetProperty("lines", out var lines) && lines.ValueKind == JsonValueKind.Array)
+            .SelectMany(p => p.GetProperty("lines").EnumerateArray())
+            .Select(line =>
+            {
+                var quantity = Number(line, "quantity") ?? Number(line, "countedQuantity") ?? 0;
+                var price = Number(line, "unitPrice");
+                return new DocumentLine(
+                    Text(line, "productCode") ?? Text(line, "barcode") ?? string.Empty,
+                    Text(line, "productTitle") ?? Text(line, "title") ?? Text(line, "name") ?? "—",
+                    quantity, price, Number(line, "lineTotal") ?? (price is { } p ? p * quantity : null));
+            })
+            .ToList();
+
+    private static List<PaymentLine> PaymentsOf(ApprovalDetailDto detail)
+    {
+        if (detail.Request.Summary.ValueKind == JsonValueKind.Object
+            && detail.Request.Summary.TryGetProperty("payments", out var payments) && payments.ValueKind == JsonValueKind.Array)
+            return payments.EnumerateArray()
+                .Select(p => new PaymentLine(Text(p, "method") ?? "—", Number(p, "amount") ?? 0))
+                .ToList();
+        return [];
+    }
+
+    private static string? CustomerCodeOf(ApprovalDetailDto detail) =>
+        Payloads(detail).Select(p => Text(p, "customerCode")).FirstOrDefault(code => code is not null);
+
+    private static string? SummaryText(ApprovalDetailDto detail, string name) => Text(detail.Request.Summary, name);
+
+    private static string? Text(JsonElement item, string name) =>
+        item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString())
+            ? value.GetString()!.Trim()
+            : null;
+
+    private static decimal? Number(JsonElement item, string name) =>
+        item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)
+            ? number
+            : null;
+
+    private static string EventLabel(string action) => action switch
+    {
+        "Submitted" => "Gönderildi",
+        "Approved" => "Onaylandı",
+        "Rejected" => "Reddedildi",
+        "Reopened" => "Tekrar açıldı",
+        "Withdrawn" => "Geri çekildi",
+        "Resubmitted" => "Düzeltilip gönderildi",
+        _ => action,
+    };
+
+    private string WaitTone(ApprovalDto request)
+    {
+        var waited = Clock.GetUtcNow() - request.RequestedAtUtc;
+        return waited >= TimeSpan.FromHours(2) ? "is-late" : waited >= TimeSpan.FromMinutes(30) ? "is-slow" : string.Empty;
+    }
+
+    private static string KindTone(string kind) => kind switch
+    {
+        "sale" => "primary",
+        "collection" => "success",
+        "return" => "danger",
+        "disbursement" or "purchase" => "warning",
+        _ => "violet",
+    };
+}
