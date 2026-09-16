@@ -318,3 +318,94 @@ public sealed class ApiErrorDto
     [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
     [JsonPropertyName("message")] public string? Message { get; set; }
 }
+
+public sealed class CustomerRowDto
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("balance")] public decimal Balance { get; set; }
+    [JsonPropertyName("phone")] public string? Phone { get; set; }
+    [JsonPropertyName("city")] public string? City { get; set; }
+}
+
+public sealed class CustomersResponse
+{
+    [JsonPropertyName("items")] public List<CustomerRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+    [JsonPropertyName("totalReceivable")] public decimal TotalReceivable { get; set; }
+    [JsonPropertyName("totalPayable")] public decimal TotalPayable { get; set; }
+}
+
+public sealed class CustomerCardDto
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("balance")] public decimal Balance { get; set; }
+    [JsonPropertyName("phone")] public string? Phone { get; set; }
+    [JsonPropertyName("email")] public string? Email { get; set; }
+    [JsonPropertyName("taxOffice")] public string? TaxOffice { get; set; }
+    [JsonPropertyName("taxNo")] public string? TaxNo { get; set; }
+    [JsonPropertyName("address")] public string? Address { get; set; }
+    [JsonPropertyName("salespersonCode")] public string? SalespersonCode { get; set; }
+    [JsonPropertyName("regionCode")] public string? RegionCode { get; set; }
+    [JsonPropertyName("groupCode")] public string? GroupCode { get; set; }
+    [JsonPropertyName("currency")] public string? Currency { get; set; }
+    [JsonPropertyName("isLocked")] public bool IsLocked { get; set; }
+    [JsonPropertyName("dataSource")] public string DataSource { get; set; } = string.Empty;
+}
+
+public sealed class LedgerRowDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "other";
+    [JsonPropertyName("sourceType")] public string? SourceType { get; set; }
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("debit")] public decimal Debit { get; set; }
+    [JsonPropertyName("credit")] public decimal Credit { get; set; }
+    [JsonPropertyName("balance")] public decimal Balance { get; set; }
+    [JsonPropertyName("documentKey")] public string? DocumentKey { get; set; }
+}
+
+public sealed class LedgerResponse
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("from")] public string? From { get; set; }
+    [JsonPropertyName("to")] public string? To { get; set; }
+    [JsonPropertyName("opening")] public decimal Opening { get; set; }
+    [JsonPropertyName("closing")] public decimal Closing { get; set; }
+    [JsonPropertyName("totalDebit")] public decimal TotalDebit { get; set; }
+    [JsonPropertyName("totalCredit")] public decimal TotalCredit { get; set; }
+    [JsonPropertyName("items")] public List<LedgerRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+}
+
+public sealed class CustomerDocumentLineDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string? Name { get; set; }
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+    [JsonPropertyName("unitPrice")] public decimal UnitPrice { get; set; }
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
+    [JsonPropertyName("tax")] public decimal? Tax { get; set; }
+    [JsonPropertyName("warehouseNo")] public int? WarehouseNo { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+}
+
+public sealed class CustomerDocumentDto
+{
+    [JsonPropertyName("documentKey")] public string DocumentKey { get; set; } = string.Empty;
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "other";
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
+    [JsonPropertyName("lines")] public List<CustomerDocumentLineDto> Lines { get; set; } = [];
+    [JsonPropertyName("linesAvailable")] public bool LinesAvailable { get; set; }
+}
