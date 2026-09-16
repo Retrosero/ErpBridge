@@ -254,7 +254,9 @@ registration ayrı bir composition projesine taşınır.
      telefon oturumu `CanUsePhone` (ADMIN/MANAGER/SALES, **panel goal P4b'den beri WAREHOUSE da**) ister, yoksa 403
      `ROLE_NOT_ALLOWED_ON_PHONE`. **Yalnız depo rollü telefon kullanıcısı** (`IsWarehouseOnlyOnPhone`: WAREHOUSE var,
      ADMIN/MANAGER/SALES yok) ayrıca uygulama sürümü ister: cihazın kayıtlı `AppVersion`'ı (telefonun `versionName`'i,
-     ör. `1.5.240`) `Mobile:MinWarehousePhoneVersion` ayarından küçükse ya da ayar boşsa — girişte **ve her istekte** —
+     ör. `1.5.240`) `Mobile:MinWarehousePhoneVersion` ayarından (`appsettings.json` varsayılanı **`1.5.235`** — sunucu
+     kuyruğuna bağlı Depo ekranlı ilk sürüm, panel goal P5d; Coolify'da `Mobile__MinWarehousePhoneVersion` ile ezilir)
+     küçükse ya da ayar boşsa — girişte **ve her istekte** —
      aynı 403 döner (eski uygulama depo rolünü tanımaz, tüm ekranları açardı; rolü sonradan daralan açık oturum da
      kapanır). Bu kullanıcı `/ingest/*`'a hiç belge gönderemez: 403 `ROLE_NOT_ALLOWED`. Karma rollüler etkilenmez; panel oturumu `CanUsePortal` (SALES dışı) ister, yoksa 403
      `PORTAL_REQUIRES_MANAGER`. Login'de reddedilen istek cihaz satırı açmaz. Panel oturumu
