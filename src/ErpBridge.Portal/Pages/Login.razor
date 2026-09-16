@@ -1,0 +1,90 @@
+@page "/login"
+@inject PortalApiClient Api
+@inject PortalSession Session
+@inject ISessionPersistence Persistence
+@inject NavigationManager Nav
+
+<PageTitle>Giriş — Yönetim Paneli</PageTitle>
+
+<div class="portal-login">
+    <h1>Yönetim Paneli</h1>
+    <p>Telefondaki firma hesabınızla giriş yapın. Panel firma admini ve yöneticiler içindir.</p>
+
+    @if (!string.IsNullOrEmpty(_notice))
+    {
+        <div class="portal-alert" id="login-notice">@_notice</div>
+    }
+
+    <form class="portal-card portal-form" @onsubmit="SignInAsync" @onsubmit:preventDefault>
+        <label for="login-code">Firma kodu</label>
+        <input id="login-code" autocomplete="organization" @bind="_tenantCode" @bind:event="oninput" />
+
+        <label for="login-username">Kullanıcı adı</label>
+        <input id="login-username" autocomplete="username" @bind="_username" @bind:event="oninput" />
+
+        <label for="login-password">Parola</label>
+        <input id="login-password" type="password" autocomplete="current-password" @bind="_password" @bind:event="oninput" />
+
+        <button type="submit" id="login-submit" class="portal-button" disabled="@(_busy || !CanSubmit)">
+            @(_busy ? "Giriş yapılıyor…" : "Giriş yap")
+        </button>
+    </form>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="portal-alert portal-alert--error" id="login-error">@_error</div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "reason")] public string? Reason { get; set; }
+
+    private string _tenantCode = string.Empty;
+    private string _username = string.Empty;
+    private string _password = string.Empty;
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+
+    private bool CanSubmit => !string.IsNullOrWhiteSpace(_tenantCode) && !string.IsNullOrWhiteSpace(_username) && _password.Length > 0;
+
+    protected override void OnParametersSet() =>
+        _notice = string.IsNullOrWhiteSpace(Reason) ? null : PortalMessages.For(Reason);
+
+    private async Task SignInAsync()
+    {
+        if (!CanSubmit) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var login = await Api.LoginAsync(_tenantCode, _username, _password);
+            var user = login.Session.User;
+            // The server refuses a salesperson on every portal call; saying so here is kinder.
+            if (!PortalSession.Roles.MayUsePortal(user.Role))
+            {
+                _error = PortalMessages.For("PORTAL_REQUIRES_MANAGER");
+                return;
+            }
+            var state = new PortalSessionState(
+                login.Token, login.ExpiresAtUtc, login.Session.TenantName, login.Session.TenantCode ?? _tenantCode.Trim().ToUpperInvariant(),
+                login.Session.DataSource, user.Username, user.FullName, user.Role, user.CanApprove);
+            Session.SignIn(state);
+            await Persistence.SaveAsync(state);
+            Nav.NavigateTo("");
+        }
+        catch (PortalApiException failed)
+        {
+            _error = failed.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+        }
+        finally
+        {
+            _password = string.Empty;
+            _busy = false;
+        }
+    }
+}

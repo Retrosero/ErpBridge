@@ -63,7 +63,8 @@ ErpBridge/src/
 ├── ErpBridge.Agent.Service/    # Windows Service: AgentWorker, BootstrapWorker, HeartbeatWorker
 ├── ErpBridge.Agent.UI/         # WPF Ayar Paneli
 ├── ErpBridge.CentralApi/       # ASP.NET Core Web API, PostgreSQL, JWT & Multi-Tenant
-└── ErpBridge.Admin/            # Blazor Server yönetim paneli
+├── ErpBridge.Admin/            # Blazor Server operatör konsolu (ErpBridge ekibi)
+└── ErpBridge.Portal/           # Blazor Server firma yönetici paneli (Faz 42; firmanın admin/yöneticisi)
 ```
 
 ### Güncel Referans Grafiği (Faz 16–22 sonrası)
@@ -467,6 +468,36 @@ registration ayrı bir composition projesine taşınır.
      "son hareket" gibi bir tahmin yaşlandırma diye gösterilmez.
    - Testler: `PortalRelationalTests` (yetki, firma yalıtımı, ERP'li/ERP'siz sayım, kişi
      bazlı atıf, rota günü, bakiye/stok, çevrimdışı tolerans).
+
+19. **Firma yönetici paneli ayrı bir uygulamadır: `ErpBridge.Portal` (Faz 42, 2026-09-16).**
+   Firmanın admini/yöneticisi tarayıcıdan telefondaki hesabıyla girer. `ErpBridge.Admin`
+   operatör konsoludur (tüm firmalar, süper admin) — **ikisi birleştirilmez**, panel Admin'in
+   kodunu veya token tutucusunu kopyalamaz.
+   - **Oturum devre (circuit) başınadır:** `PortalSession` `Scoped` kayıtlıdır, asla
+     `Singleton` değil — tek süreç birçok firmaya hizmet eder; singleton bir firmanın
+     token'ını tüm ziyaretçilere sızdırır (test: `PortalSessionTests.Two_circuits_never_share_a_session`).
+     Token yalnızca sekmenin `ProtectedSessionStorage`'ında durur (sekme kapanınca biter,
+     sunucu diskine/DB'ye yazılmaz).
+   - **Giriş:** `POST /api/v1/android/account/login`, `deviceId = "web-portal:" + kullanıcı adı`
+     (kullanıcı başına tek cihaz satırı: operatör paneli girişini telefon gibi engelleyebilir,
+     her girişte yeni cihaz birikmez). Panel cihazı da koltuk/cihaz sayımına girer.
+     `SALES` rolü girişte reddedilir (istemci) ve portal uçları 403 `PORTAL_REQUIRES_MANAGER`
+     döner (sunucu — asıl kapı budur).
+   - **Oturumu bitiren kodlar** (`INVALID_TOKEN`, `USER_INACTIVE`, `DEVICE_REVOKED`,
+     `SUBSCRIPTION_*`, `TENANT_INACTIVE`, `SESSION_REVOKED`, her 401) sekmeyi temizleyip
+     `login?reason=<kod>`'a döner; diğer retler oturumu korur ve Türkçe mesaj gösterir
+     (`PortalMessages`, telefonun `AccountRepository.messageFor` metinleriyle aynı).
+   - **Yeni sunucu ucu yoktur:** panel kural 18'deki portal uçlarını + mevcut
+     `/api/v1/android/approvals` ve `/api/v1/android/account/users` uçlarını kullanır.
+     Yetki kuralları (onaylayıcı, son admin, koltuk) sunucudadır; panel onları tekrar yazmaz.
+   - **Dağıtım:** `Dockerfile.portal` (port 4003, yalnız `CentralApi__BaseUrl` gerekir, gizli
+     anahtar yok). `docker-compose.coolify.yml`'a **eklenmedi** — main'e push production'a
+     otomatik dağıtır; Coolify servisi ve alan adı operatörün kararıdır.
+   - **Yerel çalıştırma:** `dotnet run` ile `--environment Development` verilmeli; Production
+     ortamında `dotnet run` çerçeve betiğini (`_framework/blazor.server.js`) sunmaz (404, boş
+     sayfa). Yayımlanmış imajda dosya `wwwroot/_framework` altındadır, sorun yoktur.
+   - Testler: `tests/ErpBridge.Portal.Tests` (bUnit) — oturum yalıtımı, rol kapısı, oturum
+     bitişi, sayfa davranışları.
 
 ## 4. Yeni ERP Adaptörü Eklemek
 
