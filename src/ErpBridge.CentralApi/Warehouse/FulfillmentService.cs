@@ -45,6 +45,10 @@ public sealed class FulfillmentService
     public const int MaxPlateLength = 16;
     public const int MaxListSize = 500;
 
+    /// <summary>Back-filling looks at most this many days back (panel goal D3) and queues at most this many orders.</summary>
+    public const int MaxBackfillDays = 30;
+    public const int MaxBackfillOrders = 2000;
+
     private const string SystemActor = "Sistem";
 
     private readonly ITenantEventHub _events;
@@ -67,7 +71,7 @@ public sealed class FulfillmentService
     /// the job is already queued.
     /// </summary>
     public async Task<OrderFulfillment?> EnqueueAsync(
-        CentralApiDbContext db, Tenant tenant, Job job, Guid? approvalRequestId, CancellationToken ct)
+        CentralApiDbContext db, Tenant tenant, Job job, Guid? approvalRequestId, CancellationToken ct, DateTimeOffset? queuedAtUtc = null)
     {
         if (!IsQueuedDocument(job.DocumentType)) return null;
         var native = tenant.DataSource == TenantDataSources.Native;
@@ -99,7 +103,7 @@ public sealed class FulfillmentService
             ItemQuantity = order.Items.Sum(i => i.Quantity),
             ItemsJson = JsonSerializer.Serialize(order.Items, ItemJson),
             Status = FulfillmentStatuses.Pending,
-            QueuedAtUtc = now,
+            QueuedAtUtc = queuedAtUtc ?? now,
             QueuedSeq = seq,
             ErpState = native ? FulfillmentErpStates.None : FulfillmentErpStates.Pending,
             UpdatedSeq = seq,
@@ -136,6 +140,67 @@ public sealed class FulfillmentService
         if (state == FulfillmentErpStates.Failed)
             AddEvent(db, fulfillment, fulfillment.Status, FulfillmentActions.ErpFailed, actor: null, deviceId: null, CleanNote(job.LastError), now);
         return true;
+    }
+
+    /// <summary>
+    /// Queues the sales orders of the last <paramref name="days"/> days that are not queued yet — for a
+    /// company that has just turned the module on, whose recent orders arrived while it was off
+    /// (panel goal P4a, D3). Each order waits from the moment its document arrived. Native orders
+    /// count only when booked; an ERP order carries the state its job has reached (written, failed or
+    /// still on its way). Pending or rejected approval requests are not jobs, so they are never
+    /// queued. Idempotent: an order already in the queue is skipped.
+    /// </summary>
+    public async Task<WarehouseResult<WarehouseBackfillResponse>> BackfillAsync(
+        CentralApiDbContext db, Tenant tenant, MobileUser actor, int days, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageWarehouse(actor))
+            return WarehouseResult<WarehouseBackfillResponse>.Fail(403, "WAREHOUSE_MANAGER_REQUIRED", "Only administrators and managers can fill the warehouse queue.");
+        if (days is < 0 or > MaxBackfillDays)
+            return WarehouseResult<WarehouseBackfillResponse>.Fail(400, "INVALID_BACKFILL_DAYS", $"days must be 0-{MaxBackfillDays}.");
+        if (!await IsEnabledAsync(db, tenant.Id, ct))
+            return WarehouseResult<WarehouseBackfillResponse>.Fail(409, "WAREHOUSE_DISABLED", "Turn the warehouse module on before filling its queue.");
+        if (days == 0) return WarehouseResult<WarehouseBackfillResponse>.Ok(new WarehouseBackfillResponse { Days = 0 });
+
+        var since = DateTimeOffset.UtcNow.AddDays(-days);
+        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        // Take the company's counter lock before choosing: a second back-fill (or a sale being queued) waits
+        // here and then sees these orders as queued, instead of racing into the unique index (Codex, PR #63).
+        await NextSeqAsync(db, tenant.Id, ct);
+
+        var salesOrder = NativeDocumentProcessor.SalesOrder;
+        var query = db.Jobs.AsNoTracking()
+            // Ingest accepts any casing of the document type (IsQueuedDocument compares case-insensitively).
+            .Where(j => j.TenantId == tenant.Id && j.DocumentType.ToLower() == salesOrder)
+            .Where(j => !db.OrderFulfillments.Any(f => f.TenantId == tenant.Id && f.SourceJobId == j.Id));
+        if (tenant.DataSource == TenantDataSources.Native) query = query.Where(j => j.Status == JobStatus.Succeeded);
+        List<Job> jobs;
+        // PostgreSQL filters, orders and limits in the database; SQLite (tests) cannot translate DateTimeOffset.
+        if (db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true)
+            jobs = [.. (await query.ToListAsync(ct)).Where(j => j.EnqueuedAtUtc >= since).OrderBy(j => j.EnqueuedAtUtc).Take(MaxBackfillOrders)];
+        else
+            jobs = await query.Where(j => j.EnqueuedAtUtc >= since).OrderBy(j => j.EnqueuedAtUtc).Take(MaxBackfillOrders).ToListAsync(ct);
+        if (jobs.Count == 0) return WarehouseResult<WarehouseBackfillResponse>.Ok(new WarehouseBackfillResponse { Days = days });
+
+        var queued = 0;
+        foreach (var job in jobs)
+        {
+            var fulfillment = await EnqueueAsync(db, tenant, job, approvalRequestId: null, ct, queuedAtUtc: job.EnqueuedAtUtc);
+            if (fulfillment is null) continue;
+            queued++;
+            if (fulfillment.ErpState == FulfillmentErpStates.Pending)
+            {
+                fulfillment.ErpState = job.Status switch
+                {
+                    JobStatus.Succeeded => FulfillmentErpStates.Written,
+                    JobStatus.Failed or JobStatus.DeadLetter => FulfillmentErpStates.Failed,
+                    _ => FulfillmentErpStates.Pending,
+                };
+            }
+        }
+        await db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
+        if (queued > 0) Notify(tenant.Id);
+        return WarehouseResult<WarehouseBackfillResponse>.Ok(new WarehouseBackfillResponse { Days = days, Queued = queued });
     }
 
     // ---- reading ----------------------------------------------------------------------
