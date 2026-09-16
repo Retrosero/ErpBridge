@@ -246,6 +246,8 @@ else
             @if (_draft is not null && _facets is not null)
             {
                 <div class="filter-grid">
+                    @if (_facets.Warehouses.Count > 1)
+                    {
                     <label class="stack-field">
                         <span class="field-label">Depo</span>
                         <select class="portal-select" id="filter-warehouse" value="@(_draft.Warehouse?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
@@ -257,6 +259,7 @@ else
                             }
                         </select>
                     </label>
+                    }
                     <label class="stack-field">
                         <span class="field-label">Fiyat listesi</span>
                         <select class="portal-select" id="filter-price-list" value="@(_draft.PriceList?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"

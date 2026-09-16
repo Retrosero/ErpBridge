@@ -2,8 +2,6 @@ using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
-using ErpBridge.CentralApi.Endpoints;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace ErpBridge.CentralApi.Portal;
@@ -36,19 +34,24 @@ public sealed record StockQuery(
 
 /// <summary>
 /// The company's products as the stock page reads them: cards, barcodes, prices, warehouse
-/// quantities and names, folded out of <c>mobile_records</c> once and kept in memory until a
-/// stock record changes. The key is the highest <c>UpdatedSeq</c> and count of the stock
-/// entities only — warehouse (fulfillment) events share the company's sequence counter but
-/// do not write these rows, so they do not throw the catalogue away.
+/// quantities and names, from the <see cref="PortalRecordMirror{T}"/> of the stock entities and
+/// of the movement lines. The catalogue is rebuilt only when one of the two mirrors applied a
+/// changed row; warehouse (fulfillment) events share the company's sequence counter but write
+/// no such rows, so they leave it alone.
 ///
 /// <para>ERP and native companies name the same things differently (Mikro's
 /// <c>mainGroupCode</c>/<c>brandCode</c>, the phone's <c>kategori</c>/<c>marka</c>); both are
 /// read here and nowhere else.</para>
+///
+/// <para>What the data really holds (Codex review of #60): Mikro's reader sends one company-wide
+/// quantity per product under the agent's configured warehouse, reserved quantity 0 and no
+/// last-movement date. So warehouses are offered only as they appear in inventory rows (a
+/// lookup-only warehouse holds nothing), and the last movement is the latest <c>tarih</c> of the
+/// product's <c>stockTransactions</c> mirror (full STOK_HAREKETLERI history for Mikro, every
+/// booked line for native companies).</para>
 /// </summary>
 public static class PortalStockCatalog
 {
-    private static readonly string[] Entities = ["stocks", "inventory", "prices", "barcodes", "lookups"];
-    private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(10);
 
     public sealed record Product(
         string Code, string Name, string? Unit, string? MainGroup, string? SubGroup, string? Brand, string? Shelf,
@@ -71,95 +74,73 @@ public static class PortalStockCatalog
             Products.SelectMany(p => p.Prices.Keys).Distinct().OrderBy(n => n == 1 ? 0 : 1).ThenBy(n => n).Cast<int?>().FirstOrDefault();
     }
 
-    private sealed record Cached(long MaxSeq, int Count, Catalog Catalog);
+    private sealed record CachedCatalog(long StockVersion, long LineVersion, Catalog Catalog);
 
     public static async Task<Catalog> LoadAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
     {
-        var stamp = await db.MobileRecords.AsNoTracking()
-            .Where(r => r.TenantId == tenantId && Entities.Contains(r.Entity))
-            .GroupBy(_ => 1)
-            .Select(g => new { MaxSeq = g.Max(r => r.UpdatedSeq), Count = g.Count(r => !r.IsDeleted) })
-            .FirstOrDefaultAsync(ct);
-        var maxSeq = stamp?.MaxSeq ?? 0;
-        var count = stamp?.Count ?? 0;
-        var key = ("portal-stock-catalog", tenantId);
-        if (cache.TryGetValue(key, out Cached? cached) && cached!.MaxSeq == maxSeq && cached.Count == count)
-            return cached.Catalog;
+        var stockMirror = PortalRecordMirror<PortalRecords.StockPart>.For(cache, "stock", tenantId, PortalRecords.StockEntities, PortalRecords.ParseStock);
+        var lineMirror = PortalRecords.Lines(cache, tenantId);
+        var viewKey = ("portal-stock-catalog", tenantId);
+        cache.TryGetValue(viewKey, out CachedCatalog? cached);
 
-        var records = await db.MobileRecords.AsNoTracking()
-            .Where(r => r.TenantId == tenantId && !r.IsDeleted && Entities.Contains(r.Entity))
-            .Select(r => new { r.Entity, r.StockKey, r.PayloadJson })
-            .ToListAsync(ct);
+        var parts = await stockMirror.RefreshAsync(db, cached?.StockVersion, ct);
+        var lines = await lineMirror.RefreshAsync(db, cached?.LineVersion, ct);
+        if (cached is not null && parts is null && lines is null) return cached.Catalog;
+        // One side changed: the unchanged side's items are needed again to rebuild.
+        parts ??= await stockMirror.RefreshAsync(db, null, ct);
+        lines ??= await lineMirror.RefreshAsync(db, null, ct);
 
         var warehouseNames = new Dictionary<int, string>();
         var priceListNames = new Dictionary<int, string>();
-        var cards = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        var cards = new Dictionary<string, PortalRecords.CardPart>(StringComparer.OrdinalIgnoreCase);
         var barcodes = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var quantities = new Dictionary<string, Dictionary<int, (decimal Quantity, decimal Reserved)>>(StringComparer.OrdinalIgnoreCase);
         var prices = new Dictionary<string, Dictionary<int, decimal>>(StringComparer.OrdinalIgnoreCase);
         var movements = new Dictionary<string, DateOnly>(StringComparer.OrdinalIgnoreCase);
         var hasReserved = false;
 
-        foreach (var record in records)
+        void Moved(string code, DateOnly? day)
         {
-            if (string.IsNullOrWhiteSpace(record.PayloadJson)) continue;
-            using var document = JsonDocument.Parse(record.PayloadJson);
-            var item = document.RootElement;
-            if (item.ValueKind != JsonValueKind.Object) continue;
-            var code = record.StockKey ?? AndroidEndpoints.GetString(item, "stockCode");
+            if (day is { } d && (!movements.TryGetValue(code, out var latest) || d > latest)) movements[code] = d;
+        }
 
-            switch (record.Entity)
+        foreach (var part in parts!)
+        {
+            switch (part)
             {
-                case "lookups":
-                    var kind = AndroidEndpoints.GetString(item, "kind");
-                    var number = AndroidEndpoints.GetInt32(item, "code");
-                    var name = AndroidEndpoints.GetString(item, "name")?.Trim();
-                    if (number is not { } n || string.IsNullOrEmpty(name)) break;
-                    if (string.Equals(kind, "warehouse", StringComparison.OrdinalIgnoreCase)) warehouseNames[n] = name;
-                    else if (string.Equals(kind, "price_list", StringComparison.OrdinalIgnoreCase)) priceListNames[n] = name;
+                case PortalRecords.LookupPart lookup when lookup.Kind == "warehouse":
+                    warehouseNames[lookup.Number] = lookup.Name;
                     break;
-                case "stocks" when code is not null:
-                    cards[code] = item.Clone();
+                case PortalRecords.LookupPart lookup when lookup.Kind == "price_list":
+                    priceListNames[lookup.Number] = lookup.Name;
                     break;
-                case "barcodes" when code is not null:
-                    if (AndroidEndpoints.GetString(item, "barcode")?.Trim() is { Length: > 0 } barcode)
-                    {
-                        if (!barcodes.TryGetValue(code, out var list)) barcodes[code] = list = [];
-                        if (!list.Contains(barcode)) list.Add(barcode);
-                    }
+                case PortalRecords.CardPart card:
+                    cards[card.Code] = card;
                     break;
-                case "inventory" when code is not null:
-                    var warehouse = AndroidEndpoints.GetInt32(item, "warehouseNo") ?? 0;
-                    var reserved = AndroidEndpoints.GetDecimal(item, "reservedQuantity") ?? 0m;
-                    hasReserved |= reserved != 0m;
-                    if (!quantities.TryGetValue(code, out var byWarehouse)) quantities[code] = byWarehouse = [];
-                    var current = byWarehouse.GetValueOrDefault(warehouse);
-                    byWarehouse[warehouse] = (current.Quantity + (AndroidEndpoints.GetDecimal(item, "quantity") ?? 0m), current.Reserved + reserved);
-                    if (ReadDate(AndroidEndpoints.GetString(item, "lastMovementDate")) is { } moved
-                        && (!movements.TryGetValue(code, out var latest) || moved > latest))
-                        movements[code] = moved;
+                case PortalRecords.BarcodePart barcode:
+                    if (!barcodes.TryGetValue(barcode.Code, out var list)) barcodes[barcode.Code] = list = [];
+                    if (!list.Contains(barcode.Barcode)) list.Add(barcode.Barcode);
                     break;
-                case "prices" when code is not null:
-                    if (AndroidEndpoints.GetDecimal(item, "price") is not { } price || price <= 0) break;
-                    var listNumber = AndroidEndpoints.GetInt32(item, "listNumber") ?? 0;
-                    if (listNumber <= 0) break;
-                    if (!prices.TryGetValue(code, out var byList)) prices[code] = byList = [];
-                    byList.TryAdd(listNumber, price);
+                case PortalRecords.InventoryPart inventory:
+                    hasReserved |= inventory.Reserved != 0m;
+                    if (!quantities.TryGetValue(inventory.Code, out var byWarehouse)) quantities[inventory.Code] = byWarehouse = [];
+                    var current = byWarehouse.GetValueOrDefault(inventory.WarehouseNo);
+                    byWarehouse[inventory.WarehouseNo] = (current.Quantity + inventory.Quantity, current.Reserved + inventory.Reserved);
+                    Moved(inventory.Code, inventory.LastMovement);
+                    break;
+                case PortalRecords.PricePart price:
+                    if (!prices.TryGetValue(price.Code, out var byList)) prices[price.Code] = byList = [];
+                    byList.TryAdd(price.ListNumber, price.Price);
                     break;
             }
         }
+        foreach (var line in lines!) Moved(line.StockCode, line.Day);
 
         var products = new List<Product>(cards.Count);
         foreach (var (code, card) in cards)
         {
             products.Add(new Product(
-                code,
-                AndroidEndpoints.GetFirstString(card, "name", "urunAd"),
-                Blank(AndroidEndpoints.GetFirstString(card, "unit1", "birim", "unit")),
-                Blank(AndroidEndpoints.GetFirstString(card, "mainGroupCode", "kategori", "category")),
-                Blank(AndroidEndpoints.GetFirstString(card, "subGroupCode")),
-                Blank(AndroidEndpoints.GetFirstString(card, "brandCode", "marka")),
-                Blank(AndroidEndpoints.GetFirstString(card, "shelfCode", "sto_yer_kod")),
+                code, card.Name, card.Unit, card.MainGroup, card.SubGroup, card.Brand, card.Shelf,
                 barcodes.GetValueOrDefault(code) ?? [],
                 quantities.GetValueOrDefault(code) ?? [],
                 prices.GetValueOrDefault(code) ?? [],
@@ -167,7 +148,7 @@ public static class PortalStockCatalog
         }
 
         var catalog = new Catalog(products, warehouseNames, priceListNames, hasReserved);
-        cache.Set(key, new Cached(maxSeq, count, catalog), CacheLifetime);
+        cache.Set(viewKey, new CachedCatalog(stockMirror.Version, lineMirror.Version, catalog), TimeSpan.FromMinutes(30));
         return catalog;
     }
 
@@ -253,7 +234,9 @@ public static class PortalStockCatalog
             .OrderBy(v => v.Code, StringComparer.Create(CultureInfo.GetCultureInfo("tr-TR"), CompareOptions.IgnoreCase))
             .ToList();
 
-        var warehouseNumbers = catalog.Products.SelectMany(p => p.Warehouses.Keys).Concat(catalog.WarehouseNames.Keys).Distinct().Order();
+        // Only warehouses that hold rows: Mikro's reader sends one company-wide figure, so a
+        // warehouse known only from the lookups would always filter to nothing.
+        var warehouseNumbers = catalog.Products.SelectMany(p => p.Warehouses.Keys).Distinct().Order();
         var priceLists = catalog.Products.SelectMany(p => p.Prices.Keys).Distinct().Order();
         return new PortalStockFacetsResponse
         {
@@ -315,11 +298,4 @@ public static class PortalStockCatalog
 
     private static IOrderedEnumerable<Product> NullsLast(IEnumerable<Product> products, Func<Product, string?> key, IComparer<string> comparer, bool descending) =>
         products.OrderBy(p => key(p) is null ? 1 : 0).ThenBy(p => key(p) ?? string.Empty, Direction(comparer, descending));
-
-    private static string? Blank(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
-
-    private static DateOnly? ReadDate(string? value) =>
-        value is not null && DateOnly.TryParse(value.Length >= 10 ? value[..10] : value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-            ? date
-            : null;
 }

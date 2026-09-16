@@ -124,7 +124,15 @@ public sealed class PortalStockSearchRelationalTests : IClassFixture<SqliteCentr
 
         var second = await SearchAsync(c.Patron, "sort=code");
         second.Items.Select(i => (i.StockCode, i.Quantity)).Should().Equal(("CAY-1", 37m), ("SEKER-1", 0m));
-        (await GetJsonAsync<PortalStockFacetsResponse>(c.Patron, "/api/v1/portal/stock/facets")).HasMovementDates.Should().BeFalse();
+        var facets = await GetJsonAsync<PortalStockFacetsResponse>(c.Patron, "/api/v1/portal/stock/facets");
+        facets.HasMovementDates.Should().BeTrue("booked sale lines are movements");
+        second.Items[0].LastMovementDate.Should().Be(Today.ToString("yyyy-MM-dd"));
+        second.Items[1].LastMovementDate.Should().BeNull("the new card has not moved");
+        facets.Warehouses.Should().ContainSingle();
+
+        // A deleted card leaves the list; only the rows changed since the last read are applied.
+        await PostAsync(c, c.Patron, "stock_card_delete", "DEL-S2", new { stockCode = "SEKER-1" });
+        (await SearchAsync(c.Patron, "")).Items.Select(i => i.StockCode).Should().Equal("CAY-1");
     }
 
     // ---- setup ------------------------------------------------------------------------
@@ -152,7 +160,12 @@ public sealed class PortalStockSearchRelationalTests : IClassFixture<SqliteCentr
         Add("inventory", "A|1", "A", new { stockCode = "A", warehouseNo = 1, quantity = 10, reservedQuantity = 2, lastMovementDate = Today.AddDays(-3).ToString("yyyy-MM-dd") });
         Add("inventory", "A|2", "A", new { stockCode = "A", warehouseNo = 2, quantity = 5, reservedQuantity = 0, lastMovementDate = Today.AddDays(-40).ToString("yyyy-MM-dd") });
         Add("inventory", "B|1", "B", new { stockCode = "B", warehouseNo = 1, quantity = 0, reservedQuantity = 0 });
-        Add("inventory", "C|1", "C", new { stockCode = "C", warehouseNo = 1, quantity = -3, reservedQuantity = 0, lastMovementDate = Today.AddDays(-400).ToString("yyyy-MM-dd") });
+        Add("inventory", "C|1", "C", new { stockCode = "C", warehouseNo = 1, quantity = -3, reservedQuantity = 0, lastMovementDate = (string?)null });
+        // Mikro's reader sends no last-movement date; the movement mirror carries it.
+        Add("stockTransactions", "901", null, new { id = "901", erp = "MIKRO", stokKod = "C", tarih = Today.AddDays(-400).ToString("yyyy-MM-dd") + "T00:00:00", cikisMiktar = 1, miktar = -1 });
+        Add("stockTransactions", "902", null, new { id = "902", erp = "MIKRO", stokKod = "C", tarih = Today.AddDays(-500).ToString("yyyy-MM-dd") + "T00:00:00", cikisMiktar = 1, miktar = -1 });
+        // A warehouse known only from the lookups holds nothing and is not offered.
+        Add("lookups", "warehouse|9", null, new { kind = "warehouse", code = "9", name = "Boş depo" });
         Add("prices", "A|1", "A", new { stockCode = "A", listNumber = 1, price = 100 });
         Add("prices", "A|2", "A", new { stockCode = "A", listNumber = 2, price = 90 });
         Add("prices", "B|1", "B", new { stockCode = "B", listNumber = 1, price = 50 });
