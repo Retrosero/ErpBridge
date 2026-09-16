@@ -206,6 +206,7 @@ public sealed class FulfillmentService
                 Note = e.Note,
                 OccurredAtUtc = e.OccurredAtUtc,
             }).ToArray(),
+            Times = FulfillmentReports.ToDto(FulfillmentMetrics.Measure(id, events)),
         });
     }
 

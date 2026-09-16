@@ -169,6 +169,8 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.Note).HasMaxLength(500);
             b.HasOne(x => x.Fulfillment).WithMany().HasForeignKey(x => x.FulfillmentId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.FulfillmentId, x.OccurredAtUtc });
+            // Faz 50: the reports read a range of days.
+            b.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
             b.HasIndex(x => new { x.TenantId, x.ActorUserId, x.OccurredAtUtc });
         });
 
