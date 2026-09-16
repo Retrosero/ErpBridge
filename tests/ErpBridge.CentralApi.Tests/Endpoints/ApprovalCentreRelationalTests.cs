@@ -395,6 +395,25 @@ public sealed class ApprovalCentreRelationalTests : IClassFixture<SqliteCentralA
         var older = await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, $"/api/v1/android/approvals?status=approved&take=2&beforeSeq={page[^1].RequestedSeq}");
         older.Select(r => r.Id).Should().Equal(first.Id);
 
+        // Requests sent in the same millisecond share a sequence; the external id keeps paging from skipping one.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var sameMoment = await db.ApprovalRequests.SingleAsync(r => r.Id == second.Id);
+            await db.ApprovalRequests.Where(r => r.Id == first.Id || r.Id == third.Id)
+                .ExecuteUpdateAsync(u => u.SetProperty(r => r.RequestedSeq, sameMoment.RequestedSeq));
+        }
+        var seen = new List<Guid>();
+        var cursor = string.Empty;
+        for (var i = 0; i < 4; i++)
+        {
+            var one = await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, "/api/v1/android/approvals?status=approved&take=1" + cursor);
+            if (one.Length == 0) break;
+            seen.Add(one[0].Id);
+            cursor = $"&beforeSeq={one[0].RequestedSeq}&beforeExternalId={Uri.EscapeDataString(one[0].ExternalId)}";
+        }
+        seen.Should().BeEquivalentTo([first.Id, second.Id, third.Id]);
+
         (await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, "/api/v1/android/approvals?status=all&kind=collection")).Select(r => r.Id).Should().Equal(collection.Id);
         (await GetJsonAsync<ApprovalRequestDto[]>(c.Ayse, "/api/v1/android/approvals?status=all&kind=SALE,collection")).Should().HaveCount(4);
         var unknown = await _factory.CreateClient().GetAsync("/api/v1/android/approvals?kind=gift", c.Ayse);

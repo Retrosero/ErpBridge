@@ -56,12 +56,14 @@ public static class MobileApprovalEndpoints
     /// <summary>
     /// <c>status</c> is a comma-separated list (pending, approved, rejected, withdrawn,
     /// resubmitted) or <c>all</c>; default pending. <c>changedSinceSeq</c> returns only
-    /// requests whose <c>updatedSeq</c> is at least that value. <c>beforeSeq</c> pages back through
-    /// older requests (the <c>requestedSeq</c> of the last one on screen); <c>kind</c> is a
-    /// comma-separated list of request kinds. Without them the list is unchanged.
+    /// requests whose <c>updatedSeq</c> is at least that value. <c>beforeSeq</c> and
+    /// <c>beforeExternalId</c> page back through older requests: pass the <c>requestedSeq</c> and
+    /// <c>externalId</c> of the last one on screen (two requests can share a millisecond sequence,
+    /// the external id breaks the tie). <c>kind</c> is a comma-separated list of request kinds.
+    /// Without them the list is unchanged.
     /// </summary>
     private static async Task<IResult> ListAsync(HttpContext http, [FromServices] CentralApiDbContext db,
-        string? status, long? changedSinceSeq, int? take, long? beforeSeq, string? kind, CancellationToken ct)
+        string? status, long? changedSinceSeq, int? take, long? beforeSeq, string? beforeExternalId, string? kind, CancellationToken ct)
     {
         var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
         if (access.Error is not null) return access.Error;
@@ -84,9 +86,14 @@ public static class MobileApprovalEndpoints
 
         var query = ApprovalService.Visible(db, access.Tenant!.Id, access.User!).Where(r => statuses.Contains(r.Status));
         if (changedSinceSeq is { } since) query = query.Where(r => r.UpdatedSeq >= since);
-        if (beforeSeq is { } before) query = query.Where(r => r.RequestedSeq < before);
+        if (beforeSeq is { } before)
+        {
+            query = string.IsNullOrEmpty(beforeExternalId)
+                ? query.Where(r => r.RequestedSeq < before)
+                : query.Where(r => r.RequestedSeq < before || (r.RequestedSeq == before && string.Compare(r.ExternalId, beforeExternalId) < 0));
+        }
         if (kinds.Count > 0) query = query.Where(r => kinds.Contains(r.Kind));
-        var rows = await query.OrderByDescending(r => r.RequestedSeq).Take(Math.Clamp(take ?? DefaultTake, 1, MaxTake)).ToListAsync(ct);
+        var rows = await query.OrderByDescending(r => r.RequestedSeq).ThenByDescending(r => r.ExternalId).Take(Math.Clamp(take ?? DefaultTake, 1, MaxTake)).ToListAsync(ct);
         return JsonResults.Ok(rows.Select(ApprovalService.ToDto).ToArray());
     }
 
