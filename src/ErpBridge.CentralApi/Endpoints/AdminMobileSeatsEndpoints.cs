@@ -166,7 +166,10 @@ public static class AdminMobileSeatsEndpoints
                 || await db.Jobs.AnyAsync(j => j.TenantId == tenantId && (j.Status == JobStatus.Pending || j.Status == JobStatus.Processing), ct)
                 || await db.BootstrapSnapshots.AnyAsync(s => s.TenantId == tenantId, ct)
                 || await db.BootstrapPackages.AnyAsync(p => p.TenantId == tenantId, ct)
-                || await db.MobileRecords.AnyAsync(r => r.TenantId == tenantId && r.SourceDatabase != Native.NativeDocumentProcessor.SourceName, ct);
+                // Route plans and visits (Faz 39) are the team's in either mode and survive the switch.
+                || await db.MobileRecords.AnyAsync(r => r.TenantId == tenantId
+                    && r.SourceDatabase != Native.NativeDocumentProcessor.SourceName
+                    && r.SourceDatabase != Team.TeamDocumentProcessor.SourceName, ct);
             if (hasErpData)
                 return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "TENANT_HAS_ERP_DATA", Message = "The tenant already has an ERP agent or ERP data." });
         }

@@ -188,8 +188,16 @@ registration ayrı bir composition projesine taşınır.
 
    İstemcinin henüz okumadığı bölümler (`openOrders`, `salesConditions`)
    değişiklik üretmez ama imleç yine de üzerlerinden geçer. Bu yüzden ileride yeni bir varlık eklenirse
-   `SyncCursor.FormatVersion` **yükseltilmelidir** — yoksa mevcut cihazlar o
-   geçmişi sessizce kaçırır.
+   mevcut cihazların o geçmişi kaçırmaması için iki yoldan biri seçilir:
+   - `SyncCursor.FormatVersion` **yükseltilir** → dağıtım anında **tüm filo** bir kez
+     tam senkron alır (varlığı okuyamayan eski uygulamalar dahil). Varlığın geçmişi
+     dağıtımdan önce zaten doluysa (ör. ajanın yıllardır yüklediği bir ERP bölümü)
+     tek doğru yol budur.
+   - Varlığı **yalnızca yeni bir uygulama sürümü yazabiliyor ve okuyorsa** (dağıtımda
+     hiç satırı yoksa), o sürüm **kendi imlecini yükseltmede bir kez sıfırlar**;
+     yalnızca yükselen cihaz tam senkron alır. Rota planları ve ziyaretler (kural 17)
+     bu yolu kullanır. İstemci bilmediği varlığı atlar (`BridgeDeltaSync`: "An entity
+     this build does not know is skipped"), yani eski uygulama bozulmaz.
 13. **Aynı satırı yeniden göndermek bir değişiklik değildir.**
    Ajan her döngüde aynı satırları yükler. `PayloadSha256` değişmediyse
    `UpdatedSeq` ilerletilmez — ilerletilirse tüm filo 30 saniyede bir katalogun
@@ -387,6 +395,36 @@ registration ayrı bir composition projesine taşınır.
      `GET /summary`, `POST /{id}/approve|reject|reopen|withdraw {note}`,
      `GET|PUT /rules`. Konsol: `GET /api/v1/admin/tenants/{id}/mobile/approvals`
      (salt okunur) ve overview'da `approvalRules`.
+
+17. **Ekip belgeleri her firmada merkezde işlenir: `Team/TeamDocumentProcessor` (Faz 39, 2026-09-16).**
+   Rota planları ve ziyaretler ERP verisi değil **ekip verisidir**; ajanın onlar için
+   yazıcısı yoktur. Bu yüzden `approval_request` gibi, veri kaynağı `erp` ya da `native`
+   fark etmeksizin `/ingest/jobs` içinde (adım 5c, native dalından **önce**) merkezde
+   işlenir.
+   - **Belge türleri:** `route_plan` (plan + duraklar + atananlar, aynı `planId` ile
+     yeniden gelirse **tamamen değiştirir**), `route_plan_delete` (`planId`), `visit`.
+   - **Yetki:** üçü de **oturum açmış firma kullanıcısı** ister; API anahtarı veya ajan
+     403 `TEAM_DOCUMENT_REQUIRES_MOBILE_USER`. Rota planlama ve silme yalnızca
+     `ADMIN` veya `MANAGER`. Ziyaretin `username`'i **token'daki kullanıcıdan** gelir,
+     yükteki isim yok sayılır — telefon başkası adına ziyaret kaydedemez.
+   - **Doğrulama:** `planId`/`stopId`/`visitId` ≤ 64; plan ≤ 500 durak, ≤ 100 atanan;
+     `dayOfWeek` 1 (Pazartesi)–7; tarihler `yyyy-MM-dd`; ziyaret `status`
+     `COMPLETED`/`SKIPPED`. **Atanan kullanıcı adları firmada var olmalı** — yanlış
+     yazılmış bir ad planı kimsenin telefonuna düşürmezdi. Geçersiz belge `Failed`
+     kaydedilir, hiçbir cihaza gitmez. Sunucuda hiç olmamış planın silinmesi başarılı
+     sayılır (çevrimdışı oluşturulup silinmiş olabilir).
+   - **Yeni tablo yoktur.** Sonuç `mobile_records`'a `routePlans` (anahtar `planId`) ve
+     `routeVisits` (anahtar `visitId`) bölümleri olarak `SourceDatabase = "team"` ile
+     yazılır; cihaz `sync/pull` ile `rotaPlanlari` / `rotaZiyaretleri` varlıklarını
+     olduğu gibi alır (`BuildKind.Direct`, geçirgen). İş kaydı `jobs`'tadır.
+   - **İmleç:** `FormatVersion` yükseltilmedi (kural 12'deki ikinci yol). Bu varlıkları
+     yalnızca 1.5.233+ yazar ve okur; dağıtımda hiç satır yoktu. Uygulama rota özelliğini
+     ilk kez açtığında imlecini bir kez sıfırlar.
+   - **Veri kaynağı değişimi:** `team` satırları "ERP verisi" sayılmaz; rota planı olan
+     ERP'li firma ERP'siz moda geçebilir ve planlar kalır
+     (`AdminMobileSeatsEndpoints.SetDataSourceAsync`). Bu kontrol yeni bir kaynak adıyla
+     `mobile_records`'a yazan her yeni işleyicide gözden geçirilmelidir.
+   - Testler: `TeamDocumentsRelationalTests` (her iki veri kaynağında).
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

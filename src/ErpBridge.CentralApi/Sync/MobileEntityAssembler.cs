@@ -40,9 +40,12 @@ public static class MobileEntityAssembler
     /// for accounting — so one ERP row produces two records.</para>
     ///
     /// <para>Yields nothing for sections the client does not read — their
-    /// positions still pass under the cursor, which is why adding an entity later
-    /// has to raise <see cref="SyncCursor.FormatVersion"/> so devices resync
-    /// rather than silently miss the history.</para>
+    /// positions still pass under the cursor, so a device that later learns an
+    /// entity has missed its history. Either <see cref="SyncCursor.FormatVersion"/>
+    /// is raised (every device resyncs once, at deploy) or, when only a new app
+    /// version reads the entity and no older app can write it, that app resets its
+    /// own cursor once on upgrade. Route plans and visits (Faz 39) take the second
+    /// way: see the knowledge base, rule 17.</para>
     /// </summary>
     public static IEnumerable<Target> Affects(MobileRecord record)
     {
@@ -71,6 +74,15 @@ public static class MobileEntityAssembler
 
             case "stocktransactions":
                 yield return new Target(Entities.StockMovement, record.RecordKey, BuildKind.Direct);
+                break;
+
+            // Team data (Faz 39): already in the app's shape, passed through.
+            case "routeplans":
+                yield return new Target(Entities.RoutePlan, record.RecordKey, BuildKind.Direct);
+                break;
+
+            case "routevisits":
+                yield return new Target(Entities.RouteVisit, record.RecordKey, BuildKind.Direct);
                 break;
 
             case "cashandbank":
@@ -127,6 +139,12 @@ public static class MobileEntityAssembler
 
         /// <summary>Stock movements.</summary>
         public const string StockMovement = "stokHareketleri";
+
+        /// <summary>Route plans with their stops and assignees.</summary>
+        public const string RoutePlan = "rotaPlanlari";
+
+        /// <summary>Visits made on route stops.</summary>
+        public const string RouteVisit = "rotaZiyaretleri";
     }
 
     /// <summary>How a target record is produced from the ERP rows behind it.</summary>
@@ -168,7 +186,7 @@ public static class MobileEntityAssembler
 
         return target.Entity switch
         {
-            Entities.CustomerMovement or Entities.StockMovement => item.Clone(),
+            Entities.CustomerMovement or Entities.StockMovement or Entities.RoutePlan or Entities.RouteVisit => item.Clone(),
             Entities.CustomerAddress => BuildAddress(item),
             Entities.Bank => BuildCashOrBank(item, isCash: false),
             Entities.CashRegister or Entities.CashManagement => BuildCashOrBank(item, isCash: true),

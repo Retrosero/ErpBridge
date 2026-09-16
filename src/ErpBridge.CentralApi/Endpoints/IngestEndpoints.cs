@@ -285,6 +285,51 @@ public static class IngestEndpoints
             EnqueuedAtUtc = DateTimeOffset.UtcNow,
         };
 
+        // ---- 5c. Route plans and visits are the team's, not the ERP's: booked here for
+        //          every tenant, since an agent has no writer for them (Faz 39). ----
+        if (ErpBridge.CentralApi.Team.TeamDocumentProcessor.DocumentTypes.Contains(documentType))
+        {
+            if (!ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)
+                || !Guid.TryParse(http.User.FindFirst("sub")?.Value, out var callerId))
+                return JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError
+                {
+                    ErrorCode = "TEAM_DOCUMENT_REQUIRES_MOBILE_USER",
+                    Message = "Route plans and visits are sent by signed-in company users.",
+                });
+            var caller = await db.MobileUsers.AsNoTracking().FirstAsync(u => u.Id == callerId, ct);
+            var team = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Team.TeamDocumentProcessor>();
+            try
+            {
+                var booked = await team.IngestAsync(db, tenantId, job, caller, ct);
+                return JsonResults.Status(StatusCodes.Status201Created, new IngestJobResponse
+                {
+                    JobId = booked.Id,
+                    TenantId = booked.TenantId,
+                    ExternalId = booked.ExternalId,
+                    DocumentType = booked.DocumentType,
+                    Status = booked.Status.ToString(),
+                    Idempotent = false,
+                });
+            }
+            catch (DbUpdateException)
+            {
+                // The same document raced in from a retry; the winner already booked it.
+                db.ChangeTracker.Clear();
+                var winner = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j =>
+                    j.TenantId == tenantId && j.DocumentType == documentType && j.ExternalId == body.ExternalId, ct);
+                if (winner is null) throw;
+                return JsonResults.Ok(new IngestJobResponse
+                {
+                    JobId = winner.Id,
+                    TenantId = winner.TenantId,
+                    ExternalId = winner.ExternalId,
+                    DocumentType = winner.DocumentType,
+                    Status = winner.Status.ToString(),
+                    Idempotent = true,
+                });
+            }
+        }
+
         // ---- 6. A tenant without an ERP is booked here, not by an agent. ----
         if (tenant.DataSource == TenantDataSources.Native)
         {

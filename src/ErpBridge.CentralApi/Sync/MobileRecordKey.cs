@@ -29,6 +29,8 @@ public static class MobileRecordKey
         "stocks", "barcodes", "prices", "salesConditions", "inventory",
         "openOrders", "cashAndBank", "lookups",
         "customerTransactions", "stockTransactions",
+        // Team data booked by the central API for every tenant (Faz 39).
+        "routePlans", "routeVisits",
     ];
 
     /// <summary>
@@ -64,6 +66,8 @@ public static class MobileRecordKey
             "openorders" => Join("series", "number", "lineNo"),
             "cashandbank" or "lookups" => Join("kind", "code"),
             "customertransactions" or "stocktransactions" => Join("id"),
+            "routeplans" => Join("planId"),
+            "routevisits" => Join("visitId"),
             _ => null,
         };
     }
