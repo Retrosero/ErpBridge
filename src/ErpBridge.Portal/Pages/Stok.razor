@@ -9,87 +9,516 @@
 }
 else
 {
-    <PageHeader Title="Stok durumu" Eyebrow="Kayıtlar" Subtitle="Tüm depoların toplam miktarı" Busy="Busy">
+    <PageHeader Title="Stok durumu" Eyebrow="Kayıtlar" Subtitle="Ürünler, depo miktarları ve fiyatlar" Busy="Busy">
         <Actions>
             <form class="toolbar-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-                <MudTextField T="string" @bind-Value="_search" Placeholder="Stok kodu veya ürün adı" Variant="Variant.Outlined" Margin="Margin.Dense"
+                <MudTextField T="string" @bind-Value="_search" Placeholder="Kod, ürün adı veya barkod" Variant="Variant.Outlined" Margin="Margin.Dense"
                               InputId="stock-search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Clearable="true" />
-                <div id="stock-out-only" class="toolbar-switch">
-                    <MudSwitch T="bool" @bind-Value="_outOnly" Color="Color.Error" Label="Yalnızca tükenenler" />
-                </div>
-                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy">Göster</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy">Ara</MudButton>
             </form>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.FilterList" OnClick="OpenFilters" id="stock-filters-open">
+                Filtreler@(_filter.PanelFilterCount > 0 ? $" ({_filter.PanelFilterCount})" : null)
+            </MudButton>
         </Actions>
     </PageHeader>
+
+    <div class="stock-toolbar">
+        <div class="seg-tabs" role="tablist" id="stock-status">
+            @foreach (var (status, label) in Statuses)
+            {
+                <button type="button" role="tab" class="seg-tab @(status == _filter.Status ? "is-active" : null)" aria-selected="@(status == _filter.Status ? "true" : "false")"
+                        data-status="@status" disabled="@Busy" @onclick="() => StatusAsync(status)">@label</button>
+            }
+        </div>
+        @if (_filter.Status == "below")
+        {
+            <label class="inline-field">
+                Eşik
+                <input type="number" step="any" class="portal-input portal-input--short" id="stock-below" value="@Num(_filter.Below ?? 0)" @onchange="BelowChangedAsync" />
+            </label>
+        }
+        @if (_facets is { Warehouses.Count: > 1 })
+        {
+            <label class="toolbar-switch" id="stock-warehouse-columns">
+                <input type="checkbox" checked="@_warehouseColumns" @onchange="e => _warehouseColumns = e.Value is true" />
+                Depo kolonları
+            </label>
+        }
+    </div>
 
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
-    @if (_stock is not null)
+    @if (ActiveChips().ToList() is { Count: > 0 } chips)
     {
-        var outCount = _stock.Rows.Count(r => r.Quantity <= 0);
-        <section class="stat-grid stat-grid--three">
-            <StatCard Label="Listelenen ürün" Value="@_stock.Rows.Count.ToString(Fmt.Turkish)" Icon="@Icons.Material.Rounded.Inventory2" Tone="primary" />
-            <StatCard Label="Stokta olan" Value="@((_stock.Rows.Count - outCount).ToString(Fmt.Turkish))" Caption="listelenenler içinde" Icon="@Icons.Material.Rounded.CheckCircle" Tone="success" />
-            <StatCard Label="Tükenen" Value="@outCount.ToString(Fmt.Turkish)" Caption="listelenenler içinde" Icon="@Icons.Material.Rounded.DoNotDisturbOn" Tone="danger" Attention="@(outCount > 0)" />
+        <div class="filter-chips" id="stock-chips">
+            @foreach (var chip in chips)
+            {
+                <span class="filter-chip" data-chip="@chip.Key">
+                    @chip.Label
+                    <button type="button" aria-label="@($"{chip.Label} filtresini kaldır")" @onclick="() => RemoveChipAsync(chip.Remove)">×</button>
+                </span>
+            }
+            <button type="button" class="link-button" id="stock-chips-clear" @onclick="ClearAsync">Tümünü temizle</button>
+        </div>
+    }
+
+    @if (_result is not null)
+    {
+        <section class="stat-grid stat-grid--four">
+            <StatCard Id="stock-products" Label="Ürün" Value="@N(_result.Summary.Products)" Caption="filtreye uyan" Icon="@Icons.Material.Rounded.Inventory2" Tone="primary" />
+            <StatCard Id="stock-in" Label="Stokta olan" Value="@N(_result.Summary.InStock)" Icon="@Icons.Material.Rounded.CheckCircle" Tone="success" />
+            <StatCard Id="stock-out" Label="Tükenen" Value="@N(_result.Summary.OutOfStock)" Caption="miktar ≤ 0" Icon="@Icons.Material.Rounded.DoNotDisturbOn" Tone="danger" Attention="@(_result.Summary.OutOfStock > 0)" />
+            <StatCard Id="stock-negative" Label="Eksiye düşen" Value="@N(_result.Summary.Negative)" Icon="@Icons.Material.Rounded.TrendingDown" Tone="warning" />
         </section>
 
         <MudPaper Outlined="true" Class="panel panel--table mt-3">
-            @if (_stock.Rows.Count == 0)
+            @if (_result.Items.Count == 0)
             {
-                <EmptyState Id="stock-empty" Icon="@Icons.Material.Rounded.Inventory2" Title="Listeye uyan ürün yok." />
+                <EmptyState Id="stock-empty" Icon="@Icons.Material.Rounded.Inventory2" Title="Filtreye uyan ürün yok." Hint="Filtreleri gevşetmeyi ya da aramayı temizlemeyi deneyin." />
             }
             else
             {
                 <div class="table-scroll">
-                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="stock-table">
+                    <table class="data-table data-table--plain" id="stock-table">
                         <thead>
                             <tr>
-                                <th>Kod</th>
-                                <th>Ürün</th>
-                                <th class="num">Miktar</th>
+                                @SortHeader("code", "Kod")
+                                @SortHeader("name", "Ürün")
+                                @SortHeader("group", "Grup")
+                                @SortHeader("brand", "Marka")
+                                @SortHeader("shelf", "Reyon")
+                                @SortHeader("qty", QuantityTitle, numeric: true)
+                                @if (_warehouseColumns && _facets is not null)
+                                {
+                                    @foreach (var warehouse in _facets.Warehouses)
+                                    {
+                                        <th class="num" data-warehouse-col="@warehouse.Number">@warehouse.Name</th>
+                                    }
+                                }
+                                @SortHeader("price", PriceTitle, numeric: true)
+                                @if (_facets?.HasMovementDates == true)
+                                {
+                                    @SortHeader("lastMovement", "Son hareket", numeric: true)
+                                }
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var row in _stock.Rows)
+                            @foreach (var row in _result.Items)
                             {
-                                <tr data-stock="@row.StockCode">
+                                var open = _expanded.Contains(row.StockCode);
+                                <tr data-stock="@row.StockCode" class="row-clickable @(open ? "is-open" : null)" @onclick="() => Toggle(row.StockCode)">
                                     <td class="mono">@row.StockCode</td>
-                                    <td class="cell-title">@row.Name</td>
+                                    <td class="cell-title">
+                                        @row.Name
+                                        @if (row.Barcodes.Count > 0 || row.Unit is not null)
+                                        {
+                                            <div class="cell-sub">@string.Join(" · ", new[] { row.Unit, row.Barcodes.FirstOrDefault() }.Where(v => v is not null))</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        @(row.MainGroup ?? "—")
+                                        @if (row.SubGroup is not null)
+                                        {
+                                            <div class="cell-sub">@row.SubGroup</div>
+                                        }
+                                    </td>
+                                    <td>@(row.Brand ?? "—")</td>
+                                    <td>@(row.Shelf ?? "—")</td>
                                     <td class="num">
                                         @if (row.Quantity <= 0)
                                         {
-                                            <span class="badge badge--off">@Fmt.Quantity(row.Quantity)</span>
+                                            <span class="badge @(row.Quantity < 0 ? "badge--warning" : "badge--off")">@Fmt.Quantity(row.Quantity)</span>
                                         }
                                         else
                                         {
                                             @Fmt.Quantity(row.Quantity)
                                         }
+                                        @if (row.Reserved != 0)
+                                        {
+                                            <div class="cell-sub cell-sub--end">rezerve @Fmt.Quantity(row.Reserved)</div>
+                                        }
                                     </td>
+                                    @if (_warehouseColumns && _facets is not null)
+                                    {
+                                        @foreach (var warehouse in _facets.Warehouses)
+                                        {
+                                            var share = row.Warehouses.FirstOrDefault(w => w.WarehouseNo == warehouse.Number);
+                                            <td class="num" data-warehouse="@warehouse.Number">@(share is null ? "—" : Fmt.Quantity(share.Quantity))</td>
+                                        }
+                                    }
+                                    <td class="num">@(row.Price is { } price ? Fmt.Money(price) : "—")</td>
+                                    @if (_facets?.HasMovementDates == true)
+                                    {
+                                        <td class="num">@DateText(row.LastMovementDate)</td>
+                                    }
                                 </tr>
+                                @if (open)
+                                {
+                                    <tr class="row-detail" data-stock-detail="@row.StockCode">
+                                        <td colspan="@ColumnCount">
+                                            <div class="stock-detail">
+                                                <div>
+                                                    <h4>Depolar</h4>
+                                                    @if (row.Warehouses.Count == 0)
+                                                    {
+                                                        <p class="text-muted">Depo kaydı yok.</p>
+                                                    }
+                                                    else
+                                                    {
+                                                        <dl class="detail-facts">
+                                                            @foreach (var w in row.Warehouses)
+                                                            {
+                                                                <dt>@w.Name</dt>
+                                                                <dd>@Fmt.Quantity(w.Quantity)@(w.Reserved != 0 ? $" (rezerve {Fmt.Quantity(w.Reserved)})" : null)</dd>
+                                                            }
+                                                        </dl>
+                                                    }
+                                                </div>
+                                                <div>
+                                                    <h4>Fiyatlar</h4>
+                                                    @if (row.Prices.Count == 0)
+                                                    {
+                                                        <p class="text-muted">Fiyat yok.</p>
+                                                    }
+                                                    else
+                                                    {
+                                                        <dl class="detail-facts">
+                                                            @foreach (var p in row.Prices)
+                                                            {
+                                                                <dt>@p.Name</dt>
+                                                                <dd>@Fmt.Money(p.Price)</dd>
+                                                            }
+                                                        </dl>
+                                                    }
+                                                </div>
+                                                <div>
+                                                    <h4>Barkodlar</h4>
+                                                    @if (row.Barcodes.Count == 0)
+                                                    {
+                                                        <p class="text-muted">Barkod yok.</p>
+                                                    }
+                                                    else
+                                                    {
+                                                        <ul class="plain-list mono">
+                                                            @foreach (var barcode in row.Barcodes)
+                                                            {
+                                                                <li>@barcode</li>
+                                                            }
+                                                        </ul>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
                             }
                         </tbody>
-                    </MudSimpleTable>
+                    </table>
                 </div>
-                @if (_stock.Truncated)
-                {
-                    <div class="table-foot" id="stock-truncated">İlk @_stock.Rows.Count ürün gösteriliyor. Belirli bir ürün için arama yapın.</div>
-                }
             }
+            <div class="table-foot pager" id="stock-pager">
+                <span id="stock-range">@RangeText</span>
+                <label class="inline-field">
+                    Sayfada
+                    <select class="portal-select portal-select--short" id="stock-page-size" value="@_filter.PageSize" @onchange="PageSizeChangedAsync" disabled="@Busy">
+                        @foreach (var size in StockFilter.PageSizes)
+                        {
+                            <option value="@size">@size</option>
+                        }
+                    </select>
+                </label>
+                <span class="pager-buttons">
+                    <MudIconButton Icon="@Icons.Material.Rounded.FirstPage" Size="Size.Small" Disabled="@(Busy || _filter.Page <= 1)" OnClick="() => GoToAsync(1)" aria-label="İlk sayfa" Class="pager-first" />
+                    <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" Size="Size.Small" Disabled="@(Busy || _filter.Page <= 1)" OnClick="() => GoToAsync(_filter.Page - 1)" aria-label="Önceki sayfa" Class="pager-prev" />
+                    <span class="pager-page" id="stock-page">Sayfa @_filter.Page / @PageCount</span>
+                    <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" Size="Size.Small" Disabled="@(Busy || _filter.Page >= PageCount)" OnClick="() => GoToAsync(_filter.Page + 1)" aria-label="Sonraki sayfa" Class="pager-next" />
+                    <MudIconButton Icon="@Icons.Material.Rounded.LastPage" Size="Size.Small" Disabled="@(Busy || _filter.Page >= PageCount)" OnClick="() => GoToAsync(PageCount)" aria-label="Son sayfa" Class="pager-last" />
+                </span>
+            </div>
         </MudPaper>
     }
+
+    <DetailSheet Id="stock-filters" Open="_filtersOpen" Eyebrow="Stok" Title="Filtreler" OnClose="() => _filtersOpen = false">
+        <ChildContent>
+            @if (_draft is not null && _facets is not null)
+            {
+                <div class="filter-grid">
+                    <label class="stack-field">
+                        <span class="field-label">Depo</span>
+                        <select class="portal-select" id="filter-warehouse" value="@(_draft.Warehouse?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                @onchange="e => _draft.Warehouse = int.TryParse(e.Value?.ToString(), out var n) ? n : null">
+                            <option value="">Tüm depolar (toplam)</option>
+                            @foreach (var warehouse in _facets.Warehouses)
+                            {
+                                <option value="@warehouse.Number">@warehouse.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="stack-field">
+                        <span class="field-label">Fiyat listesi</span>
+                        <select class="portal-select" id="filter-price-list" value="@(_draft.PriceList?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                @onchange="e => _draft.PriceList = int.TryParse(e.Value?.ToString(), out var n) ? n : null">
+                            <option value="">Varsayılan liste</option>
+                            @foreach (var list in _facets.PriceLists)
+                            {
+                                <option value="@list.Number">@list.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="stack-field">
+                        <span class="field-label">Miktar aralığı</span>
+                        <div class="range-inputs">
+                            <input type="number" step="any" class="portal-input" id="filter-min-qty" placeholder="En az" value="@Num(_draft.MinQuantity)" @onchange="e => _draft.MinQuantity = Dec(e)" />
+                            <span>–</span>
+                            <input type="number" step="any" class="portal-input" id="filter-max-qty" placeholder="En çok" value="@Num(_draft.MaxQuantity)" @onchange="e => _draft.MaxQuantity = Dec(e)" />
+                        </div>
+                    </div>
+                    <div class="stack-field">
+                        <span class="field-label">Fiyat aralığı</span>
+                        <div class="range-inputs">
+                            <input type="number" step="any" class="portal-input" id="filter-min-price" placeholder="En az" value="@Num(_draft.MinPrice)" @onchange="e => _draft.MinPrice = Dec(e)" />
+                            <span>–</span>
+                            <input type="number" step="any" class="portal-input" id="filter-max-price" placeholder="En çok" value="@Num(_draft.MaxPrice)" @onchange="e => _draft.MaxPrice = Dec(e)" />
+                        </div>
+                    </div>
+                    @if (_facets.HasMovementDates)
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">Hareketsiz ürünler</span>
+                            <span class="range-inputs">
+                                <input type="number" min="0" step="1" class="portal-input" id="filter-idle" placeholder="Gün" value="@_draft.IdleDays" @onchange="e => _draft.IdleDays = int.TryParse(e.Value?.ToString(), out var n) && n >= 0 ? n : null" />
+                                <span class="text-muted">günden uzun süredir hareket görmeyenler</span>
+                            </span>
+                        </label>
+                    }
+                </div>
+                <FacetChecklist Id="filter-main-groups" Title="Ana grup" Options="_facets.MainGroups" Selected="_draft.MainGroups" Changed="DraftChanged" EmptyText="Ürünlerde grup bilgisi yok." />
+                <FacetChecklist Id="filter-sub-groups" Title="Alt grup" Options="SubGroupOptions" Selected="_draft.SubGroups" ShowParent="true" EmptyText="Alt grup bilgisi yok." />
+                <FacetChecklist Id="filter-brands" Title="Marka" Options="_facets.Brands" Selected="_draft.Brands" EmptyText="Ürünlerde marka bilgisi yok." />
+                <FacetChecklist Id="filter-shelves" Title="Reyon" Options="_facets.Shelves" Selected="_draft.Shelves" EmptyText="Ürünlerde reyon bilgisi yok." />
+            }
+        </ChildContent>
+        <Footer>
+            <div class="form-actions">
+                <MudButton Variant="Variant.Text" OnClick="ResetDraft" id="filter-reset">Temizle</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFiltersAsync" id="filter-apply">Uygula</MudButton>
+            </div>
+        </Footer>
+    </DetailSheet>
 }
 
 @code {
     protected override PortalArea Requires => PortalArea.Ledger;
 
+    private static readonly (string Status, string Label)[] Statuses =
+        [("all", "Tümü"), ("in", "Stokta"), ("out", "Tükenen"), ("negative", "Eksi"), ("below", "Eşik altı")];
+
+    private StockFilter _filter = new();
+    private StockFilter? _draft;
     private string? _search;
-    private bool _outOnly;
-    private StockResponse? _stock;
+    private StockSearchResponse? _result;
+    private StockFacetsResponse? _facets;
+    private bool _filtersOpen;
+    private bool _warehouseColumns;
+    private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
 
-    protected override async Task LoadAsync() => _stock = await Api.StockAsync(_search, _outOnly);
+    private int PageCount => _result is null ? 1 : Math.Max(1, (int)Math.Ceiling(_result.Total / (double)_filter.PageSize));
 
-    private Task SearchAsync() => RunAsync(LoadAsync);
+    private int ColumnCount => 7 + (_facets?.HasMovementDates == true ? 1 : 0) + (_warehouseColumns ? _facets?.Warehouses.Count ?? 0 : 0);
+
+    private string RangeText => _result is null || _result.Total == 0
+        ? "0 ürün"
+        : $"{N((_filter.Page - 1) * _filter.PageSize + 1)}–{N((_filter.Page - 1) * _filter.PageSize + _result.Items.Count)} / {N(_result.Total)} ürün";
+
+    private string QuantityTitle => _filter.Warehouse is { } w
+        ? "Miktar (" + (_facets?.Warehouses.FirstOrDefault(x => x.Number == w)?.Name ?? $"Depo {w}") + ")"
+        : "Miktar";
+
+    private string PriceTitle => _result?.PriceList is { } l
+        ? "Fiyat (" + (_facets?.PriceLists.FirstOrDefault(x => x.Number == l)?.Name ?? $"Liste {l}") + ")"
+        : "Fiyat";
+
+    /// <summary>Sub groups of the chosen main groups, or all of them.</summary>
+    private IReadOnlyList<FacetValueDto> SubGroupOptions => _facets is null || _draft is null
+        ? []
+        : _draft.MainGroups.Count == 0
+            ? _facets.SubGroups
+            : _facets.SubGroups.Where(s => s.Parent is not null && _draft.MainGroups.Contains(s.Parent, StringComparer.OrdinalIgnoreCase)).ToList();
+
+    protected override void OnInitialized()
+    {
+        _filter = StockFilter.FromAddress(new Uri(Nav.Uri).Query);
+        _search = _filter.Search;
+    }
+
+    protected override async Task LoadAsync()
+    {
+        var facets = Api.StockFacetsAsync();
+        await LoadPageAsync();
+        _facets = await facets;
+    }
+
+    private async Task LoadPageAsync()
+    {
+        _result = await Api.StockSearchAsync(_filter);
+        _expanded.Clear();
+        // A page past the end (rows sold out, filters narrowed) falls back to the last one.
+        if (_result.Items.Count == 0 && _result.Total > 0 && _filter.Page > 1)
+        {
+            _filter.Page = PageCount;
+            _result = await Api.StockSearchAsync(_filter);
+        }
+        Nav.NavigateTo(new Uri(Nav.Uri).GetLeftPart(UriPartial.Path) + _filter.ToAddressQuery(), new NavigationOptions { ReplaceHistoryEntry = true });
+    }
+
+    private Task ReloadFromFirstPageAsync()
+    {
+        _filter.Page = 1;
+        return RunAsync(LoadPageAsync);
+    }
+
+    private Task SearchAsync()
+    {
+        _filter.Search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task StatusAsync(string status)
+    {
+        if (status == _filter.Status) return Task.CompletedTask;
+        _filter.Status = status;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task BelowChangedAsync(ChangeEventArgs e)
+    {
+        _filter.Below = Dec(e) ?? 0;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task SortAsync(string sort)
+    {
+        if (_filter.Sort == sort) _filter.Descending = !_filter.Descending;
+        else
+        {
+            _filter.Sort = sort;
+            // Numbers are most useful largest first; text alphabetically.
+            _filter.Descending = sort is "qty" or "price" or "lastMovement";
+        }
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task GoToAsync(int page)
+    {
+        _filter.Page = Math.Clamp(page, 1, PageCount);
+        return RunAsync(LoadPageAsync);
+    }
+
+    private Task PageSizeChangedAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size) && StockFilter.PageSizes.Contains(size)) _filter.PageSize = size;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private void OpenFilters()
+    {
+        _draft = _filter.Clone();
+        _filtersOpen = true;
+    }
+
+    /// <summary>The sub group list follows the ticked main groups.</summary>
+    private void DraftChanged() { }
+
+    private void ResetDraft()
+    {
+        if (_draft is null) return;
+        var keep = _draft;
+        _draft = new StockFilter { Search = keep.Search, Status = keep.Status, Below = keep.Below, Sort = keep.Sort, Descending = keep.Descending, PageSize = keep.PageSize };
+    }
+
+    private Task ApplyFiltersAsync()
+    {
+        if (_draft is null) return Task.CompletedTask;
+        // A sub group that no longer sits under a chosen main group would silently empty the list.
+        if (_draft.MainGroups.Count > 0 && _facets is not null)
+            _draft.SubGroups.RemoveAll(s => !SubGroupOptions.Any(o => string.Equals(o.Code, s, StringComparison.OrdinalIgnoreCase)));
+        _filter = _draft;
+        _draft = null;
+        _filtersOpen = false;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task ClearAsync()
+    {
+        _filter = new StockFilter { Status = _filter.Status, Below = _filter.Below, Sort = _filter.Sort, Descending = _filter.Descending, PageSize = _filter.PageSize };
+        _search = null;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private Task RemoveChipAsync(Action<StockFilter> remove)
+    {
+        remove(_filter);
+        _search = _filter.Search;
+        return ReloadFromFirstPageAsync();
+    }
+
+    private void Toggle(string code)
+    {
+        if (!_expanded.Remove(code)) _expanded.Add(code);
+    }
+
+    private sealed record Chip(string Key, string Label, Action<StockFilter> Remove);
+
+    private IEnumerable<Chip> ActiveChips()
+    {
+        var f = _filter;
+        if (f.Search is { } q) yield return new Chip("q", $"Arama: {q}", x => x.Search = null);
+        foreach (var g in f.MainGroups) yield return new Chip("grup:" + g, $"Grup: {g}", x => x.MainGroups.Remove(g));
+        foreach (var g in f.SubGroups) yield return new Chip("altgrup:" + g, $"Alt grup: {g}", x => x.SubGroups.Remove(g));
+        foreach (var b in f.Brands) yield return new Chip("marka:" + b, $"Marka: {b}", x => x.Brands.Remove(b));
+        foreach (var s in f.Shelves) yield return new Chip("reyon:" + s, $"Reyon: {s}", x => x.Shelves.Remove(s));
+        if (f.Warehouse is { } w)
+            yield return new Chip("depo", "Depo: " + (_facets?.Warehouses.FirstOrDefault(x => x.Number == w)?.Name ?? w.ToString(Fmt.Turkish)), x => x.Warehouse = null);
+        if (f.PriceList is { } l)
+            yield return new Chip("liste", "Liste: " + (_facets?.PriceLists.FirstOrDefault(x => x.Number == l)?.Name ?? l.ToString(Fmt.Turkish)), x => x.PriceList = null);
+        if (f.MinQuantity is not null || f.MaxQuantity is not null)
+            yield return new Chip("miktar", $"Miktar: {Range(f.MinQuantity, f.MaxQuantity, Fmt.Quantity)}", x => { x.MinQuantity = null; x.MaxQuantity = null; });
+        if (f.MinPrice is not null || f.MaxPrice is not null)
+            yield return new Chip("fiyat", $"Fiyat: {Range(f.MinPrice, f.MaxPrice, Fmt.Money)}", x => { x.MinPrice = null; x.MaxPrice = null; });
+        if (f.IdleDays is { } d) yield return new Chip("hareketsiz", $"{d} gündür hareketsiz", x => x.IdleDays = null);
+    }
+
+    private static string Range(decimal? min, decimal? max, Func<decimal, string> format) => (min, max) switch
+    {
+        ({ } a, { } b) => $"{format(a)} – {format(b)}",
+        ({ } a, null) => $"≥ {format(a)}",
+        (null, { } b) => $"≤ {format(b)}",
+        _ => string.Empty,
+    };
+
+    private RenderFragment SortHeader(string sort, string title, bool numeric = false) => __builder =>
+    {
+        var active = _filter.Sort == sort;
+        <th class="@(numeric ? "num" : null)" aria-sort="@(active ? (_filter.Descending ? "descending" : "ascending") : "none")">
+            <button type="button" class="sort-button @(active ? "is-active" : null)" data-sort="@sort" disabled="@Busy" @onclick="() => SortAsync(sort)">
+                @title
+                <span class="sort-arrow" aria-hidden="true">@(active ? (_filter.Descending ? "↓" : "↑") : "↕")</span>
+            </button>
+        </th>
+    };
+
+    private static string N(int value) => value.ToString("N0", Fmt.Turkish);
+
+    private static string? Num(decimal? value) => value?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static decimal? Dec(ChangeEventArgs e) =>
+        decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : null;
+
+    private static string DateText(string? iso) =>
+        DateOnly.TryParseExact(iso, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d)
+            ? d.ToString("dd.MM.yyyy", Fmt.Turkish)
+            : "—";
 }

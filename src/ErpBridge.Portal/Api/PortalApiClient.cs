@@ -78,8 +78,11 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<BalancesResponse> BalancesAsync(string? search, CancellationToken ct = default) =>
         GetAsync<BalancesResponse>("api/v1/portal/balances" + Query(("search", search)), ct);
 
-    public Task<StockResponse> StockAsync(string? search, bool outOfStockOnly, CancellationToken ct = default) =>
-        GetAsync<StockResponse>("api/v1/portal/stock" + Query(("search", search), ("outOfStock", outOfStockOnly ? "true" : null)), ct);
+    public Task<StockSearchResponse> StockSearchAsync(StockFilter filter, CancellationToken ct = default) =>
+        GetAsync<StockSearchResponse>("api/v1/portal/stock/search" + filter.ToApiQuery(), ct);
+
+    public Task<StockFacetsResponse> StockFacetsAsync(CancellationToken ct = default) =>
+        GetAsync<StockFacetsResponse>("api/v1/portal/stock/facets", ct);
 
     /// <summary>One page of requests, newest first; <paramref name="after"/> is the last request on screen.</summary>
     public Task<ApprovalDto[]> ApprovalsAsync(string status, string? kind, ApprovalDto? after, int take, CancellationToken ct = default) =>

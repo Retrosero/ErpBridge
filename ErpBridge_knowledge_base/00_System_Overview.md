@@ -488,6 +488,18 @@ registration ayrı bir composition projesine taşınır.
    - **Kaynak telefonla aynıdır:** para belgeleri `jobs`'tan, cari/stok/rota
      `mobile_records`'tan. Panel ile telefon farklı rakam gösteremez. Cari başlığı
      `title1 + title2`, bakiye `balance`, stok miktarı `inventory` satırlarının toplamı.
+   - **Stok arama (panel goal P2, 2026-09-17):** `GET /api/v1/portal/stock/search` (sunucu taraflı sayfa ≤ 250;
+     `q` kod/ad/barkod; tekrarlı `mainGroup`/`subGroup`/`brand`/`shelf`; `warehouse`, `priceList`, `minQty`/`maxQty`,
+     `minPrice`/`maxPrice`, `status=all|in|out|negative|below` + `below`, `idleDays`;
+     `sort=name|code|qty|price|group|brand|shelf|lastMovement`, `dir`; geçersiz değer 400 `INVALID_QUERY`) ve
+     `GET /stock/facets` (grup/alt grup/marka/reyon sayılarıyla; depo ve fiyat listesi adları `lookups`'tan).
+     Özet (`products/inStock/outOfStock/negative`) sayfanın değil **filtrenin tamamının**.
+     `Portal/PortalStockCatalog` firmanın `stocks/inventory/prices/barcodes/lookups` kayıtlarını bir kez katlayıp
+     `IMemoryCache`'te tutar; anahtar bu varlıkların `MAX(UpdatedSeq)` + silinmemiş sayısı — depo olayları aynı
+     sayaçtan sıra alsa da bu satırları yazmadığı için önbelleği bozmaz. **Alan eşlemesi tek yerde:** ERP
+     `mainGroupCode/subGroupCode/brandCode/shelfCode/unit1`, ERP'siz kart `kategori/marka/shelfCode/birim`; son hareket
+     ve rezerve yalnız ERP'de. Varsayılan fiyat listesi 1 (yoksa en küçük). 20.000 ürün: ilk yükleme ~0,7 sn,
+     sonrakiler < 0,1 sn. Eski `/portal/stock` (200 satır) sözleşme için duruyor, panel kullanmıyor.
    - **Hangi belge sayılır:** ERP'siz firmada yalnızca `Succeeded`; ERP'li firmada
      `Pending/Processing/Succeeded` (ajana yolda olan da satıştır), `Failed/DeadLetter`
      asla. İade türü ERP'sizde `sales_return`, ERP'lide kasa defterinin `return`'ü.
