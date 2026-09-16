@@ -70,6 +70,10 @@ else
             </label>
         }
 
+        @if (_tab == "bekleyen" && _pendingTruncated)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="warehouse-truncated">En eski 500 bekleyen sipariş gösteriliyor; öncekiler hazırlandıkça yenileri listeye girer.</MudAlert>
+        }
         @if (!Rows.Any())
         {
             <MudPaper Outlined="true" Class="panel">
@@ -208,7 +212,7 @@ else
                         {
                             <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(Busy || _detailBusy)" Class="order-cancel" OnClick="() => ActAsync(order, FulfillmentActions.Cancel)">İptal et</MudButton>
                         }
-                        @if (Session.IsAdmin && order.Status is "PREPARING" or "PACKED")
+                        @if (Session.IsAdmin && order.Status == "PREPARING")
                         {
                             <select class="portal-select order-reassign" aria-label="Yeniden ata" value="" @onchange="e => ReassignAsync(order, e)" disabled="@(Busy || _detailBusy)" @onfocus="LoadStaffAsync">
                                 <option value="">Yeniden ata…</option>
@@ -255,6 +259,7 @@ else
 
     private WarehouseSettingsDto? _settings;
     private List<FulfillmentDto>? _open;
+    private bool _pendingTruncated;
     private List<FulfillmentDto> _loaded = [];
     private string _tab = "bekleyen";
     private bool _mineOnly;
@@ -313,7 +318,13 @@ else
         {
             _liveOk = false;
         }
-        _open = [.. (await Api.FulfillmentsAsync("open")).Items];
+        // One call per step: a long waiting backlog must not push the orders being prepared or packed off the list (Codex, PR #65).
+        var pending = Api.FulfillmentsAsync("pending");
+        var preparing = Api.FulfillmentsAsync("preparing");
+        var packed = Api.FulfillmentsAsync("packed");
+        var waiting = await pending;
+        _pendingTruncated = waiting.HasMore;
+        _open = [.. waiting.Items, .. (await preparing).Items, .. (await packed).Items];
         var today = Fmt.Today();
         _loaded = [.. (await Api.FulfillmentsAsync("loaded", newest: true, take: 200)).Items.Where(o => o.LoadedAtUtc is { } at && Fmt.DayOf(at) == today)];
         if (_detailOpen && _opened is { } opened && _detail is not null)
@@ -396,10 +407,20 @@ else
         Notice = null;
         await RunAsync(async () =>
         {
-            var settings = _settings ?? await Api.WarehouseSettingsAsync();
-            settings.Enabled = true;
-            _settings = await Api.SaveWarehouseSettingsAsync(settings);
+            var current = _settings ?? await Api.WarehouseSettingsAsync();
+            // A copy: the page keeps showing the form until everything went through.
+            var saved = await Api.SaveWarehouseSettingsAsync(new WarehouseSettingsDto
+            {
+                Enabled = true,
+                PendingWarnMinutes = current.PendingWarnMinutes,
+                PendingCriticalMinutes = current.PendingCriticalMinutes,
+                PreparingWarnMinutes = current.PreparingWarnMinutes,
+                PreparingCriticalMinutes = current.PreparingCriticalMinutes,
+                PackedWarnMinutes = current.PackedWarnMinutes,
+            });
+            // The page switches to the queue only once the back-fill also went through; a failure keeps the form to retry.
             var queued = _backfillDays > 0 ? (await Api.WarehouseBackfillAsync(_backfillDays)).Queued : 0;
+            _settings = saved;
             Notice = queued > 0 ? $"Depo modülü açıldı; son {_backfillDays} günün {queued} siparişi kuyruğa alındı." : "Depo modülü açıldı.";
             await ReloadAsync();
         });

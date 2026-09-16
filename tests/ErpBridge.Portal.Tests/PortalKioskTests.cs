@@ -297,7 +297,7 @@ public sealed class PortalDisplaysPageTests : PortalPageTestContext
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
         api.Answer("/api/v1/portal/displays", Array.Empty<object>());
         api.Answer("/api/v1/portal/warehouse/settings", Settings(enabled: false));
-        api.Answer("/api/v1/portal/warehouse/backfill", new { days = 5, queued = 3 });
+        api.Fail("/api/v1/portal/warehouse/backfill", HttpStatusCode.InternalServerError, "HTTP_500");
 
         var cut = Render<Ekranlar>();
         cut.WaitForAssertion(() => cut.Find("#warehouse-settings"));
@@ -307,9 +307,13 @@ public sealed class PortalDisplaysPageTests : PortalPageTestContext
         api.Answer("/api/v1/portal/warehouse/settings", Settings(enabled: true)); // what the server saves
 
         cut.Find("#warehouse-settings form").Submit();
+        cut.WaitForAssertion(() => cut.Find("#page-error"));
+        cut.Find("#settings-backfill"); // a failed back-fill keeps the offer; saving again retries it
+        api.Answer("/api/v1/portal/warehouse/backfill", new { days = 5, queued = 3 });
+        cut.Find("#warehouse-settings form").Submit();
         cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Contain("son 5 günün 3 siparişi"));
-        api.Requests.Single(r => r.Method == HttpMethod.Put).Body.Should().Contain("\"enabled\":true").And.Contain("\"pendingCriticalMinutes\":30");
-        api.Requests.Single(r => r.PathAndQuery.EndsWith("/warehouse/backfill")).Body.Should().Contain("\"days\":5");
+        api.Requests.First(r => r.Method == HttpMethod.Put).Body.Should().Contain("\"enabled\":true").And.Contain("\"pendingCriticalMinutes\":30");
+        api.Requests.Last(r => r.PathAndQuery.EndsWith("/warehouse/backfill")).Body.Should().Contain("\"days\":5");
         cut.FindAll("#settings-backfill").Should().BeEmpty("the module is on now");
 
         api.Fail("/api/v1/portal/warehouse/settings", HttpStatusCode.BadRequest, "INVALID_WAREHOUSE_SETTINGS");

@@ -182,8 +182,9 @@ else
         {
             var turningOn = _settings.Enabled && !_wasEnabled;
             _settings = await Api.SaveWarehouseSettingsAsync(_settings);
+            var queued = turningOn && _settings.Enabled && _backfillDays > 0 ? (await Api.WarehouseBackfillAsync(_backfillDays)).Queued : 0;
+            // Marked as on only after the back-fill went through: a failed one keeps the field, and saving again retries it (Codex, PR #65).
             _wasEnabled = _settings.Enabled;
-            var queued = turningOn && _backfillDays > 0 ? (await Api.WarehouseBackfillAsync(_backfillDays)).Queued : 0;
             Notice = !_settings.Enabled ? "Depo ayarları kaydedildi. Modül kapalı: yeni satışlar kuyruğa girmez."
                 : queued > 0 ? $"Depo modülü açıldı; son {_backfillDays} günün {queued} siparişi kuyruğa alındı."
                 : "Depo ayarları kaydedildi.";

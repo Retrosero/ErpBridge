@@ -12,7 +12,9 @@ public sealed class PortalWarehousePageTests : PortalPageTestContext
     private const string Settings = "/api/v1/portal/warehouse/settings";
     private const string Cursor = "/api/v1/portal/events?sinceSeq=0&wait=0";
     private const string Live = "/api/v1/portal/events?sinceSeq=10&wait=25";
-    private const string Open = "/api/v1/portal/fulfillments?status=open&take=500";
+    private const string Pending = "/api/v1/portal/fulfillments?status=pending&take=500";
+    private const string Preparing = "/api/v1/portal/fulfillments?status=preparing&take=500";
+    private const string Packed = "/api/v1/portal/fulfillments?status=packed&take=500";
     private const string Loaded = "/api/v1/portal/fulfillments?status=loaded&take=200&newest=true";
 
     private static readonly Guid PendingId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
@@ -38,16 +40,24 @@ public sealed class PortalWarehousePageTests : PortalPageTestContext
 
     private static object List(params object[] items) => new { latestSeq = 10, hasMore = false, items };
 
+    private static object Truncated(params object[] items) => new { latestSeq = 10, hasMore = true, items };
+
+    private static void AnswerOpen(FakeCentralApi api, object[] pending, object[] preparing, object[] packed)
+    {
+        api.Answer(Pending, List(pending));
+        api.Answer(Preparing, List(preparing));
+        api.Answer(Packed, List(packed));
+    }
+
     private FakeCentralApi Setup(bool enabled = true, string role = "ADMIN", string[]? roles = null)
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: role, roles: roles));
         api.Answer(Settings, SettingsBody(enabled));
         api.Answer(Cursor, new { latestSeq = 10, approvalsVersion = 0, changed = true });
-        api.Answer(Open, List(
-            Order(PendingId, "SO-1", "PENDING"),
-            Order(MineId, "SO-2", "PREPARING", "Firma Sahibi"),
-            Order(TheirsId, "SO-3", "PREPARING", "Depocu Hasan"),
-            Order(PackedId, "SO-4", "PACKED", "Firma Sahibi")));
+        AnswerOpen(api,
+            [Order(PendingId, "SO-1", "PENDING")],
+            [Order(MineId, "SO-2", "PREPARING", "Firma Sahibi"), Order(TheirsId, "SO-3", "PREPARING", "Depocu Hasan")],
+            [Order(PackedId, "SO-4", "PACKED", "Firma Sahibi")]);
         api.Answer(Loaded, List(
             Order(Guid.NewGuid(), "SO-TODAY", "LOADED", loadedAtUtc: DateTimeOffset.UtcNow),
             Order(Guid.NewGuid(), "SO-OLD", "LOADED", loadedAtUtc: DateTimeOffset.UtcNow.AddDays(-2))));
@@ -98,7 +108,7 @@ public sealed class PortalWarehousePageTests : PortalPageTestContext
         // Someone else is quicker with the packed order.
         api.Fail($"/api/v1/portal/fulfillments/{PackedId}/load", HttpStatusCode.Conflict, "FULFILLMENT_STATE_CHANGED");
         cut.Find("[data-tab=paketlenen]").Click();
-        api.Answer(Open, List(Order(MineId, "SO-2", "PREPARING", "Firma Sahibi")));
+        AnswerOpen(api, [], [Order(MineId, "SO-2", "PREPARING", "Firma Sahibi")], []);
         api.Answer(Loaded, List(Order(PackedId, "SO-4", "LOADED", "Depocu Hasan", loadedAtUtc: DateTimeOffset.UtcNow)));
 
         cut.Find($"[data-order='{PackedId}'] .order-action").Click();
@@ -132,6 +142,7 @@ public sealed class PortalWarehousePageTests : PortalPageTestContext
         cut.Find("#order-detail .detail-section-title").TextContent.Should().Contain("1 / 2");
         cut.FindAll("#detail-actions .order-undo").Should().ContainSingle();
         cut.FindAll("#detail-actions .order-cancel").Should().ContainSingle("an administrator may cancel");
+        cut.FindAll("#detail-actions .order-reassign").Should().BeEmpty("a packed order is not reassigned");
 
         cut.Find("#vehicle-plate").Change("35 ABC 123");
         cut.Find("#detail-actions .order-primary").Click();
@@ -153,11 +164,12 @@ public sealed class PortalWarehousePageTests : PortalPageTestContext
         var cut = Render<Depo>();
         cut.WaitForAssertion(() => cut.FindAll("[data-order]").Should().ContainSingle());
         api.Answer(Cursor, new { latestSeq = 12, approvalsVersion = 0, changed = true });
-        api.Answer(Open, List(Order(PendingId, "SO-1", "PENDING"), Order(Guid.NewGuid(), "SO-NEW", "PENDING", queuedMinutesAgo: 1)));
+        api.Answer(Pending, Truncated(Order(PendingId, "SO-1", "PENDING"), Order(Guid.NewGuid(), "SO-NEW", "PENDING", queuedMinutesAgo: 1)));
 
         live.SetResult();
 
         cut.WaitForAssertion(() => cut.FindAll("[data-order]").Should().HaveCount(2), TimeSpan.FromSeconds(5));
+        cut.Find("#warehouse-truncated").TextContent.Should().Contain("500");
         cut.Find($"[data-order='{PendingId}'] .order-open").Click();
         api.Answer($"/api/v1/portal/fulfillments/{PendingId}", new { fulfillment = Order(PendingId, "SO-1", "PENDING"), items = Array.Empty<object>(), events = Array.Empty<object>() });
         cut.Find($"[data-order='{PendingId}'] .order-open").Click();
@@ -170,7 +182,7 @@ public sealed class PortalWarehousePageTests : PortalPageTestContext
     {
         var api = Setup(enabled: false, role: "MANAGER", roles: ["MANAGER"]);
         api.Hold(Live);
-        api.Answer("/api/v1/portal/warehouse/backfill", new { days = 3, queued = 4 });
+        api.Fail("/api/v1/portal/warehouse/backfill", HttpStatusCode.Conflict, "WAREHOUSE_DISABLED");
 
         var cut = Render<Depo>();
         cut.WaitForAssertion(() => cut.Find("#warehouse-enable"));
@@ -178,10 +190,15 @@ public sealed class PortalWarehousePageTests : PortalPageTestContext
         api.Answer(Settings, SettingsBody(enabled: true));
 
         cut.Find("#warehouse-disabled form").Submit();
+        cut.WaitForAssertion(() => cut.Find("#page-error"));
+        cut.Find("#warehouse-enable"); // the form stays so the back-fill can be retried
+
+        api.Answer("/api/v1/portal/warehouse/backfill", new { days = 3, queued = 4 });
+        cut.Find("#warehouse-disabled form").Submit();
 
         cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Contain("son 3 günün 4 siparişi"));
-        api.Requests.Single(r => r.Method == HttpMethod.Put).Body.Should().Contain("\"enabled\":true");
-        api.Requests.Single(r => r.PathAndQuery.EndsWith("/backfill")).Body.Should().Contain("\"days\":3");
+        api.Requests.Where(r => r.Method == HttpMethod.Put).Should().OnlyContain(r => r.Body!.Contains("\"enabled\":true"));
+        api.Requests.Last(r => r.PathAndQuery.EndsWith("/backfill")).Body.Should().Contain("\"days\":3");
         cut.WaitForAssertion(() => cut.FindAll("[data-order]").Should().ContainSingle());
     }
 }
