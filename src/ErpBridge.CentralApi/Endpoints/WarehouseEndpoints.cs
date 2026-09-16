@@ -31,6 +31,7 @@ public static class WarehouseEndpoints
         group.MapPost("/fulfillments/{id:guid}/{action}", ActAsync).WithName("WarehouseFulfillmentAction");
         group.MapGet("/warehouse/settings", GetSettingsAsync).WithName("WarehouseSettingsGet");
         group.MapPut("/warehouse/settings", PutSettingsAsync).WithName("WarehouseSettingsPut");
+        group.MapPost("/warehouse/backfill", BackfillAsync).WithName("WarehouseBackfill");
         group.MapGet("/events", EventsAsync).WithName("PortalEvents");
         return routes;
     }
@@ -85,6 +86,16 @@ public static class WarehouseEndpoints
         var (tenant, user, error) = await AuthorizeAsync(http, db, RolePermissions.CanOperateWarehouse, ct);
         if (error is not null) return error;
         var result = await warehouse.UpdateSettingsAsync(db, tenant!.Id, user!, body, ct);
+        return result.Succeeded ? JsonResults.Ok(result.Value) : JsonResults.Status(result.StatusCode, result.Error);
+    }
+
+    /// <summary>Queues the sales orders of the last <c>days</c> (default 2, at most 30) that are not queued yet.</summary>
+    private static async Task<IResult> BackfillAsync(HttpContext http, [FromBody] WarehouseBackfillRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] FulfillmentService warehouse, CancellationToken ct)
+    {
+        var (tenant, user, error) = await AuthorizeAsync(http, db, RolePermissions.CanOperateWarehouse, ct);
+        if (error is not null) return error;
+        var result = await warehouse.BackfillAsync(db, tenant!, user!, body?.Days ?? 2, ct);
         return result.Succeeded ? JsonResults.Ok(result.Value) : JsonResults.Status(result.StatusCode, result.Error);
     }
 

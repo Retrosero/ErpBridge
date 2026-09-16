@@ -51,6 +51,7 @@ public static class MobileAccountEndpoints
         [FromServices] CentralApiDbContext db,
         [FromServices] MobileSeatService seats,
         [FromServices] IJwtIssuer jwt,
+        [FromServices] IConfiguration configuration,
         CancellationToken ct)
     {
         var tenantCode = body?.TenantCode?.Trim().ToUpperInvariant();
@@ -80,7 +81,7 @@ public static class MobileAccountEndpoints
         // Before a device row or token exists: a warehouse-only user never gets a phone session.
         var loginPrincipal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
             [new System.Security.Claims.Claim(CentralApiClaims.Client, client)]));
-        if (MobileUserAccess.ClientDenial(loginPrincipal, user) is { } denied)
+        if (MobileUserAccess.ClientDenial(loginPrincipal, user, body.AppVersion, configuration[MobileUserAccess.MinWarehousePhoneVersionKey]) is { } denied)
             return Error(denied.StatusCode, denied.ErrorCode!, denied.Message!);
         var subscription = await seats.GetCurrentSubscriptionAsync(tenant.Id, ct);
         var status = MobileSeatService.SubscriptionStatus(subscription, DateTimeOffset.UtcNow);
@@ -171,7 +172,7 @@ public static class MobileAccountEndpoints
     internal static async Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeAsync(
         HttpContext http, CentralApiDbContext db, bool requireAdmin, CancellationToken ct)
     {
-        var access = await MobileUserAccess.CheckAsync(http.User, db, ct);
+        var access = await MobileUserAccess.CheckAsync(http.User, db, ct, MobileUserAccess.MinWarehousePhoneVersion(http.RequestServices));
         if (!access.Allowed) return (null, null, Error(access.StatusCode, access.ErrorCode!, access.Message!));
         if (requireAdmin && !RolePermissions.CanManageUsers(access.User!))
             return (null, null, Error(403, "ADMIN_REQUIRED", "Only company administrators can manage users."));

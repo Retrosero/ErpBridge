@@ -135,9 +135,18 @@ public static class RolePermissions
 
     public static bool IsAdmin(MobileUser user) => Has(user, MobileUserRoles.Admin);
 
-    /// <summary>Signing in to the phone app: selling, collecting, route work.</summary>
+    /// <summary>
+    /// Signing in to the phone app: selling, collecting, route work — and, since panel goal P4b (K4),
+    /// the warehouse screen. A user whose only phone role is WAREHOUSE also needs an app build that
+    /// knows that role (<see cref="Mobile.MobileUserAccess.ClientDenial"/>).
+    /// </summary>
     public static bool CanUsePhone(MobileUser user) =>
-        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager or MobileUserRoles.Sales);
+        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager or MobileUserRoles.Sales or MobileUserRoles.Warehouse);
+
+    /// <summary>On the phone this user only prepares orders: no selling, collecting or cards.</summary>
+    public static bool IsWarehouseOnlyOnPhone(MobileUser user) =>
+        Of(user).Contains(MobileUserRoles.Warehouse)
+        && !Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager or MobileUserRoles.Sales);
 
     /// <summary>Signing in to the web portal.</summary>
     public static bool CanUsePortal(MobileUser user) =>

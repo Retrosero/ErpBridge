@@ -225,6 +225,18 @@ public static class IngestEndpoints
                 Message = "Documents are sent from the phone app, not the web portal.",
             });
 
+        // ---- 4a2. A warehouse-only user prepares orders on the phone; the app hides selling, and the
+        //           server refuses the documents too (panel goal D2). ----
+        if (ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)
+            && Guid.TryParse(http.User.FindFirst("sub")?.Value, out var warehouseSenderId)
+            && await db.MobileUsers.AsNoTracking().Include(u => u.Roles).FirstOrDefaultAsync(u => u.Id == warehouseSenderId && u.TenantId == tenantId, ct) is { } warehouseSender
+            && RolePermissions.IsWarehouseOnlyOnPhone(warehouseSender))
+            return JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError
+            {
+                ErrorCode = "ROLE_NOT_ALLOWED",
+                Message = "A warehouse-only user cannot send documents.",
+            });
+
         // ---- 4b. An approval request waits for a company administrator. ----
         if (string.Equals(documentType, ErpBridge.CentralApi.Approvals.ApprovalService.DocumentType, StringComparison.OrdinalIgnoreCase))
         {

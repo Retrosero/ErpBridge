@@ -32,7 +32,7 @@ Bu plan onu dört farklı kullanıcı grubuna hizmet eden bir operasyon sistemin
 | V2 | ERP'li firmada sipariş **ajan ERP'ye yazmadan önce** kuyruğa düşer; ERP'ye aktarılamazsa kartta "ERP hatası" rozeti | Depo, ajan gecikmesi yüzünden beklemesin; hata görünür kalsın |
 | V3 | `MUHASEBE` rolü satış/iade/tahsilat/tediye/alış taleplerini onaylayabilir; kart ve sayım talepleri ADMIN/MANAGER'da kalır | Muhasebenin işi finansal belgeler |
 | V4 | Depo ve muhasebe rolü **yalnız paneli** kullanır; bu rollerden başka rolü olmayan kullanıcı telefona giremez | Depocunun telefondan satış girmesi engellenir |
-| V4′ | **2026-09-16 değişti** ([GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md) K4): yalnız DEPO rolü olan kullanıcı telefona girer ama yalnız Depo ekranını görür (yeni sürüm şartıyla); muhasebe için V4 aynen | Telefonun Depo ekranı sunucu kuyruğuna bağlanıyor |
+| V4′ | **2026-09-16 değişti** ([GOAL_PANEL_GELISTIRMELERI.md](GOAL_PANEL_GELISTIRMELERI.md) K4): yalnız DEPO rolü olan kullanıcı telefona girer ama yalnız Depo ekranını görür; sunucu bunu `Mobile:MinWarehousePhoneVersion` (telefonun `versionName`'i) ile her istekte kapılar, belge göndermesini reddeder (P4b); muhasebe için V4 aynen | Telefonun Depo ekranı sunucu kuyruğuna bağlanıyor |
 | V5 | Gerçek zamanlılık **SignalR yerine mevcut long-poll + sıra numarası** deseniyle | Altyapıda zaten var (`/android/notify`), proxy/ölçek ayarı gerektirmez; tek konteynerde < 2 sn gecikme |
 | V6 | Statü geri alınabilir (ör. yanlışlıkla "Başla"), ama **her geri alma loglanır** ve yalnız işi başlatan kişi 5 dk içinde ya da yönetici yapabilir | Hatalar düzelebilsin, rapor bozulmasın |
 | V7 | Tüm süreler **sunucu saatiyle** hesaplanır | Cihaz saatleri güvenilmez |
