@@ -343,6 +343,8 @@ h1:focus, h1:focus-visible { outline: none; }
 .desk-detail-amount { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .desk-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
 .desk-actions kbd, .desk-keys kbd { font: 600 .7rem ui-monospace, Consolas, monospace; padding: 1px 5px; border-radius: 4px; border: 1px solid currentColor; opacity: .75; margin-left: 4px; }
+.desk-cannot-decide { font-size: .85rem; color: var(--muted); background: #f2f4f7; border-radius: 8px; padding: 8px 12px; margin: 14px 0 6px; }
+.desk-check.is-disabled { opacity: .35; }
 .desk-note { display: flex; gap: 6px; align-items: center; font-size: .85rem; background: var(--warning-50); color: var(--warning); padding: 6px 10px; border-radius: 8px; margin: 6px 0; }
 .desk-detail-progress { margin: 14px 0; }
 .desk-facts { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 4px; }

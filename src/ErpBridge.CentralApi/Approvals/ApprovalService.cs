@@ -41,12 +41,14 @@ public sealed class ApprovalService
     private readonly NativeDocumentProcessor _native;
     private readonly IBootstrapNotificationHub _hub;
     private readonly FulfillmentService _warehouse;
+    private readonly ITenantEventHub _portal;
 
-    public ApprovalService(NativeDocumentProcessor native, IBootstrapNotificationHub hub, FulfillmentService warehouse)
+    public ApprovalService(NativeDocumentProcessor native, IBootstrapNotificationHub hub, FulfillmentService warehouse, ITenantEventHub portal)
     {
         _native = native;
         _hub = hub;
         _warehouse = warehouse;
+        _portal = portal;
     }
 
     // ---- rules ----------------------------------------------------------------
@@ -77,7 +79,7 @@ public sealed class ApprovalService
         rules.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         _hub.Publish(tenant.Id, rules.UpdatedAtUtc.Value);
-        _warehouse.Notify(tenant.Id);
+        _portal.Publish(tenant.Id, TenantEventTopics.Approvals);
         return ApprovalResult<TenantApprovalRules>.Ok(rules);
     }
 
@@ -258,7 +260,7 @@ public sealed class ApprovalService
         }
 
         _hub.Publish(tenant.Id, now);
-        _warehouse.Notify(tenant.Id);
+        _portal.Publish(tenant.Id, TenantEventTopics.Approvals);
         return ApprovalResult<ApprovalRequest>.Ok(request, 201);
     }
 
@@ -308,8 +310,9 @@ public sealed class ApprovalService
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
         _hub.Publish(tenant.Id, now);
-        // The portal's approval desk and, for an approved sale, the warehouse queue.
-        _warehouse.Notify(tenant.Id);
+        _portal.Publish(tenant.Id, TenantEventTopics.Approvals);
+        // An approved sale may have entered the warehouse queue.
+        if (approve) _warehouse.Notify(tenant.Id);
         return ApprovalResult<ApprovalRequest>.Ok(request);
     }
 
@@ -358,7 +361,7 @@ public sealed class ApprovalService
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
         _hub.Publish(tenant.Id, now);
-        _warehouse.Notify(tenant.Id);
+        _portal.Publish(tenant.Id, TenantEventTopics.Approvals);
         return ApprovalResult<ApprovalRequest>.Ok(request);
     }
 

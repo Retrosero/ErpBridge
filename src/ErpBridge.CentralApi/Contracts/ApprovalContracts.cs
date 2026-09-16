@@ -21,6 +21,12 @@ public sealed class ApprovalRequestDto
     [JsonPropertyName("decidedByName")] public string? DecidedByName { get; set; }
     [JsonPropertyName("decidedAtUtc")] public DateTimeOffset? DecidedAtUtc { get; set; }
     [JsonPropertyName("decisionNote")] public string? DecisionNote { get; set; }
+
+    /// <summary>
+    /// In the approvals list only: whether the caller's roles decide this kind (accounting decides money
+    /// documents, not cards or stock counts). The self-approval rule is still checked on the decision.
+    /// </summary>
+    [JsonPropertyName("canDecide")] public bool? CanDecide { get; set; }
 }
 
 /// <summary>One request with what it would post, its history and stock warnings.</summary>

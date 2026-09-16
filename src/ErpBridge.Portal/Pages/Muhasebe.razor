@@ -75,7 +75,7 @@ else
                         <div class="desk-row @(current ? "is-current" : null) @(marked ? "is-checked" : null)" id="desk-row-@request.Id"
                              data-request="@request.Id" role="option" aria-selected="@(current ? "true" : "false")"
                              @onclick="() => SelectAsync(request.Id)">
-                            <span class="desk-check" @onclick="() => Toggle(request.Id)" @onclick:stopPropagation="true" aria-label="Seç">
+                            <span class="desk-check @(CanDecide(request) ? null : "is-disabled")" @onclick="() => Toggle(request.Id)" @onclick:stopPropagation="true" aria-label="Seç">
                                 <MudIcon Icon="@(marked ? Icons.Material.Rounded.CheckBox : Icons.Material.Rounded.CheckBoxOutlineBlank)" Size="Size.Small" />
                             </span>
                             <div class="desk-row-main">
@@ -119,7 +119,11 @@ else
                     <div class="desk-detail-amount">@Fmt.Money(selected.Amount)</div>
                 </div>
 
-                @if (Session.CanApprove)
+                @if (!CanDecide(selected))
+                {
+                    <div class="desk-cannot-decide" id="desk-cannot-decide">Bu tür talebe karar yetkiniz yok; yalnız görüntüleyebilirsiniz.</div>
+                }
+                else
                 {
                     <div class="desk-actions">
                         <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Rounded.Check" Disabled="@Busy" id="desk-approve" OnClick="ApproveCurrentAsync">Onayla <kbd>A</kbd></MudButton>
@@ -312,7 +316,8 @@ else
     private string? _focusAfterRender;
     private bool _revealCurrent;
 
-    private long _approvalsSeq;
+    /// <summary>The approval change version the queue on screen reflects; -1 before the first read.</summary>
+    private long _approvalsVersion = -1;
     private bool _liveOk;
     private readonly CancellationTokenSource _live = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -339,7 +344,13 @@ else
 
     private ApprovalDto? Current => _currentId is { } id ? Rows.FirstOrDefault(r => r.Id == id) : null;
 
-    private List<ApprovalDto> CheckedRows => Rows.Where(r => _checked.Contains(r.Id)).ToList();
+    private List<ApprovalDto> CheckedRows => Rows.Where(r => _checked.Contains(r.Id) && CanDecide(r)).ToList();
+
+    /// <summary>
+    /// The user decides anything at all, and the server says they decide this kind (accounting: money
+    /// documents, not cards or stock counts); an older server sends no per-request answer.
+    /// </summary>
+    private bool CanDecide(ApprovalDto request) => Session.CanApprove && request.CanDecide != false;
 
     // ---- loading ----------------------------------------------------------------------
 
@@ -361,14 +372,14 @@ else
     }
 
     /// <summary>
-    /// Reads the queue. The approvals cursor is taken before the rows, so a change committed in
-    /// between is seen again rather than missed.
+    /// Reads the queue. The approval version is taken before the rows, so a change published in
+    /// between shows as a newer version and the queue is read again rather than missed.
     /// </summary>
     private async Task ReloadAsync()
     {
         try
         {
-            _approvalsSeq = (await Api.ApprovalEventsAsync(0, 0)).ApprovalsSeq;
+            _approvalsVersion = (await Api.ApprovalEventsAsync(-1, 0)).ApprovalsVersion;
             _liveOk = true;
         }
         catch (PortalApiException)
@@ -406,7 +417,8 @@ else
         {
             try
             {
-                var events = await Api.ApprovalEventsAsync(_approvalsSeq, LiveWaitSeconds, token);
+                // The version, unlike a timestamp, also catches a change published between two polls (Codex, PR #57).
+                var events = await Api.ApprovalEventsAsync(_approvalsVersion, LiveWaitSeconds, token);
                 if (!_liveOk)
                 {
                     _liveOk = true;
@@ -524,7 +536,13 @@ else
 
     private void Toggle(Guid id)
     {
-        if (!_checked.Remove(id)) _checked.Add(id);
+        if (_checked.Remove(id)) return;
+        if (_all.FirstOrDefault(r => r.Id == id) is { } request && !CanDecide(request))
+        {
+            Info = "Bu tür talebe karar yetkiniz olmadığı için işaretlenemez.";
+            return;
+        }
+        _checked.Add(id);
     }
 
     private async Task KeepCurrentVisibleAsync()
@@ -545,8 +563,18 @@ else
 
     // ---- deciding ---------------------------------------------------------------------
 
-    private Task ApproveCurrentAsync() =>
-        Current is { } request ? DecideAsync([request], approve: true, _notes.GetValueOrDefault(request.Id)) : Task.CompletedTask;
+    private Task ApproveCurrentAsync()
+    {
+        if (Current is not { } request) return Task.CompletedTask;
+        if (!CanDecide(request))
+        {
+            Error = CannotDecide;
+            return Task.CompletedTask;
+        }
+        return DecideAsync([request], approve: true, _notes.GetValueOrDefault(request.Id));
+    }
+
+    private const string CannotDecide = "Bu tür talebe karar yetkiniz yok. Firma admininizle görüşün.";
 
     private async Task DecideAsync(IReadOnlyList<ApprovalDto> requests, bool approve, string? note)
     {
@@ -616,6 +644,11 @@ else
         if (dialog is DeskDialog.Reject or DeskDialog.Bulk && !Session.CanApprove)
         {
             Error = PortalMessages.For("APPROVER_REQUIRED");
+            return;
+        }
+        if (dialog == DeskDialog.Reject && Current is { } rejected && !CanDecide(rejected))
+        {
+            Error = CannotDecide;
             return;
         }
         if (dialog == DeskDialog.Bulk && CheckedRows.Count == 0)

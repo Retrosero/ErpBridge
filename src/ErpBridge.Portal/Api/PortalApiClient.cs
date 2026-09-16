@@ -84,19 +84,23 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<ApprovalDto[]> PendingApprovalsAsync(CancellationToken ct = default) =>
         GetAsync<ApprovalDto[]>("api/v1/android/approvals?status=pending", ct);
 
-    /// <summary>The approval desk reads the whole pending queue at once (the server caps it at 500).</summary>
+    /// <summary>
+    /// The approval desk's queue, oldest first, up to the server's 500: with more pending, the requests
+    /// waiting longest are the ones on the page.
+    /// </summary>
     public Task<ApprovalDto[]> ApprovalQueueAsync(CancellationToken ct = default) =>
-        GetAsync<ApprovalDto[]>("api/v1/android/approvals?status=pending&take=500", ct);
+        GetAsync<ApprovalDto[]>("api/v1/android/approvals?status=pending&order=oldest&take=500", ct);
 
     public Task<ApprovalDetailDto> ApprovalDetailAsync(Guid requestId, CancellationToken ct = default) =>
         GetAsync<ApprovalDetailDto>($"api/v1/android/approvals/{requestId}", ct);
 
     /// <summary>
-    /// Long-poll for approval changes after <paramref name="approvalsSeq"/>: answers at once when there are
-    /// any, otherwise after up to <paramref name="waitSeconds"/> (the server caps it at 25, below the client timeout).
+    /// Long-poll for approval changes after <paramref name="approvalsVersion"/> (-1: none seen yet): answers at
+    /// once when the version differs, otherwise after up to <paramref name="waitSeconds"/> (the server caps it at
+    /// 25, below the client timeout).
     /// </summary>
-    public Task<PortalEventsDto> ApprovalEventsAsync(long approvalsSeq, int waitSeconds, CancellationToken ct = default) =>
-        GetAsync<PortalEventsDto>($"api/v1/portal/events?approvalsSeq={approvalsSeq}&wait={waitSeconds}", ct);
+    public Task<PortalEventsDto> ApprovalEventsAsync(long approvalsVersion, int waitSeconds, CancellationToken ct = default) =>
+        GetAsync<PortalEventsDto>($"api/v1/portal/events?approvalsVersion={approvalsVersion}&wait={waitSeconds}", ct);
 
     public Task<ApprovalDto> DecideAsync(Guid requestId, bool approve, string? note, CancellationToken ct = default) =>
         SendAsync<ApprovalDto>(HttpMethod.Post, $"api/v1/android/approvals/{requestId}/{(approve ? "approve" : "reject")}", new { note }, ct);

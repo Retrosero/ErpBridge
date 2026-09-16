@@ -593,7 +593,10 @@ registration ayrı bir composition projesine taşınır.
      için klavye odaklı ekran. Solda bekleyen talepler **en eski üstte** (tür, müşteri, plasiyer, tutar, bekleme;
      30 dk sarı, 2 sa kırmızı), sağda detay: belge kalemleri (`documents[].payload.lines`), ödemeler
      (`summary.payments`), ödeme türü/açıklama (`summary`), stok uyarıları, cari bakiye (`/portal/balances?search=
-     customerCode`, `Ledger` bölümü açıksa) ve geçmiş. Kuyruk `approvals?status=pending&take=500` ile bir kerede okunur.
+     customerCode`, `Ledger` bölümü açıksa) ve geçmiş. Kuyruk `approvals?status=pending&order=oldest&take=500` ile bir
+     kerede okunur — `order=oldest` olmadan 500'den fazla bekleyende en eskiler sayfanın dışında kalırdı (Codex, PR #57).
+     **Tür bazlı yetki:** liste her satırda `canDecide` taşır (`ApprovalPermissions.CanDecide(kullanıcı, tür)`); masa
+     karar veremediği talepte düğme göstermez, `A`/`R` reddedilir, satır işaretlenmez ve toplu onaya girmez.
      Kısayollar: `↑↓`/`j k` gezin · `A` onayla (varsa notuyla) · `R` red penceresi (not) · `N` not · `Boşluk` işaretle
      · `Shift+A` işaretlileri onay penceresiyle onayla · `/` ara · `F` tür filtresi · `Esc` kapat/işaretleri temizle
      · `?` yardım. Onay yetkisi yoksa (`Session.CanApprove`) salt görüntüler. Karardan sonra sıradaki talebe geçer;
@@ -602,7 +605,7 @@ registration ayrı bir composition projesine taşınır.
        alanda `Enter` geçer, odaklı düğmenin Enter/Boşluk'u düğmede kalır. Pencere açılınca odak **pencerenin
        kendisine** (`tabindex=-1`) verilir, düğmeye değil — Enter her tarayıcıda kısayol olarak işlensin.
        `attach` bir tutamaç döner, `detach(tutamaç)` yalnız kendi dinleyicisini söker. `e.code === 'Space'` de Boşluk sayılır.
-     - **Canlı:** sayfa `GET /api/v1/portal/events?approvalsSeq&wait=25` long-poll döngüsü tutar (aralarda en az 1 sn,
+     - **Canlı:** sayfa `GET /api/v1/portal/events?approvalsVersion&wait=25` long-poll döngüsü tutar (aralarda en az 1 sn,
        hatada 15 sn); `changed` gelince kuyruğu yeniden okur. İmleç satırlardan **önce** alınır. Açık talebi başkası
        sonuçlandırdıysa "başka bir yetkili" bilgisi ve sıradaki talep. Kararlar ve yeniden okumalar bir `SemaphoreSlim`
        ile sıraya girer.
@@ -612,6 +615,8 @@ registration ayrı bir composition projesine taşınır.
        (döngü, JS dinleyicisi) `_disposed` bayrağına bakmalı ve iptal kaynağını dispose etmemeli, yalnız iptal etmeli —
        aksi hâlde `ObjectDisposedException` devreyi düşürür (Faz 48'de tarayıcıda yakalandı). Diğer sayfalar bu yüzden
        ilk açılışta veriyi iki kez okuyabilir (bilinen verimsizlik).
+     - **Onay listesi uç parametreleri (Faz 48):** `/api/v1/android/approvals` `order=newest|oldest` (varsayılan
+       newest, geçersiz 400 `INVALID_ORDER`) ve her satırda `canDecide`; telefonun kullandığı çağrı değişmedi.
      - Testler: `PortalApprovalDeskTests` (10 talep klavyeyle en eskiden başlayarak, ok + not + red, işaretle + toplu onay,
        başkası sonuçlandırmış 409, canlı güncelleme, arama + filtre, yetkisiz salt görüntü, yardım). Kuyruk sırası
        bozulunca 8 testin 6'sı kırıldı.
@@ -672,16 +677,17 @@ registration ayrı bir composition projesine taşınır.
      kuyruk sırası `QueuedSeq`
      (`DateTimeOffset` SQLite'ta sıralanamaz). `GET /{id}` → sipariş + toplama listesi (`ItemsJson`:
      `stockCode, name, quantity, unit`) + olaylar.
-   - **Canlı akış (V5):** `GET /api/v1/portal/events?sinceSeq&approvalsSeq&wait=0-25` — değişiklik varsa hemen, yoksa
+   - **Canlı akış (V5):** `GET /api/v1/portal/events?sinceSeq&approvalsVersion&wait=0-25` — değişiklik varsa hemen, yoksa
      `ITenantEventHub` ile bekler, `{latestSeq, changed}` döner; sayfa sonra `changedSinceSeq` okur.
      **Bekleyici okumadan önce kaydolur** (`WaitAsync` dönmeden kuyruğa girer): okuma ile bekleme arasında
      commit olan değişiklik de uyandırır (Codex, PR #52).
-     **Onay konusu (Faz 48):** `approvalsSeq` verilirse `ApprovalService.Visible` içindeki en büyük `UpdatedSeq` de
-     izlenir ve `approvalsSeq` alanında döner; uç artık panel rolü olan herkese açık (`CanUsePortal` veya depo),
-     depo konusu yalnız depo rolüne. `ApprovalService` her değişiklikte (gönderim, karar, tekrar açma, geri çekme,
-     kurallar) bu hub'a da yayın yapar. Onay seq'i milisaniye olduğundan (kural 16) geç commit olan talep daha küçük
-     numara taşıyabilir: bu yüzden **yayınla uyanan istek `changed: true` döner**, sayfa listeyi yeniden okur.
-     `ITenantEventHub.WaitAsync` bu ayrım için `bool` (uyandı mı) döner. Hub
+     **Onay konusu (Faz 48):** `ITenantEventHub.Publish(tenant, topic)` konu başına (`TenantEventTopics.Warehouse`,
+     `Approvals`) bellek içi bir **sürüm** artırır; `ApprovalService` her değişiklikte (gönderim, karar, tekrar açma,
+     geri çekme, kurallar) `Approvals` yayınlar, onaylanan satışta ayrıca `Warehouse`. `approvalsVersion` gönderen
+     istek, sürüm farklıysa (büyük ya da süreç yeniden başladıysa küçük) hemen `changed` döner; `-1` "hiç
+     görmedim" demektir. Onayların `UpdatedSeq`'i milisaniye olduğundan (kural 16) karşılaştırma için kullanılmaz:
+     iki long-poll arasında, bekleyen yokken yayınlanan değişiklik de sürümden anlaşılır (Codex, PR #57). Uç panel
+     rolü olan herkese açık (`CanUsePortal` veya depo); depo konusu yalnız depo rolüne. Hub
      **bellek içidir ve bootstrap hub'ından ayrıdır** (depo tıklaması telefonları senkrona uyandırmaz);
      CentralApi tek konteyner varsayar — yatay ölçek PostgreSQL LISTEN/Redis ister.
    - **Ayarlar:** `GET|PUT /api/v1/portal/warehouse/settings` (açık/kapalı + gecikme eşikleri dakika,

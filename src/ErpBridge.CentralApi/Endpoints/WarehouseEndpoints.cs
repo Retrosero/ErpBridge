@@ -6,7 +6,6 @@ using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Warehouse;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Endpoints;
 
@@ -90,22 +89,23 @@ public static class WarehouseEndpoints
     }
 
     /// <summary>
-    /// Long-poll for the portal's live pages. Topics: the warehouse queue (<c>sinceSeq</c>, for a warehouse
-    /// role) and approval requests (<c>approvalsSeq</c>, the requests the caller may see; Faz 48). Answers at
-    /// once when a topic the caller asked about is past its value, otherwise waits up to <c>wait</c> seconds
-    /// (0-25). The page then reads the topic's list.
+    /// Long-poll for the portal's live pages. Topics: the warehouse queue (<c>sinceSeq</c>, its change
+    /// counter, for a warehouse role) and approval requests (<c>approvalsVersion</c>, the hub's publish
+    /// count for the tenant; Faz 48). Answers at once when a topic the caller asked about moved, otherwise
+    /// waits up to <c>wait</c> seconds (0-25). The page then reads the topic's list.
     ///
-    /// <para>Approval sequence numbers are milliseconds, not a counter (rule 16), so a request that commits
-    /// late can carry a lower number than one already seen: a wake-up by a publish is therefore reported as
-    /// <c>changed</c> too, and the page reads its list again.</para>
+    /// <para>Approvals are followed by a version rather than their <c>UpdatedSeq</c>: those are milliseconds
+    /// taken before commit (rule 16), so a late commit can carry a smaller number than one already seen.
+    /// The version grows on every publish, so a change published between two polls — with no waiter
+    /// registered — still shows as a different version (Codex, PR #57).</para>
     /// </summary>
     private static async Task<IResult> EventsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] ITenantEventHub events,
-        long? sinceSeq, long? approvalsSeq, int? wait, CancellationToken ct)
+        long? sinceSeq, long? approvalsVersion, int? wait, CancellationToken ct)
     {
         var (tenant, user, error) = await AuthorizeAsync(http, db, CanFollowEvents, ct);
         if (error is not null) return error;
         var warehouse = RolePermissions.CanOperateWarehouse(user!);
-        var watchWarehouse = warehouse && (sinceSeq is not null || approvalsSeq is null);
+        var watchWarehouse = warehouse && (sinceSeq is not null || approvalsVersion is null);
         var since = sinceSeq ?? 0;
         var seconds = Math.Clamp(wait ?? 0, 0, MaxWaitSeconds);
         // Subscribe before reading: a change that commits between the read and the wait still wakes us.
@@ -114,22 +114,21 @@ public static class WarehouseEndpoints
 
         async Task<(long Queue, long Approvals)> ReadAsync() => (
             warehouse ? await FulfillmentService.LatestSeqAsync(db, tenant!.Id, ct) : 0,
-            approvalsSeq is null ? 0 : await ErpBridge.CentralApi.Approvals.ApprovalService.Visible(db, tenant!.Id, user!).MaxAsync(r => (long?)r.UpdatedSeq, ct) ?? 0);
+            events.Version(tenant!.Id, TenantEventTopics.Approvals));
         bool Moved((long Queue, long Approvals) now) =>
-            (watchWarehouse && now.Queue > since) || (approvalsSeq is { } seen && now.Approvals > seen);
+            (watchWarehouse && now.Queue > since) || (approvalsVersion is { } seen && now.Approvals != seen);
 
         var latest = await ReadAsync();
-        var woke = false;
         if (!Moved(latest) && waiting is not null)
         {
-            woke = await waiting && approvalsSeq is not null;
+            await waiting;
             latest = await ReadAsync();
         }
         return JsonResults.Ok(new PortalEventsResponse
         {
             LatestSeq = latest.Queue,
-            ApprovalsSeq = latest.Approvals,
-            Changed = Moved(latest) || woke,
+            ApprovalsVersion = latest.Approvals,
+            Changed = Moved(latest),
         });
     }
 

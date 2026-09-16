@@ -17,7 +17,8 @@
 
 ## Testler / derleme
 
-- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata. CentralApi 393, Portal 87; tüm çözüm yeşil.
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata. CentralApi 397, Portal 88; tüm çözüm yeşil.
+- Codex (PR #57) üç bulgu düzeltildi: kuyruk `order=oldest` ile en eskiden okunur (500 sınırında en eskiler kaybolmaz); canlı liste milisaniye yerine konu başına sürümle izlenir (iki poll arası değişiklik kaçmaz); talep bazında `canDecide` ile yetkisiz türde düğme/kısayol/toplu onay kapalı.
 - Kuyruk sırası bozulunca masa testlerinin 6/8'i kırıldı.
 - Yerelde tarayıcıda gerçek tuşlarla: `A` ile 3 onay, `↓` + `R` + yazı + `Enter` ile notlu red, işaret + `Shift+A` + `Enter` ile 2 talep toplu onay, başka yetkilinin API'den reddi ≤ 3 sn'de masada, geniş ekranda iki sütun. Bu denemede bulunan iki hata düzeltildi: geri yüklenen oturumda sayfa kopyası atılırken devre çöküyordu; toplu onay penceresinde Enter odaklı düğmeye takılıyordu.
 

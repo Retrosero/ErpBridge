@@ -56,10 +56,13 @@ public static class MobileApprovalEndpoints
     /// <summary>
     /// <c>status</c> is a comma-separated list (pending, approved, rejected, withdrawn,
     /// resubmitted) or <c>all</c>; default pending. <c>changedSinceSeq</c> returns only
-    /// requests whose <c>updatedSeq</c> is at least that value.
+    /// requests whose <c>updatedSeq</c> is at least that value. <c>order</c>: <c>newest</c>
+    /// (default) or <c>oldest</c> — the portal's approval desk works the longest-waiting requests
+    /// first, and with more than <c>take</c> pending the oldest must not fall outside the page.
+    /// Every row carries <c>canDecide</c> for the caller.
     /// </summary>
     private static async Task<IResult> ListAsync(HttpContext http, [FromServices] CentralApiDbContext db,
-        string? status, long? changedSinceSeq, int? take, CancellationToken ct)
+        string? status, long? changedSinceSeq, int? take, string? order, CancellationToken ct)
     {
         var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
         if (access.Error is not null) return access.Error;
@@ -72,10 +75,21 @@ public static class MobileApprovalEndpoints
                 Message = "status must be all or a comma-separated list of: " + string.Join(", ", ApprovalStatuses.All.Select(s => s.ToLowerInvariant())) + ".",
             });
 
+        var oldestFirst = string.Equals(order, "oldest", StringComparison.OrdinalIgnoreCase);
+        if (!oldestFirst && !string.IsNullOrWhiteSpace(order) && !string.Equals(order, "newest", StringComparison.OrdinalIgnoreCase))
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_ORDER", Message = "order must be newest or oldest." });
+
         var query = ApprovalService.Visible(db, access.Tenant!.Id, access.User!).Where(r => statuses.Contains(r.Status));
         if (changedSinceSeq is { } since) query = query.Where(r => r.UpdatedSeq >= since);
-        var rows = await query.OrderByDescending(r => r.RequestedSeq).Take(Math.Clamp(take ?? DefaultTake, 1, MaxTake)).ToListAsync(ct);
-        return JsonResults.Ok(rows.Select(ApprovalService.ToDto).ToArray());
+        query = oldestFirst ? query.OrderBy(r => r.RequestedSeq) : query.OrderByDescending(r => r.RequestedSeq);
+        var rows = await query.Take(Math.Clamp(take ?? DefaultTake, 1, MaxTake)).ToListAsync(ct);
+        var viewer = access.User!;
+        return JsonResults.Ok(rows.Select(row =>
+        {
+            var dto = ApprovalService.ToDto(row);
+            dto.CanDecide = ApprovalPermissions.CanDecide(viewer, row.Kind);
+            return dto;
+        }).ToArray());
     }
 
     private static async Task<IResult> DetailAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] ApprovalService approvals, CancellationToken ct)

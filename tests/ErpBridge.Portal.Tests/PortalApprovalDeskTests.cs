@@ -12,17 +12,17 @@ namespace ErpBridge.Portal.Tests;
 /// </summary>
 public sealed class PortalApprovalDeskTests : PortalPageTestContext
 {
-    private const string Queue = "/api/v1/android/approvals?status=pending&take=500";
-    private const string Cursor = "/api/v1/portal/events?approvalsSeq=0&wait=0";
-    private const string Live = "/api/v1/portal/events?approvalsSeq=500&wait=25";
+    private const string Queue = "/api/v1/android/approvals?status=pending&order=oldest&take=500";
+    private const string Cursor = "/api/v1/portal/events?approvalsVersion=-1&wait=0";
+    private const string Live = "/api/v1/portal/events?approvalsVersion=500&wait=25";
 
     private static Guid Id(int n) => Guid.Parse($"00000000-0000-0000-0000-{n:D12}");
 
-    private static object Request(int n, string kind = "sale", string counterparty = "Bakkal", decimal amount = 100m, int minutesAgo = 10, string by = "Ali Yılmaz") => new
+    private static object Request(int n, string kind = "sale", string counterparty = "Bakkal", decimal amount = 100m, int minutesAgo = 10, string by = "Ali Yılmaz", bool canDecide = true) => new
     {
         id = Id(n), kind, counterpartyName = counterparty, amount, status = "Pending",
         requestedByName = by, requestedAtUtc = PortalTestSetup.Now.AddMinutes(-minutesAgo),
-        summary = new { },
+        summary = new { }, canDecide,
     };
 
     private static object Detail(int n, string kind = "sale", string counterparty = "Bakkal", decimal amount = 100m) => new
@@ -37,8 +37,8 @@ public sealed class PortalApprovalDeskTests : PortalPageTestContext
     {
         var state = PortalTestSetup.State(role: "SALES", roles: ["ACCOUNTING"]) with { CanApprove = canApprove };
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: state);
-        api.Answer(Cursor, new { latestSeq = 0, approvalsSeq = 500, changed = true });
-        api.Answer(Live, new { latestSeq = 0, approvalsSeq = 500, changed = false });
+        api.Answer(Cursor, new { latestSeq = 0, approvalsVersion = 500, changed = true });
+        api.Answer(Live, new { latestSeq = 0, approvalsVersion = 500, changed = false });
         api.Answer(Queue, queue);
         return api;
     }
@@ -187,7 +187,7 @@ public sealed class PortalApprovalDeskTests : PortalPageTestContext
         cut.WaitForAssertion(() => cut.Find("#desk-live").TextContent.Trim().Should().Be("Canlı"));
 
         api.Answer(Queue, new[] { Request(2, minutesAgo: 10, counterparty: "Büfe Ece") });
-        api.Answer(Live, new { latestSeq = 0, approvalsSeq = 501, changed = true });
+        api.Answer(Live, new { latestSeq = 0, approvalsVersion = 501, changed = true });
 
         cut.WaitForAssertion(() => cut.FindAll(".desk-row").Should().ContainSingle(), TimeSpan.FromSeconds(5));
         cut.Find("#page-info").TextContent.Should().Contain("başka bir yetkili");
@@ -231,6 +231,34 @@ public sealed class PortalApprovalDeskTests : PortalPageTestContext
         cut.FindAll("#desk-dialog").Should().BeEmpty();
         cut.Find("#page-error").TextContent.Should().Contain("yetkiniz yok");
         api.Requests.Should().NotContain(r => r.Method == HttpMethod.Post);
+    }
+
+    [Fact]
+    public async Task A_request_of_a_kind_the_user_does_not_decide_is_shown_but_never_decided_or_marked()
+    {
+        var api = Desk([Request(1, "stock_count", "Depo 1", minutesAgo: 30, canDecide: false), Request(2, minutesAgo: 10, counterparty: "Market Can")]);
+        api.Answer($"/api/v1/android/approvals/{Id(1)}", Detail(1, "stock_count", "Depo 1"));
+        api.Answer($"/api/v1/android/approvals/{Id(2)}", Detail(2, counterparty: "Market Can"));
+        api.Answer($"/api/v1/android/approvals/{Id(2)}/approve", Request(2));
+        var cut = Render<Muhasebe>();
+        cut.WaitForAssertion(() => cut.Find("#desk-cannot-decide"));
+
+        await Key(cut, "a");
+        cut.Find("#page-error").TextContent.Should().Contain("karar yetkiniz yok");
+        await Key(cut, "r");
+        cut.FindAll("#desk-dialog").Should().BeEmpty();
+        await Key(cut, " ");
+        cut.Find("#desk-count").TextContent.Should().NotContain("seçili");
+        cut.FindAll("#desk-approve").Should().BeEmpty();
+
+        await Key(cut, "ArrowDown");
+        await Key(cut, " ");
+        await Key(cut, "A", shift: true);
+        cut.Find("#desk-bulk-summary").TextContent.Should().Contain("100,00 TL");
+        await Key(cut, "Enter");
+
+        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Contain("Market Can"));
+        api.Requests.Where(r => r.Method == HttpMethod.Post).Select(r => r.PathAndQuery).Should().Equal($"/api/v1/android/approvals/{Id(2)}/approve");
     }
 
     [Fact]

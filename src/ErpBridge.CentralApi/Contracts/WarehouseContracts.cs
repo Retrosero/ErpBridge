@@ -97,9 +97,9 @@ public sealed class PortalEventsResponse
     /// <summary>The warehouse queue's latest change; 0 without a warehouse role.</summary>
     [JsonPropertyName("latestSeq")] public long LatestSeq { get; set; }
 
-    /// <summary>The latest change among the approval requests the caller may see; 0 unless <c>approvalsSeq</c> was sent.</summary>
-    [JsonPropertyName("approvalsSeq")] public long ApprovalsSeq { get; set; }
+    /// <summary>The company's approval change version; send it back as <c>approvalsVersion</c>.</summary>
+    [JsonPropertyName("approvalsVersion")] public long ApprovalsVersion { get; set; }
 
-    /// <summary>A topic the caller asked about moved (for approvals, also: a change was published while waiting).</summary>
+    /// <summary>A topic the caller asked about moved.</summary>
     [JsonPropertyName("changed")] public bool Changed { get; set; }
 }
