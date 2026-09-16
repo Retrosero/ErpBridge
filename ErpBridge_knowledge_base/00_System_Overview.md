@@ -488,6 +488,27 @@ registration ayrı bir composition projesine taşınır.
    - **Kaynak telefonla aynıdır:** para belgeleri `jobs`'tan, cari/stok/rota
      `mobile_records`'tan. Panel ile telefon farklı rakam gösteremez. Cari başlığı
      `title1 + title2`, bakiye `balance`, stok miktarı `inventory` satırlarının toplamı.
+   - **Stok arama (panel goal P2, 2026-09-17):** `GET /api/v1/portal/stock/search` (sunucu taraflı sayfa ≤ 250;
+     `q` kod/ad/barkod; tekrarlı `mainGroup`/`subGroup`/`brand`/`shelf`; `warehouse`, `priceList`, `minQty`/`maxQty`,
+     `minPrice`/`maxPrice`, `status=all|in|out|negative|below` + `below`, `idleDays`;
+     `sort=name|code|qty|price|group|brand|shelf|lastMovement`, `dir`; geçersiz değer 400 `INVALID_QUERY`) ve
+     `GET /stock/facets` (grup/alt grup/marka/reyon sayılarıyla; depo ve fiyat listesi adları `lookups`'tan).
+     Özet (`products/inStock/outOfStock/negative`) sayfanın değil **filtrenin tamamının**.
+     **Kayıt aynası (`Portal/PortalRecordMirror<T>`):** panel liste sayfaları `mobile_records`'u firma başına bellekte,
+     ayrıştırılmış küçük kayıtlar olarak tutar ve her istekte yalnız `UpdatedSeq > son uygulanan` satırları sırayla uygular
+     (silinen satır öğeyi kaldırır). Güvenli çünkü sıra numarası sayaç satırı kilitlenerek ayrılır ve commit sırasıyla
+     görünür (`MobileRecordProjector`). `Portal/PortalRecords` tüm ayrıştırmayı tek yerde yapar. `PortalStockCatalog`
+     "stock" (`stocks/inventory/prices/barcodes/lookups`) ve "lines" (`stockTransactions`) aynalarından kurulur, ikisinden
+     biri değişince yeniden hesaplanır; depo olayları bu satırları yazmadığı için dokunmaz.
+     **Alan eşlemesi:** ERP `mainGroupCode/subGroupCode/brandCode/shelfCode/unit1`, ERP'siz kart `kategori/marka/shelfCode/birim`.
+     **Verinin gerçeği (Codex #60):** Mikro okuyucusu (`MikroDbReader.ReadInventoryAsync`) firma toplamını ajanın depo
+     numarasıyla tek satır gönderir, `reservedQuantity = 0`, `lastMovementDate = NULL`. Bu yüzden depo seçeneği/kolonu yalnız
+     envanterde birden çok depo varken sunulur (lookup'taki boş depolar listelenmez), rezerve yalnız sıfırdan farklıysa
+     gösterilir, **son hareket** ürünün `stockTransactions` aynasındaki en yeni `tarih`'tir (ERP'de tam STOK_HAREKETLERI
+     geçmişi, ERP'sizde her kayıtlı satır). Gerçek depo bazlı miktar ajan değişikliği ister (kapsam dışı).
+     Varsayılan fiyat listesi 1 (yoksa en küçük). Ölçüm (SQLite, 20.000 ürün + 200.000 hareket): ilk yükleme ~2,4 sn,
+     değişmemişken ~0,17 sn, tek satış sonrası ~0,35 sn; bellek ~130 MB. Eski `/portal/stock` (200 satır) sözleşme için
+     duruyor, panel kullanmıyor.
    - **Hangi belge sayılır:** ERP'siz firmada yalnızca `Succeeded`; ERP'li firmada
      `Pending/Processing/Succeeded` (ajana yolda olan da satıştır), `Failed/DeadLetter`
      asla. İade türü ERP'sizde `sales_return`, ERP'lide kasa defterinin `return`'ü.

@@ -236,17 +236,81 @@ public sealed class BalancesResponse
     [JsonPropertyName("truncated")] public bool Truncated { get; set; }
 }
 
-public sealed class StockRow
+public sealed class StockWarehouseDto
+{
+    [JsonPropertyName("warehouseNo")] public int WarehouseNo { get; set; }
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+    [JsonPropertyName("reserved")] public decimal Reserved { get; set; }
+}
+
+public sealed class StockPriceDto
+{
+    [JsonPropertyName("listNumber")] public int ListNumber { get; set; }
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("price")] public decimal Price { get; set; }
+}
+
+public sealed class StockItemDto
 {
     [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
     [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+    [JsonPropertyName("mainGroup")] public string? MainGroup { get; set; }
+    [JsonPropertyName("subGroup")] public string? SubGroup { get; set; }
+    [JsonPropertyName("brand")] public string? Brand { get; set; }
+    [JsonPropertyName("shelf")] public string? Shelf { get; set; }
+    [JsonPropertyName("barcodes")] public List<string> Barcodes { get; set; } = [];
     [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+    [JsonPropertyName("reserved")] public decimal Reserved { get; set; }
+    [JsonPropertyName("price")] public decimal? Price { get; set; }
+    [JsonPropertyName("lastMovementDate")] public string? LastMovementDate { get; set; }
+    [JsonPropertyName("warehouses")] public List<StockWarehouseDto> Warehouses { get; set; } = [];
+    [JsonPropertyName("prices")] public List<StockPriceDto> Prices { get; set; } = [];
 }
 
-public sealed class StockResponse
+public sealed class StockSummaryDto
 {
-    [JsonPropertyName("rows")] public List<StockRow> Rows { get; set; } = [];
-    [JsonPropertyName("truncated")] public bool Truncated { get; set; }
+    [JsonPropertyName("products")] public int Products { get; set; }
+    [JsonPropertyName("inStock")] public int InStock { get; set; }
+    [JsonPropertyName("outOfStock")] public int OutOfStock { get; set; }
+    [JsonPropertyName("negative")] public int Negative { get; set; }
+}
+
+public sealed class StockSearchResponse
+{
+    [JsonPropertyName("items")] public List<StockItemDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+    [JsonPropertyName("summary")] public StockSummaryDto Summary { get; set; } = new();
+    [JsonPropertyName("priceList")] public int? PriceList { get; set; }
+    [JsonPropertyName("warehouseNo")] public int? WarehouseNo { get; set; }
+}
+
+public sealed class FacetValueDto
+{
+    [JsonPropertyName("code")] public string Code { get; set; } = string.Empty;
+    [JsonPropertyName("count")] public int Count { get; set; }
+    [JsonPropertyName("parent")] public string? Parent { get; set; }
+}
+
+public sealed class NamedNumberDto
+{
+    [JsonPropertyName("number")] public int Number { get; set; }
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+}
+
+public sealed class StockFacetsResponse
+{
+    [JsonPropertyName("mainGroups")] public List<FacetValueDto> MainGroups { get; set; } = [];
+    [JsonPropertyName("subGroups")] public List<FacetValueDto> SubGroups { get; set; } = [];
+    [JsonPropertyName("brands")] public List<FacetValueDto> Brands { get; set; } = [];
+    [JsonPropertyName("shelves")] public List<FacetValueDto> Shelves { get; set; } = [];
+    [JsonPropertyName("warehouses")] public List<NamedNumberDto> Warehouses { get; set; } = [];
+    [JsonPropertyName("priceLists")] public List<NamedNumberDto> PriceLists { get; set; } = [];
+    [JsonPropertyName("hasMovementDates")] public bool HasMovementDates { get; set; }
+    [JsonPropertyName("hasReserved")] public bool HasReserved { get; set; }
 }
 
 public sealed class ApiErrorDto

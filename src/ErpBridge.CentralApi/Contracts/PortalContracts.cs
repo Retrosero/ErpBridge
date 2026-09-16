@@ -102,3 +102,99 @@ public sealed class PortalStockResponse
     public List<PortalStockRow> Rows { get; set; } = [];
     public bool Truncated { get; set; }
 }
+
+/// <summary>One warehouse's share of a product.</summary>
+public sealed class PortalStockWarehouseQuantity
+{
+    public int WarehouseNo { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public decimal Quantity { get; set; }
+    public decimal Reserved { get; set; }
+}
+
+/// <summary>A product's price on one price list.</summary>
+public sealed class PortalStockPrice
+{
+    public int ListNumber { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+}
+
+/// <summary>A product row of GET /api/v1/portal/stock/search.</summary>
+public sealed class PortalStockItem
+{
+    public string StockCode { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Unit { get; set; }
+    public string? MainGroup { get; set; }
+    public string? SubGroup { get; set; }
+    public string? Brand { get; set; }
+    public string? Shelf { get; set; }
+    public List<string> Barcodes { get; set; } = [];
+
+    /// <summary>In the chosen warehouse, or across all of them.</summary>
+    public decimal Quantity { get; set; }
+    public decimal Reserved { get; set; }
+
+    /// <summary>On the chosen price list; null when the product has no price there.</summary>
+    public decimal? Price { get; set; }
+
+    /// <summary>The latest movement of any warehouse; only an ERP reports it.</summary>
+    public string? LastMovementDate { get; set; }
+
+    public List<PortalStockWarehouseQuantity> Warehouses { get; set; } = [];
+    public List<PortalStockPrice> Prices { get; set; } = [];
+}
+
+/// <summary>Counts over every product the filters match, not only the page.</summary>
+public sealed class PortalStockSummary
+{
+    public int Products { get; set; }
+    public int InStock { get; set; }
+    public int OutOfStock { get; set; }
+    public int Negative { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/stock/search</summary>
+public sealed class PortalStockSearchResponse
+{
+    public List<PortalStockItem> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public PortalStockSummary Summary { get; set; } = new();
+
+    /// <summary>The price list the prices are read from; null when the company has no prices.</summary>
+    public int? PriceList { get; set; }
+    public int? WarehouseNo { get; set; }
+}
+
+public sealed class PortalFacetValue
+{
+    public string Code { get; set; } = string.Empty;
+    public int Count { get; set; }
+
+    /// <summary>For a sub group: the main group it sits under.</summary>
+    public string? Parent { get; set; }
+}
+
+public sealed class PortalNamedNumber
+{
+    public int Number { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+/// <summary>GET /api/v1/portal/stock/facets — what the stock filters can offer.</summary>
+public sealed class PortalStockFacetsResponse
+{
+    public List<PortalFacetValue> MainGroups { get; set; } = [];
+    public List<PortalFacetValue> SubGroups { get; set; } = [];
+    public List<PortalFacetValue> Brands { get; set; } = [];
+    public List<PortalFacetValue> Shelves { get; set; } = [];
+    public List<PortalNamedNumber> Warehouses { get; set; } = [];
+    public List<PortalNamedNumber> PriceLists { get; set; } = [];
+
+    /// <summary>False without an ERP: the idle-days filter has nothing to work on.</summary>
+    public bool HasMovementDates { get; set; }
+    public bool HasReserved { get; set; }
+}
