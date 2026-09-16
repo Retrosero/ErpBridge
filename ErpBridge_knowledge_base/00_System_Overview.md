@@ -703,6 +703,53 @@ registration ayrı bir composition projesine taşınır.
      penceresi, yönetici işlemleri, yetki/firma yalıtımı, ayar doğrulaması, ERP başarısız/yeniden dene/yazıldı,
      long-poll).
 
+22. **Depo TV panoları eşleştirme koduyla bağlanır: `Endpoints/DisplayEndpoints` + panel `/ekran` (Faz 49, 2026-09-17).**
+   Plan adım 7. TV bir kişi değildir: **koltuk harcamaz**, kullanıcı token'ı taşımaz, yalnız panoyu okur.
+   - **Eşleştirme:** TV `POST /api/v1/display/pairings` (anonim, `AnonymousRateLimitPolicy`) ile 6 haneli kod +
+     gizli anahtar alır, kodu gösterir ve 3 sn'de bir `POST /display/pairings/{code}/token {secret}` yoklar
+     (`waiting` → `paired`). Yönetici panelde `POST /api/v1/portal/displays {code, name}` (ADMIN/MANAGER,
+     `CanManageWarehouse`; kod boşluklu yazılabilir) ile sahiplenir. TV'nin sonraki yoklaması `scope=display`
+     token'ı **bir kez** alır, kod satırı aynı kayıtta silinir (ikinci yoklama 404). Yanlış gizli anahtar
+     bilinmeyen kodla aynı cevabı alır (404 `PAIRING_NOT_FOUND`); süresi dolmuş sahiplenilmemiş kod 410
+     `PAIRING_EXPIRED`. Kodlar 10 dk yaşar; yeni kod üretilirken süresi dolanlar silinir (tablo küçük olduğu
+     için bellekte süzülür — SQLite `DateTimeOffset` karşılaştıramaz). Gizli anahtar yalnız SHA-256 olarak saklanır.
+   - **Token:** `JwtIssuer.IssueForDisplay`: `sub=displayDeviceId`, `tenant`, `scope=display`, 365 gün.
+     `Program.DisplayPolicy` yalnız bu kapsamı kabul eder; başka hiçbir uç (portal, telefon) display token'ı
+     kabul etmez. Her pano çağrısı `display_devices` satırına bakar: iptal edilmiş, silinmiş ya da firması pasif
+     ekran 401 `DISPLAY_REVOKED`. `LastSeenAtUtc` en çok dakikada bir yazılır.
+   - **Pano uçları:** `GET /api/v1/display/board` → firma ve ekran adı, depo ayarları (eşikler), `latestSeq`
+     (satırlardan önce okunur), `serverTimeUtc`, açık siparişler (PENDING/PREPARING/PACKED, `QueuedSeq` sırası).
+     `GET /api/v1/display/events?sinceSeq&wait=0-25` depo konusunun long-poll'u (kural 21). **Hız sınırı ekran
+     başınadır** (`PerDisplayRateLimitPolicy`, 60/dk): firma başına ortak `PerTenantRateLimitPolicy` (100/dk,
+     telefon + portal paylaşır) duvardaki panolarla tükenmesin.
+   - **İptal:** `POST /api/v1/portal/displays/{id}/revoke` depo konusuna yayın yapar; bekleyen pano uyanır, bir
+     sonraki çağrısı 401 alır → TV saklı eşleştirmesini siler ve yeni kod gösterir (tarayıcıda ~4 sn ölçüldü;
+     en kötü durum bir long-poll, 25 sn). `GET /api/v1/portal/displays` liste (ad, eklenme, son görülme, iptal).
+   - **Panel `/ekran` (`Pages/Ekran.razor`, `KioskLayout`):** oturum yok, menü yok. Eşleştirme
+     `IDisplaySessionStore` (`ProtectedLocalStorage`, anahtar `display-session`) ile saklanır; güç kesilen TV
+     koda dönmeden panoya açılır. Pano: koyu tema, kolonlar **Bekliyor** (kuyruğa girişten), **Hazırlanıyor**
+     (başlamadan), **Paketlendi** (paketlemeden; yalnız sarı). Eşik geçen kart sarı, kritik kırmızı ve yavaş
+     yanıp söner (`prefers-reduced-motion` ile durur); kolon başında sayı ve "N geciken"; `CardsPerPage` (6)
+     aşılınca `Rotate` (10 sn) aralıkla sayfa döner. Süreler API saatine göre (`serverTimeUtc` farkı). Bağlantı
+     koparsa son pano kalır, kırmızı nokta + şerit, 10 sn'de bir dener. `wwwroot/js/portal-kiosk.js`: Wake Lock
+     ve Blazor bağlantısı kalıcı düşünce (`components-reconnect-failed/rejected`) sayfayı yeniden yükleme.
+     Zamanlamalar `KioskTiming` servisinden (testler kısaltır).
+     - **Tuzak:** arka plan döngüsünden değişen durum sayfayı kendiliğinden yeniden çizmez; saat tiki 5 sn
+       olduğundan kod ekranı o kadar "Kod alınıyor" kaldı (Faz 49'da tarayıcıda yakalandı). Görünür her durum
+       değişikliğinden sonra `InvokeAsync(StateHasChanged)`. bUnit'te `WaitForAssertion` yalnız render'da tekrar
+       kontrol eder — render tetiklemeyen koşul (ör. istek sayısı) `SpinWait.SpinUntil` ile beklenir; bUnit render'dan
+       sonra servis eklemeye izin vermez (`PortalTestSetup.Register(..., kioskTiming:)`).
+   - **Panel `/ekranlar` (`Pages/Ekranlar.razor`, `PortalArea.Displays` = ADMIN, MANAGER):** TV adresi
+     (`{panel}/ekran`), kod + ad ile eşleştirme, ekran listesi (Açık = son 3 dk içinde görüldü, Görülmüyor,
+     İptal edildi) ve iptal; depo modülü anahtarı ve eşikler (`PUT /portal/warehouse/settings`).
+   - **Dikkat — paylaşılan sınırlar:** panel Blazor Server olduğundan API'ye tüm istekleri panel konteyneri atar;
+     IP bazlı genel sınır (1000/dk) ve anonim eşleştirme sınırı (60/dk) tüm panel kullanıcıları/TV'ler arasında
+     paylaşılır. Portal uçlarının firma başına 100/dk sınırı çok kullanıcılı firmada yetmeyebilir (ayrı iş).
+   - Testler: `WarehouseFulfillmentRelationalTests` (eşleştirme → tek seferlik token → yalnız kendi firmasının
+     panosu → portal/telefon uçlarına kapalı → iptal; süresi dolmuş kod; pano long-poll'u "başla" ve iptal ile
+     uyanır), `PortalKioskTests` (kod → pano, kolon ve renkler, sayfa dönüşü, canlı değişiklik, bağlantı kaybı,
+     iptal → yeni kod), `PortalDisplaysPageTests`.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

@@ -57,6 +57,12 @@ public partial class Program
     /// </summary>
     public const string MobileClientPolicy = "MobileClient";
 
+    /// <summary>A paired warehouse TV (<c>scope=display</c>, Faz 49); revocation is checked in the endpoints.</summary>
+    public const string DisplayPolicy = "Display";
+
+    /// <summary>Per paired TV, so a wall of boards never uses up the company's shared portal/phone limit.</summary>
+    public const string PerDisplayRateLimitPolicy = "per-display";
+
     private const string ProductionCorsPolicy = "production-origins";
 
     /// <summary>Rate-limit policy name partitioned by the JWT <c>sub</c> (agent id).</summary>
@@ -335,6 +341,11 @@ public partial class Program
             // sign-in endpoint. It proves the signature and scope; whether the
             // user, device, tenant and subscription are still valid is checked
             // against the database on every call (MobileUserAccess).
+            options.AddPolicy(DisplayPolicy, policy => policy
+                .RequireAuthenticatedUser()
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                .RequireClaim("scope", CentralApiClaims.DisplayScope));
+
             options.AddPolicy(MobileUserPolicy, policy => policy
                 .RequireAuthenticatedUser()
                 .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
@@ -486,6 +497,18 @@ public partial class Program
                 });
             });
 
+            opt.AddPolicy(PerDisplayRateLimitPolicy, httpContext =>
+            {
+                var displayId = httpContext.User.FindFirst("sub")?.Value ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter("display:" + displayId, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
             opt.AddPolicy(AnonymousRateLimitPolicy, httpContext =>
             {
                 var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -610,6 +633,7 @@ public partial class Program
         app.MapMobileApprovalEndpoints();
         app.MapPortalEndpoints();
         app.MapWarehouseEndpoints();
+        app.MapDisplayEndpoints();
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();

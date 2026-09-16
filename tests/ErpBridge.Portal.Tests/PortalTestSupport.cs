@@ -69,6 +69,15 @@ public sealed class MemorySessionPersistence : ISessionPersistence
     public Task ClearAsync() { Stored = null; return Task.CompletedTask; }
 }
 
+/// <summary>A TV's stored pairing, in memory.</summary>
+public sealed class MemoryDisplaySessionStore : IDisplaySessionStore
+{
+    public DisplaySession? Stored { get; set; }
+    public Task<DisplaySession?> LoadAsync() => Task.FromResult(Stored);
+    public Task SaveAsync(DisplaySession session) { Stored = session; return Task.CompletedTask; }
+    public Task ClearAsync() { Stored = null; return Task.CompletedTask; }
+}
+
 /// <summary>A clock the tests move.</summary>
 public sealed class TestClock(DateTimeOffset now) : TimeProvider
 {
@@ -85,7 +94,8 @@ public static class PortalTestSetup
 
     /// <summary>Registers the portal's services around a fake API; returns the pieces a test inspects.</summary>
     /// <param name="popoverProvider">False when the test renders the layout, which brings its own.</param>
-    public static (FakeCentralApi Api, PortalSession Session, MemorySessionPersistence Storage) Register(BunitContext context, PortalSessionState? signedIn = null, PortalSessionState? inTab = null, bool popoverProvider = true)
+    /// <param name="kioskTiming">The TV board's rhythm; by default shortened to a few dozen milliseconds.</param>
+    public static (FakeCentralApi Api, PortalSession Session, MemorySessionPersistence Storage) Register(BunitContext context, PortalSessionState? signedIn = null, PortalSessionState? inTab = null, bool popoverProvider = true, KioskTiming? kioskTiming = null)
     {
         var api = new FakeCentralApi();
         var clock = new TestClock(Now);
@@ -97,6 +107,18 @@ public static class PortalTestSetup
         context.Services.AddSingleton(session);
         context.Services.AddSingleton<ISessionPersistence>(storage);
         context.Services.AddSingleton(new PortalApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }, session));
+        context.Services.AddSingleton(new DisplayApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }));
+        context.Services.AddSingleton<IDisplaySessionStore>(new MemoryDisplaySessionStore());
+        // The board's rhythm, shortened so a test sees pairing, polling and page turns within a second.
+        context.Services.AddSingleton(kioskTiming ?? new KioskTiming
+        {
+            PairingPoll = TimeSpan.FromMilliseconds(40),
+            MinPollGap = TimeSpan.FromMilliseconds(40),
+            Retry = TimeSpan.FromMilliseconds(40),
+            Tick = TimeSpan.FromMilliseconds(40),
+            Rotate = TimeSpan.FromMilliseconds(150),
+            CardsPerPage = 3,
+        });
         // MudBlazor components call into their JS module; the tests only check markup and API calls.
         context.Services.AddMudServices();
         context.JSInterop.Mode = JSRuntimeMode.Loose;

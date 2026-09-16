@@ -21,6 +21,9 @@ public static class CentralApiClaims
     /// <summary>Scope value of a mobile app user token.</summary>
     public const string MobileUserScope = "mobile-user";
 
+    /// <summary>The scope of a paired warehouse TV (Faz 49): reads the warehouse board and nothing else.</summary>
+    public const string DisplayScope = "display";
+
     /// <summary>The installation id a mobile user token was issued to.</summary>
     public const string DeviceId = "device";
 

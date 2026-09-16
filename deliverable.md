@@ -1,3 +1,29 @@
+# Faz 49 — Canlı depo TV panosu (Plan Adım 7) — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Domain/DisplayDevice.cs` (yeni), `Data/CentralApiDbContext.cs`, `Data/Migrations/*_Faz49DisplayDevices.cs`: `display_devices`, `display_pairing_codes`.
+- `Endpoints/DisplayEndpoints.cs`, `Contracts/DisplayContracts.cs` (yeni): eşleştirme, pano, canlı akış, ekran listesi/iptal.
+- `Authentication/JwtIssuer.cs` (`IssueForDisplay`), `CentralApiClaims.cs` (`display` kapsamı), `Program.cs` (`DisplayPolicy`, `PerDisplayRateLimitPolicy`, uç eşleme).
+- `src/ErpBridge.Portal/Pages/Ekran.razor`, `KioskLayout.razor`, `Pages/Ekranlar.razor`, `Api/DisplayApiClient.cs`, `Session/DisplaySessionStore.cs`, `wwwroot/js/portal-kiosk.js` (yeni); `Api/PortalApiClient.cs`, `Api/PortalMessages.cs`, `Session/PortalRoles.cs` (`Displays`), `MainLayout.razor`, `Program.cs`, `Pages/_Host.cshtml`, `wwwroot/css/site.css`.
+- Testler: `WarehouseFulfillmentRelationalTests` (+3), `PortalKioskTests` (6), `PortalDisplaysPageTests` (4); rol/menü beklentileri güncellendi.
+- KB yeni kural 22, 03 veri sözlüğü, `docs/PLAN_ROLLER_VE_DEPO.md` (adım 7 + "adım 7 bitince 8 otomatik" kuralı).
+
+## Davranış
+
+- Depodaki TV `/ekran` adresini açar, 6 haneli kod gösterir; yönetici Ekranlar sayfasında kodu ve adı girer, TV birkaç saniyede panoya geçer. TV koltuk harcamaz.
+- Pano: Bekliyor · Hazırlanıyor · Paketlendi kolonları, sarı/kırmızı gecikme, geciken sayısı, kalabalık kolonda sayfa dönüşü; depoda "başla" denince kart kendiliğinden kolon değiştirir.
+- İptal edilen ekran bir long-poll içinde koda döner; bağlantı koparsa son pano kalır ve kendini toparlar; güç kesilen TV koda dönmeden açılır.
+- **Migration var** (`Faz49DisplayDevices`, yalnız yeni tablolar): canlıda `/health/schema` 23 applied / 0 pending olmalı.
+
+## Testler / derleme
+
+- `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; `has-pending-model-changes`: yok.
+- CentralApi 401, Portal 98; tüm çözüm yeşil. Zamanlamaya dayalı pano testleri 5 turda kararlı.
+- Yerelde tarayıcıda: `/ekran` kodu → `/ekranlar`'dan eşleştirme → pano; API'den "başla" → kart Hazırlanıyor'a geçti; `/ekranlar`'dan iptal → ~4 sn'de pano kapandı, eşleştirme silindi; yeniden eşleşen TV sayfa yenilemede panoya döndü; kritik kartlar kırmızı. Bu sırada bulunan hata düzeltildi: kod ekranı saat tikini (5 sn) bekliyordu.
+
+---
+
 # Faz 48 — Muhasebe onay masası (Plan Adım 5) — Teslimat
 
 ## Değişen dosyalar

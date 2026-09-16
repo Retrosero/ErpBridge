@@ -1,0 +1,319 @@
+@page "/ekran"
+@layout KioskLayout
+@implements IAsyncDisposable
+@inject DisplayApiClient Api
+@inject IDisplaySessionStore Store
+@inject KioskTiming Timing
+@inject TimeProvider Clock
+@inject IJSRuntime JS
+
+<PageTitle>Depo panosu</PageTitle>
+
+@if (_mode == KioskMode.Starting)
+{
+    <div class="kiosk-center" id="kiosk-starting"><div class="kiosk-muted">Pano açılıyor…</div></div>
+}
+else if (_mode == KioskMode.Pairing)
+{
+    <div class="kiosk-center" id="kiosk-pairing">
+        <div class="kiosk-brand">Sipariş Cepte · Depo panosu</div>
+        <h1 class="kiosk-pair-title">Bu ekranı eşleştirin</h1>
+        @if (_pairing is { } pairing)
+        {
+            <div class="kiosk-code" id="kiosk-code">@pairing.Code[..3] @pairing.Code[3..]</div>
+            <p class="kiosk-pair-help">Yönetim panelinde <strong>Ekranlar → Ekran ekle</strong> bölümüne bu kodu ve ekranın adını yazın.</p>
+            <p class="kiosk-muted" id="kiosk-code-expiry">Kod @Minutes(pairing.ExpiresAtUtc - Clock.GetUtcNow()) içinde yenilenir.</p>
+        }
+        else
+        {
+            <div class="kiosk-muted">Kod alınıyor…</div>
+        }
+        @if (!_online)
+        {
+            <p class="kiosk-offline" id="kiosk-offline">Sunucuya ulaşılamıyor; yeniden deneniyor.</p>
+        }
+    </div>
+}
+else if (_board is { } board)
+{
+    var now = Now;
+    <div class="kiosk-board" id="kiosk-board">
+        <header class="kiosk-head">
+            <div>
+                <div class="kiosk-tenant">@board.TenantName</div>
+                <div class="kiosk-muted">@board.DisplayName</div>
+            </div>
+            <div class="kiosk-head-side">
+                <span class="kiosk-dot @(_online ? "is-online" : "is-offline")" id="kiosk-connection" title="@(_online ? "Canlı" : "Bağlantı yok")"></span>
+                <span class="kiosk-clock" id="kiosk-clock">@Fmt.ClockTime(now.ToUnixTimeMilliseconds())</span>
+            </div>
+        </header>
+
+        @if (!board.Settings.Enabled)
+        {
+            <div class="kiosk-banner" id="kiosk-disabled">Depo modülü kapalı. Yönetim panelinde Ekranlar sayfasından açılabilir.</div>
+        }
+        @if (!_online)
+        {
+            <div class="kiosk-banner kiosk-banner--offline" id="kiosk-offline">Bağlantı koptu; pano son bilinen durumu gösteriyor ve yeniden bağlanıyor.</div>
+        }
+
+        <main class="kiosk-columns">
+            @foreach (var column in Columns(board))
+            {
+                var cards = column.Items;
+                var pages = Math.Max(1, (int)Math.Ceiling(cards.Count / (double)Timing.CardsPerPage));
+                var page = _rotation % pages;
+                var late = cards.Count(card => ToneOf(column, card, now) != Tone.Normal);
+                <section class="kiosk-column" data-column="@column.Status">
+                    <header class="kiosk-column-head">
+                        <span class="kiosk-column-title">@column.Title</span>
+                        <span class="kiosk-column-count" data-count>@cards.Count</span>
+                        @if (late > 0)
+                        {
+                            <span class="kiosk-late-count" data-late>@late geciken</span>
+                        }
+                        @if (pages > 1)
+                        {
+                            <span class="kiosk-page" data-page>@(page + 1)/@pages</span>
+                        }
+                    </header>
+                    <div class="kiosk-cards">
+                        @foreach (var card in cards.Skip(page * Timing.CardsPerPage).Take(Timing.CardsPerPage))
+                        {
+                            var tone = ToneOf(column, card, now);
+                            <article class="kiosk-card @(tone == Tone.Critical ? "is-critical" : tone == Tone.Warn ? "is-warn" : null)" data-order="@card.OrderNo">
+                                <div class="kiosk-card-top">
+                                    <span class="kiosk-order">@card.OrderNo</span>
+                                    <span class="kiosk-duration" data-duration>@Duration(now - column.Since(card))</span>
+                                </div>
+                                <div class="kiosk-customer">@card.CustomerName</div>
+                                <div class="kiosk-card-meta">
+                                    <span>@card.LineCount kalem · @Fmt.Quantity(card.ItemQuantity) adet</span>
+                                    @if (column.Status != "PENDING" && !string.IsNullOrWhiteSpace(card.AssigneeName))
+                                    {
+                                        <span class="kiosk-assignee">@card.AssigneeName</span>
+                                    }
+                                    @if (card.ErpState == "FAILED")
+                                    {
+                                        <span class="kiosk-erp">ERP hatası</span>
+                                    }
+                                </div>
+                            </article>
+                        }
+                        @if (cards.Count == 0)
+                        {
+                            <div class="kiosk-empty">—</div>
+                        }
+                    </div>
+                </section>
+            }
+        </main>
+    </div>
+}
+
+@code {
+    public enum KioskMode { Starting, Pairing, Board }
+
+    private enum Tone { Normal, Warn, Critical }
+
+    private sealed record Column(string Status, string Title, Func<FulfillmentDto, DateTimeOffset> Since, int WarnMinutes, int? CriticalMinutes, List<FulfillmentDto> Items);
+
+    private KioskMode _mode = KioskMode.Starting;
+    private DisplaySession? _session;
+    private DisplayPairingDto? _pairing;
+    private DisplayBoardDto? _board;
+    private bool _online = true;
+    private int _rotation;
+    /// <summary>The API clock minus this server's, taken with each board: durations follow the API.</summary>
+    private TimeSpan _clockOffset;
+    private DateTimeOffset _lastRotation;
+
+    private readonly CancellationTokenSource _stop = new();
+    private bool _disposed;
+
+    public KioskMode Mode => _mode;
+
+    private DateTimeOffset Now => Clock.GetUtcNow() + _clockOffset;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { await JS.InvokeVoidAsync("portalKiosk.start"); }
+        catch (JSException) { }
+        _session = await Store.LoadAsync();
+        if (_disposed) return;
+        _ = RunAsync(_stop.Token);
+        _ = TickAsync(_stop.Token);
+    }
+
+    /// <summary>Pairs when needed, then follows the board; a revoked pairing starts over.</summary>
+    private async Task RunAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                if (_session is null)
+                {
+                    _session = await PairAsync(token);
+                    if (_session is null) return;
+                }
+                await FollowBoardAsync(_session, token);
+            }
+            catch (DisplayRevokedException)
+            {
+                await Store.ClearAsync();
+                _session = null;
+                _board = null;
+                await ShowAsync(KioskMode.Pairing);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+        }
+    }
+
+    private async Task<DisplaySession?> PairAsync(CancellationToken token)
+    {
+        await ShowAsync(KioskMode.Pairing);
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                if (_pairing is null || _pairing.ExpiresAtUtc <= Clock.GetUtcNow())
+                {
+                    _pairing = await Api.CreatePairingAsync(token);
+                    _online = true;
+                    // Drawn now: the tick only redraws every few seconds, and a TV must not show "Kod alınıyor" that long.
+                    await InvokeAsync(StateHasChanged);
+                }
+                await Task.Delay(Timing.PairingPoll, token);
+                var answer = await Api.TakeTokenAsync(_pairing.Code, _pairing.Secret, token);
+                await OnlineAsync(true);
+                if (answer is { Status: "paired", Token: { } issued })
+                {
+                    var session = new DisplaySession(issued, answer.TenantName ?? string.Empty, answer.DisplayName ?? string.Empty);
+                    await Store.SaveAsync(session);
+                    _pairing = null;
+                    return session;
+                }
+            }
+            catch (PortalApiException)
+            {
+                // Expired, or taken by a race: ask for a new code.
+                _pairing = null;
+            }
+            catch (HttpRequestException)
+            {
+                await OnlineAsync(false);
+                await Task.Delay(Timing.Retry, token);
+            }
+            catch (TaskCanceledException) when (!token.IsCancellationRequested)
+            {
+                await OnlineAsync(false);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Reads the board, then waits for the queue to change; a lost connection keeps the last board on screen.</summary>
+    private async Task FollowBoardAsync(DisplaySession session, CancellationToken token)
+    {
+        var reload = true;
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                if (reload)
+                {
+                    var board = await Api.BoardAsync(session.Token, token);
+                    _clockOffset = board.ServerTimeUtc - Clock.GetUtcNow();
+                    _board = board;
+                    reload = false;
+                    await OnlineAsync(true);
+                    await ShowAsync(KioskMode.Board);
+                }
+                var events = await Api.EventsAsync(session.Token, _board!.LatestSeq, KioskTiming.LongPollSeconds, token);
+                await OnlineAsync(true);
+                reload = events.Changed;
+                await Task.Delay(Timing.MinPollGap, token);
+            }
+            catch (Exception ex) when (ex is PortalApiException or HttpRequestException || (ex is TaskCanceledException && !token.IsCancellationRequested))
+            {
+                await OnlineAsync(false);
+                reload = true;
+                await Task.Delay(Timing.Retry, token);
+            }
+        }
+    }
+
+    /// <summary>Redraws clocks and durations, and turns the pages of crowded columns.</summary>
+    private async Task TickAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(Timing.Tick, Clock);
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                var now = Clock.GetUtcNow();
+                if (now - _lastRotation >= Timing.Rotate)
+                {
+                    _lastRotation = now;
+                    _rotation++;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private Task ShowAsync(KioskMode mode)
+    {
+        _mode = mode;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private Task OnlineAsync(bool online)
+    {
+        if (_online == online) return Task.CompletedTask;
+        _online = online;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private static IEnumerable<Column> Columns(DisplayBoardDto board)
+    {
+        var s = board.Settings;
+        List<FulfillmentDto> Of(string status) => board.Items.Where(i => i.Status == status).ToList();
+        yield return new Column("PENDING", "Bekliyor", f => f.QueuedAtUtc, s.PendingWarnMinutes, s.PendingCriticalMinutes, Of("PENDING"));
+        yield return new Column("PREPARING", "Hazırlanıyor", f => f.StartedAtUtc ?? f.QueuedAtUtc, s.PreparingWarnMinutes, s.PreparingCriticalMinutes, Of("PREPARING"));
+        yield return new Column("PACKED", "Paketlendi · yüklemeye hazır", f => f.PackedAtUtc ?? f.QueuedAtUtc, s.PackedWarnMinutes, null, Of("PACKED"));
+    }
+
+    private static Tone ToneOf(Column column, FulfillmentDto card, DateTimeOffset now)
+    {
+        var minutes = (now - column.Since(card)).TotalMinutes;
+        if (column.CriticalMinutes is { } critical && minutes >= critical) return Tone.Critical;
+        return minutes >= column.WarnMinutes ? Tone.Warn : Tone.Normal;
+    }
+
+    private static string Duration(TimeSpan span)
+    {
+        if (span < TimeSpan.FromMinutes(1)) return "<1 dk";
+        if (span < TimeSpan.FromHours(1)) return $"{(int)span.TotalMinutes} dk";
+        return $"{(int)span.TotalHours} sa {span.Minutes} dk";
+    }
+
+    private static string Minutes(TimeSpan span) => $"{Math.Max(1, (int)Math.Ceiling(span.TotalMinutes))} dk";
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        await _stop.CancelAsync();
+        try { await JS.InvokeVoidAsync("portalKiosk.stop"); }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException or ObjectDisposedException) { }
+    }
+}

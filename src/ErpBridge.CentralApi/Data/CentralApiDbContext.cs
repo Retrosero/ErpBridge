@@ -85,6 +85,12 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Faz 47 — per-company warehouse module switch and delay thresholds.</summary>
     public DbSet<TenantWarehouseSettings> TenantWarehouseSettings => Set<TenantWarehouseSettings>();
 
+    /// <summary>Faz 49 — warehouse TVs paired to a company (plan step 7).</summary>
+    public DbSet<DisplayDevice> DisplayDevices => Set<DisplayDevice>();
+
+    /// <summary>Faz 49 — codes TVs show until a manager pairs them.</summary>
+    public DbSet<DisplayPairingCode> DisplayPairingCodes => Set<DisplayPairingCode>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -171,6 +177,24 @@ public sealed class CentralApiDbContext : DbContext
             b.ToTable("tenant_warehouse_settings");
             b.HasKey(x => x.TenantId);
             b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantWarehouseSettings>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DisplayDevice>(b =>
+        {
+            b.ToTable("display_devices");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(80);
+            b.Property(x => x.TokenHash).IsRequired().HasMaxLength(64).IsFixedLength();
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.TenantId);
+        });
+
+        modelBuilder.Entity<DisplayPairingCode>(b =>
+        {
+            b.ToTable("display_pairing_codes");
+            b.HasKey(x => x.Code);
+            b.Property(x => x.Code).HasMaxLength(6).IsFixedLength();
+            b.Property(x => x.PairingSecretHash).IsRequired().HasMaxLength(64).IsFixedLength();
         });
 
         modelBuilder.Entity<NativeStockLevel>(b =>
