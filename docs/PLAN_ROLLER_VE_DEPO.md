@@ -1,6 +1,6 @@
 # Goal Plan — Çoklu Rol, Muhasebe Onayı, Canlı Depo Ekranı ve Performans Paneli
 
-Durum: **Onaylandı — Adım 1 sürüyor** · Tarih: 2026-09-16 · Kapsam: ErpBridge.CentralApi + ErpBridge.Portal
+Durum: **Onaylandı — Adım 2 sürüyor** · Tarih: 2026-09-16 · Kapsam: ErpBridge.CentralApi + ErpBridge.Portal
 (Sipariş Cepte telefon uygulamasında değişiklik yok.)
 
 ---
@@ -305,8 +305,8 @@ bildirim (SMS/push) · e-fatura · çoklu depo/şube ayrımı · CSV/Excel dış
 
 | Adım | Durum | PR | Not |
 |---|---|---|---|
-| 1 — Kalıcı oturum anahtarı + şema kontrolü | 🔄 sürüyor | — | Onay 2026-09-16 |
-| 2 — Çoklu rol altyapısı | ⬜ | — | |
+| 1 — Kalıcı oturum anahtarı + şema kontrolü | ✅ | [#49](https://github.com/Retrosero/ErpBridge/pull/49) | Canlıda `/health/schema` current (20 migration); `lisans-portal` için `/app/keys` volume eklendi, açılışta uyarı yok |
+| 2 — Çoklu rol altyapısı | 🔄 sürüyor | — | `mobile_users.Role` öncelikli rol değil, eski uygulamalar için ADMIN/MANAGER/SALES türetilmiş değer olarak tutuldu (plan 2.1 taslağından sapma, daha güvenli). Telefon uygulamasına `ROLE_NOT_ALLOWED_ON_PHONE` Türkçe metni sonraki telefon sürümüne |
 | 3 — Beni Hatırla + rol bazlı arayüz | ⬜ | — | |
 | 4 — Sipariş hazırlık çekirdeği | ⬜ | — | |
 | 5 — Muhasebe onay ekranı | ⬜ | — | |

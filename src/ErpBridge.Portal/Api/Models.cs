@@ -13,6 +13,9 @@ public sealed class LoginRequest
     [JsonPropertyName("password")] public string Password { get; set; } = string.Empty;
     [JsonPropertyName("deviceId")] public string DeviceId { get; set; } = string.Empty;
     [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+
+    /// <summary>Tells the server this is the portal: portal-only roles may sign in, documents may not be posted.</summary>
+    [JsonPropertyName("client")] public string Client { get; set; } = "portal";
 }
 
 public sealed class LoginResponse
@@ -46,6 +49,9 @@ public sealed class UserDto
     [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
     [JsonPropertyName("fullName")] public string FullName { get; set; } = string.Empty;
     [JsonPropertyName("role")] public string Role { get; set; } = string.Empty;
+
+    /// <summary>Every role (ADMIN, MANAGER, ACCOUNTING, WAREHOUSE, SALES); empty from a server before multi-role accounts.</summary>
+    [JsonPropertyName("roles")] public string[] Roles { get; set; } = [];
     [JsonPropertyName("canApprove")] public bool CanApprove { get; set; }
     [JsonPropertyName("canManageApprovalRules")] public bool CanManageApprovalRules { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }

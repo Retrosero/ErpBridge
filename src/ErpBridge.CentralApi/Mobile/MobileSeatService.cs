@@ -80,7 +80,7 @@ public sealed partial class MobileSeatService
         Status = SubscriptionStatus(subscription, now),
     };
 
-    public async Task<SeatResult<MobileUser>> CreateUserAsync(Guid tenantId, CreateMobileUserRequest body, CancellationToken ct)
+    public async Task<SeatResult<MobileUser>> CreateUserAsync(Guid tenantId, CreateMobileUserRequest body, CancellationToken ct, Guid? actorUserId = null)
     {
         var username = NormalizeUsername(body.Username);
         if (username is null)
@@ -90,9 +90,11 @@ public sealed partial class MobileSeatService
             return SeatResult<MobileUser>.Fail(400, "INVALID_FULL_NAME", "fullName is required and must be at most 120 characters.");
         if (ValidatePassword(body.Password) is { } passwordError)
             return SeatResult<MobileUser>.Fail(400, "INVALID_PASSWORD", passwordError);
-        var role = string.IsNullOrWhiteSpace(body.Role) ? MobileUserRoles.Sales : body.Role.Trim().ToUpperInvariant();
-        if (!MobileUserRoles.IsValid(role))
-            return SeatResult<MobileUser>.Fail(400, "INVALID_ROLE", "role must be ADMIN, MANAGER or SALES.");
+        var roles = body.Roles is not null
+            ? MobileUserRoles.Normalize(body.Roles)
+            : MobileUserRoles.Normalize([string.IsNullOrWhiteSpace(body.Role) ? MobileUserRoles.Sales : body.Role]);
+        if (roles is null) return InvalidRoles<MobileUser>();
+        var isManager = roles.Contains(MobileUserRoles.Manager);
 
         await using var transaction = await BeginSeatTransactionAsync(ct);
         if (!await LockTenantAsync(tenantId, ct))
@@ -110,9 +112,10 @@ public sealed partial class MobileSeatService
             Username = username,
             FullName = fullName,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
-            Role = role,
-            CanApprove = role == MobileUserRoles.Manager && body.CanApprove == true,
-            CanManageApprovalRules = role == MobileUserRoles.Manager && body.CanManageApprovalRules == true,
+            Role = MobileUserRoles.Legacy(roles),
+            Roles = roles.Select(r => new MobileUserRole { Role = r, GrantedAtUtc = now, GrantedByUserId = actorUserId }).ToList(),
+            CanApprove = isManager && body.CanApprove == true,
+            CanManageApprovalRules = isManager && body.CanManageApprovalRules == true,
             IsActive = true,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
@@ -123,7 +126,7 @@ public sealed partial class MobileSeatService
         return SeatResult<MobileUser>.Ok(user);
     }
 
-    public async Task<SeatResult<MobileUser>> UpdateUserAsync(Guid tenantId, Guid userId, UpdateMobileUserRequest body, CancellationToken ct)
+    public async Task<SeatResult<MobileUser>> UpdateUserAsync(Guid tenantId, Guid userId, UpdateMobileUserRequest body, CancellationToken ct, Guid? actorUserId = null)
     {
         string? fullName = null;
         if (body.FullName is not null)
@@ -134,38 +137,52 @@ public sealed partial class MobileSeatService
         }
         if (body.Password is not null && ValidatePassword(body.Password) is { } passwordError)
             return SeatResult<MobileUser>.Fail(400, "INVALID_PASSWORD", passwordError);
-        string? role = null;
-        if (body.Role is not null)
+        IReadOnlyList<string>? requestedRoles = null;
+        string? singleRole = null;
+        if (body.Roles is not null)
         {
-            role = body.Role.Trim().ToUpperInvariant();
-            if (!MobileUserRoles.IsValid(role))
-                return SeatResult<MobileUser>.Fail(400, "INVALID_ROLE", "role must be ADMIN, MANAGER or SALES.");
+            requestedRoles = MobileUserRoles.Normalize(body.Roles);
+            if (requestedRoles is null) return InvalidRoles<MobileUser>();
+        }
+        else if (body.Role is not null)
+        {
+            singleRole = body.Role.Trim().ToUpperInvariant();
+            if (!MobileUserRoles.IsValid(singleRole)) return InvalidRoles<MobileUser>();
         }
 
         await using var transaction = await BeginSeatTransactionAsync(ct);
         if (!await LockTenantAsync(tenantId, ct))
             return SeatResult<MobileUser>.Fail(404, "TENANT_NOT_FOUND", "Tenant not found.");
 
-        var user = await _db.MobileUsers.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && u.DeletedAtUtc == null, ct);
+        var user = await _db.MobileUsers.Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && u.DeletedAtUtc == null, ct);
         if (user is null)
             return SeatResult<MobileUser>.Fail(404, "USER_NOT_FOUND", "Mobile user not found.");
+
+        var currentRoles = RolePermissions.Of(user);
+        // A single role replaces only the field/management role; accounting and warehouse stay.
+        var newRoles = requestedRoles
+            ?? (singleRole is null
+                ? null
+                : MobileUserRoles.Normalize(currentRoles.Where(r => r is MobileUserRoles.Accounting or MobileUserRoles.Warehouse).Append(singleRole)));
 
         var activating = body.IsActive == true && !user.IsActive;
         if (activating && await SeatGateAsync(tenantId, ct) is { } gate)
             return SeatResult<MobileUser>.Fail(gate.Status, gate.Code, gate.Message);
 
-        var losesAdmin = user.IsActive && user.Role == MobileUserRoles.Admin
-            && (body.IsActive == false || (role is not null && role != MobileUserRoles.Admin));
+        var losesAdmin = user.IsActive && currentRoles.Contains(MobileUserRoles.Admin)
+            && (body.IsActive == false || (newRoles is not null && !newRoles.Contains(MobileUserRoles.Admin)));
         if (losesAdmin && !await HasOtherActiveAdminAsync(tenantId, user.Id, ct))
             return SeatResult<MobileUser>.Fail(409, "LAST_ADMIN", "The tenant must keep at least one active administrator.");
 
         if (fullName is not null) user.FullName = fullName;
         if (body.Password is not null) user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password);
-        if (role is not null) user.Role = role;
+        var now = DateTimeOffset.UtcNow;
+        if (newRoles is not null) SetRoles(user, newRoles, now, actorUserId);
         if (body.IsActive is { } isActive) user.IsActive = isActive;
-        // Approval rights belong to managers; an administrator has them by role and a
-        // sales user has none, so the flags are cleared for every other role.
-        if (user.Role == MobileUserRoles.Manager)
+        // Approval flags belong to managers; an administrator decides by role and accounting by
+        // its own kinds, so the flags are cleared once the manager role is gone.
+        if (RolePermissions.Has(user, MobileUserRoles.Manager))
         {
             if (body.CanApprove is { } canApprove) user.CanApprove = canApprove;
             if (body.CanManageApprovalRules is { } canManage) user.CanManageApprovalRules = canManage;
@@ -175,11 +192,27 @@ public sealed partial class MobileSeatService
             user.CanApprove = false;
             user.CanManageApprovalRules = false;
         }
-        user.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        user.UpdatedAtUtc = now;
         await _db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
         return SeatResult<MobileUser>.Ok(user);
     }
+
+    /// <summary>Makes <paramref name="roles"/> the user's exact role set and keeps the legacy column in step.</summary>
+    private void SetRoles(MobileUser user, IReadOnlyList<string> roles, DateTimeOffset now, Guid? actorUserId)
+    {
+        foreach (var removed in user.Roles.Where(r => !roles.Contains(r.Role)).ToList())
+        {
+            user.Roles.Remove(removed);
+            _db.UserRoles.Remove(removed);
+        }
+        foreach (var added in roles.Where(r => user.Roles.All(existing => existing.Role != r)).ToList())
+            user.Roles.Add(new MobileUserRole { UserId = user.Id, Role = added, GrantedAtUtc = now, GrantedByUserId = actorUserId });
+        user.Role = MobileUserRoles.Legacy(roles);
+    }
+
+    private static SeatResult<T> InvalidRoles<T>() =>
+        SeatResult<T>.Fail(400, "INVALID_ROLE", "roles must name at least one of ADMIN, MANAGER, ACCOUNTING, WAREHOUSE, SALES.");
 
     public async Task<SeatResult<bool>> DeleteUserAsync(Guid tenantId, Guid userId, CancellationToken ct)
     {
@@ -187,10 +220,11 @@ public sealed partial class MobileSeatService
         if (!await LockTenantAsync(tenantId, ct))
             return SeatResult<bool>.Fail(404, "TENANT_NOT_FOUND", "Tenant not found.");
 
-        var user = await _db.MobileUsers.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && u.DeletedAtUtc == null, ct);
+        var user = await _db.MobileUsers.Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && u.DeletedAtUtc == null, ct);
         if (user is null)
             return SeatResult<bool>.Fail(404, "USER_NOT_FOUND", "Mobile user not found.");
-        if (user.IsActive && user.Role == MobileUserRoles.Admin && !await HasOtherActiveAdminAsync(tenantId, user.Id, ct))
+        if (user.IsActive && RolePermissions.IsAdmin(user) && !await HasOtherActiveAdminAsync(tenantId, user.Id, ct))
             return SeatResult<bool>.Fail(409, "LAST_ADMIN", "The tenant must keep at least one active administrator.");
 
         var now = DateTimeOffset.UtcNow;
@@ -286,7 +320,7 @@ public sealed partial class MobileSeatService
 
     private Task<bool> HasOtherActiveAdminAsync(Guid tenantId, Guid exceptUserId, CancellationToken ct) =>
         _db.MobileUsers.AnyAsync(u => u.TenantId == tenantId && u.Id != exceptUserId && u.IsActive
-            && u.DeletedAtUtc == null && u.Role == MobileUserRoles.Admin, ct);
+            && u.DeletedAtUtc == null && u.Roles.Any(r => r.Role == MobileUserRoles.Admin), ct);
 
     /// <summary>Refuses a new active user when the subscription is not usable or every seat is taken.</summary>
     private async Task<(int Status, string Code, string Message)?> SeatGateAsync(Guid tenantId, CancellationToken ct)

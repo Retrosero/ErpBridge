@@ -80,6 +80,7 @@ public sealed class PortalSessionTests
         body.Should().Contain("\"deviceId\":\"web-portal:patron\"");
         body.Should().Contain("\"tenantCode\":\"ege123\"");
         body.Should().Contain("\"appVersion\":\"portal\"");
+        body.Should().Contain("\"client\":\"portal\"");
     }
 
     [Fact]

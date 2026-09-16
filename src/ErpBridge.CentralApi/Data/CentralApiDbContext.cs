@@ -53,6 +53,7 @@ public sealed class CentralApiDbContext : DbContext
 
     /// <summary>Mobile app users; one active user is one paid seat.</summary>
     public DbSet<MobileUser> MobileUsers => Set<MobileUser>();
+    public DbSet<MobileUserRole> UserRoles => Set<MobileUserRole>();
 
     /// <summary>Phones that signed in to a tenant, for support and revocation.</summary>
     public DbSet<MobileDevice> MobileDevices => Set<MobileDevice>();
@@ -146,6 +147,15 @@ public sealed class CentralApiDbContext : DbContext
             // A deleted user's name is free again; live names stay unique.
             b.HasIndex(x => new { x.TenantId, x.Username }).IsUnique().HasFilter("\"DeletedAtUtc\" IS NULL");
             b.HasIndex(x => new { x.TenantId, x.IsActive });
+            b.HasMany(x => x.Roles).WithOne(r => r.User).HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MobileUserRole>(b =>
+        {
+            b.ToTable("mobile_user_roles");
+            b.HasKey(x => new { x.UserId, x.Role });
+            b.Property(x => x.Role).IsRequired().HasMaxLength(16);
+            b.HasIndex(x => x.Role);
         });
 
         modelBuilder.Entity<MobileDevice>(b =>

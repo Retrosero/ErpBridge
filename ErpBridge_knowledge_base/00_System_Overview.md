@@ -232,6 +232,25 @@ registration ayrı bir composition projesine taşınır.
      cihaz, tenant ve aboneliği veritabanından yeniden doğrular; rol token'dan
      değil satırdan okunur. Pasifleştirme ve cihaz engelleme token süresini
      beklemeden etkili olur.
+   - **Çoklu rol (Faz 45, 2026-09-16):** roller `mobile_user_roles` (`UserId, Role` birleşik PK,
+     `GrantedAtUtc`, `GrantedByUserId`) tablosundadır; roller `ADMIN`, `MANAGER`, `ACCOUNTING`,
+     `WAREHOUSE`, `SALES`. İzin **birleşimdir** ve tek sınıftan okunur: `Domain/RolePermissions`
+     (`CanUsePhone`, `CanUsePortal`, `CanManageUsers`, `CanViewReports`, `CanViewLedger`,
+     `CanPlanRoutes`, `CanOperateWarehouse`). İzin kontrolü yapan her kullanıcı yüklemesi
+     `.Include(u => u.Roles)` ister; rolleri yüklenmemiş satır yalnız eski kolona düşer (hiçbir zaman
+     fazlasını vermez). `mobile_users.Role` artık **eski uygulamalar için türetilmiş** bir kolondur:
+     her yazımda `MobileUserRoles.Legacy` ile ADMIN > MANAGER > SALES'ten biri; izin buradan okunmaz.
+     Session/kullanıcı DTO'su `role` (bu eski değer) + `roles[]` taşır. Kullanıcı uçları `roles[]`
+     alır; yalnız `role` gönderen eski ekran ADMIN/MANAGER/SALES'i değiştirir, ACCOUNTING ve
+     WAREHOUSE'u korur. Son admin kuralı rol setine bakar. Migration mevcut her kullanıcıya eski
+     `Role`'ünü satır olarak ekler.
+   - **Telefon mu panel mi (Faz 45):** login gövdesinde `client` = `android` (varsayılan; telefon
+     göndermez) | `portal`; token'da `client` iddiası. `MobileUserAccess.ClientDenial` **her istekte**:
+     telefon oturumu `CanUsePhone` (ADMIN/MANAGER/SALES) ister, yoksa 403
+     `ROLE_NOT_ALLOWED_ON_PHONE`; panel oturumu `CanUsePortal` (SALES dışı) ister, yoksa 403
+     `PORTAL_REQUIRES_MANAGER`. Login'de reddedilen istek cihaz satırı açmaz. Panel oturumu
+     `/ingest/*`'a belge gönderemez (403 `PORTAL_CANNOT_SUBMIT_DOCUMENTS`). Telefon uygulaması
+     `ROLE_NOT_ALLOWED_ON_PHONE` için henüz Türkçe metin göstermez (genel hata mesajı).
    - **Aynı token veri ve belge uçlarında da geçer.** Telefonun okuduğu uçlar
      (`/android/*`, `/android/sync/pull`, notify, change-set, telemetri)
      `MobileClientPolicy`, belge gönderdiği `/ingest/*` uçları
@@ -360,7 +379,11 @@ registration ayrı bir composition projesine taşınır.
 16. **Onay merkezi sunucudadır: `Approvals/ApprovalService` (Faz 38, 2026-09-14).**
    Telefon belleğindeki onay listesinin yerini aldı; firmanın tüm onaycıları aynı
    kuyruğu görür, uygulama kapansa da talep kaybolmaz.
-   - **Roller:** `mobile_users.Role` = `ADMIN` | `MANAGER` | `SALES`. Admin her
+   - **Roller** (rol seti için kural 14): `ACCOUNTING` rolü finansal türleri (`sale`, `return`,
+     `collection`, `disbursement`, `purchase`) karara bağlar; kart ve sayım talepleri ADMIN/MANAGER'da
+     kalır (`ApprovalPermissions.AccountingKinds`). Onaycı listede yalnız karar verebildiği türleri +
+     kendi taleplerini görür; `DecideAsync`/`ReopenAsync` türü ayrıca kontrol eder. "Başka onaycı var
+     mı" (kendi talebi) türe göre hesaplanır. Eski metin: `mobile_users.Role` = `ADMIN` | `MANAGER` | `SALES`. Admin her
      şeyi yapar. Yöneticiye (`MANAGER`) admin iki yetki verir: `CanApprove`
      (onay/red/tekrar açma) ve `CanManageApprovalRules`. Satış kullanıcısında ve
      admin'de bu bayraklar tutulmaz (rol değişince temizlenir; yeniden verilir).
@@ -417,7 +440,7 @@ registration ayrı bir composition projesine taşınır.
    - **Belge türleri:** `route_plan` (plan + duraklar + atananlar, aynı `planId` ile
      yeniden gelirse **tamamen değiştirir**), `route_plan_delete` (`planId`), `visit`.
    - **Yetki:** üçü de **oturum açmış firma kullanıcısı** ister; API anahtarı veya ajan
-     403 `TEAM_DOCUMENT_REQUIRES_MOBILE_USER`. Rota planlama ve silme yalnızca
+     403 `TEAM_DOCUMENT_REQUIRES_MOBILE_USER`. Rota planlama ve silme (`RolePermissions.CanPlanRoutes`) yalnızca
      `ADMIN` veya `MANAGER`. Ziyaretin `username`'i **token'daki kullanıcıdan** gelir,
      yükteki isim yok sayılır — telefon başkası adına ziyaret kaydedemez.
    - **Doğrulama:** `planId`/`stopId`/`visitId` ≤ 64; plan ≤ 500 durak, ≤ 100 atanan;
@@ -444,6 +467,8 @@ registration ayrı bir composition projesine taşınır.
    panelinden okuduğu rakamlar. Telefonla aynı hesapla giriş yapılır
    (`/api/v1/android/account/login`); grup `MobileUserPolicy` ile korunur ve her çağrı
    `MobileAccountEndpoints.AuthorizeAsync` ile kullanıcı/cihaz/abonelik doğrular.
+   - **Rol kapısı (Faz 45):** `summary`/`activity`/`visits` → `CanViewReports` (ADMIN, MANAGER);
+     `balances`/`stock` → `CanViewLedger` (+ ACCOUNTING). Reddedilen 403 `PORTAL_REQUIRES_MANAGER`.
    - **Firma token'dan gelir**, istekten değil. Yalnızca `ADMIN` ve `MANAGER`; `SALES`
      403 `PORTAL_REQUIRES_MANAGER`. Onaylar ve kullanıcılar için yeni uç yoktur:
      panel mevcut `/api/v1/android/approvals` ve `/api/v1/android/account/users` uçlarını
