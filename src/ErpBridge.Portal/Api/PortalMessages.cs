@@ -97,6 +97,18 @@ public static class Fmt
         catch (TimeZoneNotFoundException) { return TimeZoneInfo.CreateCustomTimeZone("Istanbul", TimeSpan.FromHours(3), "Istanbul", "Istanbul"); }
     }
 
+    /// <summary>One or two capital letters for an avatar ("Ali Yılmaz" → "AY").</summary>
+    public static string Initials(string? name)
+    {
+        var parts = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpper(Turkish),
+            _ => (parts[0][..1] + parts[^1][..1]).ToUpper(Turkish),
+        };
+    }
+
     public static string Role(string role) => role switch
     {
         "ADMIN" => "Admin",

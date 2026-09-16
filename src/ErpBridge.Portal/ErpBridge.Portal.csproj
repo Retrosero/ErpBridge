@@ -16,4 +16,9 @@
     no project reference on ErpBridge.CentralApi.
   -->
 
+  <ItemGroup>
+    <!-- UI components (MIT). Self-hosted: its CSS/JS come from _content/MudBlazor, no CDN. -->
+    <PackageReference Include="MudBlazor" />
+  </ItemGroup>
+
 </Project>

@@ -5,71 +5,80 @@
 
 @if (!Ready)
 {
-    <p class="portal-empty">Yükleniyor…</p>
+    <PageLoading />
 }
 else
 {
-    <div class="portal-toolbar">
-        <h1>Stok durumu</h1>
-        <form class="portal-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-            <input type="search" id="stock-search" placeholder="Stok kodu veya ürün adı" @bind="_search" />
-            <label class="portal-check">
-                <input type="checkbox" id="stock-out-only" @bind="_outOnly" />
-                Yalnızca tükenenler
-            </label>
-            <button type="submit" class="portal-button portal-button--secondary" disabled="@Busy">Göster</button>
-        </form>
-    </div>
+    <PageHeader Title="Stok durumu" Eyebrow="Kayıtlar" Subtitle="Tüm depoların toplam miktarı" Busy="Busy">
+        <Actions>
+            <form class="toolbar-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+                <MudTextField T="string" @bind-Value="_search" Placeholder="Stok kodu veya ürün adı" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              InputId="stock-search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Clearable="true" />
+                <div id="stock-out-only" class="toolbar-switch">
+                    <MudSwitch T="bool" @bind-Value="_outOnly" Color="Color.Error" Label="Yalnızca tükenenler" />
+                </div>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy">Göster</MudButton>
+            </form>
+        </Actions>
+    </PageHeader>
 
     @if (Error is not null)
     {
-        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
     @if (_stock is not null)
     {
-        @if (_stock.Rows.Count == 0)
-        {
-            <p class="portal-empty" id="stock-empty">Listeye uyan ürün yok.</p>
-        }
-        else
-        {
-            <div class="portal-table-wrap">
-                <table class="portal-table" id="stock-table">
-                    <thead>
-                        <tr>
-                            <th>Kod</th>
-                            <th>Ürün</th>
-                            <th class="num">Miktar</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in _stock.Rows)
-                        {
-                            <tr data-stock="@row.StockCode">
-                                <td>@row.StockCode</td>
-                                <td>@row.Name</td>
-                                <td class="num">
-                                    @if (row.Quantity <= 0)
-                                    {
-                                        <span class="badge badge--off">@Fmt.Quantity(row.Quantity)</span>
-                                    }
-                                    else
-                                    {
-                                        @Fmt.Quantity(row.Quantity)
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-            @if (_stock.Truncated)
+        var outCount = _stock.Rows.Count(r => r.Quantity <= 0);
+        <section class="stat-grid stat-grid--three">
+            <StatCard Label="Listelenen ürün" Value="@_stock.Rows.Count.ToString(Fmt.Turkish)" Icon="@Icons.Material.Rounded.Inventory2" Tone="primary" />
+            <StatCard Label="Stokta olan" Value="@((_stock.Rows.Count - outCount).ToString(Fmt.Turkish))" Caption="listelenenler içinde" Icon="@Icons.Material.Rounded.CheckCircle" Tone="success" />
+            <StatCard Label="Tükenen" Value="@outCount.ToString(Fmt.Turkish)" Caption="listelenenler içinde" Icon="@Icons.Material.Rounded.DoNotDisturbOn" Tone="danger" Attention="@(outCount > 0)" />
+        </section>
+
+        <MudPaper Outlined="true" Class="panel panel--table mt-3">
+            @if (_stock.Rows.Count == 0)
             {
-                <p class="portal-hint" id="stock-truncated">İlk @_stock.Rows.Count ürün gösteriliyor. Belirli bir ürün için arama yapın.</p>
+                <EmptyState Id="stock-empty" Icon="@Icons.Material.Rounded.Inventory2" Title="Listeye uyan ürün yok." />
             }
-        }
-        <p class="portal-hint">Miktar tüm depoların toplamıdır.</p>
+            else
+            {
+                <div class="table-scroll">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="stock-table">
+                        <thead>
+                            <tr>
+                                <th>Kod</th>
+                                <th>Ürün</th>
+                                <th class="num">Miktar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _stock.Rows)
+                            {
+                                <tr data-stock="@row.StockCode">
+                                    <td class="mono">@row.StockCode</td>
+                                    <td class="cell-title">@row.Name</td>
+                                    <td class="num">
+                                        @if (row.Quantity <= 0)
+                                        {
+                                            <span class="badge badge--off">@Fmt.Quantity(row.Quantity)</span>
+                                        }
+                                        else
+                                        {
+                                            @Fmt.Quantity(row.Quantity)
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+                @if (_stock.Truncated)
+                {
+                    <div class="table-foot" id="stock-truncated">İlk @_stock.Rows.Count ürün gösteriliyor. Belirli bir ürün için arama yapın.</div>
+                }
+            }
+        </MudPaper>
     }
 }
 

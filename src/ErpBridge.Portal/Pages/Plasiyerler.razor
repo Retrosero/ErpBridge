@@ -5,82 +5,130 @@
 
 @if (!Ready)
 {
-    <p class="portal-empty">Yükleniyor…</p>
+    <PageLoading />
 }
 else
 {
-    <div class="portal-toolbar">
-        <h1>Plasiyer performansı</h1>
-        <div class="portal-filters">
-            <label>
-                Başlangıç
-                <input type="date" id="activity-from" value="@Fmt.IsoDay(_from)" @onchange="ChangeFromAsync" />
-            </label>
-            <label>
-                Bitiş
-                <input type="date" id="activity-to" value="@Fmt.IsoDay(_to)" @onchange="ChangeToAsync" />
-            </label>
-        </div>
-    </div>
-    <p class="portal-subtitle">@Fmt.Day(_from) – @Fmt.Day(_to)</p>
+    <PageHeader Title="Plasiyer performansı" Eyebrow="Genel bakış" Subtitle="@($"{Fmt.Day(_from)} – {Fmt.Day(_to)}")" Busy="Busy">
+        <Actions>
+            <MudDatePicker Label="Başlangıç" Date="@ToDateTime(_from)" DateChanged="ChangeFromAsync" Culture="Fmt.Turkish" DateFormat="dd.MM.yyyy"
+                           Editable="true" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="activity-from" Class="page-date" />
+            <MudDatePicker Label="Bitiş" Date="@ToDateTime(_to)" DateChanged="ChangeToAsync" Culture="Fmt.Turkish" DateFormat="dd.MM.yyyy"
+                           Editable="true" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="activity-to" Class="page-date" />
+        </Actions>
+    </PageHeader>
 
     @if (Error is not null)
     {
-        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
     @if (_activity is not null)
     {
         @if (_activity.Users.Count == 0)
         {
-            <p class="portal-empty" id="activity-empty">Bu aralıkta kullanıcı yok.</p>
+            <EmptyState Id="activity-empty" Icon="@Icons.Material.Rounded.Groups" Title="Bu aralıkta kullanıcı yok." />
         }
         else
         {
-            <div class="portal-table-wrap">
-                <table class="portal-table" id="activity-table">
-                    <thead>
-                        <tr>
-                            <th>Kullanıcı</th>
-                            <th class="num">Satış</th>
-                            <th class="num">Tahsilat</th>
-                            <th class="num">Tediye</th>
-                            <th class="num">İade</th>
-                            <th class="num">Ziyaret</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var user in _activity.Users)
-                        {
-                            <tr data-user="@user.Username">
-                                <td>
-                                    @(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName)
-                                    @if (!string.IsNullOrWhiteSpace(user.Role))
+            var totalSales = _activity.Users.Sum(u => u.Sales.Amount);
+            var active = _activity.Users.Count(u => u.Sales.Count + u.Collections.Count + u.Disbursements.Count + u.Returns.Count + u.VisitsCompleted > 0);
+
+            <section class="stat-grid stat-grid--three">
+                <StatCard Label="Toplam satış" Value="@Fmt.Money(totalSales)" Caption="@($"{_activity.Users.Sum(u => u.Sales.Count)} belge")"
+                          Icon="@Icons.Material.Rounded.TrendingUp" Tone="primary" />
+                <StatCard Label="Toplam tahsilat" Value="@Fmt.Money(_activity.Users.Sum(u => u.Collections.Amount))" Caption="@($"{_activity.Users.Sum(u => u.Collections.Count)} belge")"
+                          Icon="@Icons.Material.Rounded.Payments" Tone="success" />
+                <StatCard Label="Aktif kullanıcı" Value="@($"{active} / {_activity.Users.Count}")" Caption="aralıkta en az bir işlem yapan"
+                          Icon="@Icons.Material.Rounded.Groups" Tone="info" />
+            </section>
+
+            <MudGrid Spacing="3" Class="mt-1">
+                <MudItem xs="12" lg="4">
+                    <MudPaper Outlined="true" Class="panel panel--fill">
+                        <div class="panel-head">
+                            <div>
+                                <MudText Typo="Typo.h6">Satış sıralaması</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">Toplam satıştaki pay</MudText>
+                            </div>
+                        </div>
+                        <div class="rank-list">
+                            @foreach (var (user, index) in _activity.Users.OrderByDescending(u => u.Sales.Amount).Select((u, i) => (u, i)))
+                            {
+                                var share = totalSales > 0 ? (double)(user.Sales.Amount / totalSales * 100) : 0;
+                                <div class="rank-item">
+                                    <span class="rank-pos">@(index + 1)</span>
+                                    <div class="rank-body">
+                                        <div class="rank-line">
+                                            <span class="rank-name">@DisplayName(user)</span>
+                                            <span class="rank-value">@Fmt.Money(user.Sales.Amount)</span>
+                                        </div>
+                                        <MudProgressLinear Color="Color.Primary" Rounded="true" Size="Size.Small" Value="@share" />
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" lg="8">
+                    <MudPaper Outlined="true" Class="panel panel--table">
+                        <div class="panel-head">
+                            <div>
+                                <MudText Typo="Typo.h6">Kullanıcı bazında</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">Tutarlar belgeyi telefondan gönderen kullanıcıya yazılır. Adet: belge sayısı.</MudText>
+                            </div>
+                        </div>
+                        <div class="table-scroll">
+                            <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="activity-table">
+                                <thead>
+                                    <tr>
+                                        <th>Kullanıcı</th>
+                                        <th class="num">Satış</th>
+                                        <th class="num">Tahsilat</th>
+                                        <th class="num">Tediye</th>
+                                        <th class="num">İade</th>
+                                        <th class="num">Ziyaret</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var user in _activity.Users)
                                     {
-                                        <span class="badge">@Fmt.Role(user.Role)</span>
+                                        <tr data-user="@user.Username">
+                                            <td>
+                                                <div class="person">
+                                                    <MudAvatar Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@Initials(user)</MudAvatar>
+                                                    <div>
+                                                        <div class="person-name">@DisplayName(user)</div>
+                                                        @if (!string.IsNullOrWhiteSpace(user.Role))
+                                                        {
+                                                            <div class="person-sub">@Fmt.Role(user.Role)</div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="num">@Fmt.Money(user.Sales.Amount)<small> · @user.Sales.Count</small></td>
+                                            <td class="num">@Fmt.Money(user.Collections.Amount)<small> · @user.Collections.Count</small></td>
+                                            <td class="num">@Fmt.Money(user.Disbursements.Amount)<small> · @user.Disbursements.Count</small></td>
+                                            <td class="num">@Fmt.Money(user.Returns.Amount)<small> · @user.Returns.Count</small></td>
+                                            <td class="num">@user.VisitsCompleted<small> · @user.VisitsSkipped atlandı</small></td>
+                                        </tr>
                                     }
-                                </td>
-                                <td class="num">@Fmt.Money(user.Sales.Amount)<small> · @user.Sales.Count</small></td>
-                                <td class="num">@Fmt.Money(user.Collections.Amount)<small> · @user.Collections.Count</small></td>
-                                <td class="num">@Fmt.Money(user.Disbursements.Amount)<small> · @user.Disbursements.Count</small></td>
-                                <td class="num">@Fmt.Money(user.Returns.Amount)<small> · @user.Returns.Count</small></td>
-                                <td class="num">@user.VisitsCompleted<small> · @user.VisitsSkipped atlandı</small></td>
-                            </tr>
-                        }
-                    </tbody>
-                    <tfoot>
-                        <tr id="activity-total">
-                            <th>Toplam</th>
-                            <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Sales.Amount))</th>
-                            <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Collections.Amount))</th>
-                            <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Disbursements.Amount))</th>
-                            <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Returns.Amount))</th>
-                            <th class="num">@_activity.Users.Sum(u => u.VisitsCompleted)</th>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-            <p class="portal-hint">Tutarlar belgeyi telefondan gönderen kullanıcıya yazılır. Adet: belge sayısı.</p>
+                                </tbody>
+                                <tfoot>
+                                    <tr id="activity-total">
+                                        <th>Toplam</th>
+                                        <th class="num">@Fmt.Money(totalSales)</th>
+                                        <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Collections.Amount))</th>
+                                        <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Disbursements.Amount))</th>
+                                        <th class="num">@Fmt.Money(_activity.Users.Sum(u => u.Returns.Amount))</th>
+                                        <th class="num">@_activity.Users.Sum(u => u.VisitsCompleted)</th>
+                                    </tr>
+                                </tfoot>
+                            </MudSimpleTable>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
         }
     }
 }
@@ -116,17 +164,23 @@ else
         _activity = await Api.ActivityAsync(_from, _to);
     }
 
-    private async Task ChangeFromAsync(ChangeEventArgs e)
+    private async Task ChangeFromAsync(DateTime? value)
     {
-        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
-        _from = day;
+        if (value is not { } date) return;
+        _from = DateOnly.FromDateTime(date);
         await RunAsync(LoadAsync);
     }
 
-    private async Task ChangeToAsync(ChangeEventArgs e)
+    private async Task ChangeToAsync(DateTime? value)
     {
-        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
-        _to = day;
+        if (value is not { } date) return;
+        _to = DateOnly.FromDateTime(date);
         await RunAsync(LoadAsync);
     }
+
+    private static DateTime ToDateTime(DateOnly day) => day.ToDateTime(TimeOnly.MinValue);
+
+    private static string DisplayName(UserActivity user) => string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName;
+
+    private static string Initials(UserActivity user) => Fmt.Initials(DisplayName(user));
 }

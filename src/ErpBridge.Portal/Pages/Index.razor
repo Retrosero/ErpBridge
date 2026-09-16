@@ -5,62 +5,105 @@
 
 @if (!Ready)
 {
-    <p class="portal-empty">Yükleniyor…</p>
+    <PageLoading />
 }
 else
 {
-    <div class="portal-toolbar">
-        <h1>Günün özeti</h1>
-        <label>
-            Tarih
-            <input type="date" id="summary-date" value="@Fmt.IsoDay(_day)" @onchange="ChangeDayAsync" />
-        </label>
-    </div>
-    <p class="portal-subtitle">@Fmt.Day(_day)</p>
+    <PageHeader Title="Günün özeti" Eyebrow="Genel bakış" Subtitle="@Fmt.Day(_day)" Busy="Busy">
+        <Actions>
+            <MudDatePicker Label="Tarih" Date="@ToDateTime(_day)" DateChanged="ChangeDayAsync" Culture="Fmt.Turkish" DateFormat="dd.MM.yyyy"
+                           Editable="true" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="summary-date" Class="page-date"
+                           MaxDate="DateTime.Today.AddDays(1)" AdornmentIcon="@Icons.Material.Rounded.CalendarMonth" />
+        </Actions>
+    </PageHeader>
 
     @if (Error is not null)
     {
-        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
     @if (_summary is not null)
     {
-        <section class="portal-grid" id="summary">
-            <div class="portal-card portal-stat" id="stat-sales">
-                <span>Satış</span>
-                <strong>@Fmt.Money(_summary.Sales.Amount)</strong>
-                <small>@_summary.Sales.Count belge</small>
-            </div>
-            <div class="portal-card portal-stat" id="stat-collections">
-                <span>Tahsilat</span>
-                <strong>@Fmt.Money(_summary.Collections.Amount)</strong>
-                <small>@_summary.Collections.Count belge</small>
-            </div>
-            <div class="portal-card portal-stat" id="stat-disbursements">
-                <span>Tediye ve gider</span>
-                <strong>@Fmt.Money(_summary.Disbursements.Amount)</strong>
-                <small>@_summary.Disbursements.Count belge</small>
-            </div>
-            <div class="portal-card portal-stat" id="stat-returns">
-                <span>İade</span>
-                <strong>@Fmt.Money(_summary.Returns.Amount)</strong>
-                <small>@_summary.Returns.Count belge</small>
-            </div>
-            <a class="portal-card portal-stat" id="stat-visits" href="ziyaretler?date=@Fmt.IsoDay(_day)">
-                <span>Ziyaret</span>
-                <strong>@_summary.VisitsCompleted / @_summary.VisitsPlanned</strong>
-                <small>tamamlanan / planlanan · @_summary.VisitsSkipped atlandı</small>
-            </a>
-            <a class="portal-card portal-stat @(_summary.PendingApprovals > 0 ? "portal-stat--attention" : "")" id="stat-approvals" href="onaylar">
-                <span>Bekleyen onay</span>
-                <strong>@_summary.PendingApprovals</strong>
-                <small>talep</small>
-            </a>
+        <section class="stat-grid stat-grid--three" id="summary">
+            <StatCard Id="stat-sales" Label="Satış" Value="@Fmt.Money(_summary.Sales.Amount)" Caption="@($"{_summary.Sales.Count} belge")"
+                      Icon="@Icons.Material.Rounded.TrendingUp" Tone="primary" />
+            <StatCard Id="stat-collections" Label="Tahsilat" Value="@Fmt.Money(_summary.Collections.Amount)" Caption="@($"{_summary.Collections.Count} belge")"
+                      Icon="@Icons.Material.Rounded.Payments" Tone="success" />
+            <StatCard Id="stat-disbursements" Label="Tediye ve gider" Value="@Fmt.Money(_summary.Disbursements.Amount)" Caption="@($"{_summary.Disbursements.Count} belge")"
+                      Icon="@Icons.Material.Rounded.ReceiptLong" Tone="warning" />
+            <StatCard Id="stat-returns" Label="İade" Value="@Fmt.Money(_summary.Returns.Amount)" Caption="@($"{_summary.Returns.Count} belge")"
+                      Icon="@Icons.Material.Rounded.AssignmentReturn" Tone="danger" />
+            <StatCard Id="stat-visits" Label="Ziyaret" Value="@($"{_summary.VisitsCompleted} / {_summary.VisitsPlanned}")"
+                      Caption="@($"tamamlanan / planlanan · {_summary.VisitsSkipped} atlandı")" Icon="@Icons.Material.Rounded.Route" Tone="info"
+                      Href="@($"ziyaretler?date={Fmt.IsoDay(_day)}")" />
+            <StatCard Id="stat-approvals" Label="Bekleyen onay" Value="@_summary.PendingApprovals.ToString(Fmt.Turkish)" Caption="talep"
+                      Icon="@Icons.Material.Rounded.PendingActions" Tone="violet" Href="onaylar" Attention="@(_summary.PendingApprovals > 0)" />
         </section>
-        @if (_summary.DataSource == "erp")
-        {
-            <p class="portal-hint">ERP'li firmada ERP'ye henüz aktarılmamış belgeler de sayılır.</p>
-        }
+
+        <MudGrid Spacing="3" Class="mt-1">
+            <MudItem xs="12" md="7">
+                <MudPaper Outlined="true" Class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <MudText Typo="Typo.h6">Günün dengesi</MudText>
+                            <MudText Typo="Typo.body2" Class="text-muted">Sahadan gelen para hareketlerinin kısa görünümü</MudText>
+                        </div>
+                    </div>
+                    <div class="balance-rows">
+                        <div class="balance-row">
+                            <span>Tahsil edilen</span>
+                            <strong class="text-success">@Fmt.Money(_summary.Collections.Amount)</strong>
+                        </div>
+                        <div class="balance-row">
+                            <span>Ödenen (tediye ve gider)</span>
+                            <strong class="text-danger">− @Fmt.Money(_summary.Disbursements.Amount)</strong>
+                        </div>
+                        <MudDivider Class="my-2" />
+                        <div class="balance-row balance-row--total" id="summary-net">
+                            <span>Net kasa hareketi</span>
+                            <strong>@Fmt.Money(_summary.Collections.Amount - _summary.Disbursements.Amount)</strong>
+                        </div>
+                    </div>
+                    <div class="progress-block">
+                        <div class="progress-label">
+                            <span>Ziyaret tamamlanma</span>
+                            <strong>@VisitRate %</strong>
+                        </div>
+                        <MudProgressLinear Color="Color.Info" Rounded="true" Size="Size.Medium" Value="@VisitRate" />
+                    </div>
+                    @if (_summary.DataSource == "erp")
+                    {
+                        <MudText Typo="Typo.caption" Class="text-muted panel-note">
+                            ERP'li firmada ERP'ye henüz aktarılmamış belgeler de sayılır.
+                        </MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="5">
+                <MudPaper Outlined="true" Class="panel">
+                    <div class="panel-head">
+                        <MudText Typo="Typo.h6">Hızlı erişim</MudText>
+                    </div>
+                    <div class="quick-links">
+                        <a class="quick-link" href="plasiyerler">
+                            <span class="quick-link-icon tone-primary"><MudIcon Icon="@Icons.Material.Rounded.Leaderboard" /></span>
+                            <span><strong>Plasiyer performansı</strong><small>Kişi bazında satış ve tahsilat</small></span>
+                            <MudIcon Icon="@Icons.Material.Rounded.ChevronRight" Class="quick-link-arrow" />
+                        </a>
+                        <a class="quick-link" href="onaylar">
+                            <span class="quick-link-icon tone-violet"><MudIcon Icon="@Icons.Material.Rounded.FactCheck" /></span>
+                            <span><strong>Onay bekleyenler</strong><small>@_summary.PendingApprovals talep sonuç bekliyor</small></span>
+                            <MudIcon Icon="@Icons.Material.Rounded.ChevronRight" Class="quick-link-arrow" />
+                        </a>
+                        <a class="quick-link" href="cariler">
+                            <span class="quick-link-icon tone-success"><MudIcon Icon="@Icons.Material.Rounded.AccountBalanceWallet" /></span>
+                            <span><strong>Cari bakiyeler</strong><small>Toplam alacak ve borç</small></span>
+                            <MudIcon Icon="@Icons.Material.Rounded.ChevronRight" Class="quick-link-arrow" />
+                        </a>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
     }
 }
 
@@ -68,14 +111,20 @@ else
     private DateOnly _day;
     private SummaryResponse? _summary;
 
+    private int VisitRate => _summary is { VisitsPlanned: > 0 }
+        ? (int)Math.Round(100m * Math.Min(_summary.VisitsCompleted, _summary.VisitsPlanned) / _summary.VisitsPlanned)
+        : 0;
+
     protected override void OnInitialized() => _day = Fmt.Today();
 
     protected override async Task LoadAsync() => _summary = await Api.SummaryAsync(_day);
 
-    private async Task ChangeDayAsync(ChangeEventArgs e)
+    private async Task ChangeDayAsync(DateTime? value)
     {
-        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
-        _day = day;
+        if (value is not { } date) return;
+        _day = DateOnly.FromDateTime(date);
         await RunAsync(LoadAsync);
     }
+
+    private static DateTime ToDateTime(DateOnly day) => day.ToDateTime(TimeOnly.MinValue);
 }

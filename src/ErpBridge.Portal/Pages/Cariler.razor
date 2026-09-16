@@ -5,69 +5,74 @@
 
 @if (!Ready)
 {
-    <p class="portal-empty">Yükleniyor…</p>
+    <PageLoading />
 }
 else
 {
-    <div class="portal-toolbar">
-        <h1>Cari bakiyeler</h1>
-        <form class="portal-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-            <input type="search" id="balances-search" placeholder="Cari kodu veya unvan" @bind="_search" />
-            <button type="submit" class="portal-button portal-button--secondary" disabled="@Busy">Ara</button>
-        </form>
-    </div>
+    <PageHeader Title="Cari bakiyeler" Eyebrow="Kayıtlar" Subtitle="Müşteri ve tedarikçi hesaplarının güncel bakiyesi" Busy="Busy">
+        <Actions>
+            <form class="toolbar-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+                <MudTextField T="string" @bind-Value="_search" Placeholder="Cari kodu veya unvan" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              InputId="balances-search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Clearable="true" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy">Ara</MudButton>
+            </form>
+        </Actions>
+    </PageHeader>
 
     @if (Error is not null)
     {
-        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
     @if (_balances is not null)
     {
-        <section class="portal-grid portal-grid--compact">
-            <div class="portal-card portal-stat" id="total-receivable">
-                <span>Toplam alacak</span>
-                <strong>@Fmt.Money(_balances.TotalReceivable)</strong>
-            </div>
-            <div class="portal-card portal-stat" id="total-payable">
-                <span>Toplam borç</span>
-                <strong>@Fmt.Money(_balances.TotalPayable)</strong>
-            </div>
+        <section class="stat-grid stat-grid--three">
+            <StatCard Id="total-receivable" Label="Toplam alacak" Value="@Fmt.Money(_balances.TotalReceivable)" Caption="müşterilerden alınacak"
+                      Icon="@Icons.Material.Rounded.CallReceived" Tone="success" />
+            <StatCard Id="total-payable" Label="Toplam borç" Value="@Fmt.Money(_balances.TotalPayable)" Caption="tedarikçilere ödenecek"
+                      Icon="@Icons.Material.Rounded.CallMade" Tone="danger" />
+            <StatCard Label="Net pozisyon" Value="@Fmt.Money(_balances.TotalReceivable - _balances.TotalPayable)" Caption="alacak − borç"
+                      Icon="@Icons.Material.Rounded.AccountBalanceWallet" Tone="primary" />
         </section>
 
-        @if (_balances.Rows.Count == 0)
-        {
-            <p class="portal-empty" id="balances-empty">@(_searched is null ? "Bakiyesi olan cari yok." : "Aramaya uyan cari yok.")</p>
-        }
-        else
-        {
-            <div class="portal-table-wrap">
-                <table class="portal-table" id="balances-table">
-                    <thead>
-                        <tr>
-                            <th>Kod</th>
-                            <th>Unvan</th>
-                            <th class="num">Bakiye</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in _balances.Rows)
-                        {
-                            <tr data-customer="@row.CustomerCode">
-                                <td>@row.CustomerCode</td>
-                                <td>@row.Title</td>
-                                <td class="num @(row.Balance < 0 ? "portal-negative" : "")">@Fmt.Money(row.Balance)</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-            @if (_balances.Truncated)
+        <MudPaper Outlined="true" Class="panel panel--table mt-3">
+            @if (_balances.Rows.Count == 0)
             {
-                <p class="portal-hint" id="balances-truncated">İlk @_balances.Rows.Count cari gösteriliyor. Belirli bir cari için arama yapın.</p>
+                <EmptyState Id="balances-empty" Icon="@Icons.Material.Rounded.AccountBalanceWallet"
+                            Title="@(_searched is null ? "Bakiyesi olan cari yok." : "Aramaya uyan cari yok.")" />
             }
-        }
-        <p class="portal-hint">Pozitif bakiye firmanın alacağıdır. Vade bilgisi telefonlara taşınmadığı için yaşlandırma (vadesi geçen tutar) gösterilmez.</p>
+            else
+            {
+                <div class="table-scroll">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="balances-table">
+                        <thead>
+                            <tr>
+                                <th>Kod</th>
+                                <th>Unvan</th>
+                                <th class="num">Bakiye</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _balances.Rows)
+                            {
+                                <tr data-customer="@row.CustomerCode">
+                                    <td class="mono">@row.CustomerCode</td>
+                                    <td class="cell-title">@row.Title</td>
+                                    <td class="num @(row.Balance < 0 ? "portal-negative" : "portal-positive")">@Fmt.Money(row.Balance)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+                @if (_balances.Truncated)
+                {
+                    <div class="table-foot" id="balances-truncated">İlk @_balances.Rows.Count cari gösteriliyor. Belirli bir cari için arama yapın.</div>
+                }
+            }
+        </MudPaper>
+        <MudText Typo="Typo.caption" Class="text-muted page-footnote">
+            Pozitif bakiye firmanın alacağıdır. Vade bilgisi telefonlara taşınmadığı için yaşlandırma (vadesi geçen tutar) gösterilmez.
+        </MudText>
     }
 }
 

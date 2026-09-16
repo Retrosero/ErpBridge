@@ -5,56 +5,75 @@
 
 @if (!Ready)
 {
-    <p class="portal-empty">Yükleniyor…</p>
+    <PageLoading />
 }
 else
 {
-    <div class="portal-toolbar">
-        <h1>Bekleyen onaylar</h1>
-        <button type="button" class="portal-button portal-button--secondary" id="approvals-refresh" disabled="@Busy" @onclick="RefreshAsync">Yenile</button>
-    </div>
+    <PageHeader Title="Bekleyen onaylar" Eyebrow="Yönetim" Subtitle="Sahadan onaya gönderilen işlemler" Busy="Busy">
+        <Actions>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Refresh" Disabled="@Busy"
+                       OnClick="RefreshAsync" id="approvals-refresh">Yenile</MudButton>
+        </Actions>
+    </PageHeader>
+
     @if (!Session.CanApprove)
     {
-        <p class="portal-subtitle" id="approvals-readonly">Talepleri görebilirsiniz; onay vermek için firma admininizin size onay yetkisi vermesi gerekir.</p>
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="page-alert" id="approvals-readonly">
+            Talepleri görebilirsiniz; onay vermek için firma admininizin size onay yetkisi vermesi gerekir.
+        </MudAlert>
     }
-
     @if (Notice is not null)
     {
-        <div class="portal-alert" id="page-notice">@Notice</div>
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
     }
     @if (Error is not null)
     {
-        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
     @if (_pending is not null)
     {
         @if (_pending.Count == 0)
         {
-            <p class="portal-empty" id="approvals-empty">Bekleyen talep yok.</p>
+            <MudPaper Outlined="true" Class="panel">
+                <EmptyState Id="approvals-empty" Icon="@Icons.Material.Rounded.TaskAlt" Title="Bekleyen talep yok." Hint="Sahadan onaya gönderilen işlemler burada listelenir." />
+            </MudPaper>
         }
         else
         {
-            <div class="portal-list" id="approvals-list">
+            <p class="section-caption">@_pending.Count talep sonuç bekliyor · toplam @Fmt.Money(_pending.Sum(r => r.Amount))</p>
+            <div class="approval-list" id="approvals-list">
                 @foreach (var request in _pending)
                 {
-                    <article class="portal-card portal-approval" data-request="@request.Id">
-                        <header>
-                            <span class="badge">@Fmt.ApprovalKind(request.Kind)</span>
-                            <strong>@request.CounterpartyName</strong>
-                            <span class="portal-approval-amount">@Fmt.Money(request.Amount)</span>
-                        </header>
-                        <p class="portal-hint">@(request.RequestedByName ?? "Bilinmeyen kullanıcı") · @Fmt.Time(request.RequestedAtUtc)</p>
+                    <MudPaper Outlined="true" Class="approval-card" data-request="@request.Id">
+                        <div class="approval-main">
+                            <span class="approval-icon tone-@KindTone(request.Kind)"><MudIcon Icon="@KindIcon(request.Kind)" /></span>
+                            <div class="approval-text">
+                                <div class="approval-title">
+                                    <span class="badge badge--@KindTone(request.Kind)">@Fmt.ApprovalKind(request.Kind)</span>
+                                    <strong>@request.CounterpartyName</strong>
+                                </div>
+                                <div class="approval-meta">
+                                    <MudIcon Icon="@Icons.Material.Rounded.Person" Size="Size.Small" />
+                                    <span>@(request.RequestedByName ?? "Bilinmeyen kullanıcı")</span>
+                                    <MudIcon Icon="@Icons.Material.Rounded.Schedule" Size="Size.Small" />
+                                    <span>@Fmt.Time(request.RequestedAtUtc)</span>
+                                </div>
+                            </div>
+                            <div class="approval-amount">@Fmt.Money(request.Amount)</div>
+                        </div>
                         @if (Session.CanApprove)
                         {
-                            <div class="portal-approval-actions">
-                                <input type="text" class="portal-note" placeholder="Not (isteğe bağlı)" maxlength="500"
-                                       value="@NoteFor(request.Id)" @onchange="e => _notes[request.Id] = e.Value?.ToString()" />
-                                <button type="button" class="portal-button" disabled="@Busy" @onclick="() => DecideAsync(request, approve: true)">Onayla</button>
-                                <button type="button" class="portal-button portal-button--danger" disabled="@Busy" @onclick="() => DecideAsync(request, approve: false)">Reddet</button>
+                            <div class="approval-actions">
+                                <MudTextField T="string" Value="@NoteFor(request.Id)" ValueChanged="v => _notes[request.Id] = v" Placeholder="Not (isteğe bağlı)"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="500" Class="portal-note" />
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Rounded.Close" Disabled="@Busy"
+                                           Class="reject-btn" OnClick="() => DecideAsync(request, approve: false)">Reddet</MudButton>
+                                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Rounded.Check" Disabled="@Busy"
+                                           Class="approve-btn" OnClick="() => DecideAsync(request, approve: true)">Onayla</MudButton>
                             </div>
                         }
-                    </article>
+                    </MudPaper>
                 }
             </div>
         }
@@ -100,4 +119,24 @@ else
             }
         });
     }
+
+    private static string KindTone(string kind) => kind switch
+    {
+        "sale" => "primary",
+        "collection" => "success",
+        "return" => "danger",
+        "disbursement" or "purchase" => "warning",
+        _ => "violet",
+    };
+
+    private static string KindIcon(string kind) => kind switch
+    {
+        "sale" => Icons.Material.Rounded.ShoppingCart,
+        "collection" => Icons.Material.Rounded.Payments,
+        "return" => Icons.Material.Rounded.AssignmentReturn,
+        "disbursement" => Icons.Material.Rounded.ReceiptLong,
+        "purchase" => Icons.Material.Rounded.LocalShipping,
+        "stock_count" => Icons.Material.Rounded.Inventory2,
+        _ => Icons.Material.Rounded.EditNote,
+    };
 }

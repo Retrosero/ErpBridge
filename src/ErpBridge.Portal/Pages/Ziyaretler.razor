@@ -5,70 +5,98 @@
 
 @if (!Ready)
 {
-    <p class="portal-empty">Yükleniyor…</p>
+    <PageLoading />
 }
 else
 {
-    <div class="portal-toolbar">
-        <h1>Rota ve ziyaretler</h1>
-        <label>
-            Tarih
-            <input type="date" id="visits-date" value="@Fmt.IsoDay(_day)" @onchange="ChangeDayAsync" />
-        </label>
-    </div>
-    <p class="portal-subtitle">@Fmt.Day(_day)</p>
+    <PageHeader Title="Rota ve ziyaretler" Eyebrow="Genel bakış" Subtitle="@Fmt.Day(_day)" Busy="Busy">
+        <Actions>
+            <MudDatePicker Label="Tarih" Date="@_day.ToDateTime(TimeOnly.MinValue)" DateChanged="ChangeDayAsync" Culture="Fmt.Turkish" DateFormat="dd.MM.yyyy"
+                           Editable="true" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="visits-date" Class="page-date" />
+        </Actions>
+    </PageHeader>
 
     @if (Error is not null)
     {
-        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
     @if (_visits is not null)
     {
         @if (_visits.Rows.Count == 0)
         {
-            <p class="portal-empty" id="visits-empty">Bu gün için planlanmış rota veya kayıtlı ziyaret yok.</p>
+            <EmptyState Id="visits-empty" Icon="@Icons.Material.Rounded.Route" Title="Bu gün için planlanmış rota veya kayıtlı ziyaret yok."
+                        Hint="Rotalar telefondaki Rota ekranından planlanır." />
         }
         else
         {
             var completed = _visits.Rows.Count(r => r.Status == "COMPLETED");
             var planned = _visits.Rows.Count(r => r.Planned);
-            <p class="portal-hint" id="visits-count">@completed ziyaret edildi · @planned planlı durak</p>
-            @foreach (var group in _visits.Rows.GroupBy(r => r.Username))
-            {
-                <h2 class="portal-section" data-user="@group.Key">@group.Key</h2>
-                <div class="portal-table-wrap">
-                    <table class="portal-table">
-                        <thead>
-                            <tr>
-                                <th class="num">Sıra</th>
-                                <th>Cari</th>
-                                <th>Durum</th>
-                                <th>Saat</th>
-                                <th>Not</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var row in group)
-                            {
-                                <tr data-customer="@row.CustomerCode">
-                                    <td class="num">@(row.Planned ? row.VisitOrder.ToString(Fmt.Turkish) : "—")</td>
-                                    <td>
-                                        @(string.IsNullOrWhiteSpace(row.CustomerName) ? row.CustomerCode : row.CustomerName)
-                                        @if (!row.Planned)
-                                        {
-                                            <span class="badge" title="Rotada olmayan bir cari ziyaret edildi">Plan dışı</span>
-                                        }
-                                    </td>
-                                    <td><span class="badge @StatusClass(row.Status)">@Fmt.VisitStatus(row.Status)</span></td>
-                                    <td>@Fmt.ClockTime(row.CompletedAt)</td>
-                                    <td class="portal-wrap">@row.Note</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
+            var skipped = _visits.Rows.Count(r => r.Status == "SKIPPED");
+
+            <section class="stat-grid stat-grid--three">
+                <StatCard Label="Ziyaret edildi" Value="@completed.ToString(Fmt.Turkish)" Icon="@Icons.Material.Rounded.CheckCircle" Tone="success" />
+                <StatCard Label="Planlı durak" Value="@planned.ToString(Fmt.Turkish)" Icon="@Icons.Material.Rounded.Route" Tone="info" />
+                <StatCard Label="Atlandı" Value="@skipped.ToString(Fmt.Turkish)" Icon="@Icons.Material.Rounded.EventBusy" Tone="warning" />
+            </section>
+            <p class="section-caption" id="visits-count">@completed ziyaret edildi · @planned planlı durak</p>
+
+            <div class="card-stack">
+                @foreach (var group in _visits.Rows.GroupBy(r => r.Username))
+                {
+                    var rows = group.ToList();
+                    var done = rows.Count(r => r.Status != "PENDING");
+                    var rate = rows.Count == 0 ? 0 : 100.0 * done / rows.Count;
+                    <MudPaper Outlined="true" Class="panel panel--table">
+                        <div class="panel-head">
+                            <div class="person">
+                                <MudAvatar Size="Size.Medium" Color="Color.Primary" Variant="Variant.Filled">@Fmt.Initials(group.Key)</MudAvatar>
+                                <div>
+                                    <MudText Typo="Typo.h6" HtmlTag="h2" data-user="@group.Key">@group.Key</MudText>
+                                    <div class="person-sub">@done / @rows.Count durak sonuçlandı</div>
+                                </div>
+                            </div>
+                            <div class="panel-head-progress">
+                                <MudProgressLinear Color="Color.Success" Rounded="true" Size="Size.Small" Value="@rate" />
+                            </div>
+                        </div>
+                        <div class="table-scroll">
+                            <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th class="num">Sıra</th>
+                                        <th>Cari</th>
+                                        <th>Durum</th>
+                                        <th>Saat</th>
+                                        <th>Not</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in rows)
+                                    {
+                                        <tr data-customer="@row.CustomerCode">
+                                            <td class="num">@(row.Planned ? row.VisitOrder.ToString(Fmt.Turkish) : "—")</td>
+                                            <td>
+                                                <div class="cell-title">@(string.IsNullOrWhiteSpace(row.CustomerName) ? row.CustomerCode : row.CustomerName)</div>
+                                                <div class="cell-sub">
+                                                    @row.CustomerCode
+                                                    @if (!row.Planned)
+                                                    {
+                                                        <span class="badge badge--info" title="Rotada olmayan bir cari ziyaret edildi">Plan dışı</span>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td><span class="badge @StatusClass(row.Status)">@Fmt.VisitStatus(row.Status)</span></td>
+                                            <td class="nowrap">@Fmt.ClockTime(row.CompletedAt)</td>
+                                            <td class="wrap">@row.Note</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        </div>
+                    </MudPaper>
+                }
+            </div>
         }
     }
 }
@@ -84,10 +112,10 @@ else
 
     protected override async Task LoadAsync() => _visits = await Api.VisitsAsync(_day);
 
-    private async Task ChangeDayAsync(ChangeEventArgs e)
+    private async Task ChangeDayAsync(DateTime? value)
     {
-        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
-        _day = day;
+        if (value is not { } date) return;
+        _day = DateOnly.FromDateTime(date);
         await RunAsync(LoadAsync);
     }
 
@@ -95,6 +123,6 @@ else
     {
         "COMPLETED" => "badge--ok",
         "SKIPPED" => "badge--warn",
-        _ => string.Empty,
+        _ => "badge--muted",
     };
 }
