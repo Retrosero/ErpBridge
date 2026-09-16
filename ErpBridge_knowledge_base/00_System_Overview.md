@@ -499,7 +499,9 @@ registration ayrı bir composition projesine taşınır.
      `DataProtection:KeysPath` (imajda `/app/keys`). Coolify'da bu yola **adlandırılmış kalıcı
      volume** bağlıdır. Yol yoksa anahtarlar konteynerin kendi dosya sisteminde kalır ve her
      dağıtım tarayıcılarda saklı tüm oturumları okunamaz yapar (herkes çıkış yapar);
-     Production'da bu durumda açılışta uyarı loglanır. Dockerfile'a `VOLUME` yazılmaz: anonim
+     Production'da bu durumda açılışta uyarı loglanır. Yol imajda hep dolu olduğu için volume
+     bağlanmamışsa da uyarı verilir: `IsMountPoint` Linux'ta `/proc/self/mountinfo`'da bu yolun
+     ayrı bir bağlama noktası olup olmadığına bakar. Dockerfile'a `VOLUME` yazılmaz: anonim
      volume her yeni konteynerde sıfırdan açılır. `ApplicationName` sabittir (`ErpBridge.Portal`).
    - **Arayüz: MudBlazor (MIT, Faz 43).** Tema `Shared/PortalTheme.cs`, kurumsal katman
      `wwwroot/css/site.css`; ortak parçalar `Shared/PageHeader`, `StatCard`, `EmptyState`,

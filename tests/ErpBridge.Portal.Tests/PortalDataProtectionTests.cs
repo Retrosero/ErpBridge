@@ -48,6 +48,23 @@ public sealed class PortalDataProtectionTests : IDisposable
         read.Should().Throw<CryptographicException>();
     }
 
+    // Real /proc/self/mountinfo lines from a container: root overlay, a named volume, a bind mount.
+    private static readonly string[] MountInfo =
+    [
+        "812 690 0:212 / / rw,relatime master:338 - overlay overlay rw,lowerdir=/var/lib/docker/overlay2/l/ABC",
+        "845 812 8:1 /var/lib/docker/volumes/lisans-portal-keys/_data /app/keys rw,relatime - ext4 /dev/sda1 rw",
+        "846 812 8:1 /srv/share\\040files /mnt/share\\040files rw,relatime - ext4 /dev/sda1 rw",
+    ];
+
+    [Theory]
+    [InlineData("/app/keys", true)]
+    [InlineData("/app/keys/", true)]
+    [InlineData("/mnt/share files", true)]
+    [InlineData("/app/other", false)]
+    [InlineData("/app", false)]
+    public void A_key_directory_counts_as_persistent_only_when_a_volume_is_mounted_exactly_there(string path, bool mounted) =>
+        PortalDataProtection.IsMountPoint(path, MountInfo).Should().Be(mounted);
+
     private readonly string _otherContainerKeys = Path.Combine(Path.GetTempPath(), "portal-keys-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()

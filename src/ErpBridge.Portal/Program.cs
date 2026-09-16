@@ -29,11 +29,20 @@ builder.Services.AddHttpClient<PortalApiClient>(client =>
 
 var app = builder.Build();
 
-if (keysPath is null && !app.Environment.IsDevelopment())
+if (!app.Environment.IsDevelopment())
 {
-    app.Logger.LogWarning(
-        "{Setting} is not set: session encryption keys live only in this container, so every redeploy signs every user out.",
-        PortalDataProtection.KeysPathSetting);
+    if (keysPath is null)
+    {
+        app.Logger.LogWarning(
+            "{Setting} is not set: session encryption keys live only in this container, so every redeploy signs every user out.",
+            PortalDataProtection.KeysPathSetting);
+    }
+    else if (PortalDataProtection.IsMountPoint(keysPath) == false)
+    {
+        app.Logger.LogWarning(
+            "Session encryption keys are written to {Path}, but no volume is mounted there: they are lost on redeploy and every user is signed out. Mount a persistent volume at {Path}.",
+            keysPath, keysPath);
+    }
 }
 
 if (!app.Environment.IsDevelopment())
