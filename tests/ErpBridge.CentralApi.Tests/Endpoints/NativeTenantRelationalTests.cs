@@ -73,6 +73,68 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
     }
 
     [Fact]
+    public async Task A_disbursement_to_a_customer_debits_the_balance_as_the_mirror_of_a_collection()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+        await PostAsync(t.SalesToken, t, "sales_order", "MOB-SO-T", Sale("MOB-SO-T", "C-001", quantity: 3, unitPrice: 150, paymentType: "Cari Borç"));
+        var cursor = await CursorAtEndAsync(t);
+
+        var paid = await PostAsync(t.SalesToken, t, "disbursement", "TED-1",
+            new { mobileDocumentId = "TED-1", transactionType = "Tediye", counterparty = "Bakkal Ali", customerCode = "C-001", amount = 50, paymentType = "Nakit" });
+
+        paid.Status.Should().Be("Succeeded");
+        (await BalanceAsync(t.Id, "C-001")).Should().Be(500m);
+        var movement = (await PullAllAsync(t.SalesToken, t, cursor)).Single(c => c.Entity == "cariHareketleri").Data;
+        movement.GetProperty("type").GetString().Should().Be("Tediye");
+        movement.GetProperty("meblag").GetDecimal().Should().Be(50m);
+    }
+
+    [Fact]
+    public async Task A_purchase_payment_from_the_cash_book_is_not_booked_a_second_time()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+
+        // The purchase_receipt already debited the supplier for this payment.
+        var paid = await PostAsync(t.SalesToken, t, "disbursement", "TED-P",
+            new { mobileDocumentId = "TED-P", counterparty = "Bakkal Ali", customerCode = "C-001", amount = 80, paymentType = "Nakit", approvalKind = "purchase" });
+
+        paid.Status.Should().Be("Succeeded");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        (await db.NativeCustomerBalances.AnyAsync(b => b.TenantId == t.Id && b.CustomerCode == "C-001" && b.Balance != 0m)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task An_expense_is_kept_as_a_record_without_touching_any_balance()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+
+        var expense = await PostAsync(t.SalesToken, t, "disbursement", "TED-G",
+            new { mobileDocumentId = "TED-G", transactionType = "Tediye", counterparty = "Gider: Yakıt", amount = 300, paymentType = "Nakit", description = "Araç 34 ABC 12" });
+
+        expense.Status.Should().Be("Succeeded");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        (await db.Jobs.SingleAsync(j => j.TenantId == t.Id && j.ExternalId == "TED-G")).LastError.Should().Contain("without a customer");
+        (await db.NativeCustomerBalances.AnyAsync(b => b.TenantId == t.Id && b.Balance != 0m)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_disbursement_naming_an_unknown_customer_code_fails_and_books_nothing()
+    {
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+
+        var paid = await PostAsync(t.SalesToken, t, "disbursement", "TED-X",
+            new { mobileDocumentId = "TED-X", counterparty = "Yok", customerCode = "C-404", amount = 10, paymentType = "Nakit" });
+
+        paid.Status.Should().Be("Failed");
+    }
+
+    [Fact]
     public async Task A_sale_paid_on_the_spot_leaves_no_open_balance_but_shows_both_movements()
     {
         var t = await NativeTenantAsync();

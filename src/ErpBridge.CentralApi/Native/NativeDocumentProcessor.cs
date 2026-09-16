@@ -39,6 +39,9 @@ public sealed class NativeDocumentProcessor
     public const string CustomerCard = "customer_card";
     public const string SalesOrder = "sales_order";
     public const string Collection = "collection";
+
+    /// <summary>Money paid out from the phone's cash book: to a customer, a purchase payment or an expense.</summary>
+    public const string Disbursement = "disbursement";
     public const string SalesReturn = "sales_return";
     public const string PurchaseReceipt = "purchase_receipt";
     public const string StockCount = "stock_count";
@@ -114,11 +117,12 @@ public sealed class NativeDocumentProcessor
                 CustomerCardBatch => await BookBatchAsync(booking, document.RootElement, card => BookCustomerCardAsync(db, booking, card, ct)),
                 SalesOrder => await BookSaleAsync(db, booking, document.RootElement, ct),
                 Collection => await BookCollectionAsync(db, booking, document.RootElement, ct),
+                Disbursement => await BookDisbursementAsync(db, booking, document.RootElement, ct),
                 SalesReturn => await BookSalesReturnAsync(db, booking, document.RootElement, ct),
                 PurchaseReceipt => await BookPurchaseReceiptAsync(db, booking, document.RootElement, ct),
                 StockCount => await BookStockCountAsync(db, booking, document.RootElement, ct),
-                // Cash movements, expenses and counts are kept as records but move
-                // neither stock nor a customer balance yet.
+                // Other cash-book documents (return and purchase payments already booked by
+                // their own documents, cash transfers) are kept as records only.
                 _ => null,
             };
         }
@@ -508,6 +512,40 @@ public sealed class NativeDocumentProcessor
         await PostToCustomerAsync(db, booking, customer, amount, debit: false, "Tahsilat", documentNo,
             Text(collection, "occurredAt") ?? booking.Stamp,
             Text(collection, "description") ?? Text(collection, "paymentType"), suffix: "collection", ct);
+        return null;
+    }
+
+    /// <summary>
+    /// A payment out of the phone's cash book (Faz 40). Paid to a customer, it debits the
+    /// customer — the mirror of a collection; before this the server kept it as a record
+    /// only and every such customer's balance stayed too low.
+    /// <list type="bullet">
+    /// <item>A purchase's payment (<c>approvalKind = purchase</c>) is already booked by its
+    /// <c>purchase_receipt</c>; booking it again would debit the supplier twice.</item>
+    /// <item>An expense or other payment that names no customer stays a record.</item>
+    /// <item>A <c>customerCode</c> that names no customer fails, as a collection does.</item>
+    /// </list>
+    /// </summary>
+    private async Task<string?> BookDisbursementAsync(CentralApiDbContext db, Booking booking, JsonElement disbursement, CancellationToken ct)
+    {
+        if (string.Equals(Text(disbursement, "approvalKind"), ApprovalKinds.Purchase, StringComparison.OrdinalIgnoreCase))
+            return null;
+        var amount = decimal.Round(Number(disbursement, "amount") ?? 0, 2);
+        if (amount <= 0) return "A disbursement needs a positive amount.";
+
+        var customer = await ResolveCustomerAsync(db, booking.TenantId, disbursement, ct);
+        if (customer is null)
+        {
+            if (Text(disbursement, "customerCode") is not null)
+                return "The disbursement names no known customer.";
+            booking.Warning = "Recorded without a customer (expense or other payment).";
+            return null;
+        }
+
+        var documentNo = Text(disbursement, "mobileDocumentId") ?? booking.ExternalId;
+        await PostToCustomerAsync(db, booking, customer, amount, debit: true, "Tediye", documentNo,
+            Text(disbursement, "occurredAt") ?? booking.Stamp,
+            Text(disbursement, "description") ?? Text(disbursement, "paymentType"), suffix: "disbursement", ct);
         return null;
     }
 
