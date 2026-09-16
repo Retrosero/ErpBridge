@@ -40,6 +40,21 @@ else
                       Icon="@Icons.Material.Rounded.PendingActions" Tone="violet" Href="onaylar" Attention="@(_summary.PendingApprovals > 0)" />
         </section>
 
+        @if (_warehouse is { Enabled: true } w)
+        {
+            <section class="stat-grid stat-grid--three mt-3" id="warehouse-summary">
+                <StatCard Id="stat-warehouse-open" Label="Depoda açık sipariş" Value="@((w.Pending + w.Preparing + w.Packed).ToString(Fmt.Turkish))"
+                          Caption="@($"{w.Pending} bekliyor · {w.Preparing} hazırlanıyor · {w.Packed} yüklemeye hazır")"
+                          Icon="@Icons.Material.Rounded.Warehouse" Tone="info" Href="depo" />
+                <StatCard Id="stat-warehouse-late" Label="Geciken sipariş" Value="@w.Late.ToString(Fmt.Turkish)"
+                          Caption="@(w.Critical > 0 ? $"{w.Critical} kritik eşiği geçti" : "uyarı eşiğini geçen")"
+                          Icon="@Icons.Material.Rounded.Alarm" Tone="danger" Attention="@(w.Late > 0)" Href="depo" />
+                <StatCard Id="stat-warehouse-day" Label="Paketlenen" Value="@($"{w.PackedOnDay} / {w.QueuedOnDay}")"
+                          Caption="@($"paketlenen / gelen · ort. hazırlama {Fmt.Duration(w.AverageNetPreparationSeconds)} · ort. bekleme {Fmt.Duration(w.AverageWaitSeconds)}")"
+                          Icon="@Icons.Material.Rounded.Speed" Tone="success" Href="@($"depo-performans?from={Fmt.IsoDay(_day)}&to={Fmt.IsoDay(_day)}")" />
+            </section>
+        }
+
         <MudGrid Spacing="3" Class="mt-1">
             <MudItem xs="12" md="7">
                 <MudPaper Outlined="true" Class="panel">
@@ -112,6 +127,7 @@ else
 
     private DateOnly _day;
     private SummaryResponse? _summary;
+    private WarehouseDashboardDto? _warehouse;
 
     private int VisitRate => _summary is { VisitsPlanned: > 0 }
         ? (int)Math.Round(100m * Math.Min(_summary.VisitsCompleted, _summary.VisitsPlanned) / _summary.VisitsPlanned)
@@ -119,7 +135,24 @@ else
 
     protected override void OnInitialized() => _day = Fmt.Today();
 
-    protected override async Task LoadAsync() => _summary = await Api.SummaryAsync(_day);
+    protected override async Task LoadAsync()
+    {
+        _summary = await Api.SummaryAsync(_day);
+        _warehouse = await WarehouseAsync();
+    }
+
+    /// <summary>The warehouse cards are extra: a failure (or an older server) hides them instead of the summary.</summary>
+    private async Task<WarehouseDashboardDto?> WarehouseAsync()
+    {
+        try
+        {
+            return await Api.WarehouseDashboardAsync(_day);
+        }
+        catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
 
     private async Task ChangeDayAsync(DateTime? value)
     {

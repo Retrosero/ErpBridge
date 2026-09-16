@@ -1,0 +1,50 @@
+@* A report's slowest orders, each linking to its timeline. *@
+<MudPaper Outlined="true" Class="panel panel--table panel--fill">
+    <div class="panel-head">
+        <div>
+            <MudText Typo="Typo.h6">@Title</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted">@Hint</MudText>
+        </div>
+    </div>
+    @if (Orders.Count == 0)
+    {
+        <EmptyState Id="@($"{Id}-empty")" Icon="@Icons.Material.Rounded.CheckCircle" Title="Bu aralıkta sipariş yok." />
+    }
+    else
+    {
+        <div class="table-scroll">
+            <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="@Id">
+                <thead>
+                    <tr>
+                        <th>Sipariş</th>
+                        <th>Durum</th>
+                        <th class="num">Kalem</th>
+                        <th class="num">Süre</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var order in Orders)
+                    {
+                        <tr data-order="@order.OrderNo">
+                            <td>
+                                <a class="person-name" href="@($"depo-performans/siparis/{order.Id}")">@order.OrderNo</a>
+                                <div class="person-sub">@order.CustomerName</div>
+                            </td>
+                            <td>@Fmt.FulfillmentStatus(order.Status)</td>
+                            <td class="num">@order.LineCount</td>
+                            <td class="num">@Fmt.Duration(Seconds(order))</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </div>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public string Id { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Hint { get; set; }
+    [Parameter, EditorRequired] public List<WarehouseSlowOrderDto> Orders { get; set; } = [];
+    [Parameter, EditorRequired] public Func<WarehouseSlowOrderDto, long?> Seconds { get; set; } = _ => null;
+}

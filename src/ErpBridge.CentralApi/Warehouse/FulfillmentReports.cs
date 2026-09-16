@@ -16,9 +16,16 @@ public static class FulfillmentReports
 {
     public const int SlowListSize = 10;
 
-    private sealed record Measured(OrderFulfillment Order, OrderTimes Times);
+    /// <summary>An order with the Istanbul days its measured moments fall on, computed once.</summary>
+    private sealed record Measured(OrderFulfillment Order, OrderTimes Times)
+    {
+        public DateOnly? StartedDay { get; } = DayOf(Times.FirstStartedAtUtc);
+        public DateOnly? PackedDay { get; } = DayOf(Times.PackedAtUtc);
+        public DateOnly? LoadedDay { get; } = DayOf(Times.LoadedAtUtc);
+    }
 
-    private sealed record Window(List<Measured> Orders, List<OrderFulfillmentEvent> Events);
+    /// <param name="QueuedByDay">QUEUED events in the range per Istanbul day.</param>
+    private sealed record Window(List<Measured> Orders, List<OrderFulfillmentEvent> Events, Dictionary<DateOnly, int> QueuedByDay);
 
     public static FulfillmentTimesDto ToDto(OrderTimes times) => new()
     {
@@ -65,10 +72,10 @@ public static class FulfillmentReports
         }
 
         var window = await WindowAsync(db, tenantId, day, day, ct);
-        var summary = Day(window, day);
+        var summary = Day(window, day, window.Orders.Where(m => m.StartedDay == day), window.Orders.Where(m => m.PackedDay == day));
         response.QueuedOnDay = summary.Queued;
         response.PackedOnDay = summary.Packed;
-        response.LoadedOnDay = window.Orders.Count(m => On(m.Times.LoadedAtUtc, day, day));
+        response.LoadedOnDay = window.Orders.Count(m => m.LoadedDay == day);
         response.AverageWaitSeconds = summary.AverageWaitSeconds;
         response.AverageNetPreparationSeconds = summary.AverageNetPreparationSeconds;
         return response;
@@ -78,9 +85,9 @@ public static class FulfillmentReports
         CentralApiDbContext db, Guid tenantId, DateOnly from, DateOnly to, CancellationToken ct)
     {
         var window = await WindowAsync(db, tenantId, from, to, ct);
-        var started = window.Orders.Where(m => On(m.Times.FirstStartedAtUtc, from, to)).ToList();
-        var packed = window.Orders.Where(m => On(m.Times.PackedAtUtc, from, to)).ToList();
-        var loaded = window.Orders.Where(m => On(m.Times.LoadedAtUtc, from, to) && m.Times.UntilLoading is not null).ToList();
+        var started = window.Orders.Where(m => In(m.StartedDay, from, to)).ToList();
+        var packed = window.Orders.Where(m => In(m.PackedDay, from, to)).ToList();
+        var loaded = window.Orders.Where(m => In(m.LoadedDay, from, to) && m.Times.UntilLoading is not null).ToList();
         var waits = started.Select(m => m.Times.Wait!.Value).ToList();
         var cancelledInRange = window.Events.Where(e => e.Action == FulfillmentActions.Cancel).Select(e => e.FulfillmentId).ToHashSet();
         var preparations = packed.Select(m => m.Times.NetPreparation).ToList();
@@ -109,8 +116,10 @@ public static class FulfillmentReports
             .ThenBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
 
+        var startedByDay = started.ToLookup(m => m.StartedDay!.Value);
+        var packedByDay = packed.ToLookup(m => m.PackedDay!.Value);
         var days = new List<WarehouseDayPerformance>();
-        for (var day = from; day <= to; day = day.AddDays(1)) days.Add(Day(window, day));
+        for (var day = from; day <= to; day = day.AddDays(1)) days.Add(Day(window, day, startedByDay[day], packedByDay[day]));
 
         return new WarehousePerformanceResponse
         {
@@ -149,24 +158,28 @@ public static class FulfillmentReports
             inRange = await tenantEvents.Where(e => e.OccurredAtUtc >= start && e.OccurredAtUtc < end).ToListAsync(ct);
 
         var ids = inRange.Select(e => e.FulfillmentId).Distinct().ToList();
-        if (ids.Count == 0) return new Window([], inRange);
+        var queuedByDay = inRange.Where(e => e.Action == FulfillmentActions.Queued)
+            .GroupBy(e => PortalReports.IstanbulDay(e.OccurredAtUtc))
+            .ToDictionary(g => g.Key, g => g.Count());
+        if (ids.Count == 0) return new Window([], inRange, queuedByDay);
         var history = (await tenantEvents.Where(e => ids.Contains(e.FulfillmentId)).ToListAsync(ct))
             .GroupBy(e => e.FulfillmentId)
             .ToDictionary(g => g.Key, g => g.ToList());
         var orders = await db.OrderFulfillments.AsNoTracking().Where(f => f.TenantId == tenantId && ids.Contains(f.Id)).ToListAsync(ct);
         return new Window(
             orders.Select(o => new Measured(o, FulfillmentMetrics.Measure(o.Id, history[o.Id]))).ToList(),
-            inRange);
+            inRange,
+            queuedByDay);
     }
 
-    private static WarehouseDayPerformance Day(Window window, DateOnly day)
+    private static WarehouseDayPerformance Day(Window window, DateOnly day, IEnumerable<Measured> startedOnDay, IEnumerable<Measured> packedOnDay)
     {
-        var packed = window.Orders.Where(m => On(m.Times.PackedAtUtc, day, day)).Select(m => m.Times.NetPreparation).ToList();
-        var waits = window.Orders.Where(m => On(m.Times.FirstStartedAtUtc, day, day)).Select(m => m.Times.Wait!.Value).ToList();
+        var packed = packedOnDay.Select(m => m.Times.NetPreparation).ToList();
+        var waits = startedOnDay.Select(m => m.Times.Wait!.Value).ToList();
         return new WarehouseDayPerformance
         {
             Date = Format(day),
-            Queued = window.Events.Count(e => e.Action == FulfillmentActions.Queued && PortalReports.IstanbulDay(e.OccurredAtUtc) == day),
+            Queued = window.QueuedByDay.GetValueOrDefault(day),
             Packed = packed.Count,
             AverageWaitSeconds = Average(waits),
             AverageNetPreparationSeconds = Average(packed),
@@ -184,8 +197,9 @@ public static class FulfillmentReports
         Times = ToDto(m.Times),
     };
 
-    private static bool On(DateTimeOffset? instant, DateOnly from, DateOnly to) =>
-        instant is { } value && PortalReports.IstanbulDay(value) is var day && day >= from && day <= to;
+    private static DateOnly? DayOf(DateTimeOffset? instant) => instant is { } value ? PortalReports.IstanbulDay(value) : null;
+
+    private static bool In(DateOnly? day, DateOnly from, DateOnly to) => day is { } d && d >= from && d <= to;
 
     private static long? Average(IReadOnlyCollection<TimeSpan> values) =>
         values.Count == 0 ? null : Seconds(TimeSpan.FromTicks(values.Sum(v => v.Ticks) / values.Count));

@@ -1,3 +1,23 @@
+# Faz 50 — Depo performans paneli (Plan Adım 8) — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Warehouse/FulfillmentMetrics.cs`, `FulfillmentReports.cs` (yeni): olay günlüğünden bekleme, net hazırlama, yüklemeye kadar süre; pano ve aralık raporu.
+- `Endpoints/WarehouseEndpoints.cs` (`/warehouse/dashboard`, `/warehouse/performance`), `Contracts/WarehouseContracts.cs`, `Warehouse/FulfillmentService.cs` (detaya `times`), `Portal/PortalReports.cs` (İstanbul günü yardımcıları), `Data/CentralApiDbContext.cs` + `Data/Migrations/*_Faz50FulfillmentEventReportIndex.cs` (yalnız indeks).
+- `src/ErpBridge.Portal/Pages/DepoPerformans.razor`, `Pages/DepoSiparis.razor`, `Shared/SlowOrders.razor` (yeni); `Pages/Index.razor` (depo kartları), `MainLayout.razor` (menü), `Api/Models.cs`, `Api/PortalApiClient.cs`, `Api/DisplayApiClient.cs`, `Api/PortalMessages.cs` (`Fmt.Duration`, adım/durum adları).
+- Testler: `FulfillmentMetricsTests` (6, yeni), `WarehouseFulfillmentRelationalTests` (+3), `PortalWarehouseReportTests` (5, yeni).
+- KB yeni kural 23, 03 veri sözlüğü, `docs/PLAN_ROLLER_VE_DEPO.md` (adım 8).
+
+## Davranış
+
+- Yönetici Özet sayfasında depo modülü açıksa: depoda açık sipariş, geciken (TV eşikleriyle) ve günün paketlenen/gelen sayısı ile ortalama süreler.
+- "Depo performansı" sayfası: tarih aralığı (en çok 92 gün), toplamlar, personel tablosu (paketlenen, kalem, ortalama/ortanca/kalem başı/toplam süre), en uzun bekleyen ve hazırlanan 10 sipariş, günlere göre tablo.
+- Bir siparişe tıklanınca zaman çizelgesi: her adım, kim yaptı, önceki adımdan geçen süre.
+- Rakamlar yalnız olay günlüğünden hesaplanır; yanlışlıkla başlatılıp geri alınan iş hazırlama süresine sayılmaz.
+- **Migration var** (`Faz50FulfillmentEventReportIndex`, yalnız indeks): canlıda `/health/schema` 24 applied / 0 pending olmalı.
+
+---
+
 # Faz 49 — Canlı depo TV panosu (Plan Adım 7) — Teslimat
 
 ## Değişen dosyalar

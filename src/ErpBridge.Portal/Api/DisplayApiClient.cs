@@ -104,6 +104,10 @@ public sealed class FulfillmentDto
     [JsonPropertyName("queuedAtUtc")] public DateTimeOffset QueuedAtUtc { get; set; }
     [JsonPropertyName("startedAtUtc")] public DateTimeOffset? StartedAtUtc { get; set; }
     [JsonPropertyName("packedAtUtc")] public DateTimeOffset? PackedAtUtc { get; set; }
+    [JsonPropertyName("loadedAtUtc")] public DateTimeOffset? LoadedAtUtc { get; set; }
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
+    [JsonPropertyName("vehiclePlate")] public string? VehiclePlate { get; set; }
     [JsonPropertyName("assigneeName")] public string? AssigneeName { get; set; }
     [JsonPropertyName("erpState")] public string ErpState { get; set; } = string.Empty;
 }
