@@ -173,6 +173,26 @@ public sealed class MobileUserRolesRelationalTests : IClassFixture<SqliteCentral
     }
 
     [Fact]
+    public async Task A_portal_session_cannot_read_the_phone_data_feed()
+    {
+        var c = await CompanyAsync();
+        await CreateAsync(c, "depocu", roles: ["WAREHOUSE"]);
+        var portal = await LoginAsync(c.Code, "depocu", "web-portal:depocu", client: "portal");
+        var phone = c.Ali;
+
+        foreach (var (method, path) in new[] { (HttpMethod.Post, "/api/v1/android/sync/pull"), (HttpMethod.Get, "/api/v1/android/notify?wait=1") })
+        {
+            var refused = await SendAsync(method, path, new { }, portal);
+            refused.StatusCode.Should().Be(HttpStatusCode.Forbidden, path);
+            (await refused.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("PORTAL_SESSION_NOT_ALLOWED", path);
+        }
+        // The same feed stays open to the phone.
+        (await SendAsync(HttpMethod.Post, "/api/v1/android/sync/pull", new { }, phone)).StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
+        // Account endpoints the portal needs still work.
+        (await GetAsync("/api/v1/android/account/me", portal)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task Accounting_reads_balances_and_stock_but_not_the_company_reports()
     {
         var c = await CompanyAsync();

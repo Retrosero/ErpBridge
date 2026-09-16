@@ -12,6 +12,12 @@ namespace ErpBridge.CentralApi.Authentication;
 /// </summary>
 public sealed class MobileUserStateRequirement : IAuthorizationRequirement
 {
+    /// <summary>
+    /// The endpoint serves the phone app's own data (bootstrap, sync, change sets, notify,
+    /// telemetry). A portal session is refused there even when its roles are valid: the portal
+    /// reads only the reports its roles allow, never the phone's full customer and stock feed.
+    /// </summary>
+    public bool PhoneClientOnly { get; init; }
 }
 
 /// <summary>
@@ -35,6 +41,13 @@ public sealed class MobileUserStateHandler : AuthorizationHandler<MobileUserStat
         if (context.Resource is not HttpContext http)
         {
             context.Fail(new AuthorizationFailureReason(this, "Mobile user state can only be checked for HTTP requests."));
+            return;
+        }
+
+        if (requirement.PhoneClientOnly && CentralApiClaims.ClientOf(context.User) == CentralApiClaims.PortalClient)
+        {
+            http.Items[DenialItemKey] = "PORTAL_SESSION_NOT_ALLOWED";
+            context.Fail(new AuthorizationFailureReason(this, "PORTAL_SESSION_NOT_ALLOWED"));
             return;
         }
 

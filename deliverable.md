@@ -9,18 +9,20 @@
 - `Endpoints/MobileAccountEndpoints.cs`, `AdminMobileSeatsEndpoints.cs`, `IngestEndpoints.cs`, `PortalEndpoints.cs`, `Approvals/ApprovalService.cs`, `Team/TeamDocumentProcessor.cs`: izinler `RolePermissions`'tan; panel oturumu belge gönderemez; muhasebe finansal türler.
 - `Contracts/MobileAccountContracts.cs`: `client`, `roles`.
 - `src/ErpBridge.Portal/Api/Models.cs`: login `client=portal`, kullanıcı `roles`.
-- Testler: `MobileUserRolesRelationalTests` (12), `PortalSessionTests` güncellendi.
+- `Authentication/MobileUserStateHandler.cs`, `Program.cs`: `MobileClientPolicy` panel oturumunu reddeder (`PhoneClientOnly`).
+- Testler: `MobileUserRolesRelationalTests` (13), `PortalSessionTests` güncellendi.
 - KB kural 14/16/17/18, 03 veri sözlüğü, `docs/PLAN_ROLLER_VE_DEPO.md`.
 
 ## Davranış
 
 - Mevcut kullanıcıların yetkisi değişmez (migration eski rolü satır olarak ekler; eski uygulamalar aynı `role` alanını görür).
+- Panel oturumu telefonun veri akışını (sync/pull, bootstrap, notify…) okuyamaz (Codex incelemesi).
 - Yalnız depo/muhasebe rolü olan kullanıcı telefondan giremez; yalnız saha rolü olan panelden giremez; rol kaldırılınca bir sonraki istekte etkili.
 
 ## Testler / derleme
 
 - `dotnet build ErpBridge.sln -c Debug`: 0 uyarı / 0 hata; `has-pending-model-changes`: yok.
-- Mevcut testler değişmeden geçti (CentralApi 366); yeni rol testleri 12/12. İki koruma bilinçli bozulunca 4 test kırıldı.
+- Mevcut testler değişmeden geçti (CentralApi 366); yeni rol testleri 13/13. İki koruma bilinçli bozulunca 4 test kırıldı.
 
 ---
 

@@ -346,7 +346,7 @@ public partial class Program
                 .RequireAssertion(ctx =>
                     ctx.User.HasClaim("scope", "apikey") ||
                     ctx.User.HasClaim("scope", CentralApiClaims.MobileUserScope))
-                .AddRequirements(new MobileUserStateRequirement()));
+                .AddRequirements(new MobileUserStateRequirement { PhoneClientOnly = true }));
 
             options.AddPolicy(AgentOrApiKeyPolicy, policy => policy
                 .RequireAuthenticatedUser()

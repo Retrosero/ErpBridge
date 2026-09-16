@@ -249,7 +249,11 @@ registration ayrı bir composition projesine taşınır.
      telefon oturumu `CanUsePhone` (ADMIN/MANAGER/SALES) ister, yoksa 403
      `ROLE_NOT_ALLOWED_ON_PHONE`; panel oturumu `CanUsePortal` (SALES dışı) ister, yoksa 403
      `PORTAL_REQUIRES_MANAGER`. Login'de reddedilen istek cihaz satırı açmaz. Panel oturumu
-     `/ingest/*`'a belge gönderemez (403 `PORTAL_CANNOT_SUBMIT_DOCUMENTS`). Telefon uygulaması
+     `/ingest/*`'a belge gönderemez (403 `PORTAL_CANNOT_SUBMIT_DOCUMENTS`) ve telefonun veri akışını
+     okuyamaz: `MobileClientPolicy` (bootstrap, `sync/pull`, change set, notify, telemetri)
+     `MobileUserStateRequirement.PhoneClientOnly` ile panel oturumuna 403
+     `PORTAL_SESSION_NOT_ALLOWED` döner. Panelin de kullandığı hesap ve onay uçları
+     `MobileUserPolicy`'dedir. Telefon uygulaması
      `ROLE_NOT_ALLOWED_ON_PHONE` için henüz Türkçe metin göstermez (genel hata mesajı).
    - **Aynı token veri ve belge uçlarında da geçer.** Telefonun okuduğu uçlar
      (`/android/*`, `/android/sync/pull`, notify, change-set, telemetri)
