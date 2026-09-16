@@ -151,6 +151,7 @@ deploy et. Admin panel stateless bir Blazor Server uygulaması; schema
 | `dotnet restore` Mikro V15/V16 NuGet'lerinde hata veriyor | Coolify'in build runner'ı iç NuGet feed'ine erişemiyor olabilir. | Paketleri mirror'la ya da `NuGet.config`'i erişilebilir public mirror'a çevir. |
 | Admin panelde her işlem "Network error" | `CENTRALAPI_BASE_URL` admin container'ının içinden iç Docker hostname'ine ayarlı — yanlış. | **Public** URL `https://api.erpbridge.example.com` kullan. |
 | Her yerde `401 Unauthorized` | Coolify sunucusu ile laptop arasında saat farkı. JWT doğrulaması ±30s oynamayı tolere eder; daha büyük fark tüm çağrıları 401 yapar. | `chrony` veya `systemd-timesyncd` ile saatleri senkronize et. |
+| `/health/schema` 503 `pending` döner | `--migrate` başarısız oldu, uygulama eski şemayla açıldı. | Konteyner loglarında `--migrate` çıktısını ve "DATABASE SCHEMA IS BEHIND" satırını bul, hatayı düzelt, yeniden deploy et; uç 200 `current` dönene kadar bekleme. |
 | `Database.Migrate()` "relation already exists" hatası | Önceki deploy ortasında kesildi. | Veritabanına bağlan, `__EFMigrationsHistory`'deki yarım migration satırını sil, yeniden deploy et. |
 
 ---

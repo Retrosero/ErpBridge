@@ -495,6 +495,12 @@ registration ayrı bir composition projesine taşınır.
      `https://panel.admin.lisans.appsgo.cloud` (2026-09-16; main'e push'ta otomatik dağıtılır).
      `docker-compose.coolify.yml`'da yoktur. Cloudflare kaydı **DNS only** olmalı: iki seviyeli
      alt alan adı Cloudflare'in ücretsiz sertifikasına girmez, proxied olursa TLS kırılır.
+   - **Oturum şifreleme anahtarları kalıcıdır (Faz 44):** `Session/PortalDataProtection`,
+     `DataProtection:KeysPath` (imajda `/app/keys`). Coolify'da bu yola **adlandırılmış kalıcı
+     volume** bağlıdır. Yol yoksa anahtarlar konteynerin kendi dosya sisteminde kalır ve her
+     dağıtım tarayıcılarda saklı tüm oturumları okunamaz yapar (herkes çıkış yapar);
+     Production'da bu durumda açılışta uyarı loglanır. Dockerfile'a `VOLUME` yazılmaz: anonim
+     volume her yeni konteynerde sıfırdan açılır. `ApplicationName` sabittir (`ErpBridge.Portal`).
    - **Arayüz: MudBlazor (MIT, Faz 43).** Tema `Shared/PortalTheme.cs`, kurumsal katman
      `wwwroot/css/site.css`; ortak parçalar `Shared/PageHeader`, `StatCard`, `EmptyState`,
      `PageLoading`. Varlıklar `_content/MudBlazor` altından kendi sunucumuzdan gelir; web fontu
@@ -515,6 +521,18 @@ registration ayrı bir composition projesine taşınır.
      satın alma metni yok).
    - Testler: `tests/ErpBridge.Portal.Tests` (bUnit) — oturum yalıtımı, rol kapısı, oturum
      bitişi, sayfa davranışları.
+
+20. **Şema durumu görünürdür: `GET /health/schema` (Faz 44, 2026-09-16).**
+   Konteyner açılışta `--migrate` çalıştırır ama başarısız olursa uygulama **yine açılır** ve eski
+   şemayla çalışır (2026-09-09'da canlı bir hafta 8 migration geride kaldı).
+   - `Health/SchemaStatus`: uygulanan ve bekleyen migration sayısı. `/health/schema` bekleyen varsa
+     **503** `{status:"pending", applied, pending}`, yoksa 200 `current`; bellek içi test sağlayıcısında
+     `not-relational`. Migration adı dışarı verilmez.
+   - Açılışta bekleyen migration varsa `LogCritical` ("DATABASE SCHEMA IS BEHIND").
+   - Bu uç **konteynerin sağlık kontrolüne bağlanmaz**: orkestratör uygulamayı yeniden başlatır ama
+     başarısız migration'ı uygulamaz, sonuç yeniden başlatma döngüsü olur. Migration içeren her
+     dağıtımdan sonra `https://lisans.appsgo.cloud/health/schema` 200 `current` dönmelidir.
+   - Testler: `HealthSchemaTests` (SQLite'ta geçmiş tablosu boş → pending; tüm migration kayıtlı → current).
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

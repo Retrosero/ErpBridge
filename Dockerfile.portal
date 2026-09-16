@@ -12,11 +12,16 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_NOLOGO=true \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
-    TZ=Europe/Istanbul
+    TZ=Europe/Istanbul \
+    DataProtection__KeysPath=/app/keys
 RUN apt-get update \
     && apt-get install -y --no-install-recommends wget tzdata \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/publish ./
+# Session encryption keys. Mount a named persistent volume here (Coolify: Persistent Storage),
+# or every redeploy signs everyone out. No VOLUME instruction: an anonymous volume is recreated
+# with each new container and would lose the keys just the same.
+RUN mkdir -p /app/keys
 EXPOSE 4003
 ENTRYPOINT ["dotnet", "ErpBridge.Portal.dll", "--urls", "http://+:4003"]

@@ -1,3 +1,25 @@
+# Faz 44 — Kalıcı portal oturum anahtarı ve şema durumu (Plan Adım 1) — Teslimat
+
+## Değişen dosyalar
+
+- `src/ErpBridge.CentralApi/Health/SchemaStatus.cs`, `Program.cs`: `GET /health/schema` (bekleyen migration → 503) ve açılışta `LogCritical`.
+- `tests/ErpBridge.CentralApi.Tests/Endpoints/HealthSchemaTests.cs`: pending / current / not-relational.
+- `src/ErpBridge.Portal/Session/PortalDataProtection.cs`, `Program.cs`: `DataProtection:KeysPath` ile kalıcı anahtar dizini; yoksa Production'da uyarı.
+- `Dockerfile.portal`: `DataProtection__KeysPath=/app/keys`.
+- `tests/ErpBridge.Portal.Tests/PortalDataProtectionTests.cs`: dağıtım öncesi/sonrası aynı anahtarla okuma; farklı anahtarla okunamama.
+- `docs/PLAN_ROLLER_VE_DEPO.md` (goal plan), `docs/deploy-coolify.tr.md`, `ErpBridge_knowledge_base/00_System_Overview.md` (kural 19, yeni kural 20).
+
+## Davranış
+
+- Migration başarısız olup uygulama eski şemayla açılırsa artık hem logda hem `/health/schema`'da görünür. Konteyner sağlık kontrolü değişmedi (yeniden başlatma döngüsü olmasın).
+- Portal yeniden dağıtıldığında tarayıcıda saklı oturumlar düşmez (Coolify'da `/app/keys` kalıcı volume ile). "Beni hatırla" (Adım 3) için önkoşul.
+
+## Testler / derleme
+
+- Yeni testler: `HealthSchemaTests` 3/3, `PortalDataProtectionTests` 2/2. Tam derleme ve test sonucu PR'da.
+
+---
+
 # Faz 43 — Yönetici paneline kurumsal arayüz (MudBlazor) — Teslimat
 
 ## Değişen dosyalar

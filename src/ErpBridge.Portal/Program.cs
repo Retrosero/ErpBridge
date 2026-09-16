@@ -18,6 +18,7 @@ builder.Services.AddMudServices(options =>
 // every visitor (see PortalSession).
 builder.Services.AddScoped<PortalSession>();
 builder.Services.AddScoped<ISessionPersistence, ProtectedSessionPersistence>();
+var keysPath = builder.Services.AddPortalDataProtection(builder.Configuration);
 
 var baseUrl = builder.Configuration["CentralApi:BaseUrl"] ?? "https://localhost:7001";
 builder.Services.AddHttpClient<PortalApiClient>(client =>
@@ -27,6 +28,13 @@ builder.Services.AddHttpClient<PortalApiClient>(client =>
 });
 
 var app = builder.Build();
+
+if (keysPath is null && !app.Environment.IsDevelopment())
+{
+    app.Logger.LogWarning(
+        "{Setting} is not set: session encryption keys live only in this container, so every redeploy signs every user out.",
+        PortalDataProtection.KeysPathSetting);
+}
 
 if (!app.Environment.IsDevelopment())
 {
