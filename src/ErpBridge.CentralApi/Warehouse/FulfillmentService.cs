@@ -162,21 +162,25 @@ public sealed class FulfillmentService
         if (days == 0) return WarehouseResult<WarehouseBackfillResponse>.Ok(new WarehouseBackfillResponse { Days = 0 });
 
         var since = DateTimeOffset.UtcNow.AddDays(-days);
+        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        // Take the company's counter lock before choosing: a second back-fill (or a sale being queued) waits
+        // here and then sees these orders as queued, instead of racing into the unique index (Codex, PR #63).
+        await NextSeqAsync(db, tenant.Id, ct);
+
+        var salesOrder = NativeDocumentProcessor.SalesOrder;
         var query = db.Jobs.AsNoTracking()
-            .Where(j => j.TenantId == tenant.Id && j.DocumentType == NativeDocumentProcessor.SalesOrder)
+            // Ingest accepts any casing of the document type (IsQueuedDocument compares case-insensitively).
+            .Where(j => j.TenantId == tenant.Id && j.DocumentType.ToLower() == salesOrder)
             .Where(j => !db.OrderFulfillments.Any(f => f.TenantId == tenant.Id && f.SourceJobId == j.Id));
         if (tenant.DataSource == TenantDataSources.Native) query = query.Where(j => j.Status == JobStatus.Succeeded);
-        // PostgreSQL filters the window itself; SQLite (tests) cannot translate DateTimeOffset comparisons.
-        var sqlite = db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
-        if (!sqlite) query = query.Where(j => j.EnqueuedAtUtc >= since);
-        var jobs = (await query.ToListAsync(ct))
-            .Where(j => j.EnqueuedAtUtc >= since)
-            .OrderBy(j => j.EnqueuedAtUtc)
-            .Take(MaxBackfillOrders)
-            .ToList();
+        List<Job> jobs;
+        // PostgreSQL filters, orders and limits in the database; SQLite (tests) cannot translate DateTimeOffset.
+        if (db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true)
+            jobs = [.. (await query.ToListAsync(ct)).Where(j => j.EnqueuedAtUtc >= since).OrderBy(j => j.EnqueuedAtUtc).Take(MaxBackfillOrders)];
+        else
+            jobs = await query.Where(j => j.EnqueuedAtUtc >= since).OrderBy(j => j.EnqueuedAtUtc).Take(MaxBackfillOrders).ToListAsync(ct);
         if (jobs.Count == 0) return WarehouseResult<WarehouseBackfillResponse>.Ok(new WarehouseBackfillResponse { Days = days });
 
-        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
         var queued = 0;
         foreach (var job in jobs)
         {

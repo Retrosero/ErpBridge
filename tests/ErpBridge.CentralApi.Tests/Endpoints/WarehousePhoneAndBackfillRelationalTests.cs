@@ -107,7 +107,7 @@ public sealed class WarehousePhoneAndBackfillRelationalTests : IClassFixture<Sql
     {
         var c = await CompanyAsync(TenantDataSources.Native, enableWarehouse: false);
         await SellAsync(c, "SO-1", 1);
-        await SellAsync(c, "SO-2", 2);
+        await SellAsync(c, "SO-2", 2, documentType: "SALES_ORDER");
         await SellAsync(c, "SO-OLD", 3);
         await MoveJobAsync(c.Id, "SO-OLD", TimeSpan.FromDays(-5));
         var failed = await SendAsync(HttpMethod.Post, "/api/v1/ingest/jobs",
@@ -129,7 +129,11 @@ public sealed class WarehousePhoneAndBackfillRelationalTests : IClassFixture<Sql
         queue.Items.Should().OnlyContain(i => i.Status == "PENDING" && i.ErpState == "NONE");
         queue.Items.Should().OnlyContain(i => i.QueuedAtUtc < DateTimeOffset.UtcNow && i.QueuedAtUtc > DateTimeOffset.UtcNow.AddMinutes(-5));
 
-        (await BackfillOkAsync(c.Patron, 7)).Queued.Should().Be(1);
+        // Two managers at once: the counter lock lets one choose after the other committed.
+        var together = await Task.WhenAll(BackfillAsync(c.Patron, 7), BackfillAsync(c.Patron, 7));
+        together.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.OK);
+        var counts = await Task.WhenAll(together.Select(r => r.ReadAsJsonAsync<WarehouseBackfillResponse>()));
+        counts.Select(x => x.Queued).Should().BeEquivalentTo([1, 0]);
         var old = (await ListAsync(c.Patron)).Items.Single(i => i.OrderNo == "SO-OLD");
         old.QueuedAtUtc.Should().BeCloseTo(DateTimeOffset.UtcNow.AddDays(-5), TimeSpan.FromMinutes(5), "an order waits from when it arrived");
 
@@ -203,9 +207,9 @@ public sealed class WarehousePhoneAndBackfillRelationalTests : IClassFixture<Sql
         return (await response.ReadAsJsonAsync<MobileUserDto>()).Id;
     }
 
-    private async Task SellAsync(Company c, string id, int quantity)
+    private async Task SellAsync(Company c, string id, int quantity, string documentType = "sales_order")
     {
-        var response = await SendAsync(HttpMethod.Post, "/api/v1/ingest/jobs", new { externalId = id, documentType = "sales_order", payload = SalePayload(id, quantity) }, c.Ali, c.Id);
+        var response = await SendAsync(HttpMethod.Post, "/api/v1/ingest/jobs", new { externalId = id, documentType, payload = SalePayload(id, quantity) }, c.Ali, c.Id);
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Created, HttpStatusCode.OK);
         (await response.ReadAsJsonAsync<IngestJobResponse>()).Status.Should().Be("Succeeded");
     }
