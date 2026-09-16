@@ -1,0 +1,100 @@
+@page "/ziyaretler"
+@inherits PortalPageBase
+
+<PageTitle>Ziyaretler — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <p class="portal-empty">Yükleniyor…</p>
+}
+else
+{
+    <div class="portal-toolbar">
+        <h1>Rota ve ziyaretler</h1>
+        <label>
+            Tarih
+            <input type="date" id="visits-date" value="@Fmt.IsoDay(_day)" @onchange="ChangeDayAsync" />
+        </label>
+    </div>
+    <p class="portal-subtitle">@Fmt.Day(_day)</p>
+
+    @if (Error is not null)
+    {
+        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+    }
+
+    @if (_visits is not null)
+    {
+        @if (_visits.Rows.Count == 0)
+        {
+            <p class="portal-empty" id="visits-empty">Bu gün için planlanmış rota veya kayıtlı ziyaret yok.</p>
+        }
+        else
+        {
+            var completed = _visits.Rows.Count(r => r.Status == "COMPLETED");
+            var planned = _visits.Rows.Count(r => r.Planned);
+            <p class="portal-hint" id="visits-count">@completed ziyaret edildi · @planned planlı durak</p>
+            @foreach (var group in _visits.Rows.GroupBy(r => r.Username))
+            {
+                <h2 class="portal-section" data-user="@group.Key">@group.Key</h2>
+                <div class="portal-table-wrap">
+                    <table class="portal-table">
+                        <thead>
+                            <tr>
+                                <th class="num">Sıra</th>
+                                <th>Cari</th>
+                                <th>Durum</th>
+                                <th>Saat</th>
+                                <th>Not</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in group)
+                            {
+                                <tr data-customer="@row.CustomerCode">
+                                    <td class="num">@(row.Planned ? row.VisitOrder.ToString(Fmt.Turkish) : "—")</td>
+                                    <td>
+                                        @(string.IsNullOrWhiteSpace(row.CustomerName) ? row.CustomerCode : row.CustomerName)
+                                        @if (!row.Planned)
+                                        {
+                                            <span class="badge" title="Rotada olmayan bir cari ziyaret edildi">Plan dışı</span>
+                                        }
+                                    </td>
+                                    <td><span class="badge @StatusClass(row.Status)">@Fmt.VisitStatus(row.Status)</span></td>
+                                    <td>@Fmt.ClockTime(row.CompletedAt)</td>
+                                    <td class="portal-wrap">@row.Note</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "date")] public string? DateQuery { get; set; }
+
+    private DateOnly _day;
+    private VisitsResponse? _visits;
+
+    protected override void OnInitialized() =>
+        _day = Fmt.TryIsoDay(DateQuery, out var day) ? day : Fmt.Today();
+
+    protected override async Task LoadAsync() => _visits = await Api.VisitsAsync(_day);
+
+    private async Task ChangeDayAsync(ChangeEventArgs e)
+    {
+        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
+        _day = day;
+        await RunAsync(LoadAsync);
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "COMPLETED" => "badge--ok",
+        "SKIPPED" => "badge--warn",
+        _ => string.Empty,
+    };
+}

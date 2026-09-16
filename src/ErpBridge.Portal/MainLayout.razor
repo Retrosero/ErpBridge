@@ -1,0 +1,51 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject PortalSession Session
+@inject ISessionPersistence Persistence
+@inject NavigationManager Nav
+
+<div class="portal">
+    @if (Session.IsSignedIn)
+    {
+        <header class="portal-header">
+            <div class="portal-brand">
+                <strong>@Session.TenantName</strong>
+                <span>Yönetim Paneli</span>
+            </div>
+            <nav class="portal-nav">
+                <NavLink href="" Match="NavLinkMatch.All">Özet</NavLink>
+                <NavLink href="plasiyerler">Plasiyerler</NavLink>
+                <NavLink href="ziyaretler">Ziyaretler</NavLink>
+                <NavLink href="cariler">Cariler</NavLink>
+                <NavLink href="stok">Stok</NavLink>
+                <NavLink href="onaylar">Onaylar</NavLink>
+                @if (Session.IsAdmin)
+                {
+                    <NavLink href="kullanicilar">Kullanıcılar</NavLink>
+                }
+            </nav>
+            <div class="portal-user">
+                <span>@Session.FullName · @Fmt.Role(Session.Role)</span>
+                <button type="button" class="portal-link" id="logout" @onclick="SignOutAsync">Çıkış</button>
+            </div>
+        </header>
+    }
+    <main class="portal-main">
+        @Body
+    </main>
+</div>
+
+@code {
+    protected override void OnInitialized() => Session.Changed += Redraw;
+
+    private void Redraw() => InvokeAsync(StateHasChanged);
+
+    private async Task SignOutAsync()
+    {
+        Session.SignOut();
+        await Persistence.ClearAsync();
+        Nav.NavigateTo("login");
+    }
+
+    public void Dispose() => Session.Changed -= Redraw;
+}

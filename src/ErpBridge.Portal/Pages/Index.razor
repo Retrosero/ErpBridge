@@ -1,0 +1,81 @@
+@page "/"
+@inherits PortalPageBase
+
+<PageTitle>Özet — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <p class="portal-empty">Yükleniyor…</p>
+}
+else
+{
+    <div class="portal-toolbar">
+        <h1>Günün özeti</h1>
+        <label>
+            Tarih
+            <input type="date" id="summary-date" value="@Fmt.IsoDay(_day)" @onchange="ChangeDayAsync" />
+        </label>
+    </div>
+    <p class="portal-subtitle">@Fmt.Day(_day)</p>
+
+    @if (Error is not null)
+    {
+        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+    }
+
+    @if (_summary is not null)
+    {
+        <section class="portal-grid" id="summary">
+            <div class="portal-card portal-stat" id="stat-sales">
+                <span>Satış</span>
+                <strong>@Fmt.Money(_summary.Sales.Amount)</strong>
+                <small>@_summary.Sales.Count belge</small>
+            </div>
+            <div class="portal-card portal-stat" id="stat-collections">
+                <span>Tahsilat</span>
+                <strong>@Fmt.Money(_summary.Collections.Amount)</strong>
+                <small>@_summary.Collections.Count belge</small>
+            </div>
+            <div class="portal-card portal-stat" id="stat-disbursements">
+                <span>Tediye ve gider</span>
+                <strong>@Fmt.Money(_summary.Disbursements.Amount)</strong>
+                <small>@_summary.Disbursements.Count belge</small>
+            </div>
+            <div class="portal-card portal-stat" id="stat-returns">
+                <span>İade</span>
+                <strong>@Fmt.Money(_summary.Returns.Amount)</strong>
+                <small>@_summary.Returns.Count belge</small>
+            </div>
+            <a class="portal-card portal-stat" id="stat-visits" href="ziyaretler?date=@Fmt.IsoDay(_day)">
+                <span>Ziyaret</span>
+                <strong>@_summary.VisitsCompleted / @_summary.VisitsPlanned</strong>
+                <small>tamamlanan / planlanan · @_summary.VisitsSkipped atlandı</small>
+            </a>
+            <a class="portal-card portal-stat @(_summary.PendingApprovals > 0 ? "portal-stat--attention" : "")" id="stat-approvals" href="onaylar">
+                <span>Bekleyen onay</span>
+                <strong>@_summary.PendingApprovals</strong>
+                <small>talep</small>
+            </a>
+        </section>
+        @if (_summary.DataSource == "erp")
+        {
+            <p class="portal-hint">ERP'li firmada ERP'ye henüz aktarılmamış belgeler de sayılır.</p>
+        }
+    }
+}
+
+@code {
+    private DateOnly _day;
+    private SummaryResponse? _summary;
+
+    protected override void OnInitialized() => _day = Fmt.Today();
+
+    protected override async Task LoadAsync() => _summary = await Api.SummaryAsync(_day);
+
+    private async Task ChangeDayAsync(ChangeEventArgs e)
+    {
+        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
+        _day = day;
+        await RunAsync(LoadAsync);
+    }
+}

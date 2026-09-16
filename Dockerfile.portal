@@ -1,0 +1,22 @@
+# ErpBridge firm manager portal image for Coolify (Faz 42).
+# Company admins/managers sign in with their phone account; the portal talks only to the
+# central API (CentralApi__BaseUrl). It keeps no database and no secrets of its own.
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
+WORKDIR /src
+COPY . .
+RUN dotnet restore src/ErpBridge.Portal/ErpBridge.Portal.csproj
+RUN dotnet publish src/ErpBridge.Portal/ErpBridge.Portal.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS final
+ENV ASPNETCORE_ENVIRONMENT=Production \
+    DOTNET_RUNNING_IN_CONTAINER=true \
+    DOTNET_NOLOGO=true \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    TZ=Europe/Istanbul
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget tzdata \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /app/publish ./
+EXPOSE 4003
+ENTRYPOINT ["dotnet", "ErpBridge.Portal.dll", "--urls", "http://+:4003"]

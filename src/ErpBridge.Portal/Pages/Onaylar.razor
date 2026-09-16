@@ -1,0 +1,103 @@
+@page "/onaylar"
+@inherits PortalPageBase
+
+<PageTitle>Onaylar — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <p class="portal-empty">Yükleniyor…</p>
+}
+else
+{
+    <div class="portal-toolbar">
+        <h1>Bekleyen onaylar</h1>
+        <button type="button" class="portal-button portal-button--secondary" id="approvals-refresh" disabled="@Busy" @onclick="RefreshAsync">Yenile</button>
+    </div>
+    @if (!Session.CanApprove)
+    {
+        <p class="portal-subtitle" id="approvals-readonly">Talepleri görebilirsiniz; onay vermek için firma admininizin size onay yetkisi vermesi gerekir.</p>
+    }
+
+    @if (Notice is not null)
+    {
+        <div class="portal-alert" id="page-notice">@Notice</div>
+    }
+    @if (Error is not null)
+    {
+        <div class="portal-alert portal-alert--error" id="page-error">@Error</div>
+    }
+
+    @if (_pending is not null)
+    {
+        @if (_pending.Count == 0)
+        {
+            <p class="portal-empty" id="approvals-empty">Bekleyen talep yok.</p>
+        }
+        else
+        {
+            <div class="portal-list" id="approvals-list">
+                @foreach (var request in _pending)
+                {
+                    <article class="portal-card portal-approval" data-request="@request.Id">
+                        <header>
+                            <span class="badge">@Fmt.ApprovalKind(request.Kind)</span>
+                            <strong>@request.CounterpartyName</strong>
+                            <span class="portal-approval-amount">@Fmt.Money(request.Amount)</span>
+                        </header>
+                        <p class="portal-hint">@(request.RequestedByName ?? "Bilinmeyen kullanıcı") · @Fmt.Time(request.RequestedAtUtc)</p>
+                        @if (Session.CanApprove)
+                        {
+                            <div class="portal-approval-actions">
+                                <input type="text" class="portal-note" placeholder="Not (isteğe bağlı)" maxlength="500"
+                                       value="@NoteFor(request.Id)" @onchange="e => _notes[request.Id] = e.Value?.ToString()" />
+                                <button type="button" class="portal-button" disabled="@Busy" @onclick="() => DecideAsync(request, approve: true)">Onayla</button>
+                                <button type="button" class="portal-button portal-button--danger" disabled="@Busy" @onclick="() => DecideAsync(request, approve: false)">Reddet</button>
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    /// <summary>Codes after which the list on screen is stale and is read again.</summary>
+    private static readonly HashSet<string> StaleCodes = ["APPROVAL_ALREADY_DECIDED", "APPROVAL_STATE_CHANGED", "APPROVAL_NOT_FOUND"];
+
+    private List<ApprovalDto>? _pending;
+    private readonly Dictionary<Guid, string?> _notes = [];
+
+    private string? Notice { get; set; }
+
+    protected override async Task LoadAsync() => _pending = [.. await Api.PendingApprovalsAsync()];
+
+    private string? NoteFor(Guid id) => _notes.GetValueOrDefault(id);
+
+    private Task RefreshAsync()
+    {
+        Notice = null;
+        return RunAsync(LoadAsync);
+    }
+
+    private async Task DecideAsync(ApprovalDto request, bool approve)
+    {
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            try
+            {
+                var note = NoteFor(request.Id);
+                await Api.DecideAsync(request.Id, approve, string.IsNullOrWhiteSpace(note) ? null : note.Trim());
+                _pending?.RemoveAll(r => r.Id == request.Id);
+                _notes.Remove(request.Id);
+                Notice = $"{request.CounterpartyName} — {Fmt.ApprovalKind(request.Kind).ToLower(Fmt.Turkish)} talebi {(approve ? "onaylandı" : "reddedildi")}.";
+            }
+            catch (PortalApiException stale) when (StaleCodes.Contains(stale.Code))
+            {
+                await LoadAsync();
+                throw;
+            }
+        });
+    }
+}
