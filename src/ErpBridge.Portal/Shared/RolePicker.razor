@@ -1,0 +1,35 @@
+@* Multi-role choice for a user: one chip per role and what each role opens. *@
+
+<div class="role-picker" id="@Id">
+    <MudChipSet T="string" SelectionMode="SelectionMode.MultiSelection" SelectedValues="@Selected" SelectedValuesChanged="ChangedAsync"
+                CheckMark="true" Color="Color.Primary" Variant="Variant.Outlined" SelectedColor="Color.Primary" Size="Size.Small" Disabled="@Disabled">
+        @foreach (var role in PortalRoles.All)
+        {
+            <MudChip T="string" Value="@role" Text="@PortalRoles.Label(role)" data-role="@role" />
+        }
+    </MudChipSet>
+
+    <ul class="role-help">
+        @foreach (var role in PortalRoles.All)
+        {
+            <li class="@(Selected.Contains(role) ? "is-selected" : null)" data-role-help="@role">
+                <strong>@PortalRoles.Label(role)</strong> — @PortalRoles.Description(role)
+            </li>
+        }
+    </ul>
+
+    @if (Selected.Count == 0)
+    {
+        <div class="role-picker-warning">En az bir rol seçin.</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public IReadOnlyCollection<string> Selected { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyCollection<string>> SelectedChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private Task ChangedAsync(IReadOnlyCollection<string>? roles) =>
+        SelectedChanged.InvokeAsync(PortalRoles.All.Where((roles ?? []).Contains).ToArray());
+}

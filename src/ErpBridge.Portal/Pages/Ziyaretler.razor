@@ -102,6 +102,8 @@ else
 }
 
 @code {
+    protected override PortalArea Requires => PortalArea.Reports;
+
     [SupplyParameterFromQuery(Name = "date")] public string? DateQuery { get; set; }
 
     private DateOnly _day;

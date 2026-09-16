@@ -5,9 +5,10 @@ using Microsoft.AspNetCore.Components;
 namespace ErpBridge.Portal.Shared;
 
 /// <summary>
-/// Base of every signed-in page: restores the tab's session on the first render, sends a
-/// visitor without one to the login page, and turns API failures into a message — or,
-/// when the server ended the session, back to the login page.
+/// Base of every signed-in page: restores the session on the first render, sends a visitor
+/// without one to the login page, sends a user whose roles do not open the page to their own
+/// home page, and turns API failures into a message — or, when the server ended the session,
+/// back to the login page.
 /// </summary>
 public abstract class PortalPageBase : ComponentBase
 {
@@ -21,8 +22,8 @@ public abstract class PortalPageBase : ComponentBase
     protected bool Busy { get; private set; }
     protected string? Error { get; set; }
 
-    /// <summary>Pages only administrators may open.</summary>
-    protected virtual bool AdminOnly => false;
+    /// <summary>The part of the portal the page belongs to; the user's roles must open it.</summary>
+    protected abstract PortalArea Requires { get; }
 
     /// <summary>Loads the page's data once the session is ready.</summary>
     protected abstract Task LoadAsync();
@@ -38,9 +39,10 @@ public abstract class PortalPageBase : ComponentBase
             Nav.NavigateTo("login");
             return;
         }
-        if (AdminOnly && !Session.IsAdmin)
+        if (!Session.Allows(Requires))
         {
-            Nav.NavigateTo("");
+            // A typed or bookmarked address the roles do not open; the server would refuse it anyway.
+            Nav.NavigateTo(Session.HomePage);
             return;
         }
         Ready = true;

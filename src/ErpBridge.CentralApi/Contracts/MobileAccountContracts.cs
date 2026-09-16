@@ -13,6 +13,12 @@ public sealed class MobileLoginRequest
 
     /// <summary><c>android</c> (default, what phones send by omitting it) or <c>portal</c>.</summary>
     [JsonPropertyName("client")] public string? Client { get; set; }
+
+    /// <summary>
+    /// Portal only: <c>true</c> keeps the browser signed in for 30 days, otherwise the session
+    /// lasts a workday (12 hours). A phone always gets 30 days — it works offline for days.
+    /// </summary>
+    [JsonPropertyName("rememberMe")] public bool? RememberMe { get; set; }
 }
 
 /// <summary>Successful sign-in: a bearer token plus the session the app shows.</summary>

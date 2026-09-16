@@ -77,6 +77,8 @@ else
 }
 
 @code {
+    protected override PortalArea Requires => PortalArea.Ledger;
+
     private string? _search;
     private string? _searched;
     private BalancesResponse? _balances;

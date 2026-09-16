@@ -83,6 +83,8 @@ else
 }
 
 @code {
+    protected override PortalArea Requires => PortalArea.Ledger;
+
     private string? _search;
     private bool _outOnly;
     private StockResponse? _stock;

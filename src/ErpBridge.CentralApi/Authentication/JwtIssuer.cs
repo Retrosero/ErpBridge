@@ -41,7 +41,8 @@ public interface IJwtIssuer
     /// the app works offline for days; revocation does not rely on expiry — every
     /// authorized call re-checks the user, device, tenant and subscription rows.
     /// </summary>
-    IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId, string client = CentralApiClaims.PhoneClient);
+    /// <param name="lifetime">Defaults to <see cref="JwtIssuer.MobileUserTokenDays"/> days.</param>
+    IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId, string client = CentralApiClaims.PhoneClient, TimeSpan? lifetime = null);
 
     /// <summary>Validate a token. Returns <c>null</c> when invalid/expired.</summary>
     ClaimsPrincipal? Validate(string token);
@@ -115,12 +116,15 @@ public sealed class JwtIssuer : IJwtIssuer
     /// <summary>Lifetime of a mobile user token, in days.</summary>
     public const int MobileUserTokenDays = 30;
 
+    /// <summary>Lifetime of a portal session the user did not ask to be remembered: one workday.</summary>
+    public const int PortalSessionHours = 12;
+
     /// <inheritdoc />
-    public IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId, string client = CentralApiClaims.PhoneClient)
+    public IssuedMobileUserToken IssueForMobileUser(Guid userId, Guid tenantId, string deviceId, string client = CentralApiClaims.PhoneClient, TimeSpan? lifetime = null)
     {
         var opts = _options.CurrentValue;
         var keyBytes = EnsureKey(opts);
-        var expires = DateTimeOffset.UtcNow.AddDays(MobileUserTokenDays);
+        var expires = DateTimeOffset.UtcNow.Add(lifetime ?? TimeSpan.FromDays(MobileUserTokenDays));
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),

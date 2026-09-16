@@ -18,7 +18,8 @@ public static class PortalMessages
         "SUBSCRIPTION_EXPIRED" => "Firmanın kullanım süresi dolmuş. Firma yöneticinizle görüşün.",
         "SUBSCRIPTION_REQUIRED" => "Firmanın tanımlı kullanıcı hakkı yok. Firma yöneticinizle görüşün.",
         "SESSION_REVOKED" or "INVALID_TOKEN" => "Oturumunuz sona erdi. Lütfen yeniden giriş yapın.",
-        "PORTAL_REQUIRES_MANAGER" => "Yönetim paneli yalnızca firma admini ve yöneticiler içindir.",
+        "PORTAL_REQUIRES_MANAGER" => "Bu bölüm için rolünüz yetkili değil. Firma admininizle görüşün.",
+        "PORTAL_SALES_ONLY" => "Saha hesapları telefonda çalışır; panele admin, yönetici, muhasebe ve depo rolleri girer.",
         "ADMIN_REQUIRED" => "Kullanıcıları yalnızca firma admini yönetebilir.",
         "APPROVER_REQUIRED" => "Onay vermek için yetkiniz yok. Firma admininizle görüşün.",
         "SELF_APPROVAL_NOT_ALLOWED" => "Kendi talebinizi başka bir onay yetkilisi onaylamalı.",
@@ -32,7 +33,7 @@ public static class PortalMessages
         "INVALID_USERNAME" => "Kullanıcı adı 3-64 karakter olmalı; yalnızca küçük harf, rakam, nokta, alt çizgi ve tire.",
         "INVALID_PASSWORD" => "Parola en az 6 karakter olmalı.",
         "INVALID_FULL_NAME" => "Ad soyad zorunludur.",
-        "INVALID_ROLE" => "Rol Admin, Yönetici veya Saha olmalı.",
+        "INVALID_ROLE" => "En az bir rol seçin.",
         "USER_NOT_FOUND" => "Kullanıcı bulunamadı.",
         "INVALID_DATE" => "Tarih geçersiz.",
         "INVALID_RANGE" => "Bitiş tarihi başlangıçtan önce olamaz.",
@@ -109,11 +110,8 @@ public static class Fmt
         };
     }
 
-    public static string Role(string role) => role switch
-    {
-        "ADMIN" => "Admin",
-        "MANAGER" => "Yönetici",
-        "SALES" => "Saha",
-        _ => role,
-    };
+    public static string Role(string role) => Session.PortalRoles.Label(role);
+
+    /// <summary>"Yönetici · Depo".</summary>
+    public static string Roles(IEnumerable<string> roles) => string.Join(" · ", roles.Select(Role));
 }

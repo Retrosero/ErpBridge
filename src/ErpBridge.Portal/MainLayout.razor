@@ -25,7 +25,7 @@
                         <MudAvatar Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">@Initials</MudAvatar>
                         <div class="portal-user-text">
                             <span class="portal-user-name">@Session.FullName</span>
-                            <span class="portal-user-role">@Fmt.Role(Session.Role)</span>
+                            <span class="portal-user-role" id="user-roles">@Fmt.Roles(Session.Roles)</span>
                         </div>
                         <MudIcon Icon="@Icons.Material.Rounded.ExpandMore" Size="Size.Small" />
                     </div>
@@ -47,31 +47,49 @@
                 </div>
             </div>
 
-            <div class="portal-nav-label">Genel bakış</div>
-            <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
-                <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.SpaceDashboard">Özet</MudNavLink>
-                <MudNavLink Href="plasiyerler" Icon="@Icons.Material.Rounded.Leaderboard">Plasiyerler</MudNavLink>
-                <MudNavLink Href="ziyaretler" Icon="@Icons.Material.Rounded.Route">Ziyaretler</MudNavLink>
-            </MudNavMenu>
-
-            <div class="portal-nav-label">Kayıtlar</div>
-            <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
-                <MudNavLink Href="cariler" Icon="@Icons.Material.Rounded.AccountBalanceWallet">Cariler</MudNavLink>
-                <MudNavLink Href="stok" Icon="@Icons.Material.Rounded.Inventory2">Stok</MudNavLink>
-            </MudNavMenu>
-
-            <div class="portal-nav-label">Yönetim</div>
-            <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
-                <MudNavLink Href="onaylar" Icon="@Icons.Material.Rounded.FactCheck">Onaylar</MudNavLink>
-                @if (Session.IsAdmin)
+            <nav id="portal-nav">
+                @if (Session.Allows(PortalArea.Reports))
                 {
-                    <MudNavLink Href="kullanicilar" Icon="@Icons.Material.Rounded.ManageAccounts">Kullanıcılar</MudNavLink>
+                    <div class="portal-nav-label">Genel bakış</div>
+                    <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                        <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.SpaceDashboard">Özet</MudNavLink>
+                        <MudNavLink Href="plasiyerler" Icon="@Icons.Material.Rounded.Leaderboard">Plasiyerler</MudNavLink>
+                        <MudNavLink Href="ziyaretler" Icon="@Icons.Material.Rounded.Route">Ziyaretler</MudNavLink>
+                    </MudNavMenu>
                 }
-            </MudNavMenu>
 
-            <div class="portal-drawer-footer">
+                @if (Session.Allows(PortalArea.Ledger))
+                {
+                    <div class="portal-nav-label">Kayıtlar</div>
+                    <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                        <MudNavLink Href="cariler" Icon="@Icons.Material.Rounded.AccountBalanceWallet">Cariler</MudNavLink>
+                        <MudNavLink Href="stok" Icon="@Icons.Material.Rounded.Inventory2">Stok</MudNavLink>
+                    </MudNavMenu>
+                }
+
+                @if (Session.Allows(PortalArea.Approvals) || Session.Allows(PortalArea.Warehouse) || Session.Allows(PortalArea.Users))
+                {
+                    <div class="portal-nav-label">İşlemler</div>
+                    <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                        @if (Session.Allows(PortalArea.Approvals))
+                        {
+                            <MudNavLink Href="onaylar" Icon="@Icons.Material.Rounded.FactCheck">Onaylar</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.Warehouse))
+                        {
+                            <MudNavLink Href="depo" Icon="@Icons.Material.Rounded.Warehouse">Depo</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.Users))
+                        {
+                            <MudNavLink Href="kullanicilar" Icon="@Icons.Material.Rounded.ManageAccounts">Kullanıcılar</MudNavLink>
+                        }
+                    </MudNavMenu>
+                }
+            </nav>
+
+            <div class="portal-drawer-footer" id="session-scope">
                 <MudIcon Icon="@Icons.Material.Rounded.Lock" Size="Size.Small" />
-                <span>Oturum bu sekmeye özeldir</span>
+                <span>@(Session.RememberMe ? "Bu tarayıcıda hatırlanıyor" : "Oturum bu sekmeye özeldir")</span>
             </div>
         </MudDrawer>
 

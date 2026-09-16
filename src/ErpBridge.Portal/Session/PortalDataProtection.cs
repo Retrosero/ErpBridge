@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.DataProtection;
 namespace ErpBridge.Portal.Session;
 
 /// <summary>
-/// Keys that encrypt the session a browser keeps (<see cref="ProtectedSessionPersistence"/>).
+/// Keys that encrypt the session a browser keeps (<see cref="ProtectedBrowserPersistence"/>).
 /// ASP.NET Core keeps them inside the container by default, so every redeploy made every saved
 /// session unreadable and signed everyone out. With <c>DataProtection:KeysPath</c> pointing at a
 /// persistent volume, a session survives a redeploy — a prerequisite for "remember me".

@@ -55,16 +55,10 @@ public sealed class PortalSessionTests
 
         session.Token.Should().BeNull();
         session.TenantName.Should().BeEmpty();
-        session.Role.Should().BeEmpty();
+        session.Roles.Should().BeEmpty();
+        session.RememberMe.Should().BeFalse();
         changes.Should().Be(1);
     }
-
-    [Theory]
-    [InlineData("ADMIN", true)]
-    [InlineData("MANAGER", true)]
-    [InlineData("SALES", false)]
-    public void Only_administrators_and_managers_may_use_the_portal(string role, bool allowed) =>
-        PortalSession.Roles.MayUsePortal(role).Should().Be(allowed);
 
     // ---- the API client --------------------------------------------------------------
 
@@ -74,13 +68,14 @@ public sealed class PortalSessionTests
         var api = new FakeCentralApi().Answer("/api/v1/android/account/login", new { token = "t", expiresAtUtc = PortalTestSetup.Now.AddDays(30), session = new { user = new { username = "patron", role = "ADMIN" }, tenantName = "Ege" } });
         var client = new PortalApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }, new PortalSession(new TestClock(PortalTestSetup.Now)));
 
-        await client.LoginAsync(" ege123 ", " Patron ", "parola123");
+        await client.LoginAsync(" ege123 ", " Patron ", "parola123", rememberMe: true);
 
         var body = api.Requests.Single().Body!;
         body.Should().Contain("\"deviceId\":\"web-portal:patron\"");
         body.Should().Contain("\"tenantCode\":\"ege123\"");
         body.Should().Contain("\"appVersion\":\"portal\"");
         body.Should().Contain("\"client\":\"portal\"");
+        body.Should().Contain("\"rememberMe\":true");
     }
 
     [Fact]

@@ -20,23 +20,26 @@ public sealed class PortalSession
     public string DataSource { get; private set; } = string.Empty;
     public string Username { get; private set; } = string.Empty;
     public string FullName { get; private set; } = string.Empty;
-    public string Role { get; private set; } = string.Empty;
+
+    /// <summary>Every role of the user, in <see cref="PortalRoles.All"/> order.</summary>
+    public IReadOnlyList<string> Roles { get; private set; } = [];
+
+    /// <summary>The server's effective right to decide approval requests (admin, approving manager, accounting).</summary>
     public bool CanApprove { get; private set; }
 
+    /// <summary>Whether the browser keeps the session after the tab closes ("Beni hatırla").</summary>
+    public bool RememberMe { get; private set; }
+
     public bool IsSignedIn => Token is not null && ExpiresAtUtc > _time.GetUtcNow();
-    public bool IsAdmin => Role == Roles.Admin;
+    public bool IsAdmin => Roles.Contains(PortalRoles.Admin);
+
+    public bool Allows(PortalArea area) => PortalRoles.Allows(Roles, area);
+
+    /// <summary>The first page this user may open; see <see cref="PortalRoles.HomePage"/>.</summary>
+    public string HomePage => PortalRoles.HomePage(Roles);
 
     /// <summary>Raised on sign-in and sign-out so the layout redraws.</summary>
     public event Action? Changed;
-
-    public static class Roles
-    {
-        public const string Admin = "ADMIN";
-        public const string Manager = "MANAGER";
-        public const string Sales = "SALES";
-
-        public static bool MayUsePortal(string role) => role is Admin or Manager;
-    }
 
     public void SignIn(PortalSessionState state)
     {
@@ -48,8 +51,9 @@ public sealed class PortalSession
         DataSource = state.DataSource;
         Username = state.Username;
         FullName = state.FullName;
-        Role = state.Role;
+        Roles = state.EffectiveRoles();
         CanApprove = state.CanApprove;
+        RememberMe = state.RememberMe;
         Changed?.Invoke();
     }
 
@@ -57,17 +61,24 @@ public sealed class PortalSession
     {
         Token = null;
         ExpiresAtUtc = default;
-        TenantName = TenantCode = DataSource = Username = FullName = Role = string.Empty;
+        TenantName = TenantCode = DataSource = Username = FullName = string.Empty;
+        Roles = [];
         CanApprove = false;
+        RememberMe = false;
         Changed?.Invoke();
     }
 
     public PortalSessionState? Snapshot() => IsSignedIn
-        ? new PortalSessionState(Token!, ExpiresAtUtc, TenantName, TenantCode, DataSource, Username, FullName, Role, CanApprove)
+        ? new PortalSessionState(Token!, ExpiresAtUtc, TenantName, TenantCode, DataSource, Username, FullName, Legacy(Roles), CanApprove, [.. Roles], RememberMe)
         : null;
+
+    private static string Legacy(IReadOnlyList<string> roles) =>
+        roles.Contains(PortalRoles.Admin) ? PortalRoles.Admin : roles.Contains(PortalRoles.Manager) ? PortalRoles.Manager : PortalRoles.Sales;
 }
 
-/// <summary>What a tab keeps of its session between page reloads.</summary>
+/// <summary>What a browser keeps of its session between page reloads.</summary>
+/// <param name="Role">The single role of the session format before multi-role accounts.</param>
+/// <param name="Roles">Every role; <c>null</c> in a session saved before multi-role accounts.</param>
 public sealed record PortalSessionState(
     string Token,
     DateTimeOffset ExpiresAtUtc,
@@ -77,11 +88,22 @@ public sealed record PortalSessionState(
     string Username,
     string FullName,
     string Role,
-    bool CanApprove);
+    bool CanApprove,
+    string[]? Roles = null,
+    bool RememberMe = false)
+{
+    /// <summary>The roles, falling back to the single role a session saved by an older portal holds.</summary>
+    public IReadOnlyList<string> EffectiveRoles()
+    {
+        var roles = Roles is { Length: > 0 } ? Roles : string.IsNullOrWhiteSpace(Role) ? [] : [Role];
+        return PortalRoles.All.Where(roles.Contains).ToArray();
+    }
+}
 
-/// <summary>Keeps a tab's session across page reloads without exposing the token to scripts.</summary>
+/// <summary>Keeps a session across page reloads without exposing the token to scripts.</summary>
 public interface ISessionPersistence
 {
+    /// <summary>Saves for the tab, or for the browser when <see cref="PortalSessionState.RememberMe"/> is set.</summary>
     Task SaveAsync(PortalSessionState state);
     Task<PortalSessionState?> LoadAsync();
     Task ClearAsync();

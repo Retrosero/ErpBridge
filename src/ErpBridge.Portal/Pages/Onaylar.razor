@@ -81,6 +81,8 @@ else
 }
 
 @code {
+    protected override PortalArea Requires => PortalArea.Approvals;
+
     /// <summary>Codes after which the list on screen is stale and is read again.</summary>
     private static readonly HashSet<string> StaleCodes = ["APPROVAL_ALREADY_DECIDED", "APPROVAL_STATE_CHANGED", "APPROVAL_NOT_FOUND"];
 

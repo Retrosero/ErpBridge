@@ -17,7 +17,7 @@ builder.Services.AddMudServices(options =>
 // One session per circuit. Never a singleton: that would share one company's token with
 // every visitor (see PortalSession).
 builder.Services.AddScoped<PortalSession>();
-builder.Services.AddScoped<ISessionPersistence, ProtectedSessionPersistence>();
+builder.Services.AddScoped<ISessionPersistence, ProtectedBrowserPersistence>();
 var keysPath = builder.Services.AddPortalDataProtection(builder.Configuration);
 
 var baseUrl = builder.Configuration["CentralApi:BaseUrl"] ?? "https://localhost:7001";

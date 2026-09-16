@@ -102,7 +102,11 @@ public static class MobileAccountEndpoints
         user.LastLoginAtUtc = now;
         await db.SaveChangesAsync(ct);
 
-        var token = jwt.IssueForMobileUser(user.Id, tenant.Id, deviceId, client);
+        // "Remember me" is a portal choice; a phone keeps its month-long token whatever it sends.
+        TimeSpan? lifetime = client == CentralApiClaims.PortalClient && body.RememberMe != true
+            ? TimeSpan.FromHours(JwtIssuer.PortalSessionHours)
+            : null;
+        var token = jwt.IssueForMobileUser(user.Id, tenant.Id, deviceId, client, lifetime);
         return JsonResults.Ok(new MobileLoginResponse
         {
             Token = token.Token,

@@ -134,6 +134,8 @@ else
 }
 
 @code {
+    protected override PortalArea Requires => PortalArea.Reports;
+
     /// <summary>The server allows at most this many days in one request.</summary>
     private const int MaxDays = 92;
 
