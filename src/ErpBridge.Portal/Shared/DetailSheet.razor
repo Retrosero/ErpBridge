@@ -1,0 +1,41 @@
+@* A panel that slides in from the right over the page (full screen on a phone) for the detail of one row. *@
+@if (Open)
+{
+    <div class="sheet-backdrop" @onclick="CloseAsync"></div>
+    <aside class="detail-sheet" id="@Id" role="dialog" aria-modal="true" aria-label="@Title" tabindex="-1" @onkeydown="KeyAsync">
+        <header class="sheet-header">
+            <div class="sheet-heading">
+                @if (!string.IsNullOrEmpty(Eyebrow))
+                {
+                    <div class="page-eyebrow">@Eyebrow</div>
+                }
+                <h2 class="sheet-title">@Title</h2>
+            </div>
+            <MudIconButton Icon="@Icons.Material.Rounded.Close" OnClick="CloseAsync" Class="sheet-close" aria-label="Kapat" />
+        </header>
+        @if (Busy)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
+        }
+        <div class="sheet-body">@ChildContent</div>
+        @if (Footer is not null)
+        {
+            <footer class="sheet-footer">@Footer</footer>
+        }
+    </aside>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Eyebrow { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Task CloseAsync() => OnClose.InvokeAsync();
+
+    private Task KeyAsync(KeyboardEventArgs e) => e.Key == "Escape" ? CloseAsync() : Task.CompletedTask;
+}

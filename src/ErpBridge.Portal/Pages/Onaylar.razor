@@ -9,14 +9,35 @@
 }
 else
 {
-    <PageHeader Title="Bekleyen onaylar" Eyebrow="Yönetim" Subtitle="Sahadan onaya gönderilen işlemler" Busy="Busy">
+    <PageHeader Title="Onaylar" Eyebrow="Yönetim" Subtitle="Sahadan onaya gönderilen işlemler ve verilen kararlar" Busy="Busy">
         <Actions>
+            <select class="portal-select" id="approvals-kind" aria-label="Tür" value="@_kind" @onchange="KindChangedAsync" disabled="@Busy">
+                <option value="">Tüm türler</option>
+                @foreach (var kind in Kinds)
+                {
+                    <option value="@kind">@Fmt.ApprovalKind(kind)</option>
+                }
+            </select>
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Refresh" Disabled="@Busy"
                        OnClick="RefreshAsync" id="approvals-refresh">Yenile</MudButton>
         </Actions>
     </PageHeader>
 
-    @if (!Session.CanApprove)
+    <div class="seg-tabs" role="tablist" id="approvals-tabs">
+        @foreach (var tab in Tabs)
+        {
+            <button type="button" role="tab" class="seg-tab @(tab.Key == _tab ? "is-active" : null)" aria-selected="@(tab.Key == _tab ? "true" : "false")"
+                    data-tab="@tab.Key" disabled="@Busy" @onclick="() => SelectTabAsync(tab.Key)">
+                @tab.Label
+                @if (tab.Key == PendingTab && _pendingCount is > 0)
+                {
+                    <span class="seg-count" id="approvals-pending-count">@_pendingCount</span>
+                }
+            </button>
+        }
+    </div>
+
+    @if (!Session.CanApprove && _tab == PendingTab)
     {
         <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="page-alert" id="approvals-readonly">
             Talepleri görebilirsiniz; onay vermek için firma admininizin size onay yetkisi vermesi gerekir.
@@ -26,32 +47,40 @@ else
     {
         <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
     }
-    @if (Error is not null)
+    @if (Error is not null && !_detailOpen)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
 
-    @if (_pending is not null)
+    @if (_rows is not null)
     {
-        @if (_pending.Count == 0)
+        @if (_rows.Count == 0)
         {
             <MudPaper Outlined="true" Class="panel">
-                <EmptyState Id="approvals-empty" Icon="@Icons.Material.Rounded.TaskAlt" Title="Bekleyen talep yok." Hint="Sahadan onaya gönderilen işlemler burada listelenir." />
+                <EmptyState Id="approvals-empty" Icon="@Icons.Material.Rounded.TaskAlt" Title="@EmptyTitle" Hint="Sahadan onaya gönderilen işlemler burada listelenir." />
             </MudPaper>
         }
         else
         {
-            <p class="section-caption">@_pending.Count talep sonuç bekliyor · toplam @Fmt.Money(_pending.Sum(r => r.Amount))</p>
+            <p class="section-caption" id="approvals-caption">
+                @_rows.Count talep@(_hasMore ? "+" : null) · toplam @Fmt.Money(_rows.Sum(r => r.Amount))
+            </p>
             <div class="approval-list" id="approvals-list">
-                @foreach (var request in _pending)
+                @foreach (var request in _rows)
                 {
-                    <MudPaper Outlined="true" Class="approval-card" data-request="@request.Id">
-                        <div class="approval-main">
+                    var pending = IsPending(request);
+                    <MudPaper Outlined="true" Class="approval-card" data-request="@request.Id" data-status="@request.Status">
+                        <div class="approval-main approval-open" role="button" tabindex="0" title="Ayrıntıyı aç"
+                             @onclick="() => OpenAsync(request)" @onkeydown="e => OpenKeyAsync(e, request)">
                             <span class="approval-icon tone-@KindTone(request.Kind)"><MudIcon Icon="@KindIcon(request.Kind)" /></span>
                             <div class="approval-text">
                                 <div class="approval-title">
                                     <span class="badge badge--@KindTone(request.Kind)">@Fmt.ApprovalKind(request.Kind)</span>
                                     <strong>@request.CounterpartyName</strong>
+                                    @if (!pending)
+                                    {
+                                        <span class="badge badge--@StatusTone(request.Status) approval-status">@StatusLabel(request.Status)</span>
+                                    }
                                 </div>
                                 <div class="approval-meta">
                                     <MudIcon Icon="@Icons.Material.Rounded.Person" Size="Size.Small" />
@@ -59,10 +88,22 @@ else
                                     <MudIcon Icon="@Icons.Material.Rounded.Schedule" Size="Size.Small" />
                                     <span>@Fmt.Time(request.RequestedAtUtc)</span>
                                 </div>
+                                @if (!pending && request.DecidedByName is not null)
+                                {
+                                    <div class="approval-meta approval-decision">
+                                        <MudIcon Icon="@Icons.Material.Rounded.Gavel" Size="Size.Small" />
+                                        <span>@request.DecidedByName@(request.DecidedAtUtc is { } at ? " · " + Fmt.Time(at) : null)</span>
+                                        @if (!string.IsNullOrWhiteSpace(request.DecisionNote))
+                                        {
+                                            <span class="approval-note">“@request.DecisionNote”</span>
+                                        }
+                                    </div>
+                                }
                             </div>
                             <div class="approval-amount">@Fmt.Money(request.Amount)</div>
+                            <MudIcon Icon="@Icons.Material.Rounded.ChevronRight" Class="approval-chevron" />
                         </div>
-                        @if (Session.CanApprove)
+                        @if (pending && Session.CanApprove)
                         {
                             <div class="approval-actions">
                                 <MudTextField T="string" Value="@NoteFor(request.Id)" ValueChanged="v => _notes[request.Id] = v" Placeholder="Not (isteğe bağlı)"
@@ -76,30 +117,378 @@ else
                     </MudPaper>
                 }
             </div>
+            @if (_hasMore)
+            {
+                <div class="load-more">
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Disabled="@Busy" OnClick="LoadMoreAsync" id="approvals-more"
+                               StartIcon="@Icons.Material.Rounded.ExpandMore">Daha fazla yükle</MudButton>
+                </div>
+            }
         }
     }
+
+    <DetailSheet Id="approval-detail" Open="_detailOpen" Busy="_detailBusy" Eyebrow="Onay talebi"
+                 Title="@(_detail?.Request.CounterpartyName ?? _opened?.CounterpartyName ?? string.Empty)" OnClose="CloseDetail">
+        <ChildContent>
+            @if (_detailError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="detail-error">@_detailError</MudAlert>
+            }
+            @if (_detail is { } detail)
+            {
+                var request = detail.Request;
+                <div class="detail-summary">
+                    <div class="detail-badges">
+                        <span class="badge badge--@KindTone(request.Kind)">@Fmt.ApprovalKind(request.Kind)</span>
+                        <span class="badge badge--@StatusTone(request.Status)" id="detail-status">@StatusLabel(request.Status)</span>
+                    </div>
+                    <div class="detail-amount" id="detail-amount">@Fmt.Money(request.Amount)</div>
+                    <dl class="detail-facts">
+                        <dt>Gönderen</dt><dd>@(request.RequestedByName ?? "Bilinmeyen kullanıcı")</dd>
+                        <dt>Gönderilme</dt><dd>@Fmt.Time(request.RequestedAtUtc)</dd>
+                        @if (request.DecidedByName is not null)
+                        {
+                            <dt>Karar veren</dt><dd>@request.DecidedByName@(request.DecidedAtUtc is { } at ? " · " + Fmt.Time(at) : null)</dd>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(request.DecisionNote))
+                        {
+                            <dt>Karar notu</dt><dd>@request.DecisionNote</dd>
+                        }
+                    </dl>
+                </div>
+
+                @if (detail.Warnings.Length > 0)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="detail-warnings">
+                        <strong>Stok yetersiz:</strong>
+                        <ul class="detail-warning-list">
+                            @foreach (var warning in detail.Warnings)
+                            {
+                                <li data-warning="@warning.StockCode">@warning.Title (@warning.StockCode): istenen @Fmt.Quantity(warning.Requested), stokta @Fmt.Quantity(warning.OnHand)</li>
+                            }
+                        </ul>
+                    </MudAlert>
+                }
+
+                @foreach (var document in _documents)
+                {
+                    <section class="detail-section" data-document="@document.Title">
+                        <h3 class="detail-section-title">@document.Title</h3>
+                        @if (document.Fields.Count > 0)
+                        {
+                            <dl class="detail-facts">
+                                @foreach (var field in document.Fields)
+                                {
+                                    <dt>@field.Label</dt><dd>@field.Value</dd>
+                                }
+                            </dl>
+                        }
+                        @if (document.Lines.Count > 0)
+                        {
+                            <div class="table-scroll">
+                                <table class="data-table detail-lines">
+                                    <thead>
+                                        <tr>
+                                            <th>Kod</th>
+                                            <th>Ürün</th>
+                                            @if (document.IsCount)
+                                            {
+                                                <th class="num">Beklenen</th>
+                                                <th class="num">Sayılan</th>
+                                            }
+                                            else
+                                            {
+                                                <th class="num">Miktar</th>
+                                                <th class="num">Birim fiyat</th>
+                                                @if (document.HasDiscount)
+                                                {
+                                                    <th class="num">İskonto</th>
+                                                }
+                                                @if (document.HasVat)
+                                                {
+                                                    <th class="num">KDV</th>
+                                                }
+                                                @if (document.HasCondition)
+                                                {
+                                                    <th class="num">Durum</th>
+                                                }
+                                                <th class="num">Tutar</th>
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var line in document.Lines)
+                                        {
+                                            <tr data-line="@line.Code">
+                                                <td class="mono">@line.Code</td>
+                                                <td class="cell-title">
+                                                    @line.Name
+                                                    @if (line.Note is not null)
+                                                    {
+                                                        <div class="text-muted detail-line-note">@line.Note</div>
+                                                    }
+                                                </td>
+                                                @if (document.IsCount)
+                                                {
+                                                    <td class="num">@Qty(line.Expected)</td>
+                                                    <td class="num">@Qty(line.Counted)</td>
+                                                }
+                                                else
+                                                {
+                                                    <td class="num">@Qty(line.Quantity)@(line.Unit is null ? null : " " + line.Unit)</td>
+                                                    <td class="num">@(line.UnitPrice is { } price ? Fmt.Money(price) : "—")</td>
+                                                    @if (document.HasDiscount)
+                                                    {
+                                                        <td class="num" data-col="discount">@Discount(line)</td>
+                                                    }
+                                                    @if (document.HasVat)
+                                                    {
+                                                        <td class="num" data-col="vat">@Percent(line.VatRate)</td>
+                                                    }
+                                                    @if (document.HasCondition)
+                                                    {
+                                                        <td class="num" data-col="condition">@Condition(line.ConditionPercent)</td>
+                                                    }
+                                                    <td class="num">@(line.Total is { } total ? Fmt.Money(total) : "—")</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        @if (document.Other.Count > 0)
+                        {
+                            <details class="detail-other">
+                                <summary>Diğer bilgiler</summary>
+                                <dl class="detail-facts">
+                                    @foreach (var field in document.Other)
+                                    {
+                                        <dt class="mono">@field.Label</dt><dd>@field.Value</dd>
+                                    }
+                                </dl>
+                            </details>
+                        }
+                    </section>
+                }
+
+                @if (detail.Events.Length > 0)
+                {
+                    <section class="detail-section">
+                        <h3 class="detail-section-title">Geçmiş</h3>
+                        <ol class="timeline" id="detail-events">
+                            @foreach (var e in detail.Events)
+                            {
+                                <li class="timeline-item" data-event="@e.Action">
+                                    <span class="timeline-dot tone-@EventTone(e.Action)"></span>
+                                    <div>
+                                        <strong>@EventLabel(e.Action)</strong>
+                                        <span class="text-muted"> · @(e.ByName ?? "Sistem") · @Fmt.Time(e.AtUtc)</span>
+                                        @if (!string.IsNullOrWhiteSpace(e.Note))
+                                        {
+                                            <div class="timeline-note">“@e.Note”</div>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ol>
+                    </section>
+                }
+            }
+        </ChildContent>
+        <Footer>
+            @if (_detail is { } shown && IsPending(shown.Request) && Session.CanApprove)
+            {
+                <div class="approval-actions approval-actions--sheet" id="detail-actions">
+                    <MudTextField T="string" Value="@NoteFor(shown.Request.Id)" ValueChanged="v => _notes[shown.Request.Id] = v" Placeholder="Not (isteğe bağlı)"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="500" Class="portal-note" />
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Rounded.Close" Disabled="@(Busy || _detailBusy)"
+                               Class="reject-btn" OnClick="() => DecideAsync(shown.Request, approve: false)">Reddet</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Rounded.Check" Disabled="@(Busy || _detailBusy)"
+                               Class="approve-btn" OnClick="() => DecideAsync(shown.Request, approve: true)">Onayla</MudButton>
+                </div>
+            }
+        </Footer>
+    </DetailSheet>
 }
 
 @code {
     protected override PortalArea Requires => PortalArea.Approvals;
 
+    private const string PendingTab = "bekleyen";
+    private const string PendingStatus = "Pending";
+    private const int PageSize = 50;
+
+    private static readonly (string Key, string Label, string Status)[] Tabs =
+    [
+        (PendingTab, "Bekleyen", "pending"),
+        ("onaylanan", "Onaylanan", "approved"),
+        ("reddedilen", "Reddedilen", "rejected,resubmitted"),
+        ("tumu", "Tümü", "all"),
+    ];
+
+    private static readonly string[] Kinds = ["sale", "collection", "return", "disbursement", "purchase", "stock_count", "product_card", "customer_card"];
+
     /// <summary>Codes after which the list on screen is stale and is read again.</summary>
     private static readonly HashSet<string> StaleCodes = ["APPROVAL_ALREADY_DECIDED", "APPROVAL_STATE_CHANGED", "APPROVAL_NOT_FOUND"];
 
-    private List<ApprovalDto>? _pending;
+    private string _tab = PendingTab;
+    private string _kind = string.Empty;
+    private List<ApprovalDto>? _rows;
+    private bool _hasMore;
+    private int? _pendingCount;
     private readonly Dictionary<Guid, string?> _notes = [];
+
+    private bool _detailOpen;
+    private bool _detailBusy;
+    private string? _detailError;
+    private ApprovalDto? _opened;
+    private ApprovalDetailDto? _detail;
+    private IReadOnlyList<DocumentView> _documents = [];
 
     private string? Notice { get; set; }
 
-    protected override async Task LoadAsync() => _pending = [.. await Api.PendingApprovalsAsync()];
+    private string EmptyTitle => _tab switch
+    {
+        PendingTab => "Bekleyen talep yok.",
+        "onaylanan" => "Onaylanan talep yok.",
+        "reddedilen" => "Reddedilen talep yok.",
+        _ => "Talep yok.",
+    };
 
-    private string? NoteFor(Guid id) => _notes.GetValueOrDefault(id);
+    protected override void OnInitialized()
+    {
+        // The tab, kind and open request live in the address: refresh, back and a shared link keep them.
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("durum", out var tab) && Tabs.Any(t => t.Key == tab)) _tab = tab!;
+        if (query.TryGetValue("tur", out var kind) && Kinds.Contains(kind.ToString())) _kind = kind!;
+        if (query.TryGetValue("talep", out var id) && Guid.TryParse(id, out var requestId)) _opened = new ApprovalDto { Id = requestId };
+    }
+
+    protected override async Task LoadAsync()
+    {
+        await LoadPageAsync(append: false);
+        if (_opened is { } opened && !_detailOpen) await OpenAsync(opened);
+    }
+
+    private async Task LoadPageAsync(bool append)
+    {
+        var status = Tabs.First(t => t.Key == _tab).Status;
+        var after = append && _rows is { Count: > 0 } ? _rows[^1] : null;
+        var page = await Api.ApprovalsAsync(status, _kind.Length == 0 ? null : _kind, after, PageSize);
+        _rows = append && _rows is not null ? [.. _rows, .. page] : [.. page];
+        _hasMore = page.Length == PageSize;
+        if (_tab == PendingTab && _kind.Length == 0 && !_hasMore) _pendingCount = _rows.Count;
+        else await ReadPendingCountAsync();
+    }
+
+    private async Task ReadPendingCountAsync()
+    {
+        try
+        {
+            _pendingCount = (await Api.ApprovalSummaryAsync()).PendingCount;
+        }
+        catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+        {
+            // Only the badge; the list is what matters.
+        }
+    }
 
     private Task RefreshAsync()
     {
         Notice = null;
-        return RunAsync(LoadAsync);
+        return RunAsync(() => LoadPageAsync(append: false));
     }
+
+    private Task LoadMoreAsync() => RunAsync(() => LoadPageAsync(append: true));
+
+    private Task SelectTabAsync(string tab)
+    {
+        if (tab == _tab) return Task.CompletedTask;
+        _tab = tab;
+        Notice = null;
+        SyncAddress();
+        return RunAsync(() => LoadPageAsync(append: false));
+    }
+
+    private Task KindChangedAsync(ChangeEventArgs e)
+    {
+        _kind = e.Value?.ToString() ?? string.Empty;
+        Notice = null;
+        SyncAddress();
+        return RunAsync(() => LoadPageAsync(append: false));
+    }
+
+    private void SyncAddress()
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["durum"] = _tab == PendingTab ? null : _tab,
+            ["tur"] = _kind.Length == 0 ? null : _kind,
+            ["talep"] = _detailOpen ? _opened?.Id.ToString() : null,
+        };
+        Nav.NavigateTo(Nav.GetUriWithQueryParameters(parameters), new NavigationOptions { ReplaceHistoryEntry = true });
+    }
+
+    private Task OpenKeyAsync(KeyboardEventArgs e, ApprovalDto request) =>
+        e.Key is "Enter" or " " ? OpenAsync(request) : Task.CompletedTask;
+
+    private async Task OpenAsync(ApprovalDto request)
+    {
+        _opened = request;
+        _detailOpen = true;
+        _detail = null;
+        _documents = [];
+        _detailError = null;
+        _detailBusy = true;
+        SyncAddress();
+        StateHasChanged();
+        // A slower answer for a request the user has already left must not replace the one on screen.
+        bool Current() => _detailOpen && _opened?.Id == request.Id;
+        try
+        {
+            var detail = await Api.ApprovalDetailAsync(request.Id);
+            if (!Current()) return;
+            _detail = detail;
+            _documents = ApprovalDocuments.Read(detail.Documents);
+        }
+        catch (PortalApiException failed)
+        {
+            if (!Current()) return;
+            _detailError = failed.Message;
+        }
+        catch (HttpRequestException)
+        {
+            if (!Current()) return;
+            _detailError = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+        }
+        catch (TaskCanceledException)
+        {
+            if (!Current()) return;
+            _detailError = "Sunucu zamanında yanıt vermedi. Tekrar deneyin.";
+        }
+        catch (SessionEndedException)
+        {
+            // The list call that follows sends the user to the login page.
+            _detailOpen = false;
+            await RunAsync(() => LoadPageAsync(append: false));
+        }
+        finally
+        {
+            if (Current()) _detailBusy = false;
+        }
+        StateHasChanged();
+    }
+
+    private void CloseDetail()
+    {
+        _detailOpen = false;
+        _detail = null;
+        _opened = null;
+        SyncAddress();
+    }
+
+    private string? NoteFor(Guid id) => _notes.GetValueOrDefault(id);
 
     private async Task DecideAsync(ApprovalDto request, bool approve)
     {
@@ -109,18 +498,81 @@ else
             try
             {
                 var note = NoteFor(request.Id);
-                await Api.DecideAsync(request.Id, approve, string.IsNullOrWhiteSpace(note) ? null : note.Trim());
-                _pending?.RemoveAll(r => r.Id == request.Id);
+                var decided = await Api.DecideAsync(request.Id, approve, string.IsNullOrWhiteSpace(note) ? null : note.Trim());
                 _notes.Remove(request.Id);
+                // A decided request leaves the pending tab; elsewhere it stays with its new state.
+                if (_tab == PendingTab) _rows?.RemoveAll(r => r.Id == request.Id);
+                else if (_rows?.FindIndex(r => r.Id == request.Id) is { } index and >= 0) _rows[index] = decided;
+                if (_pendingCount is > 0) _pendingCount--;
+                if (_detailOpen && _detail?.Request.Id == request.Id) CloseDetail();
                 Notice = $"{request.CounterpartyName} — {Fmt.ApprovalKind(request.Kind).ToLower(Fmt.Turkish)} talebi {(approve ? "onaylandı" : "reddedildi")}.";
             }
             catch (PortalApiException stale) when (StaleCodes.Contains(stale.Code))
             {
-                await LoadAsync();
+                if (_detailOpen) CloseDetail();
+                await LoadPageAsync(append: false);
                 throw;
             }
         });
     }
+
+    private static bool IsPending(ApprovalDto request) => string.Equals(request.Status, PendingStatus, StringComparison.OrdinalIgnoreCase);
+
+    private static string Qty(decimal? value) => value is { } q ? Fmt.Quantity(q) : "—";
+
+    private static string Percent(decimal? value) => value is { } p ? "%" + p.ToString("0.##", Fmt.Turkish) : "—";
+
+    /// <summary>The phone sends the credited share as a fraction (0.5 = half the value).</summary>
+    private static string Condition(decimal? value) => value is { } v ? Percent(v <= 1 ? v * 100 : v) : "—";
+
+    private static string Discount(DocumentLine line) => (line.DiscountPercent, line.DiscountAmount) switch
+    {
+        ({ } percent, { } amount) => $"{Percent(percent)} · {Fmt.Money(amount)}",
+        ({ } percent, null) => Percent(percent),
+        (null, { } amount) => Fmt.Money(amount),
+        _ => "—",
+    };
+
+    private static string StatusLabel(string status) => Canonical(status) switch
+    {
+        "Pending" => "Bekliyor",
+        "Approved" => "Onaylandı",
+        "Rejected" => "Reddedildi",
+        "Withdrawn" => "Geri çekildi",
+        "Resubmitted" => "Düzeltilip yeniden gönderildi",
+        _ => status,
+    };
+
+    private static string StatusTone(string status) => Canonical(status) switch
+    {
+        "Approved" => "success",
+        "Rejected" => "danger",
+        "Pending" => "warning",
+        _ => "muted",
+    };
+
+    /// <summary>The server writes "Approved"; older fakes and tools may send "APPROVED".</summary>
+    private static string Canonical(string value) =>
+        value.Length == 0 ? value : char.ToUpperInvariant(value[0]) + value[1..].ToLowerInvariant();
+
+    private static string EventLabel(string action) => action switch
+    {
+        "Submitted" => "Gönderildi",
+        "Approved" => "Onaylandı",
+        "Rejected" => "Reddedildi",
+        "Reopened" => "Yeniden açıldı",
+        "Withdrawn" => "Geri çekildi",
+        "Resubmitted" => "Düzeltilip yeniden gönderildi",
+        _ => action,
+    };
+
+    private static string EventTone(string action) => action switch
+    {
+        "Approved" => "success",
+        "Rejected" => "danger",
+        "Submitted" or "Resubmitted" => "primary",
+        _ => "warning",
+    };
 
     private static string KindTone(string kind) => kind switch
     {

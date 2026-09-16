@@ -81,8 +81,18 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<StockResponse> StockAsync(string? search, bool outOfStockOnly, CancellationToken ct = default) =>
         GetAsync<StockResponse>("api/v1/portal/stock" + Query(("search", search), ("outOfStock", outOfStockOnly ? "true" : null)), ct);
 
-    public Task<ApprovalDto[]> PendingApprovalsAsync(CancellationToken ct = default) =>
-        GetAsync<ApprovalDto[]>("api/v1/android/approvals?status=pending", ct);
+    /// <summary>One page of requests, newest first; <paramref name="after"/> is the last request on screen.</summary>
+    public Task<ApprovalDto[]> ApprovalsAsync(string status, string? kind, ApprovalDto? after, int take, CancellationToken ct = default) =>
+        GetAsync<ApprovalDto[]>("api/v1/android/approvals" + Query(
+            ("status", status), ("kind", kind),
+            ("beforeSeq", after?.RequestedSeq.ToString(CultureInfo.InvariantCulture)), ("beforeExternalId", after?.ExternalId),
+            ("take", take.ToString(CultureInfo.InvariantCulture))), ct);
+
+    public Task<ApprovalDetailDto> ApprovalDetailAsync(Guid requestId, CancellationToken ct = default) =>
+        GetAsync<ApprovalDetailDto>($"api/v1/android/approvals/{requestId}", ct);
+
+    public Task<ApprovalSummaryDto> ApprovalSummaryAsync(CancellationToken ct = default) =>
+        GetAsync<ApprovalSummaryDto>("api/v1/android/approvals/summary", ct);
 
     /// <summary>
     /// The approval desk's queue, oldest first, up to the server's 500: with more pending, the requests
