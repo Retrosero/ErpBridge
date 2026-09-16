@@ -26,6 +26,14 @@ ilgili knowledge_base dosyasını da güncelle.
 - Commit mesajları Türkçe, ne + neden. Sonuna:
   `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
 - Push ve PR açma "onay gerektiren" işlerdir — kullanıcıya sormadan yapma.
+- **İstisna (2026-09-16):** `../Siparis_Cepte/docs/GOAL_YOL_HARITASI.md` içindeki
+  görevler (Faz B ve D'nin sunucu tarafı burada yapılır) için dala push, PR açma
+  ve CI yeşilken `main`'e birleştirme **önceden onaylıdır**; kullanıcı bu işi
+  `/goal` ile başlatıp müdahale etmemek istedi. İstisna yalnızca o yol
+  haritasının görevlerini kapsar. Hiçbir koşulda: `--force` push, CI kırmızıyken
+  birleştirme, `main`'e doğrudan kod push'u.
+- Dikkat: `main`'e push Coolify'da otomatik dağıtımı tetikler (production).
+  Bu yüzden birleştirme **yalnızca CI yeşilken** yapılır.
 
 ## 3. Test / build
 
