@@ -319,8 +319,20 @@ registration ayrı bir composition projesine taşınır.
      işaretler (silinemez). Satış, iade ve alış satırları tek yerde
      (`BookLinesAsync`) önce **tamamen doğrulanır**, sonra deftere yazılır. ERP
      tenant'ında bu türler 409 `DOCUMENT_REQUIRES_NATIVE_TENANT` (ajanın yazıcısı
-     yok). Telefonun kasa defterinden gelen satırsız `return` / `disbursement`
-     belgeleri etkisiz kayıt olarak kalır.
+     yok). Telefonun kasa defterinden gelen satırsız `return` belgesi etkisiz kayıt
+     olarak kalır (iade `sales_return` ile işlenir).
+   - **Tediye (Faz 40, 2026-09-16).** Kasa defterinden gelen `disbursement` bir
+     müşteriye ödenmişse cariyi **borçlandırır** ("Tediye" hareketi) — tahsilatın
+     aynası. Bu tarihten önce etkisiz kayıt olarak kalıyordu ve tediye yapılan her
+     müşterinin sunucudaki bakiyesi **eksik** görünüyordu (geçmiş kayıtlar geriye
+     dönük işlenmedi). İstisnalar: `approvalKind = purchase` taşıyan alış ödemesi
+     atlanır (`purchase_receipt` zaten borçlandırdı; işlenseydi tedarikçi iki kez
+     borçlanırdı); müşteri adlandırmayan ödeme (gider `"Gider: …"`, diğer çıkışlar)
+     kayıt olarak kalır ve `LastError`'a not düşer; bilinmeyen `customerCode` `Failed`.
+     Giderler bilinçli olarak **telefonlara yayılmaz**: Gün Sonu "kasaya ne kadar
+     teslim edeceğim?" sorusunu cihazdaki kasa kayıtlarından hesaplar, başkasının
+     gideri gelirse tutar yanlış çıkar. Yöneticinin herkesin giderini görme yeri
+     yönetici panelidir (Sipariş Cepte yol haritası Faz D).
    - **Sayım (Faz 37, 2026-09-14).** `stock_count` (yalnızca `status =
      COMPLETED`) her satırda stoğu **fark kadar** oynatır:
      `countedQuantity - expectedQuantity`. Sayılan sayıya eşitlemez: sayım
