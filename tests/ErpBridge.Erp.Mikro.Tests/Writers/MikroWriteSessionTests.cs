@@ -102,6 +102,15 @@ public class MikroWriteSessionTests
     }
 
     [Fact]
+    public void Rows_carry_a_firm_and_branch_number_mikro_knows()
+    {
+        MikroDocumentWriteRunner.Pick([0], configured: 1, "firma numarası").Should().Be(0, "a single-company database has firm 0 while the agent defaults to 1");
+        MikroDocumentWriteRunner.Pick([0, 1, 2], configured: 1, "firma numarası").Should().Be(1);
+        FluentActions.Invoking(() => MikroDocumentWriteRunner.Pick([0, 2], configured: 1, "firma numarası"))
+            .Should().Throw<MikroWriteException>().Which.Error.Code.Should().Be(ErpWriteError.ErpMappingMissingCode);
+    }
+
+    [Fact]
     public void A_series_wider_than_mikro_allows_is_refused()
     {
         FluentActions.Invoking(() => MikroWriteSession.CheckSeries("ABCDEFG"))

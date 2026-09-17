@@ -25,7 +25,8 @@ public class MikroDocumentWriteRunnerLiveTests
 
     private static MikroConnectionSettings Settings() => new(
         Server: MikroWriteTestDatabase.Server, UserId: string.Empty, Password: string.Empty,
-        DatabaseName: MikroWriteTestDatabase.Database!, IntegratedSecurity: true, CompanyNo: 0, BranchNo: 0);
+        // The agent's defaults, not Mikro's numbers: the runner must stamp the firm and branch Mikro has.
+        DatabaseName: MikroWriteTestDatabase.Database!, IntegratedSecurity: true, CompanyNo: 1, BranchNo: 1);
 
     private static MikroDocumentWriteRunner Runner(ErpBridge.Core.Stores.IMappingStore? cache = null) =>
         new(new MikroConnectionFactory(), new MikroDocumentLedger(), cache, NullLogger<MikroDocumentWriteRunner>.Instance);
@@ -116,7 +117,7 @@ public class MikroDocumentWriteRunnerLiveTests
 
             first.Ok.Should().BeTrue(first.ErrorMessage);
             second.Should().Be(first, "the second run answers with the document already written");
-            (await RowsAsync(id)).Should().Be(1);
+            (await RowsAsync(id)).Should().Be(1, "settings 1/1 that Mikro does not have resolve to its own firm and branch");
         }
         finally
         {
