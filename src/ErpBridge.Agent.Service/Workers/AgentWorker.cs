@@ -116,6 +116,8 @@ public sealed class AgentWorker : BackgroundService
         {
             try
             {
+                // Log Merkezi L3g: the poll itself is one trace; each job then runs under its own id.
+                using var trace = ErpBridge.Core.Logging.AgentCorrelation.Begin(null);
                 var config = await _configStore.LoadAsync(stoppingToken);
                 if (config is null)
                 {
@@ -172,6 +174,10 @@ public sealed class AgentWorker : BackgroundService
     /// </remarks>
     internal async Task ProcessJobAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
     {
+        // Log Merkezi L3g: everything from here on — the ERP write, the log lines, the ack request — carries
+        // the id the server booked the job with, so the phone document and its ERP write are one search.
+        using var trace = ErpBridge.Core.Logging.AgentCorrelation.Begin(job.CorrelationId);
+
         // Local enqueue is best-effort audit-trail work. Even if it fails we
         // still proceed to the adapter (and the ack) so the central API does
         // not see the job as "stuck" when the only issue is local persistence.

@@ -139,6 +139,13 @@ public sealed class JobResponse
     /// ERP. Older agents ignore it. Shape matches <c>ErpBridge.Core.Jobs.ErpWriteContext</c>.
     /// </summary>
     [JsonPropertyName("erpContext")] public JobErpContextResponse? ErpContext { get; set; }
+
+    /// <summary>
+    /// Log Merkezi L3g: the trace id this job was booked with. The agent echoes it on everything it logs about
+    /// the job, so one search in the Log Centre shows the phone's request, the write and the ack. Older agents
+    /// ignore it; jobs booked before the field carry null.
+    /// </summary>
+    [JsonPropertyName("correlationId")] public string? CorrelationId { get; set; }
 }
 
 public sealed class JobErpContextResponse

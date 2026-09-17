@@ -82,6 +82,7 @@ public sealed class HeartbeatWorker : BackgroundService
         {
             try
             {
+                using var trace = ErpBridge.Core.Logging.AgentCorrelation.Begin(null);
                 var config = await _configStore.LoadAsync(stoppingToken);
                 if (config is not null)
                 {

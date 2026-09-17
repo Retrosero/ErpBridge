@@ -119,6 +119,28 @@ public sealed class AgentLogReportingTests
         (await broken.ReportAsync("ERROR", "X")).Should().BeFalse();
     }
 
+    /// <summary>
+    /// Log Merkezi L3g: an event reported while a job is being handled belongs to that job's thread without
+    /// anyone passing the id down through the call stack.
+    /// </summary>
+    [Fact]
+    public async Task An_event_inherits_the_trace_id_of_the_work_in_progress()
+    {
+        var (reporter, store, _) = Reporter();
+
+        using (AgentCorrelation.Begin("phone-2f6c:order-99"))
+            await reporter.ReportAsync("ERROR", "ERP_WRITE_FAILED", "erp.write.sales_order", "Cari bulunamadı");
+        await reporter.ReportAsync("ERROR", "HEARTBEAT_FAILED", "heartbeat", "sunucuya ulaşılamadı");
+
+        store.Queue[0].CorrelationId.Should().Be("phone-2f6c:order-99");
+        store.Queue[1].CorrelationId.Should().BeNull("outside a job there is nothing to inherit");
+
+        // A caller that names an id keeps it, and a malformed one is replaced rather than passed on.
+        using (AgentCorrelation.Begin("boşluk ve satır"))
+            AgentCorrelation.Current.Should().NotContain(" ").And.NotBeNullOrWhiteSpace();
+        AgentCorrelation.Current.Should().BeNull("the scope restored what was there before");
+    }
+
     /// <summary>A clock the test controls, like the other Core tests use.</summary>
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {

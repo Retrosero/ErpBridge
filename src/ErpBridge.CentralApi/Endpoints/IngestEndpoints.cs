@@ -256,7 +256,8 @@ public static class IngestEndpoints
                 });
             var requester = await db.MobileUsers.AsNoTracking().Include(u => u.Roles).FirstAsync(u => u.Id == requesterId, ct);
             var approvals = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Approvals.ApprovalService>();
-            var submitted = await approvals.SubmitAsync(db, tenant, requester, body.ExternalId, payloadJson, ct);
+            var submitted = await approvals.SubmitAsync(db, tenant, requester, body.ExternalId, payloadJson, ct,
+                ErpBridge.CentralApi.LogCenter.CorrelationId.Of(http));
             if (!submitted.Succeeded) return JsonResults.Status(submitted.StatusCode, submitted.Error);
             return JsonResults.Status(submitted.StatusCode, new IngestJobResponse
             {
@@ -315,6 +316,8 @@ public static class IngestEndpoints
             EnqueuedAtUtc = DateTimeOffset.UtcNow,
             CreatedByUserId = ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)
                 && Guid.TryParse(http.User.FindFirst("sub")?.Value, out var senderId) ? senderId : null,
+            // Log Merkezi L3g: the thread from the phone's request to the ERP write is tied here, once.
+            CorrelationId = ErpBridge.CentralApi.LogCenter.CorrelationId.Of(http),
         };
 
         // ---- 5c. Route plans and visits are the team's, not the ERP's: booked here for

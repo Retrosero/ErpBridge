@@ -145,6 +145,7 @@ public static class JobsEndpoints
                 EnqueuedAtUtc = j.EnqueuedAtUtc,
                 Attempt = j.RetryCount,
                 ErpContext = contexts.GetValueOrDefault(j.Id),
+                CorrelationId = j.CorrelationId,
             })
             .ToList();
         return JsonResults.Ok(response);
@@ -270,7 +271,9 @@ public static class JobsEndpoints
                     Kind = retry ? "ERP_WRITE_RETRY" : "ERP_WRITE_FAILED",
                     Operation = $"erp.write.{job.DocumentType}",
                     Message = string.IsNullOrWhiteSpace(ack.ErrorCode) ? ack.ErrorMessage : $"{ack.ErrorCode}: {ack.ErrorMessage}",
-                    CorrelationId = ErpBridge.CentralApi.LogCenter.CorrelationId.Of(http),
+                    // The job's own id, not this request's: that is what ties the failure back to the phone
+                    // document that caused it. Falls back to the request for jobs booked before L3g.
+                    CorrelationId = job.CorrelationId ?? ErpBridge.CentralApi.LogCenter.CorrelationId.Of(http),
                     PropertiesJson = System.Text.Json.JsonSerializer.Serialize(new
                     {
                         jobId = job.Id, externalId = job.ExternalId, documentType = job.DocumentType,

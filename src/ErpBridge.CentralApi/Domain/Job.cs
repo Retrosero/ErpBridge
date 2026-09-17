@@ -60,6 +60,13 @@ public sealed class Job
     public DateTimeOffset? CompletedAtUtc { get; set; }
 
     /// <summary>
+    /// Log Merkezi L3g: the id that ties the phone's request, this job, the agent's write and the ack event
+    /// together. Taken from the ingest request's <c>X-Correlation-Id</c> (the middleware assigns one when the
+    /// caller sends none). Null for jobs booked before the field.
+    /// </summary>
+    public string? CorrelationId { get; set; }
+
+    /// <summary>
     /// Unix ms after which a <see cref="JobStatus.Processing"/> job may be leased again: the agent
     /// that took it died or lost its connection (goal ERP yazım Y1e). Null on jobs leased before
     /// the column existed, which therefore never expire.

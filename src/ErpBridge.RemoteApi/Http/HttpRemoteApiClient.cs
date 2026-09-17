@@ -604,6 +604,12 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
         request.Headers.TryAddWithoutValidation("User-Agent", "ErpBridge-Agent/1.0");
 
+        // Log Merkezi L3g: inside a job the id is the job's, so the ack and the write share the phone
+        // request's thread; outside one, a fresh id still ties this call's log lines on both sides.
+        request.Headers.TryAddWithoutValidation(
+            ErpBridge.Core.Logging.AgentCorrelation.HeaderName,
+            ErpBridge.Core.Logging.AgentCorrelation.Current ?? Guid.NewGuid().ToString());
+
         if (!string.IsNullOrWhiteSpace(idempotencyKey))
         {
             request.Headers.TryAddWithoutValidation(IdempotencyKeyHeader, idempotencyKey);
