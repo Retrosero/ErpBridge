@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y1d — işle gelen ERP yazım bağlamı (PR açılıyor)
+**Şu anki görev:** Y1d — işle gelen ERP yazım bağlamı (PR #82)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -44,7 +44,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ✅ | [#78](https://github.com/Retrosero/ErpBridge/pull/78) | Migration `ErpYazimY1aWriteSettings` yalnız iki yeni tablo (test: başka işlem yok). Seri sütunları `nvarchar(6)`; firmada boş seri = Mikro serisiz, kullanıcıda null = firma ayarı. Kullanıcı silinince eşleme cascade ile gider |
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ⬜ | | |
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
-| Y1d | `erpContext` kiralama yanıtında | ✅ | (Y1d PR) | `JobResponse.erpContext` (ERP'li firmada; ERP'siz firmada null). `ErpWriteContextBuilder`: kullanıcı değeri > firma; boş kod firma kodunu gizlemez, kullanıcıdaki boş seri bilinçli serisiz sayılır. Kiralama anında okunur (eşleme düzeltilip yeniden denenince yeni değer — test). Biçim `ErpBridge.Core.Jobs.ErpWriteContext` ile aynı |
+| Y1d | `erpContext` kiralama yanıtında | ✅ | [#82](https://github.com/Retrosero/ErpBridge/pull/82) | `JobResponse.erpContext` (ERP'li firmada; ERP'siz firmada null). `ErpWriteContextBuilder`: kullanıcı değeri > firma; boş kod firma kodunu gizlemez, kullanıcıdaki boş seri bilinçli serisiz sayılır. Kiralama anında okunur (eşleme düzeltilip yeniden denenince yeni değer — test). Biçim `ErpBridge.Core.Jobs.ErpWriteContext` ile aynı |
 | Y1e | Kiralama süresi + geçici hata yeniden denemesi | ⬜ | | |
 | Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ✅ | [#79](https://github.com/Retrosero/ErpBridge/pull/79) | `Erp.Abstractions/Documents/MobileDocumentCommands.cs`: ortak `ErpDocumentHeader` + `SalesDocumentCommand` / `SalesReturnCommand` / `CollectionCommand`. `IErpAdapter`'a varsayılan gövdeli üç metot (`NotImplemented` sonucu) — Logo iskeleti değişmeden derlenir ve reddeder (seam testi). **Sapma:** iade kondisyonu yüzde değil `ConditionRatio` (0..1, telefonun `conditionPercent` alanı zaten oran); karma ödemede tahsilat serisi komutta (`ExtraPaymentsSeries`) |
 | Y2b | `MobileDocumentTranslator` | ⬜ | | |
