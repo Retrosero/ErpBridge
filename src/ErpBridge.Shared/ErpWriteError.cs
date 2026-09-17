@@ -5,8 +5,9 @@ namespace ErpBridge.Shared;
 /// <summary>
 /// Why a phone document could not be written into the ERP (goal GOAL_ERP_YAZIM, Y2d). The code
 /// is stable for software (job ack, Portal filters); the message is shown as-is to the phone
-/// user and the company admin, in Turkish. Messages carry ERP codes and amounts of difference
-/// only — never a customer's title or a document's total (log privacy rule).
+/// user and the company admin, in Turkish. Messages carry ERP codes (which the agent or the
+/// company settings supplied) and amounts of difference only — never a customer's title, a
+/// document's total or a free-text value copied from the phone body (log privacy rule).
 /// </summary>
 /// <param name="Code">Stable machine-readable code.</param>
 /// <param name="Message">Turkish text for people.</param>
@@ -45,11 +46,12 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public static ErpWriteError InvalidAmount() =>
         new(InvalidAmountCode, "Belgedeki tutar geçersiz.");
 
-    public static ErpWriteError UnsupportedCurrency(string currency) =>
-        new(UnsupportedCurrencyCode, $"Yalnız TL belgeler ERP'ye yazılabilir (belgedeki döviz: {currency}).");
+    // The phone's raw value is never echoed: a malformed body could carry anything into acks and logs (PR #80 Codex).
+    public static ErpWriteError UnsupportedCurrency() =>
+        new(UnsupportedCurrencyCode, "Yalnız TL belgeler ERP'ye yazılabilir.");
 
-    public static ErpWriteError UnsupportedPaymentType(string paymentType) =>
-        new(UnsupportedPaymentTypeCode, $"Ödeme şekli tanınmadı: {paymentType}.");
+    public static ErpWriteError UnsupportedPaymentType() =>
+        new(UnsupportedPaymentTypeCode, "Ödeme şekli tanınmadı. Nakit, kredi kartı, havale/EFT, çek, senet ya da cari borç olmalı.");
 
     public static ErpWriteError MissingChequeDetails() =>
         new(MissingChequeDetailsCode, "Çek tahsilatında çek numarası ve vade tarihi zorunlu.");
