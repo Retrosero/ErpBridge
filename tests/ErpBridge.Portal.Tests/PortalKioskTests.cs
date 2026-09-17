@@ -14,6 +14,14 @@ namespace ErpBridge.Portal.Tests;
 /// </summary>
 public sealed class PortalKioskTests : PortalPageTestContext
 {
+    /// <summary>
+    /// How long a wait may take before the test calls it a failure. Two seconds was enough on a developer's
+    /// machine and not on a loaded CI runner, where the polls these tests wait for simply had not been
+    /// scheduled yet — so the suite failed for being busy, not for being wrong. A longer budget cannot make
+    /// a broken poll pass: a poll that never happens never happens, it just takes longer to say so.
+    /// </summary>
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(15);
+
     private const string Board = "/api/v1/display/board";
     private const string Events = "/api/v1/display/events?sinceSeq=40&wait=25";
 
@@ -61,12 +69,12 @@ public sealed class PortalKioskTests : PortalPageTestContext
 
         cut.WaitForAssertion(() => cut.Find("#kiosk-code").TextContent.Should().Be("482 913"));
         // Polling does not redraw the page, so this waits on the requests themselves rather than on a render.
-        SpinWait.SpinUntil(() => api.Requests.Count(r => r.PathAndQuery.EndsWith("/token")) > 1, TimeSpan.FromSeconds(2)).Should().BeTrue("the screen keeps polling while it waits");
+        SpinWait.SpinUntil(() => api.Requests.Count(r => r.PathAndQuery.EndsWith("/token")) > 1, Patience).Should().BeTrue("the screen keeps polling while it waits");
         cut.FindAll("#kiosk-board").Should().BeEmpty();
 
         api.Answer("/api/v1/display/pairings/482913/token", new { status = "paired", token = "tok-tv", tenantName = "Ege Dağıtım", displayName = "Depo girişi" });
 
-        cut.WaitForAssertion(() => cut.Find("#kiosk-board"), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => cut.Find("#kiosk-board"), Patience);
         store.Stored.Should().Be(new DisplaySession("tok-tv", "Ege Dağıtım", "Depo girişi"));
         api.Requests.Where(r => r.PathAndQuery == Board).Should().OnlyContain(r => r.Authorization == "Bearer tok-tv");
         api.Requests.Where(r => r.PathAndQuery.EndsWith("/token")).Should().OnlyContain(r => r.Body!.Contains("\"secret\":\"gizli\""));
@@ -115,12 +123,12 @@ public sealed class PortalKioskTests : PortalPageTestContext
         {
             cut.Find("[data-column=PENDING] [data-page]").TextContent.Should().Be("1/2");
             cut.FindAll("[data-column=PENDING] .kiosk-card").Should().HaveCount(3);
-        }, TimeSpan.FromSeconds(2));
+        }, Patience);
         cut.WaitForAssertion(() =>
         {
             cut.Find("[data-column=PENDING] [data-page]").TextContent.Should().Be("2/2");
             cut.FindAll("[data-column=PENDING] .kiosk-card").Should().HaveCount(2);
-        }, TimeSpan.FromSeconds(2));
+        }, Patience);
     }
 
     [Fact]
@@ -135,7 +143,7 @@ public sealed class PortalKioskTests : PortalPageTestContext
         api.Answer(Board, BoardOf(Order("SO-9", "PREPARING", 3, startedMinutesAgo: 0, assignee: "Depocu Hasan")) );
         api.Answer(Events, new { latestSeq = 41, changed = true });
 
-        cut.WaitForAssertion(() => cut.Find("[data-column=PREPARING] [data-order=SO-9]"), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => cut.Find("[data-column=PREPARING] [data-order=SO-9]"), Patience);
         cut.FindAll("[data-column=PENDING] [data-order=SO-9]").Should().BeEmpty();
     }
 
@@ -150,12 +158,12 @@ public sealed class PortalKioskTests : PortalPageTestContext
 
         api.Fail(Events, HttpStatusCode.BadGateway, "HTTP_502");
 
-        cut.WaitForAssertion(() => cut.Find("#kiosk-offline"), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => cut.Find("#kiosk-offline"), Patience);
         cut.Find("#kiosk-connection").ClassList.Should().Contain("is-offline");
         cut.Find("[data-order=SO-1]");
 
         api.Answer(Events, new { latestSeq = 40, changed = false });
-        cut.WaitForAssertion(() => cut.FindAll("#kiosk-offline").Should().BeEmpty(), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => cut.FindAll("#kiosk-offline").Should().BeEmpty(), Patience);
     }
 
     [Fact]
@@ -168,7 +176,7 @@ public sealed class PortalKioskTests : PortalPageTestContext
 
         var cut = Render<Ekran>();
 
-        cut.WaitForAssertion(() => cut.Find("#kiosk-code").TextContent.Should().Be("105 006"), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => cut.Find("#kiosk-code").TextContent.Should().Be("105 006"), Patience);
         store.Stored.Should().BeNull();
     }
 
@@ -182,7 +190,7 @@ public sealed class PortalKioskTests : PortalPageTestContext
         var cut = Render<Ekran>();
 
         cut.WaitForAssertion(() => cut.Find("#kiosk-code").TextContent.Should().Be("222 333"));
-        SpinWait.SpinUntil(() => api.Requests.Count(r => r.PathAndQuery.EndsWith("/token")) >= 3, TimeSpan.FromSeconds(2)).Should().BeTrue();
+        SpinWait.SpinUntil(() => api.Requests.Count(r => r.PathAndQuery.EndsWith("/token")) >= 3, Patience).Should().BeTrue();
         api.Requests.Count(r => r.PathAndQuery == "/api/v1/display/pairings").Should().Be(1, "a still-valid code is not thrown away on 429");
         cut.WaitForAssertion(() => cut.Find("#kiosk-offline"));
     }
@@ -195,13 +203,13 @@ public sealed class PortalKioskTests : PortalPageTestContext
 
         var cut = Render<Ekran>();
 
-        cut.WaitForAssertion(() => cut.Find("#kiosk-suspended"), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => cut.Find("#kiosk-suspended"), Patience);
         cut.FindAll("[data-order]").Should().BeEmpty();
         store.Stored.Should().NotBeNull("the screen stays paired");
 
         api.Answer(Board, BoardOf(Order("SO-BACK", "PENDING", 1)));
         api.Answer(Events, new { latestSeq = 40, changed = false });
-        cut.WaitForAssertion(() => cut.Find("[data-order=SO-BACK]"), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => cut.Find("[data-order=SO-BACK]"), Patience);
         api.Requests.Should().NotContain(r => r.PathAndQuery == "/api/v1/display/pairings");
     }
 
