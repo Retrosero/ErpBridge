@@ -75,9 +75,10 @@ public sealed class MikroDocumentWriteRunner
             }
 
             await _ledger.EnsureTableAsync(connection, ct).ConfigureAwait(false);
+            var (companyNo, branchNo) = await ResolveCompanyAsync(connection, settings, ct).ConfigureAwait(false);
 
             await using (var session = await MikroWriteSession.BeginAsync(
-                connection, _ledger, settings.CompanyNo, settings.BranchNo, request.ErpUserNo, ct).ConfigureAwait(false))
+                connection, _ledger, companyNo, branchNo, request.ErpUserNo, ct).ConfigureAwait(false))
             {
                 if (await session.FindWrittenAsync(request.DocumentType, request.ExternalId, ct).ConfigureAwait(false) is { } existing)
                 {
@@ -135,6 +136,27 @@ public sealed class MikroDocumentWriteRunner
         await CacheAsync(settings, request, entry, ct).ConfigureAwait(false);
         return Written(entry);
     }
+
+    internal const string CompaniesSql = "SELECT fir_sirano FROM FIRMALAR";
+    internal const string BranchesSql = "SELECT Sube_no FROM SUBELER";
+
+    /// <summary>
+    /// The firm and branch numbers the rows carry. Mikro's own rows use the numbers in <c>FIRMALAR</c> /
+    /// <c>SUBELER</c> — a single-company database has only 0/0, while the agent's settings default to 1/1.
+    /// A configured number that exists wins; otherwise the only one Mikro has; otherwise the settings
+    /// must be fixed (a row with a firm number Mikro does not know is invisible in its screens).
+    /// </summary>
+    private static async Task<(int CompanyNo, int BranchNo)> ResolveCompanyAsync(SqlConnection connection, MikroConnectionSettings settings, CancellationToken ct)
+    {
+        var companies = (await connection.QueryAsync<int>(new CommandDefinition(CompaniesSql, cancellationToken: ct)).ConfigureAwait(false)).ToList();
+        var branches = (await connection.QueryAsync<int>(new CommandDefinition(BranchesSql, cancellationToken: ct)).ConfigureAwait(false)).ToList();
+        return (Pick(companies, settings.CompanyNo, "firma numarası"), Pick(branches, settings.BranchNo, "şube numarası"));
+    }
+
+    internal static int Pick(IReadOnlyCollection<int> known, int configured, string setting) =>
+        known.Contains(configured) ? configured
+        : known.Count == 1 ? known.First()
+        : throw new MikroWriteException(ErpWriteError.ErpMappingMissing($"ERP'de bulunan bir {setting} (ajan ayarı: {configured})"));
 
     private async Task CacheAsync(MikroConnectionSettings settings, MikroWriteRequest request, MikroLedgerEntry entry, CancellationToken ct)
     {
