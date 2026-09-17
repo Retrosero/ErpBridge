@@ -312,7 +312,7 @@ public static class PortalReports
         string.IsNullOrWhiteSpace(search)
         || values.Any(v => v.Contains(search.Trim(), StringComparison.CurrentCultureIgnoreCase));
 
-    private static string? ReadString(string? json, string name)
+    internal static string? ReadString(string? json, string name)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         try
@@ -326,7 +326,7 @@ public static class PortalReports
         }
     }
 
-    private static decimal? ReadDecimal(string? json, string name)
+    internal static decimal? ReadDecimal(string? json, string name)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         try

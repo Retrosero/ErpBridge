@@ -661,6 +661,7 @@ public partial class Program
         app.MapMobileApprovalEndpoints();
         app.MapPortalEndpoints();
         app.MapPortalErpWriteEndpoints();
+        app.MapPortalErpDocumentsEndpoints();
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
         app.MapParameterEndpoints();

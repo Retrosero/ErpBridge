@@ -76,22 +76,16 @@ public static class DocumentStatusEndpoints
             .Select(j =>
             {
                 acks.TryGetValue(j.Id, out var ack);
-                var retrying = j.Status == JobStatus.Pending && j.NextAttemptAtMs is { } next && next > nowMs;
-                var state = j.Status switch
-                {
-                    JobStatus.Succeeded => "written",
-                    JobStatus.Failed or JobStatus.DeadLetter => "failed",
-                    _ when retrying => "retrying",
-                    _ => "pending",
-                };
+                var state = ErpDocumentStates.Of(j.Status, j.NextAttemptAtMs, nowMs);
+                var retrying = state == ErpDocumentStates.Retrying;
                 return new DocumentStatusDto
                 {
                     ExternalId = j.ExternalId,
                     DocumentType = j.DocumentType,
                     State = state,
-                    ErpDocumentNo = state == "written" ? DocumentNo(ack?.ErpDocumentSeries, ack?.ErpDocumentNumber) : null,
-                    ErrorCode = state is "failed" or "retrying" ? ack?.ErrorCode : null,
-                    Message = state is "failed" or "retrying" ? ack?.ErrorMessage ?? j.LastError : null,
+                    ErpDocumentNo = state == ErpDocumentStates.Written ? ErpDocumentStates.DocumentNo(ack?.ErpDocumentSeries, ack?.ErpDocumentNumber) : null,
+                    ErrorCode = state is ErpDocumentStates.Failed or ErpDocumentStates.Retrying ? ack?.ErrorCode : null,
+                    Message = state is ErpDocumentStates.Failed or ErpDocumentStates.Retrying ? ack?.ErrorMessage ?? j.LastError : null,
                     Attempt = j.RetryCount,
                     NextAttemptAtMs = retrying ? j.NextAttemptAtMs : null,
                 };
@@ -99,11 +93,4 @@ public static class DocumentStatusEndpoints
             .ToList();
         return Results.Ok(new DocumentStatusResponse { Documents = documents });
     }
-
-    private static string? DocumentNo(string? series, int? number) => number switch
-    {
-        null => null,
-        _ when string.IsNullOrWhiteSpace(series) => number.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        _ => $"{series.Trim()}-{number.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
-    };
 }

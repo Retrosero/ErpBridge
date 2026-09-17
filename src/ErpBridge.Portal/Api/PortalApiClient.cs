@@ -186,6 +186,15 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<ErpLookupsResponse> ErpLookupsAsync(CancellationToken ct = default) =>
         GetAsync<ErpLookupsResponse>("api/v1/portal/erp-lookups", ct);
 
+    public Task<ErpDocumentsResponse> ErpDocumentsAsync(
+        DateOnly from, DateOnly to, string? state, string? documentType, string? customer, int page, CancellationToken ct = default) =>
+        GetAsync<ErpDocumentsResponse>("api/v1/portal/erp-documents" + Query(
+            ("from", Day(from)), ("to", Day(to)), ("state", state), ("documentType", documentType), ("customer", customer),
+            ("page", page.ToString(CultureInfo.InvariantCulture))), ct);
+
+    public Task<ErpRetryResponse> RetryErpDocumentAsync(Guid jobId, CancellationToken ct = default) =>
+        SendAsync<ErpRetryResponse>(HttpMethod.Post, $"api/v1/portal/erp-documents/{jobId}/retry", new { }, ct);
+
     public Task<UserListResponse> UsersAsync(CancellationToken ct = default) =>
         GetAsync<UserListResponse>("api/v1/android/account/users", ct);
 

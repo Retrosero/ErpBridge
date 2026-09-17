@@ -62,3 +62,39 @@ public sealed class ErpLookupsResponse
     [JsonPropertyName("priceLists")] public List<ErpLookupItem> PriceLists { get; set; } = [];
     [JsonPropertyName("projects")] public List<ErpLookupItem> Projects { get; set; } = [];
 }
+
+/// <summary>GET api/v1/portal/erp-documents (goal ERP yazım Y5a).</summary>
+public sealed class ErpDocumentsResponse
+{
+    [JsonPropertyName("items")] public List<ErpDocumentDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+}
+
+public sealed class ErpDocumentDto
+{
+    [JsonPropertyName("jobId")] public Guid JobId { get; set; }
+    [JsonPropertyName("externalId")] public string ExternalId { get; set; } = string.Empty;
+    [JsonPropertyName("documentType")] public string DocumentType { get; set; } = string.Empty;
+    [JsonPropertyName("userId")] public Guid? UserId { get; set; }
+    [JsonPropertyName("userName")] public string? UserName { get; set; }
+    [JsonPropertyName("customerCode")] public string? CustomerCode { get; set; }
+    [JsonPropertyName("customerName")] public string? CustomerName { get; set; }
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+    [JsonPropertyName("state")] public string State { get; set; } = string.Empty;
+    [JsonPropertyName("erpDocumentNo")] public string? ErpDocumentNo { get; set; }
+    [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
+    [JsonPropertyName("message")] public string? Message { get; set; }
+    [JsonPropertyName("attempt")] public int Attempt { get; set; }
+    [JsonPropertyName("enqueuedAtUtc")] public DateTimeOffset EnqueuedAtUtc { get; set; }
+    [JsonPropertyName("completedAtUtc")] public DateTimeOffset? CompletedAtUtc { get; set; }
+    [JsonPropertyName("nextAttemptAtUtc")] public DateTimeOffset? NextAttemptAtUtc { get; set; }
+    [JsonPropertyName("canRetry")] public bool CanRetry { get; set; }
+}
+
+public sealed class ErpRetryResponse
+{
+    [JsonPropertyName("jobId")] public Guid JobId { get; set; }
+    [JsonPropertyName("state")] public string State { get; set; } = string.Empty;
+}

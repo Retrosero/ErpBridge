@@ -78,3 +78,60 @@ public sealed class PortalErpLookupsResponse
     public IReadOnlyList<PortalErpLookupItem> PriceLists { get; set; } = [];
     public IReadOnlyList<PortalErpLookupItem> Projects { get; set; } = [];
 }
+
+/// <summary>
+/// GET /api/v1/portal/erp-documents — the documents sent to the ERP and what the agent did with them (goal ERP
+/// yazım Y5a), newest first.
+/// </summary>
+public sealed class PortalErpDocumentsResponse
+{
+    public IReadOnlyList<PortalErpDocumentDto> Items { get; set; } = [];
+
+    /// <summary>Documents matching the filters, across pages.</summary>
+    public int Total { get; set; }
+
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}
+
+/// <summary>One document on its way to the ERP.</summary>
+public sealed class PortalErpDocumentDto
+{
+    public Guid JobId { get; set; }
+    public string ExternalId { get; set; } = string.Empty;
+    public string DocumentType { get; set; } = string.Empty;
+    public Guid? UserId { get; set; }
+
+    /// <summary>The sender's name; null for an API key or a removed user.</summary>
+    public string? UserName { get; set; }
+
+    public string? CustomerCode { get; set; }
+    public string? CustomerName { get; set; }
+    public decimal? Amount { get; set; }
+
+    /// <summary><c>pending</c>, <c>retrying</c>, <c>written</c> or <c>failed</c>.</summary>
+    public string State { get; set; } = string.Empty;
+
+    /// <summary>The ERP document number (<c>T-1234</c>) once written.</summary>
+    public string? ErpDocumentNo { get; set; }
+
+    public string? ErrorCode { get; set; }
+
+    /// <summary>The agent's reason in Turkish.</summary>
+    public string? Message { get; set; }
+
+    public int Attempt { get; set; }
+    public DateTimeOffset EnqueuedAtUtc { get; set; }
+    public DateTimeOffset? CompletedAtUtc { get; set; }
+    public DateTimeOffset? NextAttemptAtUtc { get; set; }
+
+    /// <summary>A failed document an administrator may send to the agent again.</summary>
+    public bool CanRetry { get; set; }
+}
+
+/// <summary>POST /api/v1/portal/erp-documents/{jobId}/retry — the document is waiting for the agent again.</summary>
+public sealed class PortalErpRetryResponse
+{
+    public Guid JobId { get; set; }
+    public string State { get; set; } = string.Empty;
+}

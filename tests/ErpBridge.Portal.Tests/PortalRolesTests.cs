@@ -26,11 +26,11 @@ public sealed class PortalRolesTests
         PortalRoles.MayUsePortal(roles).Should().Be(allowed);
 
     [Theory]
-    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite", "")]
-    [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse,Displays", "")]
-    [InlineData(new[] { "ACCOUNTING" }, "Ledger,Approvals", "muhasebe")]
+    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite,ErpDocuments", "")]
+    [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse,Displays,ErpDocuments", "")]
+    [InlineData(new[] { "ACCOUNTING" }, "Ledger,Approvals,ErpDocuments", "muhasebe")]
     [InlineData(new[] { "WAREHOUSE" }, "Warehouse", "depo")]
-    [InlineData(new[] { "ACCOUNTING", "WAREHOUSE" }, "Ledger,Approvals,Warehouse", "muhasebe")]
+    [InlineData(new[] { "ACCOUNTING", "WAREHOUSE" }, "Ledger,Approvals,Warehouse,ErpDocuments", "muhasebe")]
     [InlineData(new[] { "SALES" }, "", "login")]
     public void Roles_open_the_union_of_their_areas_and_decide_the_home_page(string[] roles, string areas, string home)
     {
