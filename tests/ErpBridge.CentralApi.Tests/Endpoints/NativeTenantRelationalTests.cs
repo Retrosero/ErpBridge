@@ -73,6 +73,31 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
     }
 
     [Fact]
+    public async Task A_mixed_collection_receipt_in_the_erp_body_lowers_the_balance_once()
+    {
+        // The phone sends an ERP company's receipt as one document with a line per method (goal ERP yazım Y4c);
+        // a company without an ERP books the same body by its total.
+        var t = await NativeTenantAsync();
+        await SeedCardsAsync(t);
+        await PostAsync(t.SalesToken, t, "sales_order", "MOB-SO-M", Sale("MOB-SO-M", "C-001", quantity: 3, unitPrice: 150, paymentType: "Cari Borç"));
+
+        var receipt = await PostAsync(t.SalesToken, t, "collection", "MOB-TH-1", new
+        {
+            mobileDocumentId = "MOB-TH-1", counterparty = "Bakkal Ali", customerCode = "C-001", amount = 300, currency = "TL",
+            transactionType = "Tahsilat", paymentType = "Çoklu Tahsilat", description = "Eylül tahsilatı",
+            payments = new object[]
+            {
+                new { method = "cash", amount = 100 },
+                new { method = "card", amount = 150, bankCode = "13", installments = 3, surchargeAmount = 4.5 },
+                new { method = "cheque", amount = 50, dueDate = "30.11.2026", cheque = new { no = "27703", bankName = "Ziraat" } },
+            },
+        });
+
+        receipt.Status.Should().Be("Succeeded");
+        (await BalanceAsync(t.Id, "C-001")).Should().Be(150m, "450 sold, 300 collected in one receipt");
+    }
+
+    [Fact]
     public async Task A_disbursement_to_a_customer_debits_the_balance_as_the_mirror_of_a_collection()
     {
         var t = await NativeTenantAsync();
