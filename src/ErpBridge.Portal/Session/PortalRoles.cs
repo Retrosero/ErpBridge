@@ -20,6 +20,9 @@ public enum PortalArea
 
     /// <summary>Warehouse TV boards and the warehouse thresholds (Ekranlar).</summary>
     Displays,
+
+    /// <summary>How phone documents are written into the company's ERP (ERP Aktarım Ayarları, Mikro karşılıkları).</summary>
+    ErpWrite,
 }
 
 /// <summary>
@@ -69,6 +72,7 @@ public static class PortalRoles
         PortalArea.Warehouse => roles.Any(r => r is Admin or Manager or Warehouse),
         PortalArea.Users => roles.Contains(Admin),
         PortalArea.Displays => roles.Any(r => r is Admin or Manager),
+        PortalArea.ErpWrite => roles.Contains(Admin),
         _ => false,
     };
 
