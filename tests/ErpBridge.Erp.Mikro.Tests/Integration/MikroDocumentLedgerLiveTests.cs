@@ -42,6 +42,38 @@ public class MikroDocumentLedgerLiveTests
     }
 
     [Fact]
+    public async Task Agents_creating_the_table_at_the_same_time_all_succeed()
+    {
+        if (!MikroWriteTestDatabase.CanWrite)
+        {
+            return;
+        }
+
+        await using (var conn = await MikroWriteTestDatabase.OpenAsync())
+        {
+            // Only ErpBridge's own table in a test copy, and only when no test left a row in it.
+            var rows = await conn.ExecuteScalarAsync<int?>(
+                "IF OBJECT_ID(N'[dbo].[_ERPB_EVRAK_ESLESME]', N'U') IS NOT NULL SELECT COUNT(*) FROM [dbo].[_ERPB_EVRAK_ESLESME]");
+            if (rows is > 0)
+            {
+                return;
+            }
+
+            await conn.ExecuteAsync("IF OBJECT_ID(N'[dbo].[_ERPB_EVRAK_ESLESME]', N'U') IS NOT NULL DROP TABLE [dbo].[_ERPB_EVRAK_ESLESME]");
+        }
+
+        var creators = Enumerable.Range(0, 8).Select(async _ =>
+        {
+            await using var conn = await MikroWriteTestDatabase.OpenAsync();
+            await _ledger.EnsureTableAsync(conn);
+        });
+        await Task.WhenAll(creators);
+
+        await using var check = await MikroWriteTestDatabase.OpenAsync();
+        (await check.ExecuteScalarAsync<int?>("SELECT OBJECT_ID(N'[dbo].[_ERPB_EVRAK_ESLESME]', N'U')")).Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task A_record_exists_only_when_its_transaction_commits()
     {
         if (!MikroWriteTestDatabase.CanWrite)

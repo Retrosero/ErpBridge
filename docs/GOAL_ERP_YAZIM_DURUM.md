@@ -12,7 +12,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| Y0 — Referans ve temel düzeltmeler | 5 | 5 | ✅ |
+| Y0 — Referans ve temel düzeltmeler | 5 | 4 | 🔄 |
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 0 | ⬜ |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 0 | ⬜ |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y1a — `erp_write_settings` + `mobile_user_erp_mappings`
+**Şu anki görev:** Y0e — okuyucu düzeltmeleri (PR #76); Y0d bu PR'da
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de

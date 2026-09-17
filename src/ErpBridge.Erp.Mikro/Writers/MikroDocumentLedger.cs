@@ -39,9 +39,12 @@ public sealed class MikroDocumentLedger
 
     /// <summary>
     /// Creates the table when it is missing; an existing table is never altered. Series is
-    /// <c>nvarchar(6)</c> like Mikro's <c>*_evrakno_seri</c>.
+    /// <c>nvarchar(6)</c> like Mikro's <c>*_evrakno_seri</c>. Two agents creating it at once both
+    /// see it missing; the one that loses gets error 2714 ("already an object named"), which means
+    /// the table now exists, so it is swallowed (PR #77 Codex).
     /// </summary>
     internal const string EnsureTableSql = @"
+BEGIN TRY
 IF OBJECT_ID(N'[dbo].[_ERPB_EVRAK_ESLESME]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[_ERPB_EVRAK_ESLESME] (
@@ -57,7 +60,11 @@ BEGIN
         CONSTRAINT [PK_ERPB_EVRAK_ESLESME] PRIMARY KEY CLUSTERED ([Id]),
         CONSTRAINT [UX_ERPB_EVRAK_ESLESME_Document] UNIQUE ([DocumentType], [ExternalId])
     );
-END";
+END
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() <> 2714 OR OBJECT_ID(N'[dbo].[_ERPB_EVRAK_ESLESME]', N'U') IS NULL THROW;
+END CATCH";
 
     /// <summary>
     /// Reads the entry under an update range lock, so two agents writing the same document
