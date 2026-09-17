@@ -7,7 +7,9 @@ Tarih: 2026-09-17 · Kaynaklar: (1) `Fora_Mikro/.decompiled` — `Core/Fora.Mikr
 serili kayıtlar. İkisinin uyuştuğu yerler "doğrulandı", ayrıştığı yerler ayrıca belirtildi.
 
 > Enum sayıları Fora enum'larının sıra değerleridir; canlı verideki değerlerle birebir karşılaştırıldı.
-> Kolon listesi tam değildir — varsayılan (0 / boş / 1899-12-30) kalan kolonlar Y0b'de Fora INSERT listesinden eklenecek.
+> Tablolarda yalnız sıfırdan farklı yazılan kolonlar listelenir; geri kalan her kolon §1'deki "boş kolon yok"
+> kuralıyla tipine göre sıfır değerle doldurulur. Kodlar `MikroCodes` (`Erp.Mikro/Writers/MikroDocumentCodes.cs`) içinde;
+> bu belge ile kodlar canlı veriye karşı `MikroNativeDocumentConventionTests` ile doğrulanır (§8).
 
 ---
 
@@ -15,15 +17,19 @@ serili kayıtlar. İkisinin uyuştuğu yerler "doğrulandı", ayrıştığı yer
 
 | Konu | Kural | Kanıt |
 |---|---|---|
+| **Boş kolon yok** | Hedef 5 tablonun (CHA, STH, ODEME_EMIRLERI, EVRAK_ACIKLAMALARI, SIPARISLER) kolonlarının neredeyse hepsi nullable ve varsayılansız (NOT NULL yalnız `*_RECno`, `*_RECid_DBCno`, `*_RECid_RECno`), ama Mikro'nun kendi kayıtlarında **hiç NULL yok**. Writer INSERT kolon listesini şemadan (INFORMATION_SCHEMA, önbellekli) kurar; açıkça atanmayan kolon tipine göre: `bit/int/smallint/tinyint/float` → 0, `nvarchar` → `''`, `datetime` → `1899-12-30` | canlı: 3 tabloda son Mikro kayıtlarında NULL sayısı 0 (test) |
 | Kimlik (V15) | `*_RECno` identity; `*_RECid_DBCno=0`, `*_RECid_RECno = *_RECno` (aynı transaction'da UPDATE) | Fora INSERT + `UPDATE … SET *_RECid_RECno = SCOPE_IDENTITY()`; canlı veride eşit |
-| Dosya no | `cha_fileid=51`, `sth_fileid=16`, `sck_fileid=54` | canlı |
+| Dosya no | `cha_fileid=51`, `sth_fileid=16`, `sck_fileid=54`, `egk_fileid=66` | canlı + Fora |
 | Kullanıcı | `*_create_user`, `*_lastup_user` = Mikro kullanıcı no (Fora: parametre `MikroUserNo`); tarih `getdate()` | canlı (1, 4) |
 | Tarih | `cha_tarihi`, `cha_belge_tarih`, `sth_tarih`, `sth_belge_tarih`, `sth_malkbl_sevk_tarihi` saatsiz gün | canlı |
 | Döviz | TL: `cha_d_cins=0`, `cha_d_kur=1`, `cha_altd_kur=1`, `cha_karsid_kur=1`; `sth_har_doviz_kuru=sth_alt_doviz_kuru=sth_stok_doviz_kuru=1` | canlı |
-| Seri/sıra | Aynı evrakın tüm satırları aynı `evrakno_seri` + `evrakno_sira`; satırlar `cha_satir_no` / `sth_satirno` 0'dan artar. Sıra: seri + evrak türü içinde MAX+1; Fora yazmadan önce `EvrakVarMi` ile çakışma kontrolü yapar | Fora + canlı |
+| Seri/sıra | Aynı evrakın tüm satırları aynı `evrakno_seri` + `evrakno_sira`; satırlar `cha_satir_no` / `sth_satirno` / `sip_satirno` 0'dan artar. Sıra = MAX+1, anahtar Mikro'nun tekil indeksi: CHA `(cha_evrak_tip, seri, sira, satir_no)` → satış faturası `evrak_tip=63`, iade/alış `0` (**satış iadesi alış faturalarıyla aynı sırayı paylaşır**), tahsilat `1`; STH `(sth_evraktip, seri, sira, satirno)` → irsaliye `evraktip=1, tip=1`; SIPARISLER `(sip_tip, sip_cins, seri, sira, satirno)` → `0, 0`. Fora yazmadan önce aynı anahtarla `EvrakVarMi` yapar (varsa -2) | Fora `YeniSeriNoBul`/`EvrakVarMi` + indeksler |
+| Tekil indeksler | `NDX_CARI_HESAP_HAREKETLERI_04`, `NDX_STOK_HAREKETLERI_05`, `NDX_SIPARISLER_06`, `NDX_ODEME_EMIRLERI_02 (sck_tip, sck_refno)`, `NDX_EVRAK_ACIKLAMALARI_02 (dosyano, hareket_tip, evr_tip, seri, sira, ustkod)` — çakışma yarışını veritabanı da yakalar | canlı |
 | KDV oranı | `dbo.fn_VergiYuzde(pntr)` → V15_02'de 1=%0, 2=%1, 3=%10, 4=%20, 5=%26. Stok kartındaki pointer `sto_toptan_vergi` / `sto_perakende_vergi`; bu firmada 4.567 stokun hepsi 1 (%0) | canlı |
 | KDV dahil fiyat | Mikro fiyat listesi tanımında bayrak var: `STOK_SATIS_FIYAT_LISTE_TANIMLARI.sfl_kdvdahil` (V15_02'deki 3 listede 0) | canlı |
-| Açıklama | `EVRAK_ACIKLAMALARI` — `egk_dosyano=51`; satış faturası `(hareket 0, evr_tip 63)`, iade/alış `(1, 0)`, tahsilat `(1, 1)`, tediye `(0, 64)`, irsaliye `dosyano 16` | Fora switch + canlı dağılım |
+| Açıklama | `EVRAK_ACIKLAMALARI` — `egk_dosyano=51`; satış faturası `(hareket 0, evr_tip 63)`, iade/alış `(1, 0)`, tahsilat `(1, 1)`, tediye `(0, 64)`, irsaliye `(dosyano 16, hareket 1, evr_tip 1)`. Fora satırı **yalnız açıklama doluysa** yazar (`egk_evracik1..10`, `egk_evr_ustkod=''`, `egk_tesaltarihi=1900-01-01`). Mikro'nun kendi satırları çoğunlukla açıklamasız, yazdırma sayaçlı (`egk_prevwiewsayisi`) — yani Mikro bu satırı basımda da açar | Fora `V15_YeniEvrakAciklamaKaydet` + canlı |
+| Fatura uuid | Mikro ekranından kesilen **satış ve iade faturalarında** `cha_uuid` = büyük harfli 36 karakter GUID (kolon 40), benzersiz; tahsilat satırlarında `''`. Writer faturada yeni GUID yazar (ofis e-belgeye çevirirken Mikro bunu kullanır) | canlı |
+| İskonto zinciri | `sth_isk_mas1=0` (1. iskonto brüt tutar üzerinden), `sth_isk_mas2..10=1` (bir öncekinden kalan tutar üzerinden). Örnek: 4800 brüt, iskonto1 2400 (%50), iskonto2 240 (kalan 2400'ün %10'u). Tutarlar `sth_iskonto1..6`'da **tutar** olarak. Siparişte karşılığı `sip_iskonto1..6` (alt çizgisiz) uygulama şekli, `sip_iskonto_1..6` tutar | canlı (en yaygın desen) + Fora `Iskonto_n_UygulamaSekli` |
 
 ## 2. Satış faturası — açık hesap (veresiye)
 
@@ -43,6 +49,7 @@ serili kayıtlar. İkisinin uyuştuğu yerler "doğrulandı", ayrıştığı yer
 | `cha_ft_iskonto1..6` | satırların `sth_iskonto1..6` toplamları |
 | `cha_vergi1..5` | satır KDV'leri **pointer'a göre** kovalanır (Fora: pntr 2→vergi2, 3→vergi3, 4→vergi4, 5→vergi5, diğer→vergi1) |
 | `cha_meblag` | `aratoplam − iskontolar + masraflar + vergiler` |
+| `cha_uuid` | yeni GUID (§1) |
 | `cha_vade` | 0 ya da ödeme planı no (canlıda 0) |
 | `cha_satici_kodu`, `cha_srmrkkodu`, `cha_projekodu` | temsilci / sorumluluk merkezi / proje |
 
@@ -77,12 +84,15 @@ Mikro ve Fora peşin satışı **ayrı tahsilat makbuzuyla değil, faturayı kas
 |---|---|
 | `cha_cari_cins` | **4** kasa (nakit) · **2** banka (kart/havale) |
 | `cha_kod` | **kasa kodu** (ör. `001`) / banka kodu |
+| `cha_grupno` | kasa **0** · banka **1** (canlı: bankaya kapalı faturaların tamamı) |
 | `cha_ciro_cari_kodu` | **müşteri kodu** (stok satırlarının `sth_cari_kodu`'su da müşteri) |
 | `cha_tpoz` | **1** (kapalı) |
 | `cha_aciklama` | Fora: müşteri unvanı (40 karakter) |
 
 Canlıda: `63/0/6 cc=4 tpoz=1` → **4.851** kayıt (sahadan `T`, `H`… serileri), `cc=2 tpoz=1` → 57 kayıt.
 **Sonuç:** kapalı faturada müşterinin cari ekstresinde borç/alacak hareketi oluşmaz; para doğrudan kasaya/bankaya girer.
+Mikro'nun cari bakiyesi yalnız `cha_cari_cins=0` hareketlerinden oluşur. ErpBridge okuyucusu kapalı faturanın müşterisini
+`cha_ciro_cari_kodu`'dan almalı ve bakiyeye katmamalı (Y0e).
 
 ## 4. Satış iadesi faturası
 
@@ -145,7 +155,32 @@ Fora'da havale tahsilatı yok; havale satırı **Mikro'nun kendi kaydından** al
 
 Yeni writer bu sapmaları **kopyalamaz**; Mikro'nun kendi kaydını esas alır.
 
-## 7. Firmanın kullanım biçimi (V15_02, 2026-09-17)
+## 7. Satış siparişi ve irsaliye (Fora değerleri — firmada canlı örnek yok)
+
+**`SIPARISLER` (Fora `Evrak.cs` sipariş satırı, satır başına bir kayıt):** `sip_tip=0`, `sip_cins=0`, `sip_satirno` 0'dan,
+`sip_tarih`, `sip_teslim_tarih` (sevk/teslim tarihi), `sip_belgeno`/`sip_belge_tarih`, `sip_satici_kod`, `sip_musteri_kod`,
+`sip_stok_kod`, `sip_b_fiyat` (brüt birim fiyat), `sip_miktar`, `sip_birim_pntr`, `sip_tutar = sip_b_fiyat × miktar`,
+`sip_iskonto_1..6` (tutar × miktar), `sip_vergi_pntr`, `sip_vergi` (iskontolu net KDV), `sip_masvergi_pntr=4`, `sip_opno`
+(ödeme planı), `sip_teslimturu`, `sip_aciklama`, `sip_depono`, `sip_cari_grupno=0`, `sip_doviz_cinsi/kuru`,
+`sip_alt_doviz_kuru`, `sip_adresno`, `sip_iskonto1..6` (uygulama şekli), `sip_durumu` (StoktanSevkEdilecek),
+`sip_fiyat_liste_no`, `sip_harekettipi` (Stok), `sip_cagrilabilir_fl` (parametre), `sip_teslim_miktar=0`,
+`sip_kapat_fl=0`, onay: `sip_OnaylayanKulNo`. V15'te `sip_RECid_RECno = SCOPE_IDENTITY()`.
+
+**Satış irsaliyesi (`STOK_HAREKETLERI`):** §2 kalem satırıyla aynı, farkları: `sth_evraktip=1` (ÇıkışIrsaliyesi),
+`sth_fat_recid_* = 0` (henüz faturaya bağlı değil), `sth_malkbl_sevk_tarihi = sevk/teslim tarihi`, başlık CHA satırı yok.
+
+## 8. Doğrulama testleri
+
+`tests/ErpBridge.Erp.Mikro.Tests/Integration/MikroNativeDocumentConventionTests.cs` (salt okuma; yalnız
+`ERPBridge_RUN_INTEGRATION=1` **ve** açıkça verilen `ERPBridge_MIKRO_WRITE_DB=MikroDB_V15_ERPBTEST` ile çalışır — Docker
+fikstürünün paylaşılan anahtarı tek başına bu testleri açmaz, PR #75 Codex bulgusu):
+Mikro kayıtlarında NULL olmadığı; açık/kasaya kapalı/bankaya kapalı satış faturası ve satış iadesi başlık kodları;
+fatura/iade kalem kodları ve iskonto zinciri bayrakları; 5 tahsilat yönteminin satır ve ödeme emri kodları; referans no biçimi.
+
+> **Bağlantı notu:** bu PC'de `localhost` (paylaşılan bellek) ile async sorgular aralıklı "aktarım düzeyi hatası"
+> verdi (mevcut `MikroSchemaContractTests` dahil, 3/3). `tcp:localhost` ile 5/5 geçti; testlerin varsayılanı `tcp:localhost`.
+
+## 9. Firmanın kullanım biçimi (V15_02, 2026-09-17)
 - `SIPARISLER`'de **1** satır var → firma sipariş kullanmıyor; satış doğrudan fatura.
 - Satış faturası satırı 79.468, iade satırı 1.935, tahsilat satırı ~2.300.
 - Sahadan gelen seriler: `T`, `H`, `ST`, `N`, `PZ`, `İS`, `D`, `P`, `ID`… (plasiyer/araç başına seri görünümünde).
