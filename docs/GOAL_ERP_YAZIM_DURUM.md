@@ -43,7 +43,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
 | Y1d | `erpContext` kiralama yanıtında | ⬜ | | |
 | Y1e | Kiralama süresi + geçici hata yeniden denemesi | ⬜ | | |
-| Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ⬜ | | |
+| Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ✅ | (Y2a PR) | `Erp.Abstractions/Documents/MobileDocumentCommands.cs`: ortak `ErpDocumentHeader` + `SalesDocumentCommand` / `SalesReturnCommand` / `CollectionCommand`. `IErpAdapter`'a varsayılan gövdeli üç metot (`NotImplemented` sonucu) — Logo iskeleti değişmeden derlenir ve reddeder (seam testi). **Sapma:** iade kondisyonu yüzde değil `ConditionRatio` (0..1, telefonun `conditionPercent` alanı zaten oran); karma ödemede tahsilat serisi komutta (`ExtraPaymentsSeries`) |
 | Y2b | `MobileDocumentTranslator` | ⬜ | | |
 | Y2c | `AgentWorker` yeni yol + `retryable` | ⬜ | | |
 | Y2d | Türkçe hata kataloğu | ⬜ | | |
