@@ -304,6 +304,13 @@ public static class AndroidEndpoints
             .GroupBy(item => item.Number)
             .ToDictionary(group => group.Key, group => group.First().Name!);
 
+        var vatIncludedPriceLists = GetArray(root, "lookups")
+            .Where(item => string.Equals(GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase)
+                && GetBoolean(item, "includesVat") == true)
+            .Select(item => int.TryParse(GetString(item, "code"), out var number) ? number : 0)
+            .Where(number => number > 0)
+            .ToHashSet();
+
         var customPricesByStock = GetArray(root, "prices")
             .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")) && GetDecimal(item, "price") is > 0)
             .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
@@ -331,6 +338,8 @@ public static class AndroidEndpoints
                         ["listNo"] = list.Key,
                         ["name"] = priceListNames.TryGetValue(list.Key, out var listName) ? listName : $"Liste {list.Key}",
                         ["price"] = list.Select(item => GetDecimal(item, "price")).First(p => p is > 0)!.Value,
+                        // A VAT-inclusive list's price already carries the VAT; the phone must not add it again.
+                        ["kdvDahil"] = vatIncludedPriceLists.Contains(list.Key),
                     })
                     .ToList(),
                 StringComparer.OrdinalIgnoreCase);

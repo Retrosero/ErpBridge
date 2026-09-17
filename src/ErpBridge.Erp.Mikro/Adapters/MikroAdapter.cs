@@ -59,8 +59,9 @@ public sealed class MikroAdapter : IErpAdapter
     /// <summary>
     /// 2 (2026-09-17): customer ledger rows carry <c>ciroCariKod</c>/<c>kapali</c> for closed invoices,
     /// returns are classified by the iade flag, and card balances count only cari-side rows.
+    /// 3: stock cards carry their VAT rate. 4: price-list lookups carry <c>sfl_kdvdahil</c> (goal ERP yazım Y4g).
     /// </summary>
-    public int SnapshotProjectionVersion => 3;
+    public int SnapshotProjectionVersion => 4;
 
     /// <summary>
     /// Mikro V15 change log backed only by the existing

@@ -20,12 +20,17 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <param name="Name">Display name.</param>
 /// <param name="ParentCode">Optional parent lookup (e.g. warehouse group code).</param>
 /// <param name="Currency">Optional currency code (e.g. for currency lookups).</param>
+/// <param name="IncludesVat">
+/// <c>price_list</c> only: whether the list's prices include VAT (Mikro <c>sfl_kdvdahil</c>). The phone must not add
+/// VAT on top of such a price, or its total would differ from the one the ERP writer books (goal ERP yazım Y4g).
+/// </param>
 public sealed record LookupPayload(
     string Kind,
     string Code,
     string Name,
     string? ParentCode,
-    string? Currency);
+    string? Currency,
+    bool? IncludesVat = null);
 
 /// <summary>Skeleton — typed warehouse lookup. Phase 5 carries via <see cref="LookupPayload"/>.</summary>
 /// <param name="WarehouseNo">Depo numarası.</param>
