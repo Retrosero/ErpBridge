@@ -72,6 +72,7 @@ COPY ErpBridge.sln ./
 COPY Directory.Packages.props ./
 COPY src/ErpBridge.Core/ErpBridge.Core.csproj                            src/ErpBridge.Core/
 COPY src/ErpBridge.Shared/ErpBridge.Shared.csproj                        src/ErpBridge.Shared/
+COPY src/ErpBridge.Diagnostics/ErpBridge.Diagnostics.csproj              src/ErpBridge.Diagnostics/
 COPY src/ErpBridge.LocalStore/ErpBridge.LocalStore.csproj                src/ErpBridge.LocalStore/
 COPY src/ErpBridge.Erp.Abstractions/ErpBridge.Erp.Abstractions.csproj    src/ErpBridge.Erp.Abstractions/
 COPY src/ErpBridge.Erp.Mikro/ErpBridge.Erp.Mikro.csproj                   src/ErpBridge.Erp.Mikro/
