@@ -7,7 +7,7 @@ namespace ErpBridge.Erp.Mikro.Tests.Integration;
 
 /// <summary>
 /// <c>dbo._ERPB_EVRAK_ESLESME</c> against a real Mikro test copy (Y0d). Writes only into a
-/// database named <c>*ERPBTEST*</c>; see <see cref="MikroWriteTestDatabase"/>.
+/// test copy (<see cref="MikroWriteTestDatabase.AllowedDatabases"/>); see <see cref="MikroWriteTestDatabase"/>.
 /// </summary>
 public class MikroDocumentLedgerLiveTests
 {

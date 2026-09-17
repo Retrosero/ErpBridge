@@ -65,10 +65,10 @@ public sealed class MikroCollectionWriter
     internal const short CollectionTransactionTip = 1;
 
     /// <summary>
-    /// <c>cha_evrak_tip</c> — Mikro's document-kind code. Tahsilat/tediye
-    /// receipts post under the kasa/banka receipt kind.
+    /// <c>cha_evrak_tip</c> — Mikro's document-kind code: tahsilat makbuzu
+    /// (was 63, which is a satış faturası).
     /// </summary>
-    internal const byte CollectionEvrakTip = 63;
+    internal const byte CollectionEvrakTip = MikroCodes.ChaEvrakTip.TahsilatMakbuzu;
 
     /// <summary>
     /// <c>cha_cinsi</c> — <c>0</c> is a normal cari movement (as opposed to

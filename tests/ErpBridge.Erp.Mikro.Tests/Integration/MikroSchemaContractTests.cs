@@ -42,7 +42,7 @@ public class MikroSchemaContractTests
         Environment.GetEnvironmentVariable(MikroIntegrationFixture.RunIntegrationEnv) == "1";
 
     private static string Server =>
-        Environment.GetEnvironmentVariable(ServerEnv) is { Length: > 0 } s ? s : "localhost";
+        Environment.GetEnvironmentVariable(ServerEnv) is { Length: > 0 } s ? s : "tcp:localhost";
 
     private static IEnumerable<string> Databases =>
         (Environment.GetEnvironmentVariable(DatabasesEnv) is { Length: > 0 } d
