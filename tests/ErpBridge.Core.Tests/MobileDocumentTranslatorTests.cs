@@ -137,6 +137,8 @@ public class MobileDocumentTranslatorTests
         sale.Header.ProjectCode.Should().BeNull("a blank code is no code");
         sale.DeliveryDate.Should().Be(new DateTime(2026, 9, 19));
         _sut.Translate("sales_order", "MOB-SO-1", Sale, Context()).Sale!.DeliveryDate.Should().BeNull();
+        _sut.Translate("sales_order", "MOB-SO-1", Sale, Context() with { DeliveryDayOffset = 2 }).Sale!.DeliveryDate
+            .Should().BeNull("an invoice has no delivery date");
     }
 
     [Fact]
@@ -299,6 +301,8 @@ public class MobileDocumentTranslatorTests
     [Theory]
     [InlineData("sales_order", "\"lineDiscountPercent\": 10,", "\"lineDiscountPercent\": \"on\",", ErpWriteError.InvalidDiscountCode)]
     [InlineData("sales_order", "\"quantity\": 2,", "\"quantity\": 2, \"unitPointer\": 1.5,", ErpWriteError.InvalidDocumentCode)]
+    [InlineData("sales_order", "\"quantity\": 2,", "\"quantity\": 2, \"unitPointer\": 0,", ErpWriteError.InvalidDocumentCode)]
+    [InlineData("sales_return", "\"quantity\": 1, \"listUnitPrice\": 400", "\"quantity\": 1, \"unitPointer\": -1, \"listUnitPrice\": 400", ErpWriteError.InvalidDocumentCode)]
     [InlineData("sales_order", "\"quantity\": 2,", "\"quantity\": 1e20,", ErpWriteError.InvalidQuantityCode)]
     [InlineData("sales_return", "\"conditionPercent\": 0.3", "\"conditionPercent\": \"invalid\"", ErpWriteError.InvalidDiscountCode)]
     [InlineData("collection", "\"installments\": 3", "\"installments\": \"üç\"", ErpWriteError.InvalidDocumentCode)]

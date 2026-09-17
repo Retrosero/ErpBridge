@@ -122,7 +122,7 @@ public sealed class MobileDocumentTranslator
             if (Decimal(line, "quantity") is not > 0) return MobileTranslation.Fail(ErpWriteError.InvalidQuantity(i + 1));
             if (MalformedNumber(line, "lineDiscountPercent") || MalformedNumber(line, "customerDiscountPercent") || MalformedNumber(line, "generalDiscountPercent"))
                 return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
-            if (MalformedNumber(line, "unitPointer", integer: true)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+            if (MalformedNumber(line, "unitPointer", integer: true) || Int(line, "unitPointer") is <= 0) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
             var discounts = new[] { Decimal(line, "lineDiscountPercent") ?? 0m, Decimal(line, "customerDiscountPercent") ?? 0m, Decimal(line, "generalDiscountPercent") ?? 0m };
             if (discounts.Any(d => d is < 0 or > 100)) return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
             if (Decimal(line, "listUnitPrice") is not >= 0) return MobileTranslation.Fail(ErpWriteError.InvalidAmount());
@@ -148,7 +148,7 @@ public sealed class MobileDocumentTranslator
             if (parsed.Payments!.Sum(p => p.Amount) > header.ExpectedTotal + AmountTolerance) return MobileTranslation.Fail(ErpWriteError.InvalidAmount());
             return new MobileTranslation(Sale: new SalesDocumentCommand(
                 header, kind.Value, warehouse.Value, priceList.Value, approval, SalesSettlement.Open, null, saleLines,
-                parsed.Payments, context.Series.Collection, Delivery(header, context)));
+                parsed.Payments, context.Series.Collection, Delivery(header, context, kind.Value)));
         }
 
         var settlement = SaleSettlement(Text(body, "paymentType"));
@@ -157,7 +157,7 @@ public sealed class MobileDocumentTranslator
         {
             return new MobileTranslation(Sale: new SalesDocumentCommand(
                 header, kind.Value, warehouse.Value, priceList.Value, approval, SalesSettlement.Open, null, saleLines,
-                DeliveryDate: Delivery(header, context)));
+                DeliveryDate: Delivery(header, context, kind.Value)));
         }
 
         var method = settlement switch
@@ -176,17 +176,22 @@ public sealed class MobileDocumentTranslator
             var payment = new CollectionPayment(method, header.ExpectedTotal, header.OccurredAt.Date, account.Code!);
             return new MobileTranslation(Sale: new SalesDocumentCommand(
                 header, kind.Value, warehouse.Value, priceList.Value, approval, SalesSettlement.Open, null, saleLines,
-                [payment], context.Series.Collection, Delivery(header, context)));
+                [payment], context.Series.Collection, Delivery(header, context, kind.Value)));
         }
 
         return new MobileTranslation(Sale: new SalesDocumentCommand(
             header, kind.Value, warehouse.Value, priceList.Value, approval, settlement.Value, account.Code, saleLines,
-            DeliveryDate: Delivery(header, context)));
+            DeliveryDate: Delivery(header, context, kind.Value)));
     }
 
-    /// <summary>The company's delivery offset applied to the document day; null when the company sets none.</summary>
-    private static DateTime? Delivery(ErpDocumentHeader header, ErpWriteContext context) =>
-        context.DeliveryDayOffset is { } days ? header.OccurredAt.Date.AddDays(days) : null;
+    /// <summary>
+    /// The company's delivery offset applied to the document day, for an order or dispatch note only;
+    /// an invoice has no delivery date (PR #81 Codex). Null when the company sets none.
+    /// </summary>
+    private static DateTime? Delivery(ErpDocumentHeader header, ErpWriteContext context, SalesDocumentKind kind) =>
+        kind is SalesDocumentKind.Order or SalesDocumentKind.Dispatch && context.DeliveryDayOffset is { } days
+            ? header.OccurredAt.Date.AddDays(days)
+            : null;
 
     private static string SeriesFor(ErpWriteContext context, out SalesDocumentKind? kind)
     {
@@ -244,7 +249,7 @@ public sealed class MobileDocumentTranslator
             // The phone sends the refunded share as 0..1; tolerate a percentage. Absent is a full refund,
             // a value that is not a number is refused rather than read as one (PR #81 Codex).
             if (MalformedNumber(line, "conditionPercent")) return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
-            if (MalformedNumber(line, "unitPointer", integer: true)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+            if (MalformedNumber(line, "unitPointer", integer: true) || Int(line, "unitPointer") is <= 0) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
             var condition = Decimal(line, "conditionPercent") ?? 1m;
             if (condition > 1m) condition /= 100m;
             if (condition is < 0 or > 1) return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
