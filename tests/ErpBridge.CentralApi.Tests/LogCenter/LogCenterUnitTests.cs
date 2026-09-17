@@ -18,6 +18,10 @@ public sealed class LogScrubberTests
     [InlineData("müşteri tel +905321234567", "5321234567")]
     [InlineData("TCKN 12345678901 geçersiz", "12345678901")]
     [InlineData("IBAN TR33 0006 1005 1978 6457 8413 26", "1978 6457")]
+    [InlineData("Password=correct horse battery staple", "horse battery staple")]
+    [InlineData("{\"password\":\"correct horse battery staple\",\"user\":\"x\"}", "horse battery staple")]
+    [InlineData("{\"token\":\"a \\\"quoted\\\" secret\"}", "quoted")]
+    [InlineData("Server=x;Pwd='with space';Database=y", "with space")]
     public void Scrub_removes_secrets_and_personal_data(string input, string secret)
     {
         var scrubbed = LogScrubber.Scrub(input);
@@ -30,9 +34,20 @@ public sealed class LogScrubberTests
     [InlineData("Sync of 1250 rows took 3400 ms")]
     [InlineData("HTTP 500 on /api/v1/android/sync/pull")]
     [InlineData("at ErpBridge.Core.Sync.AgentSyncLoop.RunAsync() in C:\\src\\AgentSyncLoop.cs:line 114")]
+    [InlineData("job 1b4e28ba-2fa1-11d2-883f-12345678901a failed")]
+    [InlineData("op-a53212345678901234567890abcdef00")]
+    [InlineData("device 5321234567abc restarted")]
     public void Scrub_leaves_ordinary_diagnostics_alone(string input)
     {
         LogScrubber.Scrub(input).Should().Be(input);
+    }
+
+    [Fact]
+    public void Masked_json_stays_valid_json()
+    {
+        var scrubbed = LogScrubber.Scrub("{\"password\":\"correct horse\",\"apiKey\":\"k 1\",\"n\":2}");
+
+        System.Text.Json.JsonDocument.Parse(scrubbed).RootElement.GetProperty("n").GetInt32().Should().Be(2);
     }
 
     [Fact]

@@ -34,7 +34,7 @@ public sealed class LogEventWriterRelationalTests : IClassFixture<SqliteCentralA
             Source = LogSources.Android,
             Severity = "warning",
             Kind = "sync round",
-            Message = "login failed for Password=hunter2 " + new string('x', 5000),
+            Message = "login failed for Password=hunter2; " + new string('x', 5000),
             HttpMethod = "post",
             HttpRoute = "/api/v1/android/sync/pull?cursor=abc",
             HttpStatus = 42,
@@ -114,6 +114,86 @@ public sealed class LogEventWriterRelationalTests : IClassFixture<SqliteCentralA
         reopened.ReopenedAtMs.Should().NotBeNull();
         reopened.TotalCount.Should().Be(2);
         reopened.Severity.Should().Be("FATAL");
+    }
+
+    [Fact]
+    public async Task A_lower_severity_never_lowers_the_group()
+    {
+        var operation = "op-" + Guid.NewGuid().ToString("N");
+        LogEventInput Event(string severity) => new() { Source = LogSources.Android, Severity = severity, Operation = operation, Message = "boom" };
+
+        await WriteAsync(Event("WARN"));
+        await WriteAsync(Event("FATAL"));
+        await WriteAsync(Event("ERROR"));
+        await WriteAsync(Event("WARN"));
+
+        using var db = _factory.CreateDbContext();
+        var group = await db.LogErrorGroups.SingleAsync(g => g.Operation == operation);
+        group.Severity.Should().Be("FATAL");
+        group.TotalCount.Should().Be(4);
+    }
+
+    [Fact]
+    public async Task A_batch_mixing_a_known_event_and_new_groups_counts_only_what_was_stored()
+    {
+        var operation = "op-" + Guid.NewGuid().ToString("N");
+        var repeated = new LogEventInput { EventId = Guid.NewGuid().ToString(), Source = LogSources.Android, Severity = "ERROR", Operation = operation, Message = "first" };
+        await WriteAsync(repeated);
+
+        var result = await WriteAsync(repeated,
+            new LogEventInput { Source = LogSources.Android, Severity = "ERROR", Operation = operation, Message = "second", ExceptionType = "A" },
+            new LogEventInput { Source = LogSources.Android, Severity = "ERROR", Operation = operation, Message = "third", ExceptionType = "B" });
+
+        result.Should().Be(new LogWriteResult(2, 1));
+        using var db = _factory.CreateDbContext();
+        var groups = await db.LogErrorGroups.Where(g => g.Operation == operation).ToListAsync();
+        groups.Should().HaveCount(3).And.OnlyContain(g => g.TotalCount == 1);
+        (await db.LogEvents.CountAsync(e => e.Operation == operation && e.FingerprintId == null)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Backfill_groups_copied_rows_without_reopening_resolved_groups()
+    {
+        var operation = "op-" + Guid.NewGuid().ToString("N");
+        await WriteAsync(new LogEventInput { Source = LogSources.Android, Severity = "ERROR", Kind = "CRASH", Operation = operation, Message = "resolved one" });
+        using (var db = _factory.CreateDbContext())
+        {
+            var group = await db.LogErrorGroups.SingleAsync(g => g.Operation == operation);
+            group.Status = LogErrorGroup.Resolved;
+            var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            LogEvent Copied(string severity, string message, long ageMs) => new()
+            {
+                EventId = Guid.NewGuid().ToString(), Source = LogSources.Android, Severity = severity, Kind = "CRASH",
+                Operation = operation, Message = message, OccurredAtMs = nowMs - ageMs, ReceivedAtMs = nowMs - ageMs,
+                OccurredAtUtc = DateTimeOffset.FromUnixTimeMilliseconds(nowMs - ageMs), ReceivedAtUtc = DateTimeOffset.FromUnixTimeMilliseconds(nowMs - ageMs),
+            };
+            db.LogEvents.AddRange(
+                Copied("ERROR", "resolved one", 3_000),
+                Copied("ERROR", "legacy crash", 2_000),
+                Copied("FATAL", "legacy crash", 1_000),
+                Copied("INFO", "screen view", 500));
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var writer = scope.ServiceProvider.GetRequiredService<ILogEventWriter>();
+            var grouped = 0;
+            for (var n = await writer.BackfillGroupsAsync(1, CancellationToken.None); n > 0; n = await writer.BackfillGroupsAsync(1, CancellationToken.None))
+                grouped += n;
+            grouped.Should().BeGreaterThanOrEqualTo(3);
+        }
+
+        using var check = _factory.CreateDbContext();
+        var groups = await check.LogErrorGroups.Where(g => g.Operation == operation).ToListAsync();
+        var resolved = groups.Single(g => g.SampleMessage == "resolved one");
+        resolved.Status.Should().Be(LogErrorGroup.Resolved, "history must not reopen a decision");
+        resolved.TotalCount.Should().Be(2);
+        var legacy = groups.Single(g => g.SampleMessage == "legacy crash");
+        legacy.TotalCount.Should().Be(2);
+        legacy.Severity.Should().Be("FATAL");
+        (await check.LogEvents.Where(e => e.Operation == operation && e.FingerprintId == null).Select(e => e.Severity).ToListAsync())
+            .Should().Equal("INFO");
     }
 
     [Fact]

@@ -10,12 +10,25 @@ namespace ErpBridge.CentralApi.LogCenter;
 public interface ILogEventWriter
 {
     Task<LogWriteResult> WriteAsync(IReadOnlyList<LogEventInput> events, CancellationToken ct);
+
+    /// <summary>
+    /// Groups up to <paramref name="batchSize"/> stored WARN+ events that have no group yet (the rows the L0
+    /// migration copied from the legacy table), oldest first. Returns how many were grouped; 0 means done.
+    /// </summary>
+    Task<int> BackfillGroupsAsync(int batchSize, CancellationToken ct);
 }
 
 /// <summary>
 /// Normalizes (severity, kind), bounds every column, scrubs text (<see cref="LogScrubber"/>), drops
 /// repeats of a producer's event id, and counts WARN+ events into their <see cref="LogErrorGroup"/>.
-/// Group counters are incremented with a single UPDATE so concurrent writers never lose a count.
+/// <para>
+/// On a relational store one write is one transaction: group creation, counter updates and the event rows
+/// commit together, so a concurrent retry of the same event (rejected by the unique index) or a group another
+/// writer created first rolls the whole attempt back and it runs again from the current state — counts never
+/// drift from the rows and no WARN+ event is left without a group. Counters and severity are raised inside a
+/// single UPDATE that reads the row's own values, so concurrent writers never lose an increment or lower a
+/// severity.
+/// </para>
 /// </summary>
 public sealed class LogEventWriter : ILogEventWriter
 {
@@ -27,6 +40,8 @@ public sealed class LogEventWriter : ILogEventWriter
 
     private static readonly TimeSpan MaxClockSkewAhead = TimeSpan.FromHours(1);
     private static readonly TimeSpan MaxAge = TimeSpan.FromDays(365);
+    private const int MaxAttempts = 3;
+    private static readonly string[] GroupedSeverities = [LogSeverity.Warn, LogSeverity.Error, LogSeverity.Fatal];
 
     private readonly CentralApiDbContext _db;
     private readonly TimeProvider _clock;
@@ -43,32 +58,77 @@ public sealed class LogEventWriter : ILogEventWriter
     {
         if (events.Count == 0) return new LogWriteResult(0, 0);
         var now = _clock.GetUtcNow();
-        var rows = new List<LogEvent>(events.Count);
-        var producerIds = new HashSet<(string, string)>();
-        var duplicates = 0;
+        var candidates = new List<(LogEvent Row, bool ProducerId)>(events.Count);
+        var seen = new HashSet<(string, string)>();
+        var inBatchDuplicates = 0;
         foreach (var input in events)
         {
             var row = ToRow(input, now);
-            if (!string.IsNullOrWhiteSpace(input.EventId) && !producerIds.Add((row.Source, row.EventId)))
+            var producerId = !string.IsNullOrWhiteSpace(input.EventId);
+            if (producerId && !seen.Add((row.Source, row.EventId)))
             {
-                duplicates++;
+                inBatchDuplicates++;
                 continue;
             }
-            rows.Add(row);
+            candidates.Add((row, producerId));
         }
 
-        var known = await KnownEventIdsAsync(rows, events, ct);
-        if (known.Count > 0)
+        for (var attempt = 1; ; attempt++)
         {
-            duplicates += rows.RemoveAll(row => known.Contains((row.Source, row.EventId)));
+            try
+            {
+                await using var transaction = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync(ct) : null;
+                var known = await KnownEventIdsAsync(candidates.Where(c => c.ProducerId).Select(c => c.Row), ct);
+                var rows = candidates.Where(c => !known.Contains((c.Row.Source, c.Row.EventId))).Select(c => c.Row).ToList();
+                var duplicates = inBatchDuplicates + candidates.Count - rows.Count;
+                if (rows.Count > 0)
+                {
+                    await AssignGroupsAsync(rows, now, reopenResolved: true, ct);
+                    _db.LogEvents.AddRange(rows);
+                    await _db.SaveChangesAsync(ct);
+                }
+                if (transaction is not null) await transaction.CommitAsync(ct);
+                DetachLogEntities();
+                return new LogWriteResult(rows.Count, duplicates);
+            }
+            catch (DbUpdateException) when (attempt < MaxAttempts)
+            {
+                // A concurrent writer stored the same event or created the same group first. The transaction
+                // rolled back; start over from what is committed now.
+                DetachLogEntities();
+                foreach (var (row, _) in candidates) row.FingerprintId = null;
+            }
         }
-        if (rows.Count == 0) return new LogWriteResult(0, duplicates);
+    }
 
-        await AssignGroupsAsync(rows, now, ct);
-        _db.LogEvents.AddRange(rows);
-        await _db.SaveChangesAsync(ct);
-        foreach (var row in rows) _db.Entry(row).State = EntityState.Detached;
-        return new LogWriteResult(rows.Count, duplicates);
+    public async Task<int> BackfillGroupsAsync(int batchSize, CancellationToken ct)
+    {
+        var now = _clock.GetUtcNow();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await using var transaction = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync(ct) : null;
+                var rows = await _db.LogEvents
+                    .Where(e => e.FingerprintId == null && GroupedSeverities.Contains(e.Severity))
+                    .OrderBy(e => e.OccurredAtMs)
+                    .Take(Math.Max(1, batchSize))
+                    .ToListAsync(ct);
+                if (rows.Count > 0)
+                {
+                    // History must not reopen a group an operator already resolved.
+                    await AssignGroupsAsync(rows, now, reopenResolved: false, ct);
+                    await _db.SaveChangesAsync(ct);
+                }
+                if (transaction is not null) await transaction.CommitAsync(ct);
+                DetachLogEntities();
+                return rows.Count;
+            }
+            catch (DbUpdateException) when (attempt < MaxAttempts)
+            {
+                DetachLogEntities();
+            }
+        }
     }
 
     internal static LogEvent ToRow(LogEventInput input, DateTimeOffset now)
@@ -131,13 +191,11 @@ public sealed class LogEventWriter : ILogEventWriter
         return builder.ToString();
     }
 
-    private async Task<HashSet<(string, string)>> KnownEventIdsAsync(List<LogEvent> rows, IReadOnlyList<LogEventInput> inputs, CancellationToken ct)
+    private async Task<HashSet<(string, string)>> KnownEventIdsAsync(IEnumerable<LogEvent> producerRows, CancellationToken ct)
     {
         var known = new HashSet<(string, string)>();
         // Only producer-supplied ids can repeat; generated ones are new by construction.
-        var producerIds = inputs.Where(i => !string.IsNullOrWhiteSpace(i.EventId))
-            .Select(i => Bound(i.EventId, EventIdMax)).ToHashSet(StringComparer.Ordinal);
-        foreach (var scope in rows.Where(r => producerIds.Contains(r.EventId)).GroupBy(r => r.Source))
+        foreach (var scope in producerRows.GroupBy(r => r.Source))
         {
             var source = scope.Key;
             var ids = scope.Select(r => r.EventId).ToArray();
@@ -150,7 +208,7 @@ public sealed class LogEventWriter : ILogEventWriter
         return known;
     }
 
-    private async Task AssignGroupsAsync(List<LogEvent> rows, DateTimeOffset now, CancellationToken ct)
+    private async Task AssignGroupsAsync(List<LogEvent> rows, DateTimeOffset now, bool reopenResolved, CancellationToken ct)
     {
         var grouped = rows
             .Where(r => LogSeverity.Rank(r.Severity) >= LogSeverity.Rank(LogSeverity.Warn))
@@ -160,45 +218,35 @@ public sealed class LogEventWriter : ILogEventWriter
         if (grouped.Count == 0) return;
 
         var fingerprints = grouped.Select(g => g.Key).ToArray();
-        var groups = await LoadGroupsAsync(fingerprints, ct);
+        var existing = await _db.LogErrorGroups.AsNoTracking()
+            .Where(g => fingerprints.Contains(g.Fingerprint))
+            .ToDictionaryAsync(g => g.Fingerprint, g => g.Id, StringComparer.Ordinal, ct);
 
-        var missing = grouped.Where(g => !groups.ContainsKey(g.Key)).ToList();
-        if (missing.Count > 0)
+        var created = grouped
+            .Where(g => !existing.ContainsKey(g.Key))
+            .Select(g => NewGroup(g.Key, g.Select(x => x.Row).ToList(), g.First().Print))
+            .ToList();
+        if (created.Count > 0)
         {
-            var created = missing.Select(g => NewGroup(g.Key, g.Select(x => x.Row).ToList(), g.First().Print)).ToList();
+            // A group another writer creates meanwhile fails this save; the caller retries the whole write.
             _db.LogErrorGroups.AddRange(created);
-            try
-            {
-                await _db.SaveChangesAsync(ct);
-                foreach (var group in created)
-                {
-                    _db.Entry(group).State = EntityState.Detached;
-                    groups[group.Fingerprint] = (group, Fresh: true);
-                }
-            }
-            catch (DbUpdateException)
-            {
-                // Another writer created one of these groups first: count into theirs instead.
-                foreach (var group in created) _db.Entry(group).State = EntityState.Detached;
-                groups = await LoadGroupsAsync(fingerprints, ct);
-            }
+            await _db.SaveChangesAsync(ct);
         }
 
         foreach (var set in grouped)
         {
-            if (!groups.TryGetValue(set.Key, out var entry))
-                continue; // Lost a creation race and the winner is not visible yet: keep the events ungrouped.
-            foreach (var (row, _) in set) row.FingerprintId = entry.Group.Id;
-            if (!entry.Fresh) await IncrementAsync(entry.Group, set.Select(x => x.Row).ToList(), now, ct);
+            var members = set.Select(x => x.Row).ToList();
+            if (existing.TryGetValue(set.Key, out var groupId))
+            {
+                foreach (var row in members) row.FingerprintId = groupId;
+                await IncrementAsync(groupId, members, now, reopenResolved, ct);
+            }
+            else
+            {
+                var group = created.Single(g => g.Fingerprint == set.Key);
+                foreach (var row in members) row.FingerprintId = group.Id;
+            }
         }
-    }
-
-    private async Task<Dictionary<string, (LogErrorGroup Group, bool Fresh)>> LoadGroupsAsync(string[] fingerprints, CancellationToken ct)
-    {
-        var existing = await _db.LogErrorGroups.AsNoTracking()
-            .Where(g => fingerprints.Contains(g.Fingerprint))
-            .ToListAsync(ct);
-        return existing.ToDictionary(g => g.Fingerprint, g => (g, false), StringComparer.Ordinal);
     }
 
     private static LogErrorGroup NewGroup(string fingerprint, List<LogEvent> rows, ErrorFingerprintResult print)
@@ -225,7 +273,7 @@ public sealed class LogEventWriter : ILogEventWriter
         };
     }
 
-    private async Task IncrementAsync(LogErrorGroup group, List<LogEvent> rows, DateTimeOffset now, CancellationToken ct)
+    private async Task IncrementAsync(Guid groupId, List<LogEvent> rows, DateTimeOffset now, bool reopenResolved, CancellationToken ct)
     {
         var last = rows.MaxBy(r => r.OccurredAtMs)!;
         long count = rows.Sum(r => (long)r.RepeatCount);
@@ -234,21 +282,26 @@ public sealed class LogEventWriter : ILogEventWriter
         var appVersion = last.AppVersion;
         var nowMs = now.ToUnixTimeMilliseconds();
         var severity = HighestSeverity(rows);
-        var raise = LogSeverity.Rank(severity) > LogSeverity.Rank(group.Severity);
-        var groupId = group.Id;
+        var reopen = reopenResolved;
 
         if (_db.Database.IsRelational())
         {
-            // One statement: counters never lose an increment to a concurrent writer, and every SET reads
-            // the row's old values, so the reopen check sees the status before this update.
+            // One statement: every SET reads the row's current values, so a concurrent writer's increment is
+            // never lost and the severity only ever goes up (compared with the stored value, not a snapshot).
+            System.Linq.Expressions.Expression<Func<LogErrorGroup, string>> raisedSeverity = severity switch
+            {
+                LogSeverity.Fatal => g => LogSeverity.Fatal,
+                LogSeverity.Error => g => g.Severity == LogSeverity.Fatal ? LogSeverity.Fatal : LogSeverity.Error,
+                _ => g => g.Severity,
+            };
             await _db.LogErrorGroups.Where(g => g.Id == groupId).ExecuteUpdateAsync(set => set
                 .SetProperty(g => g.TotalCount, g => g.TotalCount + count)
                 .SetProperty(g => g.LastSeenAtUtc, g => g.LastSeenMs < lastMs ? lastAt : g.LastSeenAtUtc)
                 .SetProperty(g => g.LastAppVersion, g => g.LastSeenMs < lastMs ? appVersion : g.LastAppVersion)
                 .SetProperty(g => g.LastSeenMs, g => g.LastSeenMs < lastMs ? lastMs : g.LastSeenMs)
-                .SetProperty(g => g.Severity, g => raise ? severity : g.Severity)
-                .SetProperty(g => g.ReopenedAtMs, g => g.Status == LogErrorGroup.Resolved ? nowMs : g.ReopenedAtMs)
-                .SetProperty(g => g.Status, g => g.Status == LogErrorGroup.Resolved ? LogErrorGroup.Open : g.Status), ct);
+                .SetProperty(g => g.Severity, raisedSeverity)
+                .SetProperty(g => g.ReopenedAtMs, g => reopen && g.Status == LogErrorGroup.Resolved ? nowMs : g.ReopenedAtMs)
+                .SetProperty(g => g.Status, g => reopen && g.Status == LogErrorGroup.Resolved ? LogErrorGroup.Open : g.Status), ct);
             return;
         }
 
@@ -261,14 +314,20 @@ public sealed class LogEventWriter : ILogEventWriter
             tracked.LastSeenAtUtc = lastAt;
             tracked.LastAppVersion = appVersion;
         }
-        if (raise) tracked.Severity = severity;
-        if (tracked.Status == LogErrorGroup.Resolved)
+        if (LogSeverity.Rank(severity) > LogSeverity.Rank(tracked.Severity)) tracked.Severity = severity;
+        if (reopenResolved && tracked.Status == LogErrorGroup.Resolved)
         {
             tracked.Status = LogErrorGroup.Open;
             tracked.ReopenedAtMs = nowMs;
         }
         await _db.SaveChangesAsync(ct);
-        _db.Entry(tracked).State = EntityState.Detached;
+    }
+
+    /// <summary>Stops tracking this writer's rows; the DbContext may be the caller's request context.</summary>
+    private void DetachLogEntities()
+    {
+        foreach (var entry in _db.ChangeTracker.Entries().Where(e => e.Entity is LogEvent or LogErrorGroup).ToList())
+            entry.State = EntityState.Detached;
     }
 
     private static string HighestSeverity(IEnumerable<LogEvent> rows) =>

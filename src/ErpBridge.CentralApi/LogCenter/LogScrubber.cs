@@ -21,7 +21,7 @@ public static partial class LogScrubber
             var value = JwtPattern().Replace(text, Masked);
             value = BearerPattern().Replace(value, "Bearer " + Masked);
             value = LicenseKeyPattern().Replace(value, "AK-" + Masked);
-            value = SecretPairPattern().Replace(value, match => match.Groups["key"].Value + match.Groups["sep"].Value + Masked);
+            value = SecretPairPattern().Replace(value, MaskSecretValue);
             value = UserPairPattern().Replace(value, match => match.Groups["key"].Value + "=" + Masked);
             value = EmailPattern().Replace(value, Masked + "@" + Masked);
             value = IbanPattern().Replace(value, "TR" + Masked);
@@ -45,8 +45,18 @@ public static partial class LogScrubber
     [GeneratedRegex(@"\bAK-[A-Za-z0-9-]{6,}", RegexOptions.CultureInvariant, 200)]
     private static partial Regex LicenseKeyPattern();
 
+    // The whole value goes: a quoted value up to its closing quote (spaces and escaped quotes included), an
+    // unquoted one up to the next separator of a connection string, query string, JSON object or line —
+    // "Password=correct horse battery staple" must not leave "horse battery staple" behind.
+    private static string MaskSecretValue(Match match)
+    {
+        var value = match.Groups["value"].Value;
+        var quote = value.Length >= 2 && (value[0] == '"' || value[0] == '\'') ? value[0].ToString() : string.Empty;
+        return match.Groups["key"].Value + match.Groups["sep"].Value + quote + Masked + quote;
+    }
+
     // password=..., "apiKey": "...", Pwd=...; in connection strings, query strings and JSON.
-    [GeneratedRegex(@"(?<key>\b(?:password|passwd|pwd|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|x-api-key|authorization|licen[sc]e[_-]?key)""?)(?<sep>\s*[=:]\s*""?)(?:[^""\s;,&}]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 200)]
+    [GeneratedRegex(@"(?<key>\b(?:password|passwd|pwd|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|x-api-key|authorization|licen[sc]e[_-]?key)""?)(?<sep>\s*[=:]\s*)(?<value>""(?:[^""\\]|\\.)*""|'[^']*'|[^;,&}\r\n]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 200)]
     private static partial Regex SecretPairPattern();
 
     [GeneratedRegex(@"(?<key>\b(?:user\s?id|uid))\s*=\s*[^;""]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 200)]
@@ -58,11 +68,12 @@ public static partial class LogScrubber
     [GeneratedRegex(@"\bTR\d{2}(?:\s?\d{4}){5}\s?\d{2}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 200)]
     private static partial Regex IbanPattern();
 
-    // Turkish mobile numbers: 05xx xxx xx xx, +90 5xx..., 5xxxxxxxxx.
-    [GeneratedRegex(@"(?<lead>^|[^\d])(?:\+?90[\s-]?)?0?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}(?!\d)", RegexOptions.CultureInvariant, 200)]
+    // Turkish mobile numbers: 05xx xxx xx xx, +90 5xx..., 5xxxxxxxxx. Standalone only: digits inside a GUID,
+    // hex id or word are not a phone number.
+    [GeneratedRegex(@"(?<lead>^|[^\w+])(?:\+?90[\s-]?)?0?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}(?!\w)", RegexOptions.CultureInvariant, 200)]
     private static partial Regex PhonePattern();
 
     // 11-digit national identity numbers (TCKN never starts with 0).
-    [GeneratedRegex(@"(?<!\d)[1-9]\d{10}(?!\d)", RegexOptions.CultureInvariant, 200)]
+    [GeneratedRegex(@"(?<![\w-])[1-9]\d{10}(?![\w-])", RegexOptions.CultureInvariant, 200)]
     private static partial Regex NationalIdPattern();
 }
