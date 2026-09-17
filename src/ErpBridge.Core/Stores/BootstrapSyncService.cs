@@ -41,6 +41,12 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
     /// <summary>Checkpoint scope used by the bootstrap orchestrator. Stable string — do not rename.</summary>
     public const string BootstrapScope = "bootstrap";
 
+    /// <summary>
+    /// Checkpoint scope whose <see cref="CheckpointRecord.LastToken"/> holds the
+    /// <see cref="IErpAdapter.SnapshotProjectionVersion"/> of the last full snapshot. Stable string.
+    /// </summary>
+    public const string ProjectionScope = "bootstrap-projection";
+
     /// <summary>Skip a new push if the previous successful one is younger than this window. Phase 9: 30 s (half the worker interval).</summary>
     public const int MinimumIntervalSeconds = 30;
 
@@ -214,6 +220,22 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     $"IErpAdapterFactory returned null for {config.ErpType}.");
             }
 
+            // A changed projection (see IErpAdapter.SnapshotProjectionVersion) cannot reach
+            // rows that do not change in the ERP through an incremental read: rebuild once.
+            var fullRebuild = forceFullSnapshot;
+            if (!fullRebuild)
+            {
+                var projection = await _checkpointStore.LoadAsync(tenantId, ProjectionScope, ct).ConfigureAwait(false);
+                var uploaded = int.TryParse(projection?.LastToken, out var version) ? version : 1;
+                if (adapter.SnapshotProjectionVersion > uploaded)
+                {
+                    _logger.LogInformation(
+                        "Bootstrap projection changed ({Uploaded} -> {Current}); rebuilding the snapshot once.",
+                        uploaded, adapter.SnapshotProjectionVersion);
+                    fullRebuild = true;
+                }
+            }
+
             // The central API is authoritative for whether it already has a
             // snapshot. A local checkpoint alone cannot detect that the
             // central store was reset while this agent stayed online.
@@ -221,7 +243,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             // tenant has no snapshot is what selects the full read below and
             // marks the package non-incremental for the upload.
             BootstrapRemoteStatus remoteStatus;
-            if (forceFullSnapshot)
+            if (fullRebuild)
             {
                 _logger.LogInformation(
                     "Bootstrap rebuild requested; ignoring the remote cursor and replacing the active snapshot.");
@@ -305,7 +327,7 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
             {
                 throw;
             }
-            catch (Exception ex) when (forceFullSnapshot)
+            catch (Exception ex) when (fullRebuild)
             {
                 // The section fallback below uploads each section with
                 // PartialSection set, which HttpRemoteApiClient marks as
@@ -357,6 +379,18 @@ public sealed class BootstrapSyncService : IBootstrapSyncService
                     UpdatedAt = nowUtc,
                 };
                 await _checkpointStore.SaveAsync(checkpoint, ct).ConfigureAwait(false);
+                if (!package.IsIncremental)
+                {
+                    // Only a full, replacing upload brings every row to the current projection.
+                    await _checkpointStore.SaveAsync(new CheckpointRecord
+                    {
+                        TenantId = tenantId,
+                        SyncScope = ProjectionScope,
+                        LastSuccessAt = nowUtc,
+                        LastToken = adapter.SnapshotProjectionVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        UpdatedAt = nowUtc,
+                    }, ct).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

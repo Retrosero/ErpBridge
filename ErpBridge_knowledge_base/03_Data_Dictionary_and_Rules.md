@@ -24,11 +24,12 @@
 | Tablo Adı | Açıklama | Birincil Anahtar (V15 / V16) | Gerçek Kritik Kolonlar |
 |---|---|---|---|
 | `CARI_HESAPLAR` | Cari kart ana tablosu | `cari_RECno` / `cari_Guid` | `cari_kod`, `cari_unvan1`, `cari_vdaire_no`, `cari_vdaire_adi`, `cari_EMail`, `cari_CepTel`, `cari_grup_kodu`, `cari_odeme_gunu` — **bakiye kolonu YOK**, hareketlerden hesaplanır |
-| `CARI_HESAP_HAREKETLERI` | Cari ekstre + fatura başlıkları | `cha_RECno` / `cha_Guid` | `cha_tarihi`, `cha_evrakno_seri`, `cha_evrakno_sira`, `cha_satir_no`, `cha_kod` (cari kod), `cha_meblag` (tutar), `cha_tip` (**0=borç, 1=alacak**), `cha_evrak_tip`, `cha_d_cins` (döviz kodu), `cha_vade` (vade **gün sayısı**, tarih değil) |
+| `CARI_HESAP_HAREKETLERI` | Cari ekstre + fatura başlıkları | `cha_RECno` / `cha_Guid` | `cha_tarihi`, `cha_evrakno_seri`, `cha_evrakno_sira`, `cha_satir_no`, `cha_kod` (cari kod), `cha_meblag` (tutar), `cha_tip` (**0=borç, 1=alacak**), `cha_evrak_tip`, `cha_d_cins` (döviz kodu), `cha_vade` (tahsilat satırında **yyyymmdd tarih**, Mikro'nun kendi faturalarında 0 — Fora faturada ödeme planı no yazar) |
 | `STOKLAR` | Ürün ve malzeme kartları | `sto_RECno` / `sto_Guid` | `sto_kod`, `sto_isim` (V15: 50, V16: 127 karakter), `sto_kisa_ismi`, `sto_birim1_ad`, `sto_birim1_katsayi`, `sto_perakende_vergi`, `sto_toptan_vergi`, `sto_anagrup_kod`, `sto_cins` — **firma-bağımsız** (sto_firmano YOK), **fiyat kolonu YOK** (ayrı fiyat listesi tablosunda) |
 | `STOK_HAREKETLERI` | İrsaliye + fatura satır hareketleri | `sth_RECno` / `sth_Guid` | `sth_tarih`, `sth_tip` (0=giriş, 1=çıkış), `sth_evraktip`, `sth_evrakno_seri`, `sth_evrakno_sira`, `sth_satirno`, `sth_stok_kod`, `sth_cari_kodu`, `sth_miktar`, `sth_tutar`, `sth_birim_pntr`, `sth_vergi_pntr`, `sth_cikis_depo_no`, `sth_giris_depo_no` |
 | `SIPARISLER` | Alınan/verilen siparişler — **satır başına bir satır** (header tablosu yok) | `sip_RECno` / `sip_Guid` | `sip_tarih`, `sip_tip` (0=müşteri, 1=satınalma), `sip_cins`, `sip_evrakno_seri`, `sip_evrakno_sira`, `sip_satirno`, `sip_musteri_kod`, `sip_satici_kod`, `sip_stok_kod`, `sip_miktar`, `sip_b_fiyat`, `sip_birim_pntr`, `sip_iskonto_1..6`, `sip_vergi_pntr`, `sip_depono`, `sip_doviz_cinsi`, `sip_kapat_fl` |
-| `ODEME_EMIRLERI` | Çek, senet, ödeme emirleri — önek `sck_` | `sck_RECno` / `sck_Guid` | `sck_duzen_tarih`, `sck_vade`, `sck_sahip_cari_kodu`, `sck_bankano`, `sck_tutar`, `sck_doviz`, `sck_tip` (0=çek, 1=senet, 2=nakit), `sck_refno` (serbest metin, 25 karakter) — **açıklama kolonu YOK** |
+| `ODEME_EMIRLERI` | Çek, senet, ödeme emirleri — önek `sck_` | `sck_RECno` / `sck_Guid` | `sck_duzen_tarih`, `sck_vade`, `sck_sahip_cari_kodu`, `sck_bankano`, `sck_tutar`, `sck_doviz`, `sck_tip` (0 müşteri çeki, 1 müşteri senedi, 2 kendi çekimiz, 3 kendi senedimiz, 4 müşteri havale sözü, 6 müşteri kredi kartı), `sck_refno` (`MC/MS/MH/MK-fff-sss-yyyy-nnnnnnnn`, tekil `(sck_tip, sck_refno)`) — **açıklama kolonu YOK** |
+| `_ERPB_EVRAK_ESLESME` | **ErpBridge'in kendi tablosu** (Mikro nesnesi değil): telefondan yazılan her Mikro evrakının idempotency kaydı, evrakla **aynı transaction'da** yazılır; tekil `(DocumentType, ExternalId)`. İlk yazımda yoksa oluşturulur (`MikroDocumentLedger`) | `Id` IDENTITY | `DocumentType`, `ExternalId`, `DocumentTable`, `EvrakTip`, `EvrakSeri` (6), `EvrakSira`, `HeaderRecNo`, `CreatedAt` |
 | `BARKOD_TANIMLARI` | Stoklara bağlı çoklu barkodlar — **firma-bağımsız** | `bar_RECno` / `bar_Guid` | `bar_kodu` (25), `bar_stokkodu` (25, string bağ), `bar_birimpntr`, `bar_barkodtipi` |
 
 ### V15 / V16 Kimlik Farkı
@@ -114,8 +115,16 @@ canlı hesaplanır. Yön fatura/tahsilat etiketiyle değil, `cha_tip` ile belirl
 ```sql
 SUM(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN ISNULL(cha_meblag, 0)
                                      ELSE -ISNULL(cha_meblag, 0) END)
+-- WHERE ISNULL(cha_cari_cins, 0) = 0  (yalnız cari tarafı)
 ```
 
+- **Yalnız `cha_cari_cins = 0` satırları sayılır.** Peşin (kapalı) fatura `cha_cari_cins` 4 kasa / 2 banka ile
+  `cha_kod` = kasa/banka kodu yazılır, müşteri `cha_ciro_cari_kodu`'dadır ve `cha_tpoz=1`; müşterinin bakiyesini
+  değiştirmez (Mikro cari föyü de göstermez). Okuyucu bu satırlarda `ciroCariKod` + `kapali=true` gönderir,
+  `cariKod` geriye uyumluluk için kasa/banka kodu kalır; Portal ekstresi kapalı satırı atlar (2026-09-17, Y0e).
+- **İade yönü:** satıştan iade `cha_evrak_tip=0` (alış faturası) + `cha_normal_Iade=1` → `SATIS_IADE`; alıştan iade
+  `cha_evrak_tip=63` + iade bayrağı → `ALIS_IADE`. 2026-09-17'ye kadar okuyucu bunları ters sınıflandırıyordu.
+  Ayrıntı: [`docs/mikro-yazim-referansi.md`](../docs/mikro-yazim-referansi.md).
 - `cha_tip = 0` → borç (satış faturası, borç dekontu). Bakiye artar.
 - `cha_tip = 1` → alacak (tahsilat, iade faturası). Bakiye azalır.
 - Net Bakiye > 0: Borçlu cari (firmaya borcu var).
@@ -126,7 +135,9 @@ SUM(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN ISNULL(cha_meblag, 0)
 
 ### Yaşlandırma / Vade
 
-`cha_vade` bir **gün sayısıdır** (tarih değil). Vade tarihi = `cha_tarihi + cha_vade gün`.
+`cha_vade` tek anlamlı değildir: tahsilat makbuzu satırında (nakit, kart, havale, çek, senet) **`yyyymmdd` tarih**
+(canlı: `20261130`); Mikro ekranından kesilen faturalarda 0; Fora faturada ödeme planı numarasını yazar. Yaşlandırma
+hesabı bu ayrımı gözetmelidir (2026-09-17 canlı veriyle düzeltildi; önceki "gün sayısı" ifadesi hatalıydı).
 
 ### Çoklu İskonto Sıralaması (Mikro Native 6 Kademeli)
 
@@ -134,6 +145,10 @@ SUM(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN ISNULL(cha_meblag, 0)
 uygulanır:
 
 $$Tutar_1 = Brüt - (Brüt \times \tfrac{Isk_1}{100}), \quad Tutar_2 = Tutar_1 - (Tutar_1 \times \tfrac{Isk_2}{100}), \quad \dots \quad Matrah = Tutar_6$$
+
+Stok hareketinde karşılığı: `sth_iskonto1..6` **tutar** olarak saklanır; uygulama şekli `sth_isk_mas1..10`
+(canlıda `isk_mas1=0` brüt üzerinden, `2..10=1` kalan üzerinden). Siparişte tutar `sip_iskonto_1..6`, şekil
+`sip_iskonto1..6` (alt çizgisiz).
 
 ### Evrak Seri / Sıra
 

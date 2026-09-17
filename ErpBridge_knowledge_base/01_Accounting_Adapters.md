@@ -61,10 +61,10 @@ canlı Mikro şemasına karşı doğrulanmıştır.
 | Writer | Evrak Tipi | Hedef Tablo | Gerçek Kritik Kolonlar |
 |---|---|---|---|
 | `MikroSalesOrderWriter` | `sales_order` | `SIPARISLER` — **satır başına bir satır** | `sip_musteri_kod`, `sip_stok_kod`, `sip_b_fiyat`, `sip_miktar`, `sip_iskonto_1..6`, `sip_vergi_pntr`, `sip_evrakno_seri/sira/satirno`, `sip_tip=0`, `sip_cins=0` |
-| `MikroCollectionWriter` | `collection` | `CARI_HESAP_HAREKETLERI` | `cha_kod` (cari), `cha_meblag`, `cha_tip=1` (alacak), `cha_d_cins`, `cha_evrak_tip=63`, `cha_evrakno_seri/sira/satir_no` |
+| `MikroCollectionWriter` | `collection` | `CARI_HESAP_HAREKETLERI` | `cha_kod` (cari), `cha_meblag`, `cha_tip=1` (alacak), `cha_d_cins`, `cha_evrak_tip=1` (tahsilat makbuzu; 2026-09-17'ye kadar yanlışlıkla 63 = satış faturası), `cha_evrakno_seri/sira/satir_no` |
 | `MikroPaymentOrderWriter` | `payment_order` | `ODEME_EMIRLERI` (önek `sck_`) | `sck_sahip_cari_kodu`, `sck_bankano`, `sck_tutar`, `sck_doviz`, `sck_vade`, `sck_tip` (kanal→kod), `sck_refno` (kanal+açıklama katlanır) |
-| `MikroDispatchNoteWriter` | `dispatch_note` | `STOK_HAREKETLERI` (önek `sth_`) | `sth_stok_kod`, `sth_cari_kodu`, `sth_miktar`, `sth_tutar`, `sth_birim_pntr`, `sth_vergi_pntr`, `sth_cikis_depo_no`, `sth_tip=1` (çıkış), `sth_evraktip=4` |
-| `MikroInvoiceWriter` | `invoice` | `CARI_HESAP_HAREKETLERI` + `STOK_HAREKETLERI` | Header `cha_` (cha_tip=0 borç, evrak_tip=63), satırlar `sth_`; aynı transaction |
+| `MikroDispatchNoteWriter` | `dispatch_note` | `STOK_HAREKETLERI` (önek `sth_`) | `sth_stok_kod`, `sth_cari_kodu`, `sth_miktar`, `sth_tutar`, `sth_birim_pntr`, `sth_vergi_pntr`, `sth_cikis_depo_no`, `sth_tip=1` (çıkış), `sth_evraktip=1` (çıkış irsaliyesi; 2026-09-17'ye kadar yanlışlıkla 4 = çıkış faturası) |
+| `MikroInvoiceWriter` | `invoice` | `CARI_HESAP_HAREKETLERI` + `STOK_HAREKETLERI` | Header `cha_` (cha_tip=0 borç, evrak_tip=63, cinsi=6 toptan fatura), satırlar `sth_` (`sth_evraktip=4` çıkış faturası; önceden yanlışlıkla 63); aynı transaction |
 | `MikroCustomerCardWriter` | `customer_card` | `CARI_HESAPLAR` | `cari_kod`, `cari_unvan1`, `cari_vdaire_no`, `cari_vdaire_adi`, `cari_EMail`, `cari_CepTel`, `cari_odeme_gunu`, `cari_grup_kodu` — adres/telefon ayrı tablolarda |
 | `MikroStockCardWriter` | `stock_card` | `STOKLAR` + `BARKOD_TANIMLARI` | `sto_kod`, `sto_isim`, `sto_kisa_ismi`, `sto_birim1_ad`, `sto_perakende_vergi`, `sto_toptan_vergi`, `sto_anagrup_kod`; barkod: `bar_kodu`, `bar_stokkodu`, `bar_birimpntr` — her ikisi firma-bağımsız |
 
@@ -74,7 +74,7 @@ canlı Mikro şemasına karşı doğrulanmıştır.
 |---|---|
 | `MikroSelfLink` | V15'te `(*_RECid_DBCno, *_RECid_RECno)` UNIQUE index; INSERT benzersiz negatif placeholder tohumlar, aynı transaction'da `RECid_RECno = RECno`'ya çözer |
 | `MikroCurrency` | ISO kod (`"TRY"`) → Mikro `tinyint` döviz kodu (0=TL). Bilinmeyen kod exception |
-| `MikroDocumentCodes` | `sth_tip/cins/evraktip/*_pntr` ve `cha_tip/evrak_tip/cinsi` kod taksonomileri tek yerde |
+| `MikroDocumentCodes` | `MikroCodes`: Fora enum sıra değerleriyle `cha_evrak_tip/tip/cinsi/cari_cins/tpoz`, `sth_evraktip/tip/cins`, `sck_tip`, dosya no'ları tek yerde; canlı veriye karşı `MikroNativeDocumentConventionTests`. Kurallar: [`docs/mikro-yazim-referansi.md`](../docs/mikro-yazim-referansi.md) |
 | `MikroDocumentNumberAllocator` | `evrakno_sira` = `MAX+1` (transaction içinde, `UPDLOCK HOLDLOCK`). Payload numara taşıyorsa ona saygı |
 | `ErpFieldText` (Erp.Sql) | Kimlik alanı taşarsa **exception**, serbest metin **kırpılır** |
 | `SqlServerFieldWidthProvider` (Erp.Sql) | Genişlikleri canlı `INFORMATION_SCHEMA`'dan keşfeder + cache'ler |

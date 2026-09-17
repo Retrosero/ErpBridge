@@ -61,7 +61,7 @@ eklendiğini netleştir, sonra karar ver. Önemli olan Mikro'ya doğru işlenmes
 | K11 | Kredi kartı taksit **vade farkı açıklamaya** yazılır, ayrı hareket yok |
 | K12 | **İskonto ayrı yazılır**: `sth_tutar` = liste fiyatı × miktar, iskontolar ayrı kolonlarda. Sipariş Cepte liste fiyatını, fiyat listesi no'yu ve iskonto yüzdelerini gönderecek şekilde düzeltilir |
 | K13 | **Önce Mikro V15.** V16 bu goal'de yazılmaz |
-| K14 | Test: **`MikroDB_V15_ERPBTEST`** (2026-09-17 11:24 `MikroDB_V15_02_17_09.bak` yedeğinden bu oturumda geri yüklendi, `F:\Mikro\ERPBTEST\`). **`MikroDB_V15_02` canlı firma verisi — yalnız okunur** |
+| K14 | Test: **`MikroDB_V15_DEMO`** (kullanıcı Mikro'da açtı, Mikro'dan bağlanılıyor; 2026-09-17 11:24 `MikroDB_V15_02_17_09.bak` yedeği üzerine geri yüklendi). İlk kopya `MikroDB_V15_ERPBTEST` Mikro'dan açılamadığı için bırakıldı. **`MikroDB_V15_02` canlı firma verisi — yalnız okunur** |
 | K15 | E-belge müşteriye göre değişir; bu goal'de ajan **normal Mikro faturası** yazar (e-belge alanları boş), e-Fatura/e-Arşiv'i ofis Mikro'dan gönderir. Tam e-belge ayrımı ayrı goal |
 | K16 | Mikro'ya doğru işlenmesi için **Sipariş Cepte değiştirilebilir** |
 | K17 | Fora kullanılmıyor; ErpBridge ile sıfırdan başlanıyor. Veritabanındaki `T/H/ST` serili saha kayıtları örnek alınmaz (referans §6) |
@@ -98,7 +98,7 @@ Kullanıcı 2026-09-17'de onayladı ("Evet, hepsi geçerli"; test kopyası için
 | Dala push, PR açma | Serbest |
 | CI yeşil + inceleme yorumları çözülmüşken `main`'e squash-merge + dalı silme | Serbest (ErpBridge'de `main` → Coolify otomatik canlı dağıtım) |
 | Play **internal** kanalına sürüm yükleme | Serbest |
-| `MikroDB_V15_ERPBTEST`'e test evrakı yazma, gerektiğinde **aynı yedekten yeniden geri yükleme** | Serbest (yalnız bu veritabanı) |
+| `MikroDB_V15_DEMO`'ya test evrakı yazma, gerektiğinde **aynı yedekten yeniden geri yükleme** (kullanıcı: "verileri buraya aktarabilirsin") | Serbest (yalnız bu veritabanı; `MikroDB_V15_ERPBTEST` de test kopyasıdır) |
 | İnsan gerektiren madde | Yapılabilen kısım yapılır, kalanı DURUM > "Seni Bekleyenler" |
 
 **Asla:** `--force` push, CI kırmızıyken merge, `main`'e doğrudan push, Play production yayını, **`MikroDB_V15_02` / `_03` /
@@ -126,11 +126,11 @@ silme veya tip değiştiren EF migration, başka oturumun commit edilmemiş değ
 2. **Önce bilgi bankası** (`ErpBridge_knowledge_base/INDEX.md` → 00–04; mobilde `Siparis_Cepte_knowledge_base/`) ve
    **`docs/mikro-yazim-referansi.md`**.
 3. Kod + test. Writer: birim + canlı entegrasyon (`ERPBridge_RUN_INTEGRATION=1`,
-   `ERPBridge_MIKRO_WRITE_DB=MikroDB_V15_ERPBTEST`; testler bu değişken **ERPBTEST değilse yazma testlerini atlar**).
+   `ERPBridge_MIKRO_WRITE_DB=MikroDB_V15_DEMO`; yazma testleri bu değişken açıkça verilmemişse ya da izinli test kopyası (`MikroDB_V15_DEMO`, `MikroDB_V15_ERPBTEST`) değilse **atlanır**).
    Sunucu: xUnit + ilişkisel SQLite; Portal/Admin: bUnit; Android: birim test.
 4. Yerel doğrulama yeşil:
    - .NET: `dotnet build ErpBridge.sln -c Debug` (0 uyarı/0 hata) + ilgili `dotnet test`
-   - Writer görevleri: ERPBTEST'te canlı testler yeşil; test evrakları **`ERPBT`** serisiyle
+   - Writer görevleri: DEMO'da canlı testler yeşil; test evrakları **`ERPBT`** serisiyle
    - Android: `./gradlew :app:compileDebugKotlin :app:testDebugUnitTest` (bu PC'de ASCII yol ayarları gerekir — memory)
 5. Türkçe commit: ne + neden; sonuna `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 6. Push → PR (gövde sonunda `🤖 Generated with [Claude Code](https://claude.com/claude-code)`) → CI.
@@ -167,15 +167,15 @@ Bağımlılık: **Y0 → Y1 ve Y2 paralel → Y3** → **Y4** (Y4a–c Y1 ile pa
 |---|---|---|
 | Y0a | Plan dalını main'e al (bu belge + DURUM + `mikro-yazim-referansi.md` + `CLAUDE.md` yetki istisnası) | PR birleşti |
 | Y0b | **Referansı tamamla:** Fora `V15_CariHareketYaz`, `V15_Stok_Hareketleri_Yaz`, `V15_TahsilatOdemeEmriYaz`, `V15_YeniSiparisKaydet`, `V15_YeniEvrakAciklamaKaydet` INSERT kolon listelerinin **tamamı** + her kolonun değeri (sabit / evrak / cari / stok / ayar); satış faturası, kapalı fatura, iade, 5 tahsilat yöntemi için canlı veriden (V15_02, yalnız okuma) birer tam satır dökümü; sipariş ve irsaliye için Fora değerleri; `sth_isk_mas1..10`, `cha_grupno`, `sth_cari_grup_no`, `EvrakVarMi` sorgusu, sipariş satır no başlangıcı, Mikro'nun iskonto zinciri tanımı | Belge; `MikroWriteColumnContractTests` (ERPBTEST): her kolon var, NOT NULL + varsayılansız her kolon listede |
-| Y0c | **Yanlış kodların düzeltilmesi:** tahsilat `cha_evrak_tip`, irsaliye ve fatura `sth_evraktip`; kodlar tek yerde (`MikroDocumentCodes`) Fora enum adlarıyla | Birim testi; ERPBTEST'te yazılan evrakın kodları referansla aynı |
-| Y0d | `_ERPB_EVRAK_ESLESME` tablosu (D4): DDL, ajan kurulum akışında `IF OBJECT_ID … IS NULL`, `MikroDocumentLedger` okuma/yazma | ERPBTEST: yoksa oluşur, varsa dokunulmaz; UNIQUE ihlali "zaten yazılmış" sonucu döner |
-| Y0e | **Okuyucu düzeltmeleri** (`MikroDbReader`; bugünkü senkronu da etkiliyor — PR #74 Codex bulguları): (1) cari hareketlerinde `cha_cari_cins <> 0` olan satırın müşterisi `cha_ciro_cari_kodu` (kapalı fatura bugün kasa kodu `001`'e atfediliyor) + yeni `IsClosed` alanı (`cha_tpoz=1` ve kasa/banka); ekstre ve bakiye kapalı satırı atlar, satış listeleri gösterir; (2) iade sınıflandırması ters: `cha_evrak_tip=0 + iade=1` → `SATIS_IADE`, `63 + iade=1` → `ALIS_IADE` (canlı veri: `0+iade` satırları satış faturalı müşterilerde, `63+iade` alış faturalı tedarikçilerde); (3) müşteri bakiye sorgusuna `cha_cari_cins=0` filtresi. `PortalLedger` ve telefon tüketicileri yeni alana göre güncellenir | ERPBTEST'e karşı okuma testleri: kapalı fatura müşteriye atanır, bakiyeyi değiştirmez; satış iadesi `sale_return`, alış iadesi `purchase_return`; bakiye `cha_cari_cins=0` SQL toplamıyla aynı; `PortalLedger` testleri |
+| Y0c | **Yanlış kodların düzeltilmesi:** tahsilat `cha_evrak_tip`, irsaliye ve fatura `sth_evraktip`; kodlar tek yerde (`MikroDocumentCodes`) Fora enum adlarıyla | Birim testi; DEMO'te yazılan evrakın kodları referansla aynı |
+| Y0d | `_ERPB_EVRAK_ESLESME` tablosu (D4): DDL, ajan kurulum akışında `IF OBJECT_ID … IS NULL`, `MikroDocumentLedger` okuma/yazma | DEMO: yoksa oluşur, varsa dokunulmaz; UNIQUE ihlali "zaten yazılmış" sonucu döner |
+| Y0e | **Okuyucu düzeltmeleri** (`MikroDbReader`; bugünkü senkronu da etkiliyor — PR #74 Codex bulguları): (1) cari hareketlerinde `cha_cari_cins <> 0` olan satırın müşterisi `cha_ciro_cari_kodu` (kapalı fatura bugün kasa kodu `001`'e atfediliyor) + yeni `IsClosed` alanı (`cha_tpoz=1` ve kasa/banka); ekstre ve bakiye kapalı satırı atlar, satış listeleri gösterir; (2) iade sınıflandırması ters: `cha_evrak_tip=0 + iade=1` → `SATIS_IADE`, `63 + iade=1` → `ALIS_IADE` (canlı veri: `0+iade` satırları satış faturalı müşterilerde, `63+iade` alış faturalı tedarikçilerde); (3) müşteri bakiye sorgusuna `cha_cari_cins=0` filtresi. `PortalLedger` ve telefon tüketicileri yeni alana göre güncellenir | DEMO'ya karşı okuma testleri: kapalı fatura müşteriye atanır, bakiyeyi değiştirmez; satış iadesi `sale_return`, alış iadesi `purchase_return`; bakiye `cha_cari_cins=0` SQL toplamıyla aynı; `PortalLedger` testleri |
 
 ### Y1 — Sunucu: firma ayarları, kullanıcı eşlemesi, iş dayanıklılığı (CentralApi + Portal)
 | ID | Görev | Kabul ölçütü |
 |---|---|---|
 | Y1a | `erp_write_settings` (firma başına): `SalesDocumentKind (order/dispatch/invoice)`, `OrderApprovalMode (approved/pending)`, seriler `OrderSeries, DispatchSeries, InvoiceSeries, ReturnSeries, CollectionSeries`, varsayılanlar `DefaultWarehouseNo, DefaultCashCode, DefaultCardBankCode, DefaultTransferBankCode, DefaultErpUserNo, DefaultSalespersonCode?, DefaultPriceListNo`, portföy `ChequePortfolioCode ('ÇEK'), NotePortfolioCode ('SENET')`, isteğe bağlı `ResponsibilityCenterCode?, ProjectCode?, DeliveryDayOffset?`. `mobile_user_erp_mappings`: `SalespersonCode?, WarehouseNo?, CashCode?, CardBankCode?, TransferBankCode?, ErpUserNo?` + seri geçersiz kılmaları (`OrderSeries?, DispatchSeries?, InvoiceSeries?, ReturnSeries?, CollectionSeries?`). Yalnız yeni tablolar | Migration smoke testi; varsayılanlar |
-| Y1b | Portal uçları `GET/PUT /api/v1/portal/erp-settings`, `GET/PUT /api/v1/portal/users/{id}/erp-mapping`, `GET /api/v1/portal/erp-lookups` (sunucudaki mobil kayıtlarda depo/kasa/banka/temsilci/fiyat listesi bölümleri varsa; yoksa boş → serbest metin); yalnız `ADMIN`; temel doğrulama (kesin genişlik ajanda) | Uç testleri: 403, 400, başka firmanın kullanıcısı 404 |
+| Y1b | Portal uçları `GET/PUT /api/v1/portal/erp-settings`, `GET/PUT /api/v1/portal/users/{id}/erp-mapping`, `GET /api/v1/portal/erp-lookups` (sunucudaki mobil kayıtlarda depo/kasa/banka/temsilci/fiyat listesi bölümleri varsa; yoksa boş → serbest metin); yalnız `ADMIN`; temel doğrulama: seri **1–6 karakter** (Mikro `*_evrakno_seri` nvarchar(6)), kesin genişlik ajanda | Uç testleri: 403, 400, başka firmanın kullanıcısı 404 |
 | Y1c | Portal UI: "ERP Aktarım Ayarları" sayfası (ERP'siz firmada gizli) + `Kullanicilar.razor` "Mikro karşılıkları" bölümü ("boş = firma varsayılanı") | bUnit; yerel tarayıcı masaüstü + dar ekran |
 | Y1d | **`erpContext`:** `GET /jobs/pending` yanıtında her işe firma ayarları + işi oluşturan kullanıcının eşlemesi (varsayılanla birleştirilmiş) + `createdByUsername`; ERP'siz firmada yok | Eşleme değişip iş yeniden kiralanınca yeni değer; eski yanıt şekli bozulmadı |
 | Y1e | **İş dayanıklılığı (D13):** `jobs.LeasedUntilUtc?`, `jobs.NextAttemptAtUtc?`; kiralama süresi 10 dk; ack'e isteğe bağlı `retryable` → beklemeyle `Pending`, 10 denemede `Failed`; `retryable`'sız eski ack eskisi gibi terminal | Sahte saatle testler |
@@ -189,19 +189,19 @@ Bağımlılık: **Y0 → Y1 ve Y2 paralel → Y3** → **Y4** (Y4a–c Y1 ile pa
 | Y2d | Türkçe hata kataloğu (`ErpWriteErrorCatalog`): kod → mesaj ("Müşteri Mikro'da bulunamadı: 120.001", "Kullanıcının kasa eşlemesi yok — Portal > Kullanıcılar", "Telefondaki toplam ile Mikro hesabı tutmuyor (fark 0,12 TL)", "Sipariş Cepte'yi güncelleyin"…) | Her kod için test; mesajda unvan/tutar dışı kişisel veri yok (D17) |
 
 ### Y3 — Mikro V15 writer'ları (Erp.Mikro)
-Her görevde: yalnız V15 (`RecnoStrategy`); kolon/değerler `mikro-yazim-referansi.md`'den; ERPBTEST'te canlı test; test
+Her görevde: yalnız V15 (`RecnoStrategy`); kolon/değerler `mikro-yazim-referansi.md`'den; DEMO'da canlı test; test
 yazıldıktan sonra satırlar okunup referansla kolon kolon karşılaştırılır.
 
 | ID | Görev | Kabul ölçütü |
 |---|---|---|
 | Y3a | **Ortak altyapı:** `MikroWriteSession` (bağlantı, transaction, firma/şube no, Mikro kullanıcı no, gün tarihi), `_ERPB_EVRAK_ESLESME` ön kontrol + aynı transaction'da kayıt, seri/sıra tahsisi + Fora `EvrakVarMi` eşdeğeri, commit sonrası SQLite önbellek; V16 bağlantısında `ERP_VERSION_NOT_SUPPORTED` (D6) | İki kez çalıştır → tek evrak; commit sonrası çökme simülasyonu → tek evrak; eşzamanlı iki yazım aynı seride farklı sıra |
 | Y3b | **Lookup + fiyat hesabı:** cari var + kilitli değil, stok var (Fora'nın satış engeli kontrolü), depo/kasa/banka/temsilci var, fiyat listesi var; `sfl_kdvdahil` → KDV dahil ise liste fiyatı KDV hariçe çevrilir (oran `fn_VergiYuzde(sto_toptan_vergi)` — perakende satışta `sto_perakende_vergi`); iskonto zinciri tutarları (D8), satır KDV'si iskontolu net üzerinden, 2 hane (D9); `ExpectedTotal` karşılaştırması | Birim: KDV dahil/hariç, %0/%1/%10/%20, 3 iskonto zinciri, yuvarlama, `TOTAL_MISMATCH`; canlı: olmayan cari/stok/depo/kasa/liste kalıcı hata |
-| Y3c | **Satış faturası** (açık + kapalı): CHA başlık (63/borç/6, iskonto ve KDV kovaları, `cha_meblag` formülü), kapalıda `cha_cari_cins` 4/2 + `cha_kod` kasa/banka + `cha_ciro_cari_kodu` müşteri + `tpoz=1`; STH kalemler (4/çıkış, brüt tutar, iskonto1..3, KDV, depo, fiyat listesi, `sth_fat_recid_recno`); `EVRAK_ACIKLAMALARI` (51/0/63) | ERPBTEST: açık, nakit kapalı, kart kapalı, havale kapalı için kolon karşılaştırması; cari bakiye sorgusu açıkta artar, kapalıda değişmez; kasa/banka bakiyesi kapalıda artar |
-| Y3d | **Sipariş** (`SIPARISLER` + açıklama): Fora V15 kolon seti, `sip_tutar`, `sip_iskonto_1..3`, `sip_vergi_pntr`/`sip_vergi`, onay moduna göre `sip_OnaylayanKulNo`/`sip_cagrilabilir_fl` (K7), kullanıcı, temsilci, depo, fiyat listesi, teslim tarihi/adres/teslim türü (D16) | ERPBTEST kolon testi; iki onay modu; `SUM(sip_tutar - iskontolar + sip_vergi)` = telefon toplamı |
-| Y3e | **Satış irsaliyesi** (STH 1/çıkış + açıklama 16/1/1) | ERPBTEST kolon testi; depo stok miktarı irsaliye kadar azalır |
-| Y3f | **Satış iadesi faturası** (açık + kasaya/bankaya kapalı): CHA 0/alacak/6/iade=1; STH 3/giriş/iade=1, kondisyon farkı `sth_iskonto1`, neden açıklamada (D11); `EVRAK_ACIKLAMALARI` (51/1/0) | ERPBTEST: üç iade şekli kolon testi; cari bakiye açıkta azalır; stok miktarı iade kadar artar |
-| Y3g | **Tahsilat makbuzu** (tek evrak, yöntem başına satır): CHA 1/alacak + yönteme göre `cinsi`, `kasa_hizmet/hizkod`, `sntck_poz`, `karsidgrupno`, `cha_vade`; nakit dışı `ODEME_EMIRLERI` (tip, sonpoz, nerede cins/kod/grup, ilk evrak seri/sıra/satır, borçlu, vergi dairesi, çekte no/banka/şube/hesap, `sck_imza`); referans no `MK/MH/MC/MS-fff-sss-yyyy-nnnnnnnn` (Mikro'nun 8 haneli kuralı, aynı transaction'da kilitli MAX+1); kart vade farkı + taksit açıklamada (K11); `EVRAK_ACIKLAMALARI` (51/1/1) | ERPBTEST: 5 yöntemi içeren tek makbuz → 5 satır, `cha_satir_no` 0..4, 4 ödeme emri, referans nolar sıralı ve 8 haneli; cari bakiye toplam kadar azalır |
-| Y3h | **Karma ödemeli satış (D10):** açık fatura + tahsilat makbuzu aynı `MikroWriteSession`'da; biri düşerse ikisi de geri alınır | ERPBTEST: tahsilat adımında hata → fatura da yok; başarıda iki evrak, tek eşleşme kaydı + türetilmiş tahsilat kimliği |
+| Y3c | **Satış faturası** (açık + kapalı): CHA başlık (63/borç/6, iskonto ve KDV kovaları, `cha_meblag` formülü), kapalıda `cha_cari_cins` 4/2 + `cha_kod` kasa/banka + `cha_ciro_cari_kodu` müşteri + `tpoz=1`; STH kalemler (4/çıkış, brüt tutar, iskonto1..3, KDV, depo, fiyat listesi, `sth_fat_recid_recno`); `EVRAK_ACIKLAMALARI` (51/0/63) | DEMO: açık, nakit kapalı, kart kapalı, havale kapalı için kolon karşılaştırması; cari bakiye sorgusu açıkta artar, kapalıda değişmez; kasa/banka bakiyesi kapalıda artar |
+| Y3d | **Sipariş** (`SIPARISLER` + açıklama): Fora V15 kolon seti, `sip_tutar`, `sip_iskonto_1..3`, `sip_vergi_pntr`/`sip_vergi`, onay moduna göre `sip_OnaylayanKulNo`/`sip_cagrilabilir_fl` (K7), kullanıcı, temsilci, depo, fiyat listesi, teslim tarihi/adres/teslim türü (D16) | DEMO kolon testi; iki onay modu; `SUM(sip_tutar - iskontolar + sip_vergi)` = telefon toplamı |
+| Y3e | **Satış irsaliyesi** (STH 1/çıkış + açıklama 16/1/1) | DEMO kolon testi; depo stok miktarı irsaliye kadar azalır |
+| Y3f | **Satış iadesi faturası** (açık + kasaya/bankaya kapalı): CHA 0/alacak/6/iade=1; STH 3/giriş/iade=1, kondisyon farkı `sth_iskonto1`, neden açıklamada (D11); `EVRAK_ACIKLAMALARI` (51/1/0) | DEMO: üç iade şekli kolon testi; cari bakiye açıkta azalır; stok miktarı iade kadar artar |
+| Y3g | **Tahsilat makbuzu** (tek evrak, yöntem başına satır): CHA 1/alacak + yönteme göre `cinsi`, `kasa_hizmet/hizkod`, `sntck_poz`, `karsidgrupno`, `cha_vade`; nakit dışı `ODEME_EMIRLERI` (tip, sonpoz, nerede cins/kod/grup, ilk evrak seri/sıra/satır, borçlu, vergi dairesi, çekte no/banka/şube/hesap, `sck_imza`); referans no `MK/MH/MC/MS-fff-sss-yyyy-nnnnnnnn` (Mikro'nun 8 haneli kuralı, aynı transaction'da kilitli MAX+1); kart vade farkı + taksit açıklamada (K11); `EVRAK_ACIKLAMALARI` (51/1/1) | DEMO: 5 yöntemi içeren tek makbuz → 5 satır, `cha_satir_no` 0..4, 4 ödeme emri, referans nolar sıralı ve 8 haneli; cari bakiye toplam kadar azalır |
+| Y3h | **Karma ödemeli satış (D10):** açık fatura + tahsilat makbuzu aynı `MikroWriteSession`'da; biri düşerse ikisi de geri alınır | DEMO: tahsilat adımında hata → fatura da yok; başarıda iki evrak, tek eşleşme kaydı + türetilmiş tahsilat kimliği |
 
 ### Y4 — Sipariş Cepte (Android)
 | ID | Görev | Kabul ölçütü |
@@ -210,7 +210,7 @@ yazıldıktan sonra satırlar okunup referansla kolon kolon karşılaştırılı
 | Y4b | **İade gövdesi:** ERP'li firmada da satırlı `sales_return` (`productCode`, `listUnitPrice`, `quantity`, `conditionPercent`, `reason`, `warehouse`, `settlementMethod`, `bankName`, `priceListNo`); kasa kaydı ayrıca ajana gönderilmez (çift kayıt olmasın); ERP'siz firma defteri eskisi gibi | Birim test; `NativeDocumentProcessor` yeni gövdeyle testleri yeşil |
 | Y4c | **Tahsilat gövdesi:** tek `collection` belgesi, `payments[{method: cash/card/transfer/cheque/note, amount, bankName?, installments?, surchargeAmount?, dueDate?, cheque?{no, bankName, branch, accountNo, drawer}, note?{no, debtor}}]`; onay merkezi aynı; ERP'siz firma defteri yeni gövdeyi kabul eder (eski gövde de) | Birim test: karma tahsilat tek belge; sunucu `NativeDocumentProcessor` testi; `VERI_ENVANTERI.md` + `play-data-safety.md` (çek/senet bilgisi) |
 | Y4d | **Yazım sonucu telefonda:** belge listesinde "Mikro'ya yazıldı: <seri>-<sıra>", "Bekliyor", "Yeniden denenecek", "Hata: <Türkçe neden>"; yazılmış belge düzenlenemez (D14). Durum mevcut senkron yolundan, yoksa `GET /api/v1/mobile/documents/status?externalIds=` | Birim + UI testi; uç testi (eklendiyse) |
-| Y4e | **Çift görünme önleme:** Mikro'dan senkronla gelen evrak, ack'teki seri/sıra ile yerel `MOB-…` kaydıyla eşleşir; liste ve bakiyede tek kez | Birim test |
+| Y4e | **Çift görünme önleme:** Mikro'dan senkronla gelen evrak, ack'teki seri/sıra ile yerel `MOB-…` kaydıyla eşleşir; liste ve bakiyede tek kez. Kapalı (peşin) fatura `ciroCariKod`/`kapali` ile müşteriye bağlanır, bakiyeye katılmaz. `LedgerMovementMapper.typeForValues` yedek iade eşlemesi düzeltilir (`0+iade` satış iadesi, `63+iade` alış iadesi — Y0e) | Birim test |
 | Y4f | Sürüm artışı + Play **internal** | Yükleme kanıtı DURUM'da |
 
 ### Y5 — İzleme ve operasyon
@@ -222,16 +222,16 @@ yazıldıktan sonra satırlar okunup referansla kolon kolon karşılaştırılı
 ### Y6 — Kapanış
 | ID | Görev | Kabul ölçütü |
 |---|---|---|
-| Y6a | KB: ErpBridge `01` (writer'lar, kodlar, kapalı fatura, `MikroWriteSession`, `_ERPB_EVRAK_ESLESME`), `03` (yeni tablolar, `jobs` kolonları), `02` (seriler Portal'da, e-belge ayrımı yok), `00` (telefon gövdesi yalnız çevirici üzerinden; idempotency Mikro'da; yazma testleri yalnız ERPBTEST); `docs/api-contracts.md`; Sipariş Cepte KB | Belgeler güncel |
-| Y6b | **Yerel uçtan uca duman testi (ERPBTEST):** yerel CentralApi + Portal + ajan servisi (bağlantı ERPBTEST) → Portal'da ayar + eşleme → telefon/test istemcisi gerçek gövdeyle: açık fatura, nakit/kart/havale kapalı fatura, sipariş, irsaliye, 3 iade şekli, 5 yöntemli tahsilat → SQL ile kolon/tutar kontrolü → aynı belge tekrar → tek evrak → ajan durdur/başlat → iş kendiliğinden tamamlanır | DURUM'da sorgu çıktıları |
+| Y6a | KB: ErpBridge `01` (writer'lar, kodlar, kapalı fatura, `MikroWriteSession`, `_ERPB_EVRAK_ESLESME`), `03` (yeni tablolar, `jobs` kolonları), `02` (seriler Portal'da, e-belge ayrımı yok), `00` (telefon gövdesi yalnız çevirici üzerinden; idempotency Mikro'da; yazma testleri yalnız izinli test kopyasında); `docs/api-contracts.md`; Sipariş Cepte KB | Belgeler güncel |
+| Y6b | **Yerel uçtan uca duman testi (DEMO):** yerel CentralApi + Portal + ajan servisi (bağlantı DEMO) → Portal'da ayar + eşleme → telefon/test istemcisi gerçek gövdeyle: açık fatura, nakit/kart/havale kapalı fatura, sipariş, irsaliye, 3 iade şekli, 5 yöntemli tahsilat → SQL ile kolon/tutar kontrolü → aynı belge tekrar → tek evrak → ajan durdur/başlat → iş kendiliğinden tamamlanır | DURUM'da sorgu çıktıları |
 | Y6c | "Seni Bekleyenler" son hâli | — |
 
 ---
 
 ## 4. Beklenen insan kapıları (şimdiden bilinenler)
-- **Mikro ekranında muhasebeci kontrolü:** ERPBTEST'e yazılan açık/kapalı fatura, iade, tahsilat makbuzu (5 yöntem),
+- **Mikro ekranında muhasebeci kontrolü:** `MikroDB_V15_DEMO`'ya yazılan açık/kapalı fatura, iade, tahsilat makbuzu (5 yöntem),
   sipariş ve irsaliyenin Mikro'da açılıp doğru görünmesi (tutar, iskonto, KDV, cari/kasa/banka bakiyesi, çek/senet
-  portföyü). ERPBTEST'i Mikro'da görmek için test firması olarak tanımlanması gerekir. Onay gelmeden canlı DB'ye bağlanılmaz.
+  portföyü). Onay gelmeden canlı DB'ye bağlanılmaz.
 - Portal'da bu firma için **satış türü = Fatura**, seriler (plasiyer başına), kasa/banka/depo eşlemeleri.
 - Ajan servisinin canlıda `MikroDB_V15_02`'ye yazacak şekilde devreye alınması (ayrı onay).
 - Y0e sonrası müşteri PC'sine yeni ajan sürümü + cari hareketleri bölümünün sıfırdan yüklenmesi ("Sıfırdan Kur"); yoksa

@@ -609,6 +609,84 @@ public class BootstrapSyncServiceTests
         adapter.Verify(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("1", true)]
+    [InlineData("2", false)]
+    public async Task A_changed_projection_rebuilds_the_snapshot_once(string? uploadedVersion, bool expectRebuild)
+    {
+        // Incremental reads only return rows that changed in the ERP, so a corrected projection
+        // (PR #76: closed invoices, return direction) must reach unchanged rows through one full,
+        // replacing upload; afterwards the agent is back to incremental reads.
+        var fixedNow = new DateTimeOffset(2026, 9, 17, 12, 0, 0, TimeSpan.Zero);
+        var cursor = fixedNow.AddHours(-1);
+
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>())).ReturnsAsync(NewAgentConfig());
+
+        var checkpointStore = new Mock<ICheckpointStore>();
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CheckpointRecord
+            {
+                TenantId = TenantId,
+                SyncScope = BootstrapSyncService.BootstrapScope,
+                LastSuccessAt = fixedNow.AddMinutes(-5).UtcDateTime,
+                UpdatedAt = fixedNow.AddMinutes(-5).UtcDateTime,
+            });
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.ProjectionScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(uploadedVersion is null ? null : new CheckpointRecord
+            {
+                TenantId = TenantId,
+                SyncScope = BootstrapSyncService.ProjectionScope,
+                LastToken = uploadedVersion,
+            });
+        var saved = new List<CheckpointRecord>();
+        checkpointStore.Setup(s => s.SaveAsync(It.IsAny<CheckpointRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<CheckpointRecord, CancellationToken>((c, _) => saved.Add(c))
+            .Returns(Task.CompletedTask);
+
+        var adapter = new Mock<IErpAdapter>();
+        adapter.SetupGet(a => a.SnapshotProjectionVersion).Returns(2);
+        adapter.Setup(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>())).ReturnsAsync(NewPackage());
+        adapter.Setup(a => a.ReadBootstrapChangesAsync(cursor, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NewPackage() with { IsIncremental = true, ChangedSinceUtc = cursor.UtcDateTime });
+
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>())).Returns(adapter.Object);
+
+        var remoteApi = new Mock<IRemoteApiClient>();
+        remoteApi.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new BootstrapRemoteStatus(true, cursor));
+        SyncPackage? pushed = null;
+        remoteApi.Setup(r => r.PushBootstrapDataAsync(It.IsAny<SyncPackage>(), It.IsAny<CancellationToken>()))
+            .Callback<SyncPackage, CancellationToken>((p, _) => pushed = p)
+            .Returns(Task.CompletedTask);
+
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            remoteApi.Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        var result = await sut.RunOnceAsync();
+
+        result.Success.Should().BeTrue();
+        adapter.Verify(a => a.ReadBootstrapDataAsync(It.IsAny<CancellationToken>()), expectRebuild ? Times.Once() : Times.Never());
+        adapter.Verify(a => a.ReadBootstrapChangesAsync(cursor, It.IsAny<CancellationToken>()), expectRebuild ? Times.Never() : Times.Once());
+        if (expectRebuild)
+        {
+            pushed.Should().NotBeNull();
+            pushed!.IsIncremental.Should().BeFalse("the rebuild replaces the snapshot");
+        }
+        var projection = saved.Where(c => c.SyncScope == BootstrapSyncService.ProjectionScope).ToList();
+        if (expectRebuild)
+        {
+            projection.Should().ContainSingle().Which.LastToken.Should().Be("2");
+        }
+        else
+        {
+            projection.Should().BeEmpty();
+        }
+    }
+
     [Fact]
     public async Task RebuildSnapshotAsync_ignores_the_remote_cursor_and_pushes_a_full_package()
     {

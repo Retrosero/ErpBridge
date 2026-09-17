@@ -519,7 +519,8 @@ registration ayrı bir composition projesine taşınır.
      (fatura kalemleri). **Cari kodu sorguda taşınır, yolda değil:** Mikro kodları `/` içerebilir. Kaynak `PortalLedger`:
      "customers" (`customers/customerAddresses`), "ledger" (`customerTransactions`), "lines" (`stockTransactions`) aynaları.
      **Tür eşlemesi:** Mikro `type` (SATIS, SATIS_IADE, ALIS, ALIS_IADE, TAHSILAT, TEDIYE, HAREKET — `MikroDbReader`
-     `cha_evrak_tip/cha_tip/cha_normal_Iade`'den türetir), ERP'siz `type` Türkçe (Satış, İade, Alış, Tahsilat, Tediye, İade
+     `cha_evrak_tip/cha_normal_Iade`'den türetir: `0+iade` = SATIS_IADE, `63+iade` = ALIS_IADE). **Kapalı (peşin)
+     fatura** (`kapali=true`) müşteriye `ciroCariKod` ile bağlanır ve ekstreye/yürüyen bakiyeye girmez (Y0e), ERP'siz `type` Türkçe (Satış, İade, Alış, Tahsilat, Tediye, İade
      Ödemesi) — **büyük harfe tr-TR kültürüyle çevrilir**, InvariantCulture "ı"yı değiştirmez ve "Satış" eşleşmez. Tutar
      `tutar ?? meblag ?? amount`, yön `borcMu ?? tip==0`. **Belge anahtarı:** Mikro `r{cha_recno}` = satırların
      `faturaRecno`'su; ERP'siz `d{CARİ}|{evrakNo}` (satış ile peşin tahsilatı aynı `evrakNo`'yu taşır, yalnız satış/iade/alış
