@@ -864,11 +864,14 @@ registration ayrı bir composition projesine taşınır.
    - **Yakalanmamış istisna** (`UnhandledExceptionHandler`): istemciye iç ayrıntısız `500 INTERNAL_ERROR` +
      `traceId`; ayrıntı (rota şablonu, firma, mobil kullanıcı / ajan, tam istisna) **yeni bir DI kapsamında**
      `log_events`'e yazılır — isteğin DbContext'i kaydı başarısız olan varlıkları tutuyor olabilir. Bu sınıfın
-     logger kategorisi (`LoggerCategory`) veritabanı logger'ı tarafından atlanmalıdır (çift kayıt).
+     logger kategorisi (`LoggerCategory`) veritabanı logger'ı tarafından atlanmalıdır (çift kayıt). Konsol satırına
+     istisna **nesnesi verilmez**, yalnız `LogScrubber`'dan geçmiş metin (konsol sağlayıcısı ham mesajı ve yığını basar).
    - **Saklama** (`LogRetention` + günlük `LogRetentionWorker`, `LogRetention:RunAtHourUtc` varsayılan 03): süreler
      `log_settings` tek satırından (yoksa INFO/DEBUG 14, WARN+ 90 gün; 1–730 arasına sıkıştırılır), **sunucunun
      aldığı zamana** (`ReceivedAtMs`) göre, 10.000'lik partilerle, bant başına çalıştırmada en çok 100.000 satır.
-     Son görülmesi WARN süresinden eski **açık** gruplar silinir; çözüldü/yok sayıldı grupları kalır (karar hafızası).
+     Son görülmesi WARN süresinden eski ve **hiçbir saklı olayın göstermediği** açık gruplar silinir (grubun son görülmesi
+     cihaz saatidir; çevrimdışı telefonun bugün getirdiği eski olay grubunu korur). Çözüldü/yok sayıldı grupları kalır.
+     `MaxDeletesPerRun` kesin sınırdır; daha büyük `BatchSize` ona sıkıştırılır.
      Eski `mobile_telemetry_events` kendi 90 günlük işçisiyle temizlenmeye devam eder.
    - Testler: `tests/ErpBridge.CentralApi.Tests/LogCenter/` (maskeleme, normalizasyon, parmak izi, yazıcı SQLite
      testleri, iz kimliği, 500 kaydı, saklama).

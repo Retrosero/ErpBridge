@@ -31,8 +31,12 @@ public static class UnhandledExceptionHandler
         var route = (feature?.Endpoint as RouteEndpoint)?.RoutePattern.RawText ?? feature?.Path ?? context.Request.Path.Value ?? string.Empty;
         var method = context.Request.Method;
 
+        // The console line gets the scrubbed text, never the exception object: console providers print the raw
+        // message and stack, and an exception can carry a connection string or token. The log centre row below is
+        // scrubbed by the writer.
         context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(LoggerCategory)
-            .LogError(exception, "Unhandled exception on {Method} {Route} (correlation {CorrelationId}).", method, route, correlationId);
+            .LogError("Unhandled {ExceptionType} on {Method} {Route} (correlation {CorrelationId}): {Detail}",
+                exception?.GetType().FullName, method, route, correlationId, LogScrubber.Scrub(exception?.ToString()));
 
         await RecordAsync(context, exception, method, route, correlationId);
 
@@ -86,7 +90,7 @@ public static class UnhandledExceptionHandler
         catch (Exception recordFailure)
         {
             context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(LoggerCategory)
-                .LogWarning(recordFailure, "Could not store the unhandled exception in the log centre.");
+                .LogWarning("Could not store the unhandled exception in the log centre: {Failure}", LogScrubber.Scrub(recordFailure.ToString()));
         }
     }
 }

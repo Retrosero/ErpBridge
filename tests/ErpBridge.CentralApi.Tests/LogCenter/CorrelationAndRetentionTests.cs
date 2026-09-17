@@ -7,10 +7,12 @@ using ErpBridge.CentralApi.LogCenter;
 using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace ErpBridge.CentralApi.Tests.LogCenter;
 
@@ -70,11 +72,14 @@ public sealed class UnhandledExceptionTests : IClassFixture<SqliteCentralApiFact
         var (tenant, _) = await _factory.SeedTenantAsync($"LOG-500-{suffix}");
         var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, $"AK-LOG500-{suffix}", scopes: new[] { "mobile:read" });
         var correlation = "test-" + suffix;
-        using var faulty = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-        {
-            services.RemoveAll<IBootstrapNotificationHub>();
-            services.AddSingleton<IBootstrapNotificationHub, ThrowingHub>();
-        }));
+        var console = new CapturingLoggerProvider();
+        using var faulty = _factory.WithWebHostBuilder(builder => builder
+            .ConfigureLogging(logging => logging.AddProvider(console))
+            .ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IBootstrapNotificationHub>();
+                services.AddSingleton<IBootstrapNotificationHub, ThrowingHub>();
+            }));
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/android/notify?wait=1");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", rawKey);
         request.Headers.Add("X-Tenant-Id", tenant.Id.ToString());
@@ -99,6 +104,29 @@ public sealed class UnhandledExceptionTests : IClassFixture<SqliteCentralApiFact
         row.ExceptionType.Should().Be(typeof(InvalidOperationException).FullName);
         row.Message.Should().NotContain(ThrowingHub.Secret, "the scrubber masks the password");
         row.FingerprintId.Should().NotBeNull();
+
+        var consoleLine = console.Lines.Single(l => l.Category == UnhandledExceptionHandler.LoggerCategory);
+        consoleLine.Message.Should().Contain("InvalidOperationException").And.Contain("/api/v1/android/notify").And.NotContain(ThrowingHub.Secret);
+        consoleLine.Exception.Should().BeNull("the raw exception would print the secret");
+    }
+
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        public List<(string Category, string Message, Exception? Exception)> Lines { get; } = [];
+
+        public ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
+
+        public void Dispose() { }
+
+        private sealed class Logger(CapturingLoggerProvider owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                lock (owner.Lines) owner.Lines.Add((category, formatter(state, exception), exception));
+            }
+        }
     }
 
     private sealed class ThrowingHub : IBootstrapNotificationHub
@@ -152,6 +180,60 @@ public sealed class LogRetentionTests : IClassFixture<SqliteCentralApiFactory>
             .Should().BeEquivalentTo("recent-info", "month-old-error");
         (await check.LogErrorGroups.Where(g => g.Operation == tag).Select(g => g.Fingerprint).ToListAsync())
             .Should().BeEquivalentTo(tag + "-resolved", tag + "-fresh");
+    }
+
+    [Fact]
+    public async Task An_old_occurrence_received_today_keeps_its_group()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var nowMs = now.ToUnixTimeMilliseconds();
+        var tag = "late-" + Guid.NewGuid().ToString("N");
+        var group = Group(tag + "-g", LogErrorGroup.Open, nowMs - 120 * DayMs);
+        using (var db = _factory.CreateDbContext())
+        {
+            db.LogErrorGroups.Add(group);
+            var late = Row(tag, "ERROR", nowMs, "delivered today");
+            late.OccurredAtMs = nowMs - 120 * DayMs;
+            late.FingerprintId = group.Id;
+            db.LogEvents.Add(late);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<LogRetention>().RunOnceAsync(now, CancellationToken.None);
+
+        using var check = _factory.CreateDbContext();
+        (await check.LogErrorGroups.AnyAsync(g => g.Id == group.Id)).Should().BeTrue();
+        (await check.LogEvents.AnyAsync(e => e.Operation == tag)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MaxDeletesPerRun_is_a_hard_limit_even_with_a_bigger_batch_size()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var nowMs = now.ToUnixTimeMilliseconds();
+        var tag = "budget-" + Guid.NewGuid().ToString("N");
+        using (var db = _factory.CreateDbContext())
+        {
+            db.LogEvents.AddRange(Enumerable.Range(0, 5).Select(i => Row(tag, "INFO", nowMs - 400 * DayMs - i, "old " + i)));
+            await db.SaveChangesAsync();
+        }
+
+        using var scope = _factory.Services.CreateScope();
+        var options = new LogRetentionOptions { BatchSize = 10, MaxDeletesPerRun = 2 };
+        var retention = new LogRetention(scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>(), new FixedOptions(options));
+        var result = await retention.RunOnceAsync(now, CancellationToken.None);
+
+        result.InfoDeleted.Should().Be(2);
+        using var check = _factory.CreateDbContext();
+        (await check.LogEvents.CountAsync(e => e.Operation == tag)).Should().Be(3);
+    }
+
+    private sealed class FixedOptions(LogRetentionOptions value) : Microsoft.Extensions.Options.IOptionsMonitor<LogRetentionOptions>
+    {
+        public LogRetentionOptions CurrentValue => value;
+        public LogRetentionOptions Get(string? name) => value;
+        public IDisposable? OnChange(Action<LogRetentionOptions, string?> listener) => null;
     }
 
     [Fact]

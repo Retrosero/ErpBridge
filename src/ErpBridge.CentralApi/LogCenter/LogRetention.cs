@@ -25,8 +25,8 @@ public sealed record LogRetentionResult(int InfoDeleted, int WarnDeleted, int Gr
 
 /// <summary>
 /// Deletes log events older than <see cref="LogSettings"/> allows, by <c>ReceivedAtMs</c> (the server's clock —
-/// a phone with a wrong date must not keep or lose its events early), and open error groups nobody has hit
-/// since the WARN window. Resolved and ignored groups stay: they remember a decision.
+/// a phone with a wrong date must not keep or lose its events early), and open error groups that are past the WARN
+/// window and have no stored event left. Resolved and ignored groups stay: they remember a decision.
 /// </summary>
 public sealed class LogRetention
 {
@@ -61,16 +61,19 @@ public sealed class LogRetention
 
         var info = await DeleteInBatchesAsync(e => low.Contains(e.Severity) && e.ReceivedAtMs < infoCutoff, options, ct);
         var warn = await DeleteInBatchesAsync(e => high.Contains(e.Severity) && e.ReceivedAtMs < warnCutoff, options, ct);
+        // A group's LastSeenMs is the device's clock; an offline phone can deliver an old occurrence today. Only a
+        // group no stored event points at any more is stale — otherwise its fresh event would dangle.
         var groups = await _db.LogErrorGroups
-            .Where(g => g.Status == LogErrorGroup.Open && g.LastSeenMs < warnCutoff)
+            .Where(g => g.Status == LogErrorGroup.Open && g.LastSeenMs < warnCutoff && !_db.LogEvents.Any(e => e.FingerprintId == g.Id))
             .ExecuteDeleteAsync(ct);
         return new LogRetentionResult(info, warn, groups);
     }
 
     private async Task<int> DeleteInBatchesAsync(System.Linq.Expressions.Expression<Func<LogEvent, bool>> filter, LogRetentionOptions options, CancellationToken ct)
     {
-        var batch = Math.Max(1, options.BatchSize);
-        var budget = Math.Max(batch, options.MaxDeletesPerRun);
+        // MaxDeletesPerRun is the safety limit; a larger batch size is clamped to it, never the other way round.
+        var budget = Math.Max(1, options.MaxDeletesPerRun);
+        var batch = Math.Clamp(options.BatchSize, 1, budget);
         var total = 0;
         while (total < budget)
         {
