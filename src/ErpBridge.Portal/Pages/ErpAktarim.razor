@@ -1,0 +1,176 @@
+@page "/erp-aktarim"
+@inherits PortalPageBase
+
+<PageTitle>ERP Aktarım Ayarları — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else if (!IsErpCompany)
+{
+    <PageHeader Title="ERP Aktarım Ayarları" Eyebrow="Yönetim" Subtitle="Telefon belgelerinin ERP'ye yazılışı" Busy="false" />
+    <EmptyState Id="erp-not-connected" Icon="@Icons.Material.Rounded.CloudOff" Title="Bu firmanın ERP bağlantısı yok"
+                Hint="Belgeler sunucudaki defterde tutuluyor; ERP'ye aktarım ayarı gerekmiyor." />
+}
+else
+{
+    <PageHeader Title="ERP Aktarım Ayarları" Eyebrow="Yönetim" Subtitle="Telefondan gelen satış, iade ve tahsilatın ERP'ye hangi belge, seri ve hesaplarla yazılacağı" Busy="Busy" />
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_settings is not null)
+    {
+        <form class="stack-form" id="erp-settings" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+            <MudGrid Spacing="3">
+                <MudItem xs="12" lg="6">
+                    <MudPaper Outlined="true" Class="panel">
+                        <div class="panel-head">
+                            <div>
+                                <MudText Typo="Typo.h6">Belge türü</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">Telefondaki satış ERP'de bu belge olarak açılır. Peşin satış faturada kasaya/bankaya kapatılır; siparişte ve irsaliyede ayrıca tahsilat makbuzu yazılır.</MudText>
+                            </div>
+                        </div>
+                        <div class="filter-grid">
+                            <label class="stack-field">
+                                <span class="field-label">Satış belgesi</span>
+                                <select class="portal-select" id="erp-kind" value="@_settings.SalesDocumentKind" disabled="@Busy" @onchange="e => _settings.SalesDocumentKind = e.Value?.ToString() ?? SalesKinds[0].Value">
+                                    @foreach (var (value, label) in SalesKinds)
+                                    {
+                                        <option value="@value">@label</option>
+                                    }
+                                </select>
+                            </label>
+                            <label class="stack-field">
+                                <span class="field-label">Sipariş onayı</span>
+                                <select class="portal-select" id="erp-approval" value="@_settings.OrderApprovalMode" disabled="@(Busy || _settings.SalesDocumentKind != "order")" @onchange="e => _settings.OrderApprovalMode = e.Value?.ToString() ?? ApprovalModes[0].Value">
+                                    @foreach (var (value, label) in ApprovalModes)
+                                    {
+                                        <option value="@value">@label</option>
+                                    }
+                                </select>
+                            </label>
+                        </div>
+
+                        <div class="field-label">Seriler <span class="text-muted">(en çok 6 karakter; boş = serisiz)</span></div>
+                        <div class="filter-grid">
+                            @SeriesInput("erp-series-order", "Sipariş", _settings.Series.Order, v => _settings.Series.Order = v)
+                            @SeriesInput("erp-series-dispatch", "İrsaliye", _settings.Series.Dispatch, v => _settings.Series.Dispatch = v)
+                            @SeriesInput("erp-series-invoice", "Fatura", _settings.Series.Invoice, v => _settings.Series.Invoice = v)
+                            @SeriesInput("erp-series-return", "İade faturası", _settings.Series.Return, v => _settings.Series.Return = v)
+                            @SeriesInput("erp-series-collection", "Tahsilat makbuzu", _settings.Series.Collection, v => _settings.Series.Collection = v)
+                        </div>
+                        <MudText Typo="Typo.caption" Class="text-muted panel-note">Plasiyere özel seri, depo, kasa ve banka Kullanıcılar sayfasındaki "Mikro" bölümünden verilir; orada boş bırakılan alanda bu sayfadaki değer kullanılır.</MudText>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" lg="6">
+                    <MudPaper Outlined="true" Class="panel">
+                        <div class="panel-head">
+                            <div>
+                                <MudText Typo="Typo.h6">Varsayılan hesaplar</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">Kodlar ERP'deki kodlardır; ajan belgeyi yazarken ERP'de var olduklarını kontrol eder.</MudText>
+                            </div>
+                        </div>
+                        <div class="filter-grid">
+                            <ErpCodeInput Id="erp-warehouse" Label="Depo" Items="_lookups.Warehouses" Disabled="@Busy"
+                                          Value="@Number(_settings.DefaultWarehouseNo)" ValueChanged="v => _settings.DefaultWarehouseNo = ParseNumber(v)" />
+                            <ErpCodeInput Id="erp-price-list" Label="Fiyat listesi" Items="_lookups.PriceLists" Disabled="@Busy"
+                                          Value="@Number(_settings.DefaultPriceListNo)" ValueChanged="v => _settings.DefaultPriceListNo = ParseNumber(v)" />
+                            <ErpCodeInput Id="erp-cash" Label="Kasa (nakit)" Items="_lookups.CashAccounts" Disabled="@Busy" @bind-Value="_settings.DefaultCashCode" />
+                            <ErpCodeInput Id="erp-card-bank" Label="Banka (kredi kartı)" Items="_lookups.Banks" Disabled="@Busy" @bind-Value="_settings.DefaultCardBankCode" />
+                            <ErpCodeInput Id="erp-transfer-bank" Label="Banka (havale/EFT)" Items="_lookups.Banks" Disabled="@Busy" @bind-Value="_settings.DefaultTransferBankCode" />
+                            <ErpCodeInput Id="erp-salesperson" Label="Temsilci" Items="_lookups.Salespersons" Disabled="@Busy" @bind-Value="_settings.DefaultSalespersonCode" />
+                            <label class="stack-field">
+                                <span class="field-label">ERP kullanıcı no</span>
+                                <input type="number" min="0" max="32767" step="1" class="portal-input" id="erp-user-no" value="@Number(_settings.DefaultErpUserNo)" disabled="@Busy"
+                                       @onchange="e => _settings.DefaultErpUserNo = ParseNumber(e.Value?.ToString())" />
+                            </label>
+                            <label class="stack-field">
+                                <span class="field-label">Teslim günü (belge + gün)</span>
+                                <input type="number" min="0" max="365" step="1" class="portal-input" id="erp-delivery-days" value="@Number(_settings.DeliveryDayOffset)" disabled="@Busy"
+                                       @onchange="e => _settings.DeliveryDayOffset = ParseNumber(e.Value?.ToString())" />
+                            </label>
+                        </div>
+
+                        <div class="field-label">Çek ve senet</div>
+                        <div class="filter-grid">
+                            <ErpCodeInput Id="erp-cheque-portfolio" Label="Çek portföy kasası" Items="_lookups.CashAccounts" EmptyText="ÇEK" Disabled="@Busy"
+                                          Value="@_settings.ChequePortfolioCode" ValueChanged="v => _settings.ChequePortfolioCode = v ?? string.Empty" />
+                            <ErpCodeInput Id="erp-note-portfolio" Label="Senet portföy kasası" Items="_lookups.CashAccounts" EmptyText="SENET" Disabled="@Busy"
+                                          Value="@_settings.NotePortfolioCode" ValueChanged="v => _settings.NotePortfolioCode = v ?? string.Empty" />
+                        </div>
+
+                        <div class="field-label">İsteğe bağlı</div>
+                        <div class="filter-grid">
+                            <ErpCodeInput Id="erp-responsibility-center" Label="Sorumluluk merkezi" Disabled="@Busy" @bind-Value="_settings.ResponsibilityCenterCode" />
+                            <ErpCodeInput Id="erp-project" Label="Proje" Items="_lookups.Projects" Disabled="@Busy" @bind-Value="_settings.ProjectCode" />
+                        </div>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <div class="form-actions">
+                        @if (_settings.UpdatedAtUtc is { } at)
+                        {
+                            <span class="text-muted" id="erp-updated">Son kayıt @Fmt.Time(at)</span>
+                        }
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Save"
+                                   Disabled="@Busy" id="erp-save">Kaydet</MudButton>
+                    </div>
+                </MudItem>
+            </MudGrid>
+        </form>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.ErpWrite;
+
+    private static readonly (string Value, string Label)[] SalesKinds = [("order", "Sipariş"), ("dispatch", "İrsaliye"), ("invoice", "Fatura")];
+    private static readonly (string Value, string Label)[] ApprovalModes = [("approved", "Onaylı yazılsın"), ("pending", "Onay beklesin")];
+
+    private ErpWriteSettingsDto? _settings;
+    private ErpLookupsResponse _lookups = new();
+
+    private string? Notice { get; set; }
+
+    private bool IsErpCompany => string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task LoadAsync()
+    {
+        if (!IsErpCompany) return;
+        var settings = Api.ErpSettingsAsync();
+        var lookups = Api.ErpLookupsAsync();
+        _settings = await settings;
+        _lookups = await lookups;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_settings is null) return;
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            _settings = await Api.SaveErpSettingsAsync(_settings);
+            Notice = "ERP aktarım ayarları kaydedildi. Bekleyen belgeler bir sonraki denemede bu ayarlarla yazılır.";
+        });
+    }
+
+    private RenderFragment SeriesInput(string id, string label, string? value, Action<string?> set) => @<label class="stack-field">
+        <span class="field-label">@label</span>
+        <input class="portal-input" id="@id" maxlength="6" value="@value" disabled="@Busy" @onchange="e => set(e.Value?.ToString()?.Trim())" />
+    </label>;
+
+    private static string? Number(int? value) => value?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static int? ParseNumber(string? value) =>
+        int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : null;
+}

@@ -26,7 +26,7 @@ public sealed class PortalRolesTests
         PortalRoles.MayUsePortal(roles).Should().Be(allowed);
 
     [Theory]
-    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays", "")]
+    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite", "")]
     [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse,Displays", "")]
     [InlineData(new[] { "ACCOUNTING" }, "Ledger,Approvals", "muhasebe")]
     [InlineData(new[] { "WAREHOUSE" }, "Warehouse", "depo")]

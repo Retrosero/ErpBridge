@@ -171,6 +171,21 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<WarehouseSettingsDto> SaveWarehouseSettingsAsync(WarehouseSettingsDto settings, CancellationToken ct = default) =>
         SendAsync<WarehouseSettingsDto>(HttpMethod.Put, "api/v1/portal/warehouse/settings", settings, ct);
 
+    public Task<ErpWriteSettingsDto> ErpSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<ErpWriteSettingsDto>("api/v1/portal/erp-settings", ct);
+
+    public Task<ErpWriteSettingsDto> SaveErpSettingsAsync(ErpWriteSettingsDto settings, CancellationToken ct = default) =>
+        SendAsync<ErpWriteSettingsDto>(HttpMethod.Put, "api/v1/portal/erp-settings", settings, ct);
+
+    public Task<UserErpMappingDto> UserErpMappingAsync(Guid userId, CancellationToken ct = default) =>
+        GetAsync<UserErpMappingDto>($"api/v1/portal/users/{userId}/erp-mapping", ct);
+
+    public Task<UserErpMappingDto> SaveUserErpMappingAsync(Guid userId, UserErpMappingDto mapping, CancellationToken ct = default) =>
+        SendAsync<UserErpMappingDto>(HttpMethod.Put, $"api/v1/portal/users/{userId}/erp-mapping", mapping, ct);
+
+    public Task<ErpLookupsResponse> ErpLookupsAsync(CancellationToken ct = default) =>
+        GetAsync<ErpLookupsResponse>("api/v1/portal/erp-lookups", ct);
+
     public Task<UserListResponse> UsersAsync(CancellationToken ct = default) =>
         GetAsync<UserListResponse>("api/v1/android/account/users", ct);
 

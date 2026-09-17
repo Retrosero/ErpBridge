@@ -35,6 +35,8 @@ public static class PortalMessages
         "INVALID_FULL_NAME" => "Ad soyad zorunludur.",
         "INVALID_ROLE" => "En az bir rol seçin.",
         "USER_NOT_FOUND" => "Kullanıcı bulunamadı.",
+        "INVALID_ERP_SETTINGS" => "Ayarlar kaydedilmedi: bir alan ERP'nin kabul ettiği biçimde değil (seri en çok 6, kod en çok 25 karakter; ERP kullanıcı no 0–32767; teslim günü 0–365; portföy kasaları boş olamaz).",
+        "ERP_NOT_CONNECTED" => "Bu firmanın ERP bağlantısı yok; belgeler sunucudaki defterde tutuluyor.",
         "PAIRING_NOT_FOUND" => "Bu kodla bekleyen ekran yok. Ekrandaki kodu kontrol edin; kod on dakikada bir yenilenir.",
         "PAIRING_EXPIRED" => "Kodun süresi doldu; ekran yeni kod gösterecek.",
         "DISPLAY_NOT_FOUND" => "Ekran bulunamadı.",
