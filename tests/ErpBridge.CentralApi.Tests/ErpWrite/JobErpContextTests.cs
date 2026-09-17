@@ -29,6 +29,7 @@ public sealed class JobErpContextTests : IClassFixture<CentralApiFactory>
             SalesDocumentKind = SalesDocumentKinds.Invoice, InvoiceSeries = "T", CollectionSeries = "M",
             DefaultWarehouseNo = 1, DefaultCashCode = "001", DefaultCardBankCode = "14", DefaultTransferBankCode = "04",
             DefaultErpUserNo = 1, DefaultSalespersonCode = "MERKEZ", DefaultPriceListNo = 2,
+            ResponsibilityCenterCode = "SM1", ProjectCode = " ", DeliveryDayOffset = 2,
         };
         var user = new MobileUserErpMapping { WarehouseNo = 3, CashCode = "  ", InvoiceSeries = "", SalespersonCode = "PLS01", ErpUserNo = 4 };
 
@@ -41,7 +42,8 @@ public sealed class JobErpContextTests : IClassFixture<CentralApiFactory>
             WarehouseNo = 3, CashCode = "001", CardBankCode = "14", TransferBankCode = "04",
             ErpUserNo = 4, SalespersonCode = "PLS01", PriceListNo = 2,
             ChequePortfolioCode = "ÇEK", NotePortfolioCode = "SENET", CreatedByUsername = "plasiyer1",
-        }, "a blank user code does not hide the company's, an empty user series means series-less on purpose");
+            ResponsibilityCenterCode = "SM1", ProjectCode = null, DeliveryDayOffset = 2,
+        }, "every company setting travels with the job; a blank user code does not hide the company's, an empty user series means series-less on purpose");
 
         ErpWriteContextBuilder.Build(null, null, null).Should().Match<JobErpContextResponse>(c =>
             c.SalesDocumentKind == "order" && c.WarehouseNo == null && c.Series.Invoice == "" && c.ChequePortfolioCode == "ÇEK");

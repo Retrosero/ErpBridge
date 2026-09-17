@@ -68,20 +68,10 @@ public static class JobsEndpoints
             .Take(takeClamped)
             .ToListAsync(ct);
 
-        if (leased.Count > 0)
-        {
-            foreach (var job in leased)
-            {
-                job.Status = JobStatus.Processing;
-                job.RetryCount += 1;
-            }
-            await db.SaveChangesAsync(ct);
-        }
-
-        // Settings are read at lease time, so a mapping fixed before a retry is what the agent gets.
+        // Settings are read at lease time, so a mapping fixed before a retry is what the agent gets. They are
+        // read before the lease is saved: a failed read must not leave jobs Processing with no agent (PR #82 Codex).
         var contexts = new Dictionary<Guid, JobErpContextResponse>();
-        var isErpTenant = await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId && t.DataSource == TenantDataSources.Erp, ct);
-        if (isErpTenant && leased.Count > 0)
+        if (leased.Count > 0 && await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId && t.DataSource == TenantDataSources.Erp, ct))
         {
             var settings = await db.ErpWriteSettings.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
             var creatorIds = leased.Where(j => j.CreatedByUserId is not null).Select(j => j.CreatedByUserId!.Value).Distinct().ToList();
@@ -97,6 +87,16 @@ public static class JobsEndpoints
                     creator is { } id && mappings.TryGetValue(id, out var mapping) ? mapping : null,
                     creator is { } uid && usernames.TryGetValue(uid, out var username) ? username : null);
             }
+        }
+
+        if (leased.Count > 0)
+        {
+            foreach (var job in leased)
+            {
+                job.Status = JobStatus.Processing;
+                job.RetryCount += 1;
+            }
+            await db.SaveChangesAsync(ct);
         }
 
         var response = leased
