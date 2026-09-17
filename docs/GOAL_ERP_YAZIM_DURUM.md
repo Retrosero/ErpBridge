@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y0d PR'ı; test DB DEMO'ya taşındı)
+Son güncelleme: 2026-09-17 (Y2a PR'ı)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y1a — `erp_write_settings` + `mobile_user_erp_mappings` (PR #78)
+**Şu anki görev:** Y2a — yazma komutları (PR #79)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
