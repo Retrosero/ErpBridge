@@ -26,19 +26,64 @@ Saha satış mobil uygulamasında (`Siparis_Cepte`) termal yazıcıdan çıktı 
   ile `MAX+1` (`MikroDocumentNumbering`). Telefon belge basarken Mikro numarasını henüz bilmez; fişte kendi referansını
   (`MOB-…` / basım referansı) kullanır. Yazılınca seri-sıra telefona "Mikro'ya yazıldı: T-1234" olarak döner
   (`GET /api/v1/ingest/jobs/status`) ama basılmış fiş değişmez.
-- Aşağıdaki `default_invoice_serial` parametresi eski sözleşmedir; ERP'ye yazılan telefon belgesinin serisini **belirlemez**.
+- Eski sürümlerde bu belgede geçen `default_invoice_serial` parametresi hiç var olmadı (bkz. § 2 düzeltmesi);
+  ERP'ye yazılan telefon belgesinin serisini **belirlemez**.
 
 ---
 
-## 2. Yazıcı ve Evrak Parametrelerinin Senkronizasyonu
+## 2. Parametre Altyapısı (kod okunarak doğrulandı, 2026-09-18)
 
-ErpBridge Central API üzerinden mobil istemcilere aktarılan parametreler:
-- `POST /api/v1/android/parameters`:
-  - `receipt_header_title`: Fiş başlığında yer alacak şirket resmi unvanı.
-  - `receipt_tax_info`: Şirket vergi dairesi ve VKN bilgisi.
-  - `default_invoice_serial`: Sahada kullanılacak aktif fatura serisi.
-  - `printer_paper_width`: Plasiyere atanmış standart kağıt genişliği (`58mm` veya `80mm`).
-  - `auto_print_receipt`: Tahsilat tamamlandığında otomatik fiş basma bayrağı.
+> **Düzeltme:** Bu bölüm daha önce `POST /api/v1/android/parameters` ucunu `receipt_header_title`,
+> `printer_paper_width`, `auto_print_receipt` gibi alanlarla anlatıyordu. **Böyle bir sözleşme hiç
+> var olmadı.** Doğrulanmış gerçek durum aşağıdadır. (Madde 1'deki `default_invoice_serial`
+> göndermesi de bu uydurma sözleşmeye aitti.)
+
+### Gerçek uçlar
+| Uç | Yön | Not |
+|---|---|---|
+| `POST /api/v1/ingest/parameters` | ajan → merkez | API anahtarı; gövde `{ sourceDatabase, parameters[] }` |
+| `GET /api/v1/android/parameters?sourceDatabase=` | merkez → telefon | `{ tenantId, count, items[] }` |
+| `GET /api/v1/admin/parameters` | merkez → Admin | sayfalı; `program`, `user`, `sourceDatabase` süzgeçleri |
+
+Satır şeması (`ParameterRecord` — Fora'nın `_FORA_PARAMETRELER` tablosunun aynası):
+`ParametreProgram` · `ParametreUser` · `ParametreAnaGrubu` · `ParametreAltGrubu` · `ParametreID` ·
+`ParametreAdi` · `ParametreDegeri`.
+
+### Bilinen boşluklar
+- `_ERPB_PARAMETRELER` tablosu **hiçbir veritabanında yok**; ingest ucunu besleyen ajan kodu da yok.
+  Uçlar bugün boşta çalışıyor.
+- Sipariş Cepte `/api/v1/android/parameters`'ı **hiç çağırmıyor**.
+- **Varsayılan katalog kavramı yok.** Fora'da varsayılanlar uygulamanın içindedir, tabloda yalnız
+  *sapmalar* tutulur; katalog olmadan tablodaki satırlar efektif ayarı vermez.
+
+Kapatma planı: [`docs/GOAL_PARAMETRE_YONETIMI.md`](../docs/GOAL_PARAMETRE_YONETIMI.md).
+
+### Fora'nın parametre modeli (referans — `MikroDB_V16_03` ve decompile üzerinden)
+Tek tablo, mantıksal anahtar **(Program, User, AnaGrubu, AltGrubu, ParametreID)**. `ParametreID` int
+ve gerçek anahtardır; `ParametreAdi` yalnız okunabilirlik için tutulur, hiçbir sorgu ona bakmaz.
+`ID` kolonu V15'te `int IDENTITY`, **V16'da `uniqueidentifier`**.
+
+Yazım semantiği (`ParametreData.ParametreYaz`): değer varsayılana eşitse satır **silinir** (veya hiç
+yazılmaz), farklıysa insert/update. Okuma simetrik: katalog varsayılanları belleğe yüklenir, DB
+satırları üzerine bindirilir. Telefon tarafı SQLite'ta aynısını yapar (`ParametreSqlite`).
+
+Katalog: `Fora.Mikro.ParametreTanimlari.ParametrelerDefault` — 13 program, **4.688 tanım**.
+En büyüğü `akilli` (mobil kullanıcı ayarları): **kullanıcı başına 1801 parametre**; Fora'nın kendi
+düzenleme ekranı 63 sekme ve 3.572 kontrol bağlaması içerir.
+
+`YaziciAyarlari` programı kapsamı farklı kullanır: `ParametreUser` = **şablon adı** (kullanıcı değil),
+`AnaGrubu` ∈ {`GenelAyarlar`, `Alan`}, `AltGrubu` = alan adı. `GenelAyarlar` 9 parametre
+(`SayfaKolonSayisi` vars. 120, `SayfaSatirSayisi` 60, `DetayBaslangicSatiri` 15 …); her alan 16
+parametre (`BasilacakAlan` UstBaslik/Satir/AltBaslik, `Kolon`, `Satir`, `Genislik`, `Hizalama`
+Sol/Orta/Sag, `OndalikHaneSayisi`, `OnEk`, `SonEk` …). Yani düz form değil, karakter ızgarası
+üzerinde bir **şablon tasarımcısı**.
+
+Mobil kullanıcı listesi de bu tablodan türetilir:
+`SELECT ParametreUser FROM _FORA_PARAMETRELER WHERE ParametreProgram='akilli' GROUP BY ParametreUser`.
+Şifre de parametredir (`ParametreID=1`, sabit gömülü anahtarla şifreli) — **ErpBridge bunu taşımaz**.
+
+Tabloda 2 tetikleyici vardır; değişiklikler `_FORA_SYNC` (`TriggerRECno`, `TabloID`, `KayitGuid`)
+değişim günlüğüne düşer ve telefona normal senkron kanalıyla gider.
 
 ---
 
