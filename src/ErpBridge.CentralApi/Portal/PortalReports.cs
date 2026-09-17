@@ -20,9 +20,15 @@ public static class PortalReports
     public const string Collection = "collection";
     public const string Disbursement = "disbursement";
 
-    /// <summary>A booked return: <c>sales_return</c> without an ERP, the cash-book <c>return</c> with one.</summary>
-    public static string ReturnDocumentType(Tenant tenant) =>
-        tenant.DataSource == TenantDataSources.Native ? Native.NativeDocumentProcessor.SalesReturn : "return";
+    /// <summary>
+    /// A return's document types: <c>sales_return</c> without an ERP. With one, the lined <c>sales_return</c> a phone
+    /// sends since goal ERP yazım Y4b (1.5.237) and the cash-book <c>return</c> older phones send — a phone sends one
+    /// or the other, never both.
+    /// </summary>
+    public static IReadOnlyList<string> ReturnDocumentTypes(Tenant tenant) =>
+        tenant.DataSource == TenantDataSources.Native
+            ? [Native.NativeDocumentProcessor.SalesReturn]
+            : [Native.NativeDocumentProcessor.SalesReturn, "return"];
 
     /// <summary>
     /// A document dated on a day can reach the server days later from an offline phone;
@@ -80,8 +86,8 @@ public static class PortalReports
     public static async Task<List<MoneyDocument>> MoneyDocumentsAsync(
         CentralApiDbContext db, Tenant tenant, DateOnly from, DateOnly to, CancellationToken ct)
     {
-        var returnType = ReturnDocumentType(tenant);
-        var types = new[] { SalesOrder, Collection, Disbursement, returnType };
+        var returnTypes = ReturnDocumentTypes(tenant);
+        var types = new[] { SalesOrder, Collection, Disbursement }.Concat(returnTypes).ToArray();
         var statuses = tenant.DataSource == TenantDataSources.Native
             ? new[] { JobStatus.Succeeded }
             : new[] { JobStatus.Pending, JobStatus.Processing, JobStatus.Succeeded };
@@ -109,7 +115,7 @@ public static class PortalReports
                 continue;
             var date = BusinessDate(row.PayloadJson, row.EnqueuedAtUtc);
             if (date < from || date > to) continue;
-            var documentType = row.DocumentType == returnType ? "return" : row.DocumentType;
+            var documentType = returnTypes.Contains(row.DocumentType) ? "return" : row.DocumentType;
             result.Add(new MoneyDocument(documentType, row.CreatedByUserId, date, ReadDecimal(row.PayloadJson, "amount") ?? 0m));
         }
         return result;

@@ -353,9 +353,11 @@ registration ayrı bir composition projesine taşınır.
      olmalıdır; iadede satır zorunludur. İkisi de ürünü `LastMovementAtUtc` ile
      işaretler (silinemez). Satış, iade ve alış satırları tek yerde
      (`BookLinesAsync`) önce **tamamen doğrulanır**, sonra deftere yazılır. ERP
-     tenant'ında bu türler 409 `DOCUMENT_REQUIRES_NATIVE_TENANT` (ajanın yazıcısı
-     yok). Telefonun kasa defterinden gelen satırsız `return` belgesi etkisiz kayıt
-     olarak kalır (iade `sales_return` ile işlenir).
+     tenant'ında `purchase_receipt` ve eski (telefon belgesi olmayan) `sales_return` 409
+     `DOCUMENT_REQUIRES_NATIVE_TENANT` (ajanın yazıcısı yok); **telefonun satırlı `sales_return`'ü
+     (`mobileDocumentId` gövdesi) ERP'li firmada da kabul edilir** — ajanın çeviricisi iade faturası yazar
+     (`NativeDocumentProcessor.RequiresNativeTenant`, ERP yazım Y6b'de bulundu). Telefonun kasa defterinden gelen
+     satırsız `return` belgesi etkisiz kayıt olarak kalır (iade `sales_return` ile işlenir).
    - **Tediye (Faz 40, 2026-09-16).** Kasa defterinden gelen `disbursement` bir
      müşteriye ödenmişse cariyi **borçlandırır** ("Tediye" hareketi) — tahsilatın
      aynası. Bu tarihten önce etkisiz kayıt olarak kalıyordu ve tediye yapılan her
@@ -532,7 +534,8 @@ registration ayrı bir composition projesine taşınır.
      duruyor, panel kullanmıyor.
    - **Hangi belge sayılır:** ERP'siz firmada yalnızca `Succeeded`; ERP'li firmada
      `Pending/Processing/Succeeded` (ajana yolda olan da satıştır), `Failed/DeadLetter`
-     asla. İade türü ERP'sizde `sales_return`, ERP'lide kasa defterinin `return`'ü.
+     asla. İade türü ERP'sizde `sales_return`; ERP'lide telefonun satırlı `sales_return`'ü (1.5.237+) **ve** eski
+     telefonların kasa defteri `return`'ü (bir telefon ikisinden yalnız birini gönderir).
      `approvalKind = purchase` taşıyan tediye sayılmaz (alışa aittir).
    - **İş günü:** yükteki `occurredAt` — telefon iki biçim yazar: ISO (satış) ve
      `dd.MM.yyyy HH:mm` (kasa defteri); saat dilimi olmayan değer İstanbul duvar saati

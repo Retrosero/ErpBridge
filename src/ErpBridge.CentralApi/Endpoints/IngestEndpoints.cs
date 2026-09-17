@@ -428,7 +428,7 @@ public static class IngestEndpoints
                 ErrorCode = "CARDS_REQUIRE_NATIVE_TENANT",
                 Message = "Product and customer cards can only be created from the phone for a company without an ERP.",
             });
-        if (ErpBridge.CentralApi.Native.NativeDocumentProcessor.NativeDocumentTypes.Contains(documentType))
+        if (ErpBridge.CentralApi.Native.NativeDocumentProcessor.RequiresNativeTenant(documentType, payloadJson))
             return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
             {
                 ErrorCode = "DOCUMENT_REQUIRES_NATIVE_TENANT",
