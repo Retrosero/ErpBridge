@@ -64,7 +64,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y4d | Yazım sonucu telefonda | ⬜ | | |
 | Y4e | Çift görünme önleme | ⬜ | | |
 | Y4f | Play internal sürüm | ⬜ | | |
-| Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | ⬜ | | Bulgu: telefon ERP ürünlerinde KDV'yi hep %20 sayıyor, KDV'yi genel iskontodan önce hesaplıyor — düzeltilmezse ajan her satışı `TOTAL_MISMATCH` ile reddeder |
+| Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | 🔄 | [#95](https://github.com/Retrosero/ErpBridge/pull/95) (sunucu) | Bulgu: telefon ERP ürünlerinde KDV'yi hep %20 sayıyor, KDV'yi genel iskontodan önce hesaplıyor — düzeltilmezse ajan her satışı `TOTAL_MISMATCH` ile reddeder **Sunucu (#95):** `StockPayload.VatRate` → JSON `kdvOrani` = `fn_VergiYuzde(sto_toptan_vergi)` (Mikro writer'ı satışı toptan satır yazıyor); telefon `kdvOrani`'ni zaten okuyor (yoksa %20 sayıyordu — bu firmada tüm stok %0). Ürün kaydında `satisFiyatListeNo` ve `fiyatListeleri[{listNo,name,price}]`. Projeksiyon sürümü 3 → yeni ajan stokları bir kez tam okur. **Telefon (sonraki PR):** KDV Mikro gibi üç iskontodan sonra, satır başına 2 hane |
 | Y5a | Portal "ERP Aktarım" listesi | ⬜ | | |
 | Y5b | Admin iş ayrıntısı + log olayları | ⬜ | | |
 | Y6a | KB ve sözleşme belgeleri | ⬜ | | |
