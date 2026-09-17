@@ -65,6 +65,15 @@ public static class ServiceCollectionExtensions
         // owns a single background loop keyed to the WPF application lifetime.
         services.AddSingleton<IDesktopSignalService, BootstrapSignalService>();
         services.AddSingleton<DesktopAgentTelemetryReporter>();
+
+        // Log Merkezi L3c/L3d: the desktop app queues its own diagnostic events in the same SQLite outbox the
+        // service uses and sends them with its heartbeat — only the source differs (windows_agent).
+        services.AddSingleton<ErpBridge.Core.Logging.IAgentLogReporter>(sp => new ErpBridge.Core.Logging.AgentLogReporter(
+            sp.GetRequiredService<ErpBridge.Core.Stores.IAgentLogStore>(),
+            sp.GetRequiredService<ILogger<ErpBridge.Core.Logging.AgentLogReporter>>(),
+            TimeProvider.System,
+            ErpBridge.Core.Domain.AgentLogSources.Desktop));
+        services.AddSingleton<ErpBridge.Core.Logging.AgentLogUploader>();
         services.AddSingleton<DesktopHeartbeatService>();
 
         // Periodic ERP change-log + snapshot-delta cycle. The Windows Service

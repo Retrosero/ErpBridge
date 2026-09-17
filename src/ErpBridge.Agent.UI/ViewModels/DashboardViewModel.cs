@@ -865,6 +865,11 @@ public sealed class DashboardViewModel : ObservableObject
                 LastRunStatusDisplay = "✗ " + displayLabel;
                 LastRunStatusBrush = DangerBadgeBrush;
                 LastErrorDisplay = result.ErrorMessage ?? "Bilinmeyen hata";
+                // Log Merkezi L3d: the other buttons' failures were logged, this one only turned the badge red —
+                // so a failed section push was visible on the operator's screen and nowhere else.
+                _logger.LogWarning(
+                    "PushSectionAsync({Section}) FAILED. ErrorCode={ErrorCode}, Message={Message}.",
+                    sectionName, result.ErrorCode, result.ErrorMessage);
             }
 
             await RefreshAsync().ConfigureAwait(true);

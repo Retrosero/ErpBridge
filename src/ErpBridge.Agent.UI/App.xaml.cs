@@ -45,6 +45,9 @@ public partial class App : Application
     /// <summary>Best-effort remote error reporting after the DI container is ready.</summary>
     public static DesktopAgentTelemetryReporter? TelemetryReporter { get; private set; }
 
+    /// <summary>Log Merkezi L3d: kept so the start/stop events and the exit flush have something to call.</summary>
+    private ErpBridge.Core.Logging.IAgentLogReporter? _logReporter;
+
     /// <summary>
     /// Per-user single-instance guard. Two agents against the same SQLite store
     /// would double every sync and race on the cursor, so a second launch hands
@@ -231,6 +234,19 @@ public partial class App : Application
         _heartbeatService = _services.GetRequiredService<DesktopHeartbeatService>();
         _heartbeatService.Start();
 
+        // Log Merkezi L3d: the panel should be able to tell "the operator restarted the agent" from
+        // "the agent has been silent since Tuesday".
+        _logReporter = _services.GetRequiredService<ErpBridge.Core.Logging.IAgentLogReporter>();
+        var uiVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
+        _ = _logReporter.ReportAsync("INFO", "AGENT_STARTED", "ui.start", $"Agent UI {uiVersion} started.", null,
+            new Dictionary<string, object?>
+            {
+                ["version"] = uiVersion,
+                ["hostKind"] = "desktop",
+                ["erpKind"] = configuration["Agent:ErpType"] ?? "Mikro",
+                ["machine"] = Environment.MachineName,
+            });
+
         // Periodic sync. Until this existed the desktop agent pushed a
         // change-set only when the operator clicked a button, so ERP edits
         // reached the mobile clients at human cadence or not at all.
@@ -297,6 +313,24 @@ public partial class App : Application
             try { _heartbeatService.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Heartbeat service stop failed: {ex.Message}"); }
             _heartbeatService = null;
+        }
+        if (_logReporter is not null && _services is not null)
+        {
+            // Say goodbye and give the queue one last chance to leave the machine; five seconds is the most
+            // an operator's "Çıkış" click should ever wait on diagnostics.
+            try
+            {
+                using var flush = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                _logReporter.ReportAsync("INFO", "AGENT_STOPPING", "ui.stop", "Agent UI is stopping.", null,
+                    new Dictionary<string, object?> { ["hostKind"] = "desktop" }, ct: flush.Token).GetAwaiter().GetResult();
+                _services.GetRequiredService<ErpBridge.Core.Logging.AgentLogUploader>()
+                    .FlushAsync(flush.Token).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Log Centre flush on exit failed: {ex.Message}");
+            }
+            _logReporter = null;
         }
         TelemetryReporter = null;
         _services?.Dispose();
@@ -604,7 +638,11 @@ public partial class App : Application
             System.IO.File.AppendAllText(selfLogPath,
                 $"[{DateTime.Now:HH:mm:ss.fff}] {msg}{Environment.NewLine}"));
 
-        var serilog = ErpBridge.Agent.Logging.AgentSerilog.Configure(new LoggerConfiguration(), bootstrapConfig, "ui")
+        // Log Merkezi L3d: WARN and above also go to the Log Centre queue. The logger is built before the DI
+        // container, so the reporter is looked up per event — lines written during startup stay local.
+        var serilog = ErpBridge.Agent.Logging.AgentSerilog.Configure(
+                new LoggerConfiguration(), bootstrapConfig, "ui",
+                logCentre: () => Services?.GetService<ErpBridge.Core.Logging.IAgentLogReporter>())
             .CreateLogger();
 
         // Log.Logger'ı set etmeden dosya sink kurulmuş olsa bile, uygulama

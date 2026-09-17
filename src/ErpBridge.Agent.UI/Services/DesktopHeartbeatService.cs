@@ -1,5 +1,6 @@
 using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Domain;
+using ErpBridge.Core.Logging;
 using ErpBridge.Core.Stores;
 using ErpBridge.Agent.UI.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -14,6 +15,7 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
     private readonly IRemoteApiClient _remoteApi;
     private readonly IAgentConfigStore _configStore;
     private readonly IAgentTokenService _tokens;
+    private readonly AgentLogUploader _logUploader;
     private readonly ILogger<DesktopHeartbeatService> _logger;
     private CancellationTokenSource? _cts;
     private Task? _loop;
@@ -22,11 +24,13 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
         IRemoteApiClient remoteApi,
         IAgentConfigStore configStore,
         IAgentTokenService tokens,
+        AgentLogUploader logUploader,
         ILogger<DesktopHeartbeatService> logger)
     {
         _remoteApi = remoteApi;
         _configStore = configStore;
         _tokens = tokens;
+        _logUploader = logUploader;
         _logger = logger;
     }
 
@@ -72,6 +76,10 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
                         LastSyncAtUtc = null,
                         QueueDepth = 0,
                     }, ct).ConfigureAwait(false);
+
+                    // Log Merkezi L3c: the desktop app has no generic host, so its heartbeat tick is what
+                    // drains the diagnostic queue — the same rhythm the service's HeartbeatWorker uses.
+                    await _logUploader.FlushAsync(ct).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
