@@ -71,4 +71,9 @@
     (architectural rule, SKILL.md section 3 rule 1); only the UI does.
   -->
 
+  <ItemGroup>
+    <!-- Log Merkezi L3a: the service and the desktop app share one Serilog setup. -->
+    <Compile Include="..\ErpBridge.Agent.Service\Logging\AgentSerilog.cs" Link="Logging\AgentSerilog.cs" />
+  </ItemGroup>
+
 </Project>

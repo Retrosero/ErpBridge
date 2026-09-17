@@ -82,38 +82,4 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
-
-    /// <summary>Build a Serilog logger that the UI logs to console + rolling file.</summary>
-    public static ILoggerFactory CreateLoggerFactory(IConfiguration configuration)
-    {
-        // Mutlak yol: WPF'i farklı working directory'den başlatsa bile
-        // log dosyası her zaman EXE'nin yanındaki "logs/" dizinine yazılır.
-        var logDir = System.IO.Path.Combine(AppContext.BaseDirectory, "logs");
-        System.IO.Directory.CreateDirectory(logDir);
-        var logPath = System.IO.Path.Combine(logDir, "ui-.log");
-
-        var logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(configuration)
-            .Enrich.FromLogContext()
-            .WriteTo.Console()
-            // shared:false + flushToDiskInterval:1s => her mesaj anında diske yazılır,
-            // böylece EXE hâlâ açıkken bile log dosyası gerçek zamanlı güncellenir.
-            // Mutlak yol: WPF'i farklı working directory'den başlatsa bile EXE
-            // yanındaki "logs/" dizinine yazar.
-            .WriteTo.File(
-                logPath,
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 7,
-                shared: false,
-                flushToDiskInterval: TimeSpan.FromSeconds(1))
-            .CreateLogger();
-
-        // Log.Logger'ı set et — DI factory'si kurulmuş olsa bile, statik
-        // Log.* çağrıları için Log.Logger gerekli. Set etmeden dosya sink
-        // kurulmuş olsa bile hiçbir mesaj yazılmaz.
-        Log.Logger = logger;
-
-        var factory = LoggerFactory.Create(b => b.AddSerilog(logger, dispose: true));
-        return factory;
-    }
 }

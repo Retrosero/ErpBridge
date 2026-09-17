@@ -876,6 +876,25 @@ registration ayrı bir composition projesine taşınır.
    - Testler: `tests/ErpBridge.CentralApi.Tests/LogCenter/` (maskeleme, normalizasyon, parmak izi, yazıcı SQLite
      testleri, iz kimliği, 500 kaydı, saklama).
 
+25. **Ajan logları koddan kurulur ve maskelenir: `Agent.Service/Logging/AgentSerilog` (Log Merkezi L3a/L3b, 2026-09-17).**
+   - **Eski arıza:** servis `ReadFrom.Configuration` ile yalnız `"Serilog"` bölümünü okuyordu, ayarlar ise `"Logging"`
+     altındaydı — Windows Servisi **hiç log dosyası yazmıyordu**; masaüstü uygulaması Information'ın altını atıyordu.
+   - **Şimdi:** servis ve masaüstü uygulaması aynı `AgentSerilog.Configure`'u kullanır (dosya UI projesine bağlantıyla
+     derlenir). Konsol + günlük dönen dosya **kodda** kurulur: servis `agent-YYYYMMDD.log`, masaüstü `ui-YYYYMMDD.log`,
+     14 gün, `shared: true`, 1 sn'de diske. `"Serilog"` bölümü yalnız seviyeleri değiştirir (varsayılan Information;
+     `Microsoft` ve `System.Net.Http.HttpClient` Warning). Yalnız `Serilog:MinimumLevel` okunur (`AgentSerilog.ApplyLevels`);
+     `ReadFrom.Configuration` **kullanılmaz** — yapılandırmadaki bir `WriteTo` maskesiz ikinci bir yazıcı eklerdi.
+   - **Konum** (`Core/Logging/AgentLogLocation`): EXE yanındaki `logs\` yazılabiliyorsa orası, değilse
+     `%ProgramData%\ErpBridge\logs` (Program Files'a kurulu servis, System32 çalışma dizini), o da olmazsa `%TEMP%`.
+     Serilog selflog aynı klasörde `serilog-selflog.txt`.
+   - **Maskeleme:** her satır — mesaj **ve istisna metni** — `MaskingTextFormatter` ile
+     `ConnectionStringMasker.MaskSecrets`'ten geçer (bağlantı cümlesi parolası/kullanıcısı, bearer, JWT, `AK-`/`LIC-`,
+     `token=`/`"licenseKey":`/`apiKey:` adlı değerler). Masaüstü telemetri raporlayıcısı da aynı listeyi kullanır; ajan
+     tarafında ikinci bir gizli bilgi listesi yazılmaz. `MaskPassword` değeri artık satır sonunda durur (önceden bir
+     sonraki satırdaki istisna türünü yutuyordu); tırnaklı değer (`Password="Top;Secret"`) bütün olarak maskelenir.
+   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.1.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
+     (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

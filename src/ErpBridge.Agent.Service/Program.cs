@@ -102,10 +102,10 @@ public static class Program
                 services.AddSingleton<IMappingHistoryQuery, SqliteMappingHistoryQuery>();
                 services.AddHostedService<CrossDbReconciliationWorker>();
             })
-            .UseSerilog((ctx, sp, lc) => lc
-                .ReadFrom.Configuration(ctx.Configuration)
-                .ReadFrom.Services(sp)
-                .Enrich.FromLogContext());
+            // Log Merkezi L3a: file + console sinks in code (the old config lived under "Logging", which Serilog
+            // never read — the service wrote no log file). Masked; see AgentSerilog.
+            .UseSerilog((ctx, sp, lc) => ErpBridge.Agent.Logging.AgentSerilog.Configure(lc, ctx.Configuration, "agent")
+                .ReadFrom.Services(sp));
 
         var host = builder.Build();
         host.Run();
