@@ -30,9 +30,40 @@ else
                 </button>
                 @if (expanded)
                 {
-                    <div class="admin-record__detail">
-                        <dl class="admin-kv"><div><dt>Kimlik</dt><dd><code>@j.Id</code></dd></div><div><dt>Deneme</dt><dd>@j.RetryCount</dd></div><div><dt>Tamamlanma</dt><dd>@(j.CompletedAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "—")</dd></div><div><dt>Son hata</dt><dd>@(j.LastError ?? "—")</dd></div></dl>
-                        @if (j.Status is "processing" or "failed" or "deadletter") { <button class="btn btn-sm btn-warning" @onclick="() => RetryAsync(j.Id)">Tekrar dene</button> }
+                    <div class="admin-record__detail" id="job-detail">
+                        <dl class="admin-kv">
+                            <div><dt>Kimlik</dt><dd><code>@j.Id</code></dd></div>
+                            <div><dt>Deneme</dt><dd>@j.RetryCount</dd></div>
+                            <div><dt>Tamamlanma</dt><dd>@When(j.CompletedAtUtc)</dd></div>
+                            <div><dt>Sonraki deneme</dt><dd id="job-next-attempt">@When(j.NextAttemptAtUtc)</dd></div>
+                            <div><dt>Kilit bitişi</dt><dd id="job-leased-until">@When(j.LeasedUntilUtc)</dd></div>
+                            <div><dt>Son hata</dt><dd>@(j.LastError ?? "—")</dd></div>
+                            @if (_detail is { } d && d.Id == j.Id)
+                            {
+                                <div><dt>Son hata kodu</dt><dd id="job-error-code">@(d.LastErrorCode ?? "—")</dd></div>
+                                <div><dt>Kendiliğinden düzelebilir</dt><dd id="job-retryable">@(d.Retryable switch { true => "Evet (ERP'ye ulaşılamadı)", false => "Hayır", _ => "—" })</dd></div>
+                                <div><dt>ERP belge no</dt><dd id="job-erp-no">@(d.ErpDocumentNo ?? "—")</dd></div>
+                            }
+                        </dl>
+                        @if (_detail is { } detail && detail.Id == j.Id)
+                        {
+                            @if (detail.Acks.Count > 0)
+                            {
+                                <h3 class="job-section-title">Ajan sonuçları</h3>
+                                <ul class="job-acks" id="job-acks">
+                                    @foreach (var ack in detail.Acks)
+                                    {
+                                        <li><AdminStatusBadge Text="@AckText(ack.Status)" Tone="@AckTone(ack.Status)" /> @When(ack.AckedAtUtc) · @(ack.ErpDocumentNo ?? ack.ErrorCode ?? "") @ack.ErrorMessage</li>
+                                    }
+                                </ul>
+                            }
+                            @if (detail.ErpContext is { } context)
+                            {
+                                <h3 class="job-section-title">ERP bağlamı (ajan şimdi alsa)</h3>
+                                <pre class="job-context" id="job-erp-context">@System.Text.Json.JsonSerializer.Serialize(context, IndentedJson)</pre>
+                            }
+                        }
+                        @if (j.Status.ToLowerInvariant() is "processing" or "failed" or "deadletter") { <button class="btn btn-sm btn-warning" @onclick="() => RetryAsync(j.Id)">Tekrar dene</button> }
                     </div>
                 }
             </article>
@@ -50,7 +81,20 @@ else
     protected override async Task OnInitializedAsync() { _status = StatusFromQuery ?? string.Empty; _tenants = await Api.ListTenantsAsync(); await ReloadAsync(); }
     private async Task ReloadAsync() { _loading = true; _error = null; _expandedId = null; try { _jobs = await Api.ListJobsAsync(_status, 200); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
     private async Task RetryAsync(Guid id) { try { await Api.RetryJobAsync(id); await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } }
-    private void Toggle(Guid id) => _expandedId = _expandedId == id ? null : id;
+    private ErpBridge.Admin.Api.JobDetailDto? _detail;
+    private static readonly System.Text.Json.JsonSerializerOptions IndentedJson = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private async Task Toggle(Guid id)
+    {
+        _expandedId = _expandedId == id ? null : id;
+        _detail = null;
+        if (_expandedId is not { } open) return;
+        try { _detail = await Api.GetJobAsync(open); } catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private static string When(DateTimeOffset? instant) => instant?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "—";
+    private static string AckText(string status) => status.ToLowerInvariant() switch { "succeeded" => "Yazıldı", "retry" => "Yeniden denenecek", "failed" => "Hata", _ => status };
+    private static string AckTone(string status) => status.ToLowerInvariant() switch { "succeeded" => "success", "retry" => "warning", _ => "danger" };
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
     private static string StatusText(string status) => status.ToLowerInvariant() switch { "pending" => "Bekliyor", "processing" => "İşleniyor", "succeeded" => "Başarılı", "failed" => "Başarısız", "deadletter" => "İşlenemedi", _ => status };
     private static string StatusTone(string status) => status.ToLowerInvariant() switch { "succeeded" => "success", "failed" or "deadletter" => "danger", "pending" or "processing" => "warning", _ => "muted" };

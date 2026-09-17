@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y4 bitti; Y5a PR'da)
+Son güncelleme: 2026-09-17 (Y4, Y5 bitti)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -17,10 +17,10 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y2 — Ajan: telefon belgesi → komut | 4 | 4 | ✅ |
 | Y3 — Mikro V15 writer'ları | 8 | 8 | ✅ |
 | Y4 — Sipariş Cepte | 7 | 7 | ✅ |
-| Y5 — İzleme ve operasyon | 2 | 1 | 🔄 |
+| Y5 — İzleme ve operasyon | 2 | 2 | ✅ |
 | Y6 — Kapanış | 3 | 1 | 🔄 |
 
-**Şu anki görev:** Y5b — Admin iş ayrıntısı + log olayları
+**Şu anki görev:** Y6b — yerel uçtan uca duman testi (DEMO)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -65,9 +65,9 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y4e | Çift görünme önleme | ✅ | [siparis_cepte#74](https://github.com/Retrosero/siparis_cepte/pull/74) | Yerel ekstre satırı `TX-<externalId>`; belge `written` ve aynı `evrakNo`'lu ERP satırı ekstredeyse yerel kopya gösterilmez (sipariş olarak yazılan satış ERP cari defterine düşmediği için yerel satırı kalır). Room 38: `cari_hesap_hareketleri.ciroCariKod`, `kapali` — kapalı fatura müşterinin ekstresinde, bakiyede değil. `typeForValues` yedeği: `0+iade` Satış İade, `63+iade` Alış İade. Kapsam: cari ekstresi (bakiye zaten ERP hareketlerinden); kasa defteri ekranı ERP satırlarıyla birleştirilmiyor, orada çift görünme yok |
 | Y4f | Play internal sürüm | ⏭️ | [siparis_cepte#75](https://github.com/Retrosero/siparis_cepte/pull/75) | Sürüm 237 (`1.5.237`) main'de. **Kapı:** bu PC'de release keystore ve Play erişimi yok; kullanıcı talimatı "AAB'yi ben oluştururum" — AAB + internal yükleme Seni Bekleyenler'de |
 | Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | ✅ | [#95](https://github.com/Retrosero/ErpBridge/pull/95), [#96](https://github.com/Retrosero/ErpBridge/pull/96), [siparis_cepte#70](https://github.com/Retrosero/siparis_cepte/pull/70), [#71](https://github.com/Retrosero/siparis_cepte/pull/71) | Sunucu: `kdvOrani` = `fn_VergiYuzde(sto_toptan_vergi)`, `satisFiyatListeNo`, `fiyatListeleri[{listNo,name,price,kdvDahil}]`, projeksiyon sürümü 4. **#96 düzeltmesi:** #95'teki stok sorgusu `VatRate` kolon sırası `StockRow` kurucusuyla uyuşmuyordu (Dapper canlıda hata; CI canlı test çalıştırmıyor) — `MikroCatalogReaderLiveTests` eklendi. Telefon: `ErpSalePricing` = `MikroPriceCalculator` (zincir iskonto, nete KDV, KDV dahil listede önce KDV ayrılır) |
-| Y5a | Portal "ERP Aktarım" listesi | ✅ | #99 | `GET /api/v1/portal/erp-documents` (tarih ≤31 gün, varsayılan son 7 gün; durum, tür, gönderen, cari kod/ünvan süzgeci; sayfa ≤100): tür, gönderen, cari, tutar, durum, Mikro seri-sıra, ajanın Türkçe nedeni, deneme, sonraki deneme. Admin/Yönetici/Muhasebe okur. `POST …/{jobId}/retry` yalnız Admin, yalnız Failed/DeadLetter → Pending + yeni deneme hakkı (ajanın `_ERPB_EVRAK_ESLESME` defteri ikinci yazımı önler); 409 `JOB_NOT_RETRYABLE`. Portal `/erp-belgeler` (menü "ERP belgeleri", `PortalArea.ErpDocuments`). Durum eşlemesi `Domain/ErpDocumentStates` telefon ucu (#98) ile ortak. **Sapma:** liste yalnız Admin değil Muhasebe/Yönetici'ye de açık (yazılamayan belgeyi takip eden muhasebe) |
-| Y5b | Admin iş ayrıntısı + log olayları | ⬜ | | |
-| Y6a | KB ve sözleşme belgeleri | ✅ | #101 | KB 00 kural 26 (tek yol çevirici, `erpContext` kiralamada, idempotency `_ERPB_EVRAK_ESLESME`, tutar sözleşmesi, görünürlük, yazma testleri yalnız izinli kopyada, Dapper kolon sırası); 01 uçtan uca akış + izleme; 02 seriler Portal'da / sıra ajanda / e-belge ayrımı bu goal'de yok (K15); 03 `job_acks` durumları, iki yeniden dene farkı, `ERP_WRITE_*` log türleri; `docs/api-contracts.md` jobs/pending-ack alanları, `/ingest/jobs/status`, Portal ERP uçları, Admin iş ayrıntısı. Sipariş Cepte KB her telefon PR'ında güncellendi (01 §1.1, 03 §2 ve §4.x). Tablo şeması (`erp_write_settings`, `mobile_user_erp_mappings`, `jobs` kolonları) Y1a/Y1e'de 03'e yazılmıştı |
+| Y5a | Portal "ERP Aktarım" listesi | ✅ | [#99](https://github.com/Retrosero/ErpBridge/pull/99) | `GET /api/v1/portal/erp-documents` (tarih ≤31 gün, varsayılan son 7 gün; durum, tür, gönderen, cari kod/ünvan süzgeci; sayfa ≤100): tür, gönderen, cari, tutar, durum, Mikro seri-sıra, ajanın Türkçe nedeni, deneme, sonraki deneme. Admin/Yönetici/Muhasebe okur. `POST …/{jobId}/retry` yalnız Admin, yalnız Failed/DeadLetter → Pending + yeni deneme hakkı (ajanın `_ERPB_EVRAK_ESLESME` defteri ikinci yazımı önler); 409 `JOB_NOT_RETRYABLE`. Portal `/erp-belgeler` (menü "ERP belgeleri", `PortalArea.ErpDocuments`). Durum eşlemesi `Domain/ErpDocumentStates` telefon ucu (#98) ile ortak. **Sapma:** liste yalnız Admin değil Muhasebe/Yönetici'ye de açık (yazılamayan belgeyi takip eden muhasebe) |
+| Y5b | Admin iş ayrıntısı + log olayları | ✅ | [#100](https://github.com/Retrosero/ErpBridge/pull/100) | Admin iş listesi `nextAttemptAtUtc`, `leasedUntilUtc`; ayrıntı ek olarak gönderen, `retryable` (son ack `retry`), son hata kodu, ERP belge no, tüm ajan sonuçları, ajanın şimdi alacağı `erpContext` (`ErpWriteContextBuilder` ile aynı birleştirme). **Log Merkezi:** L3c birleşmediği için sunucu yolu — ajan `failed` ack'inde `windows_agent` / `ERP_WRITE_FAILED` (ERROR), yeniden denenebilirde `ERP_WRITE_RETRY` (WARN), `erp.write.<tür>`, özelliklerde iş/belge kimliği; log yazımı hata verirse ack etkilenmez. Yan düzeltme: Admin "Tekrar dene" düğmesi sunucunun `Failed` yazımı yüzünden hiç görünmüyordu |
+| Y6a | KB ve sözleşme belgeleri | ✅ | [#101](https://github.com/Retrosero/ErpBridge/pull/101) | KB 00 kural 26 (tek yol çevirici, `erpContext` kiralamada, idempotency `_ERPB_EVRAK_ESLESME`, tutar sözleşmesi, görünürlük, yazma testleri yalnız izinli kopyada, Dapper kolon sırası); 01 uçtan uca akış + izleme; 02 seriler Portal'da / sıra ajanda / e-belge ayrımı bu goal'de yok (K15); 03 `job_acks` durumları, iki yeniden dene farkı, `ERP_WRITE_*` log türleri; `docs/api-contracts.md` jobs/pending-ack alanları, `/ingest/jobs/status`, Portal ERP uçları, Admin iş ayrıntısı. Sipariş Cepte KB her telefon PR'ında güncellendi (01 §1.1, 03 §2 ve §4.x). Tablo şeması (`erp_write_settings`, `mobile_user_erp_mappings`, `jobs` kolonları) Y1a/Y1e'de 03'e yazılmıştı |
 | Y6b | Yerel uçtan uca duman testi (DEMO) | ⬜ | | |
 | Y6c | Seni Bekleyenler son hâli | ⬜ | | |
 

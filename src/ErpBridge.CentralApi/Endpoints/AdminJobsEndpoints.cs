@@ -78,7 +78,39 @@ public static class AdminJobsEndpoints
         var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct);
         if (job is null)
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "JOB_NOT_FOUND", Message = "Job not found." });
-        return JsonResults.Ok(ToDetail(job));
+
+        var detail = ToDetail(job);
+        // Ordered here: SQLite (tests) cannot order by DateTimeOffset.
+        var acks = (await db.JobAcks.AsNoTracking().Where(a => a.JobId == job.Id).ToListAsync(ct))
+            .OrderByDescending(a => a.AckedAtUtc)
+            .ToList();
+        detail.Acks = acks.Select(a => new JobAckDto
+        {
+            Status = a.Status,
+            ErrorCode = a.ErrorCode,
+            ErrorMessage = a.ErrorMessage,
+            ErpDocumentNo = ErpDocumentStates.DocumentNo(a.ErpDocumentSeries, a.ErpDocumentNumber),
+            AckedAtUtc = a.AckedAtUtc,
+        }).ToList();
+        var last = acks.FirstOrDefault();
+        detail.Retryable = last is null ? null : string.Equals(last.Status, "retry", StringComparison.OrdinalIgnoreCase);
+        detail.LastErrorCode = last?.ErrorCode;
+        detail.ErpDocumentNo = job.Status == JobStatus.Succeeded ? ErpDocumentStates.DocumentNo(last?.ErpDocumentSeries, last?.ErpDocumentNumber) : null;
+
+        // What an agent would be told if it took the job now (goal ERP yazım Y5b).
+        if (await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == job.TenantId && t.DataSource == TenantDataSources.Erp, ct))
+        {
+            var settings = await db.ErpWriteSettings.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == job.TenantId, ct);
+            var creator = job.CreatedByUserId;
+            var mapping = creator is { } userId
+                ? await db.MobileUserErpMappings.AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == job.TenantId && m.UserId == userId, ct)
+                : null;
+            var username = creator is { } uid
+                ? await db.MobileUsers.AsNoTracking().Where(u => u.TenantId == job.TenantId && u.Id == uid).Select(u => u.Username).FirstOrDefaultAsync(ct)
+                : null;
+            detail.ErpContext = ErpBridge.CentralApi.ErpWrite.ErpWriteContextBuilder.Build(settings, mapping, username);
+        }
+        return JsonResults.Ok(detail);
     }
 
     private static async Task<IResult> ListFailuresAsync(
@@ -165,7 +197,11 @@ public static class AdminJobsEndpoints
         LastError = j.LastError,
         EnqueuedAtUtc = j.EnqueuedAtUtc,
         CompletedAtUtc = j.CompletedAtUtc,
+        NextAttemptAtUtc = Instant(j.NextAttemptAtMs),
+        LeasedUntilUtc = Instant(j.LeasedUntilMs),
     };
+
+    private static DateTimeOffset? Instant(long? unixMs) => unixMs is { } ms ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : null;
 
     private static JobDetailDto ToDetail(Job j) => new()
     {
@@ -179,5 +215,8 @@ public static class AdminJobsEndpoints
         EnqueuedAtUtc = j.EnqueuedAtUtc,
         CompletedAtUtc = j.CompletedAtUtc,
         PayloadJson = j.PayloadJson,
+        NextAttemptAtUtc = Instant(j.NextAttemptAtMs),
+        LeasedUntilUtc = Instant(j.LeasedUntilMs),
+        CreatedByUserId = j.CreatedByUserId,
     };
 }
