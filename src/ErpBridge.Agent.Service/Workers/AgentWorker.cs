@@ -4,6 +4,7 @@ using ErpBridge.Agent.Service.Configuration;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Jobs;
 using ErpBridge.Core.Stores;
+using ErpBridge.Core.Sync;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
@@ -81,6 +82,7 @@ public sealed class AgentWorker : BackgroundService
     private readonly SalesOrderPayloadDeserializer _payloadDeserializer;
     private readonly ILogger<AgentWorker> _logger;
     private readonly AgentServiceOptions _options;
+    private readonly AgentRunStatus _runStatus;
 
     public AgentWorker(
         IRemoteApiClient remoteApi,
@@ -89,6 +91,7 @@ public sealed class AgentWorker : BackgroundService
         IErpAdapterFactory adapterFactory,
         SalesOrderPayloadDeserializer payloadDeserializer,
         IOptions<AgentServiceOptions> options,
+        AgentRunStatus runStatus,
         ILogger<AgentWorker> logger)
     {
         _remoteApi = remoteApi ?? throw new ArgumentNullException(nameof(remoteApi));
@@ -97,6 +100,7 @@ public sealed class AgentWorker : BackgroundService
         _adapterFactory = adapterFactory ?? throw new ArgumentNullException(nameof(adapterFactory));
         _payloadDeserializer = payloadDeserializer ?? throw new ArgumentNullException(nameof(payloadDeserializer));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _runStatus = runStatus ?? throw new ArgumentNullException(nameof(runStatus));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -141,6 +145,7 @@ public sealed class AgentWorker : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "AgentWorker poll loop failed; will retry after backoff.");
+                _runStatus.RecordError("JOB_POLL_FAILED", ex.Message);
             }
 
             try
@@ -174,6 +179,10 @@ public sealed class AgentWorker : BackgroundService
 
         var ack = await DispatchToAdapterAsync(job, config, ct);
         ack.Attempt ??= job.Attempt;
+        // Log Merkezi L3f: one place for every rejected write. The heartbeat's lastError used to stay empty
+        // however many documents the ERP refused, because nothing ever wrote it.
+        if (!string.Equals(ack.Status, "succeeded", StringComparison.Ordinal))
+            _runStatus.RecordError(ack.ErrorCode, ack.ErrorMessage);
         await TrySendAckAsync(ack, ct);
     }
 
@@ -209,6 +218,7 @@ public sealed class AgentWorker : BackgroundService
             _logger.LogError(ex,
                 "Failed to enqueue job {JobId} locally; continuing with ERP dispatch.",
                 job.JobId);
+            _runStatus.RecordError("LOCAL_QUEUE_FAILED", ex.Message);
         }
     }
 

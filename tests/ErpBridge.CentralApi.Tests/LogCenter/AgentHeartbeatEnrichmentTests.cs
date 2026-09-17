@@ -98,6 +98,40 @@ public class AgentHeartbeatEnrichmentTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task A_round_that_worked_clears_the_failure_the_panel_was_showing()
+    {
+        var client = _factory.CreateClient();
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: "HB-L3F-4");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, "MACHINE-HB-L3F-4");
+        var token = _factory.IssueTestJwt(agent.Id, tenant.Id);
+
+        await client.PostJsonAsync("/api/v1/agents/heartbeat", new
+        {
+            status = "running", queueDepth = 0, lastSyncResult = "failed",
+            lastErrorCode = "ERP_UNREACHABLE", lastError = "Mikro yanıt vermiyor",
+        }, token);
+
+        // Recovery: the agent reports a good round and sends no error fields at all.
+        var response = await client.PostJsonAsync("/api/v1/agents/heartbeat", new
+        {
+            status = "running", queueDepth = 0, lastSyncResult = "ok", lastSyncAtUtc = DateTimeOffset.UtcNow,
+        }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+        var stored = await db.Agents.AsNoTracking().FirstAsync(a => a.Id == agent.Id);
+        stored.LastSyncResult.Should().Be("ok");
+        stored.LastErrorCode.Should().BeNull("a healed agent must not keep showing Monday's failure");
+        stored.LastError.Should().BeNull();
+
+        var latest = await db.AgentHeartbeatLog.AsNoTracking()
+            .Where(x => x.AgentId == agent.Id).OrderByDescending(x => x.ReceivedAtUtc).FirstAsync();
+        latest.LastErrorCode.Should().BeNull();
+    }
+
+    [Fact]
     public async Task History_keeps_a_row_when_something_changed_and_skips_the_identical_ones()
     {
         var client = _factory.CreateClient();

@@ -51,8 +51,14 @@ public sealed class AgentRunStatusTests
         snapshot.LastError.Should().NotContain("Cok-Gizli").And.Contain("Server=GURBUZ");
         snapshot.LastErrorCode.Should().Be("SQL_LOGIN");
 
-        // The heartbeat clears it once sent, so the panel shows the newest failure, not the oldest.
-        status.ClearError();
+        // The heartbeat clears it once sent, so the panel shows the newest failure, not the oldest — but only
+        // the error it actually carried. One recorded while the request was in flight must survive.
+        var sent = status.Read();
+        status.RecordError("ERP_UNREACHABLE", "Mikro yanıt vermiyor");
+        status.ClearError(sent.ErrorVersion);
+        status.Read().LastErrorCode.Should().Be("ERP_UNREACHABLE", "this one was never reported");
+
+        status.ClearError(status.Read().ErrorVersion);
         status.Read().LastError.Should().BeNull();
     }
 
@@ -62,11 +68,21 @@ public sealed class AgentRunStatusTests
         var status = new AgentRunStatus();
         var now = DateTimeOffset.UtcNow;
 
-        status.NeedsErpVersion(now, TimeSpan.FromHours(6)).Should().BeTrue("nothing has been probed yet");
+        var maxAge = TimeSpan.FromHours(6);
+        var retryAfter = TimeSpan.FromMinutes(15);
+
+        status.NeedsErpVersion(now, maxAge, retryAfter).Should().BeTrue("nothing has been probed yet");
         status.RecordErpVersion("V15", now);
         status.Read().ErpVersion.Should().Be("V15");
-        status.NeedsErpVersion(now.AddHours(1), TimeSpan.FromHours(6)).Should().BeFalse();
-        status.NeedsErpVersion(now.AddHours(7), TimeSpan.FromHours(6)).Should().BeTrue();
+        status.NeedsErpVersion(now.AddHours(1), maxAge, retryAfter).Should().BeFalse();
+        status.NeedsErpVersion(now.AddHours(7), maxAge, retryAfter).Should().BeTrue();
+
+        // A probe that could not reach the ERP still counts as an attempt: an unreachable ERP must not be
+        // queried again every single heartbeat. The last known version stays — a down ERP did not change edition.
+        status.RecordErpVersionProbeFailed(now.AddHours(7));
+        status.Read().ErpVersion.Should().Be("V15");
+        status.NeedsErpVersion(now.AddHours(7).AddMinutes(5), maxAge, retryAfter).Should().BeFalse();
+        status.NeedsErpVersion(now.AddHours(7).AddMinutes(16), maxAge, retryAfter).Should().BeTrue("a failure is retried sooner");
     }
 
     [Fact]

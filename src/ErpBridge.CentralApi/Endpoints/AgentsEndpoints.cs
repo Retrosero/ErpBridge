@@ -188,10 +188,22 @@ public static class AgentsEndpoints
         agent.LastErpKind = Keep(agent.LastErpKind, body.ErpKind, 32);
         agent.LastErpVersion = Keep(agent.LastErpVersion, body.ErpVersion, 64);
         agent.LastSyncResult = Keep(agent.LastSyncResult, body.LastSyncResult, 32);
-        agent.LastErrorCode = Keep(agent.LastErrorCode, body.LastErrorCode, 64);
-        // The agent masks its error text; mask again, because a field that reaches the panel and the support
-        // team is the wrong place to trust the client.
-        agent.LastError = Keep(agent.LastError, Mask(body.LastError), 1024);
+
+        // A round that worked clears the failure: "omitted" and "there is nothing to report any more" look the
+        // same on the wire, so the recovery signal decides. Without this an agent that healed on Tuesday would
+        // still be showing Monday's error, in the agent row and in every history row after it.
+        if (string.Equals(body.LastSyncResult, "ok", StringComparison.OrdinalIgnoreCase))
+        {
+            agent.LastErrorCode = null;
+            agent.LastError = null;
+        }
+        else
+        {
+            agent.LastErrorCode = Keep(agent.LastErrorCode, body.LastErrorCode, 64);
+            // The agent masks its error text; mask again, because a field that reaches the panel and the
+            // support team is the wrong place to trust the client.
+            agent.LastError = Keep(agent.LastError, Mask(body.LastError), 1024);
+        }
         if (body.LastSyncAtUtc is { } syncedAt) agent.LastSyncAtUtc = syncedAt;
 
         var entry = new AgentHeartbeatLogEntry

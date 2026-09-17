@@ -21,7 +21,9 @@ public sealed class AgentRunStatus
     private string? _lastErrorCode;
     private string? _lastError;
     private string? _erpVersion;
-    private DateTimeOffset? _erpVersionAtUtc;
+    private DateTimeOffset? _erpVersionProbedAtUtc;
+    private bool _erpVersionProbeFailed;
+    private long _errorVersion;
 
     /// <summary>A successful or failed sync round.</summary>
     public void RecordSync(bool success, DateTimeOffset atUtc, string? errorCode = null, string? errorMessage = null)
@@ -39,6 +41,7 @@ public sealed class AgentRunStatus
             }
             _lastErrorCode = Bound(errorCode, 64);
             _lastError = Mask(errorMessage);
+            _errorVersion++;
         }
     }
 
@@ -49,6 +52,7 @@ public sealed class AgentRunStatus
         {
             _lastErrorCode = Bound(errorCode, 64) ?? _lastErrorCode;
             _lastError = Mask(errorMessage) ?? _lastError;
+            _errorVersion++;
         }
     }
 
@@ -61,16 +65,35 @@ public sealed class AgentRunStatus
         lock (_gate)
         {
             _erpVersion = Bound(version, 64);
-            _erpVersionAtUtc = atUtc;
+            _erpVersionProbedAtUtc = atUtc;
+            _erpVersionProbeFailed = false;
         }
     }
 
-    /// <summary>True when the ERP version is unknown or older than <paramref name="maxAge"/>.</summary>
-    public bool NeedsErpVersion(DateTimeOffset now, TimeSpan maxAge)
+    /// <summary>
+    /// A probe that could not reach the ERP. The attempt still counts, so an unreachable ERP is not queried
+    /// again every single heartbeat — which is exactly the case where a database round-trip a minute hurts
+    /// most. The last known version is kept: an ERP that is down has not changed its edition.
+    /// </summary>
+    public void RecordErpVersionProbeFailed(DateTimeOffset atUtc)
     {
         lock (_gate)
         {
-            return _erpVersionAtUtc is not { } probed || now - probed > maxAge;
+            _erpVersionProbedAtUtc = atUtc;
+            _erpVersionProbeFailed = true;
+        }
+    }
+
+    /// <summary>
+    /// True when nothing has been probed yet, when the known version has aged past <paramref name="maxAge"/>,
+    /// or when the last attempt failed more than <paramref name="retryAfter"/> ago.
+    /// </summary>
+    public bool NeedsErpVersion(DateTimeOffset now, TimeSpan maxAge, TimeSpan retryAfter)
+    {
+        lock (_gate)
+        {
+            if (_erpVersionProbedAtUtc is not { } probed) return true;
+            return now - probed > (_erpVersionProbeFailed ? retryAfter : maxAge);
         }
     }
 
@@ -79,15 +102,20 @@ public sealed class AgentRunStatus
     {
         lock (_gate)
         {
-            return new AgentRunSnapshot(_lastSyncAtUtc, _lastSyncResult, _lastErrorCode, _lastError, _erpVersion);
+            return new AgentRunSnapshot(_lastSyncAtUtc, _lastSyncResult, _lastErrorCode, _lastError, _erpVersion, _errorVersion);
         }
     }
 
-    /// <summary>Called after a heartbeat went out, so the panel shows the newest failure rather than the oldest.</summary>
-    public void ClearError()
+    /// <summary>
+    /// Called after a heartbeat went out, so the panel shows the newest failure rather than the oldest — but
+    /// only clears the error that heartbeat actually carried. A failure recorded while the request was in
+    /// flight has a newer version and survives to the next beat, instead of vanishing unreported.
+    /// </summary>
+    public void ClearError(long errorVersion)
     {
         lock (_gate)
         {
+            if (_errorVersion != errorVersion) return;
             _lastErrorCode = null;
             _lastError = null;
         }
@@ -111,4 +139,5 @@ public sealed record AgentRunSnapshot(
     string? LastSyncResult,
     string? LastErrorCode,
     string? LastError,
-    string? ErpVersion = null);
+    string? ErpVersion = null,
+    long ErrorVersion = 0);

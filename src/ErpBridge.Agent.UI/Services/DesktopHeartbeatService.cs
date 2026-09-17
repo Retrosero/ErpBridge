@@ -18,6 +18,7 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
     private readonly IAgentTokenService _tokens;
     private readonly AgentLogUploader _logUploader;
     private readonly AgentRunStatus _status;
+    private readonly ErpVersionProbe _erpVersionProbe;
     private readonly ILogger<DesktopHeartbeatService> _logger;
     private CancellationTokenSource? _cts;
     private Task? _loop;
@@ -28,6 +29,7 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
         IAgentTokenService tokens,
         AgentLogUploader logUploader,
         AgentRunStatus status,
+        ErpVersionProbe erpVersionProbe,
         ILogger<DesktopHeartbeatService> logger)
     {
         _remoteApi = remoteApi;
@@ -35,6 +37,7 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
         _tokens = tokens;
         _logUploader = logUploader;
         _status = status;
+        _erpVersionProbe = erpVersionProbe;
         _logger = logger;
     }
 
@@ -75,6 +78,8 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
                     // Log Merkezi L3f: the desktop app used to send lastSyncAtUtc = null on every tick, so a
                     // machine running only the tray app looked like it had never synced. It shares the same
                     // AgentRunStatus the sync loop writes, so now it reports the real round.
+                    // The tray-only machine reports its ERP edition too: same probe, same six-hour cache.
+                    await _erpVersionProbe.RefreshAsync(config, ct).ConfigureAwait(false);
                     var run = _status.Read();
                     await _remoteApi.SendHeartbeatAsync(new AgentHeartbeat
                     {
@@ -91,7 +96,7 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
                         LastSyncResult = run.LastSyncResult,
                         LastErrorCode = run.LastErrorCode,
                     }, ct).ConfigureAwait(false);
-                    _status.ClearError();
+                    _status.ClearError(run.ErrorVersion);
 
                     // Log Merkezi L3c: the desktop app has no generic host, so its heartbeat tick is what
                     // drains the diagnostic queue — the same rhythm the service's HeartbeatWorker uses.

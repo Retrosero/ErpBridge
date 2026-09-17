@@ -137,6 +137,7 @@ public class AgentWorkerProcessJobTests
             adapterFactory.Object,
             new SalesOrderPayloadDeserializer(),
             Options.Create(new AgentServiceOptions()),
+            new ErpBridge.Core.Sync.AgentRunStatus(),
             NullLogger<AgentWorker>.Instance);
 
         return (worker, remoteApi, localQueue, configStore, adapterFactory, adapter);

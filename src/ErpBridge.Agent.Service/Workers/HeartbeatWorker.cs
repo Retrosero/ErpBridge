@@ -2,7 +2,6 @@ using System.Reflection;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Core.Sync;
-using ErpBridge.Erp.Abstractions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -37,13 +36,10 @@ public sealed class HeartbeatWorker : BackgroundService
     /// <summary>The agent build the panel shows next to this machine.</summary>
     public static string Version => Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
 
-    /// <summary>How long a probed ERP version is trusted before the next heartbeat re-probes it.</summary>
-    private static readonly TimeSpan ErpVersionMaxAge = TimeSpan.FromHours(6);
-
     private readonly IRemoteApiClient _remoteApi;
     private readonly IAgentConfigStore _configStore;
     private readonly ILocalQueueStore _localQueue;
-    private readonly IErpAdapterFactory _adapterFactory;
+    private readonly ErpVersionProbe _erpVersionProbe;
     private readonly ErpBridge.Core.Logging.AgentLogUploader _logUploader;
     private readonly AgentRunStatus _status;
     private readonly ILogger<HeartbeatWorker> _logger;
@@ -52,7 +48,7 @@ public sealed class HeartbeatWorker : BackgroundService
         IRemoteApiClient remoteApi,
         IAgentConfigStore configStore,
         ILocalQueueStore localQueue,
-        IErpAdapterFactory adapterFactory,
+        ErpVersionProbe erpVersionProbe,
         ErpBridge.Core.Logging.AgentLogUploader logUploader,
         AgentRunStatus status,
         ILogger<HeartbeatWorker> logger)
@@ -60,7 +56,7 @@ public sealed class HeartbeatWorker : BackgroundService
         _remoteApi = remoteApi ?? throw new ArgumentNullException(nameof(remoteApi));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _localQueue = localQueue ?? throw new ArgumentNullException(nameof(localQueue));
-        _adapterFactory = adapterFactory ?? throw new ArgumentNullException(nameof(adapterFactory));
+        _erpVersionProbe = erpVersionProbe ?? throw new ArgumentNullException(nameof(erpVersionProbe));
         _logUploader = logUploader ?? throw new ArgumentNullException(nameof(logUploader));
         _status = status ?? throw new ArgumentNullException(nameof(status));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -76,26 +72,6 @@ public sealed class HeartbeatWorker : BackgroundService
     /// <inheritdoc cref="RecordSuccessfulSync" />
     public void RecordError(string errorMessage) => _status.RecordError(null, errorMessage);
 
-    /// <summary>
-    /// Ask the adapter which ERP edition this is, at most once every six hours. The answer only changes when
-    /// the customer upgrades their ERP, and a probe is a database round-trip the heartbeat should not pay for
-    /// every minute. A failed probe is not worth a warning: the ERP being unreachable is reported elsewhere.
-    /// </summary>
-    private async Task RefreshErpVersionAsync(AgentConfig config, CancellationToken ct)
-    {
-        if (!_status.NeedsErpVersion(DateTimeOffset.UtcNow, ErpVersionMaxAge)) return;
-        try
-        {
-            var adapter = _adapterFactory.Create(config.ErpType);
-            var version = await adapter.DetectVersionAsync(ct);
-            _status.RecordErpVersion(version.Family ?? version.Version.ToString(), DateTimeOffset.UtcNow);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogDebug(ex, "ERP version probe failed; the heartbeat goes out without it.");
-        }
-    }
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // First heartbeat fires after one full interval; small startup grace.
@@ -110,7 +86,7 @@ public sealed class HeartbeatWorker : BackgroundService
                 if (config is not null)
                 {
                     var queueDepth = await _localQueue.CountAsync(ct: stoppingToken);
-                    await RefreshErpVersionAsync(config, stoppingToken);
+                    await _erpVersionProbe.RefreshAsync(config, stoppingToken);
                     var run = _status.Read();
                     var heartbeat = new AgentHeartbeat
                     {
@@ -133,7 +109,7 @@ public sealed class HeartbeatWorker : BackgroundService
 
                     // Clear "last error" after a successful heartbeat so the
                     // dashboard only sees the most recent failure.
-                    _status.ClearError();
+                    _status.ClearError(run.ErrorVersion);
                 }
 
                 // Diagnostic events queued while the network was down go out with the heartbeat (Log Merkezi L3c).
