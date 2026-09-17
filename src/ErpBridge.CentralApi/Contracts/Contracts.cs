@@ -79,6 +79,12 @@ public sealed class JobResponse
     [JsonPropertyName("enqueuedAtUtc")] public DateTimeOffset EnqueuedAtUtc { get; set; }
 
     /// <summary>
+    /// Which lease this is (goal ERP yazım Y1e). An agent echoes it in its ack so a result from a lease
+    /// that expired and was handed to another agent is refused with 409 <c>STALE_LEASE</c>.
+    /// </summary>
+    [JsonPropertyName("attempt")] public int Attempt { get; set; }
+
+    /// <summary>
     /// How to write the job into the company's ERP (goal ERP yazım Y1d); null for a company without an
     /// ERP. Older agents ignore it. Shape matches <c>ErpBridge.Core.Jobs.ErpWriteContext</c>.
     /// </summary>
@@ -125,6 +131,15 @@ public sealed class JobAckRequest
     [JsonPropertyName("erpDocumentNumber")] public int? ErpDocumentNumber { get; set; }
     [JsonPropertyName("erpRecno")] public int? ErpRecno { get; set; }
     [JsonPropertyName("erpGuid")] public Guid? ErpGuid { get; set; }
+
+    /// <summary>
+    /// With <c>status = failed</c>: the failure may pass by itself (ERP unreachable), so the job goes
+    /// back to the queue with a delay instead of failing. Older agents omit it (terminal failure).
+    /// </summary>
+    [JsonPropertyName("retryable")] public bool? Retryable { get; set; }
+
+    /// <summary>The <c>attempt</c> of the lease this result belongs to; older agents omit it.</summary>
+    [JsonPropertyName("attempt")] public int? Attempt { get; set; }
 }
 
 /// <summary>POST /api/v1/bootstrap body. The whole <see cref="Payload"/> is the
