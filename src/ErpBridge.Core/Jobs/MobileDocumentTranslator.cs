@@ -127,7 +127,7 @@ public sealed class MobileDocumentTranslator
         }
 
         var settlement = SaleSettlement(Text(body, "paymentType"));
-        if (settlement is null) return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType(Text(body, "paymentType") ?? string.Empty));
+        if (settlement is null) return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType());
         if (settlement == SalesSettlement.Open)
         {
             return new MobileTranslation(Sale: new SalesDocumentCommand(
@@ -231,7 +231,7 @@ public sealed class MobileDocumentTranslator
                     ? MobileTranslation.Fail(bankError)
                     : new MobileTranslation(Return: new SalesReturnCommand(header, warehouse.Value, priceList.Value, ReturnSettlement.Bank, bank.Code, returnLines));
             default:
-                return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType(settlementText ?? string.Empty));
+                return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType());
         }
     }
 
@@ -269,7 +269,7 @@ public sealed class MobileDocumentTranslator
                 "note" or "senet" => CollectionMethod.Note,
                 _ => null,
             };
-            if (method is null) return (null, ErpWriteError.UnsupportedPaymentType(methodText ?? string.Empty));
+            if (method is null) return (null, ErpWriteError.UnsupportedPaymentType());
             if (Decimal(payment, "amount") is not > 0) return (null, ErpWriteError.InvalidAmount());
 
             var account = AccountFor(method.Value, payment, context);
@@ -338,7 +338,7 @@ public sealed class MobileDocumentTranslator
     private static ErpWriteError? HeaderError(JsonElement body, ErpWriteContext context)
     {
         if (Text(body, "customerCode") is null) return ErpWriteError.MissingCustomerCode();
-        if (!IsTurkishLira(body)) return ErpWriteError.UnsupportedCurrency(Text(body, "currency")!);
+        if (!IsTurkishLira(body)) return ErpWriteError.UnsupportedCurrency();
         if (ParseDate(Text(body, "occurredAt")) is null) return ErpWriteError.InvalidDocumentDate();
         if (Decimal(body, "amount") is not > 0) return ErpWriteError.InvalidAmount();
         if (context.ErpUserNo is null) return ErpWriteError.ErpMappingMissing("ERP kullanıcı numarası");
