@@ -24,10 +24,10 @@ public static class MikroWriteTestDatabase
 
     /// <summary>
     /// <c>MikroDB_V15_DEMO</c>: the test company the user opened in Mikro, restored from the
-    /// 2026-09-17 backup. <c>MikroDB_V15_ERPBTEST</c>: the first copy, not openable from Mikro.
+    /// 2026-09-17 backup. The first copy (<c>MikroDB_V15_ERPBTEST</c>) was dropped on 2026-09-17.
     /// </summary>
     public static readonly IReadOnlySet<string> AllowedDatabases =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "MikroDB_V15_DEMO", "MikroDB_V15_ERPBTEST" };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "MikroDB_V15_DEMO" };
 
     public static string? Database => Environment.GetEnvironmentVariable(DatabaseEnv) is { Length: > 0 } d ? d : null;
 

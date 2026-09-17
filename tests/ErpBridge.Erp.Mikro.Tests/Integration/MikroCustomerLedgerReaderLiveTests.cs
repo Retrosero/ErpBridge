@@ -13,7 +13,7 @@ namespace ErpBridge.Erp.Mikro.Tests.Integration;
 /// closed invoices name their customer, returns keep their direction and the card
 /// balance counts only cari-side movements. Read-only; opt in with
 /// <c>ERPBridge_RUN_INTEGRATION=1</c> (database: <c>ERPBridge_MIKRO_WRITE_DB</c>,
-/// default <c>MikroDB_V15_ERPBTEST</c>).
+/// e.g. <c>MikroDB_V15_DEMO</c>).
 /// </summary>
 public class MikroCustomerLedgerReaderLiveTests
 {

@@ -921,7 +921,7 @@ registration ayrı bir composition projesine taşınır.
      belge Log Merkezi'ne `ERP_WRITE_FAILED` / `ERP_WRITE_RETRY` olur. ERP'ye ulaşılamaması (`retryable`) işi bekletip
      yeniden kuyruğa alır; kalıcı hata `Failed` kalır.
    - **Yazma testleri yalnız izinli test kopyasında:** canlı yazım testleri `ERPBridge_RUN_INTEGRATION=1` **ve**
-     `ERPBridge_MIKRO_WRITE_DB` ∈ `MikroWriteTestDatabase.AllowedDatabases` (`MikroDB_V15_DEMO`, `MikroDB_V15_ERPBTEST`)
+     `ERPBridge_MIKRO_WRITE_DB` ∈ `MikroWriteTestDatabase.AllowedDatabases` (yalnız `MikroDB_V15_DEMO`; ilk kopya `MikroDB_V15_ERPBTEST` 2026-09-17'de silindi)
      ister; müşteri veritabanına (`MikroDB_V15_02` vb.) yazan test yazılmaz. Okuma testleri canlı veritabanına bağlanabilir.
    - **Dapper kolon sırası:** okuyucuların positional record'larına kolon eklerken SQL'deki sıra kurucuyla aynı olmalı
      (#95'te `VatRate` sırası canlı okumayı kırdı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma testiyle gelir.
