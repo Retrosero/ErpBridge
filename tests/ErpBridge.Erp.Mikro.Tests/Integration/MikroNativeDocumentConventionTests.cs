@@ -19,9 +19,11 @@ namespace ErpBridge.Erp.Mikro.Tests.Integration;
 /// </para>
 ///
 /// <para>
-/// Opt in with <c>ERPBridge_RUN_INTEGRATION=1</c>. Database defaults to the test copy
-/// <c>MikroDB_V15_ERPBTEST</c> (override with <c>ERPBridge_MIKRO_WRITE_DB</c>); nothing
-/// here writes.
+/// Runs only with <c>ERPBridge_RUN_INTEGRATION=1</c> <b>and</b> an explicit
+/// <c>ERPBridge_MIKRO_WRITE_DB</c> naming a copy of a real company database (e.g.
+/// <c>MikroDB_V15_ERPBTEST</c>, Windows authentication, server <c>ERPBridge_SCHEMA_SERVER</c> or
+/// <c>tcp:localhost</c>). The docker fixture in <c>tests/README-integration.md</c> has no
+/// Mikro-entered documents, so the shared gate alone leaves these tests off. Nothing here writes.
 /// </para>
 /// </summary>
 public class MikroNativeDocumentConventionTests
@@ -34,10 +36,10 @@ public class MikroNativeDocumentConventionTests
     public MikroNativeDocumentConventionTests(ITestOutputHelper output) => _output = output;
 
     private static bool GateOpen =>
-        Environment.GetEnvironmentVariable(MikroIntegrationFixture.RunIntegrationEnv) == "1";
+        Environment.GetEnvironmentVariable(MikroIntegrationFixture.RunIntegrationEnv) == "1"
+        && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(WriteDatabaseEnv));
 
-    private static string Database =>
-        Environment.GetEnvironmentVariable(WriteDatabaseEnv) is { Length: > 0 } d ? d : "MikroDB_V15_ERPBTEST";
+    private static string Database => Environment.GetEnvironmentVariable(WriteDatabaseEnv)!;
 
     private static string Server =>
         Environment.GetEnvironmentVariable(MikroSchemaContractTests.ServerEnv) is { Length: > 0 } s ? s : "tcp:localhost";
