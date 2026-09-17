@@ -42,6 +42,44 @@ public sealed class AdminLogEndpointsTests : IClassFixture<SqliteCentralApiFacto
     }
 
     [Fact]
+    public async Task Rows_sharing_time_and_event_id_across_sources_are_all_paged()
+    {
+        var operation = "tie-" + Guid.NewGuid().ToString("N");
+        var at = DateTimeOffset.UtcNow.AddMinutes(-3);
+        var sharedId = Guid.NewGuid().ToString();
+        await WriteAsync(
+            new LogEventInput { EventId = sharedId, Source = LogSources.Android, Severity = "INFO", Operation = operation, OccurredAtUtc = at },
+            new LogEventInput { EventId = sharedId, Source = LogSources.Portal, Severity = "INFO", Operation = operation, OccurredAtUtc = at },
+            new LogEventInput { EventId = sharedId, Source = LogSources.Admin, Severity = "INFO", Operation = operation, OccurredAtUtc = at });
+        var token = await AdminTokenAsync();
+
+        var seen = new List<string>();
+        string? before = null;
+        do
+        {
+            var page = await GetAsync<AdminLogPageDto>($"/api/v1/admin/logs?operation={operation}&take=1" + (before is null ? "" : $"&before={Uri.EscapeDataString(before)}"), token);
+            seen.AddRange(page.Items.Select(i => i.Source));
+            before = page.NextBefore;
+        } while (before is not null);
+
+        seen.Should().BeEquivalentTo("android", "portal", "admin");
+    }
+
+    [Fact]
+    public async Task Contradicting_severity_filters_match_nothing()
+    {
+        var operation = "sev-" + Guid.NewGuid().ToString("N");
+        await WriteAsync(
+            new LogEventInput { Source = LogSources.Android, Severity = "INFO", Operation = operation },
+            new LogEventInput { Source = LogSources.Android, Severity = "ERROR", Operation = operation });
+        var token = await AdminTokenAsync();
+
+        (await GetAsync<AdminLogPageDto>($"/api/v1/admin/logs?operation={operation}&severity=INFO&minSeverity=ERROR", token)).Items.Should().BeEmpty();
+        (await GetAsync<AdminLogPageDto>($"/api/v1/admin/logs?operation={operation}&severity=ERROR,INFO&minSeverity=WARN", token)).Items
+            .Should().ContainSingle(i => i.Severity == "ERROR");
+    }
+
+    [Fact]
     public async Task Filters_combine_and_names_are_filled()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];

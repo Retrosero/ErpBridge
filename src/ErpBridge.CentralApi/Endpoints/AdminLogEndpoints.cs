@@ -12,7 +12,8 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// <summary>
 /// Log Merkezi L1a — the operator's read side of <c>log_events</c>. Tenant is an optional filter from the query
 /// string (an admin token has no tenant claim, KB rule 10). Newest first, keyset-paged on
-/// (<c>OccurredAtMs</c>, <c>EventId</c>) so a page never repeats or skips a row while new events arrive.
+/// (<c>OccurredAtMs</c>, <c>EventId</c>, <c>Source</c>) — unique, because an event id is unique only per source — so a
+/// page never repeats or skips a row while new events arrive.
 /// </summary>
 public static class AdminLogEndpoints
 {
@@ -55,12 +56,14 @@ public static class AdminLogEndpoints
         var rows = query.Apply(db.LogEvents.AsNoTracking(), db.Database.IsNpgsql());
         if (cursor is { } position)
         {
-            var (ms, eventId) = position;
-            rows = rows.Where(e => e.OccurredAtMs < ms || (e.OccurredAtMs == ms && string.Compare(e.EventId, eventId) < 0));
+            var (ms, eventId, source) = position;
+            rows = rows.Where(e => e.OccurredAtMs < ms
+                || (e.OccurredAtMs == ms && (string.Compare(e.EventId, eventId) < 0
+                    || (e.EventId == eventId && string.Compare(e.Source, source) < 0))));
         }
 
         var page = await rows
-            .OrderByDescending(e => e.OccurredAtMs).ThenByDescending(e => e.EventId)
+            .OrderByDescending(e => e.OccurredAtMs).ThenByDescending(e => e.EventId).ThenByDescending(e => e.Source)
             .Take(count + 1)
             .Select(e => new AdminLogEventDto
             {
@@ -79,7 +82,7 @@ public static class AdminLogEndpoints
         {
             page.RemoveAt(count);
             var last = page[^1];
-            next = FormatCursor(last.OccurredAtMs, last.EventId);
+            next = FormatCursor(last.OccurredAtMs, last.EventId, last.Source);
         }
         await FillNamesAsync(db, page, ct);
         return JsonResults.Ok(new AdminLogPageDto { Items = page, NextBefore = next });
@@ -174,18 +177,19 @@ public static class AdminLogEndpoints
         }
     }
 
-    internal static string FormatCursor(long occurredAtMs, string eventId) =>
-        occurredAtMs.ToString(CultureInfo.InvariantCulture) + "_" + eventId;
+    /// <summary><c>{OccurredAtMs}~{EventId}~{Source}</c>; <c>~</c> never appears in a source or a GUID and needs no URL escaping.</summary>
+    internal static string FormatCursor(long occurredAtMs, string eventId, string source) =>
+        string.Join('~', occurredAtMs.ToString(CultureInfo.InvariantCulture), eventId, source);
 
-    private static bool TryParseCursor(string? raw, out (long Ms, string EventId)? cursor)
+    private static bool TryParseCursor(string? raw, out (long Ms, string EventId, string Source)? cursor)
     {
         cursor = null;
         if (string.IsNullOrWhiteSpace(raw)) return true;
-        var separator = raw.IndexOf('_');
-        if (separator <= 0 || separator == raw.Length - 1
-            || !long.TryParse(raw.AsSpan(0, separator), NumberStyles.None, CultureInfo.InvariantCulture, out var ms))
+        var parts = raw.Split('~');
+        if (parts.Length != 3 || parts[1].Length == 0 || !LogSources.IsKnown(parts[2])
+            || !long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var ms))
             return false;
-        cursor = (ms, raw[(separator + 1)..]);
+        cursor = (ms, parts[1], parts[2]);
         return true;
     }
 

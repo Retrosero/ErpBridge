@@ -15,6 +15,12 @@ public sealed record LogQuery
     public Guid? TenantId { get; init; }
     public IReadOnlyList<string> Sources { get; init; } = [];
     public IReadOnlyList<string> Severities { get; init; } = [];
+
+    /// <summary>
+    /// True when the caller asked for severities at all. Then an empty <see cref="Severities"/> (e.g. <c>severity=INFO</c>
+    /// with <c>minSeverity=ERROR</c>) means "nothing matches", not "no filter".
+    /// </summary>
+    public bool SeverityFiltered { get; init; }
     public string? Kind { get; init; }
     public string? Operation { get; init; }
     public string? DeviceId { get; init; }
@@ -62,6 +68,7 @@ public sealed record LogQuery
             TenantId = tenantId,
             Sources = sources,
             Severities = severities,
+            SeverityFiltered = query.ContainsKey("severity") && SplitList(query["severity"]).Length > 0 || ReadText(query["minSeverity"]) is not null,
             Kind = ReadText(query["kind"]) is { } kind ? LogEventWriter.NormalizeKind(kind) : null,
             Operation = ReadText(query["operation"]),
             DeviceId = ReadText(query["deviceId"]),
@@ -88,6 +95,10 @@ public sealed record LogQuery
         {
             var severities = Severities.ToArray();
             rows = rows.Where(e => severities.Contains(e.Severity));
+        }
+        else if (SeverityFiltered)
+        {
+            rows = rows.Where(_ => false);
         }
         if (Kind is { } kind) rows = rows.Where(e => e.Kind == kind);
         if (Operation is { } operation) rows = rows.Where(e => e.Operation == operation);
