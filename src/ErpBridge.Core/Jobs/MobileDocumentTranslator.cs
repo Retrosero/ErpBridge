@@ -118,6 +118,9 @@ public sealed class MobileDocumentTranslator
             var stockCode = Text(line, "productCode") ?? Text(line, "stockCode");
             if (stockCode is null) return MobileTranslation.Fail(ErpWriteError.MissingStockCode(i + 1));
             if (Decimal(line, "quantity") is not > 0) return MobileTranslation.Fail(ErpWriteError.InvalidQuantity(i + 1));
+            if (MalformedNumber(line, "lineDiscountPercent") || MalformedNumber(line, "customerDiscountPercent") || MalformedNumber(line, "generalDiscountPercent"))
+                return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
+            if (MalformedNumber(line, "unitPointer", integer: true)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
             var discounts = new[] { Decimal(line, "lineDiscountPercent") ?? 0m, Decimal(line, "customerDiscountPercent") ?? 0m, Decimal(line, "generalDiscountPercent") ?? 0m };
             if (discounts.Any(d => d is < 0 or > 100)) return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
             if (Decimal(line, "listUnitPrice") is not >= 0) return MobileTranslation.Fail(ErpWriteError.InvalidAmount());
@@ -235,7 +238,10 @@ public sealed class MobileDocumentTranslator
             if (stockCode is null) return MobileTranslation.Fail(ErpWriteError.MissingStockCode(i + 1));
             if (Decimal(line, "quantity") is not > 0) return MobileTranslation.Fail(ErpWriteError.InvalidQuantity(i + 1));
             if (Decimal(line, "listUnitPrice") is not >= 0) return MobileTranslation.Fail(ErpWriteError.InvalidAmount());
-            // The phone sends the refunded share as 0..1; tolerate a percentage.
+            // The phone sends the refunded share as 0..1; tolerate a percentage. Absent is a full refund,
+            // a value that is not a number is refused rather than read as one (PR #81 Codex).
+            if (MalformedNumber(line, "conditionPercent")) return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
+            if (MalformedNumber(line, "unitPointer", integer: true)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
             var condition = Decimal(line, "conditionPercent") ?? 1m;
             if (condition > 1m) condition /= 100m;
             if (condition is < 0 or > 1) return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
@@ -244,7 +250,10 @@ public sealed class MobileDocumentTranslator
         }
 
         var settlementText = Text(body, "settlementMethod") ?? Text(body, "paymentType");
-        switch (Normalize(settlementText))
+        var settlementKey = Normalize(settlementText);
+        // A return refunding nothing still returns the goods but pays nothing out (PR #81 Codex).
+        if (header.ExpectedTotal == 0m && ReturnSettlementKeys.Contains(settlementKey)) settlementKey = string.Empty;
+        switch (settlementKey)
         {
             case "" or "cari alacak" or "açık hesap" or "cari":
                 return new MobileTranslation(Return: new SalesReturnCommand(header, warehouse.Value, priceList.Value, ReturnSettlement.Open, null, returnLines));
@@ -262,6 +271,9 @@ public sealed class MobileDocumentTranslator
                 return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType());
         }
     }
+
+    private static readonly HashSet<string> ReturnSettlementKeys =
+        ["", "cari alacak", "açık hesap", "cari", "nakit", "banka iade", "eft / havale", "havale / eft", "havale", "banka"];
 
     // ---- collection ---------------------------------------------------------------------------
 
@@ -298,7 +310,8 @@ public sealed class MobileDocumentTranslator
                 _ => null,
             };
             if (method is null) return (null, ErpWriteError.UnsupportedPaymentType());
-            if (Decimal(payment, "amount") is not > 0) return (null, ErpWriteError.InvalidAmount());
+            if (Decimal(payment, "amount") is not > 0 || MalformedNumber(payment, "surchargeAmount")) return (null, ErpWriteError.InvalidAmount());
+            if (MalformedNumber(payment, "installments", integer: true)) return (null, ErpWriteError.InvalidDocument());
 
             var account = AccountFor(method.Value, payment, context);
             if (account.Error is { } accountError) return (null, accountError);
@@ -418,16 +431,28 @@ public sealed class MobileDocumentTranslator
             ? text.Trim()
             : null;
 
+    /// <summary>
+    /// No phone document amount, quantity or rate comes near this; larger values are malformed, and
+    /// keeping them out means sums of a document's values can never overflow (PR #81 Codex).
+    /// </summary>
+    private const decimal MaxNumber = 999_999_999_999m;
+
     private static decimal? Decimal(JsonElement element, string name)
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value)) return null;
-        return value.ValueKind switch
+        decimal? number = value.ValueKind switch
         {
-            JsonValueKind.Number when value.TryGetDecimal(out var number) => number,
+            JsonValueKind.Number when value.TryGetDecimal(out var n) => n,
             JsonValueKind.String when decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) => parsed,
             _ => null,
         };
+        return number is { } checkedNumber && Math.Abs(checkedNumber) <= MaxNumber ? checkedNumber : null;
     }
+
+    /// <summary>An optional number that is there (and not JSON null) but is not a usable number.</summary>
+    private static bool MalformedNumber(JsonElement element, string name, bool integer = false) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+        && (integer ? Int(element, name) is null : Decimal(element, name) is null);
 
     private static int? Int(JsonElement element, string name) =>
         Decimal(element, name) is { } number && number == Math.Truncate(number) && number is >= int.MinValue and <= int.MaxValue ? (int)number : null;

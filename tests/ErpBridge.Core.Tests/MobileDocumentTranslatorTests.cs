@@ -260,6 +260,36 @@ public class MobileDocumentTranslatorTests
     }
 
     [Fact]
+    public void A_zero_total_return_pays_nothing_out()
+    {
+        var result = _sut.Translate("sales_return", "MOB-SR-1", Return.Replace("\"amount\": 380", "\"amount\": 0").Replace("\"Cari Alacak\"", "\"Nakit\""), Context());
+
+        result.Return!.Settlement.Should().Be(ReturnSettlement.Open);
+        result.Return.SettlementAccountCode.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("sales_order", "\"lineDiscountPercent\": 10,", "\"lineDiscountPercent\": \"on\",", ErpWriteError.InvalidDiscountCode)]
+    [InlineData("sales_order", "\"quantity\": 2,", "\"quantity\": 2, \"unitPointer\": 1.5,", ErpWriteError.InvalidDocumentCode)]
+    [InlineData("sales_order", "\"quantity\": 2,", "\"quantity\": 1e20,", ErpWriteError.InvalidQuantityCode)]
+    [InlineData("sales_return", "\"conditionPercent\": 0.3", "\"conditionPercent\": \"invalid\"", ErpWriteError.InvalidDiscountCode)]
+    [InlineData("collection", "\"installments\": 3", "\"installments\": \"üç\"", ErpWriteError.InvalidDocumentCode)]
+    [InlineData("collection", "\"surchargeAmount\": 45", "\"surchargeAmount\": \"kırk beş\"", ErpWriteError.InvalidAmountCode)]
+    [InlineData("collection", "{ \"method\": \"cash\", \"amount\": 1000 }", "{ \"method\": \"cash\", \"amount\": 79000000000000000000000000000 }", ErpWriteError.InvalidAmountCode)]
+    public void A_number_that_is_there_but_unusable_is_refused_not_defaulted(string documentType, string replace, string with, string code)
+    {
+        var (body, id) = documentType switch
+        {
+            "sales_order" => (Sale, "MOB-SO-1"),
+            "sales_return" => (Return, "MOB-SR-1"),
+            _ => (Collection, "MOB-TH-1"),
+        };
+        body.Should().Contain(replace);
+
+        _sut.Translate(documentType, id, body.Replace(replace, with), Context()).Error!.Code.Should().Be(code);
+    }
+
+    [Fact]
     public void A_body_naming_another_document_than_the_job_is_refused()
     {
         _sut.Translate("sales_order", "MOB-SO-2", Sale, Context()).Error!.Code.Should().Be(ErpWriteError.DocumentIdMismatchCode);
