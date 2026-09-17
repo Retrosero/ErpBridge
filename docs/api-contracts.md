@@ -29,6 +29,18 @@ Lisans anahtarı, JWT, SQL şifresi, bağlantı dizesi ve ERP payloadları kesin
 gönderilmez; agent bunları göndermeden önce maskeler. Kayıtlar mobil tanılama
 kayıtlarıyla aynı yönetim ekranında tutulur.
 
+### POST /api/v1/agents/logs/batch
+
+Ajanın kuyrukta bekleyen tanılama olayları (Log Merkezi L3c). Agent JWT'si zorunlu.
+Body: `{ events: [{ eventId, occurredAtUtc, severity, kind, operation, message,
+exceptionType, stackTrace, appVersion, osVersion, machineName, correlationId,
+propertiesJson, source, repeatCount }] }` — 1–50 olay; `eventId` en çok 64 karakter ve
+kaynak içinde tekildir (kaybolan yanıt sonrası tekrar gönderim ikinci kez saklanmaz).
+`source` `windows_service` (varsayılan) ya da `windows_agent`. Firma ve ajan token'dan
+okunur. Yanıt: `200 { accepted, duplicate }`; gövde 1–50 aralığında değilse 400
+`INVALID_LOG_BATCH`, kimliksiz olayda 400 `INVALID_EVENT_ID`. Yazım hatası 5xx'tir;
+ajan olayları kuyrukta tutup yeniden dener. Gizli bilgi ajanda maskelenir.
+
 ### POST /api/v1/licenses/validate
 
 `{ licenseKey }` → `{ valid, tenantId, expiresAtUtc }`. Agent başlangıcında bir kez

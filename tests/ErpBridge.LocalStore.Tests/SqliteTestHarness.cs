@@ -7,7 +7,8 @@ namespace ErpBridge.LocalStore.Tests;
 /// <summary>
 /// Shared scaffolding for LocalStore tests. Each test gets its own in-memory
 /// SQLite database so suites can run in parallel without sharing state. The
-/// schema is applied via <see cref="InitialSchema.Script"/> AND <see cref="ProtectedConfigColumnsMigration"/>
+/// schema is applied via <see cref="InitialSchema.Script"/>, <see cref="ProtectedConfigColumnsMigration"/> and
+/// <see cref="AgentLogOutboxMigration"/>
 /// so we exercise the exact DDL the agent will see at runtime, including the
 /// Phase-2 Track-2 <c>protected_value</c> columns.
 /// </summary>
@@ -51,6 +52,12 @@ public static class SqliteTestHarness
         Dapper.SqlMapper.Execute(keepAlive,
             "INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (@version, @appliedAt);",
             new { version = ProtectedConfigColumnsMigration.Version, appliedAt = DateTime.UtcNow.ToString("O") });
+
+        // Migration 003 — the agent's diagnostic outbox (Log Merkezi L3c).
+        Dapper.SqlMapper.Execute(keepAlive, AgentLogOutboxMigration.Script);
+        Dapper.SqlMapper.Execute(keepAlive,
+            "INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (@version, @appliedAt);",
+            new { version = AgentLogOutboxMigration.Version, appliedAt = DateTime.UtcNow.ToString("O") });
 
         return (factory, keepAlive);
     }

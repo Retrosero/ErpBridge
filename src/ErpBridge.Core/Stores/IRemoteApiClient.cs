@@ -67,6 +67,13 @@ public interface IRemoteApiClient
     /// </summary>
     Task SendAgentTelemetryAsync(AgentTelemetryEvent telemetry, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    /// <summary>
+    /// Send a batch of queued agent diagnostic events to the Log Centre (Log Merkezi L3c). Returns false when
+    /// the server could not take them, so the caller keeps them queued. Older implementations report false.
+    /// </summary>
+    Task<bool> SendAgentLogsAsync(IReadOnlyList<AgentLogEvent> events, CancellationToken ct = default)
+        => Task.FromResult(false);
 }
 
 public sealed record BootstrapRemoteStatus(bool HasSnapshot, DateTimeOffset? LastPulledAtUtc);

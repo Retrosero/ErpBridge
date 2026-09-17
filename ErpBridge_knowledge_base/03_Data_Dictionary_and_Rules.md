@@ -101,7 +101,9 @@ Windows Agent'ın yerel SQLite veritabanı — gerçek tablo adları:
 | `local_jobs` | Ağ koptuğunda merkeze iletilecek yerel iş kuyruğu |
 | `checkpoints` | Resume cursor'ları — `sync_scope`: bootstrap için, `erpcursor:<ErpType>` change-log cursor'ı için (opak token), eski `trigger:<TABLO>` satırları reset'te temizlenir |
 | `agent_config` | Ajan ayarları (`erp_database_name`, `ErpType`, Firma/Şube/Depo No, Bağlantı Stringi). Secret alanlar DPAPI ile şifreli |
-| `schema_version` | Migration versiyonu |
+| `agent_log_outbox` | *(Log Merkezi L3c)* Ajanın tanılama olayları, gönderilene kadar: `event_id` (tekil), `occurred_at(+_ms)`, `severity`, `kind`, `operation`, `message`, `exception_type`, `stack_trace`, `app_version`, `os_version`, `machine_name`, `correlation_id`, `properties_json`, `source` (`windows_service`/`windows_agent`), `fingerprint`, `repeat_count`. En çok 1.000 satır / 7 gün (`IAgentLogStore`), fazlası en eskiden silinir |
+| `agent_log_sent` | *(Log Merkezi L3c)* Kısma belleği: parmak izi başına son gönderim zamanı (`sent_at_ms`) ve o pencerede bastırılan tekrar sayısı. Aynı parmak izi 10 dakikada bir kez gönderilir |
+| `schema_version` | Migration versiyonu (3: tanılama kuyruğu) |
 
 ---
 

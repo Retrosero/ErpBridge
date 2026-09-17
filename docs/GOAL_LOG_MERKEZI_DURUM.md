@@ -1,6 +1,6 @@
 # Goal Durumu — Log Merkezi
 
-Son güncelleme: 2026-09-17 (L0b-d PR'ı)
+Son güncelleme: 2026-09-18 (L3c)
 Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -15,14 +15,14 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L0 — Temel: birleşik model + iz kimliği | 6 | 6 | ✅ |
 | L1 — Log Merkezi v1 (Admin) | 3 | 3 | ✅ |
 | L2 — Sunucu, Portal, Admin logları | 6 | 6 | ✅ |
-| L3 — ERP Windows ajanı | 7 | 2 | 🔄 |
+| L3 — ERP Windows ajanı | 7 | 3 | 🔄 |
 | L4 — Sipariş Cepte | 8 | 0 | ⬜ |
 | L5 — Log Merkezi v2 | 6 | 0 | ⬜ |
 | L6 — Denetim, tanılama, saklama | 4 | 0 | ⬜ |
 | L7 — Uyarılar | 2 | 0 | ⬜ |
 | L8 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** L2 — sunucu, Portal, Admin logları
+**Şu anki görev:** L3d — raporlanmayan ajan hatalarının bağlanması
 
 ---
 
@@ -47,7 +47,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L2f | Admin hata sınırı + loglama | ✅ | #72 | `AdminErrorBoundary`, `/Error`, aynı işleyici ve log gönderimi |
 | L3a | Ajan log yapılandırması + sürüm | ✅ | [#71](https://github.com/Retrosero/ErpBridge/pull/71) | `AgentSerilog` (servis + masaüstü ortak, sink'ler kodda), `AgentLogLocation` (EXE yanı → ProgramData → TEMP), `VersionPrefix` 1.1.0. Kullanılmayan maskesiz `CreateLoggerFactory` silindi. **Sapma:** CI derleme numarası yerine elle artırılan `VersionPrefix` (ajan derlemeleri CI'da paketlenmiyor) |
 | L3b | Ajan maskeleme düzeltmeleri | ✅ | [#71](https://github.com/Retrosero/ErpBridge/pull/71) | Yazıcıları tek tek düzeltmek yerine çıkışta maskeleme: `MaskingTextFormatter` tüm satırı (istisna dahil) `ConnectionStringMasker.MaskSecrets`'ten geçirir. Test, `MaskPassword`'ün satır sonunu aşıp istisna türünü yuttuğunu yakaladı — düzeltildi |
-| L3c | Ajan olay kuyruğu + `/agents/logs/batch` | ⬜ | | |
+| L3c | Ajan olay kuyruğu + `/agents/logs/batch` | ✅ | #106 | LocalStore migration 3: `agent_log_outbox` (en çok 1.000 olay / 7 gün) + `agent_log_sent` (kısma belleği). `Core/Logging`: `IAgentLogReporter` (maskeleme, seviye/tür normalizasyonu, parmak izi) ve `AgentLogUploader` (50'lik parti, heartbeat turunda; sunucu almazsa kuyrukta kalır ve **Warning**). Aynı parmak izi 10 dakikada bir gönderilir, arada `repeat_count` artar; kuyrukta bekleyen aynı hata yeni satır açmaz. Sunucu `POST /api/v1/agents/logs/batch` (1–50, `LogEventWriter`, `(Source, EventId)` ile tekrar saklanmaz, `source` gövdeden ama firma/ajan token'dan); eski `/agents/telemetry` duruyor. Parmak izi ajan tarafında sayı/tırnaklı metin temizlenerek hesaplanır (sunucunun grup tarifiyle aynı fikir). Testler: kuyruk sırası/kısma/budama (LocalStore), raporlayıcı maskeleme + yükleyici çevrimdışı/çevrimiçi (Core), uç (CentralApi). **Not:** olayları üretecek çağrı noktaları L3d'de bağlanıyor; şu an yalnız altyapı |
 | L3d | Raporlanmayan ajan hatalarının bağlanması | ⬜ | | |
 | L3e | `AGENT_SYNC_ROUND` | ⬜ | | |
 | L3f | Heartbeat zenginleştirme + geçmiş | ⬜ | | |

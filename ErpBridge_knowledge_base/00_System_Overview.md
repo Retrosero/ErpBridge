@@ -898,6 +898,12 @@ registration ayrı bir composition projesine taşınır.
      sonraki satırdaki istisna türünü yutuyordu); tırnaklı değer (`Password="Top;Secret"`) bütün olarak maskelenir.
    - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.1.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
      (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır.
+   - **Log Merkezi'ne gönderim (L3c):** ajan kodu tanılama olaylarını `Core/Logging/IAgentLogReporter` ile bildirir;
+     olay SQLite'taki `agent_log_outbox`'a yazılır (en çok 1.000 / 7 gün) ve heartbeat turunda `AgentLogUploader`
+     en çok 50'lik partiyle `POST /api/v1/agents/logs/batch`'e gönderir. Aynı parmak izli hata 10 dakikada bir
+     gönderilir, arada yalnız `repeat_count` artar. Raporlama **hiçbir zaman** çağıranın akışını bozmaz: mesaj ve
+     istisna metni `ConnectionStringMasker.MaskSecrets`'ten geçer, kuyruk/gönderim hatası yerel logda uyarıdır.
+     Eski `POST /api/v1/agents/telemetry` ucu tek olay için duruyor.
 
 26. **Telefon belgeleri ERP'ye yalnız çevirici üzerinden yazılır (ERP yazım goal'ü Y0–Y5, 2026-09-17).**
    - **Tek yol:** `mobileDocumentId` taşıyan `sales_order` / `sales_return` / `collection` gövdesini ajan
