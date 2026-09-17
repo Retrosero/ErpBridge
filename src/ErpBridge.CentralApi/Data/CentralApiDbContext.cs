@@ -19,6 +19,9 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<License> Licenses => Set<License>();
     public DbSet<Agent> Agents => Set<Agent>();
+
+    /// <summary>Log Merkezi L3f — a thinned history of agent heartbeats (change or 15 minutes, whichever first).</summary>
+    public DbSet<AgentHeartbeatLogEntry> AgentHeartbeatLog => Set<AgentHeartbeatLogEntry>();
     public DbSet<ErpCompany> ErpCompanies => Set<ErpCompany>();
     public DbSet<AgentCompanyAssignment> AgentCompanyAssignments => Set<AgentCompanyAssignment>();
     public DbSet<Job> Jobs => Set<Job>();
@@ -304,6 +307,34 @@ public sealed class CentralApiDbContext : DbContext
                 .WithMany(t => t.Agents)
                 .HasForeignKey(x => x.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AgentHeartbeatLogEntry>(b =>
+        {
+            b.ToTable("agent_heartbeat_log");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Status).HasMaxLength(64);
+            b.Property(x => x.LastSyncResult).HasMaxLength(32);
+            b.Property(x => x.LastErrorCode).HasMaxLength(64);
+            b.Property(x => x.LastError).HasMaxLength(1024);
+            b.Property(x => x.AppVersion).HasMaxLength(64);
+            b.Property(x => x.HostKind).HasMaxLength(32);
+            b.Property(x => x.ErpKind).HasMaxLength(32);
+            b.Property(x => x.ErpVersion).HasMaxLength(64);
+            // The one query this table exists for: "what did this agent report, newest first".
+            b.HasIndex(x => new { x.AgentId, x.ReceivedAtUtc });
+            b.HasIndex(x => new { x.TenantId, x.ReceivedAtUtc });
+        });
+
+        modelBuilder.Entity<Agent>(b =>
+        {
+            b.Property(x => x.LastAppVersion).HasMaxLength(64);
+            b.Property(x => x.LastHostKind).HasMaxLength(32);
+            b.Property(x => x.LastErpKind).HasMaxLength(32);
+            b.Property(x => x.LastErpVersion).HasMaxLength(64);
+            b.Property(x => x.LastSyncResult).HasMaxLength(32);
+            b.Property(x => x.LastErrorCode).HasMaxLength(64);
+            b.Property(x => x.LastError).HasMaxLength(1024);
         });
 
         modelBuilder.Entity<Job>(b =>

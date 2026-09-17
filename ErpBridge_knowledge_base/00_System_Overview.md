@@ -916,6 +916,14 @@ registration ayrı bir composition projesine taşınır.
      masaüstü `App.OnStartup`/`OnExit` ile; servis için `AppDomain.UnhandledException` → FATAL ve
      `TaskScheduler.UnobservedTaskException` → ERROR (kuyruğa yazımı **beklenir**, süreç ölmeden önce).
      Masaüstü kuyruğu `DesktopHeartbeatService` turunda, kapanışta ise son bir kez boşaltılır.
+   - **Heartbeat (L3f):** ajanın durumu tek yerde tutulur — `Core/Sync/AgentRunStatus`: senkron döngüsü ve iş
+     kuyruğu yazar, heartbeat (hem Windows servisi hem masaüstü) okur. Heartbeat gövdesi `appVersion`,
+     `hostKind` (`service`/`ui`), `erpKind`, `erpVersion`, `lastSyncResult`, `lastErrorCode` taşır; hepsi
+     **isteğe bağlıdır** ve sunucu gönderilmeyen alanla saklı değeri ezmez (eski ajan aynen çalışır).
+     `lastSyncAtUtc` artık "şimdi" değil gerçek son başarılı tur — hiç senkronize etmemiş ajan `null` gönderir;
+     canlılık ayrı kolonda. ERP sürümü adaptörden **6 saatte bir** sorulur (her dakika bir DB gidiş-dönüşü
+     etmesin). Sunucu `agents`'a nullable kolonları yazar, `lastError`'ı bir kez daha maskeler ve geçmişi
+     `agent_heartbeat_log`'a **yalnız değişimde ya da 15 dakikada bir** satırlar.
    - **Senkron turu ölçümü (L3e):** her tur bir INFO `AGENT_SYNC_ROUND` olayı bildirir (`Core/Logging/AgentSyncRound`).
      Özellikler: `trigger` (`timer`/`manual`/`section` tetikleyicisi), `mode` (`changelog`/`snapshot`/`section`),
      `success`, `durationMs`, `rows`, hareket eden **bölüm başına** `rows.<bölüm>`, `payloadBytes`, `errorCode`.

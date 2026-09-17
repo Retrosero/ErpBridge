@@ -1,6 +1,6 @@
 # Goal Durumu — Log Merkezi
 
-Son güncelleme: 2026-09-18 (L3e)
+Son güncelleme: 2026-09-18 (L3f)
 Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -15,14 +15,14 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L0 — Temel: birleşik model + iz kimliği | 6 | 6 | ✅ |
 | L1 — Log Merkezi v1 (Admin) | 3 | 3 | ✅ |
 | L2 — Sunucu, Portal, Admin logları | 6 | 6 | ✅ |
-| L3 — ERP Windows ajanı | 7 | 5 | 🔄 |
+| L3 — ERP Windows ajanı | 7 | 6 | 🔄 |
 | L4 — Sipariş Cepte | 8 | 0 | ⬜ |
 | L5 — Log Merkezi v2 | 6 | 0 | ⬜ |
 | L6 — Denetim, tanılama, saklama | 4 | 0 | ⬜ |
 | L7 — Uyarılar | 2 | 0 | ⬜ |
 | L8 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** L3f — heartbeat zenginleştirme (D11)
+**Şu anki görev:** L3g — `jobs.CorrelationId` ve uçtan uca iz kimliği
 
 ---
 
@@ -50,7 +50,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L3c | Ajan olay kuyruğu + `/agents/logs/batch` | ✅ | #106 | LocalStore migration 3: `agent_log_outbox` (en çok 1.000 olay / 7 gün) + `agent_log_sent` (kısma belleği). `Core/Logging`: `IAgentLogReporter` (maskeleme, seviye/tür normalizasyonu, parmak izi) ve `AgentLogUploader` (50'lik parti, heartbeat turunda; sunucu almazsa kuyrukta kalır ve **Warning**). Aynı parmak izi 10 dakikada bir gönderilir, arada `repeat_count` artar; kuyrukta bekleyen aynı hata yeni satır açmaz. Sunucu `POST /api/v1/agents/logs/batch` (1–50, `LogEventWriter`, `(Source, EventId)` ile tekrar saklanmaz, `source` gövdeden ama firma/ajan token'dan); eski `/agents/telemetry` duruyor. Parmak izi ajan tarafında sayı/tırnaklı metin temizlenerek hesaplanır (sunucunun grup tarifiyle aynı fikir). Testler: kuyruk sırası/kısma/budama (LocalStore), raporlayıcı maskeleme + yükleyici çevrimdışı/çevrimiçi (Core), uç (CentralApi). **Not:** olayları üretecek çağrı noktaları L3d'de bağlanıyor; şu an yalnız altyapı |
 | L3d | Raporlanmayan ajan hatalarının bağlanması | ✅ | #107 | **Sapma (bilinçli):** goal metni ~15 çağrı noktasını tek tek donatmayı söylüyordu; onun yerine `AgentLogCentreSink` Serilog hattına takıldı ve **WARN+ her satır** raporlayıcıya gidiyor. Gerekçe: listedeki yolların tamamı zaten `ILogger` ile uyarı/hata yazıyor, tek tek donatmak hem bu 15'i kapsar hem de **16.'sını unutur**. Kapsanan: senkron döngüsü, bootstrap, change-log, Mikro bağlantı/sürüm, token yenileme, notify, heartbeat, `AgentWorker` + yerel kuyruk + ack, mutabakat alarmları, WPF `Success=false` dalları ve `RunSyncDeltaAsync`. Tür `Kind` özelliğinden ya da sınıf adından (`MikroAdapter` → `MIKRO_ADAPTER`); `Operation`/`CorrelationId` taşınır. Geri besleme yok (raporlayıcı/yükleyici hariç tutulur; `LogCentreHandled` kapsamı ikinci kaydı keser). Açık olaylar: `AGENT_STARTED` (sürüm/ERP türü/ERP veritabanı) + `AGENT_STOPPING` (servis `AgentLifecycleWorker`, masaüstü `App`), `AppDomain` → FATAL, `TaskScheduler` → ERROR (süreç ölmeden kuyruğa yazılması beklenir). Polly yeniden denemeleri artık WARN yazıyor (önceden `onRetry` boş bir yer tutucuydu). **Düzeltilen boşluk:** WPF `PushSectionAsync` hatası yalnız rozeti kırmızıya çeviriyordu, hiçbir yere yazmıyordu. Masaüstü kuyruğu heartbeat turunda ve kapanışta boşalır. Testler: `AgentLogCentreSinkTests` (seviye eşiği, tür türetme, `Kind`/`Operation`/`CorrelationId`, geri besleme yok, raporlayıcı yokken yerel log), `AgentLifecycleWorkerTests` (başlangıç/durma olayları, config okunamazsa da başlangıç olayı) |
 | L3e | `AGENT_SYNC_ROUND` | ✅ | #108 | `Core/Logging/AgentSyncRound`: INFO olay, `trigger` (`timer`/`manual`), `mode` (`changelog`/`snapshot`/`section`), `success`, `durationMs`, `rows`, hareket eden bölüm başına `rows.<bölüm>`, `payloadBytes`, `errorCode`. **Yalnız sayı** — iş verisi yok. Zamanlayıcı turları `AgentSyncLoop`'tan (servis + WPF aynı döngüyü kullanır), operatör düğmeleri `DashboardViewModel`'den (senkronize, sıfırdan kur, elle bootstrap, bölüm gönder). Kuyruğu doldurmaması parmak izine bırakıldı: mesajdaki sayılar temizlendiği için başarılı turlar tek satırda toplanır, başarısız tur/farklı `errorCode` kendi satırını açar. Raporlayıcısı olmayan host sessizce çalışır (testler bare provider ile kurar). Testler: `AgentSyncRoundTests` (bölüm sayıları, boş bölüm yazılmaz, değişiklik günlüğü turu, başarısız tur, parmak izi toplanması, döngüden iki turun bildirilmesi) |
-| L3f | Heartbeat zenginleştirme + geçmiş | ⬜ | | |
+| L3f | Heartbeat zenginleştirme + geçmiş | ✅ | #109 | **Kök sorun:** `HeartbeatWorker.RecordSuccessfulSync`/`RecordError` hiç çağrılmayan boş dikişlerdi; her heartbeat "son senkron = şimdi" diyordu, masaüstü ise hep `null` gönderiyordu. Çözüm: `Core/Sync/AgentRunStatus` — süreç başına tek durum, senkron döngüsü ve iş kuyruğu yazar, iki heartbeat de (servis + WPF) okur. Gövdeye `appVersion`, `hostKind` (`service`/`ui`), `erpKind`, `erpVersion`, `lastSyncResult`, `lastErrorCode` eklendi; **hepsi isteğe bağlı**, gönderilmeyen alan sunucudaki değeri ezmiyor (eski ajan gövdesi aynen kabul ediliyor, testli). ERP sürümü adaptörden 6 saatte bir sorulur. Sunucu: `agents`'a 8 nullable kolon + yeni `agent_heartbeat_log` tablosu (migration `20260917201420_LogMerkeziL3fHeartbeat`, yalnız ekleme); `lastError` ajanda maskelenir, sunucuda bir kez daha maskelenip **saklanır** (önceden atılıyordu). Geçmiş satırı yalnız imza değişiminde (durum, kuyruk derinliği, sonuç, hata, sürümler) ya da son satır 15 dakikadan eskiyse yazılır. Testler: `AgentHeartbeatEnrichmentTests` (zengin gövde + maskeleme, eski gövde, geçmiş seyreltme), `AgentRunStatusTests` (yalnız başarılı tur saati ilerletir, maskeleme, sürüm tazeliği, döngünün durumu yazması). **Panelde gösterim L4–L8'e ait** |
 | L3g | `jobs.CorrelationId` + ajan iz kimliği | ⬜ | | |
 | L4a | Telefon bağlam alanları + gizlilik belgeleri | ⬜ | | |
 | L4b | Telefon iz kimliği | ⬜ | | |

@@ -1,6 +1,7 @@
 using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Logging;
+using ErpBridge.Core.Sync;
 using ErpBridge.Core.Stores;
 using ErpBridge.Agent.UI.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -16,6 +17,7 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
     private readonly IAgentConfigStore _configStore;
     private readonly IAgentTokenService _tokens;
     private readonly AgentLogUploader _logUploader;
+    private readonly AgentRunStatus _status;
     private readonly ILogger<DesktopHeartbeatService> _logger;
     private CancellationTokenSource? _cts;
     private Task? _loop;
@@ -25,12 +27,14 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
         IAgentConfigStore configStore,
         IAgentTokenService tokens,
         AgentLogUploader logUploader,
+        AgentRunStatus status,
         ILogger<DesktopHeartbeatService> logger)
     {
         _remoteApi = remoteApi;
         _configStore = configStore;
         _tokens = tokens;
         _logUploader = logUploader;
+        _status = status;
         _logger = logger;
     }
 
@@ -68,14 +72,26 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
                         await DelaySafe(ct).ConfigureAwait(false);
                         continue;
                     }
+                    // Log Merkezi L3f: the desktop app used to send lastSyncAtUtc = null on every tick, so a
+                    // machine running only the tray app looked like it had never synced. It shares the same
+                    // AgentRunStatus the sync loop writes, so now it reports the real round.
+                    var run = _status.Read();
                     await _remoteApi.SendHeartbeatAsync(new AgentHeartbeat
                     {
                         AgentId = Environment.MachineName,
                         TenantId = config.TenantId ?? string.Empty,
                         Status = "running",
-                        LastSyncAtUtc = null,
+                        LastSyncAtUtc = run.LastSyncAtUtc,
                         QueueDepth = 0,
+                        LastError = run.LastError,
+                        AppVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(),
+                        HostKind = "ui",
+                        ErpKind = config.ErpType.ToString(),
+                        ErpVersion = run.ErpVersion,
+                        LastSyncResult = run.LastSyncResult,
+                        LastErrorCode = run.LastErrorCode,
                     }, ct).ConfigureAwait(false);
+                    _status.ClearError();
 
                     // Log Merkezi L3c: the desktop app has no generic host, so its heartbeat tick is what
                     // drains the diagnostic queue — the same rhythm the service's HeartbeatWorker uses.

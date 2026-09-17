@@ -176,12 +176,73 @@ public static class AgentsEndpoints
 
         // LastHeartbeat is a liveness measurement, not the last successful
         // sync time. A healthy idle agent must remain online in the console.
-        agent.LastHeartbeatAtUtc = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.UtcNow;
+        agent.LastHeartbeatAtUtc = now;
         agent.LastStatus = body.Status;
         agent.LastQueueDepth = body.QueueDepth;
+
+        // Log Merkezi L3f: everything below is optional on the wire. An agent that has not been updated sends
+        // none of it, and then nothing here overwrites what an earlier heartbeat established.
+        agent.LastAppVersion = Keep(agent.LastAppVersion, body.AppVersion, 64);
+        agent.LastHostKind = Keep(agent.LastHostKind, body.HostKind, 32);
+        agent.LastErpKind = Keep(agent.LastErpKind, body.ErpKind, 32);
+        agent.LastErpVersion = Keep(agent.LastErpVersion, body.ErpVersion, 64);
+        agent.LastSyncResult = Keep(agent.LastSyncResult, body.LastSyncResult, 32);
+        agent.LastErrorCode = Keep(agent.LastErrorCode, body.LastErrorCode, 64);
+        // The agent masks its error text; mask again, because a field that reaches the panel and the support
+        // team is the wrong place to trust the client.
+        agent.LastError = Keep(agent.LastError, Mask(body.LastError), 1024);
+        if (body.LastSyncAtUtc is { } syncedAt) agent.LastSyncAtUtc = syncedAt;
+
+        var entry = new AgentHeartbeatLogEntry
+        {
+            TenantId = tokenTenantId,
+            AgentId = agent.Id,
+            ReceivedAtUtc = now,
+            Status = agent.LastStatus,
+            QueueDepth = agent.LastQueueDepth,
+            LastSyncAtUtc = agent.LastSyncAtUtc,
+            LastSyncResult = agent.LastSyncResult,
+            LastErrorCode = agent.LastErrorCode,
+            LastError = agent.LastError,
+            AppVersion = agent.LastAppVersion,
+            HostKind = agent.LastHostKind,
+            ErpKind = agent.LastErpKind,
+            ErpVersion = agent.LastErpVersion,
+        };
+        if (await ShouldKeepHistoryAsync(db, agent.Id, entry, now, ct)) db.AgentHeartbeatLog.Add(entry);
+
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
+
+    /// <summary>
+    /// A heartbeat a minute would be 1.440 history rows a day per agent, nearly all identical. Keep one when
+    /// something a reader would notice changed, or when the last row is older than
+    /// <see cref="AgentHeartbeatLogEntry.MinInterval"/> — enough to prove the agent was alive in between.
+    /// </summary>
+    private static async Task<bool> ShouldKeepHistoryAsync(
+        CentralApiDbContext db, Guid agentId, AgentHeartbeatLogEntry entry, DateTimeOffset now, CancellationToken ct)
+    {
+        var previous = await db.AgentHeartbeatLog
+            .AsNoTracking()
+            .Where(x => x.AgentId == agentId)
+            .OrderByDescending(x => x.ReceivedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        if (previous is null) return true;
+        if (now - previous.ReceivedAtUtc >= AgentHeartbeatLogEntry.MinInterval) return true;
+        return !string.Equals(previous.Signature(), entry.Signature(), StringComparison.Ordinal);
+    }
+
+    /// <summary>The new value when the agent sent one, the stored value when it did not.</summary>
+    private static string? Keep(string? current, string? incoming, int max) =>
+        string.IsNullOrWhiteSpace(incoming)
+            ? current
+            : incoming.Trim()[..Math.Min(incoming.Trim().Length, max)];
+
+    private static string? Mask(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : ErpBridge.Shared.ConnectionStringMasker.MaskSecrets(value);
 
     /// <summary>Most events one batch may carry (Log Merkezi L3c).</summary>
     public const int MaxLogBatch = 50;

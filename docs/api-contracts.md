@@ -18,7 +18,18 @@ Yeni agent kaydı. Body: `{ licenseKey, machineId, agentVersion }`. Yanıt:
 ### POST /api/v1/agents/heartbeat
 
 Periyodik (örn. her 60 sn). Body: `AgentHeartbeat { agentId, tenantId, status,
-lastSyncAtUtc, queueDepth, lastError? }`. Yanıt: 204.
+lastSyncAtUtc, queueDepth, lastError? }` **+ (Log Merkezi L3f, hepsi isteğe bağlı)**
+`appVersion`, `hostKind` (`service`/`ui`), `erpKind`, `erpVersion`, `lastSyncResult`
+(`ok`/`failed`), `lastErrorCode`. Yanıt: 204.
+
+Kimlik ve firma yalnız token'dan okunur. Yeni alanların hiçbiri zorunlu değildir:
+**eski gövde aynen kabul edilir** ve gönderilmeyen bir alan sunucuda saklı değeri
+**silmez**. `lastSyncAtUtc` artık "şimdi" değil, ajanın gerçekten tamamladığı son
+senkron turudur (hiç senkronize etmemiş ajan `null` gönderir); canlılık ölçüsü
+`agents.last_heartbeat_at`'tir. `lastError` ajanda maskelenir, sunucuda bir kez daha
+maskelenerek saklanır. Her heartbeat `agent_heartbeat_log`'a satır **yazmaz**: satır
+ancak okunabilir bir şey değiştiğinde (durum, kuyruk derinliği, sürüm, hata) ya da son
+satır 15 dakikadan eskiyse yazılır.
 
 ### POST /api/v1/agents/telemetry
 
