@@ -15,6 +15,12 @@ Tüm endpoint'ler **outbound** çağrılır; agent inbound port açmaz.
 Yeni agent kaydı. Body: `{ licenseKey, machineId, agentVersion }`. Yanıt:
 `{ agentId, jwt, tenantId }`.
 
+*(Log Merkezi L3g)* Ajanın yaptığı **her** istek `X-Correlation-Id` taşır. Bir iş
+işlenirken bu, işin `correlationId`'sidir (`GET /jobs/pending` yanıtındaki alan);
+iş dışındaki çağrılar taze bir kimlik üretir. `POST /api/v1/ingest/jobs`'a gelen
+başlık `jobs.correlation_id`'ye yazılır; istemci göndermezse ara katman üretir ve
+yanıt başlığında döner.
+
 ### POST /api/v1/agents/heartbeat
 
 Periyodik (örn. her 60 sn). Body: `AgentHeartbeat { agentId, tenantId, status,

@@ -760,6 +760,32 @@ public class HttpRemoteApiClientTests
             "the renewed token must win over the statically configured one");
     }
 
+    /// <summary>
+    /// Log Merkezi L3g: every call the agent makes carries a trace id, and inside a job it is the job's own —
+    /// so the phone's request, the ERP write and the ack are one search instead of three timestamps.
+    /// </summary>
+    [Fact]
+    public async Task Every_request_carries_a_trace_id_and_a_job_lends_it_its_own()
+    {
+        var sent = new List<string?>();
+        var (client, _) = BuildClient(req =>
+        {
+            sent.Add(req.Headers.TryGetValues(ErpBridge.Core.Logging.AgentCorrelation.HeaderName, out var values)
+                ? values.FirstOrDefault() : null);
+            return RespondJson(req, HttpStatusCode.NoContent, new { });
+        });
+
+        await client.SendAckAsync(new JobAck { JobId = "job-1", Status = "succeeded" });
+        using (ErpBridge.Core.Logging.AgentCorrelation.Begin("phone-2f6c:order-99"))
+            await client.SendAckAsync(new JobAck { JobId = "job-2", Status = "failed" });
+        await client.SendAckAsync(new JobAck { JobId = "job-3", Status = "succeeded" });
+
+        sent.Should().HaveCount(3);
+        sent[0].Should().NotBeNullOrWhiteSpace("a call outside a job still gets an id of its own");
+        sent[1].Should().Be("phone-2f6c:order-99");
+        sent[2].Should().NotBe("phone-2f6c:order-99", "the scope ended with the job");
+    }
+
     private static (HttpRemoteApiClient Client, Mock<HttpMessageHandler> Handler) BuildClient(
         Func<HttpRequestMessage, Task<HttpResponseMessage>> responder)
     {

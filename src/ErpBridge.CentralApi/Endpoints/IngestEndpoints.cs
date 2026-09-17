@@ -315,6 +315,8 @@ public static class IngestEndpoints
             EnqueuedAtUtc = DateTimeOffset.UtcNow,
             CreatedByUserId = ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)
                 && Guid.TryParse(http.User.FindFirst("sub")?.Value, out var senderId) ? senderId : null,
+            // Log Merkezi L3g: the thread from the phone's request to the ERP write is tied here, once.
+            CorrelationId = ErpBridge.CentralApi.LogCenter.CorrelationId.Of(http),
         };
 
         // ---- 5c. Route plans and visits are the team's, not the ERP's: booked here for

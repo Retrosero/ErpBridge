@@ -339,6 +339,7 @@ public sealed class CentralApiDbContext : DbContext
 
         modelBuilder.Entity<Job>(b =>
         {
+            b.Property(x => x.CorrelationId).HasMaxLength(ErpBridge.CentralApi.LogCenter.CorrelationId.MaxLength);
             b.ToTable("jobs");
             b.Property(x => x.ErpType).IsRequired().HasMaxLength(32).HasDefaultValue("Mikro");
             b.HasKey(x => x.Id);

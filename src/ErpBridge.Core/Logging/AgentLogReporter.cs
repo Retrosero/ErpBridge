@@ -81,7 +81,8 @@ public sealed class AgentLogReporter : IAgentLogReporter
                 AppVersion: _appVersion,
                 OsVersion: Environment.OSVersion.VersionString,
                 MachineName: Environment.MachineName,
-                CorrelationId: Trim(correlationId, 128),
+                // Log Merkezi L3g: whatever the agent is doing right now names the event, unless the caller said.
+                CorrelationId: Trim(correlationId ?? AgentCorrelation.Current, 128),
                 PropertiesJson: Properties(properties),
                 Source: _source,
                 Fingerprint: AgentLogFingerprint.Of(_source, NormalizeKind(kind), exception?.GetType().FullName, operation, text));
