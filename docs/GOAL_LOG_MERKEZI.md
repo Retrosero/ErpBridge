@@ -64,12 +64,9 @@ firma/seviye/tür filtresiyle gösteriyor. `change_set_audit_log` (365 gün) ve 
 
 ## 1. Yetkiler
 
-> **Kullanıcı onayı bekleniyor.** Önceki goal'lerde verilen yetkilerin bu belge için de geçerli olup olmadığı
-> sorulacak. Onay gelene kadar: yerel dal + commit serbest; **push, PR, merge, Play yüklemesi sorulur.**
+Kullanıcı 2026-09-17'de onayladı ("Evet, hepsi geçerli"):
 
-Önerilen (önceki goal'lerle aynı):
-
-| Yetki | Öneri |
+| Yetki | Karar |
 |---|---|
 | Dala push, PR açma | Serbest |
 | CI yeşil + inceleme yorumları çözülmüşken `main`'e squash-merge + dalı silme | Serbest (ErpBridge'de `main` → Coolify otomatik canlı dağıtım) |

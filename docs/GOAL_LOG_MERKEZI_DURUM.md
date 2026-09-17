@@ -1,6 +1,6 @@
 # Goal Durumu — Log Merkezi
 
-Son güncelleme: 2026-09-17 (plan yazıldı, yetki onayı bekleniyor)
+Son güncelleme: 2026-09-17 (plan yazıldı, yetkiler onaylandı)
 Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -22,7 +22,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L7 — Uyarılar | 2 | 0 | ⬜ |
 | L8 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** L0a — plan dalı (yerelde commit; push için yetki onayı bekleniyor)
+**Şu anki görev:** L0a — plan PR'ı
 
 ---
 
@@ -79,5 +79,4 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 ---
 
 ## Seni Bekleyenler
-- **Yetki onayı:** bu goal için push / PR / yeşil CI'da merge / Play internal yetkileri (plan §1).
 - **K1:** Admin konsolu ortak oturum (`TokenStore` tekil) açığı — test aşaması bittiğinde ayrı iş olarak kapatılacak.
