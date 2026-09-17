@@ -82,6 +82,7 @@ public sealed class MobileDocumentTranslator
         if (!body.TryGetProperty("mobileDocumentId", out var id) || id.ValueKind != JsonValueKind.String
             || !string.Equals(id.GetString(), externalId, StringComparison.Ordinal))
             return MobileTranslation.Fail(ErpWriteError.DocumentIdMismatch());
+        if (HasNonText(body, BodyTextFields)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
 
         return documentType.Trim().ToLowerInvariant() switch
         {
@@ -115,6 +116,7 @@ public sealed class MobileDocumentTranslator
         for (var i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
+            if (HasNonText(line, LineTextFields)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
             var stockCode = Text(line, "productCode") ?? Text(line, "stockCode");
             if (stockCode is null) return MobileTranslation.Fail(ErpWriteError.MissingStockCode(i + 1));
             if (Decimal(line, "quantity") is not > 0) return MobileTranslation.Fail(ErpWriteError.InvalidQuantity(i + 1));
@@ -234,6 +236,7 @@ public sealed class MobileDocumentTranslator
         for (var i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
+            if (HasNonText(line, LineTextFields)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
             var stockCode = Text(line, "productCode") ?? Text(line, "stockCode");
             if (stockCode is null) return MobileTranslation.Fail(ErpWriteError.MissingStockCode(i + 1));
             if (Decimal(line, "quantity") is not > 0) return MobileTranslation.Fail(ErpWriteError.InvalidQuantity(i + 1));
@@ -299,6 +302,10 @@ public sealed class MobileDocumentTranslator
         var result = new List<CollectionPayment>(payments.Count);
         foreach (var payment in payments)
         {
+            if (HasNonText(payment, PaymentTextFields)
+                || (payment.TryGetProperty("cheque", out var chequeBody) && chequeBody.ValueKind == JsonValueKind.Object && HasNonText(chequeBody, DetailTextFields))
+                || (payment.TryGetProperty("note", out var noteBody) && noteBody.ValueKind == JsonValueKind.Object && HasNonText(noteBody, DetailTextFields)))
+                return (null, ErpWriteError.InvalidDocument());
             var methodText = Text(payment, "method");
             CollectionMethod? method = Normalize(methodText) switch
             {
@@ -446,8 +453,23 @@ public sealed class MobileDocumentTranslator
             JsonValueKind.String when decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) => parsed,
             _ => null,
         };
-        return number is { } checkedNumber && Math.Abs(checkedNumber) <= MaxNumber ? checkedNumber : null;
+        return number is { } checkedNumber && checkedNumber >= -MaxNumber && checkedNumber <= MaxNumber ? checkedNumber : null;
     }
+
+    // Text fields that choose where money goes or what it is (codes, currency, payment kind) must never
+    // fall back to a default because the phone sent them with the wrong JSON type (PR #81 Codex).
+    private static readonly string[] BodyTextFields =
+        ["customerCode", "currency", "paymentType", "settlementMethod", "cashCode", "bankCode", "salespersonCode", "occurredAt", "description"];
+
+    private static readonly string[] LineTextFields = ["productCode", "stockCode", "note", "reason"];
+
+    private static readonly string[] PaymentTextFields = ["method", "cashCode", "bankCode", "dueDate"];
+
+    private static readonly string[] DetailTextFields = ["no", "bankName", "branch", "accountNo", "drawer", "debtor", "dueDate"];
+
+    /// <summary>Whether any of the fields is present with a JSON type other than string or null.</summary>
+    private static bool HasNonText(JsonElement element, IEnumerable<string> fields) =>
+        fields.Any(f => element.TryGetProperty(f, out var value) && value.ValueKind is not (JsonValueKind.String or JsonValueKind.Null));
 
     /// <summary>An optional number that is there (and not JSON null) but is not a usable number.</summary>
     private static bool MalformedNumber(JsonElement element, string name, bool integer = false) =>

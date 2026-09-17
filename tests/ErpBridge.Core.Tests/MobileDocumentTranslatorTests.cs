@@ -259,6 +259,34 @@ public class MobileDocumentTranslatorTests
             .Should().Be(ErpWriteError.InvalidAmountCode);
     }
 
+    [Theory]
+    [InlineData("sales_order", "\"paymentType\": \"Cari Borç\"", "\"paymentType\": \"Kredi Kartı\", \"bankCode\": 13")]
+    [InlineData("sales_order", "\"paymentType\": \"Cari Borç\"", "\"paymentType\": 1")]
+    [InlineData("sales_order", "\"amount\": 684.00,", "\"amount\": 684.00, \"currency\": 840,")]
+    [InlineData("sales_order", "\"productCode\": \"B575\"", "\"productCode\": 575")]
+    [InlineData("sales_return", "\"settlementMethod\": \"Cari Alacak\"", "\"settlementMethod\": [\"Nakit\"]")]
+    [InlineData("collection", "\"bankCode\": \"13\"", "\"bankCode\": 13")]
+    [InlineData("collection", "\"no\": \"27703\"", "\"no\": 27703")]
+    public void A_code_sent_with_the_wrong_json_type_is_refused_not_replaced_by_the_default(string documentType, string replace, string with)
+    {
+        var (body, id) = documentType switch
+        {
+            "sales_order" => (Sale, "MOB-SO-1"),
+            "sales_return" => (Return, "MOB-SR-1"),
+            _ => (Collection, "MOB-TH-1"),
+        };
+        body.Should().Contain(replace);
+
+        _sut.Translate(documentType, id, body.Replace(replace, with), Context()).Error!.Code.Should().Be(ErpWriteError.InvalidDocumentCode);
+    }
+
+    [Fact]
+    public void The_smallest_decimal_is_refused_without_overflowing()
+    {
+        _sut.Translate("sales_order", "MOB-SO-1", Sale.Replace("\"listUnitPrice\": 400.00", "\"listUnitPrice\": -79228162514264337593543950335"), Context())
+            .Error!.Code.Should().Be(ErpWriteError.InvalidAmountCode);
+    }
+
     [Fact]
     public void A_zero_total_return_pays_nothing_out()
     {
