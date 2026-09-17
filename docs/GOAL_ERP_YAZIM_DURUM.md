@@ -14,7 +14,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 |---|---|---|---|
 | Y0 — Referans ve temel düzeltmeler | 5 | 5 | ✅ |
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 1 | 🔄 |
-| Y2 — Ajan: telefon belgesi → komut | 4 | 0 | ⬜ |
+| Y2 — Ajan: telefon belgesi → komut | 4 | 2 | 🔄 |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
 | Y4 — Sipariş Cepte | 6 | 0 | ⬜ |
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
@@ -46,10 +46,10 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
 | Y1d | `erpContext` kiralama yanıtında | ⬜ | | |
 | Y1e | Kiralama süresi + geçici hata yeniden denemesi | ⬜ | | |
-| Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ⬜ | | |
+| Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ✅ | [#79](https://github.com/Retrosero/ErpBridge/pull/79) | `Erp.Abstractions/Documents/MobileDocumentCommands.cs`: ortak `ErpDocumentHeader` + `SalesDocumentCommand` / `SalesReturnCommand` / `CollectionCommand`. `IErpAdapter`'a varsayılan gövdeli üç metot (`NotImplemented` sonucu) — Logo iskeleti değişmeden derlenir ve reddeder (seam testi). **Sapma:** iade kondisyonu yüzde değil `ConditionRatio` (0..1, telefonun `conditionPercent` alanı zaten oran); karma ödemede tahsilat serisi komutta (`ExtraPaymentsSeries`) |
 | Y2b | `MobileDocumentTranslator` | ⬜ | | |
 | Y2c | `AgentWorker` yeni yol + `retryable` | ⬜ | | |
-| Y2d | Türkçe hata kataloğu | ⬜ | | |
+| Y2d | Türkçe hata kataloğu | ✅ | [#80](https://github.com/Retrosero/ErpBridge/pull/80) | `Shared/ErpWriteError`: 23 kod, her birine tek fabrika; mesajlar yalnız kod ve fark tutarı taşır. Yeniden denenebilir yalnız `ERP_UNAVAILABLE` ve `ERP_CONTEXT_MISSING` (sunucu güncellenince kendiliğinden çözülür). Test: her sabit için tek fabrika, kodlar tekil |
 | Y3a | `MikroWriteSession` + idempotency + seri/sıra | ⬜ | | |
 | Y3b | Lookup + fiyat/iskonto/KDV hesabı | ⬜ | | |
 | Y3c | Satış faturası (açık + kapalı) | ⬜ | | |
