@@ -24,6 +24,18 @@ public static class JobsEndpoints
     private const int DefaultTake = 50;
     private const int MaxTake = 200;
 
+    /// <summary>How long an agent owns a leased job before another lease may take it (goal ERP yazım Y1e).</summary>
+    public static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(10);
+
+    /// <summary>Leases a job gets before it is given up as failed.</summary>
+    public const int MaxAttempts = 10;
+
+    /// <summary>Wait before the next attempt after a retryable failure, by attempt number (the last repeats).</summary>
+    public static readonly TimeSpan[] RetryDelays =
+        [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(4), TimeSpan.FromMinutes(8), TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)];
+
+    public static TimeSpan RetryDelay(int attempt) => RetryDelays[Math.Clamp(attempt, 1, RetryDelays.Length) - 1];
+
     /// <summary>Register an <see cref="IEndpointRouteBuilder"/> extension that maps both endpoints.</summary>
     public static IEndpointRouteBuilder MapJobsEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -50,6 +62,8 @@ public static class JobsEndpoints
         [FromQuery] string? type,
         HttpContext http,
         [FromServices] CentralApiDbContext db,
+        [FromServices] IWebhookDispatcher webhooks,
+        [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse,
         CancellationToken ct)
     {
         if (!http.User.TryGetTenantId(out var tenantId))
@@ -57,8 +71,28 @@ public static class JobsEndpoints
                 new ApiError { ErrorCode = "INVALID_TOKEN", Message = "JWT missing tenant claim." });
 
         var takeClamped = Math.Clamp(take ?? DefaultTake, 1, MaxTake);
+        var now = (http.RequestServices.GetService<TimeProvider>() ?? TimeProvider.System).GetUtcNow();
+        var nowMs = now.ToUnixTimeMilliseconds();
+
+        // A job whose agent kept dying on it is given up instead of being leased forever.
+        var abandoned = await db.Jobs
+            .Where(j => j.TenantId == tenantId && j.Status == JobStatus.Processing
+                        && j.LeasedUntilMs != null && j.LeasedUntilMs <= nowMs && j.RetryCount >= MaxAttempts)
+            .ToListAsync(ct);
+        foreach (var job in abandoned)
+        {
+            job.Status = JobStatus.Failed;
+            job.CompletedAtUtc = now;
+            job.LeasedUntilMs = null;
+            job.LastError = $"Ajan belgeyi {MaxAttempts} denemede tamamlayamadı.";
+            // Same bookkeeping as a failed ack: warehouse state in a transaction, then webhook and wake-up (PR #83 Codex).
+            await CompleteAsync(db, job, "job.failed", webhooks, warehouse, ct);
+        }
+
         var query = db.Jobs
-            .Where(j => j.TenantId == tenantId && j.Status == JobStatus.Pending);
+            .Where(j => j.TenantId == tenantId
+                        && ((j.Status == JobStatus.Pending && (j.NextAttemptAtMs == null || j.NextAttemptAtMs <= nowMs))
+                            || (j.Status == JobStatus.Processing && j.LeasedUntilMs != null && j.LeasedUntilMs <= nowMs)));
 
         if (!string.IsNullOrWhiteSpace(type))
             query = query.Where(j => j.DocumentType == type);
@@ -68,12 +102,35 @@ public static class JobsEndpoints
             .Take(takeClamped)
             .ToListAsync(ct);
 
+        // Settings are read at lease time, so a mapping fixed before a retry is what the agent gets. They are
+        // read before the lease is saved: a failed read must not leave jobs Processing with no agent (PR #82 Codex).
+        var contexts = new Dictionary<Guid, JobErpContextResponse>();
+        if (leased.Count > 0 && await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId && t.DataSource == TenantDataSources.Erp, ct))
+        {
+            var settings = await db.ErpWriteSettings.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
+            var creatorIds = leased.Where(j => j.CreatedByUserId is not null).Select(j => j.CreatedByUserId!.Value).Distinct().ToList();
+            var mappings = await db.MobileUserErpMappings.AsNoTracking()
+                .Where(m => m.TenantId == tenantId && creatorIds.Contains(m.UserId)).ToDictionaryAsync(m => m.UserId, ct);
+            var usernames = await db.MobileUsers.AsNoTracking()
+                .Where(u => u.TenantId == tenantId && creatorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Username, ct);
+            foreach (var job in leased)
+            {
+                var creator = job.CreatedByUserId;
+                contexts[job.Id] = ErpBridge.CentralApi.ErpWrite.ErpWriteContextBuilder.Build(
+                    settings,
+                    creator is { } id && mappings.TryGetValue(id, out var mapping) ? mapping : null,
+                    creator is { } uid && usernames.TryGetValue(uid, out var username) ? username : null);
+            }
+        }
+
         if (leased.Count > 0)
         {
             foreach (var job in leased)
             {
                 job.Status = JobStatus.Processing;
                 job.RetryCount += 1;
+                job.LeasedUntilMs = nowMs + (long)LeaseDuration.TotalMilliseconds;
+                job.NextAttemptAtMs = null;
             }
             await db.SaveChangesAsync(ct);
         }
@@ -86,6 +143,8 @@ public static class JobsEndpoints
                 DocumentType = j.DocumentType,
                 Payload = j.PayloadJson,
                 EnqueuedAtUtc = j.EnqueuedAtUtc,
+                Attempt = j.RetryCount,
+                ErpContext = contexts.GetValueOrDefault(j.Id),
             })
             .ToList();
         return JsonResults.Ok(response);
@@ -124,6 +183,17 @@ public static class JobsEndpoints
             return Results.NoContent();
         }
 
+        // An agent whose lease expired and was handed to another agent must not overwrite that lease's
+        // outcome (PR #83 Codex). Agents that send no attempt keep the old behaviour.
+        if (body.Attempt is { } attempt && attempt != job.RetryCount)
+        {
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
+            {
+                ErrorCode = "STALE_LEASE",
+                Message = "This job was leased again after this attempt; the result was not applied.",
+            });
+        }
+
         var ack = new JobAckRecord
         {
             JobId = job.Id,
@@ -141,12 +211,24 @@ public static class JobsEndpoints
         // before any further mutations on `job`. The dispatcher captures
         // these into the delivery row verbatim.
         var eventType = string.Empty;
+        var clock = http.RequestServices.GetService<TimeProvider>() ?? TimeProvider.System;
+        job.LeasedUntilMs = null;
         if (string.Equals(body.Status, "succeeded", StringComparison.OrdinalIgnoreCase))
         {
             job.Status = JobStatus.Succeeded;
             job.CompletedAtUtc = DateTimeOffset.UtcNow;
             job.LastError = null;
             eventType = "job.succeeded";
+        }
+        else if (string.Equals(body.Status, "failed", StringComparison.OrdinalIgnoreCase)
+                 && body.Retryable == true && job.RetryCount < MaxAttempts)
+        {
+            // The ERP was unreachable (goal ERP yazım Y1e): the same document may well go through later.
+            job.Status = JobStatus.Pending;
+            job.CompletedAtUtc = null;
+            job.NextAttemptAtMs = clock.GetUtcNow().Add(RetryDelay(job.RetryCount)).ToUnixTimeMilliseconds();
+            job.LastError = body.ErrorMessage ?? body.ErrorCode ?? "Agent reported a retryable failure.";
+            ack.Status = "retry";
         }
         else if (string.Equals(body.Status, "failed", StringComparison.OrdinalIgnoreCase))
         {
@@ -160,7 +242,19 @@ public static class JobsEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_STATUS", Message = "status must be 'succeeded' or 'failed'." });
         }
 
-        // The warehouse sees whether the order reached the ERP (V2, Faz 47); same transaction as the ack.
+        await CompleteAsync(db, job, eventType, webhooks, warehouse, ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Saves a job's new state: the warehouse sees whether the order reached the ERP (V2, Faz 47) in the
+    /// same transaction, then terminal webhooks go out and the warehouse page wakes up.
+    /// </summary>
+    /// <param name="eventType"><c>job.succeeded</c>, <c>job.failed</c>, or empty when the job is not terminal.</param>
+    private static async Task CompleteAsync(
+        CentralApiDbContext db, Job job, string eventType, IWebhookDispatcher webhooks,
+        ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse, CancellationToken ct)
+    {
         bool orderChanged;
         await using (var transaction = db.Database.IsRelational() && ErpBridge.CentralApi.Warehouse.FulfillmentService.IsQueuedDocument(job.DocumentType)
             ? await db.Database.BeginTransactionAsync(ct)
@@ -188,7 +282,5 @@ public static class JobsEndpoints
                 // never made it past Pending.
             }
         }
-
-        return Results.NoContent();
     }
 }

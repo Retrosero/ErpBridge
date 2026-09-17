@@ -58,4 +58,14 @@ public sealed class Job
     public DateTimeOffset EnqueuedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? CompletedAtUtc { get; set; }
+
+    /// <summary>
+    /// Unix ms after which a <see cref="JobStatus.Processing"/> job may be leased again: the agent
+    /// that took it died or lost its connection (goal ERP yazım Y1e). Null on jobs leased before
+    /// the column existed, which therefore never expire.
+    /// </summary>
+    public long? LeasedUntilMs { get; set; }
+
+    /// <summary>Unix ms before which a <see cref="JobStatus.Pending"/> job waiting to retry is not leased.</summary>
+    public long? NextAttemptAtMs { get; set; }
 }

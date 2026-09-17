@@ -32,10 +32,14 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     // ---- the phone document itself ---------------------------------------------------------
 
     public const string MobileAppUpdateRequiredCode = "MOBILE_APP_UPDATE_REQUIRED";
+    public const string InvalidDocumentCode = "INVALID_DOCUMENT";
+    public const string DocumentIdMismatchCode = "DOCUMENT_ID_MISMATCH";
     public const string MissingCustomerCodeCode = "MISSING_CUSTOMER_CODE";
     public const string MissingStockCodeCode = "MISSING_STOCK_CODE";
     public const string InvalidQuantityCode = "INVALID_QUANTITY";
     public const string InvalidAmountCode = "INVALID_AMOUNT";
+    public const string InvalidDiscountCode = "INVALID_DISCOUNT";
+    public const string InvalidDocumentDateCode = "INVALID_DOCUMENT_DATE";
     public const string UnsupportedCurrencyCode = "UNSUPPORTED_CURRENCY";
     public const string UnsupportedPaymentTypeCode = "UNSUPPORTED_PAYMENT_TYPE";
     public const string MissingChequeDetailsCode = "MISSING_CHEQUE_DETAILS";
@@ -43,6 +47,12 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 
     public static ErpWriteError MobileAppUpdateRequired() =>
         new(MobileAppUpdateRequiredCode, "Bu belge eski bir Sipariş Cepte sürümünden geldi ve ERP'ye doğru işlenemez. Uygulamayı güncelleyip belgeyi yeniden gönderin.");
+
+    public static ErpWriteError InvalidDocument() =>
+        new(InvalidDocumentCode, "Belge okunamadı; bozuk ya da eksik gönderilmiş. Belgeyi telefondan yeniden gönderin.");
+
+    public static ErpWriteError DocumentIdMismatch() =>
+        new(DocumentIdMismatchCode, "Belgenin kendi kimliği iş kimliğiyle aynı değil; aynı belge iki kez yazılmasın diye belge yazılmadı.");
 
     public static ErpWriteError MissingCustomerCode() =>
         new(MissingCustomerCodeCode, "Belgede müşteri kodu yok. Müşteri ERP'de kayıtlı olmalı.");
@@ -55,6 +65,12 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 
     public static ErpWriteError InvalidAmount() =>
         new(InvalidAmountCode, "Belgedeki tutar geçersiz.");
+
+    public static ErpWriteError InvalidDiscount(int lineNo) =>
+        new(InvalidDiscountCode, $"{lineNo}. satırın iskonto ya da kondisyon oranı geçersiz.");
+
+    public static ErpWriteError InvalidDocumentDate() =>
+        new(InvalidDocumentDateCode, "Belge tarihi okunamadı.");
 
     // The phone's raw value is never echoed: a malformed body could carry anything into acks and logs (PR #80 Codex).
     public static ErpWriteError UnsupportedCurrency() =>

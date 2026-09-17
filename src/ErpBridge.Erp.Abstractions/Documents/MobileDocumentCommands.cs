@@ -14,6 +14,7 @@ namespace ErpBridge.Erp.Abstractions.Documents;
 /// <item><description><c>ErpUserNo</c>: ERP user number stamped as creator.</description></item>
 /// <item><description><c>Series</c>: Document series; empty is the ERP's series-less numbering.</description></item>
 /// <item><description><c>ExpectedTotal</c>: The total the phone showed (VAT included); the adapter refuses to write when its own total differs.</description></item>
+/// <item><description><c>ResponsibilityCenterCode</c>, <c>ProjectCode</c>: The company's ERP responsibility center and project stamped on the document; null when the company uses none.</description></item>
 /// </list>
 /// </summary>
 public sealed record ErpDocumentHeader(
@@ -24,7 +25,9 @@ public sealed record ErpDocumentHeader(
     int ErpUserNo,
     string Series,
     string? Description,
-    decimal ExpectedTotal);
+    decimal ExpectedTotal,
+    string? ResponsibilityCenterCode = null,
+    string? ProjectCode = null);
 
 public enum SalesDocumentKind
 {
@@ -70,6 +73,7 @@ public sealed record SalesDocumentLine(
 /// <list type="bullet">
 /// <item><description><c>SettlementAccountCode</c>: Cash-box code for <see cref="SalesSettlement.Cash"/>, bank code for card and transfer; null when open.</description></item>
 /// <item><description><c>ExtraPayments</c>: Payments taken with an open sale that are not a single closing settlement (a part payment, mixed methods). Written as a collection receipt in the same transaction, with <c>ExtraPaymentsSeries</c>.</description></item>
+/// <item><description><c>DeliveryDate</c>: When an order or dispatch note is to be delivered; null means the document day.</description></item>
 /// </list>
 /// </summary>
 public sealed record SalesDocumentCommand(
@@ -82,7 +86,8 @@ public sealed record SalesDocumentCommand(
     string? SettlementAccountCode,
     IReadOnlyList<SalesDocumentLine> Lines,
     IReadOnlyList<CollectionPayment>? ExtraPayments = null,
-    string? ExtraPaymentsSeries = null);
+    string? ExtraPaymentsSeries = null,
+    DateTime? DeliveryDate = null);
 
 public enum ReturnSettlement
 {

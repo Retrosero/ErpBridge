@@ -77,6 +77,47 @@ public sealed class JobResponse
     [JsonPropertyName("documentType")] public string DocumentType { get; set; } = string.Empty;
     [JsonPropertyName("payload")] public string Payload { get; set; } = "{}";
     [JsonPropertyName("enqueuedAtUtc")] public DateTimeOffset EnqueuedAtUtc { get; set; }
+
+    /// <summary>
+    /// Which lease this is (goal ERP yazım Y1e). An agent echoes it in its ack so a result from a lease
+    /// that expired and was handed to another agent is refused with 409 <c>STALE_LEASE</c>.
+    /// </summary>
+    [JsonPropertyName("attempt")] public int Attempt { get; set; }
+
+    /// <summary>
+    /// How to write the job into the company's ERP (goal ERP yazım Y1d); null for a company without an
+    /// ERP. Older agents ignore it. Shape matches <c>ErpBridge.Core.Jobs.ErpWriteContext</c>.
+    /// </summary>
+    [JsonPropertyName("erpContext")] public JobErpContextResponse? ErpContext { get; set; }
+}
+
+public sealed class JobErpContextResponse
+{
+    [JsonPropertyName("salesDocumentKind")] public string SalesDocumentKind { get; set; } = Domain.SalesDocumentKinds.Order;
+    [JsonPropertyName("orderApprovalMode")] public string OrderApprovalMode { get; set; } = Domain.OrderApprovalModes.Approved;
+    [JsonPropertyName("series")] public JobErpSeriesResponse Series { get; set; } = new();
+    [JsonPropertyName("warehouseNo")] public int? WarehouseNo { get; set; }
+    [JsonPropertyName("cashCode")] public string? CashCode { get; set; }
+    [JsonPropertyName("cardBankCode")] public string? CardBankCode { get; set; }
+    [JsonPropertyName("transferBankCode")] public string? TransferBankCode { get; set; }
+    [JsonPropertyName("erpUserNo")] public int? ErpUserNo { get; set; }
+    [JsonPropertyName("salespersonCode")] public string? SalespersonCode { get; set; }
+    [JsonPropertyName("priceListNo")] public int? PriceListNo { get; set; }
+    [JsonPropertyName("chequePortfolioCode")] public string ChequePortfolioCode { get; set; } = Domain.ErpWriteSettings.DefaultChequePortfolioCode;
+    [JsonPropertyName("notePortfolioCode")] public string NotePortfolioCode { get; set; } = Domain.ErpWriteSettings.DefaultNotePortfolioCode;
+    [JsonPropertyName("responsibilityCenterCode")] public string? ResponsibilityCenterCode { get; set; }
+    [JsonPropertyName("projectCode")] public string? ProjectCode { get; set; }
+    [JsonPropertyName("deliveryDayOffset")] public int? DeliveryDayOffset { get; set; }
+    [JsonPropertyName("createdByUsername")] public string? CreatedByUsername { get; set; }
+}
+
+public sealed class JobErpSeriesResponse
+{
+    [JsonPropertyName("order")] public string Order { get; set; } = string.Empty;
+    [JsonPropertyName("dispatch")] public string Dispatch { get; set; } = string.Empty;
+    [JsonPropertyName("invoice")] public string Invoice { get; set; } = string.Empty;
+    [JsonPropertyName("return")] public string Return { get; set; } = string.Empty;
+    [JsonPropertyName("collection")] public string Collection { get; set; } = string.Empty;
 }
 
 /// <summary>POST /api/v1/jobs/ack body.</summary>
@@ -90,6 +131,15 @@ public sealed class JobAckRequest
     [JsonPropertyName("erpDocumentNumber")] public int? ErpDocumentNumber { get; set; }
     [JsonPropertyName("erpRecno")] public int? ErpRecno { get; set; }
     [JsonPropertyName("erpGuid")] public Guid? ErpGuid { get; set; }
+
+    /// <summary>
+    /// With <c>status = failed</c>: the failure may pass by itself (ERP unreachable), so the job goes
+    /// back to the queue with a delay instead of failing. Older agents omit it (terminal failure).
+    /// </summary>
+    [JsonPropertyName("retryable")] public bool? Retryable { get; set; }
+
+    /// <summary>The <c>attempt</c> of the lease this result belongs to; older agents omit it.</summary>
+    [JsonPropertyName("attempt")] public int? Attempt { get; set; }
 }
 
 /// <summary>POST /api/v1/bootstrap body. The whole <see cref="Payload"/> is the
