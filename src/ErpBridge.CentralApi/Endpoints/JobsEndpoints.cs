@@ -78,6 +78,27 @@ public static class JobsEndpoints
             await db.SaveChangesAsync(ct);
         }
 
+        // Settings are read at lease time, so a mapping fixed before a retry is what the agent gets.
+        var contexts = new Dictionary<Guid, JobErpContextResponse>();
+        var isErpTenant = await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId && t.DataSource == TenantDataSources.Erp, ct);
+        if (isErpTenant && leased.Count > 0)
+        {
+            var settings = await db.ErpWriteSettings.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
+            var creatorIds = leased.Where(j => j.CreatedByUserId is not null).Select(j => j.CreatedByUserId!.Value).Distinct().ToList();
+            var mappings = await db.MobileUserErpMappings.AsNoTracking()
+                .Where(m => m.TenantId == tenantId && creatorIds.Contains(m.UserId)).ToDictionaryAsync(m => m.UserId, ct);
+            var usernames = await db.MobileUsers.AsNoTracking()
+                .Where(u => u.TenantId == tenantId && creatorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Username, ct);
+            foreach (var job in leased)
+            {
+                var creator = job.CreatedByUserId;
+                contexts[job.Id] = ErpBridge.CentralApi.ErpWrite.ErpWriteContextBuilder.Build(
+                    settings,
+                    creator is { } id && mappings.TryGetValue(id, out var mapping) ? mapping : null,
+                    creator is { } uid && usernames.TryGetValue(uid, out var username) ? username : null);
+            }
+        }
+
         var response = leased
             .Select(j => new JobResponse
             {
@@ -86,6 +107,7 @@ public static class JobsEndpoints
                 DocumentType = j.DocumentType,
                 Payload = j.PayloadJson,
                 EnqueuedAtUtc = j.EnqueuedAtUtc,
+                ErpContext = contexts.GetValueOrDefault(j.Id),
             })
             .ToList();
         return JsonResults.Ok(response);

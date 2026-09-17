@@ -77,6 +77,38 @@ public sealed class JobResponse
     [JsonPropertyName("documentType")] public string DocumentType { get; set; } = string.Empty;
     [JsonPropertyName("payload")] public string Payload { get; set; } = "{}";
     [JsonPropertyName("enqueuedAtUtc")] public DateTimeOffset EnqueuedAtUtc { get; set; }
+
+    /// <summary>
+    /// How to write the job into the company's ERP (goal ERP yazım Y1d); null for a company without an
+    /// ERP. Older agents ignore it. Shape matches <c>ErpBridge.Core.Jobs.ErpWriteContext</c>.
+    /// </summary>
+    [JsonPropertyName("erpContext")] public JobErpContextResponse? ErpContext { get; set; }
+}
+
+public sealed class JobErpContextResponse
+{
+    [JsonPropertyName("salesDocumentKind")] public string SalesDocumentKind { get; set; } = Domain.SalesDocumentKinds.Order;
+    [JsonPropertyName("orderApprovalMode")] public string OrderApprovalMode { get; set; } = Domain.OrderApprovalModes.Approved;
+    [JsonPropertyName("series")] public JobErpSeriesResponse Series { get; set; } = new();
+    [JsonPropertyName("warehouseNo")] public int? WarehouseNo { get; set; }
+    [JsonPropertyName("cashCode")] public string? CashCode { get; set; }
+    [JsonPropertyName("cardBankCode")] public string? CardBankCode { get; set; }
+    [JsonPropertyName("transferBankCode")] public string? TransferBankCode { get; set; }
+    [JsonPropertyName("erpUserNo")] public int? ErpUserNo { get; set; }
+    [JsonPropertyName("salespersonCode")] public string? SalespersonCode { get; set; }
+    [JsonPropertyName("priceListNo")] public int? PriceListNo { get; set; }
+    [JsonPropertyName("chequePortfolioCode")] public string ChequePortfolioCode { get; set; } = Domain.ErpWriteSettings.DefaultChequePortfolioCode;
+    [JsonPropertyName("notePortfolioCode")] public string NotePortfolioCode { get; set; } = Domain.ErpWriteSettings.DefaultNotePortfolioCode;
+    [JsonPropertyName("createdByUsername")] public string? CreatedByUsername { get; set; }
+}
+
+public sealed class JobErpSeriesResponse
+{
+    [JsonPropertyName("order")] public string Order { get; set; } = string.Empty;
+    [JsonPropertyName("dispatch")] public string Dispatch { get; set; } = string.Empty;
+    [JsonPropertyName("invoice")] public string Invoice { get; set; } = string.Empty;
+    [JsonPropertyName("return")] public string Return { get; set; } = string.Empty;
+    [JsonPropertyName("collection")] public string Collection { get; set; } = string.Empty;
 }
 
 /// <summary>POST /api/v1/jobs/ack body.</summary>
