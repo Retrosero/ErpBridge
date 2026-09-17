@@ -25,6 +25,8 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public const string MissingStockCodeCode = "MISSING_STOCK_CODE";
     public const string InvalidQuantityCode = "INVALID_QUANTITY";
     public const string InvalidAmountCode = "INVALID_AMOUNT";
+    public const string InvalidDiscountCode = "INVALID_DISCOUNT";
+    public const string InvalidDocumentDateCode = "INVALID_DOCUMENT_DATE";
     public const string UnsupportedCurrencyCode = "UNSUPPORTED_CURRENCY";
     public const string UnsupportedPaymentTypeCode = "UNSUPPORTED_PAYMENT_TYPE";
     public const string MissingChequeDetailsCode = "MISSING_CHEQUE_DETAILS";
@@ -44,6 +46,12 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 
     public static ErpWriteError InvalidAmount() =>
         new(InvalidAmountCode, "Belgedeki tutar geçersiz.");
+
+    public static ErpWriteError InvalidDiscount(int lineNo) =>
+        new(InvalidDiscountCode, $"{lineNo}. satırın iskonto ya da kondisyon oranı geçersiz.");
+
+    public static ErpWriteError InvalidDocumentDate() =>
+        new(InvalidDocumentDateCode, "Belge tarihi okunamadı.");
 
     public static ErpWriteError UnsupportedCurrency(string currency) =>
         new(UnsupportedCurrencyCode, $"Yalnız TL belgeler ERP'ye yazılabilir (belgedeki döviz: {currency}).");
