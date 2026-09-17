@@ -27,7 +27,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
   11:24 yedeği (`MikroDB_V15_02_17_09.bak`) üzerine geri yüklendi; dosyalar `F:\Mikro\v15xx\DEMO\DATA\`, mantıksal dosya
   adları `MikroDB_V15_DEMO`/`_log` yapıldı. Doğrulandı: 524 cari, 4.567 stok, 14.394 cari hareket, `fn_VergiYuzde(4)=20`.
   Canlı testler: `ERPBridge_RUN_INTEGRATION=1 ERPBridge_MIKRO_WRITE_DB=MikroDB_V15_DEMO`.
-- İlk kopya `MikroDB_V15_ERPBTEST` (`F:\Mikro\ERPBTEST\`) Mikro'dan açılamadığı için bırakıldı; silinmedi (silme kararı kullanıcının).
+- İlk kopya `MikroDB_V15_ERPBTEST` (`F:\Mikro\ERPBTEST\`) Mikro'dan açılamadığı için bırakıldı; kullanıcı onayıyla 2026-09-17'de silindi (`DROP DATABASE`), izinli yazma listesinden çıkarıldı.
 - `MikroDB_V15_02` canlı firma verisi — **yalnız okuma**.
 
 ---
@@ -115,10 +115,7 @@ HTTP çağrıları). Firma `erp`, kullanıcı `ali` (SALES) belgeleri gönderdi,
 Goal'ün bütün kod görevleri bitti. Kalan adımlar insan kararı veya bu bilgisayarda olmayan erişim ister; **sıra önemlidir**.
 
 ### Hemen
-1. **Ajan lisansını yeniden girin (bu bilgisayar):** ErpBridge Agent UI → Ayarlar → lisans anahtarı (Admin panel → Lisanslar,
-   kiracı `83fb05bf-b540-4086-9130-dd5e5018c94c`). Y6b duman testi sırasında yanlışlıkla silindi; sunucu adresi, `GURBUZ` /
-   `MikroDB_V15_02`, firma 1 / şube 1, Windows kimlik doğrulaması geri yüklendi. Kaza öncesi dosyanın kopyası yok; kaza sonrası
-   kopya `C:\Temp\y6b\agent-live-after-accident.db`.
+1. ~~Ajan lisansını yeniden girin~~ — **yapıldı** (2026-09-17 20:47, kullanıcı girdi; ajan token'ı yenilendi).
 
 ### Canlıya almadan önce (bu sırayla)
 2. **Muhasebeci kontrolü — Mikro ekranında `MikroDB_V15_DEMO`:** `Y6B` serili evraklar — satış faturaları Y6B-1…6 (1 açık,
@@ -139,5 +136,5 @@ Goal'ün bütün kod görevleri bitti. Kalan adımlar insan kararı veya bu bilg
 ### Karar bekleyenler
 6. **e-Fatura / e-Arşiv / e-İrsaliye:** telefon belgesi Mikro'ya e-belge ayrımı yapılmadan yazılıyor (K15); e-belge ofisten
    düzenlenir. Telefonda e-belge mükellefini ayırıp bilgi fişi basmak ayrı bir goal.
-7. **`MikroDB_V15_ERPBTEST`** (ilk test kopyası, Mikro'dan açılamadı) kullanılmıyor — silinmesini isterseniz söyleyin.
+7. ~~`MikroDB_V15_ERPBTEST`~~ — **silindi** (kullanıcı onayı, 2026-09-17).
 8. **Codex incelemesi:** #95–#102 ve siparis_cepte#70–#75 kota nedeniyle Codex'e gönderilmedi; isterseniz toplu inceleme istenebilir.
