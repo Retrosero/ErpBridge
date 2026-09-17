@@ -36,8 +36,40 @@ public sealed class MikroSalesInvoiceWriter(MikroDocumentWriteRunner runner)
         return _runner.RunAsync(
             settings,
             new MikroWriteRequest(DocumentType, header.ExternalId, header.ErpUserNo, settings.DatabaseName),
-            (session, token) => WriteAsync(session, command, token),
+            (session, token) => WriteWithPaymentsAsync(session, command, token),
             ct);
+    }
+
+    /// <summary>
+    /// The invoice and, for money taken with an open sale (a part or mixed payment, D10), the collection
+    /// receipt in the same session: one commit or none (goal ERP yazım Y3h). The ledger records the sale
+    /// only; the receipt names the invoice in its description.
+    /// </summary>
+    public static async Task<MikroWrittenDocument> WriteWithPaymentsAsync(MikroWriteSession session, SalesDocumentCommand command, CancellationToken ct)
+    {
+        if (command.ExtraPayments is { Count: > 0 } && command.Settlement != SalesSettlement.Open)
+            throw new ArgumentException("A sale closed to a cash box or bank takes no separate receipt.", nameof(command));
+
+        var invoice = await WriteAsync(session, command, ct).ConfigureAwait(false);
+        if (command.ExtraPayments is { Count: > 0 } payments)
+        {
+            await MikroCollectionReceiptWriter.WriteAsync(session, ReceiptFor(command, invoice, payments), ct).ConfigureAwait(false);
+        }
+        return invoice;
+    }
+
+    internal static CollectionCommand ReceiptFor(SalesDocumentCommand command, MikroWrittenDocument invoice, IReadOnlyList<CollectionPayment> payments)
+    {
+        var header = command.Header;
+        var invoiceName = string.IsNullOrEmpty(invoice.Series) ? invoice.Number.ToString(System.Globalization.CultureInfo.InvariantCulture) : $"{invoice.Series}-{invoice.Number}";
+        return new CollectionCommand(
+            header with
+            {
+                Series = command.ExtraPaymentsSeries ?? string.Empty,
+                Description = $"{invoiceName} satış faturasının tahsilatı",
+                ExpectedTotal = payments.Sum(p => p.Amount),
+            },
+            payments);
     }
 
     /// <summary>Writes the invoice inside an open session; the caller commits.</summary>
