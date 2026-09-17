@@ -109,6 +109,27 @@ ERP'li firmada iade **satırlı** `sales_return` olarak gönderilir; ayrıca kas
 | `installments`, `surchargeAmount` | Kart taksiti ve vade farkı; vade farkı ayrı hareket yazılmaz, açıklamaya eklenir |
 | vade | Nakit, kart ve havalede belge tarihi |
 
+## Yazım sonucu — `GET /api/v1/ingest/jobs/status` (Y4d)
+
+Telefon gönderdiği belgelerin ERP'deki durumunu sorar: `?externalIds=MOB-SO-1,MOB-TH-2` (ya da tekrar eden parametre),
+en çok 100 kimlik. Kimlik doğrulama `POST /api/v1/ingest/jobs` ile aynı; firma token'dan gelir, başka firmanın ve
+bilinmeyen kimlikler yanıtta yoktur. Onay merkezinden geçen belge onaydan sonra aynı `externalId` ile görünür.
+
+```json
+{ "documents": [
+  { "externalId": "MOB-SO-1", "documentType": "sales_order", "state": "written", "erpDocumentNo": "T-1234", "attempt": 1 },
+  { "externalId": "MOB-TH-2", "documentType": "collection", "state": "retrying", "errorCode": "ERP_UNAVAILABLE",
+    "message": "Mikro'ya ulaşılamadı.", "attempt": 2, "nextAttemptAtMs": 1789650000000 }
+] }
+```
+
+| `state` | Telefonda | Anlam |
+|---|---|---|
+| `pending` | Bekliyor | Kuyrukta ya da ajan yazıyor |
+| `retrying` | Yeniden denenecek | ERP'ye ulaşılamadı; `nextAttemptAtMs`'de yeniden alınır |
+| `written` | Mikro'ya yazıldı: `erpDocumentNo` | Seri-sıra (seri yoksa yalnız sıra) |
+| `failed` | Hata: `message` | Kendiliğinden düzelmez; `errorCode` `ErpWriteError` kataloğundan |
+
 ## Sunucunun iş ile gönderdiği `erpContext`
 
 `GET /api/v1/jobs/pending` yanıtında (Y1d). Kullanıcı eşlemesi firma ayarıyla birleştirilmiş hâlidir:
