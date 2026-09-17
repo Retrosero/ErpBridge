@@ -916,6 +916,13 @@ registration ayrı bir composition projesine taşınır.
      masaüstü `App.OnStartup`/`OnExit` ile; servis için `AppDomain.UnhandledException` → FATAL ve
      `TaskScheduler.UnobservedTaskException` → ERROR (kuyruğa yazımı **beklenir**, süreç ölmeden önce).
      Masaüstü kuyruğu `DesktopHeartbeatService` turunda, kapanışta ise son bir kez boşaltılır.
+   - **Senkron turu ölçümü (L3e):** her tur bir INFO `AGENT_SYNC_ROUND` olayı bildirir (`Core/Logging/AgentSyncRound`).
+     Özellikler: `trigger` (`timer`/`manual`/`section` tetikleyicisi), `mode` (`changelog`/`snapshot`/`section`),
+     `success`, `durationMs`, `rows`, hareket eden **bölüm başına** `rows.<bölüm>`, `payloadBytes`, `errorCode`.
+     **Yalnız sayı taşır** — cari, stok ya da fiyat yok. 20 saniyede bir tur kuyruğu doldurmaz: parmak izi
+     sayıları temizlediği için başarılı turlar tek satırda toplanır (`repeat_count`), başarısız tur ve farklı
+     `errorCode` kendi satırını açar. Zamanlayıcı turları `AgentSyncLoop`'tan, operatörün düğmeleri
+     `DashboardViewModel`'den bildirilir; raporlayıcısı olmayan bir host (ve testler) sessizce çalışmaya devam eder.
 
 26. **Telefon belgeleri ERP'ye yalnız çevirici üzerinden yazılır (ERP yazım goal'ü Y0–Y5, 2026-09-17).**
    - **Tek yol:** `mobileDocumentId` taşıyan `sales_order` / `sales_return` / `collection` gövdesini ajan

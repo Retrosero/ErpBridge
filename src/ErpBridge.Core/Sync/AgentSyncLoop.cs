@@ -1,4 +1,5 @@
 using ErpBridge.Core.Authentication;
+using ErpBridge.Core.Logging;
 using ErpBridge.Core.Stores;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -150,6 +151,11 @@ public sealed class AgentSyncLoop
     {
         var sync = scope.ServiceProvider.GetRequiredService<IBootstrapSyncService>();
         var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+
+        // Log Merkezi L3e: one INFO event per round, counts only. The throttle turns a round every twenty
+        // seconds into one event per window with the repeats counted, so the panel sees the rhythm, not a flood.
+        await Reporter(scope).ReportAsync(AgentSyncRound.Triggers.Timer, result, ct: stoppingToken).ConfigureAwait(false);
+
         if (!result.Success)
         {
             _logger.LogWarning(
@@ -169,6 +175,13 @@ public sealed class AgentSyncLoop
             result.LookupsCount, result.DurationMs);
     }
 
+    /// <summary>
+    /// Optional on purpose: a host without the diagnostic queue (and every test that builds the loop with a
+    /// bare provider) still runs its rounds, it just does not report them.
+    /// </summary>
+    private static IAgentLogReporter? Reporter(IServiceScope scope) =>
+        scope.ServiceProvider.GetService<IAgentLogReporter>();
+
     private static bool IsEmptyResult(BootstrapSyncResult result) =>
         result.CustomersCount == 0 && result.StocksCount == 0 && result.PricesCount == 0
         && result.InventoryCount == 0 && result.OpenOrdersCount == 0
@@ -184,6 +197,7 @@ public sealed class AgentSyncLoop
         // of any vendor type.
         var sync = scope.ServiceProvider.GetRequiredService<IErpChangeLogSyncService>();
         var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+        await Reporter(scope).ReportAsync(AgentSyncRound.Triggers.Timer, result, stoppingToken).ConfigureAwait(false);
 
         if (!result.Success)
         {
