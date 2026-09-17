@@ -411,13 +411,27 @@ public static class MobileEntityAssembler
         var best = priceRows
             .OrderBy(item => AndroidEndpoints.GetInt32(item, "listNumber") == 1 ? 0 : 1)
             .ThenBy(item => AndroidEndpoints.GetInt32(item, "listNumber") ?? int.MaxValue)
-            .Select(item => AndroidEndpoints.GetDecimal(item, "price"))
-            .FirstOrDefault(price => price is > 0);
-        if (best is > 0)
+            .FirstOrDefault(item => AndroidEndpoints.GetDecimal(item, "price") is > 0);
+        if (best.ValueKind == JsonValueKind.Object && AndroidEndpoints.GetDecimal(best, "price") is { } bestPrice)
         {
-            mapped["satis_fiyati"] = best.Value;
-            mapped["price"] = best.Value;
+            mapped["satis_fiyati"] = bestPrice;
+            mapped["price"] = bestPrice;
+            // The list the headline price came from: a sale sends it to the ERP (goal ERP yazım Y4a).
+            mapped["satisFiyatListeNo"] = AndroidEndpoints.GetInt32(best, "listNumber");
         }
+
+        // Every list's price with its number, so the phone can name the ERP list a price came from.
+        mapped["fiyatListeleri"] = priceRows
+            .GroupBy(item => AndroidEndpoints.GetInt32(item, "listNumber") ?? 0)
+            .Where(list => list.Key > 0)
+            .OrderBy(list => list.Key)
+            .Select(list => new Dictionary<string, object?>
+            {
+                ["listNo"] = list.Key,
+                ["name"] = sources.PriceListNames.TryGetValue(list.Key, out var listName) ? listName : $"Liste {list.Key}",
+                ["price"] = list.Select(item => AndroidEndpoints.GetDecimal(item, "price")).First(price => price is > 0)!.Value,
+            })
+            .ToList();
 
         mapped["customPrices"] = priceRows
             .GroupBy(item => AndroidEndpoints.GetInt32(item, "listNumber") ?? 0)

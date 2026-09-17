@@ -26,7 +26,7 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
     {
         var ctx = await SeedAsync("FULL");
         await UploadAsync(ctx, incremental: false,
-            ("stocks", [Stock("S-1", "Kursun Kalem")]),
+            ("stocks", [new { stockCode = "S-1", name = "Kursun Kalem", kdvOrani = 10m }]),
             ("barcodes", [Barcode("8690000000001", "S-1")]),
             ("prices", [Price("S-1", 1, 25.50m), Price("S-1", 3, 22.00m)]),
             ("inventory", [Inventory("S-1", 1, 40), Inventory("S-1", 2, 5)]),
@@ -47,6 +47,11 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
         data.GetProperty("stockByWarehouse").GetProperty("Depo 2").GetInt32().Should().Be(5);
         data.GetProperty("customPrices").GetProperty("Bayi").GetDecimal().Should().Be(22.00m,
             "a price list is labelled with its lookup name");
+        data.GetProperty("satisFiyatListeNo").GetInt32().Should().Be(1, "the headline price names its ERP list");
+        data.GetProperty("fiyatListeleri").EnumerateArray()
+            .Select(l => (l.GetProperty("listNo").GetInt32(), l.GetProperty("name").GetString(), l.GetProperty("price").GetDecimal()))
+            .Should().Equal((1, "Liste 1", 25.50m), (3, "Bayi", 22.00m));
+        data.GetProperty("kdvOrani").GetDecimal().Should().Be(10m, "the ERP's VAT rate travels with the card");
     }
 
     [Fact]

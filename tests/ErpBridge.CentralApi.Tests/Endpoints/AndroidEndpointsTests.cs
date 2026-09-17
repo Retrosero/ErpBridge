@@ -53,7 +53,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-PRODUCT-{suffix}", "Product catalog tenant");
         const string payload = """
             {
-              "stocks": [{"stockCode":"S001","name":"Joined product","barcodes":[]}],
+              "stocks": [{"stockCode":"S001","name":"Joined product","barcodes":[],"kdvOrani":0}],
               "barcodes": [{"barcode":"869000000001","stockCode":"S001","unitPointer":1}],
               "prices": [
                 {"stockCode":"S001","listNumber":2,"price":90.0},
@@ -84,6 +84,11 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         product.GetProperty("satis_fiyati").GetDecimal().Should().Be(125.5m);
         product.GetProperty("customPrices").GetProperty("SATIŞ FİYATI").GetDecimal().Should().Be(125.5m);
         product.GetProperty("customPrices").GetProperty("E-TİCARET").GetDecimal().Should().Be(90m);
+        product.GetProperty("satisFiyatListeNo").GetInt32().Should().Be(1);
+        product.GetProperty("fiyatListeleri").EnumerateArray()
+            .Select(l => (l.GetProperty("listNo").GetInt32(), l.GetProperty("name").GetString(), l.GetProperty("price").GetDecimal()))
+            .Should().Equal((1, "SATIŞ FİYATI", 125.5m), (2, "E-TİCARET", 90m));
+        product.GetProperty("kdvOrani").GetDecimal().Should().Be(0m, "the ERP's VAT rate travels with the stock card");
         product.GetProperty("stok").GetInt32().Should().Be(10);
         product.GetProperty("stockByWarehouse").GetProperty("Depo 1").GetInt32().Should().Be(7);
         product.GetProperty("stockByWarehouse").GetProperty("Depo 2").GetInt32().Should().Be(3);

@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y3 PR'ı)
+Son güncelleme: 2026-09-17 (Y3 birleşti, Y4g sunucu PR'ı)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y3 — Mikro V15 writer'ları (PR #94)
+**Şu anki görev:** Y4 — Sipariş Cepte (Y4g sunucu kısmı)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -64,7 +64,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y4d | Yazım sonucu telefonda | ⬜ | | |
 | Y4e | Çift görünme önleme | ⬜ | | |
 | Y4f | Play internal sürüm | ⬜ | | |
-| Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | ⬜ | | Bulgu: telefon ERP ürünlerinde KDV'yi hep %20 sayıyor, KDV'yi genel iskontodan önce hesaplıyor — düzeltilmezse ajan her satışı `TOTAL_MISMATCH` ile reddeder |
+| Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | 🔄 | [#95](https://github.com/Retrosero/ErpBridge/pull/95) (sunucu) | Bulgu: telefon ERP ürünlerinde KDV'yi hep %20 sayıyor, KDV'yi genel iskontodan önce hesaplıyor — düzeltilmezse ajan her satışı `TOTAL_MISMATCH` ile reddeder **Sunucu (#95):** `StockPayload.VatRate` → JSON `kdvOrani` = `fn_VergiYuzde(sto_toptan_vergi)` (Mikro writer'ı satışı toptan satır yazıyor); telefon `kdvOrani`'ni zaten okuyor (yoksa %20 sayıyordu — bu firmada tüm stok %0). Ürün kaydında `satisFiyatListeNo` ve `fiyatListeleri[{listNo,name,price}]`. Projeksiyon sürümü 3 → yeni ajan stokları bir kez tam okur. **Telefon (sonraki PR):** KDV Mikro gibi üç iskontodan sonra, satır başına 2 hane |
 | Y5a | Portal "ERP Aktarım" listesi | ⬜ | | |
 | Y5b | Admin iş ayrıntısı + log olayları | ⬜ | | |
 | Y6a | KB ve sözleşme belgeleri | ⬜ | | |
