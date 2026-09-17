@@ -36,6 +36,7 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<LogEvent> LogEvents => Set<LogEvent>();
     public DbSet<LogErrorGroup> LogErrorGroups => Set<LogErrorGroup>();
     public DbSet<LogSettings> LogSettings => Set<LogSettings>();
+    public DbSet<AgentHeartbeatLog> AgentHeartbeatLogs => Set<AgentHeartbeatLog>();
     public DbSet<ChangeSetRecord> ChangeSets => Set<ChangeSetRecord>();
     public DbSet<MobileSyncQueueItem> MobileSyncQueue => Set<MobileSyncQueueItem>();
 
@@ -297,6 +298,10 @@ public sealed class CentralApiDbContext : DbContext
             b.ToTable("agents");
             b.HasKey(x => x.Id);
             b.Property(x => x.MachineId).IsRequired().HasMaxLength(255);
+            b.Property(x => x.AppVersion).HasMaxLength(64);
+            b.Property(x => x.HostKind).HasMaxLength(16);
+            b.Property(x => x.LastSyncResult).HasMaxLength(32);
+            b.Property(x => x.LastError).HasMaxLength(1000);
             b.HasIndex(x => new { x.TenantId, x.MachineId }).IsUnique();
             b.HasOne(x => x.Tenant)
                 .WithMany(t => t.Agents)
@@ -311,6 +316,8 @@ public sealed class CentralApiDbContext : DbContext
             b.HasKey(x => x.Id);
             b.Property(x => x.ExternalId).IsRequired().HasMaxLength(128);
             b.Property(x => x.DocumentType).IsRequired().HasMaxLength(64);
+            b.Property(x => x.CorrelationId).HasMaxLength(128);
+            b.HasIndex(x => x.CorrelationId);
             b.Property(x => x.PayloadJson).HasColumnType("jsonb");
             b.Property(x => x.Status).HasConversion<int>();
             b.HasIndex(x => new { x.TenantId, x.Status, x.EnqueuedAtUtc });
@@ -550,6 +557,19 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => x.Fingerprint).IsUnique();
             b.HasIndex(x => new { x.Status, x.LastSeenMs });
             b.HasIndex(x => x.LastSeenMs);
+        });
+
+        modelBuilder.Entity<AgentHeartbeatLog>(b =>
+        {
+            b.ToTable("agent_heartbeat_log");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Status).HasMaxLength(32);
+            b.Property(x => x.AppVersion).HasMaxLength(64);
+            b.Property(x => x.HostKind).HasMaxLength(16);
+            b.Property(x => x.LastSyncResult).HasMaxLength(32);
+            b.Property(x => x.LastError).HasMaxLength(1000);
+            b.HasIndex(x => new { x.AgentId, x.RecordedAtMs });
+            b.HasIndex(x => x.RecordedAtMs);
         });
 
         modelBuilder.Entity<LogSettings>(b =>

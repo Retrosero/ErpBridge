@@ -21,7 +21,7 @@ public sealed class LogRetentionOptions
     public int MaxDeletesPerRun { get; set; } = 100_000;
 }
 
-public sealed record LogRetentionResult(int InfoDeleted, int WarnDeleted, int GroupsDeleted);
+public sealed record LogRetentionResult(int InfoDeleted, int WarnDeleted, int GroupsDeleted, int HeartbeatRowsDeleted = 0);
 
 /// <summary>
 /// Deletes log events older than <see cref="LogSettings"/> allows, by <c>ReceivedAtMs</c> (the server's clock —
@@ -66,7 +66,9 @@ public sealed class LogRetention
         var groups = await _db.LogErrorGroups
             .Where(g => g.Status == LogErrorGroup.Open && g.LastSeenMs < warnCutoff && !_db.LogEvents.Any(e => e.FingerprintId == g.Id))
             .ExecuteDeleteAsync(ct);
-        return new LogRetentionResult(info, warn, groups);
+        // Agent heartbeat history (L3f) is kept as long as warnings are.
+        var heartbeats = await _db.AgentHeartbeatLogs.Where(h => h.RecordedAtMs < warnCutoff).ExecuteDeleteAsync(ct);
+        return new LogRetentionResult(info, warn, groups, heartbeats);
     }
 
     private async Task<int> DeleteInBatchesAsync(System.Linq.Expressions.Expression<Func<LogEvent, bool>> filter, LogRetentionOptions options, CancellationToken ct)

@@ -39,6 +39,9 @@ public sealed class AgentLogEvent
 public sealed partial class AgentLogBuffer
 {
     public const string DefaultKind = "AGENT_LOG";
+
+    /// <summary>Log scope / property that ships an information line too (lifecycle events, sync rounds).</summary>
+    public const string ShipProperty = "ShipToLogCenter";
     public const int Capacity = 2_000;
     public static readonly TimeSpan ThrottleWindow = TimeSpan.FromMinutes(10);
 

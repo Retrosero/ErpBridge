@@ -388,6 +388,8 @@ public sealed class ApprovalService
                 TenantId = tenant.Id,
                 ExternalId = externalId,
                 DocumentType = documentType,
+                // Log Merkezi L3g: the approver's request; the agent's ERP write logs under it.
+                CorrelationId = ErpBridge.CentralApi.LogCenter.CorrelationId.Current,
                 PayloadJson = item.GetProperty("payload").GetRawText(),
                 Status = JobStatus.Pending,
                 EnqueuedAtUtc = now,

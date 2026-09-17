@@ -28,6 +28,7 @@ public static class ServiceCollectionExtensions
         // half of the process run on a token the other half already replaced.
         services.TryAddSingleton<IAgentTokenSource, InMemoryAgentTokenSource>();
         services.TryAddSingleton<IAgentTokenService, AgentTokenService>();
+        services.TryAddSingleton<ErpBridge.Core.Sync.AgentHealth>();
 
         services.TryAddSingleton<IBootstrapSyncService, BootstrapSyncService>();
         services.TryAddSingleton<ILogger<BootstrapSyncService>>(sp =>

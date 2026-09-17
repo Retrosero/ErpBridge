@@ -14,6 +14,7 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
     private readonly IRemoteApiClient _remoteApi;
     private readonly IAgentConfigStore _configStore;
     private readonly IAgentTokenService _tokens;
+    private readonly ErpBridge.Core.Sync.AgentHealth _health;
     private readonly ILogger<DesktopHeartbeatService> _logger;
     private CancellationTokenSource? _cts;
     private Task? _loop;
@@ -22,8 +23,10 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
         IRemoteApiClient remoteApi,
         IAgentConfigStore configStore,
         IAgentTokenService tokens,
+        ErpBridge.Core.Sync.AgentHealth health,
         ILogger<DesktopHeartbeatService> logger)
     {
+        _health = health;
         _remoteApi = remoteApi;
         _configStore = configStore;
         _tokens = tokens;
@@ -64,13 +67,19 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
                         await DelaySafe(ct).ConfigureAwait(false);
                         continue;
                     }
+                    var health = _health.Snapshot;
                     await _remoteApi.SendHeartbeatAsync(new AgentHeartbeat
                     {
                         AgentId = Environment.MachineName,
                         TenantId = config.TenantId ?? string.Empty,
                         Status = "running",
-                        LastSyncAtUtc = null,
+                        // Log Merkezi L3f: last sync outcome of the desktop app's own loop.
+                        LastSyncAtUtc = health.LastSyncAtUtc,
+                        LastSyncResult = health.LastSyncResult,
+                        LastError = health.LastError,
                         QueueDepth = 0,
+                        AppVersion = typeof(DesktopHeartbeatService).Assembly.GetName().Version?.ToString(),
+                        HostKind = "ui",
                     }, ct).ConfigureAwait(false);
                 }
             }

@@ -86,6 +86,7 @@ public static class JobsEndpoints
                 DocumentType = j.DocumentType,
                 Payload = j.PayloadJson,
                 EnqueuedAtUtc = j.EnqueuedAtUtc,
+                CorrelationId = j.CorrelationId,
             })
             .ToList();
         return JsonResults.Ok(response);

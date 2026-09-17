@@ -35,6 +35,11 @@ public sealed class AgentHeartbeatRequest
     [JsonPropertyName("lastSyncAtUtc")] public DateTimeOffset? LastSyncAtUtc { get; set; }
     [JsonPropertyName("queueDepth")] public int QueueDepth { get; set; }
     [JsonPropertyName("lastError")] public string? LastError { get; set; }
+
+    // Log Merkezi L3f (optional).
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("hostKind")] public string? HostKind { get; set; }
+    [JsonPropertyName("lastSyncResult")] public string? LastSyncResult { get; set; }
 }
 
 /// <summary>POST /api/v1/agents/telemetry body, authenticated with an agent JWT.</summary>
@@ -77,6 +82,9 @@ public sealed class JobResponse
     [JsonPropertyName("documentType")] public string DocumentType { get; set; } = string.Empty;
     [JsonPropertyName("payload")] public string Payload { get; set; } = "{}";
     [JsonPropertyName("enqueuedAtUtc")] public DateTimeOffset EnqueuedAtUtc { get; set; }
+
+    /// <summary>Log Merkezi L3g: id of the request that created the job; the agent logs its ERP write under it.</summary>
+    [JsonPropertyName("correlationId")] public string? CorrelationId { get; set; }
 }
 
 /// <summary>POST /api/v1/jobs/ack body.</summary>

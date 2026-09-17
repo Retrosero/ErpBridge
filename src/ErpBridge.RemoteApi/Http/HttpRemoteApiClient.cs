@@ -588,6 +588,8 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         }
 
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
+        // Log Merkezi L3g: the job's correlation id while one is being written, otherwise a fresh id per call.
+        request.Headers.TryAddWithoutValidation("X-Correlation-Id", ErpBridge.Core.Sync.AgentCorrelation.Current ?? Guid.NewGuid().ToString());
         request.Headers.TryAddWithoutValidation("User-Agent", "ErpBridge-Agent/1.0");
 
         if (!string.IsNullOrWhiteSpace(idempotencyKey))

@@ -83,7 +83,7 @@ public sealed class MaskingTextFormatter(ITextFormatter inner) : ITextFormatter
 /// </summary>
 public sealed class AgentLogBufferSink(AgentLogBuffer buffer) : ILogEventSink
 {
-    public const string ShipProperty = "ShipToLogCenter";
+    public const string ShipProperty = AgentLogBuffer.ShipProperty;
 
     private static readonly string[] ExcludedCategories = ["ErpBridge.Core.Logging", "App.Bootstrap", "System.Net.Http.HttpClient", "Polly"];
 

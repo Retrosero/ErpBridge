@@ -318,6 +318,26 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
+    public async Task Every_call_carries_a_correlation_id_and_a_job_call_carries_the_jobs_id()
+    {
+        var seen = new List<string>();
+        var (client, _) = BuildClient(req =>
+        {
+            seen.Add(req.Headers.GetValues("X-Correlation-Id").Single());
+            return RespondJson(req, HttpStatusCode.NoContent, new { });
+        });
+
+        await client.SendAckAsync(new JobAck { JobId = Guid.NewGuid().ToString(), Status = "Succeeded" });
+        using (ErpBridge.Core.Sync.AgentCorrelation.Begin("phone-upload-7"))
+        {
+            await client.SendAckAsync(new JobAck { JobId = Guid.NewGuid().ToString(), Status = "Succeeded" });
+        }
+
+        Guid.TryParse(seen[0], out _).Should().BeTrue();
+        seen[1].Should().Be("phone-upload-7");
+    }
+
+    [Fact]
     public async Task Retry_policy_logs_each_retry_as_a_warning_without_the_query()
     {
         var logs = new List<string>();

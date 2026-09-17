@@ -13,6 +13,10 @@ public static partial class CorrelationId
     public const string HeaderName = "X-Correlation-Id";
     public const int MaxLength = 128;
     private const string ItemKey = "LogCenter.CorrelationId";
+    private static readonly AsyncLocal<string?> Ambient = new();
+
+    /// <summary>The current request's id for code that has no <see cref="HttpContext"/> (services called by endpoints).</summary>
+    public static string? Current => Ambient.Value;
 
     /// <summary>The caller's id if it is 1–128 characters of <c>[A-Za-z0-9._:-]</c>; otherwise null.</summary>
     public static string? Sanitize(string? value)
@@ -31,6 +35,7 @@ public static partial class CorrelationId
         var id = Sanitize(context.Request.Headers[HeaderName].FirstOrDefault()) ?? Guid.NewGuid().ToString();
         context.Items[ItemKey] = id;
         context.TraceIdentifier = id;
+        Ambient.Value = id;
         context.Response.OnStarting(() =>
         {
             context.Response.Headers[HeaderName] = id;
