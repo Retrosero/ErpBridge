@@ -65,6 +65,7 @@ public sealed class DesktopHeartbeatService : IAsyncDisposable
         {
             try
             {
+                using var trace = AgentCorrelation.Begin(null);
                 var config = await _configStore.LoadAsync(ct).ConfigureAwait(false);
                 if (config is not null)
                 {

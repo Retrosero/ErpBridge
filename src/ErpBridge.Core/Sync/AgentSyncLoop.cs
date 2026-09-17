@@ -103,6 +103,9 @@ public sealed class AgentSyncLoop
     {
         try
         {
+            // Log Merkezi L3g: one round, one trace id. Without this the client's own warning about a call
+            // would be filed with no id while the request it describes carried one.
+            using var trace = AgentCorrelation.Begin(null);
             using var scope = _services.CreateScope();
 
             // Renew the bearer token before doing anything with it. The central

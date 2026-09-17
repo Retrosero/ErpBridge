@@ -45,6 +45,13 @@ public sealed class ApprovalRequest
     /// <summary>The rejected request this one corrects, when it was sent again.</summary>
     public Guid? ReplacesRequestId { get; set; }
 
+    /// <summary>
+    /// Log Merkezi L3g: the trace id of the phone request that asked for this approval. Approved documents
+    /// become jobs days later, and they keep this id — otherwise the ERP write of an approved document would
+    /// start a new thread and the phone's original request would be unreachable from it.
+    /// </summary>
+    public string? CorrelationId { get; set; }
+
     public Guid? RequestedByUserId { get; set; }
 
     public string? RequestedByName { get; set; }

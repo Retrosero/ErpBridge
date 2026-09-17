@@ -171,7 +171,8 @@ public sealed class ApprovalService
     /// rejected requests, which is closed as <see cref="ApprovalStatuses.Resubmitted"/>.
     /// </summary>
     public async Task<ApprovalResult<ApprovalRequest>> SubmitAsync(
-        CentralApiDbContext db, Tenant tenant, MobileUser requester, string externalId, string payloadJson, CancellationToken ct)
+        CentralApiDbContext db, Tenant tenant, MobileUser requester, string externalId, string payloadJson,
+        CancellationToken ct, string? correlationId = null)
     {
         var existing = await db.ApprovalRequests.AsNoTracking()
             .FirstOrDefaultAsync(r => r.TenantId == tenant.Id && r.ExternalId == externalId, ct);
@@ -233,6 +234,7 @@ public sealed class ApprovalService
             RequestedAtUtc = now,
             RequestedSeq = seq,
             UpdatedSeq = seq,
+            CorrelationId = ErpBridge.CentralApi.LogCenter.CorrelationId.Sanitize(correlationId),
         };
 
         try
@@ -393,6 +395,8 @@ public sealed class ApprovalService
                 EnqueuedAtUtc = now,
                 // The salesperson who asked, not the approver: reports count their work.
                 CreatedByUserId = request.RequestedByUserId,
+                // And the thread of the phone request that asked, however many days ago that was.
+                CorrelationId = request.CorrelationId,
             };
             if (tenant.DataSource == TenantDataSources.Native)
             {

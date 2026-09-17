@@ -337,6 +337,9 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.LastError).HasMaxLength(1024);
         });
 
+        modelBuilder.Entity<ApprovalRequest>(b =>
+            b.Property(x => x.CorrelationId).HasMaxLength(ErpBridge.CentralApi.LogCenter.CorrelationId.MaxLength));
+
         modelBuilder.Entity<Job>(b =>
         {
             b.Property(x => x.CorrelationId).HasMaxLength(ErpBridge.CentralApi.LogCenter.CorrelationId.MaxLength);

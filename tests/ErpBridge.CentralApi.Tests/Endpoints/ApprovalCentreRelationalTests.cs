@@ -567,6 +567,37 @@ public sealed class ApprovalCentreRelationalTests : IClassFixture<SqliteCentralA
         return (await db.NativeStockLevels.AsNoTracking().SingleAsync(l => l.TenantId == tenantId && l.StockCode == stockCode)).Quantity;
     }
 
+    /// <summary>
+    /// Log Merkezi L3g: a document can wait days for approval. The job it finally becomes has to keep the
+    /// thread of the phone request that asked, or the ERP write starts a fresh one and the original request
+    /// is unreachable from it.
+    /// </summary>
+    [Fact]
+    public async Task An_approved_document_keeps_the_thread_of_the_request_that_asked()
+    {
+        var c = await CompanyAsync();
+        var request = await SubmitAsync(c, c.Ali, "APR-TRACE", new
+        {
+            kind = "sale",
+            counterpartyName = "ACME",
+            amount = 150,
+            documents = new object[]
+            {
+                new { documentType = "sales_order", externalId = "MOB-SO-TRACE", payload = Sale("MOB-SO-TRACE", "C-001", 1) },
+            },
+        });
+
+        (await DecideAsync(c, c.Patron, request.Id, "approve")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var stored = await db.ApprovalRequests.AsNoTracking().FirstAsync(r => r.Id == request.Id);
+        var job = await db.Jobs.AsNoTracking().FirstAsync(j => j.TenantId == c.Id && j.ExternalId == "MOB-SO-TRACE");
+
+        stored.CorrelationId.Should().NotBeNullOrWhiteSpace("the ingest request that asked for approval had a thread");
+        job.CorrelationId.Should().Be(stored.CorrelationId, "the job the approval created belongs to that thread");
+    }
+
     private async Task<int> JobCountAsync(Guid tenantId, string externalId)
     {
         using var scope = _factory.Services.CreateScope();

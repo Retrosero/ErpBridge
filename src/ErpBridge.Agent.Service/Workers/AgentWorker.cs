@@ -116,6 +116,8 @@ public sealed class AgentWorker : BackgroundService
         {
             try
             {
+                // Log Merkezi L3g: the poll itself is one trace; each job then runs under its own id.
+                using var trace = ErpBridge.Core.Logging.AgentCorrelation.Begin(null);
                 var config = await _configStore.LoadAsync(stoppingToken);
                 if (config is null)
                 {

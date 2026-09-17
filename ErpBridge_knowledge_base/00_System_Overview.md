@@ -923,7 +923,10 @@ registration ayrı bir composition projesine taşınır.
      kimliği taşır (`HttpRemoteApiClient` her isteğe `X-Correlation-Id` ekler; iş dışındaki çağrı da kendi taze
      kimliğini alır). Ack'te yazılan `ERP_WRITE_FAILED`/`ERP_WRITE_RETRY` olayı **işin** kimliğini kullanır, ack
      isteğininkini değil — hata telefon belgesinin izine bağlanır. Eski sunucudan gelen işte alan boştur; ajan o
-     zaman kendi kimliğini üretir.
+     zaman kendi kimliğini üretir. **Onay bekleyen belge:** `approval_requests.correlation_id` istekle birlikte
+     saklanır ve onaydan sonra oluşan işe geçer — günler sonra yazılan belge de telefonun ilk isteğine bağlı
+     kalır. Ajan tarafında her tur (senkron turu, heartbeat, iş yoklaması) kendi kapsamını açar, böylece
+     HTTP istemcisinin kendi uyarısı da o isteğin taşıdığı kimlikle kaydedilir.
    - **Heartbeat (L3f):** ajanın durumu tek yerde tutulur — `Core/Sync/AgentRunStatus`: senkron döngüsü ve iş
      kuyruğu yazar, heartbeat (hem Windows servisi hem masaüstü) okur. Heartbeat gövdesi `appVersion`,
      `hostKind` (`service`/`ui`), `erpKind`, `erpVersion`, `lastSyncResult`, `lastErrorCode` taşır; hepsi

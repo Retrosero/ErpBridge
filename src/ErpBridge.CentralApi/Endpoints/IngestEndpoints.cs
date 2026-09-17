@@ -256,7 +256,8 @@ public static class IngestEndpoints
                 });
             var requester = await db.MobileUsers.AsNoTracking().Include(u => u.Roles).FirstAsync(u => u.Id == requesterId, ct);
             var approvals = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Approvals.ApprovalService>();
-            var submitted = await approvals.SubmitAsync(db, tenant, requester, body.ExternalId, payloadJson, ct);
+            var submitted = await approvals.SubmitAsync(db, tenant, requester, body.ExternalId, payloadJson, ct,
+                ErpBridge.CentralApi.LogCenter.CorrelationId.Of(http));
             if (!submitted.Succeeded) return JsonResults.Status(submitted.StatusCode, submitted.Error);
             return JsonResults.Status(submitted.StatusCode, new IngestJobResponse
             {
