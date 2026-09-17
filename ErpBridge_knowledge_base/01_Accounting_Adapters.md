@@ -68,6 +68,28 @@ canlı Mikro şemasına karşı doğrulanmıştır.
 | `MikroCustomerCardWriter` | `customer_card` | `CARI_HESAPLAR` | `cari_kod`, `cari_unvan1`, `cari_vdaire_no`, `cari_vdaire_adi`, `cari_EMail`, `cari_CepTel`, `cari_odeme_gunu`, `cari_grup_kodu` — adres/telefon ayrı tablolarda |
 | `MikroStockCardWriter` | `stock_card` | `STOKLAR` + `BARKOD_TANIMLARI` | `sto_kod`, `sto_isim`, `sto_kisa_ismi`, `sto_birim1_ad`, `sto_perakende_vergi`, `sto_toptan_vergi`, `sto_anagrup_kod`; barkod: `bar_kodu`, `bar_stokkodu`, `bar_birimpntr` — her ikisi firma-bağımsız |
 
+### Telefon belgesi writer'ları (ERP yazım goal'ü Y3, 2026-09-17)
+
+Sipariş Cepte belgeleri (`mobileDocumentId` taşıyan gövde) yukarıdaki tipli writer'lara **gitmez**: ajan
+`MobileDocumentTranslator` ile ERP'den bağımsız komuta çevirir (`SalesDocumentCommand`, `SalesReturnCommand`,
+`CollectionCommand`) ve `IErpAdapter.WriteSalesDocumentAsync / WriteSalesReturnAsync / WriteCollectionDocumentAsync`
+çağırır. Mikro'da (`Writers/Session`, `Writers/Documents`, yalnız V15; V16 → `ERP_VERSION_NOT_SUPPORTED`):
+
+- `MikroDocumentWriteRunner`: tek transaction; `_ERPB_EVRAK_ESLESME`'de kilitli arama → varsa mevcut evrak; yoksa yaz +
+  ledger kaydı + commit; commit sonrası SQLite `mappings` önbelleği (Core `IMappingStore`). Firma/şube no Mikro'nun
+  `FIRMALAR`/`SUBELER` numarasıdır (tek firmalı veride 0/0; ajan ayarı 1/1 olsa da).
+- `MikroWriteSession.InsertAsync`: INSERT kolonları şemadan; verilmeyen kolon Mikro'nun boş değeri (0 / '' / 1899-12-30),
+  self-link aynı batch'te. `NextNumberAsync`: numaranın geçtiği tüm tablolarda `UPDLOCK, HOLDLOCK` MAX+1.
+- `MikroDocumentLookup` (cari hareket tipi/kilit, stok satış engeli, kasa türü, banka, depo, temsilci, fiyat listesi
+  KDV bayrağı) ve `MikroPriceCalculator` (iskonto zinciri tutar, KDV iskontolu net, 2 hane, telefon toplamı ±0,05).
+- `MikroSalesDocumentWriter` → fatura (açık / kasaya-bankaya kapalı), sipariş (`SIPARISLER`, onay modu), irsaliye
+  (`sth_evraktip=1`); ödemeli açık belgeye aynı transaction'da tahsilat makbuzu. `MikroSalesReturnWriter`: iade
+  bayraklı alış faturası (0/alacak, STH 3/giriş). `MikroCollectionReceiptWriter`: tek makbuz, yöntem başına satır,
+  nakit dışı `ODEME_EMIRLERI` + 8 haneli `MK/MH/MC/MS-fff-sss-yyyy-nnnnnnnn`.
+
+Kolon değerlerinin kaynağı `docs/mikro-yazim-referansi.md`; canlı testler yalnız `MikroDB_V15_DEMO`'da, çoğu
+transaction geri alınarak.
+
 ### Ortak Writer Altyapısı
 
 | Bileşen | İş |
