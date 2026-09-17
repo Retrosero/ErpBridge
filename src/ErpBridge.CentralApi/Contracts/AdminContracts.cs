@@ -145,6 +145,12 @@ public sealed class JobDto
     [JsonPropertyName("lastError")] public string? LastError { get; set; }
     [JsonPropertyName("enqueuedAtUtc")] public DateTimeOffset EnqueuedAtUtc { get; set; }
     [JsonPropertyName("completedAtUtc")] public DateTimeOffset? CompletedAtUtc { get; set; }
+
+    /// <summary>A job waiting to retry is not leased before this (goal ERP yazım Y1e, Y5b).</summary>
+    [JsonPropertyName("nextAttemptAtUtc")] public DateTimeOffset? NextAttemptAtUtc { get; set; }
+
+    /// <summary>A leased job goes back to the queue after this if its agent never answers.</summary>
+    [JsonPropertyName("leasedUntilUtc")] public DateTimeOffset? LeasedUntilUtc { get; set; }
 }
 
 /// <summary>Job detail returned to the admin; includes the raw payload.</summary>
@@ -161,6 +167,40 @@ public sealed class JobDetailDto
     [JsonPropertyName("completedAtUtc")] public DateTimeOffset? CompletedAtUtc { get; set; }
     /// <summary>Raw payload JSON as the agent supplied it. May include PII; admin-only access.</summary>
     [JsonPropertyName("payloadJson")] public string PayloadJson { get; set; } = "{}";
+
+    [JsonPropertyName("nextAttemptAtUtc")] public DateTimeOffset? NextAttemptAtUtc { get; set; }
+    [JsonPropertyName("leasedUntilUtc")] public DateTimeOffset? LeasedUntilUtc { get; set; }
+
+    /// <summary>The company user who sent the document; null for API keys.</summary>
+    [JsonPropertyName("createdByUserId")] public Guid? CreatedByUserId { get; set; }
+
+    /// <summary>The last result was a failure that may pass by itself (the ERP was unreachable); null before any result.</summary>
+    [JsonPropertyName("retryable")] public bool? Retryable { get; set; }
+
+    /// <summary>The ERP document number (<c>T-1234</c>) of a written document.</summary>
+    [JsonPropertyName("erpDocumentNo")] public string? ErpDocumentNo { get; set; }
+
+    [JsonPropertyName("lastErrorCode")] public string? LastErrorCode { get; set; }
+
+    /// <summary>Every result the agents reported, newest first.</summary>
+    [JsonPropertyName("acks")] public List<JobAckDto> Acks { get; set; } = [];
+
+    /// <summary>
+    /// The <c>erpContext</c> an agent gets if it takes the job now (company settings merged with the sender's
+    /// mapping); null for a company without an ERP.
+    /// </summary>
+    [JsonPropertyName("erpContext")] public JobErpContextResponse? ErpContext { get; set; }
+}
+
+/// <summary>One result an agent reported for a job.</summary>
+public sealed class JobAckDto
+{
+    /// <summary><c>succeeded</c>, <c>failed</c> or <c>retry</c>.</summary>
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
+    [JsonPropertyName("errorMessage")] public string? ErrorMessage { get; set; }
+    [JsonPropertyName("erpDocumentNo")] public string? ErpDocumentNo { get; set; }
+    [JsonPropertyName("ackedAtUtc")] public DateTimeOffset AckedAtUtc { get; set; }
 }
 
 /// <summary>

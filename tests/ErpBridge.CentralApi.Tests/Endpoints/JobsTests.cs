@@ -185,6 +185,33 @@ public class JobsTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task An_erp_write_the_agent_could_not_do_reaches_the_log_centre()
+    {
+        var client = _factory.CreateClient();
+        var (tenantId, agent, token) = await SeedAgentWithTokenAsync("JOB-ACK-LOG", "MACHINE-JOB-ACK-LOG");
+        var failed = await SeedJobAsync(tenantId, "MOB-SO-LOG-1");
+        var retried = await SeedJobAsync(tenantId, "MOB-TH-LOG-1", documentType: "collection");
+        var written = await SeedJobAsync(tenantId, "MOB-SO-LOG-2");
+
+        (await client.PostJsonAsync("/api/v1/jobs/ack", new { jobId = failed.Id, status = "failed", errorCode = "TOTAL_MISMATCH", errorMessage = "Belge toplamı farklı." }, token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await client.PostJsonAsync("/api/v1/jobs/ack", new { jobId = retried.Id, status = "failed", retryable = true, errorCode = "ERP_UNAVAILABLE", errorMessage = "Mikro'ya ulaşılamadı." }, token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await client.PostJsonAsync("/api/v1/jobs/ack", new { jobId = written.Id, status = "succeeded", erpDocumentSeries = "T", erpDocumentNumber = 7 }, token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+        var events = await db.LogEvents.AsNoTracking().Where(e => e.TenantId == tenantId).ToListAsync();
+        events.Should().HaveCount(2, "a written document is not an error");
+        var error = events.Single(e => e.Kind == "ERP_WRITE_FAILED");
+        error.Should().Match<Domain.LogEvent>(e => e.Source == "windows_agent" && e.Severity == "ERROR" && e.AgentId == agent.Id
+            && e.Operation == "erp.write.sales_order" && e.Message!.StartsWith("TOTAL_MISMATCH: Belge toplamı farklı."));
+        error.PropertiesJson.Should().Contain(failed.Id.ToString()).And.Contain("MOB-SO-LOG-1");
+        events.Single(e => e.Kind == "ERP_WRITE_RETRY").Severity.Should().Be("WARN");
+    }
+
+    [Fact]
     public async Task Ack_is_idempotent_second_call_is_no_op()
     {
         var client = _factory.CreateClient();

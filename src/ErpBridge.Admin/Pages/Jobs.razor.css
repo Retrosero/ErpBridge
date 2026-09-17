@@ -1,0 +1,4 @@
+/* Job detail: agent results and the ERP context (goal ERP yazım Y5b). */
+.job-section-title { color: #45546a; font-size: .72rem; font-weight: 780; margin: 1rem 0 .4rem; text-transform: uppercase; }
+.job-acks { display: grid; font-size: .8rem; gap: .35rem; list-style: none; margin: 0; padding: 0; }
+.job-context { background: #0f172a; border-radius: var(--radius); color: #e2e8f0; font-size: .76rem; margin: 0 0 .8rem; max-height: 18rem; overflow: auto; padding: .7rem .8rem; white-space: pre-wrap; }

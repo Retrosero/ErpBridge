@@ -156,6 +156,7 @@ public static class JobsEndpoints
         [FromServices] CentralApiDbContext db,
         [FromServices] IWebhookDispatcher webhooks,
         [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse,
+        [FromServices] ErpBridge.CentralApi.LogCenter.ILogEventWriter logs,
         CancellationToken ct)
     {
         if (body is null) return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_BODY", Message = "Body required." });
@@ -243,7 +244,45 @@ public static class JobsEndpoints
         }
 
         await CompleteAsync(db, job, eventType, webhooks, warehouse, ct);
+        if (ack.Status is "failed" or "retry") await LogWriteFailureAsync(logs, job, ack, agentId, http, ct);
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// An ERP write the agent could not do goes to the Log Centre (goal ERP yazım Y5b), so a mapping gap or a
+    /// refused document shows up with the company's other errors. Never fails the ack.
+    /// </summary>
+    private static async Task LogWriteFailureAsync(
+        ErpBridge.CentralApi.LogCenter.ILogEventWriter logs, Job job, JobAckRecord ack, Guid agentId, HttpContext http, CancellationToken ct)
+    {
+        try
+        {
+            var retry = ack.Status == "retry";
+            await logs.WriteAsync(
+            [
+                new ErpBridge.CentralApi.LogCenter.LogEventInput
+                {
+                    Source = ErpBridge.CentralApi.LogCenter.LogSources.WindowsAgent,
+                    TenantId = job.TenantId,
+                    AgentId = agentId,
+                    UserId = job.CreatedByUserId,
+                    Severity = retry ? ErpBridge.CentralApi.LogCenter.LogSeverity.Warn : ErpBridge.CentralApi.LogCenter.LogSeverity.Error,
+                    Kind = retry ? "ERP_WRITE_RETRY" : "ERP_WRITE_FAILED",
+                    Operation = $"erp.write.{job.DocumentType}",
+                    Message = string.IsNullOrWhiteSpace(ack.ErrorCode) ? ack.ErrorMessage : $"{ack.ErrorCode}: {ack.ErrorMessage}",
+                    CorrelationId = ErpBridge.CentralApi.LogCenter.CorrelationId.Of(http),
+                    PropertiesJson = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        jobId = job.Id, externalId = job.ExternalId, documentType = job.DocumentType,
+                        errorCode = ack.ErrorCode, attempt = job.RetryCount,
+                    }),
+                },
+            ], ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The log centre is best effort here: the agent's result is already saved.
+        }
     }
 
     /// <summary>
