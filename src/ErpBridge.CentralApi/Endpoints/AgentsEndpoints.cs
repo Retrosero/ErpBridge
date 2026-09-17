@@ -168,9 +168,35 @@ public static class AgentsEndpoints
 
         // LastHeartbeat is a liveness measurement, not the last successful
         // sync time. A healthy idle agent must remain online in the console.
-        agent.LastHeartbeatAtUtc = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.UtcNow;
+        var status = Trim(body.Status, 32);
+        var appVersion = Trim(body.AppVersion, 64) ?? agent.AppVersion;
+        var hostKind = Trim(body.HostKind, 16) ?? agent.HostKind;
+        var syncResult = Trim(body.LastSyncResult, 32);
+        var lastError = body.LastError is null ? null : Trim(LogScrubber.Scrub(body.LastError), 1000);
+        // Log Merkezi L3f (D11): history only when something changed, otherwise every 15 minutes.
+        var changed = status != agent.LastStatus || appVersion != agent.AppVersion || hostKind != agent.HostKind
+            || syncResult != agent.LastSyncResult || lastError != agent.LastError;
+        var due = agent.LastHeartbeatLoggedAtUtc is not { } logged || now - logged >= HeartbeatLogInterval;
+
+        agent.LastHeartbeatAtUtc = now;
         agent.LastStatus = body.Status;
         agent.LastQueueDepth = body.QueueDepth;
+        agent.AppVersion = appVersion;
+        agent.HostKind = hostKind;
+        agent.LastSyncAtUtc = body.LastSyncAtUtc ?? agent.LastSyncAtUtc;
+        agent.LastSyncResult = syncResult ?? agent.LastSyncResult;
+        agent.LastError = lastError;
+        if (changed || due)
+        {
+            db.AgentHeartbeatLogs.Add(new AgentHeartbeatLog
+            {
+                AgentId = agent.Id, TenantId = agent.TenantId, RecordedAtUtc = now, RecordedAtMs = now.ToUnixTimeMilliseconds(),
+                Status = status, QueueDepth = body.QueueDepth, AppVersion = appVersion, HostKind = hostKind,
+                LastSyncAtUtc = agent.LastSyncAtUtc, LastSyncResult = agent.LastSyncResult, LastError = lastError,
+            });
+            agent.LastHeartbeatLoggedAtUtc = now;
+        }
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
@@ -223,6 +249,15 @@ public static class AgentsEndpoints
             },
         ], ct);
         return Results.NoContent();
+    }
+
+    private static readonly TimeSpan HeartbeatLogInterval = TimeSpan.FromMinutes(15);
+
+    private static string? Trim(string? value, int max)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrEmpty(text)) return null;
+        return text.Length <= max ? text : text[..max];
     }
 
     private enum LicenseStatus { Ok, NotFound, Expired }

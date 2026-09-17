@@ -101,13 +101,34 @@ public static class Program
                 // adapter module; only the SQLite history query is wired here.
                 services.AddSingleton<IMappingHistoryQuery, SqliteMappingHistoryQuery>();
                 services.AddHostedService<CrossDbReconciliationWorker>();
+
+                // Log Merkezi L3c: warning+ log lines → SQLite outbox → POST /api/v1/agents/logs/batch.
+                services.AddSingleton(ErpBridge.Core.Logging.AgentLogBuffer.Shared);
+                services.AddSingleton(new ErpBridge.Core.Logging.AgentLogShipperOptions("service"));
+                services.AddSingleton<ErpBridge.Core.Logging.AgentLogShipper>();
+                services.AddHostedService<AgentLogShipperWorker>();
             })
             // Log Merkezi L3a: file + console sinks in code (the old config lived under "Logging", which Serilog
             // never read — the service wrote no log file). Masked; see AgentSerilog.
-            .UseSerilog((ctx, sp, lc) => ErpBridge.Agent.Logging.AgentSerilog.Configure(lc, ctx.Configuration, "agent")
+            .UseSerilog((ctx, sp, lc) => ErpBridge.Agent.Logging.AgentSerilog.Configure(lc, ctx.Configuration, "agent",
+                    ship: ErpBridge.Core.Logging.AgentLogBuffer.Shared)
                 .ReadFrom.Services(sp));
 
         var host = builder.Build();
+
+        // Log Merkezi L3d: a crash of the service process is written to the log file before it dies (the service
+        // had no hook; a crash left nothing). The next start reports it as AGENT_UNCLEAN_SHUTDOWN.
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            Serilog.Log.Fatal(args.ExceptionObject as Exception, "Unhandled exception in the agent service; the process is terminating.");
+            Serilog.Log.CloseAndFlush();
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Serilog.Log.Error(args.Exception, "Unobserved task exception in the agent service.");
+            args.SetObserved();
+        };
+
         host.Run();
     }
 }

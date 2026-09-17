@@ -302,6 +302,61 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
+    public async Task SendAgentLogsAsync_posts_the_batch_with_host_kind()
+    {
+        string? body = null;
+        var (client, handler) = BuildClient(req =>
+        {
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return RespondJson(req, HttpStatusCode.Accepted, new { accepted = 1 });
+        });
+
+        await client.SendAgentLogsAsync("service", [new ErpBridge.Core.Logging.AgentLogEvent { Severity = "ERROR", Message = "masked", RepeatCount = 3 }]);
+
+        AssertRequest(handler, HttpMethod.Post, "/api/v1/agents/logs/batch", idempotencyKeyRequired: true);
+        body.Should().Contain("\"hostKind\":\"service\"").And.Contain("\"repeatCount\":3");
+    }
+
+    [Fact]
+    public async Task Every_call_carries_a_correlation_id_and_a_job_call_carries_the_jobs_id()
+    {
+        var seen = new List<string>();
+        var (client, _) = BuildClient(req =>
+        {
+            seen.Add(req.Headers.GetValues("X-Correlation-Id").Single());
+            return RespondJson(req, HttpStatusCode.NoContent, new { });
+        });
+
+        await client.SendAckAsync(new JobAck { JobId = Guid.NewGuid().ToString(), Status = "Succeeded" });
+        using (ErpBridge.Core.Sync.AgentCorrelation.Begin("phone-upload-7"))
+        {
+            await client.SendAckAsync(new JobAck { JobId = Guid.NewGuid().ToString(), Status = "Succeeded" });
+        }
+
+        Guid.TryParse(seen[0], out _).Should().BeTrue();
+        seen[1].Should().Be("phone-upload-7");
+    }
+
+    [Fact]
+    public async Task Retry_policy_logs_each_retry_as_a_warning_without_the_query()
+    {
+        var logs = new List<string>();
+        var logger = new Mock<ILogger>();
+        logger.Setup(l => l.IsEnabled(It.IsAny<LogLevel>())).Returns(true);
+        logger.Setup(l => l.Log(LogLevel.Warning, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(), It.IsAny<Exception?>(), (Func<It.IsAnyType, Exception?, string>)It.IsAny<object>()))
+            .Callback(new InvocationAction(invocation => logs.Add(invocation.Arguments[2].ToString()!)));
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/jobs/pending?take=50");
+        var policy = ServiceCollectionExtensions.BuildRetryPolicy([TimeSpan.Zero, TimeSpan.Zero], logger.Object, request);
+        var calls = 0;
+
+        var response = await policy.ExecuteAsync(() =>
+            Task.FromResult(new HttpResponseMessage(++calls < 3 ? HttpStatusCode.BadGateway : HttpStatusCode.OK)));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        logs.Should().HaveCount(2).And.AllSatisfy(line => line.Should().Contain("HTTP_RETRY").And.Contain("/api/v1/jobs/pending").And.Contain("502").And.NotContain("take=50"));
+    }
+
+    [Fact]
     public async Task PushBootstrapDataAsync_posts_chunked_upload()
     {
         var (client, handler) = BuildClient(RespondBootstrapUpload);

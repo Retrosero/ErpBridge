@@ -158,6 +158,15 @@ public sealed class AgentWorker : BackgroundService
     /// </remarks>
     internal async Task ProcessJobAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
     {
+        // Log Merkezi L3g: every log line and central API call of this job carries the id of the request that
+        // created it, so the phone's upload, the server and this ERP write read as one timeline.
+        using var correlation = ErpBridge.Core.Sync.AgentCorrelation.Begin(job.CorrelationId);
+        using var logScope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["CorrelationId"] = job.CorrelationId ?? string.Empty,
+            ["JobId"] = job.JobId,
+            ["DocumentType"] = job.DocumentType,
+        });
         // Local enqueue is best-effort audit-trail work. Even if it fails we
         // still proceed to the adapter (and the ack) so the central API does
         // not see the job as "stuck" when the only issue is local persistence.

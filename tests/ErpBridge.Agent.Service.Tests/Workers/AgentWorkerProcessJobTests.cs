@@ -146,6 +146,23 @@ public class AgentWorkerProcessJobTests
     // 1) Happy path — sales_order + WriteSalesOrderAsync.Ok=true
     // ---------------------------------------------------------------------
     [Fact]
+    public async Task ProcessJobAsync_calls_the_central_api_under_the_jobs_correlation_id()
+    {
+        string? duringAck = "not called";
+        var (worker, _, _, _, _, _) = Build(configureRemote: remote =>
+            remote.Setup(r => r.SendAckAsync(It.IsAny<JobAck>(), It.IsAny<CancellationToken>()))
+                .Callback(() => duringAck = ErpBridge.Core.Sync.AgentCorrelation.Current)
+                .Returns(Task.CompletedTask));
+        var job = NewSalesOrderJob(ValidSalesOrderPayloadJson());
+        job.CorrelationId = "phone-upload-7";
+
+        await worker.ProcessJobAsync(job, NewConfig(), CancellationToken.None);
+
+        duringAck.Should().Be("phone-upload-7");
+        ErpBridge.Core.Sync.AgentCorrelation.Current.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ProcessJobAsync_sales_order_ok_sends_succeeded_ack_with_erp_identifiers()
     {
         var (worker, remoteApi, localQueue, _, _, adapter) = Build();

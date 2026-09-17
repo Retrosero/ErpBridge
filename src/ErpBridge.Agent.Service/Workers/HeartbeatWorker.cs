@@ -34,6 +34,7 @@ public sealed class HeartbeatWorker : BackgroundService
     private readonly IRemoteApiClient _remoteApi;
     private readonly IAgentConfigStore _configStore;
     private readonly ILocalQueueStore _localQueue;
+    private readonly ErpBridge.Core.Sync.AgentHealth _health;
     private readonly ILogger<HeartbeatWorker> _logger;
 
     private DateTimeOffset? _lastSyncAtUtc;
@@ -43,8 +44,10 @@ public sealed class HeartbeatWorker : BackgroundService
         IRemoteApiClient remoteApi,
         IAgentConfigStore configStore,
         ILocalQueueStore localQueue,
+        ErpBridge.Core.Sync.AgentHealth health,
         ILogger<HeartbeatWorker> logger)
     {
+        _health = health ?? throw new ArgumentNullException(nameof(health));
         _remoteApi = remoteApi ?? throw new ArgumentNullException(nameof(remoteApi));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _localQueue = localQueue ?? throw new ArgumentNullException(nameof(localQueue));
@@ -82,14 +85,19 @@ public sealed class HeartbeatWorker : BackgroundService
                 if (config is not null)
                 {
                     var queueDepth = await _localQueue.CountAsync(ct: stoppingToken);
+                    var health = _health.Snapshot;
                     var heartbeat = new AgentHeartbeat
                     {
                         AgentId = Environment.MachineName,
                         TenantId = config.TenantId ?? string.Empty,
                         Status = "running",
-                        LastSyncAtUtc = _lastSyncAtUtc ?? DateTimeOffset.UtcNow,
+                        // Log Merkezi L3f: the real last sync, not "now".
+                        LastSyncAtUtc = health.LastSyncAtUtc ?? _lastSyncAtUtc,
                         QueueDepth = queueDepth,
-                        LastError = _lastError,
+                        LastError = health.LastError ?? _lastError,
+                        LastSyncResult = health.LastSyncResult,
+                        AppVersion = typeof(HeartbeatWorker).Assembly.GetName().Version?.ToString(),
+                        HostKind = "service",
                     };
                     await _remoteApi.SendHeartbeatAsync(heartbeat, stoppingToken);
                     _logger.LogDebug("Heartbeat sent for agent {AgentId} (queueDepth={QueueDepth}).", heartbeat.AgentId, heartbeat.QueueDepth);

@@ -100,6 +100,8 @@ public sealed class AgentSyncLoop
     /// </summary>
     public async Task RunSingleIterationAsync(CancellationToken stoppingToken)
     {
+        var round = new RoundOutcome();
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
             using var scope = _services.CreateScope();
@@ -112,12 +114,13 @@ public sealed class AgentSyncLoop
             if (!await tokens.EnsureValidAsync(stoppingToken).ConfigureAwait(false))
             {
                 _logger.LogWarning("Skipping sync iteration: no usable agent token.");
+                round.Fail("NO_AGENT_TOKEN", "No usable agent token.");
                 return;
             }
 
             if (_options.UseTriggerBasedSync)
             {
-                await RunChangeLogIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+                await RunChangeLogIterationAsync(scope, round, stoppingToken).ConfigureAwait(false);
 
                 // The change-log path carries deletes to the mobile master-data
                 // consumers but not inserts/updates — those still travel as
@@ -125,17 +128,18 @@ public sealed class AgentSyncLoop
                 // out (e.g. an ERP with no *_lastup_date).
                 if (_options.RefreshSnapshotInTriggerMode)
                 {
-                    await RunSnapshotIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+                    await RunSnapshotIterationAsync(scope, round, stoppingToken).ConfigureAwait(false);
                 }
             }
             else
             {
-                await RunSnapshotIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+                await RunSnapshotIterationAsync(scope, round, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // graceful shutdown
+            return;
         }
         catch (Exception ex)
         {
@@ -143,15 +147,66 @@ public sealed class AgentSyncLoop
             // error. Anything escaping here is a programmer bug — log loudly and
             // keep the loop alive.
             _logger.LogError(ex, "Agent sync iteration crashed unexpectedly.");
+            round.Fail("SYNC_CRASHED", ex.Message);
+        }
+        finally
+        {
+            if (!stoppingToken.IsCancellationRequested) Report(round, started);
         }
     }
 
-    private async Task RunSnapshotIterationAsync(IServiceScope scope, CancellationToken stoppingToken)
+    /// <summary>
+    /// Log Merkezi L3e/L3f: hand the outcome to <see cref="AgentHealth"/> (heartbeat) and ship one
+    /// <c>AGENT_SYNC_ROUND</c> line — durations and counts only, no business data. The log buffer folds identical rounds.
+    /// </summary>
+    private void Report(RoundOutcome round, long started)
+    {
+        try
+        {
+            var totalMs = (int)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            _services.GetService<AgentHealth>()?.RecordSync(DateTimeOffset.UtcNow, round.ErrorCode, round.ErrorMessage);
+            using (_logger.BeginScope(new Dictionary<string, object>
+            {
+                ["Kind"] = "AGENT_SYNC_ROUND",
+                [ErpBridge.Core.Logging.AgentLogBuffer.ShipProperty] = true,
+            }))
+            {
+                _logger.LogInformation(
+                    "Sync round {Result} in {DurationMs} ms (mode={Mode}; changelog={ChangeLog}; snapshot={Snapshot})",
+                    round.ErrorCode is null ? "OK" : "FAILED:" + round.ErrorCode, totalMs,
+                    _options.UseTriggerBasedSync ? "trigger" : "watermark", round.ChangeLog ?? "-", round.Snapshot ?? "-");
+            }
+        }
+        catch (Exception)
+        {
+            // Reporting must never break the loop.
+        }
+    }
+
+    private sealed class RoundOutcome
+    {
+        public string? ErrorCode { get; private set; }
+        public string? ErrorMessage { get; private set; }
+        public string? ChangeLog { get; set; }
+        public string? Snapshot { get; set; }
+
+        public void Fail(string? code, string? message)
+        {
+            ErrorCode ??= string.IsNullOrWhiteSpace(code) ? "SYNC_FAILED" : code;
+            ErrorMessage ??= message;
+        }
+    }
+
+    private async Task RunSnapshotIterationAsync(IServiceScope scope, RoundOutcome round, CancellationToken stoppingToken)
     {
         var sync = scope.ServiceProvider.GetRequiredService<IBootstrapSyncService>();
         var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+        round.Snapshot = result.Success
+            ? $"ok:{result.CustomersCount + result.StocksCount + result.PricesCount + result.InventoryCount}rows:{result.DurationMs}ms"
+            : $"failed:{result.ErrorCode}:{result.DurationMs}ms";
         if (!result.Success)
         {
+            round.Fail(result.ErrorCode, result.ErrorMessage);
             _logger.LogWarning(
                 "Bootstrap sync failed: code={Code} message={Message} duration={D}ms",
                 result.ErrorCode, result.ErrorMessage, result.DurationMs);
@@ -177,16 +232,20 @@ public sealed class AgentSyncLoop
         && result.CustomerTransactionsCount == 0 && result.StockTransactionsCount == 0
         && result.BarcodesCount == 0 && result.SalesConditionsCount == 0;
 
-    private async Task RunChangeLogIterationAsync(IServiceScope scope, CancellationToken stoppingToken)
+    private async Task RunChangeLogIterationAsync(IServiceScope scope, RoundOutcome round, CancellationToken stoppingToken)
     {
         // The sync service owns installation: it checks the change log's own
         // IsInstalledAsync and installs when missing, so this method stays free
         // of any vendor type.
         var sync = scope.ServiceProvider.GetRequiredService<IErpChangeLogSyncService>();
         var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+        round.ChangeLog = result.Success
+            ? $"ok:{result.TotalRowsPushed}rows:{result.DurationMs}ms"
+            : $"failed:{result.ErrorCode}:{result.DurationMs}ms";
 
         if (!result.Success)
         {
+            round.Fail(result.ErrorCode, result.ErrorMessage);
             _logger.LogWarning(
                 "Change-log sync failed: code={Code} message={Message} duration={D}ms",
                 result.ErrorCode, result.ErrorMessage, result.DurationMs);

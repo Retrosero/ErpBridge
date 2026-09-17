@@ -26,6 +26,14 @@ public sealed class DesktopAgentTelemetryReporter
     public async Task ReportExceptionAsync(Exception exception, string operation, string severity = "ERROR")
     {
         ArgumentNullException.ThrowIfNull(exception);
+        // Log Merkezi L3c: an operator action that failed goes through the log shipping outbox, merged with the log
+        // line the same exception produced (no duplicate, survives a network outage). Only FATAL — the global hooks,
+        // where the process may be about to die — is still sent immediately.
+        if (!string.Equals(severity, "FATAL", StringComparison.OrdinalIgnoreCase))
+        {
+            ErpBridge.Core.Logging.AgentLogBuffer.Shared.AddReported(exception, operation, severity);
+            return;
+        }
         try
         {
             var assemblyVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
@@ -47,7 +55,8 @@ public sealed class DesktopAgentTelemetryReporter
         {
             // Do not use the remote reporter recursively. Local Serilog remains
             // the fallback when the server is offline or the JWT has expired.
-            _logger.LogDebug(reportFailure, "Desktop telemetry could not be sent.");
+            _logger.LogDebug(reportFailure, "Desktop telemetry could not be sent; the exception is queued for log shipping.");
+            ErpBridge.Core.Logging.AgentLogBuffer.Shared.AddReported(exception, operation, severity);
         }
     }
 

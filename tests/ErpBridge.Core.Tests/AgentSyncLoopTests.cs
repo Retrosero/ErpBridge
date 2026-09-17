@@ -184,4 +184,74 @@ public class AgentSyncLoopTests
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    [Fact]
+    public async Task Each_round_updates_agent_health_and_logs_a_shippable_sync_round()
+    {
+        var bootstrap = NewBootstrap();
+        var changeLog = new Mock<IErpChangeLogSyncService>();
+        changeLog.Setup(s => s.RunOnceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ErpChangeLogSyncResult.Failed(30, "MIKRO_TIMEOUT", "Timeout; Password=Gizli123"));
+        var services = new ServiceCollection();
+        services.AddSingleton(bootstrap.Object);
+        services.AddSingleton(changeLog.Object);
+        services.AddSingleton(ValidToken().Object);
+        var health = new AgentHealth();
+        services.AddSingleton(health);
+        using var provider = services.BuildServiceProvider();
+        var logger = new ScopeCapturingLogger<AgentSyncLoop>();
+        var loop = new AgentSyncLoop(provider, new AgentSyncLoopOptions(UseTriggerBasedSync: true), logger);
+
+        await loop.RunSingleIterationAsync(CancellationToken.None);
+
+        health.Snapshot.LastSyncResult.Should().Be("FAILED");
+        health.Snapshot.LastError.Should().StartWith("MIKRO_TIMEOUT").And.NotContain("Gizli123");
+        health.Snapshot.LastSyncAtUtc.Should().NotBeNull();
+        var round = logger.Entries.Should().ContainSingle(e => e.Scope.ContainsKey("Kind") && (string)e.Scope["Kind"] == "AGENT_SYNC_ROUND").Subject;
+        round.Scope[ErpBridge.Core.Logging.AgentLogBuffer.ShipProperty].Should().Be(true);
+        round.Message.Should().Contain("FAILED:MIKRO_TIMEOUT").And.Contain("changelog=failed:MIKRO_TIMEOUT");
+
+        changeLog.Setup(s => s.RunOnceAsync(It.IsAny<CancellationToken>())).ReturnsAsync(ErpChangeLogSyncResult.Empty(3));
+        await loop.RunSingleIterationAsync(CancellationToken.None);
+        health.Snapshot.LastSyncResult.Should().Be("OK");
+        health.Snapshot.LastError.Should().BeNull();
+    }
+
+    [Fact]
+    public void Agent_correlation_is_scoped_and_restored()
+    {
+        AgentCorrelation.Current.Should().BeNull();
+        using (AgentCorrelation.Begin("job-1"))
+        {
+            AgentCorrelation.Current.Should().Be("job-1");
+            using (AgentCorrelation.Begin(null)) AgentCorrelation.Current.Should().Be("job-1", "an empty id keeps the outer one");
+        }
+        AgentCorrelation.Current.Should().BeNull();
+    }
+
+    private sealed class ScopeCapturingLogger<T> : Microsoft.Extensions.Logging.ILogger<T>
+    {
+        private readonly Stack<IEnumerable<KeyValuePair<string, object>>> _scopes = new();
+        public List<(string Message, Dictionary<string, object> Scope)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+        {
+            _scopes.Push(state as IEnumerable<KeyValuePair<string, object>> ?? []);
+            return new Pop(_scopes);
+        }
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            var scope = new Dictionary<string, object>();
+            foreach (var pairs in _scopes) foreach (var (key, value) in pairs) scope[key] = value;
+            Entries.Add((formatter(state, exception), scope));
+        }
+
+        private sealed class Pop(Stack<IEnumerable<KeyValuePair<string, object>>> stack) : IDisposable
+        {
+            public void Dispose() => stack.Pop();
+        }
+    }
 }

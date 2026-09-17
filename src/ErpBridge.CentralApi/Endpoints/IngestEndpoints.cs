@@ -303,6 +303,7 @@ public static class IngestEndpoints
             TenantId = tenantId,
             ExternalId = body.ExternalId,
             DocumentType = documentType,
+            CorrelationId = LogCenter.CorrelationId.Of(http),
             PayloadJson = payloadJson,
             Status = JobStatus.Pending,
             EnqueuedAtUtc = DateTimeOffset.UtcNow,

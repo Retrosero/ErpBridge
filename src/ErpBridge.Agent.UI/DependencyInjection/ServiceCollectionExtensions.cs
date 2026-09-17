@@ -74,6 +74,11 @@ public static class ServiceCollectionExtensions
         // Live UI clock: drives the tray tooltip + the status-bar clock.
         services.AddSingleton<IDesktopClockService, DesktopClockService>();
 
+        // Log Merkezi L3c: the desktop app ships its warning+ lines as source windows_agent.
+        services.AddSingleton(ErpBridge.Core.Logging.AgentLogBuffer.Shared);
+        services.AddSingleton(new ErpBridge.Core.Logging.AgentLogShipperOptions("ui"));
+        services.AddSingleton<ErpBridge.Core.Logging.AgentLogShipper>();
+
         services.AddLogging(b =>
         {
             b.ClearProviders();

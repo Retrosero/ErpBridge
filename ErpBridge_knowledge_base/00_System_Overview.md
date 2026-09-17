@@ -895,6 +895,29 @@ registration ayrı bir composition projesine taşınır.
    - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.1.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
      (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır.
 
+26. **Ajan olayları Log Merkezi'ne kuyrukla gider: `Core/Logging/AgentLogBuffer` → `AgentLogShipper` (Log Merkezi L3c–L3g, 2026-09-17).**
+   - **Hat:** Serilog `AgentLogBufferSink` Warning+ satırları ve `ShipToLogCenter = true` kapsamlı Information satırlarını
+     `AgentLogBuffer.Shared`'a verir → `AgentLogShipper` (servis: `AgentLogShipperWorker`, masaüstü: `App` arka plan görevi,
+     15 sn) SQLite `agent_log_outbox`'a yazar (tablo ilk kullanımda oluşur; en çok 1.000 satır / 7 gün) → geçerli token
+     varken `POST /api/v1/agents/logs/batch` (`hostKind` service → `windows_service`, ui → `windows_agent`). Satır, sunucu
+     kabul edene kadar kuyruktan silinmez. Göndericinin kendi kategorisi (`ErpBridge.Core.Logging`), `App.Bootstrap`,
+     `System.Net.Http.HttpClient` ve `Polly` gönderilmez; gönderici kendi sorunlarını yalnız Debug yazar.
+   - **Kısma:** aynı sorun (tür + kategori + istisna tipi + rakamsız mesaj) 10 dakikada bir gider, tekrarlar `RepeatCount`.
+     Tampon 2.000 satır; taşarsa düşer ve `LOG_SHIPPING_LOSS` bildirilir. Her alan `MaskSecrets`'ten geçer.
+   - **Yeni bir hata noktası için** ayrı raporlayıcı yazılmaz: `ILogger` ile Warning/Error loglamak yeter. Masaüstündeki
+     `App.ReportExceptionAsync` (FATAL dışı) aynı istisnanın log satırıyla **birleşir** (istisna nesnesi kimliğiyle), çift
+     olay oluşmaz; yalnız global kancaların FATAL'ı eski `/agents/telemetry` ile anında gider.
+   - **Yaşam döngüsü:** servis `AGENT_STARTED` (sürüm), `AGENT_STOPPED` ve log klasöründe kalan `agent-service.running`
+     işaret dosyasından `AGENT_UNCLEAN_SHUTDOWN` bildirir; servise `AppDomain`/`TaskScheduler` kancaları eklendi.
+   - **Senkron turu:** `AgentSyncLoop` her turda `AgentHealth`'i günceller ve tek `AGENT_SYNC_ROUND` satırı gönderir
+     (sonuç, süre, changelog/snapshot özeti; iş verisi yok). Polly her yeniden denemeyi `HTTP_RETRY` uyarısı yazar.
+   - **Heartbeat (L3f):** `AppVersion`, `HostKind`, gerçek `LastSyncAtUtc`, `LastSyncResult`, maskeli `LastError`
+     gönderir; sunucu `agents` satırına yazar ve `agent_heartbeat_log`'a yalnız değişimde veya 15 dakikada bir satır ekler.
+   - **İş iz kimliği (L3g):** `jobs.CorrelationId` işi oluşturan isteğin `X-Correlation-Id`'si (onay kararında
+     `CorrelationId.Current` ortam değeri); `/jobs/pending` yanıtında gelir. `AgentWorker.ProcessJobAsync`
+     `AgentCorrelation.Begin` + log kapsamı açar; bu sürede ajanın tüm çağrıları aynı başlığı taşır. Ajanın diğer
+     çağrıları her istekte yeni bir kimlik gönderir.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

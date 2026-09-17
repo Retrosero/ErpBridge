@@ -539,6 +539,18 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         await SendNoContentAsync(request, opts, ct);
     }
 
+    /// <inheritdoc />
+    public async Task SendAgentLogsAsync(string hostKind, IReadOnlyList<ErpBridge.Core.Logging.AgentLogEvent> events, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        if (events.Count == 0) return;
+
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(HttpMethod.Post, "/api/v1/agents/logs/batch", opts, NewIdempotencyKey("logs"));
+        request.Content = SerializeJson(new { hostKind, events });
+        await SendNoContentAsync(request, opts, ct);
+    }
+
     /// <summary>
     /// Build a stable idempotency key for non-ack POSTs. The same call (and any
     /// Polly retries against the same <see cref="HttpRequestMessage"/>) reuses
@@ -576,6 +588,8 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         }
 
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
+        // Log Merkezi L3g: the job's correlation id while one is being written, otherwise a fresh id per call.
+        request.Headers.TryAddWithoutValidation("X-Correlation-Id", ErpBridge.Core.Sync.AgentCorrelation.Current ?? Guid.NewGuid().ToString());
         request.Headers.TryAddWithoutValidation("User-Agent", "ErpBridge-Agent/1.0");
 
         if (!string.IsNullOrWhiteSpace(idempotencyKey))

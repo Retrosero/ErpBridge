@@ -46,6 +46,12 @@ public sealed class Job
     /// </summary>
     public Guid? CreatedByUserId { get; set; }
 
+    /// <summary>
+    /// Log Merkezi L3g: <c>X-Correlation-Id</c> of the request that created the job (phone upload, approval decision).
+    /// Sent to the agent with the job so its ERP write logs under the same id. Null for rows from before the column.
+    /// </summary>
+    public string? CorrelationId { get; set; }
+
     /// <summary>Document-typed payload serialized as JSON (stored as jsonb in PostgreSQL).</summary>
     public string PayloadJson { get; set; } = "{}";
 
