@@ -659,6 +659,7 @@ public partial class Program
         app.MapMobileAccountEndpoints();
         app.MapMobileApprovalEndpoints();
         app.MapPortalEndpoints();
+        app.MapPortalErpWriteEndpoints();
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
         app.MapParameterEndpoints();
