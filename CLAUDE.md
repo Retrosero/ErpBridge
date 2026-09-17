@@ -33,6 +33,10 @@ ilgili knowledge_base dosyasını da güncelle.
   doğrudan push, Play production yayını.
 - **İstisna (2026-09-17):** aynı yetkiler `docs/GOAL_LOG_MERKEZI.md` görevleri için de önceden onaylıdır
   (kullanıcı: "hepsi geçerli"). Yalnız o belgenin görevlerini kapsar; aynı yasaklar geçerlidir.
+- **İstisna (2026-09-17):** aynı yetkiler `docs/GOAL_ERP_YAZIM.md` görevleri için de önceden onaylıdır
+  (kullanıcı: "Evet, hepsi geçerli"); ek olarak yalnız yerel **`MikroDB_V15_ERPBTEST`** test kopyasına test evrakı
+  yazılabilir ve gerekirse aynı yedekten yeniden geri yüklenebilir. Aynı yasaklar + `MikroDB_V15_02` (canlı firma
+  verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak.
 
 ## 3. Test / build
 
