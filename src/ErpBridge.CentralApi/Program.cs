@@ -662,6 +662,7 @@ public partial class Program
         app.MapAdminApiKeysEndpoints();
         app.MapAdminWebhooksEndpoints();
         app.MapAdminTelemetryEndpoints();
+        app.MapAdminLogEndpoints();
         app.MapAdminMobileSeatsEndpoints();
     }
 
