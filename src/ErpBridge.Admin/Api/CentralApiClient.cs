@@ -85,12 +85,31 @@ public class JobDto
     [JsonPropertyName("lastError")] public string? LastError { get; set; }
     [JsonPropertyName("enqueuedAtUtc")] public DateTimeOffset EnqueuedAtUtc { get; set; }
     [JsonPropertyName("completedAtUtc")] public DateTimeOffset? CompletedAtUtc { get; set; }
+    [JsonPropertyName("nextAttemptAtUtc")] public DateTimeOffset? NextAttemptAtUtc { get; set; }
+    [JsonPropertyName("leasedUntilUtc")] public DateTimeOffset? LeasedUntilUtc { get; set; }
 }
 
-public sealed class JobDetailDto
+/// <summary>GET /api/v1/admin/jobs/{id}: the job with its payload, results and ERP context (goal ERP yazım Y5b).</summary>
+public sealed class JobDetailDto : JobDto
 {
-    public JobDto Job { get; set; } = new();
     [JsonPropertyName("payloadJson")] public string PayloadJson { get; set; } = "{}";
+    [JsonPropertyName("createdByUserId")] public Guid? CreatedByUserId { get; set; }
+    [JsonPropertyName("retryable")] public bool? Retryable { get; set; }
+    [JsonPropertyName("erpDocumentNo")] public string? ErpDocumentNo { get; set; }
+    [JsonPropertyName("lastErrorCode")] public string? LastErrorCode { get; set; }
+    [JsonPropertyName("acks")] public List<JobAckDto> Acks { get; set; } = [];
+
+    /// <summary>The <c>erpContext</c> an agent would get now, as sent; null for a company without an ERP.</summary>
+    [JsonPropertyName("erpContext")] public System.Text.Json.JsonElement? ErpContext { get; set; }
+}
+
+public sealed class JobAckDto
+{
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
+    [JsonPropertyName("errorMessage")] public string? ErrorMessage { get; set; }
+    [JsonPropertyName("erpDocumentNo")] public string? ErpDocumentNo { get; set; }
+    [JsonPropertyName("ackedAtUtc")] public DateTimeOffset AckedAtUtc { get; set; }
 }
 
 public sealed class JobFailureDto

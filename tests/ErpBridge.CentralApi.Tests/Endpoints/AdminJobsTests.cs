@@ -4,6 +4,8 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ErpBridge.CentralApi.Tests.Endpoints;
 
@@ -57,6 +59,43 @@ public class AdminJobsTests : IClassFixture<CentralApiFactory>
         body.Id.Should().Be(job.Id);
         body.PayloadJson.Should().Contain("A1");
         body.ExternalId.Should().Be("ext-detail-1");
+    }
+
+    [Fact]
+    public async Task Detail_shows_the_attempt_times_the_results_and_the_erp_context_an_agent_would_get()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync();
+        var job = await _factory.SeedJobAsync(tenant.Id, "MOB-TH-ADMIN-1", JobStatus.Pending);
+        var next = DateTimeOffset.UtcNow.AddMinutes(5);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
+            var row = await db.Jobs.SingleAsync(j => j.Id == job.Id);
+            row.NextAttemptAtMs = next.ToUnixTimeMilliseconds();
+            row.RetryCount = 2;
+            db.JobAcks.Add(new JobAckRecord { JobId = job.Id, Status = "failed", ErrorCode = "TOTAL_MISMATCH", AckedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10) });
+            db.JobAcks.Add(new JobAckRecord { JobId = job.Id, Status = "retry", ErrorCode = "ERP_UNAVAILABLE", ErrorMessage = "Mikro'ya ulaşılamadı.", AckedAtUtc = DateTimeOffset.UtcNow });
+            (await db.Tenants.SingleAsync(t => t.Id == tenant.Id)).DataSource = TenantDataSources.Erp;
+            db.ErpWriteSettings.Add(new ErpWriteSettings { TenantId = tenant.Id, SalesDocumentKind = "invoice", InvoiceSeries = "T", DefaultCashCode = "001" });
+            await db.SaveChangesAsync();
+        }
+
+        var detail = await (await client.GetAsync($"/api/v1/admin/jobs/{job.Id}", token)).ReadAsJsonAsync<JobDetailDto>();
+
+        detail.NextAttemptAtUtc!.Value.ToUnixTimeMilliseconds().Should().Be(next.ToUnixTimeMilliseconds());
+        detail.Retryable.Should().BeTrue("the last result was a retryable failure");
+        detail.LastErrorCode.Should().Be("ERP_UNAVAILABLE");
+        detail.Acks.Select(a => a.Status).Should().Equal("retry", "failed");
+        detail.ErpContext.Should().NotBeNull();
+        detail.ErpContext!.SalesDocumentKind.Should().Be("invoice");
+        detail.ErpContext.Series.Invoice.Should().Be("T");
+        detail.ErpContext.CashCode.Should().Be("001");
+
+        var list = await (await client.GetAsync($"/api/v1/admin/jobs?tenantId={tenant.Id}", token)).ReadAsJsonAsync<JobDto[]>();
+        list.Single(j => j.Id == job.Id).NextAttemptAtUtc.Should().NotBeNull();
     }
 
     [Fact]
