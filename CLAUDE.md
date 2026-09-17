@@ -31,6 +31,8 @@ ilgili knowledge_base dosyasını da güncelle.
   **internal** kanalına yükleme **önceden onaylıdır** (kullanıcı `/goal` ile müdahalesiz çalıştırmak istedi).
   Yalnız o belgenin görevlerini kapsar. Hiçbir koşulda: `--force` push, CI kırmızıyken merge, `main`'e
   doğrudan push, Play production yayını.
+- **İstisna (2026-09-17):** aynı yetkiler `docs/GOAL_LOG_MERKEZI.md` görevleri için de önceden onaylıdır
+  (kullanıcı: "hepsi geçerli"). Yalnız o belgenin görevlerini kapsar; aynı yasaklar geçerlidir.
 
 ## 3. Test / build
 
