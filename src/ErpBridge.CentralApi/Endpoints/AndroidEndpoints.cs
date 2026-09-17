@@ -289,8 +289,8 @@ public static class AndroidEndpoints
                 group => group.Key,
                 group => group.OrderBy(item => GetInt32(item, "listNumber") == 1 ? 0 : 1)
                     .ThenBy(item => GetInt32(item, "listNumber") ?? int.MaxValue)
-                    .Select(item => GetDecimal(item, "price"))
-                    .FirstOrDefault(price => price is > 0),
+                    .Select(item => (Price: GetDecimal(item, "price"), ListNo: GetInt32(item, "listNumber")))
+                    .FirstOrDefault(pick => pick.Price is > 0),
                 StringComparer.OrdinalIgnoreCase);
 
         var priceListNames = GetArray(root, "lookups")
@@ -315,6 +315,24 @@ public static class AndroidEndpoints
                     .ToDictionary(
                         list => priceListNames.TryGetValue(list.Key, out var name) ? name : $"Liste {list.Key}",
                         list => list.Select(item => GetDecimal(item, "price")).First(price => price is > 0)!.Value),
+                StringComparer.OrdinalIgnoreCase);
+
+        // Every list's price with its number, so the phone can name the ERP list a price came from.
+        var priceListsByStock = GetArray(root, "prices")
+            .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")) && GetDecimal(item, "price") is > 0 && GetInt32(item, "listNumber") is > 0)
+            .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .GroupBy(item => GetInt32(item, "listNumber")!.Value)
+                    .OrderBy(list => list.Key)
+                    .Select(list => new Dictionary<string, object?>
+                    {
+                        ["listNo"] = list.Key,
+                        ["name"] = priceListNames.TryGetValue(list.Key, out var listName) ? listName : $"Liste {list.Key}",
+                        ["price"] = list.Select(item => GetDecimal(item, "price")).First(p => p is > 0)!.Value,
+                    })
+                    .ToList(),
                 StringComparer.OrdinalIgnoreCase);
 
         var inventoryByStock = GetArray(root, "inventory")
@@ -358,14 +376,19 @@ public static class AndroidEndpoints
                 mapped["barkod"] = GetString(barcodes[0], "barcode") ?? string.Empty;
             }
 
-            if (pricesByStock.TryGetValue(stockCode, out var price) && price is > 0)
+            if (pricesByStock.TryGetValue(stockCode, out var price) && price.Price is > 0)
             {
-                mapped["satis_fiyati"] = price.Value;
-                mapped["price"] = price.Value;
+                mapped["satis_fiyati"] = price.Price.Value;
+                mapped["price"] = price.Price.Value;
+                // The list the headline price came from: a sale sends it to the ERP (goal ERP yazım Y4a).
+                mapped["satisFiyatListeNo"] = price.ListNo;
             }
             mapped["customPrices"] = customPricesByStock.TryGetValue(stockCode, out var customPrices)
                 ? customPrices
                 : new Dictionary<string, decimal>();
+            mapped["fiyatListeleri"] = priceListsByStock.TryGetValue(stockCode, out var priceLists)
+                ? priceLists
+                : [];
 
             if (inventoryByStock.TryGetValue(stockCode, out var warehouses))
             {
