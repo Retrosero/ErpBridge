@@ -27,8 +27,22 @@ public class MikroDocumentWriteRunnerLiveTests
         Server: MikroWriteTestDatabase.Server, UserId: string.Empty, Password: string.Empty,
         DatabaseName: MikroWriteTestDatabase.Database!, IntegratedSecurity: true, CompanyNo: 0, BranchNo: 0);
 
-    private static MikroDocumentWriteRunner Runner() =>
-        new(new MikroConnectionFactory(), new MikroDocumentLedger(), cache: null, NullLogger<MikroDocumentWriteRunner>.Instance);
+    private static MikroDocumentWriteRunner Runner(ErpBridge.Core.Stores.IMappingStore? cache = null) =>
+        new(new MikroConnectionFactory(), new MikroDocumentLedger(), cache, NullLogger<MikroDocumentWriteRunner>.Instance);
+
+    private sealed class MemoryMappingStore : ErpBridge.Core.Stores.IMappingStore
+    {
+        public List<ErpBridge.Core.Domain.MappingRecord> Saved { get; } = [];
+
+        public Task<ErpBridge.Core.Domain.MappingRecord?> FindAsync(string tenantId, string documentType, string externalId, CancellationToken ct = default) =>
+            Task.FromResult(Saved.FirstOrDefault(m => m.TenantId == tenantId && m.DocumentType == documentType && m.ExternalId == externalId));
+
+        public Task SaveAsync(ErpBridge.Core.Domain.MappingRecord mapping, CancellationToken ct = default)
+        {
+            Saved.Add(mapping);
+            return Task.CompletedTask;
+        }
+    }
 
     private static async Task<MikroWrittenDocument> WriteDescriptionAsync(MikroWriteSession session, string text, CancellationToken ct)
     {
@@ -123,10 +137,13 @@ public class MikroDocumentWriteRunnerLiveTests
             await crashing.Invoking(r => r.RunAsync(Settings(), new MikroWriteRequest(DocumentType, id, 1), (s, ct) => WriteDescriptionAsync(s, id, ct)))
                 .Should().ThrowAsync<IOException>();
 
-            var retry = await Runner().RunAsync(Settings(), new MikroWriteRequest(DocumentType, id, 1), (s, ct) => WriteDescriptionAsync(s, id, ct));
+            var cache = new MemoryMappingStore();
+            var retry = await Runner(cache).RunAsync(Settings(), new MikroWriteRequest(DocumentType, id, 1, "tenant-1"), (s, ct) => WriteDescriptionAsync(s, id, ct));
 
             retry.Ok.Should().BeTrue(retry.ErrorMessage);
             (await RowsAsync(id)).Should().Be(1, "the ledger committed with the document, not with the ack");
+            cache.Saved.Should().ContainSingle("the retry rebuilds the cache the crashed attempt never wrote")
+                .Which.Should().Match<ErpBridge.Core.Domain.MappingRecord>(m => m.DocumentNumber == retry.DocumentNumber && m.Recno == retry.ErpRecno && m.ErpType == "Mikro");
         }
         finally
         {

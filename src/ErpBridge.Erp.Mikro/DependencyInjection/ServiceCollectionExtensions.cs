@@ -126,7 +126,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(sp => new ErpBridge.Erp.Mikro.Writers.Session.MikroDocumentWriteRunner(
             sp.GetRequiredService<MikroConnectionFactory>(),
             sp.GetRequiredService<MikroDocumentLedger>(),
-            sp.GetService<ErpBridge.Erp.Abstractions.Stores.IMappingStore>(),
+            // The agent's SQLite store is registered under the Core contract (LocalStore), not the abstractions one.
+            sp.GetService<ErpBridge.Core.Stores.IMappingStore>(),
             sp.GetService<ILogger<ErpBridge.Erp.Mikro.Writers.Session.MikroDocumentWriteRunner>>()
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ErpBridge.Erp.Mikro.Writers.Session.MikroDocumentWriteRunner>.Instance));
 

@@ -15,12 +15,12 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y0 — Referans ve temel düzeltmeler | 5 | 5 | ✅ |
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 1 | 🔄 |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 2 | 🔄 |
-| Y3 — Mikro V15 writer'ları | 8 | 1 | 🔄 |
+| Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
 | Y4 — Sipariş Cepte | 6 | 0 | ⬜ |
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y3a — Mikro yazma oturumu (PR açılıyor; birleşme Y1 ve Y2 kapanınca)
+**Şu anki görev:** Y1b — Portal ERP ayar uçları (Y3a PR #84 açık, Y1/Y2 kapanınca birleşir)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -50,7 +50,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y2b | `MobileDocumentTranslator` | ⬜ | | |
 | Y2c | `AgentWorker` yeni yol + `retryable` | ⬜ | | |
 | Y2d | Türkçe hata kataloğu | ✅ | [#80](https://github.com/Retrosero/ErpBridge/pull/80) | `Shared/ErpWriteError`: 23 kod, her birine tek fabrika; mesajlar yalnız kod ve fark tutarı taşır. Yeniden denenebilir yalnız `ERP_UNAVAILABLE` ve `ERP_CONTEXT_MISSING` (sunucu güncellenince kendiliğinden çözülür). Test: her sabit için tek fabrika, kodlar tekil |
-| Y3a | `MikroWriteSession` + idempotency + seri/sıra | ✅ | (Y3a PR) | `Erp.Mikro/Writers/Session`: `MikroWriteSession` (tek transaction, firma/şube, Mikro kullanıcı, `GETDATE()` bir kez), `InsertAsync` INSERT kolonlarını şemadan kurar (`MikroTableSchema`, süreç boyu önbellek) — verilmeyen her kolon Mikro'nun boş değeriyle (0 / '' / 1899-12-30), `fileid/create_*/lastup_*/firmano/subeno` oturumdan, `*_RECid_RECno` aynı batch'te RECno'ya çözülür, genişlik aşımı `FIELD_TOO_LONG`. `NextNumberAsync`: evrak numarasının geçtiği **tüm** tablolarda (ör. fatura: CHA 63 + STH 4 + açıklama 51/0/63) `UPDLOCK, HOLDLOCK` ile MAX+1 — Fora `YeniSeriNoBul`+`EvrakVarMi` eşdeğeri, onlardan geniş. `MikroDocumentWriteRunner`: V16 → `ERP_VERSION_NOT_SUPPORTED`; ledger kilitli arama → varsa mevcut evrakla yanıt; yaz + aynı transaction'da ledger + commit; commit sonrası SQLite önbellek (hatası yutulur); bağlantı/timeout/deadlock/Mikro tekil ihlali → `ERP_UNAVAILABLE` (retryable). DEMO canlı testleri (5): NULL'suz satır + self-link, iki çalıştırma → tek evrak, commit sonrası çökme → tek evrak, hata → ne satır ne ledger, 6 eşzamanlı yazım → ardışık farklı numaralar. Yazma testleri tek xUnit koleksiyonunda (ledger testi tabloyu düşürüp kuruyordu; paralelde ikinci evrak oluşturdu) |
+| Y3a | `MikroWriteSession` + idempotency + seri/sıra | 🔄 | [#84](https://github.com/Retrosero/ErpBridge/pull/84) (açık; faz kuralı: Y1 ve Y2 kapanınca birleşir) | `Erp.Mikro/Writers/Session`: `MikroWriteSession` (tek transaction, firma/şube, Mikro kullanıcı, `GETDATE()` bir kez), `InsertAsync` INSERT kolonlarını şemadan kurar (`MikroTableSchema`, süreç boyu önbellek) — verilmeyen her kolon Mikro'nun boş değeriyle (0 / '' / 1899-12-30), `fileid/create_*/lastup_*/firmano/subeno` oturumdan, `*_RECid_RECno` aynı batch'te RECno'ya çözülür, genişlik aşımı `FIELD_TOO_LONG`. `NextNumberAsync`: evrak numarasının geçtiği **tüm** tablolarda (ör. fatura: CHA 63 + STH 4 + açıklama 51/0/63) `UPDLOCK, HOLDLOCK` ile MAX+1 — Fora `YeniSeriNoBul`+`EvrakVarMi` eşdeğeri, onlardan geniş. `MikroDocumentWriteRunner`: V16 → `ERP_VERSION_NOT_SUPPORTED`; ledger kilitli arama → varsa mevcut evrakla yanıt; yaz + aynı transaction'da ledger + commit; commit sonrası SQLite önbellek (hatası yutulur); bağlantı/timeout/deadlock/Mikro tekil ihlali → `ERP_UNAVAILABLE` (retryable). DEMO canlı testleri (5): NULL'suz satır + self-link, iki çalıştırma → tek evrak, commit sonrası çökme → tek evrak, hata → ne satır ne ledger, 6 eşzamanlı yazım → ardışık farklı numaralar. Yazma testleri tek xUnit koleksiyonunda (ledger testi tabloyu düşürüp kuruyordu; paralelde ikinci evrak oluşturdu) |
 | Y3b | Lookup + fiyat/iskonto/KDV hesabı | ⬜ | | |
 | Y3c | Satış faturası (açık + kapalı) | ⬜ | | |
 | Y3d | Sipariş | ⬜ | | |

@@ -1,7 +1,6 @@
 using Dapper;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.SalesOrder;
-using ErpBridge.Erp.Abstractions.Stores;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Shared;
 using Microsoft.Data.SqlClient;
@@ -38,11 +37,11 @@ public sealed class MikroDocumentWriteRunner
 
     private readonly MikroConnectionFactory _connections;
     private readonly MikroDocumentLedger _ledger;
-    private readonly IMappingStore? _cache;
+    private readonly ErpBridge.Core.Stores.IMappingStore? _cache;
     private readonly ILogger<MikroDocumentWriteRunner> _logger;
 
     public MikroDocumentWriteRunner(
-        MikroConnectionFactory connections, MikroDocumentLedger ledger, IMappingStore? cache, ILogger<MikroDocumentWriteRunner> logger)
+        MikroConnectionFactory connections, MikroDocumentLedger ledger, ErpBridge.Core.Stores.IMappingStore? cache, ILogger<MikroDocumentWriteRunner> logger)
     {
         _connections = connections ?? throw new ArgumentNullException(nameof(connections));
         _ledger = ledger ?? throw new ArgumentNullException(nameof(ledger));
@@ -64,6 +63,7 @@ public sealed class MikroDocumentWriteRunner
         ArgumentNullException.ThrowIfNull(write);
 
         MikroLedgerEntry entry;
+        var alreadyWritten = false;
         try
         {
             await using var connection = _connections.CreateConnection(settings);
@@ -81,24 +81,24 @@ public sealed class MikroDocumentWriteRunner
             {
                 if (await session.FindWrittenAsync(request.DocumentType, request.ExternalId, ct).ConfigureAwait(false) is { } existing)
                 {
-                    _logger.LogInformation(
-                        "Mikro document for {DocumentType} {ExternalId} already written as {Series}-{Number}",
-                        request.DocumentType, request.ExternalId, existing.EvrakSeri, existing.EvrakSira);
-                    return Written(existing);
+                    entry = existing;
+                    alreadyWritten = true;
                 }
-
-                var document = await write(session, ct).ConfigureAwait(false);
-                entry = new MikroLedgerEntry(
-                    request.DocumentType, request.ExternalId, document.DocumentTable, document.EvrakTip, document.Series, document.Number, document.HeaderRecNo);
-
-                // The lookup above holds the key's range lock, so this only fails if something bypassed it;
-                // rolling back and retrying then finds the recorded document.
-                if (!await session.TryRecordAsync(entry, ct).ConfigureAwait(false))
+                else
                 {
-                    return Failed(ErpWriteError.ErpUnavailable());
-                }
+                    var document = await write(session, ct).ConfigureAwait(false);
+                    entry = new MikroLedgerEntry(
+                        request.DocumentType, request.ExternalId, document.DocumentTable, document.EvrakTip, document.Series, document.Number, document.HeaderRecNo);
 
-                await session.CommitAsync(ct).ConfigureAwait(false);
+                    // The lookup above holds the key's range lock, so this only fails if something bypassed it;
+                    // rolling back and retrying then finds the recorded document.
+                    if (!await session.TryRecordAsync(entry, ct).ConfigureAwait(false))
+                    {
+                        return Failed(ErpWriteError.ErpUnavailable());
+                    }
+
+                    await session.CommitAsync(ct).ConfigureAwait(false);
+                }
             }
         }
         catch (MikroWriteException ex)
@@ -122,14 +122,16 @@ public sealed class MikroDocumentWriteRunner
         }
 
         _logger.LogInformation(
-            "Mikro document for {DocumentType} {ExternalId} written as {Series}-{Number} (RECno {Recno})",
-            entry.DocumentType, entry.ExternalId, entry.EvrakSeri, entry.EvrakSira, entry.HeaderRecNo);
+            "Mikro document for {DocumentType} {ExternalId} {Outcome} {Series}-{Number} (RECno {Recno})",
+            entry.DocumentType, entry.ExternalId, alreadyWritten ? "was already written as" : "written as", entry.EvrakSeri, entry.EvrakSira, entry.HeaderRecNo);
 
-        if (AfterCommit is { } afterCommit)
+        if (!alreadyWritten && AfterCommit is { } afterCommit)
         {
             await afterCommit(ct).ConfigureAwait(false);
         }
 
+        // Also when the document was already written: the attempt that wrote it may have died before
+        // saving the cache, and this is the only chance to rebuild it (PR #84 Codex).
         await CacheAsync(settings, request, entry, ct).ConfigureAwait(false);
         return Written(entry);
     }
@@ -139,20 +141,21 @@ public sealed class MikroDocumentWriteRunner
         if (_cache is null) return;
         try
         {
-            await _cache.SaveAsync(new MappingRecord(
-                TenantId: request.TenantId,
-                EntityType: request.DocumentType,
-                DocumentType: request.DocumentType,
-                ExternalId: request.ExternalId,
-                ErpType: ErpType.Mikro,
-                ErpVersion: MikroVersion.V15.ToString(),
-                DatabaseName: settings.DatabaseName,
-                DocumentSeries: entry.EvrakSeri,
-                DocumentNumber: entry.EvrakSira,
-                Recno: entry.HeaderRecNo,
-                Guid: null,
-                Checksum: string.Empty,
-                CreatedAtUtc: DateTime.UtcNow), ct).ConfigureAwait(false);
+            if (await _cache.FindAsync(request.TenantId, request.DocumentType, request.ExternalId, ct).ConfigureAwait(false) is not null) return;
+            await _cache.SaveAsync(new ErpBridge.Core.Domain.MappingRecord
+            {
+                TenantId = request.TenantId,
+                EntityType = request.DocumentType,
+                DocumentType = request.DocumentType,
+                ExternalId = request.ExternalId,
+                ErpType = ErpType.Mikro.ToString(),
+                ErpVersion = MikroVersion.V15.ToString(),
+                ErpDatabaseName = settings.DatabaseName,
+                DocumentSeries = entry.EvrakSeri,
+                DocumentNumber = entry.EvrakSira,
+                Recno = entry.HeaderRecNo,
+                CreatedAt = DateTime.UtcNow,
+            }, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
