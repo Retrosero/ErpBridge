@@ -15,7 +15,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L0 — Temel: birleşik model + iz kimliği | 6 | 6 | ✅ |
 | L1 — Log Merkezi v1 (Admin) | 3 | 0 | ⬜ |
 | L2 — Sunucu, Portal, Admin logları | 6 | 0 | ⬜ |
-| L3 — ERP Windows ajanı | 7 | 0 | ⬜ |
+| L3 — ERP Windows ajanı | 7 | 2 | 🔄 |
 | L4 — Sipariş Cepte | 8 | 0 | ⬜ |
 | L5 — Log Merkezi v2 | 6 | 0 | ⬜ |
 | L6 — Denetim, tanılama, saklama | 4 | 0 | ⬜ |
@@ -45,8 +45,8 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L2d | `/internal/logs` + `RemoteLoggerProvider` | ⬜ | | |
 | L2e | Portal hata sınırı + loglama | ⬜ | | |
 | L2f | Admin hata sınırı + loglama | ⬜ | | |
-| L3a | Ajan log yapılandırması + sürüm | ⬜ | | |
-| L3b | Ajan maskeleme düzeltmeleri | ⬜ | | |
+| L3a | Ajan log yapılandırması + sürüm | ✅ | #71 | `AgentSerilog` (servis + masaüstü ortak, sink'ler kodda), `AgentLogLocation` (EXE yanı → ProgramData → TEMP), `VersionPrefix` 1.1.0. Kullanılmayan maskesiz `CreateLoggerFactory` silindi. **Sapma:** CI derleme numarası yerine elle artırılan `VersionPrefix` (ajan derlemeleri CI'da paketlenmiyor) |
+| L3b | Ajan maskeleme düzeltmeleri | ✅ | #71 | Yazıcıları tek tek düzeltmek yerine çıkışta maskeleme: `MaskingTextFormatter` tüm satırı (istisna dahil) `ConnectionStringMasker.MaskSecrets`'ten geçirir. Test, `MaskPassword`'ün satır sonunu aşıp istisna türünü yuttuğunu yakaladı — düzeltildi |
 | L3c | Ajan olay kuyruğu + `/agents/logs/batch` | ⬜ | | |
 | L3d | Raporlanmayan ajan hatalarının bağlanması | ⬜ | | |
 | L3e | `AGENT_SYNC_ROUND` | ⬜ | | |

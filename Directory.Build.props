@@ -3,5 +3,10 @@
     <!-- Every resolved dependency graph is committed and must be reproduced by CI. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+    <!--
+      Log Merkezi L3a: the version every log event carries (agents used to report 1.0.0.0 forever). Bump it when a
+      build is shipped to customers; the Admin log centre filters and groups by it.
+    -->
+    <VersionPrefix>1.1.0</VersionPrefix>
   </PropertyGroup>
 </Project>

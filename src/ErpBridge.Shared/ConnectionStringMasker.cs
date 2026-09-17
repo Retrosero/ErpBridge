@@ -20,7 +20,9 @@ public static class ConnectionStringMasker
 
     // Pre-compiled regex — case-insensitive, captures the secret key
     // ("Password" / "Pwd" / "User ID" / "UID"), then the '=', then every
-    // character up to the next ';' or end-of-string.
+    // character up to the next ';', line break or end-of-string. The line break
+    // matters in log lines: without it a value ran on into the exception text
+    // of the next line and swallowed it.
     //
     // CultureInvariant is required because IgnoreCase alone uses CurrentCulture
     // for case folding — under tr-TR that means the lowercase 'i' only matches
@@ -34,7 +36,7 @@ public static class ConnectionStringMasker
           | User\s*ID
           | UID
         )\s*=\s*
-        [^;]*
+        [^;\r\n]*
         ",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
@@ -115,5 +117,39 @@ public static class ConnectionStringMasker
         }
 
         return MaskPassword(text);
+    }
+
+    private static readonly Regex BearerTokenRegex = new(@"(?i)\bbearer\s+[^\s,;""']+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex JwtRegex = new(@"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex LicenseKeyRegex = new(@"\b(?:LIC|AK)-[A-Za-z0-9_-]+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    // token=..., "licenseKey": "...", apiKey: ...; the whole value, quoted or up to the next separator.
+    private static readonly Regex NamedSecretRegex = new(
+        @"(?i)\b(?<key>jwt|token|access_?token|refresh_?token|licen[sc]e_?key|api_?key|secret|password|pwd)""?(?<sep>\s*[=:]\s*)(?<value>""(?:[^""\\]|\\.)*""|'[^']*'|[^\s,;&}""']+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Log Merkezi L3b: every agent log line and every diagnostic sent to the server goes through here —
+    /// connection-string credentials, bearer tokens, JWTs, <c>AK-</c>/<c>LIC-</c> keys and named secrets
+    /// (<c>token=</c>, <c>"licenseKey":</c>, <c>apiKey:</c>…). Keep this the agent's single list.
+    /// </summary>
+    public static string MaskSecrets(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        var masked = MaskForLog(text);
+        masked = JwtRegex.Replace(masked, RedactedMarker);
+        masked = BearerTokenRegex.Replace(masked, "Bearer " + RedactedMarker);
+        masked = LicenseKeyRegex.Replace(masked, RedactedMarker);
+        return NamedSecretRegex.Replace(masked, match =>
+        {
+            var value = match.Groups["value"].Value;
+            if (value == RedactedMarker || value.StartsWith("Bearer", StringComparison.OrdinalIgnoreCase)) return match.Value;
+            var quote = value.Length >= 2 && (value[0] == '"' || value[0] == '\'') ? value[0].ToString() : string.Empty;
+            return match.Value[..(match.Groups["sep"].Index + match.Groups["sep"].Length - match.Index)] + quote + RedactedMarker + quote;
+        });
     }
 }

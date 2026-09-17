@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Text.RegularExpressions;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.Shared;
@@ -13,9 +12,6 @@ namespace ErpBridge.Agent.UI.Services;
 /// </summary>
 public sealed class DesktopAgentTelemetryReporter
 {
-    private static readonly Regex BearerTokenRegex = new(@"(?i)\bbearer\s+[^\s,;]+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly Regex ApiKeyRegex = new(@"\b(?:LIC|AK)-[A-Za-z0-9_-]+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly Regex NamedSecretRegex = new(@"(?i)\b(jwt|token|licenseKey)\s*[=:]\s*[^\s,;]+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly IRemoteApiClient _remoteApi;
     private readonly ILogger<DesktopAgentTelemetryReporter> _logger;
 
@@ -61,11 +57,5 @@ public sealed class DesktopAgentTelemetryReporter
         return text.Length <= length ? text : text[..length];
     }
 
-    private static string Scrub(string? value)
-    {
-        var masked = ConnectionStringMasker.MaskForLog(value);
-        masked = BearerTokenRegex.Replace(masked, "Bearer ***REDACTED***");
-        masked = ApiKeyRegex.Replace(masked, "***REDACTED***");
-        return NamedSecretRegex.Replace(masked, "$1=***REDACTED***");
-    }
+    private static string Scrub(string? value) => ConnectionStringMasker.MaskSecrets(value);
 }
