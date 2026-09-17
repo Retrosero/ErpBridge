@@ -23,6 +23,9 @@ public enum PortalArea
 
     /// <summary>How phone documents are written into the company's ERP (ERP Aktarım Ayarları, Mikro karşılıkları).</summary>
     ErpWrite,
+
+    /// <summary>Documents sent to the ERP and what the agent did with them (ERP Belgeleri).</summary>
+    ErpDocuments,
 }
 
 /// <summary>
@@ -73,6 +76,7 @@ public static class PortalRoles
         PortalArea.Users => roles.Contains(Admin),
         PortalArea.Displays => roles.Any(r => r is Admin or Manager),
         PortalArea.ErpWrite => roles.Contains(Admin),
+        PortalArea.ErpDocuments => roles.Any(r => r is Admin or Manager or Accounting),
         _ => false,
     };
 

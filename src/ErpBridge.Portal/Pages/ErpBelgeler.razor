@@ -1,0 +1,221 @@
+@page "/erp-belgeler"
+@inherits PortalPageBase
+
+<PageTitle>ERP Belgeleri — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else if (!IsErpCompany)
+{
+    <PageHeader Title="ERP Belgeleri" Eyebrow="Muhasebe" Subtitle="Telefondan gelen belgelerin ERP'ye yazılışı" Busy="false" />
+    <EmptyState Id="erp-not-connected" Icon="@Icons.Material.Rounded.CloudOff" Title="Bu firmanın ERP bağlantısı yok"
+                Hint="Belgeler sunucudaki defterde tutuluyor; ERP'ye aktarım yapılmıyor." />
+}
+else
+{
+    <PageHeader Title="ERP Belgeleri" Eyebrow="Muhasebe" Subtitle="Telefondan gelen satış, iade ve tahsilatın ERP'ye yazılıp yazılmadığı" Busy="Busy" />
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    <form class="ledger-toolbar" id="erp-documents-filter" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <label class="inline-field">
+            Başlangıç
+            <input type="date" class="portal-input portal-input--date" id="erp-from" value="@Fmt.IsoDay(_from)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _from = d; }" />
+        </label>
+        <label class="inline-field">
+            Bitiş
+            <input type="date" class="portal-input portal-input--date" id="erp-to" value="@Fmt.IsoDay(_to)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _to = d; }" />
+        </label>
+        <label class="inline-field">
+            Durum
+            <select class="portal-select portal-select--short" id="erp-state" value="@_state" disabled="@Busy" @onchange="e => _state = e.Value?.ToString() ?? string.Empty">
+                @foreach (var (value, label) in States)
+                {
+                    <option value="@value">@label</option>
+                }
+            </select>
+        </label>
+        <label class="inline-field">
+            Tür
+            <select class="portal-select portal-select--short" id="erp-type" value="@_type" disabled="@Busy" @onchange="e => _type = e.Value?.ToString() ?? string.Empty">
+                @foreach (var (value, label) in Types)
+                {
+                    <option value="@value">@label</option>
+                }
+            </select>
+        </label>
+        <label class="inline-field">
+            Cari
+            <input class="portal-input" id="erp-customer" placeholder="Kod ya da ünvan" value="@_customer" disabled="@Busy" @onchange="e => _customer = e.Value?.ToString() ?? string.Empty" />
+        </label>
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" id="erp-search">Süz</MudButton>
+    </form>
+
+    @if (_result is not null)
+    {
+        @if (_result.Items.Count == 0)
+        {
+            <EmptyState Id="erp-documents-empty" Icon="@Icons.Material.Rounded.ReceiptLong" Title="Bu süzgeçle belge yok."
+                        Hint="Tarih aralığını genişletin ya da durum süzgecini kaldırın." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="table-scroll">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="erp-documents">
+                        <thead>
+                            <tr>
+                                <th>Tarih</th>
+                                <th>Tür</th>
+                                <th>Gönderen</th>
+                                <th>Cari</th>
+                                <th class="num">Tutar</th>
+                                <th>Durum</th>
+                                <th>ERP no / neden</th>
+                                <th class="num">Deneme</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _result.Items)
+                            {
+                                <tr data-job="@item.JobId" data-state="@item.State">
+                                    <td>@Fmt.Time(item.EnqueuedAtUtc)</td>
+                                    <td>@TypeLabel(item.DocumentType)</td>
+                                    <td>@(item.UserName ?? "—")</td>
+                                    <td>
+                                        <div class="cell-title">@(item.CustomerName ?? item.CustomerCode ?? "—")</div>
+                                        @if (item.CustomerName is not null && item.CustomerCode is not null)
+                                        {
+                                            <div class="cell-sub">@item.CustomerCode</div>
+                                        }
+                                    </td>
+                                    <td class="num">@(item.Amount is { } amount ? Fmt.Money(amount) : "—")</td>
+                                    <td><span class="badge @StateBadge(item.State)">@StateLabel(item.State)</span></td>
+                                    <td class="erp-result">
+                                        @if (item.State == "written")
+                                        {
+                                            <span class="cell-title">@(item.ErpDocumentNo ?? "—")</span>
+                                        }
+                                        else if (item.Message is not null)
+                                        {
+                                            <span class="cell-sub">@item.Message</span>
+                                        }
+                                        @if (item.NextAttemptAtUtc is { } next)
+                                        {
+                                            <div class="cell-sub">Sonraki deneme @Fmt.Time(next)</div>
+                                        }
+                                    </td>
+                                    <td class="num">@item.Attempt</td>
+                                    <td>
+                                        @if (item.CanRetry)
+                                        {
+                                            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" Class="erp-retry" OnClick="() => RetryAsync(item)">Yeniden dene</MudButton>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+                <div class="table-foot pager" id="erp-pager">
+                    <span id="erp-range">@_result.Total belge</span>
+                    <span class="pager-buttons">
+                        <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" Size="Size.Small" Disabled="@(Busy || _page <= 1)" OnClick="() => GoToAsync(_page - 1)" aria-label="Önceki sayfa" Class="pager-prev" />
+                        <span class="pager-page" id="erp-page">Sayfa @_page / @PageCount</span>
+                        <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" Size="Size.Small" Disabled="@(Busy || _page >= PageCount)" OnClick="() => GoToAsync(_page + 1)" aria-label="Sonraki sayfa" Class="pager-next" />
+                    </span>
+                </div>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.ErpDocuments;
+
+    private static readonly (string Value, string Label)[] States =
+        [("", "Tümü"), ("failed", "Hata"), ("retrying", "Yeniden denenecek"), ("pending", "Bekliyor"), ("written", "Yazıldı")];
+
+    private static readonly (string Value, string Label)[] Types =
+        [("", "Tümü"), ("sales_order", "Satış"), ("sales_return", "İade"), ("collection", "Tahsilat")];
+
+    private DateOnly _from = Fmt.Today().AddDays(-6);
+    private DateOnly _to = Fmt.Today();
+    private string _state = string.Empty;
+    private string _type = string.Empty;
+    private string _customer = string.Empty;
+    private int _page = 1;
+    private ErpDocumentsResponse? _result;
+
+    private string? Notice { get; set; }
+
+    private bool IsErpCompany => string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase);
+
+    private int PageCount => _result is null || _result.PageSize == 0 ? 1 : Math.Max(1, (_result.Total + _result.PageSize - 1) / _result.PageSize);
+
+    protected override async Task LoadAsync()
+    {
+        if (!IsErpCompany) return;
+        _result = await Api.ErpDocumentsAsync(_from, _to, _state, _type, _customer, _page);
+    }
+
+    private async Task SearchAsync()
+    {
+        Notice = null;
+        _page = 1;
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task GoToAsync(int page)
+    {
+        _page = Math.Clamp(page, 1, PageCount);
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task RetryAsync(ErpDocumentDto item)
+    {
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            await Api.RetryErpDocumentAsync(item.JobId);
+            Notice = "Belge yeniden gönderildi; ajan bir sonraki turda yazmayı dener.";
+            await LoadAsync();
+        });
+    }
+
+    private static string TypeLabel(string type) => type switch
+    {
+        "sales_order" => "Satış",
+        "sales_return" => "İade",
+        "collection" => "Tahsilat",
+        _ => type,
+    };
+
+    private static string StateLabel(string state) => state switch
+    {
+        "written" => "Yazıldı",
+        "failed" => "Hata",
+        "retrying" => "Yeniden denenecek",
+        _ => "Bekliyor",
+    };
+
+    private static string StateBadge(string state) => state switch
+    {
+        "written" => "badge--ok",
+        "failed" => "badge--danger",
+        "retrying" => "badge--warn",
+        _ => "badge--info",
+    };
+}

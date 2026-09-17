@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y4a, Y4b, Y4c, Y4g bitti)
+Son güncelleme: 2026-09-17 (Y4 bitti; Y5a PR'da)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -16,11 +16,11 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 5 | ✅ |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 4 | ✅ |
 | Y3 — Mikro V15 writer'ları | 8 | 8 | ✅ |
-| Y4 — Sipariş Cepte | 7 | 4 | 🔄 |
-| Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
+| Y4 — Sipariş Cepte | 7 | 7 | ✅ |
+| Y5 — İzleme ve operasyon | 2 | 1 | 🔄 |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y4d — yazım sonucu telefonda (sunucu #98, telefon PR'ı)
+**Şu anki görev:** Y5b — Admin iş ayrıntısı + log olayları
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -61,11 +61,11 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y4a | Telefon satış gövdesi (liste fiyatı, iskontolar, fiyat listesi) | ✅ | [siparis_cepte#70](https://github.com/Retrosero/siparis_cepte/pull/70), [#71](https://github.com/Retrosero/siparis_cepte/pull/71) | Gövde v2 (`currency`, `paymentType` Bank Kartı→Kredi Kartı, `bankCode`, `priceListNo`, satır liste fiyatı/iskontolar/`unitPointer`/`note`); fiyat listesi numaraları Room şeması değişmeden `customPrices` içinde (`#satisListeNo`, `#kdvDahil:<n>`); ERP ürününde telefonun uydurduğu bayi/toptan fiyatı kullanılmaz. #71: KDV dahil liste, ERP'li firmada cari kodu boş müşteriye belge gönderilmez (`ErpDocumentGuard`). **Sapma:** `bankName` yerine `bankCode` (Portal bankasının ERP kodu) gönderiliyor — sözleşme `bankCode` okuyor |
 | Y4b | Telefon iade gövdesi (satırlı) | ✅ | [siparis_cepte#71](https://github.com/Retrosero/siparis_cepte/pull/71) | ERP'li firmada tek satırlı `sales_return` (`ErpReturnDocument`); doğrudan kayıt ve onay merkezi aynı gövde; `return` kasa belgesi gönderilmez (yerel kasa satırı kalır). İade toplamı `MikroPriceCalculator.ReturnLine` ile aynı (kondisyon farkı + kalan tutara KDV). Satılan fiyat KDV'siz; liste KDV dahilse `listUnitPrice` KDV eklenmiş gider. Depo "Depo N" değilse firma ayarı. ERP'siz firma gövdesi değişmedi |
 | Y4c | Telefon tahsilat gövdesi (tek belge, `payments[]`) | ✅ | [siparis_cepte#72](https://github.com/Retrosero/siparis_cepte/pull/72), [#97](https://github.com/Retrosero/ErpBridge/pull/97) (sunucu testi) | Tek `collection` + `payments[]` (`ErpCollectionDocument`); çek/senet no + geçerli vade yoksa kayıt yapılmaz; yerel kasa satırları `K-ERPDOC-` ile işaretli, ikinci kez gönderilmez; hızlı tahsilat tek satırlı v2. Sunucu: `NativeDocumentProcessor` v2 gövdeyi toplamla işler (test) |
-| Y4d | Yazım sonucu telefonda | 🔄 | [#98](https://github.com/Retrosero/ErpBridge/pull/98) (sunucu), [siparis_cepte#73](https://github.com/Retrosero/siparis_cepte/pull/73) | Mevcut senkron yolunda iş sonucu yoktu → uç eklendi. **Sapma:** yol `/api/v1/mobile/documents/status` yerine `GET /api/v1/ingest/jobs/status?externalIds=` (telefonun kullandığı ingest grubu ve kimlik doğrulaması); `state` pending/retrying/written/failed, `erpDocumentNo` son ack'in seri-sırası, `message` ajanın Türkçe nedeni. Telefon: Room 37 (`erpState`, `erpDocumentNo`, `erpMessage`), yükleme turu sonunda ve kuyruk ekranı açılınca sorar, açık belge varsa 5 dk sonra tekrar (3 günlük pencere); kuyruk ekranında "Mikro'ya yazıldı: T-1234" / "Bekliyor" / "Yeniden denenecek" / "Hata: …". D14: gönderilmiş kuyruk satırı telefonda düzenlenemez (zaten değişmez) |
-| Y4e | Çift görünme önleme | ⬜ | | |
-| Y4f | Play internal sürüm | ⬜ | | |
+| Y4d | Yazım sonucu telefonda | ✅ | [#98](https://github.com/Retrosero/ErpBridge/pull/98) (sunucu), [siparis_cepte#73](https://github.com/Retrosero/siparis_cepte/pull/73) | Mevcut senkron yolunda iş sonucu yoktu → uç eklendi. **Sapma:** yol `/api/v1/mobile/documents/status` yerine `GET /api/v1/ingest/jobs/status?externalIds=` (telefonun kullandığı ingest grubu ve kimlik doğrulaması); `state` pending/retrying/written/failed, `erpDocumentNo` son ack'in seri-sırası, `message` ajanın Türkçe nedeni. Telefon: Room 37 (`erpState`, `erpDocumentNo`, `erpMessage`), yükleme turu sonunda ve kuyruk ekranı açılınca sorar, açık belge varsa 5 dk sonra tekrar (3 günlük pencere); kuyruk ekranında "Mikro'ya yazıldı: T-1234" / "Bekliyor" / "Yeniden denenecek" / "Hata: …". D14: gönderilmiş kuyruk satırı telefonda düzenlenemez (zaten değişmez) |
+| Y4e | Çift görünme önleme | ✅ | [siparis_cepte#74](https://github.com/Retrosero/siparis_cepte/pull/74) | Yerel ekstre satırı `TX-<externalId>`; belge `written` ve aynı `evrakNo`'lu ERP satırı ekstredeyse yerel kopya gösterilmez (sipariş olarak yazılan satış ERP cari defterine düşmediği için yerel satırı kalır). Room 38: `cari_hesap_hareketleri.ciroCariKod`, `kapali` — kapalı fatura müşterinin ekstresinde, bakiyede değil. `typeForValues` yedeği: `0+iade` Satış İade, `63+iade` Alış İade. Kapsam: cari ekstresi (bakiye zaten ERP hareketlerinden); kasa defteri ekranı ERP satırlarıyla birleştirilmiyor, orada çift görünme yok |
+| Y4f | Play internal sürüm | ⏭️ | [siparis_cepte#75](https://github.com/Retrosero/siparis_cepte/pull/75) | Sürüm 237 (`1.5.237`) main'de. **Kapı:** bu PC'de release keystore ve Play erişimi yok; kullanıcı talimatı "AAB'yi ben oluştururum" — AAB + internal yükleme Seni Bekleyenler'de |
 | Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | ✅ | [#95](https://github.com/Retrosero/ErpBridge/pull/95), [#96](https://github.com/Retrosero/ErpBridge/pull/96), [siparis_cepte#70](https://github.com/Retrosero/siparis_cepte/pull/70), [#71](https://github.com/Retrosero/siparis_cepte/pull/71) | Sunucu: `kdvOrani` = `fn_VergiYuzde(sto_toptan_vergi)`, `satisFiyatListeNo`, `fiyatListeleri[{listNo,name,price,kdvDahil}]`, projeksiyon sürümü 4. **#96 düzeltmesi:** #95'teki stok sorgusu `VatRate` kolon sırası `StockRow` kurucusuyla uyuşmuyordu (Dapper canlıda hata; CI canlı test çalıştırmıyor) — `MikroCatalogReaderLiveTests` eklendi. Telefon: `ErpSalePricing` = `MikroPriceCalculator` (zincir iskonto, nete KDV, KDV dahil listede önce KDV ayrılır) |
-| Y5a | Portal "ERP Aktarım" listesi | ⬜ | | |
+| Y5a | Portal "ERP Aktarım" listesi | ✅ | #99 | `GET /api/v1/portal/erp-documents` (tarih ≤31 gün, varsayılan son 7 gün; durum, tür, gönderen, cari kod/ünvan süzgeci; sayfa ≤100): tür, gönderen, cari, tutar, durum, Mikro seri-sıra, ajanın Türkçe nedeni, deneme, sonraki deneme. Admin/Yönetici/Muhasebe okur. `POST …/{jobId}/retry` yalnız Admin, yalnız Failed/DeadLetter → Pending + yeni deneme hakkı (ajanın `_ERPB_EVRAK_ESLESME` defteri ikinci yazımı önler); 409 `JOB_NOT_RETRYABLE`. Portal `/erp-belgeler` (menü "ERP belgeleri", `PortalArea.ErpDocuments`). Durum eşlemesi `Domain/ErpDocumentStates` telefon ucu (#98) ile ortak. **Sapma:** liste yalnız Admin değil Muhasebe/Yönetici'ye de açık (yazılamayan belgeyi takip eden muhasebe) |
 | Y5b | Admin iş ayrıntısı + log olayları | ⬜ | | |
 | Y6a | KB ve sözleşme belgeleri | ⬜ | | |
 | Y6b | Yerel uçtan uca duman testi (DEMO) | ⬜ | | |
@@ -75,6 +75,8 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 
 ## Seni Bekleyenler
 
+- **Sipariş Cepte 1.5.237 (versionCode 237):** release AAB'yi oluşturup Play **internal** kanalına yükle (ERP yazım Y4: satış/iade/tahsilat gövdesi v2, Mikro ile aynı toplam, yazım sonucu, çift görünme önleme). Önkoşul sunucu uçları canlıda.
+- **Yeni ajan sürümü** müşteri PC'sine: projeksiyon sürümü 4 (stok KDV oranı, fiyat listesi `kdvDahil`) — ajan anlık görüntüyü bir kez kendisi yeniden kurar.
 - Y0e birleşince: müşteri PC'lerine yeni ajan sürümünün kurulması (ajan okuma biçimi sürümünü görüp anlık görüntüyü bir kez kendisi yeniden kurar).
 - Y3 sonunda `MikroDB_V15_DEMO`'ya yazılan evrakların Mikro ekranında muhasebeci kontrolü.
 - `MikroDB_V15_ERPBTEST` artık kullanılmıyor — silinmesini istersen söyle.
