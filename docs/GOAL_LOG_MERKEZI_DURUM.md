@@ -1,6 +1,6 @@
 # Goal Durumu — Log Merkezi
 
-Son güncelleme: 2026-09-18 (L3g)
+Son güncelleme: 2026-09-18 (L4a)
 Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -16,13 +16,13 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L1 — Log Merkezi v1 (Admin) | 3 | 3 | ✅ |
 | L2 — Sunucu, Portal, Admin logları | 6 | 6 | ✅ |
 | L3 — ERP Windows ajanı | 7 | 7 | ✅ |
-| L4 — Sipariş Cepte | 8 | 0 | ⬜ |
+| L4 — Sipariş Cepte | 8 | 1 | 🔄 |
 | L5 — Log Merkezi v2 | 6 | 0 | ⬜ |
 | L6 — Denetim, tanılama, saklama | 4 | 0 | ⬜ |
 | L7 — Uyarılar | 2 | 0 | ⬜ |
 | L8 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** L4 — panel: ajan sağlığı ve log ekranları
+**Şu anki görev:** L4b — telefonda iz kimliği (OkHttp interceptor)
 
 ---
 
@@ -52,7 +52,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L3e | `AGENT_SYNC_ROUND` | ✅ | #108 | `Core/Logging/AgentSyncRound`: INFO olay, `trigger` (`timer`/`manual`), `mode` (`changelog`/`snapshot`/`section`), `success`, `durationMs`, `rows`, hareket eden bölüm başına `rows.<bölüm>`, `payloadBytes`, `errorCode`. **Yalnız sayı** — iş verisi yok. Zamanlayıcı turları `AgentSyncLoop`'tan (servis + WPF aynı döngüyü kullanır), operatör düğmeleri `DashboardViewModel`'den (senkronize, sıfırdan kur, elle bootstrap, bölüm gönder). Kuyruğu doldurmaması parmak izine bırakıldı: mesajdaki sayılar temizlendiği için başarılı turlar tek satırda toplanır, başarısız tur/farklı `errorCode` kendi satırını açar. Raporlayıcısı olmayan host sessizce çalışır (testler bare provider ile kurar). Testler: `AgentSyncRoundTests` (bölüm sayıları, boş bölüm yazılmaz, değişiklik günlüğü turu, başarısız tur, parmak izi toplanması, döngüden iki turun bildirilmesi) |
 | L3f | Heartbeat zenginleştirme + geçmiş | ✅ | #109 | **Kök sorun:** `HeartbeatWorker.RecordSuccessfulSync`/`RecordError` hiç çağrılmayan boş dikişlerdi; her heartbeat "son senkron = şimdi" diyordu, masaüstü ise hep `null` gönderiyordu. Çözüm: `Core/Sync/AgentRunStatus` — süreç başına tek durum, senkron döngüsü ve iş kuyruğu yazar, iki heartbeat de (servis + WPF) okur. Gövdeye `appVersion`, `hostKind` (`service`/`ui`), `erpKind`, `erpVersion`, `lastSyncResult`, `lastErrorCode` eklendi; **hepsi isteğe bağlı**, gönderilmeyen alan sunucudaki değeri ezmiyor (eski ajan gövdesi aynen kabul ediliyor, testli). ERP sürümü adaptörden 6 saatte bir sorulur. Sunucu: `agents`'a 8 nullable kolon + yeni `agent_heartbeat_log` tablosu (migration `20260917201420_LogMerkeziL3fHeartbeat`, yalnız ekleme); `lastError` ajanda maskelenir, sunucuda bir kez daha maskelenip **saklanır** (önceden atılıyordu). Geçmiş satırı yalnız imza değişiminde (durum, kuyruk derinliği, sonuç, hata, sürümler) ya da son satır 15 dakikadan eskiyse yazılır. Testler: `AgentHeartbeatEnrichmentTests` (zengin gövde + maskeleme, eski gövde, geçmiş seyreltme), `AgentRunStatusTests` (yalnız başarılı tur saati ilerletir, maskeleme, sürüm tazeliği, döngünün durumu yazması). **Panelde gösterim L4–L8'e ait.** İnceleme (Codex) üzerine 5 düzeltme: (1) `lastSyncResult=ok` gelince sunucu eski hatayı **temizler** (yoksa iyileşen ajan pazartesinin hatasını göstermeye devam ediyordu), (2) başarısız ERP sürüm sondası da denemeyi kaydeder ve 15 dk sonra yeniden dener (erişilemeyen ERP her dakika sorgulanmasın), (3) `ClearError` artık sürüm numaralı — heartbeat uçarken kaydedilen hata silinmiyor, (4) ERP sürüm sondası `Core/Sync/ErpVersionProbe`'a taşındı, masaüstü host da kullanıyor, (5) `AgentWorker` reddedilen belgeyi, yerel kuyruk ve yoklama hatasını `AgentRunStatus`'a yazıyor |
 | L3g | `jobs.CorrelationId` + ajan iz kimliği | ✅ | #110 | `jobs.correlation_id` (nullable, migration `20260917…L3gJobCorrelationId`) ingest isteğinin `X-Correlation-Id` başlığından; `GET /jobs/pending` yanıtında `correlationId`; `RemoteJob.CorrelationId`. Ajan işi `Core/Logging/AgentCorrelation` kapsamında işler — **AsyncLocal**, yani o sırada yazılan her log satırı (raporlayıcı varsayılanı) ve yapılan her HTTP isteği (`HttpRemoteApiClient` her isteğe başlık ekler) aynı kimliği taşır; iş dışındaki çağrı taze kimlik üretir. Ack'te yazılan `ERP_WRITE_FAILED`/`ERP_WRITE_RETRY` **işin** kimliğini kullanır, ack isteğininkini değil. Eski sunucu/eski iş → alan boş, ajan kendi kimliğini üretir. Testler: uçtan uca (ingest başlığı → iş → kiralama yanıtı → ack olayı aynı kimlik), kimliksiz çağrı da kimlik alır, ajan istek başlığı ve kapsam davranışı (RemoteApi), raporlayıcı devralması (Core) |. İnceleme (Codex) üzerine 2 düzeltme: (1) onay bekleyen belge — `approval_requests.correlation_id` eklendi (ayrı migration), onaydan sonra oluşan iş telefonun izini koruyor (önceden onaydan geçen belge yeni iz başlatıyordu), (2) iş dışındaki ajan çağrıları (heartbeat, yoklama, senkron turu) artık kendi kapsamını açıyor; önceden başlık üretiliyor ama log satırı kimliksiz kalıyordu |
-| L4a | Telefon bağlam alanları + gizlilik belgeleri | ⬜ | | |
+| L4a | Telefon bağlam alanları + gizlilik belgeleri | ✅ | siparis_cepte#76 | `util/TelemetryContext`: `sessionId` (açılış başına UUID), `deviceId` (lisanslamanın kurulum UUID'si), `userId`, `networkType` (`wifi`/`mobile`/`ethernet`/`none`), `sdkInt`, `workspaceMode`. Room 38→39 (varsayılanlı ekleme; kuyruktaki olaylar korunur). Bağlam **olay üretilirken** okunur, yüklenirken değil. Gövde: `deviceId`/`sessionId` mevcut alanlar, diğer üçü `properties` içinde; **`userId` gönderilmez** — sunucu jetondan yazıyor. `CrashStore` bağlamı dosyaya yazıp geri okuyor (çökme bir sonraki açılışta tabloya giriyor; o an oturum/ağ değişmiş olur). Okunamayan depo süreç başına bir kez denenir: bu depolar kendi hatalarını raporladığı için her olayda yeniden denemek bozuk keystore'da olayları ikiye katlıyordu. Sürüm 1.5.238. Belgeler: `VERI_ENVANTERI`, gizlilik politikası, KVKK aydınlatma, Play Data Safety (yeni veri türü doğmuyor). Testler: migration + bağlam + çökme bağlamı; telefon paketi 301 yeşil |
 | L4b | Telefon iz kimliği | ⬜ | | |
 | L4c | Telemetri yükleme işi düzeltmeleri | ⬜ | | |
 | L4d | Telefon kapsama boşlukları | ⬜ | | |
