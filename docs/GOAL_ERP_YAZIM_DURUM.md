@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y1c PR'ı)
+Son güncelleme: 2026-09-17 (Y1b birleşti)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -13,10 +13,10 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
 | Y0 — Referans ve temel düzeltmeler | 5 | 5 | ✅ |
-| Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 4 | 🔄 |
-| Y2 — Ajan: telefon belgesi → komut | 4 | 2 | 🔄 |
+| Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 5 | ✅ |
+| Y2 — Ajan: telefon belgesi → komut | 4 | 3 | 🔄 |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
-| Y4 — Sipariş Cepte | 6 | 0 | ⬜ |
+| Y4 — Sipariş Cepte | 7 | 0 | ⬜ |
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
@@ -45,9 +45,9 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ✅ | [#85](https://github.com/Retrosero/ErpBridge/pull/85) | `PortalErpWriteEndpoints`: `GET/PUT /api/v1/portal/erp-settings`, `GET/PUT /api/v1/portal/users/{id}/erp-mapping`, `GET /api/v1/portal/erp-lookups`. Yalnız firma yöneticisi (403 `ADMIN_REQUIRED`, rol veritabanından); ERP'siz firma 409 `ERP_NOT_CONNECTED`; başka firmanın ya da silinmiş kullanıcı 404 `USER_NOT_FOUND`. Doğrulama 400 `INVALID_ERP_SETTINGS`: belge türü/onay modu, seri ≤ 6 (boş = serisiz; kullanıcıda null = firma değeri), kod ≤ 25 (boşluk = yok), portföy kasası zorunlu, depo/fiyat listesi > 0, Mikro kullanıcı 0–32767, teslim günü 0–365. Seçim listeleri `mobile_records` `lookups`/`cashAndBank` satırlarından (depo, kasa, banka, temsilci, fiyat listesi, proje; silinmiş hariç); yoksa boş liste → UI serbest metin. Kodun Mikro'da var olduğu yazımda ajan kontrol eder |
 | Y1c | Portal UI: ERP Aktarım Ayarları + Mikro karşılıkları | ✅ | [#86](https://github.com/Retrosero/ErpBridge/pull/86) | `Pages/ErpAktarim.razor` (`/erp-aktarim`; menü "ERP aktarım ayarları" yalnız yönetici + ERP'li firma, `PortalArea.ErpWrite`; ERP'siz firmada açıklama): belge türü, sipariş onayı, 5 seri, varsayılan depo/fiyat listesi/kasa/kart ve havale bankası/temsilci/ERP kullanıcı no/teslim günü, çek-senet portföy kasası, sorumluluk merkezi, proje. `Kullanicilar.razor`: satırda "Mikro" düğmesi → "Mikro karşılıkları" paneli (boş = firma varsayılanı; boşaltılan seri null). `Shared/ErpCodeInput`: ERP listesi geldiyse açılır kutu (listede olmayan mevcut kod korunur), yoksa serbest metin. bUnit 6 test. Tarayıcı: sahte merkez API'ye bağlı yerel Portal, 800 px ve 375 px — yatay kayma yok, kaydetme PUT gövdesi doğru. Not: dar ekranda panel tablonun altında açılır (rol düzenleme ile aynı kalıp) |
 | Y1d | `erpContext` kiralama yanıtında | ✅ | [#82](https://github.com/Retrosero/ErpBridge/pull/82) | `JobResponse.erpContext` (ERP'li firmada; ERP'siz firmada null). `ErpWriteContextBuilder`: kullanıcı değeri > firma; boş kod firma kodunu gizlemez, kullanıcıdaki boş seri bilinçli serisiz sayılır. Kiralama anında okunur (eşleme düzeltilip yeniden denenince yeni değer — test). Biçim `ErpBridge.Core.Jobs.ErpWriteContext` ile aynı |
-| Y1e | Kiralama süresi + geçici hata yeniden denemesi | ⬜ | | |
+| Y1e | Kiralama süresi + geçici hata yeniden denemesi | ✅ | [#83](https://github.com/Retrosero/ErpBridge/pull/83) | `jobs.LeasedUntilMs` / `NextAttemptAtMs` (nullable bigint, Unix ms — SQLite `DateTimeOffset` karşılaştıramaz). Kiralama 10 dk; `retryable=true` ack → `Pending` + 1-2-4-8-15-30-60 dk bekleme, ack kaydı `retry`; 10. denemeden sonra `Failed`; kiralaması 10 kez dolan iş bırakılır (`Failed`). Kolon eklenmeden önce kiralanmış işler süresiz kalır (bilinçli: geriye dönük yeniden teslim yok). Admin yeniden deneme iki alanı temizler. **Not:** kiralama ucu SQLite'ta `OrderBy(EnqueuedAtUtc)` yüzünden 500 veriyor (eski durum, PostgreSQL etkilenmiyor); testler bellek içi fabrikada |
 | Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ✅ | [#79](https://github.com/Retrosero/ErpBridge/pull/79) | `Erp.Abstractions/Documents/MobileDocumentCommands.cs`: ortak `ErpDocumentHeader` + `SalesDocumentCommand` / `SalesReturnCommand` / `CollectionCommand`. `IErpAdapter`'a varsayılan gövdeli üç metot (`NotImplemented` sonucu) — Logo iskeleti değişmeden derlenir ve reddeder (seam testi). **Sapma:** iade kondisyonu yüzde değil `ConditionRatio` (0..1, telefonun `conditionPercent` alanı zaten oran); karma ödemede tahsilat serisi komutta (`ExtraPaymentsSeries`) |
-| Y2b | `MobileDocumentTranslator` | ⬜ | | |
+| Y2b | `MobileDocumentTranslator` | ✅ | [#81](https://github.com/Retrosero/ErpBridge/pull/81) | `Core/Jobs/MobileDocumentTranslator` + `ErpWriteContext`; gövde sözleşmesi `docs/mobil-belge-sozlesmesi.md` (v2). 32 test. **Kararlar:** siparişte/irsaliyede peşin ödeme evrakı kapatmaz, tahsilat makbuzu olur (kapalı fatura yalnız faturada); telefonun seçtiği kasa/banka kodu Portal varsayılanını geçer (telefondaki kasa/banka kayıtları Mikro kodu taşıyor); iade kondisyonu 1'den büyükse yüzde sayılır. Katalog 2 kod genişledi: `INVALID_DISCOUNT`, `INVALID_DOCUMENT_DATE`. **Y4a bulgusu:** telefon fiyat grubu adla (`customPrices` Mikro liste adına göre), bayi/toptan yoksa taban fiyatın %90/%80'i uyduruluyor (`BridgeDeltaSync.kt`) — Y4a'da liste no `fiyatTanim`'den, uydurma fiyatla belge gönderilmemeli |
 | Y2c | `AgentWorker` yeni yol + `retryable` | ⬜ | | |
 | Y2d | Türkçe hata kataloğu | ✅ | [#80](https://github.com/Retrosero/ErpBridge/pull/80) | `Shared/ErpWriteError`: 23 kod, her birine tek fabrika; mesajlar yalnız kod ve fark tutarı taşır. Yeniden denenebilir yalnız `ERP_UNAVAILABLE` ve `ERP_CONTEXT_MISSING` (sunucu güncellenince kendiliğinden çözülür). Test: her sabit için tek fabrika, kodlar tekil |
 | Y3a | `MikroWriteSession` + idempotency + seri/sıra | ⬜ | | |
@@ -64,6 +64,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y4d | Yazım sonucu telefonda | ⬜ | | |
 | Y4e | Çift görünme önleme | ⬜ | | |
 | Y4f | Play internal sürüm | ⬜ | | |
+| Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | ⬜ | | Bulgu: telefon ERP ürünlerinde KDV'yi hep %20 sayıyor, KDV'yi genel iskontodan önce hesaplıyor — düzeltilmezse ajan her satışı `TOTAL_MISMATCH` ile reddeder |
 | Y5a | Portal "ERP Aktarım" listesi | ⬜ | | |
 | Y5b | Admin iş ayrıntısı + log olayları | ⬜ | | |
 | Y6a | KB ve sözleşme belgeleri | ⬜ | | |
