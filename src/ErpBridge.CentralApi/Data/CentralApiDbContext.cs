@@ -35,6 +35,7 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<MobileTelemetryEvent> MobileTelemetryEvents => Set<MobileTelemetryEvent>();
     public DbSet<LogEvent> LogEvents => Set<LogEvent>();
     public DbSet<LogErrorGroup> LogErrorGroups => Set<LogErrorGroup>();
+    public DbSet<LogSettings> LogSettings => Set<LogSettings>();
     public DbSet<ChangeSetRecord> ChangeSets => Set<ChangeSetRecord>();
     public DbSet<MobileSyncQueueItem> MobileSyncQueue => Set<MobileSyncQueueItem>();
 
@@ -549,6 +550,14 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => x.Fingerprint).IsUnique();
             b.HasIndex(x => new { x.Status, x.LastSeenMs });
             b.HasIndex(x => x.LastSeenMs);
+        });
+
+        modelBuilder.Entity<LogSettings>(b =>
+        {
+            b.ToTable("log_settings");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.UpdatedBy).HasMaxLength(120);
         });
 
         // Faz 13.1: ChangeSetRecord — per-table trigger-based change-set

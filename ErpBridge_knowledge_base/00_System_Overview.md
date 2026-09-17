@@ -849,6 +849,33 @@ registration ayrı bir composition projesine taşınır.
      iptal, ERP olayı, ortanca), `WarehouseFulfillmentRelationalTests` (+3: bilinen senaryonun rakamları gece
      yarısı sınırıyla, geciken sayımı, yetki/aralık), `PortalWarehouseReportTests` (5).
 
+24. **Loglar tek yoldan yazılır ve iz kimliği taşır: `LogCenter/` (Log Merkezi L0, 2026-09-17).**
+   Plan ve kararlar: [`docs/GOAL_LOG_MERKEZI.md`](../docs/GOAL_LOG_MERKEZI.md).
+   - **Tek yazım yolu `ILogEventWriter`.** `log_events` / `log_error_groups`'a başka kod yazmaz. Yazıcı seviyeyi
+     (`LogSeverity`: DEBUG|INFO|WARN|ERROR|FATAL; "WARNING"→WARN) ve türü (büyük harf ASCII — sunucu kültürüne
+     bağlı `ToUpper` kullanılmaz, Türkçe `i` tuzağı) normalize eder, metni `LogScrubber` ile maskeler, alanları
+     sınırlar, `(Source, EventId)` tekrarını düşürür, WARN+ olayı `ErrorFingerprint` ile gruba sayar. Kaynaklar
+     `LogSources`'taki altı değerden biridir; bilinmeyen kaynak programlama hatasıdır (`ArgumentException`).
+   - **Log yazımı iş akışını bozmaz.** Telemetri uçları yeni tabloya yazım hatasını yakalar ve yanıtı değiştirmez;
+     yeni bir log yolu eklerken de aynısı yapılır ve "log hedefi çökükken iş sürüyor" testi yazılır.
+   - **`X-Correlation-Id`** (`CorrelationId.UseCorrelationId`, hattın ilk ara katmanı): güvenli (`[A-Za-z0-9._:-]`,
+     ≤128) istemci kimliği korunur, yoksa GUID üretilir; yanıta yazılır, `HttpContext.TraceIdentifier` olur
+     (`ApiError.traceId` bu değeri taşır) ve log kapsamına girer.
+   - **Yakalanmamış istisna** (`UnhandledExceptionHandler`): istemciye iç ayrıntısız `500 INTERNAL_ERROR` +
+     `traceId`; ayrıntı (rota şablonu, firma, mobil kullanıcı / ajan, tam istisna) **yeni bir DI kapsamında**
+     `log_events`'e yazılır — isteğin DbContext'i kaydı başarısız olan varlıkları tutuyor olabilir. Bu sınıfın
+     logger kategorisi (`LoggerCategory`) veritabanı logger'ı tarafından atlanmalıdır (çift kayıt). Konsol satırına
+     istisna **nesnesi verilmez**, yalnız `LogScrubber`'dan geçmiş metin (konsol sağlayıcısı ham mesajı ve yığını basar).
+   - **Saklama** (`LogRetention` + günlük `LogRetentionWorker`, `LogRetention:RunAtHourUtc` varsayılan 03): süreler
+     `log_settings` tek satırından (yoksa INFO/DEBUG 14, WARN+ 90 gün; 1–730 arasına sıkıştırılır), **sunucunun
+     aldığı zamana** (`ReceivedAtMs`) göre, 10.000'lik partilerle, bant başına çalıştırmada en çok 100.000 satır.
+     Son görülmesi WARN süresinden eski ve **hiçbir saklı olayın göstermediği** açık gruplar silinir (grubun son görülmesi
+     cihaz saatidir; çevrimdışı telefonun bugün getirdiği eski olay grubunu korur). Çözüldü/yok sayıldı grupları kalır.
+     `MaxDeletesPerRun` kesin sınırdır; daha büyük `BatchSize` ona sıkıştırılır.
+     Eski `mobile_telemetry_events` kendi 90 günlük işçisiyle temizlenmeye devam eder.
+   - Testler: `tests/ErpBridge.CentralApi.Tests/LogCenter/` (maskeleme, normalizasyon, parmak izi, yazıcı SQLite
+     testleri, iz kimliği, 500 kaydı, saklama).
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:
