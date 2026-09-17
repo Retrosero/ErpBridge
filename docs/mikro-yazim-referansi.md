@@ -172,7 +172,7 @@ Yeni writer bu sapmaları **kopyalamaz**; Mikro'nun kendi kaydını esas alır.
 ## 8. Doğrulama testleri
 
 `tests/ErpBridge.Erp.Mikro.Tests/Integration/MikroNativeDocumentConventionTests.cs` (salt okuma; yalnız
-`ERPBridge_RUN_INTEGRATION=1` **ve** açıkça verilen `ERPBridge_MIKRO_WRITE_DB=MikroDB_V15_ERPBTEST` ile çalışır — Docker
+`ERPBridge_RUN_INTEGRATION=1` **ve** açıkça verilen `ERPBridge_MIKRO_WRITE_DB=MikroDB_V15_DEMO` ile çalışır — Docker
 fikstürünün paylaşılan anahtarı tek başına bu testleri açmaz, PR #75 Codex bulgusu):
 Mikro kayıtlarında NULL olmadığı; açık/kasaya kapalı/bankaya kapalı satış faturası ve satış iadesi başlık kodları;
 fatura/iade kalem kodları ve iskonto zinciri bayrakları; 5 tahsilat yönteminin satır ve ödeme emri kodları; referans no biçimi.
