@@ -18,10 +18,11 @@ namespace ErpBridge.Erp.Mikro.Tests.Integration;
 public class MikroCustomerLedgerReaderLiveTests
 {
     private static bool GateOpen =>
-        Environment.GetEnvironmentVariable(MikroIntegrationFixture.RunIntegrationEnv) == "1";
+        Environment.GetEnvironmentVariable(MikroIntegrationFixture.RunIntegrationEnv) == "1"
+        && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ERPBridge_MIKRO_WRITE_DB"));
 
     private static string Database =>
-        Environment.GetEnvironmentVariable("ERPBridge_MIKRO_WRITE_DB") is { Length: > 0 } d ? d : "MikroDB_V15_ERPBTEST";
+        Environment.GetEnvironmentVariable("ERPBridge_MIKRO_WRITE_DB")!;
 
     private static string Server =>
         Environment.GetEnvironmentVariable(MikroSchemaContractTests.ServerEnv) is { Length: > 0 } s ? s : "tcp:localhost";

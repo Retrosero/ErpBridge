@@ -548,6 +548,9 @@ SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
        -- and an alıştan iade as a satış faturası (63) with the flag: the flag inverts the
        -- document kind (live data: 0+iade on customers, 63+iade on suppliers).
        CAST(CASE
+            -- ErpBridge's collection writer posted receipts as 63 + alacak until 2026-09-17
+            -- (PR #75 fixed the code). Mikro never writes a satış faturası as alacak.
+            WHEN ISNULL(cha_evrak_tip, 0) = 63 AND ISNULL(cha_normal_Iade, 0) = 0 AND ISNULL(cha_tip, 0) = 1 THEN 'TAHSILAT'
             WHEN ISNULL(cha_evrak_tip, 0) = 63 AND ISNULL(cha_normal_Iade, 0) = 0 THEN 'SATIS'
             WHEN ISNULL(cha_evrak_tip, 0) = 63 THEN 'ALIS_IADE'
             WHEN ISNULL(cha_evrak_tip, 0) = 0 AND ISNULL(cha_normal_Iade, 0) = 0 THEN 'ALIS'
