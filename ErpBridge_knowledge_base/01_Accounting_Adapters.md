@@ -90,6 +90,30 @@ Sipariş Cepte belgeleri (`mobileDocumentId` taşıyan gövde) yukarıdaki tipli
 Kolon değerlerinin kaynağı `docs/mikro-yazim-referansi.md`; canlı testler yalnız `MikroDB_V15_DEMO`'da, çoğu
 transaction geri alınarak.
 
+#### Uçtan uca akış ve izleme (Y1–Y5)
+
+```text
+Telefon (outbox) ─POST /ingest/jobs─▶ jobs (Pending)            ◀─ Portal/Admin "yeniden dene" (Failed → Pending)
+                                         │ GET /jobs/pending: kiralama 10 dk + erpContext + attempt
+                                         ▼
+                                   Ajan: MobileDocumentTranslator → komut
+                                         │ MikroDocumentWriteRunner (tek transaction, _ERPB_EVRAK_ESLESME)
+                                         ▼
+                              POST /jobs/ack { succeeded + seri/sıra | failed + errorCode/errorMessage, retryable, attempt }
+                                         │ retryable → Pending + NextAttemptAtMs (1-2-4-8-15-30-60 dk, en çok 10 deneme)
+                                         │ failed/retry → log_events ERP_WRITE_FAILED / ERP_WRITE_RETRY
+                                         ▼
+  Telefon GET /ingest/jobs/status (pending/retrying/written/failed, T-1234, Türkçe neden) · Portal /erp-belgeler · Admin iş ayrıntısı
+```
+
+- Durum eşlemesi tek yerde: `CentralApi/Domain/ErpDocumentStates` (Pending + gelecekteki `NextAttemptAtMs` = retrying).
+- Eski ajan `attempt` göndermezse eski davranış; farklı `attempt` ile gelen ack 409 `STALE_LEASE` (süresi dolup başka
+  ajana verilmiş kiralama).
+- Satış türü (sipariş / irsaliye / fatura) firma ayarıdır; peşin ödeme yalnız faturada kapalı fatura olur, siparişte ve
+  irsaliyede evrak açık kalır ve aynı transaction'da tahsilat makbuzu yazılır. Karma ödeme her zaman açık belge + makbuz.
+- Kapalı faturada `cha_kod` kasa/banka, müşteri `cha_ciro_cari_kodu`; okuyucu `ciroCariKod` + `kapali` gönderir, ekstre
+  müşteriye bağlar ama bakiyeye katmaz (Portal ve telefon).
+
 ### Ortak Writer Altyapısı
 
 | Bileşen | İş |

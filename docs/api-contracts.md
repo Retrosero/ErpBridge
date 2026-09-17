@@ -37,12 +37,45 @@ kayıtlarıyla aynı yönetim ekranında tutulur.
 ### GET /api/v1/jobs/pending
 
 Query: `?take=50&type=sales_order`. Yanıt: `RemoteJob[] { jobId, externalId,
-documentType, payload, enqueuedAtUtc }`.
+documentType, payload, enqueuedAtUtc, attempt, erpContext? }`.
+Kiralama 10 dakikadır; süresi dolan `Processing` iş ve `nextAttemptAtMs`'i gelmiş
+`Pending` iş yeniden verilir. `erpContext` yalnız ERP'li firmada, kiralama anında
+firma ayarı + gönderen kullanıcının eşlemesinden kurulur (bkz. `docs/mobil-belge-sozlesmesi.md`).
 
 ### POST /api/v1/jobs/ack
 
 Body: `JobAck { jobId, status: "succeeded" | "failed", errorCode?, errorMessage?,
-erpDocumentSeries?, erpDocumentNumber?, erpRecno?, erpGuid? }`. Yanıt: 204.
+erpDocumentSeries?, erpDocumentNumber?, erpRecno?, erpGuid?, retryable?, attempt? }`. Yanıt: 204.
+`failed` + `retryable: true` (ERP'ye ulaşılamadı) işi `Pending`'e döndürür, 1-2-4-8-15-30-60 dk
+bekletir (en çok 10 deneme). `attempt` kiralamadaki değerden farklıysa 409 `STALE_LEASE`
+(sonuç uygulanmaz). Hatalı/yeniden denenecek sonuç Log Merkezi'ne `ERP_WRITE_FAILED` /
+`ERP_WRITE_RETRY` olarak yazılır.
+
+### GET /api/v1/ingest/jobs/status
+
+Telefonun (ingest ile aynı kimlik doğrulama) gönderdiği belgelerin ERP durumu.
+Query: `?externalIds=MOB-SO-1,MOB-TH-2` (ya da tekrar eden parametre, 1–100). Yanıt:
+`{ documents: [{ externalId, documentType, state: "pending" | "retrying" | "written" | "failed",
+erpDocumentNo?, errorCode?, message?, attempt, nextAttemptAtMs? }] }`. Başka firmanın ve
+bilinmeyen kimlikler yanıtta yoktur; 0 ya da 100'den fazla kimlik 400 `INVALID_EXTERNAL_IDS`.
+
+### Portal ERP uçları (`/api/v1/portal`, firma kullanıcısı token'ı)
+
+| Uç | Yetki | Açıklama |
+|---|---|---|
+| `GET/PUT /erp-settings` | Admin | Satış türü, sipariş onayı, seriler, varsayılan depo/kasa/banka/ERP kullanıcı/temsilci/fiyat listesi, portföy kasaları, teslim günü (400 `INVALID_ERP_SETTINGS`) |
+| `GET/PUT /users/{id}/erp-mapping` | Admin | Kullanıcının ERP karşılıkları; boş değer firma ayarına düşer |
+| `GET /erp-lookups` | Admin | Ajanın gönderdiği depo, kasa, banka, temsilci, fiyat listesi, proje kodları |
+| `GET /erp-documents` | Admin, Yönetici, Muhasebe | `from`, `to` (≤31 gün, varsayılan son 7 gün), `state`, `documentType`, `userId`, `customer`, `page`, `pageSize` (≤100). Öğe: tür, gönderen, cari, tutar, durum, ERP no, neden, deneme, `canRetry` |
+| `POST /erp-documents/{jobId}/retry` | Admin | Yalnız hatalı belge; `{ jobId, state: "pending" }`, aksi hâlde 409 `JOB_NOT_RETRYABLE` |
+
+ERP'siz firmada bu uçlar 409 `ERP_NOT_CONNECTED` döner.
+
+### Admin iş uçları (`/api/v1/admin/jobs`)
+
+Liste öğesi `nextAttemptAtUtc`, `leasedUntilUtc` taşır. `GET /{id}` ek olarak `payloadJson`,
+`createdByUserId`, `retryable` (son ajan sonucu `retry`), `lastErrorCode`, `erpDocumentNo`,
+`acks[]` (yeniden eskiye) ve ERP'li firmada ajanın şimdi alacağı `erpContext`'i döner.
 
 ### POST /api/v1/bootstrap
 

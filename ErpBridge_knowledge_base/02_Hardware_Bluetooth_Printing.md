@@ -18,6 +18,16 @@ Saha satış mobil uygulamasında (`Siparis_Cepte`) termal yazıcıdan çıktı 
 - **İrsaliye Serisi:** Sevk irsaliyeleri için ayrı bir seri kodu tahsis edilir (Örn: `"IRS"`).
 - **Tahsilat Makbuzu Serisi:** Tahsilatlar için kasa veya banka makbuz serisi kullanılır (Örn: `"THS"`).
 
+### Telefon belgelerinde seri ve sıra (ERP yazım goal'ü, 2026-09-17)
+- **Seri Portal'dan gelir, telefondan değil:** Portal "ERP aktarım ayarları" (`erp_write_settings`: sipariş, irsaliye,
+  fatura, iade, tahsilat serisi; en çok 6 karakter, boş = serisiz) ve kullanıcı başına geçersiz kılma
+  (`mobile_user_erp_mappings`, plasiyer başına seri). Ajan işi kiralarken `erpContext.series` ile alır.
+- **Sıra ajanda verilir:** yazım transaction'ında aynı numarayı paylaşan tüm Mikro tablolarında `UPDLOCK, HOLDLOCK`
+  ile `MAX+1` (`MikroDocumentNumbering`). Telefon belge basarken Mikro numarasını henüz bilmez; fişte kendi referansını
+  (`MOB-…` / basım referansı) kullanır. Yazılınca seri-sıra telefona "Mikro'ya yazıldı: T-1234" olarak döner
+  (`GET /api/v1/ingest/jobs/status`) ama basılmış fiş değişmez.
+- Aşağıdaki `default_invoice_serial` parametresi eski sözleşmedir; ERP'ye yazılan telefon belgesinin serisini **belirlemez**.
+
 ---
 
 ## 2. Yazıcı ve Evrak Parametrelerinin Senkronizasyonu
@@ -33,6 +43,10 @@ ErpBridge Central API üzerinden mobil istemcilere aktarılan parametreler:
 ---
 
 ## 3. Resmî E-Fatura / E-İrsaliye Süreçleri ve Bilgi Fişi Ayrımı
+
+> **ERP yazım goal'ü kararı (K15, 2026-09-17):** telefon belgesi Mikro'ya e-belge ayrımı yapılmadan yazılır; e-Fatura /
+> e-Arşiv / e-İrsaliye ofiste Mikro'dan düzenlenir. Telefonda e-belge mükellefi müşteriyi ayırıp bilgi fişi basmak ayrı
+> bir goal'dür — aşağıdaki modlar hedef tasarımdır, bu goal'de uygulanmadı.
 
 1. **Bilgi Fişi Modu (Thermal Receipt):**
    Sahada e-Fatura / e-Arşiv mükellefi olan işletmeler için termal yazıcıdan çıkan belge mali bir fatura değil, müşteri bilgilendirme ve teslim tesellüm fişidir. Üzerinde *"Bu belge mali değer taşımaz, e-Fatura merkezden düzenlenecektir"* ibaresi yer alır.

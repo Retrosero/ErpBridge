@@ -18,7 +18,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y3 — Mikro V15 writer'ları | 8 | 8 | ✅ |
 | Y4 — Sipariş Cepte | 7 | 7 | ✅ |
 | Y5 — İzleme ve operasyon | 2 | 1 | 🔄 |
-| Y6 — Kapanış | 3 | 0 | ⬜ |
+| Y6 — Kapanış | 3 | 1 | 🔄 |
 
 **Şu anki görev:** Y5b — Admin iş ayrıntısı + log olayları
 
@@ -67,7 +67,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | ✅ | [#95](https://github.com/Retrosero/ErpBridge/pull/95), [#96](https://github.com/Retrosero/ErpBridge/pull/96), [siparis_cepte#70](https://github.com/Retrosero/siparis_cepte/pull/70), [#71](https://github.com/Retrosero/siparis_cepte/pull/71) | Sunucu: `kdvOrani` = `fn_VergiYuzde(sto_toptan_vergi)`, `satisFiyatListeNo`, `fiyatListeleri[{listNo,name,price,kdvDahil}]`, projeksiyon sürümü 4. **#96 düzeltmesi:** #95'teki stok sorgusu `VatRate` kolon sırası `StockRow` kurucusuyla uyuşmuyordu (Dapper canlıda hata; CI canlı test çalıştırmıyor) — `MikroCatalogReaderLiveTests` eklendi. Telefon: `ErpSalePricing` = `MikroPriceCalculator` (zincir iskonto, nete KDV, KDV dahil listede önce KDV ayrılır) |
 | Y5a | Portal "ERP Aktarım" listesi | ✅ | #99 | `GET /api/v1/portal/erp-documents` (tarih ≤31 gün, varsayılan son 7 gün; durum, tür, gönderen, cari kod/ünvan süzgeci; sayfa ≤100): tür, gönderen, cari, tutar, durum, Mikro seri-sıra, ajanın Türkçe nedeni, deneme, sonraki deneme. Admin/Yönetici/Muhasebe okur. `POST …/{jobId}/retry` yalnız Admin, yalnız Failed/DeadLetter → Pending + yeni deneme hakkı (ajanın `_ERPB_EVRAK_ESLESME` defteri ikinci yazımı önler); 409 `JOB_NOT_RETRYABLE`. Portal `/erp-belgeler` (menü "ERP belgeleri", `PortalArea.ErpDocuments`). Durum eşlemesi `Domain/ErpDocumentStates` telefon ucu (#98) ile ortak. **Sapma:** liste yalnız Admin değil Muhasebe/Yönetici'ye de açık (yazılamayan belgeyi takip eden muhasebe) |
 | Y5b | Admin iş ayrıntısı + log olayları | ⬜ | | |
-| Y6a | KB ve sözleşme belgeleri | ⬜ | | |
+| Y6a | KB ve sözleşme belgeleri | ✅ | #101 | KB 00 kural 26 (tek yol çevirici, `erpContext` kiralamada, idempotency `_ERPB_EVRAK_ESLESME`, tutar sözleşmesi, görünürlük, yazma testleri yalnız izinli kopyada, Dapper kolon sırası); 01 uçtan uca akış + izleme; 02 seriler Portal'da / sıra ajanda / e-belge ayrımı bu goal'de yok (K15); 03 `job_acks` durumları, iki yeniden dene farkı, `ERP_WRITE_*` log türleri; `docs/api-contracts.md` jobs/pending-ack alanları, `/ingest/jobs/status`, Portal ERP uçları, Admin iş ayrıntısı. Sipariş Cepte KB her telefon PR'ında güncellendi (01 §1.1, 03 §2 ve §4.x). Tablo şeması (`erp_write_settings`, `mobile_user_erp_mappings`, `jobs` kolonları) Y1a/Y1e'de 03'e yazılmıştı |
 | Y6b | Yerel uçtan uca duman testi (DEMO) | ⬜ | | |
 | Y6c | Seni Bekleyenler son hâli | ⬜ | | |
 

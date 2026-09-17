@@ -896,6 +896,33 @@ registration ayrı bir composition projesine taşınır.
    - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.1.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
      (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır.
 
+26. **Telefon belgeleri ERP'ye yalnız çevirici üzerinden yazılır (ERP yazım goal'ü Y0–Y5, 2026-09-17).**
+   - **Tek yol:** `mobileDocumentId` taşıyan `sales_order` / `sales_return` / `collection` gövdesini ajan
+     `Core/Jobs/MobileDocumentTranslator` ile ERP'den bağımsız komuta çevirir; `IErpAdapter.WriteSalesDocumentAsync /
+     WriteSalesReturnAsync / WriteCollectionDocumentAsync` yazar. Bu gövdeler tipli eski writer'lara (`MikroSalesOrderWriter`,
+     `MikroCollectionWriter`…) **gönderilmez**; eski gövde (liste fiyatı / yapılandırılmış ödeme yok)
+     `MOBILE_APP_UPDATE_REQUIRED` ile reddedilir, net fiyattan iskonto ya da açıklama metninden çek/senet **tahmin edilmez**.
+     Sözleşme: `docs/mobil-belge-sozlesmesi.md`; hata kodları `Shared/ErpWriteError`.
+   - **Ayarlar kiralama anında:** `erpContext` (seri, depo, kasa/banka, ERP kullanıcı no, fiyat listesi, portföy kasaları)
+     iş kiralanırken `erp_write_settings` + gönderenin `mobile_user_erp_mappings` satırından kurulur
+     (`ErpWrite/ErpWriteContextBuilder`). Eşleme düzeltilip yeniden denenen iş düzeltilmiş değeri alır. Seriler telefonda
+     seçilmez; Portal "ERP aktarım ayarları"ndan gelir.
+   - **Idempotency Mikro'da:** her yazılan evrak aynı transaction'da `_ERPB_EVRAK_ESLESME`'ye `(DocumentType, ExternalId)`
+     ile kaydedilir; aynı belge (yeniden deneme, Portal/Admin "yeniden dene", kaybolan ack) ikinci evrak açmaz. SQLite
+     `mappings` yalnız önbellektir.
+   - **Tutar sözleşmesi:** telefon toplamı Mikro hesabından ±0,05 TL farklıysa `TOTAL_MISMATCH` — telefon aynı
+     aritmetiği kullanır (`ErpSalePricing` = `MikroPriceCalculator`). Telefon KDV oranını ve fiyat listesi KDV dahil
+     bayrağını ajan okumasından alır (`kdvOrani`, `fiyatListeleri[].kdvDahil`; projeksiyon sürümü 4).
+   - **Görünürlük:** yazım sonucu telefona `GET /api/v1/ingest/jobs/status`, Portal'a `/api/v1/portal/erp-documents`
+     (+ Admin'e özel "yeniden dene"), Admin'e iş ayrıntısı (ajan sonuçları, `erpContext`) ile çıkar; ajanın yazamadığı
+     belge Log Merkezi'ne `ERP_WRITE_FAILED` / `ERP_WRITE_RETRY` olur. ERP'ye ulaşılamaması (`retryable`) işi bekletip
+     yeniden kuyruğa alır; kalıcı hata `Failed` kalır.
+   - **Yazma testleri yalnız izinli test kopyasında:** canlı yazım testleri `ERPBridge_RUN_INTEGRATION=1` **ve**
+     `ERPBridge_MIKRO_WRITE_DB` ∈ `MikroWriteTestDatabase.AllowedDatabases` (`MikroDB_V15_DEMO`, `MikroDB_V15_ERPBTEST`)
+     ister; müşteri veritabanına (`MikroDB_V15_02` vb.) yazan test yazılmaz. Okuma testleri canlı veritabanına bağlanabilir.
+   - **Dapper kolon sırası:** okuyucuların positional record'larına kolon eklerken SQL'deki sıra kurucuyla aynı olmalı
+     (#95'te `VatRate` sırası canlı okumayı kırdı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma testiyle gelir.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:
