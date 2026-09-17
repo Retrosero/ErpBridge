@@ -45,7 +45,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ⬜ | | |
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
 | Y1d | `erpContext` kiralama yanıtında | ✅ | (Y1d PR) | `JobResponse.erpContext` (ERP'li firmada; ERP'siz firmada null). `ErpWriteContextBuilder`: kullanıcı değeri > firma; boş kod firma kodunu gizlemez, kullanıcıdaki boş seri bilinçli serisiz sayılır. Kiralama anında okunur (eşleme düzeltilip yeniden denenince yeni değer — test). Biçim `ErpBridge.Core.Jobs.ErpWriteContext` ile aynı |
-| Y1e | Kiralama süresi + geçici hata yeniden denemesi | ⬜ | | |
+| Y1e | Kiralama süresi + geçici hata yeniden denemesi | ✅ | (Y1e PR) | `jobs.LeasedUntilMs` / `NextAttemptAtMs` (nullable bigint, Unix ms — SQLite `DateTimeOffset` karşılaştıramaz). Kiralama 10 dk; `retryable=true` ack → `Pending` + 1-2-4-8-15-30-60 dk bekleme, ack kaydı `retry`; 10. denemeden sonra `Failed`; kiralaması 10 kez dolan iş bırakılır (`Failed`). Kolon eklenmeden önce kiralanmış işler süresiz kalır (bilinçli: geriye dönük yeniden teslim yok). Admin yeniden deneme iki alanı temizler. **Not:** kiralama ucu SQLite'ta `OrderBy(EnqueuedAtUtc)` yüzünden 500 veriyor (eski durum, PostgreSQL etkilenmiyor); testler bellek içi fabrikada |
 | Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ⬜ | | |
 | Y2b | `MobileDocumentTranslator` | ⬜ | | |
 | Y2c | `AgentWorker` yeni yol + `retryable` | ⬜ | | |

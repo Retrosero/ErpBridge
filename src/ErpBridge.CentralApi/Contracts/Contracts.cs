@@ -122,6 +122,12 @@ public sealed class JobAckRequest
     [JsonPropertyName("erpDocumentNumber")] public int? ErpDocumentNumber { get; set; }
     [JsonPropertyName("erpRecno")] public int? ErpRecno { get; set; }
     [JsonPropertyName("erpGuid")] public Guid? ErpGuid { get; set; }
+
+    /// <summary>
+    /// With <c>status = failed</c>: the failure may pass by itself (ERP unreachable), so the job goes
+    /// back to the queue with a delay instead of failing. Older agents omit it (terminal failure).
+    /// </summary>
+    [JsonPropertyName("retryable")] public bool? Retryable { get; set; }
 }
 
 /// <summary>POST /api/v1/bootstrap body. The whole <see cref="Payload"/> is the
