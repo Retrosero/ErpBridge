@@ -1,5 +1,7 @@
+using System.Reflection;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
+using ErpBridge.Core.Sync;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -31,45 +33,44 @@ public sealed class HeartbeatWorker : BackgroundService
 {
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(60);
 
+    /// <summary>The agent build the panel shows next to this machine.</summary>
+    public static string Version => Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
+
     private readonly IRemoteApiClient _remoteApi;
     private readonly IAgentConfigStore _configStore;
     private readonly ILocalQueueStore _localQueue;
+    private readonly ErpVersionProbe _erpVersionProbe;
     private readonly ErpBridge.Core.Logging.AgentLogUploader _logUploader;
+    private readonly AgentRunStatus _status;
     private readonly ILogger<HeartbeatWorker> _logger;
-
-    private DateTimeOffset? _lastSyncAtUtc;
-    private string? _lastError;
 
     public HeartbeatWorker(
         IRemoteApiClient remoteApi,
         IAgentConfigStore configStore,
         ILocalQueueStore localQueue,
+        ErpVersionProbe erpVersionProbe,
         ErpBridge.Core.Logging.AgentLogUploader logUploader,
+        AgentRunStatus status,
         ILogger<HeartbeatWorker> logger)
     {
         _remoteApi = remoteApi ?? throw new ArgumentNullException(nameof(remoteApi));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _localQueue = localQueue ?? throw new ArgumentNullException(nameof(localQueue));
+        _erpVersionProbe = erpVersionProbe ?? throw new ArgumentNullException(nameof(erpVersionProbe));
         _logUploader = logUploader ?? throw new ArgumentNullException(nameof(logUploader));
+        _status = status ?? throw new ArgumentNullException(nameof(status));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>
-    /// Records the timestamp of the last successful ERP sync. Wired by the
-    /// Mikro writer in Phase 6 — exposed now so the seam exists.
+    /// Log Merkezi L3f: the last sync time and the last error now come from <see cref="AgentRunStatus"/>, which
+    /// the sync loop and the job worker actually write. These two methods used to be seams nobody called, so
+    /// every heartbeat claimed "last sync = now" even when nothing had synced for days.
     /// </summary>
-    public void RecordSuccessfulSync(DateTimeOffset atUtc) => _lastSyncAtUtc = atUtc;
+    public void RecordSuccessfulSync(DateTimeOffset atUtc) => _status.RecordSync(success: true, atUtc);
 
-    /// <summary>
-    /// Records an error message for inclusion in the next heartbeat. Wired
-    /// by the Agent worker on enqueue failure or the Mikro writer on write
-    /// failure. The string is truncated at 1 KiB to keep the payload small.
-    /// </summary>
-    public void RecordError(string errorMessage)
-    {
-        if (string.IsNullOrWhiteSpace(errorMessage)) return;
-        _lastError = errorMessage.Length > 1024 ? errorMessage[..1024] : errorMessage;
-    }
+    /// <inheritdoc cref="RecordSuccessfulSync" />
+    public void RecordError(string errorMessage) => _status.RecordError(null, errorMessage);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -85,21 +86,30 @@ public sealed class HeartbeatWorker : BackgroundService
                 if (config is not null)
                 {
                     var queueDepth = await _localQueue.CountAsync(ct: stoppingToken);
+                    await _erpVersionProbe.RefreshAsync(config, stoppingToken);
+                    var run = _status.Read();
                     var heartbeat = new AgentHeartbeat
                     {
                         AgentId = Environment.MachineName,
                         TenantId = config.TenantId ?? string.Empty,
                         Status = "running",
-                        LastSyncAtUtc = _lastSyncAtUtc ?? DateTimeOffset.UtcNow,
+                        // Null, not "now": an agent that has never synced must not look like one that just did.
+                        LastSyncAtUtc = run.LastSyncAtUtc,
                         QueueDepth = queueDepth,
-                        LastError = _lastError,
+                        LastError = run.LastError,
+                        AppVersion = Version,
+                        HostKind = "service",
+                        ErpKind = config.ErpType.ToString(),
+                        ErpVersion = run.ErpVersion,
+                        LastSyncResult = run.LastSyncResult,
+                        LastErrorCode = run.LastErrorCode,
                     };
                     await _remoteApi.SendHeartbeatAsync(heartbeat, stoppingToken);
                     _logger.LogDebug("Heartbeat sent for agent {AgentId} (queueDepth={QueueDepth}).", heartbeat.AgentId, heartbeat.QueueDepth);
 
                     // Clear "last error" after a successful heartbeat so the
                     // dashboard only sees the most recent failure.
-                    _lastError = null;
+                    _status.ClearError(run.ErrorVersion);
                 }
 
                 // Diagnostic events queued while the network was down go out with the heartbeat (Log Merkezi L3c).

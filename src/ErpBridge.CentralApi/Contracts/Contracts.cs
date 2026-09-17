@@ -35,6 +35,14 @@ public sealed class AgentHeartbeatRequest
     [JsonPropertyName("lastSyncAtUtc")] public DateTimeOffset? LastSyncAtUtc { get; set; }
     [JsonPropertyName("queueDepth")] public int QueueDepth { get; set; }
     [JsonPropertyName("lastError")] public string? LastError { get; set; }
+
+    // Log Merkezi L3f: optional, so an agent that has not been updated yet keeps reporting exactly as before.
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("hostKind")] public string? HostKind { get; set; }
+    [JsonPropertyName("erpKind")] public string? ErpKind { get; set; }
+    [JsonPropertyName("erpVersion")] public string? ErpVersion { get; set; }
+    [JsonPropertyName("lastSyncResult")] public string? LastSyncResult { get; set; }
+    [JsonPropertyName("lastErrorCode")] public string? LastErrorCode { get; set; }
 }
 
 /// <summary>POST /api/v1/agents/telemetry body, authenticated with an agent JWT.</summary>

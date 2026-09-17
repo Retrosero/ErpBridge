@@ -36,6 +36,16 @@ public static class ServiceCollectionExtensions
         // Faz 18.5: the change-log sync service now lives here. It depends only
         // on IErpAdapterFactory / IErpSyncCursorStore / IRemoteApiClient, so it
         // drives any adapter that offers IErpChangeLogSource — no vendor types.
+        // Log Merkezi L3f: one status per process — the sync loop and the job worker write it, the heartbeat
+        // reads it. A second copy would let the heartbeat report a round the loop never ran.
+        services.TryAddSingleton<ErpBridge.Core.Sync.AgentRunStatus>();
+
+        // Both hosts report the ERP edition in their heartbeat, so the probe (and its cache) lives here rather
+        // than in the Windows service's worker, which does not run in the tray-only process.
+        services.TryAddSingleton<ErpBridge.Core.Sync.ErpVersionProbe>();
+        services.TryAddSingleton<ILogger<ErpBridge.Core.Sync.ErpVersionProbe>>(sp =>
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<ErpBridge.Core.Sync.ErpVersionProbe>());
+
         services.TryAddSingleton<IErpChangeLogSyncService, ErpChangeLogSyncService>();
         services.TryAddSingleton<ILogger<ErpChangeLogSyncService>>(sp =>
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<ErpChangeLogSyncService>());

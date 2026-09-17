@@ -155,6 +155,8 @@ public sealed class AgentSyncLoop
         // Log Merkezi L3e: one INFO event per round, counts only. The throttle turns a round every twenty
         // seconds into one event per window with the repeats counted, so the panel sees the rhythm, not a flood.
         await Reporter(scope).ReportAsync(AgentSyncRound.Triggers.Timer, result, ct: stoppingToken).ConfigureAwait(false);
+        // Log Merkezi L3f: the heartbeat's "last sync" is only honest if a round actually sets it.
+        Status(scope)?.RecordSync(result.Success, DateTimeOffset.UtcNow, result.ErrorCode, result.ErrorMessage);
 
         if (!result.Success)
         {
@@ -182,6 +184,10 @@ public sealed class AgentSyncLoop
     private static IAgentLogReporter? Reporter(IServiceScope scope) =>
         scope.ServiceProvider.GetService<IAgentLogReporter>();
 
+    /// <inheritdoc cref="Reporter" />
+    private static AgentRunStatus? Status(IServiceScope scope) =>
+        scope.ServiceProvider.GetService<AgentRunStatus>();
+
     private static bool IsEmptyResult(BootstrapSyncResult result) =>
         result.CustomersCount == 0 && result.StocksCount == 0 && result.PricesCount == 0
         && result.InventoryCount == 0 && result.OpenOrdersCount == 0
@@ -198,6 +204,7 @@ public sealed class AgentSyncLoop
         var sync = scope.ServiceProvider.GetRequiredService<IErpChangeLogSyncService>();
         var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
         await Reporter(scope).ReportAsync(AgentSyncRound.Triggers.Timer, result, stoppingToken).ConfigureAwait(false);
+        Status(scope)?.RecordSync(result.Success, DateTimeOffset.UtcNow, result.ErrorCode, result.ErrorMessage);
 
         if (!result.Success)
         {

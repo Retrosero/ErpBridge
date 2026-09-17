@@ -52,6 +52,10 @@ public class AgentWorkerMobileDocumentTests
     private static AgentConfig Config() => new() { LicenseKey = "LIC-1", TenantId = "tenant-1", ErpType = ErpType.Mikro, ErpDatabaseName = "MikroDB_V15_DEMO" };
 
     private static (AgentWorker Worker, Mock<IErpAdapter> Adapter, Mock<IErpAdapterFactory> Factory, List<JobAck> Acks) Build()
+        => Build(new ErpBridge.Core.Sync.AgentRunStatus());
+
+    private static (AgentWorker Worker, Mock<IErpAdapter> Adapter, Mock<IErpAdapterFactory> Factory, List<JobAck> Acks) Build(
+        ErpBridge.Core.Sync.AgentRunStatus runStatus)
     {
         var adapter = new Mock<IErpAdapter>();
         var factory = new Mock<IErpAdapterFactory>();
@@ -63,7 +67,8 @@ public class AgentWorkerMobileDocumentTests
             .Returns(Task.CompletedTask);
         var worker = new AgentWorker(
             remote.Object, Mock.Of<ILocalQueueStore>(), Mock.Of<IAgentConfigStore>(), factory.Object,
-            new SalesOrderPayloadDeserializer(), Options.Create(new AgentServiceOptions()), NullLogger<AgentWorker>.Instance);
+            new SalesOrderPayloadDeserializer(), Options.Create(new AgentServiceOptions()), runStatus,
+            NullLogger<AgentWorker>.Instance);
         return (worker, adapter, factory, acks);
     }
 
@@ -184,5 +189,25 @@ public class AgentWorkerMobileDocumentTests
 
         job.Attempt.Should().Be(2);
         job.ErpContext.Should().Be(new ErpWriteContext("invoice", "approved", new ErpWriteSeries("", "", "T", "", "M"), 1, "001", null, "04", 4, "PLS01", 1, "ÇEK", "SENET", "ali", null, null, 2));
+    }
+
+    /// <summary>
+    /// Log Merkezi L3f: a document the ERP refused has to reach the heartbeat. Before this, the agent row's
+    /// lastError stayed empty however many writes failed, because nothing ever wrote it.
+    /// </summary>
+    [Fact]
+    public async Task A_refused_document_shows_up_in_the_next_heartbeat()
+    {
+        var status = new ErpBridge.Core.Sync.AgentRunStatus();
+        var (worker, adapter, _, acks) = Build(status);
+        adapter.Setup(a => a.WriteSalesDocumentAsync(It.IsAny<SalesDocumentCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ErpWriteResult(false, ErrorCode: "CUSTOMER_NOT_FOUND", ErrorMessage: "Cari bulunamadı"));
+
+        await worker.ProcessJobAsync(Job("sales_order", "MOB-SO-1", Sale, Context), Config(), CancellationToken.None);
+
+        acks.Should().ContainSingle().Which.Status.Should().Be("failed");
+        var snapshot = status.Read();
+        snapshot.LastErrorCode.Should().Be("CUSTOMER_NOT_FOUND");
+        snapshot.LastError.Should().Be("Cari bulunamadı");
     }
 }
