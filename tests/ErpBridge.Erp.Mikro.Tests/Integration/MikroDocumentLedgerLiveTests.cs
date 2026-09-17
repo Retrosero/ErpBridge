@@ -39,6 +39,14 @@ public class MikroDocumentLedgerLiveTests
         (await conn.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[_ERPB_EVRAK_ESLESME]') AND is_unique = 1 AND name = 'UX_ERPB_EVRAK_ESLESME_Document'"))
             .Should().Be(1);
+        var widths = (await conn.QueryAsync<(string Column, int Length)>(
+            "SELECT COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '_ERPB_EVRAK_ESLESME' AND COLUMN_NAME IN ('DocumentType', 'ExternalId')"))
+            .ToDictionary(x => x.Column, x => x.Length);
+        widths.Should().Equal(new Dictionary<string, int>
+        {
+            ["DocumentType"] = MikroDocumentLedger.DocumentTypeMaxLength,
+            ["ExternalId"] = MikroDocumentLedger.ExternalIdMaxLength,
+        }, "every job the central API accepts must fit");
     }
 
     [Fact]
@@ -93,7 +101,8 @@ public class MikroDocumentLedgerLiveTests
         }
         (await _ledger.FindAsync(conn, null, "sales_order", rolledBack)).Should().BeNull("a rolled-back document leaves no record");
 
-        var committed = NewExternalId();
+        // As long as the central API's jobs.ExternalId allows.
+        var committed = NewExternalId().PadRight(MikroDocumentLedger.ExternalIdMaxLength, 'x');
         try
         {
             await using (var tx = conn.BeginTransaction())

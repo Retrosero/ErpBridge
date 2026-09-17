@@ -34,6 +34,16 @@ public sealed class MikroDocumentLedger
     /// <summary>Fully qualified table name.</summary>
     public const string TableName = "[dbo].[_ERPB_EVRAK_ESLESME]";
 
+    /// <summary>
+    /// Key widths match the central API's <c>jobs.DocumentType</c> (64) and <c>jobs.ExternalId</c> (128),
+    /// so every job the server accepts can be recorded (PR #77 Codex). A second document written for the
+    /// same job (a mixed payment's receipt) uses its own document type, never a longer external id.
+    /// </summary>
+    public const int DocumentTypeMaxLength = 64;
+
+    /// <inheritdoc cref="DocumentTypeMaxLength"/>
+    public const int ExternalIdMaxLength = 128;
+
     /// <summary>SQL Server error numbers for unique constraint/index violations.</summary>
     private static readonly int[] UniqueViolation = [2627, 2601];
 
@@ -49,8 +59,8 @@ IF OBJECT_ID(N'[dbo].[_ERPB_EVRAK_ESLESME]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[_ERPB_EVRAK_ESLESME] (
         [Id]            INT IDENTITY(1, 1) NOT NULL,
-        [DocumentType]  NVARCHAR(50)  NOT NULL,
-        [ExternalId]    NVARCHAR(100) NOT NULL,
+        [DocumentType]  NVARCHAR(64)  NOT NULL,
+        [ExternalId]    NVARCHAR(128) NOT NULL,
         [DocumentTable] NVARCHAR(50)  NOT NULL,
         [EvrakTip]      INT           NOT NULL,
         [EvrakSeri]     NVARCHAR(6)   NOT NULL,
