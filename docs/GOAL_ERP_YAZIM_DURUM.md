@@ -101,6 +101,35 @@ HTTP çağrıları). Firma `erp`, kullanıcı `ali` (SALES) belgeleri gönderdi,
 - **Ajan durdur/başlat:** ajan kapalıyken gönderilen fatura `pending` (deneme 0) kaldı; ajan açılınca kendiliğinden `written Y6B-6`.
 - **Portal:** `/portal/erp-documents` 12 belge (8 satış, 3 iade, 1 tahsilat), hepsi `written`, gönderen "Ali", cari ve tutarlar doğru.
   **Log Merkezi:** firmada `ERP_WRITE_*` yok (yazım hatası olmadı).
+### KDV ve ek kontroller (2026-09-17, kullanıcı isteğiyle)
+
+DEMO'nun bütün stokları %0 KDV olduğu için KDV yolu ekranda görülmüyordu. DEMO'ya test verisi açıldı: stok kartı
+**`Y6BKDV20`** (`sto_toptan_vergi = 4` → %20; kalıp `000537`), liste 1 fiyatı 100,00 ve liste 3 fiyatı 120,00. Liste 3'ün
+`sfl_kdvdahil` bayrağı test süresince açıldı, **test sonunda 0'a geri alındı**; stok kartı ve fiyatları DEMO'da bırakıldı.
+Yığın (Postgres + yerel CentralApi + ayrı `agent.db`'li ajan) yeniden kurulup dört belge telefon gövdesiyle gönderildi:
+
+| Senaryo | Telefon toplamı | Mikro |
+|---|---|---|
+| KDV hariç liste, açık fatura, 2×100 %10 satır + %5 genel iskonto | 205,20 | `Y6B-7`: STH brüt 200,00 · isk1 20,00 · isk3 9,00 · `sth_vergi_pntr 4` · `sth_vergi 34,20`; CHA `cha_meblag 205,20` · `cha_vergi4 34,20` |
+| KDV hariç liste, peşin (kapalı) fatura 1×100 | 120,00 | `Y6B-8`: CHA `cari_cins 4`, kasa `001`, `tpoz 1`, 120,00 · `cha_vergi4 20,00` |
+| **KDV dahil liste (3)**, açık fatura 1×120 | 120,00 | `Y6B-9`: STH brüt **100,00** + `sth_vergi 20,00`; CHA 120,00 — KDV liste fiyatından ayrıldı |
+| KDV hariç liste, iade %50 kondisyon 1×100 | 60,00 | `Y6B-4` (iade): STH brüt 100,00 · kondisyon iskontosu 50,00 · `sth_vergi 10,00` · `iade 1`; CHA 60,00 alacak |
+
+Ek DB kontrolleri:
+- **Numara çakışması:** Mikro'da sıra sayacı tablosu yok (o da `MAX+1` kullanıyor) ve `CARI_HESAP_HAREKETLERI`,
+  `STOK_HAREKETLERI`, `SIPARISLER` tablolarında `(evrak tip, seri, sıra, satır no)` **tekil indeks** var — aynı numara iki
+  kez yazılamaz; eşzamanlı bir Mikro girişi olsa unique ihlaliyle geri döner, sessiz çift kayıt oluşmaz. Fatura (63) ve
+  iade (0) ayrı sayaçlardan gider; bu yüzden DEMO'da `Y6B-4` hem faturada hem iadede var — Mikro'nun kendi davranışı da böyle.
+- **Alan farkı:** satış faturası CHA/STH, tahsilat makbuzu ve çek portföy satırları Mikro'nun kendi satırlarıyla
+  karşılaştırıldı; Mikro'nun doldurup bizim boş bıraktığımız alan yok. İskonto bayrakları (`sth_isk_mas1 = 0`,
+  `2..10 = 1`) Mikro'nun iskontolu satırlarıyla aynı.
+- **Muhasebeleştirme:** hareket tablolarında muhasebe alanı yok (fiş, kart muhasebe kodlarından üretiliyor) — yazdığımız
+  satırların muhasebeleştirmeyi engelleyecek eksiği yok. `EVRAK_ACIKLAMALARI` satırları yazılıyor; e-belge tablosu
+  (`EBELGE_EVRAK_HAREKETLERI`) DEMO'da hiç kullanılmıyor.
+- **Mikro ekranı gerektiren üç adım bende kalmadı:** irsaliyeden fatura, siparişten sevk/kapatma ve muhasebeleştirme
+  Mikro'nun Windows arayüzünde tıklanarak denenmeli (bu arayüzü süremiyorum). DEMO'da Mikro'nun kendi irsaliye/sipariş
+  kaydı yok; karşılaştırılacak örnek de yok.
+
 - **Kapsam dışı:** Portal ekranı tarayıcıda değil, aynı uçlarla sürüldü; telefon uygulaması yerine gövdeler betikle gönderildi
   (gövdeler telefon testlerindeki `ErpSaleDocument`/`ErpReturnDocument`/`ErpCollectionDocument` çıktısıyla aynı alanlar).
   DEMO'da KDV %0 olduğu için KDV'li satır Mikro'da denenmedi (hesaplayıcı birim testleri ve Y3 canlı testleri kapsıyor).
@@ -118,11 +147,11 @@ Goal'ün bütün kod görevleri bitti. Kalan adımlar insan kararı veya bu bilg
 1. ~~Ajan lisansını yeniden girin~~ — **yapıldı** (2026-09-17 20:47, kullanıcı girdi; ajan token'ı yenilendi).
 
 ### Canlıya almadan önce (bu sırayla)
-2. **Muhasebeci kontrolü — Mikro ekranında `MikroDB_V15_DEMO`:** `Y6B` serili evraklar — satış faturaları Y6B-1…6 (1 açık,
+2. **Muhasebeci kontrolü — Mikro ekranında `MikroDB_V15_DEMO`** (KDV'li evraklar 2026-09-17'de eklendi: `Y6B-7/8/9` ve iade `Y6B-4`; ayrıca Mikro arayüzünde irsaliyeden fatura, siparişten sevk ve muhasebeleştirme denemeleri): `Y6B` serili evraklar — satış faturaları Y6B-1…6 (1 açık,
    2 nakit, 3 kart, 4 havale kapalı; 5 karma ödemeli açık; 6 ajan yeniden başlatma testi), sipariş Y6B-1, irsaliye Y6B-1, iade
    faturaları Y6B-1…3 (cari / nakit / banka), tahsilat makbuzları Y6B-1…3 (3 = nakit, kart, havale, çek, senet). Bakılacaklar:
    tutar ve iskonto, cari/kasa/banka bakiyesi, kapalı faturanın müşteriye bağlanması, çek/senet portföyü ve vadeler, sipariş
-   onayı. DEMO'da stoklar %0 KDV olduğundan KDV'li bir satışı Mikro'da ayrıca deneyip bakmak iyi olur.
+   onayı. KDV'li satış/iade artık DEMO'da var (`Y6BKDV20` test kartı, %20): `Y6B-7` iskontolu açık fatura, `Y6B-8` peşin kapalı fatura, `Y6B-9` KDV dahil listeden, iade `Y6B-4`.
 3. **Portal'da canlı firma ayarları** ("ERP aktarım ayarları"): satış türü **Fatura**, seriler (gerekirse plasiyer başına
    Kullanıcılar → Mikro karşılıkları), varsayılan kasa, kart ve havale bankası, depo, fiyat listesi, ERP kullanıcı no, çek/senet
    portföy kasaları. Ayar eksikse belge "Hata: Portal'da … eşlemesi eksik" olarak görünür, Mikro'ya bir şey yazılmaz.
