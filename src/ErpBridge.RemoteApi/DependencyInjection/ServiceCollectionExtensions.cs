@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using ErpBridge.Core.Stores;
 using ErpBridge.RemoteApi.Authentication;
@@ -50,10 +51,15 @@ public static class ServiceCollectionExtensions
             // mergeable sections. Letting HttpClient add another retry layer
             // here made one slow upload wait through both retry schedules
             // (several minutes) before the UI reported a timeout.
-            .AddPolicyHandler((Func<HttpRequestMessage, IAsyncPolicy<HttpResponseMessage>>)(request =>
-                SkipsTransportRetry(request)
-                    ? BuildThrottleOnlyPolicy()
-                    : BuildRetryPolicy()))
+            // Log Merkezi L3d: the retry itself is logged at WARN, so "the server was flaky for ten minutes"
+            // is visible in the Log Centre instead of only showing up as one slow call.
+            .AddPolicyHandler((sp, request) =>
+            {
+                var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("ErpBridge.RemoteApi.Retry");
+                return SkipsTransportRetry(request)
+                    ? BuildThrottleOnlyPolicy(ThrottleRetryDelays, logger)
+                    : BuildRetryPolicy(CanonicalRetryDelays, logger);
+            })
             // Registered after the policy handler so it runs outside it and
             // observes the final status: a 401 that survived the retries means
             // the token really is dead, not momentarily unlucky.
@@ -131,7 +137,11 @@ public static class ServiceCollectionExtensions
         BuildThrottleOnlyPolicy(ThrottleRetryDelays);
 
     /// <summary>Throttle policy with a custom schedule. Exposed for tests that need fast retries.</summary>
-    public static IAsyncPolicy<HttpResponseMessage> BuildThrottleOnlyPolicy(IEnumerable<TimeSpan> delays)
+    public static IAsyncPolicy<HttpResponseMessage> BuildThrottleOnlyPolicy(IEnumerable<TimeSpan> delays) =>
+        BuildThrottleOnlyPolicy(delays, logger: null);
+
+    /// <inheritdoc cref="BuildThrottleOnlyPolicy(IEnumerable{TimeSpan})" />
+    public static IAsyncPolicy<HttpResponseMessage> BuildThrottleOnlyPolicy(IEnumerable<TimeSpan> delays, ILogger? logger)
     {
         var schedule = delays.ToArray();
         return Policy<HttpResponseMessage>
@@ -147,7 +157,11 @@ public static class ServiceCollectionExtensions
                     var advised = outcome.Result?.Headers.RetryAfter?.Delta;
                     return advised is { } wait && wait > TimeSpan.Zero && wait < cap ? wait : cap;
                 },
-                onRetryAsync: static (_, _, _, _) => Task.CompletedTask);
+                onRetryAsync: (outcome, delay, attempt, _) =>
+                {
+                    LogRetry(logger, outcome, delay, attempt, "throttled");
+                    return Task.CompletedTask;
+                });
     }
 
     /// <summary>Canonical 5/15/60/300-second backoff schedule.</summary>
@@ -166,7 +180,11 @@ public static class ServiceCollectionExtensions
     /// tests that need fast retries; production code should use the parameterless
     /// <see cref="BuildRetryPolicy()"/>.
     /// </summary>
-    public static IAsyncPolicy<HttpResponseMessage> BuildRetryPolicy(IEnumerable<TimeSpan> delays)
+    public static IAsyncPolicy<HttpResponseMessage> BuildRetryPolicy(IEnumerable<TimeSpan> delays) =>
+        BuildRetryPolicy(delays, logger: null);
+
+    /// <inheritdoc cref="BuildRetryPolicy(IEnumerable{TimeSpan})" />
+    public static IAsyncPolicy<HttpResponseMessage> BuildRetryPolicy(IEnumerable<TimeSpan> delays, ILogger? logger)
     {
         return Policy<HttpResponseMessage>
             .Handle<HttpRequestException>()
@@ -175,17 +193,20 @@ public static class ServiceCollectionExtensions
                            || (int)r.StatusCode >= 500)
             .WaitAndRetryAsync(
                 delays,
-                onRetry: static (outcome, delay, attempt, context) =>
-                {
-                    // Polly v7 onRetry callback. The actual retry outcome is also
-                    // logged at the HttpClient level by HttpRemoteApiClient for the
-                    // canonical attempt path; this hook is here for future per-retry
-                    // observability (e.g. metrics).
-                    _ = outcome;
-                    _ = delay;
-                    _ = attempt;
-                    _ = context;
-                });
+                onRetry: (outcome, delay, attempt, _) => LogRetry(logger, outcome, delay, attempt, "transient"));
+    }
+
+    /// <summary>
+    /// One line per retry (Log Merkezi L3d). WARN, because a single retry is not yet a failure but a run of them
+    /// is the first sign the central API or the connection is unwell.
+    /// </summary>
+    private static void LogRetry(ILogger? logger, DelegateResult<HttpResponseMessage> outcome, TimeSpan delay, int attempt, string reason)
+    {
+        if (logger is null || !logger.IsEnabled(LogLevel.Warning)) return;
+        var status = outcome.Result is { } response ? ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) : "-";
+        logger.LogWarning(outcome.Exception,
+            "Central API call retried ({Reason}); attempt {Attempt}, waiting {DelaySeconds}s, last status {Status}.",
+            reason, attempt, delay.TotalSeconds, status);
     }
 
     private static IEnumerable<TimeSpan> BuildDelaySchedule(int initialSeconds, int maxAttempts)

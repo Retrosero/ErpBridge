@@ -34,6 +34,11 @@ public static class Program
 
     public static void Main(string[] args)
     {
+        // Log Merkezi L3d: the Serilog sink needs the reporter, which only exists once the container is built.
+        // A captured local keeps that one-way dependency honest — no service is resolved while logging, and an
+        // event written during startup simply stays in the local file.
+        ErpBridge.Core.Logging.IAgentLogReporter? logCentre = null;
+
         var builder = Host.CreateDefaultBuilder(args)
             .UseWindowsService(options =>
             {
@@ -111,13 +116,23 @@ public static class Program
                 // adapter module; only the SQLite history query is wired here.
                 services.AddSingleton<IMappingHistoryQuery, SqliteMappingHistoryQuery>();
                 services.AddHostedService<CrossDbReconciliationWorker>();
+
+                // Log Merkezi L3d: start/stop events and the crashes no catch block saw.
+                services.AddHostedService<AgentLifecycleWorker>();
             })
             // Log Merkezi L3a: file + console sinks in code (the old config lived under "Logging", which Serilog
             // never read — the service wrote no log file). Masked; see AgentSerilog.
-            .UseSerilog((ctx, sp, lc) => ErpBridge.Agent.Logging.AgentSerilog.Configure(lc, ctx.Configuration, "agent")
+            // L3d: the same pipeline forwards WARN and above to the Log Centre, so every error path the agent
+            // already logs is reported without instrumenting each call site.
+            .UseSerilog((ctx, sp, lc) => ErpBridge.Agent.Logging.AgentSerilog
+                .Configure(lc, ctx.Configuration, "agent", logCentre: () => logCentre)
                 .ReadFrom.Services(sp));
 
         var host = builder.Build();
+        logCentre = host.Services.GetRequiredService<ErpBridge.Core.Logging.IAgentLogReporter>();
+        AgentLifecycleWorker.HookUnhandledExceptions(
+            () => logCentre,
+            host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ErpBridge.Agent.Service.Host"));
         host.Run();
     }
 }

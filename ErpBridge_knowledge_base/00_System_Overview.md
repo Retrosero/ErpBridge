@@ -904,6 +904,18 @@ registration ayrı bir composition projesine taşınır.
      gönderilir, arada yalnız `repeat_count` artar. Raporlama **hiçbir zaman** çağıranın akışını bozmaz: mesaj ve
      istisna metni `ConnectionStringMasker.MaskSecrets`'ten geçer, kuyruk/gönderim hatası yerel logda uyarıdır.
      Eski `POST /api/v1/agents/telemetry` ucu tek olay için duruyor.
+   - **Hangi satırlar gidiyor (L3d):** çağrı noktaları tek tek donatılmaz — `AgentLogCentreSink`, ajanın zaten
+     yazdığı Serilog akışındaki **WARN ve üstü** her satırı raporlayıcıya verir. Böylece senkron döngüsü,
+     bootstrap, change-log, Mikro bağlantı/sürüm, token yenileme, notify, heartbeat, `AgentWorker` + yerel kuyruk
+     + ack, mutabakat alarmları ve Polly yeniden denemeleri (WARN) kendiliğinden kapsanır; **yeni bir hata yolu
+     eklendiğinde ayrıca bağlamak gerekmez.** Olay türü satırın `Kind` özelliğinden, yoksa sınıf adından türer
+     (`BootstrapSyncService` → `BOOTSTRAP_SYNC_SERVICE`); `Operation` ve `CorrelationId` varsa taşınır.
+     `AgentLogReporter`/`AgentLogUploader` kendi satırlarını raporlamaz (geri besleme olmasın), kendisi raporlayan
+     bir çağrı noktası da log kapsamına `LogCentreHandled` koyarak ikinci kaydı engeller. Ayrıca açık olaylar:
+     `AGENT_STARTED` (sürüm, ERP türü, ERP veritabanı) ve `AGENT_STOPPING` — servis `AgentLifecycleWorker`,
+     masaüstü `App.OnStartup`/`OnExit` ile; servis için `AppDomain.UnhandledException` → FATAL ve
+     `TaskScheduler.UnobservedTaskException` → ERROR (kuyruğa yazımı **beklenir**, süreç ölmeden önce).
+     Masaüstü kuyruğu `DesktopHeartbeatService` turunda, kapanışta ise son bir kez boşaltılır.
 
 26. **Telefon belgeleri ERP'ye yalnız çevirici üzerinden yazılır (ERP yazım goal'ü Y0–Y5, 2026-09-17).**
    - **Tek yol:** `mobileDocumentId` taşıyan `sales_order` / `sales_return` / `collection` gövdesini ajan

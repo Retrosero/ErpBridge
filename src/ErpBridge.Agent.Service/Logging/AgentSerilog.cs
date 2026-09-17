@@ -19,11 +19,23 @@ public static class AgentSerilog
 {
     public const string OutputTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
 
-    public static LoggerConfiguration Configure(LoggerConfiguration logger, IConfiguration configuration, string fileStem, int retainedDays = 14)
+    /// <param name="logCentre">
+    /// Log Merkezi L3d: when given, every warning and above also goes to the Log Centre queue. It is a delegate
+    /// because the logger is built before the DI container — until the container is up, the reporter is null and
+    /// the line only stays local.
+    /// </param>
+    public static LoggerConfiguration Configure(
+        LoggerConfiguration logger,
+        IConfiguration configuration,
+        string fileStem,
+        int retainedDays = 14,
+        Func<IAgentLogReporter?>? logCentre = null)
     {
         var formatter = new MaskingTextFormatter(new MessageTemplateTextFormatter(OutputTemplate));
-        return ApplyLevels(logger, configuration)
-            .Enrich.FromLogContext()
+        logger = ApplyLevels(logger, configuration).Enrich.FromLogContext();
+        if (logCentre is not null)
+            logger = logger.WriteTo.Sink(new AgentLogCentreSink(logCentre));
+        return logger
             .WriteTo.Console(formatter)
             .WriteTo.File(
                 formatter,

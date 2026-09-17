@@ -74,6 +74,7 @@
   <ItemGroup>
     <!-- Log Merkezi L3a: the service and the desktop app share one Serilog setup. -->
     <Compile Include="..\ErpBridge.Agent.Service\Logging\AgentSerilog.cs" Link="Logging\AgentSerilog.cs" />
+    <Compile Include="..\ErpBridge.Agent.Service\Logging\AgentLogCentreSink.cs" Link="Logging\AgentLogCentreSink.cs" />
   </ItemGroup>
 
 </Project>
