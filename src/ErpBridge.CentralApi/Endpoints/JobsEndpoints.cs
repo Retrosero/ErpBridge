@@ -62,6 +62,8 @@ public static class JobsEndpoints
         [FromQuery] string? type,
         HttpContext http,
         [FromServices] CentralApiDbContext db,
+        [FromServices] IWebhookDispatcher webhooks,
+        [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse,
         CancellationToken ct)
     {
         if (!http.User.TryGetTenantId(out var tenantId))
@@ -83,9 +85,9 @@ public static class JobsEndpoints
             job.CompletedAtUtc = now;
             job.LeasedUntilMs = null;
             job.LastError = $"Ajan belgeyi {MaxAttempts} denemede tamamlayamadı.";
-            await http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Warehouse.FulfillmentService>().RecordErpResultAsync(db, job, ct);
+            // Same bookkeeping as a failed ack: warehouse state in a transaction, then webhook and wake-up (PR #83 Codex).
+            await CompleteAsync(db, job, "job.failed", webhooks, warehouse, ct);
         }
-        if (abandoned.Count > 0) await db.SaveChangesAsync(ct);
 
         var query = db.Jobs
             .Where(j => j.TenantId == tenantId
@@ -141,6 +143,7 @@ public static class JobsEndpoints
                 DocumentType = j.DocumentType,
                 Payload = j.PayloadJson,
                 EnqueuedAtUtc = j.EnqueuedAtUtc,
+                Attempt = j.RetryCount,
                 ErpContext = contexts.GetValueOrDefault(j.Id),
             })
             .ToList();
@@ -178,6 +181,17 @@ public static class JobsEndpoints
         if (job.Status == JobStatus.Succeeded || job.Status == JobStatus.Failed || job.Status == JobStatus.DeadLetter)
         {
             return Results.NoContent();
+        }
+
+        // An agent whose lease expired and was handed to another agent must not overwrite that lease's
+        // outcome (PR #83 Codex). Agents that send no attempt keep the old behaviour.
+        if (body.Attempt is { } attempt && attempt != job.RetryCount)
+        {
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
+            {
+                ErrorCode = "STALE_LEASE",
+                Message = "This job was leased again after this attempt; the result was not applied.",
+            });
         }
 
         var ack = new JobAckRecord
@@ -228,7 +242,19 @@ public static class JobsEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_STATUS", Message = "status must be 'succeeded' or 'failed'." });
         }
 
-        // The warehouse sees whether the order reached the ERP (V2, Faz 47); same transaction as the ack.
+        await CompleteAsync(db, job, eventType, webhooks, warehouse, ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Saves a job's new state: the warehouse sees whether the order reached the ERP (V2, Faz 47) in the
+    /// same transaction, then terminal webhooks go out and the warehouse page wakes up.
+    /// </summary>
+    /// <param name="eventType"><c>job.succeeded</c>, <c>job.failed</c>, or empty when the job is not terminal.</param>
+    private static async Task CompleteAsync(
+        CentralApiDbContext db, Job job, string eventType, IWebhookDispatcher webhooks,
+        ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse, CancellationToken ct)
+    {
         bool orderChanged;
         await using (var transaction = db.Database.IsRelational() && ErpBridge.CentralApi.Warehouse.FulfillmentService.IsQueuedDocument(job.DocumentType)
             ? await db.Database.BeginTransactionAsync(ct)
@@ -256,7 +282,5 @@ public static class JobsEndpoints
                 // never made it past Pending.
             }
         }
-
-        return Results.NoContent();
     }
 }

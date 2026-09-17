@@ -95,6 +95,29 @@ public sealed class JobLeaseAndRetryTests : IClassFixture<CentralApiFactory>
             j.Status == JobStatus.Failed && j.LeasedUntilMs == null && j.LastError!.Contains(JobsEndpoints.MaxAttempts.ToString()));
     }
 
+    [Fact]
+    public async Task A_result_from_a_lease_handed_to_another_agent_is_refused()
+    {
+        var (tenantId, token) = await AgentAsync();
+        var job = await JobAsync(tenantId);
+
+        var first = (await LeaseAsync(token)).Single(j => j.JobId == job.Id);
+        first.Attempt.Should().Be(1);
+        await UpdateAsync(job.Id, j => j.LeasedUntilMs = DateTimeOffset.UtcNow.AddSeconds(-1).ToUnixTimeMilliseconds());
+        var second = (await LeaseAsync(token)).Single(j => j.JobId == job.Id);
+        second.Attempt.Should().Be(2);
+
+        (await AckAsync(token, new JobAckRequest { JobId = job.Id, Status = "failed", ErrorCode = "X", Attempt = first.Attempt }))
+            .Should().Be(HttpStatusCode.Conflict);
+        var stillLeased = await ReadAsync(job.Id);
+        stillLeased.Status.Should().Be(JobStatus.Processing);
+        stillLeased.LeasedUntilMs.Should().NotBeNull("the stale result must not clear the live lease");
+
+        (await AckAsync(token, new JobAckRequest { JobId = job.Id, Status = "succeeded", Attempt = second.Attempt }))
+            .Should().Be(HttpStatusCode.NoContent);
+        (await ReadAsync(job.Id)).Status.Should().Be(JobStatus.Succeeded);
+    }
+
     private async Task<(Guid TenantId, string Token)> AgentAsync()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
