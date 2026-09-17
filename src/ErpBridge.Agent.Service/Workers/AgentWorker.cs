@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Text.Json;
 using ErpBridge.Agent.Service.Configuration;
 using ErpBridge.Core.Domain;
@@ -64,6 +65,14 @@ public sealed class AgentWorker : BackgroundService
     public const string StockCardDocumentType = "stock_card";
 
     private static readonly JsonSerializerOptions PayloadJsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Phone document types the translator turns into ERP commands (goal ERP yazım Y2c).</summary>
+    private static readonly HashSet<string> MobileDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        MobileDocumentTranslator.SalesOrderType, MobileDocumentTranslator.SalesReturnType, MobileDocumentTranslator.CollectionType,
+    };
+
+    private static readonly MobileDocumentTranslator Translator = new();
 
     private readonly IRemoteApiClient _remoteApi;
     private readonly ILocalQueueStore _localQueue;
@@ -164,6 +173,7 @@ public sealed class AgentWorker : BackgroundService
         await TryEnqueueLocallyAsync(job, config, ct);
 
         var ack = await DispatchToAdapterAsync(job, config, ct);
+        ack.Attempt ??= job.Attempt;
         await TrySendAckAsync(ack, ct);
     }
 
@@ -215,6 +225,13 @@ public sealed class AgentWorker : BackgroundService
     /// </remarks>
     internal async Task<JobAck> DispatchToAdapterAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
     {
+        // A Sipariş Cepte document (it names itself with mobileDocumentId) goes through the translator to
+        // the ERP-independent commands; the typed ingest bodies keep their writers (goal ERP yazım D3).
+        if (job.DocumentType is not null && MobileDocumentTypes.Contains(job.DocumentType) && MobileDocumentTranslator.IsMobileDocument(job.Payload))
+        {
+            return await DispatchMobileDocumentAsync(job, config, ct);
+        }
+
         if (string.Equals(job.DocumentType, SalesOrderDocumentType, StringComparison.OrdinalIgnoreCase))
         {
             return await DispatchSalesOrderAsync(job, config, ct);
@@ -290,6 +307,81 @@ public sealed class AgentWorker : BackgroundService
         }
     }
 
+    private async Task<JobAck> DispatchMobileDocumentAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    {
+        var translation = Translator.Translate(job.DocumentType, job.ExternalId, job.Payload, job.ErpContext);
+        if (translation.Error is { } error)
+        {
+            _logger.LogWarning(
+                "Phone document for job {JobId} ({DocumentType}) cannot be written: {ErrorCode}",
+                job.JobId, job.DocumentType, error.Code);
+            return Failed(job.JobId, error.Code, error.Message, error.Retryable);
+        }
+
+        IErpAdapter adapter;
+        try
+        {
+            adapter = _adapterFactory.Create(config.ErpType);
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogError(ex, "Adapter factory refused ERP type {ErpType} for job {JobId}.", config.ErpType, job.JobId);
+            return Failed(job.JobId, "UNSUPPORTED_ERP", ex.Message);
+        }
+
+        try
+        {
+            var writeResult = translation switch
+            {
+                { Sale: { } sale } => await adapter.WriteSalesDocumentAsync(sale, ct),
+                { Return: { } salesReturn } => await adapter.WriteSalesReturnAsync(salesReturn, ct),
+                { Collection: { } collection } => await adapter.WriteCollectionDocumentAsync(collection, ct),
+                _ => throw new InvalidOperationException("The translator returned neither a command nor an error."),
+            };
+            return ToAck(job, writeResult);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Shutdown: no ack, the lease expires and the job is delivered again.
+            throw;
+        }
+        catch (Exception ex) when (IsTransient(ex))
+        {
+            _logger.LogWarning(ex, "ERP unreachable for job {JobId} ({DocumentType}); the server will retry.", job.JobId, job.DocumentType);
+            var unavailable = ErpBridge.Shared.ErpWriteError.ErpUnavailable();
+            return Failed(job.JobId, unavailable.Code, unavailable.Message, retryable: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Adapter threw for job {JobId} ({DocumentType}).", job.JobId, job.DocumentType);
+            return Failed(job.JobId, ErpWriteResult.ErrorCodeUnknown, $"Belge ERP'ye yazılırken beklenmeyen bir hata oluştu ({ex.GetType().Name}).");
+        }
+    }
+
+    /// <summary>
+    /// Failures that pass by themselves: a lost or timed-out connection, a deadlock, a database the
+    /// driver itself marks as transient. Data and mapping problems never are.
+    /// </summary>
+    internal static bool IsTransient(Exception ex) => ex switch
+    {
+        TimeoutException or IOException => true,
+        DbException db => db.IsTransient || TransientSqlNumbers.Contains(SqlNumber(db)),
+        _ => ex.InnerException is { } inner && IsTransient(inner),
+    };
+
+    /// <summary>SQL Server: timeout, connection errors, deadlock victim, lock timeout, database offline.</summary>
+    private static readonly HashSet<int> TransientSqlNumbers = [-2, -1, 2, 53, 121, 232, 233, 258, 1205, 1222, 4060, 10053, 10054, 10060, 10061, 11001, 40143, 40197, 40501, 40613];
+
+    /// <summary>The SQL Server error number without referencing the SQL client from the service.</summary>
+    private static int SqlNumber(DbException db) =>
+        db.GetType().GetProperty("Number")?.GetValue(db) is int number ? number : 0;
+
+    /// <summary>ERP write codes the server should retry (<see cref="ErpBridge.Shared.ErpWriteError.Retryable"/>).</summary>
+    private static readonly HashSet<string> RetryableCodes = new(StringComparer.Ordinal)
+    {
+        ErpBridge.Shared.ErpWriteError.ErpUnavailableCode, ErpBridge.Shared.ErpWriteError.ErpContextMissingCode,
+    };
+
     private static T Parse<T>(string json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -322,15 +414,18 @@ public sealed class AgentWorker : BackgroundService
         _logger.LogWarning(
             "Document rejected for job {JobId} ({DocumentType}): {ErrorCode} {ErrorMessage}",
             job.JobId, job.DocumentType, writeResult.ErrorCode, writeResult.ErrorMessage);
-        return Failed(job.JobId, writeResult.ErrorCode ?? ErpWriteResult.ErrorCodeUnknown, writeResult.ErrorMessage);
+        var code = writeResult.ErrorCode ?? ErpWriteResult.ErrorCodeUnknown;
+        return Failed(job.JobId, code, writeResult.ErrorMessage, RetryableCodes.Contains(code));
     }
 
-    private static JobAck Failed(string jobId, string? code, string? message) => new()
+    private static JobAck Failed(string jobId, string? code, string? message, bool retryable = false) => new()
     {
         JobId = jobId,
         Status = "failed",
         ErrorCode = code,
         ErrorMessage = message,
+        // Sent only when true, so the ack body of a permanent failure is what older servers expect.
+        Retryable = retryable ? true : null,
     };
 
     private async Task<JobAck> DispatchSalesOrderAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
