@@ -106,6 +106,34 @@ public sealed class PortalCustomerLedgerRelationalTests : IClassFixture<SqliteCe
     }
 
     [Fact]
+    public async Task A_closed_mikro_invoice_belongs_to_its_customer_but_stays_out_of_the_statement()
+    {
+        var c = await CompanyAsync(native: false);
+        await SeedErpLedgerAsync(c.Id);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            // Peşin sale closed to kasa 001 (cariKod) for customer C-3 (ciroCariKod): Mikro never moved C-3's balance.
+            db.MobileRecords.Add(new MobileRecord
+            {
+                TenantId = c.Id, Entity = "customerTransactions", RecordKey = "k1", UpdatedSeq = 2_200_001,
+                PayloadJson = JsonSerializer.Serialize(new { id = "k1", erp = "MIKRO", cariKod = "001", ciroCariKod = "C-3", kapali = true, tarih = "2026-05-01T00:00:00", evrakTip = 63, tutar = 780m, borcMu = true, type = "SATIS", cha_recno = 40 }, Web),
+            });
+            db.MobileRecords.Add(new MobileRecord
+            {
+                TenantId = c.Id, Entity = "customerTransactions", RecordKey = "k2", UpdatedSeq = 2_200_002,
+                PayloadJson = JsonSerializer.Serialize(new { id = "k2", erp = "MIKRO", cariKod = "C-3", kapali = false, tarih = "2026-05-02T00:00:00", evrakTip = 0, normalIade = true, tutar = 50m, borcMu = false, type = "SATIS_IADE", cha_recno = 41 }, Web),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var ledger = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-3");
+        ledger.Items.Select(i => (i.Id, i.Kind)).Should().Equal(("k2", "sale_return"));
+        ledger.Closing.Should().Be(0m, "the statement still ends on the card balance");
+        await ExpectAsync(c.Patron, "/api/v1/portal/customers/card?code=001", HttpStatusCode.NotFound, "CUSTOMER_NOT_FOUND");
+    }
+
+    [Fact]
     public async Task A_native_company_statement_joins_sale_lines_by_document_number()
     {
         var c = await CompanyAsync(native: true);

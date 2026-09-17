@@ -34,9 +34,13 @@ public static class PortalLedger
         string? SalespersonCode, string? RegionCode, string? GroupCode, string? Currency, bool IsLocked, string? City, string? Address);
 
     /// <param name="RecNo">Mikro's <c>cha_recno</c>: the order of movements on the same day (null for native rows).</param>
+    /// <param name="Closed">
+    /// A peşin invoice Mikro closed to a kasa/banka (<c>kapali</c>): it belongs to the customer in
+    /// <c>ciroCariKod</c> but never moved their balance, so statements leave it out.
+    /// </param>
     public sealed record Movement(
         string Customer, string Id, DateTime Date, string Kind, string? SourceType, string? DocumentNo, string? Description,
-        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null);
+        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null, bool Closed = false);
 
     /// <summary>
     /// Oldest first. Mikro movements of one day share a midnight timestamp, so they follow their record
@@ -171,7 +175,10 @@ public static class PortalLedger
 
     private static Movement? ParseMovement(string entity, JsonElement row)
     {
-        var customer = PortalRecords.Blank(AndroidEndpoints.GetFirstString(row, "cariKod", "customerCode"));
+        // A closed invoice's cariKod is the kasa/banka it posted to; its customer is ciroCariKod.
+        var closed = AndroidEndpoints.GetBoolean(row, "kapali") ?? false;
+        var customer = (closed ? PortalRecords.Blank(AndroidEndpoints.GetString(row, "ciroCariKod")) : null)
+            ?? PortalRecords.Blank(AndroidEndpoints.GetFirstString(row, "cariKod", "customerCode"));
         if (customer is null) return null;
         var native = string.Equals(AndroidEndpoints.GetString(row, "erp"), PortalRecords.NativeErp, StringComparison.OrdinalIgnoreCase);
         var sourceType = PortalRecords.Blank(AndroidEndpoints.GetString(row, "type"));
@@ -198,7 +205,8 @@ public static class PortalLedger
             debit ? amount : 0m,
             debit ? 0m : amount,
             documentKey,
-            recNo);
+            recNo,
+            closed);
     }
 
     // ---- queries --------------------------------------------------------------
@@ -269,7 +277,8 @@ public static class PortalLedger
     public static PortalLedgerResponse Statement(
         Customer customer, Movements movements, DateOnly? from, DateOnly? to, IReadOnlyCollection<string> kinds, int page, int pageSize)
     {
-        var all = movements.ByCustomer.TryGetValue(customer.Code, out var list) ? list : [];
+        // Like Mikro's cari föyü: a closed invoice is a kasa/banka movement, not a balance movement.
+        var all = movements.ByCustomer.TryGetValue(customer.Code, out var list) ? list.Where(m => !m.Closed).ToList() : [];
         var start = from?.ToDateTime(TimeOnly.MinValue);
         var endExclusive = to?.AddDays(1).ToDateTime(TimeOnly.MinValue);
         var fromOn = start is null ? all : all.Where(m => m.Date >= start).ToList();

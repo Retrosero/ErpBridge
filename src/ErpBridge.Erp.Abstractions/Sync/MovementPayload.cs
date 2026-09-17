@@ -19,7 +19,9 @@ public sealed record CustomerTransactionPayload(
     [property: JsonPropertyName("cha_recno")] int? RecNo,
     [property: JsonPropertyName("type")] string TransactionType = "HAREKET",
     [property: JsonPropertyName("cins")] int Kind = 0,
-    [property: JsonPropertyName("normalIade")] bool IsReturn = false);
+    [property: JsonPropertyName("normalIade")] bool IsReturn = false,
+    [property: JsonPropertyName("ciroCariKod")] string? CounterpartyCode = null,
+    [property: JsonPropertyName("kapali")] bool IsClosed = false);
 
 /// <summary>A single row from Mikro STOK_HAREKETLERI.</summary>
 public sealed record StockTransactionPayload(
