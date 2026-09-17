@@ -14,7 +14,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 |---|---|---|---|
 | L0 — Temel: birleşik model + iz kimliği | 6 | 6 | ✅ |
 | L1 — Log Merkezi v1 (Admin) | 3 | 3 | ✅ |
-| L2 — Sunucu, Portal, Admin logları | 6 | 0 | ⬜ |
+| L2 — Sunucu, Portal, Admin logları | 6 | 6 | ✅ |
 | L3 — ERP Windows ajanı | 7 | 0 | ⬜ |
 | L4 — Sipariş Cepte | 8 | 0 | ⬜ |
 | L5 — Log Merkezi v2 | 6 | 0 | ⬜ |
@@ -36,15 +36,15 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L0d | Eski iki uç yeni tabloya yazar | ✅ | [#68](https://github.com/Retrosero/ErpBridge/pull/68) | Telefon: `UserId` + `DeviceId` token'dan (API anahtarında gövdedeki `deviceId`). Yazım hatası yakalanır, yükleme bozulmaz |
 | L0e | `CorrelationIdMiddleware` + genel hata yakalayıcı | ✅ | [#69](https://github.com/Retrosero/ErpBridge/pull/69) | `CorrelationId.UseCorrelationId` hattın ilk ara katmanı; `UnhandledExceptionHandler` iç ayrıntısız 500 `INTERNAL_ERROR` + `traceId`, ayrıntıyı yeni DI kapsamında `log_events`'e yazar (logger kategorisi DB logger'ında atlanacak, L2b) |
 | L0f | `log_settings` + `LogRetentionWorker` | ✅ | [#69](https://github.com/Retrosero/ErpBridge/pull/69) | Sunucu alış zamanına göre partili silme; bayat **açık** gruplar silinir, çözüldü/yok sayıldı korunur. **Codex 3 bulgu düzeltildi:** konsol satırı maskeli metin (istisna nesnesi değil); grup yalnız hiçbir saklı olay göstermiyorsa bayat; `MaxDeletesPerRun` kesin sınır. #68 canlıda `/health/schema` current (25 migration) |
-| L1a | Admin log uçları (liste/detay/facets) | ✅ | #70 | Filtreler tek yerde (`LogQuery`); imleç `{OccurredAtMs}_{EventId}`; metin arama PostgreSQL'de ILIKE (Türkçe büyük/küçük harf ASCII dışında eşleşmez — kısıt) |
-| L1b | Admin `/logs` sayfası | ✅ | #70 | Filtreler + açık kayıt URL'de; detay paneli; saatler Türkiye saati. **Görsel kontrol:** giriş formuna parola yazılmadığı için (güvenlik kuralı) sayfa bUnit çıktısı Admin CSS'iyle tarayıcıda açılarak masaüstü ve dar ekranda kontrol edildi; kopyala düğmesi taşması düzeltildi |
-| L1c | Geçiş + menü + Dashboard kartı | ✅ | #70 | İki telemetri ucu yalnız `log_events`'e yazar (hata artık 5xx); `/admin/telemetry` yeni tablodan (tür büyük harf); Dashboard kartı son 24 saat ERROR+ → `/logs?minSeverity=ERROR` |
-| L2a | CentralApi log yapılandırması | ⬜ | | |
-| L2b | `DatabaseLoggerProvider` | ⬜ | | |
-| L2c | 5xx + yavaş istek kaydı | ⬜ | | |
-| L2d | `/internal/logs` + `RemoteLoggerProvider` | ⬜ | | |
-| L2e | Portal hata sınırı + loglama | ⬜ | | |
-| L2f | Admin hata sınırı + loglama | ⬜ | | |
+| L1a | Admin log uçları (liste/detay/facets) | ✅ | [#70](https://github.com/Retrosero/ErpBridge/pull/70) | Filtreler tek yerde (`LogQuery`); **Codex 2 bulgu düzeltildi:** imleç `{OccurredAtMs}~{EventId}~{Source}` (kimlik yalnız kaynak içinde tekil), çelişen seviye filtresi boş sonuç; metin arama PostgreSQL'de ILIKE (Türkçe büyük/küçük harf ASCII dışında eşleşmez — kısıt) |
+| L1b | Admin `/logs` sayfası | ✅ | [#70](https://github.com/Retrosero/ErpBridge/pull/70) | Filtreler + açık kayıt URL'de; detay paneli; saatler Türkiye saati. **Görsel kontrol:** giriş formuna parola yazılmadığı için (güvenlik kuralı) sayfa bUnit çıktısı Admin CSS'iyle tarayıcıda açılarak masaüstü ve dar ekranda kontrol edildi; kopyala düğmesi taşması düzeltildi |
+| L1c | Geçiş + menü + Dashboard kartı | ✅ | [#70](https://github.com/Retrosero/ErpBridge/pull/70) | İki telemetri ucu yalnız `log_events`'e yazar (hata artık 5xx); `/admin/telemetry` yeni tablodan (tür büyük harf); Dashboard kartı son 24 saat ERROR+ → `/logs?minSeverity=ERROR` |
+| L2a | CentralApi log yapılandırması | ✅ | #72 | Tek satır + kapsamlı konsol, EF SQL komutları Warning. **Sapma:** JSON yerine tek satır basit biçim (Coolify konsolunda okunur) |
+| L2b | `DatabaseLoggerProvider` | ✅ | #72 | Ortak altyapı yeni `ErpBridge.Diagnostics` projesinde (`BufferedLogProvider`, paket bağımlılığı yok). EF + yakalanmamış istisna kategorileri hariç; Test ortamında kapalı |
+| L2c | 5xx + yavaş istek kaydı | ✅ | #72 | Firma/kullanıcı/ajan kapsamı log anında okunur (API anahtarı uçta doğrulanıyor); uzun yoklamalar yavaş sayılmaz |
+| L2d | `/internal/logs` + `RemoteLoggerProvider` | ✅ | #72 | Anahtar tanımsızsa uç 404, gönderici kapalı |
+| L2e | Portal hata sınırı + loglama | ✅ | #72 | `PortalErrorBoundary` destek kodu = iz kimliği; firma/kullanıcı JWT'den (yalnız log bağlamı); `CorrelationIdHandler` 5xx/ulaşılamayan çağrıyı loglar; `/Error` sayfası (önceden yoktu) yerelde doğrulandı |
+| L2f | Admin hata sınırı + loglama | ✅ | #72 | `AdminErrorBoundary`, `/Error`, aynı işleyici ve log gönderimi |
 | L3a | Ajan log yapılandırması + sürüm | ⬜ | | |
 | L3b | Ajan maskeleme düzeltmeleri | ⬜ | | |
 | L3c | Ajan olay kuyruğu + `/agents/logs/batch` | ⬜ | | |
@@ -79,4 +79,5 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 ---
 
 ## Seni Bekleyenler
+- **Coolify:** `Logs__InternalIngestKey` (en az 32 karakter rastgele) centralapi, admin **ve** portal servislerine aynı değerle eklenmeli; eklenene kadar Portal/Admin logları yalnız konsolda kalır (sunucunun kendi logları anahtarsız da Log Merkezi'ne yazılır).
 - **K1:** Admin konsolu ortak oturum (`TokenStore` tekil) açığı — test aşaması bittiğinde ayrı iş olarak kapatılacak.
