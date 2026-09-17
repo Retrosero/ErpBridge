@@ -15,7 +15,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L0 — Temel: birleşik model + iz kimliği | 6 | 6 | ✅ |
 | L1 — Log Merkezi v1 (Admin) | 3 | 3 | ✅ |
 | L2 — Sunucu, Portal, Admin logları | 6 | 6 | ✅ |
-| L3 — ERP Windows ajanı | 7 | 0 | ⬜ |
+| L3 — ERP Windows ajanı | 7 | 2 | 🔄 |
 | L4 — Sipariş Cepte | 8 | 0 | ⬜ |
 | L5 — Log Merkezi v2 | 6 | 0 | ⬜ |
 | L6 — Denetim, tanılama, saklama | 4 | 0 | ⬜ |
@@ -45,8 +45,8 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L2d | `/internal/logs` + `RemoteLoggerProvider` | ✅ | #72 | Anahtar tanımsızsa uç 404, gönderici kapalı |
 | L2e | Portal hata sınırı + loglama | ✅ | #72 | **Codex 4 bulgu düzeltildi:** iç log ucu gövdeyi anahtardan sonra ve en çok 1 MB okur, null olaylar 400; `/Error` kodu (`TraceIdentifier`) loglanan istisnanın iz kimliği (`UseRequestCorrelationScope`); `PortalPageBase.RunAsync` yakalanan API/bağlantı hatalarını sayfa, firma, kullanıcıyla loglar (5xx ERROR, diğerleri WARN). `PortalErrorBoundary` destek kodu = iz kimliği; firma/kullanıcı JWT'den (yalnız log bağlamı); `CorrelationIdHandler` 5xx/ulaşılamayan çağrıyı loglar; `/Error` sayfası (önceden yoktu) yerelde doğrulandı |
 | L2f | Admin hata sınırı + loglama | ✅ | #72 | `AdminErrorBoundary`, `/Error`, aynı işleyici ve log gönderimi |
-| L3a | Ajan log yapılandırması + sürüm | ⬜ | | |
-| L3b | Ajan maskeleme düzeltmeleri | ⬜ | | |
+| L3a | Ajan log yapılandırması + sürüm | ✅ | [#71](https://github.com/Retrosero/ErpBridge/pull/71) | `AgentSerilog` (servis + masaüstü ortak, sink'ler kodda), `AgentLogLocation` (EXE yanı → ProgramData → TEMP), `VersionPrefix` 1.1.0. Kullanılmayan maskesiz `CreateLoggerFactory` silindi. **Sapma:** CI derleme numarası yerine elle artırılan `VersionPrefix` (ajan derlemeleri CI'da paketlenmiyor) |
+| L3b | Ajan maskeleme düzeltmeleri | ✅ | [#71](https://github.com/Retrosero/ErpBridge/pull/71) | Yazıcıları tek tek düzeltmek yerine çıkışta maskeleme: `MaskingTextFormatter` tüm satırı (istisna dahil) `ConnectionStringMasker.MaskSecrets`'ten geçirir. Test, `MaskPassword`'ün satır sonunu aşıp istisna türünü yuttuğunu yakaladı — düzeltildi |
 | L3c | Ajan olay kuyruğu + `/agents/logs/batch` | ⬜ | | |
 | L3d | Raporlanmayan ajan hatalarının bağlanması | ⬜ | | |
 | L3e | `AGENT_SYNC_ROUND` | ⬜ | | |

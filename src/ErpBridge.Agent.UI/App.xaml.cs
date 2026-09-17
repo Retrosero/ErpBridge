@@ -595,33 +595,16 @@ public partial class App : Application
             .AddEnvironmentVariables(prefix: "ERPBridge_")
             .Build();
 
-        // Mutlak yol: WPF'i farklı working directory'den başlatsa bile
-        // log dosyası her zaman EXE'nin yanındaki "logs/" dizinine yazılır.
-        var logDir = System.IO.Path.Combine(AppContext.BaseDirectory, "logs");
-        System.IO.Directory.CreateDirectory(logDir);
-        var logPath = System.IO.Path.Combine(logDir, "ui-.log");
+        // Log Merkezi L3a: dosya konumu AgentLogLocation'dan (EXE yanı yazılamıyorsa ProgramData),
+        // tüm satırlar maskeli (AgentSerilog). Selflog aynı klasöre: file sink sessizce hata verirse
+        // (izin, kilit, path) Serilog normalde exception'ı yutar; selflog bunları dosyaya yazar.
+        var logDir = ErpBridge.Core.Logging.AgentLogLocation.Directory();
         var selfLogPath = System.IO.Path.Combine(logDir, "serilog-selflog.txt");
-
-        // Serilog selflog: eğer file sink sessizce hata verirse (izin, kilit,
-        // path), Serilog normalde exception'ı yutar. Selflog bunları dosyaya
-        // yazar. Debug için hayat kurtarır.
         Serilog.Debugging.SelfLog.Enable(msg =>
             System.IO.File.AppendAllText(selfLogPath,
                 $"[{DateTime.Now:HH:mm:ss.fff}] {msg}{Environment.NewLine}"));
 
-        var serilog = new LoggerConfiguration()
-            .ReadFrom.Configuration(bootstrapConfig)
-            .Enrich.FromLogContext()
-            // shared:false + flushToDiskInterval:1s => her mesaj anında diske yazılır.
-            // Debug için kritik — yoksa EXE hâlâ açıkken log dosyası boş kalır.
-            // Mutlak yol: WPF'i farklı working directory'den başlatsa bile EXE
-            // yanındaki "logs/" dizinine yazar.
-            .WriteTo.File(
-                logPath,
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 7,
-                shared: false,
-                flushToDiskInterval: TimeSpan.FromSeconds(1))
+        var serilog = ErpBridge.Agent.Logging.AgentSerilog.Configure(new LoggerConfiguration(), bootstrapConfig, "ui")
             .CreateLogger();
 
         // Log.Logger'ı set etmeden dosya sink kurulmuş olsa bile, uygulama
