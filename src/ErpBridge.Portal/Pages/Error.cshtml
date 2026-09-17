@@ -1,0 +1,29 @@
+@page "/Error"
+@{
+    Layout = null;
+    Response.StatusCode = 500;
+    var code = HttpContext.TraceIdentifier;
+}
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bir hata oluştu — Sipariş Cepte</title>
+    <style>
+        body { font-family: Inter, "Segoe UI", system-ui, sans-serif; background: #f5f7fb; color: #162033; margin: 0; display: grid; place-items: center; min-height: 100vh; padding: 16px; }
+        main { background: #fff; border: 1px solid #e4e9f1; border-radius: 16px; max-width: 32rem; padding: 2rem; }
+        h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
+        p { color: #66758a; line-height: 1.5; }
+        code { background: #f1f4f8; border-radius: 6px; padding: .1rem .4rem; }
+        a { color: #4f46e5; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Bir hata oluştu</h1>
+        <p>İsteğiniz tamamlanamadı. Birkaç saniye sonra tekrar deneyin. Sorun sürerse destek ekibine şu kodu iletin: <code>@code</code></p>
+        <p><a href="/">Ana sayfaya dön</a></p>
+    </main>
+</body>
+</html>

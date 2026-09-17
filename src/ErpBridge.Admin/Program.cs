@@ -1,8 +1,13 @@
 using ErpBridge.Admin.Api;
 using ErpBridge.Admin.Auth;
+using ErpBridge.Diagnostics;
 using Microsoft.AspNetCore.Components.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Log Merkezi L2f: warning+ lines go to the CentralApi's log centre when Logs:InternalIngestKey is set.
+builder.Logging.AddRemoteLogShipping(builder.Configuration, "admin");
+builder.Services.AddTransient<CorrelationIdHandler>();
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
@@ -24,7 +29,7 @@ builder.Services.AddHttpClient<CentralApiClient>(client =>
 {
     client.BaseAddress = new Uri(baseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
-});
+}).AddHttpMessageHandler<CorrelationIdHandler>();
 
 var app = builder.Build();
 

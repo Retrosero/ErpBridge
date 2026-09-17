@@ -21,4 +21,8 @@
     <PackageReference Include="MudBlazor" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\ErpBridge.Diagnostics\ErpBridge.Diagnostics.csproj" />
+  </ItemGroup>
+
 </Project>

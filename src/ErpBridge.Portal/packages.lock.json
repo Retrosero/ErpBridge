@@ -13,6 +13,9 @@
         "requested": "[9.9.0, )",
         "resolved": "9.9.0",
         "contentHash": "da57tXFdMFbatyTQYDCzZ3I2pXZgOpS737+ErZuXLc2YRmSC98VL9/keJOjKd5Am8YAxg7cf3lrKqFc6IoG3ag=="
+      },
+      "erpbridge.diagnostics": {
+        "type": "Project"
       }
     }
   }

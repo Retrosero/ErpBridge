@@ -1,0 +1,23 @@
+@page "/Error"
+@{
+    Layout = null;
+    Response.StatusCode = 500;
+    var code = HttpContext.TraceIdentifier;
+}
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bir hata oluştu — ErpBridge Yönetim</title>
+    <link href="~/css/site.css" rel="stylesheet" />
+</head>
+<body>
+    <main class="admin-content">
+        <div class="admin-state admin-state--error" role="alert">
+            <span class="admin-state__icon" aria-hidden="true">!</span>
+            <div><strong>Bir hata oluştu</strong><p>İstek tamamlanamadı. Kod: <code>@code</code> — <a href="/">ana sayfa</a></p></div>
+        </div>
+    </main>
+</body>
+</html>

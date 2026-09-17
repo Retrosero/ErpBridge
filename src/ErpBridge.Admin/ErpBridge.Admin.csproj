@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ErpBridge.Shared\ErpBridge.Shared.csproj" />
+    <ProjectReference Include="..\ErpBridge.Diagnostics\ErpBridge.Diagnostics.csproj" />
   </ItemGroup>
 
   <!--

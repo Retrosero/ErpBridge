@@ -130,6 +130,62 @@ public sealed class BufferedLogProviderTests
     }
 }
 
+public sealed class CorrelationIdHandlerTests
+{
+    [Fact]
+    public async Task Adds_an_id_and_logs_5xx_and_failures_without_the_query()
+    {
+        var logs = new List<(LogLevel Level, string Message)>();
+        using var factory = LoggerFactory.Create(builder => builder.AddProvider(new ListProvider(logs)).SetMinimumLevel(LogLevel.Trace));
+        var inner = new StubHandler();
+        var handler = new CorrelationIdHandler(factory.CreateLogger<CorrelationIdHandler>()) { InnerHandler = inner };
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://central.example/") };
+
+        inner.Status = HttpStatusCode.OK;
+        await client.GetAsync("api/v1/portal/customers/card?code=C-001");
+        Guid.TryParse(inner.LastCorrelationId, out _).Should().BeTrue();
+        logs.Should().BeEmpty("a successful call is not logged");
+
+        inner.Status = HttpStatusCode.BadGateway;
+        await client.GetAsync("api/v1/portal/customers/card?code=C-001");
+        logs.Should().ContainSingle().Which.Message.Should().Contain("502").And.Contain("/api/v1/portal/customers/card").And.NotContain("C-001").And.Contain(inner.LastCorrelationId!);
+
+        inner.Throw = true;
+        var act = () => client.GetAsync("api/v1/portal/stock");
+        await act.Should().ThrowAsync<HttpRequestException>();
+        logs.Should().HaveCount(2);
+        logs[1].Message.Should().Contain("UPSTREAM_UNREACHABLE");
+    }
+
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        public HttpStatusCode Status { get; set; }
+        public bool Throw { get; set; }
+        public string? LastCorrelationId { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastCorrelationId = request.Headers.GetValues(CorrelationIdHandler.HeaderName).Single();
+            if (Throw) throw new HttpRequestException("connection refused");
+            return Task.FromResult(new HttpResponseMessage(Status));
+        }
+    }
+
+    private sealed class ListProvider(List<(LogLevel, string)> target) : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) => new L(target);
+        public void Dispose() { }
+
+        private sealed class L(List<(LogLevel, string)> target) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+                target.Add((logLevel, formatter(state, exception)));
+        }
+    }
+}
+
 public sealed class InternalLogEndpointTests : IClassFixture<SqliteCentralApiFactory>
 {
     private static readonly string Key = "internal-log-key-" + new string('x', 32);

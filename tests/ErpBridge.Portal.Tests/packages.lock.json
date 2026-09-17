@@ -350,9 +350,13 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
+      "erpbridge.diagnostics": {
+        "type": "Project"
+      },
       "erpbridge.portal": {
         "type": "Project",
         "dependencies": {
+          "ErpBridge.Diagnostics": "[1.0.0, )",
           "MudBlazor": "[9.9.0, )"
         }
       },
