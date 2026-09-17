@@ -16,7 +16,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 0 | ⬜ |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 1 | 🔄 |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
-| Y4 — Sipariş Cepte | 6 | 0 | ⬜ |
+| Y4 — Sipariş Cepte | 7 | 0 | ⬜ |
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
@@ -61,6 +61,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y4d | Yazım sonucu telefonda | ⬜ | | |
 | Y4e | Çift görünme önleme | ⬜ | | |
 | Y4f | Play internal sürüm | ⬜ | | |
+| Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | ⬜ | | Bulgu: telefon ERP ürünlerinde KDV'yi hep %20 sayıyor, KDV'yi genel iskontodan önce hesaplıyor — düzeltilmezse ajan her satışı `TOTAL_MISMATCH` ile reddeder |
 | Y5a | Portal "ERP Aktarım" listesi | ⬜ | | |
 | Y5b | Admin iş ayrıntısı + log olayları | ⬜ | | |
 | Y6a | KB ve sözleşme belgeleri | ⬜ | | |
