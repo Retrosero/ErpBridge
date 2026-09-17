@@ -223,6 +223,36 @@ public class MobileDocumentTranslatorTests
     }
 
     [Fact]
+    public void A_body_naming_another_document_than_the_job_is_refused()
+    {
+        _sut.Translate("sales_order", "MOB-SO-2", Sale, Context()).Error!.Code.Should().Be(ErpWriteError.DocumentIdMismatchCode);
+        _sut.Translate("sales_order", "mob-so-1", Sale, Context()).Error!.Code.Should().Be(ErpWriteError.DocumentIdMismatchCode, "keys compare exactly");
+        _sut.Translate("sales_order", "MOB-SO-1", Sale.Replace("\"mobileDocumentId\": \"MOB-SO-1\", ", ""), Context()).Error!.Code
+            .Should().Be(ErpWriteError.DocumentIdMismatchCode);
+    }
+
+    [Theory]
+    [InlineData("sales_order", "MOB-SO-1", """{ "mobileDocumentId": "MOB-SO-1", "priceListNo": 1, "lines": [null] }""")]
+    [InlineData("sales_order", "MOB-SO-1", """{ "mobileDocumentId": "MOB-SO-1", "priceListNo": 1, "lines": [1, "x"] }""")]
+    [InlineData("sales_order", "MOB-SO-1", """{ "mobileDocumentId": "MOB-SO-1", "priceListNo": 1, "lines": {} }""")]
+    [InlineData("sales_return", "MOB-SR-1", """{ "mobileDocumentId": "MOB-SR-1", "lines": [[]] }""")]
+    [InlineData("collection", "MOB-TH-1", """{ "mobileDocumentId": "MOB-TH-1", "payments": [null] }""")]
+    [InlineData("collection", "MOB-TH-1", "[]")]
+    [InlineData("collection", "MOB-TH-1", "not json")]
+    public void A_malformed_body_is_a_permanent_error_not_a_crash(string documentType, string externalId, string body)
+    {
+        _sut.Translate(documentType, externalId, body, Context()).Error!.Code.Should().Be(ErpWriteError.InvalidDocumentCode);
+    }
+
+    [Fact]
+    public void A_sale_whose_payments_are_not_objects_is_malformed()
+    {
+        var body = Sale.Replace("\"paymentType\": \"Cari Borç\",", "\"paymentType\": \"Cari Borç\", \"payments\": [null],");
+
+        _sut.Translate("sales_order", "MOB-SO-1", body, Context()).Error!.Code.Should().Be(ErpWriteError.InvalidDocumentCode);
+    }
+
+    [Fact]
     public void Only_bodies_with_a_mobile_document_id_are_phone_documents()
     {
         MobileDocumentTranslator.IsMobileDocument(Sale).Should().BeTrue();

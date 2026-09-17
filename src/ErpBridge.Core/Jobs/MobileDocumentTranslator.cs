@@ -63,8 +63,26 @@ public sealed class MobileDocumentTranslator
     {
         if (context is null) return MobileTranslation.Fail(ErpWriteError.ErpContextMissing());
 
-        using var document = JsonDocument.Parse(payloadJson);
-        var body = document.RootElement;
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(payloadJson);
+        }
+        catch (JsonException)
+        {
+            return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+        }
+
+        using var parsed = document;
+        var body = parsed.RootElement;
+        if (body.ValueKind != JsonValueKind.Object) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+
+        // The job key is what ERP idempotency trusts; a body naming another document must not pass
+        // under a fresh key as a second financial document (PR #81 Codex).
+        if (!body.TryGetProperty("mobileDocumentId", out var id) || id.ValueKind != JsonValueKind.String
+            || !string.Equals(id.GetString(), externalId, StringComparison.Ordinal))
+            return MobileTranslation.Fail(ErpWriteError.DocumentIdMismatch());
+
         return documentType.Trim().ToLowerInvariant() switch
         {
             SalesOrderType => TranslateSale(externalId, body, context),
@@ -78,7 +96,7 @@ public sealed class MobileDocumentTranslator
 
     private static MobileTranslation TranslateSale(string externalId, JsonElement body, ErpWriteContext context)
     {
-        var lines = Array(body, "lines");
+        if (Objects(body, "lines") is not { } lines) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
         if (!body.TryGetProperty("priceListNo", out _) || lines.Count == 0 || lines.Any(l => !l.TryGetProperty("listUnitPrice", out _)))
             return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
 
@@ -115,7 +133,7 @@ public sealed class MobileDocumentTranslator
             : OrderApprovalMode.Approved;
 
         // A split or part payment is written as a receipt next to an open document.
-        var payments = Array(body, "payments");
+        if (Objects(body, "payments") is not { } payments) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
         if (payments.Count > 0)
         {
             var parsed = ParsePayments(payments, header.OccurredAt, context);
@@ -187,7 +205,7 @@ public sealed class MobileDocumentTranslator
 
     private static MobileTranslation TranslateReturn(string externalId, JsonElement body, ErpWriteContext context)
     {
-        var lines = Array(body, "lines");
+        if (Objects(body, "lines") is not { } lines) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
         if (lines.Count == 0 || lines.Any(l => !l.TryGetProperty("listUnitPrice", out _)))
             return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
 
@@ -239,7 +257,7 @@ public sealed class MobileDocumentTranslator
 
     private static MobileTranslation TranslateCollection(string externalId, JsonElement body, ErpWriteContext context)
     {
-        var payments = Array(body, "payments");
+        if (Objects(body, "payments") is not { } payments) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
         if (payments.Count == 0) return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
 
         if (Header(externalId, body, context, context.Series.Collection) is not { } header)
@@ -379,8 +397,15 @@ public sealed class MobileDocumentTranslator
     private static int? Int(JsonElement element, string name) =>
         Decimal(element, name) is { } number && number == Math.Truncate(number) && number is >= int.MinValue and <= int.MaxValue ? (int)number : null;
 
-    private static IReadOnlyList<JsonElement> Array(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
-            ? value.EnumerateArray().ToList()
-            : [];
+    /// <summary>
+    /// The objects of an array property: empty when the property is absent (an older body), <c>null</c>
+    /// when it is there but not an array of objects: a malformed body, never probed further (PR #81 Codex).
+    /// </summary>
+    private static IReadOnlyList<JsonElement>? Objects(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return [];
+        if (value.ValueKind != JsonValueKind.Array) return null;
+        var items = value.EnumerateArray().ToList();
+        return items.All(i => i.ValueKind == JsonValueKind.Object) ? items : null;
+    }
 }

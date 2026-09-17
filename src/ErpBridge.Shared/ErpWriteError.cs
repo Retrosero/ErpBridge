@@ -32,6 +32,8 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     // ---- the phone document itself ---------------------------------------------------------
 
     public const string MobileAppUpdateRequiredCode = "MOBILE_APP_UPDATE_REQUIRED";
+    public const string InvalidDocumentCode = "INVALID_DOCUMENT";
+    public const string DocumentIdMismatchCode = "DOCUMENT_ID_MISMATCH";
     public const string MissingCustomerCodeCode = "MISSING_CUSTOMER_CODE";
     public const string MissingStockCodeCode = "MISSING_STOCK_CODE";
     public const string InvalidQuantityCode = "INVALID_QUANTITY";
@@ -45,6 +47,12 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 
     public static ErpWriteError MobileAppUpdateRequired() =>
         new(MobileAppUpdateRequiredCode, "Bu belge eski bir Sipariş Cepte sürümünden geldi ve ERP'ye doğru işlenemez. Uygulamayı güncelleyip belgeyi yeniden gönderin.");
+
+    public static ErpWriteError InvalidDocument() =>
+        new(InvalidDocumentCode, "Belge okunamadı; bozuk ya da eksik gönderilmiş. Belgeyi telefondan yeniden gönderin.");
+
+    public static ErpWriteError DocumentIdMismatch() =>
+        new(DocumentIdMismatchCode, "Belgenin kendi kimliği iş kimliğiyle aynı değil; aynı belge iki kez yazılmasın diye belge yazılmadı.");
 
     public static ErpWriteError MissingCustomerCode() =>
         new(MissingCustomerCodeCode, "Belgede müşteri kodu yok. Müşteri ERP'de kayıtlı olmalı.");

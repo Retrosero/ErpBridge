@@ -12,7 +12,7 @@ gövdeyi okur (yeni alanları yok sayar).
 | Kural | Açıklama |
 |---|---|
 | Tanıma | Gövdede `mobileDocumentId` (string) varsa telefon belgesidir; yoksa eski tipli ingest sözleşmesi (`SalesOrderPayload` vb.) |
-| Kimlik | `externalId` = `mobileDocumentId`; aynı belge türü + kimlik ikinci evrak açmaz |
+| Kimlik | `externalId` = `mobileDocumentId` (birebir; farklıysa `DOCUMENT_ID_MISMATCH`, belge yazılmaz); aynı belge türü + kimlik ikinci evrak açmaz. Gövde nesne değilse ya da `lines`/`payments` nesne dizisi değilse `INVALID_DOCUMENT` |
 | Tarih `occurredAt` | `dd.MM.yyyy HH:mm`, `dd.MM.yyyy` ya da ISO 8601 (`2026-09-17T10:15:30+03:00`). ISO'da telefonun **duvar saati** alınır |
 | Tutar `amount` | Telefonda gösterilen toplam (KDV dahil) — ajan kendi hesabıyla karşılaştırır, 0,05 TL'den fazla farkta yazmaz |
 | Döviz `currency` | Yok ya da `TL`/`TRY`; başka döviz reddedilir |
