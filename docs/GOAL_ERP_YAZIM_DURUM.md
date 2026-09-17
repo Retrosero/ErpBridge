@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y0a PR'ı)
+Son güncelleme: 2026-09-17 (Y0b+Y0c PR'ı)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -12,7 +12,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| Y0 — Referans ve temel düzeltmeler | 5 | 1 | 🔄 |
+| Y0 — Referans ve temel düzeltmeler | 5 | 3 | 🔄 |
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 0 | ⬜ |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 0 | ⬜ |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y0b — referansı tamamla
+**Şu anki görev:** Y0d — `_ERPB_EVRAK_ESLESME`
 
 ## Ortam
 - Test veritabanı: `MikroDB_V15_ERPBTEST` — 2026-09-17 11:24 yedeğinden (`MikroDB_V15_02_17_09.bak`) geri yüklendi,
@@ -34,8 +34,8 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | ID | Görev | Durum | PR | Not |
 |---|---|---|---|---|
 | Y0a | Plan dalını main'e al | ✅ | [#74](https://github.com/Retrosero/ErpBridge/pull/74) | **Codex 3 bulgu, üçü planda düzeltildi:** iade ve tahsilat komutları ortak `ErpDocumentHeader` taşır (idempotency/cari/tarih/kullanıcı); okuyucu kapalı faturayı kasa koduna atfediyor ve satış/alış iadesini ters sınıflandırıyor → yeni **Y0e** (canlı veriyle doğrulandı: `0+iade` müşterilerde, `63+iade` tedarikçilerde). Ayrıca bakiye sorgusunda `cha_cari_cins=0` filtresi eksik |
-| Y0b | Referansı tamamla + kolon sözleşme testi | ⬜ | | Satış/kapalı fatura/iade/tahsilat bölümleri canlı veriyle yazıldı; tam kolon listeleri kaldı |
-| Y0c | Yanlış evrak kodlarının düzeltilmesi | ⬜ | | |
+| Y0b | Referansı tamamla + kolon sözleşme testi | ✅ | (Y0b+c PR) | **Sapma:** her kolonu tek tek listelemek yerine "boş kolon yok" kuralı — Mikro'nun kendi kayıtlarında hiç NULL yok ama kolonların hepsi nullable/varsayılansız; writer kolon listesini şemadan kurup atanmayanı tipine göre sıfırlar, referans yalnız sıfırdan farklı kolonları listeler. Yeni bulgular: bankaya kapalı faturada `cha_grupno=1`; faturada `cha_uuid` GUID; iskonto zinciri `isk_mas1=0, 2..10=1`; satış iadesi alış faturalarıyla aynı sırayı paylaşır; sipariş/irsaliye Fora değerleri. Sözleşme testi `MikroNativeDocumentConventionTests` (4 test, ERPBTEST'e salt okuma, 5/5 yeşil). **Bağlantı bulgusu:** `localhost` paylaşılan bellekte async sorgular aralıklı düşüyor (mevcut şema testi 3/3); test varsayılanı `tcp:localhost` — ajanın kendi bağlantısı Y3a'da ölçülecek (bugünkü ajan loglarında bu hata yok) |
+| Y0c | Yanlış evrak kodlarının düzeltilmesi | ✅ | (Y0b+c PR) | `MikroCodes` tek yerde; tahsilat `cha_evrak_tip` 63→1, irsaliye `sth_evraktip` 4→1, fatura `sth_evraktip` 63→4, fatura `cha_cinsi` 0→6. Eski fatura writer'ı zaten çalışmıyor (SQL'deki `@EvrakTip`, `@TotalAmount` parametre nesnesinde yok) — Y3c'de baştan yazılacak |
 | Y0d | `_ERPB_EVRAK_ESLESME` tablosu | ⬜ | | |
 | Y0e | Okuyucu düzeltmeleri (kapalı fatura müşterisi, iade sınıfı, bakiye filtresi) | ⬜ | | |
 | Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ⬜ | | |
