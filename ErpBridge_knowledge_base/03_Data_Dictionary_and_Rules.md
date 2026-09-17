@@ -113,8 +113,16 @@ canlı hesaplanır. Yön fatura/tahsilat etiketiyle değil, `cha_tip` ile belirl
 ```sql
 SUM(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN ISNULL(cha_meblag, 0)
                                      ELSE -ISNULL(cha_meblag, 0) END)
+-- WHERE ISNULL(cha_cari_cins, 0) = 0  (yalnız cari tarafı)
 ```
 
+- **Yalnız `cha_cari_cins = 0` satırları sayılır.** Peşin (kapalı) fatura `cha_cari_cins` 4 kasa / 2 banka ile
+  `cha_kod` = kasa/banka kodu yazılır, müşteri `cha_ciro_cari_kodu`'dadır ve `cha_tpoz=1`; müşterinin bakiyesini
+  değiştirmez (Mikro cari föyü de göstermez). Okuyucu bu satırlarda `ciroCariKod` + `kapali=true` gönderir,
+  `cariKod` geriye uyumluluk için kasa/banka kodu kalır; Portal ekstresi kapalı satırı atlar (2026-09-17, Y0e).
+- **İade yönü:** satıştan iade `cha_evrak_tip=0` (alış faturası) + `cha_normal_Iade=1` → `SATIS_IADE`; alıştan iade
+  `cha_evrak_tip=63` + iade bayrağı → `ALIS_IADE`. 2026-09-17'ye kadar okuyucu bunları ters sınıflandırıyordu.
+  Ayrıntı: [`docs/mikro-yazim-referansi.md`](../docs/mikro-yazim-referansi.md).
 - `cha_tip = 0` → borç (satış faturası, borç dekontu). Bakiye artar.
 - `cha_tip = 1` → alacak (tahsilat, iade faturası). Bakiye azalır.
 - Net Bakiye > 0: Borçlu cari (firmaya borcu var).

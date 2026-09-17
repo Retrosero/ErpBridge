@@ -57,6 +57,12 @@ public sealed class MikroAdapter : IErpAdapter
     public ChangeDetectionCapability ChangeDetection => ChangeDetectionCapability.ShadowTableChangeLog;
 
     /// <summary>
+    /// 2 (2026-09-17): customer ledger rows carry <c>ciroCariKod</c>/<c>kapali</c> for closed invoices,
+    /// returns are classified by the iade flag, and card balances count only cari-side rows.
+    /// </summary>
+    public int SnapshotProjectionVersion => 2;
+
+    /// <summary>
     /// Mikro V15 change log backed only by the existing
     /// <c>_ERPB_SENKRONIZASYON</c> table. Built lazily so constructing an
     /// adapter never touches SQL.
