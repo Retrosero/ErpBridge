@@ -38,7 +38,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y0c | Yanlış evrak kodlarının düzeltilmesi | ⬜ | | |
 | Y0d | `_ERPB_EVRAK_ESLESME` tablosu | ⬜ | | |
 | Y0e | Okuyucu düzeltmeleri (kapalı fatura müşterisi, iade sınıfı, bakiye filtresi) | ⬜ | | |
-| Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ⬜ | | |
+| Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ✅ | (Y1a PR) | Migration `ErpYazimY1aWriteSettings` yalnız iki yeni tablo (test: başka işlem yok). Seri sütunları `nvarchar(6)`; firmada boş seri = Mikro serisiz, kullanıcıda null = firma ayarı. Kullanıcı silinince eşleme cascade ile gider |
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ⬜ | | |
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
 | Y1d | `erpContext` kiralama yanıtında | ⬜ | | |
