@@ -48,4 +48,13 @@ public class ErpWriteErrorTests
         ErpWriteError.TotalMismatch(-0.12m).Message.Should().Contain("fark 0,12 TL");
         ErpWriteError.ErpMappingMissing("kasa kodu").Message.Should().Contain("kasa kodu").And.Contain("Portal");
     }
+
+    [Fact]
+    public void Codes_from_a_malformed_body_are_cut_to_an_erp_code_width_without_control_characters()
+    {
+        var message = ErpWriteError.StockNotFound("B575\r\nAuthorization: Bearer eyJhbGciOiJIUzI1NiJ9.secret").Message;
+
+        message.Should().NotContain("\n").And.NotContain("secret");
+        message.Should().StartWith("Ürün ERP'de bulunamadı: B575Authorization: Bearer…");
+    }
 }

@@ -19,6 +19,16 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 {
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
 
+    /// <summary>ERP code widths are at most 25; anything longer or odd came from a malformed body.</summary>
+    private const int ShownCodeMaxLength = 25;
+
+    /// <summary>A code as shown in a message: control characters removed, cut to an ERP code's width.</summary>
+    private static string Shown(string? code)
+    {
+        var clean = new string((code ?? string.Empty).Where(c => !char.IsControl(c)).ToArray()).Trim();
+        return clean.Length <= ShownCodeMaxLength ? clean : clean[..ShownCodeMaxLength] + "…";
+    }
+
     // ---- the phone document itself ---------------------------------------------------------
 
     public const string MobileAppUpdateRequiredCode = "MOBILE_APP_UPDATE_REQUIRED";
@@ -87,25 +97,25 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public const string ErpUnavailableCode = "ERP_UNAVAILABLE";
 
     public static ErpWriteError CustomerNotFound(string customerCode) =>
-        new(CustomerNotFoundCode, $"Müşteri ERP'de bulunamadı: {customerCode}.");
+        new(CustomerNotFoundCode, $"Müşteri ERP'de bulunamadı: {Shown(customerCode)}.");
 
     public static ErpWriteError CustomerLocked(string customerCode) =>
-        new(CustomerLockedCode, $"Müşteri ERP'de kilitli: {customerCode}.");
+        new(CustomerLockedCode, $"Müşteri ERP'de kilitli: {Shown(customerCode)}.");
 
     public static ErpWriteError StockNotFound(string stockCode) =>
-        new(StockNotFoundCode, $"Ürün ERP'de bulunamadı: {stockCode}.");
+        new(StockNotFoundCode, $"Ürün ERP'de bulunamadı: {Shown(stockCode)}.");
 
     public static ErpWriteError WarehouseNotFound(int warehouseNo) =>
         new(WarehouseNotFoundCode, $"Depo ERP'de bulunamadı: {warehouseNo}.");
 
     public static ErpWriteError CashAccountNotFound(string code) =>
-        new(CashAccountNotFoundCode, $"Kasa ERP'de bulunamadı: {code}.");
+        new(CashAccountNotFoundCode, $"Kasa ERP'de bulunamadı: {Shown(code)}.");
 
     public static ErpWriteError BankAccountNotFound(string code) =>
-        new(BankAccountNotFoundCode, $"Banka hesabı ERP'de bulunamadı: {code}.");
+        new(BankAccountNotFoundCode, $"Banka hesabı ERP'de bulunamadı: {Shown(code)}.");
 
     public static ErpWriteError SalespersonNotFound(string code) =>
-        new(SalespersonNotFoundCode, $"Temsilci ERP'de bulunamadı: {code}.");
+        new(SalespersonNotFoundCode, $"Temsilci ERP'de bulunamadı: {Shown(code)}.");
 
     public static ErpWriteError PriceListNotFound(int priceListNo) =>
         new(PriceListNotFoundCode, $"Fiyat listesi ERP'de bulunamadı: {priceListNo}.");
@@ -120,7 +130,7 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
         new(TotalMismatchCode, $"Telefondaki toplam ile ERP hesabı tutmuyor (fark {Math.Abs(difference).ToString("N2", Turkish)} TL). Belge yazılmadı.");
 
     public static ErpWriteError ErpVersionNotSupported(string version) =>
-        new(ErpVersionNotSupportedCode, $"Bu ERP sürümüne ({version}) telefon belgesi henüz yazılamıyor.");
+        new(ErpVersionNotSupportedCode, $"Bu ERP sürümüne ({Shown(version)}) telefon belgesi henüz yazılamıyor.");
 
     public static ErpWriteError ErpUnavailable() =>
         new(ErpUnavailableCode, "ERP veritabanına şu an ulaşılamıyor; belge otomatik olarak yeniden denenecek.", Retryable: true);
