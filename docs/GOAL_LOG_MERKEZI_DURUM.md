@@ -12,7 +12,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| L0 — Temel: birleşik model + iz kimliği | 6 | 4 | 🔄 |
+| L0 — Temel: birleşik model + iz kimliği | 6 | 6 | ✅ |
 | L1 — Log Merkezi v1 (Admin) | 3 | 0 | ⬜ |
 | L2 — Sunucu, Portal, Admin logları | 6 | 0 | ⬜ |
 | L3 — ERP Windows ajanı | 7 | 0 | ⬜ |
@@ -22,7 +22,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L7 — Uyarılar | 2 | 0 | ⬜ |
 | L8 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** L0e — `CorrelationIdMiddleware` + genel hata yakalayıcı
+**Şu anki görev:** L1 — Log Merkezi v1 (Admin) PR'ı
 
 ---
 
@@ -34,8 +34,8 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L0b | `log_events` tablosu + eski telemetri kopyası | ✅ | [#68](https://github.com/Retrosero/ErpBridge/pull/68) | L0b+c+d tek PR. **Codex 5 bulgu, beşi düzeltildi:** boşluklu/tırnaklı gizli değer tam maskelenir; yazım tek transaction + çakışmada tüm deneme yeniden (sayaç satırlardan sapmaz, grupsuz WARN+ kalmaz); önem derecesi UPDATE içinde saklı değerle yükselir; kopyalanan satırları `LogGroupBackfillWorker` gruplar. Ayrıca TCKN/telefon kalıplarının GUID/hex içindeki rakamları maskelediği (kararsız test) bulundu ve düzeltildi. Zamanlar ayrıca Unix ms (SQLite). Kopya ve trigram SQL'i `LogCenterMigrationSql`'de (migration yeniden üretilebilsin). Yerelde Docker yok → PostgreSQL SQL'i CI'da çalışmaz; merge sonrası `/health/schema` ile doğrulanacak |
 | L0c | `LogScrubber`, `LogNormalizer`, `ErrorFingerprint`, `log_error_groups`, `LogEventWriter` | ✅ | [#68](https://github.com/Retrosero/ErpBridge/pull/68) | Normalizasyon `LogSeverity` + `LogEventWriter.NormalizeKind`'da (ayrı sınıf gerekmedi). Grup sayacı ilişkisel sağlayıcıda tek `ExecuteUpdate`; in-memory testlerde izlenen varlık |
 | L0d | Eski iki uç yeni tabloya yazar | ✅ | [#68](https://github.com/Retrosero/ErpBridge/pull/68) | Telefon: `UserId` + `DeviceId` token'dan (API anahtarında gövdedeki `deviceId`). Yazım hatası yakalanır, yükleme bozulmaz |
-| L0e | `CorrelationIdMiddleware` + genel hata yakalayıcı | ⬜ | | |
-| L0f | `log_settings` + `LogRetentionWorker` | ⬜ | | |
+| L0e | `CorrelationIdMiddleware` + genel hata yakalayıcı | ✅ | #69 | `CorrelationId.UseCorrelationId` hattın ilk ara katmanı; `UnhandledExceptionHandler` iç ayrıntısız 500 `INTERNAL_ERROR` + `traceId`, ayrıntıyı yeni DI kapsamında `log_events`'e yazar (logger kategorisi DB logger'ında atlanacak, L2b) |
+| L0f | `log_settings` + `LogRetentionWorker` | ✅ | #69 | Sunucu alış zamanına göre partili silme; bayat **açık** gruplar silinir, çözüldü/yok sayıldı korunur |
 | L1a | Admin log uçları (liste/detay/facets) | ⬜ | | |
 | L1b | Admin `/logs` sayfası | ⬜ | | |
 | L1c | Menü + Dashboard kartı | ⬜ | | |
