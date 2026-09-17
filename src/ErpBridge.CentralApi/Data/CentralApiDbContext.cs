@@ -1,4 +1,5 @@
 using ErpBridge.CentralApi.Domain;
+using ErpBridge.CentralApi.LogCenter;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Data;
@@ -32,6 +33,8 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<MobileTelemetryEvent> MobileTelemetryEvents => Set<MobileTelemetryEvent>();
+    public DbSet<LogEvent> LogEvents => Set<LogEvent>();
+    public DbSet<LogErrorGroup> LogErrorGroups => Set<LogErrorGroup>();
     public DbSet<ChangeSetRecord> ChangeSets => Set<ChangeSetRecord>();
     public DbSet<MobileSyncQueueItem> MobileSyncQueue => Set<MobileSyncQueueItem>();
 
@@ -486,6 +489,66 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.EventId }).IsUnique();
             b.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
             b.HasIndex(x => new { x.Severity, x.ReceivedAtUtc });
+        });
+
+        // Log Merkezi L0: one table for every source (phone, Windows agent, portal, admin, this API).
+        // Column bounds live in LogEventWriter; times are filtered and sorted on the *Ms columns.
+        modelBuilder.Entity<LogEvent>(b =>
+        {
+            b.ToTable("log_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.EventId).IsRequired().HasMaxLength(LogEventWriter.EventIdMax);
+            b.Property(x => x.Source).IsRequired().HasMaxLength(LogEventWriter.SourceMax);
+            b.Property(x => x.Severity).IsRequired().HasMaxLength(LogEventWriter.SeverityMax);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(LogEventWriter.KindMax);
+            b.Property(x => x.Operation).IsRequired().HasMaxLength(LogEventWriter.OperationMax);
+            b.Property(x => x.Screen).IsRequired().HasMaxLength(LogEventWriter.ScreenMax);
+            b.Property(x => x.Message).IsRequired().HasMaxLength(LogEventWriter.MessageMax);
+            b.Property(x => x.ExceptionType).IsRequired().HasMaxLength(LogEventWriter.ExceptionTypeMax);
+            b.Property(x => x.StackTrace).IsRequired().HasMaxLength(LogEventWriter.StackTraceMax);
+            b.Property(x => x.AppVersion).IsRequired().HasMaxLength(LogEventWriter.AppVersionMax);
+            b.Property(x => x.OsVersion).IsRequired().HasMaxLength(LogEventWriter.OsVersionMax);
+            b.Property(x => x.DeviceModel).IsRequired().HasMaxLength(LogEventWriter.DeviceModelMax);
+            b.Property(x => x.DeviceId).HasMaxLength(LogEventWriter.DeviceIdMax);
+            b.Property(x => x.SessionId).HasMaxLength(LogEventWriter.SessionIdMax);
+            b.Property(x => x.CorrelationId).HasMaxLength(LogEventWriter.CorrelationIdMax);
+            b.Property(x => x.HttpMethod).HasMaxLength(LogEventWriter.HttpMethodMax);
+            b.Property(x => x.HttpRoute).HasMaxLength(LogEventWriter.HttpRouteMax);
+            b.Property(x => x.PropertiesJson).IsRequired().HasColumnType("jsonb");
+            b.Property(x => x.BreadcrumbsJson).IsRequired().HasColumnType("jsonb");
+            // Not (TenantId, Source, EventId): PostgreSQL treats NULL tenants as distinct, so tenantless
+            // retries would slip past. Event ids are GUIDs; source + id is unique enough.
+            b.HasIndex(x => new { x.Source, x.EventId }).IsUnique();
+            b.HasIndex(x => x.OccurredAtMs);
+            b.HasIndex(x => new { x.TenantId, x.OccurredAtMs });
+            b.HasIndex(x => new { x.Source, x.Severity, x.OccurredAtMs });
+            b.HasIndex(x => new { x.FingerprintId, x.OccurredAtMs });
+            b.HasIndex(x => x.CorrelationId);
+            b.HasIndex(x => new { x.DeviceId, x.OccurredAtMs });
+            b.HasIndex(x => new { x.UserId, x.OccurredAtMs });
+            b.HasIndex(x => new { x.AgentId, x.OccurredAtMs });
+            b.HasIndex(x => new { x.Severity, x.ReceivedAtMs });
+        });
+
+        modelBuilder.Entity<LogErrorGroup>(b =>
+        {
+            b.ToTable("log_error_groups");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Fingerprint).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Source).IsRequired().HasMaxLength(LogEventWriter.SourceMax);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(LogEventWriter.KindMax);
+            b.Property(x => x.ExceptionType).IsRequired().HasMaxLength(LogEventWriter.ExceptionTypeMax);
+            b.Property(x => x.Operation).IsRequired().HasMaxLength(LogEventWriter.OperationMax);
+            b.Property(x => x.Severity).IsRequired().HasMaxLength(LogEventWriter.SeverityMax);
+            b.Property(x => x.SampleMessage).IsRequired().HasMaxLength(LogEventWriter.MessageMax);
+            b.Property(x => x.TopFrame).IsRequired().HasMaxLength(300);
+            b.Property(x => x.LastAppVersion).IsRequired().HasMaxLength(LogEventWriter.AppVersionMax);
+            b.Property(x => x.Status).IsRequired().HasMaxLength(16);
+            b.Property(x => x.StatusChangedBy).HasMaxLength(120);
+            b.Property(x => x.Note).HasMaxLength(1000);
+            b.HasIndex(x => x.Fingerprint).IsUnique();
+            b.HasIndex(x => new { x.Status, x.LastSeenMs });
+            b.HasIndex(x => x.LastSeenMs);
         });
 
         // Faz 13.1: ChangeSetRecord — per-table trigger-based change-set

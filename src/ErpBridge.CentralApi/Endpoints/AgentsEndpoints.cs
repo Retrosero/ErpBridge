@@ -3,6 +3,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.LogCenter;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -178,6 +179,8 @@ public static class AgentsEndpoints
         [FromBody] AgentTelemetryRequest body,
         HttpContext http,
         [FromServices] CentralApiDbContext db,
+        [FromServices] ILogEventWriter logWriter,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (body is null
@@ -225,6 +228,36 @@ public static class AgentsEndpoints
                 BreadcrumbsJson = "[]",
             });
             await db.SaveChangesAsync(ct);
+        }
+
+        // Log Merkezi (L0d): also into log_events. Never fails the agent's call.
+        try
+        {
+            await logWriter.WriteAsync(
+            [
+                new LogEventInput
+                {
+                    EventId = eventId,
+                    Source = LogSources.WindowsAgent,
+                    TenantId = tenantId,
+                    AgentId = agentId,
+                    OccurredAtUtc = body.OccurredAtUtc,
+                    Severity = string.IsNullOrWhiteSpace(body.Severity) ? LogSeverity.Error : body.Severity,
+                    Kind = string.IsNullOrWhiteSpace(body.Kind) ? "desktop_exception" : body.Kind,
+                    Operation = body.Operation,
+                    ExceptionType = body.ExceptionType,
+                    Message = body.Message,
+                    StackTrace = body.StackTrace,
+                    AppVersion = body.AppVersion,
+                    OsVersion = body.WindowsVersion,
+                    DeviceModel = agent.MachineId,
+                    CorrelationId = http.Request.Headers["X-Correlation-Id"].FirstOrDefault(),
+                },
+            ], ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            loggerFactory.CreateLogger(typeof(AgentsEndpoints)).LogWarning(ex, "Copying agent telemetry to the log centre failed.");
         }
         return Results.NoContent();
     }
