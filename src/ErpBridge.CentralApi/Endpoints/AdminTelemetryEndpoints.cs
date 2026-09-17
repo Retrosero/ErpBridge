@@ -1,12 +1,13 @@
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.LogCenter;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Endpoints;
 
-/// <summary>Admin-only telemetry search, intentionally limited to recent bounded rows.</summary>
+/// <summary>Admin-only phone/agent diagnostics list over <c>log_events</c>, limited to recent bounded rows.</summary>
 public static class AdminTelemetryEndpoints
 {
     public static IEndpointRouteBuilder MapAdminTelemetryEndpoints(this IEndpointRouteBuilder routes)
@@ -29,26 +30,28 @@ public static class AdminTelemetryEndpoints
         CancellationToken ct)
     {
         var count = Math.Clamp(take ?? 100, 1, 500);
-        var query = db.MobileTelemetryEvents.AsNoTracking();
+        // Log Merkezi L1c: reads log_events (same response shape). Server, portal and admin events belong to the
+        // Log Merkezi page, not this phone/agent diagnostics list.
+        string[] sources = [LogSources.Android, LogSources.WindowsAgent, LogSources.WindowsService];
+        var query = db.LogEvents.AsNoTracking().Where(row => sources.Contains(row.Source));
         if (tenantId.HasValue) query = query.Where(row => row.TenantId == tenantId.Value);
         if (!string.IsNullOrWhiteSpace(severity))
-            query = query.Where(row => row.Severity == severity.Trim().ToUpperInvariant());
-        // SYNC_ROUND (INFO) would otherwise be buried under screen views; Faz 0 reads it on its own.
-        // Kinds are stored as the producer sent them: the phone writes SYNC_ROUND, the agent
-        // desktop_exception. PostgreSQL equality is case-sensitive, and upper-casing the column
-        // follows the server culture (Turkish "i" becomes "İ"), so match both plain forms.
+        {
+            var stored = LogSeverity.Normalize(severity);
+            query = query.Where(row => row.Severity == stored);
+        }
+        // Kinds are stored upper-case ASCII by the writer, so one comparison covers "crash", "CRASH", "desktop_exception".
         if (!string.IsNullOrWhiteSpace(kind))
         {
-            var upper = kind.Trim().ToUpperInvariant();
-            var lower = kind.Trim().ToLowerInvariant();
-            query = query.Where(row => row.Kind == upper || row.Kind == lower);
+            var normalized = LogEventWriter.NormalizeKind(kind);
+            query = query.Where(row => row.Kind == normalized);
         }
-        var rows = await query.OrderByDescending(row => row.OccurredAtUtc).Take(count).ToListAsync(ct);
+        var rows = await query.OrderByDescending(row => row.OccurredAtMs).Take(count).ToListAsync(ct);
         return JsonResults.Ok(rows.Select(row => new MobileTelemetryEventDto
         {
-            Id = row.Id, TenantId = row.TenantId, OccurredAtUtc = row.OccurredAtUtc, ReceivedAtUtc = row.ReceivedAtUtc,
-            Kind = row.Kind, Source = row.Kind.StartsWith("desktop_", StringComparison.OrdinalIgnoreCase) ? "Windows Agent" : "Mobil",
-            Severity = row.Severity, AppVersion = row.AppVersion, AndroidVersion = row.AndroidVersion,
+            Id = row.Id, TenantId = row.TenantId ?? Guid.Empty, OccurredAtUtc = row.OccurredAtUtc, ReceivedAtUtc = row.ReceivedAtUtc,
+            Kind = row.Kind, Source = row.Source == LogSources.Android ? "Mobil" : "Windows Agent",
+            Severity = row.Severity, AppVersion = row.AppVersion, AndroidVersion = row.OsVersion,
             DeviceModel = row.DeviceModel, Screen = row.Screen, Operation = row.Operation, ExceptionType = row.ExceptionType,
             Message = row.Message, StackTrace = row.StackTrace, HttpMethod = row.HttpMethod, HttpRoute = row.HttpRoute,
             HttpStatus = row.HttpStatus, CorrelationId = row.CorrelationId,

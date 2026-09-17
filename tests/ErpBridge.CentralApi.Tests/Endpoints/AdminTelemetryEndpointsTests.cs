@@ -19,16 +19,12 @@ public class AdminTelemetryEndpointsTests : IClassFixture<CentralApiFactory>
         var admin = await _factory.SeedAdminAsync($"telemetry-{suffix}@test.local");
         var (tenant, _) = await _factory.SeedTenantAsync($"TEL-{suffix}", $"Telemetry {suffix}");
         using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<Data.CentralApiDbContext>();
-        foreach (var (kind, severity) in events)
+        var writer = scope.ServiceProvider.GetRequiredService<ErpBridge.CentralApi.LogCenter.ILogEventWriter>();
+        await writer.WriteAsync(events.Select(e => new ErpBridge.CentralApi.LogCenter.LogEventInput
         {
-            db.MobileTelemetryEvents.Add(new MobileTelemetryEvent
-            {
-                TenantId = tenant.Id, EventId = Guid.NewGuid().ToString(), Kind = kind, Severity = severity,
-                OccurredAtUtc = DateTimeOffset.UtcNow, ReceivedAtUtc = DateTimeOffset.UtcNow, Message = kind,
-            });
-        }
-        await db.SaveChangesAsync();
+            Source = e.Kind.StartsWith("desktop_", StringComparison.OrdinalIgnoreCase) ? ErpBridge.CentralApi.LogCenter.LogSources.WindowsAgent : ErpBridge.CentralApi.LogCenter.LogSources.Android,
+            TenantId = tenant.Id, EventId = Guid.NewGuid().ToString(), Kind = e.Kind, Severity = e.Severity, Message = e.Kind,
+        }).ToArray(), CancellationToken.None);
         return (tenant.Id, _factory.IssueAdminJwt(admin.Id));
     }
 
@@ -56,7 +52,7 @@ public class AdminTelemetryEndpointsTests : IClassFixture<CentralApiFactory>
         // The Windows Agent stores its kind in lower case.
         var (tenantId, token) = await SeedAsync(("desktop_exception", "ERROR"), ("CRASH", "ERROR"));
 
-        (await ListKindsAsync(tenantId, token, "kind=desktop_exception")).Should().Equal("desktop_exception");
+        (await ListKindsAsync(tenantId, token, "kind=desktop_exception")).Should().Equal("DESKTOP_EXCEPTION");
         (await ListKindsAsync(tenantId, token, "kind=crash")).Should().Equal("CRASH");
     }
 

@@ -180,7 +180,6 @@ public static class AgentsEndpoints
         HttpContext http,
         [FromServices] CentralApiDbContext db,
         [FromServices] ILogEventWriter logWriter,
-        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (body is null
@@ -201,72 +200,29 @@ public static class AgentsEndpoints
             return JsonResults.Status(StatusCodes.Status401Unauthorized,
                 new ApiError { ErrorCode = "AGENT_NOT_FOUND", Message = "Agent is not registered." });
 
-        var exists = await db.MobileTelemetryEvents.AnyAsync(
-            item => item.TenantId == tenantId && item.EventId == eventId,
-            ct);
-        if (!exists)
-        {
-            db.MobileTelemetryEvents.Add(new MobileTelemetryEvent
+        // Log Merkezi L1c: log_events is the only store; a failure is a 5xx the agent retries.
+        await logWriter.WriteAsync(
+        [
+            new LogEventInput
             {
-                TenantId = tenantId,
                 EventId = eventId,
-                OccurredAtUtc = body.OccurredAtUtc ?? DateTimeOffset.UtcNow,
-                ReceivedAtUtc = DateTimeOffset.UtcNow,
-                Kind = Bound(body.Kind, 32, "desktop_exception"),
-                Severity = Bound(body.Severity, 16, "ERROR"),
-                AppVersion = Bound(body.AppVersion, 64, "unknown"),
-                // Existing shared telemetry storage uses these legacy column
-                // names. They intentionally hold the Windows runtime and
-                // machine identity for desktop events.
-                AndroidVersion = Bound(body.WindowsVersion, 32, "Windows"),
+                Source = LogSources.WindowsAgent,
+                TenantId = tenantId,
+                AgentId = agentId,
+                OccurredAtUtc = body.OccurredAtUtc,
+                Severity = string.IsNullOrWhiteSpace(body.Severity) ? LogSeverity.Error : body.Severity,
+                Kind = string.IsNullOrWhiteSpace(body.Kind) ? "desktop_exception" : body.Kind,
+                Operation = body.Operation,
+                ExceptionType = body.ExceptionType,
+                Message = body.Message,
+                StackTrace = body.StackTrace,
+                AppVersion = body.AppVersion,
+                OsVersion = body.WindowsVersion,
                 DeviceModel = agent.MachineId,
-                Screen = "Windows Agent",
-                Operation = Bound(body.Operation, 120, "unknown"),
-                ExceptionType = Bound(body.ExceptionType, 160, "Exception"),
-                Message = Bound(body.Message, 1000, "No message"),
-                StackTrace = Bound(body.StackTrace, 4000, string.Empty),
-                BreadcrumbsJson = "[]",
-            });
-            await db.SaveChangesAsync(ct);
-        }
-
-        // Log Merkezi (L0d): also into log_events. Never fails the agent's call.
-        try
-        {
-            await logWriter.WriteAsync(
-            [
-                new LogEventInput
-                {
-                    EventId = eventId,
-                    Source = LogSources.WindowsAgent,
-                    TenantId = tenantId,
-                    AgentId = agentId,
-                    OccurredAtUtc = body.OccurredAtUtc,
-                    Severity = string.IsNullOrWhiteSpace(body.Severity) ? LogSeverity.Error : body.Severity,
-                    Kind = string.IsNullOrWhiteSpace(body.Kind) ? "desktop_exception" : body.Kind,
-                    Operation = body.Operation,
-                    ExceptionType = body.ExceptionType,
-                    Message = body.Message,
-                    StackTrace = body.StackTrace,
-                    AppVersion = body.AppVersion,
-                    OsVersion = body.WindowsVersion,
-                    DeviceModel = agent.MachineId,
-                    CorrelationId = http.Request.Headers["X-Correlation-Id"].FirstOrDefault(),
-                },
-            ], ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            loggerFactory.CreateLogger(typeof(AgentsEndpoints)).LogWarning(ex, "Copying agent telemetry to the log centre failed.");
-        }
+                CorrelationId = http.Request.Headers[CorrelationId.HeaderName].FirstOrDefault(),
+            },
+        ], ct);
         return Results.NoContent();
-    }
-
-    private static string Bound(string? value, int max, string fallback)
-    {
-        var trimmed = value?.Trim();
-        if (string.IsNullOrEmpty(trimmed)) return fallback;
-        return trimmed.Length <= max ? trimmed : trimmed[..max];
     }
 
     private enum LicenseStatus { Ok, NotFound, Expired }
