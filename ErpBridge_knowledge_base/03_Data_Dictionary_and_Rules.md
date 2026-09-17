@@ -86,6 +86,8 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 - `tenant_approval_rules` *(Faz 38)*: Tenant başına onay kuralları (`TenantId` PK; `Sale, Purchase, Return, Collection, Disbursement, StockCount, ProductCard, CustomerCard` bool; `UpdatedByName`, `UpdatedAtUtc`). Satır yoksa hepsi açık sayılır.
 - `tenants.DataSource` *(Faz 33)*: `erp` | `native`. `tenants.NativeLockVersion`: native belge transaction'larının satır kilidi sayacı (bkz. 00 kural 15).
 - `parameter_records`: Müşteri bazlı konfigürasyon parametreleri.
+- `erp_write_settings` *(ERP yazım Y1a, 2026-09-17)*: ERP'li firmanın telefon belgelerini ERP'ye nasıl yazacağı, `TenantId` PK (yoksa varsayılanlar). `SalesDocumentKind(16)` order|dispatch|invoice (varsayılan order), `OrderApprovalMode(16)` approved|pending, seriler `OrderSeries/DispatchSeries/InvoiceSeries/ReturnSeries/CollectionSeries` **(6, Mikro genişliği; boş = serisiz)**, varsayılanlar `DefaultWarehouseNo`, `DefaultCashCode(25)`, `DefaultCardBankCode(25)`, `DefaultTransferBankCode(25)`, `DefaultErpUserNo`, `DefaultSalespersonCode(25)`, `DefaultPriceListNo`, portföy kasaları `ChequePortfolioCode` ('ÇEK'), `NotePortfolioCode` ('SENET'), isteğe bağlı `ResponsibilityCenterCode`, `ProjectCode`, `DeliveryDayOffset`; `UpdatedAtUtc/ByUserId`. Ajana iş kiralanırken `erpContext` ile gider (Y1d).
+- `mobile_user_erp_mappings` *(ERP yazım Y1a)*: telefon kullanıcısının ERP karşılıkları, `UserId` PK FK `mobile_users` (cascade), `TenantId` (index). Hepsi boş olabilir — boş değer firma ayarına düşer: `SalespersonCode`, `WarehouseNo`, `CashCode`, `CardBankCode`, `TransferBankCode`, `ErpUserNo` ve seri geçersiz kılmaları. `mobile_users` tablosu değişmez.
 
 ---
 

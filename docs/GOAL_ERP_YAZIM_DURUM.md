@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y2b PR'ı)
+Son güncelleme: 2026-09-17 (Y1d birleşti)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -13,10 +13,10 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
 | Y0 — Referans ve temel düzeltmeler | 5 | 5 | ✅ |
-| Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 0 | ⬜ |
+| Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 2 | 🔄 |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 3 | 🔄 |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
-| Y4 — Sipariş Cepte | 7 | 0 | ⬜ |
+| Y4 — Sipariş Cepte | 6 | 0 | ⬜ |
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
@@ -41,10 +41,10 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y0c | Yanlış evrak kodlarının düzeltilmesi | ✅ | [#75](https://github.com/Retrosero/ErpBridge/pull/75) | `MikroCodes` tek yerde; tahsilat `cha_evrak_tip` 63→1, irsaliye `sth_evraktip` 4→1, fatura `sth_evraktip` 63→4, fatura `cha_cinsi` 0→6. Eski fatura writer'ı zaten çalışmıyor (SQL'deki `@EvrakTip`, `@TotalAmount` parametre nesnesinde yok) — Y3c'de baştan yazılacak |
 | Y0d | `_ERPB_EVRAK_ESLESME` tablosu | ✅ | [#77](https://github.com/Retrosero/ErpBridge/pull/77) | `MikroDocumentLedger`: `EnsureTableAsync` (yoksa oluşturur, varsa dokunmaz), `FindAsync` (`UPDLOCK, HOLDLOCK`), `TryRecordAsync` (tekil ihlalinde `false`). **Sapma:** tablo ajan kurulumunda değil, ilk yazımda tembel oluşturulacak (Y3a) — kurulum akışına dokunmadan, izin yoksa açık hata. Seri `nvarchar(6)` (Mikro genişliği; plan Y1b'deki "1–20" düzeltildi). Canlı testler ERPBTEST 2/2; `MikroWriteTestDatabase` yazma testlerini adında `ERPBTEST` geçmeyen DB'de atlar (V15_02 ile denendi: atlandı, tablo oluşmadı). Bu tablo ErpBridge'in kendi tablosu; Mikro tabloları/tetikleyicileri ve `_ERPB_SENKRONIZASYON` değişmez |
 | Y0e | Okuyucu düzeltmeleri (kapalı fatura müşterisi, iade sınıfı, bakiye filtresi) | ✅ | [#76](https://github.com/Retrosero/ErpBridge/pull/76) | **Codex 2 bulgu, ikisi düzeltildi:** (1) ErpBridge'in eski tahsilat writer'ının `63 + alacak` satırları `TAHSILAT` kalır; (2) artımlı okuma değişmeyen satırlara ulaşmadığı için `IErpAdapter.SnapshotProjectionVersion` (Mikro 2) — ajan sürüm yükselince bir kez tam yeniden kurar, elle "Sıfırdan Kur" gerekmez. **Sapma (geriye uyumluluk):** kapalı faturada `cariKod` değiştirilmedi (eski telefonlar bakiyeyi `cariKod` üzerinden topluyor); yeni `ciroCariKod` + `kapali` alanları eklendi. Portal kapalı satırı müşteriye bağlar, ekstre/yürüyen bakiyeden çıkarır. İade sınıfı düzeltildi (`0+iade` SATIS_IADE). Bakiye sorgusuna `cha_cari_cins=0` (bu veride çakışan kod yok — koruma). Canlı okuma testleri ERPBTEST 2/2. **Telefon:** senkron satırlarında sunucu `type`'ı kullanılıyor, düzeltme telefona böyle ulaşır; `LedgerMovementMapper.typeForValues` yedek eşlemesi hâlâ ters → Y4e ile birlikte düzeltilecek |
-| Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ⬜ | | |
+| Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ✅ | [#78](https://github.com/Retrosero/ErpBridge/pull/78) | Migration `ErpYazimY1aWriteSettings` yalnız iki yeni tablo (test: başka işlem yok). Seri sütunları `nvarchar(6)`; firmada boş seri = Mikro serisiz, kullanıcıda null = firma ayarı. Kullanıcı silinince eşleme cascade ile gider |
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ⬜ | | |
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
-| Y1d | `erpContext` kiralama yanıtında | ⬜ | | |
+| Y1d | `erpContext` kiralama yanıtında | ✅ | [#82](https://github.com/Retrosero/ErpBridge/pull/82) | `JobResponse.erpContext` (ERP'li firmada; ERP'siz firmada null). `ErpWriteContextBuilder`: kullanıcı değeri > firma; boş kod firma kodunu gizlemez, kullanıcıdaki boş seri bilinçli serisiz sayılır. Kiralama anında okunur (eşleme düzeltilip yeniden denenince yeni değer — test). Biçim `ErpBridge.Core.Jobs.ErpWriteContext` ile aynı |
 | Y1e | Kiralama süresi + geçici hata yeniden denemesi | ⬜ | | |
 | Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ✅ | [#79](https://github.com/Retrosero/ErpBridge/pull/79) | `Erp.Abstractions/Documents/MobileDocumentCommands.cs`: ortak `ErpDocumentHeader` + `SalesDocumentCommand` / `SalesReturnCommand` / `CollectionCommand`. `IErpAdapter`'a varsayılan gövdeli üç metot (`NotImplemented` sonucu) — Logo iskeleti değişmeden derlenir ve reddeder (seam testi). **Sapma:** iade kondisyonu yüzde değil `ConditionRatio` (0..1, telefonun `conditionPercent` alanı zaten oran); karma ödemede tahsilat serisi komutta (`ExtraPaymentsSeries`) |
 | Y2b | `MobileDocumentTranslator` | ✅ | [#81](https://github.com/Retrosero/ErpBridge/pull/81) | `Core/Jobs/MobileDocumentTranslator` + `ErpWriteContext`; gövde sözleşmesi `docs/mobil-belge-sozlesmesi.md` (v2). 32 test. **Kararlar:** siparişte/irsaliyede peşin ödeme evrakı kapatmaz, tahsilat makbuzu olur (kapalı fatura yalnız faturada); telefonun seçtiği kasa/banka kodu Portal varsayılanını geçer (telefondaki kasa/banka kayıtları Mikro kodu taşıyor); iade kondisyonu 1'den büyükse yüzde sayılır. Katalog 2 kod genişledi: `INVALID_DISCOUNT`, `INVALID_DOCUMENT_DATE`. **Y4a bulgusu:** telefon fiyat grubu adla (`customPrices` Mikro liste adına göre), bayi/toptan yoksa taban fiyatın %90/%80'i uyduruluyor (`BridgeDeltaSync.kt`) — Y4a'da liste no `fiyatTanim`'den, uydurma fiyatla belge gönderilmemeli |
@@ -64,7 +64,6 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y4d | Yazım sonucu telefonda | ⬜ | | |
 | Y4e | Çift görünme önleme | ⬜ | | |
 | Y4f | Play internal sürüm | ⬜ | | |
-| Y4g | KDV oranı ve telefon toplamı Mikro ile aynı | ⬜ | | Bulgu: telefon ERP ürünlerinde KDV'yi hep %20 sayıyor, KDV'yi genel iskontodan önce hesaplıyor — düzeltilmezse ajan her satışı `TOTAL_MISMATCH` ile reddeder |
 | Y5a | Portal "ERP Aktarım" listesi | ⬜ | | |
 | Y5b | Admin iş ayrıntısı + log olayları | ⬜ | | |
 | Y6a | KB ve sözleşme belgeleri | ⬜ | | |
