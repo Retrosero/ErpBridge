@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y3f — satış iadesi faturası
+**Şu anki görev:** Y3g — tahsilat makbuzu
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -56,7 +56,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y3d | Sipariş | ⬜ | | |
 | Y3e | Satış irsaliyesi | ⬜ | | |
 | Y3f | Satış iadesi faturası | 🔄 | (Y3f PR; Y1/Y2 kapanınca birleşir) | `Writers/Documents/MikroSalesReturnWriter` + `MikroAdapter.WriteSalesReturnAsync`: CHA 0/alacak/6/iade=1 (alış faturalarıyla aynı numara kapsamı: CHA 0 + STH 3 + açıklama 51/1/0), açık → müşteri; nakit → nakit kasası, banka → banka kapalı (`cha_tpoz=1`, D11; firmada kapalı iade örneği yok, faturadaki kapama biçimi uygulandı); STH 3/giriş/iade=1, kondisyon farkı `sth_iskonto1`, neden `sth_aciklama` (50); orijinal fatura bağlanmaz; açıklama satırı `egk_evr_doksayisi=0` (Mikro'nun iade kaydı gibi); cari hareket tipi 1 (yalnız satış) iadeyi reddeder; stokta satış engeli iadeyi engellemez. DEMO (geri alınarak): açık/nakit/banka — NULL yok, Mikro'nun iadesiyle kodlar aynı, açıkta cari bakiye toplam kadar azalır. Birim 4 |
-| Y3g | Tahsilat makbuzu (5 yöntem, tek evrak) | ⬜ | | |
+| Y3g | Tahsilat makbuzu (5 yöntem) | 🔄 | (Y3g PR; Y1/Y2 kapanınca birleşir) | `Writers/Documents/MikroCollectionReceiptWriter` + `MikroAdapter.WriteCollectionDocumentAsync`: tek makbuz, yöntem başına CHA satırı (1/alacak, `cha_satir_no` 0..n; nakit 0/kasa 4, kart 19/banka 2/grup 7/poz 2, havale 17/banka/grup 9/poz 2, çek 1/`ÇEK` kasası 4, senet 2/`SENET` kasası 4; `cha_vade` yyyymmdd; `cha_ciro_cari_kodu` boş — Mikro'nun kendi makbuzu gibi). Nakit dışı her satıra `ODEME_EMIRLERI` (tip 6/4/0/1, sonpoz, nerede cins/kod/grup, sahip müşteri, borçlu unvan — çekte keşideci, senette borçlu verilmişse o —, vergi dairesi + no, ilk evrak seri/sıra/satır, çekte no/banka/şube/hesap, senette düzenleme tarihi). Referans no `MK/MH/MC/MS-fff-sss-yyyy-nnnnnnnn`, aynı önek+firma+şube+yıl içinde kilitli MAX+1 (8 haneli olmayan saha numaraları sayılmaz), aynı makbuzda artarak. Satır açıklaması Mikro gibi: çek `/no/banka/şube/hesap`, senet `/borçlu/`, kartta taksit + vade farkı (K11, işlenmez). Açıklama satırı yalnız açıklama varsa (51/1/1). Kasa türü doğrulanır (çek portföyü nakit sayılmaz). DEMO (geri alınarak): 5 yöntem → 5 satır, 4 ödeme emri, referanslar 8 haneli ve bir sonraki numara, NULL yok, cari bakiye toplam kadar azalır. Birim 8 |
 | Y3h | Karma ödemeli satış | ⬜ | | |
 | Y4a | Telefon satış gövdesi (liste fiyatı, iskontolar, fiyat listesi) | ⬜ | | |
 | Y4b | Telefon iade gövdesi (satırlı) | ⬜ | | |

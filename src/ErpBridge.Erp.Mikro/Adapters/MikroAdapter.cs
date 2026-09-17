@@ -578,6 +578,15 @@ public sealed class MikroAdapter : IErpAdapter
     }
 
     /// <inheritdoc />
+    /// <remarks>Goal ERP yazım Y3g: a phone collection written as one receipt with a line per payment method.</remarks>
+    public Task<ErpWriteResult> WriteCollectionDocumentAsync(ErpBridge.Erp.Abstractions.Documents.CollectionCommand command, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _serviceProvider.GetRequiredService<ErpBridge.Erp.Mikro.Writers.Documents.MikroCollectionReceiptWriter>()
+            .WriteAsync(command, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
     /// <remarks>Goal ERP yazım Y3f: a phone return written as a sales return invoice.</remarks>
     public Task<ErpWriteResult> WriteSalesReturnAsync(ErpBridge.Erp.Abstractions.Documents.SalesReturnCommand command, CancellationToken ct = default)
     {
