@@ -268,8 +268,6 @@ SELECT
     CAST(sto_kisa_ismi AS NVARCHAR(100))              AS ShortName,
     CAST(sto_yabanci_isim AS NVARCHAR(200))           AS ForeignName,
     CAST(sto_perakende_vergi AS INT)                  AS DefaultTaxPointer,
-    -- The rate a phone sale is taxed with: Mikro writes it as a wholesale line (goal ERP yazım Y4g).
-    CAST(dbo.fn_VergiYuzde(sto_toptan_vergi) AS DECIMAL(9,4)) AS VatRate,
     CAST(ISNULL(sto_birim1_ad, '') AS NVARCHAR(20))   AS Unit1,
     CAST(sto_birim1_katsayi AS DECIMAL(18,6))         AS Unit1Factor,
     CAST(sto_birim2_ad AS NVARCHAR(20))               AS Unit2,
@@ -289,7 +287,10 @@ SELECT
     CAST(ISNULL(sto_renkDetayli, 0) AS BIT)           AS RenkDetayli,
     CAST(NULL AS DECIMAL(18,6))                       AS StandardCost,
     CAST(NULL AS NVARCHAR(10))                        AS Currency,
-    {stockKey} AS RecordKey
+    {stockKey} AS RecordKey,
+    -- The rate a phone sale is taxed with: Mikro writes it as a wholesale line (goal ERP yazım Y4g).
+    -- Last, as in StockRow: Dapper matches the record's constructor by column order.
+    CAST(dbo.fn_VergiYuzde(sto_toptan_vergi) AS DECIMAL(9,4)) AS VatRate
 FROM STOKLAR
 WHERE ISNULL(sto_iptal, 0) = 0
   AND ISNULL(sto_pasif_fl, 0) = 0
@@ -412,31 +413,33 @@ FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0
         _ = firmNo; // Suppress "unused parameter" — kept for signature parity.
         const string sql = @"
 SELECT 'warehouse' AS Kind, CAST(dep_no AS NVARCHAR(20)) AS Code, CAST(dep_adi AS NVARCHAR(100)) AS Name,
-       CAST(NULL AS NVARCHAR(50)) AS ParentCode, CAST(NULL AS NVARCHAR(10)) AS Currency
+       CAST(NULL AS NVARCHAR(50)) AS ParentCode, CAST(NULL AS NVARCHAR(10)) AS Currency,
+       CAST(NULL AS BIT) AS IncludesVat
 FROM DEPOLAR
 WHERE dep_firmano = @firmNo AND ISNULL(dep_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(dep_lastup_date, dep_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'salesperson', CAST(cari_per_kod AS NVARCHAR(20)), CAST(ISNULL(cari_per_adi,'') + ' ' + ISNULL(cari_per_soyadi,'') AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
 FROM CARI_PERSONEL_TANIMLARI
 WHERE ISNULL(cari_per_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(cari_per_lastup_date, cari_per_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'payment_plan', CAST(odp_no AS NVARCHAR(20)), CAST(ISNULL(odp_aratop,0) AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
 FROM ODEME_PLANLARI
 WHERE ISNULL(odp_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(odp_lastup_date, odp_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'project', CAST(pro_kodu AS NVARCHAR(50)), CAST(pro_adi AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10))
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
 FROM PROJELER
 WHERE ISNULL(pro_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(pro_lastup_date, pro_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'price_list', CAST(sfl_sirano AS NVARCHAR(20)), CAST(ISNULL(sfl_aciklama, '') AS NVARCHAR(200)),
-       CAST(ISNULL(sfl_fiyatformul, '') AS NVARCHAR(500)), CAST(NULL AS NVARCHAR(10))
+       CAST(ISNULL(sfl_fiyatformul, '') AS NVARCHAR(500)), CAST(NULL AS NVARCHAR(10)),
+       CAST(ISNULL(sfl_kdvdahil, 0) AS BIT)
 FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI
 WHERE ISNULL(sfl_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sfl_lastup_date, sfl_create_date) > @changedSinceUtc)";

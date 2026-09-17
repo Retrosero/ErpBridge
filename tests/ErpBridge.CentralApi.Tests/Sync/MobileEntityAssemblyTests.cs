@@ -30,7 +30,7 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
             ("barcodes", [Barcode("8690000000001", "S-1")]),
             ("prices", [Price("S-1", 1, 25.50m), Price("S-1", 3, 22.00m)]),
             ("inventory", [Inventory("S-1", 1, 40), Inventory("S-1", 2, 5)]),
-            ("lookups", [Lookup("price_list", "3", "Bayi")]));
+            ("lookups", [new { kind = "price_list", code = "3", name = "Bayi", includesVat = true }]));
 
         var page = await PullAsync(ctx, null);
 
@@ -51,6 +51,8 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
         data.GetProperty("fiyatListeleri").EnumerateArray()
             .Select(l => (l.GetProperty("listNo").GetInt32(), l.GetProperty("name").GetString(), l.GetProperty("price").GetDecimal()))
             .Should().Equal((1, "Liste 1", 25.50m), (3, "Bayi", 22.00m));
+        data.GetProperty("fiyatListeleri").EnumerateArray().Select(l => l.GetProperty("kdvDahil").GetBoolean())
+            .Should().Equal([false, true], "the phone adds no VAT to a VAT-inclusive list's price");
         data.GetProperty("kdvOrani").GetDecimal().Should().Be(10m, "the ERP's VAT rate travels with the card");
     }
 

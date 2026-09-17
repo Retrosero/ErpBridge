@@ -61,7 +61,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
               ],
               "lookups": [
                 {"kind":"price_list","code":"1","name":"SATIŞ FİYATI"},
-                {"kind":"price_list","code":"2","name":"E-TİCARET"}
+                {"kind":"price_list","code":"2","name":"E-TİCARET","includesVat":true}
               ],
               "inventory": [
                 {"stockCode":"S001","warehouseNo":1,"quantity":7.0},
@@ -88,6 +88,8 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         product.GetProperty("fiyatListeleri").EnumerateArray()
             .Select(l => (l.GetProperty("listNo").GetInt32(), l.GetProperty("name").GetString(), l.GetProperty("price").GetDecimal()))
             .Should().Equal((1, "SATIŞ FİYATI", 125.5m), (2, "E-TİCARET", 90m));
+        product.GetProperty("fiyatListeleri").EnumerateArray().Select(l => l.GetProperty("kdvDahil").GetBoolean())
+            .Should().Equal([false, true], "the phone adds no VAT to a VAT-inclusive list's price");
         product.GetProperty("kdvOrani").GetDecimal().Should().Be(0m, "the ERP's VAT rate travels with the stock card");
         product.GetProperty("stok").GetInt32().Should().Be(10);
         product.GetProperty("stockByWarehouse").GetProperty("Depo 1").GetInt32().Should().Be(7);

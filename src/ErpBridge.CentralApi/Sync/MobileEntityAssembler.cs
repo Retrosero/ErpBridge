@@ -326,6 +326,7 @@ public static class MobileEntityAssembler
         // Price-list names turn "list 3" into the label the app shows. Small
         // enough to read whole, and shared by every product on the page.
         var priceListNames = new Dictionary<int, string>();
+        var vatIncludedPriceLists = new HashSet<int>();
         if (stockCodes.Count > 0)
         {
             var lookups = await db.MobileRecords.AsNoTracking()
@@ -343,20 +344,23 @@ public static class MobileEntityAssembler
                              ?? (int.TryParse(AndroidEndpoints.GetString(item, "code"), out var parsed) ? parsed : 0);
                 var name = AndroidEndpoints.GetString(item, "name");
                 if (number > 0 && !string.IsNullOrWhiteSpace(name)) priceListNames[number] = name!;
+                if (number > 0 && AndroidEndpoints.GetBoolean(item, "includesVat") == true) vatIncludedPriceLists.Add(number);
             }
         }
 
-        return new AssemblySources(stockParts, customerRows, priceListNames);
+        return new AssemblySources(stockParts, customerRows, priceListNames, vatIncludedPriceLists);
     }
 
     /// <summary>Everything needed to rebuild a page's worth of records.</summary>
     /// <param name="StockParts">Stock card, barcodes, prices and inventory, keyed by stock code.</param>
     /// <param name="Customers">Customer rows, keyed by customer code.</param>
     /// <param name="PriceListNames">Price-list number to display name.</param>
+    /// <param name="VatIncludedPriceLists">Numbers of the price lists whose prices include VAT.</param>
     public sealed record AssemblySources(
         Dictionary<string, List<MobileRecord>> StockParts,
         Dictionary<string, MobileRecord> Customers,
-        Dictionary<int, string> PriceListNames);
+        Dictionary<int, string> PriceListNames,
+        HashSet<int>? VatIncludedPriceLists = null);
 
     /// <summary>
     /// Rebuilds one product. Returns null when the stock card itself is gone —
@@ -430,6 +434,8 @@ public static class MobileEntityAssembler
                 ["listNo"] = list.Key,
                 ["name"] = sources.PriceListNames.TryGetValue(list.Key, out var listName) ? listName : $"Liste {list.Key}",
                 ["price"] = list.Select(item => AndroidEndpoints.GetDecimal(item, "price")).First(price => price is > 0)!.Value,
+                // A VAT-inclusive list's price already carries the VAT; the phone must not add it again.
+                ["kdvDahil"] = sources.VatIncludedPriceLists?.Contains(list.Key) == true,
             })
             .ToList();
 
