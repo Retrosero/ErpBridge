@@ -22,11 +22,7 @@ public static class AgentSerilog
     public static LoggerConfiguration Configure(LoggerConfiguration logger, IConfiguration configuration, string fileStem, int retainedDays = 14)
     {
         var formatter = new MaskingTextFormatter(new MessageTemplateTextFormatter(OutputTemplate));
-        return logger
-            .MinimumLevel.Information()
-            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-            .MinimumLevel.Override("System.Net.Http.HttpClient", LogEventLevel.Warning)
-            .ReadFrom.Configuration(configuration)
+        return ApplyLevels(logger, configuration)
             .Enrich.FromLogContext()
             .WriteTo.Console(formatter)
             .WriteTo.File(
@@ -37,6 +33,32 @@ public static class AgentSerilog
                 shared: true,
                 flushToDiskInterval: TimeSpan.FromSeconds(1));
     }
+
+    /// <summary>
+    /// Only <c>Serilog:MinimumLevel</c> (<c>Default</c> and <c>Override</c>) is read from configuration — never
+    /// <c>ReadFrom.Configuration</c>: a <c>WriteTo</c> entry (appsettings or an <c>ERPBridge_</c> environment variable)
+    /// would add a sink that writes unmasked text next to the masked ones.
+    /// </summary>
+    public static LoggerConfiguration ApplyLevels(LoggerConfiguration logger, IConfiguration configuration)
+    {
+        var section = configuration.GetSection("Serilog:MinimumLevel");
+        var fallback = section.Value ?? section["Default"];
+        logger = logger.MinimumLevel.Is(Parse(fallback, LogEventLevel.Information));
+
+        var overrides = new Dictionary<string, LogEventLevel>(StringComparer.Ordinal)
+        {
+            ["Microsoft"] = LogEventLevel.Warning,
+            ["System.Net.Http.HttpClient"] = LogEventLevel.Warning,
+        };
+        foreach (var child in section.GetSection("Override").GetChildren())
+            overrides[child.Key] = Parse(child.Value, LogEventLevel.Information);
+        foreach (var (source, level) in overrides)
+            logger = logger.MinimumLevel.Override(source, level);
+        return logger;
+    }
+
+    private static LogEventLevel Parse(string? value, LogEventLevel fallback) =>
+        Enum.TryParse<LogEventLevel>(value, ignoreCase: true, out var level) ? level : fallback;
 }
 
 /// <summary>Renders with the inner formatter, then masks secrets in the whole rendered line (exception included).</summary>

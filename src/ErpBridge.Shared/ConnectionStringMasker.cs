@@ -22,7 +22,9 @@ public static class ConnectionStringMasker
     // ("Password" / "Pwd" / "User ID" / "UID"), then the '=', then every
     // character up to the next ';', line break or end-of-string. The line break
     // matters in log lines: without it a value ran on into the exception text
-    // of the next line and swallowed it.
+    // of the next line and swallowed it. A quoted value ("Top;Secret" or
+    // 'Top;Secret') is taken whole: in a connection string the quotes allow ';'
+    // inside the password.
     //
     // CultureInvariant is required because IgnoreCase alone uses CurrentCulture
     // for case folding — under tr-TR that means the lowercase 'i' only matches
@@ -36,7 +38,7 @@ public static class ConnectionStringMasker
           | User\s*ID
           | UID
         )\s*=\s*
-        [^;\r\n]*
+        (?: ""[^""]*"" | '[^']*' | [^;\r\n]* )
         ",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 

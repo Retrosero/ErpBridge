@@ -14,6 +14,8 @@ public class SecretMaskingTests
     [InlineData("{\"licenseKey\":\"LIC 42 with space\",\"x\":1}", "LIC 42 with space")]
     [InlineData("token=abc123&tenant=5", "abc123")]
     [InlineData("apiKey: s3cr3t", "s3cr3t")]
+    [InlineData("Server=erp;Password=\"Top;Secret\";Database=Mikro", "Secret")]
+    [InlineData("Server=erp;Pwd='Top;Secret';Database=Mikro", "Secret")]
     public void Secrets_are_masked(string input, string secret)
     {
         var masked = ConnectionStringMasker.MaskSecrets(input);

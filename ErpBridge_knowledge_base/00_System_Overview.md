@@ -882,7 +882,8 @@ registration ayrı bir composition projesine taşınır.
    - **Şimdi:** servis ve masaüstü uygulaması aynı `AgentSerilog.Configure`'u kullanır (dosya UI projesine bağlantıyla
      derlenir). Konsol + günlük dönen dosya **kodda** kurulur: servis `agent-YYYYMMDD.log`, masaüstü `ui-YYYYMMDD.log`,
      14 gün, `shared: true`, 1 sn'de diske. `"Serilog"` bölümü yalnız seviyeleri değiştirir (varsayılan Information;
-     `Microsoft` ve `System.Net.Http.HttpClient` Warning). Bölüme `WriteTo` eklenmez (çift yazar).
+     `Microsoft` ve `System.Net.Http.HttpClient` Warning). Yalnız `Serilog:MinimumLevel` okunur (`AgentSerilog.ApplyLevels`);
+     `ReadFrom.Configuration` **kullanılmaz** — yapılandırmadaki bir `WriteTo` maskesiz ikinci bir yazıcı eklerdi.
    - **Konum** (`Core/Logging/AgentLogLocation`): EXE yanındaki `logs\` yazılabiliyorsa orası, değilse
      `%ProgramData%\ErpBridge\logs` (Program Files'a kurulu servis, System32 çalışma dizini), o da olmazsa `%TEMP%`.
      Serilog selflog aynı klasörde `serilog-selflog.txt`.
@@ -890,7 +891,7 @@ registration ayrı bir composition projesine taşınır.
      `ConnectionStringMasker.MaskSecrets`'ten geçer (bağlantı cümlesi parolası/kullanıcısı, bearer, JWT, `AK-`/`LIC-`,
      `token=`/`"licenseKey":`/`apiKey:` adlı değerler). Masaüstü telemetri raporlayıcısı da aynı listeyi kullanır; ajan
      tarafında ikinci bir gizli bilgi listesi yazılmaz. `MaskPassword` değeri artık satır sonunda durur (önceden bir
-     sonraki satırdaki istisna türünü yutuyordu).
+     sonraki satırdaki istisna türünü yutuyordu); tırnaklı değer (`Password="Top;Secret"`) bütün olarak maskelenir.
    - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.1.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
      (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır.
 

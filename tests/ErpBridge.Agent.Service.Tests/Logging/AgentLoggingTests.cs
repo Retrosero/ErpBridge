@@ -1,6 +1,7 @@
 using ErpBridge.Agent.Logging;
 using ErpBridge.Core.Logging;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
@@ -29,6 +30,33 @@ public sealed class AgentLoggingTests
     }
 
     [Fact]
+    public void Configuration_sets_levels_but_cannot_add_an_unmasked_sink()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "erpbridge-sinktest-" + Guid.NewGuid().ToString("N"));
+        var plain = Path.Combine(root, "plain.log");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Serilog:MinimumLevel:Default"] = "Warning",
+            ["Serilog:MinimumLevel:Override:Noisy"] = "Error",
+            ["Serilog:Using:0"] = "Serilog.Sinks.File",
+            ["Serilog:WriteTo:0:Name"] = "File",
+            ["Serilog:WriteTo:0:Args:path"] = plain,
+        }).Build();
+
+        var captured = new List<LogEvent>();
+        using (var logger = AgentSerilog.ApplyLevels(new LoggerConfiguration(), configuration).WriteTo.Sink(new ListSink(captured)).CreateLogger())
+        {
+            logger.Information("dropped by Default=Warning");
+            logger.Warning("kept Password=Gizli123");
+            logger.ForContext(Constants.SourceContextPropertyName, "Noisy.Component").Warning("dropped by the override");
+        }
+
+        captured.Select(e => e.MessageTemplate.Text).Should().ContainSingle().Which.Should().StartWith("kept");
+        File.Exists(plain).Should().BeFalse("a WriteTo entry in configuration must not create a sink");
+        if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+    }
+
+    [Fact]
     public void Logs_go_next_to_the_program_when_writable_otherwise_to_a_shared_folder()
     {
         var root = Path.Combine(Path.GetTempPath(), "erpbridge-logtest-" + Guid.NewGuid().ToString("N"));
@@ -53,5 +81,10 @@ public sealed class AgentLoggingTests
     private sealed class FormattingSink(ITextFormatter formatter, TextWriter output) : ILogEventSink
     {
         public void Emit(LogEvent logEvent) => formatter.Format(logEvent, output);
+    }
+
+    private sealed class ListSink(List<LogEvent> target) : ILogEventSink
+    {
+        public void Emit(LogEvent logEvent) => target.Add(logEvent);
     }
 }
