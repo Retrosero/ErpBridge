@@ -26,6 +26,14 @@ public interface IErpAdapter
     /// </summary>
     IErpChangeLogSource? ChangeLog => null;
 
+    /// <summary>
+    /// Version of how the bootstrap reads project ERP rows. Incremental reads only return rows
+    /// that changed, so when an adapter changes the meaning of existing rows (a corrected
+    /// classification, a new field) it bumps this number and the agent replaces the central
+    /// snapshot once with a full read.
+    /// </summary>
+    int SnapshotProjectionVersion => 1;
+
     /// <summary>Open a short-lived connection to validate credentials and reachability.</summary>
     Task<ErpConnectionTestResult> TestConnectionAsync(CancellationToken ct = default);
 

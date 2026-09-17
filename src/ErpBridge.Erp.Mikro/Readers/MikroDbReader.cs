@@ -154,12 +154,15 @@ FROM CARI_HESAPLAR
 LEFT JOIN (
     -- The official cari balance is determined by accounting direction, not
     -- invoice/receipt labels.  `cha_tip=0` is debit, `cha_tip=1` is credit.
+    -- Only cari-side rows count (`cha_cari_cins=0`): a closed invoice posts to a
+    -- kasa/banka code in `cha_kod`, which may collide with a customer code.
     SELECT cha_kod,
            SUM(CASE WHEN ISNULL(cha_tip, 0) = 0
                     THEN ISNULL(cha_meblag, 0)
                     ELSE -ISNULL(cha_meblag, 0) END) AS Balance
     FROM CARI_HESAP_HAREKETLERI
     WHERE ISNULL(cha_iptal, 0) = 0
+      AND ISNULL(cha_cari_cins, 0) = 0
       AND (@changedSinceUtc IS NULL OR EXISTS (
           SELECT 1 FROM CARI_HESAPLAR changed
           WHERE changed.cari_kod = cha_kod
@@ -541,17 +544,27 @@ SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
        CAST(cha_aciklama AS NVARCHAR(500)) AS Description,
        CAST(COALESCE(cha_lastup_date, cha_create_date, cha_tarihi) AS DATETIME) AS UpdatedAt,
        CAST(cha_RECno AS INT) AS RecNo,
+       -- Mikro posts a satıştan iade as an alış faturası (evrak tip 0) with the iade flag,
+       -- and an alıştan iade as a satış faturası (63) with the flag: the flag inverts the
+       -- document kind (live data: 0+iade on customers, 63+iade on suppliers).
        CAST(CASE
-            WHEN ISNULL(cha_evrak_tip, 0) = 63 AND ISNULL(cha_normal_Iade, 0) = 0 AND ISNULL(cha_tip, 0) = 0 THEN 'SATIS'
-            WHEN ISNULL(cha_evrak_tip, 0) = 63 AND (ISNULL(cha_normal_Iade, 0) <> 0 OR ISNULL(cha_tip, 0) = 1) THEN 'SATIS_IADE'
-            WHEN ISNULL(cha_evrak_tip, 0) = 0 AND ISNULL(cha_normal_Iade, 0) = 0 AND ISNULL(cha_tip, 0) = 1 THEN 'ALIS'
-            WHEN ISNULL(cha_evrak_tip, 0) = 0 AND (ISNULL(cha_normal_Iade, 0) <> 0 OR ISNULL(cha_tip, 0) = 0) THEN 'ALIS_IADE'
+            -- ErpBridge's collection writer posted receipts as 63 + alacak until 2026-09-17
+            -- (PR #75 fixed the code). Mikro never writes a satış faturası as alacak.
+            WHEN ISNULL(cha_evrak_tip, 0) = 63 AND ISNULL(cha_normal_Iade, 0) = 0 AND ISNULL(cha_tip, 0) = 1 THEN 'TAHSILAT'
+            WHEN ISNULL(cha_evrak_tip, 0) = 63 AND ISNULL(cha_normal_Iade, 0) = 0 THEN 'SATIS'
+            WHEN ISNULL(cha_evrak_tip, 0) = 63 THEN 'ALIS_IADE'
+            WHEN ISNULL(cha_evrak_tip, 0) = 0 AND ISNULL(cha_normal_Iade, 0) = 0 THEN 'ALIS'
+            WHEN ISNULL(cha_evrak_tip, 0) = 0 THEN 'SATIS_IADE'
             WHEN ISNULL(cha_evrak_tip, 0) = 1 AND ISNULL(cha_tip, 0) = 1 THEN 'TAHSILAT'
             WHEN ISNULL(cha_evrak_tip, 0) IN (64, 65) AND ISNULL(cha_tip, 0) = 0 THEN 'TEDIYE'
             ELSE 'HAREKET'
        END AS NVARCHAR(20)) AS TransactionType,
        CAST(ISNULL(cha_cinsi, 0) AS INT) AS Kind,
-       CAST(ISNULL(cha_normal_Iade, 0) AS BIT) AS IsReturn
+       CAST(ISNULL(cha_normal_Iade, 0) AS BIT) AS IsReturn,
+       -- A closed (peşin) invoice posts to a kasa (4) or banka (2) in cha_kod; the customer
+       -- is the ciro code. CustomerCode stays cha_kod so older phones keep their behaviour.
+       CAST(CASE WHEN ISNULL(cha_cari_cins, 0) <> 0 THEN NULLIF(cha_ciro_cari_kodu, '') END AS NVARCHAR(50)) AS CounterpartyCode,
+       CAST(CASE WHEN ISNULL(cha_cari_cins, 0) <> 0 AND ISNULL(cha_tpoz, 0) = 1 THEN 1 ELSE 0 END AS BIT) AS IsClosed
 FROM CARI_HESAP_HAREKETLERI
 WHERE ISNULL(cha_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL
