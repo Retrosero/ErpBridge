@@ -9,6 +9,7 @@ namespace ErpBridge.Erp.Mikro.Tests.Integration;
 /// <c>dbo._ERPB_EVRAK_ESLESME</c> against a real Mikro test copy (Y0d). Writes only into a
 /// test copy (<see cref="MikroWriteTestDatabase.AllowedDatabases"/>); see <see cref="MikroWriteTestDatabase"/>.
 /// </summary>
+[Collection(MikroWriteTestDatabase.Collection)]
 public class MikroDocumentLedgerLiveTests
 {
     private readonly MikroDocumentLedger _ledger = new();

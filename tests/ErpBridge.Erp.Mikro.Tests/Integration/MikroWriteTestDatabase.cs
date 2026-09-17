@@ -13,6 +13,12 @@ public static class MikroWriteTestDatabase
 {
     public const string DatabaseEnv = "ERPBridge_MIKRO_WRITE_DB";
 
+    /// <summary>
+    /// xUnit collection of every test that writes to the test copy: they share <c>_ERPB_EVRAK_ESLESME</c>
+    /// (one test drops and recreates it), so they never run in parallel.
+    /// </summary>
+    public const string Collection = "Mikro write test database";
+
     /// <summary>Server override; defaults to <c>tcp:localhost</c> (shared memory drops async reads on this setup).</summary>
     public const string ServerEnv = "ERPBridge_SCHEMA_SERVER";
 
