@@ -97,7 +97,8 @@ SELECT
              THEN ISNULL(cha_meblag, 0)
              ELSE -ISNULL(cha_meblag, 0) END) AS Balance
 FROM CARI_HESAP_HAREKETLERI WITH (NOLOCK)
-WHERE cha_kod = @CustomerCode;
+WHERE cha_kod = @CustomerCode
+  AND ISNULL(cha_cari_cins, 0) = 0;  -- kapalı faturanın cha_kod'u kasa/banka kodudur
 ```
 
 ---

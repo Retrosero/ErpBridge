@@ -37,7 +37,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y0b | Referansı tamamla + kolon sözleşme testi | ⬜ | | Satış/kapalı fatura/iade/tahsilat bölümleri canlı veriyle yazıldı; tam kolon listeleri kaldı |
 | Y0c | Yanlış evrak kodlarının düzeltilmesi | ⬜ | | |
 | Y0d | `_ERPB_EVRAK_ESLESME` tablosu | ⬜ | | |
-| Y0e | Okuyucu düzeltmeleri (kapalı fatura müşterisi, iade sınıfı, bakiye filtresi) | ⬜ | | |
+| Y0e | Okuyucu düzeltmeleri (kapalı fatura müşterisi, iade sınıfı, bakiye filtresi) | ✅ | (Y0e PR) | **Sapma (geriye uyumluluk):** kapalı faturada `cariKod` değiştirilmedi (eski telefonlar bakiyeyi `cariKod` üzerinden topluyor); yeni `ciroCariKod` + `kapali` alanları eklendi. Portal kapalı satırı müşteriye bağlar, ekstre/yürüyen bakiyeden çıkarır. İade sınıfı düzeltildi (`0+iade` SATIS_IADE). Bakiye sorgusuna `cha_cari_cins=0` (bu veride çakışan kod yok — koruma). Canlı okuma testleri ERPBTEST 2/2. **Telefon:** senkron satırlarında sunucu `type`'ı kullanılıyor, düzeltme telefona böyle ulaşır; `LedgerMovementMapper.typeForValues` yedek eşlemesi hâlâ ters → Y4e ile birlikte düzeltilecek |
 | Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ⬜ | | |
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ⬜ | | |
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
