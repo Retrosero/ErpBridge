@@ -1,0 +1,67 @@
+.log-toolbar { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: 0 10px 30px rgba(20,31,55,.04); margin-bottom: 1rem; padding: 1rem; }
+.log-sources { display: flex; flex-wrap: wrap; gap: .45rem; margin-bottom: .9rem; }
+.log-chip { align-items: center; background: #f5f7fb; border: 1px solid var(--line); border-radius: 999px; color: #45546a; cursor: pointer; display: inline-flex; font-size: .8rem; font-weight: 650; gap: .45rem; min-height: 2.2rem; padding: .3rem .8rem; }
+.log-chip:hover { border-color: var(--primary); }
+.log-chip--active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-dark); }
+.log-chip__count { background: #fff; border-radius: 999px; color: var(--muted); font-size: .7rem; padding: 0 .45rem; }
+.log-filters { align-items: flex-end; display: flex; flex-wrap: wrap; gap: .6rem; }
+.log-field { display: flex; flex-direction: column; gap: .2rem; min-width: 10rem; }
+.log-field > span { color: #8995a7; font-size: .65rem; font-weight: 780; text-transform: uppercase; }
+.log-field--grow { flex: 1 1 16rem; }
+.log-filters__actions { display: flex; gap: .4rem; }
+.log-advanced { border-top: 1px dashed var(--line); display: grid; gap: .6rem; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); margin-top: .3rem; padding-top: .8rem; width: 100%; }
+.log-summary { align-items: center; color: var(--muted); display: flex; flex-wrap: wrap; font-size: .82rem; gap: .5rem; margin: .9rem 0 0; }
+.log-summary strong { color: var(--ink); }
+.log-validation { color: var(--danger); font-size: .82rem; margin: .6rem 0 0; }
+
+.log-badge { border-radius: .45rem; display: inline-block; font-size: .7rem; font-weight: 750; padding: .12rem .45rem; white-space: nowrap; }
+.log-badge--danger { background: var(--danger-soft); color: var(--danger); }
+.log-badge--warning { background: var(--warning-soft); color: var(--warning); }
+.log-badge--info { background: var(--primary-soft); color: var(--primary-dark); }
+.log-badge--muted { background: #f1f4f8; color: var(--muted); }
+
+.log-table { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.log-row { align-items: center; background: #fff; border: 0; border-top: 1px solid var(--line); color: inherit; display: grid; font-size: .82rem; gap: .8rem; grid-template-columns: 7.2rem 8.5rem 5rem minmax(9rem, 1fr) minmax(12rem, 2.4fr); padding: .6rem 1rem; text-align: left; width: 100%; }
+button.log-row { cursor: pointer; }
+button.log-row:hover { background: #fbfcff; }
+.log-row--head { background: #f8fafc; border-top: 0; color: #8995a7; font-size: .65rem; font-weight: 780; text-transform: uppercase; }
+.log-row--selected { background: var(--primary-soft) !important; }
+.log-row time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.log-source { color: #45546a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-who, .log-event { display: flex; flex-direction: column; min-width: 0; }
+.log-who strong, .log-event strong { color: var(--ink); font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-who small, .log-event small { color: var(--muted); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-more { display: flex; justify-content: center; margin: 1rem 0; }
+
+.log-drawer-backdrop { background: rgba(11,18,32,.35); inset: 0; position: fixed; z-index: 40; }
+.log-drawer { background: var(--canvas); box-shadow: -20px 0 50px rgba(11,18,32,.18); display: flex; flex-direction: column; height: 100vh; max-width: 100%; position: fixed; right: 0; top: 0; width: 44rem; z-index: 41; }
+.log-drawer__header { align-items: flex-start; background: #fff; border-bottom: 1px solid var(--line); display: flex; gap: 1rem; justify-content: space-between; padding: 1.1rem 1.25rem; }
+.log-drawer__header h2 { font-size: 1.2rem; letter-spacing: -.02em; margin: .35rem 0 .1rem; }
+.log-drawer__header p { color: var(--muted); font-size: .8rem; margin: 0; }
+.log-drawer__close { color: var(--muted); font-size: 1.4rem; }
+.log-drawer__close:hover { background: #f1f4f8; color: var(--ink); }
+.log-drawer__body { display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; padding: 1.1rem 1.25rem 2rem; }
+.log-message pre, .log-stack { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); font-size: .78rem; margin: 0; max-height: 22rem; overflow: auto; padding: .8rem; white-space: pre-wrap; word-break: break-word; }
+.log-stack { background: #0f172a; border-color: #0f172a; color: #e2e8f0; }
+.log-exception { display: block; font-size: .8rem; margin-bottom: .5rem; }
+.log-link { background: none; border: 0; color: var(--primary); cursor: pointer; font: inherit; padding: 0; text-align: left; }
+.log-link:hover { text-decoration: underline; }
+.log-group { align-items: center; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); display: flex; gap: 1rem; justify-content: space-between; padding: .75rem .9rem; }
+.log-group div { display: flex; flex-direction: column; font-size: .8rem; }
+.log-group span { color: var(--muted); }
+.log-section h3 { font-size: .8rem; font-weight: 780; margin: 0 0 .5rem; }
+.log-section__title { align-items: center; display: flex; justify-content: space-between; }
+.log-breadcrumbs { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); list-style: none; margin: 0; padding: .4rem .8rem; }
+.log-breadcrumbs li { display: grid; font-size: .78rem; gap: .6rem; grid-template-columns: 4.2rem 6rem 1fr; padding: .3rem 0; }
+.log-breadcrumbs li + li { border-top: 1px dashed var(--line); }
+.log-breadcrumbs time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.log-breadcrumbs__category { color: var(--primary-dark); font-weight: 700; }
+
+@media (max-width: 767.98px) {
+    .log-field { flex: 1 1 100%; min-width: 0; }
+    .log-row { gap: .2rem .6rem; grid-template-columns: auto 1fr auto; }
+    .log-row--head { display: none; }
+    .log-row .log-who, .log-row .log-event { grid-column: 1 / -1; }
+    .log-breadcrumbs li { grid-template-columns: 4rem 1fr; }
+    .log-breadcrumbs li > span:last-child { grid-column: 1 / -1; }
+}

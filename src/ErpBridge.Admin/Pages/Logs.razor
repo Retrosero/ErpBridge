@@ -1,0 +1,517 @@
+@page "/logs"
+@implements IDisposable
+@using System.Text.Json
+@inject ErpBridge.Admin.Api.CentralApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Log Merkezi — ErpBridge Yönetim</PageTitle>
+<AdminPageHeader Title="Log Merkezi" Description="Telefon, Windows uygulaması ve servisi, firma paneli ve sunucu kayıtları tek yerde. Saatler Türkiye saatidir." />
+
+<section class="log-toolbar" aria-label="Log filtreleri">
+    <div class="log-sources" role="group" aria-label="Kaynak">
+        @foreach (var source in LogLabels.SourceOrder)
+        {
+            var active = _filter.Sources.Contains(source);
+            <button type="button" class="log-chip @(active ? "log-chip--active" : null)" aria-pressed="@(active ? "true" : "false")" data-source="@source" @onclick="() => ToggleSourceAsync(source)">
+                @LogLabels.Source(source)<span class="log-chip__count">@SourceCount(source)</span>
+            </button>
+        }
+    </div>
+
+    <form class="log-filters" @onsubmit="ApplyAsync" @onsubmit:preventDefault>
+        <label class="log-field">
+            <span>Zaman</span>
+            <select class="form-select" aria-label="Zaman aralığı" @bind="_draft.Range">
+                <option value="1h">Son 1 saat</option>
+                <option value="24h">Son 24 saat</option>
+                <option value="7d">Son 7 gün</option>
+                <option value="30d">Son 30 gün</option>
+                <option value="@LogFilter.CustomRange">Özel aralık</option>
+            </select>
+        </label>
+        @if (_draft.Range == LogFilter.CustomRange)
+        {
+            <label class="log-field"><span>Başlangıç</span><input class="form-control" type="datetime-local" aria-label="Başlangıç" @bind="_draft.FromLocal" /></label>
+            <label class="log-field"><span>Bitiş</span><input class="form-control" type="datetime-local" aria-label="Bitiş" @bind="_draft.ToLocal" /></label>
+        }
+        <label class="log-field">
+            <span>Seviye</span>
+            <select class="form-select" aria-label="En düşük seviye" @bind="_draft.MinSeverity">
+                <option value="">Tümü</option>
+                <option value="INFO">Bilgi ve üstü</option>
+                <option value="WARN">Uyarı ve üstü</option>
+                <option value="ERROR">Hata ve üstü</option>
+                <option value="FATAL">Yalnız kritik</option>
+            </select>
+        </label>
+        <label class="log-field">
+            <span>Müşteri</span>
+            <select class="form-select" aria-label="Müşteri" @bind="_draft.TenantId">
+                <option value="">Tüm müşteriler</option>
+                @foreach (var tenant in _tenants) { <option value="@tenant.Id">@tenant.Name</option> }
+            </select>
+        </label>
+        <label class="log-field log-field--grow">
+            <span>Ara</span>
+            <input class="form-control" type="search" aria-label="Mesajda ara" placeholder="Mesaj, hata türü, işlem veya iz kimliği" @bind="_draft.Q" />
+        </label>
+        <div class="log-filters__actions">
+            <button class="btn btn-primary" type="submit">Uygula</button>
+            <button class="btn btn-outline-secondary" type="button" aria-expanded="@(_advancedOpen ? "true" : "false")" @onclick="() => _advancedOpen = !_advancedOpen">Gelişmiş</button>
+            @if (!string.IsNullOrEmpty(_loadedKey)) { <button class="btn btn-link" type="button" @onclick="ClearAsync">Temizle</button> }
+        </div>
+        @if (_advancedOpen)
+        {
+            <div class="log-advanced">
+                <label class="log-field"><span>Tür</span><input class="form-control" aria-label="Tür" placeholder="CRASH, HTTP_ERROR…" @bind="_draft.Kind" /></label>
+                <label class="log-field"><span>İşlem</span><input class="form-control" aria-label="İşlem" @bind="_draft.Operation" /></label>
+                <label class="log-field"><span>Sürüm</span><input class="form-control" aria-label="Sürüm" @bind="_draft.AppVersion" /></label>
+                <label class="log-field"><span>İz kimliği</span><input class="form-control" aria-label="İz kimliği" @bind="_draft.CorrelationId" /></label>
+                <label class="log-field"><span>Cihaz kimliği</span><input class="form-control" aria-label="Cihaz kimliği" @bind="_draft.DeviceId" /></label>
+                <label class="log-field"><span>Kullanıcı kimliği</span><input class="form-control" aria-label="Kullanıcı kimliği" @bind="_draft.UserId" /></label>
+                <label class="log-field"><span>Ajan kimliği</span><input class="form-control" aria-label="Ajan kimliği" @bind="_draft.AgentId" /></label>
+                <label class="log-field"><span>Hata grubu</span><input class="form-control" aria-label="Hata grubu" @bind="_draft.FingerprintId" /></label>
+            </div>
+        }
+    </form>
+
+    @if (_facets is { } facets)
+    {
+        <p class="log-summary" role="status">
+            <strong>@facets.Total.ToString("N0", Tr)</strong> kayıt
+            @foreach (var severity in facets.Severities.Where(f => f.Value is "FATAL" or "ERROR" or "WARN"))
+            {
+                <span class="log-badge log-badge--@LogLabels.SeverityTone(severity.Value)">@LogLabels.Severity(severity.Value): @severity.Count.ToString("N0", Tr)</span>
+            }
+        </p>
+    }
+    @if (!string.IsNullOrWhiteSpace(_validation)) { <p class="log-validation" role="alert">@_validation</p> }
+</section>
+
+@if (_loading) { <AdminLoading Text="Kayıtlar yükleniyor…" /> }
+else if (!string.IsNullOrWhiteSpace(_error)) { <AdminState Tone="error" Icon="!" Title="Kayıtlar alınamadı" Message="@_error" /> }
+else if (_items.Count == 0) { <AdminState Tone="empty" Icon="✓" Title="Kayıt bulunamadı" Message="Bu filtrelere uyan kayıt yok. Zaman aralığını genişletmeyi deneyin." /> }
+else
+{
+    <div class="log-table" role="table" aria-label="Log kayıtları">
+        <div class="log-row log-row--head" role="row">
+            <span role="columnheader">Zaman</span><span role="columnheader">Kaynak</span><span role="columnheader">Seviye</span><span role="columnheader">Kim</span><span role="columnheader">Olay</span>
+        </div>
+        @foreach (var item in _items)
+        {
+            <button type="button" role="row" class="log-row @(item.Id == _selectedId ? "log-row--selected" : null)" data-log-id="@item.Id" @onclick="() => OpenAsync(item.Id)">
+                <time role="cell" datetime="@item.OccurredAtUtc.ToString("O")">@LogLabels.Local(item.OccurredAtUtc).ToString("dd.MM HH:mm:ss", Tr)</time>
+                <span role="cell" class="log-source">@LogLabels.Source(item.Source)</span>
+                <span role="cell"><span class="log-badge log-badge--@LogLabels.SeverityTone(item.Severity)">@LogLabels.Severity(item.Severity)</span></span>
+                <span role="cell" class="log-who"><strong>@(item.TenantName ?? "—")</strong><small>@Who(item)</small></span>
+                <span role="cell" class="log-event"><strong>@Title(item)@(item.RepeatCount > 1 ? $" ×{item.RepeatCount}" : null)</strong><small>@Summary(item)</small></span>
+            </button>
+        }
+    </div>
+    @if (_nextBefore is not null)
+    {
+        <div class="log-more"><button class="btn btn-outline-secondary" type="button" disabled="@_loadingMore" @onclick="LoadMoreAsync">@(_loadingMore ? "Yükleniyor…" : "Daha fazla yükle")</button></div>
+    }
+}
+
+@if (_selectedId is not null)
+{
+    <div class="log-drawer-backdrop" @onclick="CloseAsync"></div>
+    <aside class="log-drawer" role="dialog" aria-modal="true" aria-label="Kayıt ayrıntısı" @onkeydown="OnDrawerKeyDown">
+        <header class="log-drawer__header">
+            @if (_detail is { } head)
+            {
+                <div>
+                    <span class="log-badge log-badge--@LogLabels.SeverityTone(head.Severity)">@LogLabels.Severity(head.Severity)</span>
+                    <h2>@Title(head)</h2>
+                    <p>@LogLabels.Source(head.Source) · @LogLabels.Local(head.OccurredAtUtc).ToString("dd.MM.yyyy HH:mm:ss", Tr)</p>
+                </div>
+            }
+            <button class="admin-icon-button log-drawer__close" type="button" aria-label="Ayrıntıyı kapat" @onclick="CloseAsync">×</button>
+        </header>
+        @if (_detailError is not null) { <AdminState Tone="error" Icon="!" Title="Ayrıntı alınamadı" Message="@_detailError" /> }
+        else if (_detail is null) { <AdminLoading Text="Ayrıntı yükleniyor…" /> }
+        else
+        {
+            var d = _detail;
+            <div class="log-drawer__body">
+                <section class="log-message"><pre>@(string.IsNullOrWhiteSpace(d.Message) ? "(mesaj yok)" : d.Message)</pre></section>
+
+                <dl class="admin-kv">
+                    <div><dt>Müşteri</dt><dd>@if (d.TenantId is { } tenantId) { <button type="button" class="log-link" @onclick="() => FilterByAsync(f => f with { TenantId = tenantId })">@(d.TenantName ?? tenantId.ToString())</button> } else { <span>—</span> }</dd></div>
+                    <div><dt>Tür / işlem</dt><dd><button type="button" class="log-link" @onclick="() => FilterByAsync(f => f with { Kind = d.Kind })">@d.Kind</button>@(string.IsNullOrWhiteSpace(d.Operation) ? null : " · " + d.Operation)</dd></div>
+                    @if (d.UserId is { } userId) { <div><dt>Kullanıcı</dt><dd><button type="button" class="log-link" @onclick="() => FilterByAsync(f => f with { UserId = userId })">@(d.UserName ?? userId.ToString())</button></dd></div> }
+                    @if (d.AgentId is { } agentId) { <div><dt>Ajan</dt><dd><button type="button" class="log-link" @onclick="() => FilterByAsync(f => f with { AgentId = agentId })">@(d.AgentName ?? agentId.ToString())</button></dd></div> }
+                    @if (!string.IsNullOrWhiteSpace(d.DeviceId)) { <div><dt>Cihaz</dt><dd><button type="button" class="log-link" @onclick="() => FilterByAsync(f => f with { DeviceId = d.DeviceId })">@(string.IsNullOrWhiteSpace(d.DeviceModel) ? d.DeviceId : d.DeviceModel)</button></dd></div> }
+                    else if (!string.IsNullOrWhiteSpace(d.DeviceModel)) { <div><dt>Cihaz</dt><dd>@d.DeviceModel</dd></div> }
+                    <div><dt>Sürüm</dt><dd>@(string.IsNullOrWhiteSpace(d.AppVersion) ? "—" : d.AppVersion)@(string.IsNullOrWhiteSpace(d.OsVersion) ? null : " · " + d.OsVersion)</dd></div>
+                    @if (!string.IsNullOrWhiteSpace(d.Screen)) { <div><dt>Ekran</dt><dd>@d.Screen</dd></div> }
+                    @if (d.HttpStatus is not null || !string.IsNullOrWhiteSpace(d.HttpRoute)) { <div class="admin-kv__wide"><dt>HTTP</dt><dd><code>@HttpLine(d)</code></dd></div> }
+                    @if (!string.IsNullOrWhiteSpace(d.CorrelationId)) { <div class="admin-kv__wide"><dt>İz kimliği</dt><dd><button type="button" class="log-link" @onclick="() => FilterByAsync(_ => new LogFilter { Range = LogFilter.CustomRange, From = d.OccurredAtUtc.AddDays(-7), To = d.OccurredAtUtc.AddDays(7), CorrelationId = d.CorrelationId })"><code>@d.CorrelationId</code></button></dd></div> }
+                    <div><dt>Sunucuya ulaştı</dt><dd>@LogLabels.Local(d.ReceivedAtUtc).ToString("dd.MM.yyyy HH:mm:ss", Tr)</dd></div>
+                    @if (d.RepeatCount > 1) { <div><dt>Tekrar</dt><dd>@d.RepeatCount kez</dd></div> }
+                </dl>
+
+                @if (d.Group is { } group)
+                {
+                    <section class="log-group">
+                        <div><strong>Hata grubu</strong><span>@group.TotalCount.ToString("N0", Tr) olay · ilk @LogLabels.Local(group.FirstSeenAtUtc).ToString("dd.MM.yyyy", Tr) · son @LogLabels.Local(group.LastSeenAtUtc).ToString("dd.MM.yyyy HH:mm", Tr) · @GroupStatus(group.Status)</span></div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => FilterByAsync(_ => new LogFilter { Range = LogFilter.Last30Days, FingerprintId = group.Id })">Gruptaki olaylar</button>
+                    </section>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(d.ExceptionType) || !string.IsNullOrWhiteSpace(d.StackTrace))
+                {
+                    <section class="log-section">
+                        <div class="log-section__title"><h3>Hata ve iz kaydı</h3><button class="admin-copy-button" type="button" aria-label="Hata ayrıntılarını kopyala" title="Hata ayrıntılarını kopyala" @onclick="CopyAsync">Kopyala</button></div>
+                        @if (_copyStatus is not null) { <p class="admin-copy-status" role="status">@_copyStatus</p> }
+                        @if (!string.IsNullOrWhiteSpace(d.ExceptionType)) { <code class="log-exception">@d.ExceptionType</code> }
+                        @if (!string.IsNullOrWhiteSpace(d.StackTrace)) { <pre class="log-stack">@d.StackTrace</pre> }
+                    </section>
+                }
+
+                @if (Breadcrumbs(d) is { Count: > 0 } crumbs)
+                {
+                    <section class="log-section">
+                        <h3>Olaydan önceki adımlar</h3>
+                        <ol class="log-breadcrumbs">
+                            @foreach (var crumb in crumbs) { <li><time>@crumb.Time</time><span class="log-breadcrumbs__category">@crumb.Category</span><span>@crumb.Message</span></li> }
+                        </ol>
+                    </section>
+                }
+
+                @if (Properties(d) is { Count: > 0 } properties)
+                {
+                    <section class="log-section">
+                        <h3>Ek bilgiler</h3>
+                        <dl class="admin-kv">@foreach (var (key, value) in properties) { <div><dt>@key</dt><dd>@value</dd></div> }</dl>
+                    </section>
+                }
+            </div>
+        }
+    </aside>
+}
+
+@code {
+    private const int PageSize = 50;
+    private static readonly System.Globalization.CultureInfo Tr = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+
+    private LogFilter _filter = new();
+    private FilterDraft _draft = new();
+    private string? _loadedKey;
+    private string _apiQuery = string.Empty;
+    private bool _loading = true;
+    private bool _loadingMore;
+    private bool _advancedOpen;
+    private string? _error;
+    private string? _validation;
+    private List<LogEventDto> _items = [];
+    private string? _nextBefore;
+    private LogFacetsDto? _facets;
+    private IReadOnlyList<TenantDto> _tenants = Array.Empty<TenantDto>();
+    private Guid? _selectedId;
+    private LogEventDetailDto? _detail;
+    private string? _detailError;
+    private string? _copyStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        try { _tenants = await Api.ListTenantsAsync(); }
+        catch (Exception) { _tenants = Array.Empty<TenantDto>(); }
+        await SyncWithUrlAsync();
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
+        _ = InvokeAsync(async () => { await SyncWithUrlAsync(); StateHasChanged(); });
+
+    /// <summary>The URL is the single source of state: filters decide the list, <c>log=</c> the open detail.</summary>
+    private async Task SyncWithUrlAsync()
+    {
+        if (!Nav.Uri.Contains("/logs", StringComparison.OrdinalIgnoreCase)) return;
+        var filter = LogFilter.Parse(Nav.Uri);
+        var key = filter.ToPageQuery();
+        if (key != _loadedKey)
+        {
+            _filter = filter;
+            _loadedKey = key;
+            _draft = FilterDraft.From(filter);
+            _advancedOpen = _advancedOpen || filter.HasAdvanced;
+            await LoadAsync();
+        }
+
+        var selected = SelectedLogId(Nav.Uri);
+        if (selected != _selectedId)
+        {
+            _selectedId = selected;
+            _detail = null;
+            _detailError = null;
+            _copyStatus = null;
+            if (selected is { } id)
+            {
+                try { _detail = await Api.GetLogAsync(id); }
+                catch (Exception ex) { _detailError = ex.Message; }
+            }
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        _nextBefore = null;
+        _apiQuery = _filter.ToApiQuery(DateTimeOffset.UtcNow);
+        try
+        {
+            var page = await Api.ListLogsAsync(_apiQuery, take: PageSize);
+            _items = page.Items;
+            _nextBefore = page.NextBefore;
+        }
+        catch (Exception ex)
+        {
+            _items = [];
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        // Counts per source ignore the source filter, so the chips show what selecting another source would add.
+        try { _facets = await Api.GetLogFacetsAsync((_filter with { Sources = [] }).ToApiQuery(DateTimeOffset.UtcNow)); }
+        catch (Exception) { _facets = null; }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (_nextBefore is null) return;
+        _loadingMore = true;
+        try
+        {
+            var page = await Api.ListLogsAsync(_apiQuery, _nextBefore, PageSize);
+            _items.AddRange(page.Items);
+            _nextBefore = page.NextBefore;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loadingMore = false; }
+    }
+
+    private Task ApplyAsync()
+    {
+        _validation = null;
+        if (_draft.ToFilter(_filter.Sources) is not { } filter)
+        {
+            _validation = "Kimlik alanları GUID olmalı ve başlangıç bitişten sonra olmamalı.";
+            return Task.CompletedTask;
+        }
+        Navigate(filter);
+        return Task.CompletedTask;
+    }
+
+    private Task ClearAsync()
+    {
+        _validation = null;
+        _advancedOpen = false;
+        Navigate(new LogFilter());
+        return Task.CompletedTask;
+    }
+
+    private Task ToggleSourceAsync(string source)
+    {
+        var sources = _filter.Sources.Contains(source) ? _filter.Sources.Where(s => s != source).ToArray() : _filter.Sources.Append(source).ToArray();
+        Navigate(_filter with { Sources = LogLabels.SourceOrder.Where(sources.Contains).ToArray() });
+        return Task.CompletedTask;
+    }
+
+    private Task FilterByAsync(Func<LogFilter, LogFilter> change)
+    {
+        Navigate(change(_filter));
+        return Task.CompletedTask;
+    }
+
+    private Task OpenAsync(Guid id)
+    {
+        var query = _filter.ToPageQuery();
+        Nav.NavigateTo("logs?" + (query.Length == 0 ? "" : query + "&") + "log=" + id);
+        return Task.CompletedTask;
+    }
+
+    private Task CloseAsync()
+    {
+        var query = _filter.ToPageQuery();
+        Nav.NavigateTo(query.Length == 0 ? "logs" : "logs?" + query);
+        return Task.CompletedTask;
+    }
+
+    private async Task OnDrawerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await CloseAsync();
+    }
+
+    private void Navigate(LogFilter filter)
+    {
+        var query = filter.ToPageQuery();
+        Nav.NavigateTo(query.Length == 0 ? "logs" : "logs?" + query);
+    }
+
+    private async Task CopyAsync()
+    {
+        if (_detail is not { } d) return;
+        var text = string.Join(Environment.NewLine, new[] { $"{d.ExceptionType}: {d.Message}".Trim(' ', ':'), d.StackTrace, d.CorrelationId is null ? null : "İz kimliği: " + d.CorrelationId }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
+        try { await Js.InvokeVoidAsync("navigator.clipboard.writeText", text); _copyStatus = "Hata ayrıntıları panoya kopyalandı."; }
+        catch (Exception) { _copyStatus = "Tarayıcı pano erişimine izin vermedi. Metni seçerek kopyalayabilirsiniz."; }
+    }
+
+    private static Guid? SelectedLogId(string uri)
+    {
+        var queryStart = uri.IndexOf('?');
+        if (queryStart < 0) return null;
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri[queryStart..]);
+        return query.TryGetValue("log", out var value) && Guid.TryParse(value.FirstOrDefault(), out var id) ? id : null;
+    }
+
+    private string SourceCount(string source) =>
+        _facets?.Sources.FirstOrDefault(f => f.Value == source)?.Count.ToString("N0", Tr) ?? "0";
+
+    private static string Who(LogEventDto item) =>
+        item.UserName ?? item.AgentName ?? (string.IsNullOrWhiteSpace(item.DeviceModel) ? "—" : item.DeviceModel);
+
+    private static string Title(LogEventDto item) => item.Kind switch
+    {
+        "CRASH" when item.Severity == "FATAL" => "Uygulama çöktü",
+        "CRASH" or "HANDLED_ERROR" => "İşlem hatası",
+        "HTTP_ERROR" => item.HttpStatus is { } status ? $"HTTP {status}" : "HTTP hatası",
+        "SYNC_ROUND" => "Senkron turu",
+        "AGENT_SYNC_ROUND" => "Ajan senkron turu",
+        "DESKTOP_EXCEPTION" => "Windows uygulaması hatası",
+        "UNHANDLED_EXCEPTION" => "Sunucu hatası",
+        "SCREEN_VIEW" => "Ekran açıldı",
+        "ACTION" => "Kullanıcı işlemi",
+        _ => item.Kind,
+    };
+
+    private static string Summary(LogEventDto item)
+    {
+        if (item.HttpStatus is not null || !string.IsNullOrWhiteSpace(item.HttpRoute)) return HttpLine(item);
+        var head = string.IsNullOrWhiteSpace(item.Message) ? item.ExceptionType : item.Message;
+        var text = string.IsNullOrWhiteSpace(item.Operation) ? head : $"{item.Operation} — {head}";
+        return text.Length <= 160 ? text : text[..160] + "…";
+    }
+
+    private static string HttpLine(LogEventDto item) =>
+        $"{item.HttpStatus?.ToString() ?? "—"} {item.HttpMethod} {item.HttpRoute}{(item.DurationMs is { } ms ? $" ({ms} ms)" : null)}".Trim();
+
+    private static string GroupStatus(string status) => status switch
+    {
+        "RESOLVED" => "çözüldü",
+        "IGNORED" => "yok sayıldı",
+        _ => "açık",
+    };
+
+    private sealed record Crumb(string Time, string Category, string Message);
+
+    private static List<Crumb> Breadcrumbs(LogEventDetailDto detail)
+    {
+        var crumbs = new List<Crumb>();
+        try
+        {
+            using var document = JsonDocument.Parse(detail.BreadcrumbsJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) return crumbs;
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                if (element.ValueKind != JsonValueKind.Object) { crumbs.Add(new(string.Empty, string.Empty, element.ToString())); continue; }
+                string Read(params string[] names) => names.Select(n => element.TryGetProperty(n, out var v) ? v.ToString() : null).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
+                var time = Read("timestampUtc", "timestamp", "at");
+                if (DateTimeOffset.TryParse(time, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var at))
+                    time = LogLabels.Local(at).ToString("HH:mm:ss", Tr);
+                crumbs.Add(new(time, Read("category", "type"), Read("message", "text")));
+            }
+        }
+        catch (JsonException) { }
+        return crumbs;
+    }
+
+    private static List<(string Key, string Value)> Properties(LogEventDetailDto detail)
+    {
+        var properties = new List<(string, string)>();
+        try
+        {
+            using var document = JsonDocument.Parse(detail.PropertiesJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return properties;
+            foreach (var property in document.RootElement.EnumerateObject()) properties.Add((property.Name, property.Value.ToString()));
+        }
+        catch (JsonException) { }
+        return properties;
+    }
+
+    /// <summary>Editable copy of the filters; applied to the URL only on "Uygula".</summary>
+    private sealed class FilterDraft
+    {
+        public string Range { get; set; } = "24h";
+        public DateTime? FromLocal { get; set; }
+        public DateTime? ToLocal { get; set; }
+        public string MinSeverity { get; set; } = string.Empty;
+        public string TenantId { get; set; } = string.Empty;
+        public string? Q { get; set; }
+        public string? Kind { get; set; }
+        public string? Operation { get; set; }
+        public string? AppVersion { get; set; }
+        public string? CorrelationId { get; set; }
+        public string? DeviceId { get; set; }
+        public string? UserId { get; set; }
+        public string? AgentId { get; set; }
+        public string? FingerprintId { get; set; }
+
+        public static FilterDraft From(LogFilter filter) => new()
+        {
+            Range = filter.Range,
+            FromLocal = filter.From is { } from ? LogLabels.Local(from).DateTime : null,
+            ToLocal = filter.To is { } to ? LogLabels.Local(to).DateTime : null,
+            MinSeverity = filter.MinSeverity ?? string.Empty,
+            TenantId = filter.TenantId?.ToString() ?? string.Empty,
+            Q = filter.Q,
+            Kind = filter.Kind,
+            Operation = filter.Operation,
+            AppVersion = filter.AppVersion,
+            CorrelationId = filter.CorrelationId,
+            DeviceId = filter.DeviceId,
+            UserId = filter.UserId?.ToString(),
+            AgentId = filter.AgentId?.ToString(),
+            FingerprintId = filter.FingerprintId?.ToString(),
+        };
+
+        /// <summary>The filter to apply, or null when an id is not a GUID or the range is backwards.</summary>
+        public LogFilter? ToFilter(IReadOnlyList<string> sources)
+        {
+            if (!TryId(TenantId, out var tenantId) || !TryId(UserId, out var userId) || !TryId(AgentId, out var agentId) || !TryId(FingerprintId, out var fingerprintId))
+                return null;
+            DateTimeOffset? from = Range == LogFilter.CustomRange && FromLocal is { } f ? LogLabels.FromLocalInput(f) : null;
+            DateTimeOffset? to = Range == LogFilter.CustomRange && ToLocal is { } t ? LogLabels.FromLocalInput(t) : null;
+            if (from is not null && to is not null && from > to) return null;
+            return new LogFilter
+            {
+                Range = Range, From = from, To = to, Sources = sources,
+                MinSeverity = string.IsNullOrWhiteSpace(MinSeverity) ? null : MinSeverity,
+                TenantId = tenantId, UserId = userId, AgentId = agentId, FingerprintId = fingerprintId,
+                Q = Clean(Q), Kind = Clean(Kind), Operation = Clean(Operation), AppVersion = Clean(AppVersion),
+                CorrelationId = Clean(CorrelationId), DeviceId = Clean(DeviceId),
+            };
+        }
+
+        private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        private static bool TryId(string? value, out Guid? id)
+        {
+            id = null;
+            if (string.IsNullOrWhiteSpace(value)) return true;
+            if (!Guid.TryParse(value.Trim(), out var parsed)) return false;
+            id = parsed;
+            return true;
+        }
+    }
+}

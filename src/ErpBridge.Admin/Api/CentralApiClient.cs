@@ -712,6 +712,21 @@ public sealed class CentralApiClient
     public Task<IReadOnlyList<MobileTelemetryEventDto>> ListTelemetryAsync(Guid? tenantId = null, string? severity = "ERROR", int take = 200, CancellationToken ct = default, string? kind = null) =>
         SendAsync<IReadOnlyList<MobileTelemetryEventDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/telemetry", tenantId, $"severity={Uri.EscapeDataString(severity ?? string.Empty)}&kind={Uri.EscapeDataString(kind ?? string.Empty)}&take={take}"), ct), ct);
 
+    /// <summary>Log Merkezi: one page of events, newest first. <paramref name="apiQuery"/> comes from <see cref="LogFilter.ToApiQuery"/>.</summary>
+    public Task<LogPageDto> ListLogsAsync(string apiQuery, string? before = null, int take = 50, CancellationToken ct = default)
+    {
+        var query = new List<string> { $"take={take}" };
+        if (!string.IsNullOrWhiteSpace(apiQuery)) query.Add(apiQuery);
+        if (!string.IsNullOrWhiteSpace(before)) query.Add("before=" + Uri.EscapeDataString(before));
+        return SendAsync<LogPageDto>(() => _http.GetAsync("/api/v1/admin/logs?" + string.Join("&", query), ct), ct);
+    }
+
+    public Task<LogEventDetailDto> GetLogAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<LogEventDetailDto>(() => _http.GetAsync($"/api/v1/admin/logs/{id}", ct), ct);
+
+    public Task<LogFacetsDto> GetLogFacetsAsync(string apiQuery, CancellationToken ct = default) =>
+        SendAsync<LogFacetsDto>(() => _http.GetAsync("/api/v1/admin/logs/facets" + (string.IsNullOrWhiteSpace(apiQuery) ? "" : "?" + apiQuery), ct), ct);
+
     public Task<JobDto> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<JobDto>(() => _http.PostAsync($"/api/v1/admin/jobs/{id}/retry", content: null, ct), ct);
 
