@@ -165,7 +165,7 @@ else
                 @if (!string.IsNullOrWhiteSpace(d.ExceptionType) || !string.IsNullOrWhiteSpace(d.StackTrace))
                 {
                     <section class="log-section">
-                        <div class="log-section__title"><h3>Hata ve iz kaydı</h3><button class="admin-copy-button" type="button" aria-label="Hata ayrıntılarını kopyala" title="Hata ayrıntılarını kopyala" @onclick="CopyAsync">Kopyala</button></div>
+                        <div class="log-section__title"><h3>Hata ve iz kaydı</h3><button class="btn btn-sm btn-outline-secondary" type="button" aria-label="Hata ayrıntılarını kopyala" @onclick="CopyAsync">Kopyala</button></div>
                         @if (_copyStatus is not null) { <p class="admin-copy-status" role="status">@_copyStatus</p> }
                         @if (!string.IsNullOrWhiteSpace(d.ExceptionType)) { <code class="log-exception">@d.ExceptionType</code> }
                         @if (!string.IsNullOrWhiteSpace(d.StackTrace)) { <pre class="log-stack">@d.StackTrace</pre> }
