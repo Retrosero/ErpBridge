@@ -145,7 +145,9 @@ public static class PortalErpDocumentsEndpoints
     /// Sends a failed document to the agent again with a fresh set of attempts. The agent's document ledger
     /// (<c>_ERPB_EVRAK_ESLESME</c>) keeps an earlier write from being booked twice.
     /// </summary>
-    private static async Task<IResult> RetryAsync(HttpContext http, Guid jobId, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    private static async Task<IResult> RetryAsync(
+        HttpContext http, Guid jobId, [FromServices] CentralApiDbContext db,
+        [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse, CancellationToken ct)
     {
         var (tenant, _, error) = await AuthorizeAsync(http, db, RolePermissions.IsAdmin, requireAdmin: true, ct);
         if (error is not null) return error;
@@ -162,7 +164,17 @@ public static class PortalErpDocumentsEndpoints
         job.LeasedUntilMs = null;
         job.CompletedAtUtc = null;
         job.LastError = null;
-        await db.SaveChangesAsync(ct);
+        // A retried order waits for the ERP again on the warehouse queue too (as the admin retry does, Faz 47).
+        bool orderChanged;
+        await using (var transaction = db.Database.IsRelational() && ErpBridge.CentralApi.Warehouse.FulfillmentService.IsQueuedDocument(job.DocumentType)
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null)
+        {
+            orderChanged = await warehouse.RecordErpResultAsync(db, job, ct);
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+        }
+        if (orderChanged) warehouse.Notify(job.TenantId);
         return JsonResults.Ok(new PortalErpRetryResponse { JobId = job.Id, State = ErpDocumentStates.Pending });
     }
 
