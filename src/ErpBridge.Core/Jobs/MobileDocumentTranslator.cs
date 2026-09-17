@@ -141,7 +141,7 @@ public sealed class MobileDocumentTranslator
             if (parsed.Payments!.Sum(p => p.Amount) > header.ExpectedTotal + AmountTolerance) return MobileTranslation.Fail(ErpWriteError.InvalidAmount());
             return new MobileTranslation(Sale: new SalesDocumentCommand(
                 header, kind.Value, warehouse.Value, priceList.Value, approval, SalesSettlement.Open, null, saleLines,
-                parsed.Payments, context.Series.Collection));
+                parsed.Payments, context.Series.Collection, Delivery(header, context)));
         }
 
         var settlement = SaleSettlement(Text(body, "paymentType"));
@@ -149,7 +149,8 @@ public sealed class MobileDocumentTranslator
         if (settlement == SalesSettlement.Open)
         {
             return new MobileTranslation(Sale: new SalesDocumentCommand(
-                header, kind.Value, warehouse.Value, priceList.Value, approval, SalesSettlement.Open, null, saleLines));
+                header, kind.Value, warehouse.Value, priceList.Value, approval, SalesSettlement.Open, null, saleLines,
+                DeliveryDate: Delivery(header, context)));
         }
 
         var method = settlement switch
@@ -168,12 +169,17 @@ public sealed class MobileDocumentTranslator
             var payment = new CollectionPayment(method, header.ExpectedTotal, header.OccurredAt.Date, account.Code!);
             return new MobileTranslation(Sale: new SalesDocumentCommand(
                 header, kind.Value, warehouse.Value, priceList.Value, approval, SalesSettlement.Open, null, saleLines,
-                [payment], context.Series.Collection));
+                [payment], context.Series.Collection, Delivery(header, context)));
         }
 
         return new MobileTranslation(Sale: new SalesDocumentCommand(
-            header, kind.Value, warehouse.Value, priceList.Value, approval, settlement.Value, account.Code, saleLines));
+            header, kind.Value, warehouse.Value, priceList.Value, approval, settlement.Value, account.Code, saleLines,
+            DeliveryDate: Delivery(header, context)));
     }
+
+    /// <summary>The company's delivery offset applied to the document day; null when the company sets none.</summary>
+    private static DateTime? Delivery(ErpDocumentHeader header, ErpWriteContext context) =>
+        context.DeliveryDayOffset is { } days ? header.OccurredAt.Date.AddDays(days) : null;
 
     private static string SeriesFor(ErpWriteContext context, out SalesDocumentKind? kind)
     {
@@ -349,7 +355,9 @@ public sealed class MobileDocumentTranslator
             context.ErpUserNo.Value,
             series,
             Text(body, "description"),
-            amount.Value);
+            amount.Value,
+            Blank(context.ResponsibilityCenterCode),
+            Blank(context.ProjectCode));
     }
 
     /// <summary>Why <see cref="Header"/> returned null, in the order a person would fix it.</summary>
@@ -374,6 +382,8 @@ public sealed class MobileDocumentTranslator
         if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var withOffset)) return withOffset.DateTime;
         return null;
     }
+
+    private static string? Blank(string? code) => string.IsNullOrWhiteSpace(code) ? null : code.Trim();
 
     private static string Normalize(string? value) => (value ?? string.Empty).Trim().ToLower(Turkish);
 

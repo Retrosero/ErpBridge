@@ -127,6 +127,19 @@ public class MobileDocumentTranslatorTests
     }
 
     [Fact]
+    public void The_company_responsibility_center_project_and_delivery_offset_reach_the_command()
+    {
+        var context = Context(kind: "order") with { ResponsibilityCenterCode = "SM1", ProjectCode = " ", DeliveryDayOffset = 2 };
+
+        var sale = _sut.Translate("sales_order", "MOB-SO-1", Sale, context).Sale!;
+
+        sale.Header.ResponsibilityCenterCode.Should().Be("SM1");
+        sale.Header.ProjectCode.Should().BeNull("a blank code is no code");
+        sale.DeliveryDate.Should().Be(new DateTime(2026, 9, 19));
+        _sut.Translate("sales_order", "MOB-SO-1", Sale, Context()).Sale!.DeliveryDate.Should().BeNull();
+    }
+
+    [Fact]
     public void An_iso_date_keeps_the_phone_wall_clock_time()
     {
         var body = Sale.Replace("\"17.09.2026 10:15\"", "\"2026-09-17T10:15:30+03:00\"");

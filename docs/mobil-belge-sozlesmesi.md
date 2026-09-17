@@ -119,8 +119,12 @@ ERP'li firmada iade **satırlı** `sales_return` olarak gönderilir; ayrıca kas
   "series": { "order": "", "dispatch": "", "invoice": "T", "return": "", "collection": "" },
   "warehouseNo": 1, "cashCode": "001", "cardBankCode": "14", "transferBankCode": "04",
   "erpUserNo": 1, "salespersonCode": "PLS01", "priceListNo": 1,
-  "chequePortfolioCode": "ÇEK", "notePortfolioCode": "SENET", "createdByUsername": "plasiyer1"
+  "chequePortfolioCode": "ÇEK", "notePortfolioCode": "SENET", "createdByUsername": "plasiyer1",
+  "responsibilityCenterCode": null, "projectCode": null, "deliveryDayOffset": null
 }
 ```
+
+`responsibilityCenterCode` / `projectCode` belge başlığına (`ErpDocumentHeader`), `deliveryDayOffset` belge günü + gün
+olarak satış komutunun `DeliveryDate`'ine geçer (sipariş/irsaliye teslim tarihi; boşsa belge günü).
 
 C# karşılığı: `ErpBridge.Core.Jobs.ErpWriteContext`.

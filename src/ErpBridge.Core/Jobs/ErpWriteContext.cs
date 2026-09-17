@@ -19,7 +19,10 @@ public sealed record ErpWriteContext(
     int? PriceListNo,
     string ChequePortfolioCode,
     string NotePortfolioCode,
-    string? CreatedByUsername = null);
+    string? CreatedByUsername = null,
+    string? ResponsibilityCenterCode = null,
+    string? ProjectCode = null,
+    int? DeliveryDayOffset = null);
 
 /// <summary>Series per document kind; an empty series is the ERP's series-less numbering.</summary>
 public sealed record ErpWriteSeries(string Order, string Dispatch, string Invoice, string Return, string Collection);
