@@ -1,5 +1,7 @@
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.ChangeLog;
+using ErpBridge.Erp.Abstractions.Documents;
+using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Logo;
 using ErpBridge.Erp.Logo.ChangeLog;
 using ErpBridge.Erp.Sql;
@@ -23,6 +25,26 @@ public class SecondAdapterSeamTests
         IErpAdapter adapter = NewAdapter();
 
         adapter.Should().BeAssignableTo<IErpAdapter>();
+    }
+
+    /// <summary>
+    /// Phone documents (goal ERP yazım Y2a) were added to the contract with defaults, so an adapter
+    /// that has not implemented them compiles unchanged and refuses instead of writing half a document.
+    /// </summary>
+    [Fact]
+    public async Task An_adapter_without_phone_document_writers_refuses_them()
+    {
+        IErpAdapter adapter = NewAdapter();
+        var header = new ErpDocumentHeader("MOB-1", new DateTime(2026, 9, 17), "120.001", null, 1, "", null, 100m);
+
+        var results = new[]
+        {
+            await adapter.WriteSalesDocumentAsync(new SalesDocumentCommand(header, SalesDocumentKind.Invoice, 1, 1, OrderApprovalMode.Approved, SalesSettlement.Open, null, [])),
+            await adapter.WriteSalesReturnAsync(new SalesReturnCommand(header, 1, 1, ReturnSettlement.Open, null, [])),
+            await adapter.WriteCollectionDocumentAsync(new CollectionCommand(header, [])),
+        };
+
+        results.Should().OnlyContain(r => !r.Ok && r.ErrorCode == ErpWriteResult.ErrorCodeNotImplemented);
     }
 
     /// <summary>

@@ -36,6 +36,9 @@ public static class ErpWriteContextBuilder
             PriceListNo = settings.DefaultPriceListNo,
             ChequePortfolioCode = settings.ChequePortfolioCode,
             NotePortfolioCode = settings.NotePortfolioCode,
+            ResponsibilityCenterCode = Code(settings.ResponsibilityCenterCode),
+            ProjectCode = Code(settings.ProjectCode),
+            DeliveryDayOffset = settings.DeliveryDayOffset,
             CreatedByUsername = createdByUsername,
         };
     }

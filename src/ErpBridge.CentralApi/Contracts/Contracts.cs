@@ -99,6 +99,9 @@ public sealed class JobErpContextResponse
     [JsonPropertyName("priceListNo")] public int? PriceListNo { get; set; }
     [JsonPropertyName("chequePortfolioCode")] public string ChequePortfolioCode { get; set; } = Domain.ErpWriteSettings.DefaultChequePortfolioCode;
     [JsonPropertyName("notePortfolioCode")] public string NotePortfolioCode { get; set; } = Domain.ErpWriteSettings.DefaultNotePortfolioCode;
+    [JsonPropertyName("responsibilityCenterCode")] public string? ResponsibilityCenterCode { get; set; }
+    [JsonPropertyName("projectCode")] public string? ProjectCode { get; set; }
+    [JsonPropertyName("deliveryDayOffset")] public int? DeliveryDayOffset { get; set; }
     [JsonPropertyName("createdByUsername")] public string? CreatedByUsername { get; set; }
 }
 
