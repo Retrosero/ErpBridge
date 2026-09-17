@@ -36,6 +36,8 @@ public sealed class CentralApiDbContext : DbContext
     public DbSet<LogEvent> LogEvents => Set<LogEvent>();
     public DbSet<LogErrorGroup> LogErrorGroups => Set<LogErrorGroup>();
     public DbSet<LogSettings> LogSettings => Set<LogSettings>();
+    public DbSet<ErpWriteSettings> ErpWriteSettings => Set<ErpWriteSettings>();
+    public DbSet<MobileUserErpMapping> MobileUserErpMappings => Set<MobileUserErpMapping>();
     public DbSet<ChangeSetRecord> ChangeSets => Set<ChangeSetRecord>();
     public DbSet<MobileSyncQueueItem> MobileSyncQueue => Set<MobileSyncQueueItem>();
 
@@ -558,6 +560,34 @@ public sealed class CentralApiDbContext : DbContext
             b.HasKey(x => x.Id);
             b.Property(x => x.Id).ValueGeneratedNever();
             b.Property(x => x.UpdatedBy).HasMaxLength(120);
+        });
+
+        // Goal ERP yazım Y1a: how phone documents are written into the company's ERP.
+        modelBuilder.Entity<ErpWriteSettings>(b =>
+        {
+            b.ToTable("erp_write_settings");
+            b.HasKey(x => x.TenantId);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.Property(x => x.SalesDocumentKind).IsRequired().HasMaxLength(16).HasDefaultValue(SalesDocumentKinds.Order);
+            b.Property(x => x.OrderApprovalMode).IsRequired().HasMaxLength(16).HasDefaultValue(OrderApprovalModes.Approved);
+            foreach (var series in new[] { nameof(Domain.ErpWriteSettings.OrderSeries), nameof(Domain.ErpWriteSettings.DispatchSeries), nameof(Domain.ErpWriteSettings.InvoiceSeries), nameof(Domain.ErpWriteSettings.ReturnSeries), nameof(Domain.ErpWriteSettings.CollectionSeries) })
+                b.Property<string>(series).IsRequired().HasMaxLength(Domain.ErpWriteSettings.SeriesMaxLength).HasDefaultValue(string.Empty);
+            foreach (var code in new[] { nameof(Domain.ErpWriteSettings.DefaultCashCode), nameof(Domain.ErpWriteSettings.DefaultCardBankCode), nameof(Domain.ErpWriteSettings.DefaultTransferBankCode), nameof(Domain.ErpWriteSettings.DefaultSalespersonCode), nameof(Domain.ErpWriteSettings.ResponsibilityCenterCode), nameof(Domain.ErpWriteSettings.ProjectCode) })
+                b.Property<string?>(code).HasMaxLength(Domain.ErpWriteSettings.CodeMaxLength);
+            b.Property(x => x.ChequePortfolioCode).IsRequired().HasMaxLength(Domain.ErpWriteSettings.CodeMaxLength).HasDefaultValue(Domain.ErpWriteSettings.DefaultChequePortfolioCode);
+            b.Property(x => x.NotePortfolioCode).IsRequired().HasMaxLength(Domain.ErpWriteSettings.CodeMaxLength).HasDefaultValue(Domain.ErpWriteSettings.DefaultNotePortfolioCode);
+        });
+
+        modelBuilder.Entity<MobileUserErpMapping>(b =>
+        {
+            b.ToTable("mobile_user_erp_mappings");
+            b.HasKey(x => x.UserId);
+            b.HasOne(x => x.User).WithOne().HasForeignKey<MobileUserErpMapping>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.TenantId);
+            foreach (var code in new[] { nameof(MobileUserErpMapping.SalespersonCode), nameof(MobileUserErpMapping.CashCode), nameof(MobileUserErpMapping.CardBankCode), nameof(MobileUserErpMapping.TransferBankCode) })
+                b.Property<string?>(code).HasMaxLength(Domain.ErpWriteSettings.CodeMaxLength);
+            foreach (var series in new[] { nameof(MobileUserErpMapping.OrderSeries), nameof(MobileUserErpMapping.DispatchSeries), nameof(MobileUserErpMapping.InvoiceSeries), nameof(MobileUserErpMapping.ReturnSeries), nameof(MobileUserErpMapping.CollectionSeries) })
+                b.Property<string?>(series).HasMaxLength(Domain.ErpWriteSettings.SeriesMaxLength);
         });
 
         // Faz 13.1: ChangeSetRecord — per-table trigger-based change-set
