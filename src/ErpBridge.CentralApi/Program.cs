@@ -216,6 +216,9 @@ public partial class Program
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordBackfill>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Sync.MobileRecordRetention>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Mobile.MobileSeatService>();
+        // Log Merkezi: the single writer for log_events / log_error_groups.
+        builder.Services.AddScoped<ErpBridge.CentralApi.LogCenter.ILogEventWriter, ErpBridge.CentralApi.LogCenter.LogEventWriter>();
+        builder.Services.AddHostedService<ErpBridge.CentralApi.LogCenter.LogGroupBackfillWorker>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Team.TeamDocumentProcessor>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Approvals.ApprovalService>();

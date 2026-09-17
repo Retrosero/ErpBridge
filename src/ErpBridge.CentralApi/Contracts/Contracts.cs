@@ -177,6 +177,11 @@ public sealed class MobileTelemetryEventRequest
     [JsonPropertyName("httpStatus")] public int? HttpStatus { get; set; }
     [JsonPropertyName("correlationId")] public string? CorrelationId { get; set; }
     [JsonPropertyName("breadcrumbs")] public System.Text.Json.JsonElement? Breadcrumbs { get; set; }
+
+    // Log Merkezi (optional, newer phone builds). A signed-in user's token wins over deviceId.
+    [JsonPropertyName("deviceId")] public string? DeviceId { get; set; }
+    [JsonPropertyName("sessionId")] public string? SessionId { get; set; }
+    [JsonPropertyName("properties")] public System.Text.Json.JsonElement? Properties { get; set; }
 }
 
 public sealed class MobileTelemetryBatchResponse
