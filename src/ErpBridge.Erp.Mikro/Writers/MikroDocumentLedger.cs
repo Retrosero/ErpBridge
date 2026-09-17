@@ -44,6 +44,11 @@ public sealed class MikroDocumentLedger
     /// <inheritdoc cref="DocumentTypeMaxLength"/>
     public const int ExternalIdMaxLength = 128;
 
+    // Keys compare exactly like the central API's PostgreSQL index: a binary collation, because Mikro
+    // databases use case-insensitive Turkish collations where "order-1" and "ORDER-1" would collide
+    // (PR #77 Codex). SQL Server still ignores trailing spaces in any collation, so keys with
+    // surrounding whitespace are refused instead of silently matching another document.
+
     /// <summary>SQL Server error numbers for unique constraint/index violations.</summary>
     private static readonly int[] UniqueViolation = [2627, 2601];
 
@@ -59,8 +64,8 @@ IF OBJECT_ID(N'[dbo].[_ERPB_EVRAK_ESLESME]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[_ERPB_EVRAK_ESLESME] (
         [Id]            INT IDENTITY(1, 1) NOT NULL,
-        [DocumentType]  NVARCHAR(64)  NOT NULL,
-        [ExternalId]    NVARCHAR(128) NOT NULL,
+        [DocumentType]  NVARCHAR(64)  COLLATE Latin1_General_BIN2 NOT NULL,
+        [ExternalId]    NVARCHAR(128) COLLATE Latin1_General_BIN2 NOT NULL,
         [DocumentTable] NVARCHAR(50)  NOT NULL,
         [EvrakTip]      INT           NOT NULL,
         [EvrakSeri]     NVARCHAR(6)   NOT NULL,
@@ -101,6 +106,7 @@ VALUES (@DocumentType, @ExternalId, @DocumentTable, @EvrakTip, @EvrakSeri, @Evra
         SqlConnection connection, IDbTransaction? transaction, string documentType, string externalId, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(connection);
+        EnsureExactKey(documentType, externalId);
         return await connection.QuerySingleOrDefaultAsync<MikroLedgerEntry>(new CommandDefinition(
             FindSql, new { DocumentType = documentType, ExternalId = externalId }, transaction, cancellationToken: ct)).ConfigureAwait(false);
     }
@@ -116,6 +122,7 @@ VALUES (@DocumentType, @ExternalId, @DocumentTable, @EvrakTip, @EvrakSeri, @Evra
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(transaction);
         ArgumentNullException.ThrowIfNull(entry);
+        EnsureExactKey(entry.DocumentType, entry.ExternalId);
         try
         {
             await connection.ExecuteAsync(new CommandDefinition(InsertSql, entry, transaction, cancellationToken: ct)).ConfigureAwait(false);
@@ -124,6 +131,17 @@ VALUES (@DocumentType, @ExternalId, @DocumentTable, @EvrakTip, @EvrakSeri, @Evra
         catch (SqlException ex) when (UniqueViolation.Contains(ex.Number))
         {
             return false;
+        }
+    }
+
+    private static void EnsureExactKey(string documentType, string externalId)
+    {
+        foreach (var (name, value, max) in new[] { (nameof(documentType), documentType, DocumentTypeMaxLength), (nameof(externalId), externalId, ExternalIdMaxLength) })
+        {
+            if (string.IsNullOrEmpty(value) || value.Length > max || value.Trim().Length != value.Length)
+            {
+                throw new ArgumentException($"A ledger key must be 1-{max} characters without surrounding whitespace.", name);
+            }
         }
     }
 }

@@ -120,6 +120,17 @@ public class MikroDocumentLedgerLiveTests
                     .Should().BeFalse("the same mobile document is already written");
                 tx.Rollback();
             }
+
+            // Mikro's collation is case-insensitive; the central API's keys are not.
+            await using (var tx = conn.BeginTransaction())
+            {
+                (await _ledger.TryRecordAsync(conn, tx, Entry(committed.ToUpperInvariant())))
+                    .Should().BeTrue("a key differing only in case is another document");
+                (await _ledger.FindAsync(conn, tx, "SALES_ORDER", committed)).Should().BeNull();
+                tx.Rollback();
+            }
+            await _ledger.Invoking(l => l.FindAsync(conn, null, "sales_order", committed + " "))
+                .Should().ThrowAsync<ArgumentException>("SQL Server ignores trailing spaces, so they would match another key");
         }
         finally
         {
