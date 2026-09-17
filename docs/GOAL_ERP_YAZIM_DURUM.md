@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y3c — satış faturası yazıcısı
+**Şu anki görev:** Y3f — satış iadesi faturası
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -55,7 +55,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y3c | Satış faturası (açık + kapalı) | 🔄 | (Y3c PR; Y1/Y2 kapanınca birleşir) | `Writers/Documents/MikroSalesInvoiceWriter` + `MikroAdapter.WriteSalesDocumentAsync` (yalnız `Kind=Invoice`, ayrı tahsilatsız; sipariş/irsaliye/karma ödeme `NotImplemented`, Mikro'ya dokunmadan). Sıra: cari (satış), depo, temsilci, fiyat listesi KDV bayrağı, kapama hesabı (nakit → `kas_tip=0` kasa, kart/havale → banka), stok + KDV, fiyatlama + `TOTAL_MISMATCH`, numara (CHA 63 + STH 4 + açıklama), CHA başlık (`cha_uuid` büyük harf GUID, KDV kovaları, kapalıda `cha_cari_cins` 4/2, `cha_kod` kasa/banka, `cha_grupno` banka 1, `cha_ciro_cari_kodu` müşteri, `cha_aciklama` unvan 40), STH satırları (`sth_isk_mas1=0`, 2..10=1 — Mikro'nun kendi faturası gibi; saha kayıtlarında mas1=1 sapması kopyalanmadı), EVRAK_ACIKLAMALARI satırı her faturada (`egk_evr_doksayisi=1`, açıklama 127'lik parçalar). Serbest metin kolon genişliğine kırpılır (açıklama 40/50), kodlar kırpılmaz. DEMO canlı testleri transaction geri alınarak: açık/nakit/kart faturası — Mikro'nun kendi faturasında dolu her kolon dolu, NULL yok, açıkta cari bakiye toplam kadar artar, kapalıda değişmez; tutar farkı yazılmadan reddedilir. Birim 5 test |
 | Y3d | Sipariş | ⬜ | | |
 | Y3e | Satış irsaliyesi | ⬜ | | |
-| Y3f | Satış iadesi faturası | ⬜ | | |
+| Y3f | Satış iadesi faturası | 🔄 | (Y3f PR; Y1/Y2 kapanınca birleşir) | `Writers/Documents/MikroSalesReturnWriter` + `MikroAdapter.WriteSalesReturnAsync`: CHA 0/alacak/6/iade=1 (alış faturalarıyla aynı numara kapsamı: CHA 0 + STH 3 + açıklama 51/1/0), açık → müşteri; nakit → nakit kasası, banka → banka kapalı (`cha_tpoz=1`, D11; firmada kapalı iade örneği yok, faturadaki kapama biçimi uygulandı); STH 3/giriş/iade=1, kondisyon farkı `sth_iskonto1`, neden `sth_aciklama` (50); orijinal fatura bağlanmaz; açıklama satırı `egk_evr_doksayisi=0` (Mikro'nun iade kaydı gibi); cari hareket tipi 1 (yalnız satış) iadeyi reddeder; stokta satış engeli iadeyi engellemez. DEMO (geri alınarak): açık/nakit/banka — NULL yok, Mikro'nun iadesiyle kodlar aynı, açıkta cari bakiye toplam kadar azalır. Birim 4 |
 | Y3g | Tahsilat makbuzu (5 yöntem, tek evrak) | ⬜ | | |
 | Y3h | Karma ödemeli satış | ⬜ | | |
 | Y4a | Telefon satış gövdesi (liste fiyatı, iskontolar, fiyat listesi) | ⬜ | | |
