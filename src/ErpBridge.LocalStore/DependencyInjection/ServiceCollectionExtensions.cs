@@ -65,6 +65,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IAgentConfigStore, SqliteAgentConfigStore>();
         services.TryAddSingleton<ILocalQueueStore, SqliteLocalQueueStore>();
         services.TryAddSingleton<ICheckpointStore, SqliteCheckpointStore>();
+        services.TryAddSingleton<ErpBridge.Core.Logging.IAgentLogOutbox, SqliteAgentLogOutbox>();
 
         return services;
     }

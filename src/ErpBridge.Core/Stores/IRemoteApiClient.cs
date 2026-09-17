@@ -67,6 +67,14 @@ public interface IRemoteApiClient
     /// </summary>
     Task SendAgentTelemetryAsync(AgentTelemetryEvent telemetry, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    /// <summary>
+    /// Log Merkezi L3c: send a batch of masked agent log lines (<c>POST /api/v1/agents/logs/batch</c>).
+    /// <paramref name="hostKind"/> is <c>service</c> or <c>ui</c>. Throws when the server did not accept the batch,
+    /// so the caller keeps it in the outbox.
+    /// </summary>
+    Task SendAgentLogsAsync(string hostKind, IReadOnlyList<ErpBridge.Core.Logging.AgentLogEvent> events, CancellationToken ct = default)
+        => Task.CompletedTask;
 }
 
 public sealed record BootstrapRemoteStatus(bool HasSnapshot, DateTimeOffset? LastPulledAtUtc);

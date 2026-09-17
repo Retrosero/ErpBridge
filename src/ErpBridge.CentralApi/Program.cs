@@ -678,6 +678,7 @@ public partial class Program
         app.MapAdminTelemetryEndpoints();
         app.MapAdminLogEndpoints();
         app.MapInternalLogEndpoints();
+        app.MapAgentLogEndpoints();
         app.MapAdminMobileSeatsEndpoints();
     }
 

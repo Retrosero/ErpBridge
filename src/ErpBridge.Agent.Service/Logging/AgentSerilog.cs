@@ -1,5 +1,6 @@
 using System.IO;
 using ErpBridge.Core.Logging;
+using Serilog.Core;
 using ErpBridge.Shared;
 using Microsoft.Extensions.Configuration;
 using Serilog;
@@ -19,9 +20,12 @@ public static class AgentSerilog
 {
     public const string OutputTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
 
-    public static LoggerConfiguration Configure(LoggerConfiguration logger, IConfiguration configuration, string fileStem, int retainedDays = 14)
+    /// <param name="ship">Buffer that feeds the Log Merkezi (warning+ lines and lines marked <c>ShipToLogCenter</c>); null ships nothing.</param>
+    public static LoggerConfiguration Configure(LoggerConfiguration logger, IConfiguration configuration, string fileStem, int retainedDays = 14,
+        AgentLogBuffer? ship = null)
     {
         var formatter = new MaskingTextFormatter(new MessageTemplateTextFormatter(OutputTemplate));
+        if (ship is not null) logger = logger.WriteTo.Sink(new AgentLogBufferSink(ship));
         return ApplyLevels(logger, configuration)
             .Enrich.FromLogContext()
             .WriteTo.Console(formatter)
@@ -70,4 +74,52 @@ public sealed class MaskingTextFormatter(ITextFormatter inner) : ITextFormatter
         inner.Format(logEvent, buffer);
         output.Write(ConnectionStringMasker.MaskSecrets(buffer.ToString()));
     }
+}
+
+/// <summary>
+/// Log Merkezi L3c: hands warning+ log events (and information events carrying <c>ShipToLogCenter = true</c>) to
+/// <see cref="AgentLogBuffer"/>. The shipper's own category, HTTP client/Polly chatter and the desktop app's global
+/// exception hooks (reported directly) are not shipped.
+/// </summary>
+public sealed class AgentLogBufferSink(AgentLogBuffer buffer) : ILogEventSink
+{
+    public const string ShipProperty = "ShipToLogCenter";
+
+    private static readonly string[] ExcludedCategories = ["ErpBridge.Core.Logging", "App.Bootstrap", "System.Net.Http.HttpClient", "Polly"];
+
+    /// <summary>Structured values that may travel with the line: codes, counts and names — never business data.</summary>
+    private static readonly string[] CopiedProperties = ["ErrorCode", "Code", "DurationMs", "Section", "Table", "DocumentType", "JobId", "Status", "Attempt"];
+
+    public void Emit(LogEvent logEvent)
+    {
+        var marked = logEvent.Properties.TryGetValue(ShipProperty, out var ship) && ship is ScalarValue { Value: true };
+        if (logEvent.Level < LogEventLevel.Warning && !marked) return;
+
+        var category = Scalar(logEvent, "SourceContext") ?? string.Empty;
+        if (ExcludedCategories.Any(prefix => category.StartsWith(prefix, StringComparison.Ordinal))) return;
+
+        var entry = new AgentLogEvent
+        {
+            OccurredAtUtc = logEvent.Timestamp.ToUniversalTime(),
+            Severity = logEvent.Level switch
+            {
+                LogEventLevel.Verbose or LogEventLevel.Debug => "DEBUG",
+                LogEventLevel.Information => "INFO",
+                LogEventLevel.Warning => "WARN",
+                LogEventLevel.Error => "ERROR",
+                _ => "FATAL",
+            },
+            Kind = Scalar(logEvent, "Kind") ?? AgentLogBuffer.DefaultKind,
+            Category = category,
+            Operation = Scalar(logEvent, "Operation") ?? category,
+            Message = logEvent.RenderMessage(),
+            CorrelationId = Scalar(logEvent, "CorrelationId"),
+        };
+        foreach (var name in CopiedProperties)
+            if (Scalar(logEvent, name) is { } value) entry.Properties[name] = value;
+        buffer.Add(entry, logEvent.Exception);
+    }
+
+    private static string? Scalar(LogEvent logEvent, string name) =>
+        logEvent.Properties.TryGetValue(name, out var value) && value is ScalarValue { Value: { } raw } ? raw.ToString() : null;
 }

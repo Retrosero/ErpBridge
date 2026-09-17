@@ -60,6 +60,8 @@ public partial class App : Application
     private IDesktopSignalService? _signalService;
     private DesktopHeartbeatService? _heartbeatService;
     private DesktopBackgroundSyncService? _backgroundSync;
+    private CancellationTokenSource? _logShipping;
+    private Task? _logShippingTask;
     private IDesktopClockService? _clockService;
     private System.Windows.Threading.DispatcherTimer? _heartbeatTimer;
     private DateTime _lastHeartbeatNotification = DateTime.MinValue;
@@ -231,6 +233,11 @@ public partial class App : Application
         _heartbeatService = _services.GetRequiredService<DesktopHeartbeatService>();
         _heartbeatService.Start();
 
+        // Log Merkezi L3c: warning+ log lines → SQLite outbox → central API, on its own background task.
+        var shipper = _services.GetRequiredService<ErpBridge.Core.Logging.AgentLogShipper>();
+        _logShipping = new CancellationTokenSource();
+        _logShippingTask = Task.Run(() => shipper.RunAsync(_logShipping.Token));
+
         // Periodic sync. Until this existed the desktop agent pushed a
         // change-set only when the operator clicked a button, so ERP edits
         // reached the mobile clients at human cadence or not at all.
@@ -278,6 +285,23 @@ public partial class App : Application
             }
             _backgroundSync.Dispose();
             _backgroundSync = null;
+        }
+
+        if (_logShipping is not null)
+        {
+            try
+            {
+                _logShipping.Cancel();
+                _logShippingTask?.Wait(TimeSpan.FromSeconds(2));
+                using var flush = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                _services?.GetService<ErpBridge.Core.Logging.AgentLogShipper>()?.FlushOnceAsync(flush.Token).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Log shipping stop failed: {ex.Message}");
+            }
+            _logShipping.Dispose();
+            _logShipping = null;
         }
 
         if (_signalService is not null)
@@ -604,7 +628,8 @@ public partial class App : Application
             System.IO.File.AppendAllText(selfLogPath,
                 $"[{DateTime.Now:HH:mm:ss.fff}] {msg}{Environment.NewLine}"));
 
-        var serilog = ErpBridge.Agent.Logging.AgentSerilog.Configure(new LoggerConfiguration(), bootstrapConfig, "ui")
+        var serilog = ErpBridge.Agent.Logging.AgentSerilog.Configure(new LoggerConfiguration(), bootstrapConfig, "ui",
+                ship: ErpBridge.Core.Logging.AgentLogBuffer.Shared)
             .CreateLogger();
 
         // Log.Logger'ı set etmeden dosya sink kurulmuş olsa bile, uygulama
