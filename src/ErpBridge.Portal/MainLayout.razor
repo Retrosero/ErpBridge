@@ -89,6 +89,10 @@
                         {
                             <MudNavLink Href="kullanicilar" Icon="@Icons.Material.Rounded.ManageAccounts">Kullanıcılar</MudNavLink>
                         }
+                        @if (Session.Allows(PortalArea.ErpWrite) && string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <MudNavLink Href="erp-aktarim" Icon="@Icons.Material.Rounded.SyncAlt" id="nav-erp-write">ERP aktarım ayarları</MudNavLink>
+                        }
                     </MudNavMenu>
                 }
             </nav>
