@@ -650,6 +650,7 @@ public partial class Program
         app.MapBootstrapUploadEndpoints();
         app.MapBootstrapNotifyEndpoints();
         app.MapIngestEndpoints();
+        app.MapDocumentStatusEndpoints();
         app.MapChangeSetEndpoints();
         app.MapChangeSetAndroidEndpoints();
         app.MapMobileSyncPullEndpoints();

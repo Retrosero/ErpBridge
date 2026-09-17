@@ -139,3 +139,40 @@ public sealed class WebhookDeliveryDto
     [JsonPropertyName("nextRetryAtUtc")] public DateTimeOffset? NextRetryAtUtc { get; set; }
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
 }
+
+/// <summary>
+/// GET <c>/api/v1/ingest/jobs/status</c> response: where each document the phone sent stands in the ERP
+/// (goal ERP yazım Y4d). Unknown ids are left out.
+/// </summary>
+public sealed class DocumentStatusResponse
+{
+    [JsonPropertyName("documents")] public List<DocumentStatusDto> Documents { get; set; } = [];
+}
+
+/// <summary>One document's ERP write state.</summary>
+public sealed class DocumentStatusDto
+{
+    [JsonPropertyName("externalId")] public string ExternalId { get; set; } = string.Empty;
+    [JsonPropertyName("documentType")] public string DocumentType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// <c>pending</c> (queued or being written), <c>retrying</c> (the ERP was unreachable; tried again later),
+    /// <c>written</c> or <c>failed</c> (will not be tried again).
+    /// </summary>
+    [JsonPropertyName("state")] public string State { get; set; } = string.Empty;
+
+    /// <summary>The ERP document number, <c>series-number</c> (or the number alone), once written.</summary>
+    [JsonPropertyName("erpDocumentNo")] public string? ErpDocumentNo { get; set; }
+
+    /// <summary>The agent's error code (<c>ErpWriteError</c>) for a failed or retrying document.</summary>
+    [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
+
+    /// <summary>The reason in Turkish, as the agent reported it.</summary>
+    [JsonPropertyName("message")] public string? Message { get; set; }
+
+    /// <summary>How many times the agent took the document.</summary>
+    [JsonPropertyName("attempt")] public int Attempt { get; set; }
+
+    /// <summary>Unix ms of the next try, for a retrying document.</summary>
+    [JsonPropertyName("nextAttemptAtMs")] public long? NextAttemptAtMs { get; set; }
+}
