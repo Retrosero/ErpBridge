@@ -72,9 +72,11 @@ public class HeartbeatTests : IClassFixture<CentralApiFactory>
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         using var db = _factory.CreateDbContext();
-        var stored = await db.MobileTelemetryEvents.SingleAsync(row => row.EventId == eventId.ToString());
+        var stored = await db.LogEvents.SingleAsync(row => row.EventId == eventId.ToString());
         stored.TenantId.Should().Be(tenant.Id);
-        stored.Kind.Should().Be("desktop_exception");
+        stored.Kind.Should().Be("DESKTOP_EXCEPTION");
+        stored.AgentId.Should().Be(agent.Id);
+        db.MobileTelemetryEvents.Should().BeEmpty("the legacy table is no longer written (Log Merkezi L1c)");
         stored.DeviceModel.Should().Be("MACHINE-TELEMETRY-001");
     }
 

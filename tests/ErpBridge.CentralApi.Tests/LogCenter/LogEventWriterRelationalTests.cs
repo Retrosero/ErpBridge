@@ -241,7 +241,7 @@ public sealed class LogEventWriterRelationalTests : IClassFixture<SqliteCentralA
         row.FingerprintId.Should().NotBeNull();
 
         using var db = _factory.CreateDbContext();
-        (await db.MobileTelemetryEvents.CountAsync(e => e.EventId == eventId)).Should().Be(1, "the legacy table keeps receiving events until the L1c cutover");
+        (await db.MobileTelemetryEvents.CountAsync(e => e.EventId == eventId)).Should().Be(0, "since the L1c cutover only log_events is written");
     }
 
     [Fact]

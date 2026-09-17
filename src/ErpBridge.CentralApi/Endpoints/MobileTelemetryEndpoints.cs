@@ -34,7 +34,6 @@ public static class MobileTelemetryEndpoints
         HttpContext http,
         CentralApiDbContext db,
         ILogEventWriter logWriter,
-        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (body?.Events is not { Count: > 0 })
@@ -56,35 +55,24 @@ public static class MobileTelemetryEndpoints
         if (!allowed)
             return JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError { ErrorCode = "MOBILE_TELEMETRY_SCOPE_REQUIRED", Message = "API key requires the mobile:telemetry scope." });
 
-        var eventIds = body.Events.Select(e => e.EventId?.Trim()).Where(id => !string.IsNullOrWhiteSpace(id)).Cast<string>().Distinct(StringComparer.Ordinal).ToArray();
-        var existing = await db.MobileTelemetryEvents.AsNoTracking().Where(e => e.TenantId == tenantId && eventIds.Contains(e.EventId)).Select(e => e.EventId).ToListAsync(ct);
-        var known = existing.ToHashSet(StringComparer.Ordinal);
-        var accepted = 0;
-        foreach (var source in body.Events)
-        {
-            var eventId = source.EventId?.Trim();
-            if (string.IsNullOrWhiteSpace(eventId) || eventId.Length > 64 || !Guid.TryParse(eventId, out _) || !known.Add(eventId))
-                continue;
-            db.MobileTelemetryEvents.Add(ToEntity(source, tenantId, eventId));
-            accepted++;
-        }
-        if (accepted > 0) await db.SaveChangesAsync(ct);
-        await CopyToLogCenterAsync(body.Events, http, tenantId, logWriter, loggerFactory, ct);
+        // Log Merkezi L1c: log_events is the only store. A failure here is a real 5xx — the phone keeps the
+        // batch and retries — not something to swallow as before, when the legacy table was the source of truth.
+        var inputs = ToLogInputs(body.Events, http, tenantId);
+        var result = inputs.Count == 0 ? new LogWriteResult(0, 0) : await logWriter.WriteAsync(inputs, ct);
+        var accepted = result.Accepted;
         return JsonResults.Ok(new MobileTelemetryBatchResponse { Accepted = accepted, Duplicate = body.Events.Count - accepted });
     }
 
     /// <summary>
-    /// Log Merkezi (L0d): the same events also go to <c>log_events</c>, with the user and device taken from a
-    /// signed-in token. The legacy table above stays the response's source of truth; a failure here is
-    /// logged and never fails the phone's upload (the phone would retry the batch forever).
+    /// The phone's events as log centre input; the user and device come from a signed-in token (an API-key session
+    /// may send <c>deviceId</c>). Events without a GUID id are dropped, as they always were.
     /// </summary>
-    private static async Task CopyToLogCenterAsync(IReadOnlyList<MobileTelemetryEventRequest> events, HttpContext http, Guid tenantId,
-        ILogEventWriter logWriter, ILoggerFactory loggerFactory, CancellationToken ct)
+    private static List<LogEventInput> ToLogInputs(IReadOnlyList<MobileTelemetryEventRequest> events, HttpContext http, Guid tenantId)
     {
         var mobileUser = ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User);
         Guid? userId = mobileUser && Guid.TryParse(http.User.FindFirst("sub")?.Value, out var parsedUser) ? parsedUser : null;
         var tokenDevice = mobileUser ? http.User.FindFirst(CentralApiClaims.DeviceId)?.Value : null;
-        var inputs = events
+        return events
             .Where(source => source.EventId?.Trim() is { Length: > 0 and <= 64 } id && Guid.TryParse(id, out _))
             .Select(source => new LogEventInput
             {
@@ -113,30 +101,7 @@ public static class MobileTelemetryEndpoints
                 BreadcrumbsJson = source.Breadcrumbs is { ValueKind: JsonValueKind.Array } breadcrumbs ? breadcrumbs.GetRawText() : null,
             })
             .ToList();
-        if (inputs.Count == 0) return;
-        try
-        {
-            await logWriter.WriteAsync(inputs, ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            loggerFactory.CreateLogger(typeof(MobileTelemetryEndpoints)).LogWarning(ex, "Copying {Count} phone telemetry events to the log centre failed.", inputs.Count);
-        }
     }
-
-    private static MobileTelemetryEvent ToEntity(MobileTelemetryEventRequest source, Guid tenantId, string eventId) => new()
-    {
-        TenantId = tenantId,
-        EventId = eventId,
-        OccurredAtUtc = source.OccurredAtUtc ?? DateTimeOffset.UtcNow,
-        ReceivedAtUtc = DateTimeOffset.UtcNow,
-        Kind = Bound(source.Kind, 32), Severity = Bound(source.Severity, 16), AppVersion = Bound(source.AppVersion, 64),
-        AndroidVersion = Bound(source.AndroidVersion, 32), DeviceModel = Bound(source.DeviceModel, 128), Screen = Bound(source.Screen, 120),
-        Operation = Bound(source.Operation, 120), ExceptionType = Bound(source.ExceptionType, 160), Message = Bound(source.Message, 1000),
-        StackTrace = Bound(source.StackTrace, 4000), HttpMethod = NullOrBound(source.HttpMethod, 16), HttpRoute = NullOrBound(source.HttpRoute, 300),
-        HttpStatus = source.HttpStatus is >= 100 and <= 599 ? source.HttpStatus : null, CorrelationId = NullOrBound(source.CorrelationId, 128),
-        BreadcrumbsJson = SerializeBreadcrumbs(source.Breadcrumbs),
-    };
 
     private static string Bound(string? value, int max)
     {

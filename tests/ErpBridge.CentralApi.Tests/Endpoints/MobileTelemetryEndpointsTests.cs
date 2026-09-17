@@ -29,7 +29,7 @@ public sealed class MobileTelemetryEndpointsTests : IClassFixture<CentralApiFact
         (await client.PostAsJsonAsync("/api/v1/mobile/telemetry/batch", payload)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         using var db = _factory.CreateDbContext();
-        var saved = await db.MobileTelemetryEvents.Where(row => row.TenantId == tenant.Id).ToListAsync();
+        var saved = await db.LogEvents.Where(row => row.TenantId == tenant.Id).ToListAsync();
         saved.Should().ContainSingle();
         saved[0].EventId.Should().Be(eventId);
         saved[0].Operation.Should().Be("load_reports");
