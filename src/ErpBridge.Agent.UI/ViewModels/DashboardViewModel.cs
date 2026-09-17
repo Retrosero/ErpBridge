@@ -8,6 +8,7 @@ using System.Windows.Media;
 using ErpBridge.Agent.UI.DependencyInjection;
 using ErpBridge.Core.Authentication;
 using ErpBridge.Core.Domain;
+using ErpBridge.Core.Logging;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.Sync;
@@ -39,6 +40,7 @@ public sealed class DashboardViewModel : ObservableObject
     private readonly IAgentConfigStore _configStore;
     private readonly IErpAdapterFactory _adapterFactory;
     private readonly IAgentTokenService _tokens;
+    private readonly IAgentLogReporter _logReporter;
     private readonly ILogger<DashboardViewModel> _logger;
 
     private string _lastSyncAtDisplay = "Henüz senkronizasyon yapılmamış";
@@ -90,6 +92,7 @@ public sealed class DashboardViewModel : ObservableObject
         IAgentConfigStore configStore,
         IErpAdapterFactory adapterFactory,
         IAgentTokenService tokens,
+        IAgentLogReporter logReporter,
         ILogger<DashboardViewModel> logger)
     {
         _bootstrap = bootstrap ?? throw new ArgumentNullException(nameof(bootstrap));
@@ -99,6 +102,7 @@ public sealed class DashboardViewModel : ObservableObject
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _adapterFactory = adapterFactory ?? throw new ArgumentNullException(nameof(adapterFactory));
         _tokens = tokens ?? throw new ArgumentNullException(nameof(tokens));
+        _logReporter = logReporter ?? throw new ArgumentNullException(nameof(logReporter));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         RefreshCommand = new AsyncRelayCommand(_ => RefreshAsync());
@@ -551,6 +555,9 @@ public sealed class DashboardViewModel : ObservableObject
 
             _logger.LogInformation("Step 1: running change-set sync.");
             var result = await _changeSet.RunOnceAsync().ConfigureAwait(true);
+            // Log Merkezi L3e: an operator-triggered round counts as much as a timer one — more, actually,
+            // because someone was watching when it went wrong.
+            await _logReporter.ReportAsync(AgentSyncRound.Triggers.Manual, result).ConfigureAwait(true);
             _logger.LogInformation(
                 "Step 2: RunOnceAsync returned. Success={Success}, Tables={Tables}, Upserts={Upserts}, Deletes={Deletes}, DurationMs={Duration}.",
                 result.Success, result.TablesTouched, result.UpsertRowsPushed,
@@ -658,6 +665,7 @@ public sealed class DashboardViewModel : ObservableObject
 
             await _bootstrap.InvalidateAsync().ConfigureAwait(true);
             var result = await _bootstrap.RebuildSnapshotAsync().ConfigureAwait(true);
+            await _logReporter.ReportAsync(AgentSyncRound.Triggers.Manual, result).ConfigureAwait(true);
             _logger.LogInformation(
                 "Snapshot rebuild returned. Success={Success}, Customers={Customers}, Stocks={Stocks}, DurationMs={Duration}.",
                 result.Success, result.CustomersCount, result.StocksCount, result.DurationMs);
@@ -727,6 +735,7 @@ public sealed class DashboardViewModel : ObservableObject
 
             _logger.LogInformation("Step 2: running RunOnceAsync.");
             var result = await _bootstrap.RunOnceAsync().ConfigureAwait(true);
+            await _logReporter.ReportAsync(AgentSyncRound.Triggers.Manual, result).ConfigureAwait(true);
             _logger.LogInformation(
                 "Step 3: RunOnceAsync returned. Success={Success}, Customers={Customers}, Stocks={Stocks}, DurationMs={Duration}.",
                 result.Success, result.CustomersCount, result.StocksCount, result.DurationMs);
@@ -828,6 +837,8 @@ public sealed class DashboardViewModel : ObservableObject
             }
 
             var result = await _bootstrap.PushSectionAsync(sectionName).ConfigureAwait(true);
+            await _logReporter.ReportAsync(AgentSyncRound.Triggers.Manual, result,
+                AgentSyncRound.Modes.Section, sectionName).ConfigureAwait(true);
             _logger.LogInformation(
                 "PushSectionAsync({Section}) returned. Success={Success}, DurationMs={Duration}.",
                 sectionName, result.Success, result.DurationMs);
