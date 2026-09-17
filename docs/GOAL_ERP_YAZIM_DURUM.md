@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y4, Y5 bitti)
+Son güncelleme: 2026-09-17 (Y0–Y6 bitti)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -18,9 +18,9 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y3 — Mikro V15 writer'ları | 8 | 8 | ✅ |
 | Y4 — Sipariş Cepte | 7 | 7 | ✅ |
 | Y5 — İzleme ve operasyon | 2 | 2 | ✅ |
-| Y6 — Kapanış | 3 | 2 | 🔄 |
+| Y6 — Kapanış | 3 | 3 | ✅ |
 
-**Şu anki görev:** Y6c — Seni Bekleyenler son hâli
+**Şu anki görev:** — (goal'ün kod görevleri bitti; kalanlar "Seni Bekleyenler"de)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -69,7 +69,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5b | Admin iş ayrıntısı + log olayları | ✅ | [#100](https://github.com/Retrosero/ErpBridge/pull/100) | Admin iş listesi `nextAttemptAtUtc`, `leasedUntilUtc`; ayrıntı ek olarak gönderen, `retryable` (son ack `retry`), son hata kodu, ERP belge no, tüm ajan sonuçları, ajanın şimdi alacağı `erpContext` (`ErpWriteContextBuilder` ile aynı birleştirme). **Log Merkezi:** L3c birleşmediği için sunucu yolu — ajan `failed` ack'inde `windows_agent` / `ERP_WRITE_FAILED` (ERROR), yeniden denenebilirde `ERP_WRITE_RETRY` (WARN), `erp.write.<tür>`, özelliklerde iş/belge kimliği; log yazımı hata verirse ack etkilenmez. Yan düzeltme: Admin "Tekrar dene" düğmesi sunucunun `Failed` yazımı yüzünden hiç görünmüyordu |
 | Y6a | KB ve sözleşme belgeleri | ✅ | [#101](https://github.com/Retrosero/ErpBridge/pull/101) | KB 00 kural 26 (tek yol çevirici, `erpContext` kiralamada, idempotency `_ERPB_EVRAK_ESLESME`, tutar sözleşmesi, görünürlük, yazma testleri yalnız izinli kopyada, Dapper kolon sırası); 01 uçtan uca akış + izleme; 02 seriler Portal'da / sıra ajanda / e-belge ayrımı bu goal'de yok (K15); 03 `job_acks` durumları, iki yeniden dene farkı, `ERP_WRITE_*` log türleri; `docs/api-contracts.md` jobs/pending-ack alanları, `/ingest/jobs/status`, Portal ERP uçları, Admin iş ayrıntısı. Sipariş Cepte KB her telefon PR'ında güncellendi (01 §1.1, 03 §2 ve §4.x). Tablo şeması (`erp_write_settings`, `mobile_user_erp_mappings`, `jobs` kolonları) Y1a/Y1e'de 03'e yazılmıştı |
 | Y6b | Yerel uçtan uca duman testi (DEMO) | ✅ | #102 | Ayrıntı aşağıda "Y6b duman testi". **Bulunan ve bu PR'da düzeltilen iki hata:** (1) sunucu ERP'li firmada `sales_return`'ü 409 `DOCUMENT_REQUIRES_NATIVE_TENANT` ile reddediyordu (Faz 36 kuralı) — telefon Y4b'den beri iadeyi böyle gönderdiği için hiçbir iade Mikro'ya ulaşmazdı; telefon belgesi (`mobileDocumentId`) artık kabul, eski gövde ve `purchase_receipt` reddediliyor (ingest ve onay merkezi). (2) Portal özeti ERP'li firmada iadeyi yalnız kasa defteri `return`'ünden sayıyordu; artık `sales_return` da sayılır |
-| Y6c | Seni Bekleyenler son hâli | ⬜ | | |
+| Y6c | Seni Bekleyenler son hâli | ✅ | #103 | Canlıya alma sırası: lisans → muhasebeci kontrolü (DEMO `Y6B`) → Portal ayarları → yeni ajan → Sipariş Cepte 1.5.237; karar bekleyenler ayrı |
 
 ---
 
@@ -112,9 +112,32 @@ HTTP çağrıları). Firma `erp`, kullanıcı `ali` (SALES) belgeleri gönderdi,
 
 ## Seni Bekleyenler
 
-- **Acil — ajan lisansı:** bu bilgisayardaki ErpBridge Agent UI'yi açıp Ayarlar'da lisans anahtarını yeniden girin (Admin → Lisanslar, kiracı 83fb05bf-…). Y6b duman testinde yanlışlıkla silindi; diğer ayarlar geri yüklendi. Yedek: `C:\Temp\y6b\agent-live-after-accident.db`.
-- **Sipariş Cepte 1.5.237 (versionCode 237):** release AAB'yi oluşturup Play **internal** kanalına yükle (ERP yazım Y4: satış/iade/tahsilat gövdesi v2, Mikro ile aynı toplam, yazım sonucu, çift görünme önleme). Önkoşul sunucu uçları canlıda.
-- **Yeni ajan sürümü** müşteri PC'sine: projeksiyon sürümü 4 (stok KDV oranı, fiyat listesi `kdvDahil`) — ajan anlık görüntüyü bir kez kendisi yeniden kurar.
-- Y0e birleşince: müşteri PC'lerine yeni ajan sürümünün kurulması (ajan okuma biçimi sürümünü görüp anlık görüntüyü bir kez kendisi yeniden kurar).
-- Y3 sonunda `MikroDB_V15_DEMO`'ya yazılan evrakların Mikro ekranında muhasebeci kontrolü.
-- `MikroDB_V15_ERPBTEST` artık kullanılmıyor — silinmesini istersen söyle.
+Goal'ün bütün kod görevleri bitti. Kalan adımlar insan kararı veya bu bilgisayarda olmayan erişim ister; **sıra önemlidir**.
+
+### Hemen
+1. **Ajan lisansını yeniden girin (bu bilgisayar):** ErpBridge Agent UI → Ayarlar → lisans anahtarı (Admin panel → Lisanslar,
+   kiracı `83fb05bf-b540-4086-9130-dd5e5018c94c`). Y6b duman testi sırasında yanlışlıkla silindi; sunucu adresi, `GURBUZ` /
+   `MikroDB_V15_02`, firma 1 / şube 1, Windows kimlik doğrulaması geri yüklendi. Kaza öncesi dosyanın kopyası yok; kaza sonrası
+   kopya `C:\Temp\y6b\agent-live-after-accident.db`.
+
+### Canlıya almadan önce (bu sırayla)
+2. **Muhasebeci kontrolü — Mikro ekranında `MikroDB_V15_DEMO`:** `Y6B` serili evraklar — satış faturaları Y6B-1…6 (1 açık,
+   2 nakit, 3 kart, 4 havale kapalı; 5 karma ödemeli açık; 6 ajan yeniden başlatma testi), sipariş Y6B-1, irsaliye Y6B-1, iade
+   faturaları Y6B-1…3 (cari / nakit / banka), tahsilat makbuzları Y6B-1…3 (3 = nakit, kart, havale, çek, senet). Bakılacaklar:
+   tutar ve iskonto, cari/kasa/banka bakiyesi, kapalı faturanın müşteriye bağlanması, çek/senet portföyü ve vadeler, sipariş
+   onayı. DEMO'da stoklar %0 KDV olduğundan KDV'li bir satışı Mikro'da ayrıca deneyip bakmak iyi olur.
+3. **Portal'da canlı firma ayarları** ("ERP aktarım ayarları"): satış türü **Fatura**, seriler (gerekirse plasiyer başına
+   Kullanıcılar → Mikro karşılıkları), varsayılan kasa, kart ve havale bankası, depo, fiyat listesi, ERP kullanıcı no, çek/senet
+   portföy kasaları. Ayar eksikse belge "Hata: Portal'da … eşlemesi eksik" olarak görünür, Mikro'ya bir şey yazılmaz.
+4. **Yeni ajan sürümünü müşteri PC'sine kurun** (ayrı onay: canlı `MikroDB_V15_02`'ye yazmaya başlar). Ajan okuma biçimi
+   sürümünü (projeksiyon 4: stok KDV oranı, fiyat listesi `kdvDahil`, kapalı fatura müşterisi, iade sınıfı) görüp anlık
+   görüntüyü bir kez kendisi yeniden kurar; "Sıfırdan Kur" gerekmez. `Directory.Build.props` `VersionPrefix`'i artırarak derleyin.
+5. **Sipariş Cepte 1.5.237 (versionCode 237):** release AAB'yi oluşturup Play **internal** kanalına yükleyin; ajan (4) kurulup
+   ayarlar (3) girildikten sonra dağıtın — eski ajan yeni gövdeyi yazamaz. Sunucu tarafı (durum ucu, telefon iadesi kabulü)
+   Coolify'da canlı.
+
+### Karar bekleyenler
+6. **e-Fatura / e-Arşiv / e-İrsaliye:** telefon belgesi Mikro'ya e-belge ayrımı yapılmadan yazılıyor (K15); e-belge ofisten
+   düzenlenir. Telefonda e-belge mükellefini ayırıp bilgi fişi basmak ayrı bir goal.
+7. **`MikroDB_V15_ERPBTEST`** (ilk test kopyası, Mikro'dan açılamadı) kullanılmıyor — silinmesini isterseniz söyleyin.
+8. **Codex incelemesi:** #95–#102 ve siparis_cepte#70–#75 kota nedeniyle Codex'e gönderilmedi; isterseniz toplu inceleme istenebilir.
