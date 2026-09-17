@@ -73,6 +73,11 @@ else
                                         <td class="nowrap">@(user.LastLoginAtUtc is { } at ? Fmt.Time(at) : "—")</td>
                                         <td><span class="badge @(user.IsActive ? "badge--ok" : "badge--off")">@(user.IsActive ? "Aktif" : "Pasif")</span></td>
                                         <td class="num nowrap">
+                                            @if (IsErpCompany)
+                                            {
+                                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="erp-btn"
+                                                           OnClick="() => StartMappingAsync(user)">Mikro</MudButton>
+                                            }
                                             @if (!self)
                                             {
                                                 <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="roles-btn"
@@ -93,6 +98,45 @@ else
 
             <MudItem xs="12" lg="4">
                 <div class="side-stack">
+                    @if (_mappingUser is not null && _mapping is not null)
+                    {
+                        <MudPaper Outlined="true" Class="panel" id="user-erp-edit">
+                            <div class="panel-head">
+                                <div>
+                                    <MudText Typo="Typo.h6">Mikro karşılıkları</MudText>
+                                    <MudText Typo="Typo.body2" Class="text-muted">@_mappingUser.FullName · @_mappingUser.Username</MudText>
+                                </div>
+                                <MudIcon Icon="@Icons.Material.Rounded.SyncAlt" Color="Color.Primary" />
+                            </div>
+                            <MudText Typo="Typo.caption" Class="text-muted panel-note">Boş bırakılan alanda firmanın ERP aktarım ayarındaki değer kullanılır.</MudText>
+                            <form class="stack-form" @onsubmit="SaveMappingAsync" @onsubmit:preventDefault>
+                                <ErpCodeInput Id="map-salesperson" Label="Temsilci" Items="_lookups.Salespersons" EmptyText="Firma varsayılanı" Disabled="@Busy" @bind-Value="_mapping.SalespersonCode" />
+                                <ErpCodeInput Id="map-warehouse" Label="Depo" Items="_lookups.Warehouses" EmptyText="Firma varsayılanı" Disabled="@Busy"
+                                              Value="@Number(_mapping.WarehouseNo)" ValueChanged="v => _mapping.WarehouseNo = ParseNumber(v)" />
+                                <ErpCodeInput Id="map-cash" Label="Kasa (nakit)" Items="_lookups.CashAccounts" EmptyText="Firma varsayılanı" Disabled="@Busy" @bind-Value="_mapping.CashCode" />
+                                <ErpCodeInput Id="map-card-bank" Label="Banka (kredi kartı)" Items="_lookups.Banks" EmptyText="Firma varsayılanı" Disabled="@Busy" @bind-Value="_mapping.CardBankCode" />
+                                <ErpCodeInput Id="map-transfer-bank" Label="Banka (havale/EFT)" Items="_lookups.Banks" EmptyText="Firma varsayılanı" Disabled="@Busy" @bind-Value="_mapping.TransferBankCode" />
+                                <label class="stack-field">
+                                    <span class="field-label">ERP kullanıcı no</span>
+                                    <input type="number" min="0" max="32767" step="1" class="portal-input" id="map-user-no" placeholder="Firma varsayılanı" value="@Number(_mapping.ErpUserNo)" disabled="@Busy"
+                                           @onchange="e => _mapping.ErpUserNo = ParseNumber(e.Value?.ToString())" />
+                                </label>
+                                <div class="field-label">Seriler <span class="text-muted">(en çok 6 karakter)</span></div>
+                                <div class="filter-grid">
+                                    @MappingSeries("map-series-order", "Sipariş", _mapping.Series.Order, v => _mapping.Series.Order = v)
+                                    @MappingSeries("map-series-dispatch", "İrsaliye", _mapping.Series.Dispatch, v => _mapping.Series.Dispatch = v)
+                                    @MappingSeries("map-series-invoice", "Fatura", _mapping.Series.Invoice, v => _mapping.Series.Invoice = v)
+                                    @MappingSeries("map-series-return", "İade faturası", _mapping.Series.Return, v => _mapping.Series.Return = v)
+                                    @MappingSeries("map-series-collection", "Tahsilat", _mapping.Series.Collection, v => _mapping.Series.Collection = v)
+                                </div>
+                                <div class="form-actions">
+                                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="StopMapping" id="map-cancel">Vazgeç</MudButton>
+                                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="map-save">Kaydet</MudButton>
+                                </div>
+                            </form>
+                        </MudPaper>
+                    }
+
                     @if (_editing is not null)
                     {
                         <MudPaper Outlined="true" Class="panel" id="user-roles-edit">
@@ -180,6 +224,13 @@ else
 
     private string? Notice { get; set; }
 
+    private UserDto? _mappingUser;
+    private UserErpMappingDto? _mapping;
+    private ErpLookupsResponse _lookups = new();
+    private bool _lookupsLoaded;
+
+    private bool IsErpCompany => string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase);
+
     protected override async Task LoadAsync() => _list = await Api.UsersAsync();
 
     private bool IsSelf(UserDto user) => string.Equals(user.Username, Session.Username, StringComparison.OrdinalIgnoreCase);
@@ -199,6 +250,7 @@ else
     {
         Notice = null;
         Error = null;
+        StopMapping();
         _editing = user;
         _editRoles = user.EffectiveRoles().ToArray();
         _editCanApproveKnown = ApprovalFlagIsKnown(_editRoles);
@@ -220,6 +272,54 @@ else
         !roles.Contains(PortalRoles.Admin) && !roles.Contains(PortalRoles.Accounting);
 
     private void StopEditing() => _editing = null;
+
+    private async Task StartMappingAsync(UserDto user)
+    {
+        Notice = null;
+        _editing = null;
+        await RunAsync(async () =>
+        {
+            if (!_lookupsLoaded)
+            {
+                _lookups = await Api.ErpLookupsAsync();
+                _lookupsLoaded = true;
+            }
+            _mapping = await Api.UserErpMappingAsync(user.Id);
+            _mappingUser = user;
+        });
+    }
+
+    private void StopMapping()
+    {
+        _mappingUser = null;
+        _mapping = null;
+    }
+
+    private async Task SaveMappingAsync()
+    {
+        if (_mappingUser is null || _mapping is null) return;
+        Notice = null;
+        var user = _mappingUser;
+        var mapping = _mapping;
+        await RunAsync(async () =>
+        {
+            await Api.SaveUserErpMappingAsync(user.Id, mapping);
+            StopMapping();
+            Notice = $"{user.FullName} için Mikro karşılıkları kaydedildi.";
+        });
+    }
+
+    /// <summary>An empty box is the company's series (null), not a series-less one.</summary>
+    private RenderFragment MappingSeries(string id, string label, string? value, Action<string?> set) => @<label class="stack-field">
+        <span class="field-label">@label</span>
+        <input class="portal-input" id="@id" maxlength="6" placeholder="Firma" value="@value" disabled="@Busy"
+               @onchange="e => set(string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString()!.Trim())" />
+    </label>;
+
+    private static string? Number(int? value) => value?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static int? ParseNumber(string? value) =>
+        int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : null;
 
     private async Task SaveRolesAsync()
     {
