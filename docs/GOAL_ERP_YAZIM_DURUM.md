@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y0d PR'ı; test DB DEMO'ya taşındı)
+Son güncelleme: 2026-09-17 (Y2d PR'ı)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -14,13 +14,13 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 |---|---|---|---|
 | Y0 — Referans ve temel düzeltmeler | 5 | 5 | ✅ |
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 0 | ⬜ |
-| Y2 — Ajan: telefon belgesi → komut | 4 | 0 | ⬜ |
+| Y2 — Ajan: telefon belgesi → komut | 4 | 1 | 🔄 |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
 | Y4 — Sipariş Cepte | 6 | 0 | ⬜ |
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y1a — `erp_write_settings` + `mobile_user_erp_mappings` (PR #78)
+**Şu anki görev:** Y2d — hata kataloğu (PR #80)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -49,7 +49,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ⬜ | | |
 | Y2b | `MobileDocumentTranslator` | ⬜ | | |
 | Y2c | `AgentWorker` yeni yol + `retryable` | ⬜ | | |
-| Y2d | Türkçe hata kataloğu | ✅ | (Y2d PR) | `Shared/ErpWriteError`: 23 kod, her birine tek fabrika; mesajlar yalnız kod ve fark tutarı taşır. Yeniden denenebilir yalnız `ERP_UNAVAILABLE` ve `ERP_CONTEXT_MISSING` (sunucu güncellenince kendiliğinden çözülür). Test: her sabit için tek fabrika, kodlar tekil |
+| Y2d | Türkçe hata kataloğu | ✅ | [#80](https://github.com/Retrosero/ErpBridge/pull/80) | `Shared/ErpWriteError`: 23 kod, her birine tek fabrika; mesajlar yalnız kod ve fark tutarı taşır. Yeniden denenebilir yalnız `ERP_UNAVAILABLE` ve `ERP_CONTEXT_MISSING` (sunucu güncellenince kendiliğinden çözülür). Test: her sabit için tek fabrika, kodlar tekil |
 | Y3a | `MikroWriteSession` + idempotency + seri/sıra | ⬜ | | |
 | Y3b | Lookup + fiyat/iskonto/KDV hesabı | ⬜ | | |
 | Y3c | Satış faturası (açık + kapalı) | ⬜ | | |
