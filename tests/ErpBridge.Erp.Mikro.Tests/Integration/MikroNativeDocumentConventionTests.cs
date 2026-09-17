@@ -21,7 +21,7 @@ namespace ErpBridge.Erp.Mikro.Tests.Integration;
 /// <para>
 /// Runs only with <c>ERPBridge_RUN_INTEGRATION=1</c> <b>and</b> an explicit
 /// <c>ERPBridge_MIKRO_WRITE_DB</c> naming a copy of a real company database (e.g.
-/// <c>MikroDB_V15_ERPBTEST</c>, Windows authentication, server <c>ERPBridge_SCHEMA_SERVER</c> or
+/// <c>MikroDB_V15_DEMO</c>, Windows authentication, server <c>ERPBridge_SCHEMA_SERVER</c> or
 /// <c>tcp:localhost</c>). The docker fixture in <c>tests/README-integration.md</c> has no
 /// Mikro-entered documents, so the shared gate alone leaves these tests off. Nothing here writes.
 /// </para>

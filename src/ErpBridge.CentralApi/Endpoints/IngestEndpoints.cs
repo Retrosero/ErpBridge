@@ -187,6 +187,13 @@ public static class IngestEndpoints
         if (string.IsNullOrWhiteSpace(documentType))
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "MISSING_DOCUMENT_TYPE", Message = "documentType is required." });
 
+        // Keys are stored verbatim and must reach the agent's ERP idempotency record unchanged: SQL
+        // Server ignores trailing spaces and the record's columns are 64/128 wide (PR #77 Codex).
+        if (body.ExternalId.Length > 128 || body.ExternalId.Trim().Length != body.ExternalId.Length)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_EXTERNAL_ID", Message = "externalId must be at most 128 characters without surrounding whitespace." });
+        if (documentType.Length > 64 || documentType.Trim().Length != documentType.Length)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_DOCUMENT_TYPE", Message = "documentType must be at most 64 characters without surrounding whitespace." });
+
         // ---- 2. Tenant from token, never from body. ----
         if (!http.User.TryGetTenantId(out var tenantId))
             return JsonResults.Status(StatusCodes.Status401Unauthorized,
