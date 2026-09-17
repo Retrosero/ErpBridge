@@ -197,7 +197,7 @@ public sealed class ApprovalService
             if (documentType is null || documentExternalId is null || documentExternalId.Length > 128
                 || !item.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
                 return ApprovalResult<ApprovalRequest>.Fail(400, "INVALID_APPROVAL_DOCUMENTS", "Every document needs documentType, externalId (at most 128 characters) and an object payload.");
-            if (RejectDocument(tenant, kind!, documentType) is { } problem)
+            if (RejectDocument(tenant, kind!, documentType, payload.GetRawText()) is { } problem)
                 return ApprovalResult<ApprovalRequest>.Fail(problem.Status, problem.Code, problem.Message);
         }
 
@@ -376,7 +376,7 @@ public sealed class ApprovalService
             var documentType = Text(item, "documentType")!;
             var externalId = Text(item, "externalId")!;
             // The company's data source may have changed since the request was sent.
-            if (RejectDocument(tenant, request.Kind, documentType) is { } problem)
+            if (RejectDocument(tenant, request.Kind, documentType, item.TryGetProperty("payload", out var stored) ? stored.GetRawText() : null) is { } problem)
                 return ApprovalResult<ApprovalRequest>.Fail(problem.Status, problem.Code, problem.Message);
             // A document that already reached the server is not posted twice.
             if (await db.Jobs.AnyAsync(j => j.TenantId == tenant.Id && j.DocumentType == documentType && j.ExternalId == externalId, ct))
@@ -492,7 +492,7 @@ public sealed class ApprovalService
     }
 
     /// <summary>Documents a request of <paramref name="kind"/> may not carry for this tenant, with the reason.</summary>
-    private static (int Status, string Code, string Message)? RejectDocument(Tenant tenant, string kind, string documentType)
+    private static (int Status, string Code, string Message)? RejectDocument(Tenant tenant, string kind, string documentType, string? payloadJson)
     {
         if (string.Equals(documentType, DocumentType, StringComparison.OrdinalIgnoreCase))
             return (400, "INVALID_APPROVAL_DOCUMENTS", "An approval request cannot contain another approval request.");
@@ -507,7 +507,7 @@ public sealed class ApprovalService
         {
             return (400, "INVALID_APPROVAL_DOCUMENTS", "Product and customer cards are approved as product_card or customer_card requests.");
         }
-        if (tenant.DataSource != TenantDataSources.Native && (isCard || NativeDocumentProcessor.NativeDocumentTypes.Contains(documentType)))
+        if (tenant.DataSource != TenantDataSources.Native && (isCard || NativeDocumentProcessor.RequiresNativeTenant(documentType, payloadJson)))
             return (409, "DOCUMENT_REQUIRES_NATIVE_TENANT", "This document is booked by the central API for a company without an ERP only.");
         return null;
     }

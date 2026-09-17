@@ -18,9 +18,9 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y3 — Mikro V15 writer'ları | 8 | 8 | ✅ |
 | Y4 — Sipariş Cepte | 7 | 7 | ✅ |
 | Y5 — İzleme ve operasyon | 2 | 2 | ✅ |
-| Y6 — Kapanış | 3 | 1 | 🔄 |
+| Y6 — Kapanış | 3 | 2 | 🔄 |
 
-**Şu anki görev:** Y6b — yerel uçtan uca duman testi (DEMO)
+**Şu anki görev:** Y6c — Seni Bekleyenler son hâli
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -68,13 +68,51 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5a | Portal "ERP Aktarım" listesi | ✅ | [#99](https://github.com/Retrosero/ErpBridge/pull/99) | `GET /api/v1/portal/erp-documents` (tarih ≤31 gün, varsayılan son 7 gün; durum, tür, gönderen, cari kod/ünvan süzgeci; sayfa ≤100): tür, gönderen, cari, tutar, durum, Mikro seri-sıra, ajanın Türkçe nedeni, deneme, sonraki deneme. Admin/Yönetici/Muhasebe okur. `POST …/{jobId}/retry` yalnız Admin, yalnız Failed/DeadLetter → Pending + yeni deneme hakkı (ajanın `_ERPB_EVRAK_ESLESME` defteri ikinci yazımı önler); 409 `JOB_NOT_RETRYABLE`. Portal `/erp-belgeler` (menü "ERP belgeleri", `PortalArea.ErpDocuments`). Durum eşlemesi `Domain/ErpDocumentStates` telefon ucu (#98) ile ortak. **Sapma:** liste yalnız Admin değil Muhasebe/Yönetici'ye de açık (yazılamayan belgeyi takip eden muhasebe) |
 | Y5b | Admin iş ayrıntısı + log olayları | ✅ | [#100](https://github.com/Retrosero/ErpBridge/pull/100) | Admin iş listesi `nextAttemptAtUtc`, `leasedUntilUtc`; ayrıntı ek olarak gönderen, `retryable` (son ack `retry`), son hata kodu, ERP belge no, tüm ajan sonuçları, ajanın şimdi alacağı `erpContext` (`ErpWriteContextBuilder` ile aynı birleştirme). **Log Merkezi:** L3c birleşmediği için sunucu yolu — ajan `failed` ack'inde `windows_agent` / `ERP_WRITE_FAILED` (ERROR), yeniden denenebilirde `ERP_WRITE_RETRY` (WARN), `erp.write.<tür>`, özelliklerde iş/belge kimliği; log yazımı hata verirse ack etkilenmez. Yan düzeltme: Admin "Tekrar dene" düğmesi sunucunun `Failed` yazımı yüzünden hiç görünmüyordu |
 | Y6a | KB ve sözleşme belgeleri | ✅ | [#101](https://github.com/Retrosero/ErpBridge/pull/101) | KB 00 kural 26 (tek yol çevirici, `erpContext` kiralamada, idempotency `_ERPB_EVRAK_ESLESME`, tutar sözleşmesi, görünürlük, yazma testleri yalnız izinli kopyada, Dapper kolon sırası); 01 uçtan uca akış + izleme; 02 seriler Portal'da / sıra ajanda / e-belge ayrımı bu goal'de yok (K15); 03 `job_acks` durumları, iki yeniden dene farkı, `ERP_WRITE_*` log türleri; `docs/api-contracts.md` jobs/pending-ack alanları, `/ingest/jobs/status`, Portal ERP uçları, Admin iş ayrıntısı. Sipariş Cepte KB her telefon PR'ında güncellendi (01 §1.1, 03 §2 ve §4.x). Tablo şeması (`erp_write_settings`, `mobile_user_erp_mappings`, `jobs` kolonları) Y1a/Y1e'de 03'e yazılmıştı |
-| Y6b | Yerel uçtan uca duman testi (DEMO) | ⬜ | | |
+| Y6b | Yerel uçtan uca duman testi (DEMO) | ✅ | #102 | Ayrıntı aşağıda "Y6b duman testi". **Bulunan ve bu PR'da düzeltilen iki hata:** (1) sunucu ERP'li firmada `sales_return`'ü 409 `DOCUMENT_REQUIRES_NATIVE_TENANT` ile reddediyordu (Faz 36 kuralı) — telefon Y4b'den beri iadeyi böyle gönderdiği için hiçbir iade Mikro'ya ulaşmazdı; telefon belgesi (`mobileDocumentId`) artık kabul, eski gövde ve `purchase_receipt` reddediliyor (ingest ve onay merkezi). (2) Portal özeti ERP'li firmada iadeyi yalnız kasa defteri `return`'ünden sayıyordu; artık `sales_return` da sayılır |
 | Y6c | Seni Bekleyenler son hâli | ⬜ | | |
 
 ---
 
+## Y6b duman testi (2026-09-17, yerel)
+
+**Ortam:** ayrı Postgres kapsayıcısı (5440) + `main` derlemesi CentralApi (`localhost:5099`, 28 migration) + ayrı klasörden ajan
+servisi (kendi `agent.db`'si, yalnız `MikroDB_V15_DEMO`), sürücü betikleri `C:\Temp\y6b\` (Python: Portal/Android uçlarıyla aynı
+HTTP çağrıları). Firma `erp`, kullanıcı `ali` (SALES) belgeleri gönderdi, `patron` (ADMIN) Portal ERP ayarlarını girdi: seri
+`Y6B`, kasa `001`, kart bankası `01`, havale bankası `04`, depo 1, liste 1, ERP kullanıcı 1. Cari `ADALYA`, stoklar `000537`
+(185), `0022` (350), `004108` (125); DEMO'da tüm stoklar %0 KDV.
+
+| Belge | Gövde | Sonuç (telefon durum ucu) | DEMO (`_ERPB_EVRAK_ESLESME` + tablolar) |
+|---|---|---|---|
+| Açık fatura | `Cari Borç`, 2×185 %10 + 1×350, genel %5 | written `Y6B-1` | CHA 63/0/6, `cha_cari_cins 0`, kod ADALYA, 648,85; STH 4/1, 2 satır, brüt 720,00, iskonto 71,15 |
+| Kapalı fatura nakit | `Nakit` | `Y6B-2` | CHA `cari_cins 4`, kod `001`, ciro ADALYA, `tpoz 1`, 648,85 |
+| Kapalı fatura kart | `Kredi Kartı` | `Y6B-3` | CHA `cari_cins 2`, kod `01`, ciro ADALYA, `tpoz 1` |
+| Kapalı fatura havale | `EFT / Havale` | `Y6B-4` | CHA `cari_cins 2`, kod `04`, `tpoz 1` |
+| Karma ödemeli fatura | `payments`: nakit 300 + kart 100 | `Y6B-5` | açık fatura 648,85 + makbuz `Y6B-1` (nakit 300, kart 100 → `ODEME_EMIRLERI` tip 6, `MK-000-000-2026-00000127`) |
+| Sipariş (ayar: order) | `Nakit`, 3×125 | `Y6B-1` | SIPARISLER 1 satır 375,00, `sip_OnaylayanKulNo 1`, `sip_cagrilabilir_fl 1` + makbuz `Y6B-2` nakit 375 |
+| İrsaliye (ayar: dispatch) | `Cari Borç`, 3×125 | `Y6B-1` | STH `sth_evraktip 1`, `sth_tip 1`, 375,00 |
+| İade cari | `Cari Alacak`, 1×185 sağlam + 1×350 %30 kondisyon | `Y6B-1` | CHA 0/1/6 `iade 1`, 290,00; STH 3/0 `iade 1`, brüt 535, kondisyon farkı 245 |
+| İade nakit | `Nakit` | `Y6B-2` | CHA `cari_cins 4`, kod `001`, `tpoz 1`, 290,00 |
+| İade banka | `Banka İade` | `Y6B-3` | CHA `cari_cins 2`, kod `04`, `tpoz 1` |
+| Tahsilat 5 yöntem | nakit 100, kart 150 (3 taksit, vade farkı 4,5), havale 50, çek 200 (30.11.2026), senet 80 (15.12.2026) | `Y6B-3` | tek makbuz 5 satır `cha_cinsi` 0/19/17/1/2; `ODEME_EMIRLERI` 6 `MK-…128`, 4 `MH-…061`, 0 `MC-…015` (vade 20261130), 1 `MS-…027` (vade 20261215) |
+
+- **Aynı belge tekrar:** telefon aynı `externalId` ile yeniden gönderdi → 200 `idempotent: true`. Admin "yeniden dene" ile yazılmış
+  fatura ajana zorla yeniden verildi (deneme 3) → yine `Y6B-1`; DEMO'da `Y6B` CHA/STH satır sayısı önce 16/17, sonra 16/17;
+  `_ERPB_EVRAK_ESLESME`'de o belge için 1 satır.
+- **Ajan durdur/başlat:** ajan kapalıyken gönderilen fatura `pending` (deneme 0) kaldı; ajan açılınca kendiliğinden `written Y6B-6`.
+- **Portal:** `/portal/erp-documents` 12 belge (8 satış, 3 iade, 1 tahsilat), hepsi `written`, gönderen "Ali", cari ve tutarlar doğru.
+  **Log Merkezi:** firmada `ERP_WRITE_*` yok (yazım hatası olmadı).
+- **Kapsam dışı:** Portal ekranı tarayıcıda değil, aynı uçlarla sürüldü; telefon uygulaması yerine gövdeler betikle gönderildi
+  (gövdeler telefon testlerindeki `ErpSaleDocument`/`ErpReturnDocument`/`ErpCollectionDocument` çıktısıyla aynı alanlar).
+  DEMO'da KDV %0 olduğu için KDV'li satır Mikro'da denenmedi (hesaplayıcı birim testleri ve Y3 canlı testleri kapsıyor).
+- **Ortam kazası (düzeltildi, kullanıcı eylemi gerekli):** ajan yapılandırmasını tohumlayan araç ilk denemede yanlış ayar anahtarı
+  (`LocalStore:ConnectionString`; doğrusu `ErpBridge:LocalStore:DataSource`) yüzünden bu bilgisayardaki **canlı ajanın**
+  `C:\ProgramData\ErpBridge\agent.db` yapılandırmasının üzerine yazdı (canlı ajan o sırada çalışmıyordu; hiçbir evrak/senkron
+  etkilenmedi). Sunucu adresi, kiracı, `GURBUZ` / `MikroDB_V15_02`, firma 1 / şube 1, Windows kimlik doğrulaması UI logundaki son
+  kayıttan geri yazıldı; **lisans anahtarının şifreli eski değeri dosyada ezildiği için kurtarılamadı** → Seni Bekleyenler.
+
 ## Seni Bekleyenler
 
+- **Acil — ajan lisansı:** bu bilgisayardaki ErpBridge Agent UI'yi açıp Ayarlar'da lisans anahtarını yeniden girin (Admin → Lisanslar, kiracı 83fb05bf-…). Y6b duman testinde yanlışlıkla silindi; diğer ayarlar geri yüklendi. Yedek: `C:\Temp\y6b\agent-live-after-accident.db`.
 - **Sipariş Cepte 1.5.237 (versionCode 237):** release AAB'yi oluşturup Play **internal** kanalına yükle (ERP yazım Y4: satış/iade/tahsilat gövdesi v2, Mikro ile aynı toplam, yazım sonucu, çift görünme önleme). Önkoşul sunucu uçları canlıda.
 - **Yeni ajan sürümü** müşteri PC'sine: projeksiyon sürümü 4 (stok KDV oranı, fiyat listesi `kdvDahil`) — ajan anlık görüntüyü bir kez kendisi yeniden kurar.
 - Y0e birleşince: müşteri PC'lerine yeni ajan sürümünün kurulması (ajan okuma biçimi sürümünü görüp anlık görüntüyü bir kez kendisi yeniden kurar).

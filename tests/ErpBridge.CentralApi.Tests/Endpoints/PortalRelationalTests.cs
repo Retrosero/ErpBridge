@@ -93,6 +93,25 @@ public sealed class PortalRelationalTests : IClassFixture<SqliteCentralApiFactor
     }
 
     [Fact]
+    public async Task With_an_erp_a_return_counts_whether_an_old_or_a_new_phone_sent_it()
+    {
+        // Phones before 1.5.237 send the cash-book `return`; since goal ERP yazım Y4b the lined `sales_return`.
+        var c = await CompanyAsync(native: false);
+        (await PostAsync(c, c.Ali, "return", "K-OLD-1", new { mobileDocumentId = "K-OLD-1", occurredAt = Day + "T11:00:00", amount = 30m, transactionType = "İade" }))
+            .Status.Should().Be("Pending");
+        (await PostAsync(c, c.Ali, "sales_return", "MOB-SR-NEW-1", new
+        {
+            mobileDocumentId = "MOB-SR-NEW-1", occurredAt = Day + "T12:00:00", customerCode = "C-1", amount = 40m,
+            lines = new[] { new { productCode = "S", quantity = 1, listUnitPrice = 40m } },
+        })).Status.Should().Be("Pending");
+
+        var summary = await GetJsonAsync<PortalSummaryResponse>(c.Patron, $"/api/v1/portal/summary?date={Day}");
+
+        summary.Returns.Count.Should().Be(2);
+        summary.Returns.Amount.Should().Be(70m);
+    }
+
+    [Fact]
     public async Task Activity_attributes_each_document_to_the_user_who_sent_it()
     {
         var c = await CompanyAsync(native: true);

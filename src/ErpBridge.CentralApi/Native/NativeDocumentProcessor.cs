@@ -52,6 +52,16 @@ public sealed class NativeDocumentProcessor
     /// </summary>
     public static readonly IReadOnlySet<string> NativeDocumentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesReturn, PurchaseReceipt };
 
+    /// <summary>
+    /// Whether only a company without an ERP can take this document. A phone's lined return
+    /// (<c>mobileDocumentId</c> body, contract v2) is written by the ERP agent's translator (goal ERP yazım Y3f/Y4b),
+    /// so an ERP company accepts it; any other return body and every purchase receipt stay native-only.
+    /// </summary>
+    public static bool RequiresNativeTenant(string documentType, string? payloadJson) =>
+        NativeDocumentTypes.Contains(documentType)
+        && !(string.Equals(documentType, SalesReturn, StringComparison.OrdinalIgnoreCase)
+             && ErpBridge.Core.Jobs.MobileDocumentTranslator.IsMobileDocument(payloadJson));
+
     /// <summary>Marks rows this class produced, the way an agent marks rows with its ERP name.</summary>
     public const string SourceName = "native";
 

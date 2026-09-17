@@ -553,10 +553,19 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
         var card = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "CARD-1", documentType = "stock_card", payload = new { stockCode = "S", name = "S" } });
         card.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await card.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("CARDS_REQUIRE_NATIVE_TENANT");
-        // Returns and purchases are booked by the central API only; an agent could not write them.
+        // An old return body and purchases are booked by the central API only; an agent could not write them.
         var salesReturn = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "SR-1", documentType = "sales_return", payload = new { ok = true } });
         salesReturn.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await salesReturn.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("DOCUMENT_REQUIRES_NATIVE_TENANT");
+        var purchase = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "PR-1", documentType = "purchase_receipt", payload = new { mobileDocumentId = "PR-1" } });
+        (await purchase.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("DOCUMENT_REQUIRES_NATIVE_TENANT");
+        // The phone's lined return (contract v2) is written by the agent's translator (goal ERP yazım Y4b, found by the Y6b smoke test).
+        var phoneReturn = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new
+        {
+            externalId = "MOB-SR-1", documentType = "sales_return",
+            payload = new { mobileDocumentId = "MOB-SR-1", customerCode = "C-1", amount = 10, lines = new[] { new { productCode = "S", quantity = 1, listUnitPrice = 10 } } },
+        });
+        (await phoneReturn.ReadAsJsonAsync<IngestJobResponse>()).Status.Should().Be("Pending");
 
         // ERP data is changed in the ERP only: no product can be deleted from a phone either.
         var delete = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "DEL-1", documentType = "stock_card_delete", payload = new { stockCode = "S" } });
