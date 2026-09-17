@@ -14,7 +14,7 @@ gövdeyi okur (yeni alanları yok sayar).
 | Tanıma | Gövdede `mobileDocumentId` (string) varsa telefon belgesidir; yoksa eski tipli ingest sözleşmesi (`SalesOrderPayload` vb.) |
 | Kimlik | `externalId` = `mobileDocumentId` (birebir; farklıysa `DOCUMENT_ID_MISMATCH`, belge yazılmaz); aynı belge türü + kimlik ikinci evrak açmaz. Gövde nesne değilse ya da `lines`/`payments` nesne dizisi değilse `INVALID_DOCUMENT` |
 | Tarih `occurredAt` | `dd.MM.yyyy HH:mm`, `dd.MM.yyyy` ya da ISO 8601 (`2026-09-17T10:15:30+03:00`). ISO'da telefonun **duvar saati** alınır |
-| Tutar `amount` | Telefonda gösterilen toplam (KDV dahil) — ajan kendi hesabıyla karşılaştırır, 0,05 TL'den fazla farkta yazmaz |
+| Tutar `amount` | Telefonda gösterilen toplam (KDV dahil) — ajan kendi hesabıyla karşılaştırır, 0,05 TL'den fazla farkta yazmaz. Satış ve iadede 0 olabilir (tam iskonto, bedelsiz iade; stok yine hareket eder, ödeme alınmaz), tahsilatta sıfırdan büyük olmalı |
 | Döviz `currency` | Yok ya da `TL`/`TRY`; başka döviz reddedilir |
 | Cari `customerCode` | Zorunlu (ERP'de kayıtlı müşteri) |
 | Kodlar | `cashCode` (kasa), `bankCode` (banka) telefonda seçildiyse gönderilir; yoksa Portal'daki kullanıcı/firma ayarı |
@@ -49,7 +49,7 @@ gövdeyi okur (yeni alanları yok sayar).
 
 | Alan | Zorunlu | Anlam |
 |---|---|---|
-| `priceListNo` | evet (v2 işareti) | Fiyatın alındığı ERP fiyat listesi sıra no (`fiyatTanim` bölümündeki numara). KDV dahil/hariç bu listeden okunur |
+| `priceListNo` | evet (v2 işareti) | Fiyatın alındığı ERP fiyat listesi sıra no (`fiyatTanim` bölümündeki numara). KDV dahil/hariç bu listeden okunur. Sıfırdan büyük tam sayı olmalı; `null`, ondalık ya da metin `INVALID_DOCUMENT` (firma varsayılanına düşülmez). `warehouseNo` gönderilirse aynı kural |
 | `lines[].listUnitPrice` | evet (v2 işareti) | İskontosuz liste birim fiyatı |
 | `lines[].lineDiscountPercent` / `customerDiscountPercent` / `generalDiscountPercent` | hayır (0) | Zincir: satır → müşteri → genel, her biri kalandan; 0–100 |
 | `lines[].unitPrice`, `lineTotal` | hayır | Eski alanlar, yalnız bilgi |

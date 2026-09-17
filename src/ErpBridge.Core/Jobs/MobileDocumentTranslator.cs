@@ -100,14 +100,16 @@ public sealed class MobileDocumentTranslator
         if (!body.TryGetProperty("priceListNo", out _) || lines.Count == 0 || lines.Any(l => !l.TryGetProperty("listUnitPrice", out _)))
             return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
 
-        if (Header(externalId, body, context, SeriesFor(context, out var kind)) is not { } header)
-            return MobileTranslation.Fail(HeaderError(body, context) ?? ErpWriteError.InvalidAmount());
+        if (Header(externalId, body, context, SeriesFor(context, out var kind), ZeroTotalAllowed) is not { } header)
+            return MobileTranslation.Fail(HeaderError(body, context, ZeroTotalAllowed) ?? ErpWriteError.InvalidAmount());
         if (kind is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("satış belge türü"));
 
-        var warehouse = Int(body, "warehouseNo") ?? context.WarehouseNo;
+        // A number the phone sends must be a real one: its prices came from that list, so a bad value
+        // never silently falls back to the company's (PR #81 Codex).
+        if (!OptionalNumber(body, "warehouseNo", out var phoneWarehouse) || !OptionalNumber(body, "priceListNo", out var priceList) || priceList is null)
+            return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+        var warehouse = phoneWarehouse ?? context.WarehouseNo;
         if (warehouse is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("depo"));
-        var priceList = Int(body, "priceListNo") ?? context.PriceListNo;
-        if (priceList is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("fiyat listesi"));
 
         var saleLines = new List<SalesDocumentLine>(lines.Count);
         for (var i = 0; i < lines.Count; i++)
@@ -146,7 +148,7 @@ public sealed class MobileDocumentTranslator
 
         var settlement = SaleSettlement(Text(body, "paymentType"));
         if (settlement is null) return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType());
-        if (settlement == SalesSettlement.Open)
+        if (settlement == SalesSettlement.Open || header.ExpectedTotal == 0m)
         {
             return new MobileTranslation(Sale: new SalesDocumentCommand(
                 header, kind.Value, warehouse.Value, priceList.Value, approval, SalesSettlement.Open, null, saleLines,
@@ -215,12 +217,14 @@ public sealed class MobileDocumentTranslator
         if (lines.Count == 0 || lines.Any(l => !l.TryGetProperty("listUnitPrice", out _)))
             return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
 
-        if (Header(externalId, body, context, context.Series.Return) is not { } header)
-            return MobileTranslation.Fail(HeaderError(body, context) ?? ErpWriteError.InvalidAmount());
+        if (Header(externalId, body, context, context.Series.Return, ZeroTotalAllowed) is not { } header)
+            return MobileTranslation.Fail(HeaderError(body, context, ZeroTotalAllowed) ?? ErpWriteError.InvalidAmount());
 
-        var warehouse = Int(body, "warehouseNo") ?? context.WarehouseNo;
+        if (!OptionalNumber(body, "warehouseNo", out var phoneWarehouse) || !OptionalNumber(body, "priceListNo", out var phonePriceList))
+            return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+        var warehouse = phoneWarehouse ?? context.WarehouseNo;
         if (warehouse is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("depo"));
-        var priceList = Int(body, "priceListNo") ?? context.PriceListNo;
+        var priceList = phonePriceList ?? context.PriceListNo;
         if (priceList is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("fiyat listesi"));
 
         var returnLines = new List<SalesReturnLine>(lines.Count);
@@ -266,8 +270,8 @@ public sealed class MobileDocumentTranslator
         if (Objects(body, "payments") is not { } payments) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
         if (payments.Count == 0) return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
 
-        if (Header(externalId, body, context, context.Series.Collection) is not { } header)
-            return MobileTranslation.Fail(HeaderError(body, context) ?? ErpWriteError.InvalidAmount());
+        if (Header(externalId, body, context, context.Series.Collection, zeroTotalAllowed: false) is not { } header)
+            return MobileTranslation.Fail(HeaderError(body, context, zeroTotalAllowed: false) ?? ErpWriteError.InvalidAmount());
 
         var parsed = ParsePayments(payments, header.OccurredAt, context);
         if (parsed.Error is { } error) return MobileTranslation.Fail(error);
@@ -341,12 +345,18 @@ public sealed class MobileDocumentTranslator
         return code is null ? (null, ErpWriteError.ErpMappingMissing(missing)) : (code, null);
     }
 
-    private static ErpDocumentHeader? Header(string externalId, JsonElement body, ErpWriteContext context, string series)
+    /// <summary>
+    /// A sale or return may total zero (full discount, a return refunding nothing) and still moves stock;
+    /// a collection of nothing is not a document (PR #81 Codex).
+    /// </summary>
+    private const bool ZeroTotalAllowed = true;
+
+    private static ErpDocumentHeader? Header(string externalId, JsonElement body, ErpWriteContext context, string series, bool zeroTotalAllowed)
     {
         var customer = Text(body, "customerCode");
         var occurredAt = ParseDate(Text(body, "occurredAt"));
         var amount = Decimal(body, "amount");
-        if (customer is null || occurredAt is null || context.ErpUserNo is null || amount is not > 0 || !IsTurkishLira(body)) return null;
+        if (customer is null || occurredAt is null || context.ErpUserNo is null || amount is not { } total || !ValidTotal(total, zeroTotalAllowed) || !IsTurkishLira(body)) return null;
         return new ErpDocumentHeader(
             externalId,
             occurredAt.Value,
@@ -355,20 +365,35 @@ public sealed class MobileDocumentTranslator
             context.ErpUserNo.Value,
             series,
             Text(body, "description"),
-            amount.Value,
+            total,
             Blank(context.ResponsibilityCenterCode),
             Blank(context.ProjectCode));
     }
 
     /// <summary>Why <see cref="Header"/> returned null, in the order a person would fix it.</summary>
-    private static ErpWriteError? HeaderError(JsonElement body, ErpWriteContext context)
+    private static ErpWriteError? HeaderError(JsonElement body, ErpWriteContext context, bool zeroTotalAllowed)
     {
         if (Text(body, "customerCode") is null) return ErpWriteError.MissingCustomerCode();
         if (!IsTurkishLira(body)) return ErpWriteError.UnsupportedCurrency();
         if (ParseDate(Text(body, "occurredAt")) is null) return ErpWriteError.InvalidDocumentDate();
-        if (Decimal(body, "amount") is not > 0) return ErpWriteError.InvalidAmount();
+        if (!ValidTotal(Decimal(body, "amount"), zeroTotalAllowed)) return ErpWriteError.InvalidAmount();
         if (context.ErpUserNo is null) return ErpWriteError.ErpMappingMissing("ERP kullanıcı numarası");
         return null;
+    }
+
+    private static bool ValidTotal(decimal? amount, bool zeroTotalAllowed) =>
+        amount is > 0 || (zeroTotalAllowed && amount == 0m);
+
+    /// <summary>
+    /// An optional positive whole number: absent is fine (<paramref name="number"/> null); present but
+    /// null, fractional, text or not above zero is a malformed body (<c>false</c>).
+    /// </summary>
+    private static bool OptionalNumber(JsonElement body, string name, out int? number)
+    {
+        number = null;
+        if (!body.TryGetProperty(name, out _)) return true;
+        number = Int(body, name);
+        return number is > 0;
     }
 
     private static bool IsTurkishLira(JsonElement body) =>

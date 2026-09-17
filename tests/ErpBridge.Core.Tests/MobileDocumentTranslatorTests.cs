@@ -235,6 +235,30 @@ public class MobileDocumentTranslatorTests
         _sut.Translate("collection", "K-9", cashLog, Context()).Error!.Code.Should().Be(ErpWriteError.MobileAppUpdateRequiredCode);
     }
 
+    [Theory]
+    [InlineData("\"priceListNo\": 1,", "\"priceListNo\": null,")]
+    [InlineData("\"priceListNo\": 1,", "\"priceListNo\": 1.5,")]
+    [InlineData("\"priceListNo\": 1,", "\"priceListNo\": \"birinci\",")]
+    [InlineData("\"priceListNo\": 1,", "\"priceListNo\": 0,")]
+    [InlineData("\"priceListNo\": 1,", "\"priceListNo\": 1, \"warehouseNo\": null,")]
+    public void A_bad_list_or_warehouse_number_is_refused_not_replaced_by_the_company_default(string replace, string with)
+    {
+        _sut.Translate("sales_order", "MOB-SO-1", Sale.Replace(replace, with), Context()).Error!.Code.Should().Be(ErpWriteError.InvalidDocumentCode);
+    }
+
+    [Fact]
+    public void A_sale_or_return_may_total_zero_but_a_collection_may_not()
+    {
+        var freeSale = _sut.Translate("sales_order", "MOB-SO-1", Sale.Replace("\"amount\": 684.00", "\"amount\": 0").Replace("\"Cari Borç\"", "\"Nakit\""), Context()).Sale!;
+        freeSale.Settlement.Should().Be(SalesSettlement.Open, "nothing was paid");
+        freeSale.ExtraPayments.Should().BeNull();
+        freeSale.Header.ExpectedTotal.Should().Be(0m);
+
+        _sut.Translate("sales_return", "MOB-SR-1", Return.Replace("\"amount\": 380", "\"amount\": 0"), Context()).Error.Should().BeNull();
+        _sut.Translate("collection", "MOB-TH-1", Collection.Replace("\"amount\": 5000,", "\"amount\": 0,"), Context()).Error!.Code
+            .Should().Be(ErpWriteError.InvalidAmountCode);
+    }
+
     [Fact]
     public void A_body_naming_another_document_than_the_job_is_refused()
     {
