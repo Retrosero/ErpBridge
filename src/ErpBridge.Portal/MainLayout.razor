@@ -101,18 +101,27 @@
 
         <MudMainContent Class="portal-main">
             <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="portal-container">
-                @Body
+                <PortalErrorBoundary @ref="_errorBoundary">@Body</PortalErrorBoundary>
             </MudContainer>
         </MudMainContent>
     </MudLayout>
 }
 else
 {
-    @Body
+    <PortalErrorBoundary @ref="_signedOutErrorBoundary">@Body</PortalErrorBoundary>
 }
 
 @code {
     private bool _drawerOpen = true;
+    private PortalErrorBoundary? _errorBoundary;
+    private PortalErrorBoundary? _signedOutErrorBoundary;
+
+    // A new page starts clean: an error shown on the previous page must not stick to the next one.
+    protected override void OnParametersSet()
+    {
+        _errorBoundary?.Recover();
+        _signedOutErrorBoundary?.Recover();
+    }
 
     private string Initials => Fmt.Initials(string.IsNullOrWhiteSpace(Session.FullName) ? Session.Username : Session.FullName);
 

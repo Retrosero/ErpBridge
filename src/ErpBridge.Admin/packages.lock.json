@@ -8,6 +8,9 @@
         "resolved": "10.0.11",
         "contentHash": "tYYYBZsuF2DSz1I3hcfB8qC4nNekIKufkYZOJ2R28fNK3PkS7fJao/mIX5H84NH94UACZQ4dhvt8GDlkrJFwLg=="
       },
+      "erpbridge.diagnostics": {
+        "type": "Project"
+      },
       "erpbridge.shared": {
         "type": "Project"
       }

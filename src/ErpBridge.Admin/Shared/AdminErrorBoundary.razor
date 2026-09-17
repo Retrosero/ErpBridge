@@ -1,0 +1,36 @@
+@inherits ErrorBoundary
+@inject ILogger<AdminErrorBoundary> Logger
+
+@*
+    Log Merkezi L2f: an exception in a console page shows a message with a support code instead of the
+    reconnect banner; the log centre gets the exception under the same code (CorrelationId).
+*@
+@if (CurrentException is null)
+{
+    @ChildContent
+}
+else
+{
+    <div class="admin-state admin-state--error" role="alert" id="admin-error">
+        <span class="admin-state__icon" aria-hidden="true">!</span>
+        <div>
+            <strong>Beklenmeyen bir hata oluştu</strong>
+            <p>Sayfayı yeniden deneyin. Log Merkezi'nde iz kimliği <code id="admin-error-code">@SupportCode</code> ile ayrıntı bulunur.</p>
+            <button class="btn btn-primary btn-sm" type="button" @onclick="Recover">Yeniden dene</button>
+        </div>
+    </div>
+}
+
+@code {
+    public string? SupportCode { get; private set; }
+
+    protected override Task OnErrorAsync(Exception exception)
+    {
+        SupportCode = Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
+        using (Logger.BeginScope(new Dictionary<string, object?> { ["CorrelationId"] = SupportCode, ["Kind"] = "ADMIN_UNHANDLED" }))
+        {
+            Logger.LogError(exception, "Unhandled console error (support code {CorrelationId}).", SupportCode);
+        }
+        return Task.CompletedTask;
+    }
+}

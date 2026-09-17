@@ -14,6 +14,12 @@ public sealed class PortalSession
     public PortalSession(TimeProvider time) => _time = time;
 
     public string? Token { get; private set; }
+
+    /// <summary>Company of the token (its <c>tenant</c> claim), for log context only — never for authorization.</summary>
+    public Guid? TenantId => TokenClaims.ReadGuid(Token, "tenant");
+
+    /// <summary>User of the token (its <c>sub</c> claim), for log context only — never for authorization.</summary>
+    public Guid? UserId => TokenClaims.ReadGuid(Token, "sub");
     public DateTimeOffset ExpiresAtUtc { get; private set; }
     public string TenantName { get; private set; } = string.Empty;
     public string TenantCode { get; private set; } = string.Empty;
@@ -132,4 +138,28 @@ public interface ISessionPersistence
     Task SaveAsync(PortalSessionState state);
     Task<PortalSessionState?> LoadAsync();
     Task ClearAsync();
+}
+
+/// <summary>
+/// Reads a claim from a JWT payload without validating it. The portal only puts these values into log lines; the
+/// CentralApi validates the token on every call.
+/// </summary>
+internal static class TokenClaims
+{
+    public static Guid? ReadGuid(string? token, string claim)
+    {
+        var parts = token?.Split('.');
+        if (parts is not { Length: 3 }) return null;
+        try
+        {
+            var payload = parts[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+            using var document = System.Text.Json.JsonDocument.Parse(Convert.FromBase64String(payload));
+            return document.RootElement.TryGetProperty(claim, out var value) && Guid.TryParse(value.GetString(), out var id) ? id : null;
+        }
+        catch (Exception ex) when (ex is FormatException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
 }

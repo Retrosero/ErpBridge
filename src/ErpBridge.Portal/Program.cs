@@ -1,9 +1,14 @@
+using ErpBridge.Diagnostics;
 using ErpBridge.Portal.Api;
 using ErpBridge.Portal.Session;
 using MudBlazor;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Log Merkezi L2e: warning+ lines go to the CentralApi's log centre when Logs:InternalIngestKey is set.
+builder.Logging.AddRemoteLogShipping(builder.Configuration, "portal");
+builder.Services.AddTransient<CorrelationIdHandler>();
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
@@ -25,14 +30,14 @@ builder.Services.AddHttpClient<PortalApiClient>(client =>
 {
     client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(30);
-});
+}).AddHttpMessageHandler<CorrelationIdHandler>();
 
 // Warehouse TV boards (plan step 7): anonymous pairing and the screen's own token, never a person's session.
 builder.Services.AddHttpClient<DisplayApiClient>(client =>
 {
     client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(40);
-});
+}).AddHttpMessageHandler<CorrelationIdHandler>();
 builder.Services.AddScoped<IDisplaySessionStore, ProtectedDisplaySessionStore>();
 builder.Services.AddSingleton(new KioskTiming());
 
@@ -53,6 +58,9 @@ if (!app.Environment.IsDevelopment())
             keysPath, keysPath);
     }
 }
+
+// Log Merkezi L2e/L2f: the /Error page's code is the CorrelationId of the exception the handler logs.
+app.UseRequestCorrelationScope();
 
 if (!app.Environment.IsDevelopment())
 {

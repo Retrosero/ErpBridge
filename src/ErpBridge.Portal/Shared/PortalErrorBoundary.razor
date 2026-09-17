@@ -1,0 +1,43 @@
+@inherits ErrorBoundary
+@inject PortalSession Session
+@inject ILogger<PortalErrorBoundary> Logger
+
+@*
+    Log Merkezi L2e: an exception while rendering or handling an event no longer takes the whole connection down.
+    The user sees a message with a support code; the log centre gets the exception under the same code
+    (CorrelationId), with the company and user.
+*@
+@if (CurrentException is null)
+{
+    @ChildContent
+}
+else
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="my-4" id="portal-error">
+        <MudText Typo="Typo.subtitle1"><b>Beklenmeyen bir hata oluştu.</b></MudText>
+        <MudText Typo="Typo.body2">Sayfayı yeniden deneyebilirsiniz. Sorun sürerse destek ekibine şu kodu iletin:
+            <code id="portal-error-code">@SupportCode</code></MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Class="mt-2" OnClick="Recover">Yeniden dene</MudButton>
+    </MudAlert>
+}
+
+@code {
+    /// <summary>Shown to the user and stored as the event's correlation id.</summary>
+    public string? SupportCode { get; private set; }
+
+    protected override Task OnErrorAsync(Exception exception)
+    {
+        SupportCode = Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
+        using (Logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["CorrelationId"] = SupportCode,
+            ["TenantId"] = Session.TenantId,
+            ["UserId"] = Session.UserId,
+            ["Kind"] = "PORTAL_UNHANDLED",
+        }))
+        {
+            Logger.LogError(exception, "Unhandled portal error (support code {CorrelationId}).", SupportCode);
+        }
+        return Task.CompletedTask;
+    }
+}

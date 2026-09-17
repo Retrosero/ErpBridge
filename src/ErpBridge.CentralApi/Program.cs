@@ -171,6 +171,17 @@ public partial class Program
     /// </summary>
     public static void ConfigureBuilder(WebApplicationBuilder builder, IConfiguration cfg)
     {
+        // Log Merkezi L2a/L2b: one line per entry with scopes (correlation id, company) on the console Coolify
+        // shows, and warning+ lines stored in log_events.
+        builder.Logging.AddSimpleConsole(options =>
+        {
+            options.SingleLine = true;
+            options.IncludeScopes = true;
+            options.UseUtcTimestamp = true;
+            options.TimestampFormat = "yyyy-MM-ddTHH:mm:ssZ ";
+        });
+        DatabaseLogProvider.Register(builder, cfg);
+
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
@@ -578,6 +589,9 @@ public partial class Program
         // the anonymous bucket and a single caller can throttle all tenants.
         app.UseAuthentication();
 
+        // Log Merkezi L2c: caller context for every log line of the request, 5xx and slow requests recorded.
+        app.UseRequestOutcomeLogging();
+
         // The in-process test factory can explicitly disable this middleware
         // for endpoint tests that are unrelated to throttling. Production
         // never probes-and-swallows a missing limiter registration: a broken
@@ -663,6 +677,7 @@ public partial class Program
         app.MapAdminWebhooksEndpoints();
         app.MapAdminTelemetryEndpoints();
         app.MapAdminLogEndpoints();
+        app.MapInternalLogEndpoints();
         app.MapAdminMobileSeatsEndpoints();
     }
 

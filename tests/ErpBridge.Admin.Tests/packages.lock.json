@@ -461,8 +461,12 @@
       "erpbridge.admin": {
         "type": "Project",
         "dependencies": {
+          "ErpBridge.Diagnostics": "[1.0.0, )",
           "ErpBridge.Shared": "[1.0.0, )"
         }
+      },
+      "erpbridge.diagnostics": {
+        "type": "Project"
       },
       "erpbridge.shared": {
         "type": "Project",
