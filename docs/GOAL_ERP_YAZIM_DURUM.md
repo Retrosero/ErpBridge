@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (plan + Mikro yazım referansı yazıldı; test kopyası `MikroDB_V15_ERPBTEST` kuruldu)
+Son güncelleme: 2026-09-17 (Y0a PR'ı)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -12,7 +12,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| Y0 — Referans ve temel düzeltmeler | 4 | 0 | ⬜ |
+| Y0 — Referans ve temel düzeltmeler | 5 | 1 | 🔄 |
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 0 | ⬜ |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 0 | ⬜ |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y0a — plan dalını main'e al
+**Şu anki görev:** Y0b — referansı tamamla
 
 ## Ortam
 - Test veritabanı: `MikroDB_V15_ERPBTEST` — 2026-09-17 11:24 yedeğinden (`MikroDB_V15_02_17_09.bak`) geri yüklendi,
@@ -33,10 +33,11 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 
 | ID | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| Y0a | Plan dalını main'e al | ⬜ | | |
+| Y0a | Plan dalını main'e al | ✅ | [#74](https://github.com/Retrosero/ErpBridge/pull/74) | **Codex 3 bulgu, üçü planda düzeltildi:** iade ve tahsilat komutları ortak `ErpDocumentHeader` taşır (idempotency/cari/tarih/kullanıcı); okuyucu kapalı faturayı kasa koduna atfediyor ve satış/alış iadesini ters sınıflandırıyor → yeni **Y0e** (canlı veriyle doğrulandı: `0+iade` müşterilerde, `63+iade` tedarikçilerde). Ayrıca bakiye sorgusunda `cha_cari_cins=0` filtresi eksik |
 | Y0b | Referansı tamamla + kolon sözleşme testi | ⬜ | | Satış/kapalı fatura/iade/tahsilat bölümleri canlı veriyle yazıldı; tam kolon listeleri kaldı |
 | Y0c | Yanlış evrak kodlarının düzeltilmesi | ⬜ | | |
 | Y0d | `_ERPB_EVRAK_ESLESME` tablosu | ⬜ | | |
+| Y0e | Okuyucu düzeltmeleri (kapalı fatura müşterisi, iade sınıfı, bakiye filtresi) | ⬜ | | |
 | Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ⬜ | | |
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ⬜ | | |
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
@@ -70,4 +71,5 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 
 ## Seni Bekleyenler
 
+- Y0e birleşince: müşteri PC'sine yeni ajan + cari hareketleri bölümü için "Sıfırdan Kur" (sunucudaki eski satırlar yanlış müşteri/tür taşıyor).
 - ERPBTEST'i Mikro'da test firması olarak tanımlamak (evrakları Mikro ekranında görmek için; Y3 sonunda muhasebeci kontrolü).
