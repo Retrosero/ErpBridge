@@ -125,6 +125,8 @@ public static class AdminJobsEndpoints
         job.RetryCount += 1;
         job.LastError = null;
         job.CompletedAtUtc = null;
+        job.LeasedUntilMs = null;
+        job.NextAttemptAtMs = null;
         // A retried order is waiting for the ERP again (Faz 47).
         bool orderChanged;
         await using (var transaction = db.Database.IsRelational() && ErpBridge.CentralApi.Warehouse.FulfillmentService.IsQueuedDocument(job.DocumentType)
