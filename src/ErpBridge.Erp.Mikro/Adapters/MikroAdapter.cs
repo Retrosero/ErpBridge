@@ -560,6 +560,24 @@ public sealed class MikroAdapter : IErpAdapter
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Goal ERP yazım: a phone sale written as an invoice (Y3c). Orders, dispatch notes (Y3d/Y3e) and sales
+    /// with a separate payment receipt (Y3h) are not written yet and fail without touching Mikro.
+    /// </remarks>
+    public Task<ErpWriteResult> WriteSalesDocumentAsync(ErpBridge.Erp.Abstractions.Documents.SalesDocumentCommand command, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (command.Kind != ErpBridge.Erp.Abstractions.Documents.SalesDocumentKind.Invoice || command.ExtraPayments is { Count: > 0 })
+        {
+            return Task.FromResult(new ErpWriteResult(false, ErpWriteResult.ErrorCodeNotImplemented,
+                "Bu satış şekli (sipariş, irsaliye ya da ayrı tahsilatlı satış) ERP'ye henüz yazılamıyor."));
+        }
+
+        return _serviceProvider.GetRequiredService<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesInvoiceWriter>()
+            .WriteAsync(command, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
     public Task<ErpWriteResult> WriteInvoiceAsync(InvoicePayload payload, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(payload);
