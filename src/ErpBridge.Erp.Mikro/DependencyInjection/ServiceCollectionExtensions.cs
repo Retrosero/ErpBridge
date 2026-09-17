@@ -130,7 +130,7 @@ public static class ServiceCollectionExtensions
             sp.GetService<ErpBridge.Core.Stores.IMappingStore>(),
             sp.GetService<ILogger<ErpBridge.Erp.Mikro.Writers.Session.MikroDocumentWriteRunner>>()
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ErpBridge.Erp.Mikro.Writers.Session.MikroDocumentWriteRunner>.Instance));
-        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesInvoiceWriter>();
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesDocumentWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesReturnWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroCollectionReceiptWriter>();
 

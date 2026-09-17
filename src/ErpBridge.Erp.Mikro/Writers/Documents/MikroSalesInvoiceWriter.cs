@@ -13,64 +13,12 @@ namespace ErpBridge.Erp.Mikro.Writers.Documents;
 /// a paid one is closed to the cash box (nakit) or bank (kart, havale), so the money lands there and
 /// the customer's balance does not move.
 /// </summary>
-public sealed class MikroSalesInvoiceWriter(MikroDocumentWriteRunner runner)
+public static class MikroSalesInvoiceWriter
 {
     public const int DescriptionLineLength = 127;
     public const int DescriptionLines = 10;
     public const int HeaderNoteLength = 40;
     public const int LineNoteLength = 50;
-
-    /// <summary>Job document type the ledger records a phone sale under.</summary>
-    public const string DocumentType = "sales_order";
-
-    private readonly MikroDocumentWriteRunner _runner = runner ?? throw new ArgumentNullException(nameof(runner));
-
-    public Task<ErpWriteResult> WriteAsync(SalesDocumentCommand command, MikroConnectionSettings settings, CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        ArgumentNullException.ThrowIfNull(settings);
-        if (command.Kind != SalesDocumentKind.Invoice)
-            throw new ArgumentException("Only invoices are written here; orders and dispatch notes have their own writers.", nameof(command));
-
-        var header = command.Header;
-        return _runner.RunAsync(
-            settings,
-            new MikroWriteRequest(DocumentType, header.ExternalId, header.ErpUserNo, settings.DatabaseName),
-            (session, token) => WriteWithPaymentsAsync(session, command, token),
-            ct);
-    }
-
-    /// <summary>
-    /// The invoice and, for money taken with an open sale (a part or mixed payment, D10), the collection
-    /// receipt in the same session: one commit or none (goal ERP yazım Y3h). The ledger records the sale
-    /// only; the receipt names the invoice in its description.
-    /// </summary>
-    public static async Task<MikroWrittenDocument> WriteWithPaymentsAsync(MikroWriteSession session, SalesDocumentCommand command, CancellationToken ct)
-    {
-        if (command.ExtraPayments is { Count: > 0 } && command.Settlement != SalesSettlement.Open)
-            throw new ArgumentException("A sale closed to a cash box or bank takes no separate receipt.", nameof(command));
-
-        var invoice = await WriteAsync(session, command, ct).ConfigureAwait(false);
-        if (command.ExtraPayments is { Count: > 0 } payments)
-        {
-            await MikroCollectionReceiptWriter.WriteAsync(session, ReceiptFor(command, invoice, payments), ct).ConfigureAwait(false);
-        }
-        return invoice;
-    }
-
-    internal static CollectionCommand ReceiptFor(SalesDocumentCommand command, MikroWrittenDocument invoice, IReadOnlyList<CollectionPayment> payments)
-    {
-        var header = command.Header;
-        var invoiceName = string.IsNullOrEmpty(invoice.Series) ? invoice.Number.ToString(System.Globalization.CultureInfo.InvariantCulture) : $"{invoice.Series}-{invoice.Number}";
-        return new CollectionCommand(
-            header with
-            {
-                Series = command.ExtraPaymentsSeries ?? string.Empty,
-                Description = $"{invoiceName} satış faturasının tahsilatı",
-                ExpectedTotal = payments.Sum(p => p.Amount),
-            },
-            payments);
-    }
 
     /// <summary>Writes the invoice inside an open session; the caller commits.</summary>
     public static async Task<MikroWrittenDocument> WriteAsync(MikroWriteSession session, SalesDocumentCommand command, CancellationToken ct)

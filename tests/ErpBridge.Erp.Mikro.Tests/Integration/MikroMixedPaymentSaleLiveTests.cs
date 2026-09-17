@@ -50,7 +50,7 @@ public class MikroMixedPaymentSaleLiveTests
         var command = await CommandAsync(conn, bank);
         await using var session = await MikroWriteSession.BeginAsync(conn, new MikroDocumentLedger(), 0, 0, 1);
 
-        var invoice = await MikroSalesInvoiceWriter.WriteWithPaymentsAsync(session, command, CancellationToken.None);
+        var invoice = await MikroSalesDocumentWriter.WriteAsync(session, command, CancellationToken.None);
 
         (await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM CARI_HESAP_HAREKETLERI WHERE cha_evrak_tip = 63 AND cha_evrakno_seri = @InvoiceSeries AND cha_evrakno_sira = @Number",
             new { InvoiceSeries, invoice.Number }, session.Transaction)).Should().Be(1);
@@ -73,12 +73,12 @@ public class MikroMixedPaymentSaleLiveTests
         var runner = new MikroDocumentWriteRunner(new MikroConnectionFactory(), new MikroDocumentLedger(), cache: null, NullLogger<MikroDocumentWriteRunner>.Instance);
         var settings = new MikroConnectionSettings(MikroWriteTestDatabase.Server, string.Empty, string.Empty, MikroWriteTestDatabase.Database!, IntegratedSecurity: true);
 
-        var result = await runner.RunAsync(settings, new MikroWriteRequest(MikroSalesInvoiceWriter.DocumentType, command.Header.ExternalId, 1),
-            (session, ct) => MikroSalesInvoiceWriter.WriteWithPaymentsAsync(session, command, ct));
+        var result = await runner.RunAsync(settings, new MikroWriteRequest(MikroSalesDocumentWriter.DocumentType, command.Header.ExternalId, 1),
+            (session, ct) => MikroSalesDocumentWriter.WriteAsync(session, command, ct));
 
         result.ErrorCode.Should().Be(ErpWriteError.BankAccountNotFoundCode);
         (await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM CARI_HESAP_HAREKETLERI WHERE cha_evrakno_seri IN (@InvoiceSeries, @ReceiptSeries)", new { InvoiceSeries, ReceiptSeries }))
             .Should().Be(0, "the invoice written before the receipt failed is rolled back");
-        (await new MikroDocumentLedger().FindAsync(conn, null, MikroSalesInvoiceWriter.DocumentType, command.Header.ExternalId)).Should().BeNull();
+        (await new MikroDocumentLedger().FindAsync(conn, null, MikroSalesDocumentWriter.DocumentType, command.Header.ExternalId)).Should().BeNull();
     }
 }
