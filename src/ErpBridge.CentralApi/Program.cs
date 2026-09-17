@@ -1,3 +1,4 @@
+using ErpBridge.CentralApi.LogCenter;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -219,6 +220,9 @@ public partial class Program
         // Log Merkezi: the single writer for log_events / log_error_groups.
         builder.Services.AddScoped<ErpBridge.CentralApi.LogCenter.ILogEventWriter, ErpBridge.CentralApi.LogCenter.LogEventWriter>();
         builder.Services.AddHostedService<ErpBridge.CentralApi.LogCenter.LogGroupBackfillWorker>();
+        builder.Services.Configure<ErpBridge.CentralApi.LogCenter.LogRetentionOptions>(cfg.GetSection(ErpBridge.CentralApi.LogCenter.LogRetentionOptions.SectionName));
+        builder.Services.AddScoped<ErpBridge.CentralApi.LogCenter.LogRetention>();
+        builder.Services.AddHostedService<ErpBridge.CentralApi.LogCenter.LogRetentionWorker>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Team.TeamDocumentProcessor>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Approvals.ApprovalService>();
@@ -553,6 +557,12 @@ public partial class Program
     /// </summary>
     public static void ConfigureApp(WebApplication app)
     {
+        // Log Merkezi L0e: every request gets a correlation id first, so the exception handler, the logs and
+        // the response all carry the same one. The handler answers an unhandled exception with a bare 500
+        // ApiError and records the details in the log centre.
+        app.UseCorrelationId();
+        app.UseExceptionHandler(new ExceptionHandlerOptions { ExceptionHandler = UnhandledExceptionHandler.HandleAsync });
+
         if (app.Environment.IsDevelopment())
         {
             app.UseSwagger();
