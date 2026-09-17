@@ -102,6 +102,7 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public const string CustomerNotFoundCode = "CUSTOMER_NOT_FOUND";
     public const string CustomerLockedCode = "CUSTOMER_LOCKED";
     public const string StockNotFoundCode = "STOCK_NOT_FOUND";
+    public const string StockNotSaleableCode = "STOCK_NOT_SALEABLE";
     public const string WarehouseNotFoundCode = "WAREHOUSE_NOT_FOUND";
     public const string CashAccountNotFoundCode = "CASH_ACCOUNT_NOT_FOUND";
     public const string BankAccountNotFoundCode = "BANK_ACCOUNT_NOT_FOUND";
@@ -115,11 +116,15 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public static ErpWriteError CustomerNotFound(string customerCode) =>
         new(CustomerNotFoundCode, $"Müşteri ERP'de bulunamadı: {Shown(customerCode)}.");
 
+    /// <summary>The card is locked, or its movement type does not allow this document (only purchases, only money, none).</summary>
     public static ErpWriteError CustomerLocked(string customerCode) =>
-        new(CustomerLockedCode, $"Müşteri ERP'de kilitli: {Shown(customerCode)}.");
+        new(CustomerLockedCode, $"Müşteri ERP'de bu belgeye kapalı (kilitli ya da hareket tipi uygun değil): {Shown(customerCode)}.");
 
     public static ErpWriteError StockNotFound(string stockCode) =>
         new(StockNotFoundCode, $"Ürün ERP'de bulunamadı: {Shown(stockCode)}.");
+
+    public static ErpWriteError StockNotSaleable(string stockCode) =>
+        new(StockNotSaleableCode, $"Ürün ERP'de satışa kapalı ya da pasif: {Shown(stockCode)}.");
 
     public static ErpWriteError WarehouseNotFound(int warehouseNo) =>
         new(WarehouseNotFoundCode, $"Depo ERP'de bulunamadı: {warehouseNo}.");

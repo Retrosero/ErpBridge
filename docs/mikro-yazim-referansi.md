@@ -177,6 +177,10 @@ fikstürünün paylaşılan anahtarı tek başına bu testleri açmaz, PR #75 Co
 Mikro kayıtlarında NULL olmadığı; açık/kasaya kapalı/bankaya kapalı satış faturası ve satış iadesi başlık kodları;
 fatura/iade kalem kodları ve iskonto zinciri bayrakları; 5 tahsilat yönteminin satır ve ödeme emri kodları; referans no biçimi.
 
+`MikroDocumentWriteRunnerLiveTests` (Y3a; aynı iki anahtarla, yalnız izinli test kopyasında **yazar**): `ERPBT3` serisinde
+tek `EVRAK_ACIKLAMALARI` satırlık deneme evrakı yazar, kendi satırlarını ve ledger kayıtlarını siler. Yazan tüm testler
+`MikroWriteTestDatabase.Collection` koleksiyonunda sırayla çalışır.
+
 > **Bağlantı notu:** bu PC'de `localhost` (paylaşılan bellek) ile async sorgular aralıklı "aktarım düzeyi hatası"
 > verdi (mevcut `MikroSchemaContractTests` dahil, 3/3). `tcp:localhost` ile 5/5 geçti; testlerin varsayılanı `tcp:localhost`.
 

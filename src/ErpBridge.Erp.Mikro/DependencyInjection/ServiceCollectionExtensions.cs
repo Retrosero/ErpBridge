@@ -121,6 +121,19 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IStockLookup>(_ => new InMemoryStockLookup());
         services.AddSingleton<IWarehouseLookup>(_ => new InMemoryWarehouseLookup());
 
+        // Phone documents (goal GOAL_ERP_YAZIM Y3): one idempotent transaction per document.
+        services.AddSingleton<MikroDocumentLedger>();
+        services.AddSingleton(sp => new ErpBridge.Erp.Mikro.Writers.Session.MikroDocumentWriteRunner(
+            sp.GetRequiredService<MikroConnectionFactory>(),
+            sp.GetRequiredService<MikroDocumentLedger>(),
+            // The agent's SQLite store is registered under the Core contract (LocalStore), not the abstractions one.
+            sp.GetService<ErpBridge.Core.Stores.IMappingStore>(),
+            sp.GetService<ILogger<ErpBridge.Erp.Mikro.Writers.Session.MikroDocumentWriteRunner>>()
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ErpBridge.Erp.Mikro.Writers.Session.MikroDocumentWriteRunner>.Instance));
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesDocumentWriter>();
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesReturnWriter>();
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroCollectionReceiptWriter>();
+
         services.AddSingleton<MikroSalesOrderWriter>();
         // Faz 17: fatura + irsaliye yazıcıları da IErpAdapter sözleşmesi üzerinden akıyor.
         services.AddSingleton<MikroInvoiceWriter>();
