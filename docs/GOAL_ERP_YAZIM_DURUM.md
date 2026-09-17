@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y1e — kiralama süresi ve yeniden deneme (PR açılıyor)
+**Şu anki görev:** Y1e — kiralama süresi ve yeniden deneme (PR #83)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -45,7 +45,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ⬜ | | |
 | Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
 | Y1d | `erpContext` kiralama yanıtında | ✅ | [#82](https://github.com/Retrosero/ErpBridge/pull/82) | `JobResponse.erpContext` (ERP'li firmada; ERP'siz firmada null). `ErpWriteContextBuilder`: kullanıcı değeri > firma; boş kod firma kodunu gizlemez, kullanıcıdaki boş seri bilinçli serisiz sayılır. Kiralama anında okunur (eşleme düzeltilip yeniden denenince yeni değer — test). Biçim `ErpBridge.Core.Jobs.ErpWriteContext` ile aynı |
-| Y1e | Kiralama süresi + geçici hata yeniden denemesi | ✅ | (Y1e PR) | `jobs.LeasedUntilMs` / `NextAttemptAtMs` (nullable bigint, Unix ms — SQLite `DateTimeOffset` karşılaştıramaz). Kiralama 10 dk; `retryable=true` ack → `Pending` + 1-2-4-8-15-30-60 dk bekleme, ack kaydı `retry`; 10. denemeden sonra `Failed`; kiralaması 10 kez dolan iş bırakılır (`Failed`). Kolon eklenmeden önce kiralanmış işler süresiz kalır (bilinçli: geriye dönük yeniden teslim yok). Admin yeniden deneme iki alanı temizler. **Not:** kiralama ucu SQLite'ta `OrderBy(EnqueuedAtUtc)` yüzünden 500 veriyor (eski durum, PostgreSQL etkilenmiyor); testler bellek içi fabrikada |
+| Y1e | Kiralama süresi + geçici hata yeniden denemesi | ✅ | [#83](https://github.com/Retrosero/ErpBridge/pull/83) | `jobs.LeasedUntilMs` / `NextAttemptAtMs` (nullable bigint, Unix ms — SQLite `DateTimeOffset` karşılaştıramaz). Kiralama 10 dk; `retryable=true` ack → `Pending` + 1-2-4-8-15-30-60 dk bekleme, ack kaydı `retry`; 10. denemeden sonra `Failed`; kiralaması 10 kez dolan iş bırakılır (`Failed`). Kolon eklenmeden önce kiralanmış işler süresiz kalır (bilinçli: geriye dönük yeniden teslim yok). Admin yeniden deneme iki alanı temizler. **Not:** kiralama ucu SQLite'ta `OrderBy(EnqueuedAtUtc)` yüzünden 500 veriyor (eski durum, PostgreSQL etkilenmiyor); testler bellek içi fabrikada |
 | Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ✅ | [#79](https://github.com/Retrosero/ErpBridge/pull/79) | `Erp.Abstractions/Documents/MobileDocumentCommands.cs`: ortak `ErpDocumentHeader` + `SalesDocumentCommand` / `SalesReturnCommand` / `CollectionCommand`. `IErpAdapter`'a varsayılan gövdeli üç metot (`NotImplemented` sonucu) — Logo iskeleti değişmeden derlenir ve reddeder (seam testi). **Sapma:** iade kondisyonu yüzde değil `ConditionRatio` (0..1, telefonun `conditionPercent` alanı zaten oran); karma ödemede tahsilat serisi komutta (`ExtraPaymentsSeries`) |
 | Y2b | `MobileDocumentTranslator` | ⬜ | | |
 | Y2c | `AgentWorker` yeni yol + `retryable` | ⬜ | | |
