@@ -490,6 +490,7 @@
         "dependencies": {
           "BCrypt.Net-Next": "[4.0.3, )",
           "ErpBridge.Core": "[1.0.0, )",
+          "ErpBridge.Diagnostics": "[1.0.0, )",
           "ErpBridge.Shared": "[1.0.0, )",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "[10.0.11, )",
           "Microsoft.EntityFrameworkCore": "[10.0.11, )",
@@ -510,6 +511,9 @@
           "Microsoft.Extensions.Options": "[10.0.11, )",
           "Polly": "[8.4.2, )"
         }
+      },
+      "erpbridge.diagnostics": {
+        "type": "Project"
       },
       "erpbridge.erp.abstractions": {
         "type": "Project",

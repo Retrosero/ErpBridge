@@ -344,6 +344,9 @@
           "System.Composition.Runtime": "9.0.0"
         }
       },
+      "erpbridge.diagnostics": {
+        "type": "Project"
+      },
       "erpbridge.core": {
         "type": "Project",
         "dependencies": {
