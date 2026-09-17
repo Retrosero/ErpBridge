@@ -34,6 +34,7 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <param name="PackageCode">ERP ambalaj kodu.</param>
 /// <param name="CartonCode">ERP koli / kalkon kodu.</param>
 /// <param name="RecordKey">Physical row identity the ERP uses for this card (V15 <c>sto_RECno</c>, V16 <c>sto_Guid</c>) rendered as text; the only thing a delete event names the card by.</param>
+/// <param name="VatRate">VAT rate in percent a phone sale of this card is taxed with (Mikro <c>fn_VergiYuzde(sto_toptan_vergi)</c>); sent to the phone as <c>kdvOrani</c> (goal ERP yazım Y4g).</param>
 public sealed record StockPayload(
     string StockCode,
     string Name,
@@ -60,7 +61,8 @@ public sealed record StockPayload(
     IReadOnlyList<BarcodePayload> Barcodes,
     string? PackageCode = null,
     string? CartonCode = null,
-    string? RecordKey = null);
+    string? RecordKey = null,
+    [property: System.Text.Json.Serialization.JsonPropertyName("kdvOrani")] decimal? VatRate = null);
 
 /// <summary>
 /// One barcode attached to a <see cref="StockPayload"/>. Lot and serial

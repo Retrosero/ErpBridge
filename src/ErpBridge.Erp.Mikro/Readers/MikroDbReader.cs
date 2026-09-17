@@ -268,6 +268,8 @@ SELECT
     CAST(sto_kisa_ismi AS NVARCHAR(100))              AS ShortName,
     CAST(sto_yabanci_isim AS NVARCHAR(200))           AS ForeignName,
     CAST(sto_perakende_vergi AS INT)                  AS DefaultTaxPointer,
+    -- The rate a phone sale is taxed with: Mikro writes it as a wholesale line (goal ERP yazım Y4g).
+    CAST(dbo.fn_VergiYuzde(sto_toptan_vergi) AS DECIMAL(9,4)) AS VatRate,
     CAST(ISNULL(sto_birim1_ad, '') AS NVARCHAR(20))   AS Unit1,
     CAST(sto_birim1_katsayi AS DECIMAL(18,6))         AS Unit1Factor,
     CAST(sto_birim2_ad AS NVARCHAR(20))               AS Unit2,
@@ -321,7 +323,8 @@ WHERE ISNULL(sto_iptal, 0) = 0
                 Array.Empty<BarcodePayload>(),
                 s.PackageCode,
                 s.CartonCode,
-                s.RecordKey))
+                s.RecordKey,
+                s.VatRate))
             .ToList();
         _logger.LogInformation("Read {Count} stocks for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
@@ -772,7 +775,8 @@ ORDER BY sth_RECno";
         bool RenkDetayli,
         decimal? StandardCost,
         string? Currency,
-        string? RecordKey);
+        string? RecordKey,
+        decimal? VatRate);
 
     private sealed record SalesConditionRow(
         string? StockCode,

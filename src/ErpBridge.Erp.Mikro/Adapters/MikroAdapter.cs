@@ -60,7 +60,7 @@ public sealed class MikroAdapter : IErpAdapter
     /// 2 (2026-09-17): customer ledger rows carry <c>ciroCariKod</c>/<c>kapali</c> for closed invoices,
     /// returns are classified by the iade flag, and card balances count only cari-side rows.
     /// </summary>
-    public int SnapshotProjectionVersion => 2;
+    public int SnapshotProjectionVersion => 3;
 
     /// <summary>
     /// Mikro V15 change log backed only by the existing
