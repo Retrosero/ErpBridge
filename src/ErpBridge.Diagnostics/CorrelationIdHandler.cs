@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace ErpBridge.Diagnostics;
@@ -38,5 +41,26 @@ public sealed class CorrelationIdHandler(ILogger<CorrelationIdHandler> logger) :
                 (int)response.StatusCode, method, path, "UPSTREAM_5XX", correlationId);
         }
         return response;
+    }
+}
+
+public static class RequestCorrelationExtensions
+{
+    /// <summary>
+    /// Puts <see cref="HttpContext.TraceIdentifier"/> into the logging scope as <c>CorrelationId</c> for the whole request
+    /// (register before <c>UseExceptionHandler</c>). The error page shows the same identifier as the support code, so
+    /// the exception the handler logs can be found in the log centre by it. Components that set their own
+    /// <c>CorrelationId</c> scope (the error boundaries) override it.
+    /// </summary>
+    public static IApplicationBuilder UseRequestCorrelationScope(this IApplicationBuilder app)
+    {
+        var logger = app.ApplicationServices.GetRequiredService<ILoggerFactory>().CreateLogger("ErpBridge.Diagnostics.Requests");
+        return app.Use(async (context, next) =>
+        {
+            using (logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = context.TraceIdentifier }))
+            {
+                await next(context);
+            }
+        });
     }
 }

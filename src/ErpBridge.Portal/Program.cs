@@ -59,6 +59,9 @@ if (!app.Environment.IsDevelopment())
     }
 }
 
+// Log Merkezi L2e/L2f: the /Error page's code is the CorrelationId of the exception the handler logs.
+app.UseRequestCorrelationScope();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");

@@ -43,7 +43,7 @@ Görev listesi: [GOAL_LOG_MERKEZI.md](GOAL_LOG_MERKEZI.md)
 | L2b | `DatabaseLoggerProvider` | ✅ | #72 | Ortak altyapı yeni `ErpBridge.Diagnostics` projesinde (`BufferedLogProvider`, paket bağımlılığı yok). EF + yakalanmamış istisna kategorileri hariç; Test ortamında kapalı |
 | L2c | 5xx + yavaş istek kaydı | ✅ | #72 | Firma/kullanıcı/ajan kapsamı log anında okunur (API anahtarı uçta doğrulanıyor); uzun yoklamalar yavaş sayılmaz |
 | L2d | `/internal/logs` + `RemoteLoggerProvider` | ✅ | #72 | Anahtar tanımsızsa uç 404, gönderici kapalı |
-| L2e | Portal hata sınırı + loglama | ✅ | #72 | `PortalErrorBoundary` destek kodu = iz kimliği; firma/kullanıcı JWT'den (yalnız log bağlamı); `CorrelationIdHandler` 5xx/ulaşılamayan çağrıyı loglar; `/Error` sayfası (önceden yoktu) yerelde doğrulandı |
+| L2e | Portal hata sınırı + loglama | ✅ | #72 | **Codex 4 bulgu düzeltildi:** iç log ucu gövdeyi anahtardan sonra ve en çok 1 MB okur, null olaylar 400; `/Error` kodu (`TraceIdentifier`) loglanan istisnanın iz kimliği (`UseRequestCorrelationScope`); `PortalPageBase.RunAsync` yakalanan API/bağlantı hatalarını sayfa, firma, kullanıcıyla loglar (5xx ERROR, diğerleri WARN). `PortalErrorBoundary` destek kodu = iz kimliği; firma/kullanıcı JWT'den (yalnız log bağlamı); `CorrelationIdHandler` 5xx/ulaşılamayan çağrıyı loglar; `/Error` sayfası (önceden yoktu) yerelde doğrulandı |
 | L2f | Admin hata sınırı + loglama | ✅ | #72 | `AdminErrorBoundary`, `/Error`, aynı işleyici ve log gönderimi |
 | L3a | Ajan log yapılandırması + sürüm | ⬜ | | |
 | L3b | Ajan maskeleme düzeltmeleri | ⬜ | | |

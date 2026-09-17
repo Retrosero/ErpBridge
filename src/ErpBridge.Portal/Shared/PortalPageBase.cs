@@ -1,6 +1,7 @@
 using ErpBridge.Portal.Api;
 using ErpBridge.Portal.Session;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 
 namespace ErpBridge.Portal.Shared;
 
@@ -16,6 +17,7 @@ public abstract class PortalPageBase : ComponentBase
     [Inject] protected ISessionPersistence Persistence { get; set; } = default!;
     [Inject] protected PortalApiClient Api { get; set; } = default!;
     [Inject] protected NavigationManager Nav { get; set; } = default!;
+    [Inject] private ILogger<PortalPageBase> Logger { get; set; } = default!;
 
     /// <summary>True once the session is known to be valid and the page may show data.</summary>
     protected bool Ready { get; private set; }
@@ -107,19 +109,41 @@ public abstract class PortalPageBase : ComponentBase
         catch (PortalApiException failed)
         {
             Error = failed.Message;
+            LogFailure(failed.Status >= 500 ? LogLevel.Error : LogLevel.Warning, "PORTAL_API_ERROR", failed,
+                "Portal page {Operation} got {ErrorCode} ({HttpStatus}) from the central API.", failed.Code, failed.Status);
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException unreachable)
         {
             Error = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+            LogFailure(LogLevel.Warning, "PORTAL_UPSTREAM_UNREACHABLE", unreachable, "Portal page {Operation} could not reach the central API.");
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException timeout)
         {
             Error = "Sunucu zamanında yanıt vermedi. Tekrar deneyin.";
+            LogFailure(LogLevel.Warning, "PORTAL_UPSTREAM_TIMEOUT", timeout, "Portal page {Operation} timed out waiting for the central API.");
         }
         finally
         {
             Busy = false;
         }
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Log Merkezi L2e: a failure the page showed as a message still reaches the log centre, with the page, company and
+    /// user. Business refusals are warnings; a 5xx is an error.
+    /// </summary>
+    private void LogFailure(LogLevel level, string kind, Exception exception, string template, params object?[] values)
+    {
+        using (Logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["Kind"] = kind,
+            ["Operation"] = GetType().Name,
+            ["TenantId"] = Session.TenantId,
+            ["UserId"] = Session.UserId,
+        }))
+        {
+            Logger.Log(level, exception is PortalApiException ? null : exception, template, [GetType().Name, .. values]);
+        }
     }
 }

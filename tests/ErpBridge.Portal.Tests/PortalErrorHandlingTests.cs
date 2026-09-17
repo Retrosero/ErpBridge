@@ -36,6 +36,28 @@ public sealed class PortalErrorHandlingTests : PortalPageTestContext
     }
 
     [Fact]
+    public void A_failed_api_call_shown_on_a_page_is_logged_with_page_company_and_user()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var logs = new CapturingLoggerProvider();
+        Services.AddSingleton<ILoggerFactory>(new LoggerFactory([logs]));
+        Services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(token: FakeJwt(tenantId, userId)));
+        api.Fail("/api/v1/portal/stock/facets", System.Net.HttpStatusCode.BadGateway, "HTTP_502");
+        api.Fail("/api/v1/portal/stock/search?sort=name&dir=asc&page=1&pageSize=50", System.Net.HttpStatusCode.BadGateway, "HTTP_502");
+        Services.GetRequiredService<NavigationManager>().NavigateTo("stok");
+
+        var cut = Render<ErpBridge.Portal.Pages.Stok>();
+
+        cut.WaitForAssertion(() => cut.Find("#page-error"));
+        var entry = logs.Entries.Should().Contain(e => e.Scope.ContainsKey("Kind") && (string?)e.Scope["Kind"] == "PORTAL_API_ERROR").Subject;
+        entry.Level.Should().Be(LogLevel.Error, "a 5xx is an error, a business refusal a warning");
+        entry.Scope.Should().Contain("Operation", "Stok").And.Contain("TenantId", tenantId).And.Contain("UserId", userId);
+        entry.Message.Should().Contain("HTTP_502");
+    }
+
+    [Fact]
     public void Token_claims_are_read_for_log_context_and_garbage_is_ignored()
     {
         var tenantId = Guid.NewGuid();

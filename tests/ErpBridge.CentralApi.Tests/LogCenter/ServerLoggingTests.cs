@@ -6,7 +6,10 @@ using ErpBridge.CentralApi.LogCenter;
 using ErpBridge.CentralApi.Tests.Support;
 using ErpBridge.Diagnostics;
 using FluentAssertions;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -213,6 +216,25 @@ public sealed class InternalLogEndpointTests : IClassFixture<SqliteCentralApiFac
     }
 
     [Fact]
+    public async Task Malformed_or_oversized_batches_are_refused_without_a_500()
+    {
+        using var host = WithKey();
+        async Task<HttpResponseMessage> Raw(string json, long? declaredLength = null)
+        {
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            if (declaredLength is { } length) content.Headers.ContentLength = length;
+            var request = new HttpRequestMessage(HttpMethod.Post, InternalLogContract.Route) { Content = content };
+            request.Headers.Add(InternalLogContract.KeyHeader, Key);
+            return await host.CreateClient().SendAsync(request);
+        }
+
+        (await Raw("{\"source\":\"portal\",\"events\":null}")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await Raw("{\"source\":\"portal\",\"events\":[null,{\"eventId\":null}]}")).StatusCode.Should().Be(HttpStatusCode.Accepted);
+        (await Raw("not json")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await Raw(new string(' ', 2 * 1024 * 1024) + "{}")).StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+    }
+
+    [Fact]
     public async Task Portal_lines_are_stored_with_their_context()
     {
         using var host = WithKey();
@@ -305,5 +327,57 @@ public sealed class RequestOutcomeLoggingTests : IClassFixture<SqliteCentralApiF
         row.HttpMethod.Should().Be("POST");
         row.HttpStatus.Should().Be(200);
         row.DurationMs.Should().NotBeNull();
+    }
+}
+
+public sealed class RequestCorrelationScopeTests
+{
+    [Fact]
+    public async Task The_code_an_error_page_shows_is_the_correlation_id_of_the_logged_exception()
+    {
+        var provider = new ScopeCapture();
+        var builder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Logging.ClearProviders().AddProvider(provider);
+        await using var app = builder.Build();
+        app.UseRequestCorrelationScope();
+        app.UseExceptionHandler(new Microsoft.AspNetCore.Builder.ExceptionHandlerOptions
+        {
+            ExceptionHandler = context => context.Response.WriteAsync(context.TraceIdentifier),
+        });
+        app.MapGet("/boom", (Func<string>)(() => throw new InvalidOperationException("boom")));
+        await app.StartAsync();
+
+        var response = await app.GetTestClient().GetAsync("/boom");
+        var shown = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+
+        provider.Errors.Should().Contain(e => e.Exception is InvalidOperationException && e.CorrelationId == shown);
+    }
+
+    private sealed class ScopeCapture : ILoggerProvider, ISupportExternalScope
+    {
+        private IExternalScopeProvider _scopes = new LoggerExternalScopeProvider();
+        public List<(Exception? Exception, string? CorrelationId)> Errors { get; } = [];
+        public ILogger CreateLogger(string categoryName) => new Logger(this);
+        public void SetScopeProvider(IExternalScopeProvider scopeProvider) => _scopes = scopeProvider;
+        public void Dispose() { }
+
+        private sealed class Logger(ScopeCapture owner) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => owner._scopes.Push(state);
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (logLevel < LogLevel.Error) return;
+                string? id = null;
+                owner._scopes.ForEachScope((scope, _) =>
+                {
+                    if (scope is IEnumerable<KeyValuePair<string, object>> pairs)
+                        foreach (var (key, value) in pairs) if (key == "CorrelationId") id = value?.ToString();
+                }, (object?)null);
+                lock (owner.Errors) owner.Errors.Add((exception, id));
+            }
+        }
     }
 }
