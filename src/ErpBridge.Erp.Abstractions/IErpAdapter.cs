@@ -99,4 +99,23 @@ public interface IErpAdapter
 
     /// <summary>Open a new stock card in the ERP (idempotent by external id + code).</summary>
     Task<ErpWriteResult> WriteStockCardAsync(CreateStockRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Write a phone sale as the ERP document <see cref="SalesDocumentCommand.Kind"/> names, in one
+    /// transaction, idempotent on <c>sales_order</c> + <see cref="ErpDocumentHeader.ExternalId"/>.
+    /// Adapters that cannot write it return <see cref="ErpWriteResult.ErrorCodeNotImplemented"/>.
+    /// </summary>
+    Task<ErpWriteResult> WriteSalesDocumentAsync(SalesDocumentCommand command, CancellationToken ct = default)
+        => Task.FromResult(NotWritable("sales document"));
+
+    /// <summary>Write a phone sales return as a return invoice, idempotent like <see cref="WriteSalesDocumentAsync"/>.</summary>
+    Task<ErpWriteResult> WriteSalesReturnAsync(SalesReturnCommand command, CancellationToken ct = default)
+        => Task.FromResult(NotWritable("sales return"));
+
+    /// <summary>Write a phone collection as one receipt with a line per payment.</summary>
+    Task<ErpWriteResult> WriteCollectionDocumentAsync(CollectionCommand command, CancellationToken ct = default)
+        => Task.FromResult(NotWritable("collection receipt"));
+
+    private static ErpWriteResult NotWritable(string document) =>
+        new(false, ErpWriteResult.ErrorCodeNotImplemented, $"This ERP adapter cannot write a {document} from the phone yet.");
 }
