@@ -63,6 +63,7 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton<IMappingStore, SqliteMappingStore>();
         services.TryAddSingleton<IAgentConfigStore, SqliteAgentConfigStore>();
+        services.TryAddSingleton<IAgentLogStore, SqliteAgentLogStore>();
         services.TryAddSingleton<ILocalQueueStore, SqliteLocalQueueStore>();
         services.TryAddSingleton<ICheckpointStore, SqliteCheckpointStore>();
 

@@ -103,6 +103,49 @@ ALTER TABLE agent_config ADD COLUMN protection_version INTEGER NULL DEFAULT 0;
 }
 
 /// <summary>
+/// The agent's diagnostic outbox (Log Merkezi L3c, decision D10): events wait here while the agent is offline
+/// and the throttle remembers when a fingerprint was last sent. Both tables are created with
+/// <c>IF NOT EXISTS</c>, so the migration is a no-op on a database that already has them.
+/// </summary>
+public static class AgentLogOutboxMigration
+{
+    /// <summary>Schema version written into <c>schema_version</c> once this migration succeeds.</summary>
+    public const int Version = 3;
+
+    public const string Script = @"
+-- 003_agent_log_outbox.sql
+CREATE TABLE IF NOT EXISTS agent_log_outbox (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id         TEXT    NOT NULL UNIQUE,
+    occurred_at      TEXT    NOT NULL,
+    occurred_at_ms   INTEGER NOT NULL,
+    severity         TEXT    NOT NULL,
+    kind             TEXT    NOT NULL,
+    operation        TEXT    NULL,
+    message          TEXT    NULL,
+    exception_type   TEXT    NULL,
+    stack_trace      TEXT    NULL,
+    app_version      TEXT    NULL,
+    os_version       TEXT    NULL,
+    machine_name     TEXT    NULL,
+    correlation_id   TEXT    NULL,
+    properties_json  TEXT    NULL,
+    source           TEXT    NOT NULL,
+    fingerprint      TEXT    NOT NULL,
+    repeat_count     INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS ix_agent_log_outbox_fingerprint ON agent_log_outbox (fingerprint);
+CREATE INDEX IF NOT EXISTS ix_agent_log_outbox_occurred ON agent_log_outbox (occurred_at_ms);
+
+CREATE TABLE IF NOT EXISTS agent_log_sent (
+    fingerprint TEXT    NOT NULL PRIMARY KEY,
+    sent_at_ms  INTEGER NOT NULL,
+    suppressed  INTEGER NOT NULL DEFAULT 0
+);
+";
+}
+
+/// <summary>
 /// Bootstraps the local SQLite schema. Idempotent — re-running just no-ops on an
 /// already-migrated database.
 /// </summary>
@@ -139,6 +182,22 @@ VALUES (@version, @appliedAt);";
         // databases) AND PRAGMA table_info (to handle the legacy case where version 1 was
         // written but the new columns are missing — e.g. on an in-flight upgrade).
         await ApplyProtectedColumnsIfNeededAsync(connection).ConfigureAwait(false);
+
+        // Migration 003: the diagnostic outbox. The script itself is idempotent, so it runs whenever the
+        // recorded version is older — a database that already has the tables just re-reads the version row.
+        await ApplyAgentLogOutboxIfNeededAsync(connection).ConfigureAwait(false);
+    }
+
+    private static async Task ApplyAgentLogOutboxIfNeededAsync(DbConnection connection)
+    {
+        var current = await connection.ExecuteScalarAsync<int?>(
+            "SELECT MAX(version) FROM schema_version;").ConfigureAwait(false);
+        if (current is not null && current.Value >= AgentLogOutboxMigration.Version) return;
+
+        await connection.ExecuteAsync(AgentLogOutboxMigration.Script).ConfigureAwait(false);
+        await connection.ExecuteAsync(
+            "INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (@version, @appliedAt);",
+            new { version = AgentLogOutboxMigration.Version, appliedAt = DateTime.UtcNow.ToString("O") }).ConfigureAwait(false);
     }
 
     /// <summary>

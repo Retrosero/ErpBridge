@@ -539,6 +539,32 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         await SendNoContentAsync(request, opts, ct);
     }
 
+    /// <inheritdoc />
+    public async Task<bool> SendAgentLogsAsync(IReadOnlyList<ErpBridge.Core.Domain.AgentLogEvent> events, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        if (events.Count == 0) return true;
+
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(HttpMethod.Post, "/api/v1/agents/logs/batch", opts, NewIdempotencyKey("agent-logs"));
+        request.Content = SerializeJson(new { events });
+        try
+        {
+            await SendNoContentAsync(request, opts, ct);
+            return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // The queue keeps the events; the caller logs the failure as a warning (L3c).
+            _logger.LogWarning(ex, "Sending {Count} diagnostic events to the Log Centre failed.", events.Count);
+            return false;
+        }
+    }
+
     /// <summary>
     /// Build a stable idempotency key for non-ack POSTs. The same call (and any
     /// Polly retries against the same <see cref="HttpRequestMessage"/>) reuses

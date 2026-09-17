@@ -10,6 +10,7 @@ using ErpBridge.RemoteApi.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 namespace ErpBridge.Agent.Service;
@@ -68,6 +69,15 @@ public static class Program
                 // singleton. Lives in Core so the AgentWorker can validate the
                 // wire shape BEFORE handing it to the adapter.
                 services.AddSingleton<SalesOrderPayloadDeserializer>();
+
+                // Log Merkezi L3c: the agent's own diagnostic events queue in SQLite and go to the Log Centre
+                // with the heartbeat. The reporter is what the workers call; nothing else writes the queue.
+                services.AddSingleton<ErpBridge.Core.Logging.IAgentLogReporter>(sp => new ErpBridge.Core.Logging.AgentLogReporter(
+                    sp.GetRequiredService<ErpBridge.Core.Stores.IAgentLogStore>(),
+                    sp.GetRequiredService<ILogger<ErpBridge.Core.Logging.AgentLogReporter>>(),
+                    TimeProvider.System,
+                    ErpBridge.Core.Domain.AgentLogSources.Service));
+                services.AddSingleton<ErpBridge.Core.Logging.AgentLogUploader>();
 
                 // Mikro adapter is registered against the live IConfiguration —
                 // its MikroConnectionSettings bootstrap values are derived from the

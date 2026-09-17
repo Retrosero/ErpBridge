@@ -34,6 +34,7 @@ public sealed class HeartbeatWorker : BackgroundService
     private readonly IRemoteApiClient _remoteApi;
     private readonly IAgentConfigStore _configStore;
     private readonly ILocalQueueStore _localQueue;
+    private readonly ErpBridge.Core.Logging.AgentLogUploader _logUploader;
     private readonly ILogger<HeartbeatWorker> _logger;
 
     private DateTimeOffset? _lastSyncAtUtc;
@@ -43,11 +44,13 @@ public sealed class HeartbeatWorker : BackgroundService
         IRemoteApiClient remoteApi,
         IAgentConfigStore configStore,
         ILocalQueueStore localQueue,
+        ErpBridge.Core.Logging.AgentLogUploader logUploader,
         ILogger<HeartbeatWorker> logger)
     {
         _remoteApi = remoteApi ?? throw new ArgumentNullException(nameof(remoteApi));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
         _localQueue = localQueue ?? throw new ArgumentNullException(nameof(localQueue));
+        _logUploader = logUploader ?? throw new ArgumentNullException(nameof(logUploader));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -98,6 +101,9 @@ public sealed class HeartbeatWorker : BackgroundService
                     // dashboard only sees the most recent failure.
                     _lastError = null;
                 }
+
+                // Diagnostic events queued while the network was down go out with the heartbeat (Log Merkezi L3c).
+                await _logUploader.FlushAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

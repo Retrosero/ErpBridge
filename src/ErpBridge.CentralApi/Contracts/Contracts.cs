@@ -54,6 +54,48 @@ public sealed class AgentTelemetryRequest
 }
 
 /// <summary>POST /api/v1/licenses/validate body.</summary>
+/// <summary>
+/// POST <c>/api/v1/agents/logs/batch</c> body (Log Merkezi L3c): the diagnostic events the agent queued while
+/// it was offline. At most <see cref="ErpBridge.CentralApi.Endpoints.AgentsEndpoints.MaxLogBatch"/> per call.
+/// </summary>
+public sealed class AgentLogBatchRequest
+{
+    [JsonPropertyName("events")] public List<AgentLogEventDto> Events { get; set; } = [];
+}
+
+/// <summary>One agent diagnostic event. Everything is masked on the agent; the server bounds and scrubs again.</summary>
+public sealed class AgentLogEventDto
+{
+    [JsonPropertyName("eventId")] public string? EventId { get; set; }
+    [JsonPropertyName("occurredAtUtc")] public DateTimeOffset? OccurredAtUtc { get; set; }
+    [JsonPropertyName("severity")] public string? Severity { get; set; }
+    [JsonPropertyName("kind")] public string? Kind { get; set; }
+    [JsonPropertyName("operation")] public string? Operation { get; set; }
+    [JsonPropertyName("message")] public string? Message { get; set; }
+    [JsonPropertyName("exceptionType")] public string? ExceptionType { get; set; }
+    [JsonPropertyName("stackTrace")] public string? StackTrace { get; set; }
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("osVersion")] public string? OsVersion { get; set; }
+    [JsonPropertyName("machineName")] public string? MachineName { get; set; }
+    [JsonPropertyName("correlationId")] public string? CorrelationId { get; set; }
+    [JsonPropertyName("propertiesJson")] public string? PropertiesJson { get; set; }
+
+    /// <summary><c>windows_service</c> or <c>windows_agent</c>; anything else is stored as the service.</summary>
+    [JsonPropertyName("source")] public string? Source { get; set; }
+
+    /// <summary>How many times this problem repeated while the event waited in the queue.</summary>
+    [JsonPropertyName("repeatCount")] public int? RepeatCount { get; set; }
+}
+
+/// <summary>POST <c>/api/v1/agents/logs/batch</c> response.</summary>
+public sealed class AgentLogBatchResponse
+{
+    [JsonPropertyName("accepted")] public int Accepted { get; set; }
+
+    /// <summary>Events this agent had already sent (same source and event id).</summary>
+    [JsonPropertyName("duplicate")] public int Duplicate { get; set; }
+}
+
 public sealed class LicenseValidateRequest
 {
     [JsonPropertyName("licenseKey")] public string LicenseKey { get; set; } = string.Empty;

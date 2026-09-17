@@ -42,6 +42,14 @@ public static class AgentsEndpoints
             .RequireAuthorization(Program.AgentPolicy)
             .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
 
+        group.MapPost("/logs/batch", LogBatchAsync)
+            .WithName("AgentsLogBatch")
+            .Produces<AgentLogBatchResponse>(StatusCodes.Status200OK)
+            .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+            .RequireAuthorization(Program.AgentPolicy)
+            .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
+
         group.MapPost("/telemetry", TelemetryAsync)
             .WithName("AgentsTelemetry")
             .Produces(StatusCodes.Status204NoContent)
@@ -173,6 +181,75 @@ public static class AgentsEndpoints
         agent.LastQueueDepth = body.QueueDepth;
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
+    }
+
+    /// <summary>Most events one batch may carry (Log Merkezi L3c).</summary>
+    public const int MaxLogBatch = 50;
+
+    /// <summary>
+    /// Takes the agent's queued diagnostic events into the Log Centre. The company and the agent come from the
+    /// token, never from the body; an event id the agent already sent counts as a duplicate, so a retry after a
+    /// lost response stores nothing twice.
+    /// </summary>
+    private static async Task<IResult> LogBatchAsync(
+        [FromBody] AgentLogBatchRequest body,
+        HttpContext http,
+        [FromServices] CentralApiDbContext db,
+        [FromServices] ILogEventWriter logWriter,
+        CancellationToken ct)
+    {
+        if (body is null
+            || !http.User.TryGetTenantId(out var tenantId)
+            || !http.User.TryGetAgentId(out var agentId))
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Agent identity is required." });
+
+        if (body.Events.Count == 0 || body.Events.Count > MaxLogBatch)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError
+            {
+                ErrorCode = "INVALID_LOG_BATCH",
+                Message = $"events must hold 1 to {MaxLogBatch} events.",
+            });
+        if (body.Events.Any(item => string.IsNullOrWhiteSpace(item.EventId) || item.EventId!.Trim().Length > 64))
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError
+            {
+                ErrorCode = "INVALID_EVENT_ID",
+                Message = "Every event needs an eventId of at most 64 characters.",
+            });
+
+        var agent = await db.Agents.AsNoTracking().FirstOrDefaultAsync(
+            item => item.Id == agentId && item.TenantId == tenantId, ct);
+        if (agent is null)
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "AGENT_NOT_FOUND", Message = "Agent is not registered." });
+
+        var requestCorrelation = http.Request.Headers[CorrelationId.HeaderName].FirstOrDefault();
+        var inputs = body.Events.Select(item => new LogEventInput
+        {
+            EventId = item.EventId!.Trim(),
+            Source = string.Equals(item.Source, LogSources.WindowsAgent, StringComparison.OrdinalIgnoreCase)
+                ? LogSources.WindowsAgent
+                : LogSources.WindowsService,
+            TenantId = tenantId,
+            AgentId = agentId,
+            OccurredAtUtc = item.OccurredAtUtc,
+            Severity = item.Severity,
+            Kind = item.Kind,
+            Operation = item.Operation,
+            Message = item.Message,
+            ExceptionType = item.ExceptionType,
+            StackTrace = item.StackTrace,
+            AppVersion = item.AppVersion,
+            OsVersion = item.OsVersion,
+            DeviceModel = string.IsNullOrWhiteSpace(item.MachineName) ? agent.MachineId : item.MachineName,
+            CorrelationId = string.IsNullOrWhiteSpace(item.CorrelationId) ? requestCorrelation : item.CorrelationId,
+            PropertiesJson = item.PropertiesJson,
+            RepeatCount = item.RepeatCount is { } repeat && repeat > 0 ? repeat : 1,
+        }).ToList();
+
+        // A write failure is a 5xx: the agent keeps the events queued and tries again (L3c).
+        var result = await logWriter.WriteAsync(inputs, ct);
+        return JsonResults.Ok(new AgentLogBatchResponse { Accepted = result.Accepted, Duplicate = result.Duplicate });
     }
 
     private static async Task<IResult> TelemetryAsync(
