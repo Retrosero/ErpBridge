@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y1b PR'ı)
+Son güncelleme: 2026-09-17 (Y1c PR'ı)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -13,14 +13,14 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
 | Y0 — Referans ve temel düzeltmeler | 5 | 5 | ✅ |
-| Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 3 | 🔄 |
+| Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 4 | 🔄 |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 2 | 🔄 |
 | Y3 — Mikro V15 writer'ları | 8 | 0 | ⬜ |
 | Y4 — Sipariş Cepte | 6 | 0 | ⬜ |
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y1b — Portal ERP ayar uçları (PR #85)
+**Şu anki görev:** Y1c — Portal ERP ayar ekranı (PR açılıyor)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -43,7 +43,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y0e | Okuyucu düzeltmeleri (kapalı fatura müşterisi, iade sınıfı, bakiye filtresi) | ✅ | [#76](https://github.com/Retrosero/ErpBridge/pull/76) | **Codex 2 bulgu, ikisi düzeltildi:** (1) ErpBridge'in eski tahsilat writer'ının `63 + alacak` satırları `TAHSILAT` kalır; (2) artımlı okuma değişmeyen satırlara ulaşmadığı için `IErpAdapter.SnapshotProjectionVersion` (Mikro 2) — ajan sürüm yükselince bir kez tam yeniden kurar, elle "Sıfırdan Kur" gerekmez. **Sapma (geriye uyumluluk):** kapalı faturada `cariKod` değiştirilmedi (eski telefonlar bakiyeyi `cariKod` üzerinden topluyor); yeni `ciroCariKod` + `kapali` alanları eklendi. Portal kapalı satırı müşteriye bağlar, ekstre/yürüyen bakiyeden çıkarır. İade sınıfı düzeltildi (`0+iade` SATIS_IADE). Bakiye sorgusuna `cha_cari_cins=0` (bu veride çakışan kod yok — koruma). Canlı okuma testleri ERPBTEST 2/2. **Telefon:** senkron satırlarında sunucu `type`'ı kullanılıyor, düzeltme telefona böyle ulaşır; `LedgerMovementMapper.typeForValues` yedek eşlemesi hâlâ ters → Y4e ile birlikte düzeltilecek |
 | Y1a | `erp_write_settings` + `mobile_user_erp_mappings` | ✅ | [#78](https://github.com/Retrosero/ErpBridge/pull/78) | Migration `ErpYazimY1aWriteSettings` yalnız iki yeni tablo (test: başka işlem yok). Seri sütunları `nvarchar(6)`; firmada boş seri = Mikro serisiz, kullanıcıda null = firma ayarı. Kullanıcı silinince eşleme cascade ile gider |
 | Y1b | Portal ayar, eşleme ve seçim listesi uçları | ✅ | [#85](https://github.com/Retrosero/ErpBridge/pull/85) | `PortalErpWriteEndpoints`: `GET/PUT /api/v1/portal/erp-settings`, `GET/PUT /api/v1/portal/users/{id}/erp-mapping`, `GET /api/v1/portal/erp-lookups`. Yalnız firma yöneticisi (403 `ADMIN_REQUIRED`, rol veritabanından); ERP'siz firma 409 `ERP_NOT_CONNECTED`; başka firmanın ya da silinmiş kullanıcı 404 `USER_NOT_FOUND`. Doğrulama 400 `INVALID_ERP_SETTINGS`: belge türü/onay modu, seri ≤ 6 (boş = serisiz; kullanıcıda null = firma değeri), kod ≤ 25 (boşluk = yok), portföy kasası zorunlu, depo/fiyat listesi > 0, Mikro kullanıcı 0–32767, teslim günü 0–365. Seçim listeleri `mobile_records` `lookups`/`cashAndBank` satırlarından (depo, kasa, banka, temsilci, fiyat listesi, proje; silinmiş hariç); yoksa boş liste → UI serbest metin. Kodun Mikro'da var olduğu yazımda ajan kontrol eder |
-| Y1c | Portal ayar sayfası + kullanıcı kartı | ⬜ | | |
+| Y1c | Portal UI: ERP Aktarım Ayarları + Mikro karşılıkları | ✅ | (Y1c PR) | `Pages/ErpAktarim.razor` (`/erp-aktarim`; menü "ERP aktarım ayarları" yalnız yönetici + ERP'li firma, `PortalArea.ErpWrite`; ERP'siz firmada açıklama): belge türü, sipariş onayı, 5 seri, varsayılan depo/fiyat listesi/kasa/kart ve havale bankası/temsilci/ERP kullanıcı no/teslim günü, çek-senet portföy kasası, sorumluluk merkezi, proje. `Kullanicilar.razor`: satırda "Mikro" düğmesi → "Mikro karşılıkları" paneli (boş = firma varsayılanı; boşaltılan seri null). `Shared/ErpCodeInput`: ERP listesi geldiyse açılır kutu (listede olmayan mevcut kod korunur), yoksa serbest metin. bUnit 6 test. Tarayıcı: sahte merkez API'ye bağlı yerel Portal, 800 px ve 375 px — yatay kayma yok, kaydetme PUT gövdesi doğru. Not: dar ekranda panel tablonun altında açılır (rol düzenleme ile aynı kalıp) |
 | Y1d | `erpContext` kiralama yanıtında | ✅ | [#82](https://github.com/Retrosero/ErpBridge/pull/82) | `JobResponse.erpContext` (ERP'li firmada; ERP'siz firmada null). `ErpWriteContextBuilder`: kullanıcı değeri > firma; boş kod firma kodunu gizlemez, kullanıcıdaki boş seri bilinçli serisiz sayılır. Kiralama anında okunur (eşleme düzeltilip yeniden denenince yeni değer — test). Biçim `ErpBridge.Core.Jobs.ErpWriteContext` ile aynı |
 | Y1e | Kiralama süresi + geçici hata yeniden denemesi | ⬜ | | |
 | Y2a | Satış / iade / tahsilat komutları + adaptör metotları | ✅ | [#79](https://github.com/Retrosero/ErpBridge/pull/79) | `Erp.Abstractions/Documents/MobileDocumentCommands.cs`: ortak `ErpDocumentHeader` + `SalesDocumentCommand` / `SalesReturnCommand` / `CollectionCommand`. `IErpAdapter`'a varsayılan gövdeli üç metot (`NotImplemented` sonucu) — Logo iskeleti değişmeden derlenir ve reddeder (seam testi). **Sapma:** iade kondisyonu yüzde değil `ConditionRatio` (0..1, telefonun `conditionPercent` alanı zaten oran); karma ödemede tahsilat serisi komutta (`ExtraPaymentsSeries`) |
