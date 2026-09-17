@@ -1,6 +1,6 @@
 # Goal Durumu — Sunucudan Mikro'ya Yazım
 
-Son güncelleme: 2026-09-17 (Y4a, Y4b, Y4g bitti; Y4c PR'da)
+Son güncelleme: 2026-09-17 (Y4a, Y4b, Y4c, Y4g bitti)
 Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -16,11 +16,11 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y1 — Sunucu: ayarlar, eşleme, dayanıklılık | 5 | 5 | ✅ |
 | Y2 — Ajan: telefon belgesi → komut | 4 | 4 | ✅ |
 | Y3 — Mikro V15 writer'ları | 8 | 8 | ✅ |
-| Y4 — Sipariş Cepte | 7 | 3 | 🔄 |
+| Y4 — Sipariş Cepte | 7 | 4 | 🔄 |
 | Y5 — İzleme ve operasyon | 2 | 0 | ⬜ |
 | Y6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Y4c birleşmesi, ardından Y4d (yazım sonucu telefonda)
+**Şu anki görev:** Y4d — yazım sonucu telefonda (sunucu #98, telefon PR'ı)
 
 ## Ortam
 - Test veritabanı: **`MikroDB_V15_DEMO`** — kullanıcı Mikro'da açtı (Mikro'dan bağlanılabiliyor), 2026-09-17'de
@@ -60,7 +60,7 @@ Görev listesi: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) · Mikro kuralları: [mik
 | Y3h | Karma ödemeli satış (fatura + makbuz tek transaction) | ✅ | [#94](https://github.com/Retrosero/ErpBridge/pull/94) | `MikroSalesInvoiceWriter.WriteWithPaymentsAsync`: açık fatura, sonra aynı oturumda `ExtraPayments` için tahsilat makbuzu (seri `ExtraPaymentsSeries`, açıklama `<seri>-<no> satış faturasının tahsilatı`, beklenen toplam ödemeler toplamı); ledger'da yalnız satış kaydı. Kapalı satışa ayrı makbuz reddedilir. Adaptör artık yalnız sipariş/irsaliyede `NotImplemented`. DEMO: başarıda iki evrak aynı transaction'da (geri alınarak); makbuz yazılamayınca (olmayan banka) çalıştırıcı `BANK_ACCOUNT_NOT_FOUND` döner, fatura da ledger kaydı da yok |
 | Y4a | Telefon satış gövdesi (liste fiyatı, iskontolar, fiyat listesi) | ✅ | [siparis_cepte#70](https://github.com/Retrosero/siparis_cepte/pull/70), [#71](https://github.com/Retrosero/siparis_cepte/pull/71) | Gövde v2 (`currency`, `paymentType` Bank Kartı→Kredi Kartı, `bankCode`, `priceListNo`, satır liste fiyatı/iskontolar/`unitPointer`/`note`); fiyat listesi numaraları Room şeması değişmeden `customPrices` içinde (`#satisListeNo`, `#kdvDahil:<n>`); ERP ürününde telefonun uydurduğu bayi/toptan fiyatı kullanılmaz. #71: KDV dahil liste, ERP'li firmada cari kodu boş müşteriye belge gönderilmez (`ErpDocumentGuard`). **Sapma:** `bankName` yerine `bankCode` (Portal bankasının ERP kodu) gönderiliyor — sözleşme `bankCode` okuyor |
 | Y4b | Telefon iade gövdesi (satırlı) | ✅ | [siparis_cepte#71](https://github.com/Retrosero/siparis_cepte/pull/71) | ERP'li firmada tek satırlı `sales_return` (`ErpReturnDocument`); doğrudan kayıt ve onay merkezi aynı gövde; `return` kasa belgesi gönderilmez (yerel kasa satırı kalır). İade toplamı `MikroPriceCalculator.ReturnLine` ile aynı (kondisyon farkı + kalan tutara KDV). Satılan fiyat KDV'siz; liste KDV dahilse `listUnitPrice` KDV eklenmiş gider. Depo "Depo N" değilse firma ayarı. ERP'siz firma gövdesi değişmedi |
-| Y4c | Telefon tahsilat gövdesi (tek belge, `payments[]`) | 🔄 | [siparis_cepte#72](https://github.com/Retrosero/siparis_cepte/pull/72), #97 (sunucu testi) | Tek `collection` + `payments[]` (`ErpCollectionDocument`); çek/senet no + geçerli vade yoksa kayıt yapılmaz; yerel kasa satırları `K-ERPDOC-` ile işaretli, ikinci kez gönderilmez; hızlı tahsilat tek satırlı v2. Sunucu: `NativeDocumentProcessor` v2 gövdeyi toplamla işler (test) |
+| Y4c | Telefon tahsilat gövdesi (tek belge, `payments[]`) | ✅ | [siparis_cepte#72](https://github.com/Retrosero/siparis_cepte/pull/72), [#97](https://github.com/Retrosero/ErpBridge/pull/97) (sunucu testi) | Tek `collection` + `payments[]` (`ErpCollectionDocument`); çek/senet no + geçerli vade yoksa kayıt yapılmaz; yerel kasa satırları `K-ERPDOC-` ile işaretli, ikinci kez gönderilmez; hızlı tahsilat tek satırlı v2. Sunucu: `NativeDocumentProcessor` v2 gövdeyi toplamla işler (test) |
 | Y4d | Yazım sonucu telefonda | ⬜ | | |
 | Y4e | Çift görünme önleme | ⬜ | | |
 | Y4f | Play internal sürüm | ⬜ | | |
