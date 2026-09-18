@@ -212,6 +212,61 @@ else if (_values is not null)
             </div>
         </details>
 
+        <details class="prm-bulk" @ontoggle="OnHistoryToggleAsync">
+            <summary id="prm-history-open">Değişiklik geçmişi</summary>
+
+            <div class="prm-history">
+                @if (_historyLoading)
+                {
+                    <AdminLoading Text="Geçmiş yükleniyor…" />
+                }
+                else if (_history is null)
+                {
+                    <p class="text-muted small mb-0">Bu kapsamda yapılan değişiklikler burada listelenir.</p>
+                }
+                else if (_history.Count == 0)
+                {
+                    <p class="text-muted small mb-0">Bu kapsamda kayıtlı değişiklik yok.</p>
+                }
+                else
+                {
+                    <table class="table admin-data-table" aria-label="Değişiklik geçmişi">
+                        <thead>
+                            <tr>
+                                <th>Ne zaman</th>
+                                <th>Kim</th>
+                                <th>Parametre</th>
+                                <th>Ne oldu</th>
+                                <th>Eski</th>
+                                <th>Yeni</th>
+                                <th>Kaynak</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in _history)
+                            {
+                                <tr>
+                                    <td data-label="Ne zaman"><time datetime="@e.AtUtc.ToString("O")">@ParameterLayout.Moment(e.AtUtc)</time></td>
+                                    <td data-label="Kim">@(string.IsNullOrWhiteSpace(e.Actor) ? "—" : e.Actor)</td>
+                                    <td data-label="Parametre"><code>@e.Name</code></td>
+                                    <td data-label="Ne oldu">@OutcomeText(e.Outcome)</td>
+                                    <td data-label="Eski"><code>@Show(e.OldValue)</code></td>
+                                    <td data-label="Yeni"><code>@Show(e.NewValue)</code></td>
+                                    <td data-label="Kaynak">
+                                        @e.Source
+                                        @if (e.IsMasked)
+                                        {
+                                            <span class="badge bg-secondary ms-1" title="Kimlik bilgisi; değeri kayda düz metin yazılmadı">maskeli</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </details>
+
         <div class="prm-layout">
             <nav class="prm-tabs" aria-label="Parametre sekmeleri">
                 @foreach (var node in _tabs)
@@ -429,6 +484,60 @@ else if (string.IsNullOrEmpty(_error))
                                 Disabled="@_saving" />
             }
         </div>;
+
+    private IReadOnlyList<ParameterAuditDto>? _history;
+    private bool _historyLoading;
+
+    /// <summary>
+    /// Loads the trail the first time the panel is opened, and after anything is written. Not on
+    /// every render: this is a second query on a screen that already pulls 1,801 parameters, and
+    /// most visits never open it.
+    /// </summary>
+    private async Task OnHistoryToggleAsync()
+    {
+        if (_history is not null || _historyLoading) return;
+
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        if (SelectedSet is not { } set || !Guid.TryParse(_tenantId, out var tenantId)
+            || !Guid.TryParse(_erpCompanyId, out var companyId))
+        {
+            return;
+        }
+
+        _historyLoading = true;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            _history = await Api.ListParameterAuditAsync(
+                tenantId,
+                companyId,
+                catalogMethod: set.CatalogMethod,
+                mobileUserId: set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                scope1: string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                scope2: string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                scoped: true);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _historyLoading = false; }
+    }
+
+    private static string OutcomeText(string outcome) => outcome switch
+    {
+        "Inserted" => "ilk kez değişti",
+        "Updated" => "güncellendi",
+        "Deleted" => "varsayılana döndü",
+        _ => outcome,
+    };
+
+    /// <summary>Null means there was no row: at the start, or after a reset.</summary>
+    private static string Show(string? value) =>
+        value is null ? "(varsayılan)" : value.Length == 0 ? "(boş)" : value;
 
     private readonly HashSet<Guid> _picked = [];
     private string _copyFromUserId = string.Empty;
@@ -777,6 +886,9 @@ else if (string.IsNullOrEmpty(_error))
 
             _drafts.Clear();
             _picked.Clear();
+
+            // A write has just happened or the scope changed; the loaded trail is stale either way.
+            _history = null;
 
             // Reload rather than patch in memory: the server decides whether a row exists, and the
             // "sapmış" marks have to match what it decided.

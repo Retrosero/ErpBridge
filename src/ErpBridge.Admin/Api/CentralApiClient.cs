@@ -960,6 +960,33 @@ public sealed class CentralApiClient
         SendAsync<ParameterCopyResponseDto>(
             () => _http.PostAsJsonAsync("/api/v1/admin/parameters/values/copy", body, ct), ct);
 
+    /// <summary>The change trail, newest first, for one scope or one parameter.</summary>
+    public Task<ParameterAuditDto[]> ListParameterAuditAsync(
+        Guid tenantId,
+        Guid? erpCompanyId = null,
+        Guid? catalogEntryId = null,
+        string? catalogMethod = null,
+        Guid? mobileUserId = null,
+        string? scope1 = null,
+        string? scope2 = null,
+        bool scoped = false,
+        int limit = 100,
+        CancellationToken ct = default)
+    {
+        var qs = new List<string> { $"tenantId={tenantId}", $"limit={Math.Clamp(limit, 1, 1000)}" };
+
+        if (erpCompanyId is { } company) qs.Add($"erpCompanyId={company}");
+        if (catalogEntryId is { } entry) qs.Add($"catalogEntryId={entry}");
+        if (!string.IsNullOrEmpty(catalogMethod)) qs.Add($"catalogMethod={Uri.EscapeDataString(catalogMethod)}");
+        if (mobileUserId is { } user) qs.Add($"mobileUserId={user}");
+        if (!string.IsNullOrEmpty(scope1)) qs.Add($"scope1={Uri.EscapeDataString(scope1)}");
+        if (!string.IsNullOrEmpty(scope2)) qs.Add($"scope2={Uri.EscapeDataString(scope2)}");
+        if (scoped) qs.Add("scoped=true");
+
+        return SendAsync<ParameterAuditDto[]>(
+            () => _http.GetAsync($"/api/v1/admin/parameters/audit?{string.Join("&", qs)}", ct), ct);
+    }
+
     private static string WithTenant(string path, Guid? tenantId, string? extraQuery = null)
     {
         var query = new List<string>();
@@ -1114,6 +1141,33 @@ public sealed class ParameterCopyResponseDto
     [JsonPropertyName("written")] public int Written { get; set; }
     [JsonPropertyName("cleared")] public int Cleared { get; set; }
     [JsonPropertyName("revision")] public long Revision { get; set; }
+}
+
+/// <summary>One recorded change to one parameter.</summary>
+public sealed class ParameterAuditDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("erpCompanyId")] public Guid ErpCompanyId { get; set; }
+    [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
+    [JsonPropertyName("program")] public string Program { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("mobileUserId")] public Guid? MobileUserId { get; set; }
+    [JsonPropertyName("scope1")] public string Scope1 { get; set; } = string.Empty;
+    [JsonPropertyName("scope2")] public string Scope2 { get; set; } = string.Empty;
+
+    /// <summary><c>Inserted</c>, <c>Updated</c> or <c>Deleted</c>.</summary>
+    [JsonPropertyName("outcome")] public string Outcome { get; set; } = string.Empty;
+
+    [JsonPropertyName("oldValue")] public string? OldValue { get; set; }
+    [JsonPropertyName("newValue")] public string? NewValue { get; set; }
+
+    /// <summary>True when the value was a credential and was replaced by a placeholder.</summary>
+    [JsonPropertyName("isMasked")] public bool IsMasked { get; set; }
+
+    [JsonPropertyName("source")] public string Source { get; set; } = string.Empty;
+    [JsonPropertyName("adminUserId")] public Guid? AdminUserId { get; set; }
+    [JsonPropertyName("actor")] public string Actor { get; set; } = string.Empty;
+    [JsonPropertyName("atUtc")] public DateTimeOffset AtUtc { get; set; }
 }
 
 /// <summary>Scope kinds as the catalogue records them.</summary>

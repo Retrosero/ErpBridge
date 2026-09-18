@@ -462,6 +462,79 @@ public sealed class ParametersTests : BunitContext
         cut.Find(".admin-state--error").TextContent.Should().Contain("geçerli JSON değil");
     }
 
+    [Fact]
+    public void History_is_fetched_only_when_it_is_opened()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(58, "DefaultKaynakDepoNo", "Parametreler"));
+        state.AuditJson = Json(new[]
+        {
+            new ParameterAuditDto
+            {
+                Name = "DefaultKaynakDepoNo", Outcome = "Updated", OldValue = "1", NewValue = "3",
+                Source = "panel", Actor = "gurbuz", AtUtc = DateTimeOffset.Parse("2026-09-18T07:30:00Z"),
+            },
+        });
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll("#prm-history-open").Count == 1);
+
+        // A second query on a screen that already pulls 1,801 parameters, and most visits never
+        // open it.
+        state.LastAuditUrl.Should().BeNull();
+
+        cut.Find("#prm-history-open").ParentElement!.TriggerEvent("ontoggle", EventArgs.Empty);
+
+        cut.WaitForState(() => state.LastAuditUrl is not null);
+        cut.WaitForState(() => cut.Markup.Contains("gurbuz"));
+        cut.Markup.Should().Contain("güncellendi").And.Contain("18 Eyl 2026");
+    }
+
+    [Fact]
+    public void History_asks_for_the_open_scope_only()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(58, "DefaultKaynakDepoNo", "Parametreler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll("#prm-history-open").Count == 1);
+        cut.Find("#prm-history-open").ParentElement!.TriggerEvent("ontoggle", EventArgs.Empty);
+
+        cut.WaitForState(() => state.LastAuditUrl is not null);
+        state.LastAuditUrl.Should().Contain("scoped=true")
+            .And.Contain($"mobileUserId={state.UserId}")
+            .And.Contain("catalogMethod=MobilKullanici");
+    }
+
+    [Fact]
+    public void A_value_that_was_removed_reads_as_back_to_default()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(58, "DefaultKaynakDepoNo", "Parametreler"));
+        state.AuditJson = Json(new[]
+        {
+            new ParameterAuditDto
+            {
+                Name = "DefaultKaynakDepoNo", Outcome = "Deleted", OldValue = "3", NewValue = null,
+                Source = "reset", Actor = "gurbuz", AtUtc = DateTimeOffset.UtcNow,
+            },
+        });
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll("#prm-history-open").Count == 1);
+        cut.Find("#prm-history-open").ParentElement!.TriggerEvent("ontoggle", EventArgs.Empty);
+
+        // A null new value is not "empty": the row is gone and the catalogue default applies.
+        cut.WaitForState(() => cut.Markup.Contains("(varsayılan)"));
+        cut.Markup.Should().Contain("varsayılana döndü");
+    }
+
     // ---- Test helpers ----
 
     private static void LoadAkilliAsync(IRenderedComponent<Parameters> cut, PageState state)
@@ -547,6 +620,8 @@ public sealed class ParametersTests : BunitContext
         public string? WriteResponseJson { get; set; }
         public string? LastCopyBody { get; set; }
         public string? LastResetBody { get; set; }
+        public string? LastAuditUrl { get; set; }
+        public string? AuditJson { get; set; }
     }
 
     private sealed class PageHandler : HttpMessageHandler
@@ -597,6 +672,12 @@ public sealed class ParametersTests : BunitContext
             if (path.EndsWith("/admin/parameters/sets", StringComparison.Ordinal))
             {
                 return Ok(_state.SetsJson);
+            }
+
+            if (path.EndsWith("/admin/parameters/audit", StringComparison.Ordinal))
+            {
+                _state.LastAuditUrl = request.RequestUri?.ToString();
+                return Ok(_state.AuditJson ?? "[]");
             }
 
             if (path.EndsWith("/admin/parameters/values/copy", StringComparison.Ordinal))

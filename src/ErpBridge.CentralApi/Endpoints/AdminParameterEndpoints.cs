@@ -277,10 +277,19 @@ public static class AdminParameterEndpoints
     }
 
     /// <summary>Who changed what, newest first. Credential values are masked at write time.</summary>
+    /// <summary>
+    /// The change trail, newest first, narrowed to whatever the caller names: a company, a scope,
+    /// one catalogue set, or one parameter.
+    /// </summary>
     private static async Task<IResult> ListAuditAsync(
         [FromQuery] Guid tenantId,
         [FromQuery] Guid? erpCompanyId,
         [FromQuery] Guid? catalogEntryId,
+        [FromQuery] string? catalogMethod,
+        [FromQuery] Guid? mobileUserId,
+        [FromQuery] string? scope1,
+        [FromQuery] string? scope2,
+        [FromQuery] bool? scoped,
         [FromQuery] int? limit,
         CentralApiDbContext db,
         CancellationToken ct)
@@ -304,8 +313,30 @@ public static class AdminParameterEndpoints
             query = query.Where(e => e.ParameterCatalogEntryId == entry);
         }
 
+        if (!string.IsNullOrWhiteSpace(catalogMethod))
+        {
+            query = query.Where(e => e.CatalogEntry!.CatalogMethod == catalogMethod);
+        }
+
+        // Narrowing to one scope needs every dimension, including the empty ones: a user's history
+        // and a company-wide setting's history are different questions, and "user is null" is part
+        // of the second one's answer.
+        if (scoped == true)
+        {
+            var s1 = scope1 ?? "";
+            var s2 = scope2 ?? "";
+
+            query = query.Where(e => e.MobileUserId == mobileUserId && e.Scope1 == s1 && e.Scope2 == s2);
+        }
+        else if (mobileUserId is { } user && user != Guid.Empty)
+        {
+            query = query.Where(e => e.MobileUserId == user);
+        }
+
+        // Ordered by when it happened, not by the row's id: the id is a GUID, so ordering by it
+        // would hand back "the latest changes" in an order nobody can explain.
         var rows = await query
-            .OrderByDescending(e => e.Id)
+            .OrderByDescending(e => e.AtUtc)
             .Take(Math.Clamp(limit ?? 200, 1, 1000))
             .ToListAsync(ct);
 
