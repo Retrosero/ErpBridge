@@ -127,7 +127,7 @@
         @if (Field.LastChangedAtUtc is { } at)
         {
             <span class="text-muted" title="@at.UtcDateTime.ToString("O")">
-                son: @Who — @at.UtcDateTime.ToString("dd MMM yyyy, HH:mm")
+                son: @Who — @ParameterLayout.Moment(at)
             </span>
         }
     </div>
