@@ -214,13 +214,15 @@ Yani uçlar boşa çalışıyor: yazan yok, okuyan yok, katalog yok.
 |---|---|---|
 | **D1** | Katalog **repoda versiyonlanmış veri dosyası** olarak durur: `catalog/parameters/*.json`, `schemaVersion` + `sourceBuild` alanlarıyla. Üreten script `scripts/extract-fora-catalog/` altında, yeniden çalıştırılabilir ve çıktısı deterministik | Fora'nın yeni sürümü çıkarsa katalog yeniden üretilir; elle bakım yapılmaz |
 | **D2** | Katalog **koda gömülmez, tohumlanır**: migration `parameter_catalog_entries` tablosunu JSON'dan doldurur. Sürüm artınca fark uygulanır (yeni parametre eklenir, kaybolan `deprecated` işaretlenir, **silinmez**) | Eski değerler yetim kalmasın; katalog sorgulanabilir olsun |
-| **D3** | Değer tablosu `parameter_values`: `(TenantId, Program, Scope, AnaGrubu, AltGrubu, ParametreId)` üzerinde tekil indeks. **Yalnız varsayılandan sapanlar tutulur** — Fora semantiği birebir; değer varsayılana eşitlenirse satır silinir | Fora'ya geri yazım ve içe aktarım kayıpsız olur; satır sayısı küçük kalır |
-| **D4** | Fora'nın `ParametreUser` alanı bizde **`Scope`** adını alır, çünkü programa göre anlamı değişiyor (mobil kullanıcı / şablon adı / rapor kodu / ilişki kimliği). Katalog her program için `scopeKind` taşır: `MobileUser`, `PrinterTemplate`, `ReportCode`, `ImportTemplate`, `CriteriaName`, `DesktopUser`, `None` | Tek şema, doğru anlam; panel doğru seçiciyi gösterir |
-| **D5** | `akilli` için `Scope` = **`MobileUser.Username`** (mevcut varlık). Fora'daki gibi "kullanıcı listesi parametre tablosundan" **yapılmaz** | Bizde zaten kullanıcı varlığı var; kimlik tek yerde kalsın |
+| **D3** | Değer tablosu `parameter_values`: **`(TenantId, ErpCompanyId, Program, ScopeKind, ScopeId, AnaGrubu, AltGrubu, ParametreId)`** üzerinde tekil indeks. **Yalnız varsayılandan sapanlar tutulur** — Fora semantiği birebir; değer varsayılana eşitlenirse satır silinir | Fora'ya geri yazım ve içe aktarım kayıpsız olur; satır sayısı küçük kalır |
+| **D3b** | **`ErpCompanyId` zorunludur ve sonradan değiştirilemez.** Bir kiracının birden çok `ErpCompany`'si olabilir ve her birinin kendi `SourceDatabase`/`CompanyNo`/`BranchNo`/`WarehouseNo`'su vardır; mevcut `ParameterRecord` yolu da zaten `SourceDatabase` ile süzüyor. Firma boyutu **değer, sürüm, API ve ayna** kapsamlarının hepsinde taşınır. Tek firmalı kiracıda da alan doldurulur | Firma boyutu olmadan bir firmanın deposu/şubesi/evrak serisi diğerinin üzerine yazar (Codex #111 P1) |
+| **D4** | Fora'nın `ParametreUser` alanı bizde **`ScopeKind` + `ScopeId`** ikilisine ayrılır, çünkü programa göre anlamı değişiyor. Katalog her program için `scopeKind` taşır: `MobileUser`, `PrinterTemplate`, `ReportCode`, `ImportTemplate`, `CriteriaName`, `DesktopUser`, `None`. `ScopeId` metindir | Tek şema, doğru anlam; panel doğru seçiciyi gösterir |
+| **D5** | `akilli` için `ScopeId` = **`MobileUser.Id` (Guid)**, kullanıcı adı **değil**. Kullanıcı adı yeniden kullanılabilir bir etiket: silinen kullanıcının satırı geçmiş için korunur ve aynı adla yeni kullanıcı açılabilir (`MobileSeatService`, `MobileSeatsRelationalTests.Deleting_a_user_releases_the_seat_and_the_username`). Kullanıcı adına anahtarlamak yeni kullanıcıya silinenin `Hak*` yetkilerini ve evrak varsayılanlarını devrederdi. Kullanıcı adına çeviri **yalnız aynaya yazarken** yapılır | Kimlik değişmez olmalı (Codex #111 P1) |
+| **D5b** | Ayna ve `/android/parameters` **yalnız aktif** (`IsActive`, `DeletedAtUtc == null`) mobil kullanıcıların değerlerini yayar. Silinmiş kullanıcının satırları veritabanında geçmiş olarak kalır; aynaya gitmez, telefona dönmez, panelde "silinmiş kullanıcı" başlığı altında salt okunur görünür | Aynı kullanıcı adını taşıyan iki satırdan yalnız biri aktif olabilir; ayna belirsizliğe düşmez |
 | **D6** | **`Sifre` (ParametreID=1) hiçbir zaman taşınmaz, saklanmaz, panelde gösterilmez.** İçe aktarımda atlanır, katalogda `excluded: true` işaretlenir. Kimlik doğrulama `MobileUser.PasswordHash` ile | Fora sabit gömülü anahtarla şifreliyor; bu sırrı sistemimize taşımak güvenlik gerilemesi olur |
 | **D7** | Mikro aynası: ajan `_ERPB_PARAMETRELER` tablosunu Fora'nın şemasıyla **birebir** kurar (V15 `int IDENTITY`, V16 `uniqueidentifier`) ve Fora'nın insert/update/delete semantiğini uygular. Tabloya **tetikleyici eklenmez** | Şema uyumu Fora'dan/Fora'ya geçişi ucuzlatır; tetikleyici eklemek müşterinin ERP'sine müdahaledir |
 | **D8** | Mikro aynası **tek yönlü** (merkez → Mikro). Ajan aynada bulduğu elle yapılmış değişikliği merkeze geri yazmaz; yalnız **fark raporlar** ve panelde uyarı olarak gösterir | İki yönlü yazımda çakışma çözümü gerekir; K2 merkezi ana kaynak yaptı |
-| **D9** | Sürümleme: `parameter_revisions(TenantId, Scope, Revision, UpdatedAtUtc)`. Telefon ve ajan `If-None-Match`/`revision` ile ucuz yoklar; değişmemişse `304` | 1801 parametreyi her senkronda indirmemek için |
+| **D9** | Sürümleme: `parameter_revisions(TenantId, ErpCompanyId, ScopeKind, ScopeId, Revision, UpdatedAtUtc)` — değer anahtarıyla aynı boyutlar (D3b, D5). Telefon ve ajan `If-None-Match`/`revision` ile ucuz yoklar; değişmemişse `304` | 1801 parametreyi her senkronda indirmemek için |
 | **D10** | Denetim: her değişiklik `parameter_audit` satırı (kim, ne zaman, program/scope/ID, eski→yeni, kaynak: panel / içe aktarım / API). Saklama 365 gün, `log_settings` ile aynı desen | "Bu ayarı kim değiştirdi" sorusu cevaplanabilsin |
 | **D11** | Panel sekme ağacı **katalogdan üretilir**, elle yazılmaz. 63 sekme = 63 Razor dosyası değil; tek jenerik ekran + katalog metadata'sı | 1801 alanı elle yazmak sürdürülemez |
 | **D12** | Referans tipi alanlar (kasa kodu, depo no, fiyat listesi no, ödeme planı, proje, sorumluluk merkezi, cari personel) panelde **serbest metin değil seçici** olur; liste ajanın ERP'den çektiği lookup'lardan gelir. Lookup yoksa alan serbest metne düşer ve uyarı gösterir | Yanlış kod girip evrağı patlatmayı önler; ajan çevrimdışıyken panel çalışmaya devam eder |
@@ -307,12 +309,12 @@ iki kez çalıştırıldığında aynı çıktıyı veriyor, 4.688 tanımın tam
 | # | Görev | Çıktı |
 |---|---|---|
 | **P1a** | `parameter_catalog_entries` tablosu + migration + JSON'dan tohumlama (D2). Sürüm farkı uygulama mantığı | Katalog sorgulanabilir |
-| **P1b** | `parameter_values` tablosu (D3) + tekil indeks + migration | Değer saklama |
-| **P1c** | `ParameterResolver`: katalog varsayılanı + sapma → efektif değer; yazımda varsayılana eşitse satır silme (Fora semantiği) | Birim testler: insert/update/delete/no-op dört yol |
+| **P1b** | `parameter_values` tablosu (D3) + **`(TenantId, ErpCompanyId, Program, ScopeKind, ScopeId, AnaGrubu, AltGrubu, ParametreId)` tekil indeksi** (D3b, D5) + `ErpCompany`/`MobileUser` yabancı anahtarları + migration | Değer saklama |
+| **P1c** | `ParameterResolver`: katalog varsayılanı + sapma → efektif değer; yazımda varsayılana eşitse satır silme (Fora semantiği) | Birim testler: insert/update/delete/no-op dört yol **+ iki firmanın aynı parametresi birbirini ezmiyor + silinen kullanıcının değeri yeni aynı adlı kullanıcıya geçmiyor** |
 | **P1d** | `parameter_revisions` (D9) + `parameter_audit` (D10) | Sürüm + denetim |
-| **P1e** | Admin API: `GET /api/v1/admin/parameters/catalog` (sekme ağacıyla), `GET/PUT /api/v1/admin/parameters/values`, toplu yazım, `POST .../reset`, `GET .../diff` (bu scope'ta sapanlar) | Panelin ihtiyacı olan her uç |
-| **P1f** | `GET /api/v1/android/parameters` yeniden bağlanır: eski sözleşme korunur, veri yeni modelden efektif değerlerle gelir (D13). `revision` + `304` desteği | Eski istemci bozulmaz, yeni istemci ucuz yoklar |
-| **P1g** | `GET/POST /api/v1/agents/parameters` — ajan için çekme ve ayna fark raporu ucu | Ajanın ihtiyacı |
+| **P1e** | Admin API: `GET /api/v1/admin/parameters/catalog` (sekme ağacıyla), `GET/PUT /api/v1/admin/parameters/values`, toplu yazım, `POST .../reset`, `GET .../diff`. **Her uç zorunlu `erpCompanyId` alır**; scope `MobileUser` ise `scopeId` bir `MobileUser.Id` | Panelin ihtiyacı olan her uç |
+| **P1f** | `GET /api/v1/android/parameters` yeniden bağlanır: eski sözleşme korunur (`sourceDatabase` → `ErpCompanyId` çözümlenir, çıktıdaki `ParametreUser` kullanıcı adı olarak dönmeye devam eder), veri yeni modelden efektif değerlerle gelir (D13). Yalnız aktif kullanıcılar (D5b). `revision` + `304` desteği | Eski istemci bozulmaz, yeni istemci ucuz yoklar |
+| **P1g** | `GET/POST /api/v1/agents/parameters` — ajan için çekme ve ayna fark raporu ucu; **firma başına** (ajan birden çok firmaya atanmış olabilir, `AgentCompanyAssignment`) | Ajanın ihtiyacı |
 
 **Bitiş ölçütü:** API testleri yeşil; `/android/parameters` eski ve yeni yoldan aynı sonucu veriyor.
 
@@ -322,7 +324,7 @@ iki kez çalıştırıldığında aynı çıktıyı veriyor, 4.688 tanımın tam
 
 | # | Görev | Çıktı |
 |---|---|---|
-| **P2a** | Yeni `/parameters` ekranı: müşteri → program → scope (mobil kullanıcı / şablon / rapor kodu) seçimi | İskelet |
+| **P2a** | Yeni `/parameters` ekranı: müşteri → **ERP firması** → program → scope (mobil kullanıcı / şablon / rapor kodu) seçimi. Kiracının tek firması varsa otomatik seçilir ama seçim her zaman görünür kalır (D3b) | İskelet |
 | **P2b** | Katalogdan üretilen **63 sekmelik ağaç** (D11), sekme içi gruplar, alan sırası | Fora sekme paritesi |
 | **P2c** | Editör bileşenleri: bool anahtarı, sayı, metin, çok satırlı metin, enum açılır liste, csv çoklu seçim, referans seçici (D12) | Her tip düzenlenebilir |
 | **P2d** | Her alanda: efektif değer, varsayılan rozeti, "sapmış" işareti, **varsayılana dön** düğmesi, son değiştiren + tarih | Şeffaflık |
@@ -341,9 +343,9 @@ sekme yapısı Fora ile örtüşüyor.
 | # | Görev | Çıktı |
 |---|---|---|
 | **P3a** | `MikroParameterTableProvisioner`: `_ERPB_PARAMETRELER` tablosunu kurar (V15 int / V16 guid, D7) | Şema |
-| **P3b** | `ParameterMirrorWorker`: merkezden çeker, Mikro'ya insert/update/delete uygular (D3 semantiği), sonucu raporlar | Tek yönlü ayna |
-| **P3c** | `ForaParameterImporter`: `_FORA_PARAMETRELER` salt okunur tarama + katalogla birleştirme → merkeze **öneri** olarak yükleme. `Sifre` atlanır (D6) | İçe aktarım verisi |
-| **P3d** | Panelde "Fora'dan içe aktar" akışı: fark önizlemesi → onay → uygula → `import_batch` ile geri alınabilir (D18) | Güvenli göç |
+| **P3b** | `ParameterMirrorWorker`: merkezden **atandığı her firma için ayrı** çeker, o firmanın Mikro veritabanına insert/update/delete uygular (D3 semantiği), sonucu raporlar. `ScopeId` → `MobileUser.Username` çevirisi burada yapılır; yalnız aktif kullanıcılar (D5, D5b) | Tek yönlü ayna |
+| **P3c** | `ForaParameterImporter`: `_FORA_PARAMETRELER` salt okunur tarama + katalogla birleştirme → merkeze **öneri** olarak yükleme. `Sifre` atlanır (D6). `ParametreUser` **aktif** `MobileUser`'a eşlenir; eşleşmeyen kullanıcı adı **otomatik kullanıcı açmaz**, "eşlenmemiş" olarak raporlanır | İçe aktarım verisi |
+| **P3d** | Panelde "Fora'dan içe aktar" akışı: hedef firma seçimi → fark önizlemesi → eşlenmemiş kullanıcıların elle eşlenmesi → onay → uygula → `import_batch` ile geri alınabilir (D18) | Güvenli göç |
 | **P3e** | Ayna fark raporu: Mikro'da elle değiştirilmiş satırlar panelde uyarı (D8) | Sürpriz yok |
 | **P3f** | ERP lookup beslemesi: kasa, depo, fiyat listesi, ödeme planı, proje, sorumluluk merkezi, cari personel → panelin referans seçicileri (D12) | Doğru kod girişi |
 
@@ -414,6 +416,8 @@ değiştiriyor; uçtan uca duman testi (panel → merkez → telefon) yeşil. Pl
 | R4 | Vergi oranlarını (D17) yanlış değiştirmek evrak tutarlarını bozar | Ayrı onay adımı + denetim + geri alma |
 | R5 | Mikro aynası müşterinin ERP'sine yeni tablo yazar | Yalnız `_ERPB_` önekli kendi tablomuz; tetikleyici yok (D7); tablo yoksa ajan kurar, varsa dokunmaz |
 | R6 | `akilli` kataloğunda 181 parametrenin varsayılanı boş — tipi belirsiz | P0d'de kontrol tipinden çıkarılır; çıkarılamayan `string` kabul edilir ve raporlanır |
+| R7 | Çok firmalı kiracıda bir firmanın ayarı diğerinin üzerine yazabilir | D3b — `ErpCompanyId` değer/sürüm/API/ayna kapsamlarının hepsinde zorunlu; P1c'de "iki firma birbirini ezmiyor" testi |
+| R8 | Kullanıcı adı yeniden kullanılabilir; silinen kullanıcının yetkileri yeni kullanıcıya geçebilir | D5 — anahtar `MobileUser.Id`; D5b — yalnız aktif kullanıcılar yayılır; P1c'de regresyon testi |
 
 ---
 

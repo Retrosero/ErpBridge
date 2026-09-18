@@ -29,7 +29,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 | ID | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| P00 | Plan dalını `main`'e al | 🔄 | — | `prm-p0-goal-dokumani` |
+| P00 | Plan dalını `main`'e al | 🔄 | [#111](https://github.com/Retrosero/ErpBridge/pull/111) | **Codex 2 P1 bulgu, ikisi de kodda doğrulandı ve planda düzeltildi:** (1) değer anahtarında ERP firması yoktu — çok firmalı kiracıda bir firmanın depo/şube/seri ayarı diğerinin üzerine yazardı → D3b, `ErpCompanyId` değer/sürüm/API/ayna kapsamlarında zorunlu; (2) kullanıcı adı değişmez kimlik değil (`MobileSeatsRelationalTests.Deleting_a_user_releases_the_seat_and_the_username`: silinen satır geçmiş için kalıyor, aynı adla yeni kullanıcı açılabiliyor) — kullanıcı adına anahtarlamak silinenin `Hak*` yetkilerini devrederdi → D5 `MobileUser.Id`, D5b yalnız aktif kullanıcılar yayılır |
 | P0a | `ParametrelerDefault.cs` → `defaults.json` (4.688 tanım) | ⬜ | — | |
 | P0b | `ForaAndroidKullaniciDuzenleme.cs` → `ui.akilli.json` (63 sekme, 3.572 bağlama) | ⬜ | — | |
 | P0c | Diğer editör ekranlarının UI metadata'sı | ⬜ | — | |
