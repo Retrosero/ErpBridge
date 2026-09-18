@@ -19,7 +19,9 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
 
     public AdminParameterTests(CentralApiFactory factory) => _factory = factory;
 
-    private sealed record World(Guid TenantId, Guid CompanyId, Guid UserId, Guid DepotId, Guid MenuId, string CatalogMethod);
+    private sealed record World(
+        Guid TenantId, Guid CompanyId, Guid UserId, Guid OtherUserId, Guid DepotId, Guid MenuId,
+        string CatalogMethod);
 
     /// <summary>
     /// The test host does not seed the 4,700-row catalogue, so these tests plant the two
@@ -43,7 +45,8 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
         db.ErpCompanies.Add(company);
 
         var user = new MobileUser { TenantId = tenant.Id, Username = $"plasiyer{code}", FullName = "Plasiyer" };
-        db.MobileUsers.Add(user);
+        var other = new MobileUser { TenantId = tenant.Id, Username = $"yeni{code}", FullName = "Yeni Plasiyer" };
+        db.MobileUsers.AddRange(user, other);
 
         var depot = new ParameterCatalogEntry
         {
@@ -64,7 +67,7 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
         db.ParameterCatalog.AddRange(depot, menu);
         await db.SaveChangesAsync();
 
-        return new World(tenant.Id, company.Id, user.Id, depot.Id, menu.Id, method);
+        return new World(tenant.Id, company.Id, user.Id, other.Id, depot.Id, menu.Id, method);
     }
 
     private async Task<(HttpClient Client, string Token)> SignedInAsync()
@@ -258,6 +261,116 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
         mobile.Program.Should().Be("akilli");
         mobile.ScopeKind.Should().Be(ParameterScopeKinds.MobileUser);
         mobile.ScopeFields.Should().Be("user");
+    }
+
+    /// <summary>Writes one value into the named user's scope.</summary>
+    private async Task WriteAsync(HttpClient client, string token, World w, Guid userId, Guid entryId, string value) =>
+        await client.PutJsonAsync("/api/v1/admin/parameters/values", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, mobileUserId = userId,
+            changes = new[] { new { catalogEntryId = entryId, value } },
+        }, token);
+
+    [Fact]
+    public async Task Copying_a_user_leaves_the_target_holding_exactly_what_the_source_holds()
+    {
+        var w = await SeedAsync("L");
+        var (client, token) = await SignedInAsync();
+
+        await WriteAsync(client, token, w, w.UserId, w.DepotId, "3");
+        await WriteAsync(client, token, w, w.OtherUserId, w.MenuId, "0");
+
+        var response = await client.PostJsonAsync("/api/v1/admin/parameters/values/copy", new
+        {
+            tenantId = w.TenantId,
+            erpCompanyId = w.CompanyId,
+            catalogMethod = w.CatalogMethod,
+            fromMobileUserId = w.UserId,
+            toMobileUserId = w.OtherUserId,
+        }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.ReadAsJsonAsync<AdminParameterEndpoints.ParameterCopyResponse>();
+
+        body!.Copied.Should().Be(1);
+        body.Written.Should().Be(1);
+
+        // Leaving the target's own deviation in place would produce a third configuration nobody
+        // chose: not the source's settings and not the target's either.
+        body.Cleared.Should().Be(1);
+
+        var target = await client.GetAsync(
+            $"/api/v1/admin/parameters/values?tenantId={w.TenantId}&erpCompanyId={w.CompanyId}"
+            + $"&catalogMethod={w.CatalogMethod}&mobileUserId={w.OtherUserId}&onlyOverridden=true", token);
+
+        var items = (await target.ReadAsJsonAsync<AdminParameterEndpoints.ParameterValuesResponse>())!.Items;
+        items.Should().ContainSingle();
+        items[0].CatalogEntryId.Should().Be(w.DepotId);
+        items[0].Value.Should().Be("3");
+    }
+
+    [Fact]
+    public async Task Merging_adds_without_taking_anything_away()
+    {
+        var w = await SeedAsync("M");
+        var (client, token) = await SignedInAsync();
+
+        await WriteAsync(client, token, w, w.UserId, w.DepotId, "3");
+        await WriteAsync(client, token, w, w.OtherUserId, w.MenuId, "0");
+
+        var body = await (await client.PostJsonAsync("/api/v1/admin/parameters/values/copy", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, catalogMethod = w.CatalogMethod,
+            fromMobileUserId = w.UserId, toMobileUserId = w.OtherUserId, merge = true,
+        }, token)).ReadAsJsonAsync<AdminParameterEndpoints.ParameterCopyResponse>();
+
+        body!.Cleared.Should().Be(0, "merge means 'also give them these'");
+
+        var target = await client.GetAsync(
+            $"/api/v1/admin/parameters/values?tenantId={w.TenantId}&erpCompanyId={w.CompanyId}"
+            + $"&catalogMethod={w.CatalogMethod}&mobileUserId={w.OtherUserId}&onlyOverridden=true", token);
+
+        (await target.ReadAsJsonAsync<AdminParameterEndpoints.ParameterValuesResponse>())!
+            .Items.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task A_copy_is_attributable()
+    {
+        var w = await SeedAsync("N");
+        var (client, token) = await SignedInAsync();
+
+        await WriteAsync(client, token, w, w.UserId, w.DepotId, "3");
+
+        await client.PostJsonAsync("/api/v1/admin/parameters/values/copy", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, catalogMethod = w.CatalogMethod,
+            fromMobileUserId = w.UserId, toMobileUserId = w.OtherUserId,
+        }, token);
+
+        var audit = await client.GetAsync(
+            $"/api/v1/admin/parameters/audit?tenantId={w.TenantId}&catalogEntryId={w.DepotId}", token);
+
+        var rows = await audit.ReadAsJsonAsync<AdminParameterEndpoints.ParameterAuditDto[]>();
+
+        // A bulk operation is still a change to each setting, and says where it came from.
+        rows.Should().Contain(r => r.Source == ParameterChangeSources.Copy
+                                   && r.MobileUserId == w.OtherUserId);
+    }
+
+    [Fact]
+    public async Task Copying_a_scope_onto_itself_is_refused()
+    {
+        var w = await SeedAsync("O");
+        var (client, token) = await SignedInAsync();
+
+        var response = await client.PostJsonAsync("/api/v1/admin/parameters/values/copy", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, catalogMethod = w.CatalogMethod,
+            fromMobileUserId = w.UserId, toMobileUserId = w.UserId,
+        }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]

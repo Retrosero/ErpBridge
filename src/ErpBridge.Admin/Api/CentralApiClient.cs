@@ -954,6 +954,12 @@ public sealed class CentralApiClient
         SendAsync<ParameterWriteResponseDto>(
             () => _http.PostAsJsonAsync("/api/v1/admin/parameters/values/reset", body, ct), ct);
 
+    /// <summary>Copies one scope's settings onto another inside the same company.</summary>
+    public Task<ParameterCopyResponseDto> CopyParameterValuesAsync(
+        ParameterCopyRequestDto body, CancellationToken ct = default) =>
+        SendAsync<ParameterCopyResponseDto>(
+            () => _http.PostAsJsonAsync("/api/v1/admin/parameters/values/copy", body, ct), ct);
+
     private static string WithTenant(string path, Guid? tenantId, string? extraQuery = null)
     {
         var query = new List<string>();
@@ -1084,6 +1090,30 @@ public sealed class ParameterWriteResultDto
 {
     [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
     [JsonPropertyName("outcome")] public string Outcome { get; set; } = string.Empty;
+}
+
+public sealed class ParameterCopyRequestDto
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("erpCompanyId")] public Guid ErpCompanyId { get; set; }
+    [JsonPropertyName("catalogMethod")] public string CatalogMethod { get; set; } = string.Empty;
+    [JsonPropertyName("fromMobileUserId")] public Guid? FromMobileUserId { get; set; }
+    [JsonPropertyName("fromScope1")] public string? FromScope1 { get; set; }
+    [JsonPropertyName("fromScope2")] public string? FromScope2 { get; set; }
+    [JsonPropertyName("toMobileUserId")] public Guid? ToMobileUserId { get; set; }
+    [JsonPropertyName("toScope1")] public string? ToScope1 { get; set; }
+    [JsonPropertyName("toScope2")] public string? ToScope2 { get; set; }
+
+    /// <summary>False leaves the target holding exactly what the source holds.</summary>
+    [JsonPropertyName("merge")] public bool Merge { get; set; }
+}
+
+public sealed class ParameterCopyResponseDto
+{
+    [JsonPropertyName("copied")] public int Copied { get; set; }
+    [JsonPropertyName("written")] public int Written { get; set; }
+    [JsonPropertyName("cleared")] public int Cleared { get; set; }
+    [JsonPropertyName("revision")] public long Revision { get; set; }
 }
 
 /// <summary>Scope kinds as the catalogue records them.</summary>

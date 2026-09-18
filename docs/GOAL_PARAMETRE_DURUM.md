@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (P2e)
+Son güncelleme: 2026-09-18 (P2f)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -14,14 +14,14 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 |---|---|---|---|
 | P0 — Katalog çıkarımı (ön koşul) | 7 | 7 | ✅ |
 | P1 — Merkez veri modeli ve API | 7 | 7 | ✅ |
-| P2 — Panel (Admin) parametre ekranı | 8 | 5 | 🔄 |
+| P2 — Panel (Admin) parametre ekranı | 8 | 6 | 🔄 |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 0 | ⬜ |
 | P4 — Sipariş Cepte: öncelikli öbekler | 6 | 0 | ⬜ |
 | P5 — Kalan `akilli` öbekleri | 8 | 0 | ⬜ |
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P2f — toplu işlemler
+**Şu anki görev:** P2g — değişiklik geçmişi görünümü
 
 ---
 
@@ -48,7 +48,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P2c | Editör bileşenleri (7 tip) | ✅ | [#127](https://github.com/Retrosero/ErpBridge/pull/127) | Her alan Fora'nın kullandığı editörle çiziliyor — tip katalogdan geliyor, çünkü çıkarıcı onu Fora'nın kendi tasarımcısından okudu. 926 bool alan için serbest metin kutusu, telefonun okuyamayacağı bir değer saklamanın yolu. Bool anahtarı Fora'nın `1`/`0`'ını yazıyor. **`color` hakkında bulgu:** Fora `ColorPickEdit` kullanıyor ama her parametre **tek bir 0–255 kanalı** saklıyor (`...ColorRed/Green/Blue` üçlüsü bir renk); renk seçici çizmek `#aabbcc` yazardı ve telefon o alanı sayı okuyor → kanal başına 0–255 sayı kutusu, bulgu raporuna işlendi. **`choice`** seti katalogdaki `options`'tan; listede olmayan saklı değer **düşürülmüyor**, "listede yok" diye korunuyor — düşürmek ekran açılır açılmaz ayarı değiştirirdi. **`reference`** henüz serbest metin ve **bunu söylüyor**: ERP listesi ajanla geliyor (P3f, D12), doğrularmış gibi yapmaktansa. **`secret`** parola kutusu. Fora'da editörü olmayan parametre de düzenlenebiliyor, "tipi bilinmiyor" notuyla. Kaydetme **toplu**: yalnız değişenler gidiyor, değeri eski hâline geri yazmak bekleyen değişiklik sayılmıyor. Varsayılana eşitlenen değer satırı sildiği için sonuç mesajı bunu ayrıca söylüyor — operatör için "kaydedildi" ile "satır silindi" aynı şey değil. Kaydetmeden sonra sunucudan yeniden okunuyor (satırın var olup olmadığına sunucu karar veriyor) ama **açık sekme korunuyor**. 13 bileşen + 3 sayfa testi |
 | P2d | Efektif değer / varsayılan rozeti / sıfırlama | ✅ | [#128](https://github.com/Retrosero/ErpBridge/pull/128) | Alan başına: efektif değer, **varsayılanı**, "sapmış" işareti, **varsayılana dön** düğmesi ve **son değiştiren + tarih**. Varsayılana dön yalnız **saklanan satır varken** görünüyor — varsayılandaki bir alanda geri koyulacak bir şey yok. Taslak olarak tutulmuyor, hemen gönderiliyor: "bunu geri al" ile "bunu düzenliyorum" aynı karar değil, ve beklet-mek alanı operatörün zaten kurtulmak istediği değerle bırakırdı. **Son değiştiren** `/values` yanıtına eklendi (`lastChangedBy`, `lastChangeSource`, `lastChangedAtUtc`) ve **yalnız sapmış parametreler için** denetim kaydından okunuyor: set 1.801 parametre, sapmalar bir avuç; hepsini sormak çoğunlukla boş dönen bir tabloyu taramak olurdu, üstelik varsayılandaki parametrenin atfedilecek kimsesi yok. Arkasında kişi olmayan değişiklik (içe aktarım, sıfırlama) **kaynağını söylüyor**, satırı boş bırakmıyor — boş satır hata gibi görünürdü. 1 merkez + 4 bileşen testi |
 | P2e | Arama, "yalnız sapanlar", "etkisiz" rozeti | ✅ | [#129](https://github.com/Retrosero/ErpBridge/pull/129) | Arama ad, **Mikro ID'si**, Fora'daki etiket ve sekme adı üzerinde. **Türkçe harf kurallarıyla karşılaştırıyor**: ordinal büyük/küçük harf duyarsız karşılaştırma İ/ı'yı yanlış çeviriyor, "iskonto" araması "İskonto"yu kaçırırdı — bu ekrandaki etiketlerin hepsi Türkçe. Arama sonucunda **ağaç yeniden türetiliyor**: 1.801 parametre içinde adı bulup hangi sekmede olduğunu yine tahmin etmek gerekseydi arama işe yaramazdı; ağaç yalnız eşleşmesi olan sekmeleri gösteriyor ve açık sekme eşleşmeye devam ediyorsa açık kalıyor. "Yalnız sapanlar" süzgeci (sunucu tarafında) ve "bu sürümde etkisiz" rozeti (D16) P2a/P2c'de gelmişti; bu görevde yerlerinde bırakıldı. 3 birim + 3 sayfa testi |
-| P2f | Toplu işlemler (kopyalama, dışa/içe aktarma) | ⬜ | — | |
+| P2f | Toplu işlemler (kopyalama, dışa/içe aktarma) | ✅ | [#130](https://github.com/Retrosero/ErpBridge/pull/130) | Dört işlem. **Kullanıcıdan kullanıcıya kopyalama** yeni `POST /values/copy` ucuyla ve **varsayılanı değiştirme (replace)**: kopyadan sonra hedef tam olarak kaynağın sahip olduğunu taşıyor. "Ali'nin ayarlarını Veli'ye kopyala" deyip Veli'nin kendi sapmalarını sessizce bırakmak, kimsenin seçmediği **üçüncü bir yapılandırma** üretirdi; "bunları da ver" demek isteyen için `merge` var ve bunu söylüyor. Kopya her ayar için denetim kaydına `copy` kaynağıyla düşüyor — toplu işlem de her ayar için bir değişiklik. Kapsamı kendi üzerine kopyalamak **400**. **Seçili alanları sıfırlama:** onay kutusu yalnız **sapmış** alanlarda çıkıyor — varsayılanında duranı seçmek toplu işleme boş bir adım koymak olurdu. **Dışa aktarma** yalnız sapmaları taşıyor (varsayılandaki alanın taşınacak değeri yok — veritabanının da saklamama gerekçesi aynı); `data:` bağlantısıyla iniyor, JS interop gerekmiyor. **İçe aktarma Mikro ID'siyle eşliyor**, katalog girdisinin kendi kimliğiyle değil: o kimlik dosyanın geldiği kurulumun, başka ortamdan gelen dosya hiçbir şeyle eşleşmezdi. Tanınmayan ID **sessizce düşürülmüyor**, sayısı bildiriliyor; geçersiz JSON hata olarak söyleniyor. 4 merkez + 5 sayfa testi |
 | P2g | Değişiklik geçmişi görünümü | ⬜ | — | |
 | P2h | Vergi oranları onay adımı | ⬜ | — | |
 | P3a | `_ERPB_PARAMETRELER` kurulumu (V15/V16) | ⬜ | — | |

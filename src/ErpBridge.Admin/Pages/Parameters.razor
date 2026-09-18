@@ -154,6 +154,64 @@ else if (_values is not null)
             }
         </div>
 
+        <details class="prm-bulk">
+            <summary>Toplu işlemler</summary>
+
+            <div class="prm-bulk__body">
+                <div>
+                    <h3 class="h6">Başka bir kullanıcıdan kopyala</h3>
+                    <p class="text-muted small mb-1">
+                        Seçilen kullanıcının bu kümedeki ayarları, şu an açık olan kapsama yazılır.
+                        Birleştir işaretli değilse hedef tam olarak kaynağın sahip olduğunu taşır.
+                    </p>
+                    <select id="prm-copy-from" class="form-select" @bind="_copyFromUserId"
+                            disabled="@(_mobileUsers.Count == 0 || _saving)">
+                        <option value="">Kaynak kullanıcı…</option>
+                        @foreach (var u in _mobileUsers.Where(u => u.Id.ToString() != _mobileUserId))
+                        {
+                            <option value="@u.Id">@u.Username — @u.FullName</option>
+                        }
+                    </select>
+                    <div class="form-check mt-1">
+                        <input id="prm-copy-merge" class="form-check-input" type="checkbox" @bind="_copyMerge" />
+                        <label class="form-check-label" for="prm-copy-merge">Birleştir (hedefin kendi ayarlarını silme)</label>
+                    </div>
+                    <button class="btn btn-outline-primary mt-1" id="prm-copy"
+                            @onclick="CopyAsync" disabled="@(string.IsNullOrEmpty(_copyFromUserId) || _saving)">Kopyala</button>
+                </div>
+
+                <div>
+                    <h3 class="h6">Seçili alanları sıfırla</h3>
+                    <p class="text-muted small mb-1">
+                        Yalnız sapmış alanlar seçilebilir; varsayılanında duran bir alanı sıfırlamak bir şey yapmaz.
+                    </p>
+                    <button class="btn btn-outline-secondary" id="prm-reset-picked"
+                            @onclick="ResetPickedAsync" disabled="@(_picked.Count == 0 || _saving)">
+                        @_picked.Count alanı varsayılana döndür
+                    </button>
+                </div>
+
+                <div>
+                    <h3 class="h6">Dışa aktar</h3>
+                    <p class="text-muted small mb-1">Yalnız sapmalar; varsayılandaki alanın taşınacak bir değeri yok.</p>
+                    <a class="btn btn-outline-secondary" id="prm-export"
+                       download="@ExportFileName" href="@ExportHref">JSON indir</a>
+                </div>
+
+                <div>
+                    <h3 class="h6">İçe aktar</h3>
+                    <p class="text-muted small mb-1">
+                        Parametreler <strong>Mikro ID'siyle</strong> eşleniyor; kataloğun bu kümesinde
+                        olmayan ID atlanır ve sayısı bildirilir.
+                    </p>
+                    <textarea id="prm-import" class="form-control" rows="3" @bind="_importJson"
+                              placeholder="parametre listesi JSON"></textarea>
+                    <button class="btn btn-outline-primary mt-1" id="prm-import-apply"
+                            @onclick="ImportAsync" disabled="@(string.IsNullOrWhiteSpace(_importJson) || _saving)">Uygula</button>
+                </div>
+            </div>
+        </details>
+
         <div class="prm-layout">
             <nav class="prm-tabs" aria-label="Parametre sekmeleri">
                 @foreach (var node in _tabs)
@@ -365,9 +423,190 @@ else if (string.IsNullOrEmpty(_error))
                                 Value="@Draft(p)"
                                 ValueChanged="@(v => SetDraft(p, v))"
                                 Reverted="RevertAsync"
+                                Selectable="true"
+                                Selected="@_picked.Contains(p.CatalogEntryId)"
+                                SelectedChanged="@(on => Pick(p, on))"
                                 Disabled="@_saving" />
             }
         </div>;
+
+    private readonly HashSet<Guid> _picked = [];
+    private string _copyFromUserId = string.Empty;
+    private bool _copyMerge;
+    private string _importJson = string.Empty;
+
+    private void Pick(ParameterValueDto field, bool on)
+    {
+        if (on) _picked.Add(field.CatalogEntryId);
+        else _picked.Remove(field.CatalogEntryId);
+    }
+
+    /// <summary>
+    /// The scope's deviations, as JSON. Only the deviations: a parameter at its default has no
+    /// value to carry, which is the same reason the database does not store one.
+    /// </summary>
+    private string ExportJson => System.Text.Json.JsonSerializer.Serialize(new
+    {
+        catalogMethod = _values?.CatalogMethod,
+        exportedAtUtc = DateTimeOffset.UtcNow,
+        values = (_values?.Items ?? Array.Empty<ParameterValueDto>())
+            .Where(i => i.IsOverridden)
+            .Select(i => new { parametreId = i.ParametreId, name = i.Name, value = i.Value })
+            .ToArray(),
+    }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+    private string ExportFileName => $"parametreler-{_values?.CatalogMethod}-{DateTime.UtcNow:yyyyMMdd}.json";
+
+    private string ExportHref =>
+        "data:application/json;charset=utf-8," + Uri.EscapeDataString(ExportJson);
+
+    private async Task CopyAsync()
+    {
+        if (SelectedSet is not { } set || !Guid.TryParse(_copyFromUserId, out var from)) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            Guid? target = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            var response = await Api.CopyParameterValuesAsync(new ParameterCopyRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                CatalogMethod = set.CatalogMethod,
+                FromMobileUserId = from,
+                ToMobileUserId = target,
+                ToScope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                ToScope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                Merge = _copyMerge,
+            });
+
+            _saveMessage = $"{response.Copied} ayar kopyalandı, {response.Written} tanesi değişti"
+                + (response.Cleared > 0 ? $", hedefin {response.Cleared} kendi ayarı kaldırıldı" : "")
+                + $". Kapsam sürümü: {response.Revision}.";
+
+            await LoadValuesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task ResetPickedAsync()
+    {
+        if (SelectedSet is not { } set || _picked.Count == 0) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+            var count = _picked.Count;
+
+            var response = await Api.ResetParameterValuesAsync(new ParameterResetRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                CatalogEntryIds = [.. _picked],
+            });
+
+            _saveMessage = $"{count} alan varsayılana döndü. Kapsam sürümü: {response.Revision}.";
+            _picked.Clear();
+
+            await LoadValuesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    /// <summary>
+    /// Applies an exported file to the open scope.
+    ///
+    /// Matched by Mikro id rather than by the catalogue entry's own id: that id belongs to this
+    /// installation, so a file from another environment would match nothing. An id the set does
+    /// not declare is skipped and counted rather than dropped silently.
+    /// </summary>
+    private async Task ImportAsync()
+    {
+        if (SelectedSet is not { } set || _values is null) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(_importJson);
+
+            if (!doc.RootElement.TryGetProperty("values", out var values)
+                || values.ValueKind != System.Text.Json.JsonValueKind.Array)
+            {
+                _error = "Dosyada 'values' dizisi yok.";
+                return;
+            }
+
+            var byId = _values.Items
+                .GroupBy(i => i.ParametreId)
+                .ToDictionary(g => g.Key, g => g.First().CatalogEntryId);
+
+            var changes = new List<ParameterChangeDto>();
+            var skipped = 0;
+
+            foreach (var item in values.EnumerateArray())
+            {
+                if (!item.TryGetProperty("parametreId", out var idEl) || !idEl.TryGetInt32(out var id)
+                    || !byId.TryGetValue(id, out var entryId))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                changes.Add(new ParameterChangeDto
+                {
+                    CatalogEntryId = entryId,
+                    Value = item.TryGetProperty("value", out var v) ? v.GetString() ?? "" : "",
+                });
+            }
+
+            if (changes.Count == 0)
+            {
+                _error = $"Uygulanacak parametre yok ({skipped} satır bu kümede tanınmadı).";
+                return;
+            }
+
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            var response = await Api.SaveParameterValuesAsync(new ParameterWriteRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                Changes = [.. changes],
+            });
+
+            _saveMessage = $"{changes.Count} ayar uygulandı"
+                + (skipped > 0 ? $", {skipped} satır bu kümede tanınmadığı için atlandı" : "")
+                + $". Kapsam sürümü: {response.Revision}.";
+
+            _importJson = string.Empty;
+            await LoadValuesAsync();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            _error = "Girilen metin geçerli JSON değil.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
 
     private string _search = string.Empty;
 
@@ -537,6 +776,7 @@ else if (string.IsNullOrEmpty(_error))
                 : $"{response.Results.Length} değişiklik kaydedildi. Kapsam sürümü: {response.Revision}.";
 
             _drafts.Clear();
+            _picked.Clear();
 
             // Reload rather than patch in memory: the server decides whether a row exists, and the
             // "sapmış" marks have to match what it decided.
