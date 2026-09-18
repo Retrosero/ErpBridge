@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (plan dalı)
+Son güncelleme: 2026-09-18 (P0a)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -12,7 +12,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| P0 — Katalog çıkarımı (ön koşul) | 7 | 0 | 🔄 |
+| P0 — Katalog çıkarımı (ön koşul) | 7 | 3 | 🔄 |
 | P1 — Merkez veri modeli ve API | 7 | 0 | ⬜ |
 | P2 — Panel (Admin) parametre ekranı | 8 | 0 | ⬜ |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 0 | ⬜ |
@@ -21,7 +21,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P00 — plan dalını `main`'e al
+**Şu anki görev:** P0b — `ForaAndroidKullaniciDuzenleme.cs` → sekme/etiket/kontrol metadata'sı
 
 ---
 
@@ -29,12 +29,12 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 | ID | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| P00 | Plan dalını `main`'e al | 🔄 | [#111](https://github.com/Retrosero/ErpBridge/pull/111) | **Codex 2 P1 bulgu, ikisi de kodda doğrulandı ve planda düzeltildi:** (1) değer anahtarında ERP firması yoktu — çok firmalı kiracıda bir firmanın depo/şube/seri ayarı diğerinin üzerine yazardı → D3b, `ErpCompanyId` değer/sürüm/API/ayna kapsamlarında zorunlu; (2) kullanıcı adı değişmez kimlik değil (`MobileSeatsRelationalTests.Deleting_a_user_releases_the_seat_and_the_username`: silinen satır geçmiş için kalıyor, aynı adla yeni kullanıcı açılabiliyor) — kullanıcı adına anahtarlamak silinenin `Hak*` yetkilerini devrederdi → D5 `MobileUser.Id`, D5b yalnız aktif kullanıcılar yayılır |
-| P0a | `ParametrelerDefault.cs` → `defaults.json` (4.688 tanım) | ⬜ | — | |
+| P00 | Plan dalını `main`'e al | ✅ | [#111](https://github.com/Retrosero/ErpBridge/pull/111) | **Codex 2 P1 bulgu, ikisi de kodda doğrulandı ve planda düzeltildi:** (1) değer anahtarında ERP firması yoktu — çok firmalı kiracıda bir firmanın depo/şube/seri ayarı diğerinin üzerine yazardı → D3b, `ErpCompanyId` değer/sürüm/API/ayna kapsamlarında zorunlu; (2) kullanıcı adı değişmez kimlik değil (`MobileSeatsRelationalTests.Deleting_a_user_releases_the_seat_and_the_username`: silinen satır geçmiş için kalıyor, aynı adla yeni kullanıcı açılabiliyor) — kullanıcı adına anahtarlamak silinenin `Hak*` yetkilerini devrederdi → D5 `MobileUser.Id`, D5b yalnız aktif kullanıcılar yayılır |
+| P0a | `ParametrelerDefault.cs` → `defaults.json` (4.688 tanım) | ✅ | — | 19 set, 13 program, 4.688 tanım. **İki bulgu:** (1) kapsam her programda `ParametreUser`'da değil — aktarım şablonları `ParametreAltGrubu` kullanıyor, `ParametreAnaGrubu` sabit ayırıcı → D4b eklendi, katalog `scopeField` taşıyor; (2) `TahsilatAktarimTxtCsvSablon`'da **Fora'nın kendi hatası**: `belge_tarihi_yil/ay/gun_baslangic` üçü de id 16 (genel şablonda doğru şekilde 16/18/20), aynısı 17 ve 604'te. `_GetParametre(int)` ilk eşleşmeyi döndürdüğü için 5 kayıt Fora'da da okunamıyor → atılmıyor, `shadowed` ile işaretleniyor |
 | P0b | `ForaAndroidKullaniciDuzenleme.cs` → `ui.akilli.json` (63 sekme, 3.572 bağlama) | ⬜ | — | |
 | P0c | Diğer editör ekranlarının UI metadata'sı | ⬜ | — | |
 | P0d | Tip çıkarsama ve doğrulama | ⬜ | — | |
-| P0e | Çıkarım script'i + altın dosya testi | ⬜ | — | |
+| P0e | Çıkarım script'i + altın dosya testi | ✅ | — | `tools/ForaCatalogExtractor` (Roslyn; dört ZPL şablonu kaçırılmış tırnakla bitiyor, regex sessizce bozuyor). `--check` bayat katalogda sıfırdan farklı kodla çıkar. `tests/ErpBridge.ForaCatalog.Tests` 13 test: bayt bayt altın dosya, iki kez çalıştırınca aynı çıktı, kapsam alanı iddiaları, çakışma kayıtları, Türkçe ve kaçırılmış tırnak korunumu, hatalı girdilerin reddi. Proje merkezi paket yönetiminin dışında: `Directory.Packages.props` geçişli sabitleme açtığı için Roslyn'i oraya eklemek EF Design üzerinden Roslyn çeken her projenin kilit dosyasını yeniden yazardı |
 | P0f | El ile gözden geçirme raporu | ⬜ | — | |
 | P1a | `parameter_catalog_entries` + tohumlama | ⬜ | — | |
 | P1b | `parameter_values` + migration | ⬜ | — | |
