@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (P3c)
+Son güncelleme: 2026-09-18 (P4a)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -16,12 +16,12 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P1 — Merkez veri modeli ve API | 7 | 7 | ✅ |
 | P2 — Panel (Admin) parametre ekranı | 8 | 8 | ✅ |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 3 | 🔄 |
-| P4 — Sipariş Cepte: öncelikli öbekler | 6 | 0 | ⬜ |
+| P4 — Sipariş Cepte: öncelikli öbekler | 6 | 1 | 🔄 |
 | P5 — Kalan `akilli` öbekleri | 8 | 0 | ⬜ |
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P3d — panelde "Fora'dan içe aktar" akışı
+**Şu anki görev:** P4b — `Goster_AnaMenu_*` ana menü görünürlüğü
 
 ---
 
@@ -57,7 +57,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P3d | Panelde "Fora'dan içe aktar" akışı | ⬜ | — | |
 | P3e | Ayna fark raporu | ⬜ | — | |
 | P3f | ERP lookup beslemesi | ⬜ | — | |
-| P4a | Room tablosu + gömülü katalog + `ParameterProvider` | ⬜ | — | |
+| P4a | Room tablosu + gömülü katalog + `ParameterProvider` | ✅ | Sipariş Cepte | **Sipariş Cepte deposunda** (ayrı depo, ayrı PR). Room `parameter_values` + migration **39→40**; yalnız **sapmalar** saklanıyor, 1.800 varsayılan **APK'ya gömülü** (`parameter_defaults.json`, ~126 KB) — Fora'nın mimarisinin aynısı (D14). Kazanım: kimsenin değiştirmediği ayar **ilk senkrondan önce, bağlantı hiç yokken** doğru cevabı veriyor ve her senkronda kullanıcı başına 1.800 satır inmiyor. Dosya elle yazılmıyor: `tools/parametre-varsayilanlari.py` ErpBridge kataloğundan üretiyor, `--kontrol` bayatlığı söylüyor; `Sifre` (D6) ve gölgelenen kayıtlar dışarıda. Erişim tek kapıdan: `ParameterProvider` (D15) — `bool/int/decimal/string/csvList`, efektif değer = sapma ?? varsayılan. **Kullanıcı başına** yükleniyor, cihaz başına değil: telefonu iki plasiyer paylaşabiliyor. Çekme `If-None-Match` ile koşullu (D9): ETag `sync_state`'te, çağrıların neredeyse hepsi **304**. Üç kural test edildi: yanıt **birleştirilmiyor değiştiriliyor** (yanıtta olmayan parametre varsayılanına dönmüş demek), **başarısız çekme saklananlara dokunmuyor** (kopuk bağlantı = plasiyerin rota ortasında yetkisini kaybetmesi olmamalı), **yazma olmadıysa ETag saklanmıyor** (yoksa sonraki çekme 304 alır ve telefon sessizce varsayılanlarda kalır). Senkron turuna ayrı bir `SyncTask` olarak bağlandı — değişiklik beslemesi ERP'nin değiştirdiği kayıtları taşıyor, bunlar ise panelde birinin değiştirdiği ayarlar. **İki tasarım testin zorlamasıyla düzeldi:** `ParameterDefaults` `org.json` yerine Moshi akışıyla, `ParameterSync` `android.util.Log` yerine enjekte edilen uyarıyla çalışıyor — gömülü bir dosyayı okuyan veri sınıfının Android çalışma zamanına ihtiyacı olmamalı. Bilgi bankasına `05_Fora_Parametreleri.md` eklendi. 15 test |
 | P4b | `Goster_AnaMenu_*` (43) | ⬜ | — | |
 | P4c | `Hak*` (71) | ⬜ | — | |
 | P4d | `EvrakSeri_*` (14) + `Default*` (37) | ⬜ | — | |
