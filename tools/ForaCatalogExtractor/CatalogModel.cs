@@ -87,7 +87,15 @@ public sealed record CatalogSet
     /// </summary>
     [JsonPropertyOrder(9)] public required IReadOnlyList<int> DuplicateIds { get; init; }
 
-    [JsonPropertyOrder(10)] public required IReadOnlyList<ParameterDefault> Parameters { get; init; }
+    /// <summary>
+    /// Names declared more than once under different ids. Fora's
+    /// <c>Parametreler._GetParametre(string)</c> also returns the first match, so the later
+    /// copies can never be reached by name — the editor binds only the first and the rest sit
+    /// at their defaults forever.
+    /// </summary>
+    [JsonPropertyOrder(10)] public required IReadOnlyList<string> DuplicateNames { get; init; }
+
+    [JsonPropertyOrder(11)] public required IReadOnlyList<ParameterDefault> Parameters { get; init; }
 }
 
 /// <summary>The whole extracted catalogue, written to <c>catalog/parameters/defaults.json</c>.</summary>

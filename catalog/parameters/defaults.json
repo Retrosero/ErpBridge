@@ -17,6 +17,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -205,6 +206,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -288,6 +290,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -336,6 +339,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 100,
@@ -649,6 +653,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -717,6 +722,13 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [
+        "YazdirmaAlinanSiparisBluetoothAygitIsmi",
+        "YazdirmaAlinanSiparisSablonAdi",
+        "YazdirmaAlinanSiparisSadeceAktarilanlariYazdirabilir",
+        "YazdirmaAlinanSiparisSatirlarArasiBeklemeSuresi",
+        "YazdirmaAlinanSiparisSayfaSatirSayisi"
+      ],
       "parameters": [
         {
           "id": 1,
@@ -9735,6 +9747,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -9758,6 +9771,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -9781,6 +9795,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -9804,6 +9819,7 @@
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -9827,6 +9843,7 @@
       "anaGrubu": "AktarimSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -11960,6 +11977,7 @@
       "anaGrubu": "GenelSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -12213,6 +12231,7 @@
       "anaGrubu": "Kriter",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -12381,6 +12400,7 @@
       "anaGrubu": "SqlAktarimSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -15509,6 +15529,7 @@
       "anaGrubu": "TxtCsvAktarimSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 20001,
@@ -19837,6 +19858,7 @@
       "anaGrubu": "Kriter",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -19885,6 +19907,7 @@
       "anaGrubu": "Kriter",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -19933,6 +19956,7 @@
       "anaGrubu": "SqlAktarimSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,
@@ -21515,6 +21539,7 @@
         17,
         604
       ],
+      "duplicateNames": [],
       "parameters": [
         {
           "id": 1,

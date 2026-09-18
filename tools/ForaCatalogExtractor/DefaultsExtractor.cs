@@ -148,6 +148,16 @@ public static class DefaultsExtractor
             .Order()
             .ToList();
 
+        // _GetParametre(string) also returns the first match, so a name declared twice under two
+        // ids leaves the later copy unreachable: the editor binds the first and the second keeps
+        // its default forever. Record it for the same reason as the id collisions.
+        var duplicateNames = parameters
+            .GroupBy(p => p.Name, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
         return new CatalogSet
         {
             CatalogMethod = methodName,
@@ -159,6 +169,7 @@ public static class DefaultsExtractor
             AnaGrubu = anaGrubu.IsScope ? string.Empty : anaGrubu.Value,
             AltGrubu = altGrubu.IsScope ? string.Empty : altGrubu.Value,
             DuplicateIds = duplicateIds,
+            DuplicateNames = duplicateNames,
             Parameters = parameters,
         };
     }

@@ -14,6 +14,19 @@ public static class ForaCatalogPaths
     /// <summary>Generated catalogue, committed to the repository.</summary>
     public const string DefaultsOutput = "catalog/parameters/defaults.json";
 
+    /// <summary>Decompiled Fora editor for mobile-user (<c>akilli</c>) parameters.</summary>
+    public const string AkilliUiSource =
+        "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.ForaAndroid/ForaAndroidKullaniciDuzenleme.cs";
+
+    /// <summary><c>ParametreProgram</c> value the mobile-user editor maintains.</summary>
+    public const string AkilliProgram = "akilli";
+
+    /// <summary>Type declared in <see cref="AkilliUiSource"/>.</summary>
+    public const string AkilliUiType = "ForaAndroidKullaniciDuzenleme";
+
+    /// <summary>Generated tab, label and editor layout for the <c>akilli</c> parameters.</summary>
+    public const string AkilliUiOutput = "catalog/parameters/ui.akilli.json";
+
     /// <summary>
     /// Walks up from <paramref name="start"/> until it finds the repository root.
     /// Tests run from the build output directory, so they cannot assume the working directory.

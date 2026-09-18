@@ -5,8 +5,8 @@ using ErpBridge.Tools.ForaCatalog;
 //   dotnet run --project tools/ForaCatalogExtractor
 //   dotnet run --project tools/ForaCatalogExtractor -- --check
 //
-// --check writes nothing and fails when the committed catalogue is stale, which is what
-// CI and the golden test rely on.
+// --check writes nothing and fails when a committed catalogue is stale, which is what
+// CI and the golden tests rely on.
 
 var check = args.Contains("--check", StringComparer.OrdinalIgnoreCase);
 var buildArgument = args.SkipWhile(a => !string.Equals(a, "--source-build", StringComparison.OrdinalIgnoreCase))
@@ -16,54 +16,106 @@ var buildArgument = args.SkipWhile(a => !string.Equals(a, "--source-build", Stri
 try
 {
     var root = ForaCatalogPaths.FindRepositoryRoot(Directory.GetCurrentDirectory());
-    var sourcePath = ForaCatalogPaths.Resolve(root, ForaCatalogPaths.DefaultsSource);
-    var outputPath = ForaCatalogPaths.Resolve(root, ForaCatalogPaths.DefaultsOutput);
 
-    if (!File.Exists(sourcePath))
-    {
-        await Console.Error.WriteLineAsync($"Decompiled source not found: {ForaCatalogPaths.DefaultsSource}");
-        return 2;
-    }
+    // Keep whatever build identifier the committed file already carries unless the caller passes
+    // a new one, so regenerating does not silently reset it to "unknown".
+    var defaultsOutput = ForaCatalogPaths.Resolve(root, ForaCatalogPaths.DefaultsOutput);
+    var sourceBuild = buildArgument ?? ExistingSourceBuild(defaultsOutput) ?? "unknown";
 
-    // Keep whatever build identifier the committed file already carries unless the caller
-    // passes a new one, so regenerating does not silently reset it to "unknown".
-    var sourceBuild = buildArgument ?? ExistingSourceBuild(outputPath) ?? "unknown";
-
-    var catalog = DefaultsExtractor.Extract(
-        await File.ReadAllTextAsync(sourcePath),
+    var defaults = DefaultsExtractor.Extract(
+        await ReadSourceAsync(root, ForaCatalogPaths.DefaultsSource),
         ForaCatalogPaths.DefaultsSource,
         sourceBuild);
 
-    var json = CatalogJson.Serialize(catalog);
+    // The layout is checked against what the defaults declare, so a parameter that exists in the
+    // catalogue but not in the editor is reported instead of quietly missing from the panel.
+    var akilliDefaults = defaults.Sets
+        .Where(s => s.Program == ForaCatalogPaths.AkilliProgram)
+        .SelectMany(s => s.Parameters)
+        .Select(p => p.Name)
+        .ToHashSet(StringComparer.Ordinal);
 
-    if (check)
+    var ui = UiExtractor.Extract(
+        await ReadSourceAsync(root, ForaCatalogPaths.AkilliUiSource),
+        ForaCatalogPaths.AkilliUiSource,
+        ForaCatalogPaths.AkilliUiType,
+        sourceBuild,
+        akilliDefaults);
+
+    var outputs = new (string Relative, string Json, string Summary)[]
     {
-        if (!File.Exists(outputPath))
+        (ForaCatalogPaths.DefaultsOutput, CatalogJson.Serialize(defaults),
+            $"{defaults.SetCount} sets, {defaults.ParameterCount} parameters, {defaults.ShadowedCount} shadowed"),
+        (ForaCatalogPaths.AkilliUiOutput, CatalogJson.Serialize(ui),
+            $"{ui.TabCount} tabs, {ui.ParameterCount} parameters, {ui.UnlabelledCount} unlabelled, {ui.Gaps.Count} gaps"),
+    };
+
+    var stale = 0;
+
+    foreach (var (relative, json, summary) in outputs)
+    {
+        var path = ForaCatalogPaths.Resolve(root, relative);
+
+        if (!check)
         {
-            await Console.Error.WriteLineAsync($"{ForaCatalogPaths.DefaultsOutput} is missing. Run the extractor without --check.");
-            return 1;
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            await File.WriteAllTextAsync(path, json, CatalogJson.FileEncoding);
+            Console.WriteLine($"Wrote {relative}: {summary}.");
+            continue;
         }
 
-        var committed = await File.ReadAllTextAsync(outputPath);
-        if (!string.Equals(Normalize(committed), json, StringComparison.Ordinal))
+        if (!File.Exists(path))
         {
-            await Console.Error.WriteLineAsync(
-                $"{ForaCatalogPaths.DefaultsOutput} is out of date. Run: dotnet run --project tools/ForaCatalogExtractor");
-            return 1;
+            await Console.Error.WriteLineAsync($"{relative} is missing.");
+            stale++;
+            continue;
         }
 
-        Console.WriteLine($"{ForaCatalogPaths.DefaultsOutput} is up to date ({catalog.SetCount} sets, {catalog.ParameterCount} parameters).");
-        return 0;
+        if (!string.Equals(Normalize(await File.ReadAllTextAsync(path)), json, StringComparison.Ordinal))
+        {
+            await Console.Error.WriteLineAsync($"{relative} is out of date.");
+            stale++;
+            continue;
+        }
+
+        Console.WriteLine($"{relative} is up to date ({summary}).");
     }
 
-    await File.WriteAllTextAsync(outputPath, json, CatalogJson.FileEncoding);
-    Console.WriteLine($"Wrote {ForaCatalogPaths.DefaultsOutput}: {catalog.SetCount} sets, {catalog.ParameterCount} parameters, build '{sourceBuild}'.");
+    if (stale > 0)
+    {
+        await Console.Error.WriteLineAsync(
+            $"{stale} catalogue file(s) stale. Run: dotnet run --project tools/ForaCatalogExtractor");
+        return 1;
+    }
+
     return 0;
 }
 catch (CatalogExtractionException ex)
 {
     await Console.Error.WriteLineAsync($"Extraction failed: {ex.Message}");
     return 2;
+}
+catch (FileNotFoundException ex)
+{
+    await Console.Error.WriteLineAsync(ex.Message);
+    return 2;
+}
+
+static async Task<string> ReadSourceAsync(string root, string relative)
+{
+    var path = ForaCatalogPaths.Resolve(root, relative);
+
+    if (!File.Exists(path))
+    {
+        throw new FileNotFoundException($"Decompiled source not found: {relative}");
+    }
+
+    return await File.ReadAllTextAsync(path);
 }
 
 static string Normalize(string text) =>
