@@ -212,4 +212,112 @@ WHERE cha_evrak_tip = 1 AND cha_evrakno_seri = '' AND cha_trefno <> ''
   AND cha_trefno NOT LIKE '[A-Z][A-Z]-[0-9][0-9][0-9]-[0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'");
         badRefs.Should().Be(0);
     }
+
+    /// <summary>
+    /// ERP yazım 2 (Z0b): the purchase invoice, read from documents Mikro entered itself. Fora — the application
+    /// that did this successfully before — writes exactly these codes, and the live company database agrees.
+    /// </summary>
+    [Fact]
+    public async Task Purchase_invoice_headers_and_lines_use_the_documented_codes()
+    {
+        if (!GateOpen)
+        {
+            return;
+        }
+
+        await using var conn = await OpenAsync();
+        var headers = (await conn.QueryAsync<(int Tip, int Cinsi, int Iade, int CariCins, int Tpoz, int Ticaret, int Count)>(
+            "SELECT cha_tip, cha_cinsi, cha_normal_Iade, cha_cari_cins, cha_tpoz, cha_ticaret_turu, COUNT(*) " + NativeCariRows +
+            " AND cha_evrak_tip = 0 AND cha_normal_Iade = 0" +
+            " GROUP BY cha_tip, cha_cinsi, cha_normal_Iade, cha_cari_cins, cha_tpoz, cha_ticaret_turu")).ToList();
+        foreach (var h in headers)
+        {
+            _output.WriteLine(h.ToString());
+        }
+
+        // Açık alış: tedarikçiye alacak, toptan fatura, cari satırı.
+        headers.Should().Contain(h => h.Tip == MikroCodes.ChaTip.Alacak && h.Cinsi == MikroCodes.ChaCinsi.ToptanFatura
+            && h.CariCins == MikroCodes.HesapCinsi.Carimiz && h.Tpoz == MikroCodes.ChaTpoz.Acik);
+        // Peşin alış = kapalı fatura, satışın aynası (§10).
+        headers.Should().Contain(h => h.Tpoz == MikroCodes.ChaTpoz.Kapali
+            && (h.CariCins == MikroCodes.HesapCinsi.Kasamiz || h.CariCins == MikroCodes.HesapCinsi.Bankamiz));
+
+        // Kapalı alış faturası tedarikçiyi cha_ciro_cari_kodu'nda tutar — satıştaki kuralın aynısı.
+        var closedWithoutSupplier = await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) " + NativeCariRows + " AND cha_evrak_tip = 0 AND cha_normal_Iade = 0 AND cha_tpoz = 1 AND cha_ciro_cari_kodu = ''");
+        closedWithoutSupplier.Should().Be(0);
+
+        var lines = (await conn.QueryAsync<(int Tip, int Cins, int Iade, int CariCinsi, int Count)>(@"
+SELECT sth_tip, sth_cins, sth_normal_iade, sth_cari_cinsi, COUNT(*)
+FROM STOK_HAREKETLERI
+WHERE sth_evraktip = 3 AND sth_evrakno_seri = '' AND sth_normal_iade = 0
+GROUP BY sth_tip, sth_cins, sth_normal_iade, sth_cari_cinsi")).ToList();
+        foreach (var l in lines)
+        {
+            _output.WriteLine(l.ToString());
+        }
+
+        // Alış kalemi: giriş faturası, stok girer.
+        lines.Should().Contain(l => l.Tip == MikroCodes.SthTip.Giris && l.Cins == MikroCodes.SthCins.Toptan
+            && l.CariCinsi == MikroCodes.HesapCinsi.Carimiz);
+    }
+
+    /// <summary>
+    /// ERP yazım 2 (Z0b): the purchase invoice and the sales return **share** <c>cha_evrak_tip = 0</c>, separated only
+    /// by the return flag — so the next document number has to be taken across both. A writer that filtered on
+    /// <c>cha_normal_Iade</c> would hand out a number the other kind already used, and Mikro's unique index
+    /// (<c>evrak tip, seri, sıra, satır</c>) would refuse the document.
+    /// </summary>
+    [Fact]
+    public async Task Purchase_invoices_and_sales_returns_share_one_number_space()
+    {
+        if (!GateOpen)
+        {
+            return;
+        }
+
+        await using var conn = await OpenAsync();
+        var purchases = await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) " + NativeCariRows + " AND cha_evrak_tip = 0 AND cha_normal_Iade = 0");
+        var returns = await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) " + NativeCariRows + " AND cha_evrak_tip = 0 AND cha_normal_Iade = 1");
+        _output.WriteLine($"alış={purchases} satış iadesi={returns}");
+        purchases.Should().BeGreaterThan(0, "the company buys");
+        returns.Should().BeGreaterThan(0, "and takes returns");
+
+        // Aynı (seri, sıra) hem alışta hem iadede kullanılmamış: tek numara uzayı.
+        var shared = await conn.ExecuteScalarAsync<int>(@"
+SELECT COUNT(*) FROM (
+    SELECT cha_evrakno_seri, cha_evrakno_sira
+    FROM CARI_HESAP_HAREKETLERI
+    WHERE cha_evrak_tip = 0 AND cha_satir_no = 0
+    GROUP BY cha_evrakno_seri, cha_evrakno_sira
+    HAVING COUNT(DISTINCT cha_normal_Iade) > 1
+) AS çakışan");
+        shared.Should().Be(0, "one number belongs to one document, whichever kind it is");
+    }
+
+    /// <summary>ERP yazım 2 (Z0c): the disbursement receipt — the collection's mirror.</summary>
+    [Fact]
+    public async Task Disbursement_headers_use_the_documented_codes()
+    {
+        if (!GateOpen)
+        {
+            return;
+        }
+
+        await using var conn = await OpenAsync();
+        var shapes = (await conn.QueryAsync<(int Tip, int Cinsi, int CariCins, int Count)>(
+            "SELECT cha_tip, cha_cinsi, cha_cari_cins, COUNT(*) " + NativeCariRows +
+            " AND cha_evrak_tip = 64 GROUP BY cha_tip, cha_cinsi, cha_cari_cins")).ToList();
+        foreach (var s in shapes)
+        {
+            _output.WriteLine(s.ToString());
+        }
+
+        shapes.Should().NotBeEmpty("the company pays money out");
+        // Tediye borçtur (tahsilatın tersi) ve cari satırı taşır.
+        shapes.Should().Contain(s => s.Tip == MikroCodes.ChaTip.Borc && s.Cinsi == MikroCodes.ChaCinsi.Nakit
+            && s.CariCins == MikroCodes.HesapCinsi.Carimiz);
+        shapes.Where(s => s.CariCins == MikroCodes.HesapCinsi.Carimiz)
+            .Should().OnlyContain(s => s.Tip == MikroCodes.ChaTip.Borc, "a disbursement never credits the account");
+    }
 }

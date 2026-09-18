@@ -1,6 +1,6 @@
 # Goal Durumu — Kalan telefon belgeleri Mikro'ya
 
-Son güncelleme: 2026-09-19 (plan)
+Son güncelleme: 2026-09-19 (Z0b–Z0c)
 Görev listesi: [GOAL_ERP_YAZIM_2.md](GOAL_ERP_YAZIM_2.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -12,7 +12,7 @@ Görev listesi: [GOAL_ERP_YAZIM_2.md](GOAL_ERP_YAZIM_2.md) · Mikro kuralları: 
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| Z0 — Referans ve envanter | 5 | 0 | ⬜ |
+| Z0 — Referans ve envanter | 5 | 3 | 🔄 |
 | Z1 — Sunucu: sözleşme, kabul, ayarlar | 3 | 0 | ⬜ |
 | Z2 — Çevirici ve komutlar | 2 | 0 | ⬜ |
 | Z3 — Mikro V15 writer'ları | 5 | 0 | ⬜ |
@@ -20,7 +20,7 @@ Görev listesi: [GOAL_ERP_YAZIM_2.md](GOAL_ERP_YAZIM_2.md) · Mikro kuralları: 
 | Z5 — İzleme ve geriye dönük | 2 | 0 | ⬜ |
 | Z6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Z0a — plan dalını main'e al
+**Şu anki görev:** Z0d — cari kartı referansı
 
 **Kapsam:** Tediye · Alış faturası (satırlı) · Yeni cari kartı. Gider ve sayım **kapsam dışı** (kullanıcı kararı U1);
 ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
@@ -36,9 +36,9 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 
 | ID | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| Z0a | Plan dalını main'e al | 🔄 | — | Bu belge + goal + `CLAUDE.md` yetki istisnası |
-| Z0b | Referans §10 — alış faturası | ⬜ | | |
-| Z0c | Referans §11 — tediye | ⬜ | | |
+| Z0a | Plan dalını main'e al | ✅ | [#138](https://github.com/Retrosero/ErpBridge/pull/138) | İnceleme (Codex P1) kapı boşluğunu yakaladı → Z3e eklendi |
+| Z0b | Referans §10 — alış faturası | ✅ | #139 | **Fora ve canlı veri tam uyuştu.** CHA: `evrak_tip=0`, `tip=1 alacak`, `cinsi=6`, `cari_cins=0`/tedarikçi, `ciro_cari_kodu` açık faturada da dolu, uuid 36 karakter. Peşin alış = **kapalı fatura** (canlı örnek: `kod=001, cari_cins=4, tpoz=1, ciro=tedarikçi`) — D1 artık tahmin değil, kanıt. STH: `evraktip=3`, `tip=0 giriş`, `cins=0`, `fat_recid_recno`=başlık. **Kritik:** alış faturası ile satış iadesi aynı `evrak_tip=0`'ı paylaşıyor (yalnız `normal_Iade` ayırıyor) → MAX+1 ikisini birlikte saymalı; iade filtresi koyan writer Mikro'nun tekil indeksine takılır |
+| Z0c | Referans §11 — tediye | ✅ | #139 | `cha_evrak_tip=64` (Fora `TediyeMakbuzu`), `cha_tip=0 borç` — tahsilatın tersi; cari satırlarının tamamı `cari_cins=0`. `EVRAK_ACIKLAMALARI (0, 64)`. **Açık uç:** canlıda `cha_cinsi` 3, 4, 20, 22 değerleri de var (nakit 0, çek 1, senet 2 dışında); Z3b öncesi `enum_cha_cinsi`'den çözülecek — kapsam nakit/banka olduğu için yazımı engellemiyor |
 | Z0d | Referans §12 — cari kartı | ⬜ | | |
 | Z0e | Başarısız iş envanteri | ⬜ | | Z5a bu listeyi kullanır |
 | Z1a | Gövde sözleşmesi v3 | ⬜ | | |
@@ -77,6 +77,12 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 İkinci maddeyi PR #138 incelemesi (Codex, P1) yakaladı ve plan düzeltildi: kapsamdaki iki türün writer'ı yazılsa
 bile kapı açılmadan hiçbir belge ulaşmaz → **Z3e** eklendi, writer'lardan sonra çalışacak. Aksi hâlde bir sessiz
 hatayı (409) başka bir sessiz hatayla (`UNSUPPORTED_DOCUMENT_TYPE`) değiştirmiş olurduk.
+
+### Fora güvenilir bir kaynak çıktı (2026-09-19)
+Kullanıcının işaret ettiği `Fora_Mikro/` (bu işi daha önce başarıyla yapan uygulama) decompile edilmiş halde
+okunabiliyor. Z0b/Z0c'de **Fora'nın yazdığı her kod canlı veriyle birebir uyuştu** — alış faturası, tediye, kapalı
+fatura, kalem kodları. Bundan sonraki görevlerde kolon listesi ve değerler için önce Fora okunacak, sonra canlı
+veriyle doğrulanacak.
 
 ### Fora'dan ilk kanıt (2026-09-19)
 `Fora_Mikro/.decompiled/Core/Fora.Mikro.CariHesapHareket/enum_cha_evrak_tip.cs`: `0 = AlisFaturasi`,
