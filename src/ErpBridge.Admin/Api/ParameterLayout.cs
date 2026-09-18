@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace ErpBridge.Admin.Api;
@@ -76,6 +77,36 @@ public static partial class ParameterLayout
 
         return root.Children.Select(c => c.ToNode()).ToList();
     }
+
+    /// <summary>
+    /// Filters a set by what an operator would type: a parameter name, its Mikro id, the wording
+    /// Fora shows next to it, or the tab it lives on.
+    ///
+    /// Compared with Turkish casing rules on purpose. The labels are Turkish and an ordinal
+    /// case-insensitive compare gets İ/ı wrong, so searching "ISKONTO" would miss "İskonto".
+    /// </summary>
+    public static IReadOnlyList<ParameterValueDto> Search(
+        IEnumerable<ParameterValueDto> values, string? query)
+    {
+        var needle = query?.Trim();
+
+        if (string.IsNullOrEmpty(needle))
+        {
+            return values.ToList();
+        }
+
+        return values.Where(v =>
+            Contains(v.Name, needle)
+            || Contains(v.Label, needle)
+            || Contains(v.TabPath, needle)
+            || Contains(v.ParametreId.ToString(TurkishCulture), needle)).ToList();
+    }
+
+    private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+    internal static bool Contains(string? haystack, string needle) =>
+        !string.IsNullOrEmpty(haystack)
+        && TurkishCulture.CompareInfo.IndexOf(haystack, needle, CompareOptions.IgnoreCase) >= 0;
 
     /// <summary>The parameters that sit on exactly the given tab path.</summary>
     public static IReadOnlyList<ParameterValueDto> FieldsOf(

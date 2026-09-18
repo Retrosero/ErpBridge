@@ -115,3 +115,15 @@
         grid-template-columns: 1fr;
     }
 }
+
+.prm-search {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.prm-search input {
+    max-width: 24rem;
+}
