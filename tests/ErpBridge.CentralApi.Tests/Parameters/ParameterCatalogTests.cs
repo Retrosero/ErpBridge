@@ -1,0 +1,188 @@
+using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Parameters;
+using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+
+namespace ErpBridge.CentralApi.Tests.Parameters;
+
+/// <summary>
+/// The parameter catalogue is the fixed point everything else resolves against: Fora stores only
+/// the values that differ from a default, so a stored row means nothing without it. These tests
+/// guard both the reading of the shipped catalogue and the seeding that keeps the table in step.
+/// </summary>
+public sealed class ParameterCatalogTests
+{
+    private static CentralApiDbContext NewDb() =>
+        new(new DbContextOptionsBuilder<CentralApiDbContext>()
+            .UseInMemoryDatabase("ParameterCatalog_" + Guid.NewGuid().ToString("N"))
+            .Options);
+
+    private static ParameterCatalogFile.CatalogRow Row(
+        string method = "MobilKullanici",
+        int id = 1,
+        string name = "Bir",
+        string defaultValue = "0") =>
+        new(
+            Program: "akilli",
+            CatalogMethod: method,
+            ParametreId: id,
+            Name: name,
+            DefaultValue: defaultValue,
+            DefaultSource: null,
+            ScopeKind: "MobileUser",
+            ScopeFields: "user",
+            User: string.Empty,
+            AnaGrubu: string.Empty,
+            AltGrubu: string.Empty,
+            Editor: "boolean",
+            ReferenceKind: null,
+            SecretSource: null,
+            Label: "Etiket",
+            TabPath: "Parametreler",
+            EditorOrder: 0,
+            OptionsJson: null,
+            SourceBuild: "unknown");
+
+    [Fact]
+    public void The_shipped_catalogue_loads_from_the_assembly()
+    {
+        var catalog = ParameterCatalogFile.Load();
+
+        // 4,713 declarations minus the five Fora makes unreachable by reusing an id inside a set.
+        catalog.Should().HaveCount(4708);
+        catalog.Select(r => (r.CatalogMethod, r.ParametreId)).Should().OnlyHaveUniqueItems(
+            "ParametreID is the real key and is unique inside a set");
+        catalog.Select(r => r.Program).Distinct().Should().HaveCount(14);
+    }
+
+    [Fact]
+    public void Editor_metadata_is_merged_onto_the_parameter_it_belongs_to()
+    {
+        var catalog = ParameterCatalogFile.Load();
+
+        var collection = catalog.Single(r =>
+            r.CatalogMethod == "MobilKullanici" && r.Name == "Goster_AnaMenu_Tahsilat");
+
+        collection.Editor.Should().Be("boolean");
+        collection.Label.Should().Be("Tahsilat girebilir");
+        collection.TabPath.Should().Be("Evrak girişi / Evrak Tipleri / Tahsilat / Tediye makbuzu");
+        collection.DefaultValue.Should().Be("1");
+
+        // A parameter no Fora editor exposes still exists, just without layout.
+        var hidden = catalog.Single(r => r.CatalogMethod == "MobilKullanici" && r.Name == "Vergi0Yuzde");
+        hidden.Editor.Should().BeNull();
+        hidden.Label.Should().BeNull();
+        hidden.TabPath.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_name_is_not_enough_to_identify_a_parameter()
+    {
+        var catalog = ParameterCatalogFile.Load();
+
+        // Sifre exists in both akilli and ComarchEdiGenel, with different ids and meanings.
+        var byName = catalog.Where(r => r.Name == "Sifre").ToList();
+
+        byName.Select(r => r.CatalogMethod).Should().Contain(["MobilKullanici", "ComarchEdiGenelParametreler"]);
+        byName.Select(r => r.Program).Distinct().Should().HaveCountGreaterThan(1);
+    }
+
+    [Fact]
+    public void Credential_fields_keep_their_secret_marking()
+    {
+        var secrets = ParameterCatalogFile.Load().Where(r => r.Editor == "secret").ToList();
+
+        secrets.Should().HaveCount(5);
+        secrets.Should().OnlyContain(r => r.SecretSource == "designer" || r.SecretSource == "name");
+    }
+
+    [Fact]
+    public void Seeding_an_empty_table_inserts_the_whole_catalogue()
+    {
+        using var db = NewDb();
+
+        var result = ParameterCatalogSeeder.Seed(db, ParameterCatalogFile.Load());
+
+        result.Added.Should().Be(4708);
+        result.Updated.Should().Be(0);
+        result.Deprecated.Should().Be(0);
+        db.ParameterCatalog.Count().Should().Be(4708);
+    }
+
+    [Fact]
+    public void Seeding_twice_changes_nothing_the_second_time()
+    {
+        using var db = NewDb();
+        var catalog = ParameterCatalogFile.Load();
+
+        ParameterCatalogSeeder.Seed(db, catalog);
+        var second = ParameterCatalogSeeder.Seed(db, catalog);
+
+        second.Changed.Should().BeFalse("seeding is idempotent and runs on every start");
+    }
+
+    [Fact]
+    public void A_changed_default_is_written_back()
+    {
+        using var db = NewDb();
+        ParameterCatalogSeeder.Seed(db, [Row(defaultValue: "0")]);
+
+        var result = ParameterCatalogSeeder.Seed(db, [Row(defaultValue: "1")]);
+
+        result.Updated.Should().Be(1);
+        db.ParameterCatalog.Single().DefaultValue.Should().Be("1");
+    }
+
+    [Fact]
+    public void A_withdrawn_parameter_is_deprecated_rather_than_deleted()
+    {
+        using var db = NewDb();
+        ParameterCatalogSeeder.Seed(db, [Row(id: 1), Row(id: 2, name: "Iki")]);
+
+        var result = ParameterCatalogSeeder.Seed(db, [Row(id: 1)]);
+
+        result.Deprecated.Should().Be(1);
+        db.ParameterCatalog.Should().HaveCount(2, "values stored against it must not be orphaned");
+        db.ParameterCatalog.Single(e => e.ParametreId == 2).IsDeprecated.Should().BeTrue();
+        db.ParameterCatalog.Single(e => e.ParametreId == 1).IsDeprecated.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_parameter_that_comes_back_is_revived()
+    {
+        using var db = NewDb();
+        ParameterCatalogSeeder.Seed(db, [Row(id: 1), Row(id: 2, name: "Iki")]);
+        ParameterCatalogSeeder.Seed(db, [Row(id: 1)]);
+
+        var result = ParameterCatalogSeeder.Seed(db, [Row(id: 1), Row(id: 2, name: "Iki")]);
+
+        result.Revived.Should().Be(1);
+        db.ParameterCatalog.Single(e => e.ParametreId == 2).IsDeprecated.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Reseeding_does_not_reset_what_this_product_honours()
+    {
+        using var db = NewDb();
+        ParameterCatalogSeeder.Seed(db, [Row()]);
+
+        // Whether Sipariş Cepte honours a parameter is ours to record, not the catalogue's, and a
+        // new Fora build must not silently clear it (D16).
+        db.ParameterCatalog.Single().IsImplemented = true;
+        db.SaveChanges();
+
+        ParameterCatalogSeeder.Seed(db, [Row(defaultValue: "1")]);
+
+        db.ParameterCatalog.Single().IsImplemented.Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_same_id_in_two_sets_is_two_different_parameters()
+    {
+        using var db = NewDb();
+
+        ParameterCatalogSeeder.Seed(db, [Row(method: "MobilKullanici", id: 1), Row(method: "B2B", id: 1)]);
+
+        db.ParameterCatalog.Should().HaveCount(2);
+    }
+}

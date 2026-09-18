@@ -16,6 +16,18 @@
     <ProjectReference Include="..\ErpBridge.Diagnostics\ErpBridge.Diagnostics.csproj" />
   </ItemGroup>
 
+  <!--
+    Parametre Yönetimi (P1a): the generated Fora catalogue ships inside the assembly. The API runs
+    in a container where the repository is absent, and a catalogue that could go missing at run
+    time would leave every stored parameter value uninterpretable.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\catalog\parameters\defaults.json"
+                      LogicalName="catalog.parameters.defaults.json" />
+    <EmbeddedResource Include="..\..\catalog\parameters\ui\*.json"
+                      LogicalName="catalog.parameters.ui.%(Filename).json" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Lets ErpBridge.CentralApi.Tests poll BootstrapNotificationHub's
          internal waiter-count accessors so long-poll tests can wait for the
