@@ -164,8 +164,6 @@ public static partial class ParameterLayout
         return $"{name} — {members.Count} adet";
     }
 
-    private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
-
     /// <summary>
     /// A moment, written the way this panel's readers expect it.
     ///
