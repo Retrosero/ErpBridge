@@ -189,3 +189,87 @@ tek `EVRAK_ACIKLAMALARI` satırlık deneme evrakı yazar, kendi satırlarını v
 - Satış faturası satırı 79.468, iade satırı 1.935, tahsilat satırı ~2.300.
 - Sahadan gelen seriler: `T`, `H`, `ST`, `N`, `PZ`, `İS`, `D`, `P`, `ID`… (plasiyer/araç başına seri görünümünde).
 - Veritabanına bugün (11:14) yeni kayıt girilmiş → **canlı kullanımda olan bir firma veritabanı**.
+
+---
+
+## 10. Alış faturası *(ERP yazım 2, Z0b — 2026-09-19)*
+
+Kanıt: Fora `Evrak.cs` + `EvrakData.cs` (bu işi daha önce başarıyla yapan uygulama) **ve** canlı `MikroDB_V15_02`
+(2024-01-01'den beri 718 açık alış faturası başlığı, örnekler 2025 kayıtlarından). İkisi **tam uyuşuyor**.
+
+**`CARI_HESAP_HAREKETLERI` — tek başlık satırı (`cha_satir_no=0`)**
+
+| Kolon | Değer | Kanıt |
+|---|---|---|
+| `cha_evrak_tip` | **0** (AlisFaturasi) | Fora `enum_cha_evrak_tip.AlisFaturasi=0`; canlı 718 satır |
+| `cha_tip` | **1** (alacak — tedarikçiye borçlanıyoruz) | Fora `evraktipi==AlisFaturasi → cha_tip=Alacak`; canlı |
+| `cha_cinsi` | **6** ToptanFatura (perakendede 7) | Fora `ticaretturu` switch; canlı `cinsi=6` |
+| `cha_normal_Iade` | 0 | canlı |
+| `cha_ticaret_turu` | 0 (yurt içi toptan) | canlı |
+| `cha_cari_cins` / `cha_kod` | 0 / **tedarikçi kodu** (açık fatura) | canlı `caricins=0, kod=ÇINAR` |
+| `cha_ciro_cari_kodu` | **tedarikçi kodu** — açık faturada da dolu | canlı (satışta müşteri kodu olduğu gibi) |
+| `cha_tpoz` | **0** açık, **1** kapalı | canlı |
+| `cha_aratoplam`, `cha_ft_iskonto1..6`, `cha_vergi1..5`, `cha_meblag` | satış faturasıyla **aynı** kovalama (§2) | Fora ortak kod yolu |
+| `cha_uuid` | 36 karakter GUID (satış faturasındaki gibi) | canlı `uuidlen=36` |
+| `cha_miktari` | 0 | canlı |
+
+**Peşin alış = kapalı fatura** (satışın aynası, §3): `cha_cari_cins` **4** kasa / **2** banka, `cha_kod` = kasa/banka
+kodu, `cha_ciro_cari_kodu` = **tedarikçi**, `cha_tpoz=1`. Canlı örnek: `kod=001, caricins=4, tpoz=1, ciro=POLEN GARDEN`.
+
+**`STOK_HAREKETLERI` — kalem başına bir satır**
+
+| Kolon | Değer | Kanıt |
+|---|---|---|
+| `sth_evraktip` | **3** (GirisFaturasi) | Fora `enum_sth_evraktip.GirisFaturasi=3`; canlı |
+| `sth_tip` | **0** (giriş) | Fora; canlı |
+| `sth_cins` | **0** Toptan (perakendede 1) | Fora; canlı |
+| `sth_normal_iade` | 0 | canlı |
+| `sth_cari_cinsi` / `sth_cari_kodu` | 0 / tedarikçi kodu | Fora `Carimiz`; canlı |
+| `sth_giris_depo_no` / `sth_cikis_depo_no` | ikisi de depo no (canlıda 1/1) | canlı |
+| `sth_fat_recid_recno` | başlık CHA satırının `cha_RECno`'su | canlı |
+| `sth_tutar`, `sth_iskonto1..6`, `sth_isk_mas1..10`, `sth_vergi_pntr`, `sth_vergi` | satış faturası kalemiyle **aynı** kural (§2, §1 iskonto zinciri) | Fora ortak kod yolu |
+| `sth_fiyat_liste_no` | 0 (alışta liste yok) | canlı |
+
+**Sıra çakışması — dikkat:** alış faturası ve **satış iadesi aynı `cha_evrak_tip=0`'ı paylaşır**, yalnız
+`cha_normal_Iade` (0 / 1) ile ayrılırlar; STH'de de ikisi `sth_evraktip=3`'tedir. Yani MAX+1 sırası **ikisini birlikte**
+hesaplanmalıdır (Fora `Select MAX(cha_evrakno_sira) … WHERE cha_evrak_tip=0 AND cha_evrakno_seri=…` — iade filtresi yok).
+Canlı veri bunu doğruluyor: 718 alış + 307 satış iadesi aynı numara uzayında.
+
+**`EVRAK_ACIKLAMALARI`:** `egk_dosyano=51`, hareket tip **1**, evrak tip **0** (Fora `EvrakData.cs` switch).
+
+---
+
+## 11. Tediye makbuzu *(ERP yazım 2, Z0c — 2026-09-19)*
+
+**Tahsilatın (§5) birebir aynası:** tek evrak, **ödeme yöntemi başına bir CHA satırı** (`cha_satir_no` 0'dan artar).
+Ayrı kasa/banka satırı **yoktur** — hesap aynı satırda `cha_kasa_hizmet` + `cha_kasa_hizkod` ile taşınır.
+
+| Kolon | Değer | Kanıt |
+|---|---|---|
+| `cha_evrak_tip` | **64** (TediyeMakbuzu; kasa tediye fişi 65) | Fora `enum_cha_evrak_tip`; canlı |
+| `cha_tip` | **0** (borç — tahsilat alacaktı) | Fora `AddTahsilat`: `_evraktipi != Tahsilat → cha_tip = Borc`; canlı |
+| `cha_cari_cins` / `cha_kod` | **0** (Carimiz) / cari kodu | Fora; canlı: 64'lü satırların **tamamı** `cari_cins=0` |
+| `cha_kasa_hizmet` / `cha_kasa_hizkod` | **4** kasa / **2** banka + hesap kodu | Fora `cha_kasa_hizkod = kasa_banka_kodu`; canlı |
+| `cha_normal_Iade` / `cha_tpoz` | 0 / **0** (açık) | Fora; canlı |
+| `cha_vade` | vade günü `yyyyMMdd` sayı olarak | Fora |
+| `cha_ft_iskonto*`, `cha_ft_masraf*`, `cha_vergi*`, `cha_yuvarlama` | 0 | Fora |
+
+**`cha_cinsi` — tediyede "Firma" ailesi** (tahsilattaki "Müşteri" ailesinin karşılığı):
+
+| cinsi | Anlam | `cha_kasa_hizmet` | Canlı örnek kod | Adet (2024+) |
+|---|---|---|---|---|
+| **0** | Nakit | 4 kasa | `001` | 423 |
+| 1 | MüşteriÇeki (ciro edilen) | 4 kasa (portföy) | `ÇEK` | 30 |
+| 2 | MüşteriSenedi (ciro edilen) | 4 kasa (portföy) | `SENET` | 70 |
+| 3 | FirmaÇeki | 2 banka | `12`, `13` | 25 |
+| 4 | FirmaSenedi | 4 kasa | `VERILEN-SENET` | 25 |
+| **20** | **FirmaHavaleEmri** | 2 banka | `04`, `06`, `07` | 54 |
+| 22 | FirmaKrediKartı | 2 banka | `08`, `10` | 60 |
+
+Bu goal'ün kapsamı (D3) **nakit → `cinsi 0`, `kasa_hizmet 4`** ve **havale/EFT → `cinsi 20` (FirmaHavaleEmri),
+`kasa_hizmet 2`**. Havalede tahsilatın `17` (MusteriHavaleSozu) değeri **kullanılmaz** — o gelen havaledir.
+
+**`EVRAK_ACIKLAMALARI`:** dosya 51, hareket **0**, evrak tip **64** (Fora `EvrakData.cs` switch).
+
+**`ODEME_EMIRLERI`:** nakit ve havalede yok (canlıda 64'lü nakit/havale satırlarında `cha_trefno` boş). Çek/senet
+çıkışı bu goal'ün kapsamı dışında (D3), gerektiğinde §5'teki referans no kuralı örnek alınacak.
