@@ -32,6 +32,14 @@
         {
             <span class="badge bg-dark ms-1" title="Yeni katalog bu parametreyi artık tanımlamıyor">geri çekilmiş</span>
         }
+        @if (Field.ChangesAmounts)
+        {
+            <span class="badge bg-danger ms-1" title="Bu oran evrak tutarlarını etkiler; kaydetmeden önce onay istenir">vergi oranı</span>
+        }
+        else if (Field.IsTaxTable)
+        {
+            <span class="badge bg-light text-dark border ms-1" title="Vergi tablosunun adı; tutarı etkilemez">vergi tablosu</span>
+        }
     </label>
 
     <div class="prm-field__editor">

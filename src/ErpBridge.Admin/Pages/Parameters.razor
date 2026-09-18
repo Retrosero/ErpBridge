@@ -296,6 +296,29 @@ else if (_values is not null)
                         </button>
                     </div>
 
+                    @if (_pendingConfirmation is { Count: > 0 })
+                    {
+                        <div class="prm-confirm" role="alertdialog" aria-labelledby="prm-confirm-title">
+                            <strong id="prm-confirm-title">Vergi oranı değişiyor</strong>
+                            <p class="mb-1">
+                                Bu kaydetme aşağıdaki vergi oranlarını değiştiriyor. Vergi oranı evrak
+                                tutarlarını etkiler; yanlış bir değer kesilmiş evrakları bozar.
+                            </p>
+                            <ul class="mb-2">
+                                @foreach (var name in _pendingConfirmation)
+                                {
+                                    <li><code>@name</code>: <code>@OldOf(name)</code> → <code>@NewOf(name)</code></li>
+                                }
+                            </ul>
+                            <button class="btn btn-danger" id="prm-confirm-yes" @onclick="ConfirmSaveAsync" disabled="@_saving">
+                                Anladım, değiştir
+                            </button>
+                            <button class="btn btn-link" id="prm-confirm-no" @onclick="CancelConfirmation" disabled="@_saving">
+                                Vazgeç
+                            </button>
+                        </div>
+                    }
+
                     @if (!string.IsNullOrEmpty(_saveMessage))
                     {
                         <AdminState Tone="success" Icon="✓" Title="Kaydedildi" Message="@_saveMessage" />
@@ -853,7 +876,26 @@ else if (string.IsNullOrEmpty(_error))
         finally { _saving = false; }
     }
 
-    private async Task SaveAsync()
+    /// <summary>VAT rates the pending batch would change, once the server has said so.</summary>
+    private IReadOnlyList<string>? _pendingConfirmation;
+
+    private void CancelConfirmation() => _pendingConfirmation = null;
+
+    /// <summary>The value a named parameter currently holds, for the confirmation box.</summary>
+    private string OldOf(string name) =>
+        _values?.Items.FirstOrDefault(i => i.Name == name)?.Value ?? "";
+
+    private string NewOf(string name)
+    {
+        var field = _values?.Items.FirstOrDefault(i => i.Name == name);
+        return field is null ? "" : Draft(field);
+    }
+
+    private Task SaveAsync() => WriteDraftsAsync(confirmed: false);
+
+    private Task ConfirmSaveAsync() => WriteDraftsAsync(confirmed: true);
+
+    private async Task WriteDraftsAsync(bool confirmed)
     {
         if (_drafts.Count == 0 || SelectedSet is not { } set) return;
 
@@ -872,6 +914,7 @@ else if (string.IsNullOrEmpty(_error))
                 MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
                 Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
                 Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                ConfirmSensitive = confirmed,
                 Changes = _drafts.Select(d => new ParameterChangeDto
                 {
                     CatalogEntryId = d.Key,
@@ -886,6 +929,7 @@ else if (string.IsNullOrEmpty(_error))
 
             _drafts.Clear();
             _picked.Clear();
+            _pendingConfirmation = null;
 
             // A write has just happened or the scope changed; the loaded trail is stale either way.
             _history = null;
@@ -893,6 +937,17 @@ else if (string.IsNullOrEmpty(_error))
             // Reload rather than patch in memory: the server decides whether a row exists, and the
             // "sapmış" marks have to match what it decided.
             await LoadValuesAsync();
+        }
+        catch (ApiCallException ex) when (ex.ErrorCode == "PARAMETER_CONFIRMATION_REQUIRED")
+        {
+            // Not a failure: the server is asking for the second step, and the drafts stay so the
+            // operator can say yes without typing them again.
+            _pendingConfirmation = _drafts.Keys
+                .Select(id => _values?.Items.FirstOrDefault(i => i.CatalogEntryId == id))
+                .Where(f => f is { ChangesAmounts: true })
+                .Select(f => f!.Name)
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToList();
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _saving = false; }

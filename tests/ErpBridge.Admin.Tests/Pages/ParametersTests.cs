@@ -535,6 +535,66 @@ public sealed class ParametersTests : BunitContext
         cut.Markup.Should().Contain("varsayılana döndü");
     }
 
+    [Fact]
+    public void A_VAT_rate_change_asks_before_it_is_written()
+    {
+        var state = NewState();
+        state.RefuseUntilConfirmed = true;
+        state.ValuesJson = Values(revision: 0, Rate(340, "Vergi0Yuzde", "Parametreler", value: "18"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 1);
+        cut.Find(".prm-field input").Change("20");
+        cut.WaitForState(() => !cut.Find("#prm-save").HasAttribute("disabled"));
+        cut.Find("#prm-save").Click();
+
+        // The refusal is not an error to show; it is the second step, and it names what changes.
+        cut.WaitForState(() => cut.FindAll("#prm-confirm-yes").Count == 1);
+        cut.FindAll(".admin-state--error").Should().BeEmpty();
+        cut.Markup.Should().Contain("Vergi0Yuzde").And.Contain("18").And.Contain("20");
+
+        cut.Find("#prm-confirm-yes").Click();
+
+        cut.WaitForState(() => state.LastWriteBody?.Contains("confirmSensitive\":true") == true);
+    }
+
+    [Fact]
+    public void Giving_up_on_the_confirmation_keeps_the_edit()
+    {
+        var state = NewState();
+        state.RefuseUntilConfirmed = true;
+        state.ValuesJson = Values(revision: 0, Rate(340, "Vergi0Yuzde", "Parametreler", value: "18"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 1);
+        cut.Find(".prm-field input").Change("20");
+        cut.Find("#prm-save").Click();
+
+        cut.WaitForState(() => cut.FindAll("#prm-confirm-no").Count == 1);
+        cut.Find("#prm-confirm-no").Click();
+
+        // Throwing the edit away would make the operator type it again to reach the same question.
+        cut.WaitForState(() => cut.FindAll("#prm-confirm-no").Count == 0);
+        cut.Markup.Should().Contain("1 bekleyen değişiklik");
+    }
+
+    [Fact]
+    public void A_rate_is_marked_on_the_field_itself()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Rate(340, "Vergi0Yuzde", "Parametreler", value: "18"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 1);
+        cut.Markup.Should().Contain("vergi oranı");
+    }
+
     // ---- Test helpers ----
 
     private static void LoadAkilliAsync(IRenderedComponent<Parameters> cut, PageState state)
@@ -597,6 +657,14 @@ public sealed class ParametersTests : BunitContext
         IsOverridden = true, IsImplemented = true,
     };
 
+    private static ParameterValueDto Rate(
+        int id, string name, string tabPath, string value) => new()
+    {
+        CatalogEntryId = Guid.NewGuid(), ParametreId = id, Name = name, Label = name,
+        Editor = "decimal", Value = value, DefaultValue = "0", TabPath = tabPath,
+        IsImplemented = true, IsTaxTable = true, ChangesAmounts = true,
+    };
+
     private static string Values(long revision, params ParameterValueDto[] items) => Json(new ParameterValuesResponseDto
     {
         CatalogMethod = "MobilKullanici",
@@ -622,6 +690,7 @@ public sealed class ParametersTests : BunitContext
         public string? LastResetBody { get; set; }
         public string? LastAuditUrl { get; set; }
         public string? AuditJson { get; set; }
+        public bool RefuseUntilConfirmed { get; set; }
     }
 
     private sealed class PageHandler : HttpMessageHandler
@@ -697,6 +766,18 @@ public sealed class ParametersTests : BunitContext
                 if (request.Method == HttpMethod.Put)
                 {
                     _state.LastWriteBody = request.Content?.ReadAsStringAsync(cancellationToken).Result;
+
+                    if (_state.RefuseUntilConfirmed
+                        && _state.LastWriteBody?.Contains("\"confirmSensitive\":true") != true)
+                    {
+                        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Conflict)
+                        {
+                            Content = new StringContent(
+                                "{\"errorCode\":\"PARAMETER_CONFIRMATION_REQUIRED\",\"message\":\"onay\"}",
+                                Encoding.UTF8, "application/json"),
+                        });
+                    }
+
                     return Ok(_state.WriteResponseJson ?? Json(new ParameterWriteResponseDto { Revision = 1 }));
                 }
 

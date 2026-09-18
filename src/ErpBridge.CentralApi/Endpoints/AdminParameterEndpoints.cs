@@ -32,7 +32,8 @@ public static class AdminParameterEndpoints
             .Produces<ApiError>(StatusCodes.Status400BadRequest);
         group.MapPut("/values", WriteAsync)
             .Produces<ParameterWriteResponse>()
-            .Produces<ApiError>(StatusCodes.Status400BadRequest);
+            .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ParameterConfirmationRequired>(StatusCodes.Status409Conflict);
         group.MapPost("/values/reset", ResetAsync)
             .Produces<ParameterWriteResponse>()
             .Produces<ApiError>(StatusCodes.Status400BadRequest);
@@ -110,6 +111,7 @@ public static class AdminParameterEndpoints
     private static async Task<IResult> WriteAsync(
         [FromBody] ParameterWriteRequest body,
         HttpContext http,
+        CentralApiDbContext db,
         ParameterResolver resolver,
         CancellationToken ct)
     {
@@ -125,6 +127,30 @@ public static class AdminParameterEndpoints
 
         var scope = new ParameterScope(
             body.TenantId, body.ErpCompanyId, body.MobileUserId, body.Scope1 ?? "", body.Scope2 ?? "");
+
+        // A VAT rate decides what an invoice totals, so changing one takes a deliberate second
+        // step (D17). Checked here and not only in the panel: a guard in the screen is bypassed by
+        // anything that calls the API directly.
+        if (!body.ConfirmSensitive)
+        {
+            var ids = body.Changes.Select(c => c.CatalogEntryId).ToList();
+
+            var sensitive = (await db.ParameterCatalog.AsNoTracking()
+                    .Where(e => ids.Contains(e.Id))
+                    .ToListAsync(ct))
+                .Where(ParameterSensitivity.ChangesAmounts)
+                .Select(e => e.Name)
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToArray();
+
+            if (sensitive.Length > 0)
+            {
+                return JsonResults.Status(StatusCodes.Status409Conflict, new ParameterConfirmationRequired(
+                    "PARAMETER_CONFIRMATION_REQUIRED",
+                    "Bu değişiklik vergi oranlarını etkiliyor; onaylanması gerekiyor.",
+                    sensitive));
+            }
+        }
 
         var by = PanelContext(http);
         var results = new List<ParameterWriteResultDto>();
@@ -393,7 +419,9 @@ public static class AdminParameterEndpoints
         effective.OverriddenAtUtc,
         lastChange?.Actor,
         lastChange?.Source,
-        lastChange?.AtUtc);
+        lastChange?.AtUtc,
+        ParameterSensitivity.IsTaxTable(effective.Entry),
+        ParameterSensitivity.ChangesAmounts(effective.Entry));
 
     /// <summary>Who last moved a parameter in this scope, and when.</summary>
     private sealed record LastChange(string Actor, string Source, DateTimeOffset AtUtc);
@@ -474,15 +502,28 @@ public static class AdminParameterEndpoints
         DateTimeOffset? OverriddenAtUtc,
         string? LastChangedBy,
         string? LastChangeSource,
-        DateTimeOffset? LastChangedAtUtc);
+        DateTimeOffset? LastChangedAtUtc,
+        bool IsTaxTable,
+        bool ChangesAmounts);
 
+    /// <param name="ConfirmSensitive">
+    /// Set once the caller has been told which VAT rates the batch touches and has said to go
+    /// ahead. Without it a batch containing one is refused with 409 (D17).
+    /// </param>
     public sealed record ParameterWriteRequest(
         Guid TenantId,
         Guid ErpCompanyId,
         Guid? MobileUserId,
         string? Scope1,
         string? Scope2,
-        IReadOnlyList<ParameterChangeDto> Changes);
+        IReadOnlyList<ParameterChangeDto> Changes,
+        bool ConfirmSensitive = false);
+
+    /// <param name="Sensitive">The VAT parameters the batch would change, by name.</param>
+    public sealed record ParameterConfirmationRequired(
+        string ErrorCode,
+        string Message,
+        IReadOnlyList<string> Sensitive);
 
     public sealed record ParameterChangeDto(Guid CatalogEntryId, string? Value);
 

@@ -21,7 +21,7 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
 
     private sealed record World(
         Guid TenantId, Guid CompanyId, Guid UserId, Guid OtherUserId, Guid DepotId, Guid MenuId,
-        string CatalogMethod);
+        Guid VatRateId, Guid VatNameId, string CatalogMethod);
 
     /// <summary>
     /// The test host does not seed the 4,700-row catalogue, so these tests plant the two
@@ -64,10 +64,25 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
             ScopeKind = ParameterScopeKinds.MobileUser, ScopeFields = "user", SourceBuild = "unknown",
         };
 
-        db.ParameterCatalog.AddRange(depot, menu);
+        var vat = new ParameterCatalogEntry
+        {
+            Program = "akilli", CatalogMethod = method, ParametreId = 340,
+            Name = "Vergi0Yuzde", DefaultValue = "0", Label = "Yüzde", Editor = "decimal", EditorOrder = 2,
+            ScopeKind = ParameterScopeKinds.MobileUser, ScopeFields = "user", SourceBuild = "unknown",
+        };
+
+        var vatName = new ParameterCatalogEntry
+        {
+            Program = "akilli", CatalogMethod = method, ParametreId = 338,
+            Name = "Vergi0KisaAdi", DefaultValue = "Tanımsız", Label = "Kısa ad", Editor = "text", EditorOrder = 3,
+            ScopeKind = ParameterScopeKinds.MobileUser, ScopeFields = "user", SourceBuild = "unknown",
+        };
+
+        db.ParameterCatalog.AddRange(depot, menu, vat, vatName);
         await db.SaveChangesAsync();
 
-        return new World(tenant.Id, company.Id, user.Id, other.Id, depot.Id, menu.Id, method);
+        return new World(
+            tenant.Id, company.Id, user.Id, other.Id, depot.Id, menu.Id, vat.Id, vatName.Id, method);
     }
 
     private async Task<(HttpClient Client, string Token)> SignedInAsync()
@@ -93,7 +108,7 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
         var body = await response.ReadAsJsonAsync<AdminParameterEndpoints.ParameterValuesResponse>();
 
         body!.Revision.Should().Be(0, "nothing has been changed in this scope yet");
-        body.Items.Should().HaveCount(2);
+        body.Items.Should().HaveCount(4);
         body.Items.Should().OnlyContain(i => !i.IsOverridden);
 
         // Listed the way Fora's own editor lists them, and carrying what the panel renders from.
@@ -424,6 +439,99 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
         }, token);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Changing_a_VAT_rate_is_refused_until_it_is_confirmed()
+    {
+        var w = await SeedAsync("T");
+        var (client, token) = await SignedInAsync();
+
+        var response = await client.PutJsonAsync("/api/v1/admin/parameters/values", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, mobileUserId = w.UserId,
+            changes = new[] { new { catalogEntryId = w.VatRateId, value = "20" } },
+        }, token);
+
+        // A VAT rate decides what an invoice totals, so it takes a deliberate second step (D17).
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var body = await response.ReadAsJsonAsync<AdminParameterEndpoints.ParameterConfirmationRequired>();
+        body!.ErrorCode.Should().Be("PARAMETER_CONFIRMATION_REQUIRED");
+        body.Sensitive.Should().ContainSingle("the caller is told exactly what it would change")
+            .Which.Should().Be("Vergi0Yuzde");
+
+        var stored = await client.GetAsync(ValuesUrl(w) + "&onlyOverridden=true", token);
+        (await stored.ReadAsJsonAsync<AdminParameterEndpoints.ParameterValuesResponse>())!
+            .Items.Should().BeEmpty("a refused batch writes nothing at all");
+    }
+
+    [Fact]
+    public async Task A_confirmed_VAT_change_goes_through()
+    {
+        var w = await SeedAsync("U");
+        var (client, token) = await SignedInAsync();
+
+        var response = await client.PutJsonAsync("/api/v1/admin/parameters/values", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, mobileUserId = w.UserId,
+            confirmSensitive = true,
+            changes = new[] { new { catalogEntryId = w.VatRateId, value = "20" } },
+        }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_batch_with_one_rate_in_it_is_refused_whole()
+    {
+        var w = await SeedAsync("V");
+        var (client, token) = await SignedInAsync();
+
+        var response = await client.PutJsonAsync("/api/v1/admin/parameters/values", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, mobileUserId = w.UserId,
+            changes = new[]
+            {
+                new { catalogEntryId = w.DepotId, value = "3" },
+                new { catalogEntryId = w.VatRateId, value = "20" },
+            },
+        }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // Writing the harmless half would leave the operator with a half-applied batch and no
+        // way to tell which half.
+        var stored = await client.GetAsync(ValuesUrl(w) + "&onlyOverridden=true", token);
+        (await stored.ReadAsJsonAsync<AdminParameterEndpoints.ParameterValuesResponse>())!
+            .Items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_VAT_caption_is_marked_but_not_gated()
+    {
+        var w = await SeedAsync("Y");
+        var (client, token) = await SignedInAsync();
+
+        var response = await client.PutJsonAsync("/api/v1/admin/parameters/values", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, mobileUserId = w.UserId,
+            changes = new[] { new { catalogEntryId = w.VatNameId, value = "KDV" } },
+        }, token);
+
+        // Asking for confirmation on a caption too would teach people to click through the box
+        // that matters.
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await (await client.GetAsync(ValuesUrl(w), token))
+            .ReadAsJsonAsync<AdminParameterEndpoints.ParameterValuesResponse>();
+
+        var caption = body!.Items.Single(i => i.CatalogEntryId == w.VatNameId);
+        caption.IsTaxTable.Should().BeTrue();
+        caption.ChangesAmounts.Should().BeFalse();
+
+        var rate = body.Items.Single(i => i.CatalogEntryId == w.VatRateId);
+        rate.ChangesAmounts.Should().BeTrue();
     }
 
     [Fact]
