@@ -75,6 +75,12 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Parametre Yönetimi (P1d) — append-only record of who changed which parameter.</summary>
     public DbSet<ParameterAuditEntry> ParameterAudit => Set<ParameterAuditEntry>();
 
+    /// <summary>What each agent run did to one company's Mikro parameter table (D8).</summary>
+    public DbSet<ParameterMirrorReport> ParameterMirrorReports => Set<ParameterMirrorReport>();
+
+    /// <summary>Rows the agent found in Mikro holding something the centre did not set.</summary>
+    public DbSet<ParameterMirrorDrift> ParameterMirrorDrifts => Set<ParameterMirrorDrift>();
+
     /// <summary>Faz 15.5 — Mikro <c>_ERPB_PARAMETRELER</c> snapshot mirror, one row per parameter.</summary>
     public DbSet<ParameterRecord> Parameters => Set<ParameterRecord>();
 
@@ -866,6 +872,44 @@ public sealed class CentralApiDbContext : DbContext
             // "What happened to this parameter" and "what changed lately" are the two questions.
             b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.ParameterCatalogEntryId, x.AtUtc });
             b.HasIndex(x => new { x.TenantId, x.AtUtc });
+        });
+
+        modelBuilder.Entity<ParameterMirrorReport>(b =>
+        {
+            b.ToTable("parameter_mirror_reports");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ErrorText).HasMaxLength(2000);
+
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ErpCompany).WithMany().HasForeignKey(x => x.ErpCompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The agent may be removed and re-registered; the history of what it wrote stays.
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // "How is this company's mirror doing" is the question the panel asks.
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.AtUtc });
+        });
+
+        modelBuilder.Entity<ParameterMirrorDrift>(b =>
+        {
+            b.ToTable("parameter_mirror_drifts");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Scope1).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Scope2).IsRequired().HasMaxLength(100);
+
+            b.HasOne(x => x.Report).WithMany(r => r.Drifts).HasForeignKey(x => x.ParameterMirrorReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.CatalogEntry).WithMany().HasForeignKey(x => x.ParameterCatalogEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Restrict, like the values themselves: a removed user's drift stays explainable.
+            b.HasOne(x => x.MobileUser).WithMany().HasForeignKey(x => x.MobileUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            b.HasIndex(x => x.ParameterMirrorReportId);
         });
 
         modelBuilder.Entity<ParameterRecord>(b =>

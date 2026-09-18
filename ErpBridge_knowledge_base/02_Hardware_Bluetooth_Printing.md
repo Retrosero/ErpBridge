@@ -45,6 +45,8 @@ Saha satış mobil uygulamasında (`Siparis_Cepte`) termal yazıcıdan çıktı 
 | `GET /api/v1/android/parameters?sourceDatabase=` | merkez → telefon | `{ tenantId, revision, count, items[] }` + `ETag`/`304` |
 | `GET /api/v1/admin/parameters` | merkez → Admin | sayfalı; `program`, `user`, `sourceDatabase` süzgeçleri |
 | `/api/v1/admin/parameters/sets` · `/values` · `/values/reset` · `/audit` | merkez → panel | yeni model (P1e) |
+| `GET /api/v1/agents/parameters?erpCompanyId=` | merkez → ajan | firmaya ait tam hedef durum; yalnız sapmalar, yalnız aktif kullanıcılar (P1g) |
+| `POST /api/v1/agents/parameters/report` | ajan → merkez | ne yazıldığı + Mikro'da elle değiştirilmiş bulunan satırlar (D8) |
 
 Satır şeması (`ParameterRecord` — Fora'nın `_FORA_PARAMETRELER` tablosunun aynası):
 `ParametreProgram` · `ParametreUser` · `ParametreAnaGrubu` · `ParametreAltGrubu` · `ParametreID` ·

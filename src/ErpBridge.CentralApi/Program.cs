@@ -697,6 +697,7 @@ public partial class Program
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
         app.MapAdminParameterEndpoints();
+        app.MapAgentParameterEndpoints();
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();
