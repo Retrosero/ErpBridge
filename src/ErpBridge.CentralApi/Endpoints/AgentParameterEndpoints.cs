@@ -41,6 +41,12 @@ public static class AgentParameterEndpoints
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
             .Produces<ApiError>(StatusCodes.Status403Forbidden);
 
+        group.MapPost("/fora-import", ForaImportAsync)
+            .WithName("AgentParametersForaImport")
+            .Produces<ForaImportResponse>()
+            .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ApiError>(StatusCodes.Status403Forbidden);
+
         group.MapPost("/report", ReportAsync)
             .WithName("AgentParametersReport")
             .Produces<AgentParameterReportResponse>()
@@ -249,6 +255,120 @@ public static class AgentParameterEndpoints
     }
 
     /// <summary>
+    /// Takes a read-only scan of a customer's existing Fora settings and stores it as a proposal
+    /// (P3c).
+    ///
+    /// A proposal, never a change. These are the settings the customer has been running, read out
+    /// of a table we do not own; applying them here would move settings nobody at our end chose.
+    /// A person reviews the batch and applies it (P3d).
+    /// </summary>
+    private static async Task<IResult> ForaImportAsync(
+        [FromBody] ForaImportRequest body,
+        [FromServices] CentralApiDbContext db,
+        HttpContext http,
+        CancellationToken ct)
+    {
+        if (!http.User.TryGetTenantId(out var tenantId))
+        {
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Tenant id missing." });
+        }
+
+        if (body is null || body.ErpCompanyId == Guid.Empty)
+        {
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError
+            {
+                ErrorCode = "ERP_COMPANY_REQUIRED",
+                Message = "erpCompanyId is required: a tenant can have several Fora installations.",
+            });
+        }
+
+        if (await ResolveCompanyAsync(db, tenantId, body.ErpCompanyId, http, ct) is null)
+        {
+            return NotAssigned();
+        }
+
+        http.User.TryGetAgentId(out var agentId);
+
+        var rows = body.Rows ?? [];
+
+        // The catalogue is what turns a stored row into a parameter: a (set, id) pair means
+        // nothing without it, and the mobile user's Sifre is not in it at all (D6), so a password
+        // Fora encrypted with its own key is dropped here rather than stored anywhere of ours.
+        var catalog = await db.ParameterCatalog.AsNoTracking()
+            .Where(e => e.Program == MirroredProgram)
+            .Select(e => new { e.Id, e.CatalogMethod, e.ParametreId, e.DefaultValue })
+            .ToListAsync(ct);
+
+        var byId = catalog
+            .Where(e => e.CatalogMethod == MirroredSet)
+            .ToDictionary(e => e.ParametreId, e => e);
+
+        // Only active users. A username is a reusable label, so matching a departed plasiyer's
+        // rows onto whoever holds the name now would hand over their permissions (D5, D5b).
+        var users = await db.MobileUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId && u.IsActive && u.DeletedAtUtc == null)
+            .Select(u => new { u.Id, u.Username })
+            .ToListAsync(ct);
+
+        var byUsername = users
+            .GroupBy(u => u.Username, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+
+        var batch = new ForaImportBatch
+        {
+            TenantId = tenantId,
+            ErpCompanyId = body.ErpCompanyId,
+            AgentId = agentId == Guid.Empty ? null : agentId,
+            ScannedRows = rows.Count,
+        };
+
+        foreach (var row in rows)
+        {
+            var entry = byId.GetValueOrDefault(row.ParametreID);
+            var userId = byUsername.GetValueOrDefault(row.ParametreUser ?? "");
+
+            batch.Rows.Add(new ForaImportRow
+            {
+                ParametreProgram = Trim(row.ParametreProgram, 40) ?? "",
+                ParametreUser = Trim(row.ParametreUser, 40) ?? "",
+                AnaGrubu = Trim(row.AnaGrubu, 100) ?? "",
+                AltGrubu = Trim(row.AltGrubu, 100) ?? "",
+                ParametreId = row.ParametreID,
+                ParametreAdi = Trim(row.ParametreAdi, 100) ?? "",
+                ParametreDegeri = row.ParametreDegeri ?? "",
+                ParameterCatalogEntryId = entry?.Id,
+                MobileUserId = userId == Guid.Empty ? null : userId,
+
+                // Fora stores only deviations, but a customer's table can still hold a row equal
+                // to the default — it happens when a default changed between Fora versions. The
+                // reviewer should see that applying it would store nothing.
+                IsDefaultValue = entry is not null
+                    && string.Equals(entry.DefaultValue, row.ParametreDegeri ?? "", StringComparison.Ordinal),
+            });
+        }
+
+        batch.MatchedRows = batch.Rows.Count(r => r.ParameterCatalogEntryId is not null && r.MobileUserId is not null);
+
+        db.ForaImportBatches.Add(batch);
+        await db.SaveChangesAsync(ct);
+
+        var unmatchedUsers = batch.Rows
+            .Where(r => r.MobileUserId is null)
+            .Select(r => r.ParametreUser)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(u => u, StringComparer.Ordinal)
+            .ToArray();
+
+        return JsonResults.Ok(new ForaImportResponse(
+            batch.Id,
+            batch.ScannedRows,
+            batch.MatchedRows,
+            batch.Rows.Count(r => r.ParameterCatalogEntryId is null),
+            unmatchedUsers));
+    }
+
+    /// <summary>
     /// The company, when this tenant owns it and this agent is assigned to it; null otherwise.
     /// </summary>
     private static async Task<ErpCompany?> ResolveCompanyAsync(
@@ -336,4 +456,25 @@ public static class AgentParameterEndpoints
         IReadOnlyList<AgentParameterDriftDto>? Drifts);
 
     public sealed record AgentParameterReportResponse(Guid ReportId, int Drifted);
+
+    /// <summary>One row exactly as Fora stored it.</summary>
+    public sealed record ForaImportRowDto(
+        string? ParametreProgram,
+        string? ParametreUser,
+        string? AnaGrubu,
+        string? AltGrubu,
+        int ParametreID,
+        string? ParametreAdi,
+        string? ParametreDegeri);
+
+    public sealed record ForaImportRequest(Guid ErpCompanyId, IReadOnlyList<ForaImportRowDto>? Rows);
+
+    /// <param name="Unknown">Rows whose parameter the catalogue does not declare (R1).</param>
+    /// <param name="UnmatchedUsers">Usernames with no active mobile user; no user is opened for them.</param>
+    public sealed record ForaImportResponse(
+        Guid BatchId,
+        int Scanned,
+        int Matched,
+        int Unknown,
+        IReadOnlyList<string> UnmatchedUsers);
 }

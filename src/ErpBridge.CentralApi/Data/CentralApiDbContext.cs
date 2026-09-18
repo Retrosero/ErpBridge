@@ -81,6 +81,12 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Rows the agent found in Mikro holding something the centre did not set.</summary>
     public DbSet<ParameterMirrorDrift> ParameterMirrorDrifts => Set<ParameterMirrorDrift>();
 
+    /// <summary>Read-only scans of a customer's existing Fora settings, uploaded as proposals.</summary>
+    public DbSet<ForaImportBatch> ForaImportBatches => Set<ForaImportBatch>();
+
+    /// <summary>What one scan found, matched or not.</summary>
+    public DbSet<ForaImportRow> ForaImportRows => Set<ForaImportRow>();
+
     /// <summary>Faz 15.5 — Mikro <c>_ERPB_PARAMETRELER</c> snapshot mirror, one row per parameter.</summary>
     public DbSet<ParameterRecord> Parameters => Set<ParameterRecord>();
 
@@ -910,6 +916,47 @@ public sealed class CentralApiDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
 
             b.HasIndex(x => x.ParameterMirrorReportId);
+        });
+
+        modelBuilder.Entity<ForaImportBatch>(b =>
+        {
+            b.ToTable("fora_import_batches");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.State).IsRequired().HasMaxLength(16);
+
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ErpCompany).WithMany().HasForeignKey(x => x.ErpCompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The agent may be removed and re-registered; what it scanned stays.
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.ScannedAtUtc });
+        });
+
+        modelBuilder.Entity<ForaImportRow>(b =>
+        {
+            b.ToTable("fora_import_rows");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ParametreProgram).IsRequired().HasMaxLength(40);
+            b.Property(x => x.ParametreUser).IsRequired().HasMaxLength(40);
+            b.Property(x => x.AnaGrubu).IsRequired().HasMaxLength(100);
+            b.Property(x => x.AltGrubu).IsRequired().HasMaxLength(100);
+            b.Property(x => x.ParametreAdi).IsRequired().HasMaxLength(100);
+
+            b.HasOne(x => x.Batch).WithMany(x => x.Rows).HasForeignKey(x => x.ForaImportBatchId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Both nullable on purpose: a row the catalogue does not declare, or a username that
+            // matches no active user, is exactly what the reviewer has to see.
+            b.HasOne(x => x.CatalogEntry).WithMany().HasForeignKey(x => x.ParameterCatalogEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.MobileUser).WithMany().HasForeignKey(x => x.MobileUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            b.HasIndex(x => x.ForaImportBatchId);
         });
 
         modelBuilder.Entity<ParameterRecord>(b =>

@@ -56,6 +56,16 @@ public interface IRemoteApiClient
         Guid erpCompanyId, CancellationToken ct = default)
         => Task.FromResult<ErpBridge.Core.Parameters.AgentParameterState?>(null);
 
+    /// <summary>
+    /// Uploads a read-only scan of a customer's existing Fora settings as a proposal (P3c).
+    /// Nothing is applied by this call; a person reviews the batch.
+    /// </summary>
+    Task<ErpBridge.Core.Parameters.ForaImportResult?> UploadForaScanAsync(
+        Guid erpCompanyId,
+        IReadOnlyList<ErpBridge.Core.Parameters.ForaScanRow> rows,
+        CancellationToken ct = default)
+        => Task.FromResult<ErpBridge.Core.Parameters.ForaImportResult?>(null);
+
     /// <summary>Reports what a mirror run did, including rows it found changed by hand (D8).</summary>
     Task SendParameterMirrorReportAsync(
         ErpBridge.Core.Parameters.AgentParameterMirrorReport report, CancellationToken ct = default)

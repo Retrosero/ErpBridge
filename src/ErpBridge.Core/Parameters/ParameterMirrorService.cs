@@ -144,3 +144,70 @@ public sealed record ParameterMirrorOutcome(
     int Updated,
     int Deleted,
     IReadOnlyList<AgentParameterDrift> Drifts);
+
+/// <summary>
+/// Where a Fora scan reads from. Implemented by the Mikro adapter; abstracted so the import's
+/// decisions can be tested without a database.
+/// </summary>
+public interface IForaScanSource
+{
+    /// <summary>Whether this agent is configured for the named Mikro database.</summary>
+    bool CanReach(string sourceDatabase);
+
+    /// <summary>
+    /// Every row Fora has stored, read-only. Empty when the database has no Fora installation.
+    /// </summary>
+    Task<IReadOnlyList<ForaScanRow>> ScanAsync(AgentErpCompany company, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Scans a customer's existing Fora settings and uploads them as a proposal (P3c).
+///
+/// Separate from the mirror on purpose: the mirror runs every few minutes and writes, this runs
+/// when somebody asks and only reads. Confusing the two is how a one-off migration becomes a
+/// background job nobody remembers enabling.
+/// </summary>
+public sealed class ForaImportService(
+    IRemoteApiClient remote,
+    IForaScanSource source,
+    ILogger<ForaImportService> logger)
+{
+    /// <summary>
+    /// Scans the named company and uploads what it found.
+    /// </summary>
+    /// <returns>What the centre made of the scan, or null when there was nothing to scan.</returns>
+    public async Task<ForaImportResult?> ScanAndUploadAsync(
+        AgentErpCompany company, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(company);
+
+        if (!source.CanReach(company.SourceDatabase))
+        {
+            logger.LogInformation(
+                "Not scanning {Company}: this agent is not configured for {Database}.",
+                company.Code, company.SourceDatabase);
+            return null;
+        }
+
+        var rows = await source.ScanAsync(company, ct).ConfigureAwait(false);
+
+        if (rows.Count == 0)
+        {
+            // No Fora installation, or nothing stored in it. Uploading an empty batch would put a
+            // proposal in front of someone that proposes nothing.
+            logger.LogInformation("Nothing to import from {Company}.", company.Code);
+            return null;
+        }
+
+        var result = await remote.UploadForaScanAsync(company.Id, rows, ct).ConfigureAwait(false);
+
+        if (result is not null)
+        {
+            logger.LogInformation(
+                "Uploaded {Scanned} Fora rows from {Company}: {Matched} placed, {Unknown} unknown, {Users} unmatched users.",
+                result.Scanned, company.Code, result.Matched, result.Unknown, result.UnmatchedUsers.Count);
+        }
+
+        return result;
+    }
+}

@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (P3b)
+Son güncelleme: 2026-09-18 (P3c)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -15,13 +15,13 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P0 — Katalog çıkarımı (ön koşul) | 7 | 7 | ✅ |
 | P1 — Merkez veri modeli ve API | 7 | 7 | ✅ |
 | P2 — Panel (Admin) parametre ekranı | 8 | 8 | ✅ |
-| P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 2 | 🔄 |
+| P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 3 | 🔄 |
 | P4 — Sipariş Cepte: öncelikli öbekler | 6 | 0 | ⬜ |
 | P5 — Kalan `akilli` öbekleri | 8 | 0 | ⬜ |
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P3c — `ForaParameterImporter`
+**Şu anki görev:** P3d — panelde "Fora'dan içe aktar" akışı
 
 ---
 
@@ -53,7 +53,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P2h | Vergi oranları onay adımı | ✅ | [#132](https://github.com/Retrosero/ErpBridge/pull/132) | Vergi oranı değiştirmek **ikinci bir adım** istiyor (D17). Kural **sunucuda**: panelde kalan bir koruma, API'yi doğrudan çağıran her şey tarafından atlanır ve korunan şey bir faturanın hesaplandığı KDV oranı. Onaysız yazma **409** ve hangi oranları değiştireceğini **ad ad söylüyor**. **Toplu yazma bölünmüyor:** içinde bir oran varsa hiçbiri yazılmıyor — zararsız yarısını yazmak, operatörü hangi yarının geçtiğini bilmediği bir durumda bırakırdı. **Yalnız `Vergi<N>Yuzde` kapılı**, `KisaAdi`/`UzunAdi` değil: başlık için de onay istemek, insanlara asıl önemli kutuyu tıklayıp geçmeyi öğretirdi — ikisi de rozetle işaretli ama yalnız oran kapılı. Panelde 409 **hata olarak gösterilmiyor**: kaydetme düğmesinin yerinde eski → yeni değerleri listeleyen bir onay kutusu açılıyor; vazgeçilirse **düzenleme duruyor**, yoksa operatör aynı soruya varmak için değeri yeniden yazmak zorunda kalırdı. 4 merkez + 3 sayfa testi |
 | P3a | `_ERPB_PARAMETRELER` kurulumu (V15/V16) | ✅ | [#133](https://github.com/Retrosero/ErpBridge/pull/133) | `MikroParameterTableProvisioner`, `_ERPB_PARAMETRELER`'i Fora'nın şemasıyla **birebir** kuruyor. Şema tahmin edilmedi: `ParametreData.ForaParametrelerTablosuOlustur` decompile kaynağından okundu ve canlı `MikroDB_V16_03` üzerindeki `_FORA_PARAMETRELER` ile kolon kolon karşılaştırıldı. V16 `uniqueidentifier` (varsayılan **yok** — Fora GUID'i insert ile veriyor, ayna da öyle yapacak), V15 `int IDENTITY(1,1)`; bilinmeyen sürüm V15 sayılıyor, çünkü yeni şekli tahmin etmek müşterinin Mikro'sunun dolduramayacağı bir tablo yaratırdı. İndeks Fora'daki gibi dört kapsam kolonu; **`ParametreID` indekste yok** — her sorgu onunla süzüyor ama Fora'nın tercihi bu ve kopyalamak iki tabloyu değiştirilebilir kılıyor. **Tetikleyici eklenmiyor** (D7): Fora kendi tablosuna `_FORA_SYNC` için iki tane koyuyor, müşterinin ERP'sine tetikleyici eklemek kimsenin istemediği bir müdahale. **Var olan tabloya dokunulmuyor** — ne `ALTER` ne `DROP`: kendi kurmadığı tabloyu "düzelten" bir kurucu, başkasının bağımlı olduğu bir kolonu düşürmeye bir yanlış tahmin uzaktır. DDL geçici bir veritabanında gerçekten çalıştırılarak doğrulandı: iki kez çalışıyor (idempotent), kolonlar canlı Fora tablosuyla aynı, tetikleyici sayısı sıfır. 15 test |
 | P3b | `ParameterMirrorWorker` (merkez → Mikro) | ✅ | [#134](https://github.com/Retrosero/ErpBridge/pull/134) | Ajan merkezden **atandığı her firma için ayrı** çekiyor ve Mikro tablosunu ona eşitliyor. **Yeni uç:** `GET /api/v1/agents/parameters/companies` — ajan işaret edildiği Mikro veritabanını biliyor, merkezin o firmaya verdiği kimliği değil; bu uç birini diğerine çeviriyor. **Varsayım (açıkça):** ajan bugün tek veritabanı için yapılandırılıyor, o yüzden `SourceDatabase` eşleşmeyen firma **atlanıyor, başarısız sayılmıyor** — hiç hizmet vermesi beklenmeyen şube için hata üretmek, önemli hataları gömülürürdü. Çok firmalı çalışma böylece yeniden yazım değil **yapılandırma** meselesi kalıyor. Veritabanı adı **büyük/küçük harf duyarsız** eşleşiyor; SQL Server adları öyle. Ayna **tam hedef duruma eşitliyor** (insert/update/delete), yalnız `akilli` programını sahipleniyor — tablo bir gün bu sürümün aynalamadığı setleri taşıyabilir ve onları "hedef durumda yok" diye silmek yanlış olurdu. Fark **kaydediliyor, geri yazılmıyor** (D8); eksik satır da fark sayılıyor, çünkü Fora orada varsayılanı okurdu. **Başarısız koşu raporlanıyor**, yutulmuyor — görülemeyen bir ayna güvenilemez; ama raporlama hatası ikinci bir hataya dönümüyor. Bir firmanın patlaması sıradakini durdurmuyor. Karar mantığı SQL'den ayrı (`ParameterMirrorService` + `IParameterMirrorTarget`), veritabanısız test ediliyor: 8 test |
-| P3c | `ForaParameterImporter` (salt okunur) | ⬜ | — | |
+| P3c | `ForaParameterImporter` (salt okunur) | ✅ | [#135](https://github.com/Retrosero/ErpBridge/pull/135) | Müşterinin kendi `_FORA_PARAMETRELER` tablosu **salt okunur** taranıp merkeze **öneri** olarak yükleniyor (`POST /api/v1/agents/parameters/fora-import`, `fora_import_batches` + `fora_import_rows`). Okuyucunun arkasındaki her ifade `SELECT`; o tablo müşterinin hâlâ iş çevirdiği programının (K3). `NOLOCK` bilerek: Fora tam o anda yazıyor olabilir ve içe aktarımın onların uygulamasını bloklaması kötü bir ilk izlenim olurdu — çıktı bir insanın gözden geçireceği öneri, değişiklik değil. **Hiçbir şey uygulanmıyor:** bunlar müşterinin çalıştırdığı ayarlar ve sessizce uygulamak, bizim tarafımızda kimsenin seçmediği ayarları oynatırdı. **Eşleşmeyen kullanıcı adı kullanıcı AÇMIYOR** (D5, D5b) — ad yeniden kullanılabilir bir etiket; içe aktarımdan kullanıcı açmak, ayrılan plasiyerin yetkilerini kimsenin incelemediği bir satıra verirdi. Yalnız **aktif** kullanıcılar eşleşiyor; eşleşmeyenler ad ad raporlanıyor. **Kataloglanmamış satır düşürülmüyor**, `unknown` olarak sayılıyor (R1): müşteri katalogdan yeni bir Fora sürümü çalıştırıyor olabilir ve düşürmek içe aktarımı olmadığı kadar tam gösterirdi. **`Sifre` hiçbir yerde saklanmıyor** (D6): katalogda olmadığı için eşleşemiyor, Fora'nın kendi anahtarıyla şifrelediği değer yerinde kalıyor. Varsayılana eşit değer işaretleniyor — uygulamak hiçbir şey saklamaz, gözden geçiren bunu önceden görmeli. Migration yalnız tablo ekliyor (D20). 7 merkez + 3 ajan testi |
 | P3d | Panelde "Fora'dan içe aktar" akışı | ⬜ | — | |
 | P3e | Ayna fark raporu | ⬜ | — | |
 | P3f | ERP lookup beslemesi | ⬜ | — | |
