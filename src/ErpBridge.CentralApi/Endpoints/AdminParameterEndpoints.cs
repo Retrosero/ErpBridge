@@ -1,0 +1,346 @@
+using System.IdentityModel.Tokens.Jwt;
+using ErpBridge.CentralApi.Contracts;
+using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Domain;
+using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Parameters;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace ErpBridge.CentralApi.Endpoints;
+
+/// <summary>
+/// Parametre Yönetimi (P1e) — what the panel reads and writes.
+///
+/// Every call names an ERP company, because a tenant can own several and each is a different
+/// Mikro database with its own warehouses and document series. A parameter is always identified
+/// by its catalogue entry, never by name: 862 of the 3,365 distinct names appear in more than one
+/// set, so a name does not say which parameter is meant.
+/// </summary>
+public static class AdminParameterEndpoints
+{
+    public static IEndpointRouteBuilder MapAdminParameterEndpoints(this IEndpointRouteBuilder routes)
+    {
+        var group = routes.MapGroup("/api/v1/admin/parameters")
+            .WithTags("Admin/Parameters")
+            .RequireAuthorization(Program.AdminPolicy)
+            .RequireRateLimiting(Program.PerAdminRateLimitPolicy);
+
+        group.MapGet("/sets", ListSetsAsync).Produces<ParameterSetDto[]>();
+        group.MapGet("/values", ListValuesAsync)
+            .Produces<ParameterValuesResponse>()
+            .Produces<ApiError>(StatusCodes.Status400BadRequest);
+        group.MapPut("/values", WriteAsync)
+            .Produces<ParameterWriteResponse>()
+            .Produces<ApiError>(StatusCodes.Status400BadRequest);
+        group.MapPost("/values/reset", ResetAsync)
+            .Produces<ParameterWriteResponse>()
+            .Produces<ApiError>(StatusCodes.Status400BadRequest);
+        group.MapGet("/audit", ListAuditAsync).Produces<ParameterAuditDto[]>();
+
+        return routes;
+    }
+
+    /// <summary>The catalogue sets a panel can offer, with how each one is addressed.</summary>
+    private static async Task<IResult> ListSetsAsync(CentralApiDbContext db, CancellationToken ct)
+    {
+        // Grouped in memory: there are a couple of dozen sets, and grouping by four columns is
+        // not translated by every provider the tests run against.
+        var rows = await db.ParameterCatalog.AsNoTracking()
+            .Select(e => new { e.Program, e.CatalogMethod, e.ScopeKind, e.ScopeFields, HasEditor = e.Editor != null })
+            .ToListAsync(ct);
+
+        var sets = rows
+            .GroupBy(e => new { e.Program, e.CatalogMethod, e.ScopeKind, e.ScopeFields })
+            .Select(g => new ParameterSetDto(
+                g.Key.Program,
+                g.Key.CatalogMethod,
+                g.Key.ScopeKind,
+                g.Key.ScopeFields,
+                g.Count(),
+                g.Count(e => e.HasEditor)))
+            .OrderBy(s => s.Program, StringComparer.Ordinal)
+            .ThenBy(s => s.CatalogMethod, StringComparer.Ordinal)
+            .ToArray();
+
+        return JsonResults.Ok(sets);
+    }
+
+    /// <summary>
+    /// One set's parameters as they apply to a scope: the value in force, its default, and
+    /// whether someone has moved it.
+    /// </summary>
+    private static async Task<IResult> ListValuesAsync(
+        [FromQuery] Guid tenantId,
+        [FromQuery] Guid erpCompanyId,
+        [FromQuery] string? catalogMethod,
+        [FromQuery] Guid? mobileUserId,
+        [FromQuery] string? scope1,
+        [FromQuery] string? scope2,
+        [FromQuery] bool? onlyOverridden,
+        ParameterResolver resolver,
+        CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty || erpCompanyId == Guid.Empty || string.IsNullOrWhiteSpace(catalogMethod))
+        {
+            return Invalid("tenantId, erpCompanyId and catalogMethod are required.");
+        }
+
+        var scope = new ParameterScope(tenantId, erpCompanyId, mobileUserId, scope1 ?? "", scope2 ?? "");
+        var values = await resolver.ResolveAsync(scope, catalogMethod, ct);
+
+        if (onlyOverridden == true)
+        {
+            values = values.Where(v => v.IsOverridden).ToList();
+        }
+
+        return JsonResults.Ok(new ParameterValuesResponse(
+            catalogMethod,
+            await resolver.RevisionAsync(scope, ct),
+            values.Count,
+            values.Select(ToDto).ToArray()));
+    }
+
+    private static async Task<IResult> WriteAsync(
+        [FromBody] ParameterWriteRequest body,
+        HttpContext http,
+        ParameterResolver resolver,
+        CancellationToken ct)
+    {
+        if (body?.Changes is not { Count: > 0 })
+        {
+            return Invalid("At least one change is required.");
+        }
+
+        if (body.TenantId == Guid.Empty || body.ErpCompanyId == Guid.Empty)
+        {
+            return Invalid("tenantId and erpCompanyId are required.");
+        }
+
+        var scope = new ParameterScope(
+            body.TenantId, body.ErpCompanyId, body.MobileUserId, body.Scope1 ?? "", body.Scope2 ?? "");
+
+        var by = PanelContext(http);
+        var results = new List<ParameterWriteResultDto>();
+
+        foreach (var change in body.Changes)
+        {
+            try
+            {
+                var outcome = await resolver.SetAsync(scope, change.CatalogEntryId, change.Value ?? "", by, ct);
+                results.Add(new ParameterWriteResultDto(change.CatalogEntryId, outcome.ToString()));
+            }
+            catch (ParameterResolver.ScopeMismatchException ex)
+            {
+                // The scope cannot address this parameter. Saying so beats writing a row no read
+                // would ever find and the mirror could not place in Mikro.
+                return JsonResults.Status(StatusCodes.Status400BadRequest,
+                    new ApiError { ErrorCode = "PARAMETER_SCOPE_MISMATCH", Message = ex.Message });
+            }
+        }
+
+        return JsonResults.Ok(new ParameterWriteResponse(
+            await resolver.RevisionAsync(scope, ct), results.ToArray()));
+    }
+
+    /// <summary>Puts parameters back to their catalogue defaults by removing the stored rows.</summary>
+    private static async Task<IResult> ResetAsync(
+        [FromBody] ParameterResetRequest body,
+        HttpContext http,
+        ParameterResolver resolver,
+        CancellationToken ct)
+    {
+        if (body?.CatalogEntryIds is not { Count: > 0 })
+        {
+            return Invalid("At least one catalogEntryId is required.");
+        }
+
+        if (body.TenantId == Guid.Empty || body.ErpCompanyId == Guid.Empty)
+        {
+            return Invalid("tenantId and erpCompanyId are required.");
+        }
+
+        var scope = new ParameterScope(
+            body.TenantId, body.ErpCompanyId, body.MobileUserId, body.Scope1 ?? "", body.Scope2 ?? "");
+
+        var by = PanelContext(http) with { Source = ParameterChangeSources.Reset };
+        var results = new List<ParameterWriteResultDto>();
+
+        foreach (var id in body.CatalogEntryIds)
+        {
+            try
+            {
+                var outcome = await resolver.ResetAsync(scope, id, by, ct);
+                results.Add(new ParameterWriteResultDto(id, outcome.ToString()));
+            }
+            catch (ParameterResolver.ScopeMismatchException ex)
+            {
+                return JsonResults.Status(StatusCodes.Status400BadRequest,
+                    new ApiError { ErrorCode = "PARAMETER_SCOPE_MISMATCH", Message = ex.Message });
+            }
+        }
+
+        return JsonResults.Ok(new ParameterWriteResponse(
+            await resolver.RevisionAsync(scope, ct), results.ToArray()));
+    }
+
+    /// <summary>Who changed what, newest first. Credential values are masked at write time.</summary>
+    private static async Task<IResult> ListAuditAsync(
+        [FromQuery] Guid tenantId,
+        [FromQuery] Guid? erpCompanyId,
+        [FromQuery] Guid? catalogEntryId,
+        [FromQuery] int? limit,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty)
+        {
+            return Invalid("tenantId is required.");
+        }
+
+        var query = db.ParameterAudit.AsNoTracking()
+            .Include(e => e.CatalogEntry)
+            .Where(e => e.TenantId == tenantId);
+
+        if (erpCompanyId is { } company && company != Guid.Empty)
+        {
+            query = query.Where(e => e.ErpCompanyId == company);
+        }
+
+        if (catalogEntryId is { } entry && entry != Guid.Empty)
+        {
+            query = query.Where(e => e.ParameterCatalogEntryId == entry);
+        }
+
+        var rows = await query
+            .OrderByDescending(e => e.Id)
+            .Take(Math.Clamp(limit ?? 200, 1, 1000))
+            .ToListAsync(ct);
+
+        return JsonResults.Ok(rows.Select(e => new ParameterAuditDto(
+            e.Id,
+            e.ErpCompanyId,
+            e.ParameterCatalogEntryId,
+            e.CatalogEntry?.Program ?? string.Empty,
+            e.CatalogEntry?.Name ?? string.Empty,
+            e.MobileUserId,
+            e.Scope1,
+            e.Scope2,
+            e.Outcome,
+            e.OldValue,
+            e.NewValue,
+            e.IsMasked,
+            e.Source,
+            e.AdminUserId,
+            e.Actor,
+            e.AtUtc)).ToArray());
+    }
+
+    /// <summary>Attributes a change to the signed-in admin so the trail is not anonymous.</summary>
+    private static ParameterResolver.ChangeContext PanelContext(HttpContext http)
+    {
+        var sub = http.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        var email = http.User.FindFirst(JwtRegisteredClaimNames.Email)?.Value;
+
+        return new ParameterResolver.ChangeContext(
+            ParameterChangeSources.Panel,
+            Guid.TryParse(sub, out var adminId) ? adminId : null,
+            email ?? string.Empty);
+    }
+
+    private static IResult Invalid(string message) =>
+        JsonResults.Status(StatusCodes.Status400BadRequest,
+            new ApiError { ErrorCode = "INVALID_PARAMETER_REQUEST", Message = message });
+
+    private static ParameterValueDto ToDto(ParameterResolver.Effective effective) => new(
+        effective.Entry.Id,
+        effective.Entry.ParametreId,
+        effective.Entry.Name,
+        effective.Entry.Label,
+        effective.Entry.Editor,
+        effective.Entry.ReferenceKind,
+        effective.Entry.OptionsJson,
+        effective.Entry.TabPath,
+        effective.Value,
+        effective.Entry.DefaultValue,
+        effective.IsOverridden,
+        effective.Entry.IsImplemented,
+        effective.Entry.IsDeprecated,
+        effective.OverriddenAtUtc);
+
+    /// <param name="ParameterCount">How many parameters the set declares.</param>
+    /// <param name="WithEditor">How many of them a Fora editor exposes, i.e. have layout metadata.</param>
+    public sealed record ParameterSetDto(
+        string Program,
+        string CatalogMethod,
+        string ScopeKind,
+        string ScopeFields,
+        int ParameterCount,
+        int WithEditor);
+
+    /// <param name="Revision">The scope counter, so a caller can tell whether its copy is current.</param>
+    public sealed record ParameterValuesResponse(
+        string CatalogMethod,
+        long Revision,
+        int Count,
+        ParameterValueDto[] Items);
+
+    /// <param name="IsOverridden">True when a stored row moves this away from its default.</param>
+    /// <param name="IsImplemented">False means the mobile app ignores it in this release (D16).</param>
+    public sealed record ParameterValueDto(
+        Guid CatalogEntryId,
+        int ParametreId,
+        string Name,
+        string? Label,
+        string? Editor,
+        string? ReferenceKind,
+        string? OptionsJson,
+        string? TabPath,
+        string Value,
+        string DefaultValue,
+        bool IsOverridden,
+        bool IsImplemented,
+        bool IsDeprecated,
+        DateTimeOffset? OverriddenAtUtc);
+
+    public sealed record ParameterWriteRequest(
+        Guid TenantId,
+        Guid ErpCompanyId,
+        Guid? MobileUserId,
+        string? Scope1,
+        string? Scope2,
+        IReadOnlyList<ParameterChangeDto> Changes);
+
+    public sealed record ParameterChangeDto(Guid CatalogEntryId, string? Value);
+
+    public sealed record ParameterResetRequest(
+        Guid TenantId,
+        Guid ErpCompanyId,
+        Guid? MobileUserId,
+        string? Scope1,
+        string? Scope2,
+        IReadOnlyList<Guid> CatalogEntryIds);
+
+    /// <param name="Outcome"><c>Unchanged</c>, <c>Inserted</c>, <c>Updated</c> or <c>Deleted</c>.</param>
+    public sealed record ParameterWriteResultDto(Guid CatalogEntryId, string Outcome);
+
+    public sealed record ParameterWriteResponse(long Revision, ParameterWriteResultDto[] Results);
+
+    public sealed record ParameterAuditDto(
+        Guid Id,
+        Guid ErpCompanyId,
+        Guid CatalogEntryId,
+        string Program,
+        string Name,
+        Guid? MobileUserId,
+        string Scope1,
+        string Scope2,
+        string Outcome,
+        string? OldValue,
+        string? NewValue,
+        bool IsMasked,
+        string Source,
+        Guid? AdminUserId,
+        string Actor,
+        DateTimeOffset AtUtc);
+}

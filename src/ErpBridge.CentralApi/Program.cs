@@ -696,6 +696,7 @@ public partial class Program
         app.MapPortalErpDocumentsEndpoints();
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
+        app.MapAdminParameterEndpoints();
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();
