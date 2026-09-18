@@ -93,6 +93,96 @@ public sealed class ParameterResolver(CentralApiDbContext db)
         }).ToList();
     }
 
+    /// <summary>One catalogue set as it applies to a scope, for the bulk read.</summary>
+    public sealed record ScopeValues(ParameterScope Scope, IReadOnlyList<Effective> Values);
+
+    /// <summary>
+    /// One catalogue set as it applies to many scopes at once.
+    ///
+    /// The Android endpoint asks for every active user of every company in one call. Resolving
+    /// them one at a time would read the 1,801 catalogue entries once per user, so the entries and
+    /// the stored deviations are each read once and composed in memory.
+    /// </summary>
+    public async Task<IReadOnlyList<ScopeValues>> ResolveManyAsync(
+        IReadOnlyCollection<ParameterScope> scopes, string catalogMethod, CancellationToken ct = default)
+    {
+        if (scopes.Count == 0)
+        {
+            return [];
+        }
+
+        var entries = await db.ParameterCatalog.AsNoTracking()
+            .Where(e => e.CatalogMethod == catalogMethod)
+            .OrderBy(e => e.EditorOrder ?? int.MaxValue)
+            .ThenBy(e => e.ParametreId)
+            .ToListAsync(ct);
+
+        var entryIds = entries.Select(e => e.Id).ToHashSet();
+        var tenantIds = scopes.Select(s => s.TenantId).Distinct().ToList();
+        var companyIds = scopes.Select(s => s.ErpCompanyId).Distinct().ToList();
+
+        // Widened to the tenants and companies asked for, then narrowed in memory to the exact
+        // scopes: every dimension still has to match, or one user's settings reach another.
+        var wanted = scopes.ToHashSet();
+
+        var stored = await db.ParameterValues.AsNoTracking()
+            .Where(v => tenantIds.Contains(v.TenantId) && companyIds.Contains(v.ErpCompanyId))
+            .ToListAsync(ct);
+
+        var byScope = stored
+            .Where(v => entryIds.Contains(v.ParameterCatalogEntryId))
+            .Select(v => (Scope: new ParameterScope(
+                v.TenantId, v.ErpCompanyId, v.MobileUserId, v.Scope1, v.Scope2), Value: v))
+            .Where(x => wanted.Contains(x.Scope))
+            .GroupBy(x => x.Scope)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.Value.ParameterCatalogEntryId, x => x.Value));
+
+        return scopes.Select(scope =>
+        {
+            var overrides = byScope.GetValueOrDefault(scope);
+
+            return new ScopeValues(scope, entries.Select(entry =>
+            {
+                var row = overrides?.GetValueOrDefault(entry.Id);
+
+                return new Effective
+                {
+                    Entry = entry,
+                    Value = row?.Value ?? entry.DefaultValue,
+                    IsOverridden = row is not null,
+                    OverriddenAtUtc = row?.UpdatedAtUtc,
+                };
+            }).ToList());
+        }).ToList();
+    }
+
+    /// <summary>
+    /// The change counter of many scopes in one read; a scope that has never been touched is
+    /// absent rather than zero.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<ParameterScope, long>> RevisionsAsync(
+        IReadOnlyCollection<ParameterScope> scopes, CancellationToken ct = default)
+    {
+        if (scopes.Count == 0)
+        {
+            return new Dictionary<ParameterScope, long>();
+        }
+
+        var tenantIds = scopes.Select(s => s.TenantId).Distinct().ToList();
+        var companyIds = scopes.Select(s => s.ErpCompanyId).Distinct().ToList();
+        var wanted = scopes.ToHashSet();
+
+        var rows = await db.ParameterRevisions.AsNoTracking()
+            .Where(r => tenantIds.Contains(r.TenantId) && companyIds.Contains(r.ErpCompanyId))
+            .ToListAsync(ct);
+
+        return rows
+            .Select(r => (Scope: new ParameterScope(
+                r.TenantId, r.ErpCompanyId, r.MobileUserId, r.Scope1, r.Scope2), r.Revision))
+            .Where(x => wanted.Contains(x.Scope))
+            .ToDictionary(x => x.Scope, x => x.Revision);
+    }
+
     /// <summary>The value in force for one parameter, or null when the catalogue has no such entry.</summary>
     public async Task<Effective?> ResolveOneAsync(
         ParameterScope scope, Guid catalogEntryId, CancellationToken ct = default)
