@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (P2a)
+Son güncelleme: 2026-09-18 (P2b)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -14,14 +14,14 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 |---|---|---|---|
 | P0 — Katalog çıkarımı (ön koşul) | 7 | 7 | ✅ |
 | P1 — Merkez veri modeli ve API | 7 | 7 | ✅ |
-| P2 — Panel (Admin) parametre ekranı | 8 | 1 | 🔄 |
+| P2 — Panel (Admin) parametre ekranı | 8 | 2 | 🔄 |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 0 | ⬜ |
 | P4 — Sipariş Cepte: öncelikli öbekler | 6 | 0 | ⬜ |
 | P5 — Kalan `akilli` öbekleri | 8 | 0 | ⬜ |
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P2b — katalogdan üretilen sekme ağacı
+**Şu anki görev:** P2c — editör bileşenleri
 
 ---
 
@@ -44,7 +44,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P1f | `/android/parameters` yeniden bağlama + `revision`/`304` | ✅ | [#123](https://github.com/Retrosero/ErpBridge/pull/123) | Sözleşme aynı, **kaynak** değişti (D13): değerler içe aktarılmış `_FORA_PARAMETRELER` aynasından değil katalog varsayılanı + saklı sapmadan geliyor. Kazanım: kimsenin değiştirmediği parametre artık **eksik dönmüyor** — eski ayna yalnız sapmaları tuttuğu için telefon kendi gömdüğü varsayılana düşüyordu, artık Fora'nın varsayılanı dönüyor. `ParametreUser` hâlâ kullanıcı adı taşıyor — eski istemcinin eşleştirdiği şey o. Yalnız **aktif** kullanıcılar yayılıyor (D5b, R8). `sourceDatabase` verilmezse kiracının bütün aktif firmaları kapsanıyor — eski ucun süzgeçsiz davranışı. **`ETag`/`304`:** yanıt kullanıcı başına 1.801 satır, ETag kapsanan kapsamlardan + her birinin sürüm sayacından + **katalog damgasından** üretiliyor; katalog damgası şart, çünkü yeniden tohumlama bir varsayılanı oynatabilir ve istemci artık uymayan bir kopyayı tutmaya devam ederdi. `revision` toplam olarak dönüyor ama **bilgilendirme** — kullanıcı silinince düşebildiği için 304 kararı ETag'e dayanıyor. Çözümleyiciye toplu okuma eklendi (`ResolveManyAsync`/`RevisionsAsync`): kullanıcı başına ayrı çözümleme 1.801 katalog satırını her kullanıcı için yeniden okurdu. 9 uç testi |
 | P1g | Ajan uçları | ✅ | [#124](https://github.com/Retrosero/ErpBridge/pull/124) | `GET /api/v1/agents/parameters?erpCompanyId=` ve `POST /api/v1/agents/parameters/report`. **Firma başına zorunlu:** ajan birkaç firmaya atanmış olabilir, her biri ayrı bir Mikro veritabanı; firma adlandırmayan çağrı bir firmanın ayarını diğerinin veritabanına yazardı. Çekme ucu **delta değil tam hedef durum** döndürüyor: ajan tabloyu ona eşitliyor, yani merkezin artık listelemediği satır ajanın sildiği satır. Delta olsaydı iki tarafın en son ne gönderildiği konusunda anlaşması gerekirdi ve kaçırılan tek bir koşu, kimsenin seçmediği bir varsayılanı ezmeye devam eden bayat satır bırakırdı. Yalnız **sapmalar** (D3) ve yalnız **aktif** kullanıcılar (D5b). `MobileUser.Id` → `ParametreUser` çevirisi uçta yapılıyor — Mikro kullanıcı adıyla adresliyor, ajanın tahmin etmesine bırakılmıyor. **Rapor ucu:** ne yazıldığı (insert/update/delete/fail) ve Mikro'da **elle değiştirilmiş** bulunan satırlar (`parameter_mirror_reports` + `parameter_mirror_drifts`). Fark **kaydediliyor, geri yazılmıyor** — ayna tek yönlü (D8); panel uyarısı P3e'de bunu okuyacak. Kataloglanmamış parametreyi gösteren fark satırı düşürülüyor, çünkü hiçbir şeyi göstermeyen bir satır sonradan okunamaz. Atanmamış firma, başka kiracının firması ve olmayan firma **aynı 403**'ü alıyor — ajanın başka kiracıların hangi firmalara sahip olduğunu öğrenmesi gerekmiyor. Migration yalnız **tablo ekliyor** (D20). 11 uç testi |
 | P2a | `/parameters` ekran iskeleti + scope seçimi | ✅ | [#125](https://github.com/Retrosero/ErpBridge/pull/125) | Seçim zinciri: müşteri → **ERP firması** → program → parametre kümesi → kapsam. Program ve küme listesi `/sets` ucundan, yani **katalogdan** geliyor — elle yazılmış bir liste, Fora kaynaklarından üretilen katalogdan sessizce ayrışırdı. Firma seçici tek firmada **otomatik seçiliyor ama gizlenmiyor** (D3b): operatör hangi veritabanını değiştirdiğini görmek zorunda. Kapsam alanı kümenin `ScopeKind`'ına göre şekilleniyor — mobil kullanıcı için **yalnız aktif** kullanıcıların listesi, adlandırılmış kapsamlar için bir ya da iki metin kutusu, firma geneli için hiçbiri. Kapsam tamamlanmadan **Getir düğmesi açılmıyor**: kullanıcı belirtmeden yazılan mobil kullanıcı parametresi hiçbir okumanın bulamayacağı bir satır olurdu. Eski ham ayna görünümü silinmedi, `/parameters/mikro-aynasi`'na taşındı ve salt okunur olduğu belirtildi (D13, P7b). 8 bUnit testi; eski ekranın testleri `ParameterMirrorTests`'e taşındı |
-| P2b | Katalogdan üretilen sekme ağacı | ⬜ | — | |
+| P2b | Katalogdan üretilen sekme ağacı | ✅ | [#126](https://github.com/Retrosero/ErpBridge/pull/126) | Ağaç `TabPath`'ten **üretiliyor**, yazılmıyor (D11) — 63 sekme 63 Razor dosyası olsaydı, Fora kaynaklarından yeniden üretilen katalogla elle eş tutulması gerekirdi. Ölçülen yapı: `akilli`'de **54 ayrı sekme yolu**, 5 kök, en fazla 4 derinlik. Sekme sırası parametrelerin geliş sırası — sunucu zaten Fora'nın editör sırasıyla döndürüyor, ayrı bir sıra alanına gerek yok. Her düğüm **altındaki toplamı** ve **sapmış sayısını** gösteriyor: 63 sekmede işin nerede olduğunu söyleyen şey bu. **Tekrar eden aileler gruplandı:** 1.782 alanın 830'u tek bir sekmede (Ziyaret anket) ve bunların 800'ü dört soru türü × 100 slot — düz liste olarak çizilince ekran kullanılamaz hale geliyordu (P0f Bulgu 1). Gruplama **addaki rakam dizisi maskelenerek** türetiliyor (`..._#_Derece`), yani bu aileye özel değil; üçten az üyesi olan kalıp grup sayılmıyor, çünkü bir çifti katlamak kazandırdığından çok gizler. Grup ilk üyesinin yerini alıyor — operatör alanı Fora'nın koyduğu yerde arıyor. **Fora'da editörü olmayan 13 parametre gizlenmiyor**, "Fora'da ekranı olmayanlar" başlığı altında duruyor: düşürmek, düzeltmeye çalıştığımız kusuru tekrarlamak olurdu. Ağaç ve gruplama mantığı `ParameterLayout` içinde, Razor'dan ayrı ve doğrudan test edilebilir: 9 birim + 3 bUnit testi |
 | P2c | Editör bileşenleri (7 tip) | ⬜ | — | |
 | P2d | Efektif değer / varsayılan rozeti / sıfırlama | ⬜ | — | |
 | P2e | Arama, "yalnız sapanlar", "etkisiz" rozeti | ⬜ | — | |

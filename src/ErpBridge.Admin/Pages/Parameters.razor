@@ -142,47 +142,42 @@ else if (_values is not null)
     }
     else
     {
-        <div class="admin-data-surface">
-            <table class="table admin-data-table" aria-label="Parametreler">
-                <thead>
-                    <tr>
-                        <th>Sekme</th>
-                        <th>Etiket</th>
-                        <th>Ad</th>
-                        <th>ID</th>
-                        <th>Değer</th>
-                        <th>Varsayılan</th>
-                        <th>Durum</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var p in _values.Items)
+        <div class="prm-layout">
+            <nav class="prm-tabs" aria-label="Parametre sekmeleri">
+                @foreach (var node in _tabs)
+                {
+                    @RenderTab(node, 0)
+                }
+            </nav>
+
+            <section class="prm-fields">
+                @if (_selectedTab is null)
+                {
+                    <AdminState Title="Bir sekme seçin"
+                                Message="Soldaki ağaç Fora'nın kendi sekme yapısından üretildi." />
+                }
+                else
+                {
+                    <h2 class="h5">@_selectedTab</h2>
+
+                    @foreach (var group in _groups)
                     {
-                        <tr>
-                            <td data-label="Sekme"><small class="text-muted">@(p.TabPath ?? "—")</small></td>
-                            <td data-label="Etiket">@(p.Label ?? "—")</td>
-                            <td data-label="Ad"><code>@p.Name</code></td>
-                            <td data-label="ID">@p.ParametreId</td>
-                            <td data-label="Değer"><code>@p.Value</code></td>
-                            <td data-label="Varsayılan"><code>@p.DefaultValue</code></td>
-                            <td data-label="Durum">
-                                @if (p.IsOverridden)
-                                {
-                                    <span class="badge bg-warning text-dark">sapmış</span>
-                                }
-                                @if (!p.IsImplemented)
-                                {
-                                    <span class="badge bg-secondary" title="Bu sürümde Sipariş Cepte bu ayarı dikkate almıyor">bu sürümde etkisiz</span>
-                                }
-                                @if (p.IsDeprecated)
-                                {
-                                    <span class="badge bg-dark">geri çekilmiş</span>
-                                }
-                            </td>
-                        </tr>
+                        @if (group.IsRepeating)
+                        {
+                            @* Collapsed by default: the survey tab alone holds 800 fields in four
+                               families of 100, and opening them all at once is the unusable case. *@
+                            <details class="prm-group">
+                                <summary>@group.Title</summary>
+                                @RenderFieldTable(group.Items)
+                            </details>
+                        }
+                        else
+                        {
+                            @RenderFieldTable(group.Items)
+                        }
                     }
-                </tbody>
-            </table>
+                }
+            </section>
         </div>
     }
 }
@@ -323,6 +318,98 @@ else if (string.IsNullOrEmpty(_error))
         }
     }
 
+    private IReadOnlyList<ParameterLayout.TabNode> _tabs = Array.Empty<ParameterLayout.TabNode>();
+    private IReadOnlyList<ParameterLayout.FieldGroup> _groups = Array.Empty<ParameterLayout.FieldGroup>();
+    private string? _selectedTab;
+
+    private void SelectTab(ParameterLayout.TabNode node)
+    {
+        _selectedTab = node.Path;
+        _groups = ParameterLayout.GroupFields(
+            ParameterLayout.FieldsOf(_values?.Items ?? Array.Empty<ParameterValueDto>(), node.Path));
+    }
+
+    /// <summary>
+    /// One block of fields. Still read-only here; the editors arrive in P2c.
+    /// </summary>
+    private RenderFragment RenderFieldTable(IReadOnlyList<ParameterValueDto> items) =>
+        @<div class="admin-data-surface mb-3">
+            <table class="table admin-data-table" aria-label="Parametreler">
+                <thead>
+                    <tr>
+                        <th>Etiket</th>
+                        <th>Ad</th>
+                        <th>ID</th>
+                        <th>Değer</th>
+                        <th>Varsayılan</th>
+                        <th>Durum</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in items)
+                    {
+                        <tr>
+                            <td data-label="Etiket">@(p.Label ?? "—")</td>
+                            <td data-label="Ad"><code>@p.Name</code></td>
+                            <td data-label="ID">@p.ParametreId</td>
+                            <td data-label="Değer"><code>@p.Value</code></td>
+                            <td data-label="Varsayılan"><code>@p.DefaultValue</code></td>
+                            <td data-label="Durum">
+                                @if (p.IsOverridden)
+                                {
+                                    <span class="badge bg-warning text-dark">sapmış</span>
+                                }
+                                @if (!p.IsImplemented)
+                                {
+                                    <span class="badge bg-secondary" title="Bu sürümde Sipariş Cepte bu ayarı dikkate almıyor">bu sürümde etkisiz</span>
+                                }
+                                @if (p.IsDeprecated)
+                                {
+                                    <span class="badge bg-dark">geri çekilmiş</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>;
+
+    private RenderFragment RenderTab(ParameterLayout.TabNode node, int depth) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "prm-tab");
+        builder.AddAttribute(2, "style", $"padding-left:{depth * 0.9m}rem");
+
+        builder.OpenElement(3, "button");
+        builder.AddAttribute(4, "type", "button");
+        builder.AddAttribute(5, "class", node.Path == _selectedTab ? "prm-tab__link prm-tab__link--on" : "prm-tab__link");
+        builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => SelectTab(node)));
+        builder.AddContent(7, node.Title);
+
+        // The count is what makes a 63-tab tree navigable: it says where the work is.
+        builder.OpenElement(8, "small");
+        builder.AddAttribute(9, "class", "text-muted ms-2");
+        builder.AddContent(10, node.TotalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        builder.CloseElement();
+
+        if (node.OverriddenCount > 0)
+        {
+            builder.OpenElement(11, "span");
+            builder.AddAttribute(12, "class", "badge bg-warning text-dark ms-2");
+            builder.AddAttribute(13, "title", "Bu sekmede varsayılanından ayrılmış ayar var");
+            builder.AddContent(14, node.OverriddenCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+        builder.CloseElement();
+
+        foreach (var child in node.Children)
+        {
+            builder.AddContent(15, RenderTab(child, depth + 1));
+        }
+    };
+
     private async Task LoadValuesAsync()
     {
         if (SelectedSet is not { } set || !CanLoad) return;
@@ -342,6 +429,16 @@ else if (string.IsNullOrEmpty(_error))
                 string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
                 string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
                 _onlyOverridden);
+
+            _tabs = ParameterLayout.BuildTabs(_values.Items);
+            _selectedTab = null;
+            _groups = Array.Empty<ParameterLayout.FieldGroup>();
+
+            // One tab means nothing to choose; open it so the fields are on screen straight away.
+            if (_tabs.Count == 1 && _tabs[0].Children.Count == 0)
+            {
+                SelectTab(_tabs[0]);
+            }
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
