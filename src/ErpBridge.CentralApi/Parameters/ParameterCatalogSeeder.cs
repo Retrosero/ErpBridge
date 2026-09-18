@@ -95,8 +95,13 @@ public static class ParameterCatalogSeeder
     /// <summary>Copies the catalogue's fields onto an entry; returns true when anything moved.</summary>
     private static bool Apply(ParameterCatalogEntry entry, ParameterCatalogFile.CatalogRow row)
     {
-        // IsImplemented is deliberately not touched: it records what this product honours, which
-        // the catalogue knows nothing about, and later phases set it as features land (D16).
+        // IsImplemented does not come from the catalogue — it records what Sipariş Cepte honours,
+        // which the catalogue knows nothing about — but it is still set here, from the list this
+        // product maintains (D16). Set on every seed rather than only on insert, so a feature that
+        // lands in a later release turns the panel's "inert in this version" badge off without
+        // anyone touching the database.
+        entry.IsImplemented = ImplementedParameters.Honours(row.CatalogMethod, row.ParametreId);
+
         // Program is copied too: a regenerated catalogue can correct it for an existing
         // (CatalogMethod, ParametreID), and a stale program would address the wrong Mikro rows.
         return Replace(v => entry.Program = v!, entry.Program, row.Program)
