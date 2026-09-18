@@ -17,9 +17,7 @@ public sealed class CatalogExtractionException(string message) : Exception(messa
 /// </summary>
 public static class DefaultsExtractor
 {
-    public const int SchemaVersion = 1;
-    private const string TypeName = "ParametrelerDefault";
-    private const string FactoryReturnType = "Parametreler";
+    public const int SchemaVersion = 2;
     private const string EntryTypeName = "Parametre";
     private const int EntryArity = 7;
 
@@ -58,35 +56,57 @@ public static class DefaultsExtractor
         ["TahsilatAktarimSqlSablon"] = ScopeKinds.ImportTemplate,
         ["TahsilatAktarimTxtCsvSablon"] = ScopeKinds.ImportTemplate,
         ["TahsilatAktarimKriter"] = ScopeKinds.CriteriaName,
+
+        // Printer templates are not declared in ParametrelerDefault: YaziciAyarlari builds them
+        // imperatively, one set of page settings per template plus sixteen parameters per field.
+        ["genelayarlaritanimla"] = ScopeKinds.PrinterTemplate,
+        ["alanekle"] = ScopeKinds.PrinterTemplate,
     };
 
-    /// <param name="sourceText">Contents of <c>ParametrelerDefault.cs</c>.</param>
-    /// <param name="sourceFile">Repository-relative path recorded in the output.</param>
+    /// <summary>One decompiled file that declares parameter sets.</summary>
+    /// <param name="File">Repository-relative path, recorded in the output.</param>
+    /// <param name="TypeName">Class that declares the sets.</param>
+    /// <param name="Text">File contents.</param>
+    public sealed record CatalogSource(string File, string TypeName, string Text);
+
+    /// <summary>
+    /// Reads every parameter set Fora declares. Most live in <c>ParametrelerDefault</c> as
+    /// <c>Parametreler</c> factories; the printer templates are built imperatively in
+    /// <c>YaziciAyarlari</c> instead, so both shapes are read here.
+    /// </summary>
+    /// <param name="sources">Files to read, in the order their sets should appear.</param>
     /// <param name="sourceBuild">Fora build identifier, or "unknown".</param>
-    public static DefaultsCatalog Extract(string sourceText, string sourceFile, string sourceBuild)
+    public static DefaultsCatalog Extract(IReadOnlyList<CatalogSource> sources, string sourceBuild)
     {
-        var root = CSharpSyntaxTree.ParseText(sourceText).GetRoot();
+        var sets = new List<CatalogSet>();
 
-        var type = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-            .SingleOrDefault(c => c.Identifier.ValueText == TypeName)
-            ?? throw new CatalogExtractionException($"class {TypeName} not found in {sourceFile}.");
-
-        var sets = type.Members.OfType<MethodDeclarationSyntax>()
-            .Where(m => (m.ReturnType as IdentifierNameSyntax)?.Identifier.ValueText == FactoryReturnType)
-            .Select(ReadSet)
-            .ToList();
-
-        if (sets.Count == 0)
+        foreach (var source in sources)
         {
-            throw new CatalogExtractionException($"no {FactoryReturnType} factory methods found in {TypeName}.");
+            var root = CSharpSyntaxTree.ParseText(source.Text).GetRoot();
+
+            var type = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .SingleOrDefault(c => c.Identifier.ValueText == source.TypeName)
+                ?? throw new CatalogExtractionException($"class {source.TypeName} not found in {source.File}.");
+
+            var methods = type.Members.OfType<MethodDeclarationSyntax>()
+                .Where(m => m.DescendantNodes().OfType<ObjectCreationExpressionSyntax>()
+                    .Any(o => (o.Type as IdentifierNameSyntax)?.Identifier.ValueText == EntryTypeName))
+                .ToList();
+
+            if (methods.Count == 0)
+            {
+                throw new CatalogExtractionException(
+                    $"{source.TypeName} in {source.File} declares no {EntryTypeName} entries.");
+            }
+
+            sets.AddRange(methods.Select(m => ReadSet(m) with { SourceFile = source.File }));
         }
 
         return new DefaultsCatalog
         {
             SchemaVersion = SchemaVersion,
             SourceBuild = sourceBuild,
-            SourceType = $"Fora.Mikro.ParametreTanimlari.{TypeName}",
-            SourceFile = sourceFile,
+            Sources = sources.Select(s => s.File).ToList(),
             SetCount = sets.Count,
             ParameterCount = sets.Sum(s => s.Parameters.Count),
             ShadowedCount = sets.Sum(s => s.Parameters.Count(p => p.Shadowed)),
@@ -121,14 +141,12 @@ public static class DefaultsExtractor
         var anaGrubu = UniformField(methodName, entries, ArgAnaGrubu, ScopeFields.AnaGrubu);
         var altGrubu = UniformField(methodName, entries, ArgAltGrubu, ScopeFields.AltGrubu);
 
-        var scoped = new[] { user, anaGrubu, altGrubu }.Where(f => f.IsScope).ToList();
-        if (scoped.Count > 1)
-        {
-            throw new CatalogExtractionException(
-                $"{methodName}: {scoped.Count} columns carry a method parameter ({string.Join(", ", scoped.Select(s => s.Field))}); exactly one or none is supported.");
-        }
-
-        var scope = scoped.Count == 1 ? scoped[0] : null;
+        // Most sets are addressed through one column, but a printer template needs two: the
+        // template name in ParametreUser and the field name in ParametreAltGrubu.
+        var scopes = new[] { user, anaGrubu, altGrubu }
+            .Where(f => f.IsScope)
+            .Select(f => new ScopeColumn { Field = f.Field, Source = f.Value })
+            .ToList();
 
         // Fora's own catalogue is not free of id collisions: TahsilatAktarimTxtCsvSablon gives
         // belge_tarihi_yil/ay/gun_baslangic the same id 16, where the general import template
@@ -163,8 +181,7 @@ public static class DefaultsExtractor
             CatalogMethod = methodName,
             Program = program,
             ScopeKind = scopeKind,
-            ScopeField = scope?.Field ?? ScopeFields.None,
-            ScopeParameter = scope?.Value,
+            Scopes = scopes,
             User = user.IsScope ? string.Empty : user.Value,
             AnaGrubu = anaGrubu.IsScope ? string.Empty : anaGrubu.Value,
             AltGrubu = altGrubu.IsScope ? string.Empty : altGrubu.Value,
@@ -184,11 +201,23 @@ public static class DefaultsExtractor
                 $"{methodName}: ParametreID is not a numeric literal at {Location(entry)} — got '{args[ArgId]}'.");
         }
 
+        // A default is normally a literal, but a printer template field defaults its caption to
+        // the field name it is created with, so an identifier has to be accepted there too.
+        var (defaultValue, defaultSource) = args[ArgDefault] switch
+        {
+            LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.StringLiteralExpression)
+                => (literal.Token.ValueText, (string?)null),
+            IdentifierNameSyntax identifier => (string.Empty, identifier.Identifier.ValueText),
+            _ => throw new CatalogExtractionException(
+                $"{methodName}: default is neither a string literal nor an identifier at {Location(entry)} — got '{args[ArgDefault]}'."),
+        };
+
         return new ParameterDefault
         {
             Id = (int)idLiteral.Token.Value!,
             Name = StringLiteral(methodName, args[ArgName], nameof(ParameterDefault.Name), entry),
-            Default = StringLiteral(methodName, args[ArgDefault], nameof(ParameterDefault.Default), entry),
+            Default = defaultValue,
+            DefaultSource = defaultSource,
         };
     }
 

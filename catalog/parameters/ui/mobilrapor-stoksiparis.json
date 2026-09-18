@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 2,
+  "sourceBuild": "unknown",
+  "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.ForaAndroid/MobilRaporStokSiparisDuzenleme.cs",
+  "sourceType": "MobilRaporStokSiparisDuzenleme",
+  "catalogMethods": [
+    "MobilRaporStokSiparis"
+  ],
+  "tabCount": 2,
+  "parameterCount": 2,
+  "unlabelledCount": 1,
+  "tabs": [
+    {
+      "name": "xtraTabPage15",
+      "title": "Filitreler",
+      "path": [
+        "Filitreler"
+      ],
+      "order": 1
+    },
+    {
+      "name": "xtraTabPage2",
+      "title": "Seçenekler",
+      "path": [
+        "Seçenekler"
+      ],
+      "order": 0
+    }
+  ],
+  "parameters": [
+    {
+      "parameter": "RaporAdi",
+      "catalogMethod": "MobilRaporStokSiparis",
+      "label": "Rapor adı :",
+      "editor": "text",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Seçenekler"
+      ],
+      "control": "RaporAdi",
+      "controlType": "TextEdit",
+      "order": 0,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "RaporJson",
+      "catalogMethod": "MobilRaporStokSiparis",
+      "label": null,
+      "editor": "composite",
+      "tab": null,
+      "tabPath": [],
+      "control": "AktifRapor",
+      "controlType": "RaporStokSiparisSecenekleri",
+      "order": 1,
+      "labelSource": "none",
+      "options": [],
+      "alternates": []
+    }
+  ],
+  "gaps": [
+    {
+      "kind": "noLabel",
+      "subject": "RaporJson",
+      "detail": "no caption or neighbouring label found for 'AktifRapor' (RaporStokSiparisSecenekleri)"
+    },
+    {
+      "kind": "noTab",
+      "subject": "RaporJson",
+      "detail": "control 'AktifRapor' is not inside any tab page"
+    }
+  ]
+}

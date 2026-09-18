@@ -1,22 +1,24 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceBuild": "unknown",
-  "sourceType": "Fora.Mikro.ParametreTanimlari.ParametrelerDefault",
-  "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
-  "setCount": 19,
-  "parameterCount": 4688,
+  "sources": [
+    "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
+    "Fora_Mikro/.decompiled/Core/Fora.Mikro.Yazdirma/YaziciAyarlari.cs"
+  ],
+  "setCount": 21,
+  "parameterCount": 4713,
   "shadowedCount": 5,
   "sets": [
     {
       "catalogMethod": "ForaMikro",
       "program": "ForaMikro",
       "scopeKind": "None",
-      "scopeField": "none",
-      "scopeParameter": null,
+      "scopes": [],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -200,12 +202,12 @@
       "catalogMethod": "ComarchEdiGenelParametreler",
       "program": "ComarchEdiGenel",
       "scopeKind": "None",
-      "scopeField": "none",
-      "scopeParameter": null,
+      "scopes": [],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -284,12 +286,17 @@
       "catalogMethod": "ComarchEdiIliskiParametreleri",
       "program": "ComarchEdiIliski",
       "scopeKind": "EdiRelation",
-      "scopeField": "user",
-      "scopeParameter": "IliskiID",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "IliskiID"
+        }
+      ],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -333,12 +340,17 @@
       "catalogMethod": "ForaMikroKullanici",
       "program": "foramikro",
       "scopeKind": "DesktopUser",
-      "scopeField": "user",
-      "scopeParameter": "User",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "User"
+        }
+      ],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -647,12 +659,12 @@
       "catalogMethod": "B2B",
       "program": "b2b",
       "scopeKind": "None",
-      "scopeField": "none",
-      "scopeParameter": null,
+      "scopes": [],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -716,12 +728,17 @@
       "catalogMethod": "MobilKullanici",
       "program": "akilli",
       "scopeKind": "MobileUser",
-      "scopeField": "user",
-      "scopeParameter": "User",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "User"
+        }
+      ],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [
         "YazdirmaAlinanSiparisBluetoothAygitIsmi",
         "YazdirmaAlinanSiparisSablonAdi",
@@ -9741,12 +9758,17 @@
       "catalogMethod": "MobilRaporStokSatis",
       "program": "MobilRaporStokSatis",
       "scopeKind": "ReportCode",
-      "scopeField": "user",
-      "scopeParameter": "RaporKodu",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "RaporKodu"
+        }
+      ],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -9765,12 +9787,17 @@
       "catalogMethod": "MobilRaporStokEnvanter",
       "program": "MobilRaporStokEnvanter",
       "scopeKind": "ReportCode",
-      "scopeField": "user",
-      "scopeParameter": "RaporKodu",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "RaporKodu"
+        }
+      ],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -9789,12 +9816,17 @@
       "catalogMethod": "MobilRaporStokSiparis",
       "program": "MobilRaporStokSiparis",
       "scopeKind": "ReportCode",
-      "scopeField": "user",
-      "scopeParameter": "RaporKodu",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "RaporKodu"
+        }
+      ],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -9813,12 +9845,17 @@
       "catalogMethod": "MobilRaporYapilacakTahsilatlar",
       "program": "MobilRaporYapilacakTahsilatlar",
       "scopeKind": "ReportCode",
-      "scopeField": "user",
-      "scopeParameter": "RaporKodu",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "RaporKodu"
+        }
+      ],
       "user": "",
       "anaGrubu": "",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -9837,12 +9874,17 @@
       "catalogMethod": "BankaAktarim",
       "program": "BankaAktarim",
       "scopeKind": "ImportTemplate",
-      "scopeField": "altGrubu",
-      "scopeParameter": "SablonAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "SablonAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "AktarimSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -11971,12 +12013,17 @@
       "catalogMethod": "BankaAktarimGenel",
       "program": "BankaAktarim",
       "scopeKind": "ImportTemplate",
-      "scopeField": "altGrubu",
-      "scopeParameter": "SablonAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "SablonAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "GenelSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -12225,12 +12272,17 @@
       "catalogMethod": "BankaAktarimKriter",
       "program": "BankaAktarim",
       "scopeKind": "CriteriaName",
-      "scopeField": "altGrubu",
-      "scopeParameter": "KriterAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "KriterAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "Kriter",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -12394,12 +12446,17 @@
       "catalogMethod": "GenelAktarimSqlSablon",
       "program": "GenelAktarim",
       "scopeKind": "ImportTemplate",
-      "scopeField": "altGrubu",
-      "scopeParameter": "SablonAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "SablonAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "SqlAktarimSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -15523,12 +15580,17 @@
       "catalogMethod": "GenelAktarimTxtCsvSablon",
       "program": "GenelAktarim",
       "scopeKind": "ImportTemplate",
-      "scopeField": "altGrubu",
-      "scopeParameter": "SablonAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "SablonAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "TxtCsvAktarimSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -19852,12 +19914,17 @@
       "catalogMethod": "GenelAktarimKriter",
       "program": "GenelAktarim",
       "scopeKind": "CriteriaName",
-      "scopeField": "altGrubu",
-      "scopeParameter": "KriterAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "KriterAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "Kriter",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -19901,12 +19968,17 @@
       "catalogMethod": "TahsilatAktarimKriter",
       "program": "TahsilatAktarim",
       "scopeKind": "CriteriaName",
-      "scopeField": "altGrubu",
-      "scopeParameter": "KriterAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "KriterAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "Kriter",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -19950,12 +20022,17 @@
       "catalogMethod": "TahsilatAktarimSqlSablon",
       "program": "TahsilatAktarim",
       "scopeKind": "ImportTemplate",
-      "scopeField": "altGrubu",
-      "scopeParameter": "SablonAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "SablonAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "SqlAktarimSablon",
       "altGrubu": "",
       "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -21529,8 +21606,12 @@
       "catalogMethod": "TahsilatAktarimTxtCsvSablon",
       "program": "TahsilatAktarim",
       "scopeKind": "ImportTemplate",
-      "scopeField": "altGrubu",
-      "scopeParameter": "SablonAdi",
+      "scopes": [
+        {
+          "field": "altGrubu",
+          "source": "SablonAdi"
+        }
+      ],
       "user": "",
       "anaGrubu": "TxtCsvAktarimSablon",
       "altGrubu": "",
@@ -21539,6 +21620,7 @@
         17,
         604
       ],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.ParametreTanimlari/ParametrelerDefault.cs",
       "duplicateNames": [],
       "parameters": [
         {
@@ -23725,6 +23807,174 @@
           "id": 945,
           "name": "dbc_no",
           "default": "0"
+        }
+      ]
+    },
+    {
+      "catalogMethod": "genelayarlaritanimla",
+      "program": "YaziciAyarlari",
+      "scopeKind": "PrinterTemplate",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "_sablonadi"
+        }
+      ],
+      "user": "",
+      "anaGrubu": "GenelAyarlar",
+      "altGrubu": "",
+      "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.Yazdirma/YaziciAyarlari.cs",
+      "duplicateNames": [],
+      "parameters": [
+        {
+          "id": 1,
+          "name": "SablonAdi",
+          "default": ""
+        },
+        {
+          "id": 2,
+          "name": "SayfaKolonSayisi",
+          "default": "120"
+        },
+        {
+          "id": 3,
+          "name": "SayfaSatirSayisi",
+          "default": "60"
+        },
+        {
+          "id": 4,
+          "name": "SayfaDokumSayisi",
+          "default": "1"
+        },
+        {
+          "id": 5,
+          "name": "DetayBaslangicSatiri",
+          "default": "15"
+        },
+        {
+          "id": 6,
+          "name": "DetayBasiSatirSayisi",
+          "default": "1"
+        },
+        {
+          "id": 7,
+          "name": "DetayBirSayfadakiKayitSayisi",
+          "default": "20"
+        },
+        {
+          "id": 8,
+          "name": "AltBasliklarSadeceSonSayfadaYazilsin",
+          "default": "1"
+        },
+        {
+          "id": 9,
+          "name": "StokGruplandirmaSecenegi",
+          "default": "0"
+        }
+      ]
+    },
+    {
+      "catalogMethod": "alanekle",
+      "program": "YaziciAyarlari",
+      "scopeKind": "PrinterTemplate",
+      "scopes": [
+        {
+          "field": "user",
+          "source": "_sablonadi"
+        },
+        {
+          "field": "altGrubu",
+          "source": "alanismi"
+        }
+      ],
+      "user": "",
+      "anaGrubu": "Alan",
+      "altGrubu": "",
+      "duplicateIds": [],
+      "sourceFile": "Fora_Mikro/.decompiled/Core/Fora.Mikro.Yazdirma/YaziciAyarlari.cs",
+      "duplicateNames": [],
+      "parameters": [
+        {
+          "id": 1,
+          "name": "Isim",
+          "default": "",
+          "defaultSource": "alanismi"
+        },
+        {
+          "id": 2,
+          "name": "BasilacakAlan",
+          "default": "0"
+        },
+        {
+          "id": 3,
+          "name": "VeriTipi",
+          "default": "0"
+        },
+        {
+          "id": 4,
+          "name": "Veri",
+          "default": ""
+        },
+        {
+          "id": 5,
+          "name": "Kolon",
+          "default": "1"
+        },
+        {
+          "id": 6,
+          "name": "Satir",
+          "default": "1"
+        },
+        {
+          "id": 7,
+          "name": "Genislik",
+          "default": "20"
+        },
+        {
+          "id": 8,
+          "name": "Hizalama",
+          "default": "0"
+        },
+        {
+          "id": 9,
+          "name": "DetayinBittigiYereKaydir",
+          "default": "0"
+        },
+        {
+          "id": 10,
+          "name": "OndalikHaneSayisi",
+          "default": "2"
+        },
+        {
+          "id": 11,
+          "name": "SonunaParaBirimiEkle",
+          "default": "0"
+        },
+        {
+          "id": 12,
+          "name": "BasinaParaBirimiEkle",
+          "default": "0"
+        },
+        {
+          "id": 13,
+          "name": "BinlikAyraci",
+          "default": "."
+        },
+        {
+          "id": 14,
+          "name": "OndalikAyraci",
+          "default": ","
+        },
+        {
+          "id": 15,
+          "name": "OnEk",
+          "default": ""
+        },
+        {
+          "id": 16,
+          "name": "SonEk",
+          "default": ""
         }
       ]
     }

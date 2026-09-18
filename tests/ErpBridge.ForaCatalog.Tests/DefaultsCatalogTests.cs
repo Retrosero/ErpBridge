@@ -5,32 +5,45 @@ namespace ErpBridge.ForaCatalog.Tests;
 
 /// <summary>
 /// Guards the generated parameter catalogue: it must stay in step with the decompiled
-/// source, regenerate identically every time, and keep the invariants the rest of the
+/// sources, regenerate identically every time, and keep the invariants the rest of the
 /// parameter work builds on.
 /// </summary>
 public sealed class DefaultsCatalogTests
 {
     private static readonly string Root = ForaCatalogPaths.FindRepositoryRoot(AppContext.BaseDirectory);
 
-    private static string SourceText() =>
-        File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.DefaultsSource));
-
-    private static DefaultsCatalog Extract(string sourceBuild = "unknown") =>
-        DefaultsExtractor.Extract(SourceText(), ForaCatalogPaths.DefaultsSource, sourceBuild);
+    internal static DefaultsCatalog Extract(string sourceBuild = "unknown") =>
+        DefaultsExtractor.Extract(
+            [
+                new DefaultsExtractor.CatalogSource(
+                    ForaCatalogPaths.DefaultsSource,
+                    ForaCatalogPaths.DefaultsType,
+                    File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.DefaultsSource))),
+                new DefaultsExtractor.CatalogSource(
+                    ForaCatalogPaths.PrinterDefaultsSource,
+                    ForaCatalogPaths.PrinterDefaultsType,
+                    File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.PrinterDefaultsSource))),
+            ],
+            sourceBuild);
 
     private static DefaultsCatalog Committed() =>
         CatalogJson.Deserialize<DefaultsCatalog>(
             File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.DefaultsOutput)));
 
+    private static CatalogSet Set(string catalogMethod) =>
+        Extract().Sets.Single(s => s.CatalogMethod == catalogMethod);
+
+    /// <summary>Builds a one-file source out of an inline snippet, for the rejection tests.</summary>
+    private static DefaultsExtractor.CatalogSource Snippet(string text, string typeName = "ParametrelerDefault") =>
+        new("test.cs", typeName, text);
+
     [Fact]
-    public void The_committed_catalogue_matches_the_decompiled_source()
+    public void The_committed_catalogue_matches_the_decompiled_sources()
     {
         var committedText = File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.DefaultsOutput))
             .Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n') + "\n";
 
-        var regenerated = CatalogJson.Serialize(Extract(Committed().SourceBuild));
-
-        regenerated.Should().Be(
+        CatalogJson.Serialize(Extract(Committed().SourceBuild)).Should().Be(
             committedText,
             "the committed catalogue is stale — run: dotnet run --project tools/ForaCatalogExtractor");
     }
@@ -42,25 +55,29 @@ public sealed class DefaultsCatalogTests
     }
 
     [Fact]
-    public void Every_factory_method_is_extracted()
+    public void Every_declared_set_is_extracted()
     {
         var catalog = Extract();
 
-        catalog.SetCount.Should().Be(19);
+        catalog.SetCount.Should().Be(21);
         catalog.Sets.Should().HaveCount(catalog.SetCount);
-        catalog.ParameterCount.Should().Be(4688);
+        catalog.ParameterCount.Should().Be(4713);
         catalog.Sets.Sum(s => s.Parameters.Count).Should().Be(catalog.ParameterCount);
+
+        catalog.Sets.Select(s => s.Program).Distinct().Should().HaveCount(
+            14, "Fora addresses its settings through fourteen ParametreProgram values");
     }
 
     [Fact]
     public void The_mobile_user_set_carries_the_whole_akilli_catalogue()
     {
-        var akilli = Extract().Sets.Single(s => s.CatalogMethod == "MobilKullanici");
+        var akilli = Set("MobilKullanici");
 
         akilli.Program.Should().Be("akilli");
         akilli.ScopeKind.Should().Be(ScopeKinds.MobileUser);
-        akilli.ScopeField.Should().Be(ScopeFields.User, "Fora addresses a mobile user through ParametreUser");
-        akilli.ScopeParameter.Should().Be("User");
+        akilli.Scopes.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new { Field = ScopeFields.User, Source = "User" },
+                "Fora addresses a mobile user through ParametreUser");
         akilli.AnaGrubu.Should().BeEmpty();
         akilli.AltGrubu.Should().BeEmpty();
         akilli.Parameters.Should().HaveCount(1801);
@@ -71,23 +88,61 @@ public sealed class DefaultsCatalogTests
     {
         // The import sets leave ParametreUser empty and address a template through
         // ParametreAltGrubu, with ParametreAnaGrubu acting as a fixed discriminator.
-        var sql = Extract().Sets.Single(s => s.CatalogMethod == "GenelAktarimSqlSablon");
+        var sql = Set("GenelAktarimSqlSablon");
 
         sql.Program.Should().Be("GenelAktarim");
-        sql.ScopeField.Should().Be(ScopeFields.AltGrubu);
-        sql.ScopeParameter.Should().Be("SablonAdi");
+        sql.ScopeKind.Should().Be(ScopeKinds.ImportTemplate);
+        sql.Scopes.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new { Field = ScopeFields.AltGrubu, Source = "SablonAdi" });
         sql.User.Should().BeEmpty();
         sql.AnaGrubu.Should().Be("SqlAktarimSablon");
-        sql.ScopeKind.Should().Be(ScopeKinds.ImportTemplate);
+    }
+
+    [Fact]
+    public void A_printer_template_field_is_addressed_by_two_columns()
+    {
+        // Printer templates are declared imperatively in YaziciAyarlari, not in
+        // ParametrelerDefault, and need both the template name and the field name.
+        var fields = Set("alanekle");
+
+        fields.Program.Should().Be("YaziciAyarlari");
+        fields.ScopeKind.Should().Be(ScopeKinds.PrinterTemplate);
+        fields.AnaGrubu.Should().Be("Alan");
+        fields.Parameters.Should().HaveCount(16);
+
+        fields.Scopes.Should().BeEquivalentTo(
+            [
+                new { Field = ScopeFields.User, Source = "_sablonadi" },
+                new { Field = ScopeFields.AltGrubu, Source = "alanismi" },
+            ],
+            options => options.WithStrictOrdering());
+
+        var page = Set("genelayarlaritanimla");
+        page.AnaGrubu.Should().Be("GenelAyarlar");
+        page.Parameters.Should().HaveCount(9);
+        page.Parameters.Single(p => p.Name == "SayfaKolonSayisi").Default.Should().Be("120");
+    }
+
+    [Fact]
+    public void A_default_supplied_at_runtime_records_where_it_comes_from()
+    {
+        // A printer field's caption defaults to the field's own name, so there is no constant
+        // to record — only the identifier it is taken from.
+        var isim = Set("alanekle").Parameters.Single(p => p.Name == "Isim");
+
+        isim.Default.Should().BeEmpty();
+        isim.DefaultSource.Should().Be("alanismi");
+
+        Extract().Sets.SelectMany(s => s.Parameters).Count(p => p.DefaultSource is not null)
+            .Should().Be(1, "only the printer field caption is filled in at runtime");
     }
 
     [Fact]
     public void Global_sets_have_no_scope()
     {
-        var firmWide = Extract().Sets.Single(s => s.CatalogMethod == "ForaMikro");
+        var firmWide = Set("ForaMikro");
 
-        firmWide.ScopeField.Should().Be(ScopeFields.None);
-        firmWide.ScopeParameter.Should().BeNull();
+        firmWide.Scopes.Should().BeEmpty();
         firmWide.ScopeKind.Should().Be(ScopeKinds.None);
     }
 
@@ -106,7 +161,7 @@ public sealed class DefaultsCatalogTests
 
         catalog.ShadowedCount.Should().Be(5);
 
-        var broken = catalog.Sets.Single(s => s.CatalogMethod == "TahsilatAktarimTxtCsvSablon");
+        var broken = Set("TahsilatAktarimTxtCsvSablon");
         broken.DuplicateIds.Should().Equal(16, 17, 604);
         broken.Parameters.Where(p => p.Shadowed).Select(p => p.Name).Should().Equal(
             "belge_tarihi_ay_baslangic",
@@ -157,9 +212,7 @@ public sealed class DefaultsCatalogTests
     public void The_first_entry_of_a_colliding_id_is_the_one_that_wins()
     {
         // Mirrors Parametreler._GetParametre(int): first match wins.
-        var broken = Extract().Sets.Single(s => s.CatalogMethod == "TahsilatAktarimTxtCsvSablon");
-
-        var sixteens = broken.Parameters.Where(p => p.Id == 16).ToList();
+        var sixteens = Set("TahsilatAktarimTxtCsvSablon").Parameters.Where(p => p.Id == 16).ToList();
 
         sixteens.Should().HaveCount(3);
         sixteens[0].Shadowed.Should().BeFalse();
@@ -172,9 +225,8 @@ public sealed class DefaultsCatalogTests
     {
         // These four ZPL templates end in an escaped quote. A line-based regex keeps the
         // backslash or truncates the value; Roslyn hands back the decoded literal.
-        var akilli = Extract().Sets.Single(s => s.CatalogMethod == "MobilKullanici");
-
-        var template = akilli.Parameters.Single(p => p.Name == "KoliEtiketiStokListesiBaslangicMetniStokKodu");
+        var template = Set("MobilKullanici").Parameters
+            .Single(p => p.Name == "KoliEtiketiStokListesiBaslangicMetniStokKodu");
 
         template.Default.Should().Be("A[degisken],105,1,3,2,1,N,\"");
         template.Default.Should().NotContain("\\");
@@ -183,13 +235,12 @@ public sealed class DefaultsCatalogTests
     [Fact]
     public void Turkish_defaults_are_preserved()
     {
-        var akilli = Extract().Sets.Single(s => s.CatalogMethod == "MobilKullanici");
-
-        akilli.Parameters.Single(p => p.Name == "MetinZyrt_Satis_Yapildi").Default.Should().Be("Satış yapıldı");
+        Set("MobilKullanici").Parameters.Single(p => p.Name == "MetinZyrt_Satis_Yapildi")
+            .Default.Should().Be("Satış yapıldı");
     }
 
     [Fact]
-    public void Every_set_has_a_program_and_a_known_scope_kind()
+    public void Every_set_has_a_program_a_source_file_and_a_known_scope_kind()
     {
         string[] knownKinds =
         [
@@ -197,19 +248,18 @@ public sealed class DefaultsCatalogTests
             ScopeKinds.ImportTemplate, ScopeKinds.CriteriaName, ScopeKinds.EdiRelation, ScopeKinds.PrinterTemplate,
         ];
 
+        string[] knownFields = [ScopeFields.User, ScopeFields.AnaGrubu, ScopeFields.AltGrubu];
+
         foreach (var set in Extract().Sets)
         {
             set.Program.Should().NotBeNullOrWhiteSpace();
+            set.SourceFile.Should().NotBeNullOrWhiteSpace();
             set.ScopeKind.Should().BeOneOf(knownKinds);
 
-            if (set.ScopeField == ScopeFields.None)
-            {
-                set.ScopeParameter.Should().BeNull();
-            }
-            else
-            {
-                set.ScopeParameter.Should().NotBeNullOrWhiteSpace();
-            }
+            // A global set has no scope columns at all, so assert over the items rather than
+            // the collection (OnlyContain treats an empty collection as a failure).
+            set.Scopes.Select(s => s.Field).Should().BeSubsetOf(knownFields).And.OnlyHaveUniqueItems();
+            set.Scopes.Where(s => string.IsNullOrWhiteSpace(s.Source)).Should().BeEmpty();
         }
     }
 
@@ -234,7 +284,7 @@ public sealed class DefaultsCatalogTests
             }
             """;
 
-        var extract = () => DefaultsExtractor.Extract(source, "test.cs", "unknown");
+        var extract = () => DefaultsExtractor.Extract([Snippet(source)], "unknown");
 
         extract.Should().Throw<CatalogExtractionException>().WithMessage("*anaGrubu*not uniform*");
     }
@@ -259,8 +309,17 @@ public sealed class DefaultsCatalogTests
             }
             """;
 
-        var extract = () => DefaultsExtractor.Extract(source, "test.cs", "unknown");
+        var extract = () => DefaultsExtractor.Extract([Snippet(source)], "unknown");
 
         extract.Should().Throw<CatalogExtractionException>().WithMessage("*no scope kind mapped*");
+    }
+
+    [Fact]
+    public void A_source_that_declares_nothing_is_rejected()
+    {
+        var extract = () => DefaultsExtractor.Extract(
+            [Snippet("public static class ParametrelerDefault { }")], "unknown");
+
+        extract.Should().Throw<CatalogExtractionException>().WithMessage("*declares no Parametre entries*");
     }
 }

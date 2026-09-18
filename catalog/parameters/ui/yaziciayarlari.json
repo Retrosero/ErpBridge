@@ -1,0 +1,488 @@
+{
+  "schemaVersion": 2,
+  "sourceBuild": "unknown",
+  "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.Ayarlar/YaziciAyarlariForm.cs",
+  "sourceType": "YaziciAyarlariForm",
+  "catalogMethods": [
+    "alanekle",
+    "genelayarlaritanimla"
+  ],
+  "tabCount": 4,
+  "parameterCount": 22,
+  "unlabelledCount": 0,
+  "tabs": [
+    {
+      "name": "Alanlar",
+      "title": "ALANLAR",
+      "path": [
+        "ALANLAR"
+      ],
+      "order": 1
+    },
+    {
+      "name": "xtraTabPage_Genel",
+      "title": "GENEL",
+      "path": [
+        "GENEL"
+      ],
+      "order": 0
+    },
+    {
+      "name": "OnIzleme",
+      "title": "ÖN İZLEME",
+      "path": [
+        "ÖN İZLEME"
+      ],
+      "order": 3
+    },
+    {
+      "name": "xtraTabPage1",
+      "title": "ÖN İZLEME BİLGİLERİ",
+      "path": [
+        "ÖN İZLEME BİLGİLERİ"
+      ],
+      "order": 2
+    }
+  ],
+  "parameters": [
+    {
+      "parameter": "BasilacakAlan",
+      "catalogMethod": "alanekle",
+      "label": "Basılacak alan :",
+      "editor": "choice",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "cb_basilacak_alan",
+      "controlType": "ComboBox",
+      "order": 0,
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Üst başlık"
+        },
+        {
+          "value": "1",
+          "label": "Satır"
+        },
+        {
+          "value": "2",
+          "label": "Alt başlık"
+        }
+      ],
+      "alternates": []
+    },
+    {
+      "parameter": "Kolon",
+      "catalogMethod": "alanekle",
+      "label": "Kolon :",
+      "editor": "integer",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "se_kolon",
+      "controlType": "SpinEdit",
+      "order": 1,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "Satir",
+      "catalogMethod": "alanekle",
+      "label": "Satır :",
+      "editor": "integer",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "se_satir",
+      "controlType": "SpinEdit",
+      "order": 2,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "Genislik",
+      "catalogMethod": "alanekle",
+      "label": "Genişlik :",
+      "editor": "integer",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "se_genislik",
+      "controlType": "SpinEdit",
+      "order": 3,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "Veri",
+      "catalogMethod": "alanekle",
+      "label": "Statik metin :",
+      "editor": "composite",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "te_statik_metin",
+      "controlType": "TextEdit",
+      "order": 4,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": [
+        {
+          "control": "cb_dinamik_veri",
+          "controlType": "ComboBox",
+          "editor": "choice"
+        },
+        {
+          "control": "cb_statik_veri",
+          "controlType": "ComboBox",
+          "editor": "choice"
+        }
+      ]
+    },
+    {
+      "parameter": "Hizalama",
+      "catalogMethod": "alanekle",
+      "label": "Hizalama :",
+      "editor": "choice",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "cb_hizalama",
+      "controlType": "ComboBox",
+      "order": 5,
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Sola daya"
+        },
+        {
+          "value": "1",
+          "label": "Ortala"
+        },
+        {
+          "value": "2",
+          "label": "Sağa daya"
+        }
+      ],
+      "alternates": []
+    },
+    {
+      "parameter": "OnEk",
+      "catalogMethod": "alanekle",
+      "label": "Ön ek :",
+      "editor": "text",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "te_on_ek",
+      "controlType": "TextEdit",
+      "order": 6,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "DetayinBittigiYereKaydir",
+      "catalogMethod": "alanekle",
+      "label": "Detayın bittiği yere kaydır",
+      "editor": "boolean",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "ce_detayin_bittigi_yere_kaydir",
+      "controlType": "CheckEdit",
+      "order": 7,
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "SonEk",
+      "catalogMethod": "alanekle",
+      "label": "Son ek :",
+      "editor": "text",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "te_son_ek",
+      "controlType": "TextEdit",
+      "order": 8,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "OndalikHaneSayisi",
+      "catalogMethod": "alanekle",
+      "label": "Ondalık hane sayısı :",
+      "editor": "integer",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "se_ondalik_hane_sayisi",
+      "controlType": "SpinEdit",
+      "order": 9,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "SonunaParaBirimiEkle",
+      "catalogMethod": "alanekle",
+      "label": "Sonuna para birimi ekle",
+      "editor": "boolean",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "ce_sonuna_para_birimi_ekle",
+      "controlType": "CheckEdit",
+      "order": 10,
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "BasinaParaBirimiEkle",
+      "catalogMethod": "alanekle",
+      "label": "Başına para birimi ekle",
+      "editor": "boolean",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "ce_basina_para_birimi_ekle",
+      "controlType": "CheckEdit",
+      "order": 11,
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "BinlikAyraci",
+      "catalogMethod": "alanekle",
+      "label": "Binlik ayracı :",
+      "editor": "text",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "te_binlik_ayraci",
+      "controlType": "TextEdit",
+      "order": 12,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "OndalikAyraci",
+      "catalogMethod": "alanekle",
+      "label": "Ondalık ayracı :",
+      "editor": "text",
+      "tab": "Alanlar",
+      "tabPath": [
+        "ALANLAR"
+      ],
+      "control": "te_ondalik_ayraci",
+      "controlType": "TextEdit",
+      "order": 13,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "SayfaKolonSayisi",
+      "catalogMethod": "genelayarlaritanimla",
+      "label": "Sayfa kolon sayısı :",
+      "editor": "integer",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "SayfaKolonSayisi",
+      "controlType": "SpinEdit",
+      "order": 14,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "SayfaSatirSayisi",
+      "catalogMethod": "genelayarlaritanimla",
+      "label": "Sayfa satır sayısı :",
+      "editor": "integer",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "SayfaSatirSayisi",
+      "controlType": "SpinEdit",
+      "order": 15,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "SayfaDokumSayisi",
+      "catalogMethod": "genelayarlaritanimla",
+      "label": "Sayfa döküm sayısı :",
+      "editor": "integer",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "SayfaDokumSayisi",
+      "controlType": "SpinEdit",
+      "order": 16,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "DetayBaslangicSatiri",
+      "catalogMethod": "genelayarlaritanimla",
+      "label": "Detay başlangıç satırı :",
+      "editor": "integer",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "DetayBaslangicSatiri",
+      "controlType": "SpinEdit",
+      "order": 17,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "DetayBasiSatirSayisi",
+      "catalogMethod": "genelayarlaritanimla",
+      "label": "Detay başı satır sayısı :",
+      "editor": "integer",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "DetayBasiSatirSayisi",
+      "controlType": "SpinEdit",
+      "order": 18,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "DetayBirSayfadakiKayitSayisi",
+      "catalogMethod": "genelayarlaritanimla",
+      "label": "Detay bir sayfadaki kayıt sayısı :",
+      "editor": "integer",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "DetayBirSayfadakiKayitSayisi",
+      "controlType": "SpinEdit",
+      "order": 19,
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "AltBasliklarSadeceSonSayfadaYazilsin",
+      "catalogMethod": "genelayarlaritanimla",
+      "label": "Alt başlıklar sadece son sayfada yazılsın",
+      "editor": "boolean",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "AltBasliklarSadeceSonSayfadaYazilsin",
+      "controlType": "CheckEdit",
+      "order": 20,
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
+    },
+    {
+      "parameter": "StokGruplandirmaSecenegi",
+      "catalogMethod": "genelayarlaritanimla",
+      "label": "Gruplama seçeneği :",
+      "editor": "choice",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "cb_gruplama_secenegi",
+      "controlType": "ComboBox",
+      "order": 21,
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Stok kodu"
+        },
+        {
+          "value": "1",
+          "label": "Ana grup"
+        },
+        {
+          "value": "2",
+          "label": "Alt grup"
+        },
+        {
+          "value": "3",
+          "label": "Sektor"
+        },
+        {
+          "value": "4",
+          "label": "Marka"
+        },
+        {
+          "value": "5",
+          "label": "Model"
+        },
+        {
+          "value": "6",
+          "label": "Uretici"
+        },
+        {
+          "value": "7",
+          "label": "Reyon"
+        }
+      ],
+      "alternates": []
+    }
+  ],
+  "gaps": [
+    {
+      "kind": "unboundParameter",
+      "subject": "Isim",
+      "detail": "read in the form but never assigned straight to or from a designer control"
+    },
+    {
+      "kind": "unboundParameter",
+      "subject": "SablonAdi",
+      "detail": "read in the form but never assigned straight to or from a designer control"
+    },
+    {
+      "kind": "unboundParameter",
+      "subject": "VeriTipi",
+      "detail": "read in the form but never assigned straight to or from a designer control"
+    }
+  ]
+}

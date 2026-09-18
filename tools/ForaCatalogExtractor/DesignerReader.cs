@@ -12,12 +12,23 @@ namespace ErpBridge.Tools.ForaCatalog;
 /// </summary>
 public static class DesignerReader
 {
+    /// <summary>Type given to the synthetic control that stands for the form itself.</summary>
+    public const string FormType = "Form";
+
     /// <summary>Reads every <c>private T name;</c> field and the layout calls that arrange them.</summary>
     public static Dictionary<string, DesignerControl> Read(ClassDeclarationSyntax form)
     {
         var controls = ReadFields(form);
 
-        foreach (var method in form.Members.OfType<MethodDeclarationSyntax>())
+        // Several screens drop controls straight onto the form with base.Controls.Add(...).
+        // Without a container to hang them on they would have no siblings, and label matching
+        // — which only ever compares controls sharing a parent — would find nothing.
+        var formName = form.Identifier.ValueText;
+        controls[formName] = new DesignerControl(formName, FormType);
+
+        // Constructors count: several screens fill their combo boxes from the ERP there rather
+        // than in InitializeComponent, and looking only at methods misses all of it.
+        foreach (var method in form.Members.OfType<BaseMethodDeclarationSyntax>())
         {
             foreach (var statement in method.DescendantNodes().OfType<ExpressionStatementSyntax>())
             {
@@ -27,7 +38,7 @@ public static class DesignerReader
                         ApplyAssignment(controls, assignment);
                         break;
                     case InvocationExpressionSyntax invocation:
-                        ApplyInvocation(controls, invocation);
+                        ApplyInvocation(controls, invocation, formName);
                         break;
                 }
             }
@@ -110,11 +121,94 @@ public static class DesignerReader
             case "TabIndex" when TryReadInt(assignment.Right, out var tabIndex):
                 control.TabIndex = tabIndex;
                 break;
+
+            // Fora already masks its credential fields; that is a firmer signal than guessing
+            // from the parameter's name.
+            case "Properties.UseSystemPasswordChar" when assignment.Right.IsKind(SyntaxKind.TrueLiteralExpression):
+            case "Properties.PasswordChar":
+                control.IsSecret = true;
+                break;
+
+            case "DataSource":
+                ReadDataSource(control, assignment);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Works out where a combo box's items come from. Two shapes matter: a call into an ERP data
+    /// class (the field is really a code picked from a live list) and a DataTable the designer
+    /// fills in place (a fixed option list whose entries are right there in the source).
+    /// </summary>
+    private static void ReadDataSource(DesignerControl control, AssignmentExpressionSyntax assignment)
+    {
+        var initializer = assignment.Right switch
+        {
+            IdentifierNameSyntax identifier => FindLocalInitializer(assignment, identifier.Identifier.ValueText),
+            var other => other,
+        };
+
+        switch (initializer)
+        {
+            // DepoData.GetDepolarDataTable(connection) → the warehouse list.
+            case InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax
+                 { Expression: IdentifierNameSyntax owner } } when owner.Identifier.ValueText.EndsWith("Data", StringComparison.Ordinal):
+                control.ErpDataSource = owner.Identifier.ValueText[..^"Data".Length];
+                break;
+
+            case ObjectCreationExpressionSyntax creation:
+                ReadInlineOptions(control, creation);
+                break;
+        }
+    }
+
+    /// <summary>Finds "DataTable x = …;" for <paramref name="name"/> in the enclosing method.</summary>
+    private static ExpressionSyntax? FindLocalInitializer(SyntaxNode from, string name)
+    {
+        var method = from.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
+
+        return method?.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+            .Where(v => v.Identifier.ValueText == name)
+            .Select(v => v.Initializer?.Value)
+            .LastOrDefault(v => v is not null);
+    }
+
+    /// <summary>Reads "Rows = { new object[2] { 0, "Telefon" }, … }" into value/label pairs.</summary>
+    private static void ReadInlineOptions(DesignerControl control, ObjectCreationExpressionSyntax creation)
+    {
+        var rows = creation.Initializer?.Expressions
+            .OfType<AssignmentExpressionSyntax>()
+            .FirstOrDefault(a => (a.Left as IdentifierNameSyntax)?.Identifier.ValueText == "Rows")
+            ?.Right as InitializerExpressionSyntax;
+
+        if (rows is null)
+        {
+            return;
+        }
+
+        foreach (var row in rows.Expressions.OfType<ArrayCreationExpressionSyntax>())
+        {
+            var cells = row.Initializer?.Expressions;
+            if (cells is not { Count: 2 })
+            {
+                continue;
+            }
+
+            if (cells.Value[0] is not LiteralExpressionSyntax value
+                || cells.Value[1] is not LiteralExpressionSyntax label
+                || !label.IsKind(SyntaxKind.StringLiteralExpression))
+            {
+                continue;
+            }
+
+            control.Options.Add(new ControlOption(
+                Convert.ToString(value.Token.Value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                label.Token.ValueText));
         }
     }
 
     private static void ApplyInvocation(
-        Dictionary<string, DesignerControl> controls, InvocationExpressionSyntax invocation)
+        Dictionary<string, DesignerControl> controls, InvocationExpressionSyntax invocation, string formName)
     {
         if (invocation.Expression is not MemberAccessExpressionSyntax call)
         {
@@ -122,13 +216,25 @@ public static class DesignerReader
         }
 
         var path = MemberPath(call);
-        if (path.Count < 3 || !controls.ContainsKey(path[0]))
+
+        // "base.Controls.Add(x)" and "this.Controls.Add(x)" name no container, so they mean the
+        // form; everything else must start with a known control.
+        string container;
+        if (path.Count >= 3 && controls.ContainsKey(path[0]))
+        {
+            container = path[0];
+            path = path.Skip(1).ToList();
+        }
+        else if (path.Count == 2)
+        {
+            container = formName;
+        }
+        else
         {
             return;
         }
 
-        var container = path[0];
-        var member = string.Join('.', path.Skip(1));
+        var member = string.Join('.', path);
         var arguments = invocation.ArgumentList.Arguments;
 
         switch (member)
@@ -201,7 +307,7 @@ public static class DesignerReader
 
         switch (current)
         {
-            case ThisExpressionSyntax:
+            case ThisExpressionSyntax or BaseExpressionSyntax:
                 break;
             case IdentifierNameSyntax identifier:
                 parts.Add(identifier.Identifier.ValueText);
@@ -217,7 +323,8 @@ public static class DesignerReader
     /// <summary>Reads <c>this.Foo</c> or a bare <c>Foo</c> back to the field name.</summary>
     public static string? FieldName(ExpressionSyntax expression) => expression switch
     {
-        MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } member => member.Name.Identifier.ValueText,
+        MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax } member
+            => member.Name.Identifier.ValueText,
         IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
         _ => null,
     };

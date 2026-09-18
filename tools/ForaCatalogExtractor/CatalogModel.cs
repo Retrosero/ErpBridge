@@ -14,6 +14,15 @@ public sealed record ParameterDefault
     [JsonPropertyOrder(3)] public required string Default { get; init; }
 
     /// <summary>
+    /// Set when the default is not a constant but a value supplied at runtime — a printer
+    /// template field defaults its caption to the field's own name. Holds the source
+    /// identifier; <see cref="Default"/> is then empty.
+    /// </summary>
+    [JsonPropertyOrder(5)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DefaultSource { get; init; }
+
+    /// <summary>
     /// True when an earlier entry in the same set already claimed this <see cref="Id"/>.
     /// Fora's <c>Parametreler._GetParametre(int)</c> returns the first match, so a shadowed
     /// entry can never be read back — it is a defect in Fora's own catalogue, recorded here
@@ -36,6 +45,20 @@ public static class ScopeFields
     public const string User = "user";
     public const string AnaGrubu = "anaGrubu";
     public const string AltGrubu = "altGrubu";
+}
+
+/// <summary>
+/// One addressing column whose value the caller supplies rather than the catalogue fixing it.
+/// Most sets have exactly one; a printer template has two, because it is addressed by template
+/// name and field name together.
+/// </summary>
+public sealed record ScopeColumn
+{
+    /// <summary>One of <see cref="ScopeFields"/>.</summary>
+    [JsonPropertyOrder(1)] public required string Field { get; init; }
+
+    /// <summary>Name of the method parameter or field that supplies the value.</summary>
+    [JsonPropertyOrder(2)] public required string Source { get; init; }
 }
 
 /// <summary>What the scope value means, so the panel can offer the right picker.</summary>
@@ -66,26 +89,29 @@ public sealed record CatalogSet
     /// <summary>One of <see cref="ScopeKinds"/>.</summary>
     [JsonPropertyOrder(3)] public required string ScopeKind { get; init; }
 
-    /// <summary>One of <see cref="ScopeFields"/>.</summary>
-    [JsonPropertyOrder(4)] public required string ScopeField { get; init; }
-
-    /// <summary>Name of the method parameter that supplies the scope, or null when the set is global.</summary>
-    [JsonPropertyOrder(5)] public string? ScopeParameter { get; init; }
+    /// <summary>
+    /// Addressing columns the caller fills in, in <c>User</c>, <c>AnaGrubu</c>, <c>AltGrubu</c>
+    /// order. Empty for a set that exists once per company.
+    /// </summary>
+    [JsonPropertyOrder(4)] public required IReadOnlyList<ScopeColumn> Scopes { get; init; }
 
     /// <summary>Constant written to <c>ParametreUser</c> (empty when this column carries the scope).</summary>
-    [JsonPropertyOrder(6)] public required string User { get; init; }
+    [JsonPropertyOrder(5)] public required string User { get; init; }
 
     /// <summary>Constant written to <c>ParametreAnaGrubu</c>.</summary>
-    [JsonPropertyOrder(7)] public required string AnaGrubu { get; init; }
+    [JsonPropertyOrder(6)] public required string AnaGrubu { get; init; }
 
     /// <summary>Constant written to <c>ParametreAltGrubu</c>.</summary>
-    [JsonPropertyOrder(8)] public required string AltGrubu { get; init; }
+    [JsonPropertyOrder(7)] public required string AltGrubu { get; init; }
 
     /// <summary>
     /// Ids declared more than once in this set, ascending. Empty for every healthy set;
     /// see <see cref="ParameterDefault.Shadowed"/> for what a collision costs.
     /// </summary>
-    [JsonPropertyOrder(9)] public required IReadOnlyList<int> DuplicateIds { get; init; }
+    [JsonPropertyOrder(8)] public required IReadOnlyList<int> DuplicateIds { get; init; }
+
+    /// <summary>Decompiled file this set was read from.</summary>
+    [JsonPropertyOrder(9)] public string SourceFile { get; init; } = string.Empty;
 
     /// <summary>
     /// Names declared more than once under different ids. Fora's
@@ -109,21 +135,19 @@ public sealed record DefaultsCatalog
     /// </summary>
     [JsonPropertyOrder(2)] public required string SourceBuild { get; init; }
 
-    [JsonPropertyOrder(3)] public required string SourceType { get; init; }
+    /// <summary>Repository-relative paths of the decompiled files, with forward slashes.</summary>
+    [JsonPropertyOrder(3)] public required IReadOnlyList<string> Sources { get; init; }
 
-    /// <summary>Repository-relative path of the decompiled file, with forward slashes.</summary>
-    [JsonPropertyOrder(4)] public required string SourceFile { get; init; }
+    [JsonPropertyOrder(4)] public required int SetCount { get; init; }
 
-    [JsonPropertyOrder(5)] public required int SetCount { get; init; }
-
-    [JsonPropertyOrder(6)] public required int ParameterCount { get; init; }
+    [JsonPropertyOrder(5)] public required int ParameterCount { get; init; }
 
     /// <summary>
     /// How many entries Fora's own catalogue makes unreachable by reusing an id
     /// inside one set. Expected to be small and to stay that way; a jump means the
     /// decompiled source changed shape.
     /// </summary>
-    [JsonPropertyOrder(7)] public required int ShadowedCount { get; init; }
+    [JsonPropertyOrder(6)] public required int ShadowedCount { get; init; }
 
-    [JsonPropertyOrder(8)] public required IReadOnlyList<CatalogSet> Sets { get; init; }
+    [JsonPropertyOrder(7)] public required IReadOnlyList<CatalogSet> Sets { get; init; }
 }
