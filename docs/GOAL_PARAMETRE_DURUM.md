@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (P2h)
+Son güncelleme: 2026-09-18 (P3a)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -15,13 +15,13 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P0 — Katalog çıkarımı (ön koşul) | 7 | 7 | ✅ |
 | P1 — Merkez veri modeli ve API | 7 | 7 | ✅ |
 | P2 — Panel (Admin) parametre ekranı | 8 | 8 | ✅ |
-| P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 0 | ⬜ |
+| P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 1 | 🔄 |
 | P4 — Sipariş Cepte: öncelikli öbekler | 6 | 0 | ⬜ |
 | P5 — Kalan `akilli` öbekleri | 8 | 0 | ⬜ |
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P3a — `_ERPB_PARAMETRELER` tablosunu kuran ajan
+**Şu anki görev:** P3b — `ParameterMirrorWorker`
 
 ---
 
@@ -51,7 +51,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P2f | Toplu işlemler (kopyalama, dışa/içe aktarma) | ✅ | [#130](https://github.com/Retrosero/ErpBridge/pull/130) | Dört işlem. **Kullanıcıdan kullanıcıya kopyalama** yeni `POST /values/copy` ucuyla ve **varsayılanı değiştirme (replace)**: kopyadan sonra hedef tam olarak kaynağın sahip olduğunu taşıyor. "Ali'nin ayarlarını Veli'ye kopyala" deyip Veli'nin kendi sapmalarını sessizce bırakmak, kimsenin seçmediği **üçüncü bir yapılandırma** üretirdi; "bunları da ver" demek isteyen için `merge` var ve bunu söylüyor. Kopya her ayar için denetim kaydına `copy` kaynağıyla düşüyor — toplu işlem de her ayar için bir değişiklik. Kapsamı kendi üzerine kopyalamak **400**. **Seçili alanları sıfırlama:** onay kutusu yalnız **sapmış** alanlarda çıkıyor — varsayılanında duranı seçmek toplu işleme boş bir adım koymak olurdu. **Dışa aktarma** yalnız sapmaları taşıyor (varsayılandaki alanın taşınacak değeri yok — veritabanının da saklamama gerekçesi aynı); `data:` bağlantısıyla iniyor, JS interop gerekmiyor. **İçe aktarma Mikro ID'siyle eşliyor**, katalog girdisinin kendi kimliğiyle değil: o kimlik dosyanın geldiği kurulumun, başka ortamdan gelen dosya hiçbir şeyle eşleşmezdi. Tanınmayan ID **sessizce düşürülmüyor**, sayısı bildiriliyor; geçersiz JSON hata olarak söyleniyor. 4 merkez + 5 sayfa testi |
 | P2g | Değişiklik geçmişi görünümü | ✅ | [#131](https://github.com/Retrosero/ErpBridge/pull/131) | Açık kapsamın değişiklikleri panelde: ne zaman, kim, hangi parametre, ne oldu, eski → yeni, kaynak. **Denetim ucunda gerçek bir sıralama hatası bulundu ve düzeltildi:** satırlar `OrderByDescending(e => e.Id)` ile sıralanıyordu, `Id` bir **GUID** — yani "son değişiklikler" kimsenin açıklayamayacağı bir sırada geliyordu. `AtUtc`'ye çevrildi, regresyon testi kondu. Uç ayrıca `catalogMethod`, `mobileUserId`, `scope1`, `scope2` ve `scoped` süzgeçlerini kazandı: tek kapsama daraltırken **boş boyutlar da karşılaştırılıyor**, çünkü "bu kullanıcının geçmişi" ile "firma geneli ayarın geçmişi" ayrı sorular ve ikincisinin cevabının parçası kullanıcının boş olması. Geçmiş **yalnız panel açıldığında** çekiliyor — zaten 1.801 parametre indiren bir ekranda ikinci sorgu, üstelik ziyaretlerin çoğu onu hiç açmıyor; her yazmadan sonra bayat sayılıp yeniden çekiliyor. Silinen satır "(varsayılan)" olarak okunuyor, "(boş)" olarak değil: ikisi ayrı şeyler. Maskelenmiş kimlik bilgisi rozetle işaretli. 3 merkez + 3 sayfa testi |
 | P2h | Vergi oranları onay adımı | ✅ | [#132](https://github.com/Retrosero/ErpBridge/pull/132) | Vergi oranı değiştirmek **ikinci bir adım** istiyor (D17). Kural **sunucuda**: panelde kalan bir koruma, API'yi doğrudan çağıran her şey tarafından atlanır ve korunan şey bir faturanın hesaplandığı KDV oranı. Onaysız yazma **409** ve hangi oranları değiştireceğini **ad ad söylüyor**. **Toplu yazma bölünmüyor:** içinde bir oran varsa hiçbiri yazılmıyor — zararsız yarısını yazmak, operatörü hangi yarının geçtiğini bilmediği bir durumda bırakırdı. **Yalnız `Vergi<N>Yuzde` kapılı**, `KisaAdi`/`UzunAdi` değil: başlık için de onay istemek, insanlara asıl önemli kutuyu tıklayıp geçmeyi öğretirdi — ikisi de rozetle işaretli ama yalnız oran kapılı. Panelde 409 **hata olarak gösterilmiyor**: kaydetme düğmesinin yerinde eski → yeni değerleri listeleyen bir onay kutusu açılıyor; vazgeçilirse **düzenleme duruyor**, yoksa operatör aynı soruya varmak için değeri yeniden yazmak zorunda kalırdı. 4 merkez + 3 sayfa testi |
-| P3a | `_ERPB_PARAMETRELER` kurulumu (V15/V16) | ⬜ | — | |
+| P3a | `_ERPB_PARAMETRELER` kurulumu (V15/V16) | ✅ | [#133](https://github.com/Retrosero/ErpBridge/pull/133) | `MikroParameterTableProvisioner`, `_ERPB_PARAMETRELER`'i Fora'nın şemasıyla **birebir** kuruyor. Şema tahmin edilmedi: `ParametreData.ForaParametrelerTablosuOlustur` decompile kaynağından okundu ve canlı `MikroDB_V16_03` üzerindeki `_FORA_PARAMETRELER` ile kolon kolon karşılaştırıldı. V16 `uniqueidentifier` (varsayılan **yok** — Fora GUID'i insert ile veriyor, ayna da öyle yapacak), V15 `int IDENTITY(1,1)`; bilinmeyen sürüm V15 sayılıyor, çünkü yeni şekli tahmin etmek müşterinin Mikro'sunun dolduramayacağı bir tablo yaratırdı. İndeks Fora'daki gibi dört kapsam kolonu; **`ParametreID` indekste yok** — her sorgu onunla süzüyor ama Fora'nın tercihi bu ve kopyalamak iki tabloyu değiştirilebilir kılıyor. **Tetikleyici eklenmiyor** (D7): Fora kendi tablosuna `_FORA_SYNC` için iki tane koyuyor, müşterinin ERP'sine tetikleyici eklemek kimsenin istemediği bir müdahale. **Var olan tabloya dokunulmuyor** — ne `ALTER` ne `DROP`: kendi kurmadığı tabloyu "düzelten" bir kurucu, başkasının bağımlı olduğu bir kolonu düşürmeye bir yanlış tahmin uzaktır. DDL geçici bir veritabanında gerçekten çalıştırılarak doğrulandı: iki kez çalışıyor (idempotent), kolonlar canlı Fora tablosuyla aynı, tetikleyici sayısı sıfır. 15 test |
 | P3b | `ParameterMirrorWorker` (merkez → Mikro) | ⬜ | — | |
 | P3c | `ForaParameterImporter` (salt okunur) | ⬜ | — | |
 | P3d | Panelde "Fora'dan içe aktar" akışı | ⬜ | — | |
