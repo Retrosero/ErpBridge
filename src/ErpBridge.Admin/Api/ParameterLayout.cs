@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace ErpBridge.Admin.Api;
@@ -132,6 +133,18 @@ public static partial class ParameterLayout
         var name = label is null ? pattern : $"{label} ({pattern})";
         return $"{name} — {members.Count} adet";
     }
+
+    private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+    /// <summary>
+    /// A moment, written the way this panel's readers expect it.
+    ///
+    /// Formatted with an explicit culture rather than the ambient one: the server's culture is not
+    /// something the panel controls, and a Turkish screen that prints "Sep" on one host and "Eyl"
+    /// on another is a screen nobody can screenshot for support.
+    /// </summary>
+    public static string Moment(DateTimeOffset at) =>
+        at.UtcDateTime.ToString("dd MMM yyyy, HH:mm", TurkishCulture);
 
     /// <summary>Replaces each run of digits with <c>#</c>, so indexed siblings share one pattern.</summary>
     internal static string Mask(string name) => DigitRun().Replace(name, "#");

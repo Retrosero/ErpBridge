@@ -78,6 +78,7 @@ public static class AdminParameterEndpoints
         [FromQuery] string? scope1,
         [FromQuery] string? scope2,
         [FromQuery] bool? onlyOverridden,
+        CentralApiDbContext db,
         ParameterResolver resolver,
         CancellationToken ct)
     {
@@ -94,11 +95,13 @@ public static class AdminParameterEndpoints
             values = values.Where(v => v.IsOverridden).ToList();
         }
 
+        var lastChange = await LastChangeAsync(db, scope, values, ct);
+
         return JsonResults.Ok(new ParameterValuesResponse(
             catalogMethod,
             await resolver.RevisionAsync(scope, ct),
             values.Count,
-            values.Select(ToDto).ToArray()));
+            values.Select(v => ToDto(v, lastChange.GetValueOrDefault(v.Entry.Id))).ToArray()));
     }
 
     private static async Task<IResult> WriteAsync(
@@ -252,7 +255,8 @@ public static class AdminParameterEndpoints
         JsonResults.Status(StatusCodes.Status400BadRequest,
             new ApiError { ErrorCode = "INVALID_PARAMETER_REQUEST", Message = message });
 
-    private static ParameterValueDto ToDto(ParameterResolver.Effective effective) => new(
+    private static ParameterValueDto ToDto(
+        ParameterResolver.Effective effective, LastChange? lastChange) => new(
         effective.Entry.Id,
         effective.Entry.ParametreId,
         effective.Entry.Name,
@@ -266,7 +270,53 @@ public static class AdminParameterEndpoints
         effective.IsOverridden,
         effective.Entry.IsImplemented,
         effective.Entry.IsDeprecated,
-        effective.OverriddenAtUtc);
+        effective.OverriddenAtUtc,
+        lastChange?.Actor,
+        lastChange?.Source,
+        lastChange?.AtUtc);
+
+    /// <summary>Who last moved a parameter in this scope, and when.</summary>
+    private sealed record LastChange(string Actor, string Source, DateTimeOffset AtUtc);
+
+    /// <summary>
+    /// The latest trail entry per parameter, for the ones that are actually off their default.
+    ///
+    /// Only those: a set runs to 1,801 parameters and the overrides are a handful, so asking about
+    /// all of them would read a trail that mostly says nothing. A parameter that is at its default
+    /// has nobody to attribute it to.
+    /// </summary>
+    private static async Task<Dictionary<Guid, LastChange>> LastChangeAsync(
+        CentralApiDbContext db,
+        ParameterScope scope,
+        IReadOnlyList<ParameterResolver.Effective> values,
+        CancellationToken ct)
+    {
+        var ids = values.Where(v => v.IsOverridden).Select(v => v.Entry.Id).ToList();
+
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var rows = await db.ParameterAudit.AsNoTracking()
+            .Where(a => a.TenantId == scope.TenantId
+                        && a.ErpCompanyId == scope.ErpCompanyId
+                        && a.MobileUserId == scope.MobileUserId
+                        && a.Scope1 == scope.Scope1
+                        && a.Scope2 == scope.Scope2
+                        && ids.Contains(a.ParameterCatalogEntryId))
+            .Select(a => new { a.ParameterCatalogEntryId, a.Actor, a.Source, a.AtUtc })
+            .ToListAsync(ct);
+
+        // Ordered in memory: SQLite cannot ORDER BY a DateTimeOffset.
+        return rows
+            .GroupBy(a => a.ParameterCatalogEntryId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(a => a.AtUtc)
+                    .Select(a => new LastChange(a.Actor, a.Source, a.AtUtc))
+                    .First());
+    }
 
     /// <param name="ParameterCount">How many parameters the set declares.</param>
     /// <param name="WithEditor">How many of them a Fora editor exposes, i.e. have layout metadata.</param>
@@ -301,7 +351,10 @@ public static class AdminParameterEndpoints
         bool IsOverridden,
         bool IsImplemented,
         bool IsDeprecated,
-        DateTimeOffset? OverriddenAtUtc);
+        DateTimeOffset? OverriddenAtUtc,
+        string? LastChangedBy,
+        string? LastChangeSource,
+        DateTimeOffset? LastChangedAtUtc);
 
     public sealed record ParameterWriteRequest(
         Guid TenantId,

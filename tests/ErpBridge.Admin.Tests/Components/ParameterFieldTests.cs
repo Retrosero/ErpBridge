@@ -20,7 +20,10 @@ public sealed class ParameterFieldTests : BunitContext
         string? optionsJson = null,
         string? referenceKind = null,
         bool overridden = false,
-        bool implemented = true) => new()
+        bool implemented = true,
+        string? lastChangedBy = null,
+        string? lastChangeSource = null,
+        DateTimeOffset? lastChangedAtUtc = null) => new()
     {
         CatalogEntryId = Guid.NewGuid(),
         ParametreId = 58,
@@ -33,6 +36,9 @@ public sealed class ParameterFieldTests : BunitContext
         ReferenceKind = referenceKind,
         IsOverridden = overridden,
         IsImplemented = implemented,
+        LastChangedBy = lastChangedBy,
+        LastChangeSource = lastChangeSource,
+        LastChangedAtUtc = lastChangedAtUtc,
     };
 
     private IRenderedComponent<ParameterField> RenderField(
@@ -155,6 +161,56 @@ public sealed class ParameterFieldTests : BunitContext
         // Otherwise someone changes it and wonders why nothing happened (D16).
         RenderField(Field("boolean", implemented: false)).Markup.Should().Contain("etkisiz");
         RenderField(Field("boolean", overridden: true)).Markup.Should().Contain("sapmış");
+    }
+
+    [Fact]
+    public void Revert_is_offered_only_when_there_is_a_row_to_remove()
+    {
+        RenderField(Field("text", value: "3", def: "1", overridden: true))
+            .Markup.Should().Contain("varsayılana dön");
+
+        // At its default there is no stored row, so there is nothing to put back.
+        RenderField(Field("text", value: "1", def: "1"))
+            .Markup.Should().NotContain("varsayılana dön");
+    }
+
+    [Fact]
+    public void Revert_raises_the_field_rather_than_writing_the_default_itself()
+    {
+        ParameterValueDto? reverted = null;
+        var field = Field("text", value: "3", def: "1", overridden: true);
+
+        var cut = Render<ParameterField>(ps => ps
+            .Add(p => p.Field, field)
+            .Add(p => p.Value, field.Value)
+            .Add(p => p.Reverted, f => reverted = f));
+
+        cut.Find("button.prm-field__revert").Click();
+
+        // The page removes the stored row; an operator should not have to know the default value
+        // in order to get back to it.
+        reverted.Should().BeSameAs(field);
+    }
+
+    [Fact]
+    public void A_changed_field_says_who_changed_it_and_when()
+    {
+        var cut = RenderField(Field("text", value: "3", overridden: true,
+            lastChangedBy: "gurbuz", lastChangeSource: "panel",
+            lastChangedAtUtc: DateTimeOffset.Parse("2026-09-18T07:30:00Z")));
+
+        cut.Markup.Should().Contain("gurbuz").And.Contain("18 Eyl 2026");
+    }
+
+    [Fact]
+    public void A_change_with_nobody_behind_it_names_its_source()
+    {
+        var cut = RenderField(Field("text", value: "3", overridden: true,
+            lastChangeSource: "import",
+            lastChangedAtUtc: DateTimeOffset.Parse("2026-09-18T07:30:00Z")));
+
+        // An import or a reset has no person behind it; a blank line would look like a bug.
+        cut.Markup.Should().Contain("import");
     }
 
     [Fact]

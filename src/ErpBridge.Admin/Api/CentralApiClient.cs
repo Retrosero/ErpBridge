@@ -945,6 +945,15 @@ public sealed class CentralApiClient
         SendAsync<ParameterWriteResponseDto>(
             () => _http.PutAsJsonAsync("/api/v1/admin/parameters/values", body, ct), ct);
 
+    /// <summary>
+    /// Puts parameters back to their catalogue defaults by removing the stored rows. Distinct from
+    /// writing the default value only in intent; the server does the same thing either way.
+    /// </summary>
+    public Task<ParameterWriteResponseDto> ResetParameterValuesAsync(
+        ParameterResetRequestDto body, CancellationToken ct = default) =>
+        SendAsync<ParameterWriteResponseDto>(
+            () => _http.PostAsJsonAsync("/api/v1/admin/parameters/values/reset", body, ct), ct);
+
     private static string WithTenant(string path, Guid? tenantId, string? extraQuery = null)
     {
         var query = new List<string>();
@@ -1026,6 +1035,14 @@ public sealed class ParameterValueDto
 
     [JsonPropertyName("isDeprecated")] public bool IsDeprecated { get; set; }
     [JsonPropertyName("overriddenAtUtc")] public DateTimeOffset? OverriddenAtUtc { get; set; }
+
+    /// <summary>Who last moved it in this scope. Null while it sits at its default.</summary>
+    [JsonPropertyName("lastChangedBy")] public string? LastChangedBy { get; set; }
+
+    /// <summary><c>panel</c>, <c>import</c>, <c>reset</c>… where the change came from.</summary>
+    [JsonPropertyName("lastChangeSource")] public string? LastChangeSource { get; set; }
+
+    [JsonPropertyName("lastChangedAtUtc")] public DateTimeOffset? LastChangedAtUtc { get; set; }
 }
 
 /// <summary>A batch of changes to one scope.</summary>
@@ -1044,6 +1061,16 @@ public sealed class ParameterChangeDto
 {
     [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
     [JsonPropertyName("value")] public string? Value { get; set; }
+}
+
+public sealed class ParameterResetRequestDto
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("erpCompanyId")] public Guid ErpCompanyId { get; set; }
+    [JsonPropertyName("mobileUserId")] public Guid? MobileUserId { get; set; }
+    [JsonPropertyName("scope1")] public string? Scope1 { get; set; }
+    [JsonPropertyName("scope2")] public string? Scope2 { get; set; }
+    [JsonPropertyName("catalogEntryIds")] public Guid[] CatalogEntryIds { get; set; } = Array.Empty<Guid>();
 }
 
 public sealed class ParameterWriteResponseDto

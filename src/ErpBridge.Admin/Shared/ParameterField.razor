@@ -106,6 +106,22 @@
         <code title="Parametre adı">@Field.Name</code>
         <span class="text-muted">#@Field.ParametreId</span>
         <span class="text-muted" title="Varsayılan">varsayılan: <code>@DisplayDefault</code></span>
+
+        @if (Field.IsOverridden)
+        {
+            @* Only offered when there is a stored row to remove. Writing the default value does
+               the same thing, but an operator should not have to know the default to get back
+               to it. *@
+            <button type="button" class="btn btn-link btn-sm p-0 prm-field__revert"
+                    disabled="@Disabled" @onclick="OnRevertAsync">varsayılana dön</button>
+        }
+
+        @if (Field.LastChangedAtUtc is { } at)
+        {
+            <span class="text-muted" title="@at.UtcDateTime.ToString("O")">
+                son: @Who — @ParameterLayout.Moment(at)
+            </span>
+        }
     </div>
 </div>
 
@@ -124,6 +140,21 @@
 
     [Parameter]
     public bool Disabled { get; set; }
+
+    /// <summary>Raised when the operator asks for the stored row to be removed.</summary>
+    [Parameter]
+    public EventCallback<ParameterValueDto> Reverted { get; set; }
+
+    private Task OnRevertAsync() => Reverted.InvokeAsync(Field);
+
+    /// <summary>
+    /// Who moved it. An import or a reset has no person behind it, so the source stands in rather
+    /// than leaving the line blank.
+    /// </summary>
+    private string Who =>
+        !string.IsNullOrWhiteSpace(Field.LastChangedBy) ? Field.LastChangedBy!
+        : Field.LastChangeSource is { Length: > 0 } source ? source
+        : "bilinmiyor";
 
     /// <summary>True when the draft has moved away from what the server returned.</summary>
     private bool IsChanged => !string.Equals(Value, Field.Value, StringComparison.Ordinal);
