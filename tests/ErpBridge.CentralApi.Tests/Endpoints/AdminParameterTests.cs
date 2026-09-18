@@ -249,6 +249,59 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task The_trail_comes_back_newest_first()
+    {
+        var w = await SeedAsync("P");
+        var (client, token) = await SignedInAsync();
+
+        await WriteAsync(client, token, w, w.UserId, w.DepotId, "3");
+        await WriteAsync(client, token, w, w.UserId, w.DepotId, "5");
+        await WriteAsync(client, token, w, w.UserId, w.DepotId, "7");
+
+        var rows = await (await client.GetAsync(
+            $"/api/v1/admin/parameters/audit?tenantId={w.TenantId}&catalogEntryId={w.DepotId}", token))
+            .ReadAsJsonAsync<AdminParameterEndpoints.ParameterAuditDto[]>();
+
+        // Ordered by when it happened. The row id is a GUID, so ordering by it would hand back
+        // "the latest changes" in an order nobody can explain.
+        rows!.Select(r => r.NewValue).Should().Equal("7", "5", "3");
+    }
+
+    [Fact]
+    public async Task The_trail_can_be_narrowed_to_one_scope()
+    {
+        var w = await SeedAsync("R");
+        var (client, token) = await SignedInAsync();
+
+        await WriteAsync(client, token, w, w.UserId, w.DepotId, "3");
+        await WriteAsync(client, token, w, w.OtherUserId, w.DepotId, "9");
+
+        var mine = await (await client.GetAsync(
+            $"/api/v1/admin/parameters/audit?tenantId={w.TenantId}&erpCompanyId={w.CompanyId}"
+            + $"&catalogMethod={w.CatalogMethod}&mobileUserId={w.UserId}&scoped=true", token))
+            .ReadAsJsonAsync<AdminParameterEndpoints.ParameterAuditDto[]>();
+
+        // "What did this user's settings do" and "what did that one's" are different questions.
+        mine.Should().ContainSingle();
+        mine![0].NewValue.Should().Be("3");
+    }
+
+    [Fact]
+    public async Task The_trail_can_be_narrowed_to_one_catalogue_set()
+    {
+        var w = await SeedAsync("S");
+        var (client, token) = await SignedInAsync();
+
+        await WriteAsync(client, token, w, w.UserId, w.DepotId, "3");
+
+        var other = await (await client.GetAsync(
+            $"/api/v1/admin/parameters/audit?tenantId={w.TenantId}&catalogMethod=BaskaBirKume", token))
+            .ReadAsJsonAsync<AdminParameterEndpoints.ParameterAuditDto[]>();
+
+        other.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task The_sets_listing_says_how_each_one_is_addressed()
     {
         await SeedAsync("G");
