@@ -69,6 +69,12 @@ public sealed class CentralApiDbContext : DbContext
     /// </summary>
     public DbSet<ParameterValue> ParameterValues => Set<ParameterValue>();
 
+    /// <summary>Parametre Yönetimi (P1d) — per-scope change counter, so clients can poll cheaply.</summary>
+    public DbSet<ParameterRevision> ParameterRevisions => Set<ParameterRevision>();
+
+    /// <summary>Parametre Yönetimi (P1d) — append-only record of who changed which parameter.</summary>
+    public DbSet<ParameterAuditEntry> ParameterAudit => Set<ParameterAuditEntry>();
+
     /// <summary>Faz 15.5 — Mikro <c>_ERPB_PARAMETRELER</c> snapshot mirror, one row per parameter.</summary>
     public DbSet<ParameterRecord> Parameters => Set<ParameterRecord>();
 
@@ -818,6 +824,48 @@ public sealed class CentralApiDbContext : DbContext
 
             // The panel and the mirror both read "everything for this company".
             b.HasIndex(x => new { x.TenantId, x.ErpCompanyId });
+        });
+
+        modelBuilder.Entity<ParameterRevision>(b =>
+        {
+            b.ToTable("parameter_revisions");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Scope1).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Scope2).IsRequired().HasMaxLength(100);
+
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ErpCompany).WithMany().HasForeignKey(x => x.ErpCompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.MobileUser).WithMany().HasForeignKey(x => x.MobileUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One counter per scope — the same tuple the values themselves are addressed by.
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.MobileUserId, x.Scope1, x.Scope2 })
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<ParameterAuditEntry>(b =>
+        {
+            b.ToTable("parameter_audit");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Scope1).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Scope2).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Outcome).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Source).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Actor).IsRequired().HasMaxLength(200);
+
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The catalogue entry is never deleted (withdrawn ones are marked), so the trail
+            // keeps pointing at a real parameter for as long as it is retained.
+            b.HasOne(x => x.CatalogEntry).WithMany().HasForeignKey(x => x.ParameterCatalogEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // "What happened to this parameter" and "what changed lately" are the two questions.
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.ParameterCatalogEntryId, x.AtUtc });
+            b.HasIndex(x => new { x.TenantId, x.AtUtc });
         });
 
         modelBuilder.Entity<ParameterRecord>(b =>

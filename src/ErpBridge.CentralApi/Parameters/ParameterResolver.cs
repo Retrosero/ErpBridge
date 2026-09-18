@@ -46,6 +46,16 @@ public sealed class ParameterResolver(CentralApiDbContext db)
         public DateTimeOffset? OverriddenAtUtc { get; init; }
     }
 
+    /// <summary>
+    /// Who is making a change and why. Required on every write: a parameter can decide whether a
+    /// plasiyer may edit a price or which warehouse a document leaves from, so an unattributed
+    /// change is the kind that costs money before anyone notices.
+    /// </summary>
+    /// <param name="Source">One of <see cref="ParameterChangeSources"/>.</param>
+    /// <param name="AdminUserId">Admin behind the change, when it came from the panel.</param>
+    /// <param name="Actor">Readable actor when no admin is behind it, e.g. an import batch.</param>
+    public readonly record struct ChangeContext(string Source, Guid? AdminUserId = null, string Actor = "");
+
     /// <summary>Raised when a scope cannot address the parameter it is used with.</summary>
     public sealed class ScopeMismatchException(string message) : InvalidOperationException(message);
 
@@ -113,7 +123,8 @@ public sealed class ParameterResolver(CentralApiDbContext db)
     /// </summary>
     /// <exception cref="ScopeMismatchException">The scope cannot address this parameter.</exception>
     public async Task<WriteOutcome> SetAsync(
-        ParameterScope scope, Guid catalogEntryId, string value, CancellationToken ct = default)
+        ParameterScope scope, Guid catalogEntryId, string value, ChangeContext by,
+        CancellationToken ct = default)
     {
         var entry = await db.ParameterCatalog.FirstOrDefaultAsync(e => e.Id == catalogEntryId, ct)
             ?? throw new ScopeMismatchException($"No catalogue entry {catalogEntryId}.");
@@ -128,6 +139,9 @@ public sealed class ParameterResolver(CentralApiDbContext db)
 
         var isDefault = string.Equals(value, entry.DefaultValue, StringComparison.Ordinal);
 
+        var previous = stored?.Value;
+        WriteOutcome outcome;
+
         switch (stored, isDefault)
         {
             case (null, true):
@@ -135,8 +149,8 @@ public sealed class ParameterResolver(CentralApiDbContext db)
 
             case (not null, true):
                 db.ParameterValues.Remove(stored);
-                await db.SaveChangesAsync(ct);
-                return WriteOutcome.Deleted;
+                outcome = WriteOutcome.Deleted;
+                break;
 
             case (null, false):
                 db.ParameterValues.Add(new ParameterValue
@@ -149,8 +163,8 @@ public sealed class ParameterResolver(CentralApiDbContext db)
                     Scope2 = scope.Scope2,
                     Value = value,
                 });
-                await db.SaveChangesAsync(ct);
-                return WriteOutcome.Inserted;
+                outcome = WriteOutcome.Inserted;
+                break;
 
             case (not null, false) when string.Equals(stored.Value, value, StringComparison.Ordinal):
                 return WriteOutcome.Unchanged;
@@ -158,20 +172,108 @@ public sealed class ParameterResolver(CentralApiDbContext db)
             default:
                 stored!.Value = value;
                 stored.UpdatedAtUtc = DateTimeOffset.UtcNow;
-                await db.SaveChangesAsync(ct);
-                return WriteOutcome.Updated;
+                outcome = WriteOutcome.Updated;
+                break;
         }
+
+        // The counter and the trail move with the value in one save: a client that sees an
+        // unchanged revision has to be able to trust that nothing moved.
+        await BumpRevisionAsync(scope, ct);
+        Record(scope, entry, outcome, previous, outcome == WriteOutcome.Deleted ? null : value, by);
+
+        await db.SaveChangesAsync(ct);
+        return outcome;
     }
+
+    /// <summary>
+    /// Raises the scope counter, creating it on first use. Clients compare this one number
+    /// instead of pulling a set that runs to 1,801 parameters for a single mobile user (D9).
+    /// </summary>
+    private async Task BumpRevisionAsync(ParameterScope scope, CancellationToken ct)
+    {
+        var revision = await db.ParameterRevisions.FirstOrDefaultAsync(r =>
+            r.TenantId == scope.TenantId
+            && r.ErpCompanyId == scope.ErpCompanyId
+            && r.MobileUserId == scope.MobileUserId
+            && r.Scope1 == scope.Scope1
+            && r.Scope2 == scope.Scope2, ct);
+
+        if (revision is null)
+        {
+            db.ParameterRevisions.Add(new ParameterRevision
+            {
+                TenantId = scope.TenantId,
+                ErpCompanyId = scope.ErpCompanyId,
+                MobileUserId = scope.MobileUserId,
+                Scope1 = scope.Scope1,
+                Scope2 = scope.Scope2,
+                Revision = 1,
+            });
+            return;
+        }
+
+        revision.Revision++;
+        revision.UpdatedAtUtc = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>
+    /// Appends the change to the trail. A credential value is replaced by a placeholder: an audit
+    /// trail that records passwords in clear is worse than no audit trail.
+    /// </summary>
+    private void Record(
+        ParameterScope scope, ParameterCatalogEntry entry, WriteOutcome outcome,
+        string? oldValue, string? newValue, ChangeContext by)
+    {
+        var masked = entry.Editor == SecretEditor;
+
+        db.ParameterAudit.Add(new ParameterAuditEntry
+        {
+            TenantId = scope.TenantId,
+            ErpCompanyId = scope.ErpCompanyId,
+            ParameterCatalogEntryId = entry.Id,
+            MobileUserId = scope.MobileUserId,
+            Scope1 = scope.Scope1,
+            Scope2 = scope.Scope2,
+            Outcome = outcome.ToString(),
+            OldValue = masked ? Mask(oldValue) : oldValue,
+            NewValue = masked ? Mask(newValue) : newValue,
+            IsMasked = masked,
+            Source = by.Source,
+            AdminUserId = by.AdminUserId,
+            Actor = by.Actor,
+        });
+    }
+
+    /// <summary>Editor kind the catalogue uses for a credential.</summary>
+    private const string SecretEditor = "secret";
+
+    /// <summary>Keeps "was empty" and "held something" apart without revealing the secret.</summary>
+    private static string? Mask(string? value) =>
+        value is null ? null : value.Length == 0 ? string.Empty : "\u2022\u2022\u2022\u2022\u2022\u2022";
+
+    /// <summary>
+    /// The scope counter, or 0 when nothing has ever changed in it. A client holding this number
+    /// knows its copy is current.
+    /// </summary>
+    public async Task<long> RevisionAsync(ParameterScope scope, CancellationToken ct = default) =>
+        await db.ParameterRevisions.AsNoTracking()
+            .Where(r => r.TenantId == scope.TenantId
+                        && r.ErpCompanyId == scope.ErpCompanyId
+                        && r.MobileUserId == scope.MobileUserId
+                        && r.Scope1 == scope.Scope1
+                        && r.Scope2 == scope.Scope2)
+            .Select(r => r.Revision)
+            .FirstOrDefaultAsync(ct);
 
     /// <summary>Puts a parameter back to its catalogue default by removing any stored deviation.</summary>
     public async Task<WriteOutcome> ResetAsync(
-        ParameterScope scope, Guid catalogEntryId, CancellationToken ct = default)
+        ParameterScope scope, Guid catalogEntryId, ChangeContext by, CancellationToken ct = default)
     {
         var entry = await db.ParameterCatalog.AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == catalogEntryId, ct)
             ?? throw new ScopeMismatchException($"No catalogue entry {catalogEntryId}.");
 
-        return await SetAsync(scope, catalogEntryId, entry.DefaultValue, ct);
+        return await SetAsync(scope, catalogEntryId, entry.DefaultValue, by, ct);
     }
 
     /// <summary>
