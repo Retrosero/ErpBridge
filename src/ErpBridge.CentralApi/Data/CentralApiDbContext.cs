@@ -63,6 +63,12 @@ public sealed class CentralApiDbContext : DbContext
     /// </summary>
     public DbSet<ParameterCatalogEntry> ParameterCatalog => Set<ParameterCatalogEntry>();
 
+    /// <summary>
+    /// Parametre Yönetimi (P1b) — parameters a customer has moved away from their catalogue
+    /// default. Only deviations are stored, exactly as Fora does it.
+    /// </summary>
+    public DbSet<ParameterValue> ParameterValues => Set<ParameterValue>();
+
     /// <summary>Faz 15.5 — Mikro <c>_ERPB_PARAMETRELER</c> snapshot mirror, one row per parameter.</summary>
     public DbSet<ParameterRecord> Parameters => Set<ParameterRecord>();
 
@@ -763,6 +769,55 @@ public sealed class CentralApiDbContext : DbContext
 
             // The panel lists a program's parameters in editor order.
             b.HasIndex(x => new { x.Program, x.EditorOrder });
+        });
+
+        modelBuilder.Entity<ParameterValue>(b =>
+        {
+            b.ToTable("parameter_values");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Scope1).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Scope2).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Value).IsRequired();
+
+            b.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A company is never deleted out from under its values; removing one has to be a
+            // deliberate act that deals with them first.
+            b.HasOne(x => x.ErpCompany)
+                .WithMany()
+                .HasForeignKey(x => x.ErpCompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            b.HasOne(x => x.CatalogEntry)
+                .WithMany()
+                .HasForeignKey(x => x.ParameterCatalogEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Deleting a mobile user keeps their values for history; they simply stop being
+            // published (D5b). Cascading would erase the record of what was configured.
+            b.HasOne(x => x.MobileUser)
+                .WithMany()
+                .HasForeignKey(x => x.MobileUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One value per parameter per scope instance per company. The catalogue entry stands
+            // for (program, AnaGrubu, AltGrubu, ParametreID), which alone is not unique across
+            // sets — 994 of the 3,679 (program, id) pairs address more than one parameter.
+            b.HasIndex(x => new
+            {
+                x.TenantId,
+                x.ErpCompanyId,
+                x.ParameterCatalogEntryId,
+                x.MobileUserId,
+                x.Scope1,
+                x.Scope2,
+            }).IsUnique();
+
+            // The panel and the mirror both read "everything for this company".
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId });
         });
 
         modelBuilder.Entity<ParameterRecord>(b =>

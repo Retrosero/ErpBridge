@@ -13,7 +13,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
 | P0 — Katalog çıkarımı (ön koşul) | 7 | 5 | 🔄 |
-| P1 — Merkez veri modeli ve API | 7 | 1 | 🔄 |
+| P1 — Merkez veri modeli ve API | 7 | 2 | 🔄 |
 | P2 — Panel (Admin) parametre ekranı | 8 | 0 | ⬜ |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 0 | ⬜ |
 | P4 — Sipariş Cepte: öncelikli öbekler | 6 | 0 | ⬜ |
@@ -37,7 +37,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P0e | Çıkarım script'i + altın dosya testi | ✅ | — | `tools/ForaCatalogExtractor` (Roslyn; dört ZPL şablonu kaçırılmış tırnakla bitiyor, regex sessizce bozuyor). `--check` bayat katalogda sıfırdan farklı kodla çıkar. `tests/ErpBridge.ForaCatalog.Tests` 13 test: bayt bayt altın dosya, iki kez çalıştırınca aynı çıktı, kapsam alanı iddiaları, çakışma kayıtları, Türkçe ve kaçırılmış tırnak korunumu, hatalı girdilerin reddi. Proje merkezi paket yönetiminin dışında: `Directory.Packages.props` geçişli sabitleme açtığı için Roslyn'i oraya eklemek EF Design üzerinden Roslyn çeken her projenin kilit dosyasını yeniden yazardı |
 | P0f | El ile gözden geçirme raporu | ⬜ | — | |
 | P1a | `parameter_catalog_entries` + tohumlama | ✅ | — | Katalog derlemeye gömülü (`catalog/parameters/*.json`, ~1.5 MB); API konteynerde çalışıyor ve dosyadan okusa katalog kaybolabilirdi. **4.708 satır** tohumlanıyor — 4.713 tanımın gölgelenmiş 5'i hariç, çünkü onlar Fora'da da okunamıyor ve `(set, id)` anahtarını bozarlardı. Tohumlama **satır silmiyor**: geri çekilen parametre `IsDeprecated` ile işaretleniyor (D2), geri gelirse canlandırılıyor. `IsImplemented` yeniden tohumlamada korunuyor (D16) — onu katalog değil ürün bilir. Testlerde kapalı (`Parameters:SeedCatalogOnStartup`), 4.700 satırı her test sınıfı için eklemek ispatladığından pahalı; tohumlama mantığı doğrudan test ediliyor |
-| P1b | `parameter_values` + migration | ⬜ | — | |
+| P1b | `parameter_values` + migration | ✅ | — | Yalnız **sapmalar** saklanıyor (D3, Fora semantiği). Adresleme, katalog girdisine yabancı anahtarla yapılıyor: o girdi `(program, AnaGrubu, AltGrubu, ParametreID)` dörtlüsünü belirliyor, çünkü `(program, id)` çifti **tekil değil** — 3.679 çiftin 994'ü birden çok parametreyi gösteriyor. Kapsam iki kolonla taşınıyor: `MobileUserId` (D5, kullanıcı adı değil kimlik) ve `Scope1`/`Scope2` (şablon adı, kriter adı, rapor kodu; yazıcı şablonu alanı ikisini birden kullanıyor — katalogda ölçüldü, en fazla iki kapsam kolonu var). `ErpCompanyId` zorunlu (D3b). Silme davranışı: kiracı cascade, firma ve katalog girdisi restrict, mobil kullanıcı **restrict** — silinen kullanıcının değerleri geçmiş olarak kalır (D5b). Testler SQLite ile koşuyor; in-memory sağlayıcı benzersiz indeksi yok sayıyor |
 | P1c | `ParameterResolver` (Fora semantiği) | ⬜ | — | |
 | P1d | `parameter_revisions` + `parameter_audit` | ⬜ | — | |
 | P1e | Admin API uçları | ⬜ | — | |
