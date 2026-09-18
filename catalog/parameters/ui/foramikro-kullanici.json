@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceBuild": "unknown",
   "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.Ayarlar/KullaniciDuzenleme.cs",
   "sourceType": "KullaniciDuzenleme",
@@ -88,7 +88,9 @@
       "control": "BankaAktarimiYapabilir",
       "controlType": "CheckEdit",
       "order": 0,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BankaAktarimiParametreleriDuzenleyebilir",
@@ -103,7 +105,9 @@
       "control": "BankaAktarimiParametreleriDuzenleyebilir",
       "controlType": "CheckEdit",
       "order": 1,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiIslemGirisiYapabilir",
@@ -118,13 +122,15 @@
       "control": "DepoKaliteKontrolYonetimiIslemGirisiYapabilir",
       "controlType": "CheckEdit",
       "order": 2,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiKaynakDepo",
       "catalogMethod": "ForaMikroKullanici",
       "label": "Kaynak depo :",
-      "editor": "choice",
+      "editor": "reference",
       "tab": "xtraTabPage2",
       "tabPath": [
         "Parametreler",
@@ -133,7 +139,10 @@
       "control": "DepoKaliteKontrolYonetimiKaynakDepo",
       "controlType": "ComboBox",
       "order": 3,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "referenceKind": "depo",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiKaynakDepoDegistirebilir",
@@ -148,13 +157,15 @@
       "control": "DepoKaliteKontrolYonetimiKaynakDepoDegistirebilir",
       "controlType": "CheckEdit",
       "order": 4,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiOnayDepo",
       "catalogMethod": "ForaMikroKullanici",
       "label": "Onay depo :",
-      "editor": "choice",
+      "editor": "reference",
       "tab": "xtraTabPage2",
       "tabPath": [
         "Parametreler",
@@ -163,7 +174,10 @@
       "control": "DepoKaliteKontrolYonetimiOnayDepo",
       "controlType": "ComboBox",
       "order": 5,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "referenceKind": "depo",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiOnayDepoDegistirebilir",
@@ -178,13 +192,15 @@
       "control": "DepoKaliteKontrolYonetimiOnayDepoDegistirebilir",
       "controlType": "CheckEdit",
       "order": 6,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiRetDepo",
       "catalogMethod": "ForaMikroKullanici",
       "label": "Ret depo :",
-      "editor": "choice",
+      "editor": "reference",
       "tab": "xtraTabPage2",
       "tabPath": [
         "Parametreler",
@@ -193,7 +209,10 @@
       "control": "DepoKaliteKontrolYonetimiRetDepo",
       "controlType": "ComboBox",
       "order": 7,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "referenceKind": "depo",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiRetDepoDegistirebilir",
@@ -208,13 +227,15 @@
       "control": "DepoKaliteKontrolYonetimiRetDepoDegistirebilir",
       "controlType": "CheckEdit",
       "order": 8,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiHurdaDepo",
       "catalogMethod": "ForaMikroKullanici",
       "label": "Hurda depo :",
-      "editor": "choice",
+      "editor": "reference",
       "tab": "xtraTabPage2",
       "tabPath": [
         "Parametreler",
@@ -223,7 +244,10 @@
       "control": "DepoKaliteKontrolYonetimiHurdaDepo",
       "controlType": "ComboBox",
       "order": 9,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "referenceKind": "depo",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiHurdaDepoDegistirebilir",
@@ -238,13 +262,15 @@
       "control": "DepoKaliteKontrolYonetimiHurdaDepoDegistirebilir",
       "controlType": "CheckEdit",
       "order": 10,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiIadeDepo",
       "catalogMethod": "ForaMikroKullanici",
       "label": "İade depo :",
-      "editor": "choice",
+      "editor": "reference",
       "tab": "xtraTabPage2",
       "tabPath": [
         "Parametreler",
@@ -253,7 +279,10 @@
       "control": "DepoKaliteKontrolYonetimiIadeDepo",
       "controlType": "ComboBox",
       "order": 11,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "referenceKind": "depo",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiIadeDepoDegistirebilir",
@@ -268,7 +297,9 @@
       "control": "DepoKaliteKontrolYonetimiIadeDepoDegistirebilir",
       "controlType": "CheckEdit",
       "order": 12,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiDepolarArasiSevkEvrakSeri",
@@ -283,7 +314,9 @@
       "control": "DepoKaliteKontrolYonetimiDepolarArasiSevkEvrakSeri",
       "controlType": "TextEdit",
       "order": 13,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiGunSayisi",
@@ -298,7 +331,9 @@
       "control": "DepoKaliteKontrolYonetimiGunSayisi",
       "controlType": "SpinEdit",
       "order": 14,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiGorebilir",
@@ -313,7 +348,9 @@
       "control": "DepoKaliteKontrolYonetimiKayitHikayesiGorebilir",
       "controlType": "CheckEdit",
       "order": 15,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiGorebilirButunKullanicilar",
@@ -328,7 +365,9 @@
       "control": "DepoKaliteKontrolYonetimiKayitHikayesiGorebilirButunKullanicilar",
       "controlType": "CheckEdit",
       "order": 16,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiIslemSilebilir",
@@ -343,7 +382,9 @@
       "control": "DepoKaliteKontrolYonetimiKayitHikayesiIslemSilebilir",
       "controlType": "CheckEdit",
       "order": 17,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiIslemSilebilirButunKullanicilar",
@@ -358,7 +399,9 @@
       "control": "DepoKaliteKontrolYonetimiKayitHikayesiIslemSilebilirButunKullanicilar",
       "controlType": "CheckEdit",
       "order": 18,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiBaslangicTarihi",
@@ -373,7 +416,9 @@
       "control": "DepoKaliteKontrolYonetimiKayitHikayesiBaslangicTarihi",
       "controlType": "SpinEdit",
       "order": 19,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopTuketiciKodu",
@@ -388,7 +433,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopTuketiciKodu",
       "controlType": "CheckEdit",
       "order": 20,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiEvrakSeri",
@@ -403,7 +450,9 @@
       "control": "TopluBakimTalepEvragiGirisiEvrakSeri",
       "controlType": "TextEdit",
       "order": 21,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopTuketiciAdi",
@@ -418,7 +467,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopTuketiciAdi",
       "controlType": "CheckEdit",
       "order": 22,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTeslimEdilmeSekli",
@@ -433,7 +484,22 @@
       "control": "TopluBakimTalepEvragiGirisiTeslimEdilmeSekli",
       "controlType": "ComboBox",
       "order": 23,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Elden"
+        },
+        {
+          "value": "1",
+          "label": "Kargo"
+        },
+        {
+          "value": "2",
+          "label": "Kurye"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopEvrakSeri",
@@ -448,7 +514,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopEvrakSeri",
       "controlType": "CheckEdit",
       "order": 24,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiMusteriBilgilendirmeSekli",
@@ -463,7 +531,22 @@
       "control": "TopluBakimTalepEvragiGirisiMusteriBilgilendirmeSekli",
       "controlType": "ComboBox",
       "order": 25,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Mail"
+        },
+        {
+          "value": "1",
+          "label": "Sms"
+        },
+        {
+          "value": "2",
+          "label": "Mail ve Sms"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopEvrakTarih",
@@ -478,7 +561,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopEvrakTarih",
       "controlType": "CheckEdit",
       "order": 26,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTalepGelisSekli",
@@ -493,7 +578,38 @@
       "control": "TopluBakimTalepEvragiGirisiTalepGelisSekli",
       "controlType": "ComboBox",
       "order": 27,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Telefon"
+        },
+        {
+          "value": "1",
+          "label": "Faks"
+        },
+        {
+          "value": "2",
+          "label": "Mail"
+        },
+        {
+          "value": "3",
+          "label": "Elden"
+        },
+        {
+          "value": "4",
+          "label": "Kargo"
+        },
+        {
+          "value": "5",
+          "label": "Kurye"
+        },
+        {
+          "value": "6",
+          "label": "Bayii"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopBelgeNo",
@@ -508,7 +624,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopBelgeNo",
       "controlType": "CheckEdit",
       "order": 28,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiKargo",
@@ -524,7 +642,9 @@
       "controlType": "KargoSecimi",
       "order": 29,
       "labelSource": "labelAbove",
-      "referenceKind": "kargo"
+      "referenceKind": "kargo",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopBelgeTarihi",
@@ -539,7 +659,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopBelgeTarihi",
       "controlType": "CheckEdit",
       "order": 30,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiCari",
@@ -555,7 +677,9 @@
       "controlType": "CariSecimi",
       "order": 31,
       "labelSource": "labelAbove",
-      "referenceKind": "cari"
+      "referenceKind": "cari",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopTalepGelisSekli",
@@ -570,7 +694,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopTalepGelisSekli",
       "controlType": "CheckEdit",
       "order": 32,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiServisTuru",
@@ -585,7 +711,22 @@
       "control": "TopluBakimTalepEvragiGirisiServisTuru",
       "controlType": "ComboBox",
       "order": 33,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Ücretli"
+        },
+        {
+          "value": "1",
+          "label": "Garanti dahili"
+        },
+        {
+          "value": "2",
+          "label": "Diğer"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopKargo",
@@ -600,7 +741,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopKargo",
       "controlType": "CheckEdit",
       "order": 34,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiServisYeri",
@@ -615,7 +758,30 @@
       "control": "TopluBakimTalepEvragiGirisiServisYeri",
       "controlType": "ComboBox",
       "order": 35,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Şirkette"
+        },
+        {
+          "value": "1",
+          "label": "Müşteride"
+        },
+        {
+          "value": "2",
+          "label": "Dışarda"
+        },
+        {
+          "value": "3",
+          "label": "Diğer"
+        },
+        {
+          "value": "4",
+          "label": "Şubede"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopBayi",
@@ -630,7 +796,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopBayi",
       "controlType": "CheckEdit",
       "order": 36,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiEkipKodu",
@@ -646,7 +814,9 @@
       "controlType": "EkipKoduSecimi",
       "order": 37,
       "labelSource": "labelAbove",
-      "referenceKind": "ekipKodu"
+      "referenceKind": "ekipKodu",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopKargoNo",
@@ -661,7 +831,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopKargoNo",
       "controlType": "CheckEdit",
       "order": 38,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopIrsaliyeNo",
@@ -676,7 +848,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopIrsaliyeNo",
       "controlType": "CheckEdit",
       "order": 39,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiDepo",
@@ -692,7 +866,9 @@
       "controlType": "DepoSecimi",
       "order": 40,
       "labelSource": "labelAbove",
-      "referenceKind": "depo"
+      "referenceKind": "depo",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopServisTuru",
@@ -707,7 +883,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopServisTuru",
       "controlType": "CheckEdit",
       "order": 41,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiVarsayilanHizmetKodu",
@@ -722,7 +900,9 @@
       "control": "TopluBakimTalepEvragiGirisiVarsayilanHizmetKodu",
       "controlType": "TextEdit",
       "order": 42,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopServisYeri",
@@ -737,7 +917,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopServisYeri",
       "controlType": "CheckEdit",
       "order": 43,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiVarsayilanSure",
@@ -752,7 +934,9 @@
       "control": "TopluBakimTalepEvragiGirisiVarsayilanSure",
       "controlType": "SpinEdit",
       "order": 44,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopTeslimSekli",
@@ -767,7 +951,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopTeslimSekli",
       "controlType": "CheckEdit",
       "order": 45,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiVarsayilanMiktar",
@@ -782,7 +968,9 @@
       "control": "TopluBakimTalepEvragiGirisiVarsayilanMiktar",
       "controlType": "SpinEdit",
       "order": 46,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopBilgilendirmeSekli",
@@ -797,7 +985,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopBilgilendirmeSekli",
       "controlType": "CheckEdit",
       "order": 47,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopEkipKodu",
@@ -812,7 +1002,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopEkipKodu",
       "controlType": "CheckEdit",
       "order": 48,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "TopluBakimTalepEvragiGirisiTabStopDepo",
@@ -827,7 +1019,9 @@
       "control": "TopluBakimTalepEvragiGirisiTabStopDepo",
       "controlType": "CheckEdit",
       "order": 49,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_GirisiYapabilir",
@@ -843,7 +1037,9 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_GirisiYapabilir",
       "controlType": "CheckEdit",
       "order": 50,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlServer",
@@ -859,7 +1055,9 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlServer",
       "controlType": "TextEdit",
       "order": 51,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlKullaniciAdi",
@@ -875,13 +1073,15 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlKullaniciAdi",
       "controlType": "TextEdit",
       "order": 52,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlSifre",
       "catalogMethod": "ForaMikroKullanici",
       "label": "Sql şifresi :",
-      "editor": "text",
+      "editor": "secret",
       "tab": "xtraTabPage6",
       "tabPath": [
         "Parametreler",
@@ -891,7 +1091,10 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlSifre",
       "controlType": "TextEdit",
       "order": 53,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": [],
+      "secretSource": "name"
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlDBName",
@@ -907,7 +1110,9 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlDBName",
       "controlType": "TextEdit",
       "order": 54,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_StokSorgusu",
@@ -923,7 +1128,9 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_StokSorgusu",
       "controlType": "TextEdit",
       "order": 55,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_HedefDepoNo",
@@ -939,7 +1146,9 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_HedefDepoNo",
       "controlType": "SpinEdit",
       "order": 56,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_EvrakSeri",
@@ -955,7 +1164,9 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_EvrakSeri",
       "controlType": "TextEdit",
       "order": 57,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_EvrakSira",
@@ -971,7 +1182,9 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_EvrakSira",
       "controlType": "SpinEdit",
       "order": 58,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_KacDakikadaBir",
@@ -987,7 +1200,9 @@
       "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_KacDakikadaBir",
       "controlType": "SpinEdit",
       "order": 59,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     }
   ],
   "gaps": []

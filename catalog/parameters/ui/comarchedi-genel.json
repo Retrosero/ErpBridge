@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceBuild": "unknown",
   "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.Aktarimlar.ComarchEdi/ComarchEdiGenelParametrelerForm.cs",
   "sourceType": "ComarchEdiGenelParametrelerForm",
@@ -21,19 +21,24 @@
       "control": "KullaniciAdi",
       "controlType": "TextEdit",
       "order": 0,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Sifre",
       "catalogMethod": "ComarchEdiGenelParametreler",
       "label": "Şifre : ",
-      "editor": "text",
+      "editor": "secret",
       "tab": null,
       "tabPath": [],
       "control": "Sifre",
       "controlType": "TextEdit",
       "order": 1,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": [],
+      "secretSource": "name"
     },
     {
       "parameter": "AktarilanKayitlariOkunduOlarakIsaretle",
@@ -45,7 +50,9 @@
       "control": "AktarilanKayitlariOkunduOlarakIsaretle",
       "controlType": "CheckEdit",
       "order": 2,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "ZamanAsimi",
@@ -57,7 +64,9 @@
       "control": "ZamanAsimi",
       "controlType": "SpinEdit",
       "order": 3,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SenkronizasyonSuresi",
@@ -69,7 +78,9 @@
       "control": "SenkronizasyonSuresi",
       "controlType": "SpinEdit",
       "order": 4,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SpecialAlan1",
@@ -81,7 +92,9 @@
       "control": "SpecialAlan1",
       "controlType": "TextEdit",
       "order": 5,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SpecialAlan2",
@@ -93,7 +106,9 @@
       "control": "SpecialAlan2",
       "controlType": "TextEdit",
       "order": 6,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SpecialAlan3",
@@ -105,7 +120,9 @@
       "control": "SpecialAlan3",
       "controlType": "TextEdit",
       "order": 7,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "EMailSmtpServer",
@@ -117,7 +134,9 @@
       "control": "EMailSmtpServer",
       "controlType": "TextEdit",
       "order": 8,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "EMailSmtpPort",
@@ -129,7 +148,9 @@
       "control": "EMailSmtpPort",
       "controlType": "SpinEdit",
       "order": 9,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "EMailSmtpUseSSL",
@@ -141,7 +162,9 @@
       "control": "EMailSmtpUseSSL",
       "controlType": "CheckEdit",
       "order": 10,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "EMailGorunenAd",
@@ -153,7 +176,9 @@
       "control": "EMailGorunenAd",
       "controlType": "TextEdit",
       "order": 11,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "EMailAdress",
@@ -165,19 +190,24 @@
       "control": "EMailAdress",
       "controlType": "TextEdit",
       "order": 12,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "EMailSmtpPassword",
       "catalogMethod": "ComarchEdiGenelParametreler",
       "label": "Şifre :",
-      "editor": "text",
+      "editor": "secret",
       "tab": null,
       "tabPath": [],
       "control": "EMailSmtpPassword",
       "controlType": "TextEdit",
       "order": 13,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": [],
+      "secretSource": "designer"
     }
   ],
   "gaps": []

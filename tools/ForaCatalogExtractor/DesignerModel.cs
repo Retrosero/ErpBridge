@@ -32,9 +32,26 @@ public sealed class DesignerControl(string name, string type)
     /// <summary>Position among the tab pages of its tab control.</summary>
     public int? TabOrder { get; set; }
 
+    /// <summary>
+    /// The designer masks this field (<c>UseSystemPasswordChar</c> or <c>PasswordChar</c>), so its
+    /// value is a credential and must never be rendered as ordinary text.
+    /// </summary>
+    public bool IsSecret { get; set; }
+
+    /// <summary>ERP list this control's items are loaded from, e.g. <c>Depo</c>. Null otherwise.</summary>
+    public string? ErpDataSource { get; set; }
+
+    /// <summary>Fixed options the designer builds inline, in declaration order. Empty otherwise.</summary>
+    public List<ControlOption> Options { get; } = [];
+
     public bool IsLabel => Type is "LabelControl" or "Label";
 
     public bool IsTabPage => Type == "XtraTabPage";
 
     public bool IsTabControl => Type == "XtraTabControl";
 }
+
+/// <summary>One entry of a fixed option list the designer builds in code.</summary>
+/// <param name="Value">Stored value, as it reaches <c>ParametreDegeri</c>.</param>
+/// <param name="Label">Text shown to the person.</param>
+public sealed record ControlOption(string Value, string Label);

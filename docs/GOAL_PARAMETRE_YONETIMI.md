@@ -296,7 +296,7 @@ Decompile edilmiş Fora kodundan makine okunur katalog üretmek. Kod yazılmadan
 | **P0a** | `ParametrelerDefault.cs` → `catalog/parameters/defaults.json`. 19 katalog seti, 13 program, 4.688 tanım: `program`, `scopeKind`, `scopeField`, sabit adresleme alanları, `id`, `name`, `default`. Ayrıştırma **Roslyn** ile — dört ZPL şablonu kaçırılmış tırnakla bitiyor (`…,N,\"`) ve satır bazlı regex'i sessizce bozuyor | 4.688 kayıt, tek biçimlilik doğrulaması, altın dosya testi |
 | **P0b** | `ForaAndroidKullaniciDuzenleme.cs` → `catalog/parameters/ui.akilli.json`. Sekme ağacı (iç içe, 65 sekme), kontrol→parametre bağlaması, kontrol tipinden editör tipi, etiket metni, okuma sırası | **1.782 parametre yerleşti, %100'ü etiketli.** Katalogdaki 1.796 farklı adın tamamı hesapta: 1.782 yerleşti, 13'ünün Fora'nın kendi editöründe karşılığı yok, `Sifre` hiçbir kontrole bağlanmıyor |
 | **P0c** | Diğer editör ekranları → `catalog/parameters/ui/*.json`. Toplu aktarım ekranları (~3.500 alan) P6'ya bırakıldı: panel ekranları orada yapılacak, varsayılan katalogları P0a'da zaten tamamlandı | 11 editör ekranı; her parametre hangi katalog setine ait olduğunu taşır |
-| **P0d** | Tip çıkarsama ve doğrulama: 9 editör tipi; Fora'nın seçici kontrollerinden `reference` + `referenceKind`; Fora'ya özgü ekranla düzenlenenler `composite` | Her parametrenin tipi var; `unknown` kalan yok (test sabitliyor) |
+| **P0d** | Tip çıkarsama ve doğrulama: 10 editör tipi. `reference` + `referenceKind` iki sinyalden (Fora'nın seçici kontrolleri **ve** ERP tablosundan beslenen combo'lar); sabit listelerin seçenekleri kaynaktan çıkarılır; Fora'nın maskelediği **ve** adı kimlik bilgisi söyleyen alanlar `secret`; Fora'ya özgü ekranla düzenlenen ya da birden çok kontrolde görünen değerler `composite` | Editör düzeni çıkarılan parametrelerin tipi var, `unknown` yok. **Aktarım setlerinin 2.777 tanımı tipsiz kalır** — tip yalnız editör ekranından gelir, o ekranlar P6'da. P0d ancak **P6a–P6c ile kapanır** |
 | **P0e** | Çıkarım script'i `scripts/extract-fora-catalog/` (tek komut, deterministik çıktı) + altın dosya testi + `README` | Yeniden üretilebilirlik |
 | **P0f** | El ile gözden geçirme raporu: eşleşmeyen parametreler, şüpheli tipler, `implemented: false` ilk listesi | DURUM'a not |
 
@@ -390,9 +390,9 @@ değiştiriyor; uçtan uca duman testi (panel → merkez → telefon) yeşil. Pl
 
 | # | Görev |
 |---|---|
-| **P6a** | `GenelAktarim` (1.486) — SQL ve TXT/CSV şablonları, panel ekranı |
-| **P6b** | `TahsilatAktarim` (756) |
-| **P6c** | `BankaAktarim` (503) |
+| **P6a** | `GenelAktarim` (1.486) — editör düzeni ve tip çıkarımı (P0d'nin kalanı), SQL ve TXT/CSV şablonları, panel ekranı |
+| **P6b** | `TahsilatAktarim` (756) — editör düzeni ve tip çıkarımı, panel ekranı |
+| **P6c** | `BankaAktarim` (503) — editör düzeni ve tip çıkarımı, panel ekranı |
 | **P6d** | `b2b` (11) + `ComarchEdiGenel` (14) + `ComarchEdiIliski` (7) |
 
 ---

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceBuild": "unknown",
   "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.Ayarlar/YaziciAyarlariForm.cs",
   "sourceType": "YaziciAyarlariForm",
@@ -57,7 +57,22 @@
       "control": "cb_basilacak_alan",
       "controlType": "ComboBox",
       "order": 0,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Üst başlık"
+        },
+        {
+          "value": "1",
+          "label": "Satır"
+        },
+        {
+          "value": "2",
+          "label": "Alt başlık"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "Kolon",
@@ -71,7 +86,9 @@
       "control": "se_kolon",
       "controlType": "SpinEdit",
       "order": 1,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Satir",
@@ -85,7 +102,9 @@
       "control": "se_satir",
       "controlType": "SpinEdit",
       "order": 2,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Genislik",
@@ -99,13 +118,15 @@
       "control": "se_genislik",
       "controlType": "SpinEdit",
       "order": 3,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Veri",
       "catalogMethod": "alanekle",
       "label": "Statik metin :",
-      "editor": "text",
+      "editor": "composite",
       "tab": "Alanlar",
       "tabPath": [
         "ALANLAR"
@@ -113,7 +134,20 @@
       "control": "te_statik_metin",
       "controlType": "TextEdit",
       "order": 4,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": [
+        {
+          "control": "cb_dinamik_veri",
+          "controlType": "ComboBox",
+          "editor": "choice"
+        },
+        {
+          "control": "cb_statik_veri",
+          "controlType": "ComboBox",
+          "editor": "choice"
+        }
+      ]
     },
     {
       "parameter": "Hizalama",
@@ -127,7 +161,22 @@
       "control": "cb_hizalama",
       "controlType": "ComboBox",
       "order": 5,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Sola daya"
+        },
+        {
+          "value": "1",
+          "label": "Ortala"
+        },
+        {
+          "value": "2",
+          "label": "Sağa daya"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "OnEk",
@@ -141,7 +190,9 @@
       "control": "te_on_ek",
       "controlType": "TextEdit",
       "order": 6,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DetayinBittigiYereKaydir",
@@ -155,7 +206,9 @@
       "control": "ce_detayin_bittigi_yere_kaydir",
       "controlType": "CheckEdit",
       "order": 7,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SonEk",
@@ -169,7 +222,9 @@
       "control": "te_son_ek",
       "controlType": "TextEdit",
       "order": 8,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "OndalikHaneSayisi",
@@ -183,7 +238,9 @@
       "control": "se_ondalik_hane_sayisi",
       "controlType": "SpinEdit",
       "order": 9,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SonunaParaBirimiEkle",
@@ -197,7 +254,9 @@
       "control": "ce_sonuna_para_birimi_ekle",
       "controlType": "CheckEdit",
       "order": 10,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BasinaParaBirimiEkle",
@@ -211,7 +270,9 @@
       "control": "ce_basina_para_birimi_ekle",
       "controlType": "CheckEdit",
       "order": 11,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "BinlikAyraci",
@@ -225,7 +286,9 @@
       "control": "te_binlik_ayraci",
       "controlType": "TextEdit",
       "order": 12,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "OndalikAyraci",
@@ -239,7 +302,9 @@
       "control": "te_ondalik_ayraci",
       "controlType": "TextEdit",
       "order": 13,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SayfaKolonSayisi",
@@ -253,7 +318,9 @@
       "control": "SayfaKolonSayisi",
       "controlType": "SpinEdit",
       "order": 14,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SayfaSatirSayisi",
@@ -267,7 +334,9 @@
       "control": "SayfaSatirSayisi",
       "controlType": "SpinEdit",
       "order": 15,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SayfaDokumSayisi",
@@ -281,7 +350,9 @@
       "control": "SayfaDokumSayisi",
       "controlType": "SpinEdit",
       "order": 16,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DetayBaslangicSatiri",
@@ -295,7 +366,9 @@
       "control": "DetayBaslangicSatiri",
       "controlType": "SpinEdit",
       "order": 17,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DetayBasiSatirSayisi",
@@ -309,7 +382,9 @@
       "control": "DetayBasiSatirSayisi",
       "controlType": "SpinEdit",
       "order": 18,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "DetayBirSayfadakiKayitSayisi",
@@ -323,7 +398,9 @@
       "control": "DetayBirSayfadakiKayitSayisi",
       "controlType": "SpinEdit",
       "order": 19,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "AltBasliklarSadeceSonSayfadaYazilsin",
@@ -337,7 +414,9 @@
       "control": "AltBasliklarSadeceSonSayfadaYazilsin",
       "controlType": "CheckEdit",
       "order": 20,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "StokGruplandirmaSecenegi",
@@ -351,7 +430,42 @@
       "control": "cb_gruplama_secenegi",
       "controlType": "ComboBox",
       "order": 21,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Stok kodu"
+        },
+        {
+          "value": "1",
+          "label": "Ana grup"
+        },
+        {
+          "value": "2",
+          "label": "Alt grup"
+        },
+        {
+          "value": "3",
+          "label": "Sektor"
+        },
+        {
+          "value": "4",
+          "label": "Marka"
+        },
+        {
+          "value": "5",
+          "label": "Model"
+        },
+        {
+          "value": "6",
+          "label": "Uretici"
+        },
+        {
+          "value": "7",
+          "label": "Reyon"
+        }
+      ],
+      "alternates": []
     }
   ],
   "gaps": [

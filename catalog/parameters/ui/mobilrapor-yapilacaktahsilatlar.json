@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceBuild": "unknown",
   "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.ForaAndroid/MobilRaporYapilacakTahsilatlarDuzenleme.cs",
   "sourceType": "MobilRaporYapilacakTahsilatlarDuzenleme",
@@ -40,7 +40,9 @@
       "control": "RaporAdi",
       "controlType": "TextEdit",
       "order": 0,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "RaporJson",
@@ -52,7 +54,9 @@
       "control": "AktifRapor",
       "controlType": "RaporYapilacakTahsilatlarSecenekleri",
       "order": 1,
-      "labelSource": "none"
+      "labelSource": "none",
+      "options": [],
+      "alternates": []
     }
   ],
   "gaps": [

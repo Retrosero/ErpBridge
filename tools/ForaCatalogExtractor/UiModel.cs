@@ -34,10 +34,17 @@ public static class EditorKinds
     public const string Reference = "reference";
 
     /// <summary>
-    /// Edited through a screen of its own in Fora (a report definition, for instance). The panel
-    /// cannot render it from this metadata and needs a purpose-built editor.
+    /// Edited through a screen of its own in Fora (a report definition, for instance), or shown in
+    /// different controls depending on another parameter. The panel cannot render it from this
+    /// metadata and needs a purpose-built editor.
     /// </summary>
     public const string Composite = "composite";
+
+    /// <summary>
+    /// A credential. Fora masks the field in its own designer; the panel must never render or log
+    /// it as ordinary text.
+    /// </summary>
+    public const string Secret = "secret";
 
     /// <summary>Bound to something the extractor could not classify.</summary>
     public const string Unknown = "unknown";
@@ -106,6 +113,44 @@ public sealed record UiParameter
     [JsonPropertyOrder(11)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ReferenceKind { get; init; }
+
+    /// <summary>
+    /// Fixed options for a <see cref="EditorKinds.Choice"/> field, when the designer builds the
+    /// list in code. Empty when Fora fills it at run time and the panel must supply its own.
+    /// </summary>
+    [JsonPropertyOrder(12)] public required IReadOnlyList<UiOption> Options { get; init; }
+
+    /// <summary>
+    /// Other controls the same value is shown in. Fora sometimes swaps the editor depending on a
+    /// second parameter — a printer field's value moves between a text box and two combo boxes
+    /// according to its data type — and the panel has to reproduce that rather than pick one.
+    /// </summary>
+    [JsonPropertyOrder(13)] public required IReadOnlyList<UiAlternate> Alternates { get; init; }
+
+    /// <summary>
+    /// How a <see cref="EditorKinds.Secret"/> was recognised: <c>designer</c> when Fora masks the
+    /// field itself, <c>name</c> when only the parameter's name says so. Fora leaves some
+    /// credentials unmasked, and rendering those as plain text would be worse than a false
+    /// positive here.
+    /// </summary>
+    [JsonPropertyOrder(14)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SecretSource { get; init; }
+}
+
+/// <summary>One fixed option of a choice field.</summary>
+public sealed record UiOption
+{
+    [JsonPropertyOrder(1)] public required string Value { get; init; }
+    [JsonPropertyOrder(2)] public required string Label { get; init; }
+}
+
+/// <summary>Another control the same parameter is shown in.</summary>
+public sealed record UiAlternate
+{
+    [JsonPropertyOrder(1)] public required string Control { get; init; }
+    [JsonPropertyOrder(2)] public required string ControlType { get; init; }
+    [JsonPropertyOrder(3)] public required string Editor { get; init; }
 }
 
 /// <summary>Why a parameter or control could not be placed, so nothing disappears silently.</summary>

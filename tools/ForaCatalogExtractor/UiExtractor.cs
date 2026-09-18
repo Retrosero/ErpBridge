@@ -15,7 +15,11 @@ namespace ErpBridge.Tools.ForaCatalog;
 /// </summary>
 public static class UiExtractor
 {
-    public const int SchemaVersion = 1;
+    /// <summary>
+    /// 2 — every parameter now carries the catalogue set it belongs to, plus options, alternates
+    /// and the secret/reference editor kinds. A version 1 document has none of those fields.
+    /// </summary>
+    public const int SchemaVersion = 2;
     private const string ParameterAccessor = "_GetParametre";
 
     /// <summary>Rough row height and column width used only to order table-cell controls.</summary>
@@ -57,7 +61,7 @@ public static class UiExtractor
         var gaps = new List<UiGap>();
         var bindings = ReadBindings(form, controls, gaps);
 
-        var bound = bindings.Select(b => b.Parameter).ToHashSet(StringComparer.Ordinal);
+        var bound = bindings.Primary.Select(b => b.Parameter).ToHashSet(StringComparer.Ordinal);
 
         // A form may bind a name the sets it edits do not declare — that means the mapping table
         // points at the wrong set, which is worth failing on rather than shipping a wrong panel.
@@ -89,8 +93,15 @@ public static class UiExtractor
         // on a form that actually uses tabs.
         var tabbed = tabs.Count > 0;
 
-        var placed = bindings
-            .Select(b => Place(b, declared[b.Parameter], tabbed, controls, tabByName, gaps))
+        var placed = bindings.Primary
+            .Select(b => Place(
+                b,
+                declared[b.Parameter],
+                bindings.Alternates.GetValueOrDefault(b.Parameter) ?? [],
+                tabbed,
+                controls,
+                tabByName,
+                gaps))
             .OrderBy(p => p.TabPath.Count == 0 ? 1 : 0)
             .ThenBy(p => string.Join(" / ", p.TabPath), StringComparer.Ordinal)
             .ThenBy(p => p.SortY)
@@ -122,13 +133,37 @@ public static class UiExtractor
 
     private sealed record Binding(string Parameter, string Control, string Accessor);
 
-    private static List<Binding> ReadBindings(
+    /// <summary>Controls, besides the primary one, that Fora shows the same parameter in.</summary>
+    private static Dictionary<string, List<Binding>> AlternatesByParameter(
+        IEnumerable<Binding> all, IReadOnlyDictionary<string, Binding> primary)
+    {
+        // A control that already owns a parameter of its own is not an alternate view of another:
+        // that is the load/save defect, reported separately, and listing it here would suggest
+        // the panel should render the same value twice.
+        var owned = primary.Values.Select(b => b.Control).ToHashSet(StringComparer.Ordinal);
+
+        return all.Where(b => primary.TryGetValue(b.Parameter, out var p)
+                              && !string.Equals(p.Control, b.Control, StringComparison.Ordinal)
+                              && !owned.Contains(b.Control))
+            .GroupBy(b => b.Parameter, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => g.DistinctBy(b => b.Control, StringComparer.Ordinal)
+                    .OrderBy(b => b.Control, StringComparer.Ordinal)
+                    .ToList(),
+                StringComparer.Ordinal);
+    }
+
+    private sealed record Bindings(List<Binding> Primary, Dictionary<string, List<Binding>> Alternates);
+
+    private static Bindings ReadBindings(
         ClassDeclarationSyntax form, Dictionary<string, DesignerControl> controls, List<UiGap> gaps)
     {
         // Load and save are collected separately so they can be compared. They should agree, and
         // where they do not, Fora has a copy-paste defect worth surfacing rather than inheriting.
         var loads = new Dictionary<string, Binding>(StringComparer.Ordinal);
         var saves = new Dictionary<string, Binding>(StringComparer.Ordinal);
+        var everyBinding = new List<Binding>();
 
         // Every parameter the form mentions at all. A parameter is also read in places that are not
         // assignments — guards, validation, enabling other fields — so "seen but not bound" has to be
@@ -170,10 +205,13 @@ public static class UiExtractor
             }
 
             var target = readsIntoControl ? loads : saves;
-            target[parameter] = new Binding(
+            var binding = new Binding(
                 parameter,
                 control.Name,
                 readsIntoControl ? accessor : accessor.Replace("_Set", "_Get", StringComparison.Ordinal));
+
+            target[parameter] = binding;
+            everyBinding.Add(binding);
         }
 
         // Saving is what actually reaches the database, so where the two directions disagree the
@@ -222,9 +260,9 @@ public static class UiExtractor
             });
         }
 
-        return byParameter.Values
-            .OrderBy(b => b.Parameter, StringComparer.Ordinal)
-            .ToList();
+        return new Bindings(
+            byParameter.Values.OrderBy(b => b.Parameter, StringComparer.Ordinal).ToList(),
+            AlternatesByParameter(everyBinding, byParameter));
     }
 
     private static List<UiTab> BuildTabs(Dictionary<string, DesignerControl> controls)
@@ -275,12 +313,35 @@ public static class UiExtractor
     private static Placed Place(
         Binding binding,
         string catalogMethod,
+        IReadOnlyList<Binding> alternates,
         bool tabbed,
         Dictionary<string, DesignerControl> controls,
         Dictionary<string, UiTab> tabsByName,
         List<UiGap> gaps)
     {
         var control = controls[binding.Control];
+
+        var alternateViews = alternates
+            .Where(a => controls.ContainsKey(a.Control))
+            .Select(a => new UiAlternate
+            {
+                Control = a.Control,
+                ControlType = controls[a.Control].Type,
+                Editor = EditorFor(controls[a.Control], a.Accessor, binding.Parameter),
+            })
+            .ToList();
+
+        // Fora swaps the editor for some values depending on another parameter — a printer field
+        // moves between a text box and two combo boxes according to its data type. Picking one of
+        // them would silently drop the other modes, so the value is marked as needing an editor
+        // of its own.
+        var editor = alternateViews.Select(a => a.Editor)
+            .Append(EditorFor(control, binding.Accessor, binding.Parameter))
+            .Distinct(StringComparer.Ordinal)
+            .Count() > 1
+            ? EditorKinds.Composite
+            : EditorFor(control, binding.Accessor, binding.Parameter);
+
         var tabPage = NearestTabPage(control, controls);
         var (y, x) = AbsolutePosition(control, controls);
         var (label, labelSource) = FindLabel(control, controls);
@@ -315,8 +376,15 @@ public static class UiExtractor
                 Parameter = binding.Parameter,
                 CatalogMethod = catalogMethod,
                 Label = label,
-                Editor = EditorFor(control.Type, binding.Accessor),
-                ReferenceKind = ReferenceKindByControl.GetValueOrDefault(control.Type),
+                Editor = editor,
+                ReferenceKind = ReferenceKindFor(control),
+                SecretSource = editor != EditorKinds.Secret
+                    ? null
+                    : control.IsSecret ? "designer" : "name",
+                Options = control.Options
+                    .Select(o => new UiOption { Value = o.Value, Label = o.Label })
+                    .ToList(),
+                Alternates = alternateViews,
                 Tab = tabPage?.Name,
                 TabPath = path,
                 Control = control.Name,
@@ -478,11 +546,65 @@ public static class UiExtractor
         controlType.StartsWith("Rapor", StringComparison.Ordinal)
         && controlType.EndsWith("Secenekleri", StringComparison.Ordinal);
 
-    private static string EditorFor(string controlType, string accessor) => controlType switch
+    /// <summary>
+    /// Names that mean a credential. Used only as a fallback: Fora masks some of its password
+    /// fields and not others, and a credential shown as plain text is the worse mistake.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex CredentialName =
+        new("sifre|password|parola", System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>A credential only if the field actually holds one — not a "ask for a password?" flag.</summary>
+    private static bool LooksLikeCredential(DesignerControl control, string parameter, string accessor) =>
+        CredentialName.IsMatch(parameter)
+        && BuiltInEditorFor(control.Type, accessor) is EditorKinds.Text or EditorKinds.MultilineText;
+
+    private static string EditorFor(DesignerControl control, string accessor, string parameter = "") => control switch
     {
-        _ when ReferenceKindByControl.ContainsKey(controlType) => EditorKinds.Reference,
-        _ when IsComposite(controlType) => EditorKinds.Composite,
-        _ => BuiltInEditorFor(controlType, accessor),
+        // Fora masks the field itself, which beats guessing a credential from its name.
+        { IsSecret: true } => EditorKinds.Secret,
+
+        _ when LooksLikeCredential(control, parameter, accessor) => EditorKinds.Secret,
+
+        // Either a bespoke picker control or a combo filled from an ERP table: both are codes
+        // chosen from a live list, not free text (D12).
+        _ when ReferenceKindFor(control) is not null => EditorKinds.Reference,
+
+        _ when IsComposite(control.Type) => EditorKinds.Composite,
+        _ => BuiltInEditorFor(control.Type, accessor),
+    };
+
+    /// <summary>
+    /// Which ERP list backs this control, from its own type or from the data call that fills it.
+    /// </summary>
+    private static string? ReferenceKindFor(DesignerControl control)
+    {
+        if (ReferenceKindByControl.TryGetValue(control.Type, out var byType))
+        {
+            return byType;
+        }
+
+        if (control.ErpDataSource is not { } source)
+        {
+            return null;
+        }
+
+        return ErpDataSourceKinds.TryGetValue(source, out var kind)
+            ? kind
+            : throw new CatalogExtractionException(
+                $"control '{control.Name}' is filled from '{source}Data', which is not mapped to an ERP list. "
+                + $"Add it to {nameof(ErpDataSourceKinds)} after deciding what it selects.");
+    }
+
+    /// <summary>ERP data classes Fora fills combo boxes from, and the list each one returns.</summary>
+    private static readonly Dictionary<string, string> ErpDataSourceKinds = new(StringComparer.Ordinal)
+    {
+        ["Depo"] = "depo",
+        ["Cari"] = "cari",
+        ["Kargo"] = "kargo",
+        ["Ekip"] = "ekipKodu",
+        ["MikroKullanici"] = "mikroKullanici",
+        ["YaziciAyarlari"] = "yaziciSablonu",
     };
 
     private static string BuiltInEditorFor(string controlType, string accessor) => controlType switch

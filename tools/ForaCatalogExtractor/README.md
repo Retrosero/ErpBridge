@@ -137,14 +137,32 @@ Sola bakan eşleşme, etiketin alanın **ilk satırıyla** hizalandığını var
 
 ### Editör tipleri
 
-`boolean` (965) · `text` (740) · `integer` (117) · `choice` (70) · `decimal` (29) · `color` (6) ·
-`reference` (4) · `composite` (4) · `multilineText` (1).
+`boolean` (965) · `text` (734) · `integer` (117) · `choice` (63) · `decimal` (29) ·
+`reference` (11) · `color` (6) · `secret` (5) · `composite` (5) · `multilineText` (1).
 
-`reference`, Fora'nın kendi seçici kontrollerinden geliyor (`CariSecimi`, `DepoSecimi`,
-`KargoSecimi`, `EkipKoduSecimi`); parametre ayrıca `referenceKind` taşıyor, çünkü bunlar serbest
-metin değil ERP listesinden seçilen kodlar (D12). `composite`, Fora'nın kendine özgü bir ekranıyla
-düzenlenen değer demek (rapor tanımı JSON'u); panel için ayrı bir editör gerekir — metin kutusu
-gibi göstermek yanlış olurdu.
+**`reference` iki sinyalden geliyor** ve parametre ayrıca `referenceKind` taşıyor, çünkü bunlar
+serbest metin değil ERP listesinden seçilen kodlar (D12):
+Fora'nın kendi seçici kontrolleri (`CariSecimi`, `DepoSecimi`, `KargoSecimi`, `EkipKoduSecimi`)
+**ve** `DataSource`'u bir ERP veri sınıfına inen combo'lar (`DepoData.GetDepolarDataTable` →
+5 depo alanı, `MikroKullaniciData` → 2 kullanıcı alanı). İkincisi olmadan bu 7 alan sıradan
+`choice` görünüyordu ve panel geçersiz kod girilmesine izin verirdi.
+
+**`choice` alanlarının seçenekleri de çıkarılıyor.** Fora listeleri kod içinde `new DataTable`
+ile kuruyor; 63 alanın **hepsinin** seçenekleri `options` alanında (`{value, label}`).
+
+**`secret` iki sinyalden geliyor** ve hangisi olduğu `secretSource` ile kaydediliyor: Fora'nın
+kendi maskelemesi (`UseSystemPasswordChar`, 3 alan) **ve** parametre adı (2 alan). Fora, EDI hesap
+şifresini ve SQL şifresini kendi ekranında maskelemiyor; bir kimlik bilgisini düz metin olarak
+göstermek yanlış pozitiften kötüdür. "Cari şifresi sorulsun mu" gibi bool bayraklar kapsam dışı.
+
+**`composite`**, Fora'nın kendine özgü bir ekranıyla düzenlenen (rapor tanımı JSON'u) **ya da
+birden çok kontrolde görünen** değer demek. Yazıcı alanının `Veri` değeri `VeriTipi`'ne göre bir
+metin kutusu veya iki combo'dan birine bağlanıyor; tek bağlamayı seçmek üç kipten ikisini
+düşürürdü, bu yüzden diğerleri `alternates` içinde duruyor.
+
+> **P0d kapsamı:** bu tipler yalnız **editör düzeni çıkarılan** parametreler için var. Aktarım
+> setlerinin 2.777 tanımı tipsiz — tip yalnız editör ekranından gelir ve o ekranlar P6'ya
+> bırakıldı. P0d ancak P6a–P6c ile kapanır.
 
 ## Bilmesi gereken üç tuzak
 

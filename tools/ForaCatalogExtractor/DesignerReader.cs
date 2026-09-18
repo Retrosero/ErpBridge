@@ -26,7 +26,9 @@ public static class DesignerReader
         var formName = form.Identifier.ValueText;
         controls[formName] = new DesignerControl(formName, FormType);
 
-        foreach (var method in form.Members.OfType<MethodDeclarationSyntax>())
+        // Constructors count: several screens fill their combo boxes from the ERP there rather
+        // than in InitializeComponent, and looking only at methods misses all of it.
+        foreach (var method in form.Members.OfType<BaseMethodDeclarationSyntax>())
         {
             foreach (var statement in method.DescendantNodes().OfType<ExpressionStatementSyntax>())
             {
@@ -119,6 +121,89 @@ public static class DesignerReader
             case "TabIndex" when TryReadInt(assignment.Right, out var tabIndex):
                 control.TabIndex = tabIndex;
                 break;
+
+            // Fora already masks its credential fields; that is a firmer signal than guessing
+            // from the parameter's name.
+            case "Properties.UseSystemPasswordChar" when assignment.Right.IsKind(SyntaxKind.TrueLiteralExpression):
+            case "Properties.PasswordChar":
+                control.IsSecret = true;
+                break;
+
+            case "DataSource":
+                ReadDataSource(control, assignment);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Works out where a combo box's items come from. Two shapes matter: a call into an ERP data
+    /// class (the field is really a code picked from a live list) and a DataTable the designer
+    /// fills in place (a fixed option list whose entries are right there in the source).
+    /// </summary>
+    private static void ReadDataSource(DesignerControl control, AssignmentExpressionSyntax assignment)
+    {
+        var initializer = assignment.Right switch
+        {
+            IdentifierNameSyntax identifier => FindLocalInitializer(assignment, identifier.Identifier.ValueText),
+            var other => other,
+        };
+
+        switch (initializer)
+        {
+            // DepoData.GetDepolarDataTable(connection) → the warehouse list.
+            case InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax
+                 { Expression: IdentifierNameSyntax owner } } when owner.Identifier.ValueText.EndsWith("Data", StringComparison.Ordinal):
+                control.ErpDataSource = owner.Identifier.ValueText[..^"Data".Length];
+                break;
+
+            case ObjectCreationExpressionSyntax creation:
+                ReadInlineOptions(control, creation);
+                break;
+        }
+    }
+
+    /// <summary>Finds "DataTable x = …;" for <paramref name="name"/> in the enclosing method.</summary>
+    private static ExpressionSyntax? FindLocalInitializer(SyntaxNode from, string name)
+    {
+        var method = from.FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
+
+        return method?.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+            .Where(v => v.Identifier.ValueText == name)
+            .Select(v => v.Initializer?.Value)
+            .LastOrDefault(v => v is not null);
+    }
+
+    /// <summary>Reads "Rows = { new object[2] { 0, "Telefon" }, … }" into value/label pairs.</summary>
+    private static void ReadInlineOptions(DesignerControl control, ObjectCreationExpressionSyntax creation)
+    {
+        var rows = creation.Initializer?.Expressions
+            .OfType<AssignmentExpressionSyntax>()
+            .FirstOrDefault(a => (a.Left as IdentifierNameSyntax)?.Identifier.ValueText == "Rows")
+            ?.Right as InitializerExpressionSyntax;
+
+        if (rows is null)
+        {
+            return;
+        }
+
+        foreach (var row in rows.Expressions.OfType<ArrayCreationExpressionSyntax>())
+        {
+            var cells = row.Initializer?.Expressions;
+            if (cells is not { Count: 2 })
+            {
+                continue;
+            }
+
+            if (cells.Value[0] is not LiteralExpressionSyntax value
+                || cells.Value[1] is not LiteralExpressionSyntax label
+                || !label.IsKind(SyntaxKind.StringLiteralExpression))
+            {
+                continue;
+            }
+
+            control.Options.Add(new ControlOption(
+                Convert.ToString(value.Token.Value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                label.Token.ValueText));
         }
     }
 

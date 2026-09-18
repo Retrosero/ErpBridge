@@ -194,16 +194,94 @@ public sealed class UiCatalogTests
     }
 
     [Fact]
-    public void Foras_bespoke_pickers_become_reference_fields()
+    public void Codes_chosen_from_an_erp_list_become_reference_fields()
     {
-        // These four are codes chosen from an ERP list, not free text — exactly the fields D12
-        // says the panel must offer a picker for rather than a text box.
-        var pickers = Extract(Source("KullaniciDuzenleme")).Parameters
+        // Exactly the fields D12 says the panel must offer a picker for rather than a text box.
+        // Two signals: Fora's bespoke picker controls, and combo boxes filled from an ERP table.
+        var references = Extract(Source("KullaniciDuzenleme")).Parameters
             .Where(p => p.Editor == EditorKinds.Reference)
             .ToList();
 
-        pickers.Select(p => p.ReferenceKind).Should().BeEquivalentTo(["cari", "depo", "kargo", "ekipKodu"]);
-        pickers.Should().OnlyContain(p => p.ControlType.EndsWith("Secimi", StringComparison.Ordinal));
+        references.Select(p => p.ReferenceKind).Should().BeEquivalentTo(
+            ["cari", "depo", "kargo", "ekipKodu", "depo", "depo", "depo", "depo", "depo"]);
+
+        // The five warehouse combos look like ordinary choice lists until you follow their
+        // DataSource into DepoData.GetDepolarDataTable.
+        references.Where(p => p.ControlType == "ComboBox").Should().HaveCount(5)
+            .And.OnlyContain(p => p.ReferenceKind == "depo");
+    }
+
+    [Fact]
+    public void Credentials_are_marked_secret_even_when_Fora_leaves_them_unmasked()
+    {
+        // Fora masks some password fields in its designer and not others. Rendering a SQL password
+        // as plain text is the worse mistake, so the name is used as a fallback and the signal is
+        // recorded either way.
+        var secrets = ForaCatalogPaths.UiSources
+            .SelectMany(s => Extract(s).Parameters)
+            .Where(p => p.Editor == EditorKinds.Secret)
+            .ToList();
+
+        secrets.Select(p => p.Parameter).Should().BeEquivalentTo(
+            [
+                "EMailSmtpPassword",                                     // akilli, masked by Fora
+                "EMailSmtpPassword",                                     // ComarchEdi, masked by Fora
+                "SiparisGirisiZamanKontrolluSifre",                      // B2B, masked by Fora
+                "Sifre",                                                 // ComarchEdi account, not masked
+                "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlSifre",  // SQL password, not masked
+            ]);
+
+        secrets.Should().OnlyContain(p => p.SecretSource == "designer" || p.SecretSource == "name");
+        secrets.Count(p => p.SecretSource == "name").Should().Be(2);
+
+        // "Ask for the customer's password?" is a flag, not a credential.
+        Akilli().Parameters.Single(p => p.Parameter == "EvrakKayitCariSifresiSor")
+            .Editor.Should().Be(EditorKinds.Boolean);
+    }
+
+    [Fact]
+    public void Fixed_option_lists_are_extracted_with_their_entries()
+    {
+        // Fora builds these lists in code, so the options are right there in the source and the
+        // panel does not have to invent them.
+        var choices = ForaCatalogPaths.UiSources
+            .SelectMany(s => Extract(s).Parameters)
+            .Where(p => p.Editor == EditorKinds.Choice)
+            .ToList();
+
+        choices.Should().NotBeEmpty().And.OnlyContain(p => p.Options.Count > 0);
+
+        var arrival = Extract(Source("KullaniciDuzenleme")).Parameters
+            .Single(p => p.Parameter == "TopluBakimTalepEvragiGirisiTalepGelisSekli");
+
+        arrival.Options.Select(o => o.Label).Should().Equal(
+            "Telefon", "Faks", "Mail", "Elden", "Kargo", "Kurye", "Bayii");
+        arrival.Options.Select(o => o.Value).Should().Equal("0", "1", "2", "3", "4", "5", "6");
+    }
+
+    [Fact]
+    public void A_value_Fora_shows_in_different_controls_keeps_every_view()
+    {
+        // A printer field's value moves between a text box and two combo boxes according to its
+        // data type. Keeping only one binding would drop two of the three editing modes.
+        var veri = Extract(Source("YaziciAyarlariForm")).Parameters.Single(p => p.Parameter == "Veri");
+
+        veri.Editor.Should().Be(EditorKinds.Composite, "no single control can represent all three modes");
+        veri.Alternates.Should().HaveCount(2).And.OnlyContain(a => a.ControlType == "ComboBox");
+
+        // Nothing else claims an alternate: a control that owns a parameter of its own is the
+        // load/save defect, reported separately.
+        ForaCatalogPaths.UiSources.SelectMany(s => Extract(s).Parameters)
+            .Where(p => p.Alternates.Count > 0).Select(p => p.Parameter)
+            .Should().Equal("Veri");
+    }
+
+    [Fact]
+    public void The_layout_schema_version_says_which_shape_it_is()
+    {
+        // Version 2 added catalogMethod, options, alternates and the secret/reference kinds; a
+        // consumer cannot tell the shapes apart without the discriminator.
+        Akilli().SchemaVersion.Should().Be(2);
     }
 
     [Fact]

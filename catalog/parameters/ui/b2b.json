@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceBuild": "unknown",
   "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.B2B/B2BPArametreleriForm.cs",
   "sourceType": "B2BPArametreleriForm",
@@ -32,13 +32,15 @@
       "control": "SiteBasligi",
       "controlType": "TextEdit",
       "order": 0,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "EvrakMikroUserNo",
       "catalogMethod": "B2B",
       "label": "Bağlı mikro kullanıcısı :",
-      "editor": "choice",
+      "editor": "reference",
       "tab": "xtraTabPage3",
       "tabPath": [
         "Genel"
@@ -46,7 +48,10 @@
       "control": "EvrakMikroUserNo",
       "controlType": "ComboBox",
       "order": 1,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "referenceKind": "mikroKullanici",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "EvrakTipi",
@@ -60,7 +65,18 @@
       "control": "EvrakTipi",
       "controlType": "ComboBox",
       "order": 2,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "5",
+          "label": "Alınan sipariş"
+        },
+        {
+          "value": "9",
+          "label": "Depolar arası sipariş"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "EvrakSeri",
@@ -74,7 +90,9 @@
       "control": "EvrakSeri",
       "controlType": "TextEdit",
       "order": 3,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "KaynakDepoNo",
@@ -88,7 +106,9 @@
       "control": "KaynakDepoNo",
       "controlType": "TextEdit",
       "order": 4,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SiparisGirisiZamanKontrollu",
@@ -102,7 +122,9 @@
       "control": "SiparisGirisiZamanKontrollu",
       "controlType": "CheckEdit",
       "order": 5,
-      "labelSource": "caption"
+      "labelSource": "caption",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SiparisGirisiBaslamaZamani",
@@ -116,7 +138,9 @@
       "control": "SiparisGirisiBaslamaZamani",
       "controlType": "TextEdit",
       "order": 6,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SiparisGirisiSonlanmaZamani",
@@ -130,13 +154,15 @@
       "control": "SiparisGirisiSonlanmaZamani",
       "controlType": "TextEdit",
       "order": 7,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "SiparisGirisiZamanKontrolluSifre",
       "catalogMethod": "B2B",
       "label": "Özel şifre :",
-      "editor": "text",
+      "editor": "secret",
       "tab": "xtraTabPage3",
       "tabPath": [
         "Genel"
@@ -144,7 +170,10 @@
       "control": "SiparisGirisiZamanKontrolluSifre",
       "controlType": "TextEdit",
       "order": 8,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": [],
+      "secretSource": "designer"
     },
     {
       "parameter": "StokListelemeWebSayfasinaGonderilecek",
@@ -158,7 +187,22 @@
       "control": "StokListelemeWebSayfasinaGonderilecek",
       "controlType": "ComboBox",
       "order": 9,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "0",
+          "label": "Hepsi"
+        },
+        {
+          "value": "1",
+          "label": "Web sayfasına gönderilecekler"
+        },
+        {
+          "value": "2",
+          "label": "Web sayfasına gönderilmeyecekler"
+        }
+      ],
+      "alternates": []
     },
     {
       "parameter": "DepolarArasiSevkFiyat",
@@ -172,7 +216,14 @@
       "control": "DepolarArasiSevkFiyat",
       "controlType": "ComboBox",
       "order": 10,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [
+        {
+          "value": "1",
+          "label": "Stok tanıtım kartındaki standart maliyet"
+        }
+      ],
+      "alternates": []
     }
   ],
   "gaps": []

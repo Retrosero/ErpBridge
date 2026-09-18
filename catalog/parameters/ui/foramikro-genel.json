@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceBuild": "unknown",
   "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.Ayarlar/GenelParametrelerForm.cs",
   "sourceType": "GenelParametrelerForm",
@@ -40,7 +40,9 @@
       "control": "CariYeniCariHesapOnEkleri",
       "controlType": "TextEdit",
       "order": 0,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "CariYeniCariMuhasebeKodu",
@@ -54,7 +56,9 @@
       "control": "CariYeniCariMuhasebeKodu",
       "controlType": "TextEdit",
       "order": 1,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi1KisaAdi",
@@ -68,7 +72,9 @@
       "control": "Vergi1KisaAdi",
       "controlType": "TextEdit",
       "order": 2,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi1UzunAdi",
@@ -82,7 +88,9 @@
       "control": "Vergi1UzunAdi",
       "controlType": "TextEdit",
       "order": 3,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi1Yuzde",
@@ -96,7 +104,9 @@
       "control": "Vergi1Yuzde",
       "controlType": "SpinEdit",
       "order": 4,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi2KisaAdi",
@@ -110,7 +120,9 @@
       "control": "Vergi2KisaAdi",
       "controlType": "TextEdit",
       "order": 5,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi2UzunAdi",
@@ -124,7 +136,9 @@
       "control": "Vergi2UzunAdi",
       "controlType": "TextEdit",
       "order": 6,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi2Yuzde",
@@ -138,7 +152,9 @@
       "control": "Vergi2Yuzde",
       "controlType": "SpinEdit",
       "order": 7,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi3KisaAdi",
@@ -152,7 +168,9 @@
       "control": "Vergi3KisaAdi",
       "controlType": "TextEdit",
       "order": 8,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi3UzunAdi",
@@ -166,7 +184,9 @@
       "control": "Vergi3UzunAdi",
       "controlType": "TextEdit",
       "order": 9,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi3Yuzde",
@@ -180,7 +200,9 @@
       "control": "Vergi3Yuzde",
       "controlType": "SpinEdit",
       "order": 10,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi4KisaAdi",
@@ -194,7 +216,9 @@
       "control": "Vergi4KisaAdi",
       "controlType": "TextEdit",
       "order": 11,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi4UzunAdi",
@@ -208,7 +232,9 @@
       "control": "Vergi4UzunAdi",
       "controlType": "TextEdit",
       "order": 12,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi4Yuzde",
@@ -222,7 +248,9 @@
       "control": "Vergi4Yuzde",
       "controlType": "SpinEdit",
       "order": 13,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi5KisaAdi",
@@ -236,7 +264,9 @@
       "control": "Vergi5KisaAdi",
       "controlType": "TextEdit",
       "order": 14,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi5UzunAdi",
@@ -250,7 +280,9 @@
       "control": "Vergi5UzunAdi",
       "controlType": "TextEdit",
       "order": 15,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi5Yuzde",
@@ -264,7 +296,9 @@
       "control": "Vergi5Yuzde",
       "controlType": "SpinEdit",
       "order": 16,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi6KisaAdi",
@@ -278,7 +312,9 @@
       "control": "Vergi6KisaAdi",
       "controlType": "TextEdit",
       "order": 17,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi6UzunAdi",
@@ -292,7 +328,9 @@
       "control": "Vergi6UzunAdi",
       "controlType": "TextEdit",
       "order": 18,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi6Yuzde",
@@ -306,7 +344,9 @@
       "control": "Vergi6Yuzde",
       "controlType": "SpinEdit",
       "order": 19,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi7KisaAdi",
@@ -320,7 +360,9 @@
       "control": "Vergi7KisaAdi",
       "controlType": "TextEdit",
       "order": 20,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi7UzunAdi",
@@ -334,7 +376,9 @@
       "control": "Vergi7UzunAdi",
       "controlType": "TextEdit",
       "order": 21,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi7Yuzde",
@@ -348,7 +392,9 @@
       "control": "Vergi7Yuzde",
       "controlType": "SpinEdit",
       "order": 22,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi8KisaAdi",
@@ -362,7 +408,9 @@
       "control": "Vergi8KisaAdi",
       "controlType": "TextEdit",
       "order": 23,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi8UzunAdi",
@@ -376,7 +424,9 @@
       "control": "Vergi8UzunAdi",
       "controlType": "TextEdit",
       "order": 24,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi8Yuzde",
@@ -390,7 +440,9 @@
       "control": "Vergi8Yuzde",
       "controlType": "SpinEdit",
       "order": 25,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi9KisaAdi",
@@ -404,7 +456,9 @@
       "control": "Vergi9KisaAdi",
       "controlType": "TextEdit",
       "order": 26,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi9UzunAdi",
@@ -418,7 +472,9 @@
       "control": "Vergi9UzunAdi",
       "controlType": "TextEdit",
       "order": 27,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi9Yuzde",
@@ -432,7 +488,9 @@
       "control": "Vergi9Yuzde",
       "controlType": "SpinEdit",
       "order": 28,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi10KisaAdi",
@@ -446,7 +504,9 @@
       "control": "Vergi10KisaAdi",
       "controlType": "TextEdit",
       "order": 29,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi10UzunAdi",
@@ -460,7 +520,9 @@
       "control": "Vergi10UzunAdi",
       "controlType": "TextEdit",
       "order": 30,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     },
     {
       "parameter": "Vergi10Yuzde",
@@ -474,7 +536,9 @@
       "control": "Vergi10Yuzde",
       "controlType": "SpinEdit",
       "order": 31,
-      "labelSource": "labelLeft"
+      "labelSource": "labelLeft",
+      "options": [],
+      "alternates": []
     }
   ],
   "gaps": [
