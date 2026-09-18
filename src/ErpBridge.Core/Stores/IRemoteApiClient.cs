@@ -40,6 +40,28 @@ public interface IRemoteApiClient
         => throw new NotImplementedException("Central API does not support trigger-based change sets yet.");
 
     /// <summary>
+    /// The ERP companies this agent is assigned to (P3b). The agent matches them to the Mikro
+    /// database it is configured for; an agent that later serves several needs configuration, not
+    /// a different endpoint.
+    ///
+    /// Defaults to empty rather than throwing: a central API on an older build simply has no
+    /// parameters to mirror, and an agent should not fall over because of it.
+    /// </summary>
+    Task<IReadOnlyList<ErpBridge.Core.Parameters.AgentErpCompany>> GetAgentCompaniesAsync(
+        CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ErpBridge.Core.Parameters.AgentErpCompany>>([]);
+
+    /// <summary>Everything one company's Mikro parameter table should hold.</summary>
+    Task<ErpBridge.Core.Parameters.AgentParameterState?> GetParameterStateAsync(
+        Guid erpCompanyId, CancellationToken ct = default)
+        => Task.FromResult<ErpBridge.Core.Parameters.AgentParameterState?>(null);
+
+    /// <summary>Reports what a mirror run did, including rows it found changed by hand (D8).</summary>
+    Task SendParameterMirrorReportAsync(
+        ErpBridge.Core.Parameters.AgentParameterMirrorReport report, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    /// <summary>
     /// Returns whether the central API already has a bootstrap snapshot for
     /// this tenant and, when it does, the cursor for an incremental read.
     /// </summary>

@@ -104,6 +104,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MikroVersionDetector>();
         services.AddSingleton<MikroIdentityStrategySelector>();
 
+        // Parametre Yönetimi P3a/P3b: the parameter table and the one-way mirror into it.
+        services.AddSingleton<Parameters.MikroParameterTableProvisioner>();
+        services.AddSingleton<Parameters.MikroParameterMirror>();
+        services.AddSingleton<ErpBridge.Core.Parameters.IParameterMirrorTarget,
+            Parameters.MikroParameterMirrorTarget>();
+
         // Faz 3 Track 2: connection-test orchestrator — single seam for the WPF
         // "Bağlantıyı test et" button, the redetect command, and the service
         // pre-flight check. Singleton so the version cache is process-wide.
