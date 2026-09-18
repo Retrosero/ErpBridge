@@ -294,7 +294,7 @@ Decompile edilmiş Fora kodundan makine okunur katalog üretmek. Kod yazılmadan
 | # | Görev | Çıktı |
 |---|---|---|
 | **P0a** | `ParametrelerDefault.cs` → `catalog/parameters/defaults.json`. 19 katalog seti, 13 program, 4.688 tanım: `program`, `scopeKind`, `scopeField`, sabit adresleme alanları, `id`, `name`, `default`. Ayrıştırma **Roslyn** ile — dört ZPL şablonu kaçırılmış tırnakla bitiyor (`…,N,\"`) ve satır bazlı regex'i sessizce bozuyor | 4.688 kayıt, tek biçimlilik doğrulaması, altın dosya testi |
-| **P0b** | `ForaAndroidKullaniciDuzenleme.cs` → `catalog/parameters/ui.akilli.json`. Sekme ağacı (63), kontrol→parametre bağlaması (3.572), kontrol tipi, etiket metni (en yakın `labelControl`), yerleşim sırası, yardım/açıklama metinleri | 1801 parametrenin ≥ %95'i sekme + etiket ile eşleşmiş |
+| **P0b** | `ForaAndroidKullaniciDuzenleme.cs` → `catalog/parameters/ui.akilli.json`. Sekme ağacı (iç içe, 65 sekme), kontrol→parametre bağlaması, kontrol tipinden editör tipi, etiket metni, okuma sırası | **1.782 parametre yerleşti, %100'ü etiketli**; `Sifre` hariç her `akilli` parametresi bir sekmede |
 | **P0c** | Diğer editör ekranları → `ui.foramikro.json`, `ui.yaziciayarlari.json`, `ui.b2b.json`, `ui.aktarim.json` | Kalan programların UI metadata'sı |
 | **P0d** | Tip çıkarsama ve doğrulama: bool / int / decimal / string / enum / csvList / reference. `LookUpEdit` kaynakları → `referenceKind` (kasa, depo, fiyatListesi, odemePlani, proje, sorumlulukMerkezi, cariPersonel, mikroKullanici, subeNo, firmaNo) | Her parametrenin tipi var; tipsiz kalan yok |
 | **P0e** | Çıkarım script'i `scripts/extract-fora-catalog/` (tek komut, deterministik çıktı) + altın dosya testi + `README` | Yeniden üretilebilirlik |

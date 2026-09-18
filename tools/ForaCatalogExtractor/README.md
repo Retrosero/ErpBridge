@@ -35,6 +35,7 @@ Sürüm verilmezse mevcut katalogdaki `sourceBuild` korunur; o da yoksa `unknown
 | Dosya | İçerik |
 |---|---|
 | `catalog/parameters/defaults.json` | 19 katalog seti, 13 program, 4.688 parametre tanımı |
+| `catalog/parameters/ui.akilli.json` | 65 sekme, 1.782 `akilli` parametresinin sekmesi, etiketi ve editör tipi |
 
 Üretilen dosya **commit edilir**. `ErpBridge.ForaCatalog.Tests` altın dosya testi, commit edilmiş
 kataloğu kaynaktan yeniden üretilenle bayt bayt karşılaştırır; kaynak değişip katalog güncellenmezse
@@ -68,6 +69,49 @@ CI kırmızıya döner.
 }
 ```
 
+### `ui.akilli.json` şeması
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "sourceType": "ForaAndroidKullaniciDuzenleme",
+  "tabCount": 65,
+  "parameterCount": 1782,
+  "unlabelledCount": 0,
+  "tabs": [
+    { "name": "xtraTabPage30", "title": "Tanımlamalar",
+      "path": ["Parametreler", "Tanımlamalar"], "order": 0 }
+  ],
+  "parameters": [
+    { "parameter": "Goster_AnaMenu_Tahsilat",
+      "label": "Tahsilat girebilir",
+      "editor": "boolean",                 // boolean|integer|decimal|text|multilineText|choice|color
+      "tab": "xtraTabPage25",
+      "tabPath": ["Evrak girişi", "Evrak Tipleri", "Tahsilat / Tediye makbuzu"],
+      "control": "Goster_AnaMenu_Tahsilat", "controlType": "CheckEdit",
+      "order": 412,
+      "labelSource": "caption" }           // caption|tableCell|labelLeft|checkBoxLeft|labelAbove|none
+  ],
+  "gaps": [ { "kind": "...", "subject": "...", "detail": "..." } ]
+}
+```
+
+Fora sekmeleri iç içe koyuyor: beş dış sekme (Parametreler, Görünüm ve seçenekler, Evrak girişi,
+Raporlar, Form dosyaları) altında toplam 65 sekme var. Düz bir liste gruplamayı kaybederdi, bu
+yüzden `path` tam yolu taşıyor.
+
+Etiketler dört kaynaktan geliyor ve **1.782 alanın hepsi etiketli**:
+
+| Kaynak | Adet | Ne demek |
+|---|---:|---|
+| `caption` | 733 | Kontrolün kendi başlığı — her `CheckEdit` taşıyor |
+| `tableCell` | 641 | Tablo düzeninde aynı satırın önceki hücresindeki etiket |
+| `labelLeft` | 387 | Solundaki `LabelControl` |
+| `checkBoxLeft` | 21 | Solundaki **kutucuğun** başlığı — alan yalnız o kutucuğu niteliyor |
+
+Sola bakan eşleşme, etiketin alanın **ilk satırıyla** hizalandığını varsayar, merkeziyle değil;
+162 piksel yüksekliğindeki `CariEkstreMesaj` alanının "Mesaj :" etiketi ancak böyle bulunuyor.
+
 ## Bilmesi gereken iki tuzak
 
 **1 — Kapsam her programda aynı kolonda değil.** `akilli`, `foramikro`, `MobilRapor*` ve
@@ -85,6 +129,14 @@ aynı alanlar için doğru şekilde 16, 18, 20 kullanıyor. Aynı şey 17 (`*_uz
 için sonraki kayıtlar **Fora'da da** okunamaz durumda. Katalog bunları atmaz: sırayı korur ve
 gölgede kalanları `"shadowed": true` ile işaretler, `duplicateIds` ile de sette listeler.
 Toplam 5 kayıt, hepsi bu tek sette.
+
+**3 — Fora'nın yükle/kaydet uyuşmazlıkları.** Düzenleme ekranı
+`GosterZyrt_Temsilci_Ozel_12..19_Var_Yok` parametrelerini **yanlış** kutucuklara yüklüyor
+(örneğin 12'yi 24'ün kutucuğuna), ama her kutucuğu kendi parametresine kaydediyor. Sonuç: Fora'da
+o ekranı açıp kaydetmek bir parametreyi başka bir parametrenin değeriyle **sessizce eziyor**.
+
+Çıkarıcı iki yönü ayrı toplayıp karşılaştırıyor ve **kaydetme yönünü** esas alıyor — veritabanına
+ulaşan yön o. Uyuşmazlıklar `gaps` içinde `bindingMismatch` olarak listeleniyor (8 kayıt).
 
 ## Neden Roslyn, neden regex değil
 
