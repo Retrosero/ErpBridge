@@ -63,6 +63,19 @@ public static class DefaultsExtractor
         ["alanekle"] = ScopeKinds.PrinterTemplate,
     };
 
+    /// <summary>
+    /// Parameters this product refuses to carry, and why. Fora stores the mobile user's password
+    /// as an ordinary parameter, encrypted with a key compiled into its own binary; importing that
+    /// secret would weaken us rather than help, so it is marked here and never stored downstream.
+    /// </summary>
+    private static readonly Dictionary<(string Method, int Id), string> Excluded = new()
+    {
+        [("MobilKullanici", 1)] =
+            "Fora keeps the mobile user's password here, encrypted with a key compiled into its own "
+            + "binary. ErpBridge authenticates against MobileUser.PasswordHash and never stores, "
+            + "mirrors or displays this value.",
+    };
+
     /// <summary>One decompiled file that declares parameter sets.</summary>
     /// <param name="File">Repository-relative path, recorded in the output.</param>
     /// <param name="TypeName">Class that declares the sets.</param>
@@ -157,6 +170,9 @@ public static class DefaultsExtractor
         var parameters = entries
             .Select(e => ReadParameter(methodName, e))
             .Select(p => claimed.Add(p.Id) ? p : p with { Shadowed = true })
+            .Select(p => Excluded.TryGetValue((methodName, p.Id), out var reason)
+                ? p with { Excluded = true, ExcludedReason = reason }
+                : p)
             .ToList();
 
         var duplicateIds = parameters

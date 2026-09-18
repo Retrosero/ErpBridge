@@ -31,6 +31,21 @@ public sealed record ParameterDefault
     [JsonPropertyOrder(4)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Shadowed { get; init; }
+
+    /// <summary>
+    /// True for a parameter this product must never store, mirror or display. Fora keeps the
+    /// mobile user's password here, encrypted with a key compiled into its own binary; carrying
+    /// that secret into our system would be a step backwards, and the panel authenticates
+    /// against <c>MobileUser.PasswordHash</c> instead. See <see cref="ExcludedReason"/>.
+    /// </summary>
+    [JsonPropertyOrder(6)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Excluded { get; init; }
+
+    /// <summary>Why the parameter is excluded, so the decision is not a bare flag.</summary>
+    [JsonPropertyOrder(7)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ExcludedReason { get; init; }
 }
 
 /// <summary>

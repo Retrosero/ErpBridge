@@ -57,6 +57,14 @@ public static class ParameterCatalogFile
                     continue;
                 }
 
+                // An excluded parameter is one this product refuses to carry — Fora keeps the
+                // mobile user's password as an ordinary parameter. Dropping it here means no
+                // consumer of the catalogue can surface it by accident (D6).
+                if (parameter.Excluded)
+                {
+                    continue;
+                }
+
                 layouts.TryGetValue((set.CatalogMethod, parameter.Name), out var layout);
 
                 rows.Add(new CatalogRow(
@@ -140,6 +148,7 @@ public static class ParameterCatalogFile
         string Name,
         string Default,
         bool Shadowed,
+        bool Excluded,
         string? DefaultSource);
 
     private sealed record LayoutDocument(IReadOnlyList<LayoutParameter> Parameters);

@@ -138,6 +138,24 @@ public sealed class DefaultsCatalogTests
     }
 
     [Fact]
+    public void The_mobile_users_password_is_marked_excluded_with_a_reason()
+    {
+        // Fora stores it as an ordinary parameter, encrypted with a key compiled into its own
+        // binary. The catalogue records the refusal rather than quietly dropping the entry, so a
+        // consumer can see that the omission is deliberate (D6).
+        var excluded = Extract().Sets
+            .SelectMany(s => s.Parameters.Select(p => (Set: s.CatalogMethod, Parameter: p)))
+            .Where(x => x.Parameter.Excluded)
+            .ToList();
+
+        excluded.Should().ContainSingle();
+        excluded[0].Set.Should().Be("MobilKullanici");
+        excluded[0].Parameter.Id.Should().Be(1);
+        excluded[0].Parameter.Name.Should().Be("Sifre");
+        excluded[0].Parameter.ExcludedReason.Should().Contain("MobileUser.PasswordHash");
+    }
+
+    [Fact]
     public void Global_sets_have_no_scope()
     {
         var firmWide = Set("ForaMikro");

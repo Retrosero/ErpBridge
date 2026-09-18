@@ -48,8 +48,9 @@ public sealed class ParameterCatalogTests
     {
         var catalog = ParameterCatalogFile.Load();
 
-        // 4,713 declarations minus the five Fora makes unreachable by reusing an id inside a set.
-        catalog.Should().HaveCount(4708);
+        // 4,713 declarations, minus the five Fora makes unreachable by reusing an id inside a
+        // set, minus the mobile user's password which this product refuses to carry.
+        catalog.Should().HaveCount(4707);
         catalog.Select(r => (r.CatalogMethod, r.ParametreId)).Should().OnlyHaveUniqueItems(
             "ParametreID is the real key and is unique inside a set");
         catalog.Select(r => r.Program).Distinct().Should().HaveCount(14);
@@ -76,15 +77,50 @@ public sealed class ParameterCatalogTests
     }
 
     [Fact]
+    public void The_mobile_users_password_never_reaches_the_catalogue()
+    {
+        // Fora keeps it as an ordinary parameter, encrypted with a key compiled into its own
+        // binary. Carrying that secret would weaken us; the panel authenticates against
+        // MobileUser.PasswordHash instead (D6).
+        var catalog = ParameterCatalogFile.Load();
+
+        catalog.Should().NotContain(r => r.CatalogMethod == "MobilKullanici" && r.Name == "Sifre");
+
+        // Other credentials — SMTP, EDI, SQL — are settings the panel legitimately manages, and
+        // they stay, marked secret so no one renders them as plain text.
+        catalog.Should().Contain(r => r.CatalogMethod == "ComarchEdiGenelParametreler" && r.Name == "Sifre");
+    }
+
+    [Fact]
+    public void A_corrected_program_is_written_back()
+    {
+        using var db = NewDb();
+        ParameterCatalogSeeder.Seed(db, [Row()]);
+
+        // The row is found by (CatalogMethod, ParametreID); a stale program would address the
+        // wrong Mikro rows for the rest of its life.
+        var moved = Row() with { Program = "foramikro" };
+        var result = ParameterCatalogSeeder.Seed(db, [moved]);
+
+        result.Updated.Should().Be(1);
+        db.ParameterCatalog.Single().Program.Should().Be("foramikro");
+    }
+
+    [Fact]
     public void A_name_is_not_enough_to_identify_a_parameter()
     {
         var catalog = ParameterCatalogFile.Load();
 
-        // Sifre exists in both akilli and ComarchEdiGenel, with different ids and meanings.
-        var byName = catalog.Where(r => r.Name == "Sifre").ToList();
+        // ProjeKodu exists in both akilli and the EDI relation set, with different ids and meanings.
+        var byName = catalog.Where(r => r.Name == "ProjeKodu").ToList();
 
-        byName.Select(r => r.CatalogMethod).Should().Contain(["MobilKullanici", "ComarchEdiGenelParametreler"]);
+        byName.Select(r => r.CatalogMethod).Should().Contain(
+            ["MobilKullanici", "ComarchEdiIliskiParametreleri"]);
         byName.Select(r => r.Program).Distinct().Should().HaveCountGreaterThan(1);
+
+        // 862 of the 3,365 distinct names are shared, so a name alone can never be a key.
+        catalog.GroupBy(r => r.Name).Count(g => g.Select(r => r.CatalogMethod).Distinct().Count() > 1)
+            .Should().BeGreaterThan(100);
     }
 
     [Fact]
@@ -103,10 +139,10 @@ public sealed class ParameterCatalogTests
 
         var result = ParameterCatalogSeeder.Seed(db, ParameterCatalogFile.Load());
 
-        result.Added.Should().Be(4708);
+        result.Added.Should().Be(4707);
         result.Updated.Should().Be(0);
         result.Deprecated.Should().Be(0);
-        db.ParameterCatalog.Count().Should().Be(4708);
+        db.ParameterCatalog.Count().Should().Be(4707);
     }
 
     [Fact]

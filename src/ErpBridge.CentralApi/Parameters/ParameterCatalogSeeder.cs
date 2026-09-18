@@ -97,7 +97,10 @@ public static class ParameterCatalogSeeder
     {
         // IsImplemented is deliberately not touched: it records what this product honours, which
         // the catalogue knows nothing about, and later phases set it as features land (D16).
-        return Replace(v => entry.Name = v!, entry.Name, row.Name)
+        // Program is copied too: a regenerated catalogue can correct it for an existing
+        // (CatalogMethod, ParametreID), and a stale program would address the wrong Mikro rows.
+        return Replace(v => entry.Program = v!, entry.Program, row.Program)
+               | Replace(v => entry.Name = v!, entry.Name, row.Name)
                | Replace(v => entry.DefaultValue = v!, entry.DefaultValue, row.DefaultValue)
                | Replace(v => entry.DefaultSource = v, entry.DefaultSource, row.DefaultSource)
                | Replace(v => entry.ScopeKind = v!, entry.ScopeKind, row.ScopeKind)
