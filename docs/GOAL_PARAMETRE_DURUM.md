@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (P0f)
+Son güncelleme: 2026-09-18 (P1f)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -13,7 +13,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
 | P0 — Katalog çıkarımı (ön koşul) | 7 | 7 | ✅ |
-| P1 — Merkez veri modeli ve API | 7 | 4 | 🔄 |
+| P1 — Merkez veri modeli ve API | 7 | 6 | 🔄 |
 | P2 — Panel (Admin) parametre ekranı | 8 | 0 | ⬜ |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 0 | ⬜ |
 | P4 — Sipariş Cepte: öncelikli öbekler | 6 | 0 | ⬜ |
@@ -21,7 +21,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P1b — `parameter_values` + migration
+**Şu anki görev:** P1g — ajan uçları
 
 ---
 
@@ -40,8 +40,8 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P1b | `parameter_values` + migration | ✅ | — | Yalnız **sapmalar** saklanıyor (D3, Fora semantiği). Adresleme, katalog girdisine yabancı anahtarla yapılıyor: o girdi `(program, AnaGrubu, AltGrubu, ParametreID)` dörtlüsünü belirliyor, çünkü `(program, id)` çifti **tekil değil** — 3.679 çiftin 994'ü birden çok parametreyi gösteriyor. Kapsam iki kolonla taşınıyor: `MobileUserId` (D5, kullanıcı adı değil kimlik) ve `Scope1`/`Scope2` (şablon adı, kriter adı, rapor kodu; yazıcı şablonu alanı ikisini birden kullanıyor — katalogda ölçüldü, en fazla iki kapsam kolonu var). `ErpCompanyId` zorunlu (D3b). Silme davranışı: kiracı cascade, firma ve katalog girdisi restrict, mobil kullanıcı **restrict** — silinen kullanıcının değerleri geçmiş olarak kalır (D5b). Testler SQLite ile koşuyor; in-memory sağlayıcı benzersiz indeksi yok sayıyor |
 | P1c | `ParameterResolver` (Fora semantiği) | ✅ | — | Efektif değer = katalog varsayılanı + saklı sapma. Yazma Fora'nın **dört yolunu** birebir uyguluyor: varsayılana eşit + satır yok → hiçbir şey, varsayılana eşit + satır var → **sil**, farklı + satır yok → ekle, farklı + satır var → güncelle. Bayat satır bırakmak, kimsenin seçmediği bir varsayılanı ezmeye devam ederdi. `ParameterScope` kapsamı doğruluyor: mobil kullanıcı parametresini kullanıcı belirtmeden ya da yazıcı alanını tek adla yazmak **reddediliyor** — öyle bir satırı ne okuma bulur ne de ayna Mikro'ya yerleştirebilir. Sorgular her boyutu karşılaştırıyor (firma, kullanıcı, iki kapsam kolonu); birini atlamak bir firmanın ayarının diğerine sızma yolu |
 | P1d | `parameter_revisions` + `parameter_audit` | ✅ | — | **Sürüm sayacı (D9):** kapsam başına tek sayı; bir mobil kullanıcının seti 1.801 parametre, sayaç olmadan telefon hiçbir şeyin değişmediğini anlamak için hepsini çekmek zorunda kalırdı. Değerle **aynı kaydetmede** artıyor — değişmemiş sayacın "hiçbir şey kımıldamadı" demesi gerekiyor. Bir firmanın değişikliği diğerinin sayacını oynatmıyor. **Denetim (D10):** her yazma kim/ne zaman/eski→yeni/kaynak ile kaydediliyor, `ChangeContext` artık **zorunlu** — parametre bir plasiyerin fiyat değiştirip değiştiremeyeceğine karar verebiliyor, atıfsız değişiklik fark edilmeden pahalıya patlayan türden. **Kimlik bilgileri maskeleniyor:** şifreleri düz metin tutan bir denetim kaydı, denetim kaydı olmamasından kötü; "boştu" ile "doluydu" ayrımı korunuyor. Kayıt parametreyi **katalog girdisiyle** gösteriyor, adla değil |
-| P1e | Admin API uçları | ⬜ | — | |
-| P1f | `/android/parameters` yeniden bağlama + `revision`/`304` | ⬜ | — | |
+| P1e | Admin API uçları | ✅ | [#122](https://github.com/Retrosero/ErpBridge/pull/122) | `/api/v1/admin/parameters` altında beş uç: `GET /sets` (katalogdaki setler ve her birinin nasıl adreslendiği), `GET /values` (bir setin bir kapsamdaki değerleri — yürürlükteki değer, varsayılanı, sapma olup olmadığı, sürüm; `onlyOverridden` ile yalnız sapmalar), `PUT /values` (toplu yazma, her değişiklik `Inserted`/`Updated`/`Deleted`/`Unchanged` sonucuyla), `POST /values/reset`, `GET /audit`. Parametre **katalog kaydıyla** adresleniyor, adla değil — 3.365 ayrı adın 862'si birden fazla sette geçiyor. Kapsam parametreyi adresleyemiyorsa yazma **400** dönüyor: hiçbir okumanın bulamayacağı, ayna Mikro'ya yerleştiremeyeceği satır yazmaktansa. Setler bellekte gruplanıyor — birkaç düzine set var ve dört kolonlu gruplama testlerin koştuğu her sağlayıcıda çevrilmiyor. 8 uç testi |
+| P1f | `/android/parameters` yeniden bağlama + `revision`/`304` | ✅ | [#123](https://github.com/Retrosero/ErpBridge/pull/123) | Sözleşme aynı, **kaynak** değişti (D13): değerler içe aktarılmış `_FORA_PARAMETRELER` aynasından değil katalog varsayılanı + saklı sapmadan geliyor. Kazanım: kimsenin değiştirmediği parametre artık **eksik dönmüyor** — eski ayna yalnız sapmaları tuttuğu için telefon kendi gömdüğü varsayılana düşüyordu, artık Fora'nın varsayılanı dönüyor. `ParametreUser` hâlâ kullanıcı adı taşıyor — eski istemcinin eşleştirdiği şey o. Yalnız **aktif** kullanıcılar yayılıyor (D5b, R8). `sourceDatabase` verilmezse kiracının bütün aktif firmaları kapsanıyor — eski ucun süzgeçsiz davranışı. **`ETag`/`304`:** yanıt kullanıcı başına 1.801 satır, ETag kapsanan kapsamlardan + her birinin sürüm sayacından + **katalog damgasından** üretiliyor; katalog damgası şart, çünkü yeniden tohumlama bir varsayılanı oynatabilir ve istemci artık uymayan bir kopyayı tutmaya devam ederdi. `revision` toplam olarak dönüyor ama **bilgilendirme** — kullanıcı silinince düşebildiği için 304 kararı ETag'e dayanıyor. Çözümleyiciye toplu okuma eklendi (`ResolveManyAsync`/`RevisionsAsync`): kullanıcı başına ayrı çözümleme 1.801 katalog satırını her kullanıcı için yeniden okurdu. 9 uç testi |
 | P1g | Ajan uçları | ⬜ | — | |
 | P2a | `/parameters` ekran iskeleti + scope seçimi | ⬜ | — | |
 | P2b | Katalogdan üretilen sekme ağacı | ⬜ | — | |
