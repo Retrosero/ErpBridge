@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Parametre Yönetimi (P0a): regenerates catalog/parameters/*.json from the decompiled Fora
+    sources. Developer tooling, not shipped with any host — but it stays in the solution so CI
+    builds it and the golden test can call the extraction logic directly.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ErpBridge.Tools.ForaCatalog</RootNamespace>
+    <AssemblyName>ForaCatalogExtractor</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      Opted out of central package management deliberately. Roslyn is needed by this tool
+      alone, and because Directory.Packages.props turns on transitive pinning, declaring it
+      there would rewrite the lock file of every project that already pulls Roslyn in through
+      Microsoft.EntityFrameworkCore.Design. Pinning it here keeps the blast radius to this
+      project; the version matches what that graph already resolves, so nothing else moves.
+    -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+  </ItemGroup>
+
+</Project>
