@@ -246,7 +246,7 @@ else if (_values is not null)
                             @foreach (var e in _history)
                             {
                                 <tr>
-                                    <td data-label="Ne zaman"><time datetime="@e.AtUtc.ToString("O")">@e.AtUtc.UtcDateTime.ToString("dd MMM yyyy, HH:mm")</time></td>
+                                    <td data-label="Ne zaman"><time datetime="@e.AtUtc.ToString("O")">@ParameterLayout.Moment(e.AtUtc)</time></td>
                                     <td data-label="Kim">@(string.IsNullOrWhiteSpace(e.Actor) ? "—" : e.Actor)</td>
                                     <td data-label="Parametre"><code>@e.Name</code></td>
                                     <td data-label="Ne oldu">@OutcomeText(e.Outcome)</td>
