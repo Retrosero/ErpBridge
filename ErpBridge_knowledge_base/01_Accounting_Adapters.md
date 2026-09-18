@@ -141,6 +141,14 @@ string concat ile SQL'e girmez.
 ## 3. Çok Firmalı / Çok Şubeli Çalışma
 
 `AgentConfig`: `CompanyNo` (varsayılan 1), `BranchNo` (1), `WarehouseNo` (1).
+
+**Firma numarası 0'dan başlar.** Mikro ilk firmayı `FIRMALAR.fir_sirano = 0`
+olarak numaralar; elimizdeki üç veritabanının (`MikroDB_V15_DEMO`,
+`MikroDB_V15_02`, canlı `MikroDB_V16_03`) hepsinde tek firma vardır ve numarası
+0'dır, bütün hareket satırları da firma 0 taşır. Bu yüzden `CompanyNo` ve
+`BranchNo` için geçerli alt sınır **0**'dır (`AgentConfigMapper`,
+Agent UI doğrulaması, `POST /api/v1/admin/erp-companies`). Depolar ise 1'den
+başlar (`DEPOLAR.dep_no = 1` "Merkez depo"), `WarehouseNo >= 1` kuralı geçerlidir.
 Firma-**bağımlı** tablolara enjekte edilir: `cari_firmano`, `cari_sube_no`,
 `sip_firmano`, `sip_subeno`, `cha_firmano`, `cha_subeno`, `sth_firmano`,
 `sth_subeno`, `sck_firmano`, `sck_subeno`. **`STOKLAR` ve `BARKOD_TANIMLARI`
