@@ -1,0 +1,601 @@
+using System.Data.Common;
+using System.Text.Json;
+using ErpBridge.Core.Domain;
+using ErpBridge.Core.Stores;
+using ErpBridge.Core.Sync;
+using ErpBridge.Erp.Abstractions;
+using ErpBridge.Erp.Abstractions.Documents;
+using ErpBridge.Erp.Abstractions.SalesOrder;
+using Microsoft.Extensions.Logging;
+
+namespace ErpBridge.Core.Jobs;
+
+/// <summary>Cadence for <see cref="AgentJobPump.RunAsync"/>. Both hosts read it from <c>AgentService</c> configuration.</summary>
+/// <param name="PollIntervalSeconds">Seconds between polls of the central API. Must be positive.</param>
+/// <param name="FirstRunDelaySeconds">Seconds to wait before the first poll, so the host can finish booting.</param>
+public sealed record AgentJobPumpOptions(int PollIntervalSeconds = 30, int FirstRunDelaySeconds = 5);
+
+/// <summary>
+/// The agent's inbound half: lease pending jobs from the central API, write each one to the ERP
+/// through the adapter, and acknowledge the real outcome.
+///
+/// <para>This lives in Core, free of <c>Microsoft.Extensions.Hosting</c>, for the same reason
+/// <see cref="AgentSyncLoop"/> does: it has two hosts with nothing else in common. The Windows
+/// Service wraps it in a <c>BackgroundService</c>; the WPF agent runs it on a plain background
+/// task, since that process builds a bare <c>ServiceCollection</c> and has no generic host to hang
+/// a hosted service off. While this logic lived in the service's worker, an operator running only
+/// the desktop agent had no inbound path at all — every document the phone sent stayed
+/// <c>pending</c> on the server and nothing was ever written to the ERP.</para>
+///
+/// Per-job flow:
+///   1. Lease <see cref="RemoteJob"/>s from the central API.
+///   2. A Sipariş Cepte document (it names itself with <c>mobileDocumentId</c>) goes through
+///      <see cref="MobileDocumentTranslator"/> to an ERP-independent command; the typed ingest
+///      bodies keep their own writers. Both resolve an <see cref="IErpAdapter"/> from
+///      <see cref="IErpAdapterFactory"/>. The adapter owns the ERP transaction AND the idempotent
+///      mapping save — the pump MUST NOT touch <see cref="Erp.Abstractions.Stores.IMappingStore"/>.
+///   3. Translate the <see cref="ErpWriteResult"/> into a <see cref="JobAck"/>:
+///      <c>Ok=true → succeeded</c>, <c>Ok=false → failed</c> with <c>ErrorCode</c> /
+///      <c>ErrorMessage</c> propagated as-is. Validation / missing-lookup are permanent failures
+///      (retry is pointless); the central API decides its own retry policy based on the code.
+///   4. Best-effort local queue enqueue is still performed for every job so an audit trail
+///      survives an ERP outage — but the ack is driven by the ERP write, not by the enqueue.
+///
+/// Ack delivery itself is non-fatal: failures are logged at warning level and the central API
+/// re-delivers the job on the next poll. The local enqueue path is idempotent (<c>LocalJob</c>
+/// primary key collision).
+/// </summary>
+public sealed class AgentJobPump
+{
+    /// <summary>
+    /// Canonical document-type key for sales orders. Must match the value emitted by the central
+    /// API AND the value persisted by <c>MikroSalesOrderWriter.DocumentType</c> (kept here as a
+    /// string so the Core layer does not pull a Mikro-specific constant).
+    /// </summary>
+    public const string SalesOrderDocumentType = "sales_order";
+
+    /// <summary>Document-type keys handled through the generic JSON dispatch path (Faz 17).</summary>
+    public const string InvoiceDocumentType = "invoice";
+    public const string CollectionDocumentType = "collection";
+    public const string DispatchNoteDocumentType = "dispatch_note";
+    public const string PaymentOrderDocumentType = "payment_order";
+    public const string CustomerCardDocumentType = "customer_card";
+    public const string StockCardDocumentType = "stock_card";
+
+    private static readonly JsonSerializerOptions PayloadJsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Phone document types the translator turns into ERP commands (goal ERP yazım Y2c).</summary>
+    private static readonly HashSet<string> MobileDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        MobileDocumentTranslator.SalesOrderType, MobileDocumentTranslator.SalesReturnType, MobileDocumentTranslator.CollectionType,
+    };
+
+    private static readonly MobileDocumentTranslator Translator = new();
+
+    private readonly IRemoteApiClient _remoteApi;
+    private readonly ILocalQueueStore _localQueue;
+    private readonly IAgentConfigStore _configStore;
+    private readonly IErpAdapterFactory _adapterFactory;
+    private readonly SalesOrderPayloadDeserializer _payloadDeserializer;
+    private readonly AgentRunStatus _runStatus;
+    private readonly ILogger<AgentJobPump> _logger;
+
+    /// <summary>DI constructor.</summary>
+    public AgentJobPump(
+        IRemoteApiClient remoteApi,
+        ILocalQueueStore localQueue,
+        IAgentConfigStore configStore,
+        IErpAdapterFactory adapterFactory,
+        SalesOrderPayloadDeserializer payloadDeserializer,
+        AgentRunStatus runStatus,
+        ILogger<AgentJobPump> logger)
+    {
+        _remoteApi = remoteApi ?? throw new ArgumentNullException(nameof(remoteApi));
+        _localQueue = localQueue ?? throw new ArgumentNullException(nameof(localQueue));
+        _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
+        _adapterFactory = adapterFactory ?? throw new ArgumentNullException(nameof(adapterFactory));
+        _payloadDeserializer = payloadDeserializer ?? throw new ArgumentNullException(nameof(payloadDeserializer));
+        _runStatus = runStatus ?? throw new ArgumentNullException(nameof(runStatus));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>Describes the configured cadence; hosts log this on startup.</summary>
+    public static string DescribeCadence(AgentJobPumpOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return $"poll interval = {options.PollIntervalSeconds}s, first poll delayed {options.FirstRunDelaySeconds}s";
+    }
+
+    /// <summary>
+    /// Poll until <paramref name="stoppingToken"/> is cancelled. Never throws for a cancelled
+    /// token — cancellation is the normal way to stop.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="options"/> carries a non-positive interval.</exception>
+    public async Task RunAsync(AgentJobPumpOptions options, CancellationToken stoppingToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.PollIntervalSeconds <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                $"AgentJobPumpOptions.PollIntervalSeconds must be positive (got {options.PollIntervalSeconds}).");
+        }
+
+        var firstDelay = TimeSpan.FromSeconds(Math.Max(0, options.FirstRunDelaySeconds));
+        if (firstDelay > TimeSpan.Zero && !await DelayAsync(firstDelay, stoppingToken).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        var interval = TimeSpan.FromSeconds(options.PollIntervalSeconds);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await RunSingleIterationAsync(stoppingToken).ConfigureAwait(false);
+            if (!await DelayAsync(interval, stoppingToken).ConfigureAwait(false)) break;
+        }
+    }
+
+    /// <summary>False when the wait was cut short by cancellation.</summary>
+    private static async Task<bool> DelayAsync(TimeSpan delay, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(delay, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// One poll: lease whatever is pending and process each job. Swallows anything unexpected so a
+    /// programmer bug cannot kill the loop. Public so a host can force a single pass without
+    /// starting the timer.
+    /// </summary>
+    /// <returns>How many jobs were processed in this pass.</returns>
+    public async Task<int> RunSingleIterationAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            // Log Merkezi L3g: the poll itself is one trace; each job then runs under its own id.
+            using var trace = Logging.AgentCorrelation.Begin(null);
+            var config = await _configStore.LoadAsync(stoppingToken).ConfigureAwait(false);
+            if (config is null)
+            {
+                _logger.LogWarning("No AgentConfig persisted yet; the agent must be configured before documents can be written.");
+                return 0;
+            }
+
+            var jobs = await _remoteApi.GetPendingJobsAsync(stoppingToken).ConfigureAwait(false);
+            if (jobs.Count == 0)
+            {
+                _logger.LogDebug("No pending jobs from central API.");
+                return 0;
+            }
+
+            _logger.LogInformation("Received {Count} pending job(s) from central API.", jobs.Count);
+            foreach (var job in jobs)
+            {
+                await ProcessJobAsync(job, config, stoppingToken).ConfigureAwait(false);
+            }
+
+            return jobs.Count;
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // graceful shutdown
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Job poll failed; will retry after backoff.");
+            _runStatus.RecordError("JOB_POLL_FAILED", ex.Message);
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Enqueue a single remote job locally, dispatch it to the adapter, then send the
+    /// corresponding ack to the central API. Failures at every step are caught and reported so one
+    /// bad job cannot poison the rest of the batch.
+    /// </summary>
+    public async Task ProcessJobAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        ArgumentNullException.ThrowIfNull(config);
+
+        // Log Merkezi L3g: everything from here on — the ERP write, the log lines, the ack request — carries
+        // the id the server booked the job with, so the phone document and its ERP write are one search.
+        using var trace = Logging.AgentCorrelation.Begin(job.CorrelationId);
+
+        // Local enqueue is best-effort audit-trail work. Even if it fails we
+        // still proceed to the adapter (and the ack) so the central API does
+        // not see the job as "stuck" when the only issue is local persistence.
+        await TryEnqueueLocallyAsync(job, config, ct).ConfigureAwait(false);
+
+        var ack = await DispatchToAdapterAsync(job, config, ct).ConfigureAwait(false);
+        ack.Attempt ??= job.Attempt;
+        // Log Merkezi L3f: one place for every rejected write. The heartbeat's lastError used to stay empty
+        // however many documents the ERP refused, because nothing ever wrote it.
+        if (!string.Equals(ack.Status, "succeeded", StringComparison.Ordinal))
+            _runStatus.RecordError(ack.ErrorCode, ack.ErrorMessage);
+        await TrySendAckAsync(ack, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Push a <see cref="LocalJob"/> onto the durable queue. Errors are logged
+    /// but do not abort the dispatch — the ERP write is the source of truth.
+    /// </summary>
+    private async Task TryEnqueueLocallyAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    {
+        var local = new LocalJob
+        {
+            Id = job.JobId,
+            TenantId = config.TenantId ?? string.Empty,
+            JobType = job.DocumentType,
+            ExternalId = job.ExternalId,
+            PayloadJson = job.Payload,
+            Status = LocalJobStatus.Pending,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        try
+        {
+            await _localQueue.EnqueueAsync(local, ct).ConfigureAwait(false);
+            _logger.LogInformation("Enqueued job {JobId} ({DocumentType}, externalId={ExternalId}).",
+                job.JobId, job.DocumentType, job.ExternalId);
+        }
+        catch (Exception ex)
+        {
+            // The local SQLite store may be transiently unavailable; never
+            // propagate the failure to the ack — the central API only needs
+            // to learn the outcome of the ERP write.
+            _logger.LogError(ex,
+                "Failed to enqueue job {JobId} locally; continuing with ERP dispatch.",
+                job.JobId);
+            _runStatus.RecordError("LOCAL_QUEUE_FAILED", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Run the ERP write for the supplied job and translate the adapter outcome into a
+    /// <see cref="JobAck"/>. A type without a concrete ERP writer must remain visible as failed;
+    /// otherwise a mobile user could believe it was posted to the ERP when it was not.
+    /// </summary>
+    public async Task<JobAck> DispatchToAdapterAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        ArgumentNullException.ThrowIfNull(config);
+
+        // A Sipariş Cepte document (it names itself with mobileDocumentId) goes through the translator to
+        // the ERP-independent commands; the typed ingest bodies keep their writers (goal ERP yazım D3).
+        if (job.DocumentType is not null && MobileDocumentTypes.Contains(job.DocumentType) && MobileDocumentTranslator.IsMobileDocument(job.Payload))
+        {
+            return await DispatchMobileDocumentAsync(job, config, ct).ConfigureAwait(false);
+        }
+
+        if (string.Equals(job.DocumentType, SalesOrderDocumentType, StringComparison.OrdinalIgnoreCase))
+        {
+            return await DispatchSalesOrderAsync(job, config, ct).ConfigureAwait(false);
+        }
+
+        return await DispatchDocumentAsync(job, config, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Generic dispatch for every non-sales-order document type. Resolves the
+    /// adapter, deserializes the JSON payload into the type the adapter method
+    /// expects, invokes it, and maps <see cref="ErpWriteResult"/> to a
+    /// <see cref="JobAck"/>. Business validation stays in the adapter/writer.
+    /// </summary>
+    private static readonly HashSet<string> GenericDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        InvoiceDocumentType, CollectionDocumentType, DispatchNoteDocumentType,
+        PaymentOrderDocumentType, CustomerCardDocumentType, StockCardDocumentType,
+    };
+
+    private async Task<JobAck> DispatchDocumentAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    {
+        // Reject genuinely-unknown document types BEFORE resolving an adapter —
+        // an unrecognised type must never trigger an ERP connection.
+        if (job.DocumentType is null || !GenericDocumentTypes.Contains(job.DocumentType))
+        {
+            _logger.LogWarning(
+                "Received job {JobId} with unsupported document type {DocumentType}.",
+                job.JobId, job.DocumentType);
+            return Failed(job.JobId, "UNSUPPORTED_DOCUMENT_TYPE",
+                $"No writer is configured for document type '{job.DocumentType}'.");
+        }
+
+        IErpAdapter adapter;
+        try
+        {
+            adapter = _adapterFactory.Create(config.ErpType);
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogError(ex, "Adapter factory refused ERP type {ErpType} for job {JobId}.", config.ErpType, job.JobId);
+            return Failed(job.JobId, "UNSUPPORTED_ERP", ex.Message);
+        }
+
+        try
+        {
+            var writeResult = job.DocumentType.ToLowerInvariant() switch
+            {
+                InvoiceDocumentType => await adapter.WriteInvoiceAsync(Parse<InvoicePayload>(job.Payload), ct).ConfigureAwait(false),
+                CollectionDocumentType => await adapter.WriteCollectionAsync(Parse<CollectionPayload>(job.Payload), ct).ConfigureAwait(false),
+                DispatchNoteDocumentType => await adapter.WriteDispatchNoteAsync(Parse<DispatchNotePayload>(job.Payload), ct).ConfigureAwait(false),
+                PaymentOrderDocumentType => await adapter.WritePaymentOrderAsync(Parse<PaymentOrderPayload>(job.Payload), ct).ConfigureAwait(false),
+                CustomerCardDocumentType => await adapter.WriteCustomerCardAsync(Parse<CreateCustomerRequest>(job.Payload), ct).ConfigureAwait(false),
+                StockCardDocumentType => await adapter.WriteStockCardAsync(Parse<CreateStockRequest>(job.Payload), ct).ConfigureAwait(false),
+                _ => new ErpWriteResult(false, "UNSUPPORTED_DOCUMENT_TYPE", $"No writer for '{job.DocumentType}'."),
+            };
+
+            return ToAck(job, writeResult);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Payload for job {JobId} ({DocumentType}) is not valid JSON.", job.JobId, job.DocumentType);
+            return Failed(job.JobId, "INVALID_PAYLOAD_JSON", ex.Message);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Adapter threw for job {JobId} ({DocumentType}).", job.JobId, job.DocumentType);
+            return Failed(job.JobId, ErpWriteResult.ErrorCodeUnknown, ex.Message);
+        }
+    }
+
+    private async Task<JobAck> DispatchMobileDocumentAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    {
+        var translation = Translator.Translate(job.DocumentType, job.ExternalId, job.Payload, job.ErpContext);
+        if (translation.Error is { } error)
+        {
+            _logger.LogWarning(
+                "Phone document for job {JobId} ({DocumentType}) cannot be written: {ErrorCode}",
+                job.JobId, job.DocumentType, error.Code);
+            return Failed(job.JobId, error.Code, error.Message, error.Retryable);
+        }
+
+        IErpAdapter adapter;
+        try
+        {
+            adapter = _adapterFactory.Create(config.ErpType);
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogError(ex, "Adapter factory refused ERP type {ErpType} for job {JobId}.", config.ErpType, job.JobId);
+            return Failed(job.JobId, "UNSUPPORTED_ERP", ex.Message);
+        }
+
+        try
+        {
+            var writeResult = translation switch
+            {
+                { Sale: { } sale } => await adapter.WriteSalesDocumentAsync(sale, ct).ConfigureAwait(false),
+                { Return: { } salesReturn } => await adapter.WriteSalesReturnAsync(salesReturn, ct).ConfigureAwait(false),
+                { Collection: { } collection } => await adapter.WriteCollectionDocumentAsync(collection, ct).ConfigureAwait(false),
+                _ => throw new InvalidOperationException("The translator returned neither a command nor an error."),
+            };
+            return ToAck(job, writeResult);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Shutdown: no ack, the lease expires and the job is delivered again.
+            throw;
+        }
+        catch (Exception ex) when (IsTransient(ex))
+        {
+            _logger.LogWarning(ex, "ERP unreachable for job {JobId} ({DocumentType}); the server will retry.", job.JobId, job.DocumentType);
+            var unavailable = Shared.ErpWriteError.ErpUnavailable();
+            return Failed(job.JobId, unavailable.Code, unavailable.Message, retryable: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Adapter threw for job {JobId} ({DocumentType}).", job.JobId, job.DocumentType);
+            return Failed(job.JobId, ErpWriteResult.ErrorCodeUnknown, $"Belge ERP'ye yazılırken beklenmeyen bir hata oluştu ({ex.GetType().Name}).");
+        }
+    }
+
+    /// <summary>
+    /// Failures that pass by themselves: a lost or timed-out connection, a deadlock, a database the
+    /// driver itself marks as transient. Data and mapping problems never are.
+    /// </summary>
+    public static bool IsTransient(Exception ex) => ex switch
+    {
+        TimeoutException or IOException => true,
+        DbException db => db.IsTransient || TransientSqlNumbers.Contains(SqlNumber(db)),
+        _ => ex.InnerException is { } inner && IsTransient(inner),
+    };
+
+    /// <summary>SQL Server: timeout, connection errors, deadlock victim, lock timeout, database offline.</summary>
+    private static readonly HashSet<int> TransientSqlNumbers = [-2, -1, 2, 53, 121, 232, 233, 258, 1205, 1222, 4060, 10053, 10054, 10060, 10061, 11001, 40143, 40197, 40501, 40613];
+
+    /// <summary>The SQL Server error number without referencing the SQL client from Core.</summary>
+    private static int SqlNumber(DbException db) =>
+        db.GetType().GetProperty("Number")?.GetValue(db) is int number ? number : 0;
+
+    /// <summary>ERP write codes the server should retry (<see cref="Shared.ErpWriteError.Retryable"/>).</summary>
+    private static readonly HashSet<string> RetryableCodes = new(StringComparer.Ordinal)
+    {
+        Shared.ErpWriteError.ErpUnavailableCode, Shared.ErpWriteError.ErpContextMissingCode,
+    };
+
+    private static T Parse<T>(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new JsonException("RemoteJob payload is empty or whitespace.");
+        }
+
+        return JsonSerializer.Deserialize<T>(json, PayloadJsonOptions)
+            ?? throw new JsonException($"Payload deserialized to null for {typeof(T).Name}.");
+    }
+
+    private JobAck ToAck(RemoteJob job, ErpWriteResult writeResult)
+    {
+        if (writeResult.Ok)
+        {
+            _logger.LogInformation(
+                "Document committed for job {JobId} ({DocumentType}, recno={Recno}, guid={Guid}).",
+                job.JobId, job.DocumentType, writeResult.ErpRecno, writeResult.ErpGuid);
+            return new JobAck
+            {
+                JobId = job.JobId,
+                Status = "succeeded",
+                ErpDocumentSeries = writeResult.DocumentSeries,
+                ErpDocumentNumber = writeResult.DocumentNumber,
+                ErpRecno = writeResult.ErpRecno,
+                ErpGuid = writeResult.ErpGuid?.ToString(),
+            };
+        }
+
+        _logger.LogWarning(
+            "Document rejected for job {JobId} ({DocumentType}): {ErrorCode} {ErrorMessage}",
+            job.JobId, job.DocumentType, writeResult.ErrorCode, writeResult.ErrorMessage);
+        var code = writeResult.ErrorCode ?? ErpWriteResult.ErrorCodeUnknown;
+        return Failed(job.JobId, code, writeResult.ErrorMessage, RetryableCodes.Contains(code));
+    }
+
+    private static JobAck Failed(string jobId, string? code, string? message, bool retryable = false) => new()
+    {
+        JobId = jobId,
+        Status = "failed",
+        ErrorCode = code,
+        ErrorMessage = message,
+        // Sent only when true, so the ack body of a permanent failure is what older servers expect.
+        Retryable = retryable ? true : null,
+    };
+
+    private async Task<JobAck> DispatchSalesOrderAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    {
+        var deserialized = _payloadDeserializer.Deserialize(job.Payload);
+        if (!deserialized.IsSuccess)
+        {
+            _logger.LogWarning(
+                "Sales order payload for job {JobId} could not be deserialized ({ErrorCode}): {Error}",
+                job.JobId, deserialized.ErrorCode, deserialized.Error);
+            return new JobAck
+            {
+                JobId = job.JobId,
+                Status = "failed",
+                ErrorCode = deserialized.ErrorCode,
+                ErrorMessage = deserialized.Error,
+            };
+        }
+
+        var payload = deserialized.ValueOrThrow();
+        IErpAdapter adapter;
+        try
+        {
+            // AgentConfig.ErpType is ErpBridge.Erp.Abstractions.ErpType — the
+            // single source of truth, consumed directly by the adapter factory.
+            adapter = _adapterFactory.Create(config.ErpType);
+        }
+        catch (NotSupportedException ex)
+        {
+            // The agent's AgentConfig is pinned to an ERP the current DI graph
+            // cannot service (e.g. Logo selected but no Logo adapter wired).
+            // Surface as a permanent failure — retrying without a config
+            // change is pointless.
+            _logger.LogError(ex,
+                "Adapter factory refused ERP type {ErpType} for job {JobId}.",
+                config.ErpType, job.JobId);
+            return new JobAck
+            {
+                JobId = job.JobId,
+                Status = "failed",
+                ErrorCode = "UNSUPPORTED_ERP",
+                ErrorMessage = ex.Message,
+            };
+        }
+
+        ErpWriteResult writeResult;
+        try
+        {
+            writeResult = await adapter.WriteSalesOrderAsync(payload, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw; // shutdown — let the host decide
+        }
+        catch (Exception ex)
+        {
+            // The adapter is supposed to return a failed ErpWriteResult for
+            // every known business error. Anything escaping here is an
+            // unexpected fault (DB outage, programmer bug, etc.) — report it
+            // as UnknownError so the central API can decide whether to retry.
+            _logger.LogError(ex,
+                "Adapter threw for sales_order job {JobId} (externalId={ExternalId}).",
+                job.JobId, payload.ExternalId);
+            return new JobAck
+            {
+                JobId = job.JobId,
+                Status = "failed",
+                ErrorCode = ErpWriteResult.ErrorCodeUnknown,
+                ErrorMessage = ex.Message,
+            };
+        }
+
+        if (writeResult.Ok)
+        {
+            _logger.LogInformation(
+                "Sales order committed for job {JobId} (externalId={ExternalId}, recno={Recno}, guid={Guid}).",
+                job.JobId, payload.ExternalId, writeResult.ErpRecno, writeResult.ErpGuid);
+            return new JobAck
+            {
+                JobId = job.JobId,
+                Status = "succeeded",
+                ErrorCode = null,
+                ErrorMessage = null,
+                ErpDocumentSeries = writeResult.DocumentSeries ?? payload.DocumentSeries,
+                ErpDocumentNumber = writeResult.DocumentNumber ?? payload.DocumentNumber,
+                ErpRecno = writeResult.ErpRecno,
+                ErpGuid = writeResult.ErpGuid?.ToString(),
+            };
+        }
+
+        _logger.LogWarning(
+            "Sales order rejected for job {JobId} (externalId={ExternalId}): {ErrorCode} {ErrorMessage}",
+            job.JobId, payload.ExternalId, writeResult.ErrorCode, writeResult.ErrorMessage);
+        return new JobAck
+        {
+            JobId = job.JobId,
+            Status = "failed",
+            ErrorCode = writeResult.ErrorCode ?? ErpWriteResult.ErrorCodeUnknown,
+            ErrorMessage = writeResult.ErrorMessage,
+        };
+    }
+
+    /// <summary>
+    /// Send an ack to the central API. Failures here are non-fatal: the central
+    /// API will re-deliver the job on the next poll, and the local enqueue
+    /// path is idempotent (LocalJob primary key collision is treated as
+    /// "already accepted").
+    /// </summary>
+    private async Task TrySendAckAsync(JobAck ack, CancellationToken ct)
+    {
+        try
+        {
+            await _remoteApi.SendAckAsync(ack, ct).ConfigureAwait(false);
+            _logger.LogDebug("Ack sent for job {JobId} (status={Status}).", ack.JobId, ack.Status);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // shutdown; do not log as error
+        }
+        catch (Exception ex)
+        {
+            // The central API uses Idempotency-Key=ack:{JobId} on retries,
+            // so we will not double-ack. The job will be re-delivered on the
+            // next poll, and the local enqueue is idempotent.
+            _logger.LogWarning(ex, "Ack for job {JobId} could not be sent; job will be re-delivered.", ack.JobId);
+        }
+    }
+}

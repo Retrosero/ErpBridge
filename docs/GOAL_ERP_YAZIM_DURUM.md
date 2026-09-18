@@ -139,6 +139,27 @@ Ek DB kontrolleri:
   etkilenmedi). Sunucu adresi, kiracı, `GURBUZ` / `MikroDB_V15_02`, firma 1 / şube 1, Windows kimlik doğrulaması UI logundaki son
   kayıttan geri yazıldı; **lisans anahtarının şifreli eski değeri dosyada ezildiği için kurtarılamadı** → Seni Bekleyenler.
 
+## Sonradan çıkan — tepsi uygulamasında gelen yarı hiç çalışmıyordu (2026-09-18)
+
+Kullanıcı "Android'den gönderilen siparişler Mikro'ya yazılmıyor" dedi. Sebep goal'ün yazım
+zincirinde değil, **host'ta**: `AgentWorker` yalnızca `AddHostedService` ile Windows Service'te
+kayıtlıydı. Müşteri PC'sinde yalnızca `ErpBridge.Agent.UI` (tepsi uygulaması) çalışıyor ve o süreç
+çıplak bir `ServiceCollection` kurduğu için hiç `GET /api/v1/jobs/pending` yapılmıyordu. Belgeler
+sunucuda `pending` kalıyor, Mikro'ya hiçbir şey yazılmıyor, logda da bunu söyleyen satır olmuyordu.
+
+Kanıt (bu bilgisayar, 2026-09-18): `Get-Service` → kurulu ErpBridge servisi yok, tek süreç
+`ErpBridge.Agent.UI`; `ui-20260918.log` içinde "job" geçen **0** satır; `C:/ProgramData/ErpBridge/agent.db`
+→ `local_jobs` **boş**, `mappings` **boş** (giden senkron ise çalışıyor: `checkpoints` 2026-09-18 07:55).
+
+Düzeltme: iş döngüsü `ErpBridge.Core/Jobs/AgentJobPump.cs`'e taşındı ve iki host da onu sürüyor
+(`AgentWorker` ince `BackgroundService`, `DesktopJobPumpService` WPF tarafında) — `AgentSyncLoop`
+için 2026-09-10'da yapılanın aynısı. Ayrıntı: [[01_Accounting_Adapters]] "WPF ajanı artık telefonun
+belgelerini de yazıyor".
+
+> ⚠️ Bu bilgisayardaki ajan `CompanyNo=1 / BranchNo=1` ile yapılandırılmış, ama `MikroDB_V15_02`'deki
+> canlı satırlar firma/şube **0**. Canlıya almadan önce 3. maddedeki Portal ayarlarıyla birlikte bu da
+> doğrulanmalı; yanlışsa evraklar var olmayan firmaya yazılır.
+
 ## Seni Bekleyenler
 
 Goal'ün bütün kod görevleri bitti. Kalan adımlar insan kararı veya bu bilgisayarda olmayan erişim ister; **sıra önemlidir**.

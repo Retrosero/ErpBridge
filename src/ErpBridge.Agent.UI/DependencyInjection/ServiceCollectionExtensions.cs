@@ -80,6 +80,10 @@ public static class ServiceCollectionExtensions
         // gets this through BootstrapWorker; the WPF process has no generic
         // host, so it owns the loop directly.
         services.AddSingleton<DesktopBackgroundSyncService>();
+        // The inbound half — lease the phone's documents and write them to the ERP. The Windows
+        // Service gets this through AgentWorker; the WPF process owns the loop directly for the
+        // same reason.
+        services.AddSingleton<DesktopJobPumpService>();
         // Live UI clock: drives the tray tooltip + the status-bar clock.
         services.AddSingleton<IDesktopClockService, DesktopClockService>();
 
