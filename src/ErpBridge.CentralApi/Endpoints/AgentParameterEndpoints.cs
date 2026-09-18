@@ -31,6 +31,10 @@ public static class AgentParameterEndpoints
             .RequireAuthorization(Program.AgentPolicy)
             .RequireRateLimiting(Program.PerAgentRateLimitPolicy);
 
+        group.MapGet("/companies", CompaniesAsync)
+            .WithName("AgentParameterCompanies")
+            .Produces<AgentCompanyDto[]>();
+
         group.MapGet("", DesiredStateAsync)
             .WithName("AgentParametersDesiredState")
             .Produces<AgentParameterStateResponse>()
@@ -44,6 +48,39 @@ public static class AgentParameterEndpoints
             .Produces<ApiError>(StatusCodes.Status403Forbidden);
 
         return routes;
+    }
+
+    /// <summary>
+    /// The companies this agent is assigned to.
+    ///
+    /// The agent knows the Mikro database it is pointed at, not the id the centre uses for it, so
+    /// it needs this to turn one into the other. Returning the whole assignment rather than the
+    /// one match also means an agent that later serves several databases needs configuration, not
+    /// a different endpoint.
+    /// </summary>
+    private static async Task<IResult> CompaniesAsync(
+        [FromServices] CentralApiDbContext db, HttpContext http, CancellationToken ct)
+    {
+        if (!http.User.TryGetTenantId(out var tenantId))
+        {
+            return JsonResults.Status(StatusCodes.Status401Unauthorized,
+                new ApiError { ErrorCode = "INVALID_TOKEN", Message = "Tenant id missing." });
+        }
+
+        if (!http.User.TryGetAgentId(out var agentId))
+        {
+            return JsonResults.Ok(Array.Empty<AgentCompanyDto>());
+        }
+
+        var rows = await db.AgentCompanyAssignments.AsNoTracking()
+            .Where(a => a.AgentId == agentId)
+            .Join(db.ErpCompanies.AsNoTracking().Where(c => c.TenantId == tenantId && c.IsActive),
+                a => a.ErpCompanyId, c => c.Id,
+                (a, c) => new AgentCompanyDto(c.Id, c.Code, c.Name, c.SourceDatabase, c.CompanyNo, c.BranchNo))
+            .OrderBy(c => c.SourceDatabase)
+            .ToArrayAsync(ct);
+
+        return JsonResults.Ok(rows);
     }
 
     /// <summary>
@@ -249,6 +286,15 @@ public static class AgentParameterEndpoints
 
     private static string? Trim(string? value, int max) =>
         string.IsNullOrEmpty(value) ? value : value.Length <= max ? value : value[..max];
+
+    /// <summary>One company the agent serves, named the way the agent can recognise it.</summary>
+    public sealed record AgentCompanyDto(
+        Guid Id,
+        string Code,
+        string Name,
+        string SourceDatabase,
+        int CompanyNo,
+        int BranchNo);
 
     /// <summary>One row of the desired state, in the shape Mikro's parameter table stores.</summary>
     public sealed record AgentParameterRow(
