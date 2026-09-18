@@ -9,6 +9,7 @@ using ErpBridge.CentralApi.Endpoints;
 using ErpBridge.CentralApi.Health;
 using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Options;
+using ErpBridge.CentralApi.Parameters;
 using ErpBridge.CentralApi.Security;
 using ErpBridge.CentralApi.Telemetry;
 using ErpBridge.CentralApi.Webhooks;
@@ -134,6 +135,34 @@ public partial class Program
             var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
             var seed = scope.ServiceProvider.GetRequiredService<IOptions<AdminSeedOptions>>().Value;
             EnsureSeedAdmin(db, seed);
+        }
+
+        // Bring the parameter catalogue in line with the one embedded in this build. Idempotent,
+        // and skipped by the test host: seeding ~4,700 rows into a throwaway in-memory database
+        // for every test class costs far more than it proves.
+        if (app.Configuration.GetValue("Parameters:SeedCatalogOnStartup", defaultValue: true))
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("ErpBridge.CentralApi.Parameters");
+
+            try
+            {
+                var result = ParameterCatalogSeeder.Seed(db, ParameterCatalogFile.Load());
+                if (result.Changed)
+                {
+                    logger.LogInformation(
+                        "Parameter catalogue seeded: {Added} added, {Updated} updated, {Deprecated} deprecated, {Revived} revived.",
+                        result.Added, result.Updated, result.Deprecated, result.Revived);
+                }
+            }
+            catch (Exception ex)
+            {
+                // A stale catalogue is bad; a host that will not start is worse. The panel reports
+                // the mismatch, and /health/schema already warns when the schema is behind.
+                logger.LogError(ex, "Parameter catalogue could not be seeded; the panel may show stale metadata.");
+            }
         }
 
         WarnIfSchemaIsBehind(app);

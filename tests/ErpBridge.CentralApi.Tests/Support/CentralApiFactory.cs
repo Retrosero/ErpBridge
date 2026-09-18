@@ -56,6 +56,11 @@ public class CentralApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Test");
+
+        // The parameter catalogue is ~4,700 rows; seeding it into a throwaway in-memory database
+        // for every test class costs far more than it proves. ParameterCatalogSeederTests covers
+        // the seeding itself directly.
+        builder.UseSetting("Parameters:SeedCatalogOnStartup", "false");
         if (_disableRateLimiter)
             builder.UseSetting("RateLimiter:DisabledForTests", "true");
         builder.ConfigureServices(services =>

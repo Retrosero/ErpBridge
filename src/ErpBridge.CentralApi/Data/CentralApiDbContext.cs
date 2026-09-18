@@ -57,6 +57,12 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Faz 15.6 — append-only audit log of every change-set bundle the central API accepts.</summary>
     public DbSet<ChangeSetAuditEntry> ChangeSetAuditEntries => Set<ChangeSetAuditEntry>();
 
+    /// <summary>
+    /// Parametre Yönetimi (P1a) — every parameter Fora declares, with its default and the metadata
+    /// the panel renders it from. Seeded from the catalogue embedded in this build.
+    /// </summary>
+    public DbSet<ParameterCatalogEntry> ParameterCatalog => Set<ParameterCatalogEntry>();
+
     /// <summary>Faz 15.5 — Mikro <c>_ERPB_PARAMETRELER</c> snapshot mirror, one row per parameter.</summary>
     public DbSet<ParameterRecord> Parameters => Set<ParameterRecord>();
 
@@ -730,6 +736,35 @@ public sealed class CentralApiDbContext : DbContext
         // Faz 15.5: parameters mirror. Unique on (TenantId, SourceDatabase,
         // ParametreProgram, ParametreUser, ParametreID) lets the agent's push
         // be a no-op for unchanged rows.
+        modelBuilder.Entity<ParameterCatalogEntry>(b =>
+        {
+            b.ToTable("parameter_catalog_entries");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Program).IsRequired().HasMaxLength(40);
+            b.Property(x => x.CatalogMethod).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(128);
+            b.Property(x => x.DefaultValue).IsRequired();
+            b.Property(x => x.DefaultSource).HasMaxLength(64);
+            b.Property(x => x.ScopeKind).IsRequired().HasMaxLength(32);
+            b.Property(x => x.ScopeFields).IsRequired().HasMaxLength(64);
+            b.Property(x => x.User).IsRequired().HasMaxLength(100);
+            b.Property(x => x.AnaGrubu).IsRequired().HasMaxLength(100);
+            b.Property(x => x.AltGrubu).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Editor).HasMaxLength(32);
+            b.Property(x => x.ReferenceKind).HasMaxLength(32);
+            b.Property(x => x.SecretSource).HasMaxLength(16);
+            b.Property(x => x.Label).HasMaxLength(512);
+            b.Property(x => x.TabPath).HasMaxLength(512);
+            b.Property(x => x.SourceBuild).IsRequired().HasMaxLength(64);
+
+            // ParametreID is the real key and it is unique only inside a set: a program can own
+            // several sets, and the same name appears in different sets with different ids.
+            b.HasIndex(x => new { x.CatalogMethod, x.ParametreId }).IsUnique();
+
+            // The panel lists a program's parameters in editor order.
+            b.HasIndex(x => new { x.Program, x.EditorOrder });
+        });
+
         modelBuilder.Entity<ParameterRecord>(b =>
         {
             b.ToTable("parameter_records");

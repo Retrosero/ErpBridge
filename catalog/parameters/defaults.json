@@ -750,7 +750,9 @@
         {
           "id": 1,
           "name": "Sifre",
-          "default": ""
+          "default": "",
+          "excluded": true,
+          "excludedReason": "Fora keeps the mobile user's password here, encrypted with a key compiled into its own binary. ErpBridge authenticates against MobileUser.PasswordHash and never stores, mirrors or displays this value."
         },
         {
           "id": 2,

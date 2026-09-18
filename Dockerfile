@@ -90,6 +90,12 @@ RUN PROJECT_DIR=$(cut -d= -f2 /tmp/project_dir.env) && \
 # will invalidate only this and later layers, keeping restore cached.
 COPY src/ src/
 
+# The generated Fora parameter catalogue is embedded into ErpBridge.CentralApi
+# (see its csproj) and lives outside src/. Without it the publish fails with
+# CS1566: the catalogue is what makes a stored parameter value meaningful, so
+# the API must not be built without one.
+COPY catalog/ catalog/
+
 RUN PROJECT_DIR=$(cut -d= -f2 /tmp/project_dir.env) && \
     dotnet publish "src/${PROJECT_DIR}/${PROJECT_DIR}.csproj" \
         -c Release \

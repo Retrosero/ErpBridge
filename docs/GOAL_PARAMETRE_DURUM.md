@@ -13,7 +13,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
 | P0 — Katalog çıkarımı (ön koşul) | 7 | 5 | 🔄 |
-| P1 — Merkez veri modeli ve API | 7 | 0 | ⬜ |
+| P1 — Merkez veri modeli ve API | 7 | 1 | 🔄 |
 | P2 — Panel (Admin) parametre ekranı | 8 | 0 | ⬜ |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 0 | ⬜ |
 | P4 — Sipariş Cepte: öncelikli öbekler | 6 | 0 | ⬜ |
@@ -36,7 +36,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P0d | Tip çıkarsama ve doğrulama | 🔄 | — | **Kapsanan 12 set için bitti, aktarım setleri P6'ya bağlı.** Editör düzeni çıkarılan 1.936 parametrenin tipi var, `unknown` yok (test sabitliyor): `boolean` 965, `text` 734, `integer` 117, `choice` 63, `decimal` 29, `reference` 11, `color` 6, `secret` 5, `composite` 5, `multilineText` 1. **Kalan 2.777 tanım (aktarım setleri) tipsiz** — tip yalnız editör ekranından çıkıyor ve o ekranlar P6'ya bırakıldı. P0d ancak P6a–P6c ile kapanır |
 | P0e | Çıkarım script'i + altın dosya testi | ✅ | — | `tools/ForaCatalogExtractor` (Roslyn; dört ZPL şablonu kaçırılmış tırnakla bitiyor, regex sessizce bozuyor). `--check` bayat katalogda sıfırdan farklı kodla çıkar. `tests/ErpBridge.ForaCatalog.Tests` 13 test: bayt bayt altın dosya, iki kez çalıştırınca aynı çıktı, kapsam alanı iddiaları, çakışma kayıtları, Türkçe ve kaçırılmış tırnak korunumu, hatalı girdilerin reddi. Proje merkezi paket yönetiminin dışında: `Directory.Packages.props` geçişli sabitleme açtığı için Roslyn'i oraya eklemek EF Design üzerinden Roslyn çeken her projenin kilit dosyasını yeniden yazardı |
 | P0f | El ile gözden geçirme raporu | ⬜ | — | |
-| P1a | `parameter_catalog_entries` + tohumlama | ⬜ | — | |
+| P1a | `parameter_catalog_entries` + tohumlama | ✅ | — | Katalog derlemeye gömülü (`catalog/parameters/*.json`, ~1.5 MB); API konteynerde çalışıyor ve dosyadan okusa katalog kaybolabilirdi. **4.708 satır** tohumlanıyor — 4.713 tanımın gölgelenmiş 5'i hariç, çünkü onlar Fora'da da okunamıyor ve `(set, id)` anahtarını bozarlardı. Tohumlama **satır silmiyor**: geri çekilen parametre `IsDeprecated` ile işaretleniyor (D2), geri gelirse canlandırılıyor. `IsImplemented` yeniden tohumlamada korunuyor (D16) — onu katalog değil ürün bilir. Testlerde kapalı (`Parameters:SeedCatalogOnStartup`), 4.700 satırı her test sınıfı için eklemek ispatladığından pahalı; tohumlama mantığı doğrudan test ediliyor |
 | P1b | `parameter_values` + migration | ⬜ | — | |
 | P1c | `ParameterResolver` (Fora semantiği) | ⬜ | — | |
 | P1d | `parameter_revisions` + `parameter_audit` | ⬜ | — | |
