@@ -157,6 +157,71 @@ public sealed class ParametersTests : BunitContext
         cut.Find(".admin-state--error").TextContent.Should().Contain("Kapsam eksik");
     }
 
+    [Fact]
+    public void The_tab_tree_is_drawn_from_the_loaded_parameters()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 0,
+            Tabbed(1, "EvrakKayitKrediKontroluYap", "Evrak girişi / Cari risk takibi"),
+            Tabbed(2, "MiktarGirisi", "Evrak girişi / Miktar girişi"),
+            Tabbed(3, "AnaSayfa", "Görünüm ve seçenekler / Ana sayfa"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-tab__link").Count >= 4);
+
+        // 63 tabs would be 63 Razor files if the tree were written out; it comes from the
+        // catalogue's own tab paths instead (D11).
+        cut.Markup.Should().Contain("Evrak girişi").And.Contain("Cari risk takibi")
+            .And.Contain("Görünüm ve seçenekler");
+    }
+
+    [Fact]
+    public void Choosing_a_tab_shows_that_tabs_fields()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 0,
+            Tabbed(1, "KrediKontrol", "Evrak girişi / Cari risk takibi"),
+            Tabbed(2, "AnaSayfa", "Görünüm ve seçenekler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-tab__link").Count >= 3);
+        cut.Markup.Should().Contain("Bir sekme seçin");
+
+        var risk = cut.FindAll(".prm-tab__link").First(l => l.TextContent.Contains("Cari risk takibi"));
+        risk.Click();
+
+        cut.WaitForState(() => cut.FindAll("tbody tr").Count == 1);
+        cut.Markup.Should().Contain("KrediKontrol").And.NotContain("AnaSayfa");
+    }
+
+    [Fact]
+    public void A_family_that_repeats_a_hundred_times_opens_collapsed()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 0,
+            Enumerable.Range(1, 100)
+                .Select(i => Tabbed(i, $"GosterZyrt_Temsilci_Ozel_{i}_Derece", "Parametreler / Ziyaret anket", "Göster"))
+                .ToArray());
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-tab__link").Count >= 2);
+        cut.FindAll(".prm-tab__link").First(l => l.TextContent.Contains("Ziyaret anket")).Click();
+
+        // 830 of the 1,782 akilli fields sit on this tab; drawn as one flat list it is unusable.
+        cut.WaitForState(() => cut.FindAll("details.prm-group").Count == 1);
+        cut.Find("details.prm-group").HasAttribute("open").Should().BeFalse();
+        cut.Find("details.prm-group > summary").TextContent.Should().Contain("100 adet");
+    }
+
     // ---- Test helpers ----
 
     private static void LoadAkilliAsync(IRenderedComponent<Parameters> cut, PageState state)
@@ -202,6 +267,12 @@ public sealed class ParametersTests : BunitContext
         CatalogEntryId = Guid.NewGuid(), ParametreId = id, Name = name, Label = label,
         Editor = "text", Value = value, DefaultValue = def,
         IsOverridden = overridden, IsImplemented = implemented,
+    };
+
+    private static ParameterValueDto Tabbed(int id, string name, string tabPath, string? label = null) => new()
+    {
+        CatalogEntryId = Guid.NewGuid(), ParametreId = id, Name = name, Label = label ?? name,
+        Editor = "text", Value = "", DefaultValue = "", TabPath = tabPath, IsImplemented = true,
     };
 
     private static string Values(long revision, params ParameterValueDto[] items) => Json(new ParameterValuesResponseDto
