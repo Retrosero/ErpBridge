@@ -11,257 +11,287 @@ using Xunit;
 namespace ErpBridge.Admin.Tests.Pages;
 
 /// <summary>
-/// bUnit tests for <see cref="Parameters"/>. The page hits the central API at
-/// <c>GET /api/v1/admin/parameters</c>. We assert on the rendered DOM and the
-/// request URL so the filter + 'show all' toggles are covered.
+/// bUnit tests for <see cref="Parameters"/> — the catalogue-backed screen (P2a). What matters
+/// here is the addressing: a value belongs to one ERP company and, inside it, to one scope, so
+/// the page must not let someone load or change a set without saying which.
 /// </summary>
 public sealed class ParametersTests : BunitContext
 {
     [Fact]
-    public void Renders_key_filter_and_load_button_initially()
+    public void The_program_and_set_pickers_come_from_the_catalogue()
     {
-        var tenants = new[] { NewTenant("Acme") };
-        var state = new ParametersState
-        {
-            TenantListJson = SerializeAsJson(tenants),
-            ParametersJson = SerializeAsJson(new ParameterListResponse
-            {
-                TenantId = tenants[0].Id,
-                Page = 1,
-                Size = 200,
-                Total = 0,
-                Items = Array.Empty<ParameterRecordDto>(),
-            }),
-        };
-        RegisterRaw(state);
+        var state = NewState(SetsJson: Sets(
+            Set("akilli", "MobilKullanici", "MobileUser", "user", 1801, 1782),
+            Set("foramikro", "MobilKullaniciFora", "DesktopUser", "user", 60, 60)));
 
         var cut = Render<Parameters>();
 
-        cut.Find("#param-tenant").Should().NotBeNull();
-        cut.Find("#param-key").Should().NotBeNull();
-        cut.Find("#param-all").Should().NotBeNull();
-        cut.Find("#param-load").TextContent.Should().Contain("Parametreleri getir");
-        cut.Markup.Should().Contain("Bir müşteri seçin");
+        // Written by hand, this list would drift from the catalogue, which is generated from
+        // Fora's own sources.
+        cut.WaitForState(() => cut.Find("#prm-program").ChildNodes.Length > 1);
+        cut.Find("#prm-program").TextContent.Should().Contain("akilli").And.Contain("foramikro");
+        cut.Markup.Should().Contain("Bir kapsam seçin");
+        state.LastValuesUrl.Should().BeNull("nothing is loaded before a scope is chosen");
     }
 
     [Fact]
-    public void Shows_loading_state_while_fetching()
+    public void The_company_picker_stays_visible_even_when_there_is_only_one()
     {
-        var tenants = new[] { NewTenant("Acme") };
-        var state = new ParametersState
-        {
-            TenantListJson = SerializeAsJson(tenants),
-            Gate = new TaskCompletionSource<ParameterListResponse>(TaskCreationOptions.RunContinuationsAsynchronously),
-        };
-        RegisterRaw(state);
-
+        var state = NewState();
         var cut = Render<Parameters>();
-        var select = cut.Find("#param-tenant");
-        select.Change(tenants[0].Id.ToString());
-        cut.Find("#param-load").Click();
 
-        cut.Find(".admin-loading").TextContent.Should().Contain("Parametreler");
+        cut.Find("#prm-tenant").Change(state.TenantId.ToString());
+        cut.WaitForState(() => cut.Find("#prm-company").ChildNodes.Length > 1);
 
-        state.Gate.SetResult(new ParameterListResponse
-        {
-            TenantId = tenants[0].Id,
-            Page = 1,
-            Size = 200,
-            Total = 0,
-            Items = Array.Empty<ParameterRecordDto>(),
-        });
-        cut.WaitForState(() => cut.FindAll(".admin-state, .admin-data-table").Count > 0);
+        // Pre-selected for convenience, but never hidden: the operator has to see which database
+        // they are about to change (D3b).
+        cut.Find("#prm-company").Should().NotBeNull();
+        cut.Markup.Should().Contain("Tek firma olduğu için seçildi");
     }
 
     [Fact]
-    public void Renders_table_with_parameters_after_successful_load()
+    public void A_mobile_user_set_asks_for_a_user_and_only_lists_active_ones()
     {
-        var tenants = new[] { NewTenant("Acme") };
-        var items = new[]
-        {
-            NewParameter(id: "KASA_HESAP", adi: "Varsayılan kasa", degeri: "ANA_KASA", updatedAtUtc: DateTimeOffset.Parse("2026-09-04T10:00:00Z")),
-            NewParameter(id: "DEPO_KOD", adi: "Ana depo", degeri: "D01", updatedAtUtc: DateTimeOffset.Parse("2026-09-04T11:00:00Z")),
-        };
-        var state = new ParametersState
-        {
-            TenantListJson = SerializeAsJson(tenants),
-            ParametersJson = SerializeAsJson(new ParameterListResponse
-            {
-                TenantId = tenants[0].Id,
-                Page = 1,
-                Size = 200,
-                Total = items.Length,
-                Items = items,
-            }),
-        };
-        RegisterRaw(state);
+        var state = NewState();
+        var cut = Render<Parameters>();
+
+        cut.Find("#prm-tenant").Change(state.TenantId.ToString());
+        cut.WaitForState(() => cut.FindAll("#prm-company option").Count > 1);
+        cut.Find("#prm-program").Change("akilli");
+
+        // The set has a single member, so it is chosen without a click and the scope picker shows.
+        cut.WaitForState(() => cut.FindAll("#prm-scope").Count == 1);
+        var scope = cut.Find("#prm-scope");
+        scope.TextContent.Should().Contain("aktif").And.NotContain("ayrilmis");
+        cut.Markup.Should().Contain("Mobil kullanıcı");
+    }
+
+    [Fact]
+    public void The_load_button_stays_disabled_until_the_scope_is_complete()
+    {
+        var state = NewState();
+        var cut = Render<Parameters>();
+
+        cut.Find("#prm-tenant").Change(state.TenantId.ToString());
+        cut.WaitForState(() => cut.FindAll("#prm-company option").Count > 1);
+        cut.Find("#prm-program").Change("akilli");
+        cut.WaitForState(() => cut.FindAll("#prm-load").Count == 1);
+
+        // A mobile-user parameter written without naming the user would create a row no read ever
+        // finds and the mirror could not place in Mikro.
+        cut.Find("#prm-load").HasAttribute("disabled").Should().BeTrue();
+
+        cut.Find("#prm-scope").Change(state.UserId.ToString());
+        cut.WaitForState(() => !cut.Find("#prm-load").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void Loading_names_the_company_and_the_scope_in_the_request()
+    {
+        var state = NewState();
+        var cut = Render<Parameters>();
+
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => state.LastValuesUrl is not null);
+        state.LastValuesUrl.Should().Contain($"erpCompanyId={state.CompanyId}");
+        state.LastValuesUrl.Should().Contain($"mobileUserId={state.UserId}");
+        state.LastValuesUrl.Should().Contain("catalogMethod=MobilKullanici");
+    }
+
+    [Fact]
+    public void A_loaded_set_shows_the_value_its_default_and_why_it_may_do_nothing()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 4,
+            Value(58, "DefaultKaynakDepoNo", "Kaynak depo no :", value: "3", def: "1", overridden: true, implemented: false),
+            Value(89, "Goster_AnaMenu_Tahsilat", "Tahsilat girebilir", value: "1", def: "1", overridden: false, implemented: true));
 
         var cut = Render<Parameters>();
-        var select = cut.Find("#param-tenant");
-        select.Change(tenants[0].Id.ToString());
-        cut.Find("#param-load").Click();
+        LoadAkilliAsync(cut, state);
 
         cut.WaitForState(() => cut.FindAll("tbody tr").Count == 2);
-        cut.Markup.Should().Contain("KASA_HESAP");
-        cut.Markup.Should().Contain("ANA_KASA");
-        cut.Markup.Should().Contain("D01");
-        cut.Markup.Should().Contain("MikroDB_V15_02");
-        state.LastParametersRequestUrl.Should().NotBeNull();
-        state.LastParametersRequestUrl.Should().Contain("size=200");
-        state.LastParametersRequestUrl.Should().NotContain("size=1000");
+
+        cut.Markup.Should().Contain("DefaultKaynakDepoNo").And.Contain("Kaynak depo no");
+        cut.Markup.Should().Contain("sapmış");
+
+        // A setting this release of the app ignores is labelled rather than silently inert (D16).
+        cut.Markup.Should().Contain("bu sürümde etkisiz");
+        cut.Markup.Should().Contain("4", "the scope revision tells a client whether its copy is current");
     }
 
     [Fact]
-    public void Renders_empty_state_when_no_parameters()
+    public void Only_changed_is_passed_through_to_the_server()
     {
-        var tenants = new[] { NewTenant("Acme") };
-        var state = new ParametersState
-        {
-            TenantListJson = SerializeAsJson(tenants),
-            ParametersJson = SerializeAsJson(new ParameterListResponse
-            {
-                TenantId = tenants[0].Id,
-                Page = 1,
-                Size = 200,
-                Total = 0,
-                Items = Array.Empty<ParameterRecordDto>(),
-            }),
-        };
-        RegisterRaw(state);
-
+        var state = NewState();
         var cut = Render<Parameters>();
-        var select = cut.Find("#param-tenant");
-        select.Change(tenants[0].Id.ToString());
-        cut.Find("#param-load").Click();
 
-        cut.WaitForState(() => cut.FindAll(".admin-state").Count > 0);
-        cut.Markup.Should().Contain("Filtreye uyan parametre yok");
+        cut.Find("#prm-tenant").Change(state.TenantId.ToString());
+        cut.WaitForState(() => cut.FindAll("#prm-company option").Count > 1);
+        cut.Find("#prm-program").Change("akilli");
+        cut.WaitForState(() => cut.FindAll("#prm-scope").Count == 1);
+        cut.Find("#prm-scope").Change(state.UserId.ToString());
+        cut.Find("#prm-only-changed").Change(true);
+        cut.Find("#prm-load").Click();
+
+        cut.WaitForState(() => state.LastValuesUrl is not null);
+        state.LastValuesUrl.Should().Contain("onlyOverridden=true");
     }
 
     [Fact]
-    public void Renders_error_state_when_api_throws()
+    public void An_error_is_shown_rather_than_an_empty_table()
     {
-        var tenants = new[] { NewTenant("Acme") };
-        var state = new ParametersState
+        var state = NewState();
+        state.ValuesError = new HttpResponseMessage(HttpStatusCode.BadRequest)
         {
-            TenantListJson = SerializeAsJson(tenants),
-            ErrorResponse = new HttpResponseMessage(HttpStatusCode.BadRequest)
-            {
-                Content = new StringContent(@"{""errorCode"":""BAD"",""message"":""Geçersiz müşteri""}", Encoding.UTF8, "application/json")
-            },
+            Content = new StringContent(
+                @"{""errorCode"":""PARAMETER_SCOPE_MISMATCH"",""message"":""Kapsam eksik""}",
+                Encoding.UTF8, "application/json"),
         };
-        RegisterRaw(state);
 
         var cut = Render<Parameters>();
-        var select = cut.Find("#param-tenant");
-        select.Change(tenants[0].Id.ToString());
-        cut.Find("#param-load").Click();
+        LoadAkilliAsync(cut, state);
 
         cut.WaitForState(() => cut.FindAll(".admin-state--error").Count > 0);
-        cut.Find(".admin-state--error").TextContent.Should().Contain("Geçersiz müşteri");
-    }
-
-    [Fact]
-    public void Show_all_toggle_requests_larger_page_size()
-    {
-        var tenants = new[] { NewTenant("Acme") };
-        var state = new ParametersState
-        {
-            TenantListJson = SerializeAsJson(tenants),
-            ParametersJson = SerializeAsJson(new ParameterListResponse
-            {
-                TenantId = tenants[0].Id,
-                Page = 1,
-                Size = 1000,
-                Total = 0,
-                Items = Array.Empty<ParameterRecordDto>(),
-            }),
-        };
-        RegisterRaw(state);
-
-        var cut = Render<Parameters>();
-        var select = cut.Find("#param-tenant");
-        select.Change(tenants[0].Id.ToString());
-        cut.Find("#param-all").Change(true);
-        cut.Find("#param-load").Click();
-
-        cut.WaitForState(() => state.LastParametersRequestUrl is not null);
-        state.LastParametersRequestUrl.Should().Contain("size=1000");
+        cut.Find(".admin-state--error").TextContent.Should().Contain("Kapsam eksik");
     }
 
     // ---- Test helpers ----
 
-    private static TenantDto NewTenant(string name) => new()
+    private static void LoadAkilliAsync(IRenderedComponent<Parameters> cut, PageState state)
     {
-        Id = Guid.NewGuid(),
-        Name = name,
-        IsActive = true,
-        CreatedAtUtc = DateTimeOffset.UtcNow,
-    };
+        cut.Find("#prm-tenant").Change(state.TenantId.ToString());
+        cut.WaitForState(() => cut.FindAll("#prm-company option").Count > 1);
+        cut.Find("#prm-program").Change("akilli");
+        cut.WaitForState(() => cut.FindAll("#prm-scope").Count == 1);
+        cut.Find("#prm-scope").Change(state.UserId.ToString());
+        cut.Find("#prm-load").Click();
+    }
 
-    private static ParameterRecordDto NewParameter(string id, string adi, string degeri, DateTimeOffset? updatedAtUtc = null) => new()
+    private PageState NewState(string? SetsJson = null)
     {
-        ParametreID = id,
-        ParametreAdi = adi,
-        ParametreDegeri = degeri,
-        SourceDatabase = "MikroDB_V15_02",
-        UpdatedAtUtc = updatedAtUtc ?? DateTimeOffset.UtcNow,
-    };
+        var state = new PageState();
+        state.SetsJson = SetsJson ?? Sets(Set("akilli", "MobilKullanici", "MobileUser", "user", 1801, 1782));
 
-    private static string SerializeAsJson<T>(T value) =>
-        System.Text.Json.JsonSerializer.Serialize(value, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-
-    private void RegisterRaw(ParametersState state)
-    {
         var tokenStore = new TokenStore();
         Services.AddSingleton(tokenStore);
-        Services.AddSingleton(new CentralApiClient(new HttpClient(new ParametersHandler(state)) { BaseAddress = new Uri("https://centralapi.test/") }, tokenStore));
+        Services.AddSingleton(new CentralApiClient(
+            new HttpClient(new PageHandler(state)) { BaseAddress = new Uri("https://centralapi.test/") },
+            tokenStore));
+
+        return state;
     }
 
-    private sealed class ParametersState
+    private static string Json<T>(T value) =>
+        System.Text.Json.JsonSerializer.Serialize(
+            value, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+    private static ParameterSetDto Set(
+        string program, string method, string scopeKind, string scopeFields, int count, int withEditor) => new()
     {
-        public string? TenantListJson { get; set; }
-        public string? ParametersJson { get; set; }
-        public HttpResponseMessage? ErrorResponse { get; set; }
-        public TaskCompletionSource<ParameterListResponse>? Gate { get; set; }
-        public string? LastParametersRequestUrl { get; set; }
+        Program = program, CatalogMethod = method, ScopeKind = scopeKind,
+        ScopeFields = scopeFields, ParameterCount = count, WithEditor = withEditor,
+    };
+
+    private static string Sets(params ParameterSetDto[] sets) => Json(sets);
+
+    private static ParameterValueDto Value(
+        int id, string name, string label, string value, string def, bool overridden, bool implemented) => new()
+    {
+        CatalogEntryId = Guid.NewGuid(), ParametreId = id, Name = name, Label = label,
+        Editor = "text", Value = value, DefaultValue = def,
+        IsOverridden = overridden, IsImplemented = implemented,
+    };
+
+    private static string Values(long revision, params ParameterValueDto[] items) => Json(new ParameterValuesResponseDto
+    {
+        CatalogMethod = "MobilKullanici",
+        Revision = revision,
+        Count = items.Length,
+        Items = items,
+    });
+
+    private sealed class PageState
+    {
+        public Guid TenantId { get; } = Guid.NewGuid();
+        public Guid CompanyId { get; } = Guid.NewGuid();
+        public Guid UserId { get; } = Guid.NewGuid();
+
+        public string SetsJson { get; set; } = "[]";
+        public string? ValuesJson { get; set; }
+        public HttpResponseMessage? ValuesError { get; set; }
+        public string? LastValuesUrl { get; set; }
     }
 
-    private sealed class ParametersHandler : HttpMessageHandler
+    private sealed class PageHandler : HttpMessageHandler
     {
-        private readonly ParametersState _state;
-        public ParametersHandler(ParametersState state) { _state = state; }
+        private readonly PageState _state;
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public PageHandler(PageState state) => _state = state;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
             if (path.EndsWith("/admin/tenants", StringComparison.Ordinal))
             {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                return Ok(Json(new[]
                 {
-                    Content = new StringContent(_state.TenantListJson ?? "[]", Encoding.UTF8, "application/json")
-                });
+                    new TenantDto { Id = _state.TenantId, Name = "Acme", IsActive = true },
+                }));
             }
-            if (path.EndsWith("/admin/parameters", StringComparison.Ordinal))
+
+            if (path.EndsWith("/admin/erp-companies/", StringComparison.Ordinal))
             {
-                _state.LastParametersRequestUrl = request.RequestUri?.ToString();
-                if (_state.ErrorResponse is not null) return Task.FromResult(_state.ErrorResponse);
-                if (_state.Gate is not null) return AwaitGate(_state.Gate);
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                return Ok(Json(new[]
                 {
-                    Content = new StringContent(_state.ParametersJson ?? "{}", Encoding.UTF8, "application/json")
-                });
+                    new ErpCompanyDto
+                    {
+                        Id = _state.CompanyId, TenantId = _state.TenantId, Code = "MERKEZ",
+                        Name = "Merkez", SourceDatabase = "MikroDB_V16_03", IsActive = true,
+                    },
+                }));
             }
+
+            if (path.EndsWith("/mobile", StringComparison.Ordinal))
+            {
+                return Ok(Json(new TenantMobileOverviewDto
+                {
+                    TenantId = _state.TenantId,
+                    Users =
+                    [
+                        new MobileUserDto { Id = _state.UserId, Username = "aktif", FullName = "Aktif Plasiyer", IsActive = true },
+                        new MobileUserDto { Id = Guid.NewGuid(), Username = "ayrilmis", FullName = "Ayrılmış", IsActive = false },
+                    ],
+                }));
+            }
+
+            if (path.EndsWith("/admin/parameters/sets", StringComparison.Ordinal))
+            {
+                return Ok(_state.SetsJson);
+            }
+
+            if (path.EndsWith("/admin/parameters/values", StringComparison.Ordinal))
+            {
+                _state.LastValuesUrl = request.RequestUri?.ToString();
+
+                if (_state.ValuesError is not null)
+                {
+                    return Task.FromResult(_state.ValuesError);
+                }
+
+                return Ok(_state.ValuesJson ?? Values(0));
+            }
+
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
         }
 
-        private static async Task<HttpResponseMessage> AwaitGate(TaskCompletionSource<ParameterListResponse> gate)
-        {
-            var value = await gate.Task.ConfigureAwait(false);
-            return new HttpResponseMessage(HttpStatusCode.OK)
+        private static Task<HttpResponseMessage> Ok(string json) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(value, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)), Encoding.UTF8, "application/json")
-            };
-        }
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            });
     }
 }
