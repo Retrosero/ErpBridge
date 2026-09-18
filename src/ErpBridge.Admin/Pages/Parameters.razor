@@ -934,6 +934,9 @@ else if (string.IsNullOrEmpty(_error))
             // A write has just happened or the scope changed; the loaded trail is stale either way.
             _history = null;
 
+            // A write has just happened or the scope changed; the loaded trail is stale either way.
+            _history = null;
+
             // Reload rather than patch in memory: the server decides whether a row exists, and the
             // "sapmış" marks have to match what it decided.
             await LoadValuesAsync();
