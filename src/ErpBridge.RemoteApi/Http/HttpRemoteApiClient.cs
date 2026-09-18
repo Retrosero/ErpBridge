@@ -567,6 +567,23 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         await SendNoContentAsync(request, opts, ct).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
+    public async Task<ErpBridge.Core.Parameters.ForaImportResult?> UploadForaScanAsync(
+        Guid erpCompanyId,
+        IReadOnlyList<ErpBridge.Core.Parameters.ForaScanRow> rows,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(
+            HttpMethod.Post, "/api/v1/agents/parameters/fora-import", opts, NewIdempotencyKey("fora-import"));
+
+        request.Content = SerializeJson(new { erpCompanyId, rows });
+
+        return await SendAsync<ErpBridge.Core.Parameters.ForaImportResult>(request, opts, ct).ConfigureAwait(false);
+    }
+
     /// <summary>The wire shape of the desired state; mapped onto the agent's own contract.</summary>
     private sealed class ParameterStateDto
     {

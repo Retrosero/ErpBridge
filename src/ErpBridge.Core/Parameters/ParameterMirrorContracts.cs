@@ -54,3 +54,25 @@ public sealed record AgentParameterMirrorReport(
     int Failed,
     string? ErrorText,
     IReadOnlyList<AgentParameterDrift> Drifts);
+
+/// <summary>One row read out of a customer's <c>_FORA_PARAMETRELER</c>, exactly as Fora stored it.</summary>
+public sealed record ForaScanRow(
+    string ParametreProgram,
+    string ParametreUser,
+    string AnaGrubu,
+    string AltGrubu,
+    int ParametreID,
+    string ParametreAdi,
+    string ParametreDegeri);
+
+/// <summary>
+/// What the centre made of a scan: how much it could place, and what it could not.
+/// </summary>
+/// <param name="Unknown">Rows whose parameter the catalogue does not declare.</param>
+/// <param name="UnmatchedUsers">Usernames with no active mobile user; no user is opened for them.</param>
+public sealed record ForaImportResult(
+    Guid BatchId,
+    int Scanned,
+    int Matched,
+    int Unknown,
+    IReadOnlyList<string> UnmatchedUsers);
