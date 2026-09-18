@@ -298,7 +298,7 @@ Decompile edilmiş Fora kodundan makine okunur katalog üretmek. Kod yazılmadan
 | **P0c** | Diğer editör ekranları → `catalog/parameters/ui/*.json`. Toplu aktarım ekranları (~3.500 alan) P6'ya bırakıldı: panel ekranları orada yapılacak, varsayılan katalogları P0a'da zaten tamamlandı | 11 editör ekranı; her parametre hangi katalog setine ait olduğunu taşır |
 | **P0d** | Tip çıkarsama ve doğrulama: 10 editör tipi. `reference` + `referenceKind` iki sinyalden (Fora'nın seçici kontrolleri **ve** ERP tablosundan beslenen combo'lar); sabit listelerin seçenekleri kaynaktan çıkarılır; Fora'nın maskelediği **ve** adı kimlik bilgisi söyleyen alanlar `secret`; Fora'ya özgü ekranla düzenlenen ya da birden çok kontrolde görünen değerler `composite` | Editör düzeni çıkarılan parametrelerin tipi var, `unknown` yok. **Aktarım setlerinin 2.777 tanımı tipsiz kalır** — tip yalnız editör ekranından gelir, o ekranlar P6'da. P0d ancak **P6a–P6c ile kapanır** |
 | **P0e** | Çıkarım script'i `scripts/extract-fora-catalog/` (tek komut, deterministik çıktı) + altın dosya testi + `README` | Yeniden üretilebilirlik |
-| **P0f** | El ile gözden geçirme raporu: eşleşmeyen parametreler, şüpheli tipler, `implemented: false` ilk listesi | DURUM'a not |
+| **P0f** | El ile gözden geçirme raporu → [GOAL_PARAMETRE_KATALOG_RAPORU.md](GOAL_PARAMETRE_KATALOG_RAPORU.md): kapsam dökümü, Fora'nın kusurları, boşluk dökümü, panel tasarımını etkileyen bulgular, düşük güvenli noktalar ve sonraki fazlara devreden kararlar | Sonraki fazlar hangi kararı vereceğini biliyor |
 
 **Bitiş ölçütü:** `catalog/parameters/` altındaki JSON'lar şema doğrulamasından geçiyor, script
 iki kez çalıştırıldığında aynı çıktıyı veriyor, 4.688 tanımın tamamı tipli.

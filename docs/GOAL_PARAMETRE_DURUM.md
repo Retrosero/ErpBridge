@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (P0c)
+Son güncelleme: 2026-09-18 (P0f)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -12,7 +12,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| P0 — Katalog çıkarımı (ön koşul) | 7 | 5 | 🔄 |
+| P0 — Katalog çıkarımı (ön koşul) | 7 | 7 | ✅ |
 | P1 — Merkez veri modeli ve API | 7 | 1 | 🔄 |
 | P2 — Panel (Admin) parametre ekranı | 8 | 0 | ⬜ |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 0 | ⬜ |
@@ -21,7 +21,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P0f — el ile gözden geçirme raporu
+**Şu anki görev:** P1b — `parameter_values` + migration
 
 ---
 
@@ -35,7 +35,7 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P0c | Diğer editör ekranlarının UI metadata'sı | ✅ | — | **11 editör ekranı** çıkarıldı (`catalog/parameters/ui/*.json`): akilli 1.782, foramikro-kullanici 60, foramikro-genel 32, yaziciayarlari 22, comarchedi-genel 14, b2b 11, comarchedi-iliski 7, 4× mobilrapor 2'şer. `YaziciAyarlari` kataloğu da eklendi (Fora'nın tek dinamik programı, `ParametrelerDefault`'ta yok) → katalog 21 set / 14 program / 4.713 tanım. **Üç çıkarıcı kusuru bulundu ve düzeltildi:** (1) `base.Controls.Add(...)` ile doğrudan forma eklenen kontroller kaçıyordu — `ComarchEdiGenelParametrelerForm` 26 boşluktan 0'a indi; (2) sekmesiz form için `noTab` uydurulyordu; (3) uyuşmazlık tespiti "bir parametre birden çok kontrole yükleniyor" durumunu kusur sanıyordu — yazıcı tasarımcısında `Veri`, `VeriTipi`'ne göre üç kontrolden birine bağlanıyor, meşru. Tespit "bir kontrol bir parametreyi gösterip başkasını kaydediyor" durumuna daraltıldı; akilli'deki 8 gerçek kusur kaldı, özneleri artık ezilen parametreler (24…94). **Kapsam kararı:** toplu aktarım ekranlarının (~3.500 alan) UI metadata'sı P6'ya bırakıldı; varsayılan katalogları zaten tam |
 | P0d | Tip çıkarsama ve doğrulama | 🔄 | — | **Kapsanan 12 set için bitti, aktarım setleri P6'ya bağlı.** Editör düzeni çıkarılan 1.936 parametrenin tipi var, `unknown` yok (test sabitliyor): `boolean` 965, `text` 734, `integer` 117, `choice` 63, `decimal` 29, `reference` 11, `color` 6, `secret` 5, `composite` 5, `multilineText` 1. **Kalan 2.777 tanım (aktarım setleri) tipsiz** — tip yalnız editör ekranından çıkıyor ve o ekranlar P6'ya bırakıldı. P0d ancak P6a–P6c ile kapanır |
 | P0e | Çıkarım script'i + altın dosya testi | ✅ | — | `tools/ForaCatalogExtractor` (Roslyn; dört ZPL şablonu kaçırılmış tırnakla bitiyor, regex sessizce bozuyor). `--check` bayat katalogda sıfırdan farklı kodla çıkar. `tests/ErpBridge.ForaCatalog.Tests` 13 test: bayt bayt altın dosya, iki kez çalıştırınca aynı çıktı, kapsam alanı iddiaları, çakışma kayıtları, Türkçe ve kaçırılmış tırnak korunumu, hatalı girdilerin reddi. Proje merkezi paket yönetiminin dışında: `Directory.Packages.props` geçişli sabitleme açtığı için Roslyn'i oraya eklemek EF Design üzerinden Roslyn çeken her projenin kilit dosyasını yeniden yazardı |
-| P0f | El ile gözden geçirme raporu | ⬜ | — | |
+| P0f | El ile gözden geçirme raporu | ✅ | — | [GOAL_PARAMETRE_KATALOG_RAPORU.md](GOAL_PARAMETRE_KATALOG_RAPORU.md). Kapsam dökümü (21 set), Fora'nın 4 kusuru, boşluk dökümü, panel tasarımını etkileyen 4 bulgu, 5 düşük güvenli nokta ve sonraki fazlara devreden 7 karar. **En önemlisi:** `akilli`'nin 1.782 alanının 830'u (%47) tek bir tekrar eden yapı — ziyaret anketi 100 soru × 8 parametre; panel bunu düz liste olarak çizerse ekran kullanılamaz olur (P2b). İkincisi: kasa/depo/fiyat listesi gibi 29 alan Fora'da düz metin, referans türü ad kalıbından çıkarılmalı ama kalıp tek başına 11 yetki bayrağını da yakalıyor (P2c) |
 | P1a | `parameter_catalog_entries` + tohumlama | ✅ | — | Katalog derlemeye gömülü (`catalog/parameters/*.json`, ~1.5 MB); API konteynerde çalışıyor ve dosyadan okusa katalog kaybolabilirdi. **4.708 satır** tohumlanıyor — 4.713 tanımın gölgelenmiş 5'i hariç, çünkü onlar Fora'da da okunamıyor ve `(set, id)` anahtarını bozarlardı. Tohumlama **satır silmiyor**: geri çekilen parametre `IsDeprecated` ile işaretleniyor (D2), geri gelirse canlandırılıyor. `IsImplemented` yeniden tohumlamada korunuyor (D16) — onu katalog değil ürün bilir. Testlerde kapalı (`Parameters:SeedCatalogOnStartup`), 4.700 satırı her test sınıfı için eklemek ispatladığından pahalı; tohumlama mantığı doğrudan test ediliyor |
 | P1b | `parameter_values` + migration | ⬜ | — | |
 | P1c | `ParameterResolver` (Fora semantiği) | ⬜ | — | |
