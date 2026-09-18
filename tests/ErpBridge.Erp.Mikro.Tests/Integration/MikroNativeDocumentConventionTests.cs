@@ -305,19 +305,32 @@ SELECT COUNT(*) FROM (
         }
 
         await using var conn = await OpenAsync();
-        var shapes = (await conn.QueryAsync<(int Tip, int Cinsi, int CariCins, int Count)>(
-            "SELECT cha_tip, cha_cinsi, cha_cari_cins, COUNT(*) " + NativeCariRows +
-            " AND cha_evrak_tip = 64 GROUP BY cha_tip, cha_cinsi, cha_cari_cins")).ToList();
+        var shapes = (await conn.QueryAsync<(int Tip, int Cinsi, int CariCins, int KasaHizmet, int Count)>(
+            "SELECT cha_tip, cha_cinsi, cha_cari_cins, cha_kasa_hizmet, COUNT(*) " + NativeCariRows +
+            " AND cha_evrak_tip = 64 GROUP BY cha_tip, cha_cinsi, cha_cari_cins, cha_kasa_hizmet")).ToList();
         foreach (var s in shapes)
         {
             _output.WriteLine(s.ToString());
         }
 
         shapes.Should().NotBeEmpty("the company pays money out");
-        // Tediye borçtur (tahsilatın tersi) ve cari satırı taşır.
+        // Tediye borçtur (tahsilatın tersi) ve nakitte kasa hesabını taşır.
         shapes.Should().Contain(s => s.Tip == MikroCodes.ChaTip.Borc && s.Cinsi == MikroCodes.ChaCinsi.Nakit
-            && s.CariCins == MikroCodes.HesapCinsi.Carimiz);
-        shapes.Where(s => s.CariCins == MikroCodes.HesapCinsi.Carimiz)
-            .Should().OnlyContain(s => s.Tip == MikroCodes.ChaTip.Borc, "a disbursement never credits the account");
+            && s.CariCins == MikroCodes.HesapCinsi.Carimiz && s.KasaHizmet == MikroCodes.HesapCinsi.Kasamiz);
+        // Havale/EFT firma tarafıdır: FirmaHavaleEmri (20), banka hesabı. Tahsilatın 17'si gelen havaledir.
+        shapes.Should().Contain(s => s.Cinsi == FirmaHavaleEmri && s.KasaHizmet == MikroCodes.HesapCinsi.Bankamiz);
+
+        // Ayrı kasa/banka satırı yok: her satır cariye ait, hesap aynı satırda kasa_hizmet/kasa_hizkod'da.
+        shapes.Should().OnlyContain(s => s.CariCins == MikroCodes.HesapCinsi.Carimiz && s.Tip == MikroCodes.ChaTip.Borc,
+            "a disbursement is one row per payment method, always on the account's side");
+        var withoutAccount = await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) " + NativeCariRows + " AND cha_evrak_tip = 64 AND cha_kasa_hizkod = ''");
+        withoutAccount.Should().Be(0, "every disbursement names the cash box or bank it left");
     }
+
+    /// <summary>
+    /// Mikro's outgoing payment kinds, the mirror of the collection's customer kinds (reference §11). Named here
+    /// because <see cref="MikroCodes"/> only carries what the writers use so far.
+    /// </summary>
+    private const int FirmaHavaleEmri = 20;
 }

@@ -241,16 +241,35 @@ Canlı veri bunu doğruluyor: 718 alış + 307 satış iadesi aynı numara uzay�
 
 ## 11. Tediye makbuzu *(ERP yazım 2, Z0c — 2026-09-19)*
 
+**Tahsilatın (§5) birebir aynası:** tek evrak, **ödeme yöntemi başına bir CHA satırı** (`cha_satir_no` 0'dan artar).
+Ayrı kasa/banka satırı **yoktur** — hesap aynı satırda `cha_kasa_hizmet` + `cha_kasa_hizkod` ile taşınır.
+
 | Kolon | Değer | Kanıt |
 |---|---|---|
-| `cha_evrak_tip` | **64** (TediyeMakbuzu; kasa tediye fişi 65) | Fora `enum_cha_evrak_tip`; canlı 708 satır |
-| `cha_tip` | **0** (borç — cariye ödüyoruz, tahsilatın tersi) | canlı |
-| `cha_cari_cins` | 0 (cari satırı) | canlı: 64'lü satırların tamamı `cari_cins=0` |
-| `cha_cinsi` | ödeme aracına göre: **0** nakit (432), **1** çek (33), **2** senet (70), ayrıca canlıda 3, 4, 20, 22 | canlı dağılım |
-| `EVRAK_ACIKLAMALARI` | dosya 51, hareket **0**, evrak tip **64** | Fora `EvrakData.cs` switch |
+| `cha_evrak_tip` | **64** (TediyeMakbuzu; kasa tediye fişi 65) | Fora `enum_cha_evrak_tip`; canlı |
+| `cha_tip` | **0** (borç — tahsilat alacaktı) | Fora `AddTahsilat`: `_evraktipi != Tahsilat → cha_tip = Borc`; canlı |
+| `cha_cari_cins` / `cha_kod` | **0** (Carimiz) / cari kodu | Fora; canlı: 64'lü satırların **tamamı** `cari_cins=0` |
+| `cha_kasa_hizmet` / `cha_kasa_hizkod` | **4** kasa / **2** banka + hesap kodu | Fora `cha_kasa_hizkod = kasa_banka_kodu`; canlı |
+| `cha_normal_Iade` / `cha_tpoz` | 0 / **0** (açık) | Fora; canlı |
+| `cha_vade` | vade günü `yyyyMMdd` sayı olarak | Fora |
+| `cha_ft_iskonto*`, `cha_ft_masraf*`, `cha_vergi*`, `cha_yuvarlama` | 0 | Fora |
 
-Tahsilatın (§5) aynası: karşı taraf (kasa/banka) satırı ayrı `cha_satir_no` ile aynı evrakta yazılır. **Açık uç:**
-canlıdaki `cha_cinsi` 3, 4, 20, 22 değerleri henüz çözülmedi; Z3b'den önce `enum_cha_cinsi`'den okunup buraya eklenecek
-(bu goal'ün kapsamı nakit ve banka olduğu için yazımı engellemiyor).
+**`cha_cinsi` — tediyede "Firma" ailesi** (tahsilattaki "Müşteri" ailesinin karşılığı):
 
----
+| cinsi | Anlam | `cha_kasa_hizmet` | Canlı örnek kod | Adet (2024+) |
+|---|---|---|---|---|
+| **0** | Nakit | 4 kasa | `001` | 423 |
+| 1 | MüşteriÇeki (ciro edilen) | 4 kasa (portföy) | `ÇEK` | 30 |
+| 2 | MüşteriSenedi (ciro edilen) | 4 kasa (portföy) | `SENET` | 70 |
+| 3 | FirmaÇeki | 2 banka | `12`, `13` | 25 |
+| 4 | FirmaSenedi | 4 kasa | `VERILEN-SENET` | 25 |
+| **20** | **FirmaHavaleEmri** | 2 banka | `04`, `06`, `07` | 54 |
+| 22 | FirmaKrediKartı | 2 banka | `08`, `10` | 60 |
+
+Bu goal'ün kapsamı (D3) **nakit → `cinsi 0`, `kasa_hizmet 4`** ve **havale/EFT → `cinsi 20` (FirmaHavaleEmri),
+`kasa_hizmet 2`**. Havalede tahsilatın `17` (MusteriHavaleSozu) değeri **kullanılmaz** — o gelen havaledir.
+
+**`EVRAK_ACIKLAMALARI`:** dosya 51, hareket **0**, evrak tip **64** (Fora `EvrakData.cs` switch).
+
+**`ODEME_EMIRLERI`:** nakit ve havalede yok (canlıda 64'lü nakit/havale satırlarında `cha_trefno` boş). Çek/senet
+çıkışı bu goal'ün kapsamı dışında (D3), gerektiğinde §5'teki referans no kuralı örnek alınacak.
