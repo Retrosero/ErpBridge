@@ -220,6 +220,32 @@ public sealed class AdminParameterTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
+    public async Task A_changed_parameter_says_who_moved_it_and_when()
+    {
+        var w = await SeedAsync("K");
+        var (client, token) = await SignedInAsync();
+
+        await client.PutJsonAsync("/api/v1/admin/parameters/values", new
+        {
+            tenantId = w.TenantId, erpCompanyId = w.CompanyId, mobileUserId = w.UserId,
+            changes = new[] { new { catalogEntryId = w.DepotId, value = "3" } },
+        }, token);
+
+        var body = await (await client.GetAsync(ValuesUrl(w), token))
+            .ReadAsJsonAsync<AdminParameterEndpoints.ParameterValuesResponse>();
+
+        var depot = body!.Items.Single(i => i.CatalogEntryId == w.DepotId);
+        depot.LastChangeSource.Should().Be(ParameterChangeSources.Panel);
+        depot.LastChangedAtUtc.Should().NotBeNull();
+
+        // A parameter sitting at its default has nobody to attribute it to, and asking the trail
+        // about all 1,801 of them would read a table that mostly says nothing.
+        var menu = body.Items.Single(i => i.CatalogEntryId == w.MenuId);
+        menu.LastChangedAtUtc.Should().BeNull();
+        menu.LastChangedBy.Should().BeNull();
+    }
+
+    [Fact]
     public async Task The_sets_listing_says_how_each_one_is_addressed()
     {
         await SeedAsync("G");

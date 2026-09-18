@@ -348,6 +348,7 @@ else if (string.IsNullOrEmpty(_error))
                 <ParameterField Field="p"
                                 Value="@Draft(p)"
                                 ValueChanged="@(v => SetDraft(p, v))"
+                                Reverted="RevertAsync"
                                 Disabled="@_saving" />
             }
         </div>;
@@ -419,6 +420,44 @@ else if (string.IsNullOrEmpty(_error))
         }
 
         _drafts[field.CatalogEntryId] = value;
+    }
+
+    /// <summary>
+    /// Removes one parameter's stored row so its catalogue default applies again.
+    ///
+    /// Sent straight away rather than held as a draft: "put this back" is not the same decision as
+    /// "I am editing this", and holding it would leave the field showing a value the operator has
+    /// already asked to be rid of.
+    /// </summary>
+    private async Task RevertAsync(ParameterValueDto field)
+    {
+        if (SelectedSet is not { } set) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            var response = await Api.ResetParameterValuesAsync(new ParameterResetRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                CatalogEntryIds = [field.CatalogEntryId],
+            });
+
+            _drafts.Remove(field.CatalogEntryId);
+            _saveMessage = $"{field.Label ?? field.Name} varsayılana döndü. Kapsam sürümü: {response.Revision}.";
+
+            await LoadValuesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
     }
 
     private async Task SaveAsync()
