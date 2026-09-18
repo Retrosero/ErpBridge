@@ -111,13 +111,14 @@ public sealed class ParametersTests : BunitContext
         var cut = Render<Parameters>();
         LoadAkilliAsync(cut, state);
 
-        cut.WaitForState(() => cut.FindAll("tbody tr").Count == 2);
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 2);
 
         cut.Markup.Should().Contain("DefaultKaynakDepoNo").And.Contain("Kaynak depo no");
         cut.Markup.Should().Contain("sapmış");
 
         // A setting this release of the app ignores is labelled rather than silently inert (D16).
-        cut.Markup.Should().Contain("bu sürümde etkisiz");
+        cut.Markup.Should().Contain("etkisiz")
+            .And.Contain("Sipariş Cepte bu ayarı dikkate almıyor");
         cut.Markup.Should().Contain("4", "the scope revision tells a client whether its copy is current");
     }
 
@@ -196,7 +197,7 @@ public sealed class ParametersTests : BunitContext
         var risk = cut.FindAll(".prm-tab__link").First(l => l.TextContent.Contains("Cari risk takibi"));
         risk.Click();
 
-        cut.WaitForState(() => cut.FindAll("tbody tr").Count == 1);
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 1);
         cut.Markup.Should().Contain("KrediKontrol").And.NotContain("AnaSayfa");
     }
 
@@ -220,6 +221,81 @@ public sealed class ParametersTests : BunitContext
         cut.WaitForState(() => cut.FindAll("details.prm-group").Count == 1);
         cut.Find("details.prm-group").HasAttribute("open").Should().BeFalse();
         cut.Find("details.prm-group > summary").TextContent.Should().Contain("100 adet");
+    }
+
+    [Fact]
+    public void Editing_a_field_enables_the_save_and_sends_only_what_changed()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 0,
+            Tabbed(58, "DefaultKaynakDepoNo", "Parametreler"),
+            Tabbed(89, "Goster_AnaMenu_Tahsilat", "Parametreler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 2);
+        cut.Find("#prm-save").HasAttribute("disabled").Should().BeTrue();
+
+        cut.FindAll(".prm-field input").First().Change("3");
+        cut.WaitForState(() => !cut.Find("#prm-save").HasAttribute("disabled"));
+        cut.Find("#prm-save").Click();
+
+        cut.WaitForState(() => state.LastWriteBody is not null);
+
+        // Only the field that moved is sent: the parameter is named by its catalogue entry, and
+        // the untouched one has nothing to say.
+        state.LastWriteBody.Should().Contain("\"value\":\"3\"");
+        state.LastWriteBody.Should().Contain($"\"erpCompanyId\":\"{state.CompanyId}\"");
+        state.LastWriteBody.Should().Contain($"\"mobileUserId\":\"{state.UserId}\"");
+    }
+
+    [Fact]
+    public void Typing_a_value_back_to_what_it_was_is_not_a_change()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(58, "DefaultKaynakDepoNo", "Parametreler", value: "1"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 1);
+
+        var input = cut.Find(".prm-field input");
+        input.Change("9");
+        cut.WaitForState(() => !cut.Find("#prm-save").HasAttribute("disabled"));
+
+        input.Change("1");
+
+        // The server would answer "Unchanged" anyway; not sending it keeps the audit trail honest.
+        cut.WaitForState(() => cut.Find("#prm-save").HasAttribute("disabled"));
+        cut.Markup.Should().Contain("Bekleyen değişiklik yok");
+    }
+
+    [Fact]
+    public void A_save_that_removes_a_row_says_so()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(58, "DefaultKaynakDepoNo", "Parametreler", value: "3"));
+        state.WriteResponseJson = Json(new ParameterWriteResponseDto
+        {
+            Revision = 4,
+            Results = [new ParameterWriteResultDto { CatalogEntryId = Guid.NewGuid(), Outcome = "Deleted" }],
+        });
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 1);
+        cut.Find(".prm-field input").Change("");
+        cut.WaitForState(() => !cut.Find("#prm-save").HasAttribute("disabled"));
+        cut.Find("#prm-save").Click();
+
+        // Back to the default means the row is deleted, which is Fora's own behaviour and worth
+        // saying out loud: "saved" and "removed" are not the same thing to an operator.
+        cut.WaitForState(() => cut.FindAll(".admin-state--success").Count > 0);
+        cut.Find(".admin-state--success").TextContent.Should().Contain("satır silindi");
     }
 
     // ---- Test helpers ----
@@ -269,10 +345,11 @@ public sealed class ParametersTests : BunitContext
         IsOverridden = overridden, IsImplemented = implemented,
     };
 
-    private static ParameterValueDto Tabbed(int id, string name, string tabPath, string? label = null) => new()
+    private static ParameterValueDto Tabbed(
+        int id, string name, string tabPath, string? label = null, string value = "") => new()
     {
         CatalogEntryId = Guid.NewGuid(), ParametreId = id, Name = name, Label = label ?? name,
-        Editor = "text", Value = "", DefaultValue = "", TabPath = tabPath, IsImplemented = true,
+        Editor = "text", Value = value, DefaultValue = "", TabPath = tabPath, IsImplemented = true,
     };
 
     private static string Values(long revision, params ParameterValueDto[] items) => Json(new ParameterValuesResponseDto
@@ -293,6 +370,8 @@ public sealed class ParametersTests : BunitContext
         public string? ValuesJson { get; set; }
         public HttpResponseMessage? ValuesError { get; set; }
         public string? LastValuesUrl { get; set; }
+        public string? LastWriteBody { get; set; }
+        public string? WriteResponseJson { get; set; }
     }
 
     private sealed class PageHandler : HttpMessageHandler
@@ -346,6 +425,12 @@ public sealed class ParametersTests : BunitContext
 
             if (path.EndsWith("/admin/parameters/values", StringComparison.Ordinal))
             {
+                if (request.Method == HttpMethod.Put)
+                {
+                    _state.LastWriteBody = request.Content?.ReadAsStringAsync(cancellationToken).Result;
+                    return Ok(_state.WriteResponseJson ?? Json(new ParameterWriteResponseDto { Revision = 1 }));
+                }
+
                 _state.LastValuesUrl = request.RequestUri?.ToString();
 
                 if (_state.ValuesError is not null)

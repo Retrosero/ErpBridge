@@ -1,0 +1,183 @@
+@using System.Text.Json
+@using ErpBridge.Admin.Api
+
+@*
+    One parameter, rendered the way Fora renders it (P2c).
+
+    The editor kind comes from the catalogue, which read it off Fora's own designer, so a boolean
+    is a switch here because it is a CheckEdit there. Typing "1" into a free-text box for 926
+    boolean fields is how a setting ends up holding something the phone cannot read.
+*@
+
+<div class="prm-field @(IsChanged ? "prm-field--dirty" : null)">
+    <label class="prm-field__label" for="@_id">
+        @(Field.Label ?? Field.Name)
+        @if (Field.IsOverridden)
+        {
+            <span class="badge bg-warning text-dark ms-1" title="Varsayılanından ayrılmış">sapmış</span>
+        }
+        @if (!Field.IsImplemented)
+        {
+            <span class="badge bg-secondary ms-1" title="Bu sürümde Sipariş Cepte bu ayarı dikkate almıyor">etkisiz</span>
+        }
+        @if (Field.IsDeprecated)
+        {
+            <span class="badge bg-dark ms-1" title="Yeni katalog bu parametreyi artık tanımlamıyor">geri çekilmiş</span>
+        }
+    </label>
+
+    <div class="prm-field__editor">
+        @switch (Field.Editor)
+        {
+            case "boolean":
+                <div class="form-check form-switch">
+                    <input id="@_id" class="form-check-input" type="checkbox" checked="@IsOn"
+                           disabled="@Disabled" @onchange="OnToggleAsync" />
+                </div>
+                break;
+
+            case "integer":
+                <input id="@_id" class="form-control" type="number" step="1" value="@Value"
+                       disabled="@Disabled" @onchange="OnTextAsync" />
+                break;
+
+            case "decimal":
+                <input id="@_id" class="form-control" type="number" step="any" value="@Value"
+                       disabled="@Disabled" @onchange="OnTextAsync" />
+                break;
+
+            case "color":
+                @* Fora's ColorPickEdit stores one 0–255 channel per parameter, not a hex colour:
+                   Red, Green and Blue are three separate parameters. A colour input here would
+                   write "#aabbcc" into a field the phone reads as a number. *@
+                <input id="@_id" class="form-control" type="number" min="0" max="255" step="1"
+                       value="@Value" disabled="@Disabled" @onchange="OnTextAsync" />
+                <small class="text-muted">0–255 arası tek kanal; renk üç parametreden oluşuyor.</small>
+                break;
+
+            case "choice":
+                <select id="@_id" class="form-select" value="@Value" disabled="@Disabled" @onchange="OnTextAsync">
+                    @foreach (var option in Options)
+                    {
+                        <option value="@option.Value">@option.Label</option>
+                    }
+                    @if (Options.All(o => o.Value != Value))
+                    {
+                        @* Never silently drop a stored value the list does not know: that would
+                           change the setting the moment someone opens the screen. *@
+                        <option value="@Value">@Value (listede yok)</option>
+                    }
+                </select>
+                break;
+
+            case "multilineText":
+                <textarea id="@_id" class="form-control" rows="4" disabled="@Disabled"
+                          @onchange="OnTextAsync">@Value</textarea>
+                break;
+
+            case "secret":
+                <input id="@_id" class="form-control" type="password" autocomplete="new-password"
+                       value="@Value" disabled="@Disabled" @onchange="OnTextAsync" />
+                <small class="text-muted">Denetim kaydına maskelenerek yazılır.</small>
+                break;
+
+            case "reference":
+                @* D12: this should be a picker over the ERP's own list. The lookup feed arrives
+                   with the agent (P3f); until then it is free text and says so, rather than
+                   pretending to validate. *@
+                <input id="@_id" class="form-control" value="@Value" disabled="@Disabled" @onchange="OnTextAsync" />
+                <small class="text-warning-emphasis">
+                    @ReferenceHint(Field.ReferenceKind) — liste henüz ERP'den çekilmedi, serbest metin.
+                </small>
+                break;
+
+            case null:
+                <input id="@_id" class="form-control" value="@Value" disabled="@Disabled" @onchange="OnTextAsync" />
+                <small class="text-muted">Fora'da bu parametrenin ekranı yok; tipi bilinmiyor.</small>
+                break;
+
+            default:
+                <input id="@_id" class="form-control" value="@Value" disabled="@Disabled" @onchange="OnTextAsync" />
+                break;
+        }
+    </div>
+
+    <div class="prm-field__meta">
+        <code title="Parametre adı">@Field.Name</code>
+        <span class="text-muted">#@Field.ParametreId</span>
+        <span class="text-muted" title="Varsayılan">varsayılan: <code>@DisplayDefault</code></span>
+    </div>
+</div>
+
+@code {
+    private readonly string _id = $"prm-{Guid.NewGuid():N}";
+
+    [Parameter, EditorRequired]
+    public ParameterValueDto Field { get; set; } = default!;
+
+    /// <summary>The value being edited, which may differ from the stored one.</summary>
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>True when the draft has moved away from what the server returned.</summary>
+    private bool IsChanged => !string.Equals(Value, Field.Value, StringComparison.Ordinal);
+
+    /// <summary>Fora stores a boolean as "1"/"0"; anything else is treated as off.</summary>
+    private bool IsOn => Value == "1";
+
+    private string DisplayDefault =>
+        string.IsNullOrEmpty(Field.DefaultValue) ? "(boş)" : Field.DefaultValue;
+
+    private Task OnToggleAsync(ChangeEventArgs e) =>
+        ValueChanged.InvokeAsync(e.Value is true ? "1" : "0");
+
+    private Task OnTextAsync(ChangeEventArgs e) =>
+        ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+
+    private sealed record Option(string Value, string Label);
+
+    private IReadOnlyList<Option> Options
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Field.OptionsJson))
+            {
+                return Array.Empty<Option>();
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(Field.OptionsJson);
+
+                return doc.RootElement.EnumerateArray()
+                    .Select(e => new Option(
+                        e.TryGetProperty("value", out var v) ? v.GetString() ?? "" : "",
+                        e.TryGetProperty("label", out var l) ? l.GetString() ?? "" : ""))
+                    .ToList();
+            }
+            catch (JsonException)
+            {
+                // A malformed option list is worth an empty dropdown, not a broken screen.
+                return Array.Empty<Option>();
+            }
+        }
+    }
+
+    /// <summary>What the value is a code for, so an operator knows what to type meanwhile.</summary>
+    private static string ReferenceHint(string? kind) => kind switch
+    {
+        "depo" => "Depo numarası",
+        "cari" => "Cari kodu",
+        "kargo" => "Kargo kodu",
+        "ekipKodu" => "Ekip kodu",
+        "mikroKullanici" => "Mikro kullanıcı numarası",
+        "yaziciSablonu" => "Yazıcı şablonu adı",
+        _ => "ERP kodu",
+    };
+}

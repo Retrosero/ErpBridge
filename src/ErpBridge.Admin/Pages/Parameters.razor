@@ -158,7 +158,18 @@ else if (_values is not null)
                 }
                 else
                 {
-                    <h2 class="h5">@_selectedTab</h2>
+                    <div class="prm-savebar">
+                        <h2 class="h5 mb-0">@_selectedTab</h2>
+                        <span class="text-muted">@(_drafts.Count == 0 ? "Bekleyen değişiklik yok" : $"{_drafts.Count} bekleyen değişiklik")</span>
+                        <button class="btn btn-primary" id="prm-save" @onclick="SaveAsync" disabled="@(_drafts.Count == 0 || _saving)">
+                            @(_saving ? "Kaydediliyor…" : "Kaydet")
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_saveMessage))
+                    {
+                        <AdminState Tone="success" Icon="✓" Title="Kaydedildi" Message="@_saveMessage" />
+                    }
 
                     @foreach (var group in _groups)
                     {
@@ -329,50 +340,28 @@ else if (string.IsNullOrEmpty(_error))
             ParameterLayout.FieldsOf(_values?.Items ?? Array.Empty<ParameterValueDto>(), node.Path));
     }
 
-    /// <summary>
-    /// One block of fields. Still read-only here; the editors arrive in P2c.
-    /// </summary>
+    /// <summary>One block of fields, each with the editor Fora uses for it.</summary>
     private RenderFragment RenderFieldTable(IReadOnlyList<ParameterValueDto> items) =>
-        @<div class="admin-data-surface mb-3">
-            <table class="table admin-data-table" aria-label="Parametreler">
-                <thead>
-                    <tr>
-                        <th>Etiket</th>
-                        <th>Ad</th>
-                        <th>ID</th>
-                        <th>Değer</th>
-                        <th>Varsayılan</th>
-                        <th>Durum</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var p in items)
-                    {
-                        <tr>
-                            <td data-label="Etiket">@(p.Label ?? "—")</td>
-                            <td data-label="Ad"><code>@p.Name</code></td>
-                            <td data-label="ID">@p.ParametreId</td>
-                            <td data-label="Değer"><code>@p.Value</code></td>
-                            <td data-label="Varsayılan"><code>@p.DefaultValue</code></td>
-                            <td data-label="Durum">
-                                @if (p.IsOverridden)
-                                {
-                                    <span class="badge bg-warning text-dark">sapmış</span>
-                                }
-                                @if (!p.IsImplemented)
-                                {
-                                    <span class="badge bg-secondary" title="Bu sürümde Sipariş Cepte bu ayarı dikkate almıyor">bu sürümde etkisiz</span>
-                                }
-                                @if (p.IsDeprecated)
-                                {
-                                    <span class="badge bg-dark">geri çekilmiş</span>
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        @<div class="prm-fieldset">
+            @foreach (var p in items)
+            {
+                <ParameterField Field="p"
+                                Value="@Draft(p)"
+                                ValueChanged="@(v => SetDraft(p, v))"
+                                Disabled="@_saving" />
+            }
         </div>;
+
+    private static ParameterLayout.TabNode? Find(IReadOnlyList<ParameterLayout.TabNode> nodes, string path)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Path == path) return node;
+            if (Find(node.Children, path) is { } hit) return hit;
+        }
+
+        return null;
+    }
 
     private RenderFragment RenderTab(ParameterLayout.TabNode node, int depth) => builder =>
     {
@@ -410,6 +399,69 @@ else if (string.IsNullOrEmpty(_error))
         }
     };
 
+    /// <summary>Edits not yet written. Keyed by catalogue entry, which is the parameter's identity.</summary>
+    private readonly Dictionary<Guid, string> _drafts = new();
+
+    private bool _saving;
+    private string? _saveMessage;
+
+    private string Draft(ParameterValueDto field) =>
+        _drafts.TryGetValue(field.CatalogEntryId, out var v) ? v : field.Value;
+
+    private void SetDraft(ParameterValueDto field, string value)
+    {
+        // Typing a value back to what the server returned is not a change, so it leaves no draft
+        // and no request: the server would answer "Unchanged" anyway.
+        if (string.Equals(value, field.Value, StringComparison.Ordinal))
+        {
+            _drafts.Remove(field.CatalogEntryId);
+            return;
+        }
+
+        _drafts[field.CatalogEntryId] = value;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_drafts.Count == 0 || SelectedSet is not { } set) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            var response = await Api.SaveParameterValuesAsync(new ParameterWriteRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                Changes = _drafts.Select(d => new ParameterChangeDto
+                {
+                    CatalogEntryId = d.Key,
+                    Value = d.Value,
+                }).ToArray(),
+            });
+
+            var removed = response.Results.Count(r => r.Outcome == "Deleted");
+            _saveMessage = removed > 0
+                ? $"{response.Results.Length} değişiklik kaydedildi ({removed} tanesi varsayılana döndüğü için satır silindi). Kapsam sürümü: {response.Revision}."
+                : $"{response.Results.Length} değişiklik kaydedildi. Kapsam sürümü: {response.Revision}.";
+
+            _drafts.Clear();
+
+            // Reload rather than patch in memory: the server decides whether a row exists, and the
+            // "sapmış" marks have to match what it decided.
+            await LoadValuesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
     private async Task LoadValuesAsync()
     {
         if (SelectedSet is not { } set || !CanLoad) return;
@@ -431,12 +483,22 @@ else if (string.IsNullOrEmpty(_error))
                 _onlyOverridden);
 
             _tabs = ParameterLayout.BuildTabs(_values.Items);
+            _drafts.Clear();
+
+            var keep = _selectedTab;
             _selectedTab = null;
             _groups = Array.Empty<ParameterLayout.FieldGroup>();
 
-            // One tab means nothing to choose; open it so the fields are on screen straight away.
-            if (_tabs.Count == 1 && _tabs[0].Children.Count == 0)
+            // Stay on the tab the operator was on: a save reloads, and being thrown back to the
+            // tree after every change would make editing a long tab unbearable.
+            var previous = keep is null ? null : Find(_tabs, keep);
+            if (previous is not null)
             {
+                SelectTab(previous);
+            }
+            else if (_tabs.Count == 1 && _tabs[0].Children.Count == 0)
+            {
+                // One tab means nothing to choose; open it so the fields are on screen at once.
                 SelectTab(_tabs[0]);
             }
         }
