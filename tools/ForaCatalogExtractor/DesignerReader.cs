@@ -12,10 +12,19 @@ namespace ErpBridge.Tools.ForaCatalog;
 /// </summary>
 public static class DesignerReader
 {
+    /// <summary>Type given to the synthetic control that stands for the form itself.</summary>
+    public const string FormType = "Form";
+
     /// <summary>Reads every <c>private T name;</c> field and the layout calls that arrange them.</summary>
     public static Dictionary<string, DesignerControl> Read(ClassDeclarationSyntax form)
     {
         var controls = ReadFields(form);
+
+        // Several screens drop controls straight onto the form with base.Controls.Add(...).
+        // Without a container to hang them on they would have no siblings, and label matching
+        // — which only ever compares controls sharing a parent — would find nothing.
+        var formName = form.Identifier.ValueText;
+        controls[formName] = new DesignerControl(formName, FormType);
 
         foreach (var method in form.Members.OfType<MethodDeclarationSyntax>())
         {
@@ -27,7 +36,7 @@ public static class DesignerReader
                         ApplyAssignment(controls, assignment);
                         break;
                     case InvocationExpressionSyntax invocation:
-                        ApplyInvocation(controls, invocation);
+                        ApplyInvocation(controls, invocation, formName);
                         break;
                 }
             }
@@ -114,7 +123,7 @@ public static class DesignerReader
     }
 
     private static void ApplyInvocation(
-        Dictionary<string, DesignerControl> controls, InvocationExpressionSyntax invocation)
+        Dictionary<string, DesignerControl> controls, InvocationExpressionSyntax invocation, string formName)
     {
         if (invocation.Expression is not MemberAccessExpressionSyntax call)
         {
@@ -122,13 +131,25 @@ public static class DesignerReader
         }
 
         var path = MemberPath(call);
-        if (path.Count < 3 || !controls.ContainsKey(path[0]))
+
+        // "base.Controls.Add(x)" and "this.Controls.Add(x)" name no container, so they mean the
+        // form; everything else must start with a known control.
+        string container;
+        if (path.Count >= 3 && controls.ContainsKey(path[0]))
+        {
+            container = path[0];
+            path = path.Skip(1).ToList();
+        }
+        else if (path.Count == 2)
+        {
+            container = formName;
+        }
+        else
         {
             return;
         }
 
-        var container = path[0];
-        var member = string.Join('.', path.Skip(1));
+        var member = string.Join('.', path);
         var arguments = invocation.ArgumentList.Arguments;
 
         switch (member)
@@ -201,7 +222,7 @@ public static class DesignerReader
 
         switch (current)
         {
-            case ThisExpressionSyntax:
+            case ThisExpressionSyntax or BaseExpressionSyntax:
                 break;
             case IdentifierNameSyntax identifier:
                 parts.Add(identifier.Identifier.ValueText);
@@ -217,7 +238,8 @@ public static class DesignerReader
     /// <summary>Reads <c>this.Foo</c> or a bare <c>Foo</c> back to the field name.</summary>
     public static string? FieldName(ExpressionSyntax expression) => expression switch
     {
-        MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } member => member.Name.Identifier.ValueText,
+        MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax or BaseExpressionSyntax } member
+            => member.Name.Identifier.ValueText,
         IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
         _ => null,
     };

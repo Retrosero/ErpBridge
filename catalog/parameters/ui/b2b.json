@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "sourceBuild": "unknown",
+  "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.B2B/B2BPArametreleriForm.cs",
+  "sourceType": "B2BPArametreleriForm",
+  "catalogMethods": [
+    "B2B"
+  ],
+  "tabCount": 1,
+  "parameterCount": 11,
+  "unlabelledCount": 0,
+  "tabs": [
+    {
+      "name": "xtraTabPage3",
+      "title": "Genel",
+      "path": [
+        "Genel"
+      ],
+      "order": 0
+    }
+  ],
+  "parameters": [
+    {
+      "parameter": "SiteBasligi",
+      "catalogMethod": "B2B",
+      "label": "Site başlığı :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "SiteBasligi",
+      "controlType": "TextEdit",
+      "order": 0,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "EvrakMikroUserNo",
+      "catalogMethod": "B2B",
+      "label": "Bağlı mikro kullanıcısı :",
+      "editor": "choice",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "EvrakMikroUserNo",
+      "controlType": "ComboBox",
+      "order": 1,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "EvrakTipi",
+      "catalogMethod": "B2B",
+      "label": "Evrak tipi :",
+      "editor": "choice",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "EvrakTipi",
+      "controlType": "ComboBox",
+      "order": 2,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "EvrakSeri",
+      "catalogMethod": "B2B",
+      "label": "Evrak seri :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "EvrakSeri",
+      "controlType": "TextEdit",
+      "order": 3,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "KaynakDepoNo",
+      "catalogMethod": "B2B",
+      "label": "Kaynak depo no :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "KaynakDepoNo",
+      "controlType": "TextEdit",
+      "order": 4,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "SiparisGirisiZamanKontrollu",
+      "catalogMethod": "B2B",
+      "label": "Zaman kontrolü sipariş girilsin",
+      "editor": "boolean",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "SiparisGirisiZamanKontrollu",
+      "controlType": "CheckEdit",
+      "order": 5,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "SiparisGirisiBaslamaZamani",
+      "catalogMethod": "B2B",
+      "label": "Başlama zamanı :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "SiparisGirisiBaslamaZamani",
+      "controlType": "TextEdit",
+      "order": 6,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "SiparisGirisiSonlanmaZamani",
+      "catalogMethod": "B2B",
+      "label": "Bitiş zamanı :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "SiparisGirisiSonlanmaZamani",
+      "controlType": "TextEdit",
+      "order": 7,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "SiparisGirisiZamanKontrolluSifre",
+      "catalogMethod": "B2B",
+      "label": "Özel şifre :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "SiparisGirisiZamanKontrolluSifre",
+      "controlType": "TextEdit",
+      "order": 8,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "StokListelemeWebSayfasinaGonderilecek",
+      "catalogMethod": "B2B",
+      "label": "Gösterilecek stoklar :",
+      "editor": "choice",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "StokListelemeWebSayfasinaGonderilecek",
+      "controlType": "ComboBox",
+      "order": 9,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "DepolarArasiSevkFiyat",
+      "catalogMethod": "B2B",
+      "label": "Depolar arası sipariş için fiyat :",
+      "editor": "choice",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "DepolarArasiSevkFiyat",
+      "controlType": "ComboBox",
+      "order": 10,
+      "labelSource": "labelLeft"
+    }
+  ],
+  "gaps": []
+}

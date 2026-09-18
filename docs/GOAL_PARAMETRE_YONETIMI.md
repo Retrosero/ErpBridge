@@ -295,8 +295,8 @@ Decompile edilmiş Fora kodundan makine okunur katalog üretmek. Kod yazılmadan
 |---|---|---|
 | **P0a** | `ParametrelerDefault.cs` → `catalog/parameters/defaults.json`. 19 katalog seti, 13 program, 4.688 tanım: `program`, `scopeKind`, `scopeField`, sabit adresleme alanları, `id`, `name`, `default`. Ayrıştırma **Roslyn** ile — dört ZPL şablonu kaçırılmış tırnakla bitiyor (`…,N,\"`) ve satır bazlı regex'i sessizce bozuyor | 4.688 kayıt, tek biçimlilik doğrulaması, altın dosya testi |
 | **P0b** | `ForaAndroidKullaniciDuzenleme.cs` → `catalog/parameters/ui.akilli.json`. Sekme ağacı (iç içe, 65 sekme), kontrol→parametre bağlaması, kontrol tipinden editör tipi, etiket metni, okuma sırası | **1.782 parametre yerleşti, %100'ü etiketli.** Katalogdaki 1.796 farklı adın tamamı hesapta: 1.782 yerleşti, 13'ünün Fora'nın kendi editöründe karşılığı yok, `Sifre` hiçbir kontrole bağlanmıyor |
-| **P0c** | Diğer editör ekranları → `ui.foramikro.json`, `ui.yaziciayarlari.json`, `ui.b2b.json`, `ui.aktarim.json` | Kalan programların UI metadata'sı |
-| **P0d** | Tip çıkarsama ve doğrulama: bool / int / decimal / string / enum / csvList / reference. `LookUpEdit` kaynakları → `referenceKind` (kasa, depo, fiyatListesi, odemePlani, proje, sorumlulukMerkezi, cariPersonel, mikroKullanici, subeNo, firmaNo) | Her parametrenin tipi var; tipsiz kalan yok |
+| **P0c** | Diğer editör ekranları → `catalog/parameters/ui/*.json`. Toplu aktarım ekranları (~3.500 alan) P6'ya bırakıldı: panel ekranları orada yapılacak, varsayılan katalogları P0a'da zaten tamamlandı | 11 editör ekranı; her parametre hangi katalog setine ait olduğunu taşır |
+| **P0d** | Tip çıkarsama ve doğrulama: 9 editör tipi; Fora'nın seçici kontrollerinden `reference` + `referenceKind`; Fora'ya özgü ekranla düzenlenenler `composite` | Her parametrenin tipi var; `unknown` kalan yok (test sabitliyor) |
 | **P0e** | Çıkarım script'i `scripts/extract-fora-catalog/` (tek komut, deterministik çıktı) + altın dosya testi + `README` | Yeniden üretilebilirlik |
 | **P0f** | El ile gözden geçirme raporu: eşleşmeyen parametreler, şüpheli tipler, `implemented: false` ilk listesi | DURUM'a not |
 

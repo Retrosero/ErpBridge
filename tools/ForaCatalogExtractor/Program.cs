@@ -23,32 +23,41 @@ try
     var sourceBuild = buildArgument ?? ExistingSourceBuild(defaultsOutput) ?? "unknown";
 
     var defaults = DefaultsExtractor.Extract(
-        await ReadSourceAsync(root, ForaCatalogPaths.DefaultsSource),
-        ForaCatalogPaths.DefaultsSource,
+        [
+            new DefaultsExtractor.CatalogSource(
+                ForaCatalogPaths.DefaultsSource,
+                ForaCatalogPaths.DefaultsType,
+                await ReadSourceAsync(root, ForaCatalogPaths.DefaultsSource)),
+            new DefaultsExtractor.CatalogSource(
+                ForaCatalogPaths.PrinterDefaultsSource,
+                ForaCatalogPaths.PrinterDefaultsType,
+                await ReadSourceAsync(root, ForaCatalogPaths.PrinterDefaultsSource)),
+        ],
         sourceBuild);
 
-    // The layout is checked against what the defaults declare, so a parameter that exists in the
-    // catalogue but not in the editor is reported instead of quietly missing from the panel.
-    var akilliDefaults = defaults.Sets
-        .Where(s => s.Program == ForaCatalogPaths.AkilliProgram)
-        .SelectMany(s => s.Parameters)
-        .Select(p => p.Name)
-        .ToHashSet(StringComparer.Ordinal);
-
-    var ui = UiExtractor.Extract(
-        await ReadSourceAsync(root, ForaCatalogPaths.AkilliUiSource),
-        ForaCatalogPaths.AkilliUiSource,
-        ForaCatalogPaths.AkilliUiType,
-        sourceBuild,
-        akilliDefaults);
-
-    var outputs = new (string Relative, string Json, string Summary)[]
+    var outputs = new List<(string Relative, string Json, string Summary)>
     {
         (ForaCatalogPaths.DefaultsOutput, CatalogJson.Serialize(defaults),
             $"{defaults.SetCount} sets, {defaults.ParameterCount} parameters, {defaults.ShadowedCount} shadowed"),
-        (ForaCatalogPaths.AkilliUiOutput, CatalogJson.Serialize(ui),
-            $"{ui.TabCount} tabs, {ui.ParameterCount} parameters, {ui.UnlabelledCount} unlabelled, {ui.Gaps.Count} gaps"),
     };
+
+    // Each editor is checked against what the defaults declare, so a parameter that exists in the
+    // catalogue but not in its editor is reported instead of quietly missing from the panel.
+    foreach (var source in ForaCatalogPaths.UiSources)
+    {
+        var binding = UiSourceBinding.Describe(defaults, source);
+
+        var ui = UiExtractor.Extract(
+            await ReadSourceAsync(root, source.File),
+            source.File,
+            source.TypeName,
+            sourceBuild,
+            binding.Declared,
+            binding.Required);
+
+        outputs.Add((source.Output, CatalogJson.Serialize(ui),
+            $"{ui.TabCount} tabs, {ui.ParameterCount} parameters, {ui.UnlabelledCount} unlabelled, {ui.Gaps.Count} gaps"));
+    }
 
     var stale = 0;
 

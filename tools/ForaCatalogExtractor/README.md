@@ -34,8 +34,24 @@ Sürüm verilmezse mevcut katalogdaki `sourceBuild` korunur; o da yoksa `unknown
 
 | Dosya | İçerik |
 |---|---|
-| `catalog/parameters/defaults.json` | 19 katalog seti, 13 program, 4.688 parametre tanımı |
-| `catalog/parameters/ui.akilli.json` | 65 sekme, 1.782 `akilli` parametresinin sekmesi, etiketi ve editör tipi |
+| `catalog/parameters/defaults.json` | 21 katalog seti, 14 program, 4.713 parametre tanımı |
+| `catalog/parameters/ui/*.json` | 11 editör ekranının sekme, etiket ve editör tipi haritası |
+
+Editör çıktıları (`catalog/parameters/ui/`):
+
+| Dosya | Fora ekranı | Katalog seti | Alan |
+|---|---|---|---:|
+| `akilli.json` | mobil kullanıcı ayarları | `MobilKullanici` | 1.782 |
+| `foramikro-kullanici.json` | masaüstü kullanıcı | `ForaMikroKullanici` | 60 |
+| `foramikro-genel.json` | firma geneli (KDV oranları) | `ForaMikro` | 32 |
+| `yaziciayarlari.json` | yazıcı şablon tasarımcısı | `genelayarlaritanimla` + `alanekle` | 22 |
+| `comarchedi-genel.json` | EDI bağlantı ayarları | `ComarchEdiGenelParametreler` | 14 |
+| `b2b.json` | B2B | `B2B` | 11 |
+| `comarchedi-iliski.json` | EDI ilişkisi | `ComarchEdiIliskiParametreleri` | 7 |
+| `mobilrapor-*.json` (4 dosya) | mobil rapor tanımları | `MobilRapor*` | 2 + 2 + 2 + 2 |
+
+Toplu aktarım ekranları (`GenelAktarim`, `TahsilatAktarim`, `BankaAktarim` — yaklaşık 3.500 alan)
+bilerek **P6'ya** bırakıldı; panel ekranları orada yapılacak. Varsayılan katalogları zaten tam.
 
 Üretilen dosya **commit edilir**. `ErpBridge.ForaCatalog.Tests` altın dosya testi, commit edilmiş
 kataloğu kaynaktan yeniden üretilenle bayt bayt karşılaştırır; kaynak değişip katalog güncellenmezse
@@ -83,10 +99,12 @@ CI kırmızıya döner.
     { "name": "xtraTabPage30", "title": "Tanımlamalar",
       "path": ["Parametreler", "Tanımlamalar"], "order": 0 }
   ],
+  "catalogMethods": ["MobilKullanici"],   // bu ekranın düzenlediği set(ler)
   "parameters": [
     { "parameter": "Goster_AnaMenu_Tahsilat",
+      "catalogMethod": "MobilKullanici",   // ad tek başına anahtar değil (aşağıya bakın)
       "label": "Tahsilat girebilir",
-      "editor": "boolean",                 // boolean|integer|decimal|text|multilineText|choice|color
+      "editor": "boolean",                 // boolean|integer|decimal|text|multilineText|choice|color|reference|composite
       "tab": "xtraTabPage25",
       "tabPath": ["Evrak girişi", "Evrak Tipleri", "Tahsilat / Tediye makbuzu"],
       "control": "Goster_AnaMenu_Tahsilat", "controlType": "CheckEdit",
@@ -117,7 +135,25 @@ Sola bakan eşleşme, etiketin alanın **ilk satırıyla** hizalandığını var
 1.782'si bir sekmeye yerleşiyor, 13'ü Fora'nın kendi editöründe hiç geçmiyor (`notInEditor`),
 `Sifre` ise hiçbir kontrole doğrudan bağlanmıyor (`unboundParameter`). Bu eşitlik testle sabit.
 
-## Bilmesi gereken iki tuzak
+### Editör tipleri
+
+`boolean` (965) · `text` (740) · `integer` (117) · `choice` (70) · `decimal` (29) · `color` (6) ·
+`reference` (4) · `composite` (4) · `multilineText` (1).
+
+`reference`, Fora'nın kendi seçici kontrollerinden geliyor (`CariSecimi`, `DepoSecimi`,
+`KargoSecimi`, `EkipKoduSecimi`); parametre ayrıca `referenceKind` taşıyor, çünkü bunlar serbest
+metin değil ERP listesinden seçilen kodlar (D12). `composite`, Fora'nın kendine özgü bir ekranıyla
+düzenlenen değer demek (rapor tanımı JSON'u); panel için ayrı bir editör gerekir — metin kutusu
+gibi göstermek yanlış olurdu.
+
+## Bilmesi gereken üç tuzak
+
+**0 — Parametre adı tek başına anahtar değil.** 3.365 farklı adın **862'si birden fazla sette**
+geçiyor: `EvrakSeri` hem `ComarchEdiIliski`'de hem `b2b`'de, `Sifre` hem `ComarchEdiGenel`'de hem
+`akilli`'de var. Dahası bir ekran iki seti birden düzenleyebiliyor (`ComarchEdiIliskiYonetimi`).
+Bu yüzden her parametre `catalogMethod` ile hangi sete ait olduğunu taşıyor ve form→set eşlemesi
+`ForaCatalogPaths.UiSources` tablosunda **elle** tutuluyor — ad benzerliğiyle tahmin edilemez
+(dört `MobilRapor*` ekranı aynı iki adı, iki `KriterDuzenleme` ekranı aynı yedi adı kullanıyor).
 
 **1 — Kapsam her programda aynı kolonda değil.** `akilli`, `foramikro`, `MobilRapor*` ve
 `ComarchEdiIliski` kapsamı `ParametreUser`'da tutar. `GenelAktarim`, `TahsilatAktarim` ve

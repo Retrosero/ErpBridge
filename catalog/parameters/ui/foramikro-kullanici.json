@@ -1,0 +1,994 @@
+{
+  "schemaVersion": 1,
+  "sourceBuild": "unknown",
+  "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.Ayarlar/KullaniciDuzenleme.cs",
+  "sourceType": "KullaniciDuzenleme",
+  "catalogMethods": [
+    "ForaMikroKullanici"
+  ],
+  "tabCount": 7,
+  "parameterCount": 60,
+  "unlabelledCount": 0,
+  "tabs": [
+    {
+      "name": "xtraTabPage1",
+      "title": "Parametreler",
+      "path": [
+        "Parametreler"
+      ],
+      "order": 0
+    },
+    {
+      "name": "xtraTabPage4",
+      "title": "Banka aktarımı",
+      "path": [
+        "Parametreler",
+        "Banka aktarımı"
+      ],
+      "order": 2
+    },
+    {
+      "name": "xtraTabPage3",
+      "title": "Genel",
+      "path": [
+        "Parametreler",
+        "Genel"
+      ],
+      "order": 0
+    },
+    {
+      "name": "xtraTabPage2",
+      "title": "Kalite kontrol yönetimi",
+      "path": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "order": 1
+    },
+    {
+      "name": "xtraTabPage7",
+      "title": "Toplu bakım talep evrağı girişi",
+      "path": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "order": 4
+    },
+    {
+      "name": "xtraTabPage5",
+      "title": "Zamanlanmış görevler",
+      "path": [
+        "Parametreler",
+        "Zamanlanmış görevler"
+      ],
+      "order": 3
+    },
+    {
+      "name": "xtraTabPage6",
+      "title": "Başka bir firmadan stok miktarlarını aktar",
+      "path": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "order": 0
+    }
+  ],
+  "parameters": [
+    {
+      "parameter": "BankaAktarimiYapabilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Banka aktarımını giriş yapabilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage4",
+      "tabPath": [
+        "Parametreler",
+        "Banka aktarımı"
+      ],
+      "control": "BankaAktarimiYapabilir",
+      "controlType": "CheckEdit",
+      "order": 0,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "BankaAktarimiParametreleriDuzenleyebilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Parametreleri düzenleyebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage4",
+      "tabPath": [
+        "Parametreler",
+        "Banka aktarımı"
+      ],
+      "control": "BankaAktarimiParametreleriDuzenleyebilir",
+      "controlType": "CheckEdit",
+      "order": 1,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiIslemGirisiYapabilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Kalite kontrol yönetimi işlem girişi yapabilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiIslemGirisiYapabilir",
+      "controlType": "CheckEdit",
+      "order": 2,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiKaynakDepo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Kaynak depo :",
+      "editor": "choice",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiKaynakDepo",
+      "controlType": "ComboBox",
+      "order": 3,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiKaynakDepoDegistirebilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Değiştirebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiKaynakDepoDegistirebilir",
+      "controlType": "CheckEdit",
+      "order": 4,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiOnayDepo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Onay depo :",
+      "editor": "choice",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiOnayDepo",
+      "controlType": "ComboBox",
+      "order": 5,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiOnayDepoDegistirebilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Değiştirebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiOnayDepoDegistirebilir",
+      "controlType": "CheckEdit",
+      "order": 6,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiRetDepo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Ret depo :",
+      "editor": "choice",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiRetDepo",
+      "controlType": "ComboBox",
+      "order": 7,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiRetDepoDegistirebilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Değiştirebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiRetDepoDegistirebilir",
+      "controlType": "CheckEdit",
+      "order": 8,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiHurdaDepo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Hurda depo :",
+      "editor": "choice",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiHurdaDepo",
+      "controlType": "ComboBox",
+      "order": 9,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiHurdaDepoDegistirebilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Değiştirebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiHurdaDepoDegistirebilir",
+      "controlType": "CheckEdit",
+      "order": 10,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiIadeDepo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "İade depo :",
+      "editor": "choice",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiIadeDepo",
+      "controlType": "ComboBox",
+      "order": 11,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiIadeDepoDegistirebilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Değiştirebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiIadeDepoDegistirebilir",
+      "controlType": "CheckEdit",
+      "order": 12,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiDepolarArasiSevkEvrakSeri",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Depolar arası sevk evrak seri :",
+      "editor": "text",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiDepolarArasiSevkEvrakSeri",
+      "controlType": "TextEdit",
+      "order": 13,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiGunSayisi",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Gün sayısı :",
+      "editor": "integer",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiGunSayisi",
+      "controlType": "SpinEdit",
+      "order": 14,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiGorebilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Kayıt hikayesini görebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiKayitHikayesiGorebilir",
+      "controlType": "CheckEdit",
+      "order": 15,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiGorebilirButunKullanicilar",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Kayıt hikayesini bütün kullanıcıları görebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiKayitHikayesiGorebilirButunKullanicilar",
+      "controlType": "CheckEdit",
+      "order": 16,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiIslemSilebilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "İşlem silebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiKayitHikayesiIslemSilebilir",
+      "controlType": "CheckEdit",
+      "order": 17,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiIslemSilebilirButunKullanicilar",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Bütün kullanıcıların işlemlerini silebilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiKayitHikayesiIslemSilebilirButunKullanicilar",
+      "controlType": "CheckEdit",
+      "order": 18,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "DepoKaliteKontrolYonetimiKayitHikayesiBaslangicTarihi",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Varsayılan başlangıç tarihi :",
+      "editor": "integer",
+      "tab": "xtraTabPage2",
+      "tabPath": [
+        "Parametreler",
+        "Kalite kontrol yönetimi"
+      ],
+      "control": "DepoKaliteKontrolYonetimiKayitHikayesiBaslangicTarihi",
+      "controlType": "SpinEdit",
+      "order": 19,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopTuketiciKodu",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Tüketici kodu",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopTuketiciKodu",
+      "controlType": "CheckEdit",
+      "order": 20,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiEvrakSeri",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Evrak seri :",
+      "editor": "text",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiEvrakSeri",
+      "controlType": "TextEdit",
+      "order": 21,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopTuketiciAdi",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Tüketici adı",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopTuketiciAdi",
+      "controlType": "CheckEdit",
+      "order": 22,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTeslimEdilmeSekli",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Teslim şekli :",
+      "editor": "choice",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTeslimEdilmeSekli",
+      "controlType": "ComboBox",
+      "order": 23,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopEvrakSeri",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Evrak seri",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopEvrakSeri",
+      "controlType": "CheckEdit",
+      "order": 24,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiMusteriBilgilendirmeSekli",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Bilgilendirme şekli :",
+      "editor": "choice",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiMusteriBilgilendirmeSekli",
+      "controlType": "ComboBox",
+      "order": 25,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopEvrakTarih",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Evrak tarihi",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopEvrakTarih",
+      "controlType": "CheckEdit",
+      "order": 26,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTalepGelisSekli",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Talep geliş şekli :",
+      "editor": "choice",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTalepGelisSekli",
+      "controlType": "ComboBox",
+      "order": 27,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopBelgeNo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Belge no",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopBelgeNo",
+      "controlType": "CheckEdit",
+      "order": 28,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiKargo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Talep geliş şekli :",
+      "editor": "reference",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiKargo",
+      "controlType": "KargoSecimi",
+      "order": 29,
+      "labelSource": "labelAbove",
+      "referenceKind": "kargo"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopBelgeTarihi",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Belge tarihi",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopBelgeTarihi",
+      "controlType": "CheckEdit",
+      "order": 30,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiCari",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Talep geliş şekli :",
+      "editor": "reference",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiCari",
+      "controlType": "CariSecimi",
+      "order": 31,
+      "labelSource": "labelAbove",
+      "referenceKind": "cari"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopTalepGelisSekli",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Talep geliş şekli",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopTalepGelisSekli",
+      "controlType": "CheckEdit",
+      "order": 32,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiServisTuru",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Servis türü :",
+      "editor": "choice",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiServisTuru",
+      "controlType": "ComboBox",
+      "order": 33,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopKargo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Kargo",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopKargo",
+      "controlType": "CheckEdit",
+      "order": 34,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiServisYeri",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Servis yeri :",
+      "editor": "choice",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiServisYeri",
+      "controlType": "ComboBox",
+      "order": 35,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopBayi",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Bayi",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopBayi",
+      "controlType": "CheckEdit",
+      "order": 36,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiEkipKodu",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Servis yeri :",
+      "editor": "reference",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiEkipKodu",
+      "controlType": "EkipKoduSecimi",
+      "order": 37,
+      "labelSource": "labelAbove",
+      "referenceKind": "ekipKodu"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopKargoNo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Kargo no",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopKargoNo",
+      "controlType": "CheckEdit",
+      "order": 38,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopIrsaliyeNo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "İrsaliye no",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopIrsaliyeNo",
+      "controlType": "CheckEdit",
+      "order": 39,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiDepo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Servis yeri :",
+      "editor": "reference",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiDepo",
+      "controlType": "DepoSecimi",
+      "order": 40,
+      "labelSource": "labelAbove",
+      "referenceKind": "depo"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopServisTuru",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Servis türü",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopServisTuru",
+      "controlType": "CheckEdit",
+      "order": 41,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiVarsayilanHizmetKodu",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Varsayılan hizmet kodu :",
+      "editor": "text",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiVarsayilanHizmetKodu",
+      "controlType": "TextEdit",
+      "order": 42,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopServisYeri",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Servis yeri",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopServisYeri",
+      "controlType": "CheckEdit",
+      "order": 43,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiVarsayilanSure",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Varsayılan süre (dakika) :",
+      "editor": "integer",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiVarsayilanSure",
+      "controlType": "SpinEdit",
+      "order": 44,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopTeslimSekli",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Teslim şekli",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopTeslimSekli",
+      "controlType": "CheckEdit",
+      "order": 45,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiVarsayilanMiktar",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Varsayılan miktar :",
+      "editor": "integer",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiVarsayilanMiktar",
+      "controlType": "SpinEdit",
+      "order": 46,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopBilgilendirmeSekli",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Bilgilendirme şekli",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopBilgilendirmeSekli",
+      "controlType": "CheckEdit",
+      "order": 47,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopEkipKodu",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Ekip kodu",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopEkipKodu",
+      "controlType": "CheckEdit",
+      "order": 48,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "TopluBakimTalepEvragiGirisiTabStopDepo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Depo",
+      "editor": "boolean",
+      "tab": "xtraTabPage7",
+      "tabPath": [
+        "Parametreler",
+        "Toplu bakım talep evrağı girişi"
+      ],
+      "control": "TopluBakimTalepEvragiGirisiTabStopDepo",
+      "controlType": "CheckEdit",
+      "order": 49,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_GirisiYapabilir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Giriş yapabilir",
+      "editor": "boolean",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_GirisiYapabilir",
+      "controlType": "CheckEdit",
+      "order": 50,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlServer",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Sql Server :",
+      "editor": "text",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlServer",
+      "controlType": "TextEdit",
+      "order": 51,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlKullaniciAdi",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Sql Kullanıcı adı :",
+      "editor": "text",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlKullaniciAdi",
+      "controlType": "TextEdit",
+      "order": 52,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlSifre",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Sql şifresi :",
+      "editor": "text",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlSifre",
+      "controlType": "TextEdit",
+      "order": 53,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlDBName",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Sql veritabanı adı :",
+      "editor": "text",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_SqlDBName",
+      "controlType": "TextEdit",
+      "order": 54,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_StokSorgusu",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Stok sorgu cümlesi :",
+      "editor": "text",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_StokSorgusu",
+      "controlType": "TextEdit",
+      "order": 55,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_HedefDepoNo",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Hedef depo no :",
+      "editor": "integer",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_HedefDepoNo",
+      "controlType": "SpinEdit",
+      "order": 56,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_EvrakSeri",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Evrak seri :",
+      "editor": "text",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_EvrakSeri",
+      "controlType": "TextEdit",
+      "order": 57,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_EvrakSira",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Evrak sıra :",
+      "editor": "integer",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_EvrakSira",
+      "controlType": "SpinEdit",
+      "order": 58,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BaskaFirmaninStokMiktarlariniZamanliAktarim_KacDakikadaBir",
+      "catalogMethod": "ForaMikroKullanici",
+      "label": "Kaç dakikada bir güncellensin :",
+      "editor": "integer",
+      "tab": "xtraTabPage6",
+      "tabPath": [
+        "Parametreler",
+        "Zamanlanmış görevler",
+        "Başka bir firmadan stok miktarlarını aktar"
+      ],
+      "control": "BaskaFirmaninStokMiktarlariniZamanliAktarim_KacDakikadaBir",
+      "controlType": "SpinEdit",
+      "order": 59,
+      "labelSource": "labelLeft"
+    }
+  ],
+  "gaps": []
+}

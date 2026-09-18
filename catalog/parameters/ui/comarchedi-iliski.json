@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "sourceBuild": "unknown",
+  "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.Aktarimlar.ComarchEdi/ComarchEdiIliskiYonetimi.cs",
+  "sourceType": "ComarchEdiIliskiYonetimi",
+  "catalogMethods": [
+    "ComarchEdiGenelParametreler",
+    "ComarchEdiIliskiParametreleri"
+  ],
+  "tabCount": 1,
+  "parameterCount": 7,
+  "unlabelledCount": 0,
+  "tabs": [
+    {
+      "name": "xtraTabPage_Genel",
+      "title": "GENEL",
+      "path": [
+        "GENEL"
+      ],
+      "order": 0
+    }
+  ],
+  "parameters": [
+    {
+      "parameter": "SiparisAktarimiAktif",
+      "catalogMethod": "ComarchEdiIliskiParametreleri",
+      "label": "Sipariş aktarımı aktif",
+      "editor": "boolean",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "SiparisAktarimiAktif",
+      "controlType": "CheckEdit",
+      "order": 0,
+      "labelSource": "caption"
+    },
+    {
+      "parameter": "SorumlulukMerkeziKodu",
+      "catalogMethod": "ComarchEdiIliskiParametreleri",
+      "label": "Sorumluluk merkezi kodu :",
+      "editor": "text",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "SorumlulukMerkeziKodu",
+      "controlType": "TextEdit",
+      "order": 1,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "ProjeKodu",
+      "catalogMethod": "ComarchEdiIliskiParametreleri",
+      "label": "Proje kodu :",
+      "editor": "text",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "ProjeKodu",
+      "controlType": "TextEdit",
+      "order": 2,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "EvrakSeri",
+      "catalogMethod": "ComarchEdiIliskiParametreleri",
+      "label": "Evrak seri :",
+      "editor": "text",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "EvrakSeri",
+      "controlType": "TextEdit",
+      "order": 3,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "YeniSiparisBilgilendirmeEpostaAdresi",
+      "catalogMethod": "ComarchEdiIliskiParametreleri",
+      "label": "Yeni sipariş bilgilendirme e-posta adresi :",
+      "editor": "text",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "YeniSiparisBilgilendirmeEpostaAdresi",
+      "controlType": "TextEdit",
+      "order": 4,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "HataBilgilendirmeEpostaAdresi",
+      "catalogMethod": "ComarchEdiIliskiParametreleri",
+      "label": "Hata bilgilendirme e-posta adresi :",
+      "editor": "text",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "HataBilgilendirmeEpostaAdresi",
+      "controlType": "TextEdit",
+      "order": 5,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "BirimFiyatiBirim2KatsayisinaBol",
+      "catalogMethod": "ComarchEdiIliskiParametreleri",
+      "label": "Birim fiyatı, birim 2 katsayısına böl",
+      "editor": "boolean",
+      "tab": "xtraTabPage_Genel",
+      "tabPath": [
+        "GENEL"
+      ],
+      "control": "BirimFiyatiBirim2KatsayisinaBol",
+      "controlType": "CheckEdit",
+      "order": 6,
+      "labelSource": "caption"
+    }
+  ],
+  "gaps": [
+    {
+      "kind": "unboundParameter",
+      "subject": "KullaniciAdi",
+      "detail": "read in the form but never assigned straight to or from a designer control"
+    },
+    {
+      "kind": "unboundParameter",
+      "subject": "Sifre",
+      "detail": "read in the form but never assigned straight to or from a designer control"
+    },
+    {
+      "kind": "unboundParameter",
+      "subject": "ZamanAsimi",
+      "detail": "read in the form but never assigned straight to or from a designer control"
+    }
+  ]
+}

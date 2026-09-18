@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 1,
+  "sourceBuild": "unknown",
+  "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.Ayarlar/GenelParametrelerForm.cs",
+  "sourceType": "GenelParametrelerForm",
+  "catalogMethods": [
+    "ForaMikro"
+  ],
+  "tabCount": 2,
+  "parameterCount": 32,
+  "unlabelledCount": 0,
+  "tabs": [
+    {
+      "name": "xtraTabPage1",
+      "title": "Cari hesaplar",
+      "path": [
+        "Cari hesaplar"
+      ],
+      "order": 1
+    },
+    {
+      "name": "xtraTabPage3",
+      "title": "Genel",
+      "path": [
+        "Genel"
+      ],
+      "order": 0
+    }
+  ],
+  "parameters": [
+    {
+      "parameter": "CariYeniCariHesapOnEkleri",
+      "catalogMethod": "ForaMikro",
+      "label": "Yeni cari hesap ön ekleri :",
+      "editor": "text",
+      "tab": "xtraTabPage1",
+      "tabPath": [
+        "Cari hesaplar"
+      ],
+      "control": "CariYeniCariHesapOnEkleri",
+      "controlType": "TextEdit",
+      "order": 0,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "CariYeniCariMuhasebeKodu",
+      "catalogMethod": "ForaMikro",
+      "label": "Yeni cari muhasebe kodu :",
+      "editor": "text",
+      "tab": "xtraTabPage1",
+      "tabPath": [
+        "Cari hesaplar"
+      ],
+      "control": "CariYeniCariMuhasebeKodu",
+      "controlType": "TextEdit",
+      "order": 1,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi1KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "1 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi1KisaAdi",
+      "controlType": "TextEdit",
+      "order": 2,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi1UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "1 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi1UzunAdi",
+      "controlType": "TextEdit",
+      "order": 3,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi1Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "1 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi1Yuzde",
+      "controlType": "SpinEdit",
+      "order": 4,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi2KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "2 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi2KisaAdi",
+      "controlType": "TextEdit",
+      "order": 5,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi2UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "2 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi2UzunAdi",
+      "controlType": "TextEdit",
+      "order": 6,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi2Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "2 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi2Yuzde",
+      "controlType": "SpinEdit",
+      "order": 7,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi3KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "3 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi3KisaAdi",
+      "controlType": "TextEdit",
+      "order": 8,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi3UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "3 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi3UzunAdi",
+      "controlType": "TextEdit",
+      "order": 9,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi3Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "3 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi3Yuzde",
+      "controlType": "SpinEdit",
+      "order": 10,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi4KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "4 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi4KisaAdi",
+      "controlType": "TextEdit",
+      "order": 11,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi4UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "4 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi4UzunAdi",
+      "controlType": "TextEdit",
+      "order": 12,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi4Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "4 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi4Yuzde",
+      "controlType": "SpinEdit",
+      "order": 13,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi5KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "5 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi5KisaAdi",
+      "controlType": "TextEdit",
+      "order": 14,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi5UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "5 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi5UzunAdi",
+      "controlType": "TextEdit",
+      "order": 15,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi5Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "5 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi5Yuzde",
+      "controlType": "SpinEdit",
+      "order": 16,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi6KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "6 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi6KisaAdi",
+      "controlType": "TextEdit",
+      "order": 17,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi6UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "6 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi6UzunAdi",
+      "controlType": "TextEdit",
+      "order": 18,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi6Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "6 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi6Yuzde",
+      "controlType": "SpinEdit",
+      "order": 19,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi7KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "7 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi7KisaAdi",
+      "controlType": "TextEdit",
+      "order": 20,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi7UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "7 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi7UzunAdi",
+      "controlType": "TextEdit",
+      "order": 21,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi7Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "7 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi7Yuzde",
+      "controlType": "SpinEdit",
+      "order": 22,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi8KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "8 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi8KisaAdi",
+      "controlType": "TextEdit",
+      "order": 23,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi8UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "8 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi8UzunAdi",
+      "controlType": "TextEdit",
+      "order": 24,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi8Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "8 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi8Yuzde",
+      "controlType": "SpinEdit",
+      "order": 25,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi9KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "9 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi9KisaAdi",
+      "controlType": "TextEdit",
+      "order": 26,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi9UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "9 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi9UzunAdi",
+      "controlType": "TextEdit",
+      "order": 27,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi9Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "9 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi9Yuzde",
+      "controlType": "SpinEdit",
+      "order": 28,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi10KisaAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "10 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi10KisaAdi",
+      "controlType": "TextEdit",
+      "order": 29,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi10UzunAdi",
+      "catalogMethod": "ForaMikro",
+      "label": "10 :",
+      "editor": "text",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi10UzunAdi",
+      "controlType": "TextEdit",
+      "order": 30,
+      "labelSource": "labelLeft"
+    },
+    {
+      "parameter": "Vergi10Yuzde",
+      "catalogMethod": "ForaMikro",
+      "label": "10 :",
+      "editor": "decimal",
+      "tab": "xtraTabPage3",
+      "tabPath": [
+        "Genel"
+      ],
+      "control": "Vergi10Yuzde",
+      "controlType": "SpinEdit",
+      "order": 31,
+      "labelSource": "labelLeft"
+    }
+  ],
+  "gaps": [
+    {
+      "kind": "notInEditor",
+      "subject": "Vergi0KisaAdi",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "Vergi0UzunAdi",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "Vergi0Yuzde",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    }
+  ]
+}

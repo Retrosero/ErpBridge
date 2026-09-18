@@ -30,16 +30,22 @@ public static class UiExtractor
     /// <param name="formTypeName">Class that declares the editor.</param>
     /// <param name="sourceBuild">Fora build identifier, stamped on the output.</param>
     /// <param name="declared">
-    /// Every parameter the defaults catalogue declares for this program. Anything declared but
-    /// absent from the editor is reported: a catalogue-driven panel would otherwise have no way
-    /// to show it, and the omission would pass unnoticed.
+    /// Every parameter the defaults catalogue declares for the sets this form edits, mapped to
+    /// its owning set. Anything declared but absent from the editor is reported: a catalogue-driven
+    /// panel would otherwise have no way to show it, and the omission would pass unnoticed.
+    /// </param>
+    /// <param name="required">
+    /// The subset of <paramref name="declared"/> this form is the editor for. A screen may also
+    /// touch a few parameters belonging to another set without owning that whole set, and the
+    /// rest of that set must not then be reported as missing here.
     /// </param>
     public static UiCatalog Extract(
         string sourceText,
         string sourceFile,
         string formTypeName,
         string sourceBuild,
-        IReadOnlyCollection<string> declared)
+        IReadOnlyDictionary<string, string> declared,
+        IReadOnlyCollection<string> required)
     {
         var root = CSharpSyntaxTree.ParseText(sourceText).GetRoot();
 
@@ -53,7 +59,17 @@ public static class UiExtractor
 
         var bound = bindings.Select(b => b.Parameter).ToHashSet(StringComparer.Ordinal);
 
-        foreach (var parameter in declared.Except(bound, StringComparer.Ordinal)
+        // A form may bind a name the sets it edits do not declare — that means the mapping table
+        // points at the wrong set, which is worth failing on rather than shipping a wrong panel.
+        var undeclared = bound.Where(b => !declared.ContainsKey(b)).Order(StringComparer.Ordinal).ToList();
+        if (undeclared.Count > 0)
+        {
+            throw new CatalogExtractionException(
+                $"{formTypeName} binds {undeclared.Count} parameter(s) none of its catalogue sets declare: "
+                + string.Join(", ", undeclared.Take(5)) + (undeclared.Count > 5 ? ", …" : string.Empty));
+        }
+
+        foreach (var parameter in required.Except(bound, StringComparer.Ordinal)
                      .Except(gaps.Where(g => g.Kind == "unboundParameter").Select(g => g.Subject), StringComparer.Ordinal)
                      .OrderBy(p => p, StringComparer.Ordinal))
         {
@@ -69,8 +85,12 @@ public static class UiExtractor
         var tabs = BuildTabs(controls);
         var tabByName = tabs.ToDictionary(t => t.Name, StringComparer.Ordinal);
 
+        // Smaller screens have no tab control at all, so a missing tab is only worth reporting
+        // on a form that actually uses tabs.
+        var tabbed = tabs.Count > 0;
+
         var placed = bindings
-            .Select(b => Place(b, controls, tabByName, gaps))
+            .Select(b => Place(b, declared[b.Parameter], tabbed, controls, tabByName, gaps))
             .OrderBy(p => p.TabPath.Count == 0 ? 1 : 0)
             .ThenBy(p => string.Join(" / ", p.TabPath), StringComparer.Ordinal)
             .ThenBy(p => p.SortY)
@@ -88,6 +108,7 @@ public static class UiExtractor
             SourceBuild = sourceBuild,
             SourceFile = sourceFile,
             SourceType = formTypeName,
+            CatalogMethods = declared.Values.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
             TabCount = tabs.Count,
             ParameterCount = parameters.Count,
             UnlabelledCount = parameters.Count(p => p.Label is null),
@@ -161,21 +182,30 @@ public static class UiExtractor
 
         foreach (var (parameter, load) in loads)
         {
-            if (!byParameter.TryGetValue(parameter, out var save))
-            {
-                byParameter[parameter] = load;
-                continue;
-            }
+            byParameter.TryAdd(parameter, load);
+        }
 
-            if (!string.Equals(save.Control, load.Control, StringComparison.Ordinal))
+        // A parameter reaching several controls is normal — a printer field's value is shown in
+        // one of three editors depending on its data type. The real defect is the other way
+        // round: a control that displays one parameter but writes back a different one. Opening
+        // and saving such a screen silently overwrites the second parameter with the first's value.
+        var loadedByControl = loads.Values
+            .GroupBy(b => b.Control, StringComparer.Ordinal)
+            .Where(g => g.Select(b => b.Parameter).Distinct(StringComparer.Ordinal).Count() == 1)
+            .ToDictionary(g => g.Key, g => g.First().Parameter, StringComparer.Ordinal);
+
+        foreach (var save in saves.Values)
+        {
+            if (loadedByControl.TryGetValue(save.Control, out var shown)
+                && !string.Equals(shown, save.Parameter, StringComparison.Ordinal))
             {
                 gaps.Add(new UiGap
                 {
                     Kind = "bindingMismatch",
-                    Subject = parameter,
-                    Detail = $"Fora loads this parameter into '{load.Control}' but saves it from '{save.Control}'; "
-                             + "opening and saving the screen overwrites one parameter with another's value. "
-                             + "The save side is taken as authoritative.",
+                    Subject = save.Parameter,
+                    Detail = $"control '{save.Control}' displays '{shown}' but saves to '{save.Parameter}'; "
+                             + "opening and saving this screen in Fora overwrites the second with the first's "
+                             + "value. The save side is taken as authoritative here.",
                 });
             }
         }
@@ -244,6 +274,8 @@ public static class UiExtractor
 
     private static Placed Place(
         Binding binding,
+        string catalogMethod,
+        bool tabbed,
         Dictionary<string, DesignerControl> controls,
         Dictionary<string, UiTab> tabsByName,
         List<UiGap> gaps)
@@ -253,7 +285,7 @@ public static class UiExtractor
         var (y, x) = AbsolutePosition(control, controls);
         var (label, labelSource) = FindLabel(control, controls);
 
-        if (tabPage is null)
+        if (tabPage is null && tabbed)
         {
             gaps.Add(new UiGap
             {
@@ -281,8 +313,10 @@ public static class UiExtractor
             new UiParameter
             {
                 Parameter = binding.Parameter,
+                CatalogMethod = catalogMethod,
                 Label = label,
                 Editor = EditorFor(control.Type, binding.Accessor),
+                ReferenceKind = ReferenceKindByControl.GetValueOrDefault(control.Type),
                 Tab = tabPage?.Name,
                 TabPath = path,
                 Control = control.Name,
@@ -426,7 +460,32 @@ public static class UiExtractor
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// Fora's bespoke picker controls, and the ERP list each one chooses from. The suffix
+    /// "Secimi" is the giveaway; the list is named explicitly so a new picker fails the
+    /// extraction rather than landing in a wrong bucket.
+    /// </summary>
+    private static readonly Dictionary<string, string> ReferenceKindByControl = new(StringComparer.Ordinal)
+    {
+        ["CariSecimi"] = "cari",
+        ["DepoSecimi"] = "depo",
+        ["KargoSecimi"] = "kargo",
+        ["EkipKoduSecimi"] = "ekipKodu",
+    };
+
+    /// <summary>Controls that carry a value only a purpose-built screen can edit.</summary>
+    private static bool IsComposite(string controlType) =>
+        controlType.StartsWith("Rapor", StringComparison.Ordinal)
+        && controlType.EndsWith("Secenekleri", StringComparison.Ordinal);
+
     private static string EditorFor(string controlType, string accessor) => controlType switch
+    {
+        _ when ReferenceKindByControl.ContainsKey(controlType) => EditorKinds.Reference,
+        _ when IsComposite(controlType) => EditorKinds.Composite,
+        _ => BuiltInEditorFor(controlType, accessor),
+    };
+
+    private static string BuiltInEditorFor(string controlType, string accessor) => controlType switch
     {
         "CheckEdit" => EditorKinds.Boolean,
         "SpinEdit" or "CalcEdit" => accessor == "_GetDouble" ? EditorKinds.Decimal : EditorKinds.Integer,
