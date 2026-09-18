@@ -273,3 +273,55 @@ Bu goal'ün kapsamı (D3) **nakit → `cinsi 0`, `kasa_hizmet 4`** ve **havale/E
 
 **`ODEME_EMIRLERI`:** nakit ve havalede yok (canlıda 64'lü nakit/havale satırlarında `cha_trefno` boş). Çek/senet
 çıkışı bu goal'ün kapsamı dışında (D3), gerektiğinde §5'teki referans no kuralı örnek alınacak.
+
+---
+
+## 12. Cari kartı (yeni müşteri) *(ERP yazım 2, Z0d — 2026-09-19)*
+
+Kaynak: Fora `CariExtensions.cs` (V15 INSERT, 95 kolon) + canlı `MikroDB_V15_02`'deki **524 cari**.
+
+**Tekil indeks:** `NDX_CARI_HESAPLAR_02 (cari_kod)` — kod tek başına tekildir; ayrıca `(sektör|grup|temsilci|bölge, kod)`
+bileşik tekil indeksleri var. Yani aynı kodla ikinci cari **veritabanı tarafından** reddedilir; writer çakışmayı
+önceden görüp kalıcı `CUSTOMER_CODE_EXISTS` dönmelidir (D4).
+
+**Alan genişlikleri:** `cari_kod` nvarchar(**25**), `cari_unvan1`/`cari_unvan2`/`cari_vdaire_adi` nvarchar(50).
+
+**Bu firmanın kod alışkanlığı:** cari kodu **müşterinin adıdır** (`NEXT`, `LÜTFİ`, `EURO MARKET`, `BİZİM SÜPERMARKET`);
+sayısal/öneki şema (`120.01.0001` gibi) **yok**, uzunluk 2–19 arasında dağılıyor. Plasiyerin kodu telefonda girmesi
+(U2) firmanın bugünkü alışkanlığıyla uyumlu; Portal'da "kod öneki" ayarı bu firma için anlamsız (Z1c'de gözden geçir).
+
+**Her caride aynı olan değerler** (524/524 — writer bunları sabit yazar):
+
+| Kolon | Değer |
+|---|---|
+| `cari_fileid` | **31** |
+| `cari_hareket_tipi` | 0 |
+| `cari_doviz_cinsi` | 0 (TL) |
+| `cari_doviz_cinsi1` / `cari_doviz_cinsi2` | **255** / **255** (tanımsız) — 524 carinin **522**'sinde; iki eski kartta 127. Writer 255 yazar (Mikro'nun bugünkü değeri) |
+| `cari_vade_fark_yuz` | **25** |
+| `cari_KurHesapSekli` | 1 |
+| `cari_fatura_adres_no` / `cari_sevk_adres_no` | 1 / 1 |
+| `cari_EftHesapNum` | 1 |
+| `cari_odemeplan_no` | 0 |
+| `cari_TeminatMekAlacakMuhKodu` / `...BorcMuhKodu` | **910** / **912** |
+| `cari_VerilenDepozitoTeminatMuhKodu` / `cari_Alinan...` | **226** / **326** |
+
+Son dört muhasebe kodu Fora'nın V16 INSERT'ünde de **sabit literal** olarak geçiyor (`'910','912','226','326'`) —
+iki kaynak bağımsız olarak aynı değerleri veriyor.
+
+**Karta göre değişen alanlar:**
+
+| Kolon | Doluluk (524 caride) | Not |
+|---|---|---|
+| `cari_kod`, `cari_unvan1` | 524 | zorunlu |
+| `cari_satis_fk` | 524 | **satış fiyat listesi no** — 1 (507 cari), 2 (7), 3 (8) |
+| `cari_bolge_kodu` | 420 | firma bölge kullanıyor (`ALANYA`, `BELEK`, `ADRASAN-OLİMPOS`) |
+| `cari_vdaire_adi` / `cari_vdaire_no` | 264 | vergi dairesi (kurumsal müşterilerde) |
+| `cari_CepTel` | 77 | |
+| `cari_unvan2` | 39 | |
+| `cari_baglanti_tipi` | 48 | |
+| `cari_EMail` | 3 | |
+| `cari_grup_kodu`, `cari_temsilci_kodu`, `cari_muh_kod`, `cari_sektor_kodu` | **0** | bu firma kullanmıyor — writer boş bırakır |
+
+**V15/V16 farkı:** `cari_tipi` kolonu V15'te **yoktur** (Fora INSERT'ünde değişken kolon adıyla geçiliyor); V16'da
+`cari_Guid`, `cari_efatura_fl`, `cari_def_efatura_cinsi` gibi kolonlar eklenir. Bu goal V15 yazıyor (U4).

@@ -333,4 +333,70 @@ SELECT COUNT(*) FROM (
     /// because <see cref="MikroCodes"/> only carries what the writers use so far.
     /// </summary>
     private const int FirmaHavaleEmri = 20;
+
+    /// <summary>
+    /// ERP yazım 2 (Z0d): what a customer card carries in this company. The writer copies the constants every one
+    /// of the 524 cards shares and leaves the fields the company never uses empty — guessing either way would
+    /// produce a card the accountant has to fix by hand.
+    /// </summary>
+    [Fact]
+    public async Task Customer_cards_share_the_documented_constants()
+    {
+        if (!GateOpen)
+        {
+            return;
+        }
+
+        await using var conn = await OpenAsync();
+        var row = await conn.QuerySingleAsync<(int Total, int FileId, int HareketTipi, int Doviz, int Doviz1, int Doviz1Recent,
+            int VadeFark, int KurHesap, int FaturaAdres, int SevkAdres, int Eft, int TeminatA, int TeminatB, int DepozitoV,
+            int DepozitoA)>(@"
+SELECT COUNT(*),
+       SUM(CASE WHEN cari_fileid = 31 THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_hareket_tipi = 0 THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_doviz_cinsi = 0 THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_doviz_cinsi1 = 255 AND cari_doviz_cinsi2 = 255 THEN 1 ELSE 0 END),
+       (SELECT COUNT(*) FROM (SELECT TOP 100 cari_doviz_cinsi1, cari_doviz_cinsi2 FROM CARI_HESAPLAR
+            WHERE ISNULL(cari_iptal, 0) = 0 ORDER BY cari_create_date DESC) AS son
+        WHERE son.cari_doviz_cinsi1 = 255 AND son.cari_doviz_cinsi2 = 255),
+       SUM(CASE WHEN cari_vade_fark_yuz = 25 THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_KurHesapSekli = 1 THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_fatura_adres_no = 1 THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_sevk_adres_no = 1 THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_EftHesapNum = 1 THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_TeminatMekAlacakMuhKodu = '910' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_TeminatMekBorcMuhKodu = '912' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_VerilenDepozitoTeminatMuhKodu = '226' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN cari_AlinanDepozitoTeminatMuhKodu = '326' THEN 1 ELSE 0 END)
+FROM CARI_HESAPLAR WHERE ISNULL(cari_iptal, 0) = 0");
+
+        _output.WriteLine(row.ToString());
+        row.Total.Should().BeGreaterThan(0);
+        // Reference §12: these are the same on every card, so the writer may hard-code them.
+        row.FileId.Should().Be(row.Total);
+        row.HareketTipi.Should().Be(row.Total);
+        row.Doviz.Should().Be(row.Total);
+        // Currency slots: 255 on the 100 most recent cards. Two old cards carry 127, so this is "what Mikro
+        // writes today" rather than "what every row has ever had" — and the writer copies today's value.
+        row.Doviz1Recent.Should().Be(100);
+        row.Doviz1.Should().BeGreaterThan(row.Total - 10, "the exception is a couple of legacy cards");
+        row.VadeFark.Should().Be(row.Total);
+        row.KurHesap.Should().Be(row.Total);
+        row.FaturaAdres.Should().Be(row.Total);
+        row.SevkAdres.Should().Be(row.Total);
+        row.Eft.Should().Be(row.Total);
+        row.TeminatA.Should().Be(row.Total);
+        row.TeminatB.Should().Be(row.Total);
+        row.DepozitoV.Should().Be(row.Total);
+        row.DepozitoA.Should().Be(row.Total);
+
+        // The code is unique on its own, so a duplicate is the database's refusal, not ours to discover late.
+        var uniqueOnCode = await conn.ExecuteScalarAsync<int>(@"
+SELECT COUNT(*) FROM sys.indexes i
+JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+WHERE i.object_id = OBJECT_ID('CARI_HESAPLAR') AND i.is_unique = 1 AND c.name = 'cari_kod'
+  AND (SELECT COUNT(*) FROM sys.index_columns k WHERE k.object_id = i.object_id AND k.index_id = i.index_id) = 1");
+        uniqueOnCode.Should().Be(1, "cari_kod carries a unique index of its own");
+    }
 }
