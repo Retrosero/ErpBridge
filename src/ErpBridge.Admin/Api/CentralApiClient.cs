@@ -1076,6 +1076,12 @@ public sealed class ParameterValueDto
     [JsonPropertyName("lastChangeSource")] public string? LastChangeSource { get; set; }
 
     [JsonPropertyName("lastChangedAtUtc")] public DateTimeOffset? LastChangedAtUtc { get; set; }
+
+    /// <summary>True when the parameter belongs to Fora's VAT table, rate or caption.</summary>
+    [JsonPropertyName("isTaxTable")] public bool IsTaxTable { get; set; }
+
+    /// <summary>True when changing it changes what a document totals; needs confirming (D17).</summary>
+    [JsonPropertyName("changesAmounts")] public bool ChangesAmounts { get; set; }
 }
 
 /// <summary>A batch of changes to one scope.</summary>
@@ -1087,6 +1093,9 @@ public sealed class ParameterWriteRequestDto
     [JsonPropertyName("scope1")] public string? Scope1 { get; set; }
     [JsonPropertyName("scope2")] public string? Scope2 { get; set; }
     [JsonPropertyName("changes")] public ParameterChangeDto[] Changes { get; set; } = Array.Empty<ParameterChangeDto>();
+
+    /// <summary>Set once the operator has confirmed the VAT rates the batch would change.</summary>
+    [JsonPropertyName("confirmSensitive")] public bool ConfirmSensitive { get; set; }
 }
 
 /// <summary>One change. The parameter is named by its catalogue entry, never by name.</summary>
