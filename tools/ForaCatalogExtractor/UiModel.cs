@@ -117,17 +117,24 @@ public static class LabelSources
 public sealed record UiCatalog
 {
     [JsonPropertyOrder(1)] public required int SchemaVersion { get; init; }
-    [JsonPropertyOrder(2)] public required string SourceFile { get; init; }
-    [JsonPropertyOrder(3)] public required string SourceType { get; init; }
-    [JsonPropertyOrder(4)] public required int TabCount { get; init; }
-    [JsonPropertyOrder(5)] public required int ParameterCount { get; init; }
+
+    /// <summary>
+    /// Fora build the layout was read from. Must match the defaults catalogue's value:
+    /// a layout and a set of defaults from different Fora releases cannot be trusted together.
+    /// </summary>
+    [JsonPropertyOrder(2)] public required string SourceBuild { get; init; }
+
+    [JsonPropertyOrder(3)] public required string SourceFile { get; init; }
+    [JsonPropertyOrder(4)] public required string SourceType { get; init; }
+    [JsonPropertyOrder(5)] public required int TabCount { get; init; }
+    [JsonPropertyOrder(6)] public required int ParameterCount { get; init; }
 
     /// <summary>Parameters whose label could not be determined; expected to stay small.</summary>
-    [JsonPropertyOrder(6)] public required int UnlabelledCount { get; init; }
+    [JsonPropertyOrder(7)] public required int UnlabelledCount { get; init; }
 
-    [JsonPropertyOrder(7)] public required IReadOnlyList<UiTab> Tabs { get; init; }
-    [JsonPropertyOrder(8)] public required IReadOnlyList<UiParameter> Parameters { get; init; }
+    [JsonPropertyOrder(8)] public required IReadOnlyList<UiTab> Tabs { get; init; }
+    [JsonPropertyOrder(9)] public required IReadOnlyList<UiParameter> Parameters { get; init; }
 
     /// <summary>Everything the extractor could not resolve, listed rather than dropped.</summary>
-    [JsonPropertyOrder(9)] public required IReadOnlyList<UiGap> Gaps { get; init; }
+    [JsonPropertyOrder(10)] public required IReadOnlyList<UiGap> Gaps { get; init; }
 }

@@ -124,6 +124,36 @@ public sealed class DefaultsCatalogTests
     }
 
     [Fact]
+    public void Names_declared_twice_are_recorded_too()
+    {
+        var catalog = Extract();
+
+        // _GetParametre(string) also returns the first match, so a name declared under two ids
+        // leaves the second copy unreachable: the editor binds the first and the second sits at
+        // its default forever. This is what makes 1,801 akilli entries only 1,796 usable names.
+        catalog.Sets.Where(s => s.DuplicateNames.Count > 0).Select(s => s.CatalogMethod)
+            .Should().Equal("MobilKullanici");
+
+        var akilli = Extract().Sets.Single(s => s.CatalogMethod == "MobilKullanici");
+
+        akilli.DuplicateNames.Should().Equal(
+            "YazdirmaAlinanSiparisBluetoothAygitIsmi",
+            "YazdirmaAlinanSiparisSablonAdi",
+            "YazdirmaAlinanSiparisSadeceAktarilanlariYazdirabilir",
+            "YazdirmaAlinanSiparisSatirlarArasiBeklemeSuresi",
+            "YazdirmaAlinanSiparisSayfaSatirSayisi");
+
+        akilli.Parameters.Select(p => p.Name).Distinct(StringComparer.Ordinal).Should().HaveCount(1796);
+
+        // Both copies carry the same default, so the unreachable one is inert rather than wrong.
+        foreach (var name in akilli.DuplicateNames)
+        {
+            akilli.Parameters.Where(p => p.Name == name).Select(p => p.Default)
+                .Distinct(StringComparer.Ordinal).Should().ContainSingle();
+        }
+    }
+
+    [Fact]
     public void The_first_entry_of_a_colliding_id_is_the_one_that_wins()
     {
         // Mirrors Parametreler._GetParametre(int): first match wins.

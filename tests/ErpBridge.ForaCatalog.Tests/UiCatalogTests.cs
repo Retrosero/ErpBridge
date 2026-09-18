@@ -12,11 +12,22 @@ public sealed class UiCatalogTests
 {
     private static readonly string Root = ForaCatalogPaths.FindRepositoryRoot(AppContext.BaseDirectory);
 
-    private static UiCatalog Extract() =>
+    private static IReadOnlyCollection<string> DeclaredAkilliNames() =>
+        DefaultsExtractor.Extract(
+                File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.DefaultsSource)),
+                ForaCatalogPaths.DefaultsSource,
+                "unknown")
+            .Sets.Single(s => s.CatalogMethod == "MobilKullanici")
+            .Parameters.Select(p => p.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+    private static UiCatalog Extract(string sourceBuild = "unknown") =>
         UiExtractor.Extract(
             File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.AkilliUiSource)),
             ForaCatalogPaths.AkilliUiSource,
-            ForaCatalogPaths.AkilliUiType);
+            ForaCatalogPaths.AkilliUiType,
+            sourceBuild,
+            DeclaredAkilliNames());
 
     private static UiParameter Parameter(string name) =>
         Extract().Parameters.Single(p => p.Parameter == name);
@@ -27,7 +38,9 @@ public sealed class UiCatalogTests
         var committed = File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.AkilliUiOutput))
             .Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n') + "\n";
 
-        CatalogJson.Serialize(Extract()).Should().Be(
+        var build = CatalogJson.Deserialize<UiCatalog>(committed).SourceBuild;
+
+        CatalogJson.Serialize(Extract(build)).Should().Be(
             committed,
             "the committed layout is stale — run: dotnet run --project tools/ForaCatalogExtractor");
     }
@@ -39,30 +52,62 @@ public sealed class UiCatalogTests
     }
 
     [Fact]
-    public void Nearly_every_akilli_parameter_is_placed_on_a_tab()
+    public void Every_declared_parameter_is_either_placed_or_reported()
     {
         var catalog = Extract();
+        var declared = DeclaredAkilliNames();
 
         catalog.TabCount.Should().Be(65);
         catalog.ParameterCount.Should().Be(1782);
-
-        // Fora declares 1801; Sifre never reaches a control, and 18 more are declared but not
-        // exposed by this editor. Nothing may be placed without a tab.
         catalog.Parameters.Should().OnlyContain(p => p.Tab != null && p.TabPath.Count > 0);
+
+        // The whole point of the gap list: nothing the catalogue declares may vanish without a
+        // trace. 1,796 distinct names = 1,782 placed + 13 absent from the editor + Sifre.
+        declared.Should().HaveCount(1796, "five akilli names are declared twice under different ids");
+
+        var accountedFor = catalog.Parameters.Select(p => p.Parameter)
+            .Concat(catalog.Gaps.Where(g => g.Kind is "notInEditor" or "unboundParameter").Select(g => g.Subject))
+            .ToList();
+
+        accountedFor.Should().OnlyHaveUniqueItems();
+        accountedFor.Should().BeEquivalentTo(declared);
+    }
+
+    [Fact]
+    public void Parameters_the_editor_never_mentions_are_listed()
+    {
+        var absent = Extract().Gaps.Where(g => g.Kind == "notInEditor").Select(g => g.Subject).ToList();
+
+        absent.Should().BeEquivalentTo(
+            [
+                "EvrakSeri_KonsinyeIrsaliyesi",
+                "EvrakSeri_KonsinyedenIadeIrsaliyesi",
+                "GormeCariUnvan",
+                "Goster_AnaMenu_Konsinye_Irsaliyesi",
+                "Goster_AnaMenu_Konsinyeden_Iade_Irsaliyesi",
+                "HakGormeCariAdresler",
+                "KullaniciEtkinlikleriniKayitEt",
+                "SiparisKarsilamaFotoGenislik",
+                "SiparisKarsilamaFotoYukseklik",
+                "StokEklemeArtiEksiButonlariGoster",
+                "Vergi0KisaAdi",
+                "Vergi0UzunAdi",
+                "Vergi0Yuzde",
+            ],
+            "Fora declares these but its own editor offers no field for them");
+    }
+
+    [Fact]
+    public void The_layout_records_which_Fora_build_it_came_from()
+    {
+        Extract("17.9.9.9").SourceBuild.Should().Be(
+            "17.9.9.9", "a layout and a set of defaults from different releases cannot be mixed");
     }
 
     [Fact]
     public void Every_placed_parameter_exists_in_the_defaults_catalogue()
     {
-        var defaults = DefaultsExtractor.Extract(
-            File.ReadAllText(ForaCatalogPaths.Resolve(Root, ForaCatalogPaths.DefaultsSource)),
-            ForaCatalogPaths.DefaultsSource,
-            "unknown");
-
-        var declared = defaults.Sets.Single(s => s.CatalogMethod == "MobilKullanici")
-            .Parameters.Select(p => p.Name)
-            .ToHashSet(StringComparer.Ordinal);
-
+        var declared = DeclaredAkilliNames();
         var placed = Extract().Parameters.Select(p => p.Parameter).ToList();
 
         placed.Where(p => !declared.Contains(p)).Should().BeEmpty(
@@ -206,7 +251,7 @@ public sealed class UiCatalogTests
     [Fact]
     public void A_missing_form_type_is_rejected()
     {
-        var extract = () => UiExtractor.Extract("class Baska { }", "test.cs", "Yok");
+        var extract = () => UiExtractor.Extract("class Baska { }", "test.cs", "Yok", "unknown", []);
 
         extract.Should().Throw<CatalogExtractionException>().WithMessage("*not found*");
     }

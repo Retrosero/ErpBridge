@@ -27,10 +27,20 @@ try
         ForaCatalogPaths.DefaultsSource,
         sourceBuild);
 
+    // The layout is checked against what the defaults declare, so a parameter that exists in the
+    // catalogue but not in the editor is reported instead of quietly missing from the panel.
+    var akilliDefaults = defaults.Sets
+        .Where(s => s.Program == ForaCatalogPaths.AkilliProgram)
+        .SelectMany(s => s.Parameters)
+        .Select(p => p.Name)
+        .ToHashSet(StringComparer.Ordinal);
+
     var ui = UiExtractor.Extract(
         await ReadSourceAsync(root, ForaCatalogPaths.AkilliUiSource),
         ForaCatalogPaths.AkilliUiSource,
-        ForaCatalogPaths.AkilliUiType);
+        ForaCatalogPaths.AkilliUiType,
+        sourceBuild,
+        akilliDefaults);
 
     var outputs = new (string Relative, string Json, string Summary)[]
     {

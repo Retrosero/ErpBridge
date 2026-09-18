@@ -25,7 +25,21 @@ public static class UiExtractor
     /// <summary>How far apart two controls' vertical centres may be and still count as one row.</summary>
     private const int SameRowTolerance = 12;
 
-    public static UiCatalog Extract(string sourceText, string sourceFile, string formTypeName)
+    /// <param name="sourceText">Contents of the decompiled editor.</param>
+    /// <param name="sourceFile">Repository-relative path recorded in the output.</param>
+    /// <param name="formTypeName">Class that declares the editor.</param>
+    /// <param name="sourceBuild">Fora build identifier, stamped on the output.</param>
+    /// <param name="declared">
+    /// Every parameter the defaults catalogue declares for this program. Anything declared but
+    /// absent from the editor is reported: a catalogue-driven panel would otherwise have no way
+    /// to show it, and the omission would pass unnoticed.
+    /// </param>
+    public static UiCatalog Extract(
+        string sourceText,
+        string sourceFile,
+        string formTypeName,
+        string sourceBuild,
+        IReadOnlyCollection<string> declared)
     {
         var root = CSharpSyntaxTree.ParseText(sourceText).GetRoot();
 
@@ -36,6 +50,21 @@ public static class UiExtractor
         var controls = DesignerReader.Read(form);
         var gaps = new List<UiGap>();
         var bindings = ReadBindings(form, controls, gaps);
+
+        var bound = bindings.Select(b => b.Parameter).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var parameter in declared.Except(bound, StringComparer.Ordinal)
+                     .Except(gaps.Where(g => g.Kind == "unboundParameter").Select(g => g.Subject), StringComparer.Ordinal)
+                     .OrderBy(p => p, StringComparer.Ordinal))
+        {
+            gaps.Add(new UiGap
+            {
+                Kind = "notInEditor",
+                Subject = parameter,
+                Detail = "declared in the defaults catalogue but this editor never mentions it; "
+                         + "the panel has no tab, label or editor type for it",
+            });
+        }
 
         var tabs = BuildTabs(controls);
         var tabByName = tabs.ToDictionary(t => t.Name, StringComparer.Ordinal);
@@ -56,6 +85,7 @@ public static class UiExtractor
         return new UiCatalog
         {
             SchemaVersion = SchemaVersion,
+            SourceBuild = sourceBuild,
             SourceFile = sourceFile,
             SourceType = formTypeName,
             TabCount = tabs.Count,

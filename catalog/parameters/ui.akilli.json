@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "sourceBuild": "unknown",
   "sourceFile": "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.ForaAndroid/ForaAndroidKullaniciDuzenleme.cs",
   "sourceType": "ForaAndroidKullaniciDuzenleme",
   "tabCount": 65,
@@ -26144,6 +26145,71 @@
       "kind": "bindingMismatch",
       "subject": "GosterZyrt_Temsilci_Ozel_19_Var_Yok",
       "detail": "Fora loads this parameter into 'GosterZyrt_Temsilci_Ozel_94_Var_Yok' but saves it from 'GosterZyrt_Temsilci_Ozel_19_Var_Yok'; opening and saving the screen overwrites one parameter with another's value. The save side is taken as authoritative."
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "EvrakSeri_KonsinyeIrsaliyesi",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "EvrakSeri_KonsinyedenIadeIrsaliyesi",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "GormeCariUnvan",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "Goster_AnaMenu_Konsinye_Irsaliyesi",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "Goster_AnaMenu_Konsinyeden_Iade_Irsaliyesi",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "HakGormeCariAdresler",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "KullaniciEtkinlikleriniKayitEt",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "SiparisKarsilamaFotoGenislik",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "SiparisKarsilamaFotoYukseklik",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "StokEklemeArtiEksiButonlariGoster",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "Vergi0KisaAdi",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "Vergi0UzunAdi",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
+    },
+    {
+      "kind": "notInEditor",
+      "subject": "Vergi0Yuzde",
+      "detail": "declared in the defaults catalogue but this editor never mentions it; the panel has no tab, label or editor type for it"
     },
     {
       "kind": "unboundParameter",

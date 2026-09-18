@@ -18,6 +18,9 @@ public static class ForaCatalogPaths
     public const string AkilliUiSource =
         "Fora_Mikro/.decompiled/Exe/Fora.App.Win.Mikro.ForaAndroid/ForaAndroidKullaniciDuzenleme.cs";
 
+    /// <summary><c>ParametreProgram</c> value the mobile-user editor maintains.</summary>
+    public const string AkilliProgram = "akilli";
+
     /// <summary>Type declared in <see cref="AkilliUiSource"/>.</summary>
     public const string AkilliUiType = "ForaAndroidKullaniciDuzenleme";
 

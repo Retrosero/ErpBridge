@@ -77,6 +77,7 @@ CI kırmızıya döner.
   "sourceType": "ForaAndroidKullaniciDuzenleme",
   "tabCount": 65,
   "parameterCount": 1782,
+  "sourceBuild": "unknown",              // defaults.json ile aynı olmak zorunda
   "unlabelledCount": 0,
   "tabs": [
     { "name": "xtraTabPage30", "title": "Tanımlamalar",
@@ -112,6 +113,10 @@ Etiketler dört kaynaktan geliyor ve **1.782 alanın hepsi etiketli**:
 Sola bakan eşleşme, etiketin alanın **ilk satırıyla** hizalandığını varsayar, merkeziyle değil;
 162 piksel yüksekliğindeki `CariEkstreMesaj` alanının "Mesaj :" etiketi ancak böyle bulunuyor.
 
+**Hiçbir parametre sessizce kaybolmaz.** `akilli` kataloğundaki 1.796 farklı adın tamamı hesapta:
+1.782'si bir sekmeye yerleşiyor, 13'ü Fora'nın kendi editöründe hiç geçmiyor (`notInEditor`),
+`Sifre` ise hiçbir kontrole doğrudan bağlanmıyor (`unboundParameter`). Bu eşitlik testle sabit.
+
 ## Bilmesi gereken iki tuzak
 
 **1 — Kapsam her programda aynı kolonda değil.** `akilli`, `foramikro`, `MobilRapor*` ve
@@ -129,6 +134,11 @@ aynı alanlar için doğru şekilde 16, 18, 20 kullanıyor. Aynı şey 17 (`*_uz
 için sonraki kayıtlar **Fora'da da** okunamaz durumda. Katalog bunları atmaz: sırayı korur ve
 gölgede kalanları `"shadowed": true` ile işaretler, `duplicateIds` ile de sette listeler.
 Toplam 5 kayıt, hepsi bu tek sette.
+
+Aynı şey **adlar** için de geçerli: `akilli` kataloğu 5 parametre adını iki farklı ID ile tanımlıyor
+(639–643 ve 644–648, aynı varsayılanlarla). `_GetParametre(string)` de ilk eşleşmeyi döndürdüğü için
+ikinci kopyalar hiç okunamıyor ve varsayılanlarında kalıyor. Bu yüzden 1.801 kayıt yalnız **1.796
+kullanılabilir ad** demek; set düzeyinde `duplicateNames` ile listeleniyor.
 
 **3 — Fora'nın yükle/kaydet uyuşmazlıkları.** Düzenleme ekranı
 `GosterZyrt_Temsilci_Ozel_12..19_Var_Yok` parametrelerini **yanlış** kutucuklara yüklüyor
