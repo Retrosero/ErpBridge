@@ -12,9 +12,12 @@ namespace ErpBridge.CentralApi.Tests.Parameters;
 /// </summary>
 public sealed class ParameterCatalogTests
 {
-    private static CentralApiDbContext NewDb() =>
+    private static CentralApiDbContext NewDb() => NewDb("ParameterCatalog_" + Guid.NewGuid().ToString("N"));
+
+    /// <summary>A second context over the same store, for asserting that a seed really saved.</summary>
+    private static CentralApiDbContext NewDb(string store) =>
         new(new DbContextOptionsBuilder<CentralApiDbContext>()
-            .UseInMemoryDatabase("ParameterCatalog_" + Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(store)
             .Options);
 
     private static ParameterCatalogFile.CatalogRow Row(
@@ -225,8 +228,36 @@ public sealed class ParameterCatalogTests
         db.ParameterCatalog.Single().IsImplemented = false;
         db.SaveChanges();
 
-        ParameterCatalogSeeder.Seed(db, [Row(id: 58, defaultValue: "9")]);
+        ParameterCatalogSeeder.Seed(db, [Row(id: 58)]);
         db.ParameterCatalog.Single().IsImplemented.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_newly_honoured_parameter_is_saved_even_when_the_catalogue_is_identical()
+    {
+        var store = "ParameterCatalog_" + Guid.NewGuid().ToString("N");
+
+        using (var db = NewDb(store))
+        {
+            // The state an installation is left in by a release that predates P4d: the row exists
+            // and is correct, it simply predates the phone honouring 58.
+            ParameterCatalogSeeder.Seed(db, [Row(id: 58)]);
+            db.ParameterCatalog.Single().IsImplemented = false;
+            db.SaveChanges();
+        }
+
+        // Upgrading only grew our own honoured list; the catalogue file is byte for byte the same.
+        // If the flag did not count as a change, Seed would report nothing, skip SaveChanges, and
+        // the panel would keep calling a working parameter inert until some unrelated field moved.
+        using (var db = NewDb(store))
+        {
+            ParameterCatalogSeeder.Seed(db, [Row(id: 58)]).Updated.Should().Be(1);
+        }
+
+        using (var db = NewDb(store))
+        {
+            db.ParameterCatalog.Single().IsImplemented.Should().BeTrue();
+        }
     }
 
     [Fact]
