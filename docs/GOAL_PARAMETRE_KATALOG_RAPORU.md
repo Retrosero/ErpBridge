@@ -140,7 +140,7 @@ Doğru kural **ad kalıbı + editör tipi bool değil** → **29 aday**:
 
 | Referans | Aday | Örnek |
 |---|---:|---|
-| depo | 8 | `DefaultKaynakDepoNo`, `StokListelemeDepoNo` |
+| depo | 9 | `DefaultKaynakDepoNo`, `DefaultHedefDepoNo`, `DefaultNakliyeDepoNo`, `DepolarArasiSiparisKaynakDepoNo`, `DepolarArasiSiparisHedefDepoNo`, `StokListelemeDepoNo`, `StokFiyatGorKameraDepoNo`, `EvrakIcindeStokDepoNo`, `DepoNo` |
 | fiyatListesi | 4 | `DefaultFiyatListeNo`, `StokListelemeIkinciFiyatListeNo` |
 | kasa | 4 | `DefaultNakitKasaKodu`, `DefaultSenetKasaKodu` |
 | odemePlani | 3 | `YeniCariVarsayilanOdemePlani` |
@@ -167,8 +167,41 @@ metin kutusu gibi göstermek yanlış olur, ayrı editör gerekir (P5e).
 ama `akilli` ile de çakışmalar var: 33 ad `ForaMikro` ile, 7 ad `ComarchEdiGenel` ile ortak
 (`Sifre`, `ProjeKodu`, `SorumlulukMerkeziKodu`, `EvrakSeri` …).
 
-**P1 için bağlayıcı:** değer tablosu ve API adla değil, **(program, ParametreID)** ile
-çalışmalı. D3 anahtarı zaten böyle; bu bulgu onu doğruluyor.
+**P1 için bağlayıcı — kısaltmayın.** Değer tablosu ve API **D3'ün tam anahtarını** kullanmalı:
+`(TenantId, ErpCompanyId, Program, ScopeKind, ScopeId, AnaGrubu, AltGrubu, ParametreID)`.
+
+`(program, ParametreID)` çifti **tekil değil**: gölgesiz 3.679 çiftin **994'ü** birden fazla
+parametreyi gösteriyor. Örnek: `BankaAktarim` programında `ParametreID=1`, üç ayrı seti birden
+adresliyor — `AktarimSablon`, `GenelSablon` ve `Kriter` (`AnaGrubu` ile ayrışıyorlar). Bu çiftle
+tohumlamak ya da sorgulamak **başka bir parametrenin üzerine yazar veya yanlışını döndürür**.
+
+Ölçüldü: `(Program, AnaGrubu, AltGrubu, ParametreID)` tekil — yani `AnaGrubu`/`AltGrubu` anahtarın
+zorunlu parçası, kapsam kolonları da (D3, D4b) ayrıca gerekli.
+
+---
+
+## 3.5 Uygulama envanteri (D16) — bugün hiçbiri
+
+D16, panelin "bu sürümde etkisiz" rozetini gösterebilmesi için her parametrenin Sipariş Cepte'de
+gerçekten uygulanıp uygulanmadığını bilmesini istiyor. Bu raporun tespiti:
+
+**Bugün hiçbir parametre uygulanmıyor.** Sipariş Cepte `GET /api/v1/android/parameters` ucunu
+**hiç çağırmıyor** (P0'ın açılış bulgusu); kendi `app_settings` tablosunda yalnız evrak numaratörü
+anahtarları var. Yani başlangıç envanteri boş ve panelin her alanı rozetle göstermesi gerekiyor.
+
+| Öbek | Parametre | Durum | Hangi faz uygulayacak |
+|---|---:|---|---|
+| `Goster_AnaMenu_*` | 43 | uygulanmıyor | P4b |
+| `Hak*` | 71 | uygulanmıyor | P4c |
+| `EvrakSeri_*` + `Default*` | 51 | uygulanmıyor | P4d |
+| `SenkronizeEt_*` | 44 | uygulanmıyor | P4e |
+| Kalan `akilli` öbekleri | 1.573 | uygulanmıyor | P5 |
+| `foramikro`, `ForaMikro`, `YaziciAyarlari`, `b2b`, `ComarchEdi*`, `MobilRapor*` | 154 | uygulanmıyor | P5h, P6d |
+| Aktarım setleri | 2.752 | uygulanmıyor | P6a–P6c |
+
+**Taşıyıcı alan:** `parameter_catalog_entries.IsImplemented`, varsayılanı `false` (P1a). Katalog
+değil **ürün** bilir, bu yüzden yeniden tohumlamada korunuyor; bir özellik indikçe ilgili faz onu
+`true`'ya çeker. Panel `false` olanı "bu sürümde etkisiz" rozetiyle gösterir.
 
 ---
 
