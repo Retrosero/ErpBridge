@@ -1,16 +1,17 @@
 @page "/parameters"
-@inject ErpBridge.Admin.Api.CentralApiClient Api
+@using ErpBridge.Admin.Api
+@inject CentralApiClient Api
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
 <PageTitle>Parametreler — ErpBridge Yönetim</PageTitle>
 
 <AdminPageHeader Title="Parametreler"
-                 Description="Mikro'dan gönderilen parametre değerlerini inceleyin. Anahtar araması ile filtreleyebilir, 'Tümünü görüntüle' seçeneği ile sayfalama sınırını kaldırabilirsiniz." />
+                 Description="Fora'nın parametrelerini merkezden yönetin. Bir değer önce müşteri, sonra ERP firması, sonra da parametrenin ait olduğu kapsam ile adreslenir." />
 
 <div class="admin-filter-bar mb-3">
     <div>
-        <label class="form-label" for="param-tenant">Müşteri</label>
-        <select id="param-tenant" class="form-select" @bind="_tenantId" aria-label="Müşteri seçin">
+        <label class="form-label" for="prm-tenant">Müşteri</label>
+        <select id="prm-tenant" class="form-select" value="@_tenantId" @onchange="OnTenantChangedAsync" aria-label="Müşteri seçin">
             <option value="">Müşteri seçin…</option>
             @foreach (var t in _tenants)
             {
@@ -18,20 +19,101 @@
             }
         </select>
     </div>
+
+    @* Always visible, even when there is only one: a value belongs to exactly one company and
+       hiding the choice is how someone writes a branch's setting into head office (D3b). *@
     <div>
-        <label class="form-label" for="param-key">Anahtar araması <small class="text-muted">(substring)</small></label>
-        <input id="param-key" class="form-control" @bind="_keyFilter" placeholder="örn. KASA_HESAP" />
+        <label class="form-label" for="prm-company">ERP firması</label>
+        <select id="prm-company" class="form-select" @bind="_erpCompanyId" disabled="@(_companies.Count == 0)"
+                aria-label="ERP firması seçin">
+            <option value="">Firma seçin…</option>
+            @foreach (var c in _companies)
+            {
+                <option value="@c.Id">@c.Code — @c.Name (@c.SourceDatabase)</option>
+            }
+        </select>
+        @if (_companies.Count == 1)
+        {
+            <small class="text-muted">Tek firma olduğu için seçildi.</small>
+        }
     </div>
-    <div class="form-check pt-4" style="min-width: 11rem;">
-        <input id="param-all" class="form-check-input" type="checkbox" @bind="_showAll" />
-        <label class="form-check-label" for="param-all">Tümünü görüntüle</label>
-    </div>
+
     <div>
-        <button class="btn btn-primary" id="param-load" @onclick="LoadAsync" disabled="@(string.IsNullOrEmpty(_tenantId) || _loading)">
-            @(_loading ? "Yükleniyor…" : "Parametreleri getir")
-        </button>
+        <label class="form-label" for="prm-program">Program</label>
+        <select id="prm-program" class="form-select" value="@_program" @onchange="OnProgramChanged"
+                disabled="@(_sets.Count == 0)" aria-label="Program seçin">
+            <option value="">Program seçin…</option>
+            @foreach (var p in _programs)
+            {
+                <option value="@p">@p</option>
+            }
+        </select>
+    </div>
+
+    <div>
+        <label class="form-label" for="prm-set">Parametre kümesi</label>
+        <select id="prm-set" class="form-select" value="@_catalogMethod" @onchange="OnSetChanged"
+                disabled="@(_programSets.Count == 0)" aria-label="Parametre kümesi seçin">
+            <option value="">Küme seçin…</option>
+            @foreach (var s in _programSets)
+            {
+                <option value="@s.CatalogMethod">@s.CatalogMethod (@s.ParameterCount)</option>
+            }
+        </select>
     </div>
 </div>
+
+@if (SelectedSet is { } set)
+{
+    <div class="admin-filter-bar mb-3">
+        <div>
+            <label class="form-label" for="prm-scope">@ParameterScopeKindNames.Describe(set.ScopeKind)</label>
+
+            @if (set.ScopeKind == ParameterScopeKindNames.MobileUser)
+            {
+                <select id="prm-scope" class="form-select" @bind="_mobileUserId"
+                        disabled="@(_mobileUsers.Count == 0)" aria-label="Mobil kullanıcı seçin">
+                    <option value="">Kullanıcı seçin…</option>
+                    @foreach (var u in _mobileUsers)
+                    {
+                        <option value="@u.Id">@u.Username — @u.FullName</option>
+                    }
+                </select>
+                @if (_mobileUsers.Count == 0 && !string.IsNullOrEmpty(_tenantId))
+                {
+                    <small class="text-muted">Bu müşterinin aktif mobil kullanıcısı yok.</small>
+                }
+            }
+            else if (ScopeColumns(set) == 0)
+            {
+                <input id="prm-scope" class="form-control" value="Firma geneli" disabled />
+            }
+            else
+            {
+                <input id="prm-scope" class="form-control" @bind="_scope1" placeholder="@ScopePlaceholder(set)" />
+            }
+        </div>
+
+        @if (ScopeColumns(set) == 2)
+        {
+            <div>
+                <label class="form-label" for="prm-scope2">İkinci kapsam</label>
+                <input id="prm-scope2" class="form-control" @bind="_scope2" placeholder="alan adı" />
+            </div>
+        }
+
+        <div class="form-check pt-4" style="min-width: 12rem;">
+            <input id="prm-only-changed" class="form-check-input" type="checkbox" @bind="_onlyOverridden" />
+            <label class="form-check-label" for="prm-only-changed">Yalnız sapanlar</label>
+        </div>
+
+        <div>
+            <button class="btn btn-primary" id="prm-load" @onclick="LoadValuesAsync" disabled="@(!CanLoad || _loading)">
+                @(_loading ? "Yükleniyor…" : "Parametreleri getir")
+            </button>
+        </div>
+    </div>
+}
 
 @if (!string.IsNullOrEmpty(_error))
 {
@@ -42,111 +124,879 @@
 {
     <AdminLoading Text="Parametreler yükleniyor…" />
 }
-else if (_allRecords is not null)
+else if (_values is not null)
 {
-    var visible = FilterVisible();
     <div class="admin-insight">
-        <span>Toplam kayıt</span>
-        <strong>@_allRecords.Count</strong>
-        @if (!string.IsNullOrWhiteSpace(_keyFilter))
-        {
-            <span class="ms-3">Filtre sonrası</span>
-            <strong>@visible.Count</strong>
-        }
+        <span>Parametre</span>
+        <strong>@_values.Count</strong>
+        <span class="ms-3">Sapmış</span>
+        <strong>@_values.Items.Count(i => i.IsOverridden)</strong>
+        <span class="ms-3">Kapsam sürümü</span>
+        <strong>@_values.Revision</strong>
     </div>
 
-    @if (visible.Count == 0)
+    @if (_values.Items.Length == 0)
     {
-        <AdminState Title="Filtreye uyan parametre yok" Message="Anahtar aramasını temizleyin veya farklı bir müşteri seçin." />
+        <AdminState Title="Gösterilecek parametre yok"
+                    Message="'Yalnız sapanlar' işaretliyse bu kapsamda hiçbir değer varsayılanından ayrılmamış demektir." />
     }
     else
     {
-        <div class="admin-data-surface">
-            <table class="table admin-data-table" aria-label="Parametreler">
-                <thead>
-                    <tr>
-                        <th>Anahtar</th>
-                        <th>Ad</th>
-                        <th>Değer</th>
-                        <th>Kaynak DB</th>
-                        <th>Son güncelleme (UTC)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var p in visible)
+        <div class="prm-search">
+            <label class="form-label" for="prm-search">Ara <small class="text-muted">(ad, ID, etiket, sekme)</small></label>
+            <input id="prm-search" class="form-control" value="@_search" @oninput="OnSearch"
+                   placeholder="örn. DefaultKaynakDepo, 58, iskonto" />
+            @if (_search.Length > 0)
+            {
+                <span class="text-muted">@Matches.Count eşleşme</span>
+                <button type="button" class="btn btn-link btn-sm p-0" id="prm-search-clear"
+                        @onclick="@(() => OnSearch(new ChangeEventArgs { Value = string.Empty }))">temizle</button>
+            }
+        </div>
+
+        <details class="prm-bulk">
+            <summary>Toplu işlemler</summary>
+
+            <div class="prm-bulk__body">
+                <div>
+                    <h3 class="h6">Başka bir kullanıcıdan kopyala</h3>
+                    <p class="text-muted small mb-1">
+                        Seçilen kullanıcının bu kümedeki ayarları, şu an açık olan kapsama yazılır.
+                        Birleştir işaretli değilse hedef tam olarak kaynağın sahip olduğunu taşır.
+                    </p>
+                    <select id="prm-copy-from" class="form-select" @bind="_copyFromUserId"
+                            disabled="@(_mobileUsers.Count == 0 || _saving)">
+                        <option value="">Kaynak kullanıcı…</option>
+                        @foreach (var u in _mobileUsers.Where(u => u.Id.ToString() != _mobileUserId))
+                        {
+                            <option value="@u.Id">@u.Username — @u.FullName</option>
+                        }
+                    </select>
+                    <div class="form-check mt-1">
+                        <input id="prm-copy-merge" class="form-check-input" type="checkbox" @bind="_copyMerge" />
+                        <label class="form-check-label" for="prm-copy-merge">Birleştir (hedefin kendi ayarlarını silme)</label>
+                    </div>
+                    <button class="btn btn-outline-primary mt-1" id="prm-copy"
+                            @onclick="CopyAsync" disabled="@(string.IsNullOrEmpty(_copyFromUserId) || _saving)">Kopyala</button>
+                </div>
+
+                <div>
+                    <h3 class="h6">Seçili alanları sıfırla</h3>
+                    <p class="text-muted small mb-1">
+                        Yalnız sapmış alanlar seçilebilir; varsayılanında duran bir alanı sıfırlamak bir şey yapmaz.
+                    </p>
+                    <button class="btn btn-outline-secondary" id="prm-reset-picked"
+                            @onclick="ResetPickedAsync" disabled="@(_picked.Count == 0 || _saving)">
+                        @_picked.Count alanı varsayılana döndür
+                    </button>
+                </div>
+
+                <div>
+                    <h3 class="h6">Dışa aktar</h3>
+                    <p class="text-muted small mb-1">Yalnız sapmalar; varsayılandaki alanın taşınacak bir değeri yok.</p>
+                    <a class="btn btn-outline-secondary" id="prm-export"
+                       download="@ExportFileName" href="@ExportHref">JSON indir</a>
+                </div>
+
+                <div>
+                    <h3 class="h6">İçe aktar</h3>
+                    <p class="text-muted small mb-1">
+                        Parametreler <strong>Mikro ID'siyle</strong> eşleniyor; kataloğun bu kümesinde
+                        olmayan ID atlanır ve sayısı bildirilir.
+                    </p>
+                    <textarea id="prm-import" class="form-control" rows="3" @bind="_importJson"
+                              placeholder="parametre listesi JSON"></textarea>
+                    <button class="btn btn-outline-primary mt-1" id="prm-import-apply"
+                            @onclick="ImportAsync" disabled="@(string.IsNullOrWhiteSpace(_importJson) || _saving)">Uygula</button>
+                </div>
+            </div>
+        </details>
+
+        <details class="prm-bulk" @ontoggle="OnHistoryToggleAsync">
+            <summary id="prm-history-open">Değişiklik geçmişi</summary>
+
+            <div class="prm-history">
+                @if (_historyLoading)
+                {
+                    <AdminLoading Text="Geçmiş yükleniyor…" />
+                }
+                else if (_history is null)
+                {
+                    <p class="text-muted small mb-0">Bu kapsamda yapılan değişiklikler burada listelenir.</p>
+                }
+                else if (_history.Count == 0)
+                {
+                    <p class="text-muted small mb-0">Bu kapsamda kayıtlı değişiklik yok.</p>
+                }
+                else
+                {
+                    <table class="table admin-data-table" aria-label="Değişiklik geçmişi">
+                        <thead>
+                            <tr>
+                                <th>Ne zaman</th>
+                                <th>Kim</th>
+                                <th>Parametre</th>
+                                <th>Ne oldu</th>
+                                <th>Eski</th>
+                                <th>Yeni</th>
+                                <th>Kaynak</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in _history)
+                            {
+                                <tr>
+                                    <td data-label="Ne zaman"><time datetime="@e.AtUtc.ToString("O")">@ParameterLayout.Moment(e.AtUtc)</time></td>
+                                    <td data-label="Kim">@(string.IsNullOrWhiteSpace(e.Actor) ? "—" : e.Actor)</td>
+                                    <td data-label="Parametre"><code>@e.Name</code></td>
+                                    <td data-label="Ne oldu">@OutcomeText(e.Outcome)</td>
+                                    <td data-label="Eski"><code>@Show(e.OldValue)</code></td>
+                                    <td data-label="Yeni"><code>@Show(e.NewValue)</code></td>
+                                    <td data-label="Kaynak">
+                                        @e.Source
+                                        @if (e.IsMasked)
+                                        {
+                                            <span class="badge bg-secondary ms-1" title="Kimlik bilgisi; değeri kayda düz metin yazılmadı">maskeli</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </details>
+
+        <div class="prm-layout">
+            <nav class="prm-tabs" aria-label="Parametre sekmeleri">
+                @foreach (var node in _tabs)
+                {
+                    @RenderTab(node, 0)
+                }
+            </nav>
+
+            <section class="prm-fields">
+                @if (_search.Length > 0 && Matches.Count == 0)
+                {
+                    <AdminState Title="Eşleşen parametre yok"
+                                Message="Ad, Mikro ID'si, Fora'daki etiketi veya sekme adı aranıyor." />
+                }
+                else if (_selectedTab is null)
+                {
+                    <AdminState Title="Bir sekme seçin"
+                                Message="@(_search.Length > 0 ? "Ağaç yalnız eşleşen parametreleri olan sekmeleri gösteriyor." : "Soldaki ağaç Fora'nın kendi sekme yapısından üretildi.")" />
+                }
+                else
+                {
+                    <div class="prm-savebar">
+                        <h2 class="h5 mb-0">@_selectedTab</h2>
+                        <span class="text-muted">@(_drafts.Count == 0 ? "Bekleyen değişiklik yok" : $"{_drafts.Count} bekleyen değişiklik")</span>
+                        <button class="btn btn-primary" id="prm-save" @onclick="SaveAsync" disabled="@(_drafts.Count == 0 || _saving)">
+                            @(_saving ? "Kaydediliyor…" : "Kaydet")
+                        </button>
+                    </div>
+
+                    @if (_pendingConfirmation is { Count: > 0 })
                     {
-                        <tr>
-                            <td data-label="Anahtar"><code>@p.ParametreID</code></td>
-                            <td data-label="Ad">@p.ParametreAdi</td>
-                            <td data-label="Değer"><code>@p.ParametreDegeri</code></td>
-                            <td data-label="Kaynak DB">@p.SourceDatabase</td>
-                            <td data-label="Son güncelleme"><time datetime="@p.UpdatedAtUtc.ToString("O")">@FormatTime(p.UpdatedAtUtc)</time></td>
-                        </tr>
+                        <div class="prm-confirm" role="alertdialog" aria-labelledby="prm-confirm-title">
+                            <strong id="prm-confirm-title">Vergi oranı değişiyor</strong>
+                            <p class="mb-1">
+                                Bu kaydetme aşağıdaki vergi oranlarını değiştiriyor. Vergi oranı evrak
+                                tutarlarını etkiler; yanlış bir değer kesilmiş evrakları bozar.
+                            </p>
+                            <ul class="mb-2">
+                                @foreach (var name in _pendingConfirmation)
+                                {
+                                    <li><code>@name</code>: <code>@OldOf(name)</code> → <code>@NewOf(name)</code></li>
+                                }
+                            </ul>
+                            <button class="btn btn-danger" id="prm-confirm-yes" @onclick="ConfirmSaveAsync" disabled="@_saving">
+                                Anladım, değiştir
+                            </button>
+                            <button class="btn btn-link" id="prm-confirm-no" @onclick="CancelConfirmation" disabled="@_saving">
+                                Vazgeç
+                            </button>
+                        </div>
                     }
-                </tbody>
-            </table>
+
+                    @if (!string.IsNullOrEmpty(_saveMessage))
+                    {
+                        <AdminState Tone="success" Icon="✓" Title="Kaydedildi" Message="@_saveMessage" />
+                    }
+
+                    @foreach (var group in _groups)
+                    {
+                        @if (group.IsRepeating)
+                        {
+                            @* Collapsed by default: the survey tab alone holds 800 fields in four
+                               families of 100, and opening them all at once is the unusable case. *@
+                            <details class="prm-group">
+                                <summary>@group.Title</summary>
+                                @RenderFieldTable(group.Items)
+                            </details>
+                        }
+                        else
+                        {
+                            @RenderFieldTable(group.Items)
+                        }
+                    }
+                }
+            </section>
         </div>
     }
 }
-else if (!_loading && string.IsNullOrEmpty(_error))
+else if (string.IsNullOrEmpty(_error))
 {
-    <AdminState Title="Bir müşteri seçin" Message="Parametre listesini görmek için yukarıdaki alandan müşteri seçin ve 'Parametreleri getir' düğmesine basın." />
+    <AdminState Title="Bir kapsam seçin"
+                Message="Müşteri, ERP firması, program ve parametre kümesini seçip 'Parametreleri getir' düğmesine basın." />
 }
 
+<p class="mt-4"><a href="parameters/mikro-aynasi">Ajanın gönderdiği ham Mikro aynasını görüntüle →</a></p>
+
 @code {
-    private const int DefaultPageSize = 200;
-    private const int AllPageSize = 1000;
-
     private string _tenantId = string.Empty;
-    private string _keyFilter = string.Empty;
-    private bool _showAll;
+    private string _erpCompanyId = string.Empty;
+    private string _program = string.Empty;
+    private string _catalogMethod = string.Empty;
+    private string _mobileUserId = string.Empty;
+    private string _scope1 = string.Empty;
+    private string _scope2 = string.Empty;
+    private bool _onlyOverridden;
 
-    private IReadOnlyList<ErpBridge.Admin.Api.TenantDto> _tenants = Array.Empty<ErpBridge.Admin.Api.TenantDto>();
-    private IReadOnlyList<ErpBridge.Admin.Api.ParameterRecordDto>? _allRecords;
+    private IReadOnlyList<TenantDto> _tenants = Array.Empty<TenantDto>();
+    private IReadOnlyList<ErpCompanyDto> _companies = Array.Empty<ErpCompanyDto>();
+    private IReadOnlyList<MobileUserDto> _mobileUsers = Array.Empty<MobileUserDto>();
+    private IReadOnlyList<ParameterSetDto> _sets = Array.Empty<ParameterSetDto>();
+
+    private ParameterValuesResponseDto? _values;
     private bool _loading;
     private string? _error;
 
+    private IReadOnlyList<string> _programs = Array.Empty<string>();
+
+    private IReadOnlyList<ParameterSetDto> _programSets = Array.Empty<ParameterSetDto>();
+
+    private ParameterSetDto? SelectedSet =>
+        _sets.FirstOrDefault(s => s.CatalogMethod == _catalogMethod);
+
     protected override async Task OnInitializedAsync()
     {
-        try { _tenants = await Api.ListTenantsAsync(); }
+        try
+        {
+            _tenants = await Api.ListTenantsAsync();
+
+            // The programs and sets come from the catalogue, which is generated from Fora's own
+            // sources: a list written by hand here would drift from it silently.
+            _sets = await Api.ListParameterSetsAsync();
+            _programs = _sets.Select(s => s.Program).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();
+        }
         catch (Exception ex) { _error = ex.Message; }
     }
 
-    private async Task LoadAsync()
+    private async Task OnTenantChangedAsync(ChangeEventArgs e)
     {
-        if (string.IsNullOrEmpty(_tenantId)) return;
-        _loading = true;
+        _tenantId = e.Value?.ToString() ?? string.Empty;
+        _erpCompanyId = string.Empty;
+        _mobileUserId = string.Empty;
+        _companies = Array.Empty<ErpCompanyDto>();
+        _mobileUsers = Array.Empty<MobileUserDto>();
+        _values = null;
         _error = null;
+
+        if (!Guid.TryParse(_tenantId, out var tenantId))
+        {
+            return;
+        }
+
         try
         {
-            if (!Guid.TryParse(_tenantId, out var tenantGuid))
+            _companies = (await Api.ListErpCompaniesAsync(tenantId)).Where(c => c.IsActive).ToList();
+
+            // Pre-selected when there is one, but the picker stays on screen: the operator has to
+            // be able to see which database they are about to change.
+            if (_companies.Count == 1)
             {
-                _error = "Geçerli bir müşteri seçin.";
+                _erpCompanyId = _companies[0].Id.ToString();
+            }
+
+            var mobile = await Api.GetTenantMobileAsync(tenantId);
+            _mobileUsers = mobile.Users.Where(u => u.IsActive).OrderBy(u => u.Username, StringComparer.Ordinal).ToList();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void OnProgramChanged(ChangeEventArgs e)
+    {
+        _program = e.Value?.ToString() ?? string.Empty;
+        _programSets = _sets.Where(s => s.Program == _program)
+            .OrderBy(s => s.CatalogMethod, StringComparer.Ordinal).ToList();
+
+        // A program with a single set has nothing to choose, so choosing it is not worth a click.
+        _catalogMethod = _programSets.Count == 1 ? _programSets[0].CatalogMethod : string.Empty;
+        _scope1 = string.Empty;
+        _scope2 = string.Empty;
+        _values = null;
+    }
+
+    private void OnSetChanged(ChangeEventArgs e)
+    {
+        _catalogMethod = e.Value?.ToString() ?? string.Empty;
+        _scope1 = string.Empty;
+        _scope2 = string.Empty;
+        _values = null;
+    }
+
+    /// <summary>How many named values this set is addressed by, beyond the mobile user.</summary>
+    private static int ScopeColumns(ParameterSetDto set)
+    {
+        var fields = set.ScopeFields.Split(',', StringSplitOptions.RemoveEmptyEntries).Length;
+        return set.ScopeKind == ParameterScopeKindNames.MobileUser ? fields - 1 : fields;
+    }
+
+    private static string ScopePlaceholder(ParameterSetDto set) => set.ScopeKind switch
+    {
+        ParameterScopeKindNames.ReportCode => "rapor kodu (1–9)",
+        ParameterScopeKindNames.ImportTemplate => "şablon adı",
+        ParameterScopeKindNames.CriteriaName => "kriter adı",
+        ParameterScopeKindNames.EdiRelation => "ilişki adı",
+        ParameterScopeKindNames.PrinterTemplate => "şablon adı",
+        ParameterScopeKindNames.DesktopUser => "kullanıcı adı",
+        _ => "kapsam değeri",
+    };
+
+    private bool CanLoad
+    {
+        get
+        {
+            if (SelectedSet is not { } set) return false;
+            if (!Guid.TryParse(_tenantId, out _) || !Guid.TryParse(_erpCompanyId, out _)) return false;
+
+            if (set.ScopeKind == ParameterScopeKindNames.MobileUser)
+            {
+                return Guid.TryParse(_mobileUserId, out _);
+            }
+
+            var needed = ScopeColumns(set);
+            var supplied = (string.IsNullOrWhiteSpace(_scope1) ? 0 : 1) + (string.IsNullOrWhiteSpace(_scope2) ? 0 : 1);
+            return supplied == needed;
+        }
+    }
+
+    private IReadOnlyList<ParameterLayout.TabNode> _tabs = Array.Empty<ParameterLayout.TabNode>();
+    private IReadOnlyList<ParameterLayout.FieldGroup> _groups = Array.Empty<ParameterLayout.FieldGroup>();
+    private string? _selectedTab;
+
+    private void SelectTab(ParameterLayout.TabNode node)
+    {
+        _selectedTab = node.Path;
+        _groups = ParameterLayout.GroupFields(ParameterLayout.FieldsOf(Matches, node.Path));
+    }
+
+    /// <summary>One block of fields, each with the editor Fora uses for it.</summary>
+    private RenderFragment RenderFieldTable(IReadOnlyList<ParameterValueDto> items) =>
+        @<div class="prm-fieldset">
+            @foreach (var p in items)
+            {
+                <ParameterField Field="p"
+                                Value="@Draft(p)"
+                                ValueChanged="@(v => SetDraft(p, v))"
+                                Reverted="RevertAsync"
+                                Selectable="true"
+                                Selected="@_picked.Contains(p.CatalogEntryId)"
+                                SelectedChanged="@(on => Pick(p, on))"
+                                Disabled="@_saving" />
+            }
+        </div>;
+
+    private IReadOnlyList<ParameterAuditDto>? _history;
+    private bool _historyLoading;
+
+    /// <summary>
+    /// Loads the trail the first time the panel is opened, and after anything is written. Not on
+    /// every render: this is a second query on a screen that already pulls 1,801 parameters, and
+    /// most visits never open it.
+    /// </summary>
+    private async Task OnHistoryToggleAsync()
+    {
+        if (_history is not null || _historyLoading) return;
+
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        if (SelectedSet is not { } set || !Guid.TryParse(_tenantId, out var tenantId)
+            || !Guid.TryParse(_erpCompanyId, out var companyId))
+        {
+            return;
+        }
+
+        _historyLoading = true;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            _history = await Api.ListParameterAuditAsync(
+                tenantId,
+                companyId,
+                catalogMethod: set.CatalogMethod,
+                mobileUserId: set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                scope1: string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                scope2: string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                scoped: true);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _historyLoading = false; }
+    }
+
+    private static string OutcomeText(string outcome) => outcome switch
+    {
+        "Inserted" => "ilk kez değişti",
+        "Updated" => "güncellendi",
+        "Deleted" => "varsayılana döndü",
+        _ => outcome,
+    };
+
+    /// <summary>Null means there was no row: at the start, or after a reset.</summary>
+    private static string Show(string? value) =>
+        value is null ? "(varsayılan)" : value.Length == 0 ? "(boş)" : value;
+
+    private readonly HashSet<Guid> _picked = [];
+    private string _copyFromUserId = string.Empty;
+    private bool _copyMerge;
+    private string _importJson = string.Empty;
+
+    private void Pick(ParameterValueDto field, bool on)
+    {
+        if (on) _picked.Add(field.CatalogEntryId);
+        else _picked.Remove(field.CatalogEntryId);
+    }
+
+    /// <summary>
+    /// The scope's deviations, as JSON. Only the deviations: a parameter at its default has no
+    /// value to carry, which is the same reason the database does not store one.
+    /// </summary>
+    private string ExportJson => System.Text.Json.JsonSerializer.Serialize(new
+    {
+        catalogMethod = _values?.CatalogMethod,
+        exportedAtUtc = DateTimeOffset.UtcNow,
+        values = (_values?.Items ?? Array.Empty<ParameterValueDto>())
+            .Where(i => i.IsOverridden)
+            .Select(i => new { parametreId = i.ParametreId, name = i.Name, value = i.Value })
+            .ToArray(),
+    }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+    private string ExportFileName => $"parametreler-{_values?.CatalogMethod}-{DateTime.UtcNow:yyyyMMdd}.json";
+
+    private string ExportHref =>
+        "data:application/json;charset=utf-8," + Uri.EscapeDataString(ExportJson);
+
+    private async Task CopyAsync()
+    {
+        if (SelectedSet is not { } set || !Guid.TryParse(_copyFromUserId, out var from)) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            Guid? target = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            var response = await Api.CopyParameterValuesAsync(new ParameterCopyRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                CatalogMethod = set.CatalogMethod,
+                FromMobileUserId = from,
+                ToMobileUserId = target,
+                ToScope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                ToScope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                Merge = _copyMerge,
+            });
+
+            _saveMessage = $"{response.Copied} ayar kopyalandı, {response.Written} tanesi değişti"
+                + (response.Cleared > 0 ? $", hedefin {response.Cleared} kendi ayarı kaldırıldı" : "")
+                + $". Kapsam sürümü: {response.Revision}.";
+
+            await LoadValuesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task ResetPickedAsync()
+    {
+        if (SelectedSet is not { } set || _picked.Count == 0) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+            var count = _picked.Count;
+
+            var response = await Api.ResetParameterValuesAsync(new ParameterResetRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                CatalogEntryIds = [.. _picked],
+            });
+
+            _saveMessage = $"{count} alan varsayılana döndü. Kapsam sürümü: {response.Revision}.";
+            _picked.Clear();
+
+            await LoadValuesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    /// <summary>
+    /// Applies an exported file to the open scope.
+    ///
+    /// Matched by Mikro id rather than by the catalogue entry's own id: that id belongs to this
+    /// installation, so a file from another environment would match nothing. An id the set does
+    /// not declare is skipped and counted rather than dropped silently.
+    /// </summary>
+    private async Task ImportAsync()
+    {
+        if (SelectedSet is not { } set || _values is null) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(_importJson);
+
+            if (!doc.RootElement.TryGetProperty("values", out var values)
+                || values.ValueKind != System.Text.Json.JsonValueKind.Array)
+            {
+                _error = "Dosyada 'values' dizisi yok.";
                 return;
             }
-            var pageSize = _showAll ? AllPageSize : DefaultPageSize;
-            _allRecords = await Api.ListParameterRecordsAsync(tenantGuid, keyContains: null, page: 1, pageSize: pageSize);
+
+            var byId = _values.Items
+                .GroupBy(i => i.ParametreId)
+                .ToDictionary(g => g.Key, g => g.First().CatalogEntryId);
+
+            var changes = new List<ParameterChangeDto>();
+            var skipped = 0;
+
+            foreach (var item in values.EnumerateArray())
+            {
+                if (!item.TryGetProperty("parametreId", out var idEl) || !idEl.TryGetInt32(out var id)
+                    || !byId.TryGetValue(id, out var entryId))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                changes.Add(new ParameterChangeDto
+                {
+                    CatalogEntryId = entryId,
+                    Value = item.TryGetProperty("value", out var v) ? v.GetString() ?? "" : "",
+                });
+            }
+
+            if (changes.Count == 0)
+            {
+                _error = $"Uygulanacak parametre yok ({skipped} satır bu kümede tanınmadı).";
+                return;
+            }
+
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            var response = await Api.SaveParameterValuesAsync(new ParameterWriteRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                Changes = [.. changes],
+            });
+
+            _saveMessage = $"{changes.Count} ayar uygulandı"
+                + (skipped > 0 ? $", {skipped} satır bu kümede tanınmadığı için atlandı" : "")
+                + $". Kapsam sürümü: {response.Revision}.";
+
+            _importJson = string.Empty;
+            await LoadValuesAsync();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            _error = "Girilen metin geçerli JSON değil.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private string _search = string.Empty;
+
+    /// <summary>What the search matches, or everything when the box is empty.</summary>
+    private IReadOnlyList<ParameterValueDto> Matches =>
+        ParameterLayout.Search(_values?.Items ?? Array.Empty<ParameterValueDto>(), _search);
+
+    /// <summary>
+    /// Re-derives the tree from the matches, so the tree itself answers "where does this live?".
+    /// Searching 1,801 parameters and then still having to guess the tab would be no help.
+    /// </summary>
+    private void OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+
+        var matches = Matches;
+        _tabs = ParameterLayout.BuildTabs(matches);
+
+        // Keep the open tab when it still has hits; otherwise fall back to the tree.
+        if (_selectedTab is not null && Find(_tabs, _selectedTab) is { } still)
+        {
+            SelectTab(still);
+        }
+        else
+        {
+            _selectedTab = null;
+            _groups = Array.Empty<ParameterLayout.FieldGroup>();
+        }
+    }
+
+    private static ParameterLayout.TabNode? Find(IReadOnlyList<ParameterLayout.TabNode> nodes, string path)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Path == path) return node;
+            if (Find(node.Children, path) is { } hit) return hit;
+        }
+
+        return null;
+    }
+
+    private RenderFragment RenderTab(ParameterLayout.TabNode node, int depth) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "prm-tab");
+        builder.AddAttribute(2, "style", $"padding-left:{depth * 0.9m}rem");
+
+        builder.OpenElement(3, "button");
+        builder.AddAttribute(4, "type", "button");
+        builder.AddAttribute(5, "class", node.Path == _selectedTab ? "prm-tab__link prm-tab__link--on" : "prm-tab__link");
+        builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => SelectTab(node)));
+        builder.AddContent(7, node.Title);
+
+        // The count is what makes a 63-tab tree navigable: it says where the work is.
+        builder.OpenElement(8, "small");
+        builder.AddAttribute(9, "class", "text-muted ms-2");
+        builder.AddContent(10, node.TotalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        builder.CloseElement();
+
+        if (node.OverriddenCount > 0)
+        {
+            builder.OpenElement(11, "span");
+            builder.AddAttribute(12, "class", "badge bg-warning text-dark ms-2");
+            builder.AddAttribute(13, "title", "Bu sekmede varsayılanından ayrılmış ayar var");
+            builder.AddContent(14, node.OverriddenCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+        builder.CloseElement();
+
+        foreach (var child in node.Children)
+        {
+            builder.AddContent(15, RenderTab(child, depth + 1));
+        }
+    };
+
+    /// <summary>Edits not yet written. Keyed by catalogue entry, which is the parameter's identity.</summary>
+    private readonly Dictionary<Guid, string> _drafts = new();
+
+    private bool _saving;
+    private string? _saveMessage;
+
+    private string Draft(ParameterValueDto field) =>
+        _drafts.TryGetValue(field.CatalogEntryId, out var v) ? v : field.Value;
+
+    private void SetDraft(ParameterValueDto field, string value)
+    {
+        // Typing a value back to what the server returned is not a change, so it leaves no draft
+        // and no request: the server would answer "Unchanged" anyway.
+        if (string.Equals(value, field.Value, StringComparison.Ordinal))
+        {
+            _drafts.Remove(field.CatalogEntryId);
+            return;
+        }
+
+        _drafts[field.CatalogEntryId] = value;
+    }
+
+    /// <summary>
+    /// Removes one parameter's stored row so its catalogue default applies again.
+    ///
+    /// Sent straight away rather than held as a draft: "put this back" is not the same decision as
+    /// "I am editing this", and holding it would leave the field showing a value the operator has
+    /// already asked to be rid of.
+    /// </summary>
+    private async Task RevertAsync(ParameterValueDto field)
+    {
+        if (SelectedSet is not { } set) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            var response = await Api.ResetParameterValuesAsync(new ParameterResetRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                CatalogEntryIds = [field.CatalogEntryId],
+            });
+
+            _drafts.Remove(field.CatalogEntryId);
+            _saveMessage = $"{field.Label ?? field.Name} varsayılana döndü. Kapsam sürümü: {response.Revision}.";
+
+            await LoadValuesAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    /// <summary>VAT rates the pending batch would change, once the server has said so.</summary>
+    private IReadOnlyList<string>? _pendingConfirmation;
+
+    private void CancelConfirmation() => _pendingConfirmation = null;
+
+    /// <summary>The value a named parameter currently holds, for the confirmation box.</summary>
+    private string OldOf(string name) =>
+        _values?.Items.FirstOrDefault(i => i.Name == name)?.Value ?? "";
+
+    private string NewOf(string name)
+    {
+        var field = _values?.Items.FirstOrDefault(i => i.Name == name);
+        return field is null ? "" : Draft(field);
+    }
+
+    private Task SaveAsync() => WriteDraftsAsync(confirmed: false);
+
+    private Task ConfirmSaveAsync() => WriteDraftsAsync(confirmed: true);
+
+    private async Task WriteDraftsAsync(bool confirmed)
+    {
+        if (_drafts.Count == 0 || SelectedSet is not { } set) return;
+
+        _saving = true;
+        _saveMessage = null;
+        _error = null;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            var response = await Api.SaveParameterValuesAsync(new ParameterWriteRequestDto
+            {
+                TenantId = Guid.Parse(_tenantId),
+                ErpCompanyId = Guid.Parse(_erpCompanyId),
+                MobileUserId = set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                Scope1 = string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                Scope2 = string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                ConfirmSensitive = confirmed,
+                Changes = _drafts.Select(d => new ParameterChangeDto
+                {
+                    CatalogEntryId = d.Key,
+                    Value = d.Value,
+                }).ToArray(),
+            });
+
+            var removed = response.Results.Count(r => r.Outcome == "Deleted");
+            _saveMessage = removed > 0
+                ? $"{response.Results.Length} değişiklik kaydedildi ({removed} tanesi varsayılana döndüğü için satır silindi). Kapsam sürümü: {response.Revision}."
+                : $"{response.Results.Length} değişiklik kaydedildi. Kapsam sürümü: {response.Revision}.";
+
+            _drafts.Clear();
+            _picked.Clear();
+            _pendingConfirmation = null;
+
+            // A write has just happened or the scope changed; the loaded trail is stale either way.
+            _history = null;
+
+            // A write has just happened or the scope changed; the loaded trail is stale either way.
+            _history = null;
+
+            // Reload rather than patch in memory: the server decides whether a row exists, and the
+            // "sapmış" marks have to match what it decided.
+            await LoadValuesAsync();
+        }
+        catch (ApiCallException ex) when (ex.ErrorCode == "PARAMETER_CONFIRMATION_REQUIRED")
+        {
+            // Not a failure: the server is asking for the second step, and the drafts stay so the
+            // operator can say yes without typing them again.
+            _pendingConfirmation = _drafts.Keys
+                .Select(id => _values?.Items.FirstOrDefault(i => i.CatalogEntryId == id))
+                .Where(f => f is { ChangesAmounts: true })
+                .Select(f => f!.Name)
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToList();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task LoadValuesAsync()
+    {
+        if (SelectedSet is not { } set || !CanLoad) return;
+
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            Guid? userId = Guid.TryParse(_mobileUserId, out var u) ? u : null;
+
+            _values = await Api.ListParameterValuesAsync(
+                Guid.Parse(_tenantId),
+                Guid.Parse(_erpCompanyId),
+                set.CatalogMethod,
+                set.ScopeKind == ParameterScopeKindNames.MobileUser ? userId : null,
+                string.IsNullOrWhiteSpace(_scope1) ? null : _scope1.Trim(),
+                string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
+                _onlyOverridden);
+
+            _tabs = ParameterLayout.BuildTabs(Matches);
+            _drafts.Clear();
+
+            var keep = _selectedTab;
+            _selectedTab = null;
+            _groups = Array.Empty<ParameterLayout.FieldGroup>();
+
+            // Stay on the tab the operator was on: a save reloads, and being thrown back to the
+            // tree after every change would make editing a long tab unbearable.
+            var previous = keep is null ? null : Find(_tabs, keep);
+            if (previous is not null)
+            {
+                SelectTab(previous);
+            }
+            else if (_tabs.Count == 1 && _tabs[0].Children.Count == 0)
+            {
+                // One tab means nothing to choose; open it so the fields are on screen at once.
+                SelectTab(_tabs[0]);
+            }
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
     }
-
-    private IReadOnlyList<ErpBridge.Admin.Api.ParameterRecordDto> FilterVisible()
-    {
-        if (_allRecords is null) return Array.Empty<ErpBridge.Admin.Api.ParameterRecordDto>();
-        if (string.IsNullOrWhiteSpace(_keyFilter)) return _allRecords;
-        var needle = _keyFilter.Trim();
-        return _allRecords
-            .Where(p => Contains(p.ParametreID, needle)
-                     || Contains(p.ParametreAdi, needle)
-                     || Contains(p.ParametreAnaGrubu, needle)
-                     || Contains(p.ParametreAltGrubu, needle))
-            .ToList();
-    }
-
-    private static bool Contains(string value, string needle) =>
-        !string.IsNullOrEmpty(value) && value.Contains(needle, StringComparison.OrdinalIgnoreCase);
-
-    private static string FormatTime(DateTimeOffset utc) =>
-        utc.UtcDateTime.ToString("dd MMM yyyy, HH:mm");
 }

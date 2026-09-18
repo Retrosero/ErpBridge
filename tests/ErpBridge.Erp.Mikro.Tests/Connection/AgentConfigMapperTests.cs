@@ -116,11 +116,25 @@ public class AgentConfigMapperTests
     }
 
     [Fact]
-    public void FromAgentConfig_with_zero_companyNo_returns_null()
+    public void FromAgentConfig_accepts_company_zero()
     {
         IAgentConfigToErpSettingsMapper mapper = new AgentConfigMapper();
 
+        // Mikro's first company is numbered 0, and single-company installations never have any
+        // other. This used to return null, which left the adapter unable to connect to the
+        // most ordinary Mikro setup there is.
         var settings = mapper.ToErpSettings(ValidConfig(companyNo: 0));
+
+        settings.Should().NotBeNull();
+        ((MikroConnectionSettings)settings!).CompanyNo.Should().Be(0);
+    }
+
+    [Fact]
+    public void FromAgentConfig_with_negative_companyNo_returns_null()
+    {
+        IAgentConfigToErpSettingsMapper mapper = new AgentConfigMapper();
+
+        var settings = mapper.ToErpSettings(ValidConfig(companyNo: -1));
 
         settings.Should().BeNull();
     }

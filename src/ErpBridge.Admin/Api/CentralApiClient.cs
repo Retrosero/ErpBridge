@@ -893,6 +893,100 @@ public sealed class CentralApiClient
         return resp.Items;
     }
 
+    // ----- Parametre Yonetimi (P2): katalog tabanli parametreler -----
+
+    /// <summary>The tenant's ERP companies. A parameter value always belongs to exactly one (D3b).</summary>
+    public Task<ErpCompanyDto[]> ListErpCompaniesAsync(Guid? tenantId, CancellationToken ct = default) =>
+        SendAsync<ErpCompanyDto[]>(
+            () => _http.GetAsync(WithTenant("/api/v1/admin/erp-companies/", tenantId), ct), ct);
+
+    /// <summary>
+    /// The catalogue's parameter sets and how each one is addressed. The screen builds its
+    /// program and scope pickers from this rather than from a hard-coded list: the catalogue is
+    /// generated from Fora's own sources, so a list written by hand would drift from it.
+    /// </summary>
+    public Task<ParameterSetDto[]> ListParameterSetsAsync(CancellationToken ct = default) =>
+        SendAsync<ParameterSetDto[]>(() => _http.GetAsync("/api/v1/admin/parameters/sets", ct), ct);
+
+    /// <summary>One set's parameters as they apply to a scope.</summary>
+    public Task<ParameterValuesResponseDto> ListParameterValuesAsync(
+        Guid tenantId,
+        Guid erpCompanyId,
+        string catalogMethod,
+        Guid? mobileUserId = null,
+        string? scope1 = null,
+        string? scope2 = null,
+        bool onlyOverridden = false,
+        CancellationToken ct = default)
+    {
+        var qs = new List<string>
+        {
+            $"tenantId={tenantId}",
+            $"erpCompanyId={erpCompanyId}",
+            $"catalogMethod={Uri.EscapeDataString(catalogMethod)}",
+        };
+
+        if (mobileUserId is { } user) qs.Add($"mobileUserId={user}");
+        if (!string.IsNullOrEmpty(scope1)) qs.Add($"scope1={Uri.EscapeDataString(scope1)}");
+        if (!string.IsNullOrEmpty(scope2)) qs.Add($"scope2={Uri.EscapeDataString(scope2)}");
+        if (onlyOverridden) qs.Add("onlyOverridden=true");
+
+        return SendAsync<ParameterValuesResponseDto>(
+            () => _http.GetAsync($"/api/v1/admin/parameters/values?{string.Join("&", qs)}", ct), ct);
+    }
+
+    /// <summary>
+    /// Writes a batch of parameter values. A value equal to its default removes the stored row
+    /// rather than writing one, which is exactly what Fora does, so the outcome per change says
+    /// which of the four branches was taken.
+    /// </summary>
+    public Task<ParameterWriteResponseDto> SaveParameterValuesAsync(
+        ParameterWriteRequestDto body, CancellationToken ct = default) =>
+        SendAsync<ParameterWriteResponseDto>(
+            () => _http.PutAsJsonAsync("/api/v1/admin/parameters/values", body, ct), ct);
+
+    /// <summary>
+    /// Puts parameters back to their catalogue defaults by removing the stored rows. Distinct from
+    /// writing the default value only in intent; the server does the same thing either way.
+    /// </summary>
+    public Task<ParameterWriteResponseDto> ResetParameterValuesAsync(
+        ParameterResetRequestDto body, CancellationToken ct = default) =>
+        SendAsync<ParameterWriteResponseDto>(
+            () => _http.PostAsJsonAsync("/api/v1/admin/parameters/values/reset", body, ct), ct);
+
+    /// <summary>Copies one scope's settings onto another inside the same company.</summary>
+    public Task<ParameterCopyResponseDto> CopyParameterValuesAsync(
+        ParameterCopyRequestDto body, CancellationToken ct = default) =>
+        SendAsync<ParameterCopyResponseDto>(
+            () => _http.PostAsJsonAsync("/api/v1/admin/parameters/values/copy", body, ct), ct);
+
+    /// <summary>The change trail, newest first, for one scope or one parameter.</summary>
+    public Task<ParameterAuditDto[]> ListParameterAuditAsync(
+        Guid tenantId,
+        Guid? erpCompanyId = null,
+        Guid? catalogEntryId = null,
+        string? catalogMethod = null,
+        Guid? mobileUserId = null,
+        string? scope1 = null,
+        string? scope2 = null,
+        bool scoped = false,
+        int limit = 100,
+        CancellationToken ct = default)
+    {
+        var qs = new List<string> { $"tenantId={tenantId}", $"limit={Math.Clamp(limit, 1, 1000)}" };
+
+        if (erpCompanyId is { } company) qs.Add($"erpCompanyId={company}");
+        if (catalogEntryId is { } entry) qs.Add($"catalogEntryId={entry}");
+        if (!string.IsNullOrEmpty(catalogMethod)) qs.Add($"catalogMethod={Uri.EscapeDataString(catalogMethod)}");
+        if (mobileUserId is { } user) qs.Add($"mobileUserId={user}");
+        if (!string.IsNullOrEmpty(scope1)) qs.Add($"scope1={Uri.EscapeDataString(scope1)}");
+        if (!string.IsNullOrEmpty(scope2)) qs.Add($"scope2={Uri.EscapeDataString(scope2)}");
+        if (scoped) qs.Add("scoped=true");
+
+        return SendAsync<ParameterAuditDto[]>(
+            () => _http.GetAsync($"/api/v1/admin/parameters/audit?{string.Join("&", qs)}", ct), ct);
+    }
+
     private static string WithTenant(string path, Guid? tenantId, string? extraQuery = null)
     {
         var query = new List<string>();
@@ -900,6 +994,215 @@ public sealed class CentralApiClient
         if (!string.IsNullOrWhiteSpace(extraQuery)) query.Add(extraQuery);
         return query.Count == 0 ? path : $"{path}?{string.Join("&", query)}";
     }
+}
+
+// ----- Parametre Yonetimi (P2) DTO'lari -----
+
+/// <summary>One Mikro company of a tenant. A tenant can own several, each its own database.</summary>
+public sealed class ErpCompanyDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("code")] public string Code { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("sourceDatabase")] public string SourceDatabase { get; set; } = string.Empty;
+    [JsonPropertyName("companyNo")] public int CompanyNo { get; set; }
+    [JsonPropertyName("branchNo")] public int BranchNo { get; set; }
+    [JsonPropertyName("warehouseNo")] public int WarehouseNo { get; set; }
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+}
+
+/// <summary>One catalogue set, with how it is addressed and how big it is.</summary>
+public sealed class ParameterSetDto
+{
+    [JsonPropertyName("program")] public string Program { get; set; } = string.Empty;
+    [JsonPropertyName("catalogMethod")] public string CatalogMethod { get; set; } = string.Empty;
+
+    /// <summary><c>MobileUser</c>, <c>PrinterTemplate</c>, <c>ReportCode</c>, <c>None</c>…</summary>
+    [JsonPropertyName("scopeKind")] public string ScopeKind { get; set; } = string.Empty;
+
+    /// <summary>Addressing columns as <c>user</c> or <c>altGrubu,anaGrubu</c>.</summary>
+    [JsonPropertyName("scopeFields")] public string ScopeFields { get; set; } = string.Empty;
+
+    [JsonPropertyName("parameterCount")] public int ParameterCount { get; set; }
+
+    /// <summary>How many a Fora editor exposes; the rest have no layout metadata.</summary>
+    [JsonPropertyName("withEditor")] public int WithEditor { get; set; }
+}
+
+public sealed class ParameterValuesResponseDto
+{
+    [JsonPropertyName("catalogMethod")] public string CatalogMethod { get; set; } = string.Empty;
+    [JsonPropertyName("revision")] public long Revision { get; set; }
+    [JsonPropertyName("count")] public int Count { get; set; }
+    [JsonPropertyName("items")] public ParameterValueDto[] Items { get; set; } = Array.Empty<ParameterValueDto>();
+}
+
+/// <summary>One parameter as it applies to the selected scope.</summary>
+public sealed class ParameterValueDto
+{
+    /// <summary>The parameter's identity. Never the name: 862 names appear in more than one set.</summary>
+    [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
+
+    [JsonPropertyName("parametreId")] public int ParametreId { get; set; }
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("label")] public string? Label { get; set; }
+
+    /// <summary><c>boolean</c>, <c>text</c>, <c>integer</c>, <c>choice</c>, <c>reference</c>…</summary>
+    [JsonPropertyName("editor")] public string? Editor { get; set; }
+
+    [JsonPropertyName("referenceKind")] public string? ReferenceKind { get; set; }
+    [JsonPropertyName("optionsJson")] public string? OptionsJson { get; set; }
+
+    /// <summary>Tab titles from the outermost inwards, joined with " / ".</summary>
+    [JsonPropertyName("tabPath")] public string? TabPath { get; set; }
+
+    [JsonPropertyName("value")] public string Value { get; set; } = string.Empty;
+    [JsonPropertyName("defaultValue")] public string DefaultValue { get; set; } = string.Empty;
+
+    /// <summary>True when someone moved this away from its default.</summary>
+    [JsonPropertyName("isOverridden")] public bool IsOverridden { get; set; }
+
+    /// <summary>False means this release of the mobile app ignores the setting (D16).</summary>
+    [JsonPropertyName("isImplemented")] public bool IsImplemented { get; set; }
+
+    [JsonPropertyName("isDeprecated")] public bool IsDeprecated { get; set; }
+    [JsonPropertyName("overriddenAtUtc")] public DateTimeOffset? OverriddenAtUtc { get; set; }
+
+    /// <summary>Who last moved it in this scope. Null while it sits at its default.</summary>
+    [JsonPropertyName("lastChangedBy")] public string? LastChangedBy { get; set; }
+
+    /// <summary><c>panel</c>, <c>import</c>, <c>reset</c>… where the change came from.</summary>
+    [JsonPropertyName("lastChangeSource")] public string? LastChangeSource { get; set; }
+
+    [JsonPropertyName("lastChangedAtUtc")] public DateTimeOffset? LastChangedAtUtc { get; set; }
+
+    /// <summary>True when the parameter belongs to Fora's VAT table, rate or caption.</summary>
+    [JsonPropertyName("isTaxTable")] public bool IsTaxTable { get; set; }
+
+    /// <summary>True when changing it changes what a document totals; needs confirming (D17).</summary>
+    [JsonPropertyName("changesAmounts")] public bool ChangesAmounts { get; set; }
+}
+
+/// <summary>A batch of changes to one scope.</summary>
+public sealed class ParameterWriteRequestDto
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("erpCompanyId")] public Guid ErpCompanyId { get; set; }
+    [JsonPropertyName("mobileUserId")] public Guid? MobileUserId { get; set; }
+    [JsonPropertyName("scope1")] public string? Scope1 { get; set; }
+    [JsonPropertyName("scope2")] public string? Scope2 { get; set; }
+    [JsonPropertyName("changes")] public ParameterChangeDto[] Changes { get; set; } = Array.Empty<ParameterChangeDto>();
+
+    /// <summary>Set once the operator has confirmed the VAT rates the batch would change.</summary>
+    [JsonPropertyName("confirmSensitive")] public bool ConfirmSensitive { get; set; }
+}
+
+/// <summary>One change. The parameter is named by its catalogue entry, never by name.</summary>
+public sealed class ParameterChangeDto
+{
+    [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
+    [JsonPropertyName("value")] public string? Value { get; set; }
+}
+
+public sealed class ParameterResetRequestDto
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("erpCompanyId")] public Guid ErpCompanyId { get; set; }
+    [JsonPropertyName("mobileUserId")] public Guid? MobileUserId { get; set; }
+    [JsonPropertyName("scope1")] public string? Scope1 { get; set; }
+    [JsonPropertyName("scope2")] public string? Scope2 { get; set; }
+    [JsonPropertyName("catalogEntryIds")] public Guid[] CatalogEntryIds { get; set; } = Array.Empty<Guid>();
+}
+
+public sealed class ParameterWriteResponseDto
+{
+    [JsonPropertyName("revision")] public long Revision { get; set; }
+    [JsonPropertyName("results")] public ParameterWriteResultDto[] Results { get; set; } = Array.Empty<ParameterWriteResultDto>();
+}
+
+/// <summary><c>Unchanged</c>, <c>Inserted</c>, <c>Updated</c> or <c>Deleted</c>.</summary>
+public sealed class ParameterWriteResultDto
+{
+    [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
+    [JsonPropertyName("outcome")] public string Outcome { get; set; } = string.Empty;
+}
+
+public sealed class ParameterCopyRequestDto
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("erpCompanyId")] public Guid ErpCompanyId { get; set; }
+    [JsonPropertyName("catalogMethod")] public string CatalogMethod { get; set; } = string.Empty;
+    [JsonPropertyName("fromMobileUserId")] public Guid? FromMobileUserId { get; set; }
+    [JsonPropertyName("fromScope1")] public string? FromScope1 { get; set; }
+    [JsonPropertyName("fromScope2")] public string? FromScope2 { get; set; }
+    [JsonPropertyName("toMobileUserId")] public Guid? ToMobileUserId { get; set; }
+    [JsonPropertyName("toScope1")] public string? ToScope1 { get; set; }
+    [JsonPropertyName("toScope2")] public string? ToScope2 { get; set; }
+
+    /// <summary>False leaves the target holding exactly what the source holds.</summary>
+    [JsonPropertyName("merge")] public bool Merge { get; set; }
+}
+
+public sealed class ParameterCopyResponseDto
+{
+    [JsonPropertyName("copied")] public int Copied { get; set; }
+    [JsonPropertyName("written")] public int Written { get; set; }
+    [JsonPropertyName("cleared")] public int Cleared { get; set; }
+    [JsonPropertyName("revision")] public long Revision { get; set; }
+}
+
+/// <summary>One recorded change to one parameter.</summary>
+public sealed class ParameterAuditDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("erpCompanyId")] public Guid ErpCompanyId { get; set; }
+    [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
+    [JsonPropertyName("program")] public string Program { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("mobileUserId")] public Guid? MobileUserId { get; set; }
+    [JsonPropertyName("scope1")] public string Scope1 { get; set; } = string.Empty;
+    [JsonPropertyName("scope2")] public string Scope2 { get; set; } = string.Empty;
+
+    /// <summary><c>Inserted</c>, <c>Updated</c> or <c>Deleted</c>.</summary>
+    [JsonPropertyName("outcome")] public string Outcome { get; set; } = string.Empty;
+
+    [JsonPropertyName("oldValue")] public string? OldValue { get; set; }
+    [JsonPropertyName("newValue")] public string? NewValue { get; set; }
+
+    /// <summary>True when the value was a credential and was replaced by a placeholder.</summary>
+    [JsonPropertyName("isMasked")] public bool IsMasked { get; set; }
+
+    [JsonPropertyName("source")] public string Source { get; set; } = string.Empty;
+    [JsonPropertyName("adminUserId")] public Guid? AdminUserId { get; set; }
+    [JsonPropertyName("actor")] public string Actor { get; set; } = string.Empty;
+    [JsonPropertyName("atUtc")] public DateTimeOffset AtUtc { get; set; }
+}
+
+/// <summary>Scope kinds as the catalogue records them.</summary>
+public static class ParameterScopeKindNames
+{
+    public const string None = "None";
+    public const string MobileUser = "MobileUser";
+    public const string DesktopUser = "DesktopUser";
+    public const string ReportCode = "ReportCode";
+    public const string ImportTemplate = "ImportTemplate";
+    public const string CriteriaName = "CriteriaName";
+    public const string EdiRelation = "EdiRelation";
+    public const string PrinterTemplate = "PrinterTemplate";
+
+    /// <summary>What to call the scope in Turkish, for the picker's label.</summary>
+    public static string Describe(string scopeKind) => scopeKind switch
+    {
+        MobileUser => "Mobil kullanıcı",
+        DesktopUser => "Masaüstü kullanıcı",
+        ReportCode => "Rapor kodu",
+        ImportTemplate => "Aktarım şablonu",
+        CriteriaName => "Kriter adı",
+        EdiRelation => "EDI ilişkisi",
+        PrinterTemplate => "Yazıcı şablonu",
+        _ => "Firma geneli",
+    };
 }
 
 /// <summary>

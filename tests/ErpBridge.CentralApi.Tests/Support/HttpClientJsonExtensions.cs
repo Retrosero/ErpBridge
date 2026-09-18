@@ -36,6 +36,19 @@ internal static class HttpClientJsonExtensions
         return await http.SendAsync(request);
     }
 
+    /// <summary>Serialize <paramref name="value"/> as JSON and PUT it. Bearer token optional.</summary>
+    public static async Task<HttpResponseMessage> PutJsonAsync(this HttpClient http, string path, object value, string? bearerToken = null)
+    {
+        var json = JsonSerializer.Serialize(value, WebOptions);
+        var request = new HttpRequestMessage(HttpMethod.Put, path)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        };
+        if (!string.IsNullOrEmpty(bearerToken))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        return await http.SendAsync(request);
+    }
+
     /// <summary>Serialize <paramref name="value"/> as JSON and PATCH it. Bearer token optional.</summary>
     public static async Task<HttpResponseMessage> PatchAsync(this HttpClient http, string path, object value, string? bearerToken = null)
     {

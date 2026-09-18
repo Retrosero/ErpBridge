@@ -906,6 +906,113 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("erp_write_settings", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ForaImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AgentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("AppliedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("AppliedByAdminUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ErpCompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("MatchedRows")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("ScannedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ScannedRows")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentId");
+
+                    b.HasIndex("ErpCompanyId");
+
+                    b.HasIndex("TenantId", "ErpCompanyId", "ScannedAtUtc");
+
+                    b.ToTable("fora_import_batches", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ForaImportRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AltGrubu")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AnaGrubu")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("ForaImportBatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDefaultValue")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("MobileUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ParameterCatalogEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ParametreAdi")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ParametreDegeri")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ParametreId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ParametreProgram")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("ParametreUser")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ForaImportBatchId");
+
+                    b.HasIndex("MobileUserId");
+
+                    b.HasIndex("ParameterCatalogEntryId");
+
+                    b.ToTable("fora_import_rows", (string)null);
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.Job", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1962,6 +2069,75 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("order_fulfillment_events", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("AdminUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ErpCompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsMasked")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("MobileUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NewValue")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OldValue")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("ParameterCatalogEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scope1")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Scope2")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParameterCatalogEntryId");
+
+                    b.HasIndex("TenantId", "AtUtc");
+
+                    b.HasIndex("TenantId", "ErpCompanyId", "ParameterCatalogEntryId", "AtUtc");
+
+                    b.ToTable("parameter_audit", (string)null);
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterCatalogEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2072,6 +2248,100 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("parameter_catalog_entries", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterMirrorDrift", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExpectedValue")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FoundValue")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("MobileUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ParameterCatalogEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ParameterMirrorReportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scope1")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Scope2")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MobileUserId");
+
+                    b.HasIndex("ParameterCatalogEntryId");
+
+                    b.HasIndex("ParameterMirrorReportId");
+
+                    b.ToTable("parameter_mirror_drifts", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterMirrorReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AgentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AppliedRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("AtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Deleted")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Drifted")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ErpCompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("Failed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Inserted")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Updated")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentId");
+
+                    b.HasIndex("ErpCompanyId");
+
+                    b.HasIndex("TenantId", "ErpCompanyId", "AtUtc");
+
+                    b.ToTable("parameter_mirror_reports", (string)null);
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2133,6 +2403,49 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("parameter_records", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ErpCompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("MobileUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Scope1")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Scope2")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ErpCompanyId");
+
+                    b.HasIndex("MobileUserId");
+
+                    b.HasIndex("TenantId", "ErpCompanyId", "MobileUserId", "Scope1", "Scope2")
+                        .IsUnique();
+
+                    b.ToTable("parameter_revisions", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterValue", b =>
@@ -2687,6 +3000,57 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ForaImportBatch", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Agent", "Agent")
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.ErpCompany", "ErpCompany")
+                        .WithMany()
+                        .HasForeignKey("ErpCompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Agent");
+
+                    b.Navigation("ErpCompany");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ForaImportRow", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.ForaImportBatch", "Batch")
+                        .WithMany("Rows")
+                        .HasForeignKey("ForaImportBatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.MobileUser", "MobileUser")
+                        .WithMany()
+                        .HasForeignKey("MobileUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.ParameterCatalogEntry", "CatalogEntry")
+                        .WithMany()
+                        .HasForeignKey("ParameterCatalogEntryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Batch");
+
+                    b.Navigation("CatalogEntry");
+
+                    b.Navigation("MobileUser");
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.Job", b =>
                 {
                     b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
@@ -2843,6 +3207,77 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Navigation("Fulfillment");
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterAuditEntry", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.ParameterCatalogEntry", "CatalogEntry")
+                        .WithMany()
+                        .HasForeignKey("ParameterCatalogEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CatalogEntry");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterMirrorDrift", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.MobileUser", "MobileUser")
+                        .WithMany()
+                        .HasForeignKey("MobileUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.ParameterCatalogEntry", "CatalogEntry")
+                        .WithMany()
+                        .HasForeignKey("ParameterCatalogEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.ParameterMirrorReport", "Report")
+                        .WithMany("Drifts")
+                        .HasForeignKey("ParameterMirrorReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CatalogEntry");
+
+                    b.Navigation("MobileUser");
+
+                    b.Navigation("Report");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterMirrorReport", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Agent", "Agent")
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.ErpCompany", "ErpCompany")
+                        .WithMany()
+                        .HasForeignKey("ErpCompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Agent");
+
+                    b.Navigation("ErpCompany");
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterRecord", b =>
                 {
                     b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
@@ -2850,6 +3285,32 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterRevision", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.ErpCompany", "ErpCompany")
+                        .WithMany()
+                        .HasForeignKey("ErpCompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.MobileUser", "MobileUser")
+                        .WithMany()
+                        .HasForeignKey("MobileUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ErpCompany");
+
+                    b.Navigation("MobileUser");
 
                     b.Navigation("Tenant");
                 });
@@ -2969,9 +3430,19 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Navigation("AgentAssignments");
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ForaImportBatch", b =>
+                {
+                    b.Navigation("Rows");
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.MobileUser", b =>
                 {
                     b.Navigation("Roles");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ParameterMirrorReport", b =>
+                {
+                    b.Navigation("Drifts");
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.Tenant", b =>

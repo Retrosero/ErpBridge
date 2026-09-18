@@ -113,6 +113,10 @@ public static class Program
                 services.AddSingleton<IMappingHistoryQuery, SqliteMappingHistoryQuery>();
                 services.AddHostedService<CrossDbReconciliationWorker>();
 
+                // Parametre Yönetimi P3b: keeps each company's Mikro parameter table in line.
+                services.AddScoped<ErpBridge.Core.Parameters.ParameterMirrorService>();
+                services.AddHostedService<ParameterMirrorWorker>();
+
                 // Log Merkezi L3d: start/stop events and the crashes no catch block saw.
                 services.AddHostedService<AgentLifecycleWorker>();
             })

@@ -508,6 +508,122 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         // which is less readable at the push call site.
     }
 
+    // ----- Parametre aynasi (P3b) -----
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ErpBridge.Core.Parameters.AgentErpCompany>> GetAgentCompaniesAsync(
+        CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(
+            HttpMethod.Get, "/api/v1/agents/parameters/companies", opts, idempotencyKey: null);
+
+        var companies = await SendAsync<List<ErpBridge.Core.Parameters.AgentErpCompany>>(request, opts, ct)
+            .ConfigureAwait(false);
+
+        return companies ?? [];
+    }
+
+    /// <inheritdoc />
+    public async Task<ErpBridge.Core.Parameters.AgentParameterState?> GetParameterStateAsync(
+        Guid erpCompanyId, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(
+            HttpMethod.Get, $"/api/v1/agents/parameters?erpCompanyId={erpCompanyId}", opts, idempotencyKey: null);
+
+        var dto = await SendAsync<ParameterStateDto>(request, opts, ct).ConfigureAwait(false);
+
+        if (dto is null)
+        {
+            return null;
+        }
+
+        return new ErpBridge.Core.Parameters.AgentParameterState(
+            dto.ErpCompanyId,
+            dto.SourceDatabase ?? string.Empty,
+            dto.Revision,
+            (dto.Items ?? []).Select(i => new ErpBridge.Core.Parameters.AgentParameterRow(
+                i.ParametreProgram ?? string.Empty,
+                i.ParametreUser ?? string.Empty,
+                i.AnaGrubu ?? string.Empty,
+                i.AltGrubu ?? string.Empty,
+                i.ParametreID,
+                i.ParametreAdi ?? string.Empty,
+                i.ParametreDegeri ?? string.Empty)).ToList());
+    }
+
+    /// <inheritdoc />
+    public async Task SendParameterMirrorReportAsync(
+        ErpBridge.Core.Parameters.AgentParameterMirrorReport report, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(
+            HttpMethod.Post, "/api/v1/agents/parameters/report", opts, NewIdempotencyKey("prm-report"));
+
+        request.Content = SerializeJson(report);
+        await SendNoContentAsync(request, opts, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<ErpBridge.Core.Parameters.ForaImportResult?> UploadForaScanAsync(
+        Guid erpCompanyId,
+        IReadOnlyList<ErpBridge.Core.Parameters.ForaScanRow> rows,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var opts = _options.CurrentValue;
+        using var request = BuildRequest(
+            HttpMethod.Post, "/api/v1/agents/parameters/fora-import", opts, NewIdempotencyKey("fora-import"));
+
+        request.Content = SerializeJson(new { erpCompanyId, rows });
+
+        return await SendAsync<ErpBridge.Core.Parameters.ForaImportResult>(request, opts, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>The wire shape of the desired state; mapped onto the agent's own contract.</summary>
+    private sealed class ParameterStateDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("erpCompanyId")]
+        public Guid ErpCompanyId { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("sourceDatabase")]
+        public string? SourceDatabase { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("revision")]
+        public long Revision { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("items")]
+        public List<ParameterRowDto>? Items { get; set; }
+    }
+
+    private sealed class ParameterRowDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("parametreProgram")]
+        public string? ParametreProgram { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("parametreUser")]
+        public string? ParametreUser { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("anaGrubu")]
+        public string? AnaGrubu { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("altGrubu")]
+        public string? AltGrubu { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("parametreID")]
+        public int ParametreID { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("parametreAdi")]
+        public string? ParametreAdi { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("parametreDegeri")]
+        public string? ParametreDegeri { get; set; }
+    }
+
     /// <inheritdoc />
     public async Task SendHeartbeatAsync(AgentHeartbeat heartbeat, CancellationToken ct = default)
     {

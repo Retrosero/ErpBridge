@@ -223,6 +223,9 @@ public partial class Program
         ConfigureAuthentication(builder.Services, cfg, allowTestDefaults);
         ConfigureRateLimiter(builder.Services);
         builder.Services.Configure<AdminSeedOptions>(cfg.GetSection("Admin"));
+
+        // Parametre Yönetimi (P1c): effective-value resolution and Fora's write semantics.
+        builder.Services.AddScoped<ParameterResolver>();
         builder.Services.Configure<ApiKeyVaultOptions>(cfg.GetSection("ApiKeyVault"));
         builder.Services.Configure<AuditRetentionOptions>(cfg.GetSection(AuditRetentionOptions.SectionName));
         builder.Services.AddSingleton<IApiKeyVault, ApiKeyVault>();
@@ -693,6 +696,8 @@ public partial class Program
         app.MapPortalErpDocumentsEndpoints();
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
+        app.MapAdminParameterEndpoints();
+        app.MapAgentParameterEndpoints();
         app.MapParameterEndpoints();
         app.MapParameterReadEndpoints();
         app.MapAdminAuditEndpoints();

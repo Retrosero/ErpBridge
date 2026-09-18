@@ -102,6 +102,12 @@ public sealed class MikroConnectionFactory
         => BuildConnectionString(_activeSettings);
 
     /// <summary>
+    /// The database the agent is currently pointed at. Read by collaborators that have to decide
+    /// whether a company the centre named is one this agent can reach.
+    /// </summary>
+    public string ActiveDatabaseName => _activeSettings.DatabaseName;
+
+    /// <summary>
     /// Convenience helper — builds the connection string and wraps it in a fresh,
     /// non-open <see cref="SqlConnection"/>. The caller owns the lifetime and is
     /// expected to dispose it.

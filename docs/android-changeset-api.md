@@ -110,24 +110,33 @@ Yanıt:
 ### 2.5 Parametreler
 
 ```http
-GET /api/v1/android/parameters
+GET /api/v1/android/parameters?sourceDatabase=MikroDB_V16_03
+If-None-Match: "6f1c…"
 ```
 
-Yanıt:
+Değerler **katalog varsayılanı + saklı sapma**dan üretiliyor: kimsenin değiştirmediği parametre de
+Fora'nın varsayılanıyla dönüyor, eksik gelmiyor. Yalnız aktif mobil kullanıcılar yayılıyor.
+`sourceDatabase` verilmezse kiracının bütün aktif firmaları kapsanır.
+
+Yanıt kullanıcı başına 1.801 satıra çıkabildiği için `ETag` taşır; istemci onu `If-None-Match` ile
+geri gönderirse **`304 Not Modified`** alır ve hiçbir şey indirmez. `revision` bilgilendirme
+amaçlıdır — eşitlik için karşılaştırın, sıralama için değil.
 
 ```json
 {
   "tenantId": "...",
-  "count": 42,
+  "revision": 3,
+  "count": 1801,
   "items": [
     {
-      "parametreProgram": "FORA",
-      "parametreUser": "ADMIN",
-      "parametreAnaGrubu": "GENEL",
-      "parametreAltGrubu": "SENKRONIZASYON",
-      "parametreID": "AktifDonem",
-      "parametreAdi": "Aktif Dönem",
-      "parametreDegeri": "2026",
+      "sourceDatabase": "MikroDB_V16_03",
+      "parametreProgram": "akilli",
+      "parametreUser": "plasiyer1",
+      "anaGrubu": "",
+      "altGrubu": "",
+      "parametreID": 58,
+      "parametreAdi": "DefaultKaynakDepoNo",
+      "parametreDegeri": "1",
       "updatedAtUtc": "2026-09-01T08:00:00Z"
     }
   ]

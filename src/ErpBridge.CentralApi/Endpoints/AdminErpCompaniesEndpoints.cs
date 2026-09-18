@@ -34,7 +34,7 @@ public static class AdminErpCompaniesEndpoints
     {
         if (body is null || body.TenantId == Guid.Empty || string.IsNullOrWhiteSpace(body.Code)
             || string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.SourceDatabase)
-            || body.CompanyNo <= 0 || body.BranchNo < 0 || body.WarehouseNo < 0)
+            || body.CompanyNo < 0 || body.BranchNo < 0 || body.WarehouseNo < 0)
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_ERP_COMPANY", Message = "tenantId, code, name, sourceDatabase and non-negative branch/warehouse values are required." });
 
         if (!await db.Tenants.AsNoTracking().AnyAsync(x => x.Id == body.TenantId, ct))

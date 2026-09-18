@@ -1462,15 +1462,20 @@ public sealed class AgentSettingsViewModel : ObservableObject
     {
         _validationErrors.Clear();
 
-        // CompanyNo: parse-as-int (invariant) and >= 1. Boş → "boş olamaz";
-        // non-integer → "tamsayı olmalı"; < 1 → "1 veya daha büyük olmalı".
+        // CompanyNo: parse-as-int (invariant) and >= 0.
+        //
+        // 0 is the normal case, not an edge one: Mikro numbers the first company 0
+        // (FIRMALAR.fir_sirano). Checked against all three databases on hand — MikroDB_V15_DEMO,
+        // MikroDB_V15_02 and the live MikroDB_V16_03 — each has exactly one company at 0, and
+        // every movement row in them carries firma 0. The old ">= 1" rule rejected the only value
+        // any of them could have used.
         if (string.IsNullOrWhiteSpace(_companyNo))
         {
             _validationErrors[nameof(CompanyNo)] = "Firma No boş olamaz.";
         }
-        else if (!int.TryParse(_companyNo, NumberStyles.Integer, CultureInfo.InvariantCulture, out var c) || c < 1)
+        else if (!int.TryParse(_companyNo, NumberStyles.Integer, CultureInfo.InvariantCulture, out var c) || c < 0)
         {
-            _validationErrors[nameof(CompanyNo)] = "Firma No 1 veya daha büyük bir tamsayı olmalı.";
+            _validationErrors[nameof(CompanyNo)] = "Firma No 0 veya daha büyük bir tamsayı olmalı.";
         }
 
         // BranchNo: parse-as-int (invariant) and >= 0. 0 single-branch
@@ -1484,8 +1489,9 @@ public sealed class AgentSettingsViewModel : ObservableObject
             _validationErrors[nameof(BranchNo)] = "Şube No 0 veya daha büyük bir tamsayı olmalı.";
         }
 
-        // WarehouseNo: parse-as-int (invariant) and >= 1. 0 anlamsız çünkü
-        // Mikro depo numaraları 1'den başlar.
+        // WarehouseNo: parse-as-int (invariant) and >= 1. Unlike the company number this really
+        // does start at 1 — DEPOLAR.dep_no is 1 ("Merkez depo") in every database on hand and no
+        // movement references a depot 0.
         if (string.IsNullOrWhiteSpace(_warehouseNo))
         {
             _validationErrors[nameof(WarehouseNo)] = "Depo No boş olamaz.";

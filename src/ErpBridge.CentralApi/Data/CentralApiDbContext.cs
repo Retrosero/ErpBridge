@@ -69,6 +69,24 @@ public sealed class CentralApiDbContext : DbContext
     /// </summary>
     public DbSet<ParameterValue> ParameterValues => Set<ParameterValue>();
 
+    /// <summary>Parametre Yönetimi (P1d) — per-scope change counter, so clients can poll cheaply.</summary>
+    public DbSet<ParameterRevision> ParameterRevisions => Set<ParameterRevision>();
+
+    /// <summary>Parametre Yönetimi (P1d) — append-only record of who changed which parameter.</summary>
+    public DbSet<ParameterAuditEntry> ParameterAudit => Set<ParameterAuditEntry>();
+
+    /// <summary>What each agent run did to one company's Mikro parameter table (D8).</summary>
+    public DbSet<ParameterMirrorReport> ParameterMirrorReports => Set<ParameterMirrorReport>();
+
+    /// <summary>Rows the agent found in Mikro holding something the centre did not set.</summary>
+    public DbSet<ParameterMirrorDrift> ParameterMirrorDrifts => Set<ParameterMirrorDrift>();
+
+    /// <summary>Read-only scans of a customer's existing Fora settings, uploaded as proposals.</summary>
+    public DbSet<ForaImportBatch> ForaImportBatches => Set<ForaImportBatch>();
+
+    /// <summary>What one scan found, matched or not.</summary>
+    public DbSet<ForaImportRow> ForaImportRows => Set<ForaImportRow>();
+
     /// <summary>Faz 15.5 — Mikro <c>_ERPB_PARAMETRELER</c> snapshot mirror, one row per parameter.</summary>
     public DbSet<ParameterRecord> Parameters => Set<ParameterRecord>();
 
@@ -818,6 +836,127 @@ public sealed class CentralApiDbContext : DbContext
 
             // The panel and the mirror both read "everything for this company".
             b.HasIndex(x => new { x.TenantId, x.ErpCompanyId });
+        });
+
+        modelBuilder.Entity<ParameterRevision>(b =>
+        {
+            b.ToTable("parameter_revisions");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Scope1).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Scope2).IsRequired().HasMaxLength(100);
+
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ErpCompany).WithMany().HasForeignKey(x => x.ErpCompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.MobileUser).WithMany().HasForeignKey(x => x.MobileUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One counter per scope — the same tuple the values themselves are addressed by.
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.MobileUserId, x.Scope1, x.Scope2 })
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<ParameterAuditEntry>(b =>
+        {
+            b.ToTable("parameter_audit");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Scope1).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Scope2).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Outcome).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Source).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Actor).IsRequired().HasMaxLength(200);
+
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The catalogue entry is never deleted (withdrawn ones are marked), so the trail
+            // keeps pointing at a real parameter for as long as it is retained.
+            b.HasOne(x => x.CatalogEntry).WithMany().HasForeignKey(x => x.ParameterCatalogEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // "What happened to this parameter" and "what changed lately" are the two questions.
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.ParameterCatalogEntryId, x.AtUtc });
+            b.HasIndex(x => new { x.TenantId, x.AtUtc });
+        });
+
+        modelBuilder.Entity<ParameterMirrorReport>(b =>
+        {
+            b.ToTable("parameter_mirror_reports");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ErrorText).HasMaxLength(2000);
+
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ErpCompany).WithMany().HasForeignKey(x => x.ErpCompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The agent may be removed and re-registered; the history of what it wrote stays.
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // "How is this company's mirror doing" is the question the panel asks.
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.AtUtc });
+        });
+
+        modelBuilder.Entity<ParameterMirrorDrift>(b =>
+        {
+            b.ToTable("parameter_mirror_drifts");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Scope1).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Scope2).IsRequired().HasMaxLength(100);
+
+            b.HasOne(x => x.Report).WithMany(r => r.Drifts).HasForeignKey(x => x.ParameterMirrorReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.CatalogEntry).WithMany().HasForeignKey(x => x.ParameterCatalogEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Restrict, like the values themselves: a removed user's drift stays explainable.
+            b.HasOne(x => x.MobileUser).WithMany().HasForeignKey(x => x.MobileUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            b.HasIndex(x => x.ParameterMirrorReportId);
+        });
+
+        modelBuilder.Entity<ForaImportBatch>(b =>
+        {
+            b.ToTable("fora_import_batches");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.State).IsRequired().HasMaxLength(16);
+
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ErpCompany).WithMany().HasForeignKey(x => x.ErpCompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The agent may be removed and re-registered; what it scanned stays.
+            b.HasOne(x => x.Agent).WithMany().HasForeignKey(x => x.AgentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            b.HasIndex(x => new { x.TenantId, x.ErpCompanyId, x.ScannedAtUtc });
+        });
+
+        modelBuilder.Entity<ForaImportRow>(b =>
+        {
+            b.ToTable("fora_import_rows");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ParametreProgram).IsRequired().HasMaxLength(40);
+            b.Property(x => x.ParametreUser).IsRequired().HasMaxLength(40);
+            b.Property(x => x.AnaGrubu).IsRequired().HasMaxLength(100);
+            b.Property(x => x.AltGrubu).IsRequired().HasMaxLength(100);
+            b.Property(x => x.ParametreAdi).IsRequired().HasMaxLength(100);
+
+            b.HasOne(x => x.Batch).WithMany(x => x.Rows).HasForeignKey(x => x.ForaImportBatchId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Both nullable on purpose: a row the catalogue does not declare, or a username that
+            // matches no active user, is exactly what the reviewer has to see.
+            b.HasOne(x => x.CatalogEntry).WithMany().HasForeignKey(x => x.ParameterCatalogEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.MobileUser).WithMany().HasForeignKey(x => x.MobileUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            b.HasIndex(x => x.ForaImportBatchId);
         });
 
         modelBuilder.Entity<ParameterRecord>(b =>

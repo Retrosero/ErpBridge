@@ -42,19 +42,33 @@ Saha satış mobil uygulamasında (`Siparis_Cepte`) termal yazıcıdan çıktı 
 | Uç | Yön | Not |
 |---|---|---|
 | `POST /api/v1/ingest/parameters` | ajan → merkez | API anahtarı; gövde `{ sourceDatabase, parameters[] }` |
-| `GET /api/v1/android/parameters?sourceDatabase=` | merkez → telefon | `{ tenantId, count, items[] }` |
+| `GET /api/v1/android/parameters?sourceDatabase=` | merkez → telefon | `{ tenantId, revision, count, items[] }` + `ETag`/`304` |
 | `GET /api/v1/admin/parameters` | merkez → Admin | sayfalı; `program`, `user`, `sourceDatabase` süzgeçleri |
+| `/api/v1/admin/parameters/sets` · `/values` · `/values/reset` · `/audit` | merkez → panel | yeni model (P1e) |
+| `GET /api/v1/agents/parameters?erpCompanyId=` | merkez → ajan | firmaya ait tam hedef durum; yalnız sapmalar, yalnız aktif kullanıcılar (P1g) |
+| `POST /api/v1/agents/parameters/report` | ajan → merkez | ne yazıldığı + Mikro'da elle değiştirilmiş bulunan satırlar (D8) |
 
 Satır şeması (`ParameterRecord` — Fora'nın `_FORA_PARAMETRELER` tablosunun aynası):
 `ParametreProgram` · `ParametreUser` · `ParametreAnaGrubu` · `ParametreAltGrubu` · `ParametreID` ·
 `ParametreAdi` · `ParametreDegeri`.
 
+### `/android/parameters` artık nereden besleniyor (P1f, 2026-09-18)
+
+Sözleşme aynı; **kaynak** değişti. Değerler artık içe aktarılmış `_FORA_PARAMETRELER` aynasından
+değil, **katalog varsayılanı + saklı sapma**dan geliyor (D13). Sonuçları:
+
+- Kimsenin değiştirmediği parametre artık **eksik değil**, Fora'nın kendi varsayılanıyla dönüyor —
+  telefon kendi gömdüğü varsayılana düşmüyor.
+- `ParametreUser` hâlâ **kullanıcı adı** taşıyor; eski istemci ona bakarak eşleştiriyor.
+- Yalnız **aktif** mobil kullanıcılar yayılıyor (D5b): kullanıcı adı yeniden kullanılabilir, silinmiş
+  kullanıcının yetkileri o adı sonra alan telefona gitmemeli.
+- Yanıt kullanıcı başına 1.801 satıra çıktığı için **`ETag`** taşıyor; istemci geri gönderirse `304`.
+  ETag kapsanan kapsamlardan, her birinin sürüm sayacından ve katalog damgasından üretiliyor.
+- Satırlara `sourceDatabase` eklendi; eski alanların hiçbiri kaldırılmadı.
+
 ### Bilinen boşluklar
-- `_ERPB_PARAMETRELER` tablosu **hiçbir veritabanında yok**; ingest ucunu besleyen ajan kodu da yok.
-  Uçlar bugün boşta çalışıyor.
-- Sipariş Cepte `/api/v1/android/parameters`'ı **hiç çağırmıyor**.
-- **Varsayılan katalog kavramı yok.** Fora'da varsayılanlar uygulamanın içindedir, tabloda yalnız
-  *sapmalar* tutulur; katalog olmadan tablodaki satırlar efektif ayarı vermez.
+- `_ERPB_PARAMETRELER` tablosu **hiçbir veritabanında yok**; aynayı yazacak ajan işi P3'te.
+- Sipariş Cepte `/api/v1/android/parameters`'ı **hâlâ çağırmıyor** — P4'te bağlanacak.
 
 Kapatma planı: [`docs/GOAL_PARAMETRE_YONETIMI.md`](../docs/GOAL_PARAMETRE_YONETIMI.md).
 
