@@ -90,6 +90,10 @@ public sealed class ParameterResolverTests : IDisposable
     private ParameterScope UserScope(Guid? company = null, Guid? user = null) =>
         ParameterScope.ForMobileUser(_world.TenantId, company ?? _world.CompanyA, user ?? _world.UserA);
 
+    /// <summary>Every write is attributed; these tests stand in for an operator in the panel.</summary>
+    private static ParameterResolver.ChangeContext By =>
+        new(ParameterChangeSources.Panel, Actor: "test");
+
     [Fact]
     public async Task An_untouched_parameter_reads_as_its_default()
     {
@@ -120,7 +124,7 @@ public sealed class ParameterResolverTests : IDisposable
         using var db = Db();
         var resolver = new ParameterResolver(db);
 
-        var outcome = await resolver.SetAsync(UserScope(), _world.DepotId, "1");
+        var outcome = await resolver.SetAsync(UserScope(), _world.DepotId, "1", By);
 
         outcome.Should().Be(ParameterResolver.WriteOutcome.Unchanged);
         db.ParameterValues.Should().BeEmpty("Fora stores deviations, not defaults");
@@ -132,11 +136,11 @@ public sealed class ParameterResolverTests : IDisposable
         using var db = Db();
         var resolver = new ParameterResolver(db);
 
-        (await resolver.SetAsync(UserScope(), _world.DepotId, "3"))
+        (await resolver.SetAsync(UserScope(), _world.DepotId, "3", By))
             .Should().Be(ParameterResolver.WriteOutcome.Inserted);
-        (await resolver.SetAsync(UserScope(), _world.DepotId, "5"))
+        (await resolver.SetAsync(UserScope(), _world.DepotId, "5", By))
             .Should().Be(ParameterResolver.WriteOutcome.Updated);
-        (await resolver.SetAsync(UserScope(), _world.DepotId, "5"))
+        (await resolver.SetAsync(UserScope(), _world.DepotId, "5", By))
             .Should().Be(ParameterResolver.WriteOutcome.Unchanged, "writing the same value changes nothing");
 
         db.ParameterValues.Should().ContainSingle().Which.Value.Should().Be("5");
@@ -148,9 +152,9 @@ public sealed class ParameterResolverTests : IDisposable
     {
         using var db = Db();
         var resolver = new ParameterResolver(db);
-        await resolver.SetAsync(UserScope(), _world.DepotId, "3");
+        await resolver.SetAsync(UserScope(), _world.DepotId, "3", By);
 
-        var outcome = await resolver.SetAsync(UserScope(), _world.DepotId, "1");
+        var outcome = await resolver.SetAsync(UserScope(), _world.DepotId, "1", By);
 
         outcome.Should().Be(ParameterResolver.WriteOutcome.Deleted);
         db.ParameterValues.Should().BeEmpty(
@@ -163,9 +167,9 @@ public sealed class ParameterResolverTests : IDisposable
     {
         using var db = Db();
         var resolver = new ParameterResolver(db);
-        await resolver.SetAsync(UserScope(), _world.DepotId, "9");
+        await resolver.SetAsync(UserScope(), _world.DepotId, "9", By);
 
-        (await resolver.ResetAsync(UserScope(), _world.DepotId))
+        (await resolver.ResetAsync(UserScope(), _world.DepotId, By))
             .Should().Be(ParameterResolver.WriteOutcome.Deleted);
         db.ParameterValues.Should().BeEmpty();
     }
@@ -178,12 +182,12 @@ public sealed class ParameterResolverTests : IDisposable
         using var db = Db();
         var resolver = new ParameterResolver(db);
 
-        await resolver.SetAsync(UserScope(company: _world.CompanyA), _world.DepotId, "3");
+        await resolver.SetAsync(UserScope(company: _world.CompanyA), _world.DepotId, "3", By);
 
         (await resolver.ResolveOneAsync(UserScope(company: _world.CompanyB), _world.DepotId))!
             .Should().BeEquivalentTo(new { Value = "1", IsOverridden = false });
 
-        await resolver.SetAsync(UserScope(company: _world.CompanyB), _world.DepotId, "7");
+        await resolver.SetAsync(UserScope(company: _world.CompanyB), _world.DepotId, "7", By);
 
         (await resolver.ResolveOneAsync(UserScope(company: _world.CompanyA), _world.DepotId))!.Value.Should().Be("3");
         (await resolver.ResolveOneAsync(UserScope(company: _world.CompanyB), _world.DepotId))!.Value.Should().Be("7");
@@ -195,7 +199,7 @@ public sealed class ParameterResolverTests : IDisposable
         using var db = Db();
         var resolver = new ParameterResolver(db);
 
-        await resolver.SetAsync(UserScope(user: _world.UserA), _world.MenuId, "0");
+        await resolver.SetAsync(UserScope(user: _world.UserA), _world.MenuId, "0", By);
 
         (await resolver.ResolveOneAsync(UserScope(user: _world.UserB), _world.MenuId))!
             .Should().BeEquivalentTo(new { Value = "1", IsOverridden = false });
@@ -208,7 +212,7 @@ public sealed class ParameterResolverTests : IDisposable
         // and frees the username, so a replacement could otherwise inherit permissions (D5).
         using var db = Db();
         var resolver = new ParameterResolver(db);
-        await resolver.SetAsync(UserScope(user: _world.UserA), _world.MenuId, "0");
+        await resolver.SetAsync(UserScope(user: _world.UserA), _world.MenuId, "0", By);
 
         var ali = db.MobileUsers.Single(u => u.Id == _world.UserA);
         ali.IsActive = false;
@@ -232,7 +236,7 @@ public sealed class ParameterResolverTests : IDisposable
         var sales = ParameterScope.ForTemplateField(_world.TenantId, _world.CompanyA, "SATIS", "StokKodu");
         var returns = ParameterScope.ForTemplateField(_world.TenantId, _world.CompanyA, "IADE", "StokKodu");
 
-        await resolver.SetAsync(sales, _world.TemplateFieldId, "5");
+        await resolver.SetAsync(sales, _world.TemplateFieldId, "5", By);
 
         (await resolver.ResolveOneAsync(sales, _world.TemplateFieldId))!.Value.Should().Be("5");
         (await resolver.ResolveOneAsync(returns, _world.TemplateFieldId))!.Value.Should().Be("1");
@@ -247,18 +251,18 @@ public sealed class ParameterResolverTests : IDisposable
         // A mobile user's setting without saying which user would create a row no read finds and
         // the mirror cannot place in Mikro.
         var noUser = ParameterScope.ForCompany(_world.TenantId, _world.CompanyA);
-        var write = () => resolver.SetAsync(noUser, _world.DepotId, "3");
+        var write = () => resolver.SetAsync(noUser, _world.DepotId, "3", By);
         await write.Should().ThrowAsync<ParameterResolver.ScopeMismatchException>()
             .WithMessage("*belongs to one mobile user*");
 
         // …and a company-wide setting must not be filed under a user.
-        var withUser = () => resolver.SetAsync(UserScope(), _world.FirmWideId, "20");
+        var withUser = () => resolver.SetAsync(UserScope(), _world.FirmWideId, "20", By);
         await withUser.Should().ThrowAsync<ParameterResolver.ScopeMismatchException>()
             .WithMessage("*not addressed by mobile user*");
 
         // A printer field needs both names, not one.
         var halfNamed = ParameterScope.ForName(_world.TenantId, _world.CompanyA, "SATIS");
-        var partial = () => resolver.SetAsync(halfNamed, _world.TemplateFieldId, "5");
+        var partial = () => resolver.SetAsync(halfNamed, _world.TemplateFieldId, "5", By);
         await partial.Should().ThrowAsync<ParameterResolver.ScopeMismatchException>()
             .WithMessage("*addressed by 2 name(s)*");
 
@@ -271,8 +275,8 @@ public sealed class ParameterResolverTests : IDisposable
         using var db = Db();
         var resolver = new ParameterResolver(db);
 
-        await resolver.SetAsync(UserScope(), _world.DepotId, "3");
-        await resolver.SetAsync(UserScope(), _world.MenuId, "1"); // the default: stores nothing
+        await resolver.SetAsync(UserScope(), _world.DepotId, "3", By);
+        await resolver.SetAsync(UserScope(), _world.MenuId, "1", By); // the default: stores nothing
 
         var overrides = await resolver.OverridesAsync(UserScope());
 
