@@ -298,6 +298,64 @@ public sealed class ParametersTests : BunitContext
         cut.Find(".admin-state--success").TextContent.Should().Contain("satır silindi");
     }
 
+    [Fact]
+    public void Searching_narrows_the_tree_to_the_tabs_that_have_hits()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 0,
+            Tabbed(1, "DefaultKaynakDepoNo", "Parametreler / Tanımlamalar"),
+            Tabbed(2, "Goster_AnaMenu_Tahsilat", "Evrak girişi"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-tab__link").Count >= 3);
+        cut.Find("#prm-search").Input("KaynakDepo");
+
+        // Finding the parameter but still having to guess which of 63 tabs it is on would be no
+        // help, so the tree is re-derived from the matches.
+        cut.WaitForState(() => cut.Markup.Contains("1 eşleşme"));
+        cut.Markup.Should().Contain("Tanımlamalar").And.NotContain("Evrak girişi");
+    }
+
+    [Fact]
+    public void A_search_that_matches_nothing_says_so()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(1, "DefaultKaynakDepoNo", "Parametreler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-tab__link").Count >= 1);
+        cut.Find("#prm-search").Input("yokboyle");
+
+        cut.WaitForState(() => cut.Markup.Contains("Eşleşen parametre yok"));
+    }
+
+    [Fact]
+    public void Clearing_the_search_brings_the_whole_tree_back()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 0,
+            Tabbed(1, "DefaultKaynakDepoNo", "Parametreler"),
+            Tabbed(2, "Goster_AnaMenu_Tahsilat", "Evrak girişi"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-tab__link").Count >= 2);
+        cut.Find("#prm-search").Input("KaynakDepo");
+        cut.WaitForState(() => cut.FindAll("#prm-search-clear").Count == 1);
+
+        cut.Find("#prm-search-clear").Click();
+
+        cut.WaitForState(() => cut.FindAll(".prm-tab__link").Count == 2);
+        cut.Markup.Should().Contain("Evrak girişi");
+    }
+
     // ---- Test helpers ----
 
     private static void LoadAkilliAsync(IRenderedComponent<Parameters> cut, PageState state)

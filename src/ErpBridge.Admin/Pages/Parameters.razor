@@ -142,6 +142,18 @@ else if (_values is not null)
     }
     else
     {
+        <div class="prm-search">
+            <label class="form-label" for="prm-search">Ara <small class="text-muted">(ad, ID, etiket, sekme)</small></label>
+            <input id="prm-search" class="form-control" value="@_search" @oninput="OnSearch"
+                   placeholder="örn. DefaultKaynakDepo, 58, iskonto" />
+            @if (_search.Length > 0)
+            {
+                <span class="text-muted">@Matches.Count eşleşme</span>
+                <button type="button" class="btn btn-link btn-sm p-0" id="prm-search-clear"
+                        @onclick="@(() => OnSearch(new ChangeEventArgs { Value = string.Empty }))">temizle</button>
+            }
+        </div>
+
         <div class="prm-layout">
             <nav class="prm-tabs" aria-label="Parametre sekmeleri">
                 @foreach (var node in _tabs)
@@ -151,10 +163,15 @@ else if (_values is not null)
             </nav>
 
             <section class="prm-fields">
-                @if (_selectedTab is null)
+                @if (_search.Length > 0 && Matches.Count == 0)
+                {
+                    <AdminState Title="Eşleşen parametre yok"
+                                Message="Ad, Mikro ID'si, Fora'daki etiketi veya sekme adı aranıyor." />
+                }
+                else if (_selectedTab is null)
                 {
                     <AdminState Title="Bir sekme seçin"
-                                Message="Soldaki ağaç Fora'nın kendi sekme yapısından üretildi." />
+                                Message="@(_search.Length > 0 ? "Ağaç yalnız eşleşen parametreleri olan sekmeleri gösteriyor." : "Soldaki ağaç Fora'nın kendi sekme yapısından üretildi.")" />
                 }
                 else
                 {
@@ -336,8 +353,7 @@ else if (string.IsNullOrEmpty(_error))
     private void SelectTab(ParameterLayout.TabNode node)
     {
         _selectedTab = node.Path;
-        _groups = ParameterLayout.GroupFields(
-            ParameterLayout.FieldsOf(_values?.Items ?? Array.Empty<ParameterValueDto>(), node.Path));
+        _groups = ParameterLayout.GroupFields(ParameterLayout.FieldsOf(Matches, node.Path));
     }
 
     /// <summary>One block of fields, each with the editor Fora uses for it.</summary>
@@ -352,6 +368,35 @@ else if (string.IsNullOrEmpty(_error))
                                 Disabled="@_saving" />
             }
         </div>;
+
+    private string _search = string.Empty;
+
+    /// <summary>What the search matches, or everything when the box is empty.</summary>
+    private IReadOnlyList<ParameterValueDto> Matches =>
+        ParameterLayout.Search(_values?.Items ?? Array.Empty<ParameterValueDto>(), _search);
+
+    /// <summary>
+    /// Re-derives the tree from the matches, so the tree itself answers "where does this live?".
+    /// Searching 1,801 parameters and then still having to guess the tab would be no help.
+    /// </summary>
+    private void OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+
+        var matches = Matches;
+        _tabs = ParameterLayout.BuildTabs(matches);
+
+        // Keep the open tab when it still has hits; otherwise fall back to the tree.
+        if (_selectedTab is not null && Find(_tabs, _selectedTab) is { } still)
+        {
+            SelectTab(still);
+        }
+        else
+        {
+            _selectedTab = null;
+            _groups = Array.Empty<ParameterLayout.FieldGroup>();
+        }
+    }
 
     private static ParameterLayout.TabNode? Find(IReadOnlyList<ParameterLayout.TabNode> nodes, string path)
     {
@@ -521,7 +566,7 @@ else if (string.IsNullOrEmpty(_error))
                 string.IsNullOrWhiteSpace(_scope2) ? null : _scope2.Trim(),
                 _onlyOverridden);
 
-            _tabs = ParameterLayout.BuildTabs(_values.Items);
+            _tabs = ParameterLayout.BuildTabs(Matches);
             _drafts.Clear();
 
             var keep = _selectedTab;

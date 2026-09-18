@@ -14,6 +14,7 @@ public sealed class ParameterLayoutTests
         string name, string? tabPath, string? label = null, bool overridden = false) => new()
     {
         CatalogEntryId = Guid.NewGuid(),
+        ParametreId = 58,
         Name = name,
         Label = label ?? name,
         TabPath = tabPath,
@@ -91,6 +92,41 @@ public sealed class ParameterLayoutTests
 
         ParameterLayout.FieldsOf(values, "Evrak girişi").Should().ContainSingle()
             .Which.Name.Should().Be("A", "a child tab's fields belong to the child");
+    }
+
+    [Fact]
+    public void Search_looks_at_the_four_things_an_operator_would_type()
+    {
+        var values = new[]
+        {
+            Field("DefaultKaynakDepoNo", "Parametreler / Tanımlamalar", label: "Kaynak depo no :"),
+            Field("Goster_AnaMenu_Tahsilat", "Evrak girişi", label: "Tahsilat girebilir"),
+        };
+
+        ParameterLayout.Search(values, "kaynakdepo").Should().ContainSingle();
+        ParameterLayout.Search(values, "Tahsilat girebilir").Should().ContainSingle();
+        ParameterLayout.Search(values, "Evrak girişi").Should().ContainSingle();
+        ParameterLayout.Search(values, "58").Should().HaveCount(2, "both stand-ins carry id 58");
+    }
+
+    [Fact]
+    public void An_empty_search_is_not_a_filter()
+    {
+        var values = new[] { Field("A", "T"), Field("B", "T") };
+
+        ParameterLayout.Search(values, null).Should().HaveCount(2);
+        ParameterLayout.Search(values, "   ").Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Search_uses_Turkish_casing()
+    {
+        var values = new[] { Field("DipIskonto", "T", label: "Dip İskonto oranı") };
+
+        // An ordinal case-insensitive compare lowercases İ to an i with a dot above, so "iskonto"
+        // would miss "İskonto" — and every label on this screen is Turkish.
+        ParameterLayout.Search(values, "iskonto").Should().ContainSingle();
+        ParameterLayout.Search(values, "ISKONTO").Should().ContainSingle();
     }
 
     [Fact]
