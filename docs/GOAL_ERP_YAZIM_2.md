@@ -8,6 +8,10 @@ içinde güncellenir. Oturum kapanırsa oradan devam edilir.
 **Mikro yazım kuralları:** [mikro-yazim-referansi.md](mikro-yazim-referansi.md) — bu goal'ün de tek doğruluk kaynağı.
 Orada olmayan kolon/kod **tahmin edilmez**; önce o belgeye kanıtıyla eklenir (Z0).
 
+**İki kanıt kaynağı** (kullanıcı, 2026-09-19): (1) canlı `MikroDB_V15_02`'deki gerçek kayıtlar, (2) `Fora_Mikro/`
+— bu işi daha önce **başarıyla yapmış** uygulama; `.decompiled/Core/` altında kaynakları okunabilir durumda. İkisi
+ayrışırsa **Mikro'nun kendi ekran kaydı esastır** (önceki goal D5), Fora ise kolon listesini ve kodları verir.
+
 Önceki goal: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) (Satış · Satış iadesi · Tahsilat — Y0–Y6 bitti). Oradaki kararlar
 (idempotency, seri/sıra, hata sınıfları, log gizliliği, yalnız yeni evrak) burada da geçerlidir; yalnız farklar yazılır.
 
@@ -18,6 +22,12 @@ Orada olmayan kolon/kod **tahmin edilmez**; önce o belgeye kanıtıyla eklenir 
 ### İstek (kullanıcı, 2026-09-19)
 "İlk goal'de Satış + Tahsilat yazıldı, bunlar başarılı oldu. Şimdi geriye kalan diğer belge türleriyle ilgili de bir goal
 planı çıkar."
+
+### Fora'dan gelen ilk kanıt (2026-09-19)
+`Fora_Mikro/.decompiled/Core/Fora.Mikro.CariHesapHareket/enum_cha_evrak_tip.cs`: `0 = AlisFaturasi`,
+`1 = TahsilatMakbuzu`, `63 = SatisFaturasi`, **`64 = TediyeMakbuzu`**, `65 = KasaTediyeFisi`. İlk goal'de doğrulanan
+satış/tahsilat kodlarıyla birebir uyuşuyor — yani bu enum güvenilir bir kaynak. Z0b/Z0c bunları canlı kayıtla da
+doğrular.
 
 ### Bulgu: kalan türler bugün sessizce beklemiyor, kalıcı hata alıyor
 Kod okunarak doğrulandı (2026-09-19, `origin/main`):
@@ -30,9 +40,16 @@ Kod okunarak doğrulandı (2026-09-19, `origin/main`):
    payment_order, customer_card, stock_card` içeriyor → `UNSUPPORTED_DOCUMENT_TYPE`, **`retryable=false`** — yani kalıcı
    `Failed`.
 
-Sonuç: ERP'li bir firmada saha personelinin girdiği **tediye, gider, alış ve sayım belgeleri Mikro'ya hiç ulaşmıyor** ve
-kuyrukta kalıcı hata olarak birikiyor. Bu goal bunların bir kısmını yazar, kalanını **temiz reddeder** (D5) — ikisi de
-bugünkü "sessiz birikme" durumundan iyidir.
+**Ama engel iki yerde, farklı biçimde** (PR #138 incelemesinde çıktı):
+
+| Belge | ERP'li firmada bugün |
+|---|---|
+| `disbursement` (tediye), `expense` (gider), `purchase` (kasadan alış ödemesi), `stock_count`, `cash_transaction` | Ingest **kabul ediyor**, iş kaydediliyor, ajan kalıcı reddediyor → kuyrukta **kalıcı hata birikiyor** |
+| `purchase_receipt` (satırlı alış), `customer_card` (yeni cari) | Ingest **409 ile reddediyor** (`DOCUMENT_REQUIRES_NATIVE_TENANT` / `CARDS_REQUIRE_NATIVE_TENANT`); `ApprovalService.RejectDocument` onaydan geçen belge için aynı kuralı ayrıca uyguluyor → ajana **hiç ulaşmıyor** |
+
+Bu ayrım planı doğrudan etkiliyor: kapsamdaki iki türün (alış faturası, yeni cari) writer'ı yazılsa bile **kapı
+açılmadan** hiçbir belge o writer'a ulaşmaz. Kapıyı açmak Z3e'nin işidir ve writer'lar hazır olduktan **sonra** yapılır —
+yoksa bir sessiz hatayı (409) başka bir sessiz hatayla (`UNSUPPORTED_DOCUMENT_TYPE`) değiştirmiş oluruz.
 
 Ek bulgu: `customer_card` ve `stock_card` eski writer'lara düşüyor. Bu writer'lar `mikro-yazim-referansi.md` yazılmadan
 önce üretildi; ilk goal'de satış/tahsilat kodlarının yanlış olduğu ortaya çıkmıştı (Y0c). Aynı denetim `customer_card`
@@ -54,7 +71,7 @@ için Z3c'de yapılır.
 | D2 | Alışta KDV **stok kartının alış pointer'ından**, satışta olduğu gibi `fn_VergiYuzde`; iskonto zinciri satış faturasıyla aynı kolon düzeni | Z0b bunu canlı veriyle doğrular; doğrulanamazsa karar değişir |
 | D3 | **Tediye = tahsilatın aynası**: tek makbuz, yöntem başına satır, nakit kasa / kart-havale banka. Çek-senet **çıkışı** bu goal'de yok (portföyden çıkış ayrı kural) | Kapsam şişmesin; saha tediyesi pratikte nakit/havale |
 | D4 | Yeni cari kodu Mikro'da zaten varsa **kalıcı** `CUSTOMER_CODE_EXISTS`; telefon göndermeden önce senkron listesinde kontrol eder ve Portal'daki kod önekini gösterir | U2 seçildi; çakışma riski kullanıcıya ait, ama sessiz kalmamalı |
-| D5 | **Gider ve sayım ERP'li firmada ingest tarafından reddedilir** (`RequiresNativeTenant` genişler); telefon "bu firmada desteklenmiyor" der ve belgeyi kuyruğa atmaz | Kalıcı hata birikmesin; kapsam dışı olmaları görünür olsun |
+| D5 | **Kapı iki yönlü ayarlanır:** gider ve sayım ERP'li firmada ingest tarafından **reddedilir** (Z1b, erken); alış faturası ve yeni cari **kabul edilir** (Z3e, writer'lar hazır olunca). Reddedilen türde telefon "bu firmada desteklenmiyor" der ve belgeyi kuyruğa atmaz | Kalıcı hata birikmesin; kapsam dışı olmak ile sessizce kaybolmak farklı şeyler |
 | D6 | Alış tedarikçisi **`CARI_HESAPLAR`'da normal cari**; telefon tedarikçi kodunu gönderir, ajan varlığını doğrular | Mikro'da ayrı tedarikçi tablosu yok |
 | D7 | Yeni cari yazımı **başka belgeyi beklemez**: cari kartı işi bağımsız yazılır; aynı turda gelen satış/tediye cari yoksa geçici hata ile bekler | Sıralama bağımlılığı kurmadan yarış çözülür |
 | D8 | Idempotency, seri/sıra, hata sınıfları, yuvarlama, log gizliliği, yalnız-yeni-evrak: önceki goal D4/D7/D9/D13/D14/D17 aynen | Tek kural seti |
@@ -100,9 +117,9 @@ silen veya tip değiştiren EF migration, başka oturumun commit edilmemiş değ
 | ID | Görev | Kabul ölçütü |
 |---|---|---|
 | Z0a | Plan dalını main'e al: bu belge + DURUM + `CLAUDE.md` yetki istisnası | CI yeşil |
-| Z0b | `mikro-yazim-referansi.md` **§10 Alış faturası**: CHA başlık (`cha_evrak_tip=0`, tedarikçiye alacak — §1'deki tekil indeks notu ve `EVRAK_ACIKLAMALARI (1, 0)` ipucu), STH kalem (giriş), KDV pointer'ı, iskonto zinciri, açık/kapalı fatura. **Canlı `MikroDB_V15_02`'den okunarak** kanıtlanır; örnek kayıt yoksa Mikro ekranından kesilmiş bir alış faturası istenir (DURUM > Seni Bekleyenler) | Salt okuma sözleşme testi; her satırın kanıt sütunu dolu |
-| Z0c | **§11 Tediye**: CHA kodları (açıklama satırı `(0, 64)` ipucundan yola çıkarak gerçek `cha_evrak_tip`), kasa/banka tarafı, `ODEME_EMIRLERI` gerekiyor mu | Salt okuma testi |
-| Z0d | **§12 Cari kartı**: `CARI_HESAPLAR` zorunlu kolonlar, grup kodu / ödeme planı / vergi dairesi / adres varsayılanları, `_RECid` self-link, mevcut kodun tekrarında Mikro'nun davranışı | Salt okuma testi |
+| Z0b | `mikro-yazim-referansi.md` **§10 Alış faturası**: CHA başlık (`cha_evrak_tip=0` — Fora `enum_cha_evrak_tip.AlisFaturasi` ve §1'deki tekil indeks notu), tedarikçiye alacak, STH kalem (giriş), KDV pointer'ı, iskonto zinciri, açık/kapalı fatura. **Fora'nın alış faturası yazan kodu + canlı `MikroDB_V15_02` kayıtları** karşılaştırılır | Salt okuma sözleşme testi; her satırın kanıt sütunu dolu (Fora / canlı / ikisi) |
+| Z0c | **§11 Tediye**: `cha_evrak_tip=64` (Fora `TediyeMakbuzu`; `EVRAK_ACIKLAMALARI (0, 64)` ipucuyla uyuşuyor — Z0c bunu canlı kayıtla da doğrular), kasa/banka tarafı, `ODEME_EMIRLERI` gerekiyor mu, Fora'nın tediye yazan kodu | Salt okuma testi |
+| Z0d | **§12 Cari kartı**: `CARI_HESAPLAR` zorunlu kolonlar, grup kodu / ödeme planı / vergi dairesi / adres varsayılanları, `_RECid` self-link, mevcut kodun tekrarında Mikro'nun davranışı; Fora'nın cari açan kodu | Salt okuma testi |
 | Z0e | Envanter: bugüne kadar `UNSUPPORTED_DOCUMENT_TYPE` almış işlerin firma/tür/adet dökümü | DURUM'a rapor; Z5a bu listeyi kullanır |
 
 ## Z1 — Sunucu: sözleşme, kabul kuralı, ayarlar
@@ -110,7 +127,7 @@ silen veya tip değiştiren EF migration, başka oturumun commit edilmemiş değ
 | ID | Görev | Kabul ölçütü |
 |---|---|---|
 | Z1a | `docs/mobil-belge-sozlesmesi.md` v3: `disbursement`, `purchase_receipt`, `customer_card` telefon gövdeleri (alan alan, örnekli) | Belge + çevirici testleri aynı örneği kullanır |
-| Z1b | Gider ve sayım ERP'li firmada reddedilir (D5): ingest 409 + anlaşılır kod; telefon mesajı | Uç testi: ERP'li firma reddedilir, ERP'siz firma kabul eder |
+| Z1b | **Kapıyı kapat:** gider, sayım ve stok kartı ERP'li firmada reddedilir (D5): ingest 409 + anlaşılır kod; telefon mesajı ve kuyruğa atmama | Uç testi: ERP'li firma reddedilir, ERP'siz firma kabul eder |
 | Z1c | `erp_write_settings`: alış serisi, tediye serisi, alış deposu, cari kartı varsayılanları (grup kodu, ödeme planı, vergi dairesi, kod öneki) + Portal UI | Uç testi + bUnit; boş bırakılan alan Mikro varsayılanına düşer |
 
 ## Z2 — Çevirici ve komutlar
@@ -128,6 +145,7 @@ silen veya tip değiştiren EF migration, başka oturumun commit edilmemiş değ
 | Z3b | Tediye writer | Canlı test; tahsilatla aynı idempotency ve kapatma kuralları |
 | Z3c | Cari kartı writer + **eski `WriteCustomerCardAsync`'in referansa göre denetimi** | Canlı test; mevcut kodda çakışma → `CUSTOMER_CODE_EXISTS` |
 | Z3d | Ajan yeni türleri tanısın (`AgentWorker` ya da `AgentJobPump` — §2 çakışma notu) | Birim test: tanınmayan tür hâlâ kalıcı reddedilir |
+| Z3e | **Kapıyı aç:** ERP'li firmada `purchase_receipt` ve `customer_card` kabul edilsin — `IngestEndpoints` **ve** `ApprovalService.RejectDocument` birlikte (ikisi aynı kuralı ayrı ayrı uyguluyor). Z3a–Z3d bittikten sonra, aynı sürümde | Uç testi: ERP'li firma kabul eder ve belge writer'a ulaşır; onaydan geçen belge de aynı yolu izler; ERP'siz firma davranışı değişmez |
 
 ## Z4 — Sipariş Cepte
 

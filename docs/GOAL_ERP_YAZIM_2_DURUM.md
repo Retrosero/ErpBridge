@@ -15,7 +15,7 @@ Görev listesi: [GOAL_ERP_YAZIM_2.md](GOAL_ERP_YAZIM_2.md) · Mikro kuralları: 
 | Z0 — Referans ve envanter | 5 | 0 | ⬜ |
 | Z1 — Sunucu: sözleşme, kabul, ayarlar | 3 | 0 | ⬜ |
 | Z2 — Çevirici ve komutlar | 2 | 0 | ⬜ |
-| Z3 — Mikro V15 writer'ları | 4 | 0 | ⬜ |
+| Z3 — Mikro V15 writer'ları | 5 | 0 | ⬜ |
 | Z4 — Sipariş Cepte | 4 | 0 | ⬜ |
 | Z5 — İzleme ve geriye dönük | 2 | 0 | ⬜ |
 | Z6 — Kapanış | 3 | 0 | ⬜ |
@@ -49,7 +49,8 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 | Z3a | Alış faturası writer | ⬜ | | |
 | Z3b | Tediye writer | ⬜ | | |
 | Z3c | Cari kartı writer + eski writer denetimi | ⬜ | | |
-| Z3d | Ajan yeni türleri tanısın | ⬜ | | **Çakışma:** `AgentJobPump` dalı (`faz-51-mobil-siparis-mikro`) bu kodu yeniden yazıyor; başlamadan önce main'e girip girmediğine bakılır |
+| Z3d | Ajan yeni türleri tanısın | ⬜ | | **Çakışma:** `AgentJobPump` dalı (`faz-51-mobil-siparis-mikro`, 2026-09-19'da push edildi) bu kodu yeniden yazıyor; başlamadan önce main'e girip girmediğine bakılır |
+| Z3e | Kapıyı aç: ERP'li firmada `purchase_receipt` + `customer_card` kabul | ⬜ | | Writer'lar hazır olduktan **sonra**; `IngestEndpoints` ve `ApprovalService.RejectDocument` birlikte |
 | Z4a | Telefon: alış gövdesi | ⬜ | | |
 | Z4b | Telefon: yeni cari | ⬜ | | |
 | Z4c | Telefon: tediye tek belge | ⬜ | | |
@@ -64,12 +65,24 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 
 ## Bulgular
 
-### Kalan türler bugün kalıcı hata alıyor (2026-09-19, plan aşaması)
-ERP'li firmada telefonun gönderdiği **tediye, gider, alış ve sayım** belgeleri Mikro'ya ulaşmıyor:
-ingest'te belge türü beyaz listesi yok (her tür iş oluyor), ajan ise yalnız altı türü tanıyor
-(`AgentWorker.GenericDocumentTypes`) ve tanımadığını `UNSUPPORTED_DOCUMENT_TYPE` + `retryable=false` ile
-**kalıcı** reddediyor. Bu goal tediye ve alışı yazar, gider ile sayımı görünür biçimde reddeder (D5),
-geriye dönük birikmiş işleri Z5a temizler.
+### Kalan türler bugün Mikro'ya ulaşmıyor — ama iki farklı sebeple (2026-09-19)
+- **Kuyrukta kalıcı hata birikiyor:** `disbursement` (tediye), `expense`, `purchase` (kasadan alış ödemesi),
+  `stock_count`, `cash_transaction`. Ingest'te belge türü beyaz listesi yok, iş kaydediliyor; ajan yalnız altı
+  türü tanıyor (`AgentWorker.GenericDocumentTypes`) ve tanımadığını `UNSUPPORTED_DOCUMENT_TYPE` +
+  `retryable=false` ile **kalıcı** reddediyor.
+- **Ajana hiç ulaşmıyor:** `purchase_receipt` (satırlı alış) ve `customer_card` (yeni cari) ingest'te 409 ile
+  reddediliyor (`DOCUMENT_REQUIRES_NATIVE_TENANT` / `CARDS_REQUIRE_NATIVE_TENANT`); `ApprovalService.RejectDocument`
+  onaydan geçen belge için aynı kuralı ayrıca uyguluyor.
+
+İkinci maddeyi PR #138 incelemesi (Codex, P1) yakaladı ve plan düzeltildi: kapsamdaki iki türün writer'ı yazılsa
+bile kapı açılmadan hiçbir belge ulaşmaz → **Z3e** eklendi, writer'lardan sonra çalışacak. Aksi hâlde bir sessiz
+hatayı (409) başka bir sessiz hatayla (`UNSUPPORTED_DOCUMENT_TYPE`) değiştirmiş olurduk.
+
+### Fora'dan ilk kanıt (2026-09-19)
+`Fora_Mikro/.decompiled/Core/Fora.Mikro.CariHesapHareket/enum_cha_evrak_tip.cs`: `0 = AlisFaturasi`,
+`1 = TahsilatMakbuzu`, `63 = SatisFaturasi`, **`64 = TediyeMakbuzu`**, `65 = KasaTediyeFisi`. İlk goal'de canlı
+veriyle doğrulanan satış/tahsilat kodlarıyla birebir uyuşuyor; `EVRAK_ACIKLAMALARI`'ndaki tediye `(0, 64)` ipucunu
+da açıklıyor. Z0b/Z0c bunu canlı kayıtla da doğrular.
 
 ---
 
@@ -77,7 +90,6 @@ geriye dönük birikmiş işleri Z5a temizler.
 
 | # | Konu | Neden sen |
 |---|---|---|
-| 1 | Mikro'da **alış faturası örneği**: `MikroDB_V15_02`'de canlı alış faturası yoksa, Mikro ekranından DEMO'ya bir örnek kesilmesi | Z0b kanıtı ekran kaydından gelir; tahminle yazılmaz |
-| 2 | **Tediye** örneği (nakit ve havale) — aynı gerekçe | Z0c |
+| 1 | *(çözüldü 2026-09-19: kullanıcı "veritabanında örnekler var" dedi; ayrıca `Fora_Mikro/` kaynak olarak verildi)* | — |
 | 3 | Yeni cari için **kod öneki / grup kodu / ödeme planı** hangi değerler olmalı | Muhasebe kararı; Z1c bunları Portal ayarına koyar |
 | 4 | Z6a duman testinden sonra Mikro ekranından kontrol | Muhasebeci gözü |
