@@ -11,6 +11,14 @@
 
 <div class="prm-field @(IsChanged ? "prm-field--dirty" : null)">
     <label class="prm-field__label" for="@_id">
+        @if (Selectable && Field.IsOverridden)
+        {
+            @* Offered only where there is a stored row: selecting a parameter that is already at
+               its default would put a no-op in the batch. *@
+            <input type="checkbox" class="form-check-input me-1 prm-field__pick"
+                   checked="@Selected" disabled="@Disabled" @onchange="OnPickAsync"
+                   aria-label="Toplu işlem için seç" />
+        }
         @(Field.Label ?? Field.Name)
         @if (Field.IsOverridden)
         {
@@ -144,6 +152,18 @@
     /// <summary>Raised when the operator asks for the stored row to be removed.</summary>
     [Parameter]
     public EventCallback<ParameterValueDto> Reverted { get; set; }
+
+    /// <summary>Whether the batch-operation checkbox is offered at all.</summary>
+    [Parameter]
+    public bool Selectable { get; set; }
+
+    [Parameter]
+    public bool Selected { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> SelectedChanged { get; set; }
+
+    private Task OnPickAsync(ChangeEventArgs e) => SelectedChanged.InvokeAsync(e.Value is true);
 
     private Task OnRevertAsync() => Reverted.InvokeAsync(Field);
 

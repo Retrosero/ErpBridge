@@ -14,6 +14,9 @@ public static class ParameterChangeSources
 
     /// <summary>Put back to its catalogue default.</summary>
     public const string Reset = "reset";
+
+    /// <summary>Copied from another scope, e.g. one plasiyer set up like another.</summary>
+    public const string Copy = "copy";
 }
 
 /// <summary>

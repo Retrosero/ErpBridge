@@ -36,6 +36,9 @@ public static class AdminParameterEndpoints
         group.MapPost("/values/reset", ResetAsync)
             .Produces<ParameterWriteResponse>()
             .Produces<ApiError>(StatusCodes.Status400BadRequest);
+        group.MapPost("/values/copy", CopyAsync)
+            .Produces<ParameterCopyResponse>()
+            .Produces<ApiError>(StatusCodes.Status400BadRequest);
         group.MapGet("/audit", ListAuditAsync).Produces<ParameterAuditDto[]>();
 
         return routes;
@@ -144,6 +147,92 @@ public static class AdminParameterEndpoints
 
         return JsonResults.Ok(new ParameterWriteResponse(
             await resolver.RevisionAsync(scope, ct), results.ToArray()));
+    }
+
+    /// <summary>
+    /// Copies one scope's settings onto another inside the same company — a new plasiyer set up
+    /// like an existing one.
+    ///
+    /// Replaces by default: afterwards the target holds exactly what the source holds for that
+    /// set, so a parameter the source leaves at its default is put back on the target too.
+    /// "Copy Ali's settings to Veli" that quietly left some of Veli's old deviations in place
+    /// would produce a third configuration nobody chose. <c>merge</c> is there for the operator
+    /// who means "also give Veli these", and says so.
+    /// </summary>
+    private static async Task<IResult> CopyAsync(
+        [FromBody] ParameterCopyRequest body,
+        HttpContext http,
+        CentralApiDbContext db,
+        ParameterResolver resolver,
+        CancellationToken ct)
+    {
+        if (body is null || body.TenantId == Guid.Empty || body.ErpCompanyId == Guid.Empty
+            || string.IsNullOrWhiteSpace(body.CatalogMethod))
+        {
+            return Invalid("tenantId, erpCompanyId and catalogMethod are required.");
+        }
+
+        var from = new ParameterScope(
+            body.TenantId, body.ErpCompanyId, body.FromMobileUserId, body.FromScope1 ?? "", body.FromScope2 ?? "");
+        var to = new ParameterScope(
+            body.TenantId, body.ErpCompanyId, body.ToMobileUserId, body.ToScope1 ?? "", body.ToScope2 ?? "");
+
+        if (from == to)
+        {
+            return Invalid("The source and the target are the same scope.");
+        }
+
+        var entryIds = await db.ParameterCatalog.AsNoTracking()
+            .Where(e => e.CatalogMethod == body.CatalogMethod)
+            .Select(e => e.Id)
+            .ToListAsync(ct);
+
+        if (entryIds.Count == 0)
+        {
+            return Invalid($"No catalogue set named '{body.CatalogMethod}'.");
+        }
+
+        var source = (await resolver.OverridesAsync(from, ct))
+            .Where(v => entryIds.Contains(v.ParameterCatalogEntryId))
+            .ToDictionary(v => v.ParameterCatalogEntryId, v => v.Value);
+
+        var by = PanelContext(http) with { Source = ParameterChangeSources.Copy };
+        var written = 0;
+        var cleared = 0;
+
+        try
+        {
+            foreach (var (entryId, value) in source)
+            {
+                if (await resolver.SetAsync(to, entryId, value, by, ct) != ParameterResolver.WriteOutcome.Unchanged)
+                {
+                    written++;
+                }
+            }
+
+            if (!body.Merge)
+            {
+                var stale = (await resolver.OverridesAsync(to, ct))
+                    .Where(v => entryIds.Contains(v.ParameterCatalogEntryId)
+                                && !source.ContainsKey(v.ParameterCatalogEntryId))
+                    .Select(v => v.ParameterCatalogEntryId)
+                    .ToList();
+
+                foreach (var entryId in stale)
+                {
+                    await resolver.ResetAsync(to, entryId, by, ct);
+                    cleared++;
+                }
+            }
+        }
+        catch (ParameterResolver.ScopeMismatchException ex)
+        {
+            return JsonResults.Status(StatusCodes.Status400BadRequest,
+                new ApiError { ErrorCode = "PARAMETER_SCOPE_MISMATCH", Message = ex.Message });
+        }
+
+        return JsonResults.Ok(new ParameterCopyResponse(
+            source.Count, written, cleared, await resolver.RevisionAsync(to, ct)));
     }
 
     /// <summary>Puts parameters back to their catalogue defaults by removing the stored rows.</summary>
@@ -373,6 +462,27 @@ public static class AdminParameterEndpoints
         string? Scope1,
         string? Scope2,
         IReadOnlyList<Guid> CatalogEntryIds);
+
+    /// <param name="Merge">
+    /// False (the default) leaves the target holding exactly what the source holds. True adds the
+    /// source's settings without removing the target's own.
+    /// </param>
+    public sealed record ParameterCopyRequest(
+        Guid TenantId,
+        Guid ErpCompanyId,
+        string CatalogMethod,
+        Guid? FromMobileUserId,
+        string? FromScope1,
+        string? FromScope2,
+        Guid? ToMobileUserId,
+        string? ToScope1,
+        string? ToScope2,
+        bool Merge);
+
+    /// <param name="Copied">Settings the source had.</param>
+    /// <param name="Written">Of those, the ones that actually moved the target.</param>
+    /// <param name="Cleared">Target settings removed because the source did not have them.</param>
+    public sealed record ParameterCopyResponse(int Copied, int Written, int Cleared, long Revision);
 
     /// <param name="Outcome"><c>Unchanged</c>, <c>Inserted</c>, <c>Updated</c> or <c>Deleted</c>.</param>
     public sealed record ParameterWriteResultDto(Guid CatalogEntryId, string Outcome);

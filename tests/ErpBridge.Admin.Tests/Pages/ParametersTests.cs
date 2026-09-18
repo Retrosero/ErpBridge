@@ -356,6 +356,112 @@ public sealed class ParametersTests : BunitContext
         cut.Markup.Should().Contain("Evrak girişi");
     }
 
+    [Fact]
+    public void Copying_names_the_source_the_target_and_the_set()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(58, "DefaultKaynakDepoNo", "Parametreler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll("#prm-copy-from").Count == 1);
+
+        // The open scope's own user is excluded: copying a scope onto itself means nothing.
+        cut.FindAll("#prm-copy-from option").Select(o => o.GetAttribute("value"))
+            .Should().NotContain(state.UserId.ToString());
+
+        cut.Find("#prm-copy-from").Change(state.OtherUserId.ToString());
+        cut.Find("#prm-copy").Click();
+
+        cut.WaitForState(() => state.LastCopyBody is not null);
+        state.LastCopyBody.Should().Contain("catalogMethod").And.Contain($"\"toMobileUserId\":\"{state.UserId}\"");
+        cut.Markup.Should().Contain("kendi ayarı kaldırıldı", "a replace is not the same as an add");
+    }
+
+    [Fact]
+    public void Only_a_changed_field_can_be_picked_for_a_batch()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 0,
+            Overridden(58, "DefaultKaynakDepoNo", "Parametreler"),
+            Tabbed(89, "Goster_AnaMenu_Tahsilat", "Parametreler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll(".prm-field").Count == 2);
+
+        // Selecting a parameter already at its default would put a no-op in the batch.
+        cut.FindAll(".prm-field__pick").Should().ContainSingle();
+
+        cut.Find(".prm-field__pick").Change(true);
+        cut.WaitForState(() => !cut.Find("#prm-reset-picked").HasAttribute("disabled"));
+        cut.Find("#prm-reset-picked").Click();
+
+        cut.WaitForState(() => state.LastResetBody is not null);
+        state.LastResetBody.Should().Contain("catalogEntryIds");
+    }
+
+    [Fact]
+    public void Export_carries_only_the_deviations()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(
+            revision: 0,
+            Overridden(58, "DefaultKaynakDepoNo", "Parametreler", value: "3"),
+            Tabbed(89, "Goster_AnaMenu_Tahsilat", "Parametreler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll("#prm-export").Count == 1);
+        var href = Uri.UnescapeDataString(cut.Find("#prm-export").GetAttribute("href") ?? "");
+
+        // A parameter at its default has no value to carry, which is why the database stores none.
+        href.Should().Contain("DefaultKaynakDepoNo").And.NotContain("Goster_AnaMenu_Tahsilat");
+    }
+
+    [Fact]
+    public void Import_matches_by_Mikro_id_and_reports_what_it_could_not_place()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(58, "DefaultKaynakDepoNo", "Parametreler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll("#prm-import").Count == 1);
+
+        // 9999 is not in this set. Matching by the catalogue entry's own id would match nothing at
+        // all, because that id belongs to the installation the file came from.
+        cut.Find("#prm-import").Change(
+            "{\"values\":[{\"parametreId\":58,\"value\":\"3\"},{\"parametreId\":9999,\"value\":\"x\"}]}");
+        cut.Find("#prm-import-apply").Click();
+
+        cut.WaitForState(() => state.LastWriteBody is not null);
+        state.LastWriteBody.Should().Contain("\"value\":\"3\"");
+        cut.Markup.Should().Contain("1 satır bu kümede tanınmadığı için atlandı");
+    }
+
+    [Fact]
+    public void Import_of_something_that_is_not_json_says_so_rather_than_failing_silently()
+    {
+        var state = NewState();
+        state.ValuesJson = Values(revision: 0, Tabbed(58, "DefaultKaynakDepoNo", "Parametreler"));
+
+        var cut = Render<Parameters>();
+        LoadAkilliAsync(cut, state);
+
+        cut.WaitForState(() => cut.FindAll("#prm-import").Count == 1);
+        cut.Find("#prm-import").Change("bu json degil");
+        cut.Find("#prm-import-apply").Click();
+
+        cut.WaitForState(() => cut.FindAll(".admin-state--error").Count > 0);
+        cut.Find(".admin-state--error").TextContent.Should().Contain("geçerli JSON değil");
+    }
+
     // ---- Test helpers ----
 
     private static void LoadAkilliAsync(IRenderedComponent<Parameters> cut, PageState state)
@@ -410,6 +516,14 @@ public sealed class ParametersTests : BunitContext
         Editor = "text", Value = value, DefaultValue = "", TabPath = tabPath, IsImplemented = true,
     };
 
+    private static ParameterValueDto Overridden(
+        int id, string name, string tabPath, string value = "3") => new()
+    {
+        CatalogEntryId = Guid.NewGuid(), ParametreId = id, Name = name, Label = name,
+        Editor = "text", Value = value, DefaultValue = "1", TabPath = tabPath,
+        IsOverridden = true, IsImplemented = true,
+    };
+
     private static string Values(long revision, params ParameterValueDto[] items) => Json(new ParameterValuesResponseDto
     {
         CatalogMethod = "MobilKullanici",
@@ -423,6 +537,7 @@ public sealed class ParametersTests : BunitContext
         public Guid TenantId { get; } = Guid.NewGuid();
         public Guid CompanyId { get; } = Guid.NewGuid();
         public Guid UserId { get; } = Guid.NewGuid();
+        public Guid OtherUserId { get; } = Guid.NewGuid();
 
         public string SetsJson { get; set; } = "[]";
         public string? ValuesJson { get; set; }
@@ -430,6 +545,8 @@ public sealed class ParametersTests : BunitContext
         public string? LastValuesUrl { get; set; }
         public string? LastWriteBody { get; set; }
         public string? WriteResponseJson { get; set; }
+        public string? LastCopyBody { get; set; }
+        public string? LastResetBody { get; set; }
     }
 
     private sealed class PageHandler : HttpMessageHandler
@@ -471,6 +588,7 @@ public sealed class ParametersTests : BunitContext
                     Users =
                     [
                         new MobileUserDto { Id = _state.UserId, Username = "aktif", FullName = "Aktif Plasiyer", IsActive = true },
+                        new MobileUserDto { Id = _state.OtherUserId, Username = "ikinci", FullName = "İkinci Plasiyer", IsActive = true },
                         new MobileUserDto { Id = Guid.NewGuid(), Username = "ayrilmis", FullName = "Ayrılmış", IsActive = false },
                     ],
                 }));
@@ -479,6 +597,18 @@ public sealed class ParametersTests : BunitContext
             if (path.EndsWith("/admin/parameters/sets", StringComparison.Ordinal))
             {
                 return Ok(_state.SetsJson);
+            }
+
+            if (path.EndsWith("/admin/parameters/values/copy", StringComparison.Ordinal))
+            {
+                _state.LastCopyBody = request.Content?.ReadAsStringAsync(cancellationToken).Result;
+                return Ok(Json(new ParameterCopyResponseDto { Copied = 2, Written = 2, Cleared = 1, Revision = 5 }));
+            }
+
+            if (path.EndsWith("/admin/parameters/values/reset", StringComparison.Ordinal))
+            {
+                _state.LastResetBody = request.Content?.ReadAsStringAsync(cancellationToken).Result;
+                return Ok(Json(new ParameterWriteResponseDto { Revision = 6 }));
             }
 
             if (path.EndsWith("/admin/parameters/values", StringComparison.Ordinal))
