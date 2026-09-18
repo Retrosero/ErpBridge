@@ -935,6 +935,16 @@ public sealed class CentralApiClient
             () => _http.GetAsync($"/api/v1/admin/parameters/values?{string.Join("&", qs)}", ct), ct);
     }
 
+    /// <summary>
+    /// Writes a batch of parameter values. A value equal to its default removes the stored row
+    /// rather than writing one, which is exactly what Fora does, so the outcome per change says
+    /// which of the four branches was taken.
+    /// </summary>
+    public Task<ParameterWriteResponseDto> SaveParameterValuesAsync(
+        ParameterWriteRequestDto body, CancellationToken ct = default) =>
+        SendAsync<ParameterWriteResponseDto>(
+            () => _http.PutAsJsonAsync("/api/v1/admin/parameters/values", body, ct), ct);
+
     private static string WithTenant(string path, Guid? tenantId, string? extraQuery = null)
     {
         var query = new List<string>();
@@ -1016,6 +1026,37 @@ public sealed class ParameterValueDto
 
     [JsonPropertyName("isDeprecated")] public bool IsDeprecated { get; set; }
     [JsonPropertyName("overriddenAtUtc")] public DateTimeOffset? OverriddenAtUtc { get; set; }
+}
+
+/// <summary>A batch of changes to one scope.</summary>
+public sealed class ParameterWriteRequestDto
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("erpCompanyId")] public Guid ErpCompanyId { get; set; }
+    [JsonPropertyName("mobileUserId")] public Guid? MobileUserId { get; set; }
+    [JsonPropertyName("scope1")] public string? Scope1 { get; set; }
+    [JsonPropertyName("scope2")] public string? Scope2 { get; set; }
+    [JsonPropertyName("changes")] public ParameterChangeDto[] Changes { get; set; } = Array.Empty<ParameterChangeDto>();
+}
+
+/// <summary>One change. The parameter is named by its catalogue entry, never by name.</summary>
+public sealed class ParameterChangeDto
+{
+    [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
+    [JsonPropertyName("value")] public string? Value { get; set; }
+}
+
+public sealed class ParameterWriteResponseDto
+{
+    [JsonPropertyName("revision")] public long Revision { get; set; }
+    [JsonPropertyName("results")] public ParameterWriteResultDto[] Results { get; set; } = Array.Empty<ParameterWriteResultDto>();
+}
+
+/// <summary><c>Unchanged</c>, <c>Inserted</c>, <c>Updated</c> or <c>Deleted</c>.</summary>
+public sealed class ParameterWriteResultDto
+{
+    [JsonPropertyName("catalogEntryId")] public Guid CatalogEntryId { get; set; }
+    [JsonPropertyName("outcome")] public string Outcome { get; set; } = string.Empty;
 }
 
 /// <summary>Scope kinds as the catalogue records them.</summary>

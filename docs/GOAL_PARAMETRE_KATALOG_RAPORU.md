@@ -124,6 +124,12 @@ gerekmiyor.
 (`comarchedi-genel.Sifre`, `..._SqlSifre` — Fora bunları **maskelemiyor**). Hangi sinyalden
 geldiği `secretSource` ile kayıtlı.
 
+**`color` (6) renk değil, renk *kanalı* — P2c'de fark edildi.** Fora `ColorPickEdit` kullanıyor
+ama her parametre **tek bir 0–255 kanalı** saklıyor: `SiparisKarsilamaCariColorRed/Green/Blue`
+üçü birlikte bir rengi veriyor (varsayılanlar `85`, `125`, `172` gibi). Panelde renk seçici
+çizmek `#aabbcc` yazardı ve telefon o alanı sayı olarak okuyor; doğrusu kanal başına 0–255
+sayı kutusu. Altı alanın hepsi bu kalıpta.
+
 **Yine de D12 için bu yeterli değil.** `akilli` tarafında kasa kodu, depo no, fiyat listesi no,
 ödeme planı gibi alanlar Fora'da **düz `TextEdit`/`SpinEdit`** olarak duruyor — Fora onları elle
 yazdırıyor, hiçbir listeye bağlamıyor, dolayısıyla çıkarılacak sinyal yok. Örnek:

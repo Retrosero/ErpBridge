@@ -59,3 +59,59 @@
         max-height: 20rem;
     }
 }
+
+/* One field per row: label, editor, then what it is and what it would fall back to. */
+.prm-fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.prm-field {
+    display: grid;
+    grid-template-columns: minmax(12rem, 22rem) minmax(10rem, 20rem) 1fr;
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.4rem;
+}
+
+.prm-field:nth-child(odd) {
+    background: var(--bs-tertiary-bg, #f8f9fa);
+}
+
+/* An unsaved edit has to be visible: the operator may be several tabs away when they save. */
+.prm-field--dirty {
+    box-shadow: inset 0.2rem 0 0 var(--bs-warning, #ffc107);
+}
+
+.prm-field__label {
+    font-size: 0.92rem;
+}
+
+.prm-field__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    align-items: baseline;
+}
+
+.prm-savebar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 0.5rem 0;
+    background: var(--bs-body-bg, #fff);
+}
+
+@media (max-width: 900px) {
+    .prm-field {
+        grid-template-columns: 1fr;
+    }
+}
