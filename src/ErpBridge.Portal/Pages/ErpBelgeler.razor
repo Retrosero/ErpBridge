@@ -15,7 +15,7 @@ else if (!IsErpCompany)
 }
 else
 {
-    <PageHeader Title="ERP Belgeleri" Eyebrow="Muhasebe" Subtitle="Telefondan gelen satış, iade ve tahsilatın ERP'ye yazılıp yazılmadığı" Busy="Busy" />
+    <PageHeader Title="ERP Belgeleri" Eyebrow="Muhasebe" Subtitle="Telefondan gelen belgelerin ERP'ye yazılıp yazılmadığı" Busy="Busy" />
 
     @if (Notice is not null)
     {
@@ -72,8 +72,10 @@ else
         else
         {
             <MudPaper Outlined="true" Class="panel panel--table">
+                @* Tek isaretleme: genis ekranda tablo, telefonda CSS ile kart (data-label degerleri kart satir
+                   basliklari olur). Iki ayri gorunum yazmak, ayni veriyi iki yerde baglamak demek olurdu. *@
                 <div class="table-scroll">
-                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="erp-documents">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table data-table--cards" id="erp-documents">
                         <thead>
                             <tr>
                                 <th>Tarih</th>
@@ -91,34 +93,41 @@ else
                             @foreach (var item in _result.Items)
                             {
                                 <tr data-job="@item.JobId" data-state="@item.State">
-                                    <td>@Fmt.Time(item.EnqueuedAtUtc)</td>
-                                    <td>@TypeLabel(item.DocumentType)</td>
-                                    <td>@(item.UserName ?? "—")</td>
-                                    <td>
+                                    <td data-label="Tarih">@Fmt.Time(item.EnqueuedAtUtc)</td>
+                                    <td data-label="Tür">
+                                        <div class="cell-title">@TypeLabel(item.DocumentType)</div>
+                                        @if (!KnownTypes.Contains(item.DocumentType))
+                                        {
+                                            @* Tanimadigimiz tur: kodu destek icin dursun, ekranda Turkce ad gorunsun. *@
+                                            <div class="cell-sub">@item.DocumentType</div>
+                                        }
+                                    </td>
+                                    <td data-label="Gönderen">@(item.UserName ?? "—")</td>
+                                    <td data-label="Cari">
                                         <div class="cell-title">@(item.CustomerName ?? item.CustomerCode ?? "—")</div>
                                         @if (item.CustomerName is not null && item.CustomerCode is not null)
                                         {
                                             <div class="cell-sub">@item.CustomerCode</div>
                                         }
                                     </td>
-                                    <td class="num">@(item.Amount is { } amount ? Fmt.Money(amount) : "—")</td>
-                                    <td><span class="badge @StateBadge(item.State)">@StateLabel(item.State)</span></td>
-                                    <td class="erp-result">
+                                    <td class="num" data-label="Tutar">@(item.Amount is { } amount ? Fmt.Money(amount) : "—")</td>
+                                    <td data-label="Durum"><span class="badge @StateBadge(item.State)">@StateLabel(item.State)</span></td>
+                                    <td class="erp-result" data-label="ERP no / neden">
                                         @if (item.State == "written")
                                         {
                                             <span class="cell-title">@(item.ErpDocumentNo ?? "—")</span>
                                         }
-                                        else if (item.Message is not null)
+                                        else if (Reason(item) is { } reason)
                                         {
-                                            <span class="cell-sub">@item.Message</span>
+                                            <span class="cell-sub">@reason</span>
                                         }
                                         @if (item.NextAttemptAtUtc is { } next)
                                         {
                                             <div class="cell-sub">Sonraki deneme @Fmt.Time(next)</div>
                                         }
                                     </td>
-                                    <td class="num">@item.Attempt</td>
-                                    <td>
+                                    <td class="num" data-label="Deneme">@item.Attempt</td>
+                                    <td class="erp-actions">
                                         @if (item.CanRetry)
                                         {
                                             <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" Class="erp-retry" OnClick="() => RetryAsync(item)">Yeniden dene</MudButton>
@@ -149,7 +158,11 @@ else
         [("", "Tümü"), ("failed", "Hata"), ("retrying", "Yeniden denenecek"), ("pending", "Bekliyor"), ("written", "Yazıldı")];
 
     private static readonly (string Value, string Label)[] Types =
-        [("", "Tümü"), ("sales_order", "Satış"), ("sales_return", "İade"), ("collection", "Tahsilat")];
+    [
+        ("", "Tümü"), ("sales_order", "Satış"), ("sales_return", "Satış iadesi"), ("collection", "Tahsilat"),
+        ("disbursement", "Tediye"), ("purchase_receipt", "Alış faturası"), ("purchase", "Alış ödemesi"),
+        ("expense", "Gider"), ("stock_count", "Sayım"), ("customer_card", "Yeni cari"),
+    ];
 
     private DateOnly _from = Fmt.Today().AddDays(-6);
     private DateOnly _to = Fmt.Today();
@@ -195,13 +208,53 @@ else
         });
     }
 
-    private static string TypeLabel(string type) => type switch
+    /// <summary>
+    /// Every document type the phone can send, in Turkish. The page used to fall back to the raw key, so an
+    /// operator saw <c>disbursement</c> in a Turkish screen; an unknown type now reads "Diğer belge" and keeps
+    /// the key on a second line for support.
+    /// </summary>
+    private static readonly Dictionary<string, string> TypeNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "sales_order" => "Satış",
-        "sales_return" => "İade",
-        "collection" => "Tahsilat",
-        _ => type,
+        ["sales_order"] = "Satış",
+        ["sales_return"] = "Satış iadesi",
+        ["collection"] = "Tahsilat",
+        ["disbursement"] = "Tediye",
+        ["purchase"] = "Alış ödemesi",
+        ["purchase_receipt"] = "Alış faturası",
+        ["expense"] = "Gider",
+        ["stock_count"] = "Sayım",
+        ["cash_transaction"] = "Kasa hareketi",
+        ["customer_card"] = "Yeni cari",
+        ["stock_card"] = "Yeni stok kartı",
+        ["invoice"] = "Fatura",
+        ["dispatch_note"] = "İrsaliye",
+        ["payment_order"] = "Ödeme emri",
+        ["approval_request"] = "Onay talebi",
     };
+
+    private static readonly HashSet<string> KnownTypes = new(TypeNames.Keys, StringComparer.OrdinalIgnoreCase);
+
+    private static string TypeLabel(string type) =>
+        TypeNames.TryGetValue(type, out var name) ? name : "Diğer belge";
+
+    /// <summary>
+    /// What the operator reads when a document could not be written. Our own error catalogue is Turkish, but a
+    /// message can still arrive in English from a code path that predates it (an agent that does not know the
+    /// document type says so in English). For codes we know, the sentence is ours.
+    /// </summary>
+    private static readonly Dictionary<string, string> ErrorReasons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["UNSUPPORTED_DOCUMENT_TYPE"] = "Bu belge türünü yazacak bir aktarım yok; ajanın güncellenmesi gerekiyor.",
+        ["UNSUPPORTED_ERP"] = "Ajan bu ERP türü için yapılandırılmamış.",
+        ["ERP_UNAVAILABLE"] = "ERP'ye ulaşılamadı; yeniden denenecek.",
+        ["INVALID_PAYLOAD_SHAPE"] = "Belgenin biçimi ajanın beklediğiyle uyuşmuyor.",
+        ["STALE_LEASE"] = "Belge başka bir ajan turunda yazıldı.",
+    };
+
+    private static string? Reason(ErpDocumentDto item) =>
+        item.ErrorCode is { Length: > 0 } code && ErrorReasons.TryGetValue(code, out var reason)
+            ? reason
+            : item.Message;
 
     private static string StateLabel(string state) => state switch
     {

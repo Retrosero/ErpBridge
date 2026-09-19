@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Windows;
 using ErpBridge.Agent.UI.DependencyInjection;
 using ErpBridge.Agent.UI.Services;
@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using ErpBridge.Core.Configuration;
 
 namespace ErpBridge.Agent.UI;
 
@@ -63,6 +64,7 @@ public partial class App : Application
     private IDesktopSignalService? _signalService;
     private DesktopHeartbeatService? _heartbeatService;
     private DesktopBackgroundSyncService? _backgroundSync;
+    private DesktopJobPumpService? _jobPump;
     private IDesktopClockService? _clockService;
     private System.Windows.Threading.DispatcherTimer? _heartbeatTimer;
     private DateTime _lastHeartbeatNotification = DateTime.MinValue;
@@ -112,8 +114,7 @@ public partial class App : Application
 
         var configuration = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-            .AddJsonFile("appsettings.example.json", optional: true, reloadOnChange: false)
+            .AddAgentJsonFiles()
             .AddEnvironmentVariables(prefix: "ERPBridge_")
             .Add(liveSource)
             .Build();
@@ -261,6 +262,21 @@ public partial class App : Application
                 "Failed to start background sync. The UI still works but ERP changes will only travel when the operator syncs manually.");
             _ = ReportExceptionAsync(ex, "Background sync startup");
         }
+
+        // The other direction: documents sent from the phone. Until this existed only the Windows
+        // Service leased them, so on a machine running just the tray app every order stayed pending
+        // on the server and never reached the ERP.
+        try
+        {
+            _jobPump = _services.GetRequiredService<DesktopJobPumpService>();
+            _jobPump.Start();
+        }
+        catch (Exception ex)
+        {
+            startupLogger.LogError(ex,
+                "Failed to start the document writer. The UI still works but documents sent from the phone will not reach the ERP.");
+            _ = ReportExceptionAsync(ex, "Job pump startup");
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -294,6 +310,20 @@ public partial class App : Application
             }
             _backgroundSync.Dispose();
             _backgroundSync = null;
+        }
+
+        if (_jobPump is not null)
+        {
+            try
+            {
+                _jobPump.StopAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Job pump stop failed: {ex.Message}");
+            }
+            _jobPump.Dispose();
+            _jobPump = null;
         }
 
         if (_signalService is not null)
@@ -624,8 +654,7 @@ public partial class App : Application
     {
         var bootstrapConfig = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddJsonFile("appsettings.example.json", optional: true)
+            .AddAgentJsonFiles(reloadOnChange: false)
             .AddEnvironmentVariables(prefix: "ERPBridge_")
             .Build();
 

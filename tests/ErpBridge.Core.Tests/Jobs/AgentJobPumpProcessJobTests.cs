@@ -1,5 +1,3 @@
-using ErpBridge.Agent.Service.Configuration;
-using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Jobs;
 using ErpBridge.Core.Stores;
@@ -8,7 +6,6 @@ using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Sync;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 
 // ErpType has a single definition in ErpBridge.Erp.Abstractions — AgentConfig
@@ -16,10 +13,10 @@ using Moq;
 using CoreErpType = ErpBridge.Erp.Abstractions.ErpType;
 using AdapterErpType = ErpBridge.Erp.Abstractions.ErpType;
 
-namespace ErpBridge.Agent.Service.Tests.Workers;
+namespace ErpBridge.Core.Tests.Jobs;
 
 /// <summary>
-/// Unit tests for <see cref="AgentWorker.ProcessJobAsync"/>. The per-job path
+/// Unit tests for <see cref="AgentJobPump.ProcessJobAsync"/>. The per-job path
 /// is the surface area of Phase 6: deserialize → adapter write → ack. The
 /// tests cover the four scenarios called out in the task brief:
 ///   1) sales_order + adapter returns Ok → ack "succeeded" with ERP identifiers.
@@ -30,7 +27,7 @@ namespace ErpBridge.Agent.Service.Tests.Workers;
 /// The local SQLite enqueue path is also exercised — it MUST be invoked even
 /// when the ERP write fails so an audit trail survives a Mikro outage.
 /// </summary>
-public class AgentWorkerProcessJobTests
+public class AgentJobPumpProcessJobTests
 {
     private const string TenantId = "tenant-1";
     private const string JobId = "job-123";
@@ -98,7 +95,7 @@ public class AgentWorkerProcessJobTests
     /// <c>ProcessJobAsync</c> is internal (InternalsVisibleTo is declared in
     /// the Agent.Service csproj).
     /// </summary>
-    private static (AgentWorker Worker,
+    private static (AgentJobPump Pump,
                     Mock<IRemoteApiClient> RemoteApi,
                     Mock<ILocalQueueStore> LocalQueue,
                     Mock<IAgentConfigStore> ConfigStore,
@@ -130,15 +127,14 @@ public class AgentWorkerProcessJobTests
             .Returns(Task.CompletedTask);
         configureLocal?.Invoke(localQueue);
 
-        var worker = new AgentWorker(
+        var worker = new AgentJobPump(
             remoteApi.Object,
             localQueue.Object,
             configStore.Object,
             adapterFactory.Object,
             new SalesOrderPayloadDeserializer(),
-            Options.Create(new AgentServiceOptions()),
             new ErpBridge.Core.Sync.AgentRunStatus(),
-            NullLogger<AgentWorker>.Instance);
+            NullLogger<AgentJobPump>.Instance);
 
         return (worker, remoteApi, localQueue, configStore, adapterFactory, adapter);
     }

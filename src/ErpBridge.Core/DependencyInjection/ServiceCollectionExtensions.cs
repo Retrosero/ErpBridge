@@ -50,6 +50,15 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ILogger<ErpChangeLogSyncService>>(sp =>
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<ErpChangeLogSyncService>());
 
+        // The inbound half: lease pending documents and write them to the ERP. Registered here, not
+        // in the Windows service, because the desktop agent runs the very same pump — a customer
+        // running only the tray app otherwise had nothing fetching jobs, so every document the phone
+        // sent stayed pending on the server.
+        services.TryAddSingleton<ErpBridge.Core.Jobs.SalesOrderPayloadDeserializer>();
+        services.TryAddSingleton<ErpBridge.Core.Jobs.AgentJobPump>();
+        services.TryAddSingleton<ILogger<ErpBridge.Core.Jobs.AgentJobPump>>(sp =>
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<ErpBridge.Core.Jobs.AgentJobPump>());
+
         return services;
     }
 }

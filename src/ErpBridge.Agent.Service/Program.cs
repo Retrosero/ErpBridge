@@ -1,8 +1,8 @@
-using ErpBridge.Agent.Service.Configuration;
+﻿using ErpBridge.Agent.Service.Configuration;
 using ErpBridge.Agent.Service.Configuration.Reconciliation;
 using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core;
-using ErpBridge.Core.Jobs;
+using ErpBridge.Core.Configuration;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Mikro.DependencyInjection;
 using ErpBridge.LocalStore;
@@ -46,9 +46,9 @@ public static class Program
             })
             .ConfigureAppConfiguration((ctx, cfg) =>
             {
-                cfg.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                cfg.AddJsonFile($"appsettings.{ctx.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true);
-                cfg.AddJsonFile("appsettings.example.json", optional: true, reloadOnChange: false);
+                cfg.AddAgentJsonFiles(
+                    operatorFileOptional: false,
+                    environmentName: ctx.HostingEnvironment.EnvironmentName);
                 cfg.AddEnvironmentVariables(prefix: "ERPBridge_");
             })
             .ConfigureServices((ctx, services) =>
@@ -66,14 +66,11 @@ public static class Program
                     .AddOptions<ReconciliationOptions>()
                     .Bind(ctx.Configuration.GetSection(ReconciliationOptions.SectionName));
 
+                // AddErpBridgeCore brings the job pump (and its stateless payload deserializer) with
+                // it, so the desktop agent builds the same inbound path this service does.
                 services.AddErpBridgeCore();
                 services.AddErpBridgeLocalStore(ctx.Configuration);
                 services.AddErpBridgeRemoteApi(ctx.Configuration);
-
-                // SalesOrder payload deserializer is stateless and safe as a
-                // singleton. Lives in Core so the AgentWorker can validate the
-                // wire shape BEFORE handing it to the adapter.
-                services.AddSingleton<SalesOrderPayloadDeserializer>();
 
                 // Log Merkezi L3c: the agent's own diagnostic events queue in SQLite and go to the Log Centre
                 // with the heartbeat. The reporter is what the workers call; nothing else writes the queue.

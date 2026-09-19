@@ -55,13 +55,15 @@ ErpBridge/src/
 ├── ErpBridge.Erp.Sql/          # SqlServerShadowTableChangeLog (vendor bilgisi SIFIR),
 │                               #   ShadowTableDdl, ShadowCursor, KeyKindProjection,
 │                               #   ErpFieldText, SqlServerFieldWidthProvider
-├── ErpBridge.Core/             # AgentConfig, ErpChangeLogSyncService, BootstrapSyncService
+├── ErpBridge.Core/             # AgentConfig, ErpChangeLogSyncService, BootstrapSyncService,
+│                               #   AgentSyncLoop (giden) + AgentJobPump (gelen) — iki host ortak
 ├── ErpBridge.LocalStore/       # SQLite migrations, IMappingStore, SqliteErpSyncCursorStore, DPAPI
 ├── ErpBridge.RemoteApi/        # HttpRemoteApiClient, Polly v8, Idempotency-Key
 ├── ErpBridge.Erp.Mikro/        # MikroAdapter, 7 Writer, V15/V16 katalogları, Mikro trigger installer
 ├── ErpBridge.Erp.Logo/         # LogoAdapter iskeleti (Faz 21 — dikiş doğrulaması)
 ├── ErpBridge.Agent.Service/    # Windows Service: AgentWorker, BootstrapWorker, HeartbeatWorker
-├── ErpBridge.Agent.UI/         # WPF Ayar Paneli
+├── ErpBridge.Agent.UI/         # WPF Ayar Paneli + tepsi ajanı: DesktopBackgroundSyncService,
+│                               #   DesktopJobPumpService (Service kurulu olmasa da köprü çalışır)
 ├── ErpBridge.CentralApi/       # ASP.NET Core Web API, PostgreSQL, JWT & Multi-Tenant
 ├── ErpBridge.Admin/            # Blazor Server operatör konsolu (ErpBridge ekibi)
 └── ErpBridge.Portal/           # Blazor Server firma yönetici paneli (Faz 42; firmanın admin/yöneticisi)

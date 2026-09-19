@@ -81,7 +81,14 @@ public sealed class AgentConfigMapper : IAgentConfigToErpSettingsMapper
         // CompanyNo / BranchNo / WarehouseNo are validated at this seam —
         // out-of-range values would also be caught downstream by the lookup
         // SQL, but we surface a clear "missing field" here.
-        if (companyNo <= 0) return null;
+        //
+        // 0 is a valid company: Mikro numbers the first one 0 (FIRMALAR.fir_sirano), and every
+        // database on hand — MikroDB_V15_DEMO, MikroDB_V15_02, the live MikroDB_V16_03 — has its
+        // single company at 0 with all movement rows carrying firma 0. The old "<= 0" rule made
+        // the mapper return null for the only value those installations could supply, so the
+        // adapter never connected at all. Depots do start at 1 (DEPOLAR.dep_no), so warehouse
+        // keeps its stricter rule.
+        if (companyNo < 0) return null;
         if (branchNo < 0) return null;
         if (warehouseNo <= 0) return null;
 

@@ -69,6 +69,27 @@ public sealed class AgentServiceOptions
     public bool TriggerInstallOnStartup { get; set; } = true;
 
     /// <summary>
+    /// How often the agent leases pending documents from the central API and writes them to the
+    /// ERP (<see cref="ErpBridge.Core.Jobs.AgentJobPump"/>). Default: 30 seconds. This is the
+    /// inbound half of the bridge; <see cref="BootstrapIntervalSeconds"/> drives the outbound one.
+    /// </summary>
+    public int JobPollIntervalSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Initial delay after the host starts before the first job poll, so the process can finish
+    /// booting (config load, token, ERP connection pool warmup) first. Default: 5 s.
+    /// </summary>
+    public int JobPollFirstRunDelaySeconds { get; set; } = 5;
+
+    /// <summary>
+    /// Project the job-cadence subset onto <see cref="ErpBridge.Core.Jobs.AgentJobPumpOptions"/>,
+    /// which both hosts (Windows Service and WPF agent) drive.
+    /// </summary>
+    public ErpBridge.Core.Jobs.AgentJobPumpOptions ToJobPumpOptions() => new(
+        PollIntervalSeconds: JobPollIntervalSeconds,
+        FirstRunDelaySeconds: JobPollFirstRunDelaySeconds);
+
+    /// <summary>
     /// Project the sync-cadence subset onto <see cref="AgentSyncLoopOptions"/>,
     /// which is what both hosts (Windows Service and WPF agent) actually drive.
     /// </summary>

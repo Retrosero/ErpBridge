@@ -160,7 +160,7 @@
 
                             <TextBox Grid.Row="1" Grid.Column="0"
                                      Text="{Binding CompanyNo, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="Mikro firma numarası (CARI_HESAPLAR.cari_firmano, STOKLAR.sto_firmano, …). 1 veya daha büyük bir tamsayı olmalı." />
+                                     ToolTip="Mikro firma numarası (CARI_HESAPLAR.cari_firmano, STOKLAR.sto_firmano, …). Mikro ilk firmayı 0 numaralar; tek firmalı kurulumlarda bu alan 0&apos;dır." />
                             <TextBox Grid.Row="1" Grid.Column="2"
                                      Text="{Binding BranchNo, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="Mikro şube numarası (satış siparişi yazımı için). 0 veya daha büyük bir tamsayı olmalı. Tek şubeli kurulumlarda 0 bırakılabilir." />

@@ -1,4 +1,4 @@
-using ErpBridge.CentralApi.Authentication;
+﻿using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
@@ -86,7 +86,15 @@ public static class JobsEndpoints
             job.LeasedUntilMs = null;
             job.LastError = $"Ajan belgeyi {MaxAttempts} denemede tamamlayamadı.";
             // Same bookkeeping as a failed ack: warehouse state in a transaction, then webhook and wake-up (PR #83 Codex).
-            await CompleteAsync(db, job, "job.failed", webhooks, warehouse, ct);
+            try
+            {
+                await CompleteAsync(db, job, "job.failed", webhooks, warehouse, ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // Baska bir ajan ayni isi bizden once kapatti; onun kaydi gecerli.
+                db.Entry(job).State = EntityState.Detached;
+            }
         }
 
         var query = db.Jobs
@@ -132,7 +140,30 @@ public static class JobsEndpoints
                 job.LeasedUntilMs = nowMs + (long)LeaseDuration.TotalMilliseconds;
                 job.NextAttemptAtMs = null;
             }
-            await db.SaveChangesAsync(ct);
+
+            // Kiralamayi baska bir ajana kaptirdigimiz isleri listeden dusup kalani kaydederiz:
+            // ajana yalnizca gercekten bizim olan isler doner. Her tur en az bir isi eledigi icin
+            // dongu sonludur.
+            while (true)
+            {
+                try
+                {
+                    await db.SaveChangesAsync(ct);
+                    break;
+                }
+                catch (DbUpdateConcurrencyException ex)
+                {
+                    var lost = ex.Entries.Select(e => e.Entity).OfType<Job>().ToList();
+                    if (lost.Count == 0) throw;
+                    foreach (var job in lost)
+                    {
+                        db.Entry(job).State = EntityState.Detached;
+                        leased.Remove(job);
+                        contexts.Remove(job.Id);
+                    }
+                    if (leased.Count == 0) break;
+                }
+            }
         }
 
         var response = leased

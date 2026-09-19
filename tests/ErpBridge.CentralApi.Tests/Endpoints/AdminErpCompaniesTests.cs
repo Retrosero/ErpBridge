@@ -47,4 +47,43 @@ public sealed class AdminErpCompaniesTests : IClassFixture<CentralApiFactory>
         var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
         db.AgentCompanyAssignments.Should().ContainSingle(x => x.AgentId == agentA.Id && x.ErpCompanyId == company.Id);
     }
+
+    [Fact]
+    public async Task Company_number_zero_is_accepted()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync("CT company zero", "CT-COMPANY-ZERO");
+
+        // Mikro numbers the first company 0 (FIRMALAR.fir_sirano). Every database on hand —
+        // MikroDB_V15_DEMO, MikroDB_V15_02 and the live MikroDB_V16_03 — has exactly one company
+        // at 0 and every movement row carries firma 0, so refusing it refused the only value a
+        // real installation could send.
+        var created = await client.PostJsonAsync("/api/v1/admin/erp-companies", new
+        {
+            tenantId = tenant.Id, code = "F000", name = "Merkez", sourceDatabase = "MikroDB_V15_DEMO",
+            companyNo = 0, branchNo = 0, warehouseNo = 1,
+        }, token);
+
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        (await created.ReadAsJsonAsync<ErpCompanyDto>())!.CompanyNo.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_negative_company_number_is_still_refused()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync();
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync("CT company negative", "CT-COMPANY-NEG");
+
+        var response = await client.PostJsonAsync("/api/v1/admin/erp-companies", new
+        {
+            tenantId = tenant.Id, code = "F00X", name = "Merkez", sourceDatabase = "MIKRO16",
+            companyNo = -1, branchNo = 0, warehouseNo = 1,
+        }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }

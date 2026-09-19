@@ -192,6 +192,62 @@ h1:focus, h1:focus-visible { outline: none; }
 .person-name { font-weight: 600; color: var(--ink); font-size: .88rem; }
 .person-sub { font-size: .75rem; color: var(--muted); }
 
+/* ---------- tables that become cards on a phone ---------- */
+/* A .data-table--cards keeps one markup: a table on a wide screen, a list of cards below 720px. Each cell
+   carries data-label, which becomes the card row's heading, so the phone never scrolls sideways to read a
+   value. The cell is a two-column grid — heading left, value right — because a cell often holds more than
+   one element (a title with its code beneath, a reason with its next-attempt line) and those must stack
+   under each other rather than compete for the same row. */
+@media (max-width: 720px) {
+    .table-scroll:has(.data-table--cards) { overflow-x: visible; }
+    .data-table--cards table { min-width: 0; width: 100%; }
+    .data-table--cards thead { display: none; }
+    .data-table--cards tbody, .data-table--cards tbody tr { display: block; width: auto; }
+
+    .data-table--cards tbody tr {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        margin: 12px 12px 0;
+        overflow: hidden;
+        box-shadow: 0 1px 2px rgb(16 24 40 / 5%);
+    }
+    .data-table--cards tbody tr:last-child { margin-bottom: 12px; }
+
+    .data-table--cards tbody td {
+        display: grid;
+        grid-template-columns: minmax(84px, auto) 1fr;
+        align-items: baseline;
+        gap: 4px 12px;
+        padding: 8px 12px !important;
+        border-bottom: 1px solid var(--line-soft) !important;
+        text-align: right;
+        white-space: normal;
+    }
+    .data-table--cards tbody td:last-child { border-bottom: none !important; }
+    .data-table--cards tbody td::before {
+        content: attr(data-label);
+        grid-column: 1;
+        text-align: left;
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+    /* Every value — text node or element — sits in the second column, one under the other. */
+    .data-table--cards tbody td > * { grid-column: 2; text-align: right; }
+    .data-table--cards tbody td .cell-sub { justify-content: flex-end; margin-top: 0; }
+    /* A badge is a chip, not a column: it hugs the right instead of stretching across the value column. */
+    .data-table--cards tbody td .badge { justify-self: end; }
+
+    /* The action cell has no heading, so it uses the card's full width. */
+    .data-table--cards tbody td.erp-actions { grid-template-columns: 1fr; padding: 10px 12px !important; }
+    .data-table--cards tbody td.erp-actions::before { content: none; }
+    .data-table--cards tbody td.erp-actions:empty { display: none; }
+    .data-table--cards tbody td.erp-actions > * { grid-column: 1; width: 100%; }
+}
+
 /* ---------- badges ---------- */
 .badge {
     display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px;

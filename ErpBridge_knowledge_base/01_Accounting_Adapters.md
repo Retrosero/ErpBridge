@@ -141,6 +141,14 @@ string concat ile SQL'e girmez.
 ## 3. Çok Firmalı / Çok Şubeli Çalışma
 
 `AgentConfig`: `CompanyNo` (varsayılan 1), `BranchNo` (1), `WarehouseNo` (1).
+
+**Firma numarası 0'dan başlar.** Mikro ilk firmayı `FIRMALAR.fir_sirano = 0`
+olarak numaralar; elimizdeki üç veritabanının (`MikroDB_V15_DEMO`,
+`MikroDB_V15_02`, canlı `MikroDB_V16_03`) hepsinde tek firma vardır ve numarası
+0'dır, bütün hareket satırları da firma 0 taşır. Bu yüzden `CompanyNo` ve
+`BranchNo` için geçerli alt sınır **0**'dır (`AgentConfigMapper`,
+Agent UI doğrulaması, `POST /api/v1/admin/erp-companies`). Depolar ise 1'den
+başlar (`DEPOLAR.dep_no = 1` "Merkez depo"), `WarehouseNo >= 1` kuralı geçerlidir.
 Firma-**bağımlı** tablolara enjekte edilir: `cari_firmano`, `cari_sube_no`,
 `sip_firmano`, `sip_subeno`, `cha_firmano`, `cha_subeno`, `sth_firmano`,
 `sth_subeno`, `sck_firmano`, `sck_subeno`. **`STOKLAR` ve `BARKOD_TANIMLARI`
@@ -489,6 +497,31 @@ deniyor (1/3/10 sn, sunucunun `Retry-After` başlığı varsa ve daha kısaysa o
 - `Agent.Service` → `BootstrapWorker` artık `AgentSyncLoop`'un ince bir `BackgroundService` sarmalayıcısı.
 - `Agent.UI` → `DesktopBackgroundSyncService` döngüyü kendi CTS'i ile `Task.Run` üzerinde çalıştırır; `App.OnStartup`'ta `Start()`, `OnExit`'te `StopAsync()`.
 - `AgentService:BackgroundSyncEnabled` (varsayılan `true`) ile kapatılabilir.
+
+### WPF ajanı artık telefonun belgelerini de yazıyor (2026-09-18)
+
+**Aynı hatanın diğer yönü.** Yukarıdaki düzeltme yalnızca **giden** yarıyı (ERP → buluta
+change-set/snapshot) iki host'a da taşımıştı. **Gelen** yarı — `GET /api/v1/jobs/pending` kiralaması,
+belge çevirisi, ERP yazımı ve ack — `Agent.Service/Workers/AgentWorker.cs` içinde kalmıştı ve
+`AddHostedService<AgentWorker>` yalnızca Windows Service'te kayıtlıydı. Müşteri PC'sinde çoğunlukla
+**yalnızca tepsi uygulaması** çalışır (`ErpBridge.Agent.UI`); orada hiçbir şey iş kiralamadığı için
+telefondan gönderilen her sipariş sunucuda `pending` kalıyor, Mikro'ya **hiç yazılmıyordu** — ve
+ajan logunda bunu söyleyen tek satır bile yoktu (`ui-20260918.log`: "job" geçen 0 satır;
+`agent.db > local_jobs` boş).
+
+**Düzeltme (`AgentSyncLoop` ile birebir aynı desen):** iş mantığı
+`ErpBridge.Core/Jobs/AgentJobPump.cs`'e taşındı (Core'a `Microsoft.Extensions.Hosting` yine
+eklenmedi):
+
+- `Agent.Service` → `AgentWorker` artık `AgentJobPump`'ın ince bir `BackgroundService` sarmalayıcısı.
+- `Agent.UI` → `DesktopJobPumpService` döngüyü kendi CTS'i ile `Task.Run` üzerinde çalıştırır;
+  `App.OnStartup`'ta `Start()`, `OnExit`'te `StopAsync()`.
+- `AgentJobPump` + `SalesOrderPayloadDeserializer` artık `AddErpBridgeCore()` içinde kayıtlı, yani
+  her iki host da aynı grafiği kurar.
+- Ayarlar (`AgentService` bölümü, iki host ortak): `JobPollIntervalSeconds` (30),
+  `JobPollFirstRunDelaySeconds` (5), WPF'e özel `JobPumpEnabled` (`true`).
+- İki host aynı anda çalışırsa sorun yok: `GET /jobs/pending` işi `Pending → Processing` kiralar,
+  her iş tek bir yoklamaya düşer.
 
 ### Admin panelinde senkron kuyruğu
 

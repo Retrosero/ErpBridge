@@ -1,6 +1,4 @@
 using System.Text.Json;
-using ErpBridge.Agent.Service.Configuration;
-using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Jobs;
 using ErpBridge.Core.Stores;
@@ -10,16 +8,15 @@ using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Shared;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 
-namespace ErpBridge.Agent.Service.Tests.Workers;
+namespace ErpBridge.Core.Tests.Jobs;
 
 /// <summary>
 /// Goal ERP yazım Y2c: a Sipariş Cepte document goes through the translator to the ERP-independent
 /// commands, the ack carries the lease attempt, and failures that pass by themselves are marked retryable.
 /// </summary>
-public class AgentWorkerMobileDocumentTests
+public class AgentJobPumpMobileDocumentTests
 {
     private static readonly ErpWriteContext Context =
         new("invoice", "approved", new ErpWriteSeries("S", "I", "T", "R", "M"), 1, "001", "14", "04", 1, "PLS01", 1, "ÇEK", "SENET", "plasiyer1");
@@ -63,10 +60,10 @@ public class AgentWorkerMobileDocumentTests
 
     private static AgentConfig Config() => new() { LicenseKey = "LIC-1", TenantId = "tenant-1", ErpType = ErpType.Mikro, ErpDatabaseName = "MikroDB_V15_DEMO" };
 
-    private static (AgentWorker Worker, Mock<IErpAdapter> Adapter, Mock<IErpAdapterFactory> Factory, List<JobAck> Acks) Build()
+    private static (AgentJobPump Pump, Mock<IErpAdapter> Adapter, Mock<IErpAdapterFactory> Factory, List<JobAck> Acks) Build()
         => Build(new ErpBridge.Core.Sync.AgentRunStatus());
 
-    private static (AgentWorker Worker, Mock<IErpAdapter> Adapter, Mock<IErpAdapterFactory> Factory, List<JobAck> Acks) Build(
+    private static (AgentJobPump Pump, Mock<IErpAdapter> Adapter, Mock<IErpAdapterFactory> Factory, List<JobAck> Acks) Build(
         ErpBridge.Core.Sync.AgentRunStatus runStatus)
     {
         var adapter = new Mock<IErpAdapter>();
@@ -77,10 +74,10 @@ public class AgentWorkerMobileDocumentTests
         remote.Setup(r => r.SendAckAsync(It.IsAny<JobAck>(), It.IsAny<CancellationToken>()))
             .Callback<JobAck, CancellationToken>((ack, _) => acks.Add(ack))
             .Returns(Task.CompletedTask);
-        var worker = new AgentWorker(
+        var worker = new AgentJobPump(
             remote.Object, Mock.Of<ILocalQueueStore>(), Mock.Of<IAgentConfigStore>(), factory.Object,
-            new SalesOrderPayloadDeserializer(), Options.Create(new AgentServiceOptions()), runStatus,
-            NullLogger<AgentWorker>.Instance);
+            new SalesOrderPayloadDeserializer(), runStatus,
+            NullLogger<AgentJobPump>.Instance);
         return (worker, adapter, factory, acks);
     }
 
