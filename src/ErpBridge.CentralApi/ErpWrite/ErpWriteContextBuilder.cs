@@ -1,4 +1,4 @@
-using ErpBridge.CentralApi.Contracts;
+﻿using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Domain;
 
 namespace ErpBridge.CentralApi.ErpWrite;
@@ -39,6 +39,8 @@ public static class ErpWriteContextBuilder
             ResponsibilityCenterCode = Code(settings.ResponsibilityCenterCode),
             ProjectCode = Code(settings.ProjectCode),
             DeliveryDayOffset = settings.DeliveryDayOffset,
+            PurchaseWarehouseNo = settings.PurchaseWarehouseNo,
+            PurchasePricesIncludeVat = settings.PurchasePricesIncludeVat,
             CreatedByUsername = createdByUsername,
         };
     }

@@ -1,4 +1,4 @@
-namespace ErpBridge.CentralApi.Domain;
+﻿namespace ErpBridge.CentralApi.Domain;
 
 /// <summary>
 /// How an ERP company's phone documents are written into the ERP (goal GOAL_ERP_YAZIM, Y1a).
@@ -47,6 +47,18 @@ public sealed class ErpWriteSettings
 
     /// <summary>Order delivery date = document date + this many days (null: same day).</summary>
     public int? DeliveryDayOffset { get; set; }
+
+    /// <summary>
+    /// Alışta malın girdiği depo (ERP yazım 3 K6). Verilmezse satış deposuna düşülür: saha alışı
+    /// çoğu firmada aynı depoya girer, ama ayrı bir alış deposu tutan firma bunu söyleyebilmeli.
+    /// </summary>
+    public int? PurchaseWarehouseNo { get; set; }
+
+    /// <summary>
+    /// Tedarikçinin fiyatı KDV içeriyor mu. Telefon alışta KDV'yi ayrı gönderiyor ama fiyatın kendisinin
+    /// KDV'li olup olmadığı rakamlardan çıkarılamaz — firma söyler, tahmin edilmez.
+    /// </summary>
+    public bool PurchasePricesIncludeVat { get; set; }
 
     public DateTimeOffset? UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }
