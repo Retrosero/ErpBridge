@@ -332,3 +332,80 @@ bugünkü kuralı yazar: `DBCno=0` ve self-link.
 
 **V15/V16 farkı:** `cari_tipi` kolonu V15'te **yoktur** (Fora INSERT'ünde değişken kolon adıyla geçiliyor); V16'da
 `cari_Guid`, `cari_efatura_fl`, `cari_def_efatura_cinsi` gibi kolonlar eklenir. Bu goal V15 yazıyor (U4).
+
+## 13. Kasa masraf fişi (gider) *(ERP yazım 3, Y0a — 2026-09-19)*
+
+**Fora ile canlı Mikro burada ayrışır.** Fora gideri `Masraf` sınıfıyla bir *hizmet faturası* olarak yazar
+(`cha_evrak_tip = AlisFaturasi(0)`, `cha_cinsi = HizmetFaturasi(8)`, `Evrak.cs:5420-5460`). Firmanın kendi
+Mikro ekranı ise **Kasa masraf fişi** yazar: `cha_evrak_tip = 37`. Fora'nın enum'unda `KasaMasrafFisi` tanımlı
+ama Fora bu tipi **hiç yazmıyor** (tüm kaynakta tek kullanım yeri kaynak dosyasının kendisi). §6 kuralı gereği
+**Mikro'nun kendi kaydı esastır → 37 yazılır.**
+
+`enum_cha_evrak_tip` sayımı: `AlisFaturasi=0`, `TahsilatMakbuzu=1`, `SatisFaturasi=63`, `TediyeMakbuzu=64`
+çapalarıyla doğrulandı; aynı sayımda `KasaMasrafFisi=37`. Canlı `MikroDB_V15_02`'de 151 adet 37'lik hareket var.
+
+Gider, tediyenin **aynadaki hali değildir**: tediyede ödeyen hesap `cha_kasa_hizmet`/`cha_kasa_hizkod`'ta,
+karşı taraf cari'dir. Giderde ise **gider kartı** `cha_kasa_hizmet`'tedir, ödeyen hesap `cha_cari_cins`/`cha_kod`'a geçer.
+
+| Kolon | Değer | Kanıt |
+|---|---|---|
+| `cha_evrak_tip` | **37** (KasaMasrafFisi) | canlı 151 satır; Fora enum sayımı |
+| `cha_tip` | **1** (alacak) | canlı |
+| `cha_cinsi` | **0** (Nakit) — kasadan ödemede | canlı (151/151) |
+| `cha_evrakno_seri` | **boş** | canlı: 151/151 seri boş |
+| `cha_evrakno_sira` | seri içinde MAX+1 | canlı (ardışık) |
+| `cha_cari_cins` | **4** (Kasamız) nakit; **2** (Bankamız) havale/kredi kartı | canlı 4; 2 için §11 kredi kartı deseni |
+| `cha_kod` | ödeyen hesabın kodu (kasa kodu `001`, banka kodu `08`/`10`/`16`) | canlı |
+| `cha_kasa_hizmet` | **5** (Giderimiz) | canlı; `enum_cha_cari_cins.Giderimiz=5` |
+| `cha_kasa_hizkod` | **gider kartı kodu** (`MASRAF_HESAPLARI.his_kod`) | canlı: YAKIT, KİRA, AMBAR… |
+| `cha_meblag`, `cha_aratoplam` | tutar (eşit) | canlı |
+| `cha_vade` | evrak tarihi (yyyyMMdd) | canlı |
+| `cha_d_kur`, `cha_altd_kur`, `cha_karsid_kur` | 1 | canlı |
+| `cha_vergipntr`, `cha_vergi1` | KDV işaretçisi ve tutarı | canlı 0 (firma KDV'siz giriyor); telefon KDV gönderirse doldurulur |
+| `cha_belge_no` | boş | canlı |
+| **`EVRAK_ACIKLAMALARI`** | **satır yazılmaz** | canlı: `egk_evr_tip=37` için 0 kayıt (64 için 3, 0 için 347) |
+
+Kredi kartı / havale ile ödemede `cha_cinsi` **§11'deki firma ailesinden** seçilir: havale **20**
+(FirmaHavaleEmri), kredi kartı **22** (FirmaKrediKartı). Canlı tediyelerde `cinsi=22` satırlarının
+`cha_kasa_hizkod`'u **banka kodudur** (`BANKALAR.ban_kod`; `FIRMA_KREDI_KARTI_TANIMLARI` tablosu boş),
+yani kredi kartı Mikro'da bir banka hesabı üzerinden yürür.
+
+**Gider kartları:** `MASRAF_HESAPLARI` (19 kart), anahtar `his_kod`, adı `his_isim`; ayrıca
+`his_tipkod`, `his_sinifkod`, `his_grupkod`, `his_muhkod`, `his_birim_ad`. `HIZMET_HESAPLARI` bu firmada **boş**.
+
+## 14. Sayım sonuçları *(ERP yazım 3, Y0b — 2026-09-19)*
+
+Sayım cari/stok hareketi **değildir**: kendi tablosuna yazılır ve **stoğu kendiliğinden hareket ettirmez**.
+Farkın stoğa işlenmesi Mikro'da ayrı bir "sayım sonuçlarını uygula/kesinleştir" işlemidir. Fora da
+`SayimSonuclariGirisFisi` ile yalnız bu tabloya yazar.
+
+Tablo: **`SAYIM_SONUCLARI`**, `sym_fileid = 28`.
+
+| Kolon | Değer | Kanıt |
+|---|---|---|
+| `sym_tarihi` | sayım tarihi (saat 00:00) | canlı |
+| `sym_depono` | depo no | canlı (1) |
+| `sym_evrakno` | **int**, depo içinde MAX+1 | canlı: depo 1'de 1,2,3,5,6,17,21,23 |
+| `sym_satirno` | 0'dan artan satır sırası | canlı (211…) |
+| `sym_Stokkodu` | stok kodu | canlı |
+| `sym_barkod` | barkod (yoksa stok kodu yazılmış) | canlı |
+| `sym_miktar1` | sayılan miktar | canlı |
+| `sym_birim_pntr` | 1 (ana birim) | canlı |
+| `sym_reyonkodu`, `sym_koridorkodu`, `sym_rafkodu` | boş | canlı |
+| `sym_miktar2..5`, `sym_renkno`, `sym_bedenno`, `sym_parti_kodu`, `sym_lot_no`, `sym_serino` | boş/0 | canlı |
+
+Tabloda **kesinleştirme/uygulama izi tutan bir kolon yoktur** — yazılan fiş Mikro'da açılıp uygulanana
+kadar yalnızca bir sayım kaydıdır. Canlıda 2948 satır / 8 fiş (01.10.2024 – 05.09.2026).
+
+## 15. Alış faturasında evrak numarası *(ERP yazım 3, Y0c — 2026-09-19)*
+
+Alış faturasında seri/sıra **bizim değil, tedarikçinin** numarasıdır: canlıda `cha_evrakno_seri`
+tedarikçiye göre değişiyor (`ÇINAR`, `JUMBO`, `PEKER`, `CS`, `AYD`…) ve `cha_evrakno_sira` o serinin
+kendi sırası olarak ilerliyor (ör. `CS` serisi 45927'de). 1025 alış faturasının 652'sinde seri dolu,
+373'ü boş seride ardışık ilerliyor. `cha_belge_no` neredeyse hiç kullanılmıyor (44/1025).
+
+Mikro'da **seri tanım tablosu yoktur** (`%SERI%`/`%SIRA%`/`%SAYAC%` aramasında yalnız
+`STOK_SERINO_TANIMLARI` ve istasyon sayaçları çıkıyor). Yani "ERP'de tanımlı seri" pratikte
+**veride kullanılmış seridir**: tedarikçinin daha önce kullandığı seri varsa o serinin MAX+1'i,
+yoksa boş serinin MAX+1'i. §10'daki uyarı geçerli: alış faturası ile alış iadesi aynı numara
+alanını paylaşır, MAX+1 `cha_normal_Iade`'ye göre **filtrelenmez**.
