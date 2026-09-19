@@ -174,6 +174,33 @@ public sealed record DisbursementCommand(
     decimal Amount,
     string AccountCode);
 
+/// <summary>Alış faturasının bir kalemi: tedarikçinin faturasındaki fiyat ve miktar.</summary>
+/// <param name="StockCode">ERP stok kodu.</param>
+/// <param name="Quantity">Miktar.</param>
+/// <param name="UnitPrice">Tedarikçinin birim fiyatı.</param>
+/// <param name="UnitPointer"><c>sth_birim_pntr</c>; ana birim 1.</param>
+public sealed record PurchaseInvoiceLine(string StockCode, decimal Quantity, decimal UnitPrice, byte UnitPointer = 1);
+
+/// <summary>
+/// Tedarikçiden alınan mal (ERP yazım 3, referans §10 ve §15). Mikro'da alış faturasıdır:
+/// <c>cha_evrak_tip=0</c>, alacak, <c>cinsi=6</c> + <c>sth_evraktip=3</c> giriş.
+///
+/// <para>Fatura <b>açık hesap</b> yazılır; ödemesi ayrı bir tediye evrağıdır (K5). Tediye tahsilatın
+/// tersidir, alış faturası ise ürün girişi içindir — ikisini tek kapalı evraka sıkıştırmak telefonun
+/// gönderdiği iki belgeyi Mikro'da görünmez kılardı.</para>
+/// </summary>
+/// <param name="Header">Ortak başlık; <c>CustomerCode</c> burada <b>tedarikçi</b> kodudur. <c>Series</c> boşsa tedarikçinin ERP'de kullandığı seriden devam edilir (K7).</param>
+/// <param name="WarehouseNo">Malın girdiği depo; panelden ayarlanır (K6).</param>
+/// <param name="SupplierInvoiceNo">Tedarikçinin fatura numarası; belge notuna yazılır.</param>
+/// <param name="PricesIncludeVat">Tedarikçinin fiyatı KDV içeriyor mu.</param>
+/// <param name="Lines">Kalemler.</param>
+public sealed record PurchaseInvoiceCommand(
+    ErpDocumentHeader Header,
+    int WarehouseNo,
+    string? SupplierInvoiceNo,
+    bool PricesIncludeVat,
+    IReadOnlyList<PurchaseInvoiceLine> Lines);
+
 /// <summary>
 /// Nereden ödendiği (ERP yazım 3, referans §13). Tediyeden farkı kredi kartıdır: canlı Mikro'da
 /// kredi kartı bir banka hesabı üzerinden yürür (<c>cha_cinsi=22</c>, hesap kodu <c>BANKALAR.ban_kod</c>).

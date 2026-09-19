@@ -22,6 +22,9 @@ public enum MikroCustomerUse
     Sale,
     SaleReturn,
     Collection,
+
+    /// <summary>Ondan mal alıyoruz (alış faturası).</summary>
+    Purchase,
 }
 
 /// <summary>What a kasa is for (<c>kas_tip</c>): money, customer cheques, customer notes.</summary>
@@ -68,8 +71,11 @@ FROM CARI_HESAPLAR WHERE cari_kod = @code", new { code }, Session.Transaction, c
         !(isOrder && orderLocked) && movementType switch
         {
             0 => true,
-            1 => use != MikroCustomerUse.SaleReturn,
-            2 or 3 => use == MikroCustomerUse.Collection,
+            // Yalnız satış yapılan bir kart bize mal satamaz; alış da satış iadesi gibi bir alış belgesidir.
+            1 => use is not (MikroCustomerUse.SaleReturn or MikroCustomerUse.Purchase),
+            // Yalnız alış yapılan kart: ondan mal alınır, parası ödenir.
+            2 => use is MikroCustomerUse.Collection or MikroCustomerUse.Purchase,
+            3 => use == MikroCustomerUse.Collection,
             _ => false,
         };
 
@@ -129,6 +135,26 @@ FROM STOKLAR WHERE sto_kod = @code", new { code }, Session.Transaction, cancella
     {
         if (!await ExistsAsync("SELECT 1 FROM MASRAF_HESAPLARI WHERE his_kod = @code", new { code }, ct).ConfigureAwait(false))
             throw new MikroWriteException(ErpWriteError.ExpenseCardNotFound(code));
+    }
+
+    /// <summary>
+    /// The series this supplier's purchase invoices already use (referans §15, K7). Mikro has no series
+    /// definition table: an alış faturası carries the <b>supplier's own</b> invoice series, so "the series
+    /// defined in the ERP" is the one the data already shows for that supplier. The newest one wins; a
+    /// supplier with no history gets the series-less sequence (empty string), which is what Mikro's own
+    /// rows do for 373 of this company's purchases.
+    /// </summary>
+    public async Task<string> PurchaseSeriesAsync(string supplierCode, CancellationToken ct = default)
+    {
+        var series = await Session.Connection.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            """
+            SELECT TOP 1 cha_evrakno_seri
+            FROM CARI_HESAP_HAREKETLERI WITH (NOLOCK)
+            WHERE cha_evrak_tip = 0 AND cha_cari_cins = 0 AND cha_kod = @supplierCode AND LEN(cha_evrakno_seri) > 0
+            ORDER BY cha_RECno DESC
+            """,
+            new { supplierCode }, Session.Transaction, cancellationToken: ct)).ConfigureAwait(false);
+        return series ?? string.Empty;
     }
 
     /// <summary>A salesperson named on the document; none named is fine.</summary>
