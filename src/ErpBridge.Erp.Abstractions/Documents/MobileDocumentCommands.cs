@@ -195,6 +195,25 @@ public enum ExpensePaymentMethod
 /// <item><description><c>AccountCode</c>: nakitte kasa kodu, havale/kredi kartında banka kodu.</description></item>
 /// <item><description><c>VatAmount</c>/<c>VatPointer</c>: KDV telefondan gelir, ERP'de hesaplanmaz (K4).</description></item>
 /// </list>
+/// <summary>
+/// Sayılan bir kalem. Stok kodu telefondan gelir (K10): barkodu koda çevirmeyi ERP'ye bırakmak,
+/// eşleşmeyen barkodda sessizce yanlış ürünü saymak demek olurdu.
+/// </summary>
+/// <param name="StockCode">ERP stok kodu; zorunlu.</param>
+/// <param name="Barcode">Telefonda okutulan barkod; Mikro satırında iz olarak durur.</param>
+/// <param name="CountedQuantity">Sayılan miktar (ana birimde).</param>
+public sealed record StockCountLine(string StockCode, string? Barcode, decimal CountedQuantity);
+
+/// <summary>
+/// Bir sayım fişi (ERP yazım 3, referans §14). Mikro'da <c>SAYIM_SONUCLARI</c>'na yazılır ve
+/// <b>stoğu kendiliğinden hareket ettirmez</b>: farkın stoğa işlenmesi Mikro'nun kendi
+/// "sayım sonuçlarını uygula" adımıdır ve kullanıcıya bırakılmıştır (K9).
+/// </summary>
+public sealed record StockCountCommand(
+    ErpDocumentHeader Header,
+    int WarehouseNo,
+    IReadOnlyList<StockCountLine> Lines);
+
 public sealed record ExpenseCommand(
     ErpDocumentHeader Header,
     ExpensePaymentMethod Method,

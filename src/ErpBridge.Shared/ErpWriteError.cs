@@ -37,6 +37,8 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public const string MissingCustomerCodeCode = "MISSING_CUSTOMER_CODE";
     public const string MissingStockCodeCode = "MISSING_STOCK_CODE";
     public const string InvalidQuantityCode = "INVALID_QUANTITY";
+    /// <summary>Sayımda eksi miktar; sıfır meşrudur, eksi değildir (referans §14).</summary>
+    public const string InvalidCountedQuantityCode = "INVALID_COUNTED_QUANTITY";
     public const string InvalidAmountCode = "INVALID_AMOUNT";
     public const string InvalidDiscountCode = "INVALID_DISCOUNT";
     public const string InvalidDocumentDateCode = "INVALID_DOCUMENT_DATE";
@@ -62,6 +64,10 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 
     public static ErpWriteError InvalidQuantity(int lineNo) =>
         new(InvalidQuantityCode, $"{lineNo}. satırın miktarı sıfırdan büyük olmalı.");
+
+    /// <summary>Sayımda sıfır meşru bir sonuçtur ("hiç kalmamış"), eksi değildir.</summary>
+    public static ErpWriteError NegativeCountedQuantity(string stockCode) =>
+        new(InvalidCountedQuantityCode, $"Sayılan miktar eksi olamaz: {Shown(stockCode)}.");
 
     public static ErpWriteError InvalidAmount() =>
         new(InvalidAmountCode, "Belgedeki tutar geçersiz.");

@@ -4,10 +4,10 @@
 /// One place a document number is taken: a table's rows whose key columns equal the given values.
 /// </summary>
 /// <param name="Table">The table.</param>
-/// <param name="SeriesColumn">Its <c>*_evrakno_seri</c> column.</param>
+/// <param name="SeriesColumn">Its <c>*_evrakno_seri</c> column, or <c>null</c> for a table that numbers without a series (sayım).</param>
 /// <param name="NumberColumn">Its <c>*_evrakno_sira</c> column.</param>
 /// <param name="Keys">The unique index's leading columns that tell this document kind apart, with their values.</param>
-public sealed record MikroNumberSource(MikroTable Table, string SeriesColumn, string NumberColumn, IReadOnlyList<(string Column, int Value)> Keys);
+public sealed record MikroNumberSource(MikroTable Table, string? SeriesColumn, string NumberColumn, IReadOnlyList<(string Column, int Value)> Keys);
 
 /// <summary>
 /// Every table a document's number appears in. The next number is the highest one used in any
@@ -47,6 +47,16 @@ public static class MikroDocumentNumbering
         Cha(MikroCodes.ChaEvrakTip.AlisFaturasi),
         Sth(MikroCodes.SthEvrakTip.GirisFaturasi),
         Description(MikroTables.CariHareket.FileId, 1, MikroCodes.ChaEvrakTip.AlisFaturasi),
+    ]);
+
+    /// <summary>
+    /// Sayım fişi: <c>SAYIM_SONUCLARI</c>'nda depo başına MAX+1 (K11). Serisi yoktur — Mikro bu
+    /// tabloda <c>sym_evrakno</c>'yu doğrudan sayı olarak tutar (referans §14), bu yüzden kapsam
+    /// depoya göre kurulur ve her belge için yeniden üretilir.
+    /// </summary>
+    public static MikroNumberScope StockCount(int warehouseNo) => new("sayım fişi",
+    [
+        new MikroNumberSource(MikroTables.SayimSonuclari, SeriesColumn: null, "sym_evrakno", [("sym_depono", warehouseNo)]),
     ]);
 
     /// <summary>

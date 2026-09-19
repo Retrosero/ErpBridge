@@ -15,6 +15,8 @@ public static class MikroCodes
         public const short StokHareketleri = 16;
         public const short OdemeEmirleri = 54;
         public const short EvrakAciklamalari = 66;
+        /// <summary><c>SAYIM_SONUCLARI</c> — canlı satırlarda <c>sym_fileid = 28</c>.</summary>
+        public const short SayimSonuclari = 28;
     }
 
     /// <summary><c>cha_evrak_tip</c> (<c>enum_cha_evrak_tip</c>).</summary>
