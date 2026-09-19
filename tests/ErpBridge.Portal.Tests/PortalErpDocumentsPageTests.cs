@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Bunit;
 using ErpBridge.Portal.Api;
 using ErpBridge.Portal.Pages;
@@ -32,6 +32,31 @@ public sealed class PortalErpDocumentsPageTests : PortalPageTestContext
         jobId = WrittenJob, externalId = "MOB-SO-1", documentType = "sales_order", userName = "Ali Saha", customerCode = "120.001",
         customerName = "Bakkal Ali", amount = 820.8m, state = "written", erpDocumentNo = "T-1234", attempt = 1, enqueuedAtUtc = DateTimeOffset.UtcNow,
     };
+
+    private static object WrittenCount() => new
+    {
+        jobId = Guid.NewGuid(), externalId = "MOB-SY-1", documentType = "stock_count", userName = "Ali Saha",
+        amount = 0m, state = "written", erpDocumentNo = "24", attempt = 1, enqueuedAtUtc = DateTimeOffset.UtcNow,
+    };
+
+    /// <summary>
+    /// Yazılmış bir sayım fişi stoğu henüz değiştirmez; farkın işlenmesi Mikro'nun kendi adımıdır (K9).
+    /// "Yazıldı" rozeti tek başına işin bittiğini düşündürür, bu yüzden sayıma bekleme notu eklenir —
+    /// ama satış gibi gerçekten biten belgelere eklenmez.
+    /// </summary>
+    [Fact]
+    public void A_written_stock_count_says_it_still_waits_to_be_applied_in_the_erp()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State() with { DataSource = "erp" });
+        api.Answer(Query(), Page(true, WrittenCount(), Written()));
+
+        var cut = Render<ErpBelgeler>();
+        cut.WaitForAssertion(() => cut.FindAll("#erp-documents tbody tr").Count.Should().Be(2));
+
+        var rows = cut.FindAll("#erp-documents tbody tr");
+        rows[0].TextContent.Should().Contain("Sayım").And.Contain("kesinleştirilmeyi bekliyor");
+        rows[1].TextContent.Should().Contain("Satış").And.NotContain("kesinleştirilmeyi bekliyor");
+    }
 
     [Fact]
     public void The_list_shows_the_erp_number_or_the_reason_and_an_administrator_retries_a_failed_document()
