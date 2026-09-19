@@ -1,4 +1,4 @@
-@page "/erp-belgeler"
+﻿@page "/erp-belgeler"
 @inherits PortalPageBase
 
 <PageTitle>ERP Belgeleri — Yönetim Paneli</PageTitle>
@@ -111,7 +111,13 @@ else
                                         }
                                     </td>
                                     <td class="num" data-label="Tutar">@(item.Amount is { } amount ? Fmt.Money(amount) : "—")</td>
-                                    <td data-label="Durum"><span class="badge @StateBadge(item.State)">@StateLabel(item.State)</span></td>
+                                    <td data-label="Durum">
+                                        <span class="badge @StateBadge(item.State)">@StateLabel(item.State)</span>
+                                        @if (NeedsFinalising(item))
+                                        {
+                                            <div class="cell-sub">ERP'de kesinleştirilmeyi bekliyor</div>
+                                        }
+                                    </td>
                                     <td class="erp-result" data-label="ERP no / neden">
                                         @if (item.State == "written")
                                         {
@@ -255,6 +261,14 @@ else
         item.ErrorCode is { Length: > 0 } code && ErrorReasons.TryGetValue(code, out var reason)
             ? reason
             : item.Message;
+
+    /// <summary>
+    /// Yazılmış bir sayım fişi stoğu <b>henüz değiştirmez</b>: farkın işlenmesi Mikro'nun kendi
+    /// "sayım sonuçlarını uygula" adımıdır ve kullanıcıya bırakılmıştır (ERP yazım 3 K9). "Yazıldı"
+    /// rozeti tek başına işin bittiğini düşündürürdü.
+    /// </summary>
+    private static bool NeedsFinalising(ErpDocumentDto item) =>
+        item.State == "written" && string.Equals(item.DocumentType, "stock_count", StringComparison.OrdinalIgnoreCase);
 
     private static string StateLabel(string state) => state switch
     {
