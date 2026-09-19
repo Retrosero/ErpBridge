@@ -15,9 +15,17 @@
 | Y1c | Ingest kapısı: telefonun kendi alış gövdesi ERP'li kiracıda kabul | #146 |
 | Y4c | Telefon: sayım gövdesi (`amount`, `warehouseNo`, `stockCode`) | siparis_cepte#84 |
 | Y4d | Telefon: alışta KDV, ödeme KDV'li, alış her firmada gönderiliyor | siparis_cepte#84 |
+| Y2b | Gider kartları ERP'den telefona (`lookups` / `expense_card`) | #148 |
+| Y4a | Telefon: gider ekranı ERP kartlarından seçtiriyor, KDV alanı | siparis_cepte#85 |
+| Y4b | Gider `expense` belgesi olarak gidiyor | siparis_cepte#85 |
 
-Üç belge de artık **telefon → merkez → ajan → Mikro** zincirinde uçtan uca
-bağlı. Eksik olan tek şey telefonun bu gövdeleri **göndermesi** (Y4).
+**Üç belge de uçtan uca tamam**: telefon → merkez → ajan → Mikro. Alış faturası,
+gider ve sayım artık hem yazılabiliyor hem de telefon tarafından gönderiliyor.
+
+Kalan tek şey doğrulama ve teslim: canlı uçtan uca test (Y5) ve Sipariş Cepte'nin
+yeni sürümünün cihazlara ulaşması (Y6c). Kod `main`'de ama **bu PC'de release
+keystore ve Play yükleme yolu yok**, yani telefon değişiklikleri ancak yeni bir
+sürüm yüklendiğinde çalışmaya başlar.
 
 ## Araştırmada çıkan ve planı düzelten bulgular
 
@@ -41,12 +49,12 @@ bağlı. Eksik olan tek şey telefonun bu gövdeleri **göndermesi** (Y4).
 
 ## Seni bekleyenler (karar/aksiyon gerekiyor)
 
-### 1. Gider kartı kataloğu (Y2b)
+### 1. Sipariş Cepte sürümü cihazlara ulaşmalı (Y6c)
 
-K2'ye göre telefon gider kartlarını ERP'den çekecek. Bu yeni bir katalog
-senkronu demek (`MASRAF_HESAPLARI` → merkez → telefon). Yapılana kadar telefon
-`expenseCardCode` gönderemeyeceği için gider `MOBILE_APP_UPDATE_REQUIRED` ile
-reddedilir — sessiz kayıp yok, ama gider de akmaz.
+Telefon tarafındaki üç değişiklik de `main`'de: alışta KDV, sayım gövdesi ve
+gider ekranı. Ama bu PC'de release keystore ve Play yükleme yolu yok, yani
+cihazlarda hiçbiri çalışmıyor. Yeni sürüm yüklenene kadar gider yine
+`MOBILE_APP_UPDATE_REQUIRED` ile reddedilir (sessiz kayıp yok).
 
 ### 2. Ayarların panele bağlanması (Y2a)
 
@@ -73,8 +81,7 @@ faturası Mikro'ya yazılıp ödemesi düşerdi. Kodu bilen taraf artık söylü
 | Y1b | Giderin `disbursement` yerine `expense` ile gelmesi (telefon tarafı) |
 | Y1d | Kapsam dışı tür mesajlarının Türkçeleşmesi |
 | Y2a | `erp_write_settings` + Portal: alış deposu, KDV dahil mi, gider kasası |
-| Y2b | Gider kartı kataloğu ve senkronu |
-| Y2c | Portal'da gider kartı listesi |
-| Y4a, Y4b, Y4e | Telefon: gider ekranı (ERP kartları, KDV, kredi kartı), araç bakım gideri |
+| Y2c | Portal'da gider kartı listesi (uç hazır, ekran yok) |
+| Y4e | Araç bakım gideri de gider kartı taşısın — bugün kartsız gidiyor, ERP reddediyor |
 | Y5a–Y5d | Canlı uçtan uca doğrulama (`MikroDB_V15_DEMO`) |
 | Y6a–Y6c | Portal Türkçe adlar, bilgi bankası, Play internal |
