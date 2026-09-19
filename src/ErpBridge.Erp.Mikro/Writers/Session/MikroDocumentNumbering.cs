@@ -1,4 +1,4 @@
-namespace ErpBridge.Erp.Mikro.Writers.Session;
+﻿namespace ErpBridge.Erp.Mikro.Writers.Session;
 
 /// <summary>
 /// One place a document number is taken: a table's rows whose key columns equal the given values.
@@ -47,6 +47,15 @@ public static class MikroDocumentNumbering
         Cha(MikroCodes.ChaEvrakTip.AlisFaturasi),
         Sth(MikroCodes.SthEvrakTip.GirisFaturasi),
         Description(MikroTables.CariHareket.FileId, 1, MikroCodes.ChaEvrakTip.AlisFaturasi),
+    ]);
+
+    /// <summary>
+    /// Kasa masraf fişi (gider): yalnız CHA 37. Canlı veride bu tipin <c>EVRAK_ACIKLAMALARI</c>
+    /// satırı yoktur (referans §13), bu yüzden numara kapsamı tek kaynaklıdır.
+    /// </summary>
+    public static readonly MikroNumberScope ExpenseReceipt = new("kasa masraf fişi",
+    [
+        Cha(MikroCodes.ChaEvrakTip.KasaMasrafFisi),
     ]);
 
     /// <summary>Tahsilat makbuzu: CHA 1, açıklama (51, 1, 1).</summary>

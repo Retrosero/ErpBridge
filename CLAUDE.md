@@ -1,4 +1,4 @@
-# ErpBridge — Çalışma Kuralları (Claude için)
+﻿# ErpBridge — Çalışma Kuralları (Claude için)
 
 ## 1. Önce bilgi bankasını oku — İSTİSNASIZ
 
@@ -41,6 +41,9 @@ ilgili knowledge_base dosyasını da güncelle.
   önceden onaylıdır (kullanıcı: "Evet, aynısı geçerli"). Test yazımı yalnız **`MikroDB_V15_DEMO`**'ya. Aynı yasaklar
   geçerli; **`--force` push yasağı rebase sonrası `--force-with-lease` için de geçerlidir** (dalı güncellemek gerekirse
   `origin/main` dala merge edilir).
+- **İstisna (2026-09-19):** aynı yetkiler `docs/GOAL_ERP_YAZIM_3.md` (alış faturası · gider · sayım) görevleri
+  için de önceden onaylıdır (kullanıcı: "onay veriyorum"). Test yazımı yalnız **`MikroDB_V15_DEMO`**'ya.
+  Aynı yasaklar geçerli.
 
 ## 3. Test / build
 

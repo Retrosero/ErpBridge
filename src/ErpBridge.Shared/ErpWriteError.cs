@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace ErpBridge.Shared;
 
@@ -105,6 +105,8 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public const string StockNotSaleableCode = "STOCK_NOT_SALEABLE";
     public const string WarehouseNotFoundCode = "WAREHOUSE_NOT_FOUND";
     public const string CashAccountNotFoundCode = "CASH_ACCOUNT_NOT_FOUND";
+    /// <summary>Gider kartı (<c>MASRAF_HESAPLARI</c>) ERP'de yok — referans §13.</summary>
+    public const string ExpenseCardNotFoundCode = "EXPENSE_CARD_NOT_FOUND";
     public const string BankAccountNotFoundCode = "BANK_ACCOUNT_NOT_FOUND";
     public const string SalespersonNotFoundCode = "SALESPERSON_NOT_FOUND";
     public const string PriceListNotFoundCode = "PRICE_LIST_NOT_FOUND";
@@ -134,6 +136,9 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 
     public static ErpWriteError BankAccountNotFound(string code) =>
         new(BankAccountNotFoundCode, $"Banka hesabı ERP'de bulunamadı: {Shown(code)}.");
+
+    public static ErpWriteError ExpenseCardNotFound(string code) =>
+        new(ExpenseCardNotFoundCode, $"Gider kartı ERP'de bulunamadı: {Shown(code)}.");
 
     public static ErpWriteError SalespersonNotFound(string code) =>
         new(SalespersonNotFoundCode, $"Temsilci ERP'de bulunamadı: {Shown(code)}.");

@@ -1,4 +1,4 @@
-namespace ErpBridge.Erp.Mikro.Writers;
+﻿namespace ErpBridge.Erp.Mikro.Writers;
 
 /// <summary>
 /// Mikro V15 numeric code taxonomies for the document tables. Values are the
@@ -24,6 +24,8 @@ public static class MikroCodes
         public const byte AlisFaturasi = 0;
         public const byte TahsilatMakbuzu = 1;
         /// <summary>Satış faturası; with <c>cha_normal_Iade=1</c> an alıştan iade faturası.</summary>
+        /// <summary>Kasa masraf fişi — gider (referans §13). Mikro'nun gider ekranının yazdığı tip.</summary>
+        public const byte KasaMasrafFisi = 37;
         public const byte SatisFaturasi = 63;
         public const byte TediyeMakbuzu = 64;
     }
@@ -70,6 +72,8 @@ public static class MikroCodes
         public const byte Carimiz = 0;
         public const byte Bankamiz = 2;
         public const byte Kasamiz = 4;
+        /// <summary>Gider kartı (<c>MASRAF_HESAPLARI</c>) — referans §13.</summary>
+        public const byte Giderimiz = 5;
     }
 
     /// <summary><c>cha_tpoz</c> — open (açık hesap) or closed (kasadan/bankadan kapalı).</summary>
