@@ -68,6 +68,12 @@ public static class MikroDocumentNumbering
         Cha(MikroCodes.ChaEvrakTip.KasaMasrafFisi),
     ]);
 
+    /// <summary>
+    /// Alış faturası: CHA 0, STH 3, açıklama (51, 1, 0) — satış iadesiyle <b>aynı</b> numara alanı
+    /// (referans §10). MAX+1 bu yüzden <c>cha_normal_Iade</c>'ye göre filtrelenmez.
+    /// </summary>
+    public static readonly MikroNumberScope PurchaseInvoice = SalesReturnInvoice with { Name = "alış faturası" };
+
     /// <summary>Tahsilat makbuzu: CHA 1, açıklama (51, 1, 1).</summary>
     public static readonly MikroNumberScope CollectionReceipt = new("tahsilat makbuzu",
     [
