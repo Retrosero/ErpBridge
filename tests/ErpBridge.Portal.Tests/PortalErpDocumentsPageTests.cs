@@ -54,6 +54,55 @@ public sealed class PortalErpDocumentsPageTests : PortalPageTestContext
         api.Requests.Should().Contain(r => r.Method == HttpMethod.Post && r.PathAndQuery == $"/api/v1/portal/erp-documents/{FailedJob}/retry");
     }
 
+    private static object Disbursement() => new
+    {
+        jobId = Guid.Parse("66666666-6666-6666-6666-666666666666"), externalId = "K-9", documentType = "disbursement",
+        userName = "Ali Saha", customerCode = "SERHAN", customerName = "Serhan Kalay", amount = 40m, state = "failed",
+        errorCode = "UNSUPPORTED_DOCUMENT_TYPE", message = "No writer is configured for document type 'disbursement'.",
+        attempt = 3, enqueuedAtUtc = DateTimeOffset.UtcNow, canRetry = true,
+    };
+
+    /// <summary>
+    /// The screen is Turkish, so the document key must never reach it. It used to: the label fell back to the
+    /// raw key and an operator read "disbursement". An English message from the agent is replaced too, by the
+    /// sentence that belongs to its error code.
+    /// </summary>
+    [Fact]
+    public void Every_document_type_and_reason_is_shown_in_turkish()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State() with { DataSource = "erp" });
+        api.Answer(Query(), Page(true, Disbursement()));
+
+        var cut = Render<ErpBelgeler>();
+        cut.WaitForAssertion(() => cut.FindAll("#erp-documents tbody tr").Count.Should().Be(1));
+
+        var row = cut.Find("#erp-documents tbody tr");
+        row.TextContent.Should().Contain("Tediye").And.NotContain("disbursement");
+        row.TextContent.Should().Contain("aktarım yok").And.NotContain("No writer");
+
+        // The type filter offers the same Turkish names, so an operator can narrow to them.
+        cut.Find("#erp-type").TextContent.Should().Contain("Tediye").And.Contain("Alış faturası").And.Contain("Sayım");
+    }
+
+    /// <summary>
+    /// On a phone the table is read as cards, and a card row needs its own heading: every cell carries the
+    /// Turkish column name in <c>data-label</c>, which the stylesheet renders. Without it the operator would
+    /// scroll sideways through a nine-column table.
+    /// </summary>
+    [Fact]
+    public void Each_cell_carries_its_turkish_heading_so_the_phone_can_show_cards()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State() with { DataSource = "erp" });
+        api.Answer(Query(), Page(true, Written()));
+
+        var cut = Render<ErpBelgeler>();
+        cut.WaitForAssertion(() => cut.FindAll("#erp-documents tbody tr").Count.Should().Be(1));
+
+        cut.Find("#erp-documents").ClassList.Should().Contain("data-table--cards");
+        var labels = cut.FindAll("#erp-documents tbody td[data-label]").Select(c => c.GetAttribute("data-label")).ToList();
+        labels.Should().Contain(["Tarih", "Tür", "Gönderen", "Cari", "Tutar", "Durum", "ERP no / neden", "Deneme"]);
+    }
+
     [Fact]
     public void Filtering_by_state_asks_the_server_again()
     {

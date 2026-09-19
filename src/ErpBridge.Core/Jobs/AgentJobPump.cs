@@ -311,7 +311,8 @@ public sealed class AgentJobPump
                 "Received job {JobId} with unsupported document type {DocumentType}.",
                 job.JobId, job.DocumentType);
             return Failed(job.JobId, "UNSUPPORTED_DOCUMENT_TYPE",
-                $"No writer is configured for document type '{job.DocumentType}'.");
+                // Turkish: this text reaches the operator's screen and the phone, like every other write error.
+                $"'{job.DocumentType}' belge türünü yazacak bir aktarım yok; ajanın güncellenmesi gerekiyor.");
         }
 
         IErpAdapter adapter;
