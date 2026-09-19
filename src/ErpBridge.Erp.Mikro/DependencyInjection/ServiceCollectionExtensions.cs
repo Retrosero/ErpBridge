@@ -1,4 +1,4 @@
-using ErpBridge.Erp.Abstractions.Connection;
+﻿using ErpBridge.Erp.Abstractions.Connection;
 using ErpBridge.Core.Stores;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.DependencyInjection;
@@ -144,6 +144,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesReturnWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroCollectionReceiptWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroDisbursementWriter>();
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroExpenseWriter>();
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroPurchaseInvoiceWriter>();
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroStockCountWriter>();
 
         services.AddSingleton<MikroSalesOrderWriter>();
         // Faz 17: fatura + irsaliye yazıcıları da IErpAdapter sözleşmesi üzerinden akıyor.

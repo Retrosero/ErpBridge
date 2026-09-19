@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Jobs;
 using ErpBridge.Core.Stores;
@@ -241,5 +241,55 @@ public class AgentJobPumpMobileDocumentTests
         ack.Status.Should().Be("succeeded");
         ack.ErpDocumentSeries.Should().Be("M");
         ack.ErpDocumentNumber.Should().Be(41);
+    }
+
+    private const string Expense = """
+        {
+          "mobileDocumentId": "GD-1", "occurredAt": "19.09.2026 14:20", "amount": 2400.00,
+          "expenseCardCode": "YAKIT", "paymentType": "Nakit", "cashCode": "001", "description": "Araç yakıtı"
+        }
+        """;
+
+    private const string Count = """
+        {
+          "mobileDocumentId": "SY-1", "occurredAt": "19.09.2026 16:30", "amount": 0, "warehouseNo": 1,
+          "lines": [ { "stockCode": "59030", "countedQuantity": 12 } ]
+        }
+        """;
+
+    /// <summary>
+    /// ERP yazım 3 Y3e: yeni bir belge türü eklemek tek yerde yapılır. Windows servisi de tepsi uygulaması
+    /// da bu pompayı barındırıyor, yani buradan geçen tür ikisinde de geçer — tediyede yaşanan
+    /// "No writer is configured" hatasının kaynağı iki ayrı listeydi.
+    /// </summary>
+    [Fact]
+    public async Task An_expense_is_written_as_a_kasa_masraf_fisi()
+    {
+        var (worker, adapter, _, acks) = Build();
+        adapter.Setup(a => a.WriteExpenseAsync(It.IsAny<ExpenseCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ErpWriteResult(true, ErpRecno: 101, DocumentSeries: "", DocumentNumber: 24));
+
+        await worker.ProcessJobAsync(Job("expense", "GD-1", Expense, Context), Config(), CancellationToken.None);
+
+        adapter.Verify(a => a.WriteExpenseAsync(
+            It.Is<ExpenseCommand>(c => c.Method == ExpensePaymentMethod.Cash && c.Amount == 2400.00m
+                && c.ExpenseCardCode == "YAKIT" && c.AccountCode == "001"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        acks.Should().ContainSingle().Which.Status.Should().Be("succeeded");
+    }
+
+    [Fact]
+    public async Task A_stock_count_is_written_as_a_sayim_fisi()
+    {
+        var (worker, adapter, _, acks) = Build();
+        adapter.Setup(a => a.WriteStockCountAsync(It.IsAny<StockCountCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ErpWriteResult(true, ErpRecno: 202, DocumentSeries: "", DocumentNumber: 9));
+
+        await worker.ProcessJobAsync(Job("stock_count", "SY-1", Count, Context), Config(), CancellationToken.None);
+
+        adapter.Verify(a => a.WriteStockCountAsync(
+            It.Is<StockCountCommand>(c => c.WarehouseNo == 1 && c.Lines.Count == 1 && c.Lines[0].StockCode == "59030"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        acks.Should().ContainSingle().Which.Status.Should().Be("succeeded");
     }
 }
