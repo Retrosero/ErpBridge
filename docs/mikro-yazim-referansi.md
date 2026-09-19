@@ -302,6 +302,7 @@ sayısal/öneki şema (`120.01.0001` gibi) **yok**, uzunluk 2–19 arasında da�
 | `cari_KurHesapSekli` | 1 |
 | `cari_fatura_adres_no` / `cari_sevk_adres_no` | 1 / 1 |
 | `cari_EftHesapNum` | 1 |
+| `cari_RECid_DBCno` | **0** (524/524) — §1'deki V15 kimlik kuralı cari kartında da geçerli |
 | `cari_odemeplan_no` | 0 |
 | `cari_TeminatMekAlacakMuhKodu` / `...BorcMuhKodu` | **910** / **912** |
 | `cari_VerilenDepozitoTeminatMuhKodu` / `cari_Alinan...` | **226** / **326** |
@@ -309,12 +310,18 @@ sayısal/öneki şema (`120.01.0001` gibi) **yok**, uzunluk 2–19 arasında da�
 Son dört muhasebe kodu Fora'nın V16 INSERT'ünde de **sabit literal** olarak geçiyor (`'910','912','226','326'`) —
 iki kaynak bağımsız olarak aynı değerleri veriyor.
 
+**V15 kimlik (self-link):** Fora `CariExtensions.cs` INSERT'ün ardından
+`UPDATE CARI_HESAPLAR SET cari_RECid_RECno = (SELECT SCOPE_IDENTITY()) WHERE cari_RECno = (SELECT SCOPE_IDENTITY())`
+çalıştırıyor — §1'deki genel kuralın cari kartındaki karşılığı. Canlıda `cari_RECid_DBCno=0` **524/524**,
+`cari_RECid_RECno = cari_RECno` **522/524** (aynı iki eski kart `doviz_cinsi` sapmasını da gösterenler). Writer
+bugünkü kuralı yazar: `DBCno=0` ve self-link.
+
 **Karta göre değişen alanlar:**
 
 | Kolon | Doluluk (524 caride) | Not |
 |---|---|---|
 | `cari_kod`, `cari_unvan1` | 524 | zorunlu |
-| `cari_satis_fk` | 524 | **satış fiyat listesi no** — 1 (507 cari), 2 (7), 3 (8) |
+| `cari_satis_fk` | 524 | **satış fiyat listesi no** — 1 (509), 2 (7), 3 (8); toplam 524, başka değer yok |
 | `cari_bolge_kodu` | 420 | firma bölge kullanıyor (`ALANYA`, `BELEK`, `ADRASAN-OLİMPOS`) |
 | `cari_vdaire_adi` / `cari_vdaire_no` | 264 | vergi dairesi (kurumsal müşterilerde) |
 | `cari_CepTel` | 77 | |

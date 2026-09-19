@@ -390,6 +390,14 @@ FROM CARI_HESAPLAR WHERE ISNULL(cari_iptal, 0) = 0");
         row.DepozitoV.Should().Be(row.Total);
         row.DepozitoA.Should().Be(row.Total);
 
+        // V15 identity: DBCno 0 and the row points at itself (reference §1, §12). Measured on the recent cards
+        // for the same reason as the currency slots — two legacy cards were written before this settled.
+        var selfLink = await conn.ExecuteScalarAsync<int>(@"
+SELECT COUNT(*) FROM (SELECT TOP 100 cari_RECno, cari_RECid_DBCno, cari_RECid_RECno FROM CARI_HESAPLAR
+    WHERE ISNULL(cari_iptal, 0) = 0 ORDER BY cari_create_date DESC) AS son
+WHERE son.cari_RECid_DBCno = 0 AND son.cari_RECid_RECno = son.cari_RECno");
+        selfLink.Should().Be(100, "a V15 customer card points at itself, like every other V15 row");
+
         // The code is unique on its own, so a duplicate is the database's refusal, not ours to discover late.
         var uniqueOnCode = await conn.ExecuteScalarAsync<int>(@"
 SELECT COUNT(*) FROM sys.indexes i
