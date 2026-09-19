@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Globalization;
 using System.Text;
 using Dapper;
@@ -147,12 +147,19 @@ public sealed class MikroWriteSession : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(scope);
         var parameters = new DynamicParameters();
-        parameters.Add("Series", series, DbType.String, size: SeriesMaxLength);
+        if (scope.Sources.Any(source => source.SeriesColumn is not null))
+        {
+            parameters.Add("Series", series, DbType.String, size: SeriesMaxLength);
+        }
+
         var parts = new List<string>(scope.Sources.Count);
         for (var s = 0; s < scope.Sources.Count; s++)
         {
             var source = scope.Sources[s];
-            var where = new StringBuilder($"{Quote(source.SeriesColumn)} = @Series");
+            // A table that numbers without a series (sayım, §14) is keyed by its own columns alone.
+            var where = new StringBuilder(source.SeriesColumn is { } seriesColumn
+                ? $"{Quote(seriesColumn)} = @Series"
+                : "1 = 1");
             for (var k = 0; k < source.Keys.Count; k++)
             {
                 var name = $"k{s}_{k}";
