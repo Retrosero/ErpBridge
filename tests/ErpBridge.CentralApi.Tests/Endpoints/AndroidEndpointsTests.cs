@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -181,6 +181,39 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         address.GetProperty("ilce").GetString().Should().Be("Muratpaşa");
         address.GetProperty("sokak").GetString().Should().Be("Gül Sk.");
         address.GetProperty("adresSatir2").GetString().Should().Be("Çarşı 12 4");
+    }
+
+    /// <summary>
+    /// ERP yazım 3 Y2b: telefonun gider ekranı ERP'nin gider kartlarından seçtirir (K2). Kartlar
+    /// `lookups` bölümünde `expense_card` türüyle taşınır, bu yüzden uç yalnız o türü döndürmeli —
+    /// depoyu ya da temsilciyi gider kartı diye göstermek kullanıcıyı yanlış karta yazdırırdı.
+    /// </summary>
+    [Fact]
+    public async Task The_expense_card_section_returns_only_expense_cards()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-EXP-{suffix}", "Expense card tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, """
+            { "lookups": [
+              { "kind": "expense_card", "code": "YAKIT", "name": "Yakıt" },
+              { "kind": "expense_card", "code": "KİRA", "name": "Dükkan kirası" },
+              { "kind": "warehouse", "code": "1", "name": "Ana Depo" },
+              { "kind": "salesperson", "code": "PLS01", "name": "Ali" }
+            ] }
+            """);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, $"AK-EXP-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/android/sync/giderKartlari", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("YAKIT").And.Contain("Dükkan kirası");
+        body.Should().NotContain("Ana Depo").And.NotContain("PLS01");
+        using var json = JsonDocument.Parse(body);
+        json.RootElement.GetProperty("total").GetInt32().Should().Be(2);
+        json.RootElement.GetProperty("items")[0].GetProperty("kod").GetString().Should().Be("KİRA", "kod sırasına göre gelir");
     }
 
     [Theory]

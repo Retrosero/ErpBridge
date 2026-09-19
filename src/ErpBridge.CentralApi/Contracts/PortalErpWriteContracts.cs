@@ -1,4 +1,4 @@
-namespace ErpBridge.CentralApi.Contracts;
+﻿namespace ErpBridge.CentralApi.Contracts;
 
 /// <summary>Series per document kind. On the company, null and empty both mean the ERP's series-less numbering.</summary>
 public sealed class PortalErpSeriesDto
@@ -77,6 +77,9 @@ public sealed class PortalErpLookupsResponse
     public IReadOnlyList<PortalErpLookupItem> Salespersons { get; set; } = [];
     public IReadOnlyList<PortalErpLookupItem> PriceLists { get; set; } = [];
     public IReadOnlyList<PortalErpLookupItem> Projects { get; set; } = [];
+
+    /// <summary>Gider kartları (<c>MASRAF_HESAPLARI</c>) — ERP yazım 3 Y2b.</summary>
+    public IReadOnlyList<PortalErpLookupItem> ExpenseCards { get; set; } = [];
 }
 
 /// <summary>

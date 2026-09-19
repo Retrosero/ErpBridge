@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
@@ -177,6 +177,7 @@ public static class PortalErpWriteEndpoints
             Salespersons = Sorted(byKind, "salesperson"),
             PriceLists = Sorted(byKind, "price_list"),
             Projects = Sorted(byKind, "project"),
+            ExpenseCards = Sorted(byKind, "expense_card"),
         });
     }
 

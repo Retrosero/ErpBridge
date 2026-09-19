@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
@@ -89,6 +89,11 @@ public static class AndroidEndpoints
             .WithName("AndroidCashManagement")
             .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         MapPagedSection(group, "/sync/cariHareketleri", "customerTransactions");
+        // ERP yazım 3 Y2b: telefonun gider ekranı ERP'nin kendi gider kartlarından seçtirir (K2).
+        group.MapPost("/sync/giderKartlari", ExpenseCardsAsync)
+            .WithName("AndroidExpenseCards")
+            .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
+
         group.MapPost("/sync/stokHareket", StockMovementsAsync)
             .WithName("AndroidStockMovements")
             .RequireAuthorization(Program.MobileClientPolicy).RequireRateLimiting(Program.PerTenantRateLimitPolicy);
@@ -519,6 +524,37 @@ public static class AndroidEndpoints
         var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
         var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
         return Results.Ok(new { entity, page, pageSize, total = allItems.Length, items });
+    }
+
+    /// <summary>
+    /// The ERP's expense cards (<c>MASRAF_HESAPLARI</c>), which the phone's expense screen chooses from
+    /// (ERP yazım 3 Y2b, K2). They ride in the snapshot's <c>lookups</c> section under kind
+    /// <c>expense_card</c>: a nineteen-row catalogue does not need a section of its own.
+    /// </summary>
+    private static async Task<IResult> ExpenseCardsAsync(
+        AndroidPageRequest? request,
+        HttpContext http,
+        CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var access = await GetAndroidDocumentAsync(http, db, ["lookups"], ct);
+        if (access.Error is not null) return access.Error;
+        using var document = access.Document!;
+        var allItems = GetArray(document.RootElement, "lookups")
+            .Where(item => string.Equals(GetString(item, "kind"), "expense_card", StringComparison.OrdinalIgnoreCase))
+            .Select(item => new
+            {
+                erpRef = GetString(item, "code") ?? string.Empty,
+                erp = "MIKRO",
+                kod = GetString(item, "code") ?? string.Empty,
+                isim = GetString(item, "name") ?? string.Empty,
+            })
+            .OrderBy(item => item.kod, StringComparer.Ordinal)
+            .ToArray();
+        var page = Math.Max(1, request?.Page ?? 1);
+        var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
+        return Results.Ok(new { entity = "giderKartlari", page, pageSize, total = allItems.Length, items });
     }
 
     /// <summary>
