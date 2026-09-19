@@ -1,4 +1,4 @@
-using ErpBridge.CentralApi.Domain;
+﻿using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.LogCenter;
 using Microsoft.EntityFrameworkCore;
 
@@ -379,7 +379,12 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.ExternalId).IsRequired().HasMaxLength(128);
             b.Property(x => x.DocumentType).IsRequired().HasMaxLength(64);
             b.Property(x => x.PayloadJson).HasColumnType("jsonb");
-            b.Property(x => x.Status).HasConversion<int>();
+            // Kiralama alanlari eszamanlilik anahtari: iki ajan (Windows servisi ve tepsi
+            // uygulamasi) ayni kiracida ayni anda is cekerse UPDATE'in WHERE'i satirin hala
+            // okundugu gibi oldugunu dogrular. Kaybeden taraf 0 satir gunceller ve isi almaz;
+            // boylece ayni belge Mikro'ya iki kez yazilmaz.
+            b.Property(x => x.Status).HasConversion<int>().IsConcurrencyToken();
+            b.Property(x => x.LeasedUntilMs).IsConcurrencyToken();
             b.HasIndex(x => new { x.TenantId, x.Status, x.EnqueuedAtUtc });
             b.HasIndex(x => new { x.TenantId, x.DocumentType, x.ExternalId }).IsUnique();
         });

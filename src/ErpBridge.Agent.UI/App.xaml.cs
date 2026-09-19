@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Windows;
 using ErpBridge.Agent.UI.DependencyInjection;
 using ErpBridge.Agent.UI.Services;
@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using ErpBridge.Core.Configuration;
 
 namespace ErpBridge.Agent.UI;
 
@@ -113,8 +114,7 @@ public partial class App : Application
 
         var configuration = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-            .AddJsonFile("appsettings.example.json", optional: true, reloadOnChange: false)
+            .AddAgentJsonFiles()
             .AddEnvironmentVariables(prefix: "ERPBridge_")
             .Add(liveSource)
             .Build();
@@ -654,8 +654,7 @@ public partial class App : Application
     {
         var bootstrapConfig = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddJsonFile("appsettings.example.json", optional: true)
+            .AddAgentJsonFiles(reloadOnChange: false)
             .AddEnvironmentVariables(prefix: "ERPBridge_")
             .Build();
 

@@ -456,11 +456,11 @@
       "erpbridge.agent.service": {
         "type": "Project",
         "dependencies": {
-          "ErpBridge.Core": "[1.0.0, )",
-          "ErpBridge.Erp.Mikro": "[1.0.0, )",
-          "ErpBridge.LocalStore": "[1.0.0, )",
-          "ErpBridge.RemoteApi": "[1.0.0, )",
-          "ErpBridge.Shared": "[1.0.0, )",
+          "ErpBridge.Core": "[1.1.0, )",
+          "ErpBridge.Erp.Mikro": "[1.1.0, )",
+          "ErpBridge.LocalStore": "[1.1.0, )",
+          "ErpBridge.RemoteApi": "[1.1.0, )",
+          "ErpBridge.Shared": "[1.1.0, )",
           "Microsoft.Extensions.Configuration.EnvironmentVariables": "[10.0.11, )",
           "Microsoft.Extensions.Configuration.Json": "[10.0.11, )",
           "Microsoft.Extensions.Hosting": "[10.0.11, )",
@@ -475,8 +475,9 @@
       "erpbridge.core": {
         "type": "Project",
         "dependencies": {
-          "ErpBridge.Erp.Abstractions": "[1.0.0, )",
-          "ErpBridge.Shared": "[1.0.0, )",
+          "ErpBridge.Erp.Abstractions": "[1.1.0, )",
+          "ErpBridge.Shared": "[1.1.0, )",
+          "Microsoft.Extensions.Configuration.Json": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Options": "[10.0.11, )",
@@ -486,7 +487,7 @@
       "erpbridge.erp.abstractions": {
         "type": "Project",
         "dependencies": {
-          "ErpBridge.Shared": "[1.0.0, )",
+          "ErpBridge.Shared": "[1.1.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )"
         }
       },
@@ -494,10 +495,10 @@
         "type": "Project",
         "dependencies": {
           "Dapper": "[2.1.35, )",
-          "ErpBridge.Core": "[1.0.0, )",
-          "ErpBridge.Erp.Abstractions": "[1.0.0, )",
-          "ErpBridge.Erp.Sql": "[1.0.0, )",
-          "ErpBridge.Shared": "[1.0.0, )",
+          "ErpBridge.Core": "[1.1.0, )",
+          "ErpBridge.Erp.Abstractions": "[1.1.0, )",
+          "ErpBridge.Erp.Sql": "[1.1.0, )",
+          "ErpBridge.Shared": "[1.1.0, )",
           "Microsoft.Data.SqlClient": "[7.0.2, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.11, )",
@@ -510,8 +511,8 @@
         "type": "Project",
         "dependencies": {
           "Dapper": "[2.1.35, )",
-          "ErpBridge.Erp.Abstractions": "[1.0.0, )",
-          "ErpBridge.Shared": "[1.0.0, )",
+          "ErpBridge.Erp.Abstractions": "[1.1.0, )",
+          "ErpBridge.Shared": "[1.1.0, )",
           "Microsoft.Data.SqlClient": "[7.0.2, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
           "System.Security.Cryptography.ProtectedData": "[9.0.13, )"
@@ -521,9 +522,9 @@
         "type": "Project",
         "dependencies": {
           "Dapper": "[2.1.35, )",
-          "ErpBridge.Core": "[1.0.0, )",
-          "ErpBridge.Erp.Abstractions": "[1.0.0, )",
-          "ErpBridge.Shared": "[1.0.0, )",
+          "ErpBridge.Core": "[1.1.0, )",
+          "ErpBridge.Erp.Abstractions": "[1.1.0, )",
+          "ErpBridge.Shared": "[1.1.0, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
@@ -535,8 +536,8 @@
       "erpbridge.remoteapi": {
         "type": "Project",
         "dependencies": {
-          "ErpBridge.Core": "[1.0.0, )",
-          "ErpBridge.Shared": "[1.0.0, )",
+          "ErpBridge.Core": "[1.1.0, )",
+          "ErpBridge.Shared": "[1.1.0, )",
           "Microsoft.Extensions.Http": "[10.0.11, )",
           "Microsoft.Extensions.Http.Polly": "[8.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",

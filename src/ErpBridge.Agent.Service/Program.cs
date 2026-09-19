@@ -1,7 +1,8 @@
-using ErpBridge.Agent.Service.Configuration;
+﻿using ErpBridge.Agent.Service.Configuration;
 using ErpBridge.Agent.Service.Configuration.Reconciliation;
 using ErpBridge.Agent.Service.Workers;
 using ErpBridge.Core;
+using ErpBridge.Core.Configuration;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Mikro.DependencyInjection;
 using ErpBridge.LocalStore;
@@ -45,9 +46,9 @@ public static class Program
             })
             .ConfigureAppConfiguration((ctx, cfg) =>
             {
-                cfg.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                cfg.AddJsonFile($"appsettings.{ctx.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true);
-                cfg.AddJsonFile("appsettings.example.json", optional: true, reloadOnChange: false);
+                cfg.AddAgentJsonFiles(
+                    operatorFileOptional: false,
+                    environmentName: ctx.HostingEnvironment.EnvironmentName);
                 cfg.AddEnvironmentVariables(prefix: "ERPBridge_");
             })
             .ConfigureServices((ctx, services) =>
