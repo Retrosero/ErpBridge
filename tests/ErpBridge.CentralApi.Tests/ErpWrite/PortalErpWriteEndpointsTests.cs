@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -67,6 +67,36 @@ public sealed class PortalErpWriteEndpointsTests : IClassFixture<SqliteCentralAp
         await using var db = _factory.CreateDbContext();
         (await db.ErpWriteSettings.SingleAsync(s => s.TenantId == c.Id)).Should().Match<ErpWriteSettings>(s =>
             s.SalesDocumentKind == "invoice" && s.InvoiceSeries == "T" && s.DefaultWarehouseNo == 1 && s.DeliveryDayOffset == 2);
+    }
+
+    /// <summary>
+    /// ERP yazım 3 Y2a: alış ayarları kaydedilip geri okunmalı. "Tedarikçi fiyatı KDV dahil mi"
+    /// rakamlardan çıkarılamaz — yanlış giderse fatura KDV kadar şişer ya da eksilir.
+    /// </summary>
+    [Fact]
+    public async Task The_purchase_settings_are_saved_and_read_back()
+    {
+        var c = await CompanyAsync(native: false);
+
+        var saved = await ReadAsync<PortalErpWriteSettingsDto>(await SendAsync(HttpMethod.Put, c.Patron, "/api/v1/portal/erp-settings", Settings()));
+
+        saved.PurchaseWarehouseNo.Should().Be(7);
+        saved.PurchasePricesIncludeVat.Should().BeTrue();
+        await using var db = _factory.CreateDbContext();
+        (await db.ErpWriteSettings.SingleAsync(s => s.TenantId == c.Id)).Should().Match<ErpWriteSettings>(s =>
+            s.PurchaseWarehouseNo == 7 && s.PurchasePricesIncludeVat);
+    }
+
+    /// <summary>Hiç ayarlanmamış bir firmada alış deposu boş, fiyat "KDV hariç"tir.</summary>
+    [Fact]
+    public async Task A_company_that_never_set_them_gets_the_safe_defaults()
+    {
+        var c = await CompanyAsync(native: false);
+
+        var settings = await ReadAsync<PortalErpWriteSettingsDto>(await SendAsync(HttpMethod.Get, c.Patron, "/api/v1/portal/erp-settings"));
+
+        settings.PurchaseWarehouseNo.Should().BeNull();
+        settings.PurchasePricesIncludeVat.Should().BeFalse();
     }
 
     [Theory]
@@ -180,6 +210,8 @@ public sealed class PortalErpWriteEndpointsTests : IClassFixture<SqliteCentralAp
         ["chequePortfolioCode"] = "ÇEK",
         ["notePortfolioCode"] = "SENET",
         ["deliveryDayOffset"] = 2,
+        ["purchaseWarehouseNo"] = 7,
+        ["purchasePricesIncludeVat"] = true,
     };
 
     private async Task<Company> CompanyAsync(bool native)

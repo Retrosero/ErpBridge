@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ErpBridge.CentralApi.Contracts;
@@ -165,6 +165,12 @@ public sealed class JobErpContextResponse
     [JsonPropertyName("responsibilityCenterCode")] public string? ResponsibilityCenterCode { get; set; }
     [JsonPropertyName("projectCode")] public string? ProjectCode { get; set; }
     [JsonPropertyName("deliveryDayOffset")] public int? DeliveryDayOffset { get; set; }
+
+    /// <summary>Alışta malın girdiği depo (K6); verilmezse satış deposuna düşülür.</summary>
+    [JsonPropertyName("purchaseWarehouseNo")] public int? PurchaseWarehouseNo { get; set; }
+
+    /// <summary>Tedarikçinin fiyatı KDV içeriyor mu.</summary>
+    [JsonPropertyName("purchasePricesIncludeVat")] public bool PurchasePricesIncludeVat { get; set; }
     [JsonPropertyName("createdByUsername")] public string? CreatedByUsername { get; set; }
 }
 

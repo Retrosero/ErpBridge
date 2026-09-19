@@ -91,6 +91,8 @@ public static class PortalErpWriteEndpoints
         settings.ResponsibilityCenterCode = Code(body.ResponsibilityCenterCode);
         settings.ProjectCode = Code(body.ProjectCode);
         settings.DeliveryDayOffset = body.DeliveryDayOffset;
+        settings.PurchaseWarehouseNo = body.PurchaseWarehouseNo;
+        settings.PurchasePricesIncludeVat = body.PurchasePricesIncludeVat;
         settings.UpdatedAtUtc = DateTimeOffset.UtcNow;
         settings.UpdatedByUserId = user!.Id;
         await db.SaveChangesAsync(ct);
@@ -260,6 +262,8 @@ public static class PortalErpWriteEndpoints
         ResponsibilityCenterCode = s.ResponsibilityCenterCode,
         ProjectCode = s.ProjectCode,
         DeliveryDayOffset = s.DeliveryDayOffset,
+        PurchaseWarehouseNo = s.PurchaseWarehouseNo,
+        PurchasePricesIncludeVat = s.PurchasePricesIncludeVat,
         UpdatedAtUtc = s.UpdatedAtUtc,
     };
 

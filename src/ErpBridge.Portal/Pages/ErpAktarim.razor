@@ -1,4 +1,4 @@
-@page "/erp-aktarim"
+﻿@page "/erp-aktarim"
 @inherits PortalPageBase
 
 <PageTitle>ERP Aktarım Ayarları — Yönetim Paneli</PageTitle>
@@ -100,6 +100,23 @@ else
                             </label>
                         </div>
 
+                        <div class="field-label">Alış</div>
+                        <div class="filter-grid">
+                            <ErpCodeInput Id="erp-purchase-warehouse" Label="Alış deposu" Items="_lookups.Warehouses" Disabled="@Busy"
+                                          Value="@Number(_settings.PurchaseWarehouseNo)" ValueChanged="v => _settings.PurchaseWarehouseNo = ParseNumber(v)" />
+                            <label class="stack-field">
+                                <span class="field-label">Tedarikçi fiyatı</span>
+                                <select class="portal-input" id="erp-purchase-vat" disabled="@Busy" @onchange="SetPurchaseVat">
+                                    <option value="false" selected="@(!_settings.PurchasePricesIncludeVat)">KDV hariç</option>
+                                    <option value="true" selected="@_settings.PurchasePricesIncludeVat">KDV dahil</option>
+                                </select>
+                            </label>
+                        </div>
+                        <MudText Typo="Typo.body2" Class="text-muted">
+                            Alış deposu boşsa yukarıdaki depo kullanılır. Tedarikçi fiyatının KDV'li olup olmadığı
+                            rakamlardan anlaşılamaz; yanlış seçim faturayı KDV kadar şişirir ya da eksiltir.
+                        </MudText>
+
                         <div class="field-label">Çek ve senet</div>
                         <div class="filter-grid">
                             <ErpCodeInput Id="erp-cheque-portfolio" Label="Çek portföy kasası" Items="_lookups.CashAccounts" EmptyText="ÇEK" Disabled="@Busy"
@@ -132,6 +149,16 @@ else
 }
 
 @code {
+    /// <summary>
+    /// Tedarikçi fiyatının KDV'li olup olmadığı rakamlardan anlaşılamaz; bu yüzden bir seçimdir.
+    /// Tanınmayan bir değer "KDV hariç" sayılır — sessizce KDV'li varsaymak faturayı şişirirdi.
+    /// </summary>
+    private void SetPurchaseVat(ChangeEventArgs e)
+    {
+        if (_settings is null) return;
+        _settings.PurchasePricesIncludeVat = string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
     protected override PortalArea Requires => PortalArea.ErpWrite;
 
     private static readonly (string Value, string Label)[] SalesKinds = [("order", "Sipariş"), ("dispatch", "İrsaliye"), ("invoice", "Fatura")];

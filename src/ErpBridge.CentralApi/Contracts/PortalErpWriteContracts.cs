@@ -32,6 +32,8 @@ public sealed class PortalErpWriteSettingsDto
     public string? ResponsibilityCenterCode { get; set; }
     public string? ProjectCode { get; set; }
     public int? DeliveryDayOffset { get; set; }
+    public int? PurchaseWarehouseNo { get; set; }
+    public bool PurchasePricesIncludeVat { get; set; }
 
     /// <summary>Read only; null until the company saves its settings.</summary>
     public DateTimeOffset? UpdatedAtUtc { get; set; }

@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace ErpBridge.Portal.Api;
 
@@ -31,6 +31,8 @@ public sealed class ErpWriteSettingsDto
     [JsonPropertyName("responsibilityCenterCode")] public string? ResponsibilityCenterCode { get; set; }
     [JsonPropertyName("projectCode")] public string? ProjectCode { get; set; }
     [JsonPropertyName("deliveryDayOffset")] public int? DeliveryDayOffset { get; set; }
+    [JsonPropertyName("purchaseWarehouseNo")] public int? PurchaseWarehouseNo { get; set; }
+    [JsonPropertyName("purchasePricesIncludeVat")] public bool PurchasePricesIncludeVat { get; set; }
     [JsonPropertyName("updatedAtUtc")] public DateTimeOffset? UpdatedAtUtc { get; set; }
 }
 

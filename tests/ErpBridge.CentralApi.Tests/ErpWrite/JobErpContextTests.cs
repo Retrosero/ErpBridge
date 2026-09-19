@@ -1,4 +1,4 @@
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
@@ -20,6 +20,37 @@ public sealed class JobErpContextTests : IClassFixture<CentralApiFactory>
     private readonly CentralApiFactory _factory;
 
     public JobErpContextTests(CentralApiFactory factory) => _factory = factory;
+
+    /// <summary>
+    /// ERP yazım 3 Y2a: alış ayarları ajana ulaşmalı. Alış deposu boşsa satış deposuna düşmek
+    /// writer'ın işi; burada önemli olan firmanın söylediğinin yolda kaybolmaması.
+    /// </summary>
+    [Fact]
+    public void The_purchase_settings_reach_the_agent()
+    {
+        var settings = new ErpWriteSettings
+        {
+            DefaultWarehouseNo = 1,
+            PurchaseWarehouseNo = 7,
+            PurchasePricesIncludeVat = true,
+        };
+
+        var context = ErpWriteContextBuilder.Build(settings, user: null, createdByUsername: null);
+
+        context.WarehouseNo.Should().Be(1);
+        context.PurchaseWarehouseNo.Should().Be(7, "ayrı bir alış deposu tutan firma bunu söyleyebilmeli");
+        context.PurchasePricesIncludeVat.Should().BeTrue();
+    }
+
+    /// <summary>Hiç ayar yoksa varsayılan "KDV hariç"tir: sessizce KDV'li saymak faturayı şişirirdi.</summary>
+    [Fact]
+    public void Without_a_setting_the_supplier_price_is_taken_as_excluding_vat()
+    {
+        var context = ErpWriteContextBuilder.Build(settings: null, user: null, createdByUsername: null);
+
+        context.PurchasePricesIncludeVat.Should().BeFalse();
+        context.PurchaseWarehouseNo.Should().BeNull();
+    }
 
     [Fact]
     public void A_user_value_wins_and_a_missing_one_falls_back_to_the_company()
