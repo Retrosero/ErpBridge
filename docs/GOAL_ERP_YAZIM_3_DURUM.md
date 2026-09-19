@@ -18,6 +18,9 @@
 | Y2b | Gider kartları ERP'den telefona (`lookups` / `expense_card`) | #148 |
 | Y4a | Telefon: gider ekranı ERP kartlarından seçtiriyor, KDV alanı | siparis_cepte#85 |
 | Y4b | Gider `expense` belgesi olarak gidiyor | siparis_cepte#85 |
+| Y2a | Alış deposu ve "tedarikçi fiyatı KDV dahil mi" panelde | #150 |
+| Y6a | Yazılmış sayım "ERP'de kesinleştirilmeyi bekliyor" diyor | #151 |
+| Y4e | Araç bakım gideri de gider kartı taşıyor | siparis_cepte#86 |
 
 **Üç belge de uçtan uca tamam**: telefon → merkez → ajan → Mikro. Alış faturası,
 gider ve sayım artık hem yazılabiliyor hem de telefon tarafından gönderiliyor.
@@ -56,11 +59,11 @@ gider ekranı. Ama bu PC'de release keystore ve Play yükleme yolu yok, yani
 cihazlarda hiçbiri çalışmıyor. Yeni sürüm yüklenene kadar gider yine
 `MOBILE_APP_UPDATE_REQUIRED` ile reddedilir (sessiz kayıp yok).
 
-### 2. Ayarların panele bağlanması (Y2a)
+### 2. Alış ayarları gözden geçirilmeli
 
-`ErpWriteContext`'e alış deposu ve "tedarikçi fiyatı KDV içeriyor mu" eklendi
-ama henüz `erp_write_settings`'ten gelmiyor; şimdilik satış deposuna ve
-"KDV hariç"e düşüyor.
+Panelde artık **alış deposu** ve **tedarikçi fiyatı KDV dahil mi** var (#150).
+İkincisi rakamlardan çıkarılamaz: yanlış seçim faturayı KDV kadar şişirir ya da
+eksiltir. Ayarlanmamışsa "KDV hariç" kabul edilir.
 
 ## Karara bağlananlar
 
@@ -78,10 +81,9 @@ faturası Mikro'ya yazılıp ödemesi düşerdi. Kodu bilen taraf artık söylü
 | Faz | İş |
 |---|---|
 | Y1a | Gövde sözleşmesi v3 belgesi |
-| Y1b | Giderin `disbursement` yerine `expense` ile gelmesi (telefon tarafı) |
+| Y1b | ~~Giderin `disbursement` yerine `expense` ile gelmesi~~ — gider kartının varlığından ayırt edilerek çözüldü (siparis_cepte#85); kasa defterinin çıkış toplamları bozulmasın diye kayıt "Tediye" kalıyor |
 | Y1d | Kapsam dışı tür mesajlarının Türkçeleşmesi |
 | Y2a | `erp_write_settings` + Portal: alış deposu, KDV dahil mi, gider kasası |
 | Y2c | Portal'da gider kartı listesi (uç hazır, ekran yok) |
-| Y4e | Araç bakım gideri de gider kartı taşısın — bugün kartsız gidiyor, ERP reddediyor |
 | Y5a–Y5d | Canlı uçtan uca doğrulama (`MikroDB_V15_DEMO`) |
 | Y6a–Y6c | Portal Türkçe adlar, bilgi bankası, Play internal |
