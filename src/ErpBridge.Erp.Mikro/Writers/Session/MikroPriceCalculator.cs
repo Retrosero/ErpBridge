@@ -1,4 +1,4 @@
-using ErpBridge.Shared;
+﻿using ErpBridge.Shared;
 
 namespace ErpBridge.Erp.Mikro.Writers.Session;
 
@@ -45,6 +45,9 @@ public sealed record MikroPricedDocument(IReadOnlyList<MikroPricedLine> Lines)
 
     /// <summary><c>cha_meblag</c>: gross − discounts + VAT.</summary>
     public decimal Total => Lines.Sum(l => l.Total);
+
+    /// <summary>KDV'siz toplam — tedarikçi fiyatı KDV hariçse telefonun gösterdiği rakam budur.</summary>
+    public decimal Net => Lines.Sum(l => l.Net);
 
     /// <summary>
     /// VAT per <c>cha_vergi1..5</c> bucket, as Fora files it: pointer 2 → bucket 2, 3 → 3, 4 → 4, 5 → 5,
@@ -103,6 +106,42 @@ public static class MikroPriceCalculator
         var condition = Round(gross * (1m - conditionRatio));
         var vat = Round((gross - condition) * vatRate / 100m);
         return new MikroPricedLine(unit, quantity, gross, condition, 0m, 0m, vatPointer, vatRate, vat);
+    }
+
+    /// <summary>
+    /// An alış line: the supplier's own unit price, with VAT taken from the stock card (K6). A purchase
+    /// carries no discount chain — what the supplier charged is what goes in; a discount the supplier gave
+    /// is already inside the price they invoiced.
+    /// </summary>
+    /// <param name="unitPrice">The supplier's unit price as the phone recorded it.</param>
+    /// <param name="quantity">Quantity.</param>
+    /// <param name="vatPointer">The stock card's VAT pointer.</param>
+    /// <param name="vatRate">That pointer's rate in percent.</param>
+    /// <param name="priceIncludesVat">Whether the supplier's price already contains VAT.</param>
+    public static MikroPricedLine PurchaseLine(
+        decimal unitPrice, decimal quantity, byte vatPointer, decimal vatRate, bool priceIncludesVat)
+    {
+        var unit = UnitWithoutVat(unitPrice, vatRate, priceIncludesVat);
+        var gross = Round(unit * quantity);
+        var vat = Round(gross * vatRate / 100m);
+        return new MikroPricedLine(unit, quantity, gross, 0m, 0m, 0m, vatPointer, vatRate, vat);
+    }
+
+    /// <summary>
+    /// Refuses a purchase whose Mikro figure differs from what the phone showed. Which figure to compare
+    /// depends on the prices: when the supplier's prices exclude VAT the phone's total is the net, and
+    /// comparing it against Mikro's VAT-inclusive total would reject every correct document.
+    /// </summary>
+    /// <exception cref="MikroWriteException">The difference is more than <see cref="TotalTolerance"/>.</exception>
+    public static void EnsurePurchaseTotal(MikroPricedDocument document, decimal expectedTotal, bool pricesIncludeVat)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        var mikro = pricesIncludeVat ? document.Total : document.Net;
+        var difference = mikro - expectedTotal;
+        if (Math.Abs(difference) > TotalTolerance)
+        {
+            throw new MikroWriteException(ErpWriteError.TotalMismatch(difference));
+        }
     }
 
     /// <summary>Refuses a document whose Mikro total differs from what the phone showed (<c>TOTAL_MISMATCH</c>, D8).</summary>
