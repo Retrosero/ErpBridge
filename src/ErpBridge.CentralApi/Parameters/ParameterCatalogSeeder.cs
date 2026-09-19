@@ -95,11 +95,18 @@ public static class ParameterCatalogSeeder
     /// <summary>Copies the catalogue's fields onto an entry; returns true when anything moved.</summary>
     private static bool Apply(ParameterCatalogEntry entry, ParameterCatalogFile.CatalogRow row)
     {
-        // IsImplemented is deliberately not touched: it records what this product honours, which
-        // the catalogue knows nothing about, and later phases set it as features land (D16).
+        // IsImplemented does not come from the catalogue — it records what Sipariş Cepte honours,
+        // which the catalogue knows nothing about — but it is still set here, from the list this
+        // product maintains (D16). Set on every seed rather than only on insert, so a feature that
+        // lands in a later release turns the panel's "inert in this version" badge off without
+        // anyone touching the database. It counts as a change like any other field: a release that
+        // only grows the honoured list ships an identical catalogue, so if the flag did not count,
+        // nothing would be saved and the badge would stay wrong until some unrelated edit.
+        //
         // Program is copied too: a regenerated catalogue can correct it for an existing
         // (CatalogMethod, ParametreID), and a stale program would address the wrong Mikro rows.
-        return Replace(v => entry.Program = v!, entry.Program, row.Program)
+        return ReplaceImplemented(entry, ImplementedParameters.Honours(row.CatalogMethod, row.ParametreId))
+               | Replace(v => entry.Program = v!, entry.Program, row.Program)
                | Replace(v => entry.Name = v!, entry.Name, row.Name)
                | Replace(v => entry.DefaultValue = v!, entry.DefaultValue, row.DefaultValue)
                | Replace(v => entry.DefaultSource = v, entry.DefaultSource, row.DefaultSource)
@@ -116,6 +123,17 @@ public static class ParameterCatalogSeeder
                | Replace(v => entry.OptionsJson = v, entry.OptionsJson, row.OptionsJson)
                | Replace(v => entry.SourceBuild = v!, entry.SourceBuild, row.SourceBuild)
                | ReplaceOrder(entry, row.EditorOrder);
+    }
+
+    private static bool ReplaceImplemented(ParameterCatalogEntry entry, bool next)
+    {
+        if (entry.IsImplemented == next)
+        {
+            return false;
+        }
+
+        entry.IsImplemented = next;
+        return true;
     }
 
     private static bool Replace(Action<string?> set, string? current, string? next)
