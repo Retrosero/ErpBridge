@@ -272,6 +272,36 @@ public class MobileDocumentTranslatorTests
         result.Disbursement.Should().BeNull();
     }
 
+    /// <summary>
+    /// The phone stores the bank the user chose as a display name. Posting such a transfer against the
+    /// company's default bank would put the money in an account nobody picked, silently — so it is refused
+    /// until the phone sends the ERP code (PR #141 Codex).
+    /// </summary>
+    [Fact]
+    public void A_transfer_naming_a_bank_without_its_code_is_refused_rather_than_posted_to_the_default()
+    {
+        var body = Disbursement
+            .Replace("\"paymentType\": \"Nakit\"", "\"paymentType\": \"Havale / EFT\"")
+            .Replace("\"description\"", "\"bankName\": \"Ziraat Bankası\", \"description\"");
+
+        var result = _sut.Translate("disbursement", "KL-9", body, Context());
+
+        result.Error!.Code.Should().Be(ErpWriteError.MobileAppUpdateRequiredCode);
+        result.Disbursement.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_transfer_that_names_its_bank_code_uses_it()
+    {
+        var body = Disbursement
+            .Replace("\"paymentType\": \"Nakit\"", "\"paymentType\": \"Havale / EFT\"")
+            .Replace("\"description\"", "\"bankName\": \"Ziraat Bankası\", \"bankCode\": \"12\", \"description\"");
+
+        var result = _sut.Translate("disbursement", "KL-9", body, Context());
+
+        result.Disbursement!.AccountCode.Should().Be("12", "the account the user actually picked");
+    }
+
     [Fact]
     public void A_disbursement_without_a_cash_box_says_which_setting_is_missing()
     {

@@ -330,6 +330,14 @@ public sealed class MobileDocumentTranslator
         };
         if (method is null) return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType());
 
+        // The phone of today names the bank it chose only as `bankName`, a display name (PR #141 Codex). Falling
+        // back to the company's default bank would post the money to an account nobody picked and say nothing,
+        // so a named bank without its ERP code is refused until the phone sends `bankCode` (Z4c).
+        if (method == DisbursementMethod.Transfer
+            && Text(body, "bankCode") is null
+            && !string.IsNullOrWhiteSpace(Text(body, "bankName")))
+            return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
+
         var (picked, fallback, missing) = method == DisbursementMethod.Cash
             ? (Text(body, "cashCode"), context.CashCode, "kasa kodu")
             : (Text(body, "bankCode"), context.TransferBankCode, "havale bankası");

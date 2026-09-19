@@ -130,6 +130,7 @@ Saha personelinin tediyesi de, bir **alışın nakit ödemesi** de bu belgeyi ü
 | `amount` | > 0; sıfır tediye belge değildir |
 | `paymentType` | `Nakit` (varsayılan) ya da `Havale / EFT`. Çek ve senet **çıkışı** bu goal'de yok, adıyla reddedilir (`UNSUPPORTED_PAYMENT_TYPE`) |
 | `cashCode` / `bankCode` | isteğe bağlı; yoksa firmanın Portal'daki kasa / havale bankası kullanılır |
+| `bankName` | **tek başına yetmez.** Havalede kullanıcı bir banka seçtiyse ERP kodu (`bankCode`) da gelmeli; yalnız ad gelirse belge `MOBILE_APP_UPDATE_REQUIRED` ile reddedilir. Sessizce firma varsayılanına yazmak, kimsenin seçmediği hesaba para koymak olurdu (telefon tarafı Z4c) |
 | `currency` | yoksa TL sayılır |
 
 Mikro karşılığı: tediye makbuzu (`cha_evrak_tip=64`), **borç** satırı, nakit `cinsi 0` + kasa, havale
