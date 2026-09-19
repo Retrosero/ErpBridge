@@ -65,6 +65,37 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 
 ## Bulgular
 
+### Envanter: telefon hangi belgeyi gönderiyor, hangisi yazılıyor (2026-09-19, kod okunarak)
+
+ERP'li bir firmada telefonun ürettiği belgeler ve bugünkü durumları:
+
+| Telefondaki iş | `documentType` | Durum |
+|---|---|---|
+| Satış | `sales_order` | ✅ Mikro'ya yazılıyor |
+| İade (satırlı) | `sales_return` | ✅ yazılıyor |
+| Tahsilat | `collection` | ✅ yazılıyor |
+| Tediye (kasadan ödeme) | `disbursement` | ✅ **yeni** (Z3b + Z3d) |
+| **Gider** | `disbursement` | ⛔ cari kodu yok → `MISSING_CUSTOMER_CODE` |
+| Sayım | `stock_count` | ⛔ ajan tanımıyor → kalıcı hata |
+| Alış faturası (satırlı) | `purchase_receipt` | ⛔ telefon ERP firmada göndermiyor **+** ingest 409 |
+| Yeni cari | `customer_card` | ⛔ ingest 409 |
+| Yeni stok kartı | `stock_card` | ⛔ ingest 409 (kapsam dışı) |
+| Diğer kasa hareketi | `cash_transaction` | ⛔ ajan tanımıyor (pratikte üretilmiyor) |
+
+**Planı düzelten iki bulgu:**
+
+1. **Gider ayrı bir belge türü değil.** `ExpensesModule` kasa kaydını `type = "Tediye"` ile yazıyor ve karşı
+   tarafa `"Gider: <kategori>"` koyuyor; yani gider `expense` olarak değil **`disbursement`** olarak geliyor.
+   Cari kodu çözülemediği için tediye writer'ı bunu kalıcı `MISSING_CUSTOMER_CODE` ile reddediyor — sessiz
+   kayıp yok, ama **Z1b'nin `expense` türünü reddetme tasarımı boşa düşüyor**: öyle bir tür hiç gelmiyor.
+   Gideri gerçekten kapsama almak istersek Mikro karşılığı (masraf kartı/gider carisi) gerekir; kapsam dışı
+   bırakmak istersek telefonun gideri ayırt edilebilir göndermesi gerekir (bugün tediyeden ayrılmıyor).
+2. **Sayım ERP'li firmada da kuyruğa giriyor.** `enqueueStockCounts` firma türüne bakmıyor; tamamlanan her
+   sayım `stock_count` olarak gönderiliyor ve ajan tanımadığı için kalıcı hata üretiyor. Z1b bunu ingest'te
+   reddederek durdurmalı (telefon tarafı da göndermemeli).
+
+`purchase` türü pratikte üretilmiyor: alışın onay kaydı `ApprovalItem` (tür "Alış"), kasa kaydı ise "Tediye".
+
 ### Hata neden ilk düzeltmeden sonra da sürdü (2026-09-19, ikinci tur)
 Kullanıcı "hâlâ aynı hata" dedi ve haklıydı: **iki ayrı ajan yolu var.**
 
