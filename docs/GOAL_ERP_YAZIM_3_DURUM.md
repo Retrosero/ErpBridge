@@ -1,4 +1,4 @@
-# ERP yazım 3 — Durum
+﻿# ERP yazım 3 — Durum
 
 `docs/GOAL_ERP_YAZIM_3.md` planının nerede olduğu. Son güncelleme: 2026-09-19.
 
@@ -13,6 +13,8 @@
 | Y3d | Çevirmen: `expense`, `stock_count`, `purchase_receipt` | #146 |
 | Y3e | Ajan gönderimi (tek liste, iki host) | #146 |
 | Y1c | Ingest kapısı: telefonun kendi alış gövdesi ERP'li kiracıda kabul | #146 |
+| Y4c | Telefon: sayım gövdesi (`amount`, `warehouseNo`, `stockCode`) | siparis_cepte#84 |
+| Y4d | Telefon: alışta KDV, ödeme KDV'li, alış her firmada gönderiliyor | siparis_cepte#84 |
 
 Üç belge de artık **telefon → merkez → ajan → Mikro** zincirinde uçtan uca
 bağlı. Eksik olan tek şey telefonun bu gövdeleri **göndermesi** (Y4).
@@ -39,33 +41,29 @@ bağlı. Eksik olan tek şey telefonun bu gövdeleri **göndermesi** (Y4).
 
 ## Seni bekleyenler (karar/aksiyon gerekiyor)
 
-### 1. Alışta KDV'nin telefonda görünmemesi
-
-Telefonun alış ekranı KDV tutmuyor: gösterdiği rakam `miktar × fiyat` toplamı,
-yani **net**. K6 gereği KDV'yi stok kartından hesaplıyoruz, dolayısıyla Mikro'daki
-fatura net + KDV oluyor. Ama telefonun aynı alış için ürettiği **tediye net
-tutarda** — yani Mikro'da fatura KDV kadar açık kalıyor.
-
-Seçenekler:
-
-- (a) Telefon alış ekranına KDV eklensin, tediye de KDV'li tutarı ödesin *(Y4d,
-  önerilen)*;
-- (b) tedarikçi fiyatı "KDV dahil" kabul edilsin (panelden ayarlanır, zaten
-  hazır: `PurchasePricesIncludeVat`);
-- (c) fatura KDV kadar açık kalsın, muhasebe kapatsın.
-
-### 2. Gider kartı kataloğu (Y2b)
+### 1. Gider kartı kataloğu (Y2b)
 
 K2'ye göre telefon gider kartlarını ERP'den çekecek. Bu yeni bir katalog
 senkronu demek (`MASRAF_HESAPLARI` → merkez → telefon). Yapılana kadar telefon
 `expenseCardCode` gönderemeyeceği için gider `MOBILE_APP_UPDATE_REQUIRED` ile
 reddedilir — sessiz kayıp yok, ama gider de akmaz.
 
-### 3. Ayarların panele bağlanması (Y2a)
+### 2. Ayarların panele bağlanması (Y2a)
 
 `ErpWriteContext`'e alış deposu ve "tedarikçi fiyatı KDV içeriyor mu" eklendi
 ama henüz `erp_write_settings`'ten gelmiyor; şimdilik satış deposuna ve
 "KDV hariç"e düşüyor.
+
+## Karara bağlananlar
+
+**K12 (2026-09-19): alışta KDV telefonda gösterilir (seçenek a).** Alış ekranı
+artık ara toplam + KDV / genel toplam gösteriyor; tedarikçi bakiyesi, kasa çıkışı
+ve tediye genel toplamı taşıyor. Gövdede `amount` KDV hariç kalır (fatura
+satırlarının toplamı odur), `vatAmount`/`grossAmount` yanında gider.
+
+Bu turda çıkan ikinci bir sessiz kayıp da kapatıldı: kasa kayıtlarının cari kodu
+**ada göre** aranıyordu ve aynı adda iki cari varsa arama boş dönüyordu — alış
+faturası Mikro'ya yazılıp ödemesi düşerdi. Kodu bilen taraf artık söylüyor.
 
 ## Kalanlar
 
@@ -77,6 +75,6 @@ ama henüz `erp_write_settings`'ten gelmiyor; şimdilik satış deposuna ve
 | Y2a | `erp_write_settings` + Portal: alış deposu, KDV dahil mi, gider kasası |
 | Y2b | Gider kartı kataloğu ve senkronu |
 | Y2c | Portal'da gider kartı listesi |
-| Y4a–Y4e | Telefon: gider ekranı, sayımda stok kodu, ERP'li firmada alış gönderimi |
+| Y4a, Y4b, Y4e | Telefon: gider ekranı (ERP kartları, KDV, kredi kartı), araç bakım gideri |
 | Y5a–Y5d | Canlı uçtan uca doğrulama (`MikroDB_V15_DEMO`) |
 | Y6a–Y6c | Portal Türkçe adlar, bilgi bankası, Play internal |

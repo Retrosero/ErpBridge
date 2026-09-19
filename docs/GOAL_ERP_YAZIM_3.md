@@ -1,4 +1,4 @@
-# GOAL — ERP yazım 3: Alış faturası · Gider · Sayım
+﻿# GOAL — ERP yazım 3: Alış faturası · Gider · Sayım
 
 **Amaç:** telefonda üretilen **alış faturası**, **gider** ve **sayım** belgelerinin Mikro'ya doğru
 evrak tipleriyle yazılması. ERP yazım 1 satış + tahsilatı, ERP yazım 2 tediye + alış kolon düzeni +
@@ -27,6 +27,7 @@ yeni cariyi kapsadı; bu goal kalan üç belgeyi kapatıyor.
 | **K9** | Sayımda **yalnız fiş yazılır**; sayım sonuçları **ERP'de kesinleştirilir** (Mikro'nun kendi uygulama adımı). |
 | **K10** | Sayımda telefon **stok kodu gönderir** — ERP'ye tam uyum; barkod→stok kodu tahmini yapılmaz. |
 | **K11** | Sayım fiş numarası **depo bazlı MAX+1**. |
+| **K12** (2026-09-19) | Telefon alış ekranı **KDV gösterir** ve ödeme **KDV'li tutarı** kapatır. Telefonun gösterdiği rakam eskiden `miktar × fiyat` toplamıydı; ERP KDV'yi stok kartından hesapladığı için fatura Mikro'da KDV kadar açık kalıyordu. |
 
 ## Varsayılanlar (aksi söylenmedikçe)
 
