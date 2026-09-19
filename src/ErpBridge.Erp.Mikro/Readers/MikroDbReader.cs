@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using ErpBridge.Erp.Abstractions.Sync;
 using ErpBridge.Erp.Mikro.Connection;
 using Microsoft.Data.SqlClient;
@@ -442,7 +442,16 @@ SELECT 'price_list', CAST(sfl_sirano AS NVARCHAR(20)), CAST(ISNULL(sfl_aciklama,
        CAST(ISNULL(sfl_kdvdahil, 0) AS BIT)
 FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI
 WHERE ISNULL(sfl_iptal, 0) = 0
-  AND (@changedSinceUtc IS NULL OR COALESCE(sfl_lastup_date, sfl_create_date) > @changedSinceUtc)";
+  AND (@changedSinceUtc IS NULL OR COALESCE(sfl_lastup_date, sfl_create_date) > @changedSinceUtc)
+UNION ALL
+-- ERP yazım 3 Y2b: gider kartları (MASRAF_HESAPLARI). Telefon gider girerken bunlardan birini
+-- seçer ve kodu `cha_kasa_hizkod` olarak Mikro'ya yazılır (referans §13). Kendi bölümü yerine
+-- lookups içinde taşınır: 19 satırlık bir katalog için var olan boru hattı yeterli.
+SELECT 'expense_card', CAST(his_kod AS NVARCHAR(50)), CAST(ISNULL(his_isim, '') AS NVARCHAR(200)),
+       CAST(NULL AS NVARCHAR(500)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+FROM MASRAF_HESAPLARI
+WHERE ISNULL(his_iptal, 0) = 0 AND ISNULL(his_hidden, 0) = 0
+  AND (@changedSinceUtc IS NULL OR COALESCE(his_lastup_date, his_create_date) > @changedSinceUtc)";
 
         var rows = await QueryAsync<LookupPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.ToList();
