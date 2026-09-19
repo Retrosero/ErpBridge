@@ -113,6 +113,10 @@ public interface IErpAdapter
         => Task.FromResult(NotWritable("sales return"));
 
     /// <summary>Write a phone collection as one receipt with a line per payment.</summary>
+    /// <summary>Write a phone disbursement as a Mikro tediye receipt (ERP yazım 2, reference §11).</summary>
+    Task<ErpWriteResult> WriteDisbursementAsync(Documents.DisbursementCommand command, CancellationToken ct = default)
+        => Task.FromResult(new ErpWriteResult(false, "NOT_IMPLEMENTED", $"{GetType().Name} bu ERP için tediye yazmıyor."));
+
     Task<ErpWriteResult> WriteCollectionDocumentAsync(CollectionCommand command, CancellationToken ct = default)
         => Task.FromResult(NotWritable("collection receipt"));
 

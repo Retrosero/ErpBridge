@@ -71,6 +71,7 @@ public sealed class AgentWorker : BackgroundService
     private static readonly HashSet<string> MobileDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         MobileDocumentTranslator.SalesOrderType, MobileDocumentTranslator.SalesReturnType, MobileDocumentTranslator.CollectionType,
+        MobileDocumentTranslator.DisbursementType,
     };
 
     private static readonly MobileDocumentTranslator Translator = new();
@@ -352,6 +353,7 @@ public sealed class AgentWorker : BackgroundService
                 { Sale: { } sale } => await adapter.WriteSalesDocumentAsync(sale, ct),
                 { Return: { } salesReturn } => await adapter.WriteSalesReturnAsync(salesReturn, ct),
                 { Collection: { } collection } => await adapter.WriteCollectionDocumentAsync(collection, ct),
+                { Disbursement: { } disbursement } => await adapter.WriteDisbursementAsync(disbursement, ct),
                 _ => throw new InvalidOperationException("The translator returned neither a command nor an error."),
             };
             return ToAck(job, writeResult);

@@ -1,6 +1,6 @@
 # Goal Durumu — Kalan telefon belgeleri Mikro'ya
 
-Son güncelleme: 2026-09-19 (Z0 bitti)
+Son güncelleme: 2026-09-19 (Z3b — tediye yazılıyor)
 Görev listesi: [GOAL_ERP_YAZIM_2.md](GOAL_ERP_YAZIM_2.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -15,12 +15,12 @@ Görev listesi: [GOAL_ERP_YAZIM_2.md](GOAL_ERP_YAZIM_2.md) · Mikro kuralları: 
 | Z0 — Referans ve envanter | 5 | 5 | ✅ |
 | Z1 — Sunucu: sözleşme, kabul, ayarlar | 3 | 0 | ⬜ |
 | Z2 — Çevirici ve komutlar | 2 | 0 | ⬜ |
-| Z3 — Mikro V15 writer'ları | 5 | 0 | ⬜ |
+| Z3 — Mikro V15 writer'ları | 5 | 1 | 🔄 |
 | Z4 — Sipariş Cepte | 4 | 0 | ⬜ |
 | Z5 — İzleme ve geriye dönük | 2 | 0 | ⬜ |
 | Z6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Z1a — gövde sözleşmesi v3
+**Şu anki görev:** Z3a — alış faturası writer'ı
 
 **Kapsam:** Tediye · Alış faturası (satırlı) · Yeni cari kartı. Gider ve sayım **kapsam dışı** (kullanıcı kararı U1);
 ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
@@ -47,7 +47,7 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 | Z2a | Komutlar + adaptör metotları | ⬜ | | |
 | Z2b | `MobileDocumentTranslator` genişlemesi | ⬜ | | |
 | Z3a | Alış faturası writer | ⬜ | | |
-| Z3b | Tediye writer | ⬜ | | |
+| Z3b | Tediye writer | ✅ | #141 | **Kullanıcının canlı hatası:** telefonda alış yapınca "No writer is configured for document type 'disbursement'". Sebep: alışın nakit ödemesi kasa defterine **"Tediye"** olarak yazılıyor (`PurchaseModule.applyPurchase`), o da `disbursement` belgesi oluyordu; ajan türü tanımıyordu. Uçtan uca yazıldı: `DisbursementCommand` + `IErpAdapter.WriteDisbursementAsync`, çevirici (`MobileDocumentTranslator.DisbursementType`), `MikroDisbursementWriter` (CHA 64, borç, nakit `cinsi 0`+kasa / havale `cinsi 20 FirmaHavaleEmri`+banka), ajan yönlendirmesi. Çek/senet çıkışı adıyla reddediliyor (kapsam D3). **Sapma:** tediye serisi ayrı ayar olacaktı (Z1c); şimdilik tahsilat serisi kullanılıyor — Mikro sırayı `evrak_tip` başına tuttuğu için güvenli, Z1c'de gözden geçirilecek. Testler: çevirici (6), writer satırı (4), ajan yönlendirmesi (1), **DEMO'ya gerçek yazım** (nakit + havale, bakiye yönü doğrulandı, geri alındı) |
 | Z3c | Cari kartı writer + eski writer denetimi | ⬜ | | |
 | Z3d | Ajan yeni türleri tanısın | ⬜ | | **Çakışma:** `AgentJobPump` dalı (`faz-51-mobil-siparis-mikro`, 2026-09-19'da push edildi) bu kodu yeniden yazıyor; başlamadan önce main'e girip girmediğine bakılır |
 | Z3e | Kapıyı aç: ERP'li firmada `purchase_receipt` + `customer_card` kabul | ⬜ | | Writer'lar hazır olduktan **sonra**; `IngestEndpoints` ve `ApprovalService.RejectDocument` birlikte |
@@ -64,6 +64,16 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 ---
 
 ## Bulgular
+
+### Alıştaki "disbursement" hatası nereden geliyordu (2026-09-19, kullanıcı bildirdi)
+Telefonda alış yapınca "No writer is configured for document type 'disbursement'" hatası alınıyordu. Alışın
+kendisi değil, **ödemesi** hata veriyor: `PurchaseModule.applyPurchase` nakit ödemeyi kasa defterine
+`type = "Tediye"` olarak yazıyor, `OutgoingDocumentRepository.documentType` bunu `disbursement`'a çeviriyor ve
+ajan o türü tanımıyordu. Z3b ile yazıldı.
+
+**Dikkat:** bu düzeltme ödemeyi Mikro'ya taşır; **alış faturasının kendisi hâlâ yazılmıyor.** ERP'li firmada
+telefon satırlı alışı (`purchase_receipt`) zaten göndermiyor (`NativeCompany.isActive` koşulu) ve ingest de
+reddediyor. Onun için Z3a (writer) + Z4a (telefon) + Z3e (kapı) gerekiyor.
 
 ### Kalan türler bugün Mikro'ya ulaşmıyor — ama iki farklı sebeple (2026-09-19)
 - **Kuyrukta kalıcı hata birikiyor:** `disbursement` (tediye), `expense`, `purchase` (kasadan alış ödemesi),

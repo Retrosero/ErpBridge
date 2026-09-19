@@ -218,6 +218,69 @@ public class MobileDocumentTranslatorTests
             new CollectionPayment(CollectionMethod.Note, 800m, new DateTime(2026, 10, 2), "SENET", Note: new NoteDetails("S-5", "Ali")));
     }
 
+    /// <summary>
+    /// The body the phone's cash book already sends (ERP yazım 2): one payment, no <c>payments[]</c> array.
+    /// A purchase's cash payment produces exactly this, which is why a purchase used to fail with
+    /// "No writer is configured for document type 'disbursement'".
+    /// </summary>
+    private const string Disbursement = """
+        {
+          "mobileDocumentId": "KL-9", "revision": 1, "occurredAt": "17.09.2026 12:00",
+          "transactionType": "Tediye", "counterparty": "Bakkal Ali", "customerCode": "120.001",
+          "amount": 1500.50, "paymentType": "Nakit", "description": "Saha Alış Girişi (A-42)"
+        }
+        """;
+
+    [Fact]
+    public void A_cash_disbursement_becomes_one_receipt_on_the_company_cash_box()
+    {
+        var result = _sut.Translate("disbursement", "KL-9", Disbursement, Context());
+
+        result.Error.Should().BeNull();
+        var payment = result.Disbursement!;
+        payment.Method.Should().Be(DisbursementMethod.Cash);
+        payment.Amount.Should().Be(1500.50m);
+        payment.AccountCode.Should().Be("001", "the company's cash box, since the phone named none");
+        payment.Header.Should().Match<ErpDocumentHeader>(h =>
+            h.CustomerCode == "120.001" && h.ExpectedTotal == 1500.50m && h.Description == "Saha Alış Girişi (A-42)");
+    }
+
+    [Fact]
+    public void A_transfer_disbursement_leaves_the_company_bank()
+    {
+        var body = Disbursement.Replace("\"paymentType\": \"Nakit\"", "\"paymentType\": \"Havale / EFT\"");
+
+        var result = _sut.Translate("disbursement", "KL-9", body, Context());
+
+        result.Disbursement!.Method.Should().Be(DisbursementMethod.Transfer);
+        result.Disbursement.AccountCode.Should().Be("04", "the transfer bank from the company settings");
+    }
+
+    [Theory]
+    // Cheque and note issues are a different Mikro document; refused by name rather than written as cash.
+    [InlineData("\"paymentType\": \"Nakit\"", "\"paymentType\": \"Çek\"", ErpWriteError.UnsupportedPaymentTypeCode)]
+    [InlineData("\"paymentType\": \"Nakit\"", "\"paymentType\": \"Senet\"", ErpWriteError.UnsupportedPaymentTypeCode)]
+    [InlineData("\"amount\": 1500.50", "\"amount\": 0", ErpWriteError.InvalidAmountCode)]
+    [InlineData("\"customerCode\": \"120.001\",", "", ErpWriteError.MissingCustomerCodeCode)]
+    public void A_disbursement_the_erp_cannot_write_is_refused_by_name(string find, string replacement, string code)
+    {
+        var body = Disbursement.Replace(find, replacement);
+
+        var result = _sut.Translate("disbursement", "KL-9", body, Context());
+
+        result.Error!.Code.Should().Be(code);
+        result.Disbursement.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_disbursement_without_a_cash_box_says_which_setting_is_missing()
+    {
+        var result = _sut.Translate("disbursement", "KL-9", Disbursement, Context(cash: null));
+
+        result.Error!.Code.Should().Be(ErpWriteError.ErpMappingMissingCode);
+        result.Error.Message.Should().Contain("kasa");
+    }
+
     [Theory]
     [InlineData("\"no\": \"27703\", ", "", ErpWriteError.MissingChequeDetailsCode)]
     [InlineData("\"dueDate\": \"2026-11-30\", ", "", ErpWriteError.MissingChequeDetailsCode)]

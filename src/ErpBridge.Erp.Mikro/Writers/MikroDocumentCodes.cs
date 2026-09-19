@@ -45,6 +45,12 @@ public static class MikroCodes
         public const byte PerakendeFaturasi = 7;
         public const byte MusteriHavaleSozu = 17;
         public const byte MusteriKrediKarti = 19;
+
+        // Tediyenin "firma" ailesi (referans §11): para çıkarken müşteri değil firma tarafı yazılır.
+        public const byte FirmaCeki = 3;
+        public const byte FirmaSenedi = 4;
+        public const byte FirmaHavaleEmri = 20;
+        public const byte FirmaKrediKarti = 22;
     }
 
     /// <summary><c>cha_normal_Iade</c> / <c>sth_normal_iade</c>.</summary>

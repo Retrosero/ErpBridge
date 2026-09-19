@@ -109,6 +109,32 @@ ERP'li firmada iade **satırlı** `sales_return` olarak gönderilir; ayrıca kas
 | `installments`, `surchargeAmount` | Kart taksiti ve vade farkı; vade farkı ayrı hareket yazılmaz, açıklamaya eklenir |
 | vade | Nakit, kart ve havalede belge tarihi |
 
+## `disbursement` — tediye *(ERP yazım 2, Z3b)*
+
+Telefonun **kasa defteri** gövdesi; `collection`'dan farkı `payments[]` dizisi olmaması — tek ödeme taşır.
+Saha personelinin tediyesi de, bir **alışın nakit ödemesi** de bu belgeyi üretir (`PurchaseModule` kasa kaydını
+`Tediye` türüyle yazar).
+
+```json
+{
+  "mobileDocumentId": "KL-9", "revision": 1, "occurredAt": "17.09.2026 12:00",
+  "transactionType": "Tediye", "counterparty": "Bakkal Ali", "customerCode": "120.001",
+  "amount": 1500.50, "paymentType": "Nakit", "bankName": null,
+  "description": "Saha Alış Girişi (A-42)"
+}
+```
+
+| Alan | Kural |
+|---|---|
+| `customerCode` | **zorunlu** — cari kodu olmayan belge reddedilir (`MISSING_CUSTOMER_CODE`) |
+| `amount` | > 0; sıfır tediye belge değildir |
+| `paymentType` | `Nakit` (varsayılan) ya da `Havale / EFT`. Çek ve senet **çıkışı** bu goal'de yok, adıyla reddedilir (`UNSUPPORTED_PAYMENT_TYPE`) |
+| `cashCode` / `bankCode` | isteğe bağlı; yoksa firmanın Portal'daki kasa / havale bankası kullanılır |
+| `currency` | yoksa TL sayılır |
+
+Mikro karşılığı: tediye makbuzu (`cha_evrak_tip=64`), **borç** satırı, nakit `cinsi 0` + kasa, havale
+`cinsi 20` (FirmaHavaleEmri) + banka — referans §11. Seri şimdilik tahsilat serisidir (Z1c'de ayrı ayar).
+
 ## Yazım sonucu — `GET /api/v1/ingest/jobs/status` (Y4d)
 
 Telefon gönderdiği belgelerin ERP'deki durumunu sorar: `?externalIds=MOB-SO-1,MOB-TH-2` (ya da tekrar eden parametre),

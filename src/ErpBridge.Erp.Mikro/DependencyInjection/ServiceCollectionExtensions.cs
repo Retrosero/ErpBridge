@@ -143,6 +143,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesDocumentWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroSalesReturnWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroCollectionReceiptWriter>();
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroDisbursementWriter>();
 
         services.AddSingleton<MikroSalesOrderWriter>();
         // Faz 17: fatura + irsaliye yazıcıları da IErpAdapter sözleşmesi üzerinden akıyor.
