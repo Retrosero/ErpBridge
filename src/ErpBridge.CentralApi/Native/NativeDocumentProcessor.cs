@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ErpBridge.CentralApi.Contracts;
@@ -53,14 +53,14 @@ public sealed class NativeDocumentProcessor
     public static readonly IReadOnlySet<string> NativeDocumentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesReturn, PurchaseReceipt };
 
     /// <summary>
-    /// Whether only a company without an ERP can take this document. A phone's lined return
-    /// (<c>mobileDocumentId</c> body, contract v2) is written by the ERP agent's translator (goal ERP yazım Y3f/Y4b),
-    /// so an ERP company accepts it; any other return body and every purchase receipt stay native-only.
+    /// Whether only a company without an ERP can take this document. A phone's own body (it names itself
+    /// with <c>mobileDocumentId</c>) goes through the ERP agent's translator, so an ERP company accepts it:
+    /// the lined return since goal ERP yazım Y3f/Y4b, the purchase invoice since ERP yazım 3 Y3a/Y1c.
+    /// A body that is not the phone's own stays native-only, because nothing in the agent can read it.
     /// </summary>
     public static bool RequiresNativeTenant(string documentType, string? payloadJson) =>
         NativeDocumentTypes.Contains(documentType)
-        && !(string.Equals(documentType, SalesReturn, StringComparison.OrdinalIgnoreCase)
-             && ErpBridge.Core.Jobs.MobileDocumentTranslator.IsMobileDocument(payloadJson));
+        && !ErpBridge.Core.Jobs.MobileDocumentTranslator.IsMobileDocument(payloadJson);
 
     /// <summary>Marks rows this class produced, the way an agent marks rows with its ERP name.</summary>
     public const string SourceName = "native";

@@ -145,6 +145,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroCollectionReceiptWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroDisbursementWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroExpenseWriter>();
+        services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroPurchaseInvoiceWriter>();
         services.AddSingleton<ErpBridge.Erp.Mikro.Writers.Documents.MikroStockCountWriter>();
 
         services.AddSingleton<MikroSalesOrderWriter>();

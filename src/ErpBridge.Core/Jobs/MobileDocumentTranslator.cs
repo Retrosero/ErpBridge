@@ -13,6 +13,7 @@ public sealed record MobileTranslation(
     DisbursementCommand? Disbursement = null,
     ExpenseCommand? Expense = null,
     StockCountCommand? StockCount = null,
+    PurchaseInvoiceCommand? Purchase = null,
     ErpWriteError? Error = null)
 {
     public bool Ok => Error is null;
@@ -54,6 +55,12 @@ public sealed class MobileDocumentTranslator
 
     /// <summary>A completed stock count (ERP yazım 3, referans §14).</summary>
     public const string StockCountType = "stock_count";
+
+    /// <summary>
+    /// Goods bought in the field (ERP yazım 3, referans §10). The phone has sent this type for a company
+    /// without an ERP all along; for an ERP company it was refused at ingest because nothing could write it.
+    /// </summary>
+    public const string PurchaseReceiptType = "purchase_receipt";
 
     private const decimal AmountTolerance = 0.01m;
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
@@ -109,6 +116,7 @@ public sealed class MobileDocumentTranslator
             DisbursementType => TranslateDisbursement(externalId, body, context),
             ExpenseType => TranslateExpense(externalId, body, context),
             StockCountType => TranslateStockCount(externalId, body, context),
+            PurchaseReceiptType => TranslatePurchase(externalId, body, context),
             _ => throw new ArgumentException($"'{documentType}' is not a phone document the ERP writes.", nameof(documentType)),
         };
     }
@@ -457,6 +465,53 @@ public sealed class MobileDocumentTranslator
         return new MobileTranslation(StockCount: new StockCountCommand(header, warehouse.Value, counted));
     }
 
+    // ---- purchase -----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Goods bought in the field (ERP yazım 3 Y3d). Mikro writes it as an alış faturası, left open: the
+    /// payment the phone made alongside it is its own tediye document (K5).
+    ///
+    /// <para>The phone's purchase screen has no VAT: the figure it shows is <c>qty × price</c> summed. So
+    /// the VAT comes from the stock card in the adapter (K6), and whether the supplier's price already
+    /// contains it is a company setting — never guessed from the numbers.</para>
+    /// </summary>
+    private static MobileTranslation TranslatePurchase(string externalId, JsonElement body, ErpWriteContext context)
+    {
+        if (Objects(body, "lines") is not { } lines) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+        if (lines.Count == 0) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+
+        // Series is left empty on purpose: the writer continues the supplier's own series (§15, K7).
+        if (Header(externalId, body, context, series: string.Empty, zeroTotalAllowed: false, counterpartyField: "supplierCode")
+            is not { } header)
+            return MobileTranslation.Fail(HeaderError(body, context, zeroTotalAllowed: false, counterpartyField: "supplierCode")
+                ?? ErpWriteError.InvalidAmount());
+
+        if (!OptionalNumber(body, "warehouseNo", out var phoneWarehouse)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+        var warehouse = phoneWarehouse ?? context.PurchaseWarehouseNo ?? context.WarehouseNo;
+        if (warehouse is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("alış deposu"));
+
+        var purchaseLines = new List<PurchaseInvoiceLine>(lines.Count);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            if (HasNonText(line, LineTextFields)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+            var stockCode = Text(line, "productCode") ?? Text(line, "stockCode");
+            if (stockCode is null) return MobileTranslation.Fail(ErpWriteError.MissingStockCode(i + 1));
+            if (MalformedNumber(line, "quantity") || Decimal(line, "quantity") is not > 0)
+                return MobileTranslation.Fail(ErpWriteError.InvalidQuantity(i + 1));
+            // The supplier's price is the document; a line without one cannot be priced from anything else.
+            if (MalformedNumber(line, "unitPrice") || Decimal(line, "unitPrice") is not >= 0)
+                return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
+            if (MalformedNumber(line, "unitPointer", integer: true) || Int(line, "unitPointer") is <= 0)
+                return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+            purchaseLines.Add(new PurchaseInvoiceLine(
+                stockCode, Decimal(line, "quantity")!.Value, Decimal(line, "unitPrice")!.Value, (byte)(Int(line, "unitPointer") ?? 1)));
+        }
+
+        return new MobileTranslation(Purchase: new PurchaseInvoiceCommand(
+            header, warehouse.Value, Text(body, "invoiceNo"), context.PurchasePricesIncludeVat, purchaseLines));
+    }
+
     private static (IReadOnlyList<CollectionPayment>? Payments, ErpWriteError? Error) ParsePayments(
         IReadOnlyList<JsonElement> payments, DateTime occurredAt, ErpWriteContext context)
     {
@@ -537,10 +592,16 @@ public sealed class MobileDocumentTranslator
     /// count has no other side at all (referans §13, §14). Demanding a customer code would refuse every
     /// one of them.
     /// </param>
+    /// <param name="counterpartyField">
+    /// Which field names the other side. A purchase's is the <c>supplierCode</c>: the phone calls the
+    /// counterparty by what it is, and reading it from <c>customerCode</c> would silently find nothing.
+    /// </param>
     private static ErpDocumentHeader? Header(
-        string externalId, JsonElement body, ErpWriteContext context, string series, bool zeroTotalAllowed, bool counterpartyless = false)
+        string externalId, JsonElement body, ErpWriteContext context, string series, bool zeroTotalAllowed,
+        bool counterpartyless = false, string counterpartyField = "customerCode")
     {
-        var customer = counterpartyless ? Text(body, "customerCode") ?? string.Empty : Text(body, "customerCode");
+        var named = Text(body, counterpartyField) ?? (counterpartyField == "customerCode" ? null : Text(body, "customerCode"));
+        var customer = counterpartyless ? named ?? string.Empty : named;
         var occurredAt = ParseDate(Text(body, "occurredAt"));
         var amount = Decimal(body, "amount");
         if (customer is null || occurredAt is null || context.ErpUserNo is null || amount is not { } total || !ValidTotal(total, zeroTotalAllowed) || !IsTurkishLira(body)) return null;
@@ -558,9 +619,10 @@ public sealed class MobileDocumentTranslator
     }
 
     /// <summary>Why <see cref="Header"/> returned null, in the order a person would fix it.</summary>
-    private static ErpWriteError? HeaderError(JsonElement body, ErpWriteContext context, bool zeroTotalAllowed)
+    private static ErpWriteError? HeaderError(
+        JsonElement body, ErpWriteContext context, bool zeroTotalAllowed, string counterpartyField = "customerCode")
     {
-        if (Text(body, "customerCode") is null) return ErpWriteError.MissingCustomerCode();
+        if (Text(body, counterpartyField) is null && Text(body, "customerCode") is null) return ErpWriteError.MissingCustomerCode();
         if (!IsTurkishLira(body)) return ErpWriteError.UnsupportedCurrency();
         if (ParseDate(Text(body, "occurredAt")) is null) return ErpWriteError.InvalidDocumentDate();
         if (!ValidTotal(Decimal(body, "amount"), zeroTotalAllowed)) return ErpWriteError.InvalidAmount();

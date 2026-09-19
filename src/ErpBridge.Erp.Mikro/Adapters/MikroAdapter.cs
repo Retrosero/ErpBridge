@@ -601,6 +601,15 @@ public sealed class MikroAdapter : IErpAdapter
     }
 
     /// <inheritdoc />
+    /// <remarks>ERP yazım 3 Y3a: a phone purchase written as a Mikro alış faturası.</remarks>
+    public Task<ErpWriteResult> WritePurchaseInvoiceAsync(ErpBridge.Erp.Abstractions.Documents.PurchaseInvoiceCommand command, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _serviceProvider.GetRequiredService<ErpBridge.Erp.Mikro.Writers.Documents.MikroPurchaseInvoiceWriter>()
+            .WriteAsync(command, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
     /// <remarks>ERP yazım 3 Y3c: a phone stock count written into SAYIM_SONUCLARI.</remarks>
     public Task<ErpWriteResult> WriteStockCountAsync(ErpBridge.Erp.Abstractions.Documents.StockCountCommand command, CancellationToken ct = default)
     {

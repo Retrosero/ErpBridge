@@ -76,6 +76,7 @@ public sealed class AgentJobPump
         // uygulaması da aynı AgentJobPump'ı barındırıyor, yani yeni bir tür eklemek bir kez yapılır.
         MobileDocumentTranslator.ExpenseType,
         MobileDocumentTranslator.StockCountType,
+        MobileDocumentTranslator.PurchaseReceiptType,
     };
 
     private static readonly MobileDocumentTranslator Translator = new();
@@ -393,6 +394,7 @@ public sealed class AgentJobPump
                 { Disbursement: { } disbursement } => await adapter.WriteDisbursementAsync(disbursement, ct).ConfigureAwait(false),
                 { Expense: { } expense } => await adapter.WriteExpenseAsync(expense, ct).ConfigureAwait(false),
                 { StockCount: { } count } => await adapter.WriteStockCountAsync(count, ct).ConfigureAwait(false),
+                { Purchase: { } purchase } => await adapter.WritePurchaseInvoiceAsync(purchase, ct).ConfigureAwait(false),
                 _ => throw new InvalidOperationException("The translator returned neither a command nor an error."),
             };
             return ToAck(job, writeResult);

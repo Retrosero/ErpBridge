@@ -1,4 +1,4 @@
-using ErpBridge.Core.Jobs;
+﻿using ErpBridge.Core.Jobs;
 using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Shared;
 using FluentAssertions;
@@ -196,13 +196,65 @@ public class MobileDocumentTranslatorExpenseAndCountTests
             .Should().Be(ErpWriteError.ErpMappingMissingCode);
     }
 
+    // ---- alış ----------------------------------------------------------------------------------
+
+    private const string Purchase = """
+        {
+          "mobileDocumentId": "MOB-PR-1", "occurredAt": "19.09.2026 11:00", "supplierCode": "JUMBO",
+          "counterparty": "Jumbo Gıda", "invoiceNo": "A-42", "amount": 1000.00,
+          "lines": [ { "productCode": "59030", "quantity": 10, "unitPrice": 100.00, "lineTotal": 1000.00 } ]
+        }
+        """;
+
+    [Fact]
+    public void A_purchase_becomes_a_command_naming_the_supplier_and_its_invoice()
+    {
+        var result = _sut.Translate("purchase_receipt", "MOB-PR-1", Purchase, Context());
+
+        result.Error.Should().BeNull();
+        var purchase = result.Purchase!;
+        purchase.Header.CustomerCode.Should().Be("JUMBO", "alışta karşı taraf supplierCode'dur");
+        purchase.SupplierInvoiceNo.Should().Be("A-42");
+        purchase.WarehouseNo.Should().Be(1);
+        purchase.PricesIncludeVat.Should().BeFalse("telefon alışta KDV tutmuyor; ayar söyler");
+        purchase.Lines.Should().ContainSingle().Which.Should().Be(new PurchaseInvoiceLine("59030", 10m, 100.00m, 1));
+        purchase.Header.Series.Should().BeEmpty("seriyi writer tedarikçinin geçmişinden sürdürür (K7)");
+    }
+
+    /// <summary>Tedarikçinin fiyatı belgenin kendisidir; fiyatsız satır başka bir yerden fiyatlanamaz.</summary>
+    [Fact]
+    public void A_purchase_line_without_a_unit_price_asks_for_the_phone_to_be_updated()
+    {
+        var body = Purchase.Replace("\"unitPrice\": 100.00, ", "", StringComparison.Ordinal);
+
+        _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Error!.Code
+            .Should().Be(ErpWriteError.MobileAppUpdateRequiredCode);
+    }
+
+    [Fact]
+    public void A_purchase_without_a_supplier_code_names_the_missing_counterparty()
+    {
+        var body = Purchase.Replace("\"supplierCode\": \"JUMBO\",", "", StringComparison.Ordinal);
+
+        _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Error!.Code
+            .Should().Be(ErpWriteError.MissingCustomerCodeCode);
+    }
+
+    [Fact]
+    public void A_purchase_with_no_warehouse_anywhere_names_the_missing_setting()
+    {
+        _sut.Translate("purchase_receipt", "MOB-PR-1", Purchase, Context(warehouse: null)).Error!.Code
+            .Should().Be(ErpWriteError.ErpMappingMissingCode);
+    }
+
     /// <summary>Gövdenin adlandırdığı belge işin anahtarıyla aynı olmalı (PR #81).</summary>
     [Theory]
     [InlineData("expense", "MOB-GD-1")]
     [InlineData("stock_count", "MOB-SY-1")]
+    [InlineData("purchase_receipt", "MOB-PR-1")]
     public void A_body_naming_another_document_does_not_pass_under_a_fresh_key(string type, string id)
     {
-        var body = type == "expense" ? Expense : Count;
+        var body = type switch { "expense" => Expense, "stock_count" => Count, _ => Purchase };
 
         _sut.Translate(type, id + "-BASKA", body, Context()).Error!.Code.Should().Be(ErpWriteError.DocumentIdMismatchCode);
     }

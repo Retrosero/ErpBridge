@@ -124,6 +124,10 @@ public interface IErpAdapter
     Task<ErpWriteResult> WriteExpenseAsync(Documents.ExpenseCommand command, CancellationToken ct = default)
         => Task.FromResult(new ErpWriteResult(false, "NOT_IMPLEMENTED", $"{GetType().Name} bu ERP için gider yazmıyor."));
 
+    /// <summary>Write a phone purchase as a Mikro alış faturası (ERP yazım 3, reference §10 and §15).</summary>
+    Task<ErpWriteResult> WritePurchaseInvoiceAsync(Documents.PurchaseInvoiceCommand command, CancellationToken ct = default)
+        => Task.FromResult(new ErpWriteResult(false, "NOT_IMPLEMENTED", $"{GetType().Name} bu ERP için alış faturası yazmıyor."));
+
     /// <summary>Write a phone stock count as a Mikro sayım fişi (ERP yazım 3, reference §14).</summary>
     Task<ErpWriteResult> WriteStockCountAsync(Documents.StockCountCommand command, CancellationToken ct = default)
         => Task.FromResult(new ErpWriteResult(false, "NOT_IMPLEMENTED", $"{GetType().Name} bu ERP için sayım yazmıyor."));

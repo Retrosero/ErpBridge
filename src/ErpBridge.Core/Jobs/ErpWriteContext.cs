@@ -1,4 +1,4 @@
-namespace ErpBridge.Core.Jobs;
+﻿namespace ErpBridge.Core.Jobs;
 
 /// <summary>
 /// The company's ERP write settings merged with the document creator's ERP counterparts, as the
@@ -22,7 +22,16 @@ public sealed record ErpWriteContext(
     string? CreatedByUsername = null,
     string? ResponsibilityCenterCode = null,
     string? ProjectCode = null,
-    int? DeliveryDayOffset = null);
+    int? DeliveryDayOffset = null,
+
+    /// <summary>Alışta malın girdiği depo (K6); verilmezse satış deposuna düşülür. Y2a'da panelden ayarlanır.</summary>
+    int? PurchaseWarehouseNo = null,
+
+    /// <summary>
+    /// Tedarikçinin fiyatı KDV içeriyor mu. Telefon alışta KDV tutmadığı için bu rakamlardan
+    /// çıkarılamaz — ayar olarak verilir, tahmin edilmez.
+    /// </summary>
+    bool PurchasePricesIncludeVat = false);
 
 /// <summary>Series per document kind; an empty series is the ERP's series-less numbering.</summary>
 public sealed record ErpWriteSeries(string Order, string Dispatch, string Invoice, string Return, string Collection);
