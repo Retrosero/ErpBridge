@@ -583,6 +583,15 @@ public sealed class MikroAdapter : IErpAdapter
     }
 
     /// <inheritdoc />
+    /// <remarks>ERP yazım 2 Z3b: a phone disbursement written as a Mikro tediye receipt.</remarks>
+    public Task<ErpWriteResult> WriteDisbursementAsync(ErpBridge.Erp.Abstractions.Documents.DisbursementCommand command, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _serviceProvider.GetRequiredService<ErpBridge.Erp.Mikro.Writers.Documents.MikroDisbursementWriter>()
+            .WriteAsync(command, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
     /// <remarks>Goal ERP yazım Y3f: a phone return written as a sales return invoice.</remarks>
     public Task<ErpWriteResult> WriteSalesReturnAsync(ErpBridge.Erp.Abstractions.Documents.SalesReturnCommand command, CancellationToken ct = default)
     {

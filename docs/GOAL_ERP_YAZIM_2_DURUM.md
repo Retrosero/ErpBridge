@@ -1,6 +1,6 @@
 # Goal Durumu — Kalan telefon belgeleri Mikro'ya
 
-Son güncelleme: 2026-09-19 (Z0b–Z0c)
+Son güncelleme: 2026-09-19 (Z3b — tediye yazılıyor)
 Görev listesi: [GOAL_ERP_YAZIM_2.md](GOAL_ERP_YAZIM_2.md) · Mikro kuralları: [mikro-yazim-referansi.md](mikro-yazim-referansi.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -12,15 +12,15 @@ Görev listesi: [GOAL_ERP_YAZIM_2.md](GOAL_ERP_YAZIM_2.md) · Mikro kuralları: 
 
 | Faz | Görev | Biten | Durum |
 |---|---|---|---|
-| Z0 — Referans ve envanter | 5 | 3 | 🔄 |
+| Z0 — Referans ve envanter | 5 | 5 | ✅ |
 | Z1 — Sunucu: sözleşme, kabul, ayarlar | 3 | 0 | ⬜ |
 | Z2 — Çevirici ve komutlar | 2 | 0 | ⬜ |
-| Z3 — Mikro V15 writer'ları | 5 | 0 | ⬜ |
+| Z3 — Mikro V15 writer'ları | 5 | 1 | 🔄 |
 | Z4 — Sipariş Cepte | 4 | 0 | ⬜ |
 | Z5 — İzleme ve geriye dönük | 2 | 0 | ⬜ |
 | Z6 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** Z0d — cari kartı referansı
+**Şu anki görev:** Z3a — alış faturası writer'ı
 
 **Kapsam:** Tediye · Alış faturası (satırlı) · Yeni cari kartı. Gider ve sayım **kapsam dışı** (kullanıcı kararı U1);
 ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
@@ -39,15 +39,15 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 | Z0a | Plan dalını main'e al | ✅ | [#138](https://github.com/Retrosero/ErpBridge/pull/138) | İnceleme (Codex P1) kapı boşluğunu yakaladı → Z3e eklendi |
 | Z0b | Referans §10 — alış faturası | ✅ | #139 | **Fora ve canlı veri tam uyuştu.** CHA: `evrak_tip=0`, `tip=1 alacak`, `cinsi=6`, `cari_cins=0`/tedarikçi, `ciro_cari_kodu` açık faturada da dolu, uuid 36 karakter. Peşin alış = **kapalı fatura** (canlı örnek: `kod=001, cari_cins=4, tpoz=1, ciro=tedarikçi`) — D1 artık tahmin değil, kanıt. STH: `evraktip=3`, `tip=0 giriş`, `cins=0`, `fat_recid_recno`=başlık. **Kritik:** alış faturası ile satış iadesi aynı `evrak_tip=0`'ı paylaşıyor (yalnız `normal_Iade` ayırıyor) → MAX+1 ikisini birlikte saymalı; iade filtresi koyan writer Mikro'nun tekil indeksine takılır |
 | Z0c | Referans §11 — tediye | ✅ | #139 | Tahsilatın birebir aynası: tek evrak, **yöntem başına bir CHA satırı**, ayrı kasa/banka satırı **yok** — hesap aynı satırda `cha_kasa_hizmet` (4 kasa / 2 banka) + `cha_kasa_hizkod`. `cha_evrak_tip=64`, `cha_tip=0 borç`, `cari_cins=0`, `tpoz=0`. `cha_cinsi` **firma ailesi**: 0 nakit (kasa), **20 FirmaHavaleEmri** (banka), 3 firma çeki, 4 firma senedi, 22 firma kredi kartı, 1/2 ciro edilen müşteri çeki/senedi. Havalede tahsilatın 17'si (gelen havale) **kullanılmaz**. **İnceleme (Codex P1) iki hatamı yakaladı:** ilk yazdığım "ayrı kasa/banka satırı" yanlıştı ve `cinsi` 3/4/20/22 zaten `enum_cha_cinsi`'de çözülüydü — açık uç bırakmama gerek yoktu |
-| Z0d | Referans §12 — cari kartı | ⬜ | | |
-| Z0e | Başarısız iş envanteri | ⬜ | | Z5a bu listeyi kullanır |
+| Z0d | Referans §12 — cari kartı | ✅ | #140 | Fora `CariExtensions.cs` (V15, 95 kolon) + canlı 524 cari. **Tekil indeks `cari_kod` tek başına** → aynı kodla ikinci cari veritabanınca reddedilir (D4 doğrulandı); `cari_kod` nvarchar(**25**). Her kartta sabit: `fileid=31`, `hareket_tipi=0`, `doviz_cinsi=0`, `doviz_cinsi1/2=255`, `vade_fark_yuz=25`, `KurHesapSekli=1`, `fatura/sevk_adres_no=1`, `EftHesapNum=1`, muhasebe kodları `910/912/226/326` (Fora'nın V16 INSERT'ünde literal olarak da var — iki bağımsız kaynak aynı). Karta göre değişen: `satis_fk` (**fiyat listesi no**: 1/2/3), `bolge_kodu` (420/524), `vdaire_adi/no` (264/524). Firma `grup_kodu`/`temsilci_kodu`/`muh_kod`/`sektor_kodu` **hiç kullanmıyor** → writer boş bırakır. `cari_tipi` kolonu V15'te yok. **Testim kendi hatamı yakaladı:** `doviz_cinsi1/2` 524'te değil 522'de 255 (iki eski kart 127) — referans düzeltildi, test "son 100 kart" üzerinden ölçüyor |
+| Z0e | Başarısız iş envanteri | ⏭️ | #140 | **Kapı: canlı sunucu erişimi bende yok.** Sayım, üretimdeki CentralApi PostgreSQL'inden alınmalı. Tarif aşağıda ("Seni Bekleyenler" #2); Z5a başlarken bu sayıya ihtiyaç var, öncesinde değil |
 | Z1a | Gövde sözleşmesi v3 | ⬜ | | |
 | Z1b | Gider/sayım ERP'li firmada reddedilir | ⬜ | | |
 | Z1c | `erp_write_settings` + Portal UI | ⬜ | | |
 | Z2a | Komutlar + adaptör metotları | ⬜ | | |
 | Z2b | `MobileDocumentTranslator` genişlemesi | ⬜ | | |
 | Z3a | Alış faturası writer | ⬜ | | |
-| Z3b | Tediye writer | ⬜ | | |
+| Z3b | Tediye writer | ✅ | #141 | **Kullanıcının canlı hatası:** telefonda alış yapınca "No writer is configured for document type 'disbursement'". Sebep: alışın nakit ödemesi kasa defterine **"Tediye"** olarak yazılıyor (`PurchaseModule.applyPurchase`), o da `disbursement` belgesi oluyordu; ajan türü tanımıyordu. Uçtan uca yazıldı: `DisbursementCommand` + `IErpAdapter.WriteDisbursementAsync`, çevirici (`MobileDocumentTranslator.DisbursementType`), `MikroDisbursementWriter` (CHA 64, borç, nakit `cinsi 0`+kasa / havale `cinsi 20 FirmaHavaleEmri`+banka), ajan yönlendirmesi. Çek/senet çıkışı adıyla reddediliyor (kapsam D3). **Sapma:** tediye serisi ayrı ayar olacaktı (Z1c); şimdilik tahsilat serisi kullanılıyor — Mikro sırayı `evrak_tip` başına tuttuğu için güvenli, Z1c'de gözden geçirilecek. Testler: çevirici (6), writer satırı (4), ajan yönlendirmesi (1), **DEMO'ya gerçek yazım** (nakit + havale, bakiye yönü doğrulandı, geri alındı) |
 | Z3c | Cari kartı writer + eski writer denetimi | ⬜ | | |
 | Z3d | Ajan yeni türleri tanısın | ⬜ | | **Çakışma:** `AgentJobPump` dalı (`faz-51-mobil-siparis-mikro`, 2026-09-19'da push edildi) bu kodu yeniden yazıyor; başlamadan önce main'e girip girmediğine bakılır |
 | Z3e | Kapıyı aç: ERP'li firmada `purchase_receipt` + `customer_card` kabul | ⬜ | | Writer'lar hazır olduktan **sonra**; `IngestEndpoints` ve `ApprovalService.RejectDocument` birlikte |
@@ -64,6 +64,16 @@ ikisi de Z1b ile ERP'li firmada görünür biçimde reddedilecek.
 ---
 
 ## Bulgular
+
+### Alıştaki "disbursement" hatası nereden geliyordu (2026-09-19, kullanıcı bildirdi)
+Telefonda alış yapınca "No writer is configured for document type 'disbursement'" hatası alınıyordu. Alışın
+kendisi değil, **ödemesi** hata veriyor: `PurchaseModule.applyPurchase` nakit ödemeyi kasa defterine
+`type = "Tediye"` olarak yazıyor, `OutgoingDocumentRepository.documentType` bunu `disbursement`'a çeviriyor ve
+ajan o türü tanımıyordu. Z3b ile yazıldı.
+
+**Dikkat:** bu düzeltme ödemeyi Mikro'ya taşır; **alış faturasının kendisi hâlâ yazılmıyor.** ERP'li firmada
+telefon satırlı alışı (`purchase_receipt`) zaten göndermiyor (`NativeCompany.isActive` koşulu) ve ingest de
+reddediyor. Onun için Z3a (writer) + Z4a (telefon) + Z3e (kapı) gerekiyor.
 
 ### Kalan türler bugün Mikro'ya ulaşmıyor — ama iki farklı sebeple (2026-09-19)
 - **Kuyrukta kalıcı hata birikiyor:** `disbursement` (tediye), `expense`, `purchase` (kasadan alış ödemesi),
@@ -97,5 +107,6 @@ da açıklıyor. Z0b/Z0c bunu canlı kayıtla da doğrular.
 | # | Konu | Neden sen |
 |---|---|---|
 | 1 | *(çözüldü 2026-09-19: kullanıcı "veritabanında örnekler var" dedi; ayrıca `Fora_Mikro/` kaynak olarak verildi)* | — |
-| 3 | Yeni cari için **kod öneki / grup kodu / ödeme planı** hangi değerler olmalı | Muhasebe kararı; Z1c bunları Portal ayarına koyar |
+| 2 | **Başarısız iş envanteri (Z0e):** canlı sunucuda `SELECT document_type, count(*) FROM jobs WHERE status = 4 AND last_error LIKE '%UNSUPPORTED_DOCUMENT_TYPE%' GROUP BY document_type;` — ya da Admin > İşler ekranında `status=failed` filtresi. Z5a'nın kaç belgeyi kurtaracağını bu belirler | Üretim veritabanı erişimi bende yok |
+| 3 | Yeni cari için **grup kodu / ödeme planı** hangi değerler olmalı | Muhasebe kararı; Z1c Portal ayarına koyar. **Not:** Z0d'de çıktı ki firma bu alanları hiç kullanmıyor ve cari kodu müşterinin adı — "kod öneki" ayarı bu firma için anlamsız görünüyor |
 | 4 | Z6a duman testinden sonra Mikro ekranından kontrol | Muhasebeci gözü |

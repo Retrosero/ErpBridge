@@ -10,6 +10,7 @@ public sealed record MobileTranslation(
     SalesDocumentCommand? Sale = null,
     SalesReturnCommand? Return = null,
     CollectionCommand? Collection = null,
+    DisbursementCommand? Disbursement = null,
     ErpWriteError? Error = null)
 {
     public bool Ok => Error is null;
@@ -37,6 +38,9 @@ public sealed class MobileDocumentTranslator
     public const string SalesOrderType = "sales_order";
     public const string SalesReturnType = "sales_return";
     public const string CollectionType = "collection";
+
+    /// <summary>The phone's cash book calls money going out "Tediye"; a purchase's cash payment is one too.</summary>
+    public const string DisbursementType = "disbursement";
 
     private const decimal AmountTolerance = 0.01m;
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
@@ -89,6 +93,7 @@ public sealed class MobileDocumentTranslator
             SalesOrderType => TranslateSale(externalId, body, context),
             SalesReturnType => TranslateReturn(externalId, body, context),
             CollectionType => TranslateCollection(externalId, body, context),
+            DisbursementType => TranslateDisbursement(externalId, body, context),
             _ => throw new ArgumentException($"'{documentType}' is not a phone document the ERP writes.", nameof(documentType)),
         };
     }
@@ -299,6 +304,47 @@ public sealed class MobileDocumentTranslator
             return MobileTranslation.Fail(ErpWriteError.InvalidAmount());
 
         return new MobileTranslation(Collection: new CollectionCommand(header, parsed.Payments!));
+    }
+
+    // ---- disbursement -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The phone's cash-book entry for money paid out (ERP yazım 2). Unlike a collection this body carries a
+    /// single payment and no <c>payments[]</c> array: it is the cash book's own row, which is also what a
+    /// purchase's cash payment produces. Series: the collection's, until a disbursement series exists (Z1c).
+    /// </summary>
+    private static MobileTranslation TranslateDisbursement(string externalId, JsonElement body, ErpWriteContext context)
+    {
+        if (HasNonText(body, PaymentTextFields)) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+        if (Header(externalId, body, context, context.Series.Collection, zeroTotalAllowed: false) is not { } header)
+            return MobileTranslation.Fail(HeaderError(body, context, zeroTotalAllowed: false) ?? ErpWriteError.InvalidAmount());
+
+        // Cash and transfer are this goal's scope (D3). A cheque or note issued from the portfolio is a
+        // different Mikro document, so it is refused by name rather than written as something it is not.
+        var methodText = Text(body, "paymentType") ?? Text(body, "method");
+        DisbursementMethod? method = Normalize(methodText) switch
+        {
+            "" or "cash" or "nakit" => DisbursementMethod.Cash,
+            "transfer" or "havale" or "havale / eft" or "eft / havale" or "eft" or "banka" => DisbursementMethod.Transfer,
+            _ => null,
+        };
+        if (method is null) return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType());
+
+        // The phone of today names the bank it chose only as `bankName`, a display name (PR #141 Codex). Falling
+        // back to the company's default bank would post the money to an account nobody picked and say nothing,
+        // so a named bank without its ERP code is refused until the phone sends `bankCode` (Z4c).
+        if (method == DisbursementMethod.Transfer
+            && Text(body, "bankCode") is null
+            && !string.IsNullOrWhiteSpace(Text(body, "bankName")))
+            return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
+
+        var (picked, fallback, missing) = method == DisbursementMethod.Cash
+            ? (Text(body, "cashCode"), context.CashCode, "kasa kodu")
+            : (Text(body, "bankCode"), context.TransferBankCode, "havale bankası");
+        var account = picked ?? (string.IsNullOrWhiteSpace(fallback) ? null : fallback.Trim());
+        if (account is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing(missing));
+
+        return new MobileTranslation(Disbursement: new DisbursementCommand(header, method.Value, header.ExpectedTotal, account));
     }
 
     private static (IReadOnlyList<CollectionPayment>? Payments, ErpWriteError? Error) ParsePayments(

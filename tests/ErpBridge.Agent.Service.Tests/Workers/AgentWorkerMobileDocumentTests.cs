@@ -44,6 +44,18 @@ public class AgentWorkerMobileDocumentTests
         { "mobileDocumentId": "MOB-TH-1", "occurredAt": "17.09.2026 12:00", "customerCode": "120.001", "amount": 1000, "payments": [ { "method": "cash", "amount": 1000 } ] }
         """;
 
+    /// <summary>
+    /// The cash-book body a purchase's payment produces (ERP yazım 2 Z3b). Until the writer existed this job
+    /// came back "No writer is configured for document type 'disbursement'" and stayed failed for good.
+    /// </summary>
+    private const string Disbursement = """
+        {
+          "mobileDocumentId": "KL-9", "occurredAt": "17.09.2026 12:00", "transactionType": "Tediye",
+          "counterparty": "Bakkal Ali", "customerCode": "120.001", "amount": 1500.50,
+          "paymentType": "Nakit", "description": "Saha Alış Girişi (A-42)"
+        }
+        """;
+
     private static RemoteJob Job(string type, string externalId, string payload, ErpWriteContext? context = null, int attempt = 3) => new()
     {
         JobId = "job-1", ExternalId = externalId, DocumentType = type, Payload = payload, Attempt = attempt, ErpContext = context,
@@ -209,5 +221,28 @@ public class AgentWorkerMobileDocumentTests
         var snapshot = status.Read();
         snapshot.LastErrorCode.Should().Be("CUSTOMER_NOT_FOUND");
         snapshot.LastError.Should().Be("Cari bulunamadı");
+    }
+
+    /// <summary>
+    /// A purchase's cash payment reaches the tediye writer instead of being refused as an unknown type — the
+    /// error the operator saw ("No writer is configured for document type 'disbursement'").
+    /// </summary>
+    [Fact]
+    public async Task A_disbursement_is_written_as_a_tediye_receipt()
+    {
+        var (worker, adapter, _, acks) = Build();
+        adapter.Setup(a => a.WriteDisbursementAsync(It.IsAny<DisbursementCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ErpWriteResult(true, ErpRecno: 91, DocumentSeries: "M", DocumentNumber: 41));
+
+        await worker.ProcessJobAsync(Job("disbursement", "KL-9", Disbursement, Context), Config(), CancellationToken.None);
+
+        adapter.Verify(a => a.WriteDisbursementAsync(
+            It.Is<DisbursementCommand>(c => c.Method == DisbursementMethod.Cash && c.Amount == 1500.50m
+                && c.AccountCode == "001" && c.Header.CustomerCode == "120.001"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        var ack = acks.Should().ContainSingle().Subject;
+        ack.Status.Should().Be("succeeded");
+        ack.ErpDocumentSeries.Should().Be("M");
+        ack.ErpDocumentNumber.Should().Be(41);
     }
 }

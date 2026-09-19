@@ -56,6 +56,13 @@ public static class MikroDocumentNumbering
         Description(MikroTables.CariHareket.FileId, 1, MikroCodes.ChaEvrakTip.TahsilatMakbuzu),
     ]);
 
+    /// <summary>Tediye makbuzu: CHA 64, açıklama (51, 0, 64) — tahsilatın aynası, açıklama hareket tipi ters.</summary>
+    public static readonly MikroNumberScope DisbursementReceipt = new("tediye makbuzu",
+    [
+        Cha(MikroCodes.ChaEvrakTip.TediyeMakbuzu),
+        Description(MikroTables.CariHareket.FileId, 0, MikroCodes.ChaEvrakTip.TediyeMakbuzu),
+    ]);
+
     /// <summary>Satış irsaliyesi: STH 1, açıklama (16, 1, 1).</summary>
     public static readonly MikroNumberScope SalesDispatch = new("satış irsaliyesi",
     [
