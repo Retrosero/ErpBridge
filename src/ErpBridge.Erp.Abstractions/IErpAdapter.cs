@@ -1,4 +1,4 @@
-using ErpBridge.Erp.Abstractions.ChangeLog;
+﻿using ErpBridge.Erp.Abstractions.ChangeLog;
 using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Abstractions.Sync;
@@ -119,6 +119,14 @@ public interface IErpAdapter
 
     Task<ErpWriteResult> WriteCollectionDocumentAsync(CollectionCommand command, CancellationToken ct = default)
         => Task.FromResult(NotWritable("collection receipt"));
+
+    /// <summary>Write a phone expense as a Mikro kasa masraf fişi (ERP yazım 3, reference §13).</summary>
+    Task<ErpWriteResult> WriteExpenseAsync(Documents.ExpenseCommand command, CancellationToken ct = default)
+        => Task.FromResult(new ErpWriteResult(false, "NOT_IMPLEMENTED", $"{GetType().Name} bu ERP için gider yazmıyor."));
+
+    /// <summary>Write a phone stock count as a Mikro sayım fişi (ERP yazım 3, reference §14).</summary>
+    Task<ErpWriteResult> WriteStockCountAsync(Documents.StockCountCommand command, CancellationToken ct = default)
+        => Task.FromResult(new ErpWriteResult(false, "NOT_IMPLEMENTED", $"{GetType().Name} bu ERP için sayım yazmıyor."));
 
     private static ErpWriteResult NotWritable(string document) =>
         new(false, ErpWriteResult.ErrorCodeNotImplemented, $"This ERP adapter cannot write a {document} from the phone yet.");

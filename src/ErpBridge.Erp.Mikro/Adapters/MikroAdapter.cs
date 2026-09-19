@@ -1,4 +1,4 @@
-using ErpBridge.Erp.Abstractions.Connection;
+﻿using ErpBridge.Erp.Abstractions.Connection;
 using ErpBridge.Erp.Abstractions;
 using ErpBridge.Erp.Abstractions.ChangeLog;
 using ErpBridge.Erp.Abstractions.Documents;
@@ -588,6 +588,24 @@ public sealed class MikroAdapter : IErpAdapter
     {
         ArgumentNullException.ThrowIfNull(command);
         return _serviceProvider.GetRequiredService<ErpBridge.Erp.Mikro.Writers.Documents.MikroDisbursementWriter>()
+            .WriteAsync(command, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>ERP yazım 3 Y3b: a phone expense written as a Mikro kasa masraf fişi.</remarks>
+    public Task<ErpWriteResult> WriteExpenseAsync(ErpBridge.Erp.Abstractions.Documents.ExpenseCommand command, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _serviceProvider.GetRequiredService<ErpBridge.Erp.Mikro.Writers.Documents.MikroExpenseWriter>()
+            .WriteAsync(command, ConnectionSettings, ct);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>ERP yazım 3 Y3c: a phone stock count written into SAYIM_SONUCLARI.</remarks>
+    public Task<ErpWriteResult> WriteStockCountAsync(ErpBridge.Erp.Abstractions.Documents.StockCountCommand command, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _serviceProvider.GetRequiredService<ErpBridge.Erp.Mikro.Writers.Documents.MikroStockCountWriter>()
             .WriteAsync(command, ConnectionSettings, ct);
     }
 
