@@ -1,4 +1,4 @@
-using System.Data.Common;
+﻿using System.Data.Common;
 using System.Text.Json;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
@@ -72,6 +72,11 @@ public sealed class AgentJobPump
         // service's, because the tray agent is the host most installations actually run — the operator's error
         // ("No writer is configured for document type 'disbursement'") came from here.
         MobileDocumentTranslator.DisbursementType,
+        // ERP yazım 3 Y3d/Y3e: gider ve sayım. Bu liste artık tek yerdedir — Windows servisi de tepsi
+        // uygulaması da aynı AgentJobPump'ı barındırıyor, yani yeni bir tür eklemek bir kez yapılır.
+        MobileDocumentTranslator.ExpenseType,
+        MobileDocumentTranslator.StockCountType,
+        MobileDocumentTranslator.PurchaseReceiptType,
     };
 
     private static readonly MobileDocumentTranslator Translator = new();
@@ -387,6 +392,9 @@ public sealed class AgentJobPump
                 { Return: { } salesReturn } => await adapter.WriteSalesReturnAsync(salesReturn, ct).ConfigureAwait(false),
                 { Collection: { } collection } => await adapter.WriteCollectionDocumentAsync(collection, ct).ConfigureAwait(false),
                 { Disbursement: { } disbursement } => await adapter.WriteDisbursementAsync(disbursement, ct).ConfigureAwait(false),
+                { Expense: { } expense } => await adapter.WriteExpenseAsync(expense, ct).ConfigureAwait(false),
+                { StockCount: { } count } => await adapter.WriteStockCountAsync(count, ct).ConfigureAwait(false),
+                { Purchase: { } purchase } => await adapter.WritePurchaseInvoiceAsync(purchase, ct).ConfigureAwait(false),
                 _ => throw new InvalidOperationException("The translator returned neither a command nor an error."),
             };
             return ToAck(job, writeResult);

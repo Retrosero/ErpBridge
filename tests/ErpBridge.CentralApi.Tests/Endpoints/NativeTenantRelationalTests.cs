@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -553,12 +553,19 @@ public sealed class NativeTenantRelationalTests : IClassFixture<SqliteCentralApi
         var card = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "CARD-1", documentType = "stock_card", payload = new { stockCode = "S", name = "S" } });
         card.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await card.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("CARDS_REQUIRE_NATIVE_TENANT");
-        // An old return body and purchases are booked by the central API only; an agent could not write them.
+        // A body that is not the phone's own stays native-only: nothing in the agent can read it.
         var salesReturn = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "SR-1", documentType = "sales_return", payload = new { ok = true } });
         salesReturn.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await salesReturn.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("DOCUMENT_REQUIRES_NATIVE_TENANT");
-        var purchase = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "PR-1", documentType = "purchase_receipt", payload = new { mobileDocumentId = "PR-1" } });
-        (await purchase.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("DOCUMENT_REQUIRES_NATIVE_TENANT");
+        var oldPurchase = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new { externalId = "PR-OLD", documentType = "purchase_receipt", payload = new { ok = true } });
+        (await oldPurchase.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("DOCUMENT_REQUIRES_NATIVE_TENANT");
+        // ERP yazım 3 Y1c: telefonun kendi alış gövdesi artık ajanın yazıcısına gidiyor (Y3a).
+        var purchase = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new
+        {
+            externalId = "MOB-PR-1", documentType = "purchase_receipt",
+            payload = new { mobileDocumentId = "MOB-PR-1", supplierCode = "T-1", invoiceNo = "A-42", amount = 100, lines = new[] { new { productCode = "S", quantity = 1, unitPrice = 100 } } },
+        });
+        (await purchase.ReadAsJsonAsync<IngestJobResponse>()).Status.Should().Be("Pending");
         // The phone's lined return (contract v2) is written by the agent's translator (goal ERP yazım Y4b, found by the Y6b smoke test).
         var phoneReturn = await SendAsync(client, rawKey, tenant.Id, "/api/v1/ingest/jobs", new
         {
