@@ -1,4 +1,4 @@
-namespace ErpBridge.Erp.Abstractions.Documents;
+﻿namespace ErpBridge.Erp.Abstractions.Documents;
 
 // ERP-independent commands a phone document becomes before an adapter writes it
 // (goal GOAL_ERP_YAZIM, Y2a). The agent's translator fills them from the phone body plus the
@@ -173,3 +173,33 @@ public sealed record DisbursementCommand(
     DisbursementMethod Method,
     decimal Amount,
     string AccountCode);
+
+/// <summary>
+/// Nereden ödendiği (ERP yazım 3, referans §13). Tediyeden farkı kredi kartıdır: canlı Mikro'da
+/// kredi kartı bir banka hesabı üzerinden yürür (<c>cha_cinsi=22</c>, hesap kodu <c>BANKALAR.ban_kod</c>).
+/// </summary>
+public enum ExpensePaymentMethod
+{
+    Cash,
+    Transfer,
+    CreditCard,
+}
+
+/// <summary>
+/// Bir gider: telefon bir gider kartı seçer, tutarı ve KDV'sini girer, hangi kasadan/bankadan
+/// ödendiğini söyler. Mikro'da bu bir <b>kasa masraf fişidir</b> (<c>cha_evrak_tip=37</c>) — tediyenin
+/// aynası değildir: gider kartı <c>cha_kasa_hizmet/hizkod</c>'a, ödeyen hesap <c>cha_cari_cins/cha_kod</c>'a yazılır.
+/// </summary>
+/// <list type="bullet">
+/// <item><description><c>ExpenseCardCode</c>: <c>MASRAF_HESAPLARI.his_kod</c> — telefona ERP'den senkronlanır (K2).</description></item>
+/// <item><description><c>AccountCode</c>: nakitte kasa kodu, havale/kredi kartında banka kodu.</description></item>
+/// <item><description><c>VatAmount</c>/<c>VatPointer</c>: KDV telefondan gelir, ERP'de hesaplanmaz (K4).</description></item>
+/// </list>
+public sealed record ExpenseCommand(
+    ErpDocumentHeader Header,
+    ExpensePaymentMethod Method,
+    decimal Amount,
+    string ExpenseCardCode,
+    string AccountCode,
+    decimal VatAmount = 0m,
+    byte VatPointer = 0);

@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using ErpBridge.Shared;
 
 namespace ErpBridge.Erp.Mikro.Writers.Session;
@@ -119,6 +119,16 @@ FROM STOKLAR WHERE sto_kod = @code", new { code }, Session.Transaction, cancella
     {
         if (!await ExistsAsync("SELECT 1 FROM BANKALAR WHERE ban_kod = @code", new { code }, ct).ConfigureAwait(false))
             throw new MikroWriteException(ErpWriteError.BankAccountNotFound(code));
+    }
+
+    /// <summary>
+    /// Gider kartı (<c>MASRAF_HESAPLARI.his_kod</c>) — referans §13. Kart yoksa gider yazılmaz:
+    /// olmayan bir karta yazılan masraf fişi muhasebede sahipsiz kalır.
+    /// </summary>
+    public async Task EnsureExpenseCardAsync(string code, CancellationToken ct = default)
+    {
+        if (!await ExistsAsync("SELECT 1 FROM MASRAF_HESAPLARI WHERE his_kod = @code", new { code }, ct).ConfigureAwait(false))
+            throw new MikroWriteException(ErpWriteError.ExpenseCardNotFound(code));
     }
 
     /// <summary>A salesperson named on the document; none named is fine.</summary>
