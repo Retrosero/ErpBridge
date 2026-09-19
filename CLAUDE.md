@@ -37,6 +37,10 @@ ilgili knowledge_base dosyasını da güncelle.
   (kullanıcı: "Evet, hepsi geçerli"); ek olarak yalnız yerel test kopyalarına **`MikroDB_V15_DEMO`** (asıl; Mikro'dan açılır) ve
   `MikroDB_V15_ERPBTEST` test evrakı yazılabilir, gerekirse aynı yedekten yeniden geri yüklenebilir. Aynı yasaklar + `MikroDB_V15_02` (canlı firma
   verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak.
+- **İstisna (2026-09-19):** aynı yetkiler `docs/GOAL_ERP_YAZIM_2.md` (tediye · alış faturası · yeni cari) görevleri için de
+  önceden onaylıdır (kullanıcı: "Evet, aynısı geçerli"). Test yazımı yalnız **`MikroDB_V15_DEMO`**'ya. Aynı yasaklar
+  geçerli; **`--force` push yasağı rebase sonrası `--force-with-lease` için de geçerlidir** (dalı güncellemek gerekirse
+  `origin/main` dala merge edilir).
 
 ## 3. Test / build
 

@@ -189,3 +189,146 @@ tek `EVRAK_ACIKLAMALARI` satırlık deneme evrakı yazar, kendi satırlarını v
 - Satış faturası satırı 79.468, iade satırı 1.935, tahsilat satırı ~2.300.
 - Sahadan gelen seriler: `T`, `H`, `ST`, `N`, `PZ`, `İS`, `D`, `P`, `ID`… (plasiyer/araç başına seri görünümünde).
 - Veritabanına bugün (11:14) yeni kayıt girilmiş → **canlı kullanımda olan bir firma veritabanı**.
+
+---
+
+## 10. Alış faturası *(ERP yazım 2, Z0b — 2026-09-19)*
+
+Kanıt: Fora `Evrak.cs` + `EvrakData.cs` (bu işi daha önce başarıyla yapan uygulama) **ve** canlı `MikroDB_V15_02`
+(2024-01-01'den beri 718 açık alış faturası başlığı, örnekler 2025 kayıtlarından). İkisi **tam uyuşuyor**.
+
+**`CARI_HESAP_HAREKETLERI` — tek başlık satırı (`cha_satir_no=0`)**
+
+| Kolon | Değer | Kanıt |
+|---|---|---|
+| `cha_evrak_tip` | **0** (AlisFaturasi) | Fora `enum_cha_evrak_tip.AlisFaturasi=0`; canlı 718 satır |
+| `cha_tip` | **1** (alacak — tedarikçiye borçlanıyoruz) | Fora `evraktipi==AlisFaturasi → cha_tip=Alacak`; canlı |
+| `cha_cinsi` | **6** ToptanFatura (perakendede 7) | Fora `ticaretturu` switch; canlı `cinsi=6` |
+| `cha_normal_Iade` | 0 | canlı |
+| `cha_ticaret_turu` | 0 (yurt içi toptan) | canlı |
+| `cha_cari_cins` / `cha_kod` | 0 / **tedarikçi kodu** (açık fatura) | canlı `caricins=0, kod=ÇINAR` |
+| `cha_ciro_cari_kodu` | **tedarikçi kodu** — açık faturada da dolu | canlı (satışta müşteri kodu olduğu gibi) |
+| `cha_tpoz` | **0** açık, **1** kapalı | canlı |
+| `cha_aratoplam`, `cha_ft_iskonto1..6`, `cha_vergi1..5`, `cha_meblag` | satış faturasıyla **aynı** kovalama (§2) | Fora ortak kod yolu |
+| `cha_uuid` | 36 karakter GUID (satış faturasındaki gibi) | canlı `uuidlen=36` |
+| `cha_miktari` | 0 | canlı |
+
+**Peşin alış = kapalı fatura** (satışın aynası, §3): `cha_cari_cins` **4** kasa / **2** banka, `cha_kod` = kasa/banka
+kodu, `cha_ciro_cari_kodu` = **tedarikçi**, `cha_tpoz=1`. Canlı örnek: `kod=001, caricins=4, tpoz=1, ciro=POLEN GARDEN`.
+
+**`STOK_HAREKETLERI` — kalem başına bir satır**
+
+| Kolon | Değer | Kanıt |
+|---|---|---|
+| `sth_evraktip` | **3** (GirisFaturasi) | Fora `enum_sth_evraktip.GirisFaturasi=3`; canlı |
+| `sth_tip` | **0** (giriş) | Fora; canlı |
+| `sth_cins` | **0** Toptan (perakendede 1) | Fora; canlı |
+| `sth_normal_iade` | 0 | canlı |
+| `sth_cari_cinsi` / `sth_cari_kodu` | 0 / tedarikçi kodu | Fora `Carimiz`; canlı |
+| `sth_giris_depo_no` / `sth_cikis_depo_no` | ikisi de depo no (canlıda 1/1) | canlı |
+| `sth_fat_recid_recno` | başlık CHA satırının `cha_RECno`'su | canlı |
+| `sth_tutar`, `sth_iskonto1..6`, `sth_isk_mas1..10`, `sth_vergi_pntr`, `sth_vergi` | satış faturası kalemiyle **aynı** kural (§2, §1 iskonto zinciri) | Fora ortak kod yolu |
+| `sth_fiyat_liste_no` | 0 (alışta liste yok) | canlı |
+
+**Sıra çakışması — dikkat:** alış faturası ve **satış iadesi aynı `cha_evrak_tip=0`'ı paylaşır**, yalnız
+`cha_normal_Iade` (0 / 1) ile ayrılırlar; STH'de de ikisi `sth_evraktip=3`'tedir. Yani MAX+1 sırası **ikisini birlikte**
+hesaplanmalıdır (Fora `Select MAX(cha_evrakno_sira) … WHERE cha_evrak_tip=0 AND cha_evrakno_seri=…` — iade filtresi yok).
+Canlı veri bunu doğruluyor: 718 alış + 307 satış iadesi aynı numara uzayında.
+
+**`EVRAK_ACIKLAMALARI`:** `egk_dosyano=51`, hareket tip **1**, evrak tip **0** (Fora `EvrakData.cs` switch).
+
+---
+
+## 11. Tediye makbuzu *(ERP yazım 2, Z0c — 2026-09-19)*
+
+**Tahsilatın (§5) birebir aynası:** tek evrak, **ödeme yöntemi başına bir CHA satırı** (`cha_satir_no` 0'dan artar).
+Ayrı kasa/banka satırı **yoktur** — hesap aynı satırda `cha_kasa_hizmet` + `cha_kasa_hizkod` ile taşınır.
+
+| Kolon | Değer | Kanıt |
+|---|---|---|
+| `cha_evrak_tip` | **64** (TediyeMakbuzu; kasa tediye fişi 65) | Fora `enum_cha_evrak_tip`; canlı |
+| `cha_tip` | **0** (borç — tahsilat alacaktı) | Fora `AddTahsilat`: `_evraktipi != Tahsilat → cha_tip = Borc`; canlı |
+| `cha_cari_cins` / `cha_kod` | **0** (Carimiz) / cari kodu | Fora; canlı: 64'lü satırların **tamamı** `cari_cins=0` |
+| `cha_kasa_hizmet` / `cha_kasa_hizkod` | **4** kasa / **2** banka + hesap kodu | Fora `cha_kasa_hizkod = kasa_banka_kodu`; canlı |
+| `cha_normal_Iade` / `cha_tpoz` | 0 / **0** (açık) | Fora; canlı |
+| `cha_vade` | vade günü `yyyyMMdd` sayı olarak | Fora |
+| `cha_ft_iskonto*`, `cha_ft_masraf*`, `cha_vergi*`, `cha_yuvarlama` | 0 | Fora |
+
+**`cha_cinsi` — tediyede "Firma" ailesi** (tahsilattaki "Müşteri" ailesinin karşılığı):
+
+| cinsi | Anlam | `cha_kasa_hizmet` | Canlı örnek kod | Adet (2024+) |
+|---|---|---|---|---|
+| **0** | Nakit | 4 kasa | `001` | 423 |
+| 1 | MüşteriÇeki (ciro edilen) | 4 kasa (portföy) | `ÇEK` | 30 |
+| 2 | MüşteriSenedi (ciro edilen) | 4 kasa (portföy) | `SENET` | 70 |
+| 3 | FirmaÇeki | 2 banka | `12`, `13` | 25 |
+| 4 | FirmaSenedi | 4 kasa | `VERILEN-SENET` | 25 |
+| **20** | **FirmaHavaleEmri** | 2 banka | `04`, `06`, `07` | 54 |
+| 22 | FirmaKrediKartı | 2 banka | `08`, `10` | 60 |
+
+Bu goal'ün kapsamı (D3) **nakit → `cinsi 0`, `kasa_hizmet 4`** ve **havale/EFT → `cinsi 20` (FirmaHavaleEmri),
+`kasa_hizmet 2`**. Havalede tahsilatın `17` (MusteriHavaleSozu) değeri **kullanılmaz** — o gelen havaledir.
+
+**`EVRAK_ACIKLAMALARI`:** dosya 51, hareket **0**, evrak tip **64** (Fora `EvrakData.cs` switch).
+
+**`ODEME_EMIRLERI`:** nakit ve havalede yok (canlıda 64'lü nakit/havale satırlarında `cha_trefno` boş). Çek/senet
+çıkışı bu goal'ün kapsamı dışında (D3), gerektiğinde §5'teki referans no kuralı örnek alınacak.
+
+---
+
+## 12. Cari kartı (yeni müşteri) *(ERP yazım 2, Z0d — 2026-09-19)*
+
+Kaynak: Fora `CariExtensions.cs` (V15 INSERT, 95 kolon) + canlı `MikroDB_V15_02`'deki **524 cari**.
+
+**Tekil indeks:** `NDX_CARI_HESAPLAR_02 (cari_kod)` — kod tek başına tekildir; ayrıca `(sektör|grup|temsilci|bölge, kod)`
+bileşik tekil indeksleri var. Yani aynı kodla ikinci cari **veritabanı tarafından** reddedilir; writer çakışmayı
+önceden görüp kalıcı `CUSTOMER_CODE_EXISTS` dönmelidir (D4).
+
+**Alan genişlikleri:** `cari_kod` nvarchar(**25**), `cari_unvan1`/`cari_unvan2`/`cari_vdaire_adi` nvarchar(50).
+
+**Bu firmanın kod alışkanlığı:** cari kodu **müşterinin adıdır** (`NEXT`, `LÜTFİ`, `EURO MARKET`, `BİZİM SÜPERMARKET`);
+sayısal/öneki şema (`120.01.0001` gibi) **yok**, uzunluk 2–19 arasında dağılıyor. Plasiyerin kodu telefonda girmesi
+(U2) firmanın bugünkü alışkanlığıyla uyumlu; Portal'da "kod öneki" ayarı bu firma için anlamsız (Z1c'de gözden geçir).
+
+**Her caride aynı olan değerler** (524/524 — writer bunları sabit yazar):
+
+| Kolon | Değer |
+|---|---|
+| `cari_fileid` | **31** |
+| `cari_hareket_tipi` | 0 |
+| `cari_doviz_cinsi` | 0 (TL) |
+| `cari_doviz_cinsi1` / `cari_doviz_cinsi2` | **255** / **255** (tanımsız) — 524 carinin **522**'sinde; iki eski kartta 127. Writer 255 yazar (Mikro'nun bugünkü değeri) |
+| `cari_vade_fark_yuz` | **25** |
+| `cari_KurHesapSekli` | 1 |
+| `cari_fatura_adres_no` / `cari_sevk_adres_no` | 1 / 1 |
+| `cari_EftHesapNum` | 1 |
+| `cari_RECid_DBCno` | **0** (524/524) — §1'deki V15 kimlik kuralı cari kartında da geçerli |
+| `cari_odemeplan_no` | 0 |
+| `cari_TeminatMekAlacakMuhKodu` / `...BorcMuhKodu` | **910** / **912** |
+| `cari_VerilenDepozitoTeminatMuhKodu` / `cari_Alinan...` | **226** / **326** |
+
+Son dört muhasebe kodu Fora'nın V16 INSERT'ünde de **sabit literal** olarak geçiyor (`'910','912','226','326'`) —
+iki kaynak bağımsız olarak aynı değerleri veriyor.
+
+**V15 kimlik (self-link):** Fora `CariExtensions.cs` INSERT'ün ardından
+`UPDATE CARI_HESAPLAR SET cari_RECid_RECno = (SELECT SCOPE_IDENTITY()) WHERE cari_RECno = (SELECT SCOPE_IDENTITY())`
+çalıştırıyor — §1'deki genel kuralın cari kartındaki karşılığı. Canlıda `cari_RECid_DBCno=0` **524/524**,
+`cari_RECid_RECno = cari_RECno` **522/524** (aynı iki eski kart `doviz_cinsi` sapmasını da gösterenler). Writer
+bugünkü kuralı yazar: `DBCno=0` ve self-link.
+
+**Karta göre değişen alanlar:**
+
+| Kolon | Doluluk (524 caride) | Not |
+|---|---|---|
+| `cari_kod`, `cari_unvan1` | 524 | zorunlu |
+| `cari_satis_fk` | 524 | **satış fiyat listesi no** — 1 (509), 2 (7), 3 (8); toplam 524, başka değer yok |
+| `cari_bolge_kodu` | 420 | firma bölge kullanıyor (`ALANYA`, `BELEK`, `ADRASAN-OLİMPOS`) |
+| `cari_vdaire_adi` / `cari_vdaire_no` | 264 | vergi dairesi (kurumsal müşterilerde) |
+| `cari_CepTel` | 77 | |
+| `cari_unvan2` | 39 | |
+| `cari_baglanti_tipi` | 48 | |
+| `cari_EMail` | 3 | |
+| `cari_grup_kodu`, `cari_temsilci_kodu`, `cari_muh_kod`, `cari_sektor_kodu` | **0** | bu firma kullanmıyor — writer boş bırakır |
+
+**V15/V16 farkı:** `cari_tipi` kolonu V15'te **yoktur** (Fora INSERT'ünde değişken kolon adıyla geçiliyor); V16'da
+`cari_Guid`, `cari_efatura_fl`, `cari_def_efatura_cinsi` gibi kolonlar eklenir. Bu goal V15 yazıyor (U4).

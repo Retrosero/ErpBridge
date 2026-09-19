@@ -149,3 +149,27 @@ public sealed record CollectionPayment(
 
 /// <summary>One receipt; each payment becomes one line of it.</summary>
 public sealed record CollectionCommand(ErpDocumentHeader Header, IReadOnlyList<CollectionPayment> Payments);
+
+/// <summary>
+/// How money leaves the till (ERP yazım 2, reference §11). The collection's mirror, but Mikro records the
+/// company's own instrument here, not the customer's: cash from a cash box, a transfer order from a bank.
+/// Cheque and note issues are out of this goal's scope (D3).
+/// </summary>
+public enum DisbursementMethod
+{
+    Cash,
+    Transfer,
+}
+
+/// <summary>
+/// A payment made to the account: the salesperson hands over cash, or the office sends a transfer. One
+/// document, one payment — that is what the phone's cash book produces.
+/// </summary>
+/// <list type="bullet">
+/// <item><description><c>AccountCode</c>: Cash-box code (cash) or bank code (transfer).</description></item>
+/// </list>
+public sealed record DisbursementCommand(
+    ErpDocumentHeader Header,
+    DisbursementMethod Method,
+    decimal Amount,
+    string AccountCode);

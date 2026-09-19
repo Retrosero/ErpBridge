@@ -68,6 +68,10 @@ public sealed class AgentJobPump
     private static readonly HashSet<string> MobileDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         MobileDocumentTranslator.SalesOrderType, MobileDocumentTranslator.SalesReturnType, MobileDocumentTranslator.CollectionType,
+        // ERP yazım 2 Z3b/Z3d: the cash book's money-out document. It reaches this list, not only the Windows
+        // service's, because the tray agent is the host most installations actually run — the operator's error
+        // ("No writer is configured for document type 'disbursement'") came from here.
+        MobileDocumentTranslator.DisbursementType,
     };
 
     private static readonly MobileDocumentTranslator Translator = new();
@@ -381,6 +385,7 @@ public sealed class AgentJobPump
                 { Sale: { } sale } => await adapter.WriteSalesDocumentAsync(sale, ct).ConfigureAwait(false),
                 { Return: { } salesReturn } => await adapter.WriteSalesReturnAsync(salesReturn, ct).ConfigureAwait(false),
                 { Collection: { } collection } => await adapter.WriteCollectionDocumentAsync(collection, ct).ConfigureAwait(false),
+                { Disbursement: { } disbursement } => await adapter.WriteDisbursementAsync(disbursement, ct).ConfigureAwait(false),
                 _ => throw new InvalidOperationException("The translator returned neither a command nor an error."),
             };
             return ToAck(job, writeResult);
