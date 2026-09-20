@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using ErpBridge.Core.Domain;
 using ErpBridge.Core.Stores;
 using ErpBridge.LocalStore.Sqlite;
@@ -31,6 +31,10 @@ public sealed class SqliteLocalQueueStore : ILocalQueueStore
         job.CreatedAt = createdAt;
         job.UpdatedAt = updatedAt;
 
+        // Merkez aynı işi yeniden dağıtabilir (kalıcı hatadan sonra "yeniden dene", ya da kiralama
+        // süresi dolduğunda). Düz INSERT bu durumda UNIQUE ihlali veriyor ve pompa her denemede
+        // ERR seviyesinde hata basıyordu; gerçek bir sorun olmadığı hâlde bir sonraki gerçek hatayı
+        // gizleyecek gürültü. Aynı iş yeniden geldiğinde gövdesi ve durumu tazelenir.
         const string sql = @"
 INSERT INTO local_jobs (
     id, tenant_id, job_type, external_id, payload_json, status,
@@ -39,7 +43,15 @@ INSERT INTO local_jobs (
 VALUES (
     @Id, @TenantId, @JobType, @ExternalId, @PayloadJson, @Status,
     @RetryCount, @LastError, @CreatedAt, @UpdatedAt
-);";
+)
+ON CONFLICT(id) DO UPDATE SET
+    job_type = excluded.job_type,
+    external_id = excluded.external_id,
+    payload_json = excluded.payload_json,
+    status = excluded.status,
+    retry_count = excluded.retry_count,
+    last_error = excluded.last_error,
+    updated_at = excluded.updated_at;";
 
         await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
         await connection.ExecuteAsync(new CommandDefinition(sql, new

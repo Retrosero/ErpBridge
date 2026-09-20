@@ -1,4 +1,4 @@
-using ErpBridge.Core.Domain;
+﻿using ErpBridge.Core.Domain;
 using ErpBridge.LocalStore.Sqlite;
 using ErpBridge.LocalStore.Stores;
 using FluentAssertions;
@@ -125,6 +125,30 @@ public class SqliteLocalQueueStoreTests : IDisposable
         pending.Should().Be(2);
         failed.Should().Be(1);
         succeeded.Should().Be(0);
+    }
+
+    /// <summary>
+    /// Merkez aynı işi yeniden dağıtabilir: kalıcı hatadan sonra operatör "yeniden dene" der ya da
+    /// kiralama süresi dolar. Eskiden düz INSERT UNIQUE ihlali veriyor, pompa her denemede ERR
+    /// basıyordu — gerçek bir sorun olmadığı hâlde bir sonraki gerçek hatayı gizleyecek gürültü.
+    /// </summary>
+    [Fact]
+    public async Task The_same_job_handed_out_again_refreshes_the_row_instead_of_failing()
+    {
+        var sut = new SqliteLocalQueueStore(_factory);
+        var job = NewJob("job-tekrar");
+        await sut.EnqueueAsync(job);
+        await sut.MarkFailedAsync(job.Id, "ERP yazamadı");
+
+        var again = NewJob("job-tekrar");
+        again.PayloadJson = """{"revision":2}""";
+        var act = async () => await sut.EnqueueAsync(again);
+
+        await act.Should().NotThrowAsync();
+        var pending = await sut.GetPendingJobsAsync(10);
+        var stored = pending.Should().ContainSingle(j => j.Id == "job-tekrar").Subject;
+        stored.PayloadJson.Should().Be("""{"revision":2}""", "yeniden dağıtılan işin gövdesi tazelenir");
+        stored.Status.Should().Be(LocalJobStatus.Pending, "yeniden denenen iş bekleyene döner");
     }
 
     private static LocalJob NewJob(string id, DateTime? createdAt = null) => new()
