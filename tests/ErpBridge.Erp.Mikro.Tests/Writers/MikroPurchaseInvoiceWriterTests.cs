@@ -39,7 +39,7 @@ public class MikroPurchaseInvoiceWriterTests
     {
         var command = Command();
 
-        var row = MikroPurchaseInvoiceWriter.HeaderRow(command, Supplier, Priced(command), "JUMBO", 88, Guid.Empty);
+        var row = MikroPurchaseInvoiceWriter.HeaderRow(command, Supplier, closing: null, Priced(command), "JUMBO", 88, Guid.Empty);
 
         row.Should().Contain(new Dictionary<string, object?>
         {
@@ -55,17 +55,42 @@ public class MikroPurchaseInvoiceWriterTests
         });
     }
 
-    /// <summary>K5: fatura açık hesap yazılır, ödemesi ayrı bir tediye evrağıdır.</summary>
+    /// <summary>Ödenmemiş alış tedarikçide açık hesap kalır — canlıdaki 650 fatura böyle.</summary>
     [Fact]
-    public void The_invoice_is_left_open_because_its_payment_is_a_separate_document()
+    public void An_unpaid_purchase_stays_open_against_the_supplier()
     {
         var command = Command();
 
-        var row = MikroPurchaseInvoiceWriter.HeaderRow(command, Supplier, Priced(command), "JUMBO", 1, Guid.Empty);
+        var row = MikroPurchaseInvoiceWriter.HeaderRow(command, Supplier, closing: null, Priced(command), "JUMBO", 1, Guid.Empty);
 
         row["cha_tpoz"].Should().Be(MikroCodes.ChaTpoz.Acik);
         row["cha_cari_cins"].Should().Be(MikroCodes.HesapCinsi.Carimiz, "kapatan bir kasa/banka yok");
-        row.Should().NotContainKey("cha_ciro_cari_kodu", "kapalı fatura alanıdır, açıkta yazılmaz");
+        row["cha_kod"].Should().Be("JUMBO");
+        row["cha_ciro_cari_kodu"].Should().BeNull("ciro kodu kapalı faturanın alanıdır");
+    }
+
+    /// <summary>
+    /// K13: peşin ödenen alış <b>tek evraktır</b> — kapalı fatura. Kasa karşı tarafa geçer, tedarikçi
+    /// ciro koduna taşınır. Ayrıca bir tediye yazmak aynı ödemeyi iki kez gösterirdi; canlıdaki 68
+    /// kapalı alışın hiçbirinde ikinci satır yok.
+    /// </summary>
+    [Theory]
+    [InlineData(PurchaseSettlement.Cash, "001", (byte)4, (byte)0)]
+    [InlineData(PurchaseSettlement.Bank, "04", (byte)2, (byte)1)]
+    public void A_paid_purchase_is_one_closed_invoice(PurchaseSettlement settlement, string account, byte accountKind, byte groupNo)
+    {
+        var command = Command() with { Settlement = settlement, SettlementAccountCode = account };
+        var closing = new MikroSalesInvoiceWriter.Closing(accountKind, account, groupNo);
+
+        var row = MikroPurchaseInvoiceWriter.HeaderRow(command, Supplier, closing, Priced(command), "JUMBO", 1, Guid.Empty);
+
+        row["cha_tpoz"].Should().Be(MikroCodes.ChaTpoz.Kapali);
+        row["cha_cari_cins"].Should().Be(accountKind);
+        row["cha_kod"].Should().Be(account, "kapalı faturada karşı taraf ödeyen hesaptır");
+        row["cha_ciro_cari_kodu"].Should().Be("JUMBO", "tedarikçi ciro koduna taşınır");
+        row["cha_grupno"].Should().Be(groupNo);
+        // Tek satır: evrakın ikinci bir CHA satırı yok.
+        row["cha_satir_no"].Should().Be(0);
     }
 
     /// <summary>Mal içeri girer: <c>sth_evraktip=3</c>, <c>sth_tip=0</c>, iki depo da giriş deposu (§10).</summary>
@@ -145,7 +170,7 @@ public class MikroPurchaseInvoiceWriterTests
     public void The_suppliers_own_invoice_number_is_kept_where_it_gets_read()
     {
         MikroPurchaseInvoiceWriter.Note(Command()).Should().Be("Saha Alış Girişi (Fatura no: A-42)");
-        MikroPurchaseInvoiceWriter.HeaderRow(Command(), Supplier, Priced(Command()), "JUMBO", 1, Guid.Empty)["cha_belge_no"]
+        MikroPurchaseInvoiceWriter.HeaderRow(Command(), Supplier, closing: null, Priced(Command()), "JUMBO", 1, Guid.Empty)["cha_belge_no"]
             .Should().Be("A-42");
     }
 

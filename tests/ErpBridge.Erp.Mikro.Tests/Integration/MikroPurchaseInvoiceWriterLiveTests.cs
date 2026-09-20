@@ -75,6 +75,57 @@ public class MikroPurchaseInvoiceWriterLiveTests
     }
 
     /// <summary>
+    /// K13: peşin ödenen alış tek kapalı evraktır. Canlıda kanıtlanması gereken şey, evrakın
+    /// gerçekten <b>tek satır</b> kalması ve tedarikçi bakiyesinin hareket etmemesi — fatura da
+    /// ödemesi de aynı satırda olduğu için borç doğmaz.
+    /// </summary>
+    [Fact]
+    public async Task A_purchase_paid_from_the_till_is_one_closed_row_that_leaves_no_debt()
+    {
+        if (!MikroWriteTestDatabase.CanWrite) return;
+
+        await using var conn = await MikroWriteTestDatabase.OpenAsync();
+        var supplier = (await conn.ExecuteScalarAsync<string>(
+            "SELECT TOP 1 cari_kod FROM CARI_HESAPLAR WHERE ISNULL(cari_hareket_tipi, 0) IN (0, 2) ORDER BY cari_kod"))!;
+        var warehouse = await conn.ExecuteScalarAsync<int>("SELECT TOP 1 dep_no FROM DEPOLAR ORDER BY dep_no");
+        var stock = (await conn.ExecuteScalarAsync<string>("SELECT TOP 1 sto_kod FROM STOKLAR ORDER BY sto_kod"))!;
+        var cash = (await conn.ExecuteScalarAsync<string>("SELECT TOP 1 kas_kod FROM KASALAR WHERE kas_tip = 0 ORDER BY kas_kod"))!;
+
+        var day = new DateTime(2026, 9, 20);
+        var command = new PurchaseInvoiceCommand(
+            new ErpDocumentHeader($"ERPBT-AK-{Guid.NewGuid():N}", day.AddHours(10), supplier, SalespersonCode: null,
+                ErpUserNo: 1, Series: TestSeries, Description: "ErpBridge peşin alış", ExpectedTotal: 960m),
+            warehouse,
+            SupplierInvoiceNo: "AL-2026-00412",
+            PricesIncludeVat: false,
+            [new PurchaseInvoiceLine(stock, 10m, 96m)],
+            PurchaseSettlement.Cash,
+            cash);
+
+        await using var session = await MikroWriteSession.BeginAsync(conn, new MikroDocumentLedger(), 0, 0, 1);
+        const string balance = "SELECT CAST(ISNULL(SUM(CASE WHEN cha_tip = 0 THEN cha_meblag ELSE -cha_meblag END), 0) AS decimal(18,2)) FROM CARI_HESAP_HAREKETLERI WHERE cha_cari_cins = 0 AND cha_kod = @supplier";
+        var before = await conn.ExecuteScalarAsync<decimal>(balance, new { supplier }, session.Transaction);
+
+        var written = await MikroPurchaseInvoiceWriter.WriteAsync(session, command, CancellationToken.None);
+
+        var rows = (await conn.QueryAsync(
+                "SELECT * FROM CARI_HESAP_HAREKETLERI WHERE cha_evrak_tip = 0 AND cha_evrakno_seri = @Series AND cha_evrakno_sira = @Number",
+                written, session.Transaction))
+            .Cast<IDictionary<string, object?>>().ToList();
+
+        var row = rows.Should().ContainSingle("peşin alış tek evraktır, ayrıca tediye satırı yazılmaz").Subject;
+        row["cha_tpoz"].Should().Be((byte)1, "fatura kapalı");
+        row["cha_cari_cins"].Should().Be((byte)4, "karşı taraf kasa");
+        row["cha_kod"].Should().Be(cash);
+        row["cha_ciro_cari_kodu"].Should().Be(supplier);
+        row.Where(c => c.Value is null).Should().BeEmpty();
+
+        var after = await conn.ExecuteScalarAsync<decimal>(balance, new { supplier }, session.Transaction);
+        after.Should().Be(before, "peşin alış tedarikçiye borç bırakmaz");
+        // Commit edilmedi.
+    }
+
+    /// <summary>
     /// §15 / K7: telefon seri bilmez. Seri boş geldiğinde writer tedarikçinin ERP'de kullandığı seriyi
     /// sürdürmeli — muhasebede fatura numarası bu yüzden bozulmaz.
     /// </summary>

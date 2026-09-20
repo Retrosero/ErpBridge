@@ -1,4 +1,4 @@
-using ErpBridge.Erp.Abstractions.Documents;
+﻿using ErpBridge.Erp.Abstractions.Documents;
 using ErpBridge.Erp.Abstractions.SalesOrder;
 using ErpBridge.Erp.Mikro.Connection;
 using ErpBridge.Erp.Mikro.Writers.Session;
@@ -11,9 +11,11 @@ namespace ErpBridge.Erp.Mikro.Writers.Documents;
 /// a <c>CARI_HESAP_HAREKETLERI</c> header (<c>cha_evrak_tip=0</c>, credit, <c>cha_cinsi=6</c>) and one
 /// incoming <c>STOK_HAREKETLERI</c> row per line (<c>sth_evraktip=3</c>, <c>sth_tip=0</c>).
 ///
-/// <para>The invoice is written <b>open</b>. Its payment is a separate tediye document (K5): on the phone
-/// a field purchase produces both, and Mikro shows them as what they are — goods in, money out. Closing
-/// the two into one document would hide the payment the phone actually recorded.</para>
+/// <para>A purchase paid on the spot is <b>one</b> document: a closed invoice (K13). Mikro's own rows settle
+/// this — every one of the company's 718 purchase invoices is a single <c>CARI_HESAP_HAREKETLERI</c> row, and
+/// the 68 paid ones carry <c>cha_tpoz=1</c> with the paying cash box in <c>cha_cari_cins</c>/<c>cha_kod</c> and
+/// the supplier moved to <c>cha_ciro_cari_kodu</c>. Writing a separate tediye alongside would show the same
+/// payment twice. An unpaid purchase stays open against the supplier, exactly as the other 650 do.</para>
 ///
 /// <para>Two numbering facts, both from §15. The document shares its number space with the satış iadesi,
 /// which Mikro also books as <c>cha_evrak_tip=0</c>, so MAX+1 must not filter on the return flag. And the
@@ -50,6 +52,7 @@ public sealed class MikroPurchaseInvoiceWriter(MikroDocumentWriteRunner runner)
         var supplier = await lookup.CustomerAsync(header.CustomerCode, MikroCustomerUse.Purchase, isOrder: false, ct).ConfigureAwait(false);
         await lookup.EnsureWarehouseAsync(command.WarehouseNo, ct).ConfigureAwait(false);
         await lookup.EnsureSalespersonAsync(header.SalespersonCode, ct).ConfigureAwait(false);
+        var closing = await ClosingAsync(lookup, command, ct).ConfigureAwait(false);
 
         var priced = new List<MikroPricedLine>(command.Lines.Count);
         foreach (var line in command.Lines)
@@ -69,7 +72,7 @@ public sealed class MikroPurchaseInvoiceWriter(MikroDocumentWriteRunner runner)
         var number = await session.NextNumberAsync(MikroDocumentNumbering.PurchaseInvoice, series, ct).ConfigureAwait(false);
 
         var headerRecno = await session.InsertAsync(MikroTables.CariHareket,
-            HeaderRow(command, supplier, document, series, number, Guid.NewGuid()), ct).ConfigureAwait(false);
+            HeaderRow(command, supplier, closing, document, series, number, Guid.NewGuid()), ct).ConfigureAwait(false);
         for (var i = 0; i < command.Lines.Count; i++)
         {
             await session.InsertAsync(MikroTables.StokHareket, LineRow(command, i, priced[i], series, number, headerRecno), ct).ConfigureAwait(false);
@@ -90,8 +93,27 @@ public sealed class MikroPurchaseInvoiceWriter(MikroDocumentWriteRunner runner)
             ? command.Header.Description
             : $"{command.Header.Description} (Fatura no: {command.SupplierInvoiceNo})".TrimStart();
 
+    /// <summary>The cash box or bank the purchase was paid from, or null when it stays open.</summary>
+    private static async Task<MikroSalesInvoiceWriter.Closing?> ClosingAsync(
+        MikroDocumentLookup lookup, PurchaseInvoiceCommand command, CancellationToken ct)
+    {
+        if (command.Settlement == PurchaseSettlement.Open) return null;
+        var code = command.SettlementAccountCode
+            ?? throw new MikroWriteException(ErpWriteError.ErpMappingMissing(
+                command.Settlement == PurchaseSettlement.Cash ? "kasa kodu" : "banka kodu"));
+        if (command.Settlement == PurchaseSettlement.Cash)
+        {
+            await lookup.EnsureCashBoxAsync(code, MikroCashBoxKind.Cash, ct).ConfigureAwait(false);
+            return new MikroSalesInvoiceWriter.Closing(MikroCodes.HesapCinsi.Kasamiz, code, 0);
+        }
+
+        await lookup.EnsureBankAsync(code, ct).ConfigureAwait(false);
+        return new MikroSalesInvoiceWriter.Closing(MikroCodes.HesapCinsi.Bankamiz, code, 1);
+    }
+
     internal static Dictionary<string, object?> HeaderRow(
-        PurchaseInvoiceCommand command, MikroCustomer supplier, MikroPricedDocument document, string series, int number, Guid uuid)
+        PurchaseInvoiceCommand command, MikroCustomer supplier, MikroSalesInvoiceWriter.Closing? closing,
+        MikroPricedDocument document, string series, int number, Guid uuid)
     {
         var header = command.Header;
         var day = header.OccurredAt.Date;
@@ -108,11 +130,13 @@ public sealed class MikroPurchaseInvoiceWriter(MikroDocumentWriteRunner runner)
             ["cha_cinsi"] = MikroCodes.ChaCinsi.ToptanFatura,
             // Satış iadesiyle ayrıldığı tek yer: iade bayrağı.
             ["cha_normal_Iade"] = MikroCodes.NormalIade.Normal,
-            // Açık hesap: ödemesi ayrı tediye evrağı (K5).
-            ["cha_tpoz"] = MikroCodes.ChaTpoz.Acik,
-            ["cha_cari_cins"] = MikroCodes.HesapCinsi.Carimiz,
-            ["cha_kod"] = supplier.Code,
-            ["cha_grupno"] = 0,
+            // Peşin ödendiyse fatura kapalıdır ve kasa/banka karşı tarafa geçer; tedarikçi ciro koduna
+            // taşınır (K13, canlıda 68 kapalı alış böyle). Ödenmediyse açık hesap tedarikçide kalır.
+            ["cha_tpoz"] = closing is null ? MikroCodes.ChaTpoz.Acik : MikroCodes.ChaTpoz.Kapali,
+            ["cha_cari_cins"] = closing?.AccountKind ?? MikroCodes.HesapCinsi.Carimiz,
+            ["cha_kod"] = closing?.AccountCode ?? supplier.Code,
+            ["cha_ciro_cari_kodu"] = closing is null ? null : supplier.Code,
+            ["cha_grupno"] = closing?.GroupNo ?? 0,
             ["cha_satici_kodu"] = header.SalespersonCode,
             ["cha_srmrkkodu"] = header.ResponsibilityCenterCode,
             ["cha_projekodu"] = header.ProjectCode,

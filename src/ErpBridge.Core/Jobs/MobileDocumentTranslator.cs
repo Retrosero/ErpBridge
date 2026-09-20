@@ -508,8 +508,37 @@ public sealed class MobileDocumentTranslator
                 stockCode, Decimal(line, "quantity")!.Value, Decimal(line, "unitPrice")!.Value, (byte)(Int(line, "unitPointer") ?? 1)));
         }
 
+        // K13: peşin ödenen alış tek evraktır — kapalı fatura. Ödeme bilgisi yoksa (eski telefon)
+        // fatura açık kalır; o sürüm ödemeyi ayrı bir tediye olarak gönderiyor ve iki kez ödenmiş
+        // görünmemesi için faturanın kapatılmaması gerekiyor.
+        var settlementText = Text(body, "settlementMethod") ?? Text(body, "paymentType");
+        PurchaseSettlement settlement;
+        string? settlementAccount = null;
+        switch (Normalize(settlementText))
+        {
+            case "" or "cari" or "cari borç" or "açık hesap" or "veresiye":
+                settlement = PurchaseSettlement.Open;
+                break;
+            case "nakit" or "cash":
+                settlement = PurchaseSettlement.Cash;
+                settlementAccount = Text(body, "cashCode") ?? Blank(context.CashCode);
+                if (settlementAccount is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("kasa kodu"));
+                break;
+            case "havale" or "eft" or "havale / eft" or "eft / havale" or "banka" or "transfer":
+                // Tediyedeki kural (PR #141): adı bilinen ama kodu bilinmeyen banka varsayılana düşürülmez.
+                if (Text(body, "bankCode") is null && !string.IsNullOrWhiteSpace(Text(body, "bankName")))
+                    return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
+                settlement = PurchaseSettlement.Bank;
+                settlementAccount = Text(body, "bankCode") ?? Blank(context.TransferBankCode);
+                if (settlementAccount is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("havale bankası"));
+                break;
+            default:
+                return MobileTranslation.Fail(ErpWriteError.UnsupportedPaymentType());
+        }
+
         return new MobileTranslation(Purchase: new PurchaseInvoiceCommand(
-            header, warehouse.Value, Text(body, "invoiceNo"), context.PurchasePricesIncludeVat, purchaseLines));
+            header, warehouse.Value, Text(body, "invoiceNo"), context.PurchasePricesIncludeVat, purchaseLines,
+            settlement, settlementAccount));
     }
 
     private static (IReadOnlyList<CollectionPayment>? Payments, ErpWriteError? Error) ParsePayments(
