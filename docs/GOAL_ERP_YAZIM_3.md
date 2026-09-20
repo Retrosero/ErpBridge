@@ -20,13 +20,14 @@ yeni cariyi kapsadı; bu goal kalan üç belgeyi kapatıyor.
 | **K2** | Telefon gider kartlarını **ERP'den çeker**. Sabit 6 kategori (Yemek, Kırtasiye, Kargo, Yol/Yakıt, Bakım, Diğer) kaldırılır; yerine Mikro'daki `MASRAF_HESAPLARI` kartları gelir. |
 | **K3** | Gider **kredi kartıyla da** ödenebilir: nakit / banka havalesi / kredi kartı. |
 | **K4** | Gider **KDV'si telefondan gelir** (kullanıcı girer), ERP'de hesaplanmaz. |
-| **K5** | Telefon alışı Mikro'da **iki evraktır**: alış faturası (ürün girişi) + tediye (ödeme). Tediye tahsilatın tersidir; alış faturası ürün girişi içindir. |
+| ~~**K5**~~ | ~~Telefon alışı Mikro'da iki evraktır: alış faturası + tediye.~~ **K13 ile değişti.** |
 | **K6** | Alış KDV'si **stok kartının `vergi_pntr`'ından**; depo **panelden ayarlanan alış deposu**. |
 | **K7** | Evrak serisi: **ERP'de kullanılmış seri varsa ona göre devam edilir** (§15). |
 | **K8** | **Alış irsaliyesi kapsam dışı.** |
 | **K9** | Sayımda **yalnız fiş yazılır**; sayım sonuçları **ERP'de kesinleştirilir** (Mikro'nun kendi uygulama adımı). |
 | **K10** | Sayımda telefon **stok kodu gönderir** — ERP'ye tam uyum; barkod→stok kodu tahmini yapılmaz. |
 | **K11** | Sayım fiş numarası **depo bazlı MAX+1**. |
+| **K13** (2026-09-20) | **Peşin alış tek evraktır: kapalı alış faturası.** Ayrı tediye evrağı yazılmaz — tediye tahsilatın tersidir, alış faturası ürün girişidir; ikisini aynı iş için üretmek aynı ödemeyi iki kez gösterir. Canlı veri: 718 alış faturasının hepsi tek CHA satırı, 68'i kasadan kapatılmış (§10.1). Ödenmemiş alış açık hesap kalır. |
 | **K12** (2026-09-19) | Telefon alış ekranı **KDV gösterir** ve ödeme **KDV'li tutarı** kapatır. Telefonun gösterdiği rakam eskiden `miktar × fiyat` toplamıydı; ERP KDV'yi stok kartından hesapladığı için fatura Mikro'da KDV kadar açık kalıyordu. |
 
 ## Varsayılanlar (aksi söylenmedikçe)

@@ -1,4 +1,4 @@
-# Mikro V15 — Satış, İade ve Tahsilat Evrakları Nasıl Yazılır
+﻿# Mikro V15 — Satış, İade ve Tahsilat Evrakları Nasıl Yazılır
 
 Tarih: 2026-09-17 · Kaynaklar: (1) `Fora_Mikro/.decompiled` — `Core/Fora.Mikro.Evraklar/Evrak.cs`
 (`StokCariHesapHareketiOlustur`, tahsilat satırı, stok satırı), `DataSql/Fora.Mikro.Data.Sql/EvrakData.cs`
@@ -238,6 +238,25 @@ Canlı veri bunu doğruluyor: 718 alış + 307 satış iadesi aynı numara uzay�
 **`EVRAK_ACIKLAMALARI`:** `egk_dosyano=51`, hareket tip **1**, evrak tip **0** (Fora `EvrakData.cs` switch).
 
 ---
+
+### 10.1 Peşin alış — kapalı fatura *(ERP yazım 3 K13 — 2026-09-20)*
+
+Ödenmiş alış Mikro'da **tek evraktır**; ayrı bir tediye satırı yazılmaz. Canlı `MikroDB_V15_02`'de
+718 alış faturasının **hepsi tek CHA satırı**; 650'si açık hesap (`tpoz=0`, `cari_cins=0`), 68'i
+kasadan kapatılmış. Satış faturasının peşin hali (§3) ve iade (§4) ile aynı desen.
+
+| Kolon | Açık hesap | Peşin (kapalı) |
+|---|---|---|
+| `cha_tpoz` | 0 | **1** |
+| `cha_cari_cins` | 0 (Carimiz) | **4** Kasamız / **2** Bankamız |
+| `cha_kod` | tedarikçi kodu | **kasa/banka kodu** |
+| `cha_ciro_cari_kodu` | boş | **tedarikçi kodu** |
+| `cha_grupno` | 0 | 0 kasa / 1 banka |
+
+Canlı örnekler: `POLİN/7 → kod=001, ciro=POLİN GARDEN`, `JUMBO/87 → kod=001, ciro=JUMBO3`.
+
+**Neden önemli:** faturayı açık yazıp ödemeyi ayrı bir tediye evrağı olarak göndermek aynı ödemeyi
+muhasebede iki kez gösterir. Telefon peşin alışta ödeme bilgisini faturayla birlikte gönderir.
 
 ## 11. Tediye makbuzu *(ERP yazım 2, Z0c — 2026-09-19)*
 

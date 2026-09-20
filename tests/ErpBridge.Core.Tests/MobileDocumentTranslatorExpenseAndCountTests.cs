@@ -240,6 +240,62 @@ public class MobileDocumentTranslatorExpenseAndCountTests
             .Should().Be(ErpWriteError.MissingCustomerCodeCode);
     }
 
+    /// <summary>
+    /// K13: peşin ödenen alış tek evraktır, kapalı fatura. Ödeme bilgisi yoksa fatura açık kalır —
+    /// eski telefon ödemeyi ayrı bir tediye olarak gönderiyor ve faturayı da kapatmak aynı ödemeyi
+    /// iki kez gösterirdi.
+    /// </summary>
+    [Fact]
+    public void A_purchase_without_payment_information_stays_open()
+    {
+        var purchase = _sut.Translate("purchase_receipt", "MOB-PR-1", Purchase, Context()).Purchase!;
+
+        purchase.Settlement.Should().Be(PurchaseSettlement.Open);
+        purchase.SettlementAccountCode.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("Nakit", PurchaseSettlement.Cash, "001")]
+    [InlineData("Havale", PurchaseSettlement.Bank, "04")]
+    public void A_paid_purchase_closes_to_the_account_it_was_paid_from(
+        string paymentType, PurchaseSettlement settlement, string account)
+    {
+        var body = Purchase.Replace("\"invoiceNo\": \"A-42\",", $"\"invoiceNo\": \"A-42\", \"paymentType\": \"{paymentType}\",", StringComparison.Ordinal);
+
+        var purchase = _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Purchase!;
+
+        purchase.Settlement.Should().Be(settlement);
+        purchase.SettlementAccountCode.Should().Be(account);
+    }
+
+    [Fact]
+    public void A_purchase_paid_on_account_stays_open()
+    {
+        var body = Purchase.Replace("\"invoiceNo\": \"A-42\",", "\"invoiceNo\": \"A-42\", \"paymentType\": \"Cari Borç\",", StringComparison.Ordinal);
+
+        _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Purchase!.Settlement
+            .Should().Be(PurchaseSettlement.Open);
+    }
+
+    /// <summary>Tediyedeki kural: adı bilinen ama kodu bilinmeyen banka varsayılana düşürülmez.</summary>
+    [Fact]
+    public void A_purchase_paid_to_a_named_bank_without_its_code_is_refused()
+    {
+        var body = Purchase.Replace("\"invoiceNo\": \"A-42\",", "\"invoiceNo\": \"A-42\", \"paymentType\": \"Havale\", \"bankName\": \"Ziraat\",", StringComparison.Ordinal);
+
+        _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Error!.Code
+            .Should().Be(ErpWriteError.MobileAppUpdateRequiredCode);
+    }
+
+    [Fact]
+    public void A_purchase_paid_by_cheque_is_refused_by_name()
+    {
+        var body = Purchase.Replace("\"invoiceNo\": \"A-42\",", "\"invoiceNo\": \"A-42\", \"paymentType\": \"Çek\",", StringComparison.Ordinal);
+
+        _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Error!.Code
+            .Should().Be(ErpWriteError.UnsupportedPaymentTypeCode);
+    }
+
     [Fact]
     public void A_purchase_with_no_warehouse_anywhere_names_the_missing_setting()
     {

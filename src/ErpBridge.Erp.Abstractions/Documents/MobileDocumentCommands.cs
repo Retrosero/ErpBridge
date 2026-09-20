@@ -194,12 +194,30 @@ public sealed record PurchaseInvoiceLine(string StockCode, decimal Quantity, dec
 /// <param name="SupplierInvoiceNo">Tedarikçinin fatura numarası; belge notuna yazılır.</param>
 /// <param name="PricesIncludeVat">Tedarikçinin fiyatı KDV içeriyor mu.</param>
 /// <param name="Lines">Kalemler.</param>
+/// <param name="Settlement">Peşin ödendiyse fatura kapalı yazılır; ödenmediyse açık hesap kalır (K13).</param>
+/// <param name="SettlementAccountCode">Kapatan kasa ya da banka kodu.</param>
 public sealed record PurchaseInvoiceCommand(
     ErpDocumentHeader Header,
     int WarehouseNo,
     string? SupplierInvoiceNo,
     bool PricesIncludeVat,
-    IReadOnlyList<PurchaseInvoiceLine> Lines);
+    IReadOnlyList<PurchaseInvoiceLine> Lines,
+    PurchaseSettlement Settlement = PurchaseSettlement.Open,
+    string? SettlementAccountCode = null);
+
+/// <summary>
+/// Alışın nasıl kapandığı (ERP yazım 3 K13, referans §10).
+///
+/// <para>Peşin ödenen bir alış Mikro'da <b>tek evraktır</b>: kapalı alış faturası. Ayrı bir tediye
+/// evrağı yazmak muhasebede aynı ödemeyi iki kez gösterirdi — canlı veride 718 alış faturasının
+/// hepsi tek CHA satırı, 68'i kasadan kapatılmış.</para>
+/// </summary>
+public enum PurchaseSettlement
+{
+    Open,
+    Cash,
+    Bank,
+}
 
 /// <summary>
 /// Nereden ödendiği (ERP yazım 3, referans §13). Tediyeden farkı kredi kartıdır: canlı Mikro'da
