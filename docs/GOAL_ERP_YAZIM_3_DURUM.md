@@ -50,16 +50,44 @@ sürüm yüklendiğinde çalışmaya başlar.
    hatasına yol açan iki ayrı tür listesi, PR #142 ile tek `AgentJobPump`'a
    indi. Yeni belge türü artık bir kez eklenir.
 
+## 2026-09-20: alış iki evrak gönderiyordu (K13)
+
+Kullanıcı bildirdi: bir alış için sisteme bir alış faturası **ve** bir tediye
+gidiyor, tediye yazılıyor ama alış yazılmıyor. İki ayrı sorun çıktı.
+
+**1. Tasarım — K5 yanlıştı, K13 ile değişti.** Canlı `MikroDB_V15_02`'de 718 alış
+faturasının **hepsi tek CHA satırı**: 650 açık hesap, 68 kasadan kapatılmış
+(`tpoz=1`, `cari_cins=4`, `cha_kod`=kasa, `cha_ciro_cari_kodu`=tedarikçi).
+Faturayı açık yazıp ödemeyi ayrı tediye evrağı yapmak aynı ödemeyi muhasebede iki
+kez gösteriyordu. Artık peşin alış tek kapalı evrak (#153, siparis_cepte#87);
+desen satış faturasının peşin hali (§3) ve iadeyle (§4) aynı — iadelerin zaten
+doğru aktarılmasının sebebi buydu.
+
+**2. Yazılmamasının sebebi kod değil, ajanın sürümüydü.** Çalışan tepsi ajanı
+2026-09-19 15:36 derlemesiydi; alış faturası yazıcısı (#145) ve çevirmen
+bağlantısı (#146) ondan ~4,5 saat sonra `main`'e girdi. Ajan logu:
+`Received job ... with unsupported document type purchase_receipt`.
+
+**Geçmiş belge ne olacak:** kuyruktaki alış eski gövdeyle geldiği için ödeme
+bilgisi taşımıyor ve **açık** yazılacak. Ödemesi zaten ayrı tediye olarak
+yazılmıştı, yani mükerrer ödeme oluşmaz — yalnız tek evrak yerine iki evrak
+görünür.
+
 ## Seni bekleyenler (karar/aksiyon gerekiyor)
 
-### 1. Sipariş Cepte sürümü cihazlara ulaşmalı (Y6c)
+### 1. Ajanı yeni derlemeyle yeniden başlat
+
+Ajan `main`'den derlendi. Eski ajan kapatılıp yenisi açılmalı; kalıcı hataya
+düşmüş alış belgesi Portal'daki ERP Belgeler sayfasından yeniden denenebilir.
+
+### 2. Sipariş Cepte sürümü cihazlara ulaşmalı (Y6c)
 
 Telefon tarafındaki üç değişiklik de `main`'de: alışta KDV, sayım gövdesi ve
 gider ekranı. Ama bu PC'de release keystore ve Play yükleme yolu yok, yani
 cihazlarda hiçbiri çalışmıyor. Yeni sürüm yüklenene kadar gider yine
 `MOBILE_APP_UPDATE_REQUIRED` ile reddedilir (sessiz kayıp yok).
 
-### 2. Alış ayarları gözden geçirilmeli
+### 3. Alış ayarları gözden geçirilmeli
 
 Panelde artık **alış deposu** ve **tedarikçi fiyatı KDV dahil mi** var (#150).
 İkincisi rakamlardan çıkarılamaz: yanlış seçim faturayı KDV kadar şişirir ya da
