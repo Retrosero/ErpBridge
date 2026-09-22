@@ -197,6 +197,12 @@ public sealed class PortalStockCardRequest
 
     /// <summary>Taken only when the product has no stock yet; ignored when editing an existing card.</summary>
     public decimal? OpeningQuantity { get; set; }
+
+    /// <summary>
+    /// Set once per save attempt and resent unchanged on a retry, so a lost response does not open
+    /// a second job; left empty, a fresh one is used and a retry becomes a new attempt.
+    /// </summary>
+    public string? OperationId { get; set; }
 }
 
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>

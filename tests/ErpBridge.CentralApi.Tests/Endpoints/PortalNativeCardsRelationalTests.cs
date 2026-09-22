@@ -146,6 +146,50 @@ public sealed class PortalNativeCardsRelationalTests : IClassFixture<SqliteCentr
     }
 
     [Fact]
+    public async Task A_barcode_already_on_another_product_is_refused_instead_of_moved()
+    {
+        // Codex review of #162 (P1): barcode records key only on the barcode, so accepting a
+        // duplicate would silently move it — the next scan would resolve to the wrong product.
+        var c = await CompanyAsync(native: true);
+        await UpsertAsync(c.Patron, new { stockCode = "CAY-1", name = "Çay 1 kg", unit = "Paket", barcode = "111" });
+        await UpsertAsync(c.Patron, new { stockCode = "CAY-2", name = "Çay 2 kg", unit = "Paket" });
+
+        var response = await UpsertAsync(c.Patron, new { stockCode = "CAY-2", name = "Çay 2 kg", unit = "Paket", barcode = "111" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await response.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("BARCODE_IN_USE");
+        // The barcode stays with its original product.
+        (await GetDetailAsync(c.Patron, "CAY-1")).Barcodes.Should().Equal("111");
+    }
+
+    [Fact]
+    public async Task Re_assigning_a_products_own_barcode_on_an_edit_is_not_a_conflict()
+    {
+        var c = await CompanyAsync(native: true);
+        await UpsertAsync(c.Patron, new { stockCode = "CAY-1", name = "Çay 1 kg", unit = "Paket", barcode = "111" });
+
+        var response = await UpsertAsync(c.Patron, new { stockCode = "CAY-1", name = "Çay 1 kg (Yeni)", unit = "Paket", barcode = "111" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task A_retried_delete_with_the_same_operation_id_is_idempotent_instead_of_422()
+    {
+        // Codex review of #162 (P2): a fresh key per call meant a retry after a lost response
+        // raced a second job and, for a delete, failed 422 because the product was already gone.
+        var c = await CompanyAsync(native: true);
+        await UpsertAsync(c.Patron, new { stockCode = "CAY-1", name = "Çay 1 kg", unit = "Paket" });
+
+        var first = await _factory.CreateClient().DeleteAsync("/api/v1/portal/native/stock-cards/CAY-1?operationId=OP-1", c.Patron);
+        var retry = await _factory.CreateClient().DeleteAsync("/api/v1/portal/native/stock-cards/CAY-1?operationId=OP-1", c.Patron);
+
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+        retry.StatusCode.Should().Be(HttpStatusCode.OK, "the same operation id replays the first job instead of re-deleting an absent product");
+        (await retry.ReadAsJsonAsync<IngestJobResponse>()).Should().BeEquivalentTo(await first.ReadAsJsonAsync<IngestJobResponse>(), o => o.Excluding(r => r.Idempotent));
+    }
+
+    [Fact]
     public async Task A_salesperson_and_a_manager_cannot_write_cards_from_the_portal()
     {
         var c = await CompanyAsync(native: true);

@@ -68,7 +68,7 @@ public static class PortalNativeCardsEndpoints
     }
 
     private static async Task<IResult> PutStockCardAsync(
-        HttpContext http, [FromBody] PortalStockCardRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
+        HttpContext http, [FromBody] PortalStockCardRequest? body, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
     {
         var (tenant, user, error) = await AuthorizeAsync(http, db, ct);
         if (error is not null) return error;
@@ -79,6 +79,22 @@ public static class PortalNativeCardsEndpoints
         if (code.Length > 64) return Invalid("stockCode must be at most 64 characters.");
         if (string.IsNullOrWhiteSpace(body.Name)) return Invalid("name is required.");
 
+        var barcode = string.IsNullOrWhiteSpace(body.Barcode) ? null : body.Barcode.Trim();
+        if (barcode is not null)
+        {
+            // Barcode records are keyed only by the barcode itself (MobileRecordProjector), so
+            // assigning one already on another card would silently move it there — the next scan
+            // or order would resolve to the wrong product.
+            var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
+            var owner = catalog.Products.FirstOrDefault(p => p.Barcodes.Contains(barcode, StringComparer.OrdinalIgnoreCase));
+            if (owner is not null && !string.Equals(owner.Code, code, StringComparison.OrdinalIgnoreCase))
+                return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
+                {
+                    ErrorCode = "BARCODE_IN_USE",
+                    Message = $"This barcode already belongs to product {owner.Code}.",
+                });
+        }
+
         var payload = new
         {
             stockCode = code,
@@ -88,24 +104,31 @@ public static class PortalNativeCardsEndpoints
             category = body.Category,
             brand = body.Brand,
             aisle = body.Aisle,
-            barcode = body.Barcode,
+            barcode,
             price = body.Price,
             openingQuantity = body.OpeningQuantity,
         };
-        // Booking is idempotent by code (the processor upserts the "stocks" row for it), so the
-        // job's own idempotency key only needs to be unique per submission, not per edit.
-        return await BookAsync(http, db, tenant!, user!, NativeDocumentProcessor.StockCard, $"portal-stock-{code}-{Guid.NewGuid():N}", payload, ct);
+        return await BookAsync(http, db, tenant!, user!, NativeDocumentProcessor.StockCard, OperationKey("portal-stock", code, body.OperationId), payload, ct);
     }
 
     private static async Task<IResult> DeleteStockCardAsync(
-        string code, HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
+        string code, string? operationId, HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
     {
         var (tenant, user, error) = await AuthorizeAsync(http, db, ct);
         if (error is not null) return error;
         if (string.IsNullOrWhiteSpace(code)) return Invalid("stockCode is required.");
 
-        return await BookAsync(http, db, tenant!, user!, NativeDocumentProcessor.StockCardDelete, $"portal-stock-delete-{code}-{Guid.NewGuid():N}", new { stockCode = code }, ct);
+        return await BookAsync(http, db, tenant!, user!, NativeDocumentProcessor.StockCardDelete, OperationKey("portal-stock-delete", code, operationId), new { stockCode = code }, ct);
     }
+
+    /// <summary>
+    /// The job's idempotency key. A caller that wants a lost response to retry safely (rather than
+    /// racing a second job, or — for a delete — failing 422 because the product is already gone)
+    /// supplies its own <paramref name="operationId"/> once per save/delete attempt and resends the
+    /// same one on retry; without one a fresh key is used, so today's caller-less requests still work.
+    /// </summary>
+    private static string OperationKey(string prefix, string code, string? operationId) =>
+        $"{prefix}-{code}-{(string.IsNullOrWhiteSpace(operationId) ? Guid.NewGuid().ToString("N") : operationId.Trim())}";
 
     // ---- shared booking -----------------------------------------------------------
 
