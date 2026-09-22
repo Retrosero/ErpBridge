@@ -41,13 +41,21 @@ gereği `MikroDB_V15_02`'ye test yazımı yapılmayacak.
 
 ## Sırada
 
-**Durduruldu — insan kapısı:** E1a'nın canlı kısmı ve E1b, `MikroDB_V15_DEMO` test veritabanı bu makineye
-kurulana kadar bekliyor. O zamana kadar E1d (referans belge güncellemesi, kod bulgusuyla) ve E2a (yetki
-bayrağı — DB gerektirmez) ile devam edilebilir.
+**Goal durduruldu (2026-09-22) — kullanıcı önceliği değişti.** Kullanıcı asıl isteğinin ERP'li (Mikro)
+firmalar değil **ERP'siz (native) firmalar** olduğunu netleştirdi: "erpli müşterilerin evraklarını değil
+erpsiz müşteriler ... panelden ürün/müşteri girişi ... satış/tahsilat/alış/iade/tediye evrakları ekleyip
+düzenleyebilmeli". Aktif çalışma artık `docs/GOAL_PANEL_ERPSIZ.md`'de (kapsamı bu isteği karşılayacak
+şekilde genişletildi: kart + tahsilat/tediye + **satış/alış/iade faturası girişi ve düzenleme** + hesap
+hareketi düzeltme + stok sayımı).
+
+Bu goal **iptal edilmedi, yalnız bekliyor** — E1a'nın bulguları (writer'lar INSERT-only, üretim ortamında
+test DB'si eksik) geçerliliğini koruyor ve ERP'li firmalar için panelden kart düzenleme ihtiyacı ileride
+tekrar gündeme gelirse buradan devam edilir. `MikroDB_V15_DEMO` test DB sorusu da askıda.
 
 ## Seni Bekleyenler
 
-- **[K] Test DB:** `MikroDB_V15_DEMO` bu makineye nasıl kurulur (kurulum medyası / yedek dosya konumu)?
+- **[K] Öncelik:** Bu goal'e ne zaman dönülecek — kullanıcı ERP'siz çalışma bittikten sonra mı, yoksa hiç mi?
+- **[K] Test DB:** `MikroDB_V15_DEMO` bu makineye nasıl kurulur (kurulum medyası / yedek dosya konumu)? — hâlâ cevapsız.
 - E1b tamamlandığında: writer'ın ürettiği kartın Mikro'nun kendi ekranından açılanla aynı "sabit alan" setini
   taşıyıp taşımadığı (yukarıdaki ek bulgu) ayrıca doğrulanmalı.
 - E6b: gerçek Mikro'lu bir firmada canlı gözle kontrol.

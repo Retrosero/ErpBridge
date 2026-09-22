@@ -48,7 +48,13 @@ ilgili knowledge_base dosyasını da güncelle.
   kartı düzenleme) görevleri için de önceden onaylıdır (kullanıcı: "Önceden onayla"). Test yazımı yalnız
   **`MikroDB_V15_DEMO`**/`MikroDB_V15_ERPBTEST`'e. Aynı yasaklar geçerli: `--force` push (ve rebase sonrası
   `--force-with-lease`) yasak, CI kırmızıyken merge yasak, `main`'e doğrudan push yasak, `MikroDB_V15_02`
-  (canlı firma verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak.
+  (canlı firma verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak. **Bu goal 2026-09-22'de kullanıcı
+  önceliğiyle durduruldu** — bkz. aşağıdaki `GOAL_PANEL_ERPSIZ.md` istisnası.
+- **İstisna (2026-09-22):** aynı yetkiler `docs/GOAL_PANEL_ERPSIZ.md` (ERP'siz firmalarda panelden ürün/cari/
+  satış/alış/iade/tahsilat/tediye girişi ve düzenleme) görevleri için de önceden onaylıdır (kullanıcı: "Önceden
+  onayla"). Aynı yasaklar geçerli: `--force` push (ve rebase sonrası `--force-with-lease`) yasak, CI kırmızıyken
+  merge yasak, `main`'e doğrudan push yasak. Bu goal Mikro'ya hiç yazmadığı (`NativeDocumentProcessor` +
+  CentralApi PostgreSQL) için Mikro test DB kısıtı bu istisna için geçerli değil.
 
 ## 3. Test / build
 
