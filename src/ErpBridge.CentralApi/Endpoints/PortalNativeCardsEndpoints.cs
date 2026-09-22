@@ -59,7 +59,9 @@ public static class PortalNativeCardsEndpoints
             Brand = product.Brand,
             Aisle = product.Shelf,
             Barcodes = [.. product.Barcodes],
-            Price = catalog.DefaultPriceList is { } list ? product.Prices.GetValueOrDefault(list) : null,
+            Prices = product.Prices.OrderBy(x => x.Key)
+                .Select(x => new PortalStockPrice { ListNumber = x.Key, Name = PortalStockCatalog.PriceListName(catalog, x.Key), Price = x.Value })
+                .ToList(),
             Quantity = product.TotalQuantity,
             LastMovementDate = product.LastMovement?.ToString("yyyy-MM-dd"),
         });

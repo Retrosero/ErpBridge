@@ -282,7 +282,7 @@ public static class PortalStockCatalog
     private static string WarehouseName(Catalog catalog, int number) =>
         catalog.WarehouseNames.TryGetValue(number, out var name) ? name : $"Depo {number}";
 
-    private static string PriceListName(Catalog catalog, int number) =>
+    internal static string PriceListName(Catalog catalog, int number) =>
         catalog.PriceListNames.TryGetValue(number, out var name) ? name : $"Liste {number}";
 
     private static IEnumerable<Product> In(IEnumerable<Product> products, IReadOnlyCollection<string> wanted, Func<Product, string?> value)

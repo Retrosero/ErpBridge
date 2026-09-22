@@ -210,7 +210,9 @@ public sealed class PortalStockCardDetail
     public string? Brand { get; set; }
     public string? Aisle { get; set; }
     public List<string> Barcodes { get; set; } = [];
-    public decimal? Price { get; set; }
+
+    /// <summary>Every price list the product has a price on; a list it has none on is absent, never zero.</summary>
+    public List<PortalStockPrice> Prices { get; set; } = [];
     public decimal Quantity { get; set; }
     public string? LastMovementDate { get; set; }
 }

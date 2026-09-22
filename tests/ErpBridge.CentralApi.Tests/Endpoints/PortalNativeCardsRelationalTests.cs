@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
+using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
@@ -42,7 +43,7 @@ public sealed class PortalNativeCardsRelationalTests : IClassFixture<SqliteCentr
         detail.Category.Should().Be("GIDA");
         detail.Brand.Should().Be("DOGUS");
         detail.Barcodes.Should().Equal("8690000000011");
-        detail.Price.Should().Be(150.5m);
+        detail.Prices.Should().ContainSingle().Which.Price.Should().Be(150.5m);
         detail.Quantity.Should().Be(40);
 
         var search = await GetJsonAsync<PortalStockSearchResponse>(c.Patron, "/api/v1/portal/stock/search");
@@ -60,7 +61,7 @@ public sealed class PortalNativeCardsRelationalTests : IClassFixture<SqliteCentr
 
         var detail = await GetDetailAsync(c.Patron, "CAY-1");
         detail.Name.Should().Be("Çay 1 kg (Yeni)");
-        detail.Price.Should().Be(175m);
+        detail.Prices.Should().ContainSingle().Which.Price.Should().Be(175m);
         // The opening quantity from the first submission is untouched by the edit.
         detail.Quantity.Should().Be(40);
 
@@ -77,6 +78,32 @@ public sealed class PortalNativeCardsRelationalTests : IClassFixture<SqliteCentr
         await UpsertAsync(c.Patron, new { stockCode = "CAY-1", name = "Çay 1 kg", unit = "Paket", barcode = "222", price = 150 });
 
         (await GetDetailAsync(c.Patron, "CAY-1")).Barcodes.Should().Equal("222");
+    }
+
+    [Fact]
+    public async Task The_detail_returns_every_price_list_and_never_defaults_a_missing_one_to_zero()
+    {
+        // Codex review of #162: collapsing to one scalar price lost every non-default list and
+        // turned "no price on this list" into a false 0 via GetValueOrDefault.
+        var c = await CompanyAsync(native: true);
+        await UpsertAsync(c.Patron, new { stockCode = "CAY-1", name = "Çay 1 kg", unit = "Paket", price = 150 });
+        await UpsertAsync(c.Patron, new { stockCode = "CAY-2", name = "Çay 2 kg", unit = "Paket" }); // no price = no entry, not 0
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            db.MobileRecords.Add(new MobileRecord
+            {
+                TenantId = c.Id, Entity = "prices", RecordKey = "CAY-1|2", StockKey = "CAY-1",
+                PayloadJson = JsonSerializer.Serialize(new { stockCode = "CAY-1", listNumber = 2, price = 135 }, Web),
+                UpdatedSeq = 999_999,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var cay1 = await GetDetailAsync(c.Patron, "CAY-1");
+        cay1.Prices.Select(p => (p.ListNumber, p.Price)).Should().BeEquivalentTo([(1, 150m), (2, 135m)]);
+
+        (await GetDetailAsync(c.Patron, "CAY-2")).Prices.Should().BeEmpty("a product with no price on any list has none, not a false 0");
     }
 
     [Fact]
