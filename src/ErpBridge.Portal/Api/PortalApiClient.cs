@@ -113,6 +113,10 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
         SendAsync<NativeJobResultDto>(HttpMethod.Delete,
             $"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}" + Query(("operationId", operationId)), null, ct);
 
+    /// <summary>ERP-less tenant only. Create or edit shares this call; the customer is found by its code.</summary>
+    public Task<NativeJobResultDto> SaveNativeCustomerCardAsync(NativeCustomerCardRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/customer-cards", request, ct);
+
     /// <summary>One page of requests, newest first; <paramref name="after"/> is the last request on screen.</summary>
     public Task<ApprovalDto[]> ApprovalsAsync(string status, string? kind, ApprovalDto? after, int take, CancellationToken ct = default) =>
         GetAsync<ApprovalDto[]>("api/v1/android/approvals" + Query(
