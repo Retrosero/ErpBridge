@@ -125,7 +125,7 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
         var response = await VoidAsync(c, paymentLeg, "Denemek istiyorum");
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await response.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("INVALID_VOID");
+        (await response.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("INVALID_LEDGER_REQUEST");
     }
 
     [Fact]
@@ -144,7 +144,67 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
         (await _factory.CreateClient().SendAsync(request)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task A_debit_adjustment_raises_the_balance_and_a_credit_adjustment_lowers_it()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+
+        (await AdjustAsync(c, "C-001", 200, debit: true, "Açılış bakiyesi yanlış girilmiş")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1200m);
+
+        (await AdjustAsync(c, "C-001", 50, debit: false, "Fazla yazılmış tutarın düzeltilmesi")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1150m);
+
+        var statement = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001");
+        statement.Items.Should().HaveCount(2).And.OnlyContain(i => i.Kind == "other" && i.SourceType == "Düzeltme");
+        statement.Items.Should().Contain(i => i.Description == "Açılış bakiyesi yanlış girilmiş" && i.Debit == 200m);
+        statement.Closing.Should().Be(1150m);
+    }
+
+    [Fact]
+    public async Task An_adjustment_needs_a_reason_a_positive_amount_and_a_real_customer()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 0m);
+
+        (await AdjustAsync(c, "C-001", 100, debit: true, null)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await AdjustAsync(c, "C-001", 0, debit: true, "Gerekçe")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await AdjustAsync(c, "GHOST", 100, debit: true, "Gerekçe")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_post_an_adjustment()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 0m);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/portal/native/ledger-adjustments")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { customerCode = "C-001", amount = 100, debit = true, reason = "Deneme" }, Web), Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", c.Manager);
+        (await _factory.CreateClient().SendAsync(request)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task An_adjustment_can_itself_be_voided_like_a_collection_or_disbursement()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+        (await AdjustAsync(c, "C-001", 200, debit: true, "Yanlış tutar")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1200m);
+        var key = await LedgerKeyAsync(c.Id, "ledger_adjustment");
+
+        (await VoidAsync(c, key, "Düzeltmenin kendisi hatalıydı")).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1000m);
+    }
+
     // ---- setup ------------------------------------------------------------------------
+
+    private Task<HttpResponseMessage> AdjustAsync(Company c, string customerCode, decimal amount, bool debit, string? reason) =>
+        _factory.CreateClient().PostJsonAsync("/api/v1/portal/native/ledger-adjustments", new { customerCode, amount, debit, reason }, c.Patron);
 
     private sealed record Company(Guid Id, string Patron, string Manager);
     private sealed record Change(string Entity, string Key, bool Deleted, JsonElement Data);

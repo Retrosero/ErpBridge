@@ -1,3 +1,4 @@
+using System.Globalization;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Json;
@@ -8,10 +9,11 @@ using Microsoft.EntityFrameworkCore;
 namespace ErpBridge.CentralApi.Endpoints;
 
 /// <summary>
-/// Maps <c>/api/v1/portal/native/ledger/{key}/void</c> (GOAL_PANEL_ERPSIZ E4a): cancels a collection or
-/// disbursement — the storno pattern (D2) applied to a standalone cash-book movement, never a
-/// sale/purchase/return's own cari etkisi (E5's <c>document_void</c> instead, D11). Same shape as every
-/// other native write endpoint — a second door into <see cref="NativeDocumentProcessor"/> via
+/// Maps <c>/api/v1/portal/native/ledger/{key}/void</c> (GOAL_PANEL_ERPSIZ E4a) and
+/// <c>…/ledger-adjustments</c> (E4b): cancelling or manually correcting a customer's balance — the
+/// storno pattern (D2) applied to standalone cash-book movements, never a sale/purchase/return's own
+/// cari etkisi (E5's <c>document_void</c> instead, D11). Same shape as every other native write
+/// endpoint — a second door into <see cref="NativeDocumentProcessor"/> via
 /// <see cref="PortalNativeWriteHelpers"/> (D1), not a second engine.
 ///
 /// <para>The 404/409/400 checks here are a pre-check for the common (non-racing) case, so a caller sees
@@ -22,7 +24,9 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// </summary>
 public static class PortalNativeLedgerEndpoints
 {
-    private const string RejectedErrorCode = "LEDGER_VOID_REJECTED";
+    private const string VoidRejectedErrorCode = "LEDGER_VOID_REJECTED";
+    private const string AdjustmentRejectedErrorCode = "LEDGER_ADJUSTMENT_REJECTED";
+    private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
 
     public static IEndpointRouteBuilder MapPortalNativeLedgerEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -31,6 +35,7 @@ public static class PortalNativeLedgerEndpoints
             .RequireAuthorization(Program.MobileUserPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/ledger/{key}/void", VoidAsync).WithName("PortalVoidNativeLedgerEntry");
+        group.MapPost("/ledger-adjustments", AdjustAsync).WithName("PortalPostNativeLedgerAdjustment");
         return routes;
     }
 
@@ -60,16 +65,57 @@ public static class PortalNativeLedgerEndpoints
         if (job is null || !NativeDocumentProcessor.VoidableLedgerJobTypes.Contains(job.DocumentType))
             return Invalid("Only a collection or a disbursement can be cancelled here.");
 
+        var voidedKind = job.DocumentType switch
+        {
+            NativeDocumentProcessor.Collection => "Tahsilat",
+            NativeDocumentProcessor.Disbursement => "Tediye",
+            _ => "Düzeltme",
+        };
         var payload = new { targetKey = key, reason };
         var audit = new PortalNativeWriteHelpers.AuditInfo(
             Entity: job.DocumentType.ToLowerInvariant(), EntityKey: row.TryGetProperty("customerCode", out var code) ? code.GetString() ?? key : key,
-            Action: "void", Summary: $"İptal edildi ({(job.DocumentType == NativeDocumentProcessor.Collection ? "Tahsilat" : "Tediye")}): {reason}",
-            BeforeJson: record.PayloadJson);
+            Action: "void", Summary: $"İptal edildi ({voidedKind}): {reason}", BeforeJson: record.PayloadJson);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.LedgerVoid,
-            PortalNativeWriteHelpers.OperationKey("portal-ledger-void", key, body?.OperationId), payload, RejectedErrorCode, ct, audit);
+            PortalNativeWriteHelpers.OperationKey("portal-ledger-void", key, body?.OperationId), payload, VoidRejectedErrorCode, ct, audit);
+    }
+
+    private static async Task<IResult> AdjustAsync(
+        HttpContext http, [FromBody] PortalLedgerAdjustmentRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        var (tenant, user, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
+        if (error is not null) return error;
+        if (body is null) return Invalid("Body required.");
+
+        var code = body.CustomerCode?.Trim();
+        if (string.IsNullOrWhiteSpace(code)) return Invalid("customerCode is required.");
+        if (body.Amount <= 0) return Invalid("amount must be positive.");
+        var reason = body.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason)) return Invalid("A reason is required.");
+
+        string? occurredAt = null;
+        if (!string.IsNullOrWhiteSpace(body.OccurredAt))
+        {
+            if (!DateOnly.TryParseExact(body.OccurredAt, "yyyy-MM-dd", CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day))
+                return Invalid("occurredAt must be yyyy-MM-dd.");
+            occurredAt = day.ToDateTime(new TimeOnly(12, 0)).ToString("O", CultureInfo.InvariantCulture);
+        }
+
+        // customerCode is checked here (not left to the processor) so a typo is reported as a plain
+        // 400 rather than the generic 422 the booking failure path returns for every rejection.
+        var exists = await db.MobileRecords.AsNoTracking()
+            .AnyAsync(r => r.TenantId == tenant!.Id && r.Entity == "customers" && r.RecordKey == code && !r.IsDeleted, ct);
+        if (!exists) return Invalid("The customer does not exist.");
+
+        var payload = new { customerCode = code, amount = body.Amount, debit = body.Debit, reason, occurredAt };
+        var audit = new PortalNativeWriteHelpers.AuditInfo(
+            Entity: NativeDocumentProcessor.LedgerAdjustment, EntityKey: code, Action: "create",
+            Summary: $"Manuel düzeltme ({(body.Debit ? "borç" : "alacak")}): {body.Amount.ToString("0.00", Turkish)} TL — {reason}", BeforeJson: null);
+        return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
+            http, db, tenant!, user!, NativeDocumentProcessor.LedgerAdjustment,
+            PortalNativeWriteHelpers.OperationKey("portal-ledger-adjustment", code, body.OperationId), payload, AdjustmentRejectedErrorCode, ct, audit);
     }
 
     private static IResult Invalid(string message) =>
-        JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_VOID", Message = message });
+        JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_LEDGER_REQUEST", Message = message });
 }
