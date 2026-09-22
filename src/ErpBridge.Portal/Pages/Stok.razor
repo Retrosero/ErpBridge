@@ -439,10 +439,19 @@ else
         Notice = null;
         Error = null;
         _card = new NativeStockCardRequest { OperationId = Guid.NewGuid().ToString("N") };
+        _originalBarcode = null;
         _cardIsNew = true;
         _confirmDelete = false;
         _cardOpen = true;
     }
+
+    /// <summary>
+    /// The barcode as it was when the sheet opened, so a save that never touched the field can leave
+    /// it out of the request. <c>stock_card</c> lists one barcode and drops every other one it finds
+    /// for the product (Faz 34), so resending an unchanged value on every edit would, over a few saves,
+    /// erase any extra barcode the product happens to carry (Codex review of #163, P1).
+    /// </summary>
+    private string? _originalBarcode;
 
     private Task OpenEditCardAsync(string code)
     {
@@ -452,6 +461,11 @@ else
         return RunAsync(async () =>
         {
             var detail = await Api.NativeStockCardAsync(code);
+            // stock_card only ever books a price on list 1 (BookStockCardAsync); showing a
+            // different list's price here would resubmit it as list 1 on save, creating a second,
+            // wrong-list price while leaving the real one untouched (Codex review of #163, P1).
+            var listOnePrice = detail.Prices.FirstOrDefault(p => p.ListNumber == 1)?.Price;
+            _originalBarcode = detail.Barcodes.FirstOrDefault();
             _card = new NativeStockCardRequest
             {
                 StockCode = detail.StockCode,
@@ -461,8 +475,8 @@ else
                 Category = detail.Category,
                 Brand = detail.Brand,
                 Aisle = detail.Aisle,
-                Barcode = detail.Barcodes.FirstOrDefault(),
-                Price = detail.Prices.FirstOrDefault()?.Price,
+                Barcode = _originalBarcode,
+                Price = listOnePrice,
                 OperationId = Guid.NewGuid().ToString("N"),
             };
             _cardOpen = true;
@@ -481,9 +495,20 @@ else
         _card.StockCode = (_card.StockCode ?? string.Empty).Trim();
         _card.Name = (_card.Name ?? string.Empty).Trim();
         var name = _card.Name;
+        // A copy: only an actually-typed barcode change goes out, so an edit to an unrelated field
+        // (name, price…) leaves every barcode the product has alone rather than replaying the one
+        // shown here and tombstoning the rest.
+        var request = new NativeStockCardRequest
+        {
+            StockCode = _card.StockCode, Name = _card.Name, Unit = _card.Unit, VatRate = _card.VatRate,
+            Category = _card.Category, Brand = _card.Brand, Aisle = _card.Aisle, Price = _card.Price,
+            OpeningQuantity = _card.OpeningQuantity, OperationId = _card.OperationId,
+            Barcode = string.Equals((_card.Barcode ?? string.Empty).Trim(), _originalBarcode, StringComparison.Ordinal)
+                ? null : _card.Barcode,
+        };
         return RunAsync(async () =>
         {
-            await Api.SaveNativeStockCardAsync(_card);
+            await Api.SaveNativeStockCardAsync(request);
             _cardOpen = false;
             await LoadPageAsync();
             Notice = $"{name} kaydedildi.";
