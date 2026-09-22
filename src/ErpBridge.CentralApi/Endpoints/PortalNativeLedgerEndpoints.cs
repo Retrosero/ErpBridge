@@ -26,6 +26,7 @@ public static class PortalNativeLedgerEndpoints
 {
     private const string VoidRejectedErrorCode = "LEDGER_VOID_REJECTED";
     private const string AdjustmentRejectedErrorCode = "LEDGER_ADJUSTMENT_REJECTED";
+    private const string EditRejectedErrorCode = "LEDGER_EDIT_REJECTED";
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
 
     public static IEndpointRouteBuilder MapPortalNativeLedgerEndpoints(this IEndpointRouteBuilder routes)
@@ -35,6 +36,7 @@ public static class PortalNativeLedgerEndpoints
             .RequireAuthorization(Program.MobileUserPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapPost("/ledger/{key}/void", VoidAsync).WithName("PortalVoidNativeLedgerEntry");
+        group.MapPost("/ledger/{key}/edit", EditAsync).WithName("PortalEditNativeLedgerEntry");
         group.MapPost("/ledger-adjustments", AdjustAsync).WithName("PortalPostNativeLedgerAdjustment");
         return routes;
     }
@@ -58,12 +60,12 @@ public static class PortalNativeLedgerEndpoints
         if (row.TryGetProperty("voided", out var voided) && voided.ValueKind == System.Text.Json.JsonValueKind.True)
             return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "ALREADY_VOIDED", Message = "This entry was already cancelled." });
 
-        // Only a standalone collection/disbursement is voidable here (E4a); a sale's own row —
-        // even its immediate-payment leg — belongs to E5's document_void instead (D11).
+        // Only a standalone collection/disbursement/manual adjustment is voidable here (E4a/E4b); a
+        // sale's own row — even its immediate-payment leg — belongs to E5's document_void instead (D11).
         var externalId = key.Contains('|') ? key[..key.LastIndexOf('|')] : key;
         var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == tenant!.Id && j.ExternalId == externalId, ct);
         if (job is null || !NativeDocumentProcessor.VoidableLedgerJobTypes.Contains(job.DocumentType))
-            return Invalid("Only a collection or a disbursement can be cancelled here.");
+            return Invalid("Only a collection, a disbursement or a manual adjustment can be cancelled here.");
 
         var voidedKind = job.DocumentType switch
         {
@@ -78,6 +80,68 @@ public static class PortalNativeLedgerEndpoints
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.LedgerVoid,
             PortalNativeWriteHelpers.OperationKey("portal-ledger-void", key, body?.OperationId), payload, VoidRejectedErrorCode, ct, audit);
+    }
+
+    /// <summary>
+    /// GOAL_PANEL_ERPSIZ E4c: void + reissue in the entry's own key's one transaction (D11). The kind
+    /// (collection/disbursement/manual adjustment) never changes — only a manual adjustment's own
+    /// borç/alacak direction may, since that is the one kind where the caller chooses it at all; a
+    /// collection or disbursement keeps the direction its own document type already fixes.
+    /// </summary>
+    private static async Task<IResult> EditAsync(
+        string key, HttpContext http, [FromBody] PortalLedgerEditRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        var (tenant, user, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
+        if (error is not null) return error;
+        if (string.IsNullOrWhiteSpace(key)) return Invalid("A ledger key is required.");
+        var voidReason = body?.VoidReason?.Trim();
+        if (string.IsNullOrWhiteSpace(voidReason)) return Invalid("An edit needs a reason for the correction.");
+        if (body is null || body.Amount <= 0) return Invalid("amount must be positive.");
+
+        var record = await db.MobileRecords.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.TenantId == tenant!.Id && r.Entity == "customerTransactions" && r.RecordKey == key && !r.IsDeleted, ct);
+        if (record?.PayloadJson is null)
+            return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "LEDGER_ENTRY_NOT_FOUND", Message = "No ledger entry with that key for this company." });
+
+        using var document = System.Text.Json.JsonDocument.Parse(record.PayloadJson);
+        var row = document.RootElement;
+        if (row.TryGetProperty("voided", out var voided) && voided.ValueKind == System.Text.Json.JsonValueKind.True)
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "ALREADY_VOIDED", Message = "This entry was already cancelled." });
+
+        var externalId = key.Contains('|') ? key[..key.LastIndexOf('|')] : key;
+        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == tenant!.Id && j.ExternalId == externalId, ct);
+        if (job is null || !NativeDocumentProcessor.VoidableLedgerJobTypes.Contains(job.DocumentType))
+            return Invalid("Only a collection, a disbursement or a manual adjustment can be edited here.");
+
+        var isAdjustment = job.DocumentType == NativeDocumentProcessor.LedgerAdjustment;
+        var reason = body.Description?.Trim() is { Length: > 0 } d ? d : body.Reason?.Trim();
+        if (isAdjustment && string.IsNullOrWhiteSpace(reason)) return Invalid("The corrected adjustment needs a reason.");
+
+        string? occurredAt = null;
+        if (!string.IsNullOrWhiteSpace(body.OccurredAt))
+        {
+            if (!DateOnly.TryParseExact(body.OccurredAt, "yyyy-MM-dd", CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day))
+                return Invalid("occurredAt must be yyyy-MM-dd.");
+            occurredAt = day.ToDateTime(new TimeOnly(12, 0)).ToString("O", CultureInfo.InvariantCulture);
+        }
+
+        var voidedKind = job.DocumentType switch
+        {
+            NativeDocumentProcessor.Collection => "Tahsilat",
+            NativeDocumentProcessor.Disbursement => "Tediye",
+            _ => "Düzeltme",
+        };
+        var payload = new
+        {
+            targetKey = key, voidReason, amount = body.Amount, debit = body.Debit,
+            paymentType = body.PaymentType, description = body.Description, reason = body.Reason, occurredAt,
+        };
+        var audit = new PortalNativeWriteHelpers.AuditInfo(
+            Entity: job.DocumentType.ToLowerInvariant(), EntityKey: row.TryGetProperty("customerCode", out var code) ? code.GetString() ?? key : key,
+            Action: "edit", Summary: $"Düzenlendi ({voidedKind}): {voidReason}", BeforeJson: record.PayloadJson);
+        return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
+            http, db, tenant!, user!, NativeDocumentProcessor.LedgerEdit,
+            PortalNativeWriteHelpers.OperationKey("portal-ledger-edit", key, body.OperationId), payload, EditRejectedErrorCode, ct, audit);
     }
 
     private static async Task<IResult> AdjustAsync(

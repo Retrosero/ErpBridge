@@ -55,6 +55,10 @@ public sealed class NativeDocumentProcessor
     /// never a payment or a sale — for fixing a balance no other document type can express.</summary>
     public const string LedgerAdjustment = "ledger_adjustment";
 
+    /// <summary>Corrects one ledger entry (GOAL_PANEL_ERPSIZ E4c, D11): <see cref="LedgerVoid"/> + a
+    /// re-booked entry of the same kind, in the entry's own single transaction.</summary>
+    public const string LedgerEdit = "ledger_edit";
+
     /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id.</summary>
     public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment };
 
@@ -149,6 +153,9 @@ public sealed class NativeDocumentProcessor
                 LedgerAdjustment => callerIsAdmin
                     ? await BookLedgerAdjustmentAsync(db, booking, document.RootElement, ct)
                     : "Only company administrators can adjust a customer's balance.",
+                LedgerEdit => callerIsAdmin
+                    ? await BookLedgerEditAsync(db, booking, document.RootElement, ct)
+                    : "Only company administrators can edit a ledger entry.",
                 // Other cash-book documents (return and purchase payments already booked by
                 // their own documents, cash transfers) are kept as records only.
                 _ => null,
@@ -605,13 +612,9 @@ public sealed class NativeDocumentProcessor
     }
 
     /// <summary>
-    /// Cancels one collection/disbursement (GOAL_PANEL_ERPSIZ E4a, D2's storno pattern): the original
-    /// <c>customerTransactions</c> row is marked <c>voided</c> in place (upserted under its own key, so
-    /// the historical amount/type never change) and a reversing entry — the exact opposite of its
-    /// balance effect — is booked under a new key. Never a sale/purchase/return's own row: those are
-    /// E5's <c>document_void</c> (D11), enforced here by requiring the movement's own job to be a
-    /// standalone <see cref="Collection"/>/<see cref="Disbursement"/> (<see cref="VoidableLedgerJobTypes"/>),
-    /// not a job that also moved stock or wrote lines.
+    /// Cancels one collection/disbursement/manual adjustment (GOAL_PANEL_ERPSIZ E4a, D2's storno
+    /// pattern) — the endpoint-level shell around <see cref="VoidLedgerEntryAsync"/> that just needs a
+    /// reason, not the original's own fields back.
     /// </summary>
     private async Task<string?> BookLedgerVoidAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
     {
@@ -619,10 +622,57 @@ public sealed class NativeDocumentProcessor
         if (targetKey is null) return "targetKey is required.";
         var reason = Text(document, "reason");
         if (reason is null) return "A void needs a reason.";
+        var (error, _, _, _, _) = await VoidLedgerEntryAsync(db, booking, targetKey, reason, Text(document, "occurredAt") ?? booking.Stamp, ct);
+        return error;
+    }
 
+    /// <summary>
+    /// Edits one ledger entry (GOAL_PANEL_ERPSIZ E4c, D11's void+reissue pattern): <see cref="VoidLedgerEntryAsync"/>
+    /// cancels the original, then a corrected entry of the <b>same kind</b> is booked (a collection stays a
+    /// collection; a manual adjustment stays one and may also change its borç/alacak direction, since that
+    /// is the one kind where the caller chooses it in the first place). Both steps share this booking's one
+    /// transaction: <see cref="NativeDocumentProcessor.IngestAsync"/> never projects or commits a booking
+    /// that returned an error, so an invalid correction rolls the cancellation back too — nothing is left
+    /// half-applied.
+    /// </summary>
+    private async Task<string?> BookLedgerEditAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var targetKey = Text(document, "targetKey");
+        if (targetKey is null) return "targetKey is required.";
+        var voidReason = Text(document, "voidReason");
+        if (voidReason is null) return "An edit needs a reason for the correction.";
+        var amount = decimal.Round(Number(document, "amount") ?? 0, 2);
+        if (amount <= 0) return "The corrected entry needs a positive amount.";
+        var occurredAt = Text(document, "occurredAt") ?? booking.Stamp;
+
+        var (error, customerCode, sourceType, originalDebit, documentNo) = await VoidLedgerEntryAsync(db, booking, targetKey, voidReason, occurredAt, ct);
+        if (error is not null) return error;
+
+        var isAdjustment = sourceType == "Düzeltme";
+        var debit = isAdjustment ? Bool(document, "debit") ?? originalDebit : originalDebit;
+        var description = Text(document, "description") ?? Text(document, "reason");
+        if (isAdjustment && description is null) return "The corrected adjustment needs a reason.";
+
+        await PostToCustomerAsync(db, booking, customerCode!, amount, debit, sourceType!, documentNo ?? booking.ExternalId,
+            occurredAt, description, suffix: "edit", ct, isAdjustment ? null : Text(document, "paymentType"));
+        return null;
+    }
+
+    /// <summary>
+    /// The shared half of <see cref="BookLedgerVoidAsync"/> and <see cref="BookLedgerEditAsync"/>:
+    /// validates the target and its own job (E4a's D11 exclusion — a sale/purchase/return's own row is
+    /// never voidable here), marks it <c>voided</c> in place (upserted under its own key, so the
+    /// historical amount/type never change) and books a reversing entry — the exact opposite of its
+    /// balance effect — under a new key. Returns the original row's customer/type/debit/document number
+    /// so a caller that needs to re-book a corrected entry of the same kind (the edit path) does not have
+    /// to read the row a second time.
+    /// </summary>
+    private async Task<(string? Error, string? CustomerCode, string? SourceType, bool Debit, string? DocumentNo)> VoidLedgerEntryAsync(
+        CentralApiDbContext db, Booking booking, string targetKey, string reason, string occurredAt, CancellationToken ct)
+    {
         var record = await db.MobileRecords
             .FirstOrDefaultAsync(r => r.TenantId == booking.TenantId && r.Entity == "customerTransactions" && r.RecordKey == targetKey && !r.IsDeleted, ct);
-        if (record?.PayloadJson is null) return "The transaction was not found.";
+        if (record?.PayloadJson is null) return ("The transaction was not found.", null, null, false, null);
 
         string customerCode, sourceType, documentNo;
         decimal amount;
@@ -630,22 +680,22 @@ public sealed class NativeDocumentProcessor
         using (var originalDoc = JsonDocument.Parse(record.PayloadJson))
         {
             var row = originalDoc.RootElement;
-            if (Bool(row, "voided") == true) return "This transaction is already void.";
+            if (Bool(row, "voided") == true) return ("This transaction is already void.", null, null, false, null);
             customerCode = Text(row, "cariKod", "customerCode") ?? "";
             sourceType = Text(row, "type") ?? "Hareket";
             documentNo = Text(row, "evrakNo") ?? booking.ExternalId;
             amount = Math.Abs(Number(row, "meblag") ?? Number(row, "amount") ?? Number(row, "tutar") ?? 0m);
             debit = Bool(row, "borcMu") ?? false;
         }
-        if (customerCode.Length == 0) return "The transaction names no customer.";
-        if (amount <= 0) return "The transaction has no amount to reverse.";
+        if (customerCode.Length == 0) return ("The transaction names no customer.", null, null, false, null);
+        if (amount <= 0) return ("The transaction has no amount to reverse.", null, null, false, null);
 
         // A sale's immediate-payment leg has kind "collection" too, but its job is sales_order/
-        // sales_return/purchase_receipt, not a standalone Collection/Disbursement — excluded here.
+        // sales_return/purchase_receipt, not a standalone Collection/Disbursement/LedgerAdjustment — excluded here.
         var jobExternalId = ExternalIdOfLedgerKey(targetKey);
         var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == booking.TenantId && j.ExternalId == jobExternalId, ct);
         if (job is null || !VoidableLedgerJobTypes.Contains(job.DocumentType))
-            return "Only a collection or a disbursement can be voided here.";
+            return ("Only a collection, a disbursement or a manual adjustment can be voided here.", null, null, false, null);
 
         var balance = await BalanceAsync(db, booking.TenantId, customerCode, ct);
         balance.Row.Balance += debit ? -amount : amount;
@@ -666,7 +716,7 @@ public sealed class NativeDocumentProcessor
             ["erp"] = "NATIVE",
             ["cariKod"] = customerCode,
             ["customerCode"] = customerCode,
-            ["tarih"] = Text(document, "occurredAt") ?? booking.Stamp,
+            ["tarih"] = occurredAt,
             ["evrakNo"] = documentNo,
             ["type"] = $"İptal: {sourceType}",
             ["tip"] = debit ? 1 : 0,
@@ -677,7 +727,7 @@ public sealed class NativeDocumentProcessor
             ["voidsKey"] = targetKey,
             ["updatedAt"] = booking.Stamp,
         });
-        return null;
+        return (null, customerCode, sourceType, debit, documentNo);
     }
 
     /// <summary>The job that created a ledger movement, from its id (<c>PostToCustomerAsync</c> always writes
