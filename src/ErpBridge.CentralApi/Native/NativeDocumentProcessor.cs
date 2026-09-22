@@ -46,6 +46,14 @@ public sealed class NativeDocumentProcessor
     public const string PurchaseReceipt = "purchase_receipt";
     public const string StockCount = "stock_count";
 
+    /// <summary>Cancels one customer-ledger movement (GOAL_PANEL_ERPSIZ E4a/D2): the original is marked
+    /// voided, a reversing entry is booked. Only for a standalone <see cref="Collection"/>/<see cref="Disbursement"/> —
+    /// a sale/purchase/return's own cari etkisi is E5's <c>document_void</c> instead (D11).</summary>
+    public const string LedgerVoid = "ledger_void";
+
+    /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id.</summary>
+    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement };
+
     /// <summary>
     /// Line-carrying documents only the central API books. An ERP agent has no
     /// writer for them, so for an ERP tenant they would wait in its queue forever.
@@ -106,7 +114,7 @@ public sealed class NativeDocumentProcessor
         }
 
         var now = DateTimeOffset.UtcNow;
-        var booking = new Booking(tenantId, job.ExternalId, now);
+        var booking = new Booking(tenantId, job.ExternalId, now, job.CreatedByUserId);
         string? error;
         using (var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(job.PayloadJson) ? "{}" : job.PayloadJson))
         {
@@ -131,6 +139,9 @@ public sealed class NativeDocumentProcessor
                 SalesReturn => await BookSalesReturnAsync(db, booking, document.RootElement, ct),
                 PurchaseReceipt => await BookPurchaseReceiptAsync(db, booking, document.RootElement, ct),
                 StockCount => await BookStockCountAsync(db, booking, document.RootElement, ct),
+                LedgerVoid => callerIsAdmin
+                    ? await BookLedgerVoidAsync(db, booking, document.RootElement, ct)
+                    : "Only company administrators can void a ledger entry.",
                 // Other cash-book documents (return and purchase payments already booked by
                 // their own documents, cash transfers) are kept as records only.
                 _ => null,
@@ -561,6 +572,91 @@ public sealed class NativeDocumentProcessor
         return null;
     }
 
+    /// <summary>
+    /// Cancels one collection/disbursement (GOAL_PANEL_ERPSIZ E4a, D2's storno pattern): the original
+    /// <c>customerTransactions</c> row is marked <c>voided</c> in place (upserted under its own key, so
+    /// the historical amount/type never change) and a reversing entry — the exact opposite of its
+    /// balance effect — is booked under a new key. Never a sale/purchase/return's own row: those are
+    /// E5's <c>document_void</c> (D11), enforced here by requiring the movement's own job to be a
+    /// standalone <see cref="Collection"/>/<see cref="Disbursement"/> (<see cref="VoidableLedgerJobTypes"/>),
+    /// not a job that also moved stock or wrote lines.
+    /// </summary>
+    private async Task<string?> BookLedgerVoidAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var targetKey = Text(document, "targetKey");
+        if (targetKey is null) return "targetKey is required.";
+        var reason = Text(document, "reason");
+        if (reason is null) return "A void needs a reason.";
+
+        var record = await db.MobileRecords
+            .FirstOrDefaultAsync(r => r.TenantId == booking.TenantId && r.Entity == "customerTransactions" && r.RecordKey == targetKey && !r.IsDeleted, ct);
+        if (record?.PayloadJson is null) return "The transaction was not found.";
+
+        string customerCode, sourceType, documentNo;
+        decimal amount;
+        bool debit;
+        using (var originalDoc = JsonDocument.Parse(record.PayloadJson))
+        {
+            var row = originalDoc.RootElement;
+            if (Bool(row, "voided") == true) return "This transaction is already void.";
+            customerCode = Text(row, "cariKod", "customerCode") ?? "";
+            sourceType = Text(row, "type") ?? "Hareket";
+            documentNo = Text(row, "evrakNo") ?? booking.ExternalId;
+            amount = Math.Abs(Number(row, "meblag") ?? Number(row, "amount") ?? Number(row, "tutar") ?? 0m);
+            debit = Bool(row, "borcMu") ?? false;
+        }
+        if (customerCode.Length == 0) return "The transaction names no customer.";
+        if (amount <= 0) return "The transaction has no amount to reverse.";
+
+        // A sale's immediate-payment leg has kind "collection" too, but its job is sales_order/
+        // sales_return/purchase_receipt, not a standalone Collection/Disbursement — excluded here.
+        var jobExternalId = ExternalIdOfLedgerKey(targetKey);
+        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == booking.TenantId && j.ExternalId == jobExternalId, ct);
+        if (job is null || !VoidableLedgerJobTypes.Contains(job.DocumentType))
+            return "Only a collection or a disbursement can be voided here.";
+
+        var balance = await BalanceAsync(db, booking.TenantId, customerCode, ct);
+        balance.Row.Balance += debit ? -amount : amount;
+        balance.Row.UpdatedAtUtc = booking.Now;
+        booking.CustomerBalances[customerCode] = balance.Row;
+
+        var originalNode = JsonNode.Parse(record.PayloadJson)!.AsObject();
+        originalNode["voided"] = true;
+        originalNode["voidedByUserId"] = booking.UserId;
+        originalNode["voidedAt"] = booking.Stamp;
+        originalNode["voidReason"] = reason;
+        originalNode["updatedAt"] = booking.Stamp;
+        booking.Add("customerTransactions", originalNode);
+
+        booking.Add("customerTransactions", new JsonObject
+        {
+            ["id"] = $"{targetKey}|void",
+            ["erp"] = "NATIVE",
+            ["cariKod"] = customerCode,
+            ["customerCode"] = customerCode,
+            ["tarih"] = Text(document, "occurredAt") ?? booking.Stamp,
+            ["evrakNo"] = documentNo,
+            ["type"] = $"İptal: {sourceType}",
+            ["tip"] = debit ? 1 : 0,
+            ["borcMu"] = !debit,
+            ["meblag"] = amount,
+            ["amount"] = amount,
+            ["aciklama"] = reason,
+            ["voidsKey"] = targetKey,
+            ["updatedAt"] = booking.Stamp,
+        });
+        return null;
+    }
+
+    /// <summary>The job that created a ledger movement, from its id (<c>PostToCustomerAsync</c> always writes
+    /// <c>"{externalId}|{suffix}"</c>): strips the last <c>|</c>-separated segment. Mirrors <c>PortalLedger.ExternalIdOf</c>
+    /// on the read side; kept separate because the write engine does not depend on the portal's read layer.</summary>
+    private static string ExternalIdOfLedgerKey(string movementId)
+    {
+        var index = movementId.LastIndexOf('|');
+        return index < 0 ? movementId : movementId[..index];
+    }
+
     private async Task PostToCustomerAsync(
         CentralApiDbContext db, Booking booking, string customerCode, decimal amount, bool debit,
         string type, string documentNo, string occurredAt, string? description, string suffix, CancellationToken ct,
@@ -749,12 +845,19 @@ public sealed class NativeDocumentProcessor
             : null;
     }
 
+    private static bool? Bool(JsonElement item, string name)
+    {
+        if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty(name, out var value)) return null;
+        return value.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => null };
+    }
+
     /// <summary>What one document changes, collected before it is projected.</summary>
-    private sealed class Booking(Guid tenantId, string externalId, DateTimeOffset now)
+    private sealed class Booking(Guid tenantId, string externalId, DateTimeOffset now, Guid? userId)
     {
         public Guid TenantId { get; } = tenantId;
         public string ExternalId { get; } = externalId;
         public DateTimeOffset Now { get; } = now;
+        public Guid? UserId { get; } = userId;
         public string Stamp { get; } = now.ToString("O", CultureInfo.InvariantCulture);
         public Dictionary<string, List<JsonElement>> Sections { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, JsonObject> Customers { get; } = new(StringComparer.OrdinalIgnoreCase);

@@ -241,6 +241,13 @@ public sealed class PortalPaymentRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>Body of <c>POST /api/v1/portal/native/ledger/{key}/void</c> (GOAL_PANEL_ERPSIZ E4a).</summary>
+public sealed class PortalLedgerVoidRequest
+{
+    public string? Reason { get; set; }
+    public string? OperationId { get; set; }
+}
+
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
 public sealed class PortalStockCardDetail
 {
