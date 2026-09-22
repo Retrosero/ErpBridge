@@ -225,6 +225,22 @@ public sealed class PortalCustomerCardRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/collections</c> and <c>…/disbursements</c>
+/// (GOAL_PANEL_ERPSIZ E3a) — same shape, the route decides which document type is booked.
+/// </summary>
+public sealed class PortalPaymentRequest
+{
+    public string CustomerCode { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string? PaymentType { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>; defaults to today when absent.</summary>
+    public string? OccurredAt { get; set; }
+    public string? Description { get; set; }
+    public string? OperationId { get; set; }
+}
+
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
 public sealed class PortalStockCardDetail
 {

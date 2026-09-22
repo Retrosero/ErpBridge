@@ -117,6 +117,12 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<NativeJobResultDto> SaveNativeCustomerCardAsync(NativeCustomerCardRequest request, CancellationToken ct = default) =>
         SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/customer-cards", request, ct);
 
+    public Task<NativeJobResultDto> RecordNativeCollectionAsync(NativePaymentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/collections", request, ct);
+
+    public Task<NativeJobResultDto> RecordNativeDisbursementAsync(NativePaymentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/disbursements", request, ct);
+
     /// <summary>One page of requests, newest first; <paramref name="after"/> is the last request on screen.</summary>
     public Task<ApprovalDto[]> ApprovalsAsync(string status, string? kind, ApprovalDto? after, int take, CancellationToken ct = default) =>
         GetAsync<ApprovalDto[]>("api/v1/android/approvals" + Query(
