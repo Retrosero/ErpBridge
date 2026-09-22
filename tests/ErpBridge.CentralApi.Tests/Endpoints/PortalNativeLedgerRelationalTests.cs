@@ -201,10 +201,120 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
         (await BalanceAsync(c.Id, "C-001")).Should().Be(1000m);
     }
 
+    [Fact]
+    public async Task Editing_a_collection_changes_amount_date_and_payment_type_and_the_balance_reflects_only_the_new_amount()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+        (await PostAsync(c, "collections", new { customerCode = "C-001", amount = 300, paymentType = "Nakit" })).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(700m);
+        var key = await LedgerKeyAsync(c.Id, "collection");
+
+        var response = await EditAsync(c, key, new { amount = 500, paymentType = "EFT / Havale", voidReason = "Yanlış tutar/ödeme şekli girilmiş" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(500m, "700 (eski tahsilattan sonra) + 300 (iptal ile geri) - 500 (yeni tahsilat) = 500");
+
+        var statement = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001");
+        statement.Items.Should().Contain(i => i.Kind == "collection" && i.Credit == 500m);
+        statement.Closing.Should().Be(500m);
+    }
+
+    [Fact]
+    public async Task Editing_a_manual_adjustment_can_change_its_debit_credit_direction()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+        (await AdjustAsync(c, "C-001", 200, debit: true, "Yanlış yön girilmiş")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1200m);
+        var key = await LedgerKeyAsync(c.Id, "ledger_adjustment");
+
+        var response = await EditAsync(c, key, new { amount = 200, debit = false, reason = "Aslında alacak olmalıydı", voidReason = "Yön yanlıştı" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(800m, "1200 - 200 (iptal) - 200 (yeni alacak yönü) = 800");
+    }
+
+    [Fact]
+    public async Task Editing_a_manual_adjustment_without_a_new_reason_rolls_back_the_whole_edit()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+        (await AdjustAsync(c, "C-001", 200, debit: true, "İlk gerekçe")).StatusCode.Should().Be(HttpStatusCode.Created);
+        var key = await LedgerKeyAsync(c.Id, "ledger_adjustment");
+
+        // The endpoint's own pre-check would refuse this before booking; going straight to /ingest/jobs
+        // proves NativeDocumentProcessor's own transaction is atomic even without that pre-check —
+        // the whole edit (both the void and the reissue) is rolled back together, not half-applied.
+        var response = await SendAsync(HttpMethod.Post, c.Patron, c.Id, "/api/v1/ingest/jobs", new
+        {
+            externalId = "RAW-EDIT-1", documentType = "ledger_edit",
+            payload = new { targetKey = key, voidReason = "Deneme", amount = 300 },
+        });
+        (await response.ReadAsJsonAsync<IngestJobResponse>()).Status.Should().Be("Failed");
+
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1200m, "the edit failed, so neither the void nor the reissue took effect");
+        var history = await GetJsonAsync<PortalAuditResponse>(c.Patron, $"/api/v1/portal/native/audit?entity=ledger_adjustment&key=C-001");
+        history.Items.Should().OnlyContain(i => i.Action == "create", "the failed edit's own audit row — booked only on success — was never written");
+    }
+
+    [Fact]
+    public async Task Editing_an_already_voided_entry_is_refused_with_409()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 0m);
+        await PostAsync(c, "collections", new { customerCode = "C-001", amount = 100 });
+        var key = await LedgerKeyAsync(c.Id, "collection");
+        (await VoidAsync(c, key, "İptal")).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var response = await EditAsync(c, key, new { amount = 50, voidReason = "Deneme" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await response.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("ALREADY_VOIDED");
+    }
+
+    [Fact]
+    public async Task Editing_an_unknown_key_is_refused_with_404()
+    {
+        var c = await CompanyAsync();
+        (await EditAsync(c, "GHOST", new { amount = 50, voidReason = "Deneme" })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task A_missing_void_reason_or_a_non_positive_amount_is_refused_before_any_job_is_created()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 0m);
+        await PostAsync(c, "collections", new { customerCode = "C-001", amount = 100 });
+        var key = await LedgerKeyAsync(c.Id, "collection");
+
+        (await EditAsync(c, key, new { amount = 50, voidReason = (string?)null })).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await EditAsync(c, key, new { amount = 0, voidReason = "Deneme" })).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_edit_a_ledger_entry()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 0m);
+        await PostAsync(c, "collections", new { customerCode = "C-001", amount = 100 });
+        var key = await LedgerKeyAsync(c.Id, "collection");
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/portal/native/ledger/{key}/edit")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { amount = 50, voidReason = "Deneme" }, Web), Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", c.Manager);
+        (await _factory.CreateClient().SendAsync(request)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     // ---- setup ------------------------------------------------------------------------
 
     private Task<HttpResponseMessage> AdjustAsync(Company c, string customerCode, decimal amount, bool debit, string? reason) =>
         _factory.CreateClient().PostJsonAsync("/api/v1/portal/native/ledger-adjustments", new { customerCode, amount, debit, reason }, c.Patron);
+
+    private Task<HttpResponseMessage> EditAsync(Company c, string key, object body) =>
+        _factory.CreateClient().PostJsonAsync($"/api/v1/portal/native/ledger/{Uri.EscapeDataString(key)}/edit", body, c.Patron);
 
     private sealed record Company(Guid Id, string Patron, string Manager);
     private sealed record Change(string Entity, string Key, bool Deleted, JsonElement Data);

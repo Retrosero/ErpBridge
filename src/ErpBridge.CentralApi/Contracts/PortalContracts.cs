@@ -248,6 +248,26 @@ public sealed class PortalLedgerVoidRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>Body of <c>POST /api/v1/portal/native/ledger/{key}/edit</c> (GOAL_PANEL_ERPSIZ E4c) — a
+/// void of the target plus a corrected re-booking of the same kind, in one transaction (D11).</summary>
+public sealed class PortalLedgerEditRequest
+{
+    public decimal Amount { get; set; }
+
+    /// <summary>Only meaningful for a manual adjustment; a collection/disbursement keeps its own direction.</summary>
+    public bool? Debit { get; set; }
+    public string? PaymentType { get; set; }
+    public string? Description { get; set; }
+
+    /// <summary>The corrected adjustment's reason; required when the target is a manual adjustment.</summary>
+    public string? Reason { get; set; }
+    public string? OccurredAt { get; set; }
+
+    /// <summary>Why the original is being corrected — mandatory, the same as a plain void's.</summary>
+    public string? VoidReason { get; set; }
+    public string? OperationId { get; set; }
+}
+
 /// <summary>Body of <c>POST /api/v1/portal/native/ledger-adjustments</c> (GOAL_PANEL_ERPSIZ E4b) — a
 /// manual correction of a customer's balance; <see cref="Reason"/> is mandatory, unlike a payment's.</summary>
 public sealed class PortalLedgerAdjustmentRequest
