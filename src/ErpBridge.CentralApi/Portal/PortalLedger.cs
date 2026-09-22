@@ -374,6 +374,7 @@ public static class PortalLedger
         var lines = movements.LinesByDocument.TryGetValue(documentKey, out var found) ? found : [];
         return new PortalDocumentResponse
         {
+            Id = movement.Id,
             DocumentKey = documentKey,
             CustomerCode = customerCode,
             CustomerTitle = customerTitle,
@@ -382,6 +383,7 @@ public static class PortalLedger
             DocumentNo = movement.DocumentNo,
             Description = movement.Description,
             Amount = movement.Debit + movement.Credit,
+            Voided = movement.Voided,
             LinesAvailable = lines.Count > 0,
             Lines = lines.Select(l => new PortalDocumentLine
             {

@@ -59,8 +59,17 @@ public sealed class NativeDocumentProcessor
     /// re-booked entry of the same kind, in the entry's own single transaction.</summary>
     public const string LedgerEdit = "ledger_edit";
 
+    /// <summary>Cancels one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5c, D11): the
+    /// document's own ledger row(s) and every line's stock effect are reversed together — the
+    /// document-level sibling of <see cref="LedgerVoid"/>, which never touches a sale/purchase/return's
+    /// own row (only a standalone <see cref="Collection"/>/<see cref="Disbursement"/>/<see cref="LedgerAdjustment"/>).</summary>
+    public const string DocumentVoid = "document_void";
+
     /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id.</summary>
     public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment };
+
+    /// <summary>The job document types <see cref="DocumentVoid"/> may target.</summary>
+    public static readonly IReadOnlySet<string> VoidableDocumentJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesOrder, SalesReturn, PurchaseReceipt };
 
     /// <summary>
     /// Line-carrying documents only the central API books. An ERP agent has no
@@ -156,6 +165,9 @@ public sealed class NativeDocumentProcessor
                 LedgerEdit => callerIsAdmin
                     ? await BookLedgerEditAsync(db, booking, document.RootElement, ct)
                     : "Only company administrators can edit a ledger entry.",
+                DocumentVoid => callerIsAdmin
+                    ? await BookDocumentVoidAsync(db, booking, document.RootElement, ct)
+                    : "Only company administrators can void a document.",
                 // Other cash-book documents (return and purchase payments already booked by
                 // their own documents, cash transfers) are kept as records only.
                 _ => null,
@@ -659,15 +671,33 @@ public sealed class NativeDocumentProcessor
     }
 
     /// <summary>
-    /// The shared half of <see cref="BookLedgerVoidAsync"/> and <see cref="BookLedgerEditAsync"/>:
-    /// validates the target and its own job (E4a's D11 exclusion — a sale/purchase/return's own row is
-    /// never voidable here), marks it <c>voided</c> in place (upserted under its own key, so the
-    /// historical amount/type never change) and books a reversing entry — the exact opposite of its
-    /// balance effect — under a new key. Returns the original row's customer/type/debit/document number
-    /// so a caller that needs to re-book a corrected entry of the same kind (the edit path) does not have
-    /// to read the row a second time.
+    /// The shared half of <see cref="BookLedgerVoidAsync"/> and <see cref="BookLedgerEditAsync"/>: checks
+    /// the target's own job is one <see cref="VoidableLedgerJobTypes"/> allows here (E4a's D11 exclusion
+    /// — a sale/purchase/return's own row is never voidable here, only via <see cref="BookDocumentVoidAsync"/>),
+    /// then reverses it via <see cref="ReverseLedgerRowAsync"/>.
     /// </summary>
     private async Task<(string? Error, string? CustomerCode, string? SourceType, bool Debit, string? DocumentNo)> VoidLedgerEntryAsync(
+        CentralApiDbContext db, Booking booking, string targetKey, string reason, string occurredAt, CancellationToken ct)
+    {
+        // A sale's immediate-payment leg has kind "collection" too, but its job is sales_order/
+        // sales_return/purchase_receipt, not a standalone Collection/Disbursement/LedgerAdjustment — excluded here.
+        var jobExternalId = ExternalIdOfLedgerKey(targetKey);
+        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == booking.TenantId && j.ExternalId == jobExternalId, ct);
+        if (job is null || !VoidableLedgerJobTypes.Contains(job.DocumentType))
+            return ("Only a collection, a disbursement or a manual adjustment can be voided here.", null, null, false, null);
+        return await ReverseLedgerRowAsync(db, booking, targetKey, reason, occurredAt, ct);
+    }
+
+    /// <summary>
+    /// Marks one <c>customerTransactions</c> row <c>voided</c> in place (upserted under its own key, so
+    /// the historical amount/type never change) and books a reversing entry — the exact opposite of its
+    /// balance effect — under a new key (D2's storno pattern). Shared by <see cref="VoidLedgerEntryAsync"/>
+    /// (which checks the row is a standalone payment/adjustment first) and <see cref="BookDocumentVoidAsync"/>
+    /// (which already validated the whole document's job type once, for every leg it reverses). Returns
+    /// the original row's customer/type/debit/document number so a caller that needs to re-book a
+    /// corrected entry of the same kind (the edit path) does not have to read the row a second time.
+    /// </summary>
+    private async Task<(string? Error, string? CustomerCode, string? SourceType, bool Debit, string? DocumentNo)> ReverseLedgerRowAsync(
         CentralApiDbContext db, Booking booking, string targetKey, string reason, string occurredAt, CancellationToken ct)
     {
         var record = await db.MobileRecords
@@ -689,13 +719,6 @@ public sealed class NativeDocumentProcessor
         }
         if (customerCode.Length == 0) return ("The transaction names no customer.", null, null, false, null);
         if (amount <= 0) return ("The transaction has no amount to reverse.", null, null, false, null);
-
-        // A sale's immediate-payment leg has kind "collection" too, but its job is sales_order/
-        // sales_return/purchase_receipt, not a standalone Collection/Disbursement/LedgerAdjustment — excluded here.
-        var jobExternalId = ExternalIdOfLedgerKey(targetKey);
-        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == booking.TenantId && j.ExternalId == jobExternalId, ct);
-        if (job is null || !VoidableLedgerJobTypes.Contains(job.DocumentType))
-            return ("Only a collection, a disbursement or a manual adjustment can be voided here.", null, null, false, null);
 
         var balance = await BalanceAsync(db, booking.TenantId, customerCode, ct);
         balance.Row.Balance += debit ? -amount : amount;
@@ -737,6 +760,119 @@ public sealed class NativeDocumentProcessor
     {
         var index = movementId.LastIndexOf('|');
         return index < 0 ? movementId : movementId[..index];
+    }
+
+    /// <summary>
+    /// Cancels one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5c, D11): every
+    /// <c>customerTransactions</c> row the document's own job booked — its own line (Satış/Alış/İade) and,
+    /// when it settled on the spot, its immediate-payment leg (<see cref="ImmediatePayments"/>) — is
+    /// reversed via <see cref="ReverseLedgerRowAsync"/>, and every <c>stockTransactions</c> line the same
+    /// job wrote is reversed via <see cref="ReverseStockLineAsync"/>. All in this booking's one
+    /// transaction, the way every other native document is booked whole or not at all.
+    /// </summary>
+    private async Task<string?> BookDocumentVoidAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var targetKey = Text(document, "targetKey");
+        if (targetKey is null) return "targetKey is required.";
+        var reason = Text(document, "reason");
+        if (reason is null) return "A void needs a reason.";
+        var occurredAt = Text(document, "occurredAt") ?? booking.Stamp;
+
+        var jobExternalId = ExternalIdOfLedgerKey(targetKey);
+        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == booking.TenantId && j.ExternalId == jobExternalId, ct);
+        if (job is null || !VoidableDocumentJobTypes.Contains(job.DocumentType))
+            return "Only a sale, purchase or return document can be voided here.";
+
+        var legs = await db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == booking.TenantId && r.Entity == "customerTransactions"
+                        && r.RecordKey.StartsWith(jobExternalId + "|") && !r.IsDeleted)
+            .Select(r => new { r.RecordKey, r.PayloadJson })
+            .ToListAsync(ct);
+        if (legs.Count == 0) return "The document was not found.";
+        foreach (var leg in legs)
+        {
+            if (leg.PayloadJson is null) continue;
+            using var legDoc = JsonDocument.Parse(leg.PayloadJson);
+            if (Bool(legDoc.RootElement, "voided") == true) return "This document is already void.";
+        }
+
+        foreach (var leg in legs)
+        {
+            var (error, _, _, _, _) = await ReverseLedgerRowAsync(db, booking, leg.RecordKey, reason, occurredAt, ct);
+            if (error is not null) return error;
+        }
+
+        var lines = await db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == booking.TenantId && r.Entity == "stockTransactions"
+                        && r.RecordKey.StartsWith(jobExternalId + "|") && !r.IsDeleted)
+            .Select(r => new { r.RecordKey, r.PayloadJson })
+            .ToListAsync(ct);
+        foreach (var line in lines)
+        {
+            if (line.PayloadJson is null) continue;
+            await ReverseStockLineAsync(db, booking, line.RecordKey, line.PayloadJson, reason, ct);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Reverses one stock movement line a voided document created (GOAL_PANEL_ERPSIZ E5c) — the stock-side
+    /// counterpart of <see cref="ReverseLedgerRowAsync"/>: marks the original <c>stockTransactions</c> row
+    /// <c>voided</c> in place and books an opposite-signed movement under a new key, so the quantity the
+    /// original row moved returns to the level (D2's storno pattern, applied to stock).
+    /// </summary>
+    private async Task ReverseStockLineAsync(CentralApiDbContext db, Booking booking, string lineKey, string payloadJson, string reason, CancellationToken ct)
+    {
+        JsonElement row;
+        using (var lineDoc = JsonDocument.Parse(payloadJson))
+        {
+            row = lineDoc.RootElement.Clone();
+            if (Bool(row, "voided") == true) return;
+        }
+        var stockCode = Text(row, "stokKod", "urunKod");
+        if (stockCode is null) return;
+        var signedQuantity = Number(row, "miktar") ?? 0;
+        var documentNo = Text(row, "evrakNo");
+        var partyCode = Text(row, "cariKod");
+        var occurredAt = Text(row, "tarih") ?? booking.Stamp;
+        var unitPrice = Number(row, "birimFiyat") ?? 0;
+        var lineTotal = Number(row, "tutar") ?? 0;
+
+        var level = await LevelAsync(db, booking.TenantId, stockCode, ct);
+        level.Row.Quantity -= signedQuantity;
+        level.Row.UpdatedAtUtc = booking.Now;
+        level.Row.LastMovementAtUtc = booking.Now;
+        booking.AddInventory(level.Row);
+
+        var originalNode = JsonNode.Parse(payloadJson)!.AsObject();
+        originalNode["voided"] = true;
+        originalNode["voidedByUserId"] = booking.UserId;
+        originalNode["voidedAt"] = booking.Stamp;
+        originalNode["voidReason"] = reason;
+        originalNode["updatedAt"] = booking.Stamp;
+        booking.Add("stockTransactions", originalNode);
+
+        var reversedQuantity = -signedQuantity;
+        var incoming = reversedQuantity > 0;
+        booking.Add("stockTransactions", new JsonObject
+        {
+            ["id"] = $"{lineKey}|void",
+            ["erp"] = "NATIVE",
+            ["stokKod"] = stockCode,
+            ["urunKod"] = stockCode,
+            ["tarih"] = occurredAt,
+            ["tip"] = incoming ? 0 : 1,
+            ["cins"] = 0,
+            ["evrakNo"] = documentNo,
+            [incoming ? "girisMiktar" : "cikisMiktar"] = Math.Abs(reversedQuantity),
+            ["miktar"] = reversedQuantity,
+            ["birimFiyat"] = unitPrice,
+            ["tutar"] = lineTotal,
+            ["cariKod"] = partyCode,
+            [incoming ? "girisDepoNo" : "cikisDepoNo"] = NativeLedgerDefaults.WarehouseNo,
+            ["aciklama"] = $"İptal: {reason}",
+            ["updatedAt"] = booking.Stamp,
+        });
     }
 
     private async Task PostToCustomerAsync(

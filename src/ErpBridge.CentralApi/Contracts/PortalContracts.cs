@@ -514,6 +514,9 @@ public sealed class PortalDocumentLine
 /// <summary>GET /api/v1/portal/customers/{code}/documents/{documentKey}</summary>
 public sealed class PortalDocumentResponse
 {
+    /// <summary>The document's own ledger-row id (GOAL_PANEL_ERPSIZ E5c) — what <c>POST …/documents/{key}/void</c>
+    /// resolves internally as its <c>targetKey</c>; the caller never constructs or reads this itself.</summary>
+    public string Id { get; set; } = string.Empty;
     public string DocumentKey { get; set; } = string.Empty;
     public string CustomerCode { get; set; } = string.Empty;
 
@@ -527,6 +530,18 @@ public sealed class PortalDocumentResponse
     public decimal Amount { get; set; }
     public List<PortalDocumentLine> Lines { get; set; } = [];
     public bool LinesAvailable { get; set; }
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5c — whether <c>document_void</c> already cancelled this document.</summary>
+    public bool Voided { get; set; }
+}
+
+/// <summary>Body of <c>POST /api/v1/portal/native/documents/{key}/void</c> (GOAL_PANEL_ERPSIZ E5c) —
+/// the document-level sibling of <see cref="PortalLedgerVoidRequest"/> (D11): cancels a whole sale/
+/// purchase/return, not a standalone payment/adjustment.</summary>
+public sealed class PortalDocumentVoidRequest
+{
+    public string? Reason { get; set; }
+    public string? OperationId { get; set; }
 }
 
 /// <summary>One row of GET /api/v1/portal/native/documents (GOAL_PANEL_ERPSIZ E5b) — a sale/purchase/return

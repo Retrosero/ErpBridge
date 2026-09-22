@@ -3,6 +3,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Native;
 using ErpBridge.CentralApi.Portal;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,13 +12,17 @@ using Microsoft.Extensions.Caching.Memory;
 namespace ErpBridge.CentralApi.Endpoints;
 
 /// <summary>
-/// Maps <c>/api/v1/portal/native/documents</c> (GOAL_PANEL_ERPSIZ E5b): the company-wide sale/purchase/
-/// return invoice list and one invoice's own detail — read-only, so the same <see cref="RolePermissions.CanViewLedger"/>
+/// Maps <c>/api/v1/portal/native/documents</c>: the company-wide sale/purchase/return invoice list and
+/// one invoice's own detail (GOAL_PANEL_ERPSIZ E5b) — read-only, so the same <see cref="RolePermissions.CanViewLedger"/>
 /// gate the customer statement already uses (not <c>CanEditNativeData</c>; an ERP tenant's own Mikro
-/// invoices read here too, exactly like <c>/customers/ledger</c> already does).
+/// invoices read here too, exactly like <c>/customers/ledger</c> already does). <c>…/documents/{key}/void</c>
+/// (E5c, D11) is the one write here, so it uses the stricter <see cref="PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync"/>
+/// gate every other native write endpoint uses — an ERP tenant's own Mikro invoices are read-only here.
 /// </summary>
 public static class PortalNativeDocumentsEndpoints
 {
+    private const string DocumentVoidRejectedErrorCode = "DOCUMENT_VOID_REJECTED";
+
     public static IEndpointRouteBuilder MapPortalNativeDocumentsEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/portal/native")
@@ -26,6 +31,7 @@ public static class PortalNativeDocumentsEndpoints
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapGet("/documents", ListAsync).WithName("PortalNativeDocuments");
         group.MapGet("/documents/{key}", GetByKeyAsync).WithName("PortalNativeDocumentByKey");
+        group.MapPost("/documents/{key}/void", VoidAsync).WithName("PortalVoidNativeDocument");
         return routes;
     }
 
@@ -89,6 +95,53 @@ public static class PortalNativeDocumentsEndpoints
             ? JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with that key for this company." })
             : JsonResults.Ok(document);
     }
+
+    /// <summary>
+    /// Cancels one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5c, D11): both its ledger
+    /// effect(s) and its stock effect are reversed together. <paramref name="key"/> is the document's own
+    /// <c>documentKey</c> — the same identifier the list and detail endpoints already use — resolved here
+    /// to the underlying ledger row's own id (<see cref="PortalDocumentResponse.Id"/>), the
+    /// <c>targetKey</c> <see cref="NativeDocumentProcessor.DocumentVoid"/> actually books against.
+    /// </summary>
+    private static async Task<IResult> VoidAsync(
+        string key, HttpContext http, [FromBody] PortalDocumentVoidRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
+    {
+        var (tenant, user, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
+        if (error is not null) return error;
+        var reason = body?.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason)) return InvalidVoid("A void needs a reason.");
+
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, ct);
+        var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
+        var document = PortalLedger.DocumentByKey(customers, movements, key);
+        if (document is null)
+            return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with that key for this company." });
+        if (document.Voided)
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "ALREADY_VOIDED", Message = "This document was already cancelled." });
+
+        var voidedKind = document.Kind switch
+        {
+            "sale" => "Satış",
+            "sale_return" => "İade",
+            "purchase" => "Alış",
+            "purchase_return" => "Alış İadesi",
+            _ => "Belge",
+        };
+        var record = await db.MobileRecords.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.TenantId == tenant.Id && r.Entity == "customerTransactions" && r.RecordKey == document.Id && !r.IsDeleted, ct);
+
+        var payload = new { targetKey = document.Id, reason };
+        var audit = new PortalNativeWriteHelpers.AuditInfo(
+            Entity: document.Kind, EntityKey: document.CustomerCode,
+            Action: "void", Summary: $"İptal edildi ({voidedKind}): {reason}", BeforeJson: record?.PayloadJson);
+        return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
+            http, db, tenant, user!, NativeDocumentProcessor.DocumentVoid,
+            PortalNativeWriteHelpers.OperationKey("portal-document-void", key, body?.OperationId), payload, DocumentVoidRejectedErrorCode, ct, audit);
+    }
+
+    private static IResult InvalidVoid(string message) =>
+        JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_DOCUMENT_VOID_REQUEST", Message = message });
 
     private static async Task<(Tenant? Tenant, MobileUser? User, IResult? Error)> AuthorizeAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
     {

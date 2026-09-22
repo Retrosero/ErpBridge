@@ -21,7 +21,16 @@ public sealed class PortalPaymentsRelationalTests : IClassFixture<SqliteCentralA
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
     private const string Password = "parola123";
-    private static readonly DateOnly Today = PortalReports.BusinessDate(null, DateTimeOffset.UtcNow);
+    // Computed fresh on each read, not a `static readonly` field frozen at type load — a run
+    // straddling midnight could then disagree with the server's own "today". Matches the endpoint's
+    // own default-range computation (PortalEndpoints.PaymentsAsync), which is Istanbul business time.
+    private static DateOnly Today => PortalReports.BusinessDate(null, DateTimeOffset.UtcNow);
+
+    // A movement's own stored date (booking.Stamp) is raw UTC, and PortalLedger.Payments's DailyTotals
+    // groups by that raw date — not the Istanbul business day <see cref="Today"/> uses for the
+    // endpoint's default range. The two agree except in the few hours a UTC day and an Istanbul (UTC+3)
+    // day disagree, which is exactly the gap this property exists to be honest about.
+    private static DateOnly MovementDay => DateOnly.FromDateTime(DateTime.UtcNow);
 
     private readonly SqliteCentralApiFactory _factory;
 
@@ -94,7 +103,7 @@ public sealed class PortalPaymentsRelationalTests : IClassFixture<SqliteCentralA
 
         var all = await GetJsonAsync<PortalPaymentsResponse>(c.Patron, "/api/v1/portal/payments");
         all.Items.Should().HaveCount(4);
-        all.DailyTotals.Should().ContainSingle().Which.Should().Match<PortalPaymentGroupTotal>(t => t.Key == Today.ToString("yyyy-MM-dd") && t.Credit == 500m && t.Debit == 130m);
+        all.DailyTotals.Should().ContainSingle().Which.Should().Match<PortalPaymentGroupTotal>(t => t.Key == MovementDay.ToString("yyyy-MM-dd") && t.Credit == 500m && t.Debit == 130m);
         all.PaymentTypeTotals.Should().Contain(t => t.Key == "Nakit" && t.Credit == 300m && t.Debit == 130m);
         all.PaymentTypeTotals.Should().Contain(t => t.Key == "EFT / Havale" && t.Credit == 200m && t.Debit == 0m);
     }
