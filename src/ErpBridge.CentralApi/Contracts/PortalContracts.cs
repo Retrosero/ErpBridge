@@ -284,6 +284,40 @@ public sealed class PortalLedgerAdjustmentRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>One line of a sale/purchase/return (GOAL_PANEL_ERPSIZ E5a).</summary>
+public sealed class PortalNativeDocumentLineRequest
+{
+    public string ProductCode { get; set; } = string.Empty;
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+
+    /// <summary>Defaults to <c>quantity * unitPrice</c> when absent — set only for a line-level discount.</summary>
+    public decimal? LineTotal { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/sales-orders</c>/<c>…/purchase-receipts</c>/<c>…/sales-returns</c>
+/// (GOAL_PANEL_ERPSIZ E5a) — the same shape for all three; the route decides which document type is
+/// booked and, for a purchase, whether <see cref="PartyCode"/> is written as <c>supplierCode</c>.
+/// </summary>
+public sealed class PortalNativeDocumentRequest
+{
+    /// <summary>The customer for a sale/return, the supplier for a purchase.</summary>
+    public string PartyCode { get; set; } = string.Empty;
+    public List<PortalNativeDocumentLineRequest> Lines { get; set; } = [];
+
+    /// <summary>Defaults to the lines' own total when absent.</summary>
+    public decimal? Amount { get; set; }
+    public string? PaymentType { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>; defaults to today when absent.</summary>
+    public string? OccurredAt { get; set; }
+    public string? Description { get; set; }
+    public string? DocumentNo { get; set; }
+    public string? OperationId { get; set; }
+}
+
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
 public sealed class PortalStockCardDetail
 {
