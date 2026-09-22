@@ -395,6 +395,20 @@ public sealed class NativeJobResultDto
     [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
 }
 
+/// <summary>Body of a customer save (create or edit — the code decides which, and never changes on an edit).</summary>
+public sealed class NativeCustomerCardRequest
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("taxNo")] public string? TaxNo { get; set; }
+    [JsonPropertyName("taxOffice")] public string? TaxOffice { get; set; }
+    [JsonPropertyName("phone")] public string? Phone { get; set; }
+    [JsonPropertyName("email")] public string? Email { get; set; }
+    [JsonPropertyName("regionCode")] public string? RegionCode { get; set; }
+    [JsonPropertyName("openingBalance")] public decimal? OpeningBalance { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
 public sealed class ApiErrorDto
 {
     [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }

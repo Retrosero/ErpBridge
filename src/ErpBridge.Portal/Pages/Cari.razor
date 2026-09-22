@@ -11,6 +11,10 @@ else
 {
     <PageHeader Title="@(_card?.Title ?? _code ?? "Cari")" Eyebrow="Cari ekstresi" Subtitle="@_card?.CustomerCode" Busy="Busy">
         <Actions>
+            @if (Session.CanEditNativeData && _card is not null)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit" OnClick="OpenEditCard" id="customer-edit">Düzenle</MudButton>
+            }
             <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.ArrowBack" Href="@BackHref" id="customer-back">Carilere dön</MudButton>
         </Actions>
     </PageHeader>
@@ -18,6 +22,10 @@ else
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
     }
 
     @if (_card is not null)
@@ -204,6 +212,29 @@ else
             }
         }
     </DetailSheet>
+
+    @if (Session.CanEditNativeData)
+    {
+        <DetailSheet Id="customer-edit-sheet" Open="_editOpen" Busy="Busy" Eyebrow="Cari" Title="Müşteriyi düzenle" OnClose="CloseEditCard">
+            <ChildContent>
+                <form class="stack-form" id="customer-edit-form" @onsubmit="SaveEditCardAsync" @onsubmit:preventDefault>
+                    <MudTextField T="string" @bind-Value="_editCard.CustomerCode" Label="Kod" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="cedit-code" ReadOnly="true"
+                                  HelperText="Kaydedildikten sonra değiştirilemez" />
+                    <MudTextField T="string" @bind-Value="_editCard.Title" Label="Unvan" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="cedit-title" Required="true" />
+                    <MudTextField T="string" @bind-Value="_editCard.Phone" Label="Telefon" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="cedit-phone" />
+                    <MudTextField T="string" @bind-Value="_editCard.Email" Label="E-posta" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="cedit-email" />
+                    <MudTextField T="string" @bind-Value="_editCard.TaxOffice" Label="Vergi dairesi" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="cedit-taxoffice" />
+                    <MudTextField T="string" @bind-Value="_editCard.TaxNo" Label="Vergi no" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="cedit-taxno" />
+                    <MudTextField T="string" @bind-Value="_editCard.RegionCode" Label="Bölge" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="cedit-region" />
+                    <div class="form-actions">
+                        <span style="flex: 1"></span>
+                        <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseEditCard">Vazgeç</MudButton>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="customer-edit-save">Kaydet</MudButton>
+                    </div>
+                </form>
+            </ChildContent>
+        </DetailSheet>
+    }
 }
 
 @code {
@@ -406,4 +437,44 @@ else
         <dt>@label</dt>
         <dd>@value</dd>
     };
+
+    // ---- düzenle (GOAL_PANEL_ERPSIZ E2b, ERP'siz firma) --------------------------
+
+    private string? Notice { get; set; }
+    private bool _editOpen;
+    private NativeCustomerCardRequest _editCard = new();
+
+    private void OpenEditCard()
+    {
+        if (_card is null) return;
+        Notice = null;
+        _editCard = new NativeCustomerCardRequest
+        {
+            CustomerCode = _card.CustomerCode,
+            Title = _card.Title,
+            Phone = _card.Phone,
+            Email = _card.Email,
+            TaxOffice = _card.TaxOffice,
+            TaxNo = _card.TaxNo,
+            RegionCode = _card.RegionCode,
+            OperationId = Guid.NewGuid().ToString("N"),
+        };
+        _editOpen = true;
+    }
+
+    private void CloseEditCard() => _editOpen = false;
+
+    private Task SaveEditCardAsync()
+    {
+        Notice = null;
+        _editCard.Title = (_editCard.Title ?? string.Empty).Trim();
+        var title = _editCard.Title;
+        return RunAsync(async () =>
+        {
+            await Api.SaveNativeCustomerCardAsync(_editCard);
+            _editOpen = false;
+            await LoadAsync();
+            Notice = $"{title} kaydedildi.";
+        });
+    }
 }

@@ -59,12 +59,14 @@ public static class PortalMessages
         "INVALID_DATE" => "Tarih geçersiz.",
         "INVALID_RANGE" => "Bitiş tarihi başlangıçtan önce olamaz.",
         "RANGE_TOO_LONG" => "En fazla 92 günlük aralık seçilebilir.",
-        "TENANT_IS_NOT_NATIVE" => "Bu firmanın ürünleri ERP'den yönetilir; panelden düzenlenemez.",
-        "ROLE_NOT_ALLOWED" => "Ürün ekleme ve düzenleme yalnızca firma admini içindir.",
+        "TENANT_IS_NOT_NATIVE" => "Bu firmanın kartları ERP'den yönetilir; panelden düzenlenemez.",
+        "ROLE_NOT_ALLOWED" => "Kart ekleme ve düzenleme yalnızca firma admini içindir.",
         "STOCK_CARD_NOT_FOUND" => "Ürün bulunamadı; liste yenilendi.",
         "INVALID_STOCK_CARD" => "Ürün kaydedilemedi: kod ve ad zorunludur, kod en çok 64 karakter olabilir.",
         "STOCK_CARD_REJECTED" => "Bu üründe satış veya başka bir hareket var; silinemez.",
         "BARCODE_IN_USE" => "Bu barkod başka bir ürüne tanımlı.",
+        "INVALID_CUSTOMER_CARD" => "Cari kaydedilemedi: kod ve unvan zorunludur, kod en çok 64 karakter olabilir.",
+        "CUSTOMER_CARD_REJECTED" => "Bu cari kaydedilemedi.",
         _ => $"İşlem tamamlanamadı ({code}). Lütfen tekrar deneyin.",
     };
 }

@@ -205,6 +205,26 @@ public sealed class PortalStockCardRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/customer-cards</c> (GOAL_PANEL_ERPSIZ E2a) — creating and
+/// editing share this shape; the customer is found or made by <see cref="CustomerCode"/>, which
+/// never changes once set. Wraps the same fields as the phone's <c>customer_card</c> document.
+/// </summary>
+public sealed class PortalCustomerCardRequest
+{
+    public string CustomerCode { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? TaxNo { get; set; }
+    public string? TaxOffice { get; set; }
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? RegionCode { get; set; }
+
+    /// <summary>Taken only when the customer has no balance yet; ignored when editing an existing card.</summary>
+    public decimal? OpeningBalance { get; set; }
+    public string? OperationId { get; set; }
+}
+
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
 public sealed class PortalStockCardDetail
 {
