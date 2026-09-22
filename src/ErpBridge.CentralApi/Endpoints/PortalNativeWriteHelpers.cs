@@ -48,6 +48,14 @@ internal static class PortalNativeWriteHelpers
         $"{prefix}-{code}-{(string.IsNullOrWhiteSpace(operationId) ? Guid.NewGuid().ToString("N") : operationId.Trim())}";
 
     /// <summary>
+    /// What <see cref="BookNativeDocumentAsync"/> writes to <c>native_audit_log</c> (D5/E7b) once the
+    /// document actually books — never on an idempotent replay, since nothing changed. <see cref="BeforeJson"/>
+    /// is the caller's own read of the row before booking (a create has none); <c>AfterJson</c> is the
+    /// booked payload itself, already known to the caller as <c>payload</c>.
+    /// </summary>
+    public sealed record AuditInfo(string Entity, string EntityKey, string Action, string Summary, string? BeforeJson);
+
+    /// <summary>
     /// Books one document through <see cref="NativeDocumentProcessor"/>, the same way the native
     /// branch of <c>IngestEndpoints</c> does for the phone: idempotent on
     /// (tenant, documentType, externalId), and a race with a concurrent retry resolves to whichever
@@ -55,19 +63,20 @@ internal static class PortalNativeWriteHelpers
     /// </summary>
     public static async Task<IResult> BookNativeDocumentAsync(
         HttpContext http, CentralApiDbContext db, Tenant tenant, MobileUser user,
-        string documentType, string externalId, object payload, string rejectedErrorCode, CancellationToken ct)
+        string documentType, string externalId, object payload, string rejectedErrorCode, CancellationToken ct, AuditInfo? audit = null)
     {
         var existing = await db.Jobs.AsNoTracking()
             .FirstOrDefaultAsync(j => j.TenantId == tenant.Id && j.DocumentType == documentType && j.ExternalId == externalId, ct);
         if (existing is not null) return JobResult(existing, idempotent: true, StatusCodes.Status200OK);
 
+        var payloadJson = JsonSerializer.Serialize(payload, JsonOptions);
         var job = new Job
         {
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
             ExternalId = externalId,
             DocumentType = documentType,
-            PayloadJson = JsonSerializer.Serialize(payload, JsonOptions),
+            PayloadJson = payloadJson,
             Status = JobStatus.Pending,
             EnqueuedAtUtc = DateTimeOffset.UtcNow,
             CreatedByUserId = user.Id,
@@ -84,6 +93,25 @@ internal static class PortalNativeWriteHelpers
                     ErrorCode = rejectedErrorCode,
                     Message = booked.LastError ?? "The card could not be saved.",
                 });
+            if (audit is not null)
+            {
+                db.NativeAuditLogEntries.Add(new NativeAuditLogEntry
+                {
+                    TenantId = tenant.Id,
+                    UserId = user.Id,
+                    UserName = string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName,
+                    Entity = audit.Entity,
+                    EntityKey = audit.EntityKey,
+                    Action = audit.Action,
+                    Summary = audit.Summary,
+                    BeforeJson = audit.BeforeJson,
+                    AfterJson = audit.Action == "delete" ? null : payloadJson,
+                    CreatedAtUtc = DateTimeOffset.UtcNow,
+                });
+                // A best-effort second save, deliberately outside the booking's own transaction (already
+                // committed by IngestAsync): losing an audit row must never roll back a booked document.
+                await db.SaveChangesAsync(ct);
+            }
             return JobResult(booked, idempotent: false, StatusCodes.Status201Created);
         }
         catch (DbUpdateException)

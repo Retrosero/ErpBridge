@@ -130,6 +130,9 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Faz 49 — codes TVs show until a manager pairs them.</summary>
     public DbSet<DisplayPairingCode> DisplayPairingCodes => Set<DisplayPairingCode>();
 
+    /// <summary>GOAL_PANEL_ERPSIZ E7b — who changed what from the portal in a native tenant's own books (D5).</summary>
+    public DbSet<NativeAuditLogEntry> NativeAuditLogEntries => Set<NativeAuditLogEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -236,6 +239,24 @@ public sealed class CentralApiDbContext : DbContext
             b.HasKey(x => x.Code);
             b.Property(x => x.Code).HasMaxLength(6).IsFixedLength();
             b.Property(x => x.PairingSecretHash).IsRequired().HasMaxLength(64).IsFixedLength();
+        });
+
+        modelBuilder.Entity<NativeAuditLogEntry>(b =>
+        {
+            b.ToTable("native_audit_log");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.UserName).IsRequired().HasMaxLength(200);
+            b.Property(x => x.Entity).IsRequired().HasMaxLength(40);
+            b.Property(x => x.EntityKey).IsRequired().HasMaxLength(128);
+            b.Property(x => x.Action).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Summary).IsRequired().HasMaxLength(500);
+            b.Property(x => x.BeforeJson).HasColumnType("jsonb");
+            b.Property(x => x.AfterJson).HasColumnType("jsonb");
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // "Geçmiş" for one card/movement: every entry for its key, newest first.
+            b.HasIndex(x => new { x.TenantId, x.Entity, x.EntityKey, x.CreatedAtUtc });
+            // /denetim: the company-wide list, newest first.
+            b.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
         });
 
         modelBuilder.Entity<NativeStockLevel>(b =>

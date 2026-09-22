@@ -69,7 +69,7 @@
                     </MudNavMenu>
                 }
 
-                @if (Session.Allows(PortalArea.Approvals) || Session.Allows(PortalArea.Warehouse) || Session.Allows(PortalArea.Displays) || Session.Allows(PortalArea.Users))
+                @if (Session.Allows(PortalArea.Approvals) || Session.Allows(PortalArea.Warehouse) || Session.Allows(PortalArea.Displays) || Session.Allows(PortalArea.Users) || Session.Allows(PortalArea.NativeAudit))
                 {
                     <div class="portal-nav-label">İşlemler</div>
                     <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
@@ -97,6 +97,10 @@
                         @if (Session.Allows(PortalArea.ErpWrite) && string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase))
                         {
                             <MudNavLink Href="erp-aktarim" Icon="@Icons.Material.Rounded.SyncAlt" id="nav-erp-write">ERP aktarım ayarları</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.NativeAudit) && string.Equals(Session.DataSource, "native", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <MudNavLink Href="denetim" Icon="@Icons.Material.Rounded.History" id="nav-native-audit">Denetim</MudNavLink>
                         }
                     </MudNavMenu>
                 }

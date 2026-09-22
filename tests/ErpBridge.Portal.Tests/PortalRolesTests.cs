@@ -26,7 +26,7 @@ public sealed class PortalRolesTests
         PortalRoles.MayUsePortal(roles).Should().Be(allowed);
 
     [Theory]
-    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite,ErpDocuments", "")]
+    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite,ErpDocuments,NativeAudit", "")]
     [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse,Displays,ErpDocuments", "")]
     [InlineData(new[] { "ACCOUNTING" }, "Ledger,Approvals,ErpDocuments", "muhasebe")]
     [InlineData(new[] { "WAREHOUSE" }, "Warehouse", "depo")]
@@ -215,7 +215,7 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         var cut = RenderLayout();
 
         cut.FindAll("#portal-nav a").Select(a => a.GetAttribute("href"))
-            .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "cariler", "stok", "tahsilatlar", "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar");
+            .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "cariler", "stok", "tahsilatlar", "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "denetim");
         cut.Find("#user-roles").TextContent.Should().Be("Admin · Muhasebe");
         cut.Find("#session-scope").TextContent.Should().Contain("sekmeye özeldir");
     }
