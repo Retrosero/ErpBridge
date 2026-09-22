@@ -47,12 +47,16 @@ public sealed class NativeDocumentProcessor
     public const string StockCount = "stock_count";
 
     /// <summary>Cancels one customer-ledger movement (GOAL_PANEL_ERPSIZ E4a/D2): the original is marked
-    /// voided, a reversing entry is booked. Only for a standalone <see cref="Collection"/>/<see cref="Disbursement"/> —
-    /// a sale/purchase/return's own cari etkisi is E5's <c>document_void</c> instead (D11).</summary>
+    /// voided, a reversing entry is booked. Only for a standalone <see cref="Collection"/>/<see cref="Disbursement"/>/
+    /// <see cref="LedgerAdjustment"/> — a sale/purchase/return's own cari etkisi is E5's <c>document_void</c> instead (D11).</summary>
     public const string LedgerVoid = "ledger_void";
 
+    /// <summary>A manual correction of one customer's balance (GOAL_PANEL_ERPSIZ E4b): a mandatory reason,
+    /// never a payment or a sale — for fixing a balance no other document type can express.</summary>
+    public const string LedgerAdjustment = "ledger_adjustment";
+
     /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id.</summary>
-    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement };
+    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment };
 
     /// <summary>
     /// Line-carrying documents only the central API books. An ERP agent has no
@@ -142,6 +146,9 @@ public sealed class NativeDocumentProcessor
                 LedgerVoid => callerIsAdmin
                     ? await BookLedgerVoidAsync(db, booking, document.RootElement, ct)
                     : "Only company administrators can void a ledger entry.",
+                LedgerAdjustment => callerIsAdmin
+                    ? await BookLedgerAdjustmentAsync(db, booking, document.RootElement, ct)
+                    : "Only company administrators can adjust a customer's balance.",
                 // Other cash-book documents (return and purchase payments already booked by
                 // their own documents, cash transfers) are kept as records only.
                 _ => null,
@@ -569,6 +576,31 @@ public sealed class NativeDocumentProcessor
             Text(disbursement, "occurredAt") ?? booking.Stamp,
             Text(disbursement, "description") ?? Text(disbursement, "paymentType"), suffix: "disbursement", ct,
             Text(disbursement, "paymentType"));
+        return null;
+    }
+
+    /// <summary>
+    /// A manual correction of one customer's balance (GOAL_PANEL_ERPSIZ E4b) — for fixing a balance no
+    /// other document expresses (an opening balance typed wrong, a write-off). A mandatory reason, so
+    /// the statement always says why; the reason is stored apart from <c>aciklama</c> the way a payment's
+    /// own <c>paymentType</c> is, so the statement's free-text description column stays free for either.
+    /// </summary>
+    private async Task<string?> BookLedgerAdjustmentAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var customer = await ResolveCustomerAsync(db, booking.TenantId, document, ct);
+        if (customer is null) return "The adjustment names no known customer (customerCode or an exact customer title is required).";
+        var amount = decimal.Round(Number(document, "amount") ?? 0, 2);
+        if (amount <= 0) return "An adjustment needs a positive amount.";
+        var reason = Text(document, "reason");
+        if (reason is null) return "An adjustment needs a reason.";
+        var debit = Bool(document, "debit");
+        if (debit is null) return "debit is required (true to increase what the customer owes, false to decrease it).";
+
+        var documentNo = Text(document, "mobileDocumentId") ?? booking.ExternalId;
+        // Suffix matches the LedgerAdjustment document type constant, the way "collection"/"disbursement"
+        // already do — so a movement's own key always names the job that created it (ExternalIdOfLedgerKey).
+        await PostToCustomerAsync(db, booking, customer, amount, debit: debit.Value, "Düzeltme", documentNo,
+            Text(document, "occurredAt") ?? booking.Stamp, reason, suffix: LedgerAdjustment, ct);
         return null;
     }
 

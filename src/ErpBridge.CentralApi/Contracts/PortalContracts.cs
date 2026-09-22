@@ -248,6 +248,22 @@ public sealed class PortalLedgerVoidRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>Body of <c>POST /api/v1/portal/native/ledger-adjustments</c> (GOAL_PANEL_ERPSIZ E4b) — a
+/// manual correction of a customer's balance; <see cref="Reason"/> is mandatory, unlike a payment's.</summary>
+public sealed class PortalLedgerAdjustmentRequest
+{
+    public string CustomerCode { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+
+    /// <summary>True increases what the customer owes (borç), false decreases it (alacak).</summary>
+    public bool Debit { get; set; }
+    public string? Reason { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>; defaults to today when absent.</summary>
+    public string? OccurredAt { get; set; }
+    public string? OperationId { get; set; }
+}
+
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
 public sealed class PortalStockCardDetail
 {
