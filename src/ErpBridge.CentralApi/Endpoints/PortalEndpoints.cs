@@ -3,6 +3,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Native;
 using ErpBridge.CentralApi.Portal;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -204,9 +205,13 @@ public static class PortalEndpoints
         return customer is null ? CustomerNotFound() : JsonResults.Ok(PortalLedger.Card(customer, tenant.DataSource));
     }
 
-    /// <summary>A customer's statement: <c>from</c>/<c>to</c> (yyyy-MM-dd, both optional), repeated <c>kind</c>, newest first.</summary>
+    /// <summary>
+    /// A customer's statement: <c>from</c>/<c>to</c> (yyyy-MM-dd, both optional), repeated <c>kind</c>,
+    /// newest first. <c>includeVoided</c> (GOAL_PANEL_ERPSIZ E4d) defaults to false, so a plain call
+    /// keeps today's contract: a voided original stays out of the list, only its reversal shows.
+    /// </summary>
     private static async Task<IResult> CustomerLedgerAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
-        string? code, string? from, string? to, string[]? kind, int? page, int? pageSize, CancellationToken ct)
+        string? code, string? from, string? to, string[]? kind, bool? includeVoided, int? page, int? pageSize, CancellationToken ct)
     {
         var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
@@ -230,8 +235,40 @@ public static class PortalEndpoints
         var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
         if (customer is null) return CustomerNotFound();
         var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
-        return JsonResults.Ok(PortalLedger.Statement(customer, movements, start, end, kinds,
-            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
+        var statement = PortalLedger.Statement(customer, movements, start, end, kinds, includeVoided ?? false,
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize));
+        await AttachEditableAndVoidedByAsync(db, tenant.Id, statement.Items, ct);
+        return JsonResults.Ok(statement);
+    }
+
+    /// <summary>
+    /// Fills in the two fields <see cref="PortalLedger.Statement"/> cannot: <see cref="PortalLedgerRow.Editable"/>
+    /// (needs the row's own <c>Jobs.DocumentType</c> — the same check E4a/E4c's endpoints make before
+    /// booking a void/edit) and <see cref="PortalLedgerRow.VoidedBy"/> (a name for <see cref="PortalLedgerRow.VoidedByUserId"/>).
+    /// Scoped to the page shown, like E3c's own creator lookup.
+    /// </summary>
+    private static async Task AttachEditableAndVoidedByAsync(CentralApiDbContext db, Guid tenantId, List<PortalLedgerRow> items, CancellationToken ct)
+    {
+        if (items.Count == 0) return;
+        var externalIds = items.Select(i => PortalLedger.ExternalIdOf(i.Id)).Distinct(StringComparer.Ordinal).ToList();
+        var jobTypes = await db.Jobs.AsNoTracking()
+            .Where(j => j.TenantId == tenantId && externalIds.Contains(j.ExternalId))
+            .Select(j => new { j.ExternalId, j.DocumentType })
+            .ToListAsync(ct);
+        var typeByExternalId = jobTypes.GroupBy(j => j.ExternalId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().DocumentType, StringComparer.Ordinal);
+
+        var voidedByIds = items.Select(i => i.VoidedByUserId).OfType<Guid>().Distinct().ToList();
+        var names = voidedByIds.Count == 0 ? [] : await db.MobileUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId && voidedByIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.FullName) ? u.Username : u.FullName, ct);
+
+        foreach (var item in items)
+        {
+            var documentType = typeByExternalId.TryGetValue(PortalLedger.ExternalIdOf(item.Id), out var type) ? type : null;
+            item.Editable = !item.Voided && documentType is not null && NativeDocumentProcessor.VoidableLedgerJobTypes.Contains(documentType);
+            if (item.VoidedByUserId is { } userId && names.TryGetValue(userId, out var name)) item.VoidedBy = name;
+        }
     }
 
     private static async Task<IResult> CustomerDocumentAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,

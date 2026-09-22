@@ -171,6 +171,13 @@ public sealed class PortalCustomerLedgerRelationalTests : IClassFixture<SqliteCe
 
         var customers = await GetJsonAsync<PortalCustomersResponse>(c.Patron, "/api/v1/portal/customers");
         customers.Items.Should().ContainSingle().Which.Balance.Should().Be(400m);
+
+        // GOAL_PANEL_ERPSIZ E4d: only the standalone collection (TAH-1, booked as its own Collection
+        // job) is editable — a sale's own row and its immediate-payment leg (SO-2's cash payment,
+        // booked by the sales_order job) are excluded, exactly like E4a's own void check.
+        ledger.Items.Single(i => i.DocumentNo == "TAH-1").Editable.Should().BeTrue("a standalone collection is voidable/editable (E4a)");
+        ledger.Items.Where(i => i.Kind == "sale").Should().OnlyContain(i => !i.Editable, "a sale's own row is never editable here (D11)");
+        ledger.Items.Single(i => i.DocumentNo == "SO-2" && i.Kind == "collection").Editable.Should().BeFalse("a sale's immediate-payment leg belongs to E5's document_void, not here");
     }
 
     // ---- setup ------------------------------------------------------------------------

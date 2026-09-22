@@ -384,6 +384,21 @@ public sealed class PortalLedgerRow
 
     /// <summary>Set when the movement has lines to open: GET …/documents/{documentKey}.</summary>
     public string? DocumentKey { get; set; }
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4d — cancelled in place (D2 storno); its reversal is its own separate row.</summary>
+    public bool Voided { get; set; }
+    public Guid? VoidedByUserId { get; set; }
+
+    /// <summary>The name behind <see cref="VoidedByUserId"/>, resolved by the caller; null until then.</summary>
+    public string? VoidedBy { get; set; }
+    public string? VoidedAt { get; set; }
+
+    /// <summary>Why this entry was voided, or (for a manual adjustment) why it was made.</summary>
+    public string? Reason { get; set; }
+
+    /// <summary>Whether "Düzenle"/"İptal et" apply: a standalone collection/disbursement/manual
+    /// adjustment that is not already voided — never a sale/purchase/return's own row (E5 instead, D11).</summary>
+    public bool Editable { get; set; }
 }
 
 /// <summary>GET /api/v1/portal/customers/{code}/ledger</summary>

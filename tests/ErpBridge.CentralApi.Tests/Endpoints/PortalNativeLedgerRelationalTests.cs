@@ -39,10 +39,16 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         (await BalanceAsync(c.Id, "C-001")).Should().Be(1000m, "the reversal undoes exactly what the collection did");
 
+        // E4d: by default (includeVoided=false) the voided original stays out of the list — only its
+        // reversal shows, so the customer's day-to-day statement reads clean, not doubled.
         var statement = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001");
         statement.Closing.Should().Be(1000m, "the statement still ends on the card balance (P3b invariant)");
-        statement.Items.Should().HaveCount(2, "the voided original (same key, still one row) and the new reversal")
-            .And.Contain(i => i.Kind == "collection")
+        statement.Items.Should().ContainSingle().Which.Should().Match<PortalLedgerRow>(i => i.Kind == "other" && i.SourceType!.Contains("İptal") && i.Debit == 300m);
+
+        var withVoided = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001&includeVoided=true");
+        withVoided.Closing.Should().Be(1000m, "including voided rows never changes the balance, only which rows are shown");
+        withVoided.Items.Should().HaveCount(2, "the voided original (same key, still one row) and the new reversal")
+            .And.Contain(i => i.Kind == "collection" && i.Voided && i.Reason == "Yanlış tutar girildi" && i.VoidedBy == "patron" && !i.Editable)
             .And.Contain(i => i.Kind == "other" && i.SourceType!.Contains("İptal"));
     }
 

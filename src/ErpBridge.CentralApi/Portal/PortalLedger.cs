@@ -40,7 +40,8 @@ public static class PortalLedger
     /// </param>
     public sealed record Movement(
         string Customer, string Id, DateTime Date, string Kind, string? SourceType, string? DocumentNo, string? Description,
-        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null, bool Closed = false, string? PaymentType = null);
+        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null, bool Closed = false, string? PaymentType = null,
+        bool Voided = false, Guid? VoidedByUserId = null, DateTime? VoidedAt = null, string? VoidReason = null);
 
     /// <summary>
     /// Oldest first. Mikro movements of one day share a midnight timestamp, so they follow their record
@@ -207,7 +208,11 @@ public static class PortalLedger
             documentKey,
             recNo,
             closed,
-            PortalRecords.Blank(AndroidEndpoints.GetString(row, "paymentType")));
+            PortalRecords.Blank(AndroidEndpoints.GetString(row, "paymentType")),
+            AndroidEndpoints.GetBoolean(row, "voided") ?? false,
+            Guid.TryParse(AndroidEndpoints.GetString(row, "voidedByUserId"), out var voidedBy) ? voidedBy : null,
+            PortalRecords.ReadDateTime(AndroidEndpoints.GetString(row, "voidedAt")),
+            PortalRecords.Blank(AndroidEndpoints.GetString(row, "voidReason")));
     }
 
     // ---- queries --------------------------------------------------------------
@@ -274,9 +279,15 @@ public static class PortalLedger
     /// A statement. The running balance is anchored to the card balance (the figure the phone
     /// shows): the last movement ends on it, so a mirror holding only recent history still
     /// adds up. Opening = card balance − movements from <paramref name="from"/> on.
+    ///
+    /// <para><paramref name="includeVoided"/> (GOAL_PANEL_ERPSIZ E4d) only hides a voided original from
+    /// the rows shown — its reversal still shows (E4a always books one) and every balance figure here
+    /// (opening/closing/running) always counts every movement, voided or not, exactly like the
+    /// <paramref name="kinds"/> filter already does: hiding a row from the list never hides its effect
+    /// on the number the phone's own card balance agrees with.</para>
     /// </summary>
     public static PortalLedgerResponse Statement(
-        Customer customer, Movements movements, DateOnly? from, DateOnly? to, IReadOnlyCollection<string> kinds, int page, int pageSize)
+        Customer customer, Movements movements, DateOnly? from, DateOnly? to, IReadOnlyCollection<string> kinds, bool includeVoided, int page, int pageSize)
     {
         // Like Mikro's cari föyü: a closed invoice is a kasa/banka movement, not a balance movement.
         var all = movements.ByCustomer.TryGetValue(customer.Code, out var list) ? list.Where(m => !m.Closed).ToList() : [];
@@ -293,6 +304,7 @@ public static class PortalLedger
             if (endExclusive is not null && m.Date >= endExclusive) break;
             running += m.Debit - m.Credit;
             if (kinds.Count > 0 && !kinds.Contains(m.Kind)) continue;
+            if (!includeVoided && m.Voided) continue;
             totalDebit += m.Debit;
             totalCredit += m.Credit;
             rows.Add(new PortalLedgerRow
@@ -307,6 +319,10 @@ public static class PortalLedger
                 Credit = m.Credit,
                 Balance = running,
                 DocumentKey = m.DocumentKey,
+                Voided = m.Voided,
+                VoidedByUserId = m.VoidedByUserId,
+                VoidedAt = m.VoidedAt?.ToString("O", CultureInfo.InvariantCulture),
+                Reason = m.VoidReason,
             });
         }
 
