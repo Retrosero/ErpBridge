@@ -339,6 +339,10 @@ h1:focus, h1:focus-visible { outline: none; }
 .row-clickable { cursor: pointer; }
 .row-clickable:hover td { background: #f8faff; }
 .row-clickable.is-open td { background: var(--brand-50); border-bottom-color: transparent !important; }
+/* GOAL_PANEL_ERPSIZ E4e: a voided ledger movement reads struck through, its historical figures never change. */
+.is-voided td { text-decoration: line-through; color: var(--muted); }
+.is-voided .badge, .is-voided .cell-sub { text-decoration: none; }
+.ledger-row-actions { display: flex; gap: 10px; white-space: nowrap; }
 .row-detail td { background: #fbfcfe; }
 .stock-detail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 4px 0; }
 .stock-detail h4 { margin: 0 0 8px; font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }

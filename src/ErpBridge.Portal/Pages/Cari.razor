@@ -15,6 +15,7 @@ else
             {
                 <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Rounded.CallReceived" OnClick="@(() => OpenPayment(collection: true))" id="customer-collect">Tahsilat al</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Rounded.CallMade" OnClick="@(() => OpenPayment(collection: false))" id="customer-pay">Ödeme yap</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.Balance" OnClick="OpenAdjustment" id="customer-adjust">Manuel düzeltme</MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit" OnClick="OpenEditCard" id="customer-edit">Düzenle</MudButton>
             }
             <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.ArrowBack" Href="@BackHref" id="customer-back">Carilere dön</MudButton>
@@ -77,6 +78,11 @@ else
             {
                 <button type="button" class="link-button" id="ledger-kinds-clear" @onclick="ClearKindsAsync">Tüm türler</button>
             }
+            @if (Session.CanEditNativeData)
+            {
+                <button type="button" class="kind-toggle @(_includeVoided ? "is-active" : null)" aria-pressed="@(_includeVoided ? "true" : "false")"
+                        id="ledger-include-voided" disabled="@Busy" @onclick="ToggleIncludeVoidedAsync">İptal edilenleri göster</button>
+            }
         </div>
     }
 
@@ -107,13 +113,18 @@ else
                                 <th class="num">Borç</th>
                                 <th class="num">Alacak</th>
                                 <th class="num">Bakiye</th>
+                                @if (Session.CanEditNativeData)
+                                {
+                                    <th>İşlemler</th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var row in _ledger.Items)
                             {
                                 var opens = row.DocumentKey is not null;
-                                <tr data-movement="@row.Id" class="@(opens ? "row-clickable" : null)" @onclick="() => OpenAsync(row)" title="@(opens ? "Kalemleri göster" : null)">
+                                var historyEntity = LedgerEntityOf(row);
+                                <tr data-movement="@row.Id" class="@(opens ? "row-clickable" : null) @(row.Voided ? "is-voided" : null)" @onclick="() => OpenAsync(row)" title="@(opens ? "Kalemleri göster" : null)">
                                     <td class="nowrap">@DayText(row.Date)</td>
                                     <td>
                                         <span class="badge badge--@KindTone(row.Kind)">@KindLabel(row)</span>
@@ -121,12 +132,30 @@ else
                                         {
                                             <MudIcon Icon="@Icons.Material.Rounded.ListAlt" Size="Size.Small" Class="ledger-open-icon" />
                                         }
+                                        @if (row.Voided)
+                                        {
+                                            <div class="cell-sub">İptal: @row.Reason</div>
+                                        }
                                     </td>
                                     <td class="mono">@(row.DocumentNo ?? "—")</td>
                                     <td class="wrap">@row.Description</td>
                                     <td class="num">@(row.Debit == 0 ? null : Fmt.Money(row.Debit))</td>
                                     <td class="num">@(row.Credit == 0 ? null : Fmt.Money(row.Credit))</td>
                                     <td class="num @(row.Balance < 0 ? "portal-negative" : null)">@Fmt.Money(row.Balance)</td>
+                                    @if (Session.CanEditNativeData)
+                                    {
+                                        <td class="ledger-row-actions" @onclick:stopPropagation="true">
+                                            @if (row.Editable)
+                                            {
+                                                <button type="button" class="link-button" data-action="edit" @onclick="() => OpenEditMovement(row)">Düzenle</button>
+                                                <button type="button" class="link-button" data-action="void" @onclick="() => OpenVoidMovement(row)">İptal et</button>
+                                            }
+                                            @if (historyEntity is not null)
+                                            {
+                                                <a class="link-button" href="@($"denetim?entity={historyEntity}")" target="_blank" data-action="history">Geçmiş</a>
+                                            }
+                                        </td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -263,6 +292,94 @@ else
                 </form>
             </ChildContent>
         </DetailSheet>
+
+        <DetailSheet Id="customer-void-sheet" Open="_voidOpen" Busy="Busy" Eyebrow="Cari" Title="Hareketi iptal et" OnClose="CloseVoidMovement">
+            <ChildContent>
+                @if (_voiding is { } voiding)
+                {
+                    <form class="stack-form" id="customer-void-form" @onsubmit="ConfirmVoidAsync" @onsubmit:preventDefault>
+                        <p class="text-muted">@KindLabel(voiding) · @DayText(voiding.Date) · @Fmt.Money(voiding.Debit + voiding.Credit)</p>
+                        <MudTextField T="string" @bind-Value="_voidReason" Label="Gerekçe" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="void-reason" Lines="2" Required="true" />
+                        <div class="form-actions">
+                            <span style="flex: 1"></span>
+                            <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseVoidMovement">Vazgeç</MudButton>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Error" Disabled="@Busy" id="void-confirm">İptal et</MudButton>
+                        </div>
+                    </form>
+                }
+            </ChildContent>
+        </DetailSheet>
+
+        <DetailSheet Id="customer-edit-movement-sheet" Open="_editMovementOpen" Busy="Busy" Eyebrow="Cari" Title="Hareketi düzenle" OnClose="CloseEditMovement">
+            <ChildContent>
+                @if (_editingMovement is { } editing)
+                {
+                    <form class="stack-form" id="customer-edit-movement-form" @onsubmit="SaveEditMovementAsync" @onsubmit:preventDefault>
+                        <p class="text-muted">@KindLabel(editing) · @DayText(editing.Date)</p>
+                        <MudNumericField T="decimal?" @bind-Value="_editMovement.Amount" Label="Tutar" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="edit-movement-amount" Min="@(0.01m)" Adornment="Adornment.End" AdornmentText="TL" Required="true" />
+                        @if (_editingIsAdjustment)
+                        {
+                            <label class="stack-field">
+                                <span class="field-label">Yön</span>
+                                <select class="portal-select" id="edit-movement-debit" value="@(_editMovement.Debit == true ? "debit" : "credit")" @onchange="e => _editMovement.Debit = IsDebitOption(e.Value)">
+                                    <option value="debit">Borç</option>
+                                    <option value="credit">Alacak</option>
+                                </select>
+                            </label>
+                            <MudTextField T="string" @bind-Value="_editMovement.Reason" Label="Düzeltmenin gerekçesi" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="edit-movement-reason" Lines="2" Required="true" />
+                        }
+                        else
+                        {
+                            <label class="stack-field">
+                                <span class="field-label">Ödeme şekli</span>
+                                <select class="portal-select" id="edit-movement-payment-type" value="@_editMovement.PaymentType" @onchange="e => _editMovement.PaymentType = e.Value?.ToString()">
+                                    @foreach (var type in PaymentTypes)
+                                    {
+                                        <option value="@type">@type</option>
+                                    }
+                                </select>
+                            </label>
+                            <MudTextField T="string" @bind-Value="_editMovement.Description" Label="Açıklama" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="edit-movement-description" Lines="2" />
+                        }
+                        <label class="stack-field">
+                            <span class="field-label">Tarih</span>
+                            <input type="date" class="portal-input" id="edit-movement-date" value="@_editMovementDate" @onchange="e => _editMovementDate = e.Value?.ToString()" />
+                        </label>
+                        <MudTextField T="string" @bind-Value="_editMovement.VoidReason" Label="Neden düzenleniyor" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="edit-movement-void-reason" Lines="2" Required="true" />
+                        <div class="form-actions">
+                            <span style="flex: 1"></span>
+                            <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseEditMovement">Vazgeç</MudButton>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="edit-movement-save">Kaydet</MudButton>
+                        </div>
+                    </form>
+                }
+            </ChildContent>
+        </DetailSheet>
+
+        <DetailSheet Id="customer-adjustment-sheet" Open="_adjustmentOpen" Busy="Busy" Eyebrow="Cari" Title="Manuel düzeltme" OnClose="CloseAdjustment">
+            <ChildContent>
+                <form class="stack-form" id="customer-adjustment-form" @onsubmit="SaveAdjustmentAsync" @onsubmit:preventDefault>
+                    <MudNumericField T="decimal?" @bind-Value="_adjustment.Amount" Label="Tutar" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="adjustment-amount" Min="@(0.01m)" Adornment="Adornment.End" AdornmentText="TL" Required="true" />
+                    <label class="stack-field">
+                        <span class="field-label">Yön</span>
+                        <select class="portal-select" id="adjustment-debit" value="@(_adjustment.Debit ? "debit" : "credit")" @onchange="e => _adjustment.Debit = IsDebitOption(e.Value)">
+                            <option value="debit">Borç (cari daha çok borçlanır)</option>
+                            <option value="credit">Alacak (cari daha az borçlanır)</option>
+                        </select>
+                    </label>
+                    <MudTextField T="string" @bind-Value="_adjustment.Reason" Label="Gerekçe" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="adjustment-reason" Lines="2" Required="true" />
+                    <label class="stack-field">
+                        <span class="field-label">Tarih</span>
+                        <input type="date" class="portal-input" id="adjustment-date" value="@_adjustmentDate" @onchange="e => _adjustmentDate = e.Value?.ToString()" />
+                    </label>
+                    <div class="form-actions">
+                        <span style="flex: 1"></span>
+                        <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseAdjustment">Vazgeç</MudButton>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Secondary" Disabled="@Busy" id="customer-adjustment-save">Kaydet</MudButton>
+                    </div>
+                </form>
+            </ChildContent>
+        </DetailSheet>
     }
 }
 
@@ -280,6 +397,7 @@ else
     private DateOnly? _from;
     private DateOnly? _to;
     private readonly List<string> _kinds = [];
+    private bool _includeVoided;
     private int _page = 1;
     private int _pageSize = 50;
 
@@ -325,13 +443,19 @@ else
 
     private async Task LoadLedgerAsync()
     {
-        _ledger = await Api.LedgerAsync(_code!, _from, _to, _kinds, _page, _pageSize);
+        _ledger = await Api.LedgerAsync(_code!, _from, _to, _kinds, _includeVoided, _page, _pageSize);
         if (_ledger.Items.Count == 0 && _ledger.Total > 0 && _page > 1)
         {
             _page = Math.Max(1, (int)Math.Ceiling(_ledger.Total / (double)_pageSize));
-            _ledger = await Api.LedgerAsync(_code!, _from, _to, _kinds, _page, _pageSize);
+            _ledger = await Api.LedgerAsync(_code!, _from, _to, _kinds, _includeVoided, _page, _pageSize);
         }
         SyncAddress();
+    }
+
+    private Task ToggleIncludeVoidedAsync()
+    {
+        _includeVoided = !_includeVoided;
+        return ReloadFromFirstPageAsync();
     }
 
     private void SyncAddress()
@@ -549,4 +673,149 @@ else
             Notice = $"{kind}: {Fmt.Money(amount ?? 0)} kaydedildi.";
         });
     }
+
+    // ---- hesap hareketi düzeltme/iptal/manuel düzeltme (GOAL_PANEL_ERPSIZ E4a/b/c/e, ERP'siz firma) ----
+
+    /// <summary>Only for a movement E7b's audit trail can actually show history for (D5/D11): a standalone
+    /// collection/disbursement/manual adjustment, whether editable now or already voided.</summary>
+    private static string? LedgerEntityOf(LedgerRowDto row) => row switch
+    {
+        { Kind: "collection" } when row.Editable || row.Voided => "collection",
+        { Kind: "payment" } when row.Editable || row.Voided => "disbursement",
+        { Kind: "other", SourceType: "Düzeltme" } when row.Editable || row.Voided => "ledger_adjustment",
+        _ => null,
+    };
+
+    private bool _voidOpen;
+    private LedgerRowDto? _voiding;
+    private string? _voidReason;
+
+    private void OpenVoidMovement(LedgerRowDto row)
+    {
+        Notice = null;
+        _voiding = row;
+        _voidReason = null;
+        _voidOpen = true;
+    }
+
+    private void CloseVoidMovement() => _voidOpen = false;
+
+    private Task ConfirmVoidAsync()
+    {
+        Notice = null;
+        if (string.IsNullOrWhiteSpace(_voidReason))
+        {
+            Error = "İptal için gerekçe gerekli.";
+            return Task.CompletedTask;
+        }
+        var row = _voiding!;
+        var reason = _voidReason!.Trim();
+        return RunAsync(async () =>
+        {
+            await Api.VoidNativeLedgerEntryAsync(row.Id, new NativeLedgerVoidRequest { Reason = reason, OperationId = Guid.NewGuid().ToString("N") });
+            _voidOpen = false;
+            await LoadLedgerAsync();
+            await ReloadCardAsync();
+            Notice = "Hareket iptal edildi.";
+        });
+    }
+
+    private bool _editMovementOpen;
+    private LedgerRowDto? _editingMovement;
+    private bool _editingIsAdjustment;
+    private NativeLedgerEditRequest _editMovement = new();
+    private string? _editMovementDate;
+
+    private void OpenEditMovement(LedgerRowDto row)
+    {
+        Notice = null;
+        _editingMovement = row;
+        _editingIsAdjustment = row.Kind == "other";
+        _editMovementDate = Fmt.IsoDay(Fmt.TryIsoDay(row.Date, out var day) ? day : Today);
+        _editMovement = new NativeLedgerEditRequest
+        {
+            Amount = row.Debit + row.Credit,
+            Debit = _editingIsAdjustment ? row.Debit > 0 : null,
+            Description = _editingIsAdjustment ? null : row.Description,
+            Reason = _editingIsAdjustment ? row.Description : null,
+            OperationId = Guid.NewGuid().ToString("N"),
+        };
+        _editMovementOpen = true;
+    }
+
+    private void CloseEditMovement() => _editMovementOpen = false;
+
+    private Task SaveEditMovementAsync()
+    {
+        Notice = null;
+        if (_editMovement.Amount is not > 0)
+        {
+            Error = "Düzeltilmiş tutar gerekli.";
+            return Task.CompletedTask;
+        }
+        if (string.IsNullOrWhiteSpace(_editMovement.VoidReason))
+        {
+            Error = "Düzenleme için gerekçe gerekli.";
+            return Task.CompletedTask;
+        }
+        if (_editingIsAdjustment && string.IsNullOrWhiteSpace(_editMovement.Reason))
+        {
+            Error = "Düzeltmenin kendi gerekçesi gerekli.";
+            return Task.CompletedTask;
+        }
+        var row = _editingMovement!;
+        _editMovement.OccurredAt = Fmt.TryIsoDay(_editMovementDate, out var day) ? Fmt.IsoDay(day) : null;
+        return RunAsync(async () =>
+        {
+            await Api.EditNativeLedgerEntryAsync(row.Id, _editMovement);
+            _editMovementOpen = false;
+            await LoadLedgerAsync();
+            await ReloadCardAsync();
+            Notice = "Hareket düzenlendi.";
+        });
+    }
+
+    private bool _adjustmentOpen;
+    private NativeLedgerAdjustmentRequest _adjustment = new();
+    private string? _adjustmentDate;
+
+    private void OpenAdjustment()
+    {
+        if (_card is null) return;
+        Notice = null;
+        Error = null;
+        _adjustmentDate = Fmt.IsoDay(Today);
+        _adjustment = new NativeLedgerAdjustmentRequest { CustomerCode = _card.CustomerCode, Debit = true, OperationId = Guid.NewGuid().ToString("N") };
+        _adjustmentOpen = true;
+    }
+
+    private void CloseAdjustment() => _adjustmentOpen = false;
+
+    private Task SaveAdjustmentAsync()
+    {
+        Notice = null;
+        if (_adjustment.Amount is not > 0)
+        {
+            Error = "Tutar gerekli.";
+            return Task.CompletedTask;
+        }
+        if (string.IsNullOrWhiteSpace(_adjustment.Reason))
+        {
+            Error = "Gerekçe gerekli.";
+            return Task.CompletedTask;
+        }
+        _adjustment.OccurredAt = Fmt.TryIsoDay(_adjustmentDate, out var day) && day != Today ? Fmt.IsoDay(day) : null;
+        var amount = _adjustment.Amount;
+        return RunAsync(async () =>
+        {
+            await Api.PostNativeLedgerAdjustmentAsync(_adjustment);
+            _adjustmentOpen = false;
+            await LoadAsync();
+            Notice = $"Manuel düzeltme: {Fmt.Money(amount ?? 0)} kaydedildi.";
+        });
+    }
+
+    private async Task ReloadCardAsync() => _card = await Api.CustomerCardAsync(_code!);
+
+    private static bool IsDebitOption(object? value) => value?.ToString() == "debit";
 }

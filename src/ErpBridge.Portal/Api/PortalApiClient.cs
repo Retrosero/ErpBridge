@@ -86,10 +86,11 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<CustomerCardDto> CustomerCardAsync(string code, CancellationToken ct = default) =>
         GetAsync<CustomerCardDto>("api/v1/portal/customers/card" + Query(("code", code)), ct);
 
-    public Task<LedgerResponse> LedgerAsync(string code, DateOnly? from, DateOnly? to, IEnumerable<string> kinds, int page, int pageSize, CancellationToken ct = default) =>
+    public Task<LedgerResponse> LedgerAsync(string code, DateOnly? from, DateOnly? to, IEnumerable<string> kinds, bool includeVoided, int page, int pageSize, CancellationToken ct = default) =>
         GetAsync<LedgerResponse>("api/v1/portal/customers/ledger" + Query(
             [("code", code), ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
              .. kinds.Select(k => ("kind", (string?)k)),
+             ("includeVoided", includeVoided ? "true" : null),
              ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
 
     public Task<CustomerDocumentDto> CustomerDocumentAsync(string code, string key, CancellationToken ct = default) =>
@@ -139,6 +140,18 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
 
     public Task<NativeJobResultDto> RecordNativeDisbursementAsync(NativePaymentRequest request, CancellationToken ct = default) =>
         SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/disbursements", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4a/e — cancels a collection/disbursement/manual adjustment (D2 storno).</summary>
+    public Task<NativeJobResultDto> VoidNativeLedgerEntryAsync(string key, NativeLedgerVoidRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/ledger/{Uri.EscapeDataString(key)}/void", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4c/e — void + a corrected re-booking of the same kind, in one transaction (D11).</summary>
+    public Task<NativeJobResultDto> EditNativeLedgerEntryAsync(string key, NativeLedgerEditRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/ledger/{Uri.EscapeDataString(key)}/edit", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4b/e — a manual correction of a customer's balance; a reason is mandatory.</summary>
+    public Task<NativeJobResultDto> PostNativeLedgerAdjustmentAsync(NativeLedgerAdjustmentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/ledger-adjustments", request, ct);
 
     /// <summary>One page of requests, newest first; <paramref name="after"/> is the last request on screen.</summary>
     public Task<ApprovalDto[]> ApprovalsAsync(string status, string? kind, ApprovalDto? after, int take, CancellationToken ct = default) =>
