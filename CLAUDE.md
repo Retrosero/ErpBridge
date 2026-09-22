@@ -44,6 +44,11 @@ ilgili knowledge_base dosyasını da güncelle.
 - **İstisna (2026-09-19):** aynı yetkiler `docs/GOAL_ERP_YAZIM_3.md` (alış faturası · gider · sayım) görevleri
   için de önceden onaylıdır (kullanıcı: "onay veriyorum"). Test yazımı yalnız **`MikroDB_V15_DEMO`**'ya.
   Aynı yasaklar geçerli.
+- **İstisna (2026-09-22):** aynı yetkiler `docs/GOAL_PANEL_ERPLI.md` (ERP'li firmalarda panelden ürün/cari
+  kartı düzenleme) görevleri için de önceden onaylıdır (kullanıcı: "Önceden onayla"). Test yazımı yalnız
+  **`MikroDB_V15_DEMO`**/`MikroDB_V15_ERPBTEST`'e. Aynı yasaklar geçerli: `--force` push (ve rebase sonrası
+  `--force-with-lease`) yasak, CI kırmızıyken merge yasak, `main`'e doğrudan push yasak, `MikroDB_V15_02`
+  (canlı firma verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak.
 
 ## 3. Test / build
 
