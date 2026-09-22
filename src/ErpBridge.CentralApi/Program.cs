@@ -713,6 +713,7 @@ public partial class Program
         app.MapPortalEndpoints();
         app.MapPortalErpWriteEndpoints();
         app.MapPortalErpDocumentsEndpoints();
+        app.MapPortalNativeCardsEndpoints();
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
         app.MapAdminParameterEndpoints();

@@ -178,6 +178,51 @@ public sealed class PortalFacetValue
     public string? Parent { get; set; }
 }
 
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/stock-cards</c> (GOAL_PANEL_ERPSIZ E1a) — creating and
+/// editing share this shape; the product is found or made by <see cref="StockCode"/>, which never
+/// changes once set. Wraps the same fields as the phone's <c>stock_card</c> document.
+/// </summary>
+public sealed class PortalStockCardRequest
+{
+    public string StockCode { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Unit { get; set; }
+    public decimal? VatRate { get; set; }
+    public string? Category { get; set; }
+    public string? Brand { get; set; }
+    public string? Aisle { get; set; }
+    public string? Barcode { get; set; }
+    public decimal? Price { get; set; }
+
+    /// <summary>Taken only when the product has no stock yet; ignored when editing an existing card.</summary>
+    public decimal? OpeningQuantity { get; set; }
+
+    /// <summary>
+    /// Set once per save attempt and resent unchanged on a retry, so a lost response does not open
+    /// a second job; left empty, a fresh one is used and a retry becomes a new attempt.
+    /// </summary>
+    public string? OperationId { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
+public sealed class PortalStockCardDetail
+{
+    public string StockCode { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Unit { get; set; }
+    public decimal? VatRate { get; set; }
+    public string? Category { get; set; }
+    public string? Brand { get; set; }
+    public string? Aisle { get; set; }
+    public List<string> Barcodes { get; set; } = [];
+
+    /// <summary>Every price list the product has a price on; a list it has none on is absent, never zero.</summary>
+    public List<PortalStockPrice> Prices { get; set; } = [];
+    public decimal Quantity { get; set; }
+    public string? LastMovementDate { get; set; }
+}
+
 public sealed class PortalNamedNumber
 {
     public int Number { get; set; }
