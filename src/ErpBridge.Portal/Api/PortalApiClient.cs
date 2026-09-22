@@ -101,6 +101,18 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<StockFacetsResponse> StockFacetsAsync(CancellationToken ct = default) =>
         GetAsync<StockFacetsResponse>("api/v1/portal/stock/facets", ct);
 
+    /// <summary>ERP-less tenant only (<see cref="Session.PortalSession.CanEditNativeData"/>). Fetches the card
+    /// for the edit form — the list row already has most fields, but not the VAT rate or every price list.</summary>
+    public Task<NativeStockCardDetailDto> NativeStockCardAsync(string code, CancellationToken ct = default) =>
+        GetAsync<NativeStockCardDetailDto>($"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}", ct);
+
+    public Task<NativeJobResultDto> SaveNativeStockCardAsync(NativeStockCardRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-cards", request, ct);
+
+    public Task<NativeJobResultDto> DeleteNativeStockCardAsync(string code, string operationId, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Delete,
+            $"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}" + Query(("operationId", operationId)), null, ct);
+
     /// <summary>One page of requests, newest first; <paramref name="after"/> is the last request on screen.</summary>
     public Task<ApprovalDto[]> ApprovalsAsync(string status, string? kind, ApprovalDto? after, int take, CancellationToken ct = default) =>
         GetAsync<ApprovalDto[]>("api/v1/android/approvals" + Query(
