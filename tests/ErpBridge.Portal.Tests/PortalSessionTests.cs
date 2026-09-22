@@ -153,4 +153,16 @@ public sealed class PortalSessionTests
     [Fact]
     public void Money_is_written_the_turkish_way() =>
         Fmt.Money(1234567.5m).Should().Be("1.234.567,50 TL");
+
+    [Theory]
+    [InlineData("ADMIN", "native", true, "")]
+    [InlineData("MANAGER", "native", false, "GOAL_PANEL_ERPSIZ D4: only ADMIN edits native data")]
+    [InlineData("ADMIN", "erp", false, "an ERP tenant's screens stay read-only")]
+    public void CanEditNativeData_requires_admin_and_a_native_tenant(string role, string dataSource, bool expected, string because)
+    {
+        var session = new PortalSession(new TestClock(PortalTestSetup.Now));
+        session.SignIn(PortalTestSetup.State(role: role) with { DataSource = dataSource });
+
+        session.CanEditNativeData.Should().Be(expected, because);
+    }
 }

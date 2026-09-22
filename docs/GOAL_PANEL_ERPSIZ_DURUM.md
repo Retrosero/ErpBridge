@@ -6,11 +6,13 @@
 
 | Faz | İş | PR |
 |---|---|---|
-| E0a | Plan onaylandı ve genişletildi (kart + tahsilat/tediye + **satış/alış/iade faturası girişi/düzenleme** + hesap hareketi düzeltme + stok sayımı); `eb-erpsiz` worktree açıldı; `CLAUDE.md`'ye istisna eklendi; `GOAL_PANEL_ERPLI.md` durduruldu (öncelik bu goal'e kaydı) | (bu PR) |
+| E0a | Plan onaylandı ve genişletildi (kart + tahsilat/tediye + **satış/alış/iade faturası girişi/düzenleme** + hesap hareketi düzeltme + stok sayımı); `eb-erpsiz` worktree açıldı; `CLAUDE.md`'ye istisna eklendi; `GOAL_PANEL_ERPLI.md` durduruldu (öncelik bu goal'e kaydı) | #160 |
+| E0b | Zemin dolduruldu: `PortalSession.DataSource` ve `/portal/summary`'nin `DataSource` alanı **zaten** vardı (E0b'nin "native tenant'ı panelde tanıyan bayrak var mı" sorusu → evet, ek iş gerekmedi); kök `.claude/launch.json`'a `eb-erpsiz-centralapi-local` (5481) + `eb-erpsiz-portal-local` (5495) eklendi | (bu PR) |
+| E7a | `RolePermissions.CanEditNativeData` (CentralApi, ADMIN-only, D4) + `PortalSession.CanEditNativeData` (ADMIN + `DataSource=native`) eklendi; ikisi de birim testli | (bu PR) |
 
 ## Sırada
 
-E0b (zemin: KB oku, native tohumlu panel yerelde açılır) → E7a (yetki bayrağı, E1'den önce gerekiyor).
+E1 (ürün kartı yönetimi) — `POST/GET /portal/native/stock-cards`, `/stok` sayfasına Yeni/Düzenle.
 
 ## Seni Bekleyenler
 
@@ -18,3 +20,6 @@ E0b (zemin: KB oku, native tohumlu panel yerelde açılır) → E7a (yetki bayra
 - §2 (dönem kilidi, kasa/banka/çek-senet) ayrı karar gerektirir.
 - D4 (yalnız ADMIN düzenler) 2026-09-21'de karara bağlandı; kapsam büyüdüğü için kullanıcı isterse gözden
   geçirilebilir (bugün tekrar sorulmadı).
+- E0b'nin "yerelde native tohumlu panel" kısmı yalnız launch config'i kapsıyor; gerçek bir native tenant'ı
+  admin API ile tohumlamak (`erpbridge-roller-depo-plani` notundaki desen) E1 uçları yazılıp elle/tarayıcıda
+  denenmek istendiğinde yapılacak — otomatik testler `SqliteCentralApiFactory` ile DB'ye ihtiyaç duymuyor.
