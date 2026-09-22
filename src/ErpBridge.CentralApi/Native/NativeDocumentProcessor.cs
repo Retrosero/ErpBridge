@@ -390,7 +390,7 @@ public sealed class NativeDocumentProcessor
         // A sale paid on the spot is also a collection of the same amount: the
         // customer's history shows both and the open balance does not move.
         if (Text(sale, "paymentType") is { } paymentType && ImmediatePayments.Contains(paymentType.Trim()))
-            await PostToCustomerAsync(db, booking, customer, amount, debit: false, "Tahsilat", documentNo, occurredAt, paymentType, suffix: "payment", ct);
+            await PostToCustomerAsync(db, booking, customer, amount, debit: false, "Tahsilat", documentNo, occurredAt, paymentType, suffix: "payment", ct, paymentType);
         return null;
     }
 
@@ -414,7 +414,7 @@ public sealed class NativeDocumentProcessor
         if (amount < 0) return "A return cannot have a negative total.";
         await PostToCustomerAsync(db, booking, customer, amount, debit: false, "İade", documentNo, occurredAt, description, suffix: "return", ct);
         if (Text(document, "paymentType") is { } paymentType && ImmediatePayments.Contains(paymentType.Trim()))
-            await PostToCustomerAsync(db, booking, customer, amount, debit: true, "İade Ödemesi", documentNo, occurredAt, paymentType, suffix: "refund", ct);
+            await PostToCustomerAsync(db, booking, customer, amount, debit: true, "İade Ödemesi", documentNo, occurredAt, paymentType, suffix: "refund", ct, paymentType);
         return null;
     }
 
@@ -442,7 +442,7 @@ public sealed class NativeDocumentProcessor
         if (amount <= 0) return "A purchase needs a positive total.";
         await PostToCustomerAsync(db, booking, supplier, amount, debit: false, "Alış", documentNo, occurredAt, description, suffix: "purchase", ct);
         if (Text(document, "paymentType") is { } paymentType && ImmediatePayments.Contains(paymentType.Trim()))
-            await PostToCustomerAsync(db, booking, supplier, amount, debit: true, "Tediye", documentNo, occurredAt, paymentType, suffix: "payment", ct);
+            await PostToCustomerAsync(db, booking, supplier, amount, debit: true, "Tediye", documentNo, occurredAt, paymentType, suffix: "payment", ct, paymentType);
         return null;
     }
 
@@ -521,7 +521,8 @@ public sealed class NativeDocumentProcessor
         var documentNo = Text(collection, "mobileDocumentId") ?? booking.ExternalId;
         await PostToCustomerAsync(db, booking, customer, amount, debit: false, "Tahsilat", documentNo,
             Text(collection, "occurredAt") ?? booking.Stamp,
-            Text(collection, "description") ?? Text(collection, "paymentType"), suffix: "collection", ct);
+            Text(collection, "description") ?? Text(collection, "paymentType"), suffix: "collection", ct,
+            Text(collection, "paymentType"));
         return null;
     }
 
@@ -555,13 +556,15 @@ public sealed class NativeDocumentProcessor
         var documentNo = Text(disbursement, "mobileDocumentId") ?? booking.ExternalId;
         await PostToCustomerAsync(db, booking, customer, amount, debit: true, "Tediye", documentNo,
             Text(disbursement, "occurredAt") ?? booking.Stamp,
-            Text(disbursement, "description") ?? Text(disbursement, "paymentType"), suffix: "disbursement", ct);
+            Text(disbursement, "description") ?? Text(disbursement, "paymentType"), suffix: "disbursement", ct,
+            Text(disbursement, "paymentType"));
         return null;
     }
 
     private async Task PostToCustomerAsync(
         CentralApiDbContext db, Booking booking, string customerCode, decimal amount, bool debit,
-        string type, string documentNo, string occurredAt, string? description, string suffix, CancellationToken ct)
+        string type, string documentNo, string occurredAt, string? description, string suffix, CancellationToken ct,
+        string? paymentType = null)
     {
         var balance = await BalanceAsync(db, booking.TenantId, customerCode, ct);
         balance.Row.Balance += debit ? amount : -amount;
@@ -582,6 +585,9 @@ public sealed class NativeDocumentProcessor
             ["meblag"] = amount,
             ["amount"] = amount,
             ["aciklama"] = description,
+            // Kept apart from aciklama (which a caller may overwrite with free text) so the cash-box
+            // summary (GOAL_PANEL_ERPSIZ E3c) can total by payment type even when a description is set.
+            ["paymentType"] = paymentType,
             ["updatedAt"] = booking.Stamp,
         });
     }

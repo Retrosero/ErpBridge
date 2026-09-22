@@ -361,6 +361,52 @@ public sealed class PortalLedgerResponse
     public int PageSize { get; set; }
 }
 
+/// <summary>One row of GET /api/v1/portal/payments — a collection or payment movement, any customer.</summary>
+public sealed class PortalPaymentRow
+{
+    public string Id { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+    public string CustomerCode { get; set; } = string.Empty;
+    public string CustomerTitle { get; set; } = string.Empty;
+
+    /// <summary>collection or payment.</summary>
+    public string Kind { get; set; } = string.Empty;
+    public string? PaymentType { get; set; }
+    public string? Description { get; set; }
+    public decimal Debit { get; set; }
+    public decimal Credit { get; set; }
+    public Guid? UserId { get; set; }
+    public string? UserName { get; set; }
+    public string? DocumentKey { get; set; }
+}
+
+/// <summary>One group's total in a GET /api/v1/portal/payments summary: a calendar day or a payment type.</summary>
+public sealed class PortalPaymentGroupTotal
+{
+    public string Key { get; set; } = string.Empty;
+    public decimal Debit { get; set; }
+    public decimal Credit { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/payments — company-wide collections/payments (GOAL_PANEL_ERPSIZ E3c).</summary>
+public sealed class PortalPaymentsResponse
+{
+    public string From { get; set; } = string.Empty;
+    public string To { get; set; } = string.Empty;
+    public List<PortalPaymentRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public decimal TotalDebit { get; set; }
+    public decimal TotalCredit { get; set; }
+
+    /// <summary>Sums per calendar day of the whole filtered range (not only the page shown), oldest first.</summary>
+    public List<PortalPaymentGroupTotal> DailyTotals { get; set; } = [];
+
+    /// <summary>Sums per payment type of the whole filtered range ("kasa özeti"); a row with none groups under "Diğer".</summary>
+    public List<PortalPaymentGroupTotal> PaymentTypeTotals { get; set; } = [];
+}
+
 public sealed class PortalDocumentLine
 {
     public string StockCode { get; set; } = string.Empty;
