@@ -178,6 +178,85 @@ public sealed class PortalNativeSalesRelationalTests : IClassFixture<SqliteCentr
         history.Items.Should().ContainSingle().Which.Summary.Should().Contain("Satış").And.Contain("300,00");
     }
 
+    // ---- E5b: GET .../documents and GET .../documents/{key} -----------------------------
+
+    [Fact]
+    public async Task The_document_list_shows_every_line_carrying_kind_with_the_customer_title_and_creator()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001", 0m);
+        await SeedCustomerAsync(c, "TED-1", 0m);
+        await PostAsync(c, "sales-orders", new { partyCode = "C-001", lines = new[] { new { productCode = "CAY-1", quantity = 2, unitPrice = 150 } } });
+        await PostAsync(c, "purchase-receipts", new { partyCode = "TED-1", lines = new[] { new { productCode = "CAY-1", quantity = 5, unitPrice = 100 } } });
+
+        var list = await GetJsonAsync<PortalDocumentsResponse>(c.Patron, "/api/v1/portal/native/documents");
+
+        list.Items.Should().HaveCount(2)
+            .And.Contain(i => i.Kind == "sale" && i.CustomerCode == "C-001" && i.CustomerTitle == "Test Cari" && i.Amount == 300m && i.UserName == "patron")
+            .And.Contain(i => i.Kind == "purchase" && i.CustomerCode == "TED-1" && i.Amount == 500m);
+    }
+
+    [Fact]
+    public async Task The_document_list_can_be_filtered_by_kind_and_customer()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001", 0m);
+        await SeedCustomerAsync(c, "TED-1", 0m);
+        await PostAsync(c, "sales-orders", new { partyCode = "C-001", lines = new[] { new { productCode = "CAY-1", quantity = 1, unitPrice = 150 } } });
+        await PostAsync(c, "purchase-receipts", new { partyCode = "TED-1", lines = new[] { new { productCode = "CAY-1", quantity = 1, unitPrice = 100 } } });
+
+        (await GetJsonAsync<PortalDocumentsResponse>(c.Patron, "/api/v1/portal/native/documents?kind=purchase")).Items.Should().ContainSingle().Which.Kind.Should().Be("purchase");
+        (await GetJsonAsync<PortalDocumentsResponse>(c.Patron, "/api/v1/portal/native/documents?customer=C-001")).Items.Should().ContainSingle().Which.CustomerCode.Should().Be("C-001");
+    }
+
+    [Fact]
+    public async Task A_purchase_with_no_lines_still_appears_with_no_document_key_lines_to_open()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "TED-1", 0m);
+        await PostAsync(c, "purchase-receipts", new { partyCode = "TED-1", amount = 500 });
+
+        var list = await GetJsonAsync<PortalDocumentsResponse>(c.Patron, "/api/v1/portal/native/documents?kind=purchase");
+
+        var row = list.Items.Should().ContainSingle().Subject;
+        var detail = await GetJsonAsync<PortalDocumentResponse>(c.Patron, "/api/v1/portal/native/documents/" + Uri.EscapeDataString(row.DocumentKey));
+        detail.LinesAvailable.Should().BeFalse();
+        detail.Amount.Should().Be(500m);
+    }
+
+    [Fact]
+    public async Task A_single_document_can_be_found_by_its_key_without_knowing_the_customer()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001", 0m);
+        await PostAsync(c, "sales-orders", new { partyCode = "C-001", lines = new[] { new { productCode = "CAY-1", quantity = 3, unitPrice = 150 } } });
+        var key = (await GetJsonAsync<PortalDocumentsResponse>(c.Patron, "/api/v1/portal/native/documents")).Items.Single().DocumentKey;
+
+        var detail = await GetJsonAsync<PortalDocumentResponse>(c.Patron, "/api/v1/portal/native/documents/" + Uri.EscapeDataString(key));
+
+        detail.Should().Match<PortalDocumentResponse>(d => d.CustomerCode == "C-001" && d.CustomerTitle == "Test Cari" && d.Kind == "sale" && d.Amount == 450m);
+        detail.Lines.Should().ContainSingle().Which.Should().Match<PortalDocumentLine>(l => l.StockCode == "CAY-1" && l.Quantity == 3m);
+    }
+
+    [Fact]
+    public async Task An_unknown_document_key_is_404()
+    {
+        var c = await CompanyAsync();
+        var response = await _factory.CreateClient().GetAsync("/api/v1/portal/native/documents/dGHOST%7CX-1", c.Patron);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await response.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("DOCUMENT_NOT_FOUND");
+    }
+
+    [Fact]
+    public async Task A_manager_can_read_but_a_salesperson_cannot()
+    {
+        var c = await CompanyAsync();
+        (await GetJsonAsync<PortalDocumentsResponse>(c.Manager, "/api/v1/portal/native/documents")).Items.Should().BeEmpty();
+    }
+
     // ---- setup ------------------------------------------------------------------------
 
     private sealed record Company(Guid Id, string Patron, string Manager);

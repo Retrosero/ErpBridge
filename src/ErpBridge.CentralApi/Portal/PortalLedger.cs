@@ -347,12 +347,36 @@ public static class PortalLedger
     {
         if (!movements.ByCustomer.TryGetValue(customer.Code, out var list)) return null;
         var movement = list.FirstOrDefault(m => string.Equals(m.DocumentKey, documentKey, StringComparison.Ordinal));
-        if (movement is null) return null;
+        return movement is null ? null : BuildDocumentResponse(customer.Code, customer.Title, movement, movements, documentKey);
+    }
+
+    /// <summary>
+    /// The same document, found by its key alone (GOAL_PANEL_ERPSIZ E5b) — for a caller that does not
+    /// already know which customer/supplier it belongs to (a company-wide documents list, an id typed
+    /// into a URL). Scans every customer's movements once; <see cref="Movements"/> is already the whole
+    /// tenant in memory (E3c's Payments does the same), so this stays a single cached-data pass, no
+    /// extra database round trip.
+    /// </summary>
+    public static PortalDocumentResponse? DocumentByKey(IReadOnlyDictionary<string, Customer> customers, Movements movements, string documentKey)
+    {
+        foreach (var (customerCode, list) in movements.ByCustomer)
+        {
+            var movement = list.FirstOrDefault(m => string.Equals(m.DocumentKey, documentKey, StringComparison.Ordinal));
+            if (movement is null) continue;
+            var title = customers.TryGetValue(customerCode, out var customer) ? customer.Title : customerCode;
+            return BuildDocumentResponse(customerCode, title, movement, movements, documentKey);
+        }
+        return null;
+    }
+
+    private static PortalDocumentResponse BuildDocumentResponse(string customerCode, string customerTitle, Movement movement, Movements movements, string documentKey)
+    {
         var lines = movements.LinesByDocument.TryGetValue(documentKey, out var found) ? found : [];
         return new PortalDocumentResponse
         {
             DocumentKey = documentKey,
-            CustomerCode = customer.Code,
+            CustomerCode = customerCode,
+            CustomerTitle = customerTitle,
             Date = movement.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             Kind = movement.Kind,
             DocumentNo = movement.DocumentNo,
@@ -374,6 +398,60 @@ public static class PortalLedger
     }
 
     private static readonly string[] PaymentKinds = ["collection", "payment"];
+
+    /// <summary>
+    /// Every sale/purchase/return invoice across the company, any customer/supplier (GOAL_PANEL_ERPSIZ
+    /// E5b) — the line-carrying kinds, i.e. exactly <see cref="DocumentKinds"/>. Same shape as E3c's
+    /// <see cref="Payments"/>: a caller-resolved job lookup for the creator, everything else already
+    /// cached in <paramref name="movements"/>.
+    /// </summary>
+    public static PortalDocumentsResponse Documents(
+        IReadOnlyDictionary<string, Customer> customers, Movements movements, DateOnly from, DateOnly to,
+        IReadOnlyCollection<string> kinds, string? customerCode, Guid? userId,
+        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+    {
+        var wanted = kinds.Count > 0 ? kinds : DocumentKinds;
+        var start = from.ToDateTime(TimeOnly.MinValue);
+        var endExclusive = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var code = customerCode?.Trim();
+
+        var matching = movements.ByCustomer.Values
+            .SelectMany(list => list)
+            .Where(m => !m.Closed && m.DocumentKey is not null && wanted.Contains(m.Kind) && m.Date >= start && m.Date < endExclusive)
+            .Where(m => code is null || string.Equals(m.Customer, code, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (userId is { } wantedUser)
+            matching = matching.Where(m => creatorOf(ExternalIdOf(m.Id)) == wantedUser).ToList();
+
+        var ordered = matching.OrderByDescending(m => m.Date).ThenByDescending(m => m.Id, StringComparer.Ordinal).ToList();
+        var pageItems = ordered.Skip((page - 1) * pageSize).Take(pageSize).Select(m =>
+        {
+            var creator = creatorOf(ExternalIdOf(m.Id));
+            return new PortalDocumentRow
+            {
+                Id = m.Id,
+                DocumentKey = m.DocumentKey!,
+                Kind = m.Kind,
+                Date = m.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DocumentNo = m.DocumentNo,
+                CustomerCode = m.Customer,
+                CustomerTitle = customers.TryGetValue(m.Customer, out var customer) ? customer.Title : m.Customer,
+                Amount = m.Debit + m.Credit,
+                UserId = creator,
+                UserName = creator is { } id && userNames.TryGetValue(id, out var name) ? name : null,
+            };
+        }).ToList();
+
+        return new PortalDocumentsResponse
+        {
+            From = from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            To = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Items = pageItems,
+            Total = matching.Count,
+            Page = page,
+            PageSize = pageSize,
+        };
+    }
 
     /// <summary>
     /// The job that created a movement, from its id (<c>PostToCustomerAsync</c> always writes

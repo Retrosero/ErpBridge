@@ -516,6 +516,10 @@ public sealed class PortalDocumentResponse
 {
     public string DocumentKey { get; set; } = string.Empty;
     public string CustomerCode { get; set; } = string.Empty;
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5b — the caller of <c>GET /portal/native/documents/{key}</c> does not
+    /// already know the customer/supplier the way the older code-scoped <c>/customers/document</c> caller did.</summary>
+    public string CustomerTitle { get; set; } = string.Empty;
     public string Date { get; set; } = string.Empty;
     public string Kind { get; set; } = "other";
     public string? DocumentNo { get; set; }
@@ -523,6 +527,35 @@ public sealed class PortalDocumentResponse
     public decimal Amount { get; set; }
     public List<PortalDocumentLine> Lines { get; set; } = [];
     public bool LinesAvailable { get; set; }
+}
+
+/// <summary>One row of GET /api/v1/portal/native/documents (GOAL_PANEL_ERPSIZ E5b) — a sale/purchase/return
+/// invoice, any customer/supplier.</summary>
+public sealed class PortalDocumentRow
+{
+    public string Id { get; set; } = string.Empty;
+    public string DocumentKey { get; set; } = string.Empty;
+
+    /// <summary>sale, sale_return, purchase, purchase_return.</summary>
+    public string Kind { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+    public string? DocumentNo { get; set; }
+    public string CustomerCode { get; set; } = string.Empty;
+    public string CustomerTitle { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public Guid? UserId { get; set; }
+    public string? UserName { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/native/documents — company-wide sale/purchase/return invoices (GOAL_PANEL_ERPSIZ E5b).</summary>
+public sealed class PortalDocumentsResponse
+{
+    public string From { get; set; } = string.Empty;
+    public string To { get; set; } = string.Empty;
+    public List<PortalDocumentRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
 }
 
 /// <summary>One row of GET /api/v1/portal/native/audit (GOAL_PANEL_ERPSIZ E7b/D5).</summary>
