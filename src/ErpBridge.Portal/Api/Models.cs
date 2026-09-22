@@ -395,6 +395,17 @@ public sealed class NativeJobResultDto
     [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
 }
 
+/// <summary>Body of a collection or disbursement — same shape for both; the call decides the route.</summary>
+public sealed class NativePaymentRequest
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
 /// <summary>Body of a customer save (create or edit — the code decides which, and never changes on an edit).</summary>
 public sealed class NativeCustomerCardRequest
 {

@@ -13,6 +13,8 @@ else
         <Actions>
             @if (Session.CanEditNativeData && _card is not null)
             {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Rounded.CallReceived" OnClick="@(() => OpenPayment(collection: true))" id="customer-collect">Tahsilat al</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Rounded.CallMade" OnClick="@(() => OpenPayment(collection: false))" id="customer-pay">Ödeme yap</MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit" OnClick="OpenEditCard" id="customer-edit">Düzenle</MudButton>
             }
             <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.ArrowBack" Href="@BackHref" id="customer-back">Carilere dön</MudButton>
@@ -230,6 +232,33 @@ else
                         <span style="flex: 1"></span>
                         <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseEditCard">Vazgeç</MudButton>
                         <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="customer-edit-save">Kaydet</MudButton>
+                    </div>
+                </form>
+            </ChildContent>
+        </DetailSheet>
+
+        <DetailSheet Id="customer-payment-sheet" Open="_paymentOpen" Busy="Busy" Eyebrow="Cari" Title="@(_paymentIsCollection ? "Tahsilat al" : "Ödeme yap")" OnClose="ClosePayment">
+            <ChildContent>
+                <form class="stack-form" id="customer-payment-form" @onsubmit="SavePaymentAsync" @onsubmit:preventDefault>
+                    <MudNumericField T="decimal?" @bind-Value="_payment.Amount" Label="Tutar" Variant="Variant.Outlined" Margin="Margin.Dense" id="payment-amount" Min="@(0.01m)" Adornment="Adornment.End" AdornmentText="TL" Required="true" />
+                    <label class="stack-field">
+                        <span class="field-label">Ödeme şekli</span>
+                        <select class="portal-select" id="payment-type" value="@_payment.PaymentType" @onchange="e => _payment.PaymentType = e.Value?.ToString()">
+                            @foreach (var type in PaymentTypes)
+                            {
+                                <option value="@type">@type</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="stack-field">
+                        <span class="field-label">Tarih</span>
+                        <input type="date" class="portal-input" id="payment-date" value="@_paymentDate" @onchange="e => _paymentDate = e.Value?.ToString()" />
+                    </label>
+                    <MudTextField T="string" @bind-Value="_payment.Description" Label="Açıklama" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="payment-description" Lines="2" />
+                    <div class="form-actions">
+                        <span style="flex: 1"></span>
+                        <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="ClosePayment">Vazgeç</MudButton>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="@(_paymentIsCollection ? Color.Success : Color.Error)" Disabled="@Busy" id="customer-payment-save">Kaydet</MudButton>
                     </div>
                 </form>
             </ChildContent>
@@ -475,6 +504,49 @@ else
             _editOpen = false;
             await LoadAsync();
             Notice = $"{title} kaydedildi.";
+        });
+    }
+
+    // ---- tahsilat / tediye (GOAL_PANEL_ERPSIZ E3b, ERP'siz firma) --------------------------
+
+    private static readonly string[] PaymentTypes = ["Nakit", "Kredi Kartı", "EFT / Havale", "Çek", "Diğer"];
+
+    private bool _paymentOpen;
+    private bool _paymentIsCollection = true;
+    private string? _paymentDate;
+    private NativePaymentRequest _payment = new();
+
+    private void OpenPayment(bool collection)
+    {
+        if (_card is null) return;
+        Notice = null;
+        Error = null;
+        _paymentIsCollection = collection;
+        _paymentDate = Fmt.IsoDay(Today);
+        _payment = new NativePaymentRequest { CustomerCode = _card.CustomerCode, PaymentType = PaymentTypes[0], OperationId = Guid.NewGuid().ToString("N") };
+        _paymentOpen = true;
+    }
+
+    private void ClosePayment() => _paymentOpen = false;
+
+    private Task SavePaymentAsync()
+    {
+        Notice = null;
+        if (_payment.Amount is not > 0)
+        {
+            Error = PortalMessages.For("INVALID_PAYMENT");
+            return Task.CompletedTask;
+        }
+        _payment.OccurredAt = Fmt.TryIsoDay(_paymentDate, out var day) && day != Today ? Fmt.IsoDay(day) : null;
+        var kind = _paymentIsCollection ? "Tahsilat" : "Ödeme";
+        var amount = _payment.Amount;
+        return RunAsync(async () =>
+        {
+            if (_paymentIsCollection) await Api.RecordNativeCollectionAsync(_payment);
+            else await Api.RecordNativeDisbursementAsync(_payment);
+            _paymentOpen = false;
+            await LoadAsync();
+            Notice = $"{kind}: {Fmt.Money(amount ?? 0)} kaydedildi.";
         });
     }
 }

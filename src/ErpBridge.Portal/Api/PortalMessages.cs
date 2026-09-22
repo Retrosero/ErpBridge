@@ -67,6 +67,8 @@ public static class PortalMessages
         "BARCODE_IN_USE" => "Bu barkod başka bir ürüne tanımlı.",
         "INVALID_CUSTOMER_CARD" => "Cari kaydedilemedi: kod ve unvan zorunludur, kod en çok 64 karakter olabilir.",
         "CUSTOMER_CARD_REJECTED" => "Bu cari kaydedilemedi.",
+        "INVALID_PAYMENT" => "İşlem kaydedilemedi: cari bulunamadı ya da tutar geçersiz.",
+        "PAYMENT_REJECTED" => "Bu işlem kaydedilemedi.",
         _ => $"İşlem tamamlanamadı ({code}). Lütfen tekrar deneyin.",
     };
 }
