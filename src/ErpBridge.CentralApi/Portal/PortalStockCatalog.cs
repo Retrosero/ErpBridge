@@ -58,7 +58,8 @@ public static class PortalStockCatalog
         IReadOnlyList<string> Barcodes,
         IReadOnlyDictionary<int, (decimal Quantity, decimal Reserved)> Warehouses,
         IReadOnlyDictionary<int, decimal> Prices,
-        DateOnly? LastMovement)
+        DateOnly? LastMovement,
+        decimal? VatRate)
     {
         public decimal TotalQuantity => Warehouses.Values.Sum(w => w.Quantity);
         public decimal TotalReserved => Warehouses.Values.Sum(w => w.Reserved);
@@ -144,7 +145,8 @@ public static class PortalStockCatalog
                 barcodes.GetValueOrDefault(code) ?? [],
                 quantities.GetValueOrDefault(code) ?? [],
                 prices.GetValueOrDefault(code) ?? [],
-                movements.TryGetValue(code, out var last) ? last : null));
+                movements.TryGetValue(code, out var last) ? last : null,
+                card.VatRate));
         }
 
         var catalog = new Catalog(products, warehouseNames, priceListNames, hasReserved);
