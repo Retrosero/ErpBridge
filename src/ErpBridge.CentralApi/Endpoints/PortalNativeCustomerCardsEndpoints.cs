@@ -1,9 +1,12 @@
+using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Native;
+using ErpBridge.CentralApi.Portal;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ErpBridge.CentralApi.Endpoints;
 
@@ -39,7 +42,7 @@ public static class PortalNativeCustomerCardsEndpoints
     }
 
     private static async Task<IResult> PutCustomerCardAsync(
-        HttpContext http, [FromBody] PortalCustomerCardRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
+        HttpContext http, [FromBody] PortalCustomerCardRequest? body, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
     {
         var (tenant, user, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
         if (error is not null) return error;
@@ -49,6 +52,9 @@ public static class PortalNativeCustomerCardsEndpoints
         if (string.IsNullOrWhiteSpace(code)) return Invalid("customerCode is required.");
         if (code.Length > 64) return Invalid("customerCode must be at most 64 characters.");
         if (string.IsNullOrWhiteSpace(body.Title)) return Invalid("title is required.");
+
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, ct);
+        var existing = customers.TryGetValue(code, out var found) ? found : null;
 
         var payload = new
         {
@@ -61,9 +67,17 @@ public static class PortalNativeCustomerCardsEndpoints
             regionCode = body.RegionCode,
             openingBalance = body.OpeningBalance,
         };
+        var audit = new PortalNativeWriteHelpers.AuditInfo(
+            Entity: "customer_card", EntityKey: code, Action: existing is null ? "create" : "edit",
+            Summary: (existing is null ? "Müşteri oluşturuldu: " : "Müşteri düzenlendi: ") + $"{code} — {body.Title.Trim()}",
+            BeforeJson: existing is null ? null : JsonSerializer.Serialize(new
+            {
+                customerCode = existing.Code, title = existing.Title, taxNo = existing.TaxNo, taxOffice = existing.TaxOffice,
+                phone = existing.Phone, email = existing.Email, regionCode = existing.RegionCode,
+            }));
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.CustomerCard,
-            PortalNativeWriteHelpers.OperationKey("portal-customer", code, body.OperationId), payload, RejectedErrorCode, ct);
+            PortalNativeWriteHelpers.OperationKey("portal-customer", code, body.OperationId), payload, RejectedErrorCode, ct, audit);
     }
 
     private static IResult Invalid(string message) =>

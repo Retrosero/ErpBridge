@@ -386,3 +386,30 @@ public sealed class PortalDocumentResponse
     public List<PortalDocumentLine> Lines { get; set; } = [];
     public bool LinesAvailable { get; set; }
 }
+
+/// <summary>One row of GET /api/v1/portal/native/audit (GOAL_PANEL_ERPSIZ E7b/D5).</summary>
+public sealed class PortalAuditRow
+{
+    public Guid Id { get; set; }
+    public string Entity { get; set; } = string.Empty;
+    public string EntityKey { get; set; } = string.Empty;
+    public string Action { get; set; } = string.Empty;
+    public string Summary { get; set; } = string.Empty;
+    public string? BeforeJson { get; set; }
+    public string? AfterJson { get; set; }
+    public Guid UserId { get; set; }
+    public string UserName { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAtUtc { get; set; }
+}
+
+/// <summary>
+/// GET /api/v1/portal/native/audit — one card/movement's "Geçmiş" when <c>entity</c>+<c>key</c> are given,
+/// otherwise the company-wide /denetim list within the date range.
+/// </summary>
+public sealed class PortalAuditResponse
+{
+    public List<PortalAuditRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}

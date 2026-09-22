@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Json;
@@ -78,13 +79,17 @@ public static class PortalNativeCardsEndpoints
         if (code.Length > 64) return Invalid("stockCode must be at most 64 characters.");
         if (string.IsNullOrWhiteSpace(body.Name)) return Invalid("name is required.");
 
+        // Also the "before" snapshot for the audit trail (E7b/D5) — loaded unconditionally now instead
+        // of only when a barcode is given, so an edit always has a before-state to record.
+        var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
+        var existing = catalog.Products.FirstOrDefault(p => string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase));
+
         var barcode = string.IsNullOrWhiteSpace(body.Barcode) ? null : body.Barcode.Trim();
         if (barcode is not null)
         {
             // Barcode records are keyed only by the barcode itself (MobileRecordProjector), so
             // assigning one already on another card would silently move it there — the next scan
             // or order would resolve to the wrong product.
-            var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
             var owner = catalog.Products.FirstOrDefault(p => p.Barcodes.Contains(barcode, StringComparer.OrdinalIgnoreCase));
             if (owner is not null && !string.Equals(owner.Code, code, StringComparison.OrdinalIgnoreCase))
                 return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
@@ -107,22 +112,47 @@ public static class PortalNativeCardsEndpoints
             price = body.Price,
             openingQuantity = body.OpeningQuantity,
         };
+        var audit = new PortalNativeWriteHelpers.AuditInfo(
+            Entity: "stock_card", EntityKey: code, Action: existing is null ? "create" : "edit",
+            Summary: (existing is null ? "Ürün oluşturuldu: " : "Ürün düzenlendi: ") + $"{code} — {body.Name.Trim()}",
+            BeforeJson: existing is null ? null : JsonSerializer.Serialize(BeforeSnapshot(existing)));
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.StockCard,
-            PortalNativeWriteHelpers.OperationKey("portal-stock", code, body.OperationId), payload, RejectedErrorCode, ct);
+            PortalNativeWriteHelpers.OperationKey("portal-stock", code, body.OperationId), payload, RejectedErrorCode, ct, audit);
     }
 
     private static async Task<IResult> DeleteStockCardAsync(
-        string code, string? operationId, HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
+        string code, string? operationId, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
     {
         var (tenant, user, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
         if (error is not null) return error;
         if (string.IsNullOrWhiteSpace(code)) return Invalid("stockCode is required.");
 
+        var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
+        var existing = catalog.Products.FirstOrDefault(p => string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase));
+        var audit = new PortalNativeWriteHelpers.AuditInfo(
+            Entity: "stock_card", EntityKey: code, Action: "delete",
+            Summary: $"Ürün silindi: {code}" + (existing is null ? "" : $" — {existing.Name}"),
+            BeforeJson: existing is null ? null : JsonSerializer.Serialize(BeforeSnapshot(existing)));
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.StockCardDelete,
-            PortalNativeWriteHelpers.OperationKey("portal-stock-delete", code, operationId), new { stockCode = code }, RejectedErrorCode, ct);
+            PortalNativeWriteHelpers.OperationKey("portal-stock-delete", code, operationId), new { stockCode = code }, RejectedErrorCode, ct, audit);
     }
+
+    /// <summary>The audit trail's "before": the same shape <see cref="PutStockCardAsync"/> sends as its payload, so a
+    /// reader can compare before/after field by field without knowing <see cref="PortalStockCatalog.Product"/>'s shape.</summary>
+    private static object BeforeSnapshot(PortalStockCatalog.Product product) => new
+    {
+        stockCode = product.Code,
+        name = product.Name,
+        unit = product.Unit,
+        vatRate = product.VatRate,
+        category = product.MainGroup,
+        brand = product.Brand,
+        aisle = product.Shelf,
+        barcode = product.Barcodes.FirstOrDefault(),
+        price = product.Prices.TryGetValue(1, out var price) ? price : (decimal?)null,
+    };
 
     private static IResult Invalid(string message) =>
         JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_STOCK_CARD", Message = message });

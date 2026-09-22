@@ -492,6 +492,29 @@ public sealed class LedgerResponse
     [JsonPropertyName("pageSize")] public int PageSize { get; set; }
 }
 
+/// <summary>One row of GET /api/v1/portal/native/audit (GOAL_PANEL_ERPSIZ E7b) — who changed a card/payment, and when.</summary>
+public sealed class AuditRowDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("entity")] public string Entity { get; set; } = string.Empty;
+    [JsonPropertyName("entityKey")] public string EntityKey { get; set; } = string.Empty;
+    [JsonPropertyName("action")] public string Action { get; set; } = string.Empty;
+    [JsonPropertyName("summary")] public string Summary { get; set; } = string.Empty;
+    [JsonPropertyName("beforeJson")] public string? BeforeJson { get; set; }
+    [JsonPropertyName("afterJson")] public string? AfterJson { get; set; }
+    [JsonPropertyName("userId")] public Guid UserId { get; set; }
+    [JsonPropertyName("userName")] public string UserName { get; set; } = string.Empty;
+    [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
+}
+
+public sealed class AuditResponse
+{
+    [JsonPropertyName("items")] public List<AuditRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+}
+
 public sealed class CustomerDocumentLineDto
 {
     [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;

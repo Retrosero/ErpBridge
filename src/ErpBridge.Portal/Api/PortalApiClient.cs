@@ -95,6 +95,14 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<CustomerDocumentDto> CustomerDocumentAsync(string code, string key, CancellationToken ct = default) =>
         GetAsync<CustomerDocumentDto>("api/v1/portal/customers/document" + Query(("code", code), ("key", key)), ct);
 
+    /// <summary>Who changed what from the portal (GOAL_PANEL_ERPSIZ E7b); <paramref name="entity"/>+<paramref name="entityKey"/>
+    /// gives one card/payment's "Geçmiş" (no date bound), omitting them the company-wide /denetim list (date-bounded).</summary>
+    public Task<AuditResponse> AuditAsync(
+        string? entity, string? entityKey, DateOnly? from, DateOnly? to, Guid? userId, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<AuditResponse>("api/v1/portal/native/audit" + Query(
+            ("entity", entity), ("key", entityKey), ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+            ("userId", userId?.ToString()), ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
+
     public Task<StockSearchResponse> StockSearchAsync(StockFilter filter, CancellationToken ct = default) =>
         GetAsync<StockSearchResponse>("api/v1/portal/stock/search" + filter.ToApiQuery(), ct);
 

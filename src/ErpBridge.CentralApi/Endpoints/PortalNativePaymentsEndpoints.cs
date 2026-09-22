@@ -71,9 +71,13 @@ public static class PortalNativePaymentsEndpoints
             occurredAt,
             description = body.Description,
         };
+        var isCollection = documentType == NativeDocumentProcessor.Collection;
+        var audit = new PortalNativeWriteHelpers.AuditInfo(
+            Entity: isCollection ? "collection" : "disbursement", EntityKey: code, Action: "create",
+            Summary: $"{(isCollection ? "Tahsilat" : "Tediye")}: {body.Amount:0.00} TL — {code}", BeforeJson: null);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, documentType,
-            PortalNativeWriteHelpers.OperationKey(keyPrefix, code, body.OperationId), payload, RejectedErrorCode, ct);
+            PortalNativeWriteHelpers.OperationKey(keyPrefix, code, body.OperationId), payload, RejectedErrorCode, ct, audit);
     }
 
     private static IResult Invalid(string message) =>
