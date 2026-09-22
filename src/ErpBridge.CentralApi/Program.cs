@@ -717,6 +717,7 @@ public partial class Program
         app.MapPortalNativeCustomerCardsEndpoints();
         app.MapPortalNativePaymentsEndpoints();
         app.MapPortalNativeAuditEndpoints();
+        app.MapPortalNativeLedgerEndpoints();
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
         app.MapAdminParameterEndpoints();
