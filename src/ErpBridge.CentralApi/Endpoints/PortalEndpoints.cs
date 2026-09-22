@@ -39,6 +39,7 @@ public static class PortalEndpoints
         group.MapGet("/customers/card", CustomerCardAsync).WithName("PortalCustomerCard");
         group.MapGet("/customers/ledger", CustomerLedgerAsync).WithName("PortalCustomerLedger");
         group.MapGet("/customers/document", CustomerDocumentAsync).WithName("PortalCustomerDocument");
+        group.MapGet("/payments", PaymentsAsync).WithName("PortalPayments");
         return routes;
     }
 
@@ -244,6 +245,58 @@ public static class PortalEndpoints
         return document is null
             ? JsonResults.Status(404, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with lines under that key for this customer." })
             : JsonResults.Ok(document);
+    }
+
+    /// <summary>
+    /// Every collection/payment across the company (GOAL_PANEL_ERPSIZ E3c). <c>from</c> defaults to the
+    /// first of this month, <c>to</c> to today — unlike the per-customer statement, which defaults to
+    /// no bound, because scanning every payment ever made would grow unbounded for an old tenant.
+    /// </summary>
+    private static async Task<IResult> PaymentsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        string? from, string? to, string? customer, string[]? kind, Guid? userId, int? page, int? pageSize, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+
+        DateOnly start;
+        if (string.IsNullOrWhiteSpace(from))
+        {
+            var today = PortalReports.BusinessDate(null, DateTimeOffset.UtcNow);
+            start = new DateOnly(today.Year, today.Month, 1);
+        }
+        else if (!TryDay(from, out start)) return BadDate("from");
+        if (!TryDay(to, out var end)) return BadDate("to");
+        if (end < start) return JsonResults.Status(400, new ApiError { ErrorCode = "INVALID_RANGE", Message = "to is before from." });
+
+        var kinds = Values(kind);
+        if (kinds.FirstOrDefault(k => k is not ("collection" or "payment")) is { } unknown)
+            return BadQuery($"kind '{unknown}' is not one of: collection, payment.");
+
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, ct);
+        var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
+
+        // Bounded by the payment-kind rows the tenant has ever had, not by the requested date range:
+        // cheap for a native tenant (Jobs is its whole write history) and avoids a second round trip
+        // once the range is known to Payments().
+        var paymentMovementIds = movements.ByCustomer.Values.SelectMany(list => list)
+            .Where(m => m.Kind is "collection" or "payment")
+            .Select(m => PortalLedger.ExternalIdOf(m.Id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var creatorLookup = (await db.Jobs.AsNoTracking()
+                .Where(j => j.TenantId == tenant.Id && paymentMovementIds.Contains(j.ExternalId))
+                .Select(j => new { j.ExternalId, j.CreatedByUserId })
+                .ToListAsync(ct))
+            .GroupBy(j => j.ExternalId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().CreatedByUserId, StringComparer.Ordinal);
+        var creatorIds = creatorLookup.Values.OfType<Guid>().Distinct().ToList();
+        var userNames = await db.MobileUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenant.Id && creatorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.FullName) ? u.Username : u.FullName, ct);
+
+        return JsonResults.Ok(PortalLedger.Payments(customers, movements, start, end, kinds, customer, userId,
+            externalId => creatorLookup.TryGetValue(externalId, out var uid) ? uid : null, userNames,
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
     }
 
     private static async Task<PortalLedger.Customer?> FindCustomerAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, string? code, CancellationToken ct)

@@ -103,6 +103,15 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
             ("entity", entity), ("key", entityKey), ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
             ("userId", userId?.ToString()), ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
 
+    /// <summary>Company-wide collections/payments (GOAL_PANEL_ERPSIZ E3c); <paramref name="kinds"/> empty means both.</summary>
+    public Task<PaymentsResponse> PaymentsAsync(
+        DateOnly? from, DateOnly? to, IEnumerable<string> kinds, string? customer, Guid? userId, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<PaymentsResponse>("api/v1/portal/payments" + Query(
+            [("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+             .. kinds.Select(k => ("kind", (string?)k)),
+             ("customer", customer), ("userId", userId?.ToString()),
+             ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
+
     public Task<StockSearchResponse> StockSearchAsync(StockFilter filter, CancellationToken ct = default) =>
         GetAsync<StockSearchResponse>("api/v1/portal/stock/search" + filter.ToApiQuery(), ct);
 
