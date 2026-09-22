@@ -45,6 +45,18 @@ public sealed class FakeCentralApi : HttpMessageHandler
         return this;
     }
 
+    private readonly List<(HttpMethod Method, string PathPrefix, HttpStatusCode Status, string Body)> _prefixAnswers = [];
+
+    /// <summary>
+    /// Answers a request whose query the test cannot predict (a client-generated idempotency key,
+    /// for example) — matched by method and path prefix once no exact <see cref="Answer"/> fits.
+    /// </summary>
+    public FakeCentralApi AnswerPrefix(HttpMethod method, string pathPrefix, object body, HttpStatusCode status = HttpStatusCode.OK)
+    {
+        lock (_prefixAnswers) _prefixAnswers.Add((method, pathPrefix, status, JsonSerializer.Serialize(body, Web)));
+        return this;
+    }
+
     private readonly Dictionary<string, TaskCompletionSource> _holds = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Holds the answer to a path until the returned source is completed: a slow server.</summary>
@@ -64,9 +76,17 @@ public sealed class FakeCentralApi : HttpMessageHandler
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
         lock (_requests) _requests.Add((request.Method, path, request.Headers.Authorization?.ToString(), body));
         if (_holds.Remove(path, out var gate)) await gate.Task.WaitAsync(cancellationToken);
-        (HttpStatusCode Status, string Body) found;
-        lock (_answers) found = _answers.TryGetValue(path, out var answer) ? answer : (HttpStatusCode.NotFound, "{\"errorCode\":\"NOT_FOUND\"}");
-        var (status, json) = found;
+        (HttpStatusCode Status, string Body)? found;
+        lock (_answers) found = _answers.TryGetValue(path, out var answer) ? answer : null;
+        if (found is null)
+        {
+            lock (_prefixAnswers)
+            {
+                var match = _prefixAnswers.FirstOrDefault(a => a.Method == request.Method && path.StartsWith(a.PathPrefix, StringComparison.OrdinalIgnoreCase));
+                if (match.PathPrefix is not null) found = (match.Status, match.Body);
+            }
+        }
+        var (status, json) = found ?? (HttpStatusCode.NotFound, "{\"errorCode\":\"NOT_FOUND\"}");
         return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
     }
 }

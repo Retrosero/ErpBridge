@@ -356,6 +356,45 @@ public sealed class StockFacetsResponse
     [JsonPropertyName("hasReserved")] public bool HasReserved { get; set; }
 }
 
+// GOAL_PANEL_ERPSIZ E1: ERP-less tenant only (Session.CanEditNativeData) — /api/v1/portal/native/stock-cards.
+
+public sealed class NativeStockCardDetailDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+    [JsonPropertyName("vatRate")] public decimal? VatRate { get; set; }
+    [JsonPropertyName("category")] public string? Category { get; set; }
+    [JsonPropertyName("brand")] public string? Brand { get; set; }
+    [JsonPropertyName("aisle")] public string? Aisle { get; set; }
+    [JsonPropertyName("barcodes")] public List<string> Barcodes { get; set; } = [];
+    [JsonPropertyName("prices")] public List<StockPriceDto> Prices { get; set; } = [];
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+    [JsonPropertyName("lastMovementDate")] public string? LastMovementDate { get; set; }
+}
+
+/// <summary>Body of a save (create or edit — the code decides which, and never changes on an edit).</summary>
+public sealed class NativeStockCardRequest
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+    [JsonPropertyName("vatRate")] public decimal? VatRate { get; set; }
+    [JsonPropertyName("category")] public string? Category { get; set; }
+    [JsonPropertyName("brand")] public string? Brand { get; set; }
+    [JsonPropertyName("aisle")] public string? Aisle { get; set; }
+    [JsonPropertyName("barcode")] public string? Barcode { get; set; }
+    [JsonPropertyName("price")] public decimal? Price { get; set; }
+    [JsonPropertyName("openingQuantity")] public decimal? OpeningQuantity { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+public sealed class NativeJobResultDto
+{
+    [JsonPropertyName("jobId")] public Guid JobId { get; set; }
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+}
+
 public sealed class ApiErrorDto
 {
     [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
