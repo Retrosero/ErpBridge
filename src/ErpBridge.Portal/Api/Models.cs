@@ -492,6 +492,45 @@ public sealed class LedgerResponse
     [JsonPropertyName("pageSize")] public int PageSize { get; set; }
 }
 
+/// <summary>One row of GET /api/v1/portal/payments (GOAL_PANEL_ERPSIZ E3c) — a collection or payment, any customer.</summary>
+public sealed class PaymentRowDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("customerTitle")] public string CustomerTitle { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("debit")] public decimal Debit { get; set; }
+    [JsonPropertyName("credit")] public decimal Credit { get; set; }
+    [JsonPropertyName("userId")] public Guid? UserId { get; set; }
+    [JsonPropertyName("userName")] public string? UserName { get; set; }
+    [JsonPropertyName("documentKey")] public string? DocumentKey { get; set; }
+}
+
+/// <summary>One group's total (a calendar day or a payment type) in a payments summary.</summary>
+public sealed class PaymentGroupTotalDto
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
+    [JsonPropertyName("debit")] public decimal Debit { get; set; }
+    [JsonPropertyName("credit")] public decimal Credit { get; set; }
+}
+
+public sealed class PaymentsResponse
+{
+    [JsonPropertyName("from")] public string From { get; set; } = string.Empty;
+    [JsonPropertyName("to")] public string To { get; set; } = string.Empty;
+    [JsonPropertyName("items")] public List<PaymentRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+    [JsonPropertyName("totalDebit")] public decimal TotalDebit { get; set; }
+    [JsonPropertyName("totalCredit")] public decimal TotalCredit { get; set; }
+    [JsonPropertyName("dailyTotals")] public List<PaymentGroupTotalDto> DailyTotals { get; set; } = [];
+    [JsonPropertyName("paymentTypeTotals")] public List<PaymentGroupTotalDto> PaymentTypeTotals { get; set; } = [];
+}
+
 public sealed class CustomerDocumentLineDto
 {
     [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;

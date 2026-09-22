@@ -1,0 +1,169 @@
+@page "/tahsilatlar"
+@inherits PortalPageBase
+
+<PageTitle>Tahsilatlar — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Tahsilatlar" Eyebrow="Kayıtlar" Subtitle="Şirket genelinde tahsilat ve tediye hareketleri" Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    <form class="ledger-toolbar" id="payments-filter" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <label class="inline-field">
+            Başlangıç
+            <input type="date" class="portal-input portal-input--date" id="payments-from" value="@Fmt.IsoDay(_from)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _from = d; }" />
+        </label>
+        <label class="inline-field">
+            Bitiş
+            <input type="date" class="portal-input portal-input--date" id="payments-to" value="@Fmt.IsoDay(_to)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _to = d; }" />
+        </label>
+        <label class="inline-field">
+            Tür
+            <select class="portal-select portal-select--short" id="payments-kind" value="@_kind" disabled="@Busy" @onchange="e => _kind = e.Value?.ToString() ?? string.Empty">
+                <option value="">Tümü</option>
+                <option value="collection">Tahsilat</option>
+                <option value="payment">Tediye</option>
+            </select>
+        </label>
+        <label class="inline-field">
+            Cari
+            <input class="portal-input" id="payments-customer" placeholder="Kod ya da ünvan" value="@_customer" disabled="@Busy" @onchange="e => _customer = e.Value?.ToString() ?? string.Empty" />
+        </label>
+        <label class="inline-field">
+            Kullanıcı
+            <select class="portal-select portal-select--short" id="payments-user" value="@(_userId?.ToString() ?? string.Empty)" disabled="@Busy"
+                    @onchange="e => _userId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null">
+                <option value="">Tümü</option>
+                @foreach (var user in _users)
+                {
+                    <option value="@user.Id">@(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName)</option>
+                }
+            </select>
+        </label>
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" id="payments-search">Süz</MudButton>
+    </form>
+
+    @if (_result is not null)
+    {
+        <section class="stat-grid stat-grid--four">
+            <StatCard Id="payments-total-collection" Label="Tahsilat" Value="@Fmt.Money(_result.TotalCredit)" Icon="@Icons.Material.Rounded.CallMade" Tone="success" />
+            <StatCard Id="payments-total-disbursement" Label="Tediye" Value="@Fmt.Money(_result.TotalDebit)" Icon="@Icons.Material.Rounded.CallReceived" Tone="warning" />
+            <StatCard Id="payments-net" Label="Net" Value="@Fmt.Money(_result.TotalCredit - _result.TotalDebit)" Icon="@Icons.Material.Rounded.AccountBalanceWallet" Tone="primary" />
+            <StatCard Id="payments-count" Label="Hareket" Value="@_result.Total.ToString()" Icon="@Icons.Material.Rounded.ReceiptLong" Tone="violet" />
+        </section>
+
+        @if (_result.PaymentTypeTotals.Count > 0)
+        {
+            <MudPaper Outlined="true" Class="panel" id="payments-cashbox-summary">
+                <div class="panel-head">
+                    <MudText Typo="Typo.h6">Kasa özeti</MudText>
+                </div>
+                <div class="filter-chips">
+                    @foreach (var type in _result.PaymentTypeTotals)
+                    {
+                        <span class="badge badge--info" title="@($"{Fmt.Money(type.Credit)} tahsilat · {Fmt.Money(type.Debit)} tediye")">
+                            @type.Key: @Fmt.Money(type.Credit - type.Debit)
+                        </span>
+                    }
+                </div>
+            </MudPaper>
+        }
+
+        @if (_result.Items.Count == 0)
+        {
+            <EmptyState Id="payments-empty" Icon="@Icons.Material.Rounded.ReceiptLong" Title="Bu süzgeçle hareket yok."
+                        Hint="Tarih aralığını genişletin ya da süzgeci kaldırın." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="table-scroll">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table data-table--cards" id="payments-table">
+                        <thead>
+                            <tr>
+                                <th>Tarih</th>
+                                <th>Cari</th>
+                                <th>Tür</th>
+                                <th>Ödeme şekli</th>
+                                <th>Açıklama</th>
+                                <th>Kullanıcı</th>
+                                <th class="num">Tahsilat</th>
+                                <th class="num">Tediye</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _result.Items)
+                            {
+                                <tr data-payment="@item.Id" data-kind="@item.Kind">
+                                    <td data-label="Tarih">@item.Date</td>
+                                    <td data-label="Cari">
+                                        <div class="cell-title">@item.CustomerTitle</div>
+                                        <div class="cell-sub">@item.CustomerCode</div>
+                                    </td>
+                                    <td data-label="Tür"><span class="badge @(item.Kind == "collection" ? "badge--ok" : "badge--warn")">@(item.Kind == "collection" ? "Tahsilat" : "Tediye")</span></td>
+                                    <td data-label="Ödeme şekli">@Fmt.PaymentMethod(item.PaymentType)</td>
+                                    <td class="wrap" data-label="Açıklama">@(item.Description ?? "—")</td>
+                                    <td data-label="Kullanıcı">@(item.UserName ?? "—")</td>
+                                    <td class="num" data-label="Tahsilat">@(item.Credit == 0 ? null : Fmt.Money(item.Credit))</td>
+                                    <td class="num" data-label="Tediye">@(item.Debit == 0 ? null : Fmt.Money(item.Debit))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+                <div class="table-foot pager" id="payments-pager">
+                    <span id="payments-range">@_result.Total hareket</span>
+                    <span class="pager-buttons">
+                        <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" Size="Size.Small" Disabled="@(Busy || _page <= 1)" OnClick="() => GoToAsync(_page - 1)" aria-label="Önceki sayfa" Class="pager-prev" />
+                        <span class="pager-page" id="payments-page">Sayfa @_page / @PageCount</span>
+                        <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" Size="Size.Small" Disabled="@(Busy || _page >= PageCount)" OnClick="() => GoToAsync(_page + 1)" aria-label="Sonraki sayfa" Class="pager-next" />
+                    </span>
+                </div>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Ledger;
+
+    private DateOnly _from = new(Fmt.Today().Year, Fmt.Today().Month, 1);
+    private DateOnly _to = Fmt.Today();
+    private string _kind = string.Empty;
+    private string _customer = string.Empty;
+    private Guid? _userId;
+    private int _page = 1;
+    private PaymentsResponse? _result;
+    private UserDto[] _users = [];
+
+    private int PageCount => _result is null || _result.PageSize == 0 ? 1 : Math.Max(1, (_result.Total + _result.PageSize - 1) / _result.PageSize);
+
+    protected override async Task LoadAsync()
+    {
+        _users = (await Api.UsersAsync()).Users;
+        var kinds = string.IsNullOrEmpty(_kind) ? [] : new[] { _kind };
+        _result = await Api.PaymentsAsync(_from, _to, kinds, string.IsNullOrWhiteSpace(_customer) ? null : _customer, _userId, _page, 50);
+    }
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task GoToAsync(int page)
+    {
+        _page = Math.Clamp(page, 1, PageCount);
+        await RunAsync(LoadAsync);
+    }
+}

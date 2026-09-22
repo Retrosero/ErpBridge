@@ -40,7 +40,7 @@ public static class PortalLedger
     /// </param>
     public sealed record Movement(
         string Customer, string Id, DateTime Date, string Kind, string? SourceType, string? DocumentNo, string? Description,
-        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null, bool Closed = false);
+        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null, bool Closed = false, string? PaymentType = null);
 
     /// <summary>
     /// Oldest first. Mikro movements of one day share a midnight timestamp, so they follow their record
@@ -206,7 +206,8 @@ public static class PortalLedger
             debit ? 0m : amount,
             documentKey,
             recNo,
-            closed);
+            closed,
+            PortalRecords.Blank(AndroidEndpoints.GetString(row, "paymentType")));
     }
 
     // ---- queries --------------------------------------------------------------
@@ -353,6 +354,88 @@ public static class PortalLedger
                 WarehouseNo = l.WarehouseNo,
                 Description = l.Description,
             }).ToList(),
+        };
+    }
+
+    private static readonly string[] PaymentKinds = ["collection", "payment"];
+
+    /// <summary>
+    /// The job that created a movement, from its id (<c>PostToCustomerAsync</c> always writes
+    /// <c>"{externalId}|{suffix}"</c>): strips the last <c>|</c>-separated segment. A row with no
+    /// <c>|</c> (an ERP-agent row, never one of ours) yields itself and simply matches no job.
+    /// </summary>
+    public static string ExternalIdOf(string movementId)
+    {
+        var index = movementId.LastIndexOf('|');
+        return index < 0 ? movementId : movementId[..index];
+    }
+
+    /// <summary>
+    /// Every collection/payment movement of the company, any customer (GOAL_PANEL_ERPSIZ E3c).
+    /// <paramref name="creatorOf"/> and <paramref name="userNames"/> are resolved by the caller
+    /// (a job lookup keyed by <see cref="ExternalIdOf"/>) because this method never touches the
+    /// database — everything else here reads the already-cached <paramref name="movements"/>.
+    /// </summary>
+    public static PortalPaymentsResponse Payments(
+        IReadOnlyDictionary<string, Customer> customers, Movements movements, DateOnly from, DateOnly to,
+        IReadOnlyCollection<string> kinds, string? customerCode, Guid? userId,
+        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+    {
+        var wanted = kinds.Count > 0 ? kinds : PaymentKinds;
+        var start = from.ToDateTime(TimeOnly.MinValue);
+        var endExclusive = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var code = customerCode?.Trim();
+
+        var matching = movements.ByCustomer.Values
+            .SelectMany(list => list)
+            .Where(m => !m.Closed && wanted.Contains(m.Kind) && m.Date >= start && m.Date < endExclusive)
+            .Where(m => code is null || string.Equals(m.Customer, code, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (userId is { } wantedUser)
+            matching = matching.Where(m => creatorOf(ExternalIdOf(m.Id)) == wantedUser).ToList();
+
+        var dailyTotals = matching.GroupBy(m => m.Date.Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new PortalPaymentGroupTotal { Key = g.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Debit = g.Sum(m => m.Debit), Credit = g.Sum(m => m.Credit) })
+            .ToList();
+        var typeTotals = matching.GroupBy(m => m.PaymentType ?? "Diğer", StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Sum(m => m.Debit + m.Credit))
+            .Select(g => new PortalPaymentGroupTotal { Key = g.Key, Debit = g.Sum(m => m.Debit), Credit = g.Sum(m => m.Credit) })
+            .ToList();
+
+        var ordered = matching.OrderByDescending(m => m.Date).ThenByDescending(m => m.Id, StringComparer.Ordinal).ToList();
+        var pageItems = ordered.Skip((page - 1) * pageSize).Take(pageSize).Select(m =>
+        {
+            var creator = creatorOf(ExternalIdOf(m.Id));
+            return new PortalPaymentRow
+            {
+                Id = m.Id,
+                Date = m.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                CustomerCode = m.Customer,
+                CustomerTitle = customers.TryGetValue(m.Customer, out var customer) ? customer.Title : m.Customer,
+                Kind = m.Kind,
+                PaymentType = m.PaymentType,
+                Description = m.Description,
+                Debit = m.Debit,
+                Credit = m.Credit,
+                UserId = creator,
+                UserName = creator is { } id && userNames.TryGetValue(id, out var name) ? name : null,
+                DocumentKey = m.DocumentKey,
+            };
+        }).ToList();
+
+        return new PortalPaymentsResponse
+        {
+            From = from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            To = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Items = pageItems,
+            Total = matching.Count,
+            Page = page,
+            PageSize = pageSize,
+            TotalDebit = matching.Sum(m => m.Debit),
+            TotalCredit = matching.Sum(m => m.Credit),
+            DailyTotals = dailyTotals,
+            PaymentTypeTotals = typeTotals,
         };
     }
 
