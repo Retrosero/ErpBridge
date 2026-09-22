@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 
 namespace ErpBridge.CentralApi;
 
@@ -284,7 +285,7 @@ public partial class Program
         if (!string.IsNullOrWhiteSpace(connectionString))
         {
             services.AddDbContext<CentralApiDbContext>(opt =>
-                opt.UseNpgsql(connectionString));
+                opt.UseNpgsql(ApplyPoolDefaults(connectionString)));
         }
         else if (allowTestDefaults)
         {
@@ -294,6 +295,24 @@ public partial class Program
         {
             throw new InvalidOperationException("ConnectionStrings:CentralApi is required outside the test environment.");
         }
+    }
+
+    /// <summary>
+    /// Caps the Npgsql pool below Postgres's own default <c>max_connections</c> (100)
+    /// when the operator hasn't already set one explicitly. CentralApi is currently
+    /// a single instance, so Npgsql's own default (100) could alone consume the
+    /// entire server-side connection budget, leaving no headroom for migrations,
+    /// health checks, or manual admin connections on the same small VPS.
+    /// </summary>
+    private static string ApplyPoolDefaults(string connectionString)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        if (!builder.ContainsKey("Maximum Pool Size"))
+        {
+            builder.MaxPoolSize = 60;
+        }
+
+        return builder.ConnectionString;
     }
 
     /// <summary>
