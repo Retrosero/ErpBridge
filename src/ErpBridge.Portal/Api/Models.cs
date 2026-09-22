@@ -406,6 +406,47 @@ public sealed class NativePaymentRequest
     [JsonPropertyName("operationId")] public string? OperationId { get; set; }
 }
 
+/// <summary>Body of POST …/ledger/{key}/void (GOAL_PANEL_ERPSIZ E4a).</summary>
+public sealed class NativeLedgerVoidRequest
+{
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of POST …/ledger/{key}/edit (GOAL_PANEL_ERPSIZ E4c) — void of the target plus a
+/// corrected re-booking of the same kind, in one transaction (D11).</summary>
+public sealed class NativeLedgerEditRequest
+{
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+
+    /// <summary>Only meaningful for a manual adjustment; a collection/disbursement keeps its own direction.</summary>
+    [JsonPropertyName("debit")] public bool? Debit { get; set; }
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+
+    /// <summary>The corrected adjustment's reason; required when the target is a manual adjustment.</summary>
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+
+    /// <summary>Why the original is being corrected — mandatory, the same as a plain void's.</summary>
+    [JsonPropertyName("voidReason")] public string? VoidReason { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of POST …/ledger-adjustments (GOAL_PANEL_ERPSIZ E4b) — a manual correction of a
+/// customer's balance; <see cref="Reason"/> is mandatory, unlike a payment's.</summary>
+public sealed class NativeLedgerAdjustmentRequest
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+
+    /// <summary>True increases what the customer owes (borç), false decreases it (alacak).</summary>
+    [JsonPropertyName("debit")] public bool Debit { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
 /// <summary>Body of a customer save (create or edit — the code decides which, and never changes on an edit).</summary>
 public sealed class NativeCustomerCardRequest
 {
@@ -475,6 +516,13 @@ public sealed class LedgerRowDto
     [JsonPropertyName("credit")] public decimal Credit { get; set; }
     [JsonPropertyName("balance")] public decimal Balance { get; set; }
     [JsonPropertyName("documentKey")] public string? DocumentKey { get; set; }
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4d/E4e.</summary>
+    [JsonPropertyName("voided")] public bool Voided { get; set; }
+    [JsonPropertyName("voidedBy")] public string? VoidedBy { get; set; }
+    [JsonPropertyName("voidedAt")] public string? VoidedAt { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("editable")] public bool Editable { get; set; }
 }
 
 public sealed class LedgerResponse
