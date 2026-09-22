@@ -50,6 +50,12 @@ public sealed class PortalSession
     public bool IsSignedIn => Token is not null && ExpiresAtUtc > _time.GetUtcNow();
     public bool IsAdmin => Roles.Contains(PortalRoles.Admin);
 
+    /// <summary>ERP-less tenant (GOAL_PANEL_ERPSIZ): products, customers, sales/purchase/return
+    /// documents and ledger corrections can be entered from the portal. Mirrors the server's
+    /// <c>RolePermissions.CanEditNativeData</c> gate (admin-only) so the menu shows only what the
+    /// server will accept — the server stays the real gate.</summary>
+    public bool CanEditNativeData => IsAdmin && DataSource == "native";
+
     public bool Allows(PortalArea area) => PortalRoles.Allows(Roles, area);
 
     /// <summary>The first page this user may open; see <see cref="PortalRoles.HomePage"/>.</summary>
