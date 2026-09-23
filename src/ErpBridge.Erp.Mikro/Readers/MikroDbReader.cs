@@ -111,7 +111,11 @@ SELECT
     (SELECT COUNT_BIG(1) FROM SATIS_SARTLARI WHERE ISNULL(sat_iptal, 0) = 0) AS SalesConditions,
     (SELECT COUNT_BIG(1) FROM dbo.STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL) AS Inventory,
     (SELECT COUNT_BIG(1) FROM CARI_HESAP_HAREKETLERI WHERE ISNULL(cha_iptal, 0) = 0) AS CustomerTransactions,
-    (SELECT COUNT_BIG(1) FROM STOK_HAREKETLERI WHERE ISNULL(sth_iptal, 0) = 0) AS StockTransactions;";
+    (SELECT COUNT_BIG(1) FROM STOK_HAREKETLERI WHERE ISNULL(sth_iptal, 0) = 0) AS StockTransactions,
+    -- Gider ERP uyumu: lookups içinde giden gider kartları ve KDV tanımları, panelde ayrı satır.
+    (SELECT COUNT_BIG(1) FROM MASRAF_HESAPLARI WHERE ISNULL(his_iptal, 0) = 0 AND ISNULL(his_hidden, 0) = 0) AS ExpenseCards,
+    (SELECT COUNT_BIG(1) FROM (VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)) AS v(p)
+      WHERE v.p = 1 OR dbo.fn_VergiYuzde(v.p) > 0) AS VatRates;";
 
         var counts = await QuerySingleAsync<BootstrapRecordCounts>(
             sql,
@@ -414,32 +418,33 @@ FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0
         const string sql = @"
 SELECT 'warehouse' AS Kind, CAST(dep_no AS NVARCHAR(20)) AS Code, CAST(dep_adi AS NVARCHAR(100)) AS Name,
        CAST(NULL AS NVARCHAR(50)) AS ParentCode, CAST(NULL AS NVARCHAR(10)) AS Currency,
-       CAST(NULL AS BIT) AS IncludesVat
+       CAST(NULL AS BIT) AS IncludesVat, CAST(NULL AS NVARCHAR(50)) AS TypeCode,
+       CAST(NULL AS NVARCHAR(50)) AS ClassCode, CAST(NULL AS NVARCHAR(20)) AS Unit, CAST(NULL AS DECIMAL(9,4)) AS Rate
 FROM DEPOLAR
 WHERE dep_firmano = @firmNo AND ISNULL(dep_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(dep_lastup_date, dep_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'salesperson', CAST(cari_per_kod AS NVARCHAR(20)), CAST(ISNULL(cari_per_adi,'') + ' ' + ISNULL(cari_per_soyadi,'') AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
 FROM CARI_PERSONEL_TANIMLARI
 WHERE ISNULL(cari_per_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(cari_per_lastup_date, cari_per_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'payment_plan', CAST(odp_no AS NVARCHAR(20)), CAST(ISNULL(odp_aratop,0) AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
 FROM ODEME_PLANLARI
 WHERE ISNULL(odp_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(odp_lastup_date, odp_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'project', CAST(pro_kodu AS NVARCHAR(50)), CAST(pro_adi AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
 FROM PROJELER
 WHERE ISNULL(pro_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(pro_lastup_date, pro_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'price_list', CAST(sfl_sirano AS NVARCHAR(20)), CAST(ISNULL(sfl_aciklama, '') AS NVARCHAR(200)),
        CAST(ISNULL(sfl_fiyatformul, '') AS NVARCHAR(500)), CAST(NULL AS NVARCHAR(10)),
-       CAST(ISNULL(sfl_kdvdahil, 0) AS BIT)
+       CAST(ISNULL(sfl_kdvdahil, 0) AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
 FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI
 WHERE ISNULL(sfl_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sfl_lastup_date, sfl_create_date) > @changedSinceUtc)
@@ -447,11 +452,29 @@ UNION ALL
 -- ERP yazım 3 Y2b: gider kartları (MASRAF_HESAPLARI). Telefon gider girerken bunlardan birini
 -- seçer ve kodu `cha_kasa_hizkod` olarak Mikro'ya yazılır (referans §13). Kendi bölümü yerine
 -- lookups içinde taşınır: 19 satırlık bir katalog için var olan boru hattı yeterli.
+-- Gider ERP uyumu: Mikro'nun kart başlıkları da gider — grup (ParentCode), tip, sınıf, birim,
+-- döviz cinsi. Telefon kartları Mikro'daki gibi gruplar (Fora'nın tip/sınıf/grup süzgeci).
 SELECT 'expense_card', CAST(his_kod AS NVARCHAR(50)), CAST(ISNULL(his_isim, '') AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(500)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(his_grupkod, ''))), '') AS NVARCHAR(50)),
+       CAST(ISNULL(his_dovcinsi, 0) AS NVARCHAR(10)), CAST(NULL AS BIT),
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(his_tipkod, ''))), '') AS NVARCHAR(50)),
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(his_sinifkod, ''))), '') AS NVARCHAR(50)),
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(his_birim_ad, ''))), '') AS NVARCHAR(20)),
+       CAST(NULL AS DECIMAL(9,4))
 FROM MASRAF_HESAPLARI
 WHERE ISNULL(his_iptal, 0) = 0 AND ISNULL(his_hidden, 0) = 0
-  AND (@changedSinceUtc IS NULL OR COALESCE(his_lastup_date, his_create_date) > @changedSinceUtc)";
+  AND (@changedSinceUtc IS NULL OR COALESCE(his_lastup_date, his_create_date) > @changedSinceUtc)
+UNION ALL
+-- Gider ERP uyumu: Mikro'nun KDV tanımları (işaretçi 1..10 → fn_VergiYuzde / fn_VergiIsim). Gider KDV'si
+-- Mikro'da işaretçinin kendi kolonuna yazılır (cha_vergi4 = %20); telefon oranı buradan seçer. Tanımların
+-- değişme tarihi yok, bu yüzden yalnız tam okumada gelir — artımlı birleştirme (kind, code) ile korur.
+SELECT 'vat_rate', CAST(v.p AS NVARCHAR(20)), CAST(ISNULL(dbo.fn_VergiIsim(v.p), '') AS NVARCHAR(200)),
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT),
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)),
+       CAST(dbo.fn_VergiYuzde(v.p) AS DECIMAL(9,4))
+FROM (VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)) AS v(p)
+WHERE @changedSinceUtc IS NULL
+  AND (v.p = 1 OR dbo.fn_VergiYuzde(v.p) > 0)";
 
         var rows = await QueryAsync<LookupPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.ToList();

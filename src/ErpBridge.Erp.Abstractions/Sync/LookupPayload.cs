@@ -11,6 +11,8 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 ///   <c>"project"</c>              — projeler
 ///   <c>"responsibility_center"</c> — sorumluluk merkezleri
 ///   <c>"tax_office"</c>           — vergi daireleri
+///   <c>"expense_card"</c>         — gider kartları (<c>MASRAF_HESAPLARI</c>)
+///   <c>"vat_rate"</c>             — KDV tanımları (Mikro vergi işaretçisi → oran)
 /// For Phase 5 a single record is enough; typed variants are kept as
 /// skeletons to be filled in by Phase 6+ readers that need richer fields
 /// (warehouse group numbers, salesperson names, etc.).
@@ -24,13 +26,24 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 /// <c>price_list</c> only: whether the list's prices include VAT (Mikro <c>sfl_kdvdahil</c>). The phone must not add
 /// VAT on top of such a price, or its total would differ from the one the ERP writer books (goal ERP yazım Y4g).
 /// </param>
+/// <param name="TypeCode"><c>expense_card</c> only: Mikro's <c>his_tipkod</c> heading.</param>
+/// <param name="ClassCode"><c>expense_card</c> only: Mikro's <c>his_sinifkod</c> heading.</param>
+/// <param name="Unit"><c>expense_card</c> only: Mikro's <c>his_birim_ad</c>.</param>
+/// <param name="Rate">
+/// <c>vat_rate</c> only: the percentage Mikro holds for the pointer in <see cref="Code"/> (<c>fn_VergiYuzde</c>).
+/// The phone picks a pointer and the expense writer books the VAT into that pointer's <c>cha_vergiN</c> column.
+/// </param>
 public sealed record LookupPayload(
     string Kind,
     string Code,
     string Name,
     string? ParentCode,
     string? Currency,
-    bool? IncludesVat = null);
+    bool? IncludesVat = null,
+    string? TypeCode = null,
+    string? ClassCode = null,
+    string? Unit = null,
+    decimal? Rate = null);
 
 /// <summary>Skeleton — typed warehouse lookup. Phase 5 carries via <see cref="LookupPayload"/>.</summary>
 /// <param name="WarehouseNo">Depo numarası.</param>

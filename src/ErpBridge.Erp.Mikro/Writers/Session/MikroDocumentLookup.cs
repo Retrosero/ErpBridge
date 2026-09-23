@@ -138,6 +138,18 @@ FROM STOKLAR WHERE sto_kod = @code", new { code }, Session.Transaction, cancella
     }
 
     /// <summary>
+    /// A VAT pointer that carries a rate in this company's Mikro (<c>fn_VergiYuzde</c>). An expense's VAT is
+    /// booked into the pointer's own <c>cha_vergiN</c> column, so a pointer with no rate would put a VAT amount
+    /// where Mikro's own reports read "no VAT".
+    /// </summary>
+    public async Task EnsureVatPointerAsync(byte pointer, CancellationToken ct = default)
+    {
+        if (pointer is < 1 or > MikroCodes.VatPointerMax
+            || !await ExistsAsync("SELECT 1 WHERE dbo.fn_VergiYuzde(@pointer) > 0", new { pointer }, ct).ConfigureAwait(false))
+            throw new MikroWriteException(ErpWriteError.VatRateNotFound(pointer));
+    }
+
+    /// <summary>
     /// The series this supplier's purchase invoices already use (referans §15, K7). Mikro has no series
     /// definition table: an alış faturası carries the <b>supplier's own</b> invoice series, so "the series
     /// defined in the ERP" is the one the data already shows for that supplier. The newest one wins; a

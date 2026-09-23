@@ -8,6 +8,12 @@
 /// </summary>
 public static class MikroCodes
 {
+    /// <summary>
+    /// Mikro's VAT pointers run 1..10 and each has its own <c>cha_vergiN</c> column (<c>cha_vergi4</c> holds
+    /// the 20% VAT; <c>fn_VergiYuzde</c> maps pointer to rate). Fora's <c>AddMasraf</c> books the same way.
+    /// </summary>
+    public const byte VatPointerMax = 10;
+
     /// <summary><c>*_fileid</c> — Mikro's table file numbers.</summary>
     public static class FileId
     {

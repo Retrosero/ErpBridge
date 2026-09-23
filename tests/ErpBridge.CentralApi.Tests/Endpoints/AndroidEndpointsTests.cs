@@ -216,6 +216,46 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         json.RootElement.GetProperty("items")[0].GetProperty("kod").GetString().Should().Be("KİRA", "kod sırasına göre gelir");
     }
 
+    /// <summary>
+    /// Gider ERP uyumu: kart Mikro'daki başlıklarıyla (grup / tip / sınıf, birim) gelir ve yanında
+    /// Mikro'nun KDV tanımları durur. Telefon KDV'yi bir işaretçiyle gönderir; işaretçiyi buradan
+    /// bilmezse gider Mikro'da yanlış KDV kolonuna düşer.
+    /// </summary>
+    [Fact]
+    public async Task The_expense_card_section_carries_mikro_headings_and_vat_definitions()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-EXPH-{suffix}", "Expense heading tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, """
+            { "lookups": [
+              { "kind": "expense_card", "code": "YAKIT", "name": "Yakıt", "parentCode": "ARAC", "typeCode": "GENEL", "classCode": " ", "unit": "LT" },
+              { "kind": "expense_card", "code": "KIRA", "name": "Kira" },
+              { "kind": "vat_rate", "code": "4", "name": "K.D.V. (%) 20", "rate": 20.0 },
+              { "kind": "vat_rate", "code": "1", "name": "YOK", "rate": 0 },
+              { "kind": "vat_rate", "code": "2", "name": "K.D.V. (%) 1", "rate": 1.0 }
+            ] }
+            """);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, $"AK-EXPH-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/android/sync/giderKartlari", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("total").GetInt32().Should().Be(2, "KDV tanımı gider kartı sayılmaz");
+        var fuel = json.RootElement.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("kod").GetString() == "YAKIT");
+        fuel.GetProperty("grupKod").GetString().Should().Be("ARAC");
+        fuel.GetProperty("tipKod").GetString().Should().Be("GENEL");
+        fuel.GetProperty("sinifKod").ValueKind.Should().Be(JsonValueKind.Null, "boş başlık başlık değildir");
+        fuel.GetProperty("birim").GetString().Should().Be("LT");
+
+        var rates = json.RootElement.GetProperty("vergiOranlari").EnumerateArray().ToList();
+        rates.Select(r => r.GetProperty("isaretci").GetInt32()).Should().Equal(1, 2, 4);
+        rates[2].GetProperty("oran").GetDecimal().Should().Be(20m);
+        rates[2].GetProperty("isim").GetString().Should().Be("K.D.V. (%) 20");
+    }
+
     [Theory]
     [InlineData("/api/v1/android/sync/bankalar", "BANK-001")]
     [InlineData("/api/v1/android/sync/kasalar", "CASH-001")]
