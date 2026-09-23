@@ -371,7 +371,11 @@ registration ayrı bir composition projesine taşınır.
      Giderler bilinçli olarak **telefonlara yayılmaz**: Gün Sonu "kasaya ne kadar
      teslim edeceğim?" sorusunu cihazdaki kasa kayıtlarından hesaplar, başkasının
      gideri gelirse tutar yanlış çıkar. Yöneticinin herkesin giderini görme yeri
-     yönetici panelidir (Sipariş Cepte yol haritası Faz D).
+     yönetici panelidir (Sipariş Cepte yol haritası Faz D). ERP'de işlenmiş gider fişleri
+     (`cha_evrak_tip=37`) ise cari hareketleriyle telefona zaten iner; Sipariş Cepte onları
+     yalnızca ADMIN/MANAGER'a, gider ekranında **salt okunur** gösterir, kasa defterine yazmaz
+     (Sipariş Cepte KB 00 kural 31). Kart adı için `customerTransactions` satırı
+     `cha_kasa_hizmet`/`cha_kasa_hizkod` taşır (2026-09-23).
    - **Sayım (Faz 37, 2026-09-14).** `stock_count` (yalnızca `status =
      COMPLETED`) her satırda stoğu **fark kadar** oynatır:
      `countedQuantity - expectedQuantity`. Sayılan sayıya eşitlemez: sayım
