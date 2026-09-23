@@ -50,4 +50,6 @@ public sealed record StockTransactionPayload(
     [property: JsonPropertyName("cikisDepoNo")] int? OutWarehouseNo,
     [property: JsonPropertyName("aciklama")] string? Description,
     [property: JsonPropertyName("updatedAt")] DateTime UpdatedAt,
-    [property: JsonPropertyName("faturaRecno")] int? InvoiceRecNo);
+    [property: JsonPropertyName("faturaRecno")] int? InvoiceRecNo,
+    [property: JsonPropertyName("discountAmount")] decimal? DiscountAmount = null,
+    [property: JsonPropertyName("vergi")] decimal? VatAmount = null);

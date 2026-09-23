@@ -419,7 +419,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
                 { "erpRef": "CH-999", "erp": "MIKRO", "cariKod": "C999", "cha_recno": 999, "evrakNo": "FAT-999", "tutar": 999 }
               ],
               "stockTransactions": [
-                { "erpRef": "SH-1", "stokKod": "S001", "faturaRecno": 101, "miktar": 1, "birimFiyat": 100 },
+                { "erpRef": "SH-1", "stokKod": "S001", "faturaRecno": 101, "miktar": 1, "birimFiyat": 100, "tutar": 100, "vergi": 18, "discountAmount": 10 },
                 { "erpRef": "SH-2", "stokKod": "S002", "faturaRecno": 102, "miktar": 2, "birimFiyat": 100 },
                 { "erpRef": "SH-999", "stokKod": "S999", "faturaRecno": 999, "miktar": 9, "birimFiyat": 111 },
                 { "erpRef": "SH-STRAY", "stokKod": "S999", "faturaRecno": 777, "miktar": 7, "birimFiyat": 77 }
@@ -449,8 +449,11 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         firstLines[0].GetProperty("erpRef").GetString().Should().Be("SH-1");
         firstLines[0].GetProperty("stokAd").GetString().Should().Be("Correct product one");
         firstLines[0].GetProperty("sth_fat_recid_recno").GetInt32().Should().Be(101);
+        firstLines[0].GetProperty("discountAmount").GetDecimal().Should().Be(10);
+        firstLines[0].GetProperty("vergi").GetDecimal().Should().Be(18);
         secondLines.Should().ContainSingle();
         secondLines[0].GetProperty("erpRef").GetString().Should().Be("SH-2");
+        secondLines[0].GetProperty("discountAmount").ValueKind.Should().Be(JsonValueKind.Null);
         (await response.Content.ReadAsStringAsync()).Should().NotContain("SH-999").And.NotContain("SH-STRAY");
     }
 
