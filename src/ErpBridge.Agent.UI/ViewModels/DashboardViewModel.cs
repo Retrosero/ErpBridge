@@ -72,6 +72,8 @@ public sealed class DashboardViewModel : ObservableObject
     private string _mikroOpenOrdersCountDisplay = "—";
     private string _mikroCashAndBankCountDisplay = "—";
     private string _mikroLookupsCountDisplay = "—";
+    private string _mikroExpenseCardsCountDisplay = "—";
+    private string _mikroVatRatesCountDisplay = "—";
     private string _mikroPricesCountDisplay = "—";
     private string _mikroInventoryCountDisplay = "—";
     private string _mikroCustomerAddressesCountDisplay = "—";
@@ -265,6 +267,8 @@ public sealed class DashboardViewModel : ObservableObject
             MikroOpenOrdersCountDisplay = openOrders.ToString("N0", CultureInfo.CurrentCulture);
             MikroCashAndBankCountDisplay = cashBank.ToString("N0", CultureInfo.CurrentCulture);
             MikroLookupsCountDisplay = lookups.ToString("N0", CultureInfo.CurrentCulture);
+            MikroExpenseCardsCountDisplay = counts.ExpenseCards.ToString("N0", CultureInfo.CurrentCulture);
+            MikroVatRatesCountDisplay = counts.VatRates.ToString("N0", CultureInfo.CurrentCulture);
             MikroPricesCountDisplay = prices.ToString("N0", CultureInfo.CurrentCulture);
             MikroInventoryCountDisplay = inventory.ToString("N0", CultureInfo.CurrentCulture);
             MikroCustomerAddressesCountDisplay = addresses.ToString("N0", CultureInfo.CurrentCulture);
@@ -275,7 +279,7 @@ public sealed class DashboardViewModel : ObservableObject
             MikroStockTransactionsCountDisplay = stockTransactions.ToString("N0", CultureInfo.CurrentCulture);
             MikroCountTimeDisplay = DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
             var total = customers + addresses + contacts + stocks + barcodes + openOrders
-                + cashBank + lookups + prices + salesConditions + inventory
+                + cashBank + lookups + counts.ExpenseCards + counts.VatRates + prices + salesConditions + inventory
                 + customerTransactions + stockTransactions;
             MikroCountSummaryDisplay = total == 0
                 ? "⚠ MikroDB boş — push'lar 0 satır gönderecek."
@@ -457,6 +461,20 @@ public sealed class DashboardViewModel : ObservableObject
     {
         get => _mikroCashAndBankCountDisplay;
         private set => SetProperty(ref _mikroCashAndBankCountDisplay, value);
+    }
+
+    /// <summary>Gider kartları (MASRAF_HESAPLARI); lookups bölümüyle gider.</summary>
+    public string MikroExpenseCardsCountDisplay
+    {
+        get => _mikroExpenseCardsCountDisplay;
+        private set => SetProperty(ref _mikroExpenseCardsCountDisplay, value);
+    }
+
+    /// <summary>Mikro KDV tanımları (fn_VergiYuzde); lookups bölümüyle gider.</summary>
+    public string MikroVatRatesCountDisplay
+    {
+        get => _mikroVatRatesCountDisplay;
+        private set => SetProperty(ref _mikroVatRatesCountDisplay, value);
     }
 
     public string MikroLookupsCountDisplay

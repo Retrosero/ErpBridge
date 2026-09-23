@@ -111,7 +111,11 @@ SELECT
     (SELECT COUNT_BIG(1) FROM SATIS_SARTLARI WHERE ISNULL(sat_iptal, 0) = 0) AS SalesConditions,
     (SELECT COUNT_BIG(1) FROM dbo.STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL) AS Inventory,
     (SELECT COUNT_BIG(1) FROM CARI_HESAP_HAREKETLERI WHERE ISNULL(cha_iptal, 0) = 0) AS CustomerTransactions,
-    (SELECT COUNT_BIG(1) FROM STOK_HAREKETLERI WHERE ISNULL(sth_iptal, 0) = 0) AS StockTransactions;";
+    (SELECT COUNT_BIG(1) FROM STOK_HAREKETLERI WHERE ISNULL(sth_iptal, 0) = 0) AS StockTransactions,
+    -- Gider ERP uyumu: lookups içinde giden gider kartları ve KDV tanımları, panelde ayrı satır.
+    (SELECT COUNT_BIG(1) FROM MASRAF_HESAPLARI WHERE ISNULL(his_iptal, 0) = 0 AND ISNULL(his_hidden, 0) = 0) AS ExpenseCards,
+    (SELECT COUNT_BIG(1) FROM (VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)) AS v(p)
+      WHERE v.p = 1 OR dbo.fn_VergiYuzde(v.p) > 0) AS VatRates;";
 
         var counts = await QuerySingleAsync<BootstrapRecordCounts>(
             sql,

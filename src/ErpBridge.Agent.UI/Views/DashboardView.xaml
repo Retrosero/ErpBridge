@@ -171,6 +171,8 @@
                             <RowDefinition Height="34" />
                             <RowDefinition Height="34" />
                             <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
+                            <RowDefinition Height="34" />
                         </Grid.RowDefinitions>
 
                         <!-- 1 · Cariler -->
@@ -301,6 +303,26 @@
                         <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding MikroLookupsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
                         <TextBlock Grid.Row="12" Grid.Column="2" Text="—" Style="{StaticResource TableNumberCellStyle}" Foreground="{DynamicResource MutedTextBrush}" />
                         <Button Grid.Row="12" Grid.Column="3" Content="Gönder" Command="{Binding PushLookupsCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="12" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 14 · Gider kartları (lookups bölümüyle gider) -->
+                        <StackPanel Grid.Row="13" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Gider kartları" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="MASRAF_HESAPLARI" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="13" Grid.Column="1" Text="{Binding MikroExpenseCardsCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="13" Grid.Column="2" Text="—" Style="{StaticResource TableNumberCellStyle}" Foreground="{DynamicResource MutedTextBrush}" />
+                        <Button Grid.Row="13" Grid.Column="3" Content="Gönder" Command="{Binding PushLookupsCommand}" Style="{StaticResource RowActionButtonStyle}" HorizontalAlignment="Right" />
+                        <Border Grid.Row="13" Grid.ColumnSpan="5" Style="{StaticResource TableRowDividerStyle}" />
+
+                        <!-- 15 · KDV tanımları (lookups bölümüyle gider) -->
+                        <StackPanel Grid.Row="14" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="KDV tanımları" Style="{StaticResource TableLabelCellStyle}" />
+                            <TextBlock Text="fn_VergiYuzde (gider KDV'si)" Style="{StaticResource TableSubLabelCellStyle}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="14" Grid.Column="1" Text="{Binding MikroVatRatesCountDisplay}" Style="{StaticResource TableNumberCellStyle}" />
+                        <TextBlock Grid.Row="14" Grid.Column="2" Text="—" Style="{StaticResource TableNumberCellStyle}" Foreground="{DynamicResource MutedTextBrush}" />
+                        <TextBlock Grid.Row="14" Grid.Column="3" Text="Gider kartlarıyla" Style="{StaticResource TableSubLabelCellStyle}" HorizontalAlignment="Right" />
                     </Grid>
                 </ScrollViewer>
 
