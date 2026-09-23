@@ -78,6 +78,30 @@ public class MikroCustomerLedgerReaderLiveTests
     }
 
     [Fact]
+    public async Task Kasa_masraf_fisleri_carry_their_expense_card()
+    {
+        if (!GateOpen)
+        {
+            return;
+        }
+
+        await using var conn = await OpenAsync();
+        var row = (await conn.QueryAsync<(int RecNo, int Service, string Card)>(
+            "SELECT TOP 1 cha_RECno, CAST(cha_kasa_hizmet AS INT), cha_kasa_hizkod FROM CARI_HESAP_HAREKETLERI WHERE cha_evrak_tip = 37 AND cha_kasa_hizkod <> '' ORDER BY cha_RECno DESC"))
+            .FirstOrDefault();
+        if (row.RecNo == 0)
+        {
+            return; // no expense in this database
+        }
+
+        var rows = await CreateReader().ReadCustomerTransactionsAsync(firmNo: 0);
+        var read = rows.Single(r => r.RecNo == row.RecNo);
+        read.DocumentType.Should().Be(37);
+        read.CashServiceKind.Should().Be(row.Service);
+        read.CashServiceCode.Should().Be(row.Card.Trim());
+    }
+
+    [Fact]
     public async Task Card_balance_counts_only_cari_side_movements()
     {
         if (!GateOpen)
