@@ -1,0 +1,102 @@
+@page "/erp-gider-kartlari"
+@inherits PortalPageBase
+
+<PageTitle>Gider Kartları — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else if (!IsErpCompany)
+{
+    <PageHeader Title="Gider Kartları" Eyebrow="ERP" Subtitle="Telefonda gider girerken seçilen ERP kartları" Busy="false" />
+    <EmptyState Id="erp-not-connected" Icon="@Icons.Material.Rounded.CloudOff" Title="Bu firmanın ERP bağlantısı yok"
+                Hint="Gider kategorileri sunucuda sabit listeden gelir; ERP kartı senkronu gerekmiyor." />
+}
+else
+{
+    <PageHeader Title="Gider Kartları" Eyebrow="ERP" Busy="Busy"
+                Subtitle="Mikro'daki MASRAF_HESAPLARI kartları — telefonda gider girerken bu listeden seçtiriliyor (salt okunur, ERP'den senkronlanır)">
+        <Actions>
+            <form class="toolbar-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+                <MudTextField T="string" @bind-Value="_search" Placeholder="Kart kodu veya adı" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              InputId="expense-cards-search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Clearable="true" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy">Ara</MudButton>
+            </form>
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    <MudPaper Outlined="true" Class="panel panel--table mt-3">
+        @if (_filtered.Count == 0)
+        {
+            <EmptyState Id="expense-cards-empty" Icon="@Icons.Material.Rounded.Receipt"
+                        Title="@(string.IsNullOrEmpty(_searched) ? "Henüz senkronlanmış gider kartı yok." : "Aramayla eşleşen kart yok.")"
+                        Hint="@(string.IsNullOrEmpty(_searched) ? "Ajan bir sonraki senkronda MASRAF_HESAPLARI'nı gönderdiğinde burada görünür." : null)" />
+        }
+        else
+        {
+            <div class="table-scroll">
+                <table class="data-table data-table--plain" id="expense-cards-table">
+                    <thead>
+                        <tr>
+                            <th>Kod</th>
+                            <th>Ad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var card in _filtered)
+                        {
+                            <tr data-expense-card="@card.Code">
+                                <td class="mono">@card.Code</td>
+                                <td class="cell-title">@card.Name</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </MudPaper>
+    <MudText Typo="Typo.caption" Class="text-muted page-footnote">
+        @_all.Count kart · liste ERP aktarım ayarlarındaki "Varsayılan hesaplar" senkronuyla aynı kaynaktan gelir.
+    </MudText>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.ErpWrite;
+
+    private bool IsErpCompany => string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase);
+
+    private string? _search;
+    private string? _searched;
+    private List<ErpLookupItem> _all = [];
+    private List<ErpLookupItem> _filtered = [];
+
+    protected override async Task LoadAsync()
+    {
+        if (!IsErpCompany) return;
+        var lookups = await Api.ErpLookupsAsync();
+        _all = lookups.ExpenseCards;
+        Filter();
+    }
+
+    private Task SearchAsync()
+    {
+        _searched = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
+        Filter();
+        return Task.CompletedTask;
+    }
+
+    private void Filter()
+    {
+        _filtered = string.IsNullOrEmpty(_searched)
+            ? _all
+            : _all.Where(c =>
+                c.Code.Contains(_searched, StringComparison.OrdinalIgnoreCase) ||
+                c.Name.Contains(_searched, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+}

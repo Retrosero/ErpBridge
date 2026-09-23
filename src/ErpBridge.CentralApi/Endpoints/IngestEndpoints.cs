@@ -429,13 +429,13 @@ public static class IngestEndpoints
             return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
             {
                 ErrorCode = "CARDS_REQUIRE_NATIVE_TENANT",
-                Message = "Product and customer cards can only be created from the phone for a company without an ERP.",
+                Message = "Stok ve cari kartları yalnız ERP'si olmayan firmada telefondan oluşturulabilir.",
             });
         if (ErpBridge.CentralApi.Native.NativeDocumentProcessor.RequiresNativeTenant(documentType, payloadJson))
             return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
             {
                 ErrorCode = "DOCUMENT_REQUIRES_NATIVE_TENANT",
-                Message = "This document is booked by the central API for a company without an ERP only; an ERP agent has no writer for it.",
+                Message = "Bu belge yalnız ERP'si olmayan firmada merkezi API tarafından kaydedilir; ERP ajanının bunun için bir yazıcısı yok.",
             });
 
         db.Jobs.Add(job);

@@ -19,10 +19,11 @@ public class MikroExpenseWriterLiveTests
     private const string TestSeries = "ERPBT9";
 
     [Theory]
-    [InlineData(ExpensePaymentMethod.Cash)]
-    [InlineData(ExpensePaymentMethod.Transfer)]
-    [InlineData(ExpensePaymentMethod.CreditCard)]
-    public async Task An_expense_credits_the_paying_account_and_names_the_expense_card(ExpensePaymentMethod method)
+    [InlineData(ExpensePaymentMethod.Cash, 225.14)]
+    [InlineData(ExpensePaymentMethod.Transfer, 225.14)]
+    [InlineData(ExpensePaymentMethod.CreditCard, 225.14)]
+    [InlineData(ExpensePaymentMethod.Cash, 0)]
+    public async Task An_expense_credits_the_paying_account_and_names_the_expense_card(ExpensePaymentMethod method, decimal vat)
     {
         if (!MikroWriteTestDatabase.CanWrite) return;
 
@@ -40,8 +41,8 @@ public class MikroExpenseWriterLiveTests
             1250.75m,
             card,
             account,
-            VatAmount: 225.14m,
-            VatPointer: 4);
+            VatAmount: vat,
+            VatPointer: vat > 0 ? (byte)4 : (byte)0);
 
         await using var session = await MikroWriteSession.BeginAsync(conn, new MikroDocumentLedger(), 0, 0, 1);
 
@@ -64,7 +65,7 @@ public class MikroExpenseWriterLiveTests
         row["cha_kod"].Should().Be(account, "ödeyen hesap cha_kod'dadır");
         row["cha_kasa_hizmet"].Should().Be((byte)5);
         row["cha_kasa_hizkod"].Should().Be(card, "gider kartı kasa_hizkod'dadır");
-        row["cha_vergi1"].Should().Be(225.14m);
+        row["cha_vergi1"].Should().Be(vat);
         row["cha_RECno"].Should().Be(written.HeaderRecNo);
         // Referans §1: Mikro arkasında NULL bırakmaz, writer da bırakmamalı.
         row.Where(c => c.Value is null).Should().BeEmpty();

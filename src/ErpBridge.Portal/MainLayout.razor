@@ -96,6 +96,7 @@
                         @if (Session.Allows(PortalArea.ErpWrite) && string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase))
                         {
                             <MudNavLink Href="erp-aktarim" Icon="@Icons.Material.Rounded.SyncAlt" id="nav-erp-write">ERP aktarım ayarları</MudNavLink>
+                            <MudNavLink Href="erp-gider-kartlari" Icon="@Icons.Material.Rounded.Receipt" id="nav-erp-expense-cards">Gider kartları</MudNavLink>
                         }
                     </MudNavMenu>
                 }

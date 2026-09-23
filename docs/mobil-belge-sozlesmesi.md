@@ -1,11 +1,16 @@
-# Sipariş Cepte → ERP Belge Sözleşmesi (v2)
+# Sipariş Cepte → ERP Belge Sözleşmesi (v3)
 
-Tarih: 2026-09-17 · Goal: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) (Y2b çevirici, Y4a–c telefon)
+Tarih: 2026-09-22 · Goal: [GOAL_ERP_YAZIM.md](GOAL_ERP_YAZIM.md) (Y2b çevirici, Y4a–c telefon),
+[GOAL_ERP_YAZIM_3.md](GOAL_ERP_YAZIM_3.md) (Y1a — `expense`, `stock_count`, `purchase_receipt`)
 
-Telefonun `POST …/jobs` ile gönderdiği **`sales_order`**, **`sales_return`** ve **`collection`** belgelerinin gövdesi.
+Telefonun `POST …/jobs` ile gönderdiği **`sales_order`**, **`sales_return`**, **`collection`**, **`disbursement`**,
+**`expense`**, **`stock_count`** ve **`purchase_receipt`** belgelerinin gövdesi.
 ERP'li firmada ajan bu gövdeyi `MobileDocumentTranslator` (Core) ile ERP'den bağımsız komuta çevirir; Mikro'ya nasıl
-yazılacağı [mikro-yazim-referansi.md](mikro-yazim-referansi.md)'de. ERP'siz firmada `NativeDocumentProcessor` aynı
-gövdeyi okur (yeni alanları yok sayar).
+yazılacağı [mikro-yazim-referansi.md](mikro-yazim-referansi.md)'de (§10 alış, §13 gider, §14 sayım). ERP'siz firmada
+`NativeDocumentProcessor` aynı gövdeyi okur (yeni alanları yok sayar). `stock_count` ve `purchase_receipt`
+ERP'siz firmada da kendi defterine kaydedilir (`BookStockCountAsync`/`BookPurchaseReceiptAsync`); `expense` ise
+ERP'siz firmada hiç üretilmez — telefon `expenseCardCode` olmadan `expense` türü göndermez, ERP'siz firmada gider
+her zaman `disbursement` (kasa defteri "Gider: …") olarak kalır.
 
 ## Genel kurallar
 
@@ -135,6 +140,88 @@ Saha personelinin tediyesi de, bir **alışın nakit ödemesi** de bu belgeyi ü
 
 Mikro karşılığı: tediye makbuzu (`cha_evrak_tip=64`), **borç** satırı, nakit `cinsi 0` + kasa, havale
 `cinsi 20` (FirmaHavaleEmri) + banka — referans §11. Seri şimdilik tahsilat serisidir (Z1c'de ayrı ayar).
+
+## `expense` — gider *(ERP yazım 3, Y1a/Y3b/Y4a-b)*
+
+Telefonun gider ekranından çıkar. `disbursement`'tan farkı `expenseCardCode`: bu alan doluysa belge `expense`
+türüyle kuyruğa girer (kasa defterinde yine "Tediye" görünür, yalnız merkeze giden tür değişir). Kart, karşı
+taraf değildir — gider caride hiç iz bırakmaz.
+
+```json
+{
+  "mobileDocumentId": "KL-42", "revision": 1, "occurredAt": "22.09.2026 09:30",
+  "amount": 1250.75, "expenseCardCode": "YAKIT",
+  "paymentType": "Nakit", "cashCode": null, "bankCode": null, "bankName": null,
+  "vatAmount": 225.14, "vatPointer": 4,
+  "description": "Saha aracı yakıt"
+}
+```
+
+| Alan | Zorunlu | Anlam |
+|---|---|---|
+| `expenseCardCode` | evet | `MASRAF_HESAPLARI.his_kod` — telefona ERP'den senkronlanan gider kartı kataloğundan (K2). Eksikse/tanınmıyorsa `MOBILE_APP_UPDATE_REQUIRED` (eski telefon kendi kategori adını gönderiyorsa da aynı) |
+| `amount` | evet, > 0 | Kasadan çıkan toplam rakam — KDV içindedir, üstüne eklenmez (K4) |
+| `paymentType` (ya da `method`) | hayır (`Nakit`) | `Nakit`/boş → kasa; `Havale`/`EFT`/`Banka` → havale bankası; `Kredi Kartı`/`Banka Kartı` → kredi kartı bankası. Kredi kartı Mikro'da bir banka hesabıdır (K3, referans §13) |
+| `cashCode` / `bankCode` | hayır | Yoksa ERP aktarım ayarlarındaki kasa/banka (nakit → Kasa (nakit), kredi kartı → Banka (kredi kartı), havale → Banka (havale/EFT)) |
+| `bankName` | — | Tek başına yetmez; havale/kredi kartında banka seçildiyse `bankCode` de gelmeli, yoksa `MOBILE_APP_UPDATE_REQUIRED` (tediyedeki kuralla aynı) |
+| `vatAmount` | hayır (0) | KDV telefondan gelir, ERP hesaplamaz (K4); `amount`'tan büyük olamaz |
+| `vatPointer` | hayır (0) | Mikro'daki KDV tanım pointer'ı; `cha_vergi1`'e yazılır |
+| `customerCode` | — | Gönderilmez/kullanılmaz — giderde cari yoktur |
+
+Mikro karşılığı: kasa masraf fişi (`cha_evrak_tip=37`), tek `CARI_HESAP_HAREKETLERI` satırı, seri**siz** dizide
+(§13). Gider kartı `cha_kasa_hizmet=5`/`cha_kasa_hizkod`'a, ödeyen hesap `cha_cari_cins`/`cha_kod`'a yazılır —
+tediyenin tam tersi. Açıklama satırı (`EVRAK_ACIKLAMALARI`) yoktur, not `cha_aciklama`'da kalır.
+
+## `stock_count` — sayım *(ERP yazım 3, Y1a/Y3c/Y4c)*
+
+```json
+{
+  "mobileDocumentId": "SY-7", "occurredAt": "22.09.2026 08:00",
+  "warehouseNo": 1,
+  "lines": [
+    { "stockCode": "B575", "barcode": "869…", "countedQuantity": 24 },
+    { "stockCode": "XH1300", "barcode": null, "countedQuantity": 0 }
+  ]
+}
+```
+
+| Alan | Zorunlu | Anlam |
+|---|---|---|
+| `warehouseNo` | hayır | Yoksa firma ayarındaki depo |
+| `lines[].stockCode` | evet | ERP stok kodu — barkoddan tahmin edilmez (K10); yalnız barkod gelen eski gövde `MOBILE_APP_UPDATE_REQUIRED` alır |
+| `lines[].countedQuantity` | evet, ≥ 0 | Sayılan miktar; negatif `NEGATIVE_COUNTED_QUANTITY` |
+| `amount` | — | Yok/sıfır sayılır — sayım para hareketi değildir |
+
+Mikro karşılığı: `SAYIM_SONUCLARI`, depo bazlı fiş no MAX+1 (§14). Fiş yazılınca stok **kendiliğinden değişmez**;
+farkın stoğa işlenmesi Mikro'nun kendi "sayım sonuçlarını uygula" adımıdır (K9) — Portal'da "ERP'de
+kesinleştirilmeyi bekliyor" rozetiyle işaretlenir.
+
+## `purchase_receipt` — alış faturası *(ERP yazım 3, Y1a/Y3a/Y4d)*
+
+```json
+{
+  "mobileDocumentId": "AL-15", "occurredAt": "22.09.2026 10:00",
+  "supplierCode": "320.010", "warehouseNo": null,
+  "invoiceNo": "ÇINAR-000482",
+  "settlementMethod": "Nakit", "cashCode": null,
+  "lines": [
+    { "productCode": "B575", "quantity": 50, "unitPrice": 210.00, "unitPointer": 1 }
+  ]
+}
+```
+
+| Alan | Zorunlu | Anlam |
+|---|---|---|
+| `supplierCode` | evet | Cari kodu (`customerCode` değil — alışta tedarikçi alanı ayrı) |
+| `warehouseNo` | hayır | Yoksa ERP aktarım ayarındaki **alış deposu**, o da yoksa genel depo |
+| `lines[].productCode`/`stockCode`, `quantity`, `unitPrice` | evet | Telefon KDV göstermez: `qty × unitPrice` toplamı, KDV stok kartının `vergi_pntr`'ından hesaplanır (K6); fiyatın KDV'li olup olmadığı ERP aktarım ayarındaki "Tedarikçi fiyatı" seçimiyle belirlenir |
+| `settlementMethod` (ya da `paymentType`) | hayır (`Cari Borç`) | `Cari Borç`/boş → açık fatura; `Nakit` → kasadan kapalı; `Havale`/`EFT`/`Banka` → bankadan kapalı |
+| `cashCode` / `bankCode` | hayır | Yoksa firma ayarındaki kasa/havale bankası |
+| `invoiceNo` | hayır | Bilgi amaçlı; evrak numarası ERP'de tedarikçinin kendi serisinden MAX+1 devam eder (§15, K7) — telefondan seri gelmez |
+
+Peşin alış **tek kapalı evraktır** (K13): ayrı bir tediye yazılmaz, ödeme aynı `CARI_HESAP_HAREKETLERI` satırını
+kapatır. Eski telefon sürümü (ödeme bilgisiz gövde) fatura**yı açık** yazar; ödemesi ayrı bir `disbursement` olarak
+zaten gelmiş olabilir.
 
 ## Yazım sonucu — `GET /api/v1/ingest/jobs/status` (Y4d)
 

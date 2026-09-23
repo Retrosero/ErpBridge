@@ -15,7 +15,7 @@ else if (!IsErpCompany)
 }
 else
 {
-    <PageHeader Title="ERP Aktarım Ayarları" Eyebrow="Yönetim" Subtitle="Telefondan gelen satış, iade ve tahsilatın ERP'ye hangi belge, seri ve hesaplarla yazılacağı" Busy="Busy" />
+    <PageHeader Title="ERP Aktarım Ayarları" Eyebrow="Yönetim" Subtitle="Telefondan gelen satış, iade, tahsilat, alış ve giderin ERP'ye hangi belge, seri ve hesaplarla yazılacağı" Busy="Busy" />
 
     @if (Notice is not null)
     {
@@ -76,7 +76,7 @@ else
                         <div class="panel-head">
                             <div>
                                 <MudText Typo="Typo.h6">Varsayılan hesaplar</MudText>
-                                <MudText Typo="Typo.body2" Class="text-muted">Kodlar ERP'deki kodlardır; ajan belgeyi yazarken ERP'de var olduklarını kontrol eder.</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">Kodlar ERP'deki kodlardır; ajan belgeyi yazarken ERP'de var olduklarını kontrol eder. Kasa ve banka kodları giderin ödendiği hesabı seçmezse de kullanılır (telefon kasa/banka göndermezse buraya düşülür).</MudText>
                             </div>
                         </div>
                         <div class="filter-grid">

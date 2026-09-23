@@ -63,6 +63,9 @@ public sealed class ErpLookupsResponse
     [JsonPropertyName("salespersons")] public List<ErpLookupItem> Salespersons { get; set; } = [];
     [JsonPropertyName("priceLists")] public List<ErpLookupItem> PriceLists { get; set; } = [];
     [JsonPropertyName("projects")] public List<ErpLookupItem> Projects { get; set; } = [];
+
+    /// <summary>Gider kartları (<c>MASRAF_HESAPLARI</c>) — ERP yazım 3 Y2b/Y2c.</summary>
+    [JsonPropertyName("expenseCards")] public List<ErpLookupItem> ExpenseCards { get; set; } = [];
 }
 
 /// <summary>GET api/v1/portal/erp-documents (goal ERP yazım Y5a).</summary>
