@@ -26,6 +26,20 @@ public class CustomerTransactionPayloadJsonTests
     }
 
     [Fact]
+    public void An_invoice_line_serializes_its_discount_and_vat_under_the_phone_names()
+    {
+        var line = new StockTransactionPayload(
+            "1", "1", "MIKRO", "S001", "S001", new DateTime(2026, 9, 20), 1, 0, 4, "A-1",
+            0m, 2m, -2m, 50m, 100m, "C1", null, 1, null, new DateTime(2026, 9, 20), 101,
+            DiscountAmount: 10m, VatAmount: 18m);
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(line));
+
+        json.RootElement.GetProperty("discountAmount").GetDecimal().Should().Be(10m);
+        json.RootElement.GetProperty("vergi").GetDecimal().Should().Be(18m);
+    }
+
+    [Fact]
     public void An_older_row_without_the_columns_still_round_trips()
     {
         const string old = """{"id":"1","erpRef":"1","erp":"MIKRO","cariKod":"C1","tarih":"2026-09-20T00:00:00","evrakTip":63,"evrakNo":"A-1","tip":0,"tutar":10,"borcMu":true,"aciklama":null,"updatedAt":"2026-09-20T00:00:00","cha_recno":1}""";

@@ -932,6 +932,7 @@ public static class AndroidEndpoints
                             birimFiyat = GetDecimal(line, "birimFiyat"),
                             tutar = GetDecimal(line, "tutar"),
                             vergi = GetDecimal(line, "vergi"),
+                            discountAmount = GetDecimal(line, "discountAmount"),
                             girisDepoNo = GetInt32(line, "girisDepoNo"),
                             cikisDepoNo = GetInt32(line, "cikisDepoNo"),
                             aciklama = GetString(line, "aciklama"),

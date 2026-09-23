@@ -645,6 +645,10 @@ SELECT CAST(sth_RECno AS NVARCHAR(50)) AS Id,
        CAST(CASE WHEN ISNULL(sth_tip, 0) = 0 THEN ISNULL(sth_miktar, 0) ELSE -ISNULL(sth_miktar, 0) END AS DECIMAL(18,6)) AS SignedQuantity,
        CAST(CASE WHEN ISNULL(sth_miktar, 0) = 0 THEN 0 ELSE ISNULL(sth_tutar, 0) / sth_miktar END AS DECIMAL(18,6)) AS UnitPrice,
        CAST(ISNULL(sth_tutar, 0) AS DECIMAL(18,6)) AS Amount,
+       CAST(ISNULL(sth_iskonto1, 0) + ISNULL(sth_iskonto2, 0)
+            + ISNULL(sth_iskonto3, 0) + ISNULL(sth_iskonto4, 0)
+            + ISNULL(sth_iskonto5, 0) + ISNULL(sth_iskonto6, 0) AS DECIMAL(18,6)) AS DiscountAmount,
+       CAST(ISNULL(sth_vergi, 0) AS DECIMAL(18,6)) AS VatAmount,
        CAST(sth_cari_kodu AS NVARCHAR(50)) AS CustomerCode,
        CAST(sth_giris_depo_no AS INT) AS InWarehouseNo,
        CAST(sth_cikis_depo_no AS INT) AS OutWarehouseNo,

@@ -1,3 +1,22 @@
+# Fatura iskonto ve KDV senkronu — teslimat
+
+## Değişiklik
+
+- Mikro stok hareketi okuyucusu `sth_iskonto1..6` toplamını ve `sth_vergi` tutarını isteğe bağlı alanlar olarak taşır.
+- Android `faturaHareket` yanıtı gerçek iskonto tutarını satırda döndürür; eski snapshotlarda alan `null` kalır.
+- Fatura API testi, tutarların doğru belgeye bağlanmasını ve eski verinin boş kalmasını doğrular.
+
+## Doğrulama
+
+- `ErpBridge.Erp.Mikro.csproj` derlemesi: başarılı.
+- `dotnet build ErpBridge.sln`: 0 uyarı, 0 hata.
+- Central API testleri: 654 başarılı, 0 başarısız.
+- Mikro testleri: 336 başarılı, 16 atlandı (canlı entegrasyon gerektirenler).
+- `dotnet test ErpBridge.sln`: 1811 başarılı, 16 atlandı, 0 başarısız.
+- Canlı Mikro V15/V16 doğrulaması, ilgili test ortamı sağlandığında yapılacak. Canlı dağıtım bu dalın kapsamında değil.
+
+---
+
 # Faz 50 — Depo performans paneli (Plan Adım 8) — Teslimat
 
 ## Değişen dosyalar
