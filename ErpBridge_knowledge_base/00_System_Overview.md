@@ -376,6 +376,10 @@ registration ayrı bir composition projesine taşınır.
      yalnızca ADMIN/MANAGER'a, gider ekranında **salt okunur** gösterir, kasa defterine yazmaz
      (Sipariş Cepte KB 00 kural 31). Kart adı için `customerTransactions` satırı
      `cha_kasa_hizmet`/`cha_kasa_hizkod` taşır (2026-09-23).
+   - **Fatura iskonto/KDV (2026-09-23, projeksiyon 6).** `stockTransactions` satırı Mikro'nun gerçek
+     `discountAmount` (sth_iskonto1..6 toplamı) ve `vergi` (sth_vergi) tutarlarını taşır; Android
+     `faturaHareket` bunları satırda döndürür. Eski paketlerde `null`dır ve telefon gizler — tutar
+     farkından tahmin yapılmaz (Sipariş Cepte KB kural 33).
    - **Sayım (Faz 37, 2026-09-14).** `stock_count` (yalnızca `status =
      COMPLETED`) her satırda stoğu **fark kadar** oynatır:
      `countedQuantity - expectedQuantity`. Sayılan sayıya eşitlemez: sayım

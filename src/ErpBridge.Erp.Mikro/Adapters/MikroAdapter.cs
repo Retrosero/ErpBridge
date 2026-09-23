@@ -63,8 +63,10 @@ public sealed class MikroAdapter : IErpAdapter
     /// 5 (2026-09-23): customer ledger rows carry <c>cha_kasa_hizmet</c>/<c>cha_kasa_hizkod</c>, so the phone
     /// can show past kasa masraf fişleri under their expense card; the change-set path would only reach the
     /// last day's rows, hence a one-time full read.
+    /// 6: stock movement rows carry <c>discountAmount</c> (sth_iskonto1..6) and <c>vergi</c> (sth_vergi), so
+    /// past invoices show their real discount and VAT on the phone.
     /// </summary>
-    public int SnapshotProjectionVersion => 5;
+    public int SnapshotProjectionVersion => 6;
 
     /// <summary>
     /// Mikro V15 change log backed only by the existing
