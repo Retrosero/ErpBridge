@@ -93,23 +93,35 @@ public class MikroExpenseWriterTests
             .Should().NotBe(MikroCodes.ChaCinsi.MusteriKrediKarti, "para firmanın kartından çıkıyor");
     }
 
-    /// <summary>KDV telefondan gelir (K4); ERP'de yeniden hesaplanmaz.</summary>
-    [Fact]
-    public void The_vat_the_phone_sent_is_what_is_written()
+    /// <summary>
+    /// KDV telefondan gelir (K4) ve Mikro'nun kendi düzeniyle yazılır: KDV işaretçinin kendi kolonuna
+    /// (%20 → <c>cha_vergi4</c>), net tutar <c>cha_aratoplam</c>'a, ödenen tutar <c>cha_meblag</c>'a.
+    /// Canlı faturalar ve Fora'nın <c>AddMasraf</c>'ı aynı düzende.
+    /// </summary>
+    [Theory]
+    [InlineData((byte)2, "cha_vergi2")]
+    [InlineData((byte)3, "cha_vergi3")]
+    [InlineData((byte)4, "cha_vergi4")]
+    public void The_vat_goes_in_its_pointers_own_column_and_the_net_in_the_subtotal(byte pointer, string column)
     {
-        var row = MikroExpenseWriter.LineRow(Command(vat: 360m, vatPointer: 4), number: 1);
+        var row = MikroExpenseWriter.LineRow(Command(vat: 360m, vatPointer: pointer), number: 1);
 
-        row["cha_vergi1"].Should().Be(360m);
-        row["cha_vergipntr"].Should().Be((byte)4);
+        row[column].Should().Be(360m);
+        row["cha_vergipntr"].Should().Be(pointer);
+        row["cha_meblag"].Should().Be(2000m, "kasadan çıkan tutar KDV dahildir");
+        row["cha_aratoplam"].Should().Be(1640m, "ara toplam KDV hariçtir");
+        Enumerable.Range(1, 10).Select(n => $"cha_vergi{n}").Where(c => c != column)
+            .Should().OnlyContain(c => (decimal)row[c]! == 0m, "KDV yalnız kendi işaretçisinin kolonundadır");
     }
 
     [Fact]
     public void An_expense_without_vat_writes_zero_rather_than_null()
     {
-        var row = MikroExpenseWriter.LineRow(Command(), number: 1);
+        var row = MikroExpenseWriter.LineRow(Command(vatPointer: 4), number: 1);
 
-        row["cha_vergi1"].Should().Be(0m);
-        row["cha_vergipntr"].Should().Be((byte)0);
+        Enumerable.Range(1, 10).Should().OnlyContain(n => (decimal)row[$"cha_vergi{n}"]! == 0m);
+        row["cha_vergipntr"].Should().Be((byte)0, "KDV yoksa işaretçi de yoktur");
+        row["cha_aratoplam"].Should().Be(2000m);
     }
 
     /// <summary>Tip 37'nin EVRAK_ACIKLAMALARI satırı yok (§13), bu yüzden not hareketin üstünde durur.</summary>

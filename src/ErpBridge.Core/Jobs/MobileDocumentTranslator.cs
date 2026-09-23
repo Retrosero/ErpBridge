@@ -378,7 +378,8 @@ public sealed class MobileDocumentTranslator
     /// (referans §13). So this body carries an <c>expenseCardCode</c> and no customer.
     ///
     /// <para>The VAT is the phone's (K4). The user typed what they paid and what of it was VAT; nothing here
-    /// recomputes it, because an expense has no stock card to take a rate from.</para>
+    /// recomputes it, because an expense has no stock card to take a rate from. The phone also names the
+    /// Mikro VAT pointer it picked, since the writer books the VAT into that pointer's own column.</para>
     /// </summary>
     private static MobileTranslation TranslateExpense(string externalId, JsonElement body, ErpWriteContext context)
     {
@@ -420,12 +421,17 @@ public sealed class MobileDocumentTranslator
         if (MalformedNumber(body, "vatAmount") || MalformedNumber(body, "vatPointer", integer: true))
             return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
         var vat = Decimal(body, "vatAmount") ?? 0m;
-        var vatPointer = Int(body, "vatPointer") ?? 0;
+        var vatPointer = Int(body, "vatPointer");
         if (vat < 0 || vat > header.ExpectedTotal) return MobileTranslation.Fail(ErpWriteError.InvalidAmount());
-        if (vatPointer is < 0 or > byte.MaxValue) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+        // Mikro books the VAT in its pointer's own column (cha_vergi4 = %20). A phone that sends a VAT amount
+        // without the pointer it picked from the ERP's VAT definitions predates that and must update: guessing
+        // the pointer from the ratio would book a mixed-rate receipt under a rate nobody chose.
+        if (vat > 0 && vatPointer is null) return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
+        // Mikro has ten VAT pointers (1..10); 0 means "no VAT".
+        if (vatPointer is < 0 or > 10) return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
 
         return new MobileTranslation(Expense: new ExpenseCommand(
-            header, method.Value, header.ExpectedTotal, card, account, vat, (byte)vatPointer));
+            header, method.Value, header.ExpectedTotal, card, account, vat, (byte)(vatPointer ?? 0)));
     }
 
     // ---- stock count --------------------------------------------------------------------------

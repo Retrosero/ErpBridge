@@ -113,6 +113,8 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public const string CashAccountNotFoundCode = "CASH_ACCOUNT_NOT_FOUND";
     /// <summary>Gider kartı (<c>MASRAF_HESAPLARI</c>) ERP'de yok — referans §13.</summary>
     public const string ExpenseCardNotFoundCode = "EXPENSE_CARD_NOT_FOUND";
+    /// <summary>Giderde KDV var ama işaretçisi Mikro'da oranı olan bir KDV tanımı değil.</summary>
+    public const string VatRateNotFoundCode = "VAT_RATE_NOT_FOUND";
     public const string BankAccountNotFoundCode = "BANK_ACCOUNT_NOT_FOUND";
     public const string SalespersonNotFoundCode = "SALESPERSON_NOT_FOUND";
     public const string PriceListNotFoundCode = "PRICE_LIST_NOT_FOUND";
@@ -145,6 +147,10 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 
     public static ErpWriteError ExpenseCardNotFound(string code) =>
         new(ExpenseCardNotFoundCode, $"Gider kartı ERP'de bulunamadı: {Shown(code)}.");
+
+    /// <param name="pointer">Mikro vergi işaretçisi (1..10).</param>
+    public static ErpWriteError VatRateNotFound(int pointer) =>
+        new(VatRateNotFoundCode, $"KDV oranı ERP'de tanımlı değil (vergi işaretçisi {pointer}). Telefonda KDV oranını yeniden seçin.");
 
     public static ErpWriteError SalespersonNotFound(string code) =>
         new(SalespersonNotFoundCode, $"Temsilci ERP'de bulunamadı: {Shown(code)}.");
