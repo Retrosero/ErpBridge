@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
@@ -34,10 +35,11 @@ public sealed record StockQuery(
 
 /// <summary>
 /// The company's products as the stock page reads them: cards, barcodes, prices, warehouse
-/// quantities and names, from the <see cref="PortalRecordMirror{T}"/> of the stock entities and
-/// of the movement lines. The catalogue is rebuilt only when one of the two mirrors applied a
-/// changed row; warehouse (fulfillment) events share the company's sequence counter but write
-/// no such rows, so they leave it alone.
+/// quantities and names, from the <see cref="PortalRecordMirror{T}"/> of the stock entities, with
+/// each product's latest movement day from <see cref="PortalLastMovements"/>. The stock side is
+/// rebuilt only when a stock row changed; a new movement line only moves one product's date
+/// (G5). Warehouse (fulfillment) events share the company's sequence counter but write no such
+/// rows, so they leave it alone.
 ///
 /// <para>ERP and native companies name the same things differently (Mikro's
 /// <c>mainGroupCode</c>/<c>brandCode</c>, the phone's <c>kategori</c>/<c>marka</c>); both are
@@ -65,32 +67,89 @@ public static class PortalStockCatalog
         public decimal TotalReserved => Warehouses.Values.Sum(w => w.Reserved);
     }
 
+    /// <summary>
+    /// One built catalogue. What every request would otherwise work out again — the default price list, the
+    /// facets and the default (name) order — is worked out once per catalogue, on first use (G5).
+    /// </summary>
     public sealed record Catalog(
         IReadOnlyList<Product> Products,
         IReadOnlyDictionary<int, string> WarehouseNames,
         IReadOnlyDictionary<int, string> PriceListNames,
         bool HasReserved)
     {
-        public int? DefaultPriceList =>
-            Products.SelectMany(p => p.Prices.Keys).Distinct().OrderBy(n => n == 1 ? 0 : 1).ThenBy(n => n).Cast<int?>().FirstOrDefault();
+        private readonly Lazy<int?> _defaultPriceList = new(() =>
+            Products.SelectMany(p => p.Prices.Keys).Distinct().OrderBy(n => n == 1 ? 0 : 1).ThenBy(n => n).Cast<int?>().FirstOrDefault());
+
+        private readonly Lazy<IReadOnlyList<Product>> _byName = new(() =>
+            [.. Products.OrderBy(p => p.Name, ByText).ThenBy(p => p.Code, ByText)]);
+
+        private Lazy<PortalStockFacetsResponse>? _facets;
+
+        public int? DefaultPriceList => _defaultPriceList.Value;
+
+        /// <summary>The products in the page's default order: name, then code.</summary>
+        internal IReadOnlyList<Product> ByName => _byName.Value;
+
+        internal PortalStockFacetsResponse Facets =>
+            LazyInitializer.EnsureInitialized(ref _facets, () => new Lazy<PortalStockFacetsResponse>(() => BuildFacets(this))).Value;
     }
 
-    private sealed record CachedCatalog(long StockVersion, long LineVersion, Catalog Catalog);
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> BuildGates = new();
 
+    private static readonly StringComparer ByText = StringComparer.Create(CultureInfo.GetCultureInfo("tr-TR"), CompareOptions.IgnoreCase);
+
+    /// <param name="Stock">The catalogue from the stock entities alone; line dates are laid over it.</param>
+    private sealed record CachedCatalog(long StockVersion, long DaysVersion, Catalog Stock, Catalog Catalog);
+
+    /// <summary>
+    /// The company's catalogue. One build at a time per company: the page asks for search and facets at once,
+    /// and a cold or changed catalogue must not be built twice side by side (G5).
+    /// </summary>
     public static async Task<Catalog> LoadAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
     {
+        // Not the memory cache: its GetOrCreate may run the factory twice for two cold requests, handing each its
+        // own gate (Codex, PR #183). One small gate per company for the life of the process.
+        var gate = BuildGates.GetOrAdd(tenantId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            return await BuildAsync(db, cache, tenantId, ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static async Task<Catalog> BuildAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
+    {
         var stockMirror = PortalRecordMirror<PortalRecords.StockPart>.For(cache, "stock", tenantId, PortalRecords.StockEntities, PortalRecords.ParseStock);
-        var lineMirror = PortalRecords.Lines(cache, tenantId);
+        var lastMovements = PortalLastMovements.For(cache, tenantId);
         var viewKey = ("portal-stock-catalog", tenantId);
         cache.TryGetValue(viewKey, out CachedCatalog? cached);
 
         var parts = await stockMirror.RefreshAsync(db, cached?.StockVersion, ct);
-        var lines = await lineMirror.RefreshAsync(db, cached?.LineVersion, ct);
-        if (cached is not null && parts is null && lines is null) return cached.Catalog;
-        // One side changed: the unchanged side's items are needed again to rebuild.
-        parts ??= await stockMirror.RefreshAsync(db, null, ct);
-        lines ??= await lineMirror.RefreshAsync(db, null, ct);
+        var (daysVersion, latest) = await lastMovements.RefreshAsync(db, cached?.DaysVersion, ct);
+        if (cached is not null && parts is null && latest is null) return cached.Catalog;
 
+        // A sale changes only line dates: the stock side is reused, not rebuilt.
+        var stock = parts is null && cached is not null ? cached.Stock : StockCatalog(parts ?? []);
+        latest ??= (await lastMovements.RefreshAsync(db, null, ct)).Latest!;
+        var products = new List<Product>(stock.Products.Count);
+        foreach (var product in stock.Products)
+        {
+            products.Add(latest.TryGetValue(product.Code, out var day) && (product.LastMovement is not { } known || day > known)
+                ? product with { LastMovement = day }
+                : product);
+        }
+
+        var catalog = new Catalog(products, stock.WarehouseNames, stock.PriceListNames, stock.HasReserved);
+        cache.Set(viewKey, new CachedCatalog(stockMirror.Version, daysVersion, stock, catalog), TimeSpan.FromMinutes(30));
+        return catalog;
+    }
+
+    private static Catalog StockCatalog(IReadOnlyList<PortalRecords.StockPart> parts)
+    {
         var warehouseNames = new Dictionary<int, string>();
         var priceListNames = new Dictionary<int, string>();
         var cards = new Dictionary<string, PortalRecords.CardPart>(StringComparer.OrdinalIgnoreCase);
@@ -100,12 +159,7 @@ public static class PortalStockCatalog
         var movements = new Dictionary<string, DateOnly>(StringComparer.OrdinalIgnoreCase);
         var hasReserved = false;
 
-        void Moved(string code, DateOnly? day)
-        {
-            if (day is { } d && (!movements.TryGetValue(code, out var latest) || d > latest)) movements[code] = d;
-        }
-
-        foreach (var part in parts!)
+        foreach (var part in parts)
         {
             switch (part)
             {
@@ -127,7 +181,8 @@ public static class PortalStockCatalog
                     if (!quantities.TryGetValue(inventory.Code, out var byWarehouse)) quantities[inventory.Code] = byWarehouse = [];
                     var current = byWarehouse.GetValueOrDefault(inventory.WarehouseNo);
                     byWarehouse[inventory.WarehouseNo] = (current.Quantity + inventory.Quantity, current.Reserved + inventory.Reserved);
-                    Moved(inventory.Code, inventory.LastMovement);
+                    if (inventory.LastMovement is { } day && (!movements.TryGetValue(inventory.Code, out var latest) || day > latest))
+                        movements[inventory.Code] = day;
                     break;
                 case PortalRecords.PricePart price:
                     if (!prices.TryGetValue(price.Code, out var byList)) prices[price.Code] = byList = [];
@@ -135,7 +190,6 @@ public static class PortalStockCatalog
                     break;
             }
         }
-        foreach (var line in lines!) Moved(line.StockCode, line.Day);
 
         var products = new List<Product>(cards.Count);
         foreach (var (code, card) in cards)
@@ -148,10 +202,7 @@ public static class PortalStockCatalog
                 movements.TryGetValue(code, out var last) ? last : null,
                 card.VatRate));
         }
-
-        var catalog = new Catalog(products, warehouseNames, priceListNames, hasReserved);
-        cache.Set(viewKey, new CachedCatalog(stockMirror.Version, lineMirror.Version, catalog), TimeSpan.FromMinutes(30));
-        return catalog;
+        return new Catalog(products, warehouseNames, priceListNames, hasReserved);
     }
 
     public static PortalStockSearchResponse Search(Catalog catalog, StockQuery query, DateOnly today)
@@ -160,7 +211,9 @@ public static class PortalStockCatalog
         decimal QuantityOf(Product p) => query.WarehouseNo is { } w ? p.Warehouses.GetValueOrDefault(w).Quantity : p.TotalQuantity;
         decimal? PriceOf(Product p) => priceList is { } l && p.Prices.TryGetValue(l, out var price) ? price : null;
 
-        IEnumerable<Product> matches = catalog.Products;
+        // The default order is kept with the catalogue; filtering keeps it, so that page skips the sort.
+        var presorted = query.Sort == "name" && !query.Descending;
+        IEnumerable<Product> matches = presorted ? catalog.ByName : catalog.Products;
         if (query.Search?.Trim() is { Length: > 0 } search)
             matches = matches.Where(p => p.Code.Contains(search, StringComparison.CurrentCultureIgnoreCase)
                                          || p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
@@ -189,9 +242,8 @@ public static class PortalStockCatalog
         };
         var filtered = matches.ToList();
 
-        var culture = CultureInfo.GetCultureInfo("tr-TR");
-        var byText = StringComparer.Create(culture, CompareOptions.IgnoreCase);
-        IOrderedEnumerable<Product> ordered = query.Sort switch
+        var byText = ByText;
+        IEnumerable<Product> sorted = presorted ? filtered : (query.Sort switch
         {
             "code" => Order(filtered, p => p.Code, byText, query.Descending),
             "qty" => Order(filtered, QuantityOf, Comparer<decimal>.Default, query.Descending),
@@ -202,8 +254,8 @@ public static class PortalStockCatalog
             "shelf" => NullsLast(filtered, p => p.Shelf, byText, query.Descending),
             "lastMovement" => filtered.OrderBy(p => p.LastMovement is null ? 1 : 0).ThenBy(p => p.LastMovement ?? DateOnly.MinValue, Direction(Comparer<DateOnly>.Default, query.Descending)),
             _ => Order(filtered, p => p.Name, byText, query.Descending),
-        };
-        var page = ordered.ThenBy(p => p.Code, byText)
+        }).ThenBy(p => p.Code, byText);
+        var page = sorted
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
             .Select(p => ToItem(p, catalog, QuantityOf(p), query.WarehouseNo, PriceOf(p)))
@@ -227,7 +279,9 @@ public static class PortalStockCatalog
         };
     }
 
-    public static PortalStockFacetsResponse Facets(Catalog catalog)
+    public static PortalStockFacetsResponse Facets(Catalog catalog) => catalog.Facets;
+
+    private static PortalStockFacetsResponse BuildFacets(Catalog catalog)
     {
         static List<PortalFacetValue> Count(IEnumerable<string?> values) => values
             .Where(v => v is not null)
