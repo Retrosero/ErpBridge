@@ -65,8 +65,11 @@ public sealed class MikroAdapter : IErpAdapter
     /// last day's rows, hence a one-time full read.
     /// 6: stock movement rows carry <c>discountAmount</c> (sth_iskonto1..6) and <c>vergi</c> (sth_vergi), so
     /// past invoices show their real discount and VAT on the phone.
+    /// 7 (2026-09-24, GOAL_PANEL_DUZELTMELER G4): an incremental read re-sends a customer whose ledger moved, and
+    /// ledger rows carry <c>cariCins</c> (<c>cha_cari_cins</c>). Balances left stale by the old rule predate the
+    /// cursor's lookback, so only a one-time full read repairs them (Codex, PR #182).
     /// </summary>
-    public int SnapshotProjectionVersion => 6;
+    public int SnapshotProjectionVersion => 7;
 
     /// <summary>
     /// Mikro V15 change log backed only by the existing
