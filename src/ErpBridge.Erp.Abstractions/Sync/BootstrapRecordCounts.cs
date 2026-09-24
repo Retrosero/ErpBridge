@@ -17,4 +17,6 @@ public sealed record BootstrapRecordCounts(
     long SalesConditions,
     long Inventory,
     long CustomerTransactions,
-    long StockTransactions);
+    long StockTransactions,
+    long ExpenseCards = 0,
+    long VatRates = 0);

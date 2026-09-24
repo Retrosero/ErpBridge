@@ -3,6 +3,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Native;
 using ErpBridge.CentralApi.Portal;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,7 @@ public static class PortalEndpoints
         group.MapGet("/customers/card", CustomerCardAsync).WithName("PortalCustomerCard");
         group.MapGet("/customers/ledger", CustomerLedgerAsync).WithName("PortalCustomerLedger");
         group.MapGet("/customers/document", CustomerDocumentAsync).WithName("PortalCustomerDocument");
+        group.MapGet("/payments", PaymentsAsync).WithName("PortalPayments");
         return routes;
     }
 
@@ -128,11 +130,11 @@ public static class PortalEndpoints
         return JsonResults.Ok(new PortalVisitsResponse { Date = Format(day), Rows = await PortalReports.VisitsAsync(db, tenant!.Id, day, ct) });
     }
 
-    private static async Task<IResult> BalancesAsync(HttpContext http, [FromServices] CentralApiDbContext db, string? search, CancellationToken ct)
+    private static async Task<IResult> BalancesAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, string? search, CancellationToken ct)
     {
         var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
-        return JsonResults.Ok(await PortalReports.BalancesAsync(db, tenant!.Id, search, ct));
+        return JsonResults.Ok(await PortalReports.BalancesAsync(db, cache, tenant!, search, ct));
     }
 
     private static async Task<IResult> StockAsync(HttpContext http, [FromServices] CentralApiDbContext db, string? search, bool? outOfStock, CancellationToken ct)
@@ -189,7 +191,7 @@ public static class PortalEndpoints
         if (sort is not ("title" or "code" or "balance" or "absBalance")) return BadQuery("sort must be title, code, balance or absBalance.");
         if (dir is not (null or "asc" or "desc")) return BadQuery("dir must be asc or desc.");
 
-        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, ct);
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, tenant.DataSource, ct);
         return JsonResults.Ok(PortalLedger.Search(customers, q, balance, sort, dir == "desc",
             Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
     }
@@ -199,13 +201,17 @@ public static class PortalEndpoints
     {
         var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
-        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
-        return customer is null ? CustomerNotFound() : JsonResults.Ok(PortalLedger.Card(customer, tenant.DataSource));
+        var customer = await FindCustomerAsync(db, cache, tenant!, code, ct);
+        return customer is null ? CustomerNotFound() : JsonResults.Ok(PortalLedger.Card(customer, tenant!.DataSource));
     }
 
-    /// <summary>A customer's statement: <c>from</c>/<c>to</c> (yyyy-MM-dd, both optional), repeated <c>kind</c>, newest first.</summary>
+    /// <summary>
+    /// A customer's statement: <c>from</c>/<c>to</c> (yyyy-MM-dd, both optional), repeated <c>kind</c>,
+    /// newest first. <c>includeVoided</c> (GOAL_PANEL_ERPSIZ E4d) defaults to false, so a plain call
+    /// keeps today's contract: a voided original stays out of the list, only its reversal shows.
+    /// </summary>
     private static async Task<IResult> CustomerLedgerAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
-        string? code, string? from, string? to, string[]? kind, int? page, int? pageSize, CancellationToken ct)
+        string? code, string? from, string? to, string[]? kind, bool? includeVoided, int? page, int? pageSize, CancellationToken ct)
     {
         var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
@@ -226,11 +232,43 @@ public static class PortalEndpoints
         if (kinds.FirstOrDefault(k => !PortalLedger.Kinds.Contains(k, StringComparer.Ordinal)) is { } unknown)
             return BadQuery($"kind '{unknown}' is not one of: " + string.Join(", ", PortalLedger.Kinds) + ".");
 
-        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
+        var customer = await FindCustomerAsync(db, cache, tenant!, code, ct);
         if (customer is null) return CustomerNotFound();
-        var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
-        return JsonResults.Ok(PortalLedger.Statement(customer, movements, start, end, kinds,
-            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
+        var movements = await PortalLedger.MovementsAsync(db, cache, tenant!.Id, ct);
+        var statement = PortalLedger.Statement(customer, movements, start, end, kinds, includeVoided ?? false,
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize));
+        await AttachEditableAndVoidedByAsync(db, tenant.Id, statement.Items, ct);
+        return JsonResults.Ok(statement);
+    }
+
+    /// <summary>
+    /// Fills in the two fields <see cref="PortalLedger.Statement"/> cannot: <see cref="PortalLedgerRow.Editable"/>
+    /// (needs the row's own <c>Jobs.DocumentType</c> — the same check E4a/E4c's endpoints make before
+    /// booking a void/edit) and <see cref="PortalLedgerRow.VoidedBy"/> (a name for <see cref="PortalLedgerRow.VoidedByUserId"/>).
+    /// Scoped to the page shown, like E3c's own creator lookup.
+    /// </summary>
+    private static async Task AttachEditableAndVoidedByAsync(CentralApiDbContext db, Guid tenantId, List<PortalLedgerRow> items, CancellationToken ct)
+    {
+        if (items.Count == 0) return;
+        var externalIds = items.Select(i => PortalLedger.ExternalIdOf(i.Id)).Distinct(StringComparer.Ordinal).ToList();
+        var jobTypes = await db.Jobs.AsNoTracking()
+            .Where(j => j.TenantId == tenantId && externalIds.Contains(j.ExternalId))
+            .Select(j => new { j.ExternalId, j.DocumentType })
+            .ToListAsync(ct);
+        var typeByExternalId = jobTypes.GroupBy(j => j.ExternalId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().DocumentType, StringComparer.Ordinal);
+
+        var voidedByIds = items.Select(i => i.VoidedByUserId).OfType<Guid>().Distinct().ToList();
+        var names = voidedByIds.Count == 0 ? [] : await db.MobileUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId && voidedByIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.FullName) ? u.Username : u.FullName, ct);
+
+        foreach (var item in items)
+        {
+            var documentType = typeByExternalId.TryGetValue(PortalLedger.ExternalIdOf(item.Id), out var type) ? type : null;
+            item.Editable = !item.Voided && documentType is not null && NativeDocumentProcessor.VoidableLedgerJobTypes.Contains(documentType);
+            if (item.VoidedByUserId is { } userId && names.TryGetValue(userId, out var name)) item.VoidedBy = name;
+        }
     }
 
     private static async Task<IResult> CustomerDocumentAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
@@ -238,18 +276,70 @@ public static class PortalEndpoints
     {
         var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
-        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
+        var customer = await FindCustomerAsync(db, cache, tenant!, code, ct);
         if (customer is null) return CustomerNotFound();
-        var document = string.IsNullOrWhiteSpace(key) ? null : PortalLedger.Document(customer, await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct), key);
+        var document = string.IsNullOrWhiteSpace(key) ? null : PortalLedger.Document(customer, await PortalLedger.MovementsAsync(db, cache, tenant!.Id, ct), key);
         return document is null
             ? JsonResults.Status(404, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with lines under that key for this customer." })
             : JsonResults.Ok(document);
     }
 
-    private static async Task<PortalLedger.Customer?> FindCustomerAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, string? code, CancellationToken ct)
+    /// <summary>
+    /// Every collection/payment across the company (GOAL_PANEL_ERPSIZ E3c). <c>from</c> defaults to the
+    /// first of this month, <c>to</c> to today — unlike the per-customer statement, which defaults to
+    /// no bound, because scanning every payment ever made would grow unbounded for an old tenant.
+    /// </summary>
+    private static async Task<IResult> PaymentsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        string? from, string? to, string? customer, string[]? kind, Guid? userId, int? page, int? pageSize, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+
+        DateOnly start;
+        if (string.IsNullOrWhiteSpace(from))
+        {
+            var today = PortalReports.BusinessDate(null, DateTimeOffset.UtcNow);
+            start = new DateOnly(today.Year, today.Month, 1);
+        }
+        else if (!TryDay(from, out start)) return BadDate("from");
+        if (!TryDay(to, out var end)) return BadDate("to");
+        if (end < start) return JsonResults.Status(400, new ApiError { ErrorCode = "INVALID_RANGE", Message = "to is before from." });
+
+        var kinds = Values(kind);
+        if (kinds.FirstOrDefault(k => k is not ("collection" or "payment")) is { } unknown)
+            return BadQuery($"kind '{unknown}' is not one of: collection, payment.");
+
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, ct);
+        var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
+
+        // Bounded by the payment-kind rows the tenant has ever had, not by the requested date range:
+        // cheap for a native tenant (Jobs is its whole write history) and avoids a second round trip
+        // once the range is known to Payments().
+        var paymentMovementIds = movements.ByCustomer.Values.SelectMany(list => list)
+            .Where(m => m.Kind is "collection" or "payment")
+            .Select(m => PortalLedger.ExternalIdOf(m.Id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var creatorLookup = (await db.Jobs.AsNoTracking()
+                .Where(j => j.TenantId == tenant.Id && paymentMovementIds.Contains(j.ExternalId))
+                .Select(j => new { j.ExternalId, j.CreatedByUserId })
+                .ToListAsync(ct))
+            .GroupBy(j => j.ExternalId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().CreatedByUserId, StringComparer.Ordinal);
+        var creatorIds = creatorLookup.Values.OfType<Guid>().Distinct().ToList();
+        var userNames = await db.MobileUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenant.Id && creatorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.FullName) ? u.Username : u.FullName, ct);
+
+        return JsonResults.Ok(PortalLedger.Payments(customers, movements, start, end, kinds, customer, userId,
+            externalId => creatorLookup.TryGetValue(externalId, out var uid) ? uid : null, userNames,
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
+    }
+
+    private static async Task<PortalLedger.Customer?> FindCustomerAsync(CentralApiDbContext db, IMemoryCache cache, Tenant tenant, string? code, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(code)) return null;
-        var customers = await PortalLedger.CustomersAsync(db, cache, tenantId, ct);
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant.Id, tenant.DataSource, ct);
         return customers.TryGetValue(code.Trim(), out var customer) ? customer : null;
     }
 

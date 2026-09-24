@@ -31,7 +31,8 @@
 | `ODEME_EMIRLERI` | Çek, senet, ödeme emirleri — önek `sck_` | `sck_RECno` / `sck_Guid` | `sck_duzen_tarih`, `sck_vade`, `sck_sahip_cari_kodu`, `sck_bankano`, `sck_tutar`, `sck_doviz`, `sck_tip` (0 müşteri çeki, 1 müşteri senedi, 2 kendi çekimiz, 3 kendi senedimiz, 4 müşteri havale sözü, 6 müşteri kredi kartı), `sck_refno` (`MC/MS/MH/MK-fff-sss-yyyy-nnnnnnnn`, tekil `(sck_tip, sck_refno)`) — **açıklama kolonu YOK** |
 | `_ERPB_EVRAK_ESLESME` | **ErpBridge'in kendi tablosu** (Mikro nesnesi değil): telefondan yazılan her Mikro evrakının idempotency kaydı, evrakla **aynı transaction'da** yazılır; tekil `(DocumentType, ExternalId)`. İlk yazımda yoksa oluşturulur (`MikroDocumentLedger`) | `Id` IDENTITY | `DocumentType`, `ExternalId`, `DocumentTable`, `EvrakTip`, `EvrakSeri` (6), `EvrakSira`, `HeaderRecNo`, `CreatedAt` |
 | `BARKOD_TANIMLARI` | Stoklara bağlı çoklu barkodlar — **firma-bağımsız** | `bar_RECno` / `bar_Guid` | `bar_kodu` (25), `bar_stokkodu` (25, string bağ), `bar_birimpntr`, `bar_barkodtipi` |
-| `MASRAF_HESAPLARI` | Gider kartları (ERP yazım 3 Y2b) — telefon gider ekranının kategorileri buradan gelir | `his_RECno` / `his_Guid` | `his_kod`, `his_isim`, `his_tipkod`, `his_sinifkod`, `his_grupkod`, `his_muhkod`, `his_birim_ad` — `MikroExpenseWriter`'ın `cha_kasa_hizkod`'a yazdığı kod bu tablonun `his_kod`'udur |
+| `MASRAF_HESAPLARI` | Gider kartları — telefon gideri bunlardan birine yazılır (`cha_kasa_hizkod`, referans §13) | `his_RECno` / `his_Guid` | `his_kod` (50), `his_isim` (80), başlıklar `his_grupkod` / `his_tipkod` / `his_sinifkod` (50), `his_birim_ad` (20), `his_dovcinsi`, `his_muhkod`; `his_iptal`/`his_hidden` olanlar telefona gitmez. Telefona `lookups` içinde `expense_card` türüyle, başlıklar `parentCode`=grup, `typeCode`, `classCode`, `unit` alanlarında gider (2026-09-23) |
+| KDV tanımları (fonksiyon) | Mikro'da tablo değil: `dbo.fn_VergiYuzde(p)` oran, `dbo.fn_VergiIsim(p)` ad, `p` = 1..10 vergi işaretçisi (V15_02/DEMO: 1 YOK, 2 %1, 3 %10, 4 %20, 5 %26). **KDV tutarı işaretçinin kendi `cha_vergiN` kolonuna yazılır** (%20 → `cha_vergi4`), `cha_aratoplam` KDV hariç, `cha_meblag` KDV dahil — canlı faturalar ve Fora `AddMasraf` aynı | — | Telefona `lookups` içinde `vat_rate` türüyle (`code`=işaretçi, `rate`) **yalnız tam okumada** gider; artımlı okuma göndermez, merkez `(kind, code)` birleştirmesiyle korur |
 | `SAYIM_SONUCLARI` | Telefon sayım fişleri (ERP yazım 3 Y3c, §14), `sym_fileid=28` — kesinleştirme izi tutan kolon yok, stoğu kendiliğinden hareket ettirmez | Yok — `(sym_depono, sym_evrakno, sym_satirno)` doğal anahtar | `sym_tarihi`, `sym_depono`, `sym_evrakno` (depo içinde MAX+1), `sym_satirno`, `sym_Stokkodu`, `sym_barkod`, `sym_miktar1`, `sym_birim_pntr` — Mikro'nun kendi "sayım sonuçlarını uygula" adımı stoğu günceller |
 
 ### V15 / V16 Kimlik Farkı
@@ -134,6 +135,16 @@ SUM(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN ISNULL(cha_meblag, 0)
 - `cha_tip = 1` → alacak (tahsilat, iade faturası). Bakiye azalır.
 - Net Bakiye > 0: Borçlu cari (firmaya borcu var).
 - Net Bakiye < 0: Alacaklı cari (avans / firmadan alacağı var).
+
+**Panelde gösterilen bakiye (2026-09-24, GOAL_PANEL_DUZELTMELER G3):** ERP'li firmada panel (Cariler listesi,
+cari kartı, ekstre, Onay masası bakiyeleri) kart `balance` alanını **kullanmaz**; Sipariş Cepte'nin formülünü uygular:
+carinin `customerTransactions` aynasındaki satırlarının toplamı (`borcMu ? +tutar : −tutar`, cari kodu trim +
+büyük/küçük harf duyarsız). Kasa/banka tarafı satırlar hariç: `kapali` satırlar ve `cariCins ≠ 0` (G4 ajanı gönderir;
+eski ajanda `ciroCariKod` dolu satır). Ajan tüm defteri aynaladığı için hareketi olmayan cari **0**'dır (son faturası
+silinmiş caride kart bakiyesi bayat kalır); yalnız hiç `customerTransactions` göndermeyen firmada kart `balance` kullanılır. Sebep: ajan kart bakiyesini
+yalnız cari kartı değiştiğinde yeniden gönderiyordu; yeni fatura/tahsilat sonrası kart bakiyesi bayat kalıyordu.
+Ekstrenin yürüyen bakiyesi bu sayıya çapalıdır (açılış = aralık öncesi hareketler). ERP'siz firmada kart bakiyesi
+(`native_customer_balances`, açılış bakiyesi dahil) geçerli kalır. Kod: `PortalLedger.CustomersAsync(..., dataSource, ...)`.
 
 **Yazma tarafı karşılığı:** `MikroCollectionWriter` tahsilatı `cha_tip = 1`
 (alacak) yazar. Yanlış değer her carinin bakiyesini sessizce tersine çevirir.

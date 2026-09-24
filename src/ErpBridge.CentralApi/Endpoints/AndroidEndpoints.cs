@@ -540,7 +540,10 @@ public static class AndroidEndpoints
         var access = await GetAndroidDocumentAsync(http, db, ["lookups"], ct);
         if (access.Error is not null) return access.Error;
         using var document = access.Document!;
-        var allItems = GetArray(document.RootElement, "lookups")
+        var lookups = GetArray(document.RootElement, "lookups").ToArray();
+        // Mikro'nun kart başlıkları (grup / tip / sınıf) ve birimi de gider: telefon kartları
+        // Mikro'daki gibi gruplar, adı olmayan başlık boş kalır.
+        var allItems = lookups
             .Where(item => string.Equals(GetString(item, "kind"), "expense_card", StringComparison.OrdinalIgnoreCase))
             .Select(item => new
             {
@@ -548,13 +551,30 @@ public static class AndroidEndpoints
                 erp = "MIKRO",
                 kod = GetString(item, "code") ?? string.Empty,
                 isim = GetString(item, "name") ?? string.Empty,
+                grupKod = NullIfBlank(GetString(item, "parentCode")),
+                tipKod = NullIfBlank(GetString(item, "typeCode")),
+                sinifKod = NullIfBlank(GetString(item, "classCode")),
+                birim = NullIfBlank(GetString(item, "unit")),
             })
             .OrderBy(item => item.kod, StringComparer.Ordinal)
+            .ToArray();
+        // Mikro'nun KDV tanımları: gider KDV'si seçilen işaretçinin kendi kolonuna yazılır
+        // (cha_vergi4 = %20). Telefon oranı buradan seçer, işaretçiyi belgeyle geri gönderir.
+        var vatRates = lookups
+            .Where(item => string.Equals(GetString(item, "kind"), "vat_rate", StringComparison.OrdinalIgnoreCase))
+            .Select(item => new
+            {
+                isaretci = int.TryParse(GetString(item, "code"), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var pointer) ? pointer : 0,
+                isim = GetString(item, "name") ?? string.Empty,
+                oran = GetDecimal(item, "rate") ?? 0m,
+            })
+            .Where(item => item.isaretci > 0)
+            .OrderBy(item => item.isaretci)
             .ToArray();
         var page = Math.Max(1, request?.Page ?? 1);
         var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
         var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToArray();
-        return Results.Ok(new { entity = "giderKartlari", page, pageSize, total = allItems.Length, items });
+        return Results.Ok(new { entity = "giderKartlari", page, pageSize, total = allItems.Length, items, vergiOranlari = vatRates });
     }
 
     /// <summary>
@@ -912,6 +932,7 @@ public static class AndroidEndpoints
                             birimFiyat = GetDecimal(line, "birimFiyat"),
                             tutar = GetDecimal(line, "tutar"),
                             vergi = GetDecimal(line, "vergi"),
+                            discountAmount = GetDecimal(line, "discountAmount"),
                             girisDepoNo = GetInt32(line, "girisDepoNo"),
                             cikisDepoNo = GetInt32(line, "cikisDepoNo"),
                             aciklama = GetString(line, "aciklama"),
@@ -1009,6 +1030,8 @@ public static class AndroidEndpoints
         var result = string.Join(" ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()));
         return string.IsNullOrWhiteSpace(result) ? null : result;
     }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     internal static decimal? GetDecimal(JsonElement item, string propertyName)
     {

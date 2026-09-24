@@ -216,6 +216,46 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         json.RootElement.GetProperty("items")[0].GetProperty("kod").GetString().Should().Be("KİRA", "kod sırasına göre gelir");
     }
 
+    /// <summary>
+    /// Gider ERP uyumu: kart Mikro'daki başlıklarıyla (grup / tip / sınıf, birim) gelir ve yanında
+    /// Mikro'nun KDV tanımları durur. Telefon KDV'yi bir işaretçiyle gönderir; işaretçiyi buradan
+    /// bilmezse gider Mikro'da yanlış KDV kolonuna düşer.
+    /// </summary>
+    [Fact]
+    public async Task The_expense_card_section_carries_mikro_headings_and_vat_definitions()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-EXPH-{suffix}", "Expense heading tenant");
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, """
+            { "lookups": [
+              { "kind": "expense_card", "code": "YAKIT", "name": "Yakıt", "parentCode": "ARAC", "typeCode": "GENEL", "classCode": " ", "unit": "LT" },
+              { "kind": "expense_card", "code": "KIRA", "name": "Kira" },
+              { "kind": "vat_rate", "code": "4", "name": "K.D.V. (%) 20", "rate": 20.0 },
+              { "kind": "vat_rate", "code": "1", "name": "YOK", "rate": 0 },
+              { "kind": "vat_rate", "code": "2", "name": "K.D.V. (%) 1", "rate": 1.0 }
+            ] }
+            """);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, $"AK-EXPH-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/android/sync/giderKartlari", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("total").GetInt32().Should().Be(2, "KDV tanımı gider kartı sayılmaz");
+        var fuel = json.RootElement.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("kod").GetString() == "YAKIT");
+        fuel.GetProperty("grupKod").GetString().Should().Be("ARAC");
+        fuel.GetProperty("tipKod").GetString().Should().Be("GENEL");
+        fuel.GetProperty("sinifKod").ValueKind.Should().Be(JsonValueKind.Null, "boş başlık başlık değildir");
+        fuel.GetProperty("birim").GetString().Should().Be("LT");
+
+        var rates = json.RootElement.GetProperty("vergiOranlari").EnumerateArray().ToList();
+        rates.Select(r => r.GetProperty("isaretci").GetInt32()).Should().Equal(1, 2, 4);
+        rates[2].GetProperty("oran").GetDecimal().Should().Be(20m);
+        rates[2].GetProperty("isim").GetString().Should().Be("K.D.V. (%) 20");
+    }
+
     [Theory]
     [InlineData("/api/v1/android/sync/bankalar", "BANK-001")]
     [InlineData("/api/v1/android/sync/kasalar", "CASH-001")]
@@ -379,7 +419,7 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
                 { "erpRef": "CH-999", "erp": "MIKRO", "cariKod": "C999", "cha_recno": 999, "evrakNo": "FAT-999", "tutar": 999 }
               ],
               "stockTransactions": [
-                { "erpRef": "SH-1", "stokKod": "S001", "faturaRecno": 101, "miktar": 1, "birimFiyat": 100 },
+                { "erpRef": "SH-1", "stokKod": "S001", "faturaRecno": 101, "miktar": 1, "birimFiyat": 100, "tutar": 100, "vergi": 18, "discountAmount": 10 },
                 { "erpRef": "SH-2", "stokKod": "S002", "faturaRecno": 102, "miktar": 2, "birimFiyat": 100 },
                 { "erpRef": "SH-999", "stokKod": "S999", "faturaRecno": 999, "miktar": 9, "birimFiyat": 111 },
                 { "erpRef": "SH-STRAY", "stokKod": "S999", "faturaRecno": 777, "miktar": 7, "birimFiyat": 77 }
@@ -409,8 +449,11 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         firstLines[0].GetProperty("erpRef").GetString().Should().Be("SH-1");
         firstLines[0].GetProperty("stokAd").GetString().Should().Be("Correct product one");
         firstLines[0].GetProperty("sth_fat_recid_recno").GetInt32().Should().Be(101);
+        firstLines[0].GetProperty("discountAmount").GetDecimal().Should().Be(10);
+        firstLines[0].GetProperty("vergi").GetDecimal().Should().Be(18);
         secondLines.Should().ContainSingle();
         secondLines[0].GetProperty("erpRef").GetString().Should().Be("SH-2");
+        secondLines[0].GetProperty("discountAmount").ValueKind.Should().Be(JsonValueKind.Null);
         (await response.Content.ReadAsStringAsync()).Should().NotContain("SH-999").And.NotContain("SH-STRAY");
     }
 

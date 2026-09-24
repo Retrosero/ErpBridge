@@ -1,0 +1,170 @@
+@page "/denetim"
+@inherits PortalPageBase
+
+<PageTitle>Denetim — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else if (!IsNativeCompany)
+{
+    <PageHeader Title="Denetim" Eyebrow="Kayıtlar" Subtitle="Panelden yapılan her yazmanın izi" Busy="false" />
+    <EmptyState Id="native-audit-not-applicable" Icon="@Icons.Material.Rounded.History" Title="Bu firmanın defteri ERP'de tutulur"
+                Hint="Denetim izi yalnız panelden yazılan (ERP'siz) firmalar için tutulur." />
+}
+else
+{
+    <PageHeader Title="Denetim" Eyebrow="Kayıtlar" Subtitle="Panelden yapılan her yazma: kim, ne zaman, ne değişti" Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    <form class="ledger-toolbar" id="audit-filter" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <label class="inline-field">
+            Başlangıç
+            <input type="date" class="portal-input portal-input--date" id="audit-from" value="@Fmt.IsoDay(_from)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _from = d; }" />
+        </label>
+        <label class="inline-field">
+            Bitiş
+            <input type="date" class="portal-input portal-input--date" id="audit-to" value="@Fmt.IsoDay(_to)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _to = d; }" />
+        </label>
+        <label class="inline-field">
+            Varlık
+            <select class="portal-select portal-select--short" id="audit-entity" value="@_entity" disabled="@Busy" @onchange="e => _entity = e.Value?.ToString() ?? string.Empty">
+                @foreach (var (value, label) in Entities)
+                {
+                    <option value="@value">@label</option>
+                }
+            </select>
+        </label>
+        <label class="inline-field">
+            Kullanıcı
+            <select class="portal-select portal-select--short" id="audit-user" value="@(_userId?.ToString() ?? string.Empty)" disabled="@Busy"
+                    @onchange="e => _userId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null">
+                <option value="">Tümü</option>
+                @foreach (var user in _users)
+                {
+                    <option value="@user.Id">@(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName)</option>
+                }
+            </select>
+        </label>
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" id="audit-search">Süz</MudButton>
+    </form>
+
+    @if (_result is not null)
+    {
+        @if (_result.Items.Count == 0)
+        {
+            <EmptyState Id="audit-empty" Icon="@Icons.Material.Rounded.History" Title="Bu süzgeçle kayıt yok."
+                        Hint="Tarih aralığını genişletin ya da süzgeci kaldırın." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="table-scroll">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table data-table--cards" id="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Tarih</th>
+                                <th>Varlık</th>
+                                <th>İşlem</th>
+                                <th>Özet</th>
+                                <th>Kullanıcı</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _result.Items)
+                            {
+                                <tr data-audit="@item.Id" data-action="@item.Action">
+                                    <td data-label="Tarih">@Fmt.Time(item.CreatedAtUtc)</td>
+                                    <td data-label="Varlık">
+                                        <div class="cell-title">@EntityLabel(item.Entity)</div>
+                                        <div class="cell-sub">@item.EntityKey</div>
+                                    </td>
+                                    <td data-label="İşlem"><span class="badge @ActionBadge(item.Action)">@ActionLabel(item.Action)</span></td>
+                                    <td class="wrap" data-label="Özet">@item.Summary</td>
+                                    <td data-label="Kullanıcı">@item.UserName</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+                <div class="table-foot pager" id="audit-pager">
+                    <span id="audit-range">@_result.Total kayıt</span>
+                    <span class="pager-buttons">
+                        <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" Size="Size.Small" Disabled="@(Busy || _page <= 1)" OnClick="() => GoToAsync(_page - 1)" aria-label="Önceki sayfa" Class="pager-prev" />
+                        <span class="pager-page" id="audit-page">Sayfa @_page / @PageCount</span>
+                        <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" Size="Size.Small" Disabled="@(Busy || _page >= PageCount)" OnClick="() => GoToAsync(_page + 1)" aria-label="Sonraki sayfa" Class="pager-next" />
+                    </span>
+                </div>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.NativeAudit;
+
+    private static readonly (string Value, string Label)[] Entities =
+        [("", "Tümü"), ("stock_card", "Ürün"), ("customer_card", "Müşteri"), ("collection", "Tahsilat"), ("disbursement", "Tediye")];
+
+    private static readonly Dictionary<string, string> EntityNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["stock_card"] = "Ürün", ["customer_card"] = "Müşteri", ["collection"] = "Tahsilat", ["disbursement"] = "Tediye",
+    };
+
+    private DateOnly _from = Fmt.Today().AddDays(-6);
+    private DateOnly _to = Fmt.Today();
+    private string _entity = string.Empty;
+    private Guid? _userId;
+    private int _page = 1;
+    private AuditResponse? _result;
+    private UserDto[] _users = [];
+
+    private bool IsNativeCompany => string.Equals(Session.DataSource, "native", StringComparison.OrdinalIgnoreCase);
+
+    private int PageCount => _result is null || _result.PageSize == 0 ? 1 : Math.Max(1, (_result.Total + _result.PageSize - 1) / _result.PageSize);
+
+    protected override async Task LoadAsync()
+    {
+        if (!IsNativeCompany) return;
+        _users = (await Api.UsersAsync()).Users;
+        _result = await Api.AuditAsync(string.IsNullOrEmpty(_entity) ? null : _entity, null, _from, _to, _userId, _page, 50);
+    }
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task GoToAsync(int page)
+    {
+        _page = Math.Clamp(page, 1, PageCount);
+        await RunAsync(LoadAsync);
+    }
+
+    private static string EntityLabel(string entity) => EntityNames.TryGetValue(entity, out var name) ? name : entity;
+
+    private static string ActionLabel(string action) => action switch
+    {
+        "create" => "Oluşturuldu",
+        "edit" => "Düzenlendi",
+        "delete" => "Silindi",
+        "void" => "İptal edildi",
+        _ => action,
+    };
+
+    private static string ActionBadge(string action) => action switch
+    {
+        "create" => "badge--ok",
+        "edit" => "badge--info",
+        "delete" or "void" => "badge--danger",
+        _ => "badge--muted",
+    };
+}

@@ -86,20 +86,72 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<CustomerCardDto> CustomerCardAsync(string code, CancellationToken ct = default) =>
         GetAsync<CustomerCardDto>("api/v1/portal/customers/card" + Query(("code", code)), ct);
 
-    public Task<LedgerResponse> LedgerAsync(string code, DateOnly? from, DateOnly? to, IEnumerable<string> kinds, int page, int pageSize, CancellationToken ct = default) =>
+    public Task<LedgerResponse> LedgerAsync(string code, DateOnly? from, DateOnly? to, IEnumerable<string> kinds, bool includeVoided, int page, int pageSize, CancellationToken ct = default) =>
         GetAsync<LedgerResponse>("api/v1/portal/customers/ledger" + Query(
             [("code", code), ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
              .. kinds.Select(k => ("kind", (string?)k)),
+             ("includeVoided", includeVoided ? "true" : null),
              ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
 
     public Task<CustomerDocumentDto> CustomerDocumentAsync(string code, string key, CancellationToken ct = default) =>
         GetAsync<CustomerDocumentDto>("api/v1/portal/customers/document" + Query(("code", code), ("key", key)), ct);
+
+    /// <summary>Who changed what from the portal (GOAL_PANEL_ERPSIZ E7b); <paramref name="entity"/>+<paramref name="entityKey"/>
+    /// gives one card/payment's "Geçmiş" (no date bound), omitting them the company-wide /denetim list (date-bounded).</summary>
+    public Task<AuditResponse> AuditAsync(
+        string? entity, string? entityKey, DateOnly? from, DateOnly? to, Guid? userId, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<AuditResponse>("api/v1/portal/native/audit" + Query(
+            ("entity", entity), ("key", entityKey), ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+            ("userId", userId?.ToString()), ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
+
+    /// <summary>Company-wide collections/payments (GOAL_PANEL_ERPSIZ E3c); <paramref name="kinds"/> empty means both.</summary>
+    public Task<PaymentsResponse> PaymentsAsync(
+        DateOnly? from, DateOnly? to, IEnumerable<string> kinds, string? customer, Guid? userId, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<PaymentsResponse>("api/v1/portal/payments" + Query(
+            [("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+             .. kinds.Select(k => ("kind", (string?)k)),
+             ("customer", customer), ("userId", userId?.ToString()),
+             ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
 
     public Task<StockSearchResponse> StockSearchAsync(StockFilter filter, CancellationToken ct = default) =>
         GetAsync<StockSearchResponse>("api/v1/portal/stock/search" + filter.ToApiQuery(), ct);
 
     public Task<StockFacetsResponse> StockFacetsAsync(CancellationToken ct = default) =>
         GetAsync<StockFacetsResponse>("api/v1/portal/stock/facets", ct);
+
+    /// <summary>ERP-less tenant only (<see cref="Session.PortalSession.CanEditNativeData"/>). Fetches the card
+    /// for the edit form — the list row already has most fields, but not the VAT rate or every price list.</summary>
+    public Task<NativeStockCardDetailDto> NativeStockCardAsync(string code, CancellationToken ct = default) =>
+        GetAsync<NativeStockCardDetailDto>($"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}", ct);
+
+    public Task<NativeJobResultDto> SaveNativeStockCardAsync(NativeStockCardRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-cards", request, ct);
+
+    public Task<NativeJobResultDto> DeleteNativeStockCardAsync(string code, string operationId, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Delete,
+            $"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}" + Query(("operationId", operationId)), null, ct);
+
+    /// <summary>ERP-less tenant only. Create or edit shares this call; the customer is found by its code.</summary>
+    public Task<NativeJobResultDto> SaveNativeCustomerCardAsync(NativeCustomerCardRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/customer-cards", request, ct);
+
+    public Task<NativeJobResultDto> RecordNativeCollectionAsync(NativePaymentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/collections", request, ct);
+
+    public Task<NativeJobResultDto> RecordNativeDisbursementAsync(NativePaymentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/disbursements", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4a/e — cancels a collection/disbursement/manual adjustment (D2 storno).</summary>
+    public Task<NativeJobResultDto> VoidNativeLedgerEntryAsync(string key, NativeLedgerVoidRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/ledger/{Uri.EscapeDataString(key)}/void", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4c/e — void + a corrected re-booking of the same kind, in one transaction (D11).</summary>
+    public Task<NativeJobResultDto> EditNativeLedgerEntryAsync(string key, NativeLedgerEditRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/ledger/{Uri.EscapeDataString(key)}/edit", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4b/e — a manual correction of a customer's balance; a reason is mandatory.</summary>
+    public Task<NativeJobResultDto> PostNativeLedgerAdjustmentAsync(NativeLedgerAdjustmentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/ledger-adjustments", request, ct);
 
     /// <summary>One page of requests, newest first; <paramref name="after"/> is the last request on screen.</summary>
     public Task<ApprovalDto[]> ApprovalsAsync(string status, string? kind, ApprovalDto? after, int take, CancellationToken ct = default) =>
@@ -131,6 +183,10 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
 
     public Task<ApprovalDto> DecideAsync(Guid requestId, bool approve, string? note, CancellationToken ct = default) =>
         SendAsync<ApprovalDto>(HttpMethod.Post, $"api/v1/android/approvals/{requestId}/{(approve ? "approve" : "reject")}", new { note }, ct);
+
+    /// <summary>Puts a rejected request back in the pending queue; the same call the phone's "Tekrar onaya al" makes.</summary>
+    public Task<ApprovalDto> ReopenAsync(Guid requestId, string? note, CancellationToken ct = default) =>
+        SendAsync<ApprovalDto>(HttpMethod.Post, $"api/v1/android/approvals/{requestId}/reopen", new { note }, ct);
 
     public Task<DisplayDeviceDto[]> DisplaysAsync(CancellationToken ct = default) =>
         GetAsync<DisplayDeviceDto[]>("api/v1/portal/displays", ct);

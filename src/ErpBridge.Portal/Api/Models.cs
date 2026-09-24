@@ -356,6 +356,111 @@ public sealed class StockFacetsResponse
     [JsonPropertyName("hasReserved")] public bool HasReserved { get; set; }
 }
 
+// GOAL_PANEL_ERPSIZ E1: ERP-less tenant only (Session.CanEditNativeData) — /api/v1/portal/native/stock-cards.
+
+public sealed class NativeStockCardDetailDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+    [JsonPropertyName("vatRate")] public decimal? VatRate { get; set; }
+    [JsonPropertyName("category")] public string? Category { get; set; }
+    [JsonPropertyName("brand")] public string? Brand { get; set; }
+    [JsonPropertyName("aisle")] public string? Aisle { get; set; }
+    [JsonPropertyName("barcodes")] public List<string> Barcodes { get; set; } = [];
+    [JsonPropertyName("prices")] public List<StockPriceDto> Prices { get; set; } = [];
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+    [JsonPropertyName("lastMovementDate")] public string? LastMovementDate { get; set; }
+}
+
+/// <summary>Body of a save (create or edit — the code decides which, and never changes on an edit).</summary>
+public sealed class NativeStockCardRequest
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+    [JsonPropertyName("vatRate")] public decimal? VatRate { get; set; }
+    [JsonPropertyName("category")] public string? Category { get; set; }
+    [JsonPropertyName("brand")] public string? Brand { get; set; }
+    [JsonPropertyName("aisle")] public string? Aisle { get; set; }
+    [JsonPropertyName("barcode")] public string? Barcode { get; set; }
+    [JsonPropertyName("price")] public decimal? Price { get; set; }
+    [JsonPropertyName("openingQuantity")] public decimal? OpeningQuantity { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+public sealed class NativeJobResultDto
+{
+    [JsonPropertyName("jobId")] public Guid JobId { get; set; }
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+}
+
+/// <summary>Body of a collection or disbursement — same shape for both; the call decides the route.</summary>
+public sealed class NativePaymentRequest
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of POST …/ledger/{key}/void (GOAL_PANEL_ERPSIZ E4a).</summary>
+public sealed class NativeLedgerVoidRequest
+{
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of POST …/ledger/{key}/edit (GOAL_PANEL_ERPSIZ E4c) — void of the target plus a
+/// corrected re-booking of the same kind, in one transaction (D11).</summary>
+public sealed class NativeLedgerEditRequest
+{
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+
+    /// <summary>Only meaningful for a manual adjustment; a collection/disbursement keeps its own direction.</summary>
+    [JsonPropertyName("debit")] public bool? Debit { get; set; }
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+
+    /// <summary>The corrected adjustment's reason; required when the target is a manual adjustment.</summary>
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+
+    /// <summary>Why the original is being corrected — mandatory, the same as a plain void's.</summary>
+    [JsonPropertyName("voidReason")] public string? VoidReason { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of POST …/ledger-adjustments (GOAL_PANEL_ERPSIZ E4b) — a manual correction of a
+/// customer's balance; <see cref="Reason"/> is mandatory, unlike a payment's.</summary>
+public sealed class NativeLedgerAdjustmentRequest
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+
+    /// <summary>True increases what the customer owes (borç), false decreases it (alacak).</summary>
+    [JsonPropertyName("debit")] public bool Debit { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of a customer save (create or edit — the code decides which, and never changes on an edit).</summary>
+public sealed class NativeCustomerCardRequest
+{
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("taxNo")] public string? TaxNo { get; set; }
+    [JsonPropertyName("taxOffice")] public string? TaxOffice { get; set; }
+    [JsonPropertyName("phone")] public string? Phone { get; set; }
+    [JsonPropertyName("email")] public string? Email { get; set; }
+    [JsonPropertyName("regionCode")] public string? RegionCode { get; set; }
+    [JsonPropertyName("openingBalance")] public decimal? OpeningBalance { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
 public sealed class ApiErrorDto
 {
     [JsonPropertyName("errorCode")] public string? ErrorCode { get; set; }
@@ -411,6 +516,13 @@ public sealed class LedgerRowDto
     [JsonPropertyName("credit")] public decimal Credit { get; set; }
     [JsonPropertyName("balance")] public decimal Balance { get; set; }
     [JsonPropertyName("documentKey")] public string? DocumentKey { get; set; }
+
+    /// <summary>GOAL_PANEL_ERPSIZ E4d/E4e.</summary>
+    [JsonPropertyName("voided")] public bool Voided { get; set; }
+    [JsonPropertyName("voidedBy")] public string? VoidedBy { get; set; }
+    [JsonPropertyName("voidedAt")] public string? VoidedAt { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("editable")] public bool Editable { get; set; }
 }
 
 public sealed class LedgerResponse
@@ -426,6 +538,68 @@ public sealed class LedgerResponse
     [JsonPropertyName("total")] public int Total { get; set; }
     [JsonPropertyName("page")] public int Page { get; set; }
     [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+}
+
+/// <summary>One row of GET /api/v1/portal/native/audit (GOAL_PANEL_ERPSIZ E7b) — who changed a card/payment, and when.</summary>
+public sealed class AuditRowDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("entity")] public string Entity { get; set; } = string.Empty;
+    [JsonPropertyName("entityKey")] public string EntityKey { get; set; } = string.Empty;
+    [JsonPropertyName("action")] public string Action { get; set; } = string.Empty;
+    [JsonPropertyName("summary")] public string Summary { get; set; } = string.Empty;
+    [JsonPropertyName("beforeJson")] public string? BeforeJson { get; set; }
+    [JsonPropertyName("afterJson")] public string? AfterJson { get; set; }
+    [JsonPropertyName("userId")] public Guid UserId { get; set; }
+    [JsonPropertyName("userName")] public string UserName { get; set; } = string.Empty;
+    [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
+}
+
+public sealed class AuditResponse
+{
+    [JsonPropertyName("items")] public List<AuditRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+}
+
+/// <summary>One row of GET /api/v1/portal/payments (GOAL_PANEL_ERPSIZ E3c) — a collection or payment, any customer.</summary>
+public sealed class PaymentRowDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("customerTitle")] public string CustomerTitle { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("debit")] public decimal Debit { get; set; }
+    [JsonPropertyName("credit")] public decimal Credit { get; set; }
+    [JsonPropertyName("userId")] public Guid? UserId { get; set; }
+    [JsonPropertyName("userName")] public string? UserName { get; set; }
+    [JsonPropertyName("documentKey")] public string? DocumentKey { get; set; }
+}
+
+/// <summary>One group's total (a calendar day or a payment type) in a payments summary.</summary>
+public sealed class PaymentGroupTotalDto
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
+    [JsonPropertyName("debit")] public decimal Debit { get; set; }
+    [JsonPropertyName("credit")] public decimal Credit { get; set; }
+}
+
+public sealed class PaymentsResponse
+{
+    [JsonPropertyName("from")] public string From { get; set; } = string.Empty;
+    [JsonPropertyName("to")] public string To { get; set; } = string.Empty;
+    [JsonPropertyName("items")] public List<PaymentRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+    [JsonPropertyName("totalDebit")] public decimal TotalDebit { get; set; }
+    [JsonPropertyName("totalCredit")] public decimal TotalCredit { get; set; }
+    [JsonPropertyName("dailyTotals")] public List<PaymentGroupTotalDto> DailyTotals { get; set; } = [];
+    [JsonPropertyName("paymentTypeTotals")] public List<PaymentGroupTotalDto> PaymentTypeTotals { get; set; } = [];
 }
 
 public sealed class CustomerDocumentLineDto

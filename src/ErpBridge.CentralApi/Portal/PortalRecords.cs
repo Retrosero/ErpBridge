@@ -21,7 +21,7 @@ public static class PortalRecords
     public abstract record StockPart;
 
     /// <summary>A stock card: Mikro <c>mainGroupCode/subGroupCode/brandCode/shelfCode/unit1</c>, native <c>kategori/marka/shelfCode/birim</c>.</summary>
-    public sealed record CardPart(string Code, string Name, string? Unit, string? MainGroup, string? SubGroup, string? Brand, string? Shelf) : StockPart;
+    public sealed record CardPart(string Code, string Name, string? Unit, string? MainGroup, string? SubGroup, string? Brand, string? Shelf, decimal? VatRate) : StockPart;
 
     /// <summary>Mikro sends one company-wide quantity under the configured warehouse, reserved 0 and no date.</summary>
     public sealed record InventoryPart(string Code, int WarehouseNo, decimal Quantity, decimal Reserved, DateOnly? LastMovement) : StockPart;
@@ -45,7 +45,8 @@ public static class PortalRecords
                     Blank(AndroidEndpoints.GetFirstString(item, "mainGroupCode", "kategori", "category")),
                     Blank(AndroidEndpoints.GetFirstString(item, "subGroupCode")),
                     Blank(AndroidEndpoints.GetFirstString(item, "brandCode", "marka")),
-                    Blank(AndroidEndpoints.GetFirstString(item, "shelfCode", "sto_yer_kod")));
+                    Blank(AndroidEndpoints.GetFirstString(item, "shelfCode", "sto_yer_kod")),
+                    AndroidEndpoints.GetDecimal(item, "kdvOrani"));
             case "inventory" when code is not null:
                 return new InventoryPart(
                     code,

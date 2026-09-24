@@ -19,6 +19,10 @@ else
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.FilterList" OnClick="OpenFilters" id="stock-filters-open">
                 Filtreler@(_filter.PanelFilterCount > 0 ? $" ({_filter.PanelFilterCount})" : null)
             </MudButton>
+            @if (Session.CanEditNativeData)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNewCard" id="stock-new">Yeni ürün</MudButton>
+            }
         </Actions>
     </PageHeader>
 
@@ -49,6 +53,10 @@ else
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
     }
 
     @if (ActiveChips().ToList() is { Count: > 0 } chips)
@@ -210,6 +218,13 @@ else
                                                         </ul>
                                                     }
                                                 </div>
+                                                @if (Session.CanEditNativeData)
+                                                {
+                                                    <div class="stock-detail-actions">
+                                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit"
+                                                                   OnClick="@(() => OpenEditCardAsync(row.StockCode))" data-edit="@row.StockCode">Düzenle</MudButton>
+                                                    </div>
+                                                }
                                             </div>
                                         </td>
                                     </tr>
@@ -311,6 +326,53 @@ else
             </div>
         </Footer>
     </DetailSheet>
+
+    @if (Session.CanEditNativeData)
+    {
+        <DetailSheet Id="stock-card" Open="_cardOpen" Busy="Busy" Eyebrow="Stok" Title="@(_cardIsNew ? "Yeni ürün" : "Ürünü düzenle")" OnClose="CloseCard">
+            <ChildContent>
+                <form class="stack-form" id="stock-card-form" @onsubmit="SaveCardAsync" @onsubmit:preventDefault>
+                    <MudTextField T="string" @bind-Value="_card.StockCode" Label="Kod" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  InputId="card-code" MaxLength="64" ReadOnly="@(!_cardIsNew)" Required="true"
+                                  HelperText="@(_cardIsNew ? null : "Kaydedildikten sonra değiştirilemez")" />
+                    <MudTextField T="string" @bind-Value="_card.Name" Label="Ürün adı" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="card-name" Required="true" />
+                    <MudTextField T="string" @bind-Value="_card.Unit" Label="Birim" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="card-unit" Placeholder="Adet, Kg, Paket…" />
+                    <MudNumericField T="decimal?" @bind-Value="_card.VatRate" Label="KDV (%)" Variant="Variant.Outlined" Margin="Margin.Dense" id="card-vat" Min="0" Max="100" />
+                    <MudTextField T="string" @bind-Value="_card.Category" Label="Kategori" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="card-category" />
+                    <MudTextField T="string" @bind-Value="_card.Brand" Label="Marka" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="card-brand" />
+                    <MudTextField T="string" @bind-Value="_card.Aisle" Label="Reyon" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="card-aisle" />
+                    <MudTextField T="string" @bind-Value="_card.Barcode" Label="Barkod" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="card-barcode" autocomplete="off" />
+                    <MudNumericField T="decimal?" @bind-Value="_card.Price" Label="Fiyat" Variant="Variant.Outlined" Margin="Margin.Dense" id="card-price" Min="0" Adornment="Adornment.End" AdornmentText="TL" />
+                    @if (_cardIsNew)
+                    {
+                        <MudNumericField T="decimal?" @bind-Value="_card.OpeningQuantity" Label="Açılış miktarı" Variant="Variant.Outlined" Margin="Margin.Dense" id="card-opening"
+                                         HelperText="Yalnız yeni ürünlerde; sonradan bu alan yok sayılır" />
+                    }
+                    @if (!_cardIsNew && _confirmDelete)
+                    {
+                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" id="stock-delete-confirm">
+                            <div class="form-actions">
+                                <span>"@_card.Name" ürününü silmek istediğinize emin misiniz?</span>
+                                <div>
+                                    <MudButton Variant="Variant.Text" OnClick="@(() => _confirmDelete = false)">Vazgeç</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="DeleteCardAsync" id="stock-delete-confirm-yes">Evet, sil</MudButton>
+                                </div>
+                            </div>
+                        </MudAlert>
+                    }
+                    <div class="form-actions">
+                        @if (!_cardIsNew)
+                        {
+                            <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@Busy" OnClick="@(() => _confirmDelete = true)" id="stock-card-delete">Sil</MudButton>
+                        }
+                        <span style="flex: 1"></span>
+                        <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseCard">Vazgeç</MudButton>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="stock-card-save">Kaydet</MudButton>
+                    </div>
+                </form>
+            </ChildContent>
+        </DetailSheet>
+    }
 }
 
 @code {
@@ -362,6 +424,111 @@ else
         var facets = Api.StockFacetsAsync();
         await LoadPageAsync();
         _facets = await facets;
+    }
+
+    // ---- ürün kartı (GOAL_PANEL_ERPSIZ E1c, ERP'siz firma) --------------------------
+
+    private string? Notice { get; set; }
+    private bool _cardOpen;
+    private bool _cardIsNew;
+    private bool _confirmDelete;
+    private NativeStockCardRequest _card = new();
+
+    private void OpenNewCard()
+    {
+        Notice = null;
+        Error = null;
+        _card = new NativeStockCardRequest { OperationId = Guid.NewGuid().ToString("N") };
+        _originalBarcode = null;
+        _cardIsNew = true;
+        _confirmDelete = false;
+        _cardOpen = true;
+    }
+
+    /// <summary>
+    /// The barcode as it was when the sheet opened, so a save that never touched the field can leave
+    /// it out of the request. <c>stock_card</c> lists one barcode and drops every other one it finds
+    /// for the product (Faz 34), so resending an unchanged value on every edit would, over a few saves,
+    /// erase any extra barcode the product happens to carry (Codex review of #163, P1).
+    /// </summary>
+    private string? _originalBarcode;
+
+    private Task OpenEditCardAsync(string code)
+    {
+        Notice = null;
+        _confirmDelete = false;
+        _cardIsNew = false;
+        return RunAsync(async () =>
+        {
+            var detail = await Api.NativeStockCardAsync(code);
+            // stock_card only ever books a price on list 1 (BookStockCardAsync); showing a
+            // different list's price here would resubmit it as list 1 on save, creating a second,
+            // wrong-list price while leaving the real one untouched (Codex review of #163, P1).
+            var listOnePrice = detail.Prices.FirstOrDefault(p => p.ListNumber == 1)?.Price;
+            _originalBarcode = detail.Barcodes.FirstOrDefault();
+            _card = new NativeStockCardRequest
+            {
+                StockCode = detail.StockCode,
+                Name = detail.Name,
+                Unit = detail.Unit,
+                VatRate = detail.VatRate,
+                Category = detail.Category,
+                Brand = detail.Brand,
+                Aisle = detail.Aisle,
+                Barcode = _originalBarcode,
+                Price = listOnePrice,
+                OperationId = Guid.NewGuid().ToString("N"),
+            };
+            _cardOpen = true;
+        });
+    }
+
+    private void CloseCard()
+    {
+        _cardOpen = false;
+        _confirmDelete = false;
+    }
+
+    private Task SaveCardAsync()
+    {
+        Notice = null;
+        _card.StockCode = (_card.StockCode ?? string.Empty).Trim();
+        _card.Name = (_card.Name ?? string.Empty).Trim();
+        var name = _card.Name;
+        // A copy: only an actually-typed barcode change goes out, so an edit to an unrelated field
+        // (name, price…) leaves every barcode the product has alone rather than replaying the one
+        // shown here and tombstoning the rest.
+        var request = new NativeStockCardRequest
+        {
+            StockCode = _card.StockCode, Name = _card.Name, Unit = _card.Unit, VatRate = _card.VatRate,
+            Category = _card.Category, Brand = _card.Brand, Aisle = _card.Aisle, Price = _card.Price,
+            OpeningQuantity = _card.OpeningQuantity, OperationId = _card.OperationId,
+            Barcode = string.Equals((_card.Barcode ?? string.Empty).Trim(), _originalBarcode, StringComparison.Ordinal)
+                ? null : _card.Barcode,
+        };
+        return RunAsync(async () =>
+        {
+            await Api.SaveNativeStockCardAsync(request);
+            _cardOpen = false;
+            await LoadPageAsync();
+            Notice = $"{name} kaydedildi.";
+        });
+    }
+
+    private Task DeleteCardAsync()
+    {
+        Notice = null;
+        var code = _card.StockCode;
+        var name = _card.Name;
+        var operationId = _card.OperationId ?? Guid.NewGuid().ToString("N");
+        return RunAsync(async () =>
+        {
+            await Api.DeleteNativeStockCardAsync(code, operationId);
+            _cardOpen = false;
+            _confirmDelete = false;
+            await LoadPageAsync();
+            Notice = $"{name} silindi.";
+        });
     }
 
     private async Task LoadPageAsync()

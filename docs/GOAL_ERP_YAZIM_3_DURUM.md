@@ -73,6 +73,23 @@ bilgisi taşımıyor ve **açık** yazılacak. Ödemesi zaten ayrı tediye olara
 yazılmıştı, yani mükerrer ödeme oluşmaz — yalnız tek evrak yerine iki evrak
 görünür.
 
+## 2026-09-23: gider ERP uyumu (Fora masraf ekranı örnek alındı)
+
+Kullanıcı isteği: ERP'li firmada gider bölümü tamamen ERP'nin başlıkları ve verisiyle çalışsın.
+
+| Katman | Değişiklik |
+|---|---|
+| Ajan (okuma) | `MASRAF_HESAPLARI` kartları başlıklarıyla (`his_grupkod`→`parentCode`, `his_tipkod`, `his_sinifkod`, `his_birim_ad`) gidiyor; Mikro KDV tanımları (`fn_VergiYuzde`/`fn_VergiIsim`) `vat_rate` türüyle, yalnız tam okumada |
+| Ajan (yazım) | **Hata düzeltmesi:** gider KDV'si her zaman `cha_vergi1`'e yazılıyordu. Mikro'nun faturaları ve Fora `AddMasraf` KDV'yi işaretçinin kolonuna yazar (%20 → `cha_vergi4`), net `cha_aratoplam`'a. Oranı olmayan işaretçi `VAT_RATE_NOT_FOUND` |
+| Ajan paneli | Veri Tabloları'nda "Gider kartları (MASRAF_HESAPLARI)" ve "KDV tanımları" ayrı satır (önceden Lookup içinde görünmezdi) |
+| Merkez | `/sync/giderKartlari`: `grupKod/tipKod/sinifKod/birim` + `vergiOranlari[]` |
+| Çevirmen | KDV var, `vatPointer` yok → `MOBILE_APP_UPDATE_REQUIRED` (oran tahmin edilmez) |
+| Telefon | Kart seçimi Mikro başlığına göre gruplu/aranabilir; KDV oranı ERP tanımlarından; ödeme hesabı ERP kasa/banka koduyla (`cashCode`/`bankCode`) — banka/kredi kartı gideri önceden kodsuz banka adıyla gidip reddediliyordu; liste başlıkları ERP kartları |
+| Telefon (kalıcılık) | **Hata düzeltmesi:** kasa kaydının `expenseCardCode/vatAmount/approvalKind/counterpartyCode` alanları Room'a yazılmıyordu; yeniden açılışta gider kaydı tediye olarak ikinci kez kuyruğa girebiliyordu. Room 41 |
+
+Doğrulama: .NET tüm testler yeşil; canlı `MikroDB_V15_DEMO` (geri alınan oturum) gider yazımı nakit/havale/kredi
+kartı + KDV kolonu + oranı olmayan işaretçi reddi; telefon 358 birim testi yeşil.
+
 ## Seni bekleyenler (karar/aksiyon gerekiyor)
 
 ### 1. Ajanı yeni derlemeyle yeniden başlat
@@ -115,7 +132,7 @@ faturası Mikro'ya yazılıp ödemesi düşerdi. Kodu bilen taraf artık söylü
 | Y6a | Gider zaten "Gider" olarak adlandırılıyor (`ErpBelgeler.razor`) — değişiklik gerekmedi |
 | Y6b | Bilgi bankası: `01_Accounting_Adapters.md` (üç yeni yazıcı), `03_Data_Dictionary_and_Rules.md` (`MASRAF_HESAPLARI`, `SAYIM_SONUCLARI`) |
 
-Gider yazıcı canlı testine KDV'siz senaryo eklendi (`MikroExpenseWriterLiveTests`).
+Ana gider işi (kart başlıkları, KDV kolon düzeni, telefon) 2026-09-23'te #176–#178 ile girmişti; bu tur kalan cilayı kapattı.
 
 ## Kalanlar
 

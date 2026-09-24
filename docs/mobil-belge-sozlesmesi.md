@@ -165,12 +165,12 @@ taraf değildir — gider caride hiç iz bırakmaz.
 | `cashCode` / `bankCode` | hayır | Yoksa ERP aktarım ayarlarındaki kasa/banka (nakit → Kasa (nakit), kredi kartı → Banka (kredi kartı), havale → Banka (havale/EFT)) |
 | `bankName` | — | Tek başına yetmez; havale/kredi kartında banka seçildiyse `bankCode` de gelmeli, yoksa `MOBILE_APP_UPDATE_REQUIRED` (tediyedeki kuralla aynı) |
 | `vatAmount` | hayır (0) | KDV telefondan gelir, ERP hesaplamaz (K4); `amount`'tan büyük olamaz |
-| `vatPointer` | hayır (0) | Mikro'daki KDV tanım pointer'ı; `cha_vergi1`'e yazılır |
+| `vatPointer` | `vatAmount` > 0 ise evet | Mikro'daki KDV işaretçisi (1–10; telefon ERP'nin `vat_rate` kataloğundan seçer). Yoksa `MOBILE_APP_UPDATE_REQUIRED`; oranı olmayan işaretçi yazıcıda reddedilir (`VAT_RATE_NOT_FOUND`) |
 | `customerCode` | — | Gönderilmez/kullanılmaz — giderde cari yoktur |
 
 Mikro karşılığı: kasa masraf fişi (`cha_evrak_tip=37`), tek `CARI_HESAP_HAREKETLERI` satırı, seri**siz** dizide
 (§13). Gider kartı `cha_kasa_hizmet=5`/`cha_kasa_hizkod`'a, ödeyen hesap `cha_cari_cins`/`cha_kod`'a yazılır —
-tediyenin tam tersi. Açıklama satırı (`EVRAK_ACIKLAMALARI`) yoktur, not `cha_aciklama`'da kalır.
+tediyenin tam tersi. KDV, Mikro'nun kendi düzeniyle işaretçisinin kolonuna yazılır (%20 → `cha_vergi4`); `cha_aratoplam` KDV hariç, `cha_meblag` KDV dahil tutardır. Açıklama satırı (`EVRAK_ACIKLAMALARI`) yoktur, not `cha_aciklama`'da kalır.
 
 ## `stock_count` — sayım *(ERP yazım 3, Y1a/Y3c/Y4c)*
 

@@ -171,6 +171,14 @@ public static class RolePermissions
     /// <summary>Cancelling and reassigning orders, undoing anyone's step, the warehouse settings.</summary>
     public static bool CanManageWarehouse(MobileUser user) =>
         Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager);
+
+    /// <summary>
+    /// Writing product/customer cards, sales/purchase/return documents, collections and ledger
+    /// corrections from the portal for a <c>DataSource=native</c> (ERP-less) tenant — GOAL_PANEL_ERPSIZ
+    /// D4. Admin-only by user decision (2026-09-21): a single person is accountable for the company's
+    /// books when there is no ERP behind them.
+    /// </summary>
+    public static bool CanEditNativeData(MobileUser user) => IsAdmin(user);
 }
 
 /// <summary>What a user may do in the approval centre, from their current row.</summary>

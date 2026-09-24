@@ -44,6 +44,22 @@ ilgili knowledge_base dosyasını da güncelle.
 - **İstisna (2026-09-19):** aynı yetkiler `docs/GOAL_ERP_YAZIM_3.md` (alış faturası · gider · sayım) görevleri
   için de önceden onaylıdır (kullanıcı: "onay veriyorum"). Test yazımı yalnız **`MikroDB_V15_DEMO`**'ya.
   Aynı yasaklar geçerli.
+- **İstisna (2026-09-22):** aynı yetkiler `docs/GOAL_PANEL_ERPLI.md` (ERP'li firmalarda panelden ürün/cari
+  kartı düzenleme) görevleri için de önceden onaylıdır (kullanıcı: "Önceden onayla"). Test yazımı yalnız
+  **`MikroDB_V15_DEMO`**/`MikroDB_V15_ERPBTEST`'e. Aynı yasaklar geçerli: `--force` push (ve rebase sonrası
+  `--force-with-lease`) yasak, CI kırmızıyken merge yasak, `main`'e doğrudan push yasak, `MikroDB_V15_02`
+  (canlı firma verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak. **Bu goal 2026-09-22'de kullanıcı
+  önceliğiyle durduruldu** — bkz. aşağıdaki `GOAL_PANEL_ERPSIZ.md` istisnası.
+- **İstisna (2026-09-22):** aynı yetkiler `docs/GOAL_PANEL_ERPSIZ.md` (ERP'siz firmalarda panelden ürün/cari/
+  satış/alış/iade/tahsilat/tediye girişi ve düzenleme) görevleri için de önceden onaylıdır (kullanıcı: "Önceden
+  onayla"). Aynı yasaklar geçerli: `--force` push (ve rebase sonrası `--force-with-lease`) yasak, CI kırmızıyken
+  merge yasak, `main`'e doğrudan push yasak. Bu goal Mikro'ya hiç yazmadığı (`NativeDocumentProcessor` +
+  CentralApi PostgreSQL) için Mikro test DB kısıtı bu istisna için geçerli değil.
+- **İstisna (2026-09-24):** aynı yetkiler `docs/GOAL_PANEL_DUZELTMELER.md` (çıkış · tekrar onaya al · stok hızı ·
+  cari bakiyesi) görevleri için de önceden onaylıdır (kullanıcı: "Evet, önceden onaylı"). Test yazımı yalnız
+  **`MikroDB_V15_DEMO`**/`MikroDB_V15_ERPBTEST`'e. Aynı yasaklar geçerli: `--force` push (ve rebase sonrası
+  `--force-with-lease`) yasak, CI kırmızıyken merge yasak, `main`'e doğrudan push yasak, `MikroDB_V15_02` (canlı firma
+  verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak.
 
 ## 3. Test / build
 

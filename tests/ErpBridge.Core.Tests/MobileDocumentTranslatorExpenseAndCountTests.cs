@@ -123,6 +123,29 @@ public class MobileDocumentTranslatorExpenseAndCountTests
         expense.VatPointer.Should().Be(0);
     }
 
+    /// <summary>
+    /// Gider ERP uyumu: KDV Mikro'da işaretçinin kendi kolonuna yazılır. İşaretçisiz KDV gönderen telefon
+    /// ERP'nin KDV tanımlarını bilmeyen eski sürümdür; oran tahmin edilmez, güncelleme istenir.
+    /// </summary>
+    [Fact]
+    public void Vat_without_the_pointer_it_was_picked_under_asks_for_an_app_update()
+    {
+        var body = Expense.Replace("\"vatPointer\": 4, ", "", StringComparison.Ordinal);
+
+        _sut.Translate("expense", "MOB-GD-1", body, Context()).Error!.Code
+            .Should().Be(ErpWriteError.MobileAppUpdateRequiredCode);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(11)]
+    public void A_vat_pointer_mikro_does_not_have_is_refused(int pointer)
+    {
+        var body = Expense.Replace("\"vatPointer\": 4", $"\"vatPointer\": {pointer}", StringComparison.Ordinal);
+
+        _sut.Translate("expense", "MOB-GD-1", body, Context()).Error!.Code.Should().Be(ErpWriteError.InvalidDocumentCode);
+    }
+
     [Fact]
     public void An_expense_with_no_cash_box_configured_names_the_missing_setting()
     {

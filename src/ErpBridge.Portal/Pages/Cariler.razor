@@ -16,6 +16,10 @@ else
                               InputId="balances-search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Clearable="true" />
                 <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy">Ara</MudButton>
             </form>
+            @if (Session.CanEditNativeData)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNewCard" id="customer-new">Yeni müşteri</MudButton>
+            }
         </Actions>
     </PageHeader>
 
@@ -32,6 +36,10 @@ else
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
     }
 
     @if (_result is not null)
@@ -85,6 +93,30 @@ else
         <MudText Typo="Typo.caption" Class="text-muted page-footnote">
             Pozitif bakiye firmanın alacağıdır. Vade bilgisi telefonlara taşınmadığı için yaşlandırma (vadesi geçen tutar) gösterilmez.
         </MudText>
+    }
+
+    @if (Session.CanEditNativeData)
+    {
+        <DetailSheet Id="customer-card-sheet" Open="_cardOpen" Busy="Busy" Eyebrow="Cariler" Title="Yeni müşteri" OnClose="CloseCard">
+            <ChildContent>
+                <form class="stack-form" id="customer-card-form" @onsubmit="SaveCardAsync" @onsubmit:preventDefault>
+                    <MudTextField T="string" @bind-Value="_card.CustomerCode" Label="Kod" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="ccard-code" MaxLength="64" Required="true" />
+                    <MudTextField T="string" @bind-Value="_card.Title" Label="Unvan" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="ccard-title" Required="true" />
+                    <MudTextField T="string" @bind-Value="_card.Phone" Label="Telefon" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="ccard-phone" />
+                    <MudTextField T="string" @bind-Value="_card.Email" Label="E-posta" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="ccard-email" />
+                    <MudTextField T="string" @bind-Value="_card.TaxOffice" Label="Vergi dairesi" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="ccard-taxoffice" />
+                    <MudTextField T="string" @bind-Value="_card.TaxNo" Label="Vergi no" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="ccard-taxno" />
+                    <MudTextField T="string" @bind-Value="_card.RegionCode" Label="Bölge" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="ccard-region" />
+                    <MudNumericField T="decimal?" @bind-Value="_card.OpeningBalance" Label="Açılış bakiyesi" Variant="Variant.Outlined" Margin="Margin.Dense" id="ccard-opening"
+                                     HelperText="Pozitif = firmanın alacağı. Yalnız yeni müşteride; sonradan bu alan yok sayılır" />
+                    <div class="form-actions">
+                        <span style="flex: 1"></span>
+                        <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseCard">Vazgeç</MudButton>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="customer-card-save">Kaydet</MudButton>
+                    </div>
+                </form>
+            </ChildContent>
+        </DetailSheet>
     }
 }
 
@@ -198,4 +230,35 @@ else
             </button>
         </th>
     };
+
+    // ---- yeni müşteri (GOAL_PANEL_ERPSIZ E2b, ERP'siz firma) --------------------------
+
+    private string? Notice { get; set; }
+    private bool _cardOpen;
+    private NativeCustomerCardRequest _card = new();
+
+    private void OpenNewCard()
+    {
+        Notice = null;
+        Error = null;
+        _card = new NativeCustomerCardRequest { OperationId = Guid.NewGuid().ToString("N") };
+        _cardOpen = true;
+    }
+
+    private void CloseCard() => _cardOpen = false;
+
+    private Task SaveCardAsync()
+    {
+        Notice = null;
+        _card.CustomerCode = (_card.CustomerCode ?? string.Empty).Trim();
+        _card.Title = (_card.Title ?? string.Empty).Trim();
+        var title = _card.Title;
+        return RunAsync(async () =>
+        {
+            await Api.SaveNativeCustomerCardAsync(_card);
+            _cardOpen = false;
+            await LoadAsync();
+            Notice = $"{title} eklendi.";
+        });
+    }
 }

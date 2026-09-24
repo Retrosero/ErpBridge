@@ -59,4 +59,47 @@ public class MikroExpenseCardCatalogLiveTests
 
         codes.Should().NotIntersectWith(excluded);
     }
+    /// <summary>
+    /// Gider ERP uyumu: kartın Mikro başlıkları (grup / tip / sınıf, birim) kartla birlikte gider; boş başlık
+    /// boş kalır. KDV tanımları da aynı okumada gelir ve oranları Mikro'nun kendi fonksiyonuyla aynıdır.
+    /// </summary>
+    [Fact]
+    public async Task The_lookups_carry_card_headings_and_mikros_vat_definitions()
+    {
+        if (!MikroWriteTestDatabase.CanWrite) return;
+
+        var lookups = await CreateReader().ReadLookupsAsync(firmNo: 0);
+        await using var conn = await MikroWriteTestDatabase.OpenAsync();
+
+        var headings = (await conn.QueryAsync<(string Code, string Group, string Type, string Class)>(
+            "SELECT his_kod, ISNULL(his_grupkod, ''), ISNULL(his_tipkod, ''), ISNULL(his_sinifkod, '') FROM MASRAF_HESAPLARI WHERE ISNULL(his_iptal, 0) = 0 AND ISNULL(his_hidden, 0) = 0"))
+            .ToDictionary(h => h.Code);
+        foreach (var card in lookups.Where(l => l.Kind == "expense_card"))
+        {
+            var mikro = headings[card.Code];
+            (card.ParentCode ?? string.Empty).Should().Be(mikro.Group.Trim());
+            (card.TypeCode ?? string.Empty).Should().Be(mikro.Type.Trim());
+            (card.ClassCode ?? string.Empty).Should().Be(mikro.Class.Trim());
+        }
+
+        var rates = lookups.Where(l => l.Kind == "vat_rate").ToList();
+        rates.Should().Contain(r => r.Code == "1", "işaretçi 1 KDV'siz satırdır ve her zaman seçilebilir");
+        foreach (var rate in rates)
+        {
+            var expected = await conn.ExecuteScalarAsync<double>("SELECT dbo.fn_VergiYuzde(@p)", new { p = byte.Parse(rate.Code) });
+            ((double)rate.Rate!.Value).Should().BeApproximately(expected, 0.0001);
+            rate.Name.Should().NotBeNullOrWhiteSpace();
+        }
+    }
+
+    /// <summary>Artımlı okumada KDV tanımları gelmez; merkezdeki birleştirme (kind, code) onları korur.</summary>
+    [Fact]
+    public async Task An_incremental_read_leaves_the_vat_definitions_out()
+    {
+        if (!MikroWriteTestDatabase.CanWrite) return;
+
+        var lookups = await CreateReader().ReadLookupsAsync(firmNo: 0, changedSinceUtc: DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        lookups.Should().NotContain(l => l.Kind == "vat_rate");
+    }
 }

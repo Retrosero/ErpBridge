@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Endpoints;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -38,9 +39,18 @@ public static class PortalLedger
     /// A peşin invoice Mikro closed to a kasa/banka (<c>kapali</c>): it belongs to the customer in
     /// <c>ciroCariKod</c> but never moved their balance, so statements leave it out.
     /// </param>
+    /// <param name="OtherSide">
+    /// Any other kasa/banka-side Mikro row (<c>cha_cari_cins</c> ≠ 0): its <c>cariKod</c> is a kasa or bank code
+    /// that may equal a customer code. Mikro's balance counts only <c>cha_cari_cins = 0</c>, so neither does the panel.
+    /// </param>
     public sealed record Movement(
         string Customer, string Id, DateTime Date, string Kind, string? SourceType, string? DocumentNo, string? Description,
-        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null, bool Closed = false);
+        decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null, bool Closed = false, string? PaymentType = null,
+        bool Voided = false, Guid? VoidedByUserId = null, DateTime? VoidedAt = null, string? VoidReason = null, bool OtherSide = false)
+    {
+        /// <summary>Moves the customer's balance and shows on their statement.</summary>
+        public bool CustomerSide => !Closed && !OtherSide;
+    }
 
     /// <summary>
     /// Oldest first. Mikro movements of one day share a midnight timestamp, so they follow their record
@@ -66,6 +76,12 @@ public static class PortalLedger
     private sealed record AddressPart(string Code, int No, string? City, string? Text) : CustomerPart;
 
     private sealed record CachedCustomers(long Version, IReadOnlyDictionary<string, Customer> Customers);
+
+    /// <param name="Any">Whether the company has any ledger rows at all.</param>
+    private sealed record CachedBalances(long Version, IReadOnlyDictionary<string, decimal> Balances, bool Any);
+
+    private sealed record CachedLedgerCustomers(
+        IReadOnlyDictionary<string, Customer> Cards, IReadOnlyDictionary<string, decimal> Balances, IReadOnlyDictionary<string, Customer> Customers);
 
     private sealed record CachedMovements(long LedgerVersion, long LinesVersion, long StockVersion, Movements Movements);
 
@@ -94,6 +110,57 @@ public static class PortalLedger
         }
         cache.Set(key, new CachedCustomers(mirror.Version, customers), ViewLifetime);
         return customers;
+    }
+
+    /// <summary>
+    /// The customers with the balance the panel shows. A native company's card balance is the book itself
+    /// (<c>native_customer_balances</c>, opening balance included), so it stands. An ERP company's card balance is
+    /// the agent's snapshot, which the agent re-sends only when the customer card itself changes: a new invoice or
+    /// collection leaves it stale. There the balance is Sipariş Cepte's: the sum of the customer's mirrored ledger
+    /// rows (debit +, credit −, kasa/banka-side rows such as closed peşin invoices left out; Siparis_Cepte
+    /// <c>AppDatabase.pageForBrowse</c>, <c>CustomerDetailLoader</c>). The agent mirrors the whole ledger, and
+    /// Mikro's card balance is that same sum, so a customer without rows is at zero — even when their card still
+    /// shows the balance of an invoice since deleted (Codex, PR #181). Only a company with no ledger rows at all
+    /// (an agent that sends none) keeps the card balances.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<string, Customer>> CustomersAsync(
+        CentralApiDbContext db, IMemoryCache cache, Guid tenantId, string dataSource, CancellationToken ct)
+    {
+        var cards = await CustomersAsync(db, cache, tenantId, ct);
+        if (string.Equals(dataSource, TenantDataSources.Native, StringComparison.Ordinal)) return cards;
+        var ledger = await LedgerBalancesAsync(db, cache, tenantId, ct);
+        if (!ledger.Any) return cards;
+
+        var key = ("portal-customers-ledger", tenantId);
+        if (cache.TryGetValue(key, out CachedLedgerCustomers? cached)
+            && ReferenceEquals(cached!.Cards, cards) && ReferenceEquals(cached.Balances, ledger.Balances))
+            return cached.Customers;
+        var customers = new Dictionary<string, Customer>(cards.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var (code, card) in cards)
+            customers[code] = card with { Balance = ledger.Balances.GetValueOrDefault(code) };
+        cache.Set(key, new CachedLedgerCustomers(cards, ledger.Balances, customers), ViewLifetime);
+        return customers;
+    }
+
+    /// <summary>Each customer's ledger sum, from the ledger mirror alone — the list must not wait for invoice lines.</summary>
+    private static async Task<CachedBalances> LedgerBalancesAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
+    {
+        var mirror = PortalRecordMirror<Movement>.For(cache, "ledger", tenantId, MovementEntities, ParseMovement);
+        var key = ("portal-ledger-balances", tenantId);
+        cache.TryGetValue(key, out CachedBalances? cached);
+        var ledger = await mirror.RefreshAsync(db, cached?.Version, ct);
+        if (ledger is null && cached is not null) return cached;
+
+        var balances = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var movement in ledger ?? [])
+        {
+            // A kasa/banka-side row (a closed invoice among them) never moved the customer's balance.
+            if (!movement.CustomerSide) continue;
+            balances[movement.Customer] = balances.GetValueOrDefault(movement.Customer) + movement.Debit - movement.Credit;
+        }
+        var result = new CachedBalances(mirror.Version, balances, ledger is { Count: > 0 });
+        cache.Set(key, result, ViewLifetime);
+        return result;
     }
 
     public static async Task<Movements> MovementsAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
@@ -177,9 +244,13 @@ public static class PortalLedger
     {
         // A closed invoice's cariKod is the kasa/banka it posted to; its customer is ciroCariKod.
         var closed = AndroidEndpoints.GetBoolean(row, "kapali") ?? false;
-        var customer = (closed ? PortalRecords.Blank(AndroidEndpoints.GetString(row, "ciroCariKod")) : null)
+        var counterparty = PortalRecords.Blank(AndroidEndpoints.GetString(row, "ciroCariKod"));
+        var customer = (closed ? counterparty : null)
             ?? PortalRecords.Blank(AndroidEndpoints.GetFirstString(row, "cariKod", "customerCode"));
         if (customer is null) return null;
+        // Mikro counts only cha_cari_cins = 0. An agent before G4 sends no cariCins; there a ciro code marks the
+        // kasa/banka side (the reader fills it only for cha_cari_cins <> 0).
+        var otherSide = !closed && (AndroidEndpoints.GetInt32(row, "cariCins") is { } side ? side != 0 : counterparty is not null);
         var native = string.Equals(AndroidEndpoints.GetString(row, "erp"), PortalRecords.NativeErp, StringComparison.OrdinalIgnoreCase);
         var sourceType = PortalRecords.Blank(AndroidEndpoints.GetString(row, "type"));
         var kind = KindOf(sourceType);
@@ -206,7 +277,13 @@ public static class PortalLedger
             debit ? 0m : amount,
             documentKey,
             recNo,
-            closed);
+            closed,
+            PortalRecords.Blank(AndroidEndpoints.GetString(row, "paymentType")),
+            AndroidEndpoints.GetBoolean(row, "voided") ?? false,
+            Guid.TryParse(AndroidEndpoints.GetString(row, "voidedByUserId"), out var voidedBy) ? voidedBy : null,
+            PortalRecords.ReadDateTime(AndroidEndpoints.GetString(row, "voidedAt")),
+            PortalRecords.Blank(AndroidEndpoints.GetString(row, "voidReason")),
+            otherSide);
     }
 
     // ---- queries --------------------------------------------------------------
@@ -270,15 +347,23 @@ public static class PortalLedger
     };
 
     /// <summary>
-    /// A statement. The running balance is anchored to the card balance (the figure the phone
-    /// shows): the last movement ends on it, so a mirror holding only recent history still
-    /// adds up. Opening = card balance − movements from <paramref name="from"/> on.
+    /// A statement. The running balance is anchored to the customer's balance as the panel lists it
+    /// (<see cref="CustomersAsync(CentralApiDbContext, IMemoryCache, Guid, string, CancellationToken)"/>): the last
+    /// movement ends on it. Opening = balance − movements from <paramref name="from"/> on. For an ERP company that
+    /// balance is the ledger sum itself, so the opening is exactly the movements before <paramref name="from"/>; a
+    /// native company's card balance also carries its opening balance.
+    ///
+    /// <para><paramref name="includeVoided"/> (GOAL_PANEL_ERPSIZ E4d) only hides a voided original from
+    /// the rows shown — its reversal still shows (E4a always books one) and every balance figure here
+    /// (opening/closing/running) always counts every movement, voided or not, exactly like the
+    /// <paramref name="kinds"/> filter already does: hiding a row from the list never hides its effect
+    /// on the number the phone's own card balance agrees with.</para>
     /// </summary>
     public static PortalLedgerResponse Statement(
-        Customer customer, Movements movements, DateOnly? from, DateOnly? to, IReadOnlyCollection<string> kinds, int page, int pageSize)
+        Customer customer, Movements movements, DateOnly? from, DateOnly? to, IReadOnlyCollection<string> kinds, bool includeVoided, int page, int pageSize)
     {
-        // Like Mikro's cari föyü: a closed invoice is a kasa/banka movement, not a balance movement.
-        var all = movements.ByCustomer.TryGetValue(customer.Code, out var list) ? list.Where(m => !m.Closed).ToList() : [];
+        // Like Mikro's cari föyü: a closed invoice or other kasa/banka-side row is not a balance movement.
+        var all = movements.ByCustomer.TryGetValue(customer.Code, out var list) ? list.Where(m => m.CustomerSide).ToList() : [];
         var start = from?.ToDateTime(TimeOnly.MinValue);
         var endExclusive = to?.AddDays(1).ToDateTime(TimeOnly.MinValue);
         var fromOn = start is null ? all : all.Where(m => m.Date >= start).ToList();
@@ -292,6 +377,7 @@ public static class PortalLedger
             if (endExclusive is not null && m.Date >= endExclusive) break;
             running += m.Debit - m.Credit;
             if (kinds.Count > 0 && !kinds.Contains(m.Kind)) continue;
+            if (!includeVoided && m.Voided) continue;
             totalDebit += m.Debit;
             totalCredit += m.Credit;
             rows.Add(new PortalLedgerRow
@@ -306,6 +392,10 @@ public static class PortalLedger
                 Credit = m.Credit,
                 Balance = running,
                 DocumentKey = m.DocumentKey,
+                Voided = m.Voided,
+                VoidedByUserId = m.VoidedByUserId,
+                VoidedAt = m.VoidedAt?.ToString("O", CultureInfo.InvariantCulture),
+                Reason = m.VoidReason,
             });
         }
 
@@ -330,17 +420,43 @@ public static class PortalLedger
     {
         if (!movements.ByCustomer.TryGetValue(customer.Code, out var list)) return null;
         var movement = list.FirstOrDefault(m => string.Equals(m.DocumentKey, documentKey, StringComparison.Ordinal));
-        if (movement is null) return null;
+        return movement is null ? null : BuildDocumentResponse(customer.Code, customer.Title, movement, movements, documentKey);
+    }
+
+    /// <summary>
+    /// The same document, found by its key alone (GOAL_PANEL_ERPSIZ E5b) — for a caller that does not
+    /// already know which customer/supplier it belongs to (a company-wide documents list, an id typed
+    /// into a URL). Scans every customer's movements once; <see cref="Movements"/> is already the whole
+    /// tenant in memory (E3c's Payments does the same), so this stays a single cached-data pass, no
+    /// extra database round trip.
+    /// </summary>
+    public static PortalDocumentResponse? DocumentByKey(IReadOnlyDictionary<string, Customer> customers, Movements movements, string documentKey)
+    {
+        foreach (var (customerCode, list) in movements.ByCustomer)
+        {
+            var movement = list.FirstOrDefault(m => string.Equals(m.DocumentKey, documentKey, StringComparison.Ordinal));
+            if (movement is null) continue;
+            var title = customers.TryGetValue(customerCode, out var customer) ? customer.Title : customerCode;
+            return BuildDocumentResponse(customerCode, title, movement, movements, documentKey);
+        }
+        return null;
+    }
+
+    private static PortalDocumentResponse BuildDocumentResponse(string customerCode, string customerTitle, Movement movement, Movements movements, string documentKey)
+    {
         var lines = movements.LinesByDocument.TryGetValue(documentKey, out var found) ? found : [];
         return new PortalDocumentResponse
         {
+            Id = movement.Id,
             DocumentKey = documentKey,
-            CustomerCode = customer.Code,
+            CustomerCode = customerCode,
+            CustomerTitle = customerTitle,
             Date = movement.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             Kind = movement.Kind,
             DocumentNo = movement.DocumentNo,
             Description = movement.Description,
             Amount = movement.Debit + movement.Credit,
+            Voided = movement.Voided,
             LinesAvailable = lines.Count > 0,
             Lines = lines.Select(l => new PortalDocumentLine
             {
@@ -353,6 +469,142 @@ public static class PortalLedger
                 WarehouseNo = l.WarehouseNo,
                 Description = l.Description,
             }).ToList(),
+        };
+    }
+
+    private static readonly string[] PaymentKinds = ["collection", "payment"];
+
+    /// <summary>
+    /// Every sale/purchase/return invoice across the company, any customer/supplier (GOAL_PANEL_ERPSIZ
+    /// E5b) — the line-carrying kinds, i.e. exactly <see cref="DocumentKinds"/>. Same shape as E3c's
+    /// <see cref="Payments"/>: a caller-resolved job lookup for the creator, everything else already
+    /// cached in <paramref name="movements"/>.
+    /// </summary>
+    public static PortalDocumentsResponse Documents(
+        IReadOnlyDictionary<string, Customer> customers, Movements movements, DateOnly from, DateOnly to,
+        IReadOnlyCollection<string> kinds, string? customerCode, Guid? userId,
+        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+    {
+        var wanted = kinds.Count > 0 ? kinds : DocumentKinds;
+        var start = from.ToDateTime(TimeOnly.MinValue);
+        var endExclusive = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var code = customerCode?.Trim();
+
+        var matching = movements.ByCustomer.Values
+            .SelectMany(list => list)
+            .Where(m => !m.Closed && m.DocumentKey is not null && wanted.Contains(m.Kind) && m.Date >= start && m.Date < endExclusive)
+            .Where(m => code is null || string.Equals(m.Customer, code, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (userId is { } wantedUser)
+            matching = matching.Where(m => creatorOf(ExternalIdOf(m.Id)) == wantedUser).ToList();
+
+        var ordered = matching.OrderByDescending(m => m.Date).ThenByDescending(m => m.Id, StringComparer.Ordinal).ToList();
+        var pageItems = ordered.Skip((page - 1) * pageSize).Take(pageSize).Select(m =>
+        {
+            var creator = creatorOf(ExternalIdOf(m.Id));
+            return new PortalDocumentRow
+            {
+                Id = m.Id,
+                DocumentKey = m.DocumentKey!,
+                Kind = m.Kind,
+                Date = m.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DocumentNo = m.DocumentNo,
+                CustomerCode = m.Customer,
+                CustomerTitle = customers.TryGetValue(m.Customer, out var customer) ? customer.Title : m.Customer,
+                Amount = m.Debit + m.Credit,
+                UserId = creator,
+                UserName = creator is { } id && userNames.TryGetValue(id, out var name) ? name : null,
+            };
+        }).ToList();
+
+        return new PortalDocumentsResponse
+        {
+            From = from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            To = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Items = pageItems,
+            Total = matching.Count,
+            Page = page,
+            PageSize = pageSize,
+        };
+    }
+
+    /// <summary>
+    /// The job that created a movement, from its id (<c>PostToCustomerAsync</c> always writes
+    /// <c>"{externalId}|{suffix}"</c>): strips the last <c>|</c>-separated segment. A row with no
+    /// <c>|</c> (an ERP-agent row, never one of ours) yields itself and simply matches no job.
+    /// </summary>
+    public static string ExternalIdOf(string movementId)
+    {
+        var index = movementId.LastIndexOf('|');
+        return index < 0 ? movementId : movementId[..index];
+    }
+
+    /// <summary>
+    /// Every collection/payment movement of the company, any customer (GOAL_PANEL_ERPSIZ E3c).
+    /// <paramref name="creatorOf"/> and <paramref name="userNames"/> are resolved by the caller
+    /// (a job lookup keyed by <see cref="ExternalIdOf"/>) because this method never touches the
+    /// database — everything else here reads the already-cached <paramref name="movements"/>.
+    /// </summary>
+    public static PortalPaymentsResponse Payments(
+        IReadOnlyDictionary<string, Customer> customers, Movements movements, DateOnly from, DateOnly to,
+        IReadOnlyCollection<string> kinds, string? customerCode, Guid? userId,
+        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+    {
+        var wanted = kinds.Count > 0 ? kinds : PaymentKinds;
+        var start = from.ToDateTime(TimeOnly.MinValue);
+        var endExclusive = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var code = customerCode?.Trim();
+
+        var matching = movements.ByCustomer.Values
+            .SelectMany(list => list)
+            .Where(m => !m.Closed && wanted.Contains(m.Kind) && m.Date >= start && m.Date < endExclusive)
+            .Where(m => code is null || string.Equals(m.Customer, code, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (userId is { } wantedUser)
+            matching = matching.Where(m => creatorOf(ExternalIdOf(m.Id)) == wantedUser).ToList();
+
+        var dailyTotals = matching.GroupBy(m => m.Date.Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new PortalPaymentGroupTotal { Key = g.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Debit = g.Sum(m => m.Debit), Credit = g.Sum(m => m.Credit) })
+            .ToList();
+        var typeTotals = matching.GroupBy(m => m.PaymentType ?? "Diğer", StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Sum(m => m.Debit + m.Credit))
+            .Select(g => new PortalPaymentGroupTotal { Key = g.Key, Debit = g.Sum(m => m.Debit), Credit = g.Sum(m => m.Credit) })
+            .ToList();
+
+        var ordered = matching.OrderByDescending(m => m.Date).ThenByDescending(m => m.Id, StringComparer.Ordinal).ToList();
+        var pageItems = ordered.Skip((page - 1) * pageSize).Take(pageSize).Select(m =>
+        {
+            var creator = creatorOf(ExternalIdOf(m.Id));
+            return new PortalPaymentRow
+            {
+                Id = m.Id,
+                Date = m.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                CustomerCode = m.Customer,
+                CustomerTitle = customers.TryGetValue(m.Customer, out var customer) ? customer.Title : m.Customer,
+                Kind = m.Kind,
+                PaymentType = m.PaymentType,
+                Description = m.Description,
+                Debit = m.Debit,
+                Credit = m.Credit,
+                UserId = creator,
+                UserName = creator is { } id && userNames.TryGetValue(id, out var name) ? name : null,
+                DocumentKey = m.DocumentKey,
+            };
+        }).ToList();
+
+        return new PortalPaymentsResponse
+        {
+            From = from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            To = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Items = pageItems,
+            Total = matching.Count,
+            Page = page,
+            PageSize = pageSize,
+            TotalDebit = matching.Sum(m => m.Debit),
+            TotalCredit = matching.Sum(m => m.Credit),
+            DailyTotals = dailyTotals,
+            PaymentTypeTotals = typeTotals,
         };
     }
 

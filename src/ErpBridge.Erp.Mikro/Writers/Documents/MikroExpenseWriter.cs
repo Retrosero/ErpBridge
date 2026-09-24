@@ -20,6 +20,10 @@ namespace ErpBridge.Erp.Mikro.Writers.Documents;
 /// type 37, but the company's own Mikro screen does — 151 rows of it. Reference §6 settles that disagreement in
 /// favour of Mikro's own record, so 37 is what we write (K1).</para>
 ///
+/// <para>VAT follows Mikro's own CHA layout (and Fora's <c>AddMasraf</c>): the net goes in <c>cha_aratoplam</c>
+/// and the VAT in the column of its pointer — <c>cha_vergi4</c> for 20%, not <c>cha_vergi1</c>. The phone picks
+/// the pointer from the ERP's own VAT definitions.</para>
+///
 /// <para>Unlike every other document here, an expense carries <b>no</b> <c>EVRAK_ACIKLAMALARI</c> row: the live
 /// data has none for type 37, and the note the user typed goes in <c>cha_aciklama</c> instead.</para>
 /// </summary>
@@ -62,6 +66,8 @@ public sealed class MikroExpenseWriter(MikroDocumentWriteRunner runner)
         // Both sides are checked before a row exists: an expense on a card or an account Mikro does not
         // have is cheap to refuse now and expensive to unpick from the ledger later.
         await lookup.EnsureExpenseCardAsync(command.ExpenseCardCode, ct).ConfigureAwait(false);
+        // VAT lands in its pointer's own column, so the pointer has to be one Mikro gives a rate to.
+        if (command.VatAmount > 0) await lookup.EnsureVatPointerAsync(command.VatPointer, ct).ConfigureAwait(false);
         await lookup.EnsureSalespersonAsync(header.SalespersonCode, ct).ConfigureAwait(false);
         await (command.Method == ExpensePaymentMethod.Cash
             ? lookup.EnsureCashBoxAsync(command.AccountCode, MikroCashBoxKind.Cash, ct)
@@ -84,6 +90,10 @@ public sealed class MikroExpenseWriter(MikroDocumentWriteRunner runner)
         ExpensePaymentMethod.Transfer => (MikroCodes.ChaCinsi.FirmaHavaleEmri, MikroCodes.HesapCinsi.Bankamiz),
         _ => (MikroCodes.ChaCinsi.FirmaKrediKarti, MikroCodes.HesapCinsi.Bankamiz),
     };
+
+    /// <summary>The VAT amount if <paramref name="pointer"/> is the expense's own VAT pointer, else 0.</summary>
+    internal static decimal VatColumn(ExpenseCommand command, byte pointer) =>
+        command.VatAmount > 0 && command.VatPointer == pointer ? command.VatAmount : 0m;
 
     internal static Dictionary<string, object?> LineRow(ExpenseCommand command, int number)
     {
@@ -119,10 +129,21 @@ public sealed class MikroExpenseWriter(MikroDocumentWriteRunner runner)
             ["cha_d_kur"] = 1d,
             ["cha_altd_kur"] = 1d,
             ["cha_karsid_kur"] = 1d,
+            // Mikro's own layout for a VAT-bearing CHA row (its invoices, and Fora's AddMasraf): the net in
+            // cha_aratoplam, the VAT in the pointer's own cha_vergiN column, the paid total in cha_meblag.
             ["cha_meblag"] = command.Amount,
-            ["cha_aratoplam"] = command.Amount,
-            ["cha_vergipntr"] = command.VatPointer,
-            ["cha_vergi1"] = command.VatAmount,
+            ["cha_aratoplam"] = command.Amount - command.VatAmount,
+            ["cha_vergipntr"] = command.VatAmount > 0 ? command.VatPointer : (byte)0,
+            ["cha_vergi1"] = VatColumn(command, 1),
+            ["cha_vergi2"] = VatColumn(command, 2),
+            ["cha_vergi3"] = VatColumn(command, 3),
+            ["cha_vergi4"] = VatColumn(command, 4),
+            ["cha_vergi5"] = VatColumn(command, 5),
+            ["cha_vergi6"] = VatColumn(command, 6),
+            ["cha_vergi7"] = VatColumn(command, 7),
+            ["cha_vergi8"] = VatColumn(command, 8),
+            ["cha_vergi9"] = VatColumn(command, 9),
+            ["cha_vergi10"] = VatColumn(command, 10),
             ["cha_vade"] = int.Parse(day.ToString("yyyyMMdd", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture),
         };
     }

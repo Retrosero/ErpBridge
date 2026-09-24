@@ -111,7 +111,11 @@ SELECT
     (SELECT COUNT_BIG(1) FROM SATIS_SARTLARI WHERE ISNULL(sat_iptal, 0) = 0) AS SalesConditions,
     (SELECT COUNT_BIG(1) FROM dbo.STOK_HAREKETTEN_ELDEKI_MIKTAR_VIEW WHERE NULLIF(LTRIM(RTRIM(sth_stok_kod)), '') IS NOT NULL) AS Inventory,
     (SELECT COUNT_BIG(1) FROM CARI_HESAP_HAREKETLERI WHERE ISNULL(cha_iptal, 0) = 0) AS CustomerTransactions,
-    (SELECT COUNT_BIG(1) FROM STOK_HAREKETLERI WHERE ISNULL(sth_iptal, 0) = 0) AS StockTransactions;";
+    (SELECT COUNT_BIG(1) FROM STOK_HAREKETLERI WHERE ISNULL(sth_iptal, 0) = 0) AS StockTransactions,
+    -- Gider ERP uyumu: lookups içinde giden gider kartları ve KDV tanımları, panelde ayrı satır.
+    (SELECT COUNT_BIG(1) FROM MASRAF_HESAPLARI WHERE ISNULL(his_iptal, 0) = 0 AND ISNULL(his_hidden, 0) = 0) AS ExpenseCards,
+    (SELECT COUNT_BIG(1) FROM (VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)) AS v(p)
+      WHERE v.p = 1 OR dbo.fn_VergiYuzde(v.p) > 0) AS VatRates;";
 
         var counts = await QuerySingleAsync<BootstrapRecordCounts>(
             sql,
@@ -132,7 +136,24 @@ SELECT
     public async Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         var customerKey = await IdentityExpressionAsync("CARI_HESAPLAR", "cari_RECno", "cari_Guid", ct).ConfigureAwait(false);
+        // An incremental read returns every customer whose card changed OR whose ledger moved since the
+        // watermark: the balance lives in the movements, and a new invoice or collection does not touch
+        // the card. Without the second arm the panel and phones kept a stale card balance until the card
+        // itself was edited (GOAL_PANEL_DUZELTMELER G4). Cancelled movements count as "moved" too — the
+        // balance drops them.
         var sql = $@"
+WITH selected AS (
+    SELECT cari_kod
+    FROM CARI_HESAPLAR
+    WHERE ISNULL(cari_iptal, 0) = 0
+      AND (@changedSinceUtc IS NULL
+           OR COALESCE(cari_lastup_date, cari_create_date) > @changedSinceUtc
+           OR EXISTS (
+               SELECT 1 FROM CARI_HESAP_HAREKETLERI moved
+               WHERE moved.cha_kod = CARI_HESAPLAR.cari_kod
+                 AND ISNULL(moved.cha_cari_cins, 0) = 0
+                 AND COALESCE(moved.cha_lastup_date, moved.cha_create_date, moved.cha_tarihi) > @movedSinceUtc))
+)
 SELECT
     CAST(ISNULL(cari_kod, '') AS NVARCHAR(50))       AS CustomerCode,
     CAST(ISNULL(cari_unvan1, '') AS NVARCHAR(200))    AS Title1,
@@ -163,16 +184,19 @@ LEFT JOIN (
     FROM CARI_HESAP_HAREKETLERI
     WHERE ISNULL(cha_iptal, 0) = 0
       AND ISNULL(cha_cari_cins, 0) = 0
-      AND (@changedSinceUtc IS NULL OR EXISTS (
-          SELECT 1 FROM CARI_HESAPLAR changed
-          WHERE changed.cari_kod = cha_kod
-            AND COALESCE(changed.cari_lastup_date, changed.cari_create_date) > @changedSinceUtc))
+      AND cha_kod IN (SELECT cari_kod FROM selected)
     GROUP BY cha_kod
 ) AS ledger ON ledger.cha_kod = cari_kod
-WHERE ISNULL(cari_iptal, 0) = 0
-  AND (@changedSinceUtc IS NULL OR COALESCE(cari_lastup_date, cari_create_date) > @changedSinceUtc)";
+WHERE cari_kod IN (SELECT cari_kod FROM selected)";
 
-        var rows = await QueryAsync<CustomerRow>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
+        // The movement arm uses the ledger reader's watermark (lookback included): cha_lastup_date is not
+        // verified and falls back to the midnight-stamped cha_tarihi, see MikroDateTimeWithLookback.
+        var rows = await QueryAsync<CustomerRow>(sql, new
+        {
+            firmNo,
+            changedSinceUtc = MikroDateTime(changedSinceUtc),
+            movedSinceUtc = MikroDateTimeWithLookback(changedSinceUtc, CoarseWatermarkLookback),
+        }, ct).ConfigureAwait(false);
         // Drop the Addresses/Contacts fields the constructor will initialise to null —
         // supply proper empty lists after Dapper hydrates the scalar columns.
         var result = rows
@@ -414,32 +438,33 @@ FROM BANKALAR WHERE ban_firma_no = @firmNo AND ISNULL(ban_iptal, 0) = 0
         const string sql = @"
 SELECT 'warehouse' AS Kind, CAST(dep_no AS NVARCHAR(20)) AS Code, CAST(dep_adi AS NVARCHAR(100)) AS Name,
        CAST(NULL AS NVARCHAR(50)) AS ParentCode, CAST(NULL AS NVARCHAR(10)) AS Currency,
-       CAST(NULL AS BIT) AS IncludesVat
+       CAST(NULL AS BIT) AS IncludesVat, CAST(NULL AS NVARCHAR(50)) AS TypeCode,
+       CAST(NULL AS NVARCHAR(50)) AS ClassCode, CAST(NULL AS NVARCHAR(20)) AS Unit, CAST(NULL AS DECIMAL(9,4)) AS Rate
 FROM DEPOLAR
 WHERE dep_firmano = @firmNo AND ISNULL(dep_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(dep_lastup_date, dep_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'salesperson', CAST(cari_per_kod AS NVARCHAR(20)), CAST(ISNULL(cari_per_adi,'') + ' ' + ISNULL(cari_per_soyadi,'') AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
 FROM CARI_PERSONEL_TANIMLARI
 WHERE ISNULL(cari_per_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(cari_per_lastup_date, cari_per_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'payment_plan', CAST(odp_no AS NVARCHAR(20)), CAST(ISNULL(odp_aratop,0) AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
 FROM ODEME_PLANLARI
 WHERE ISNULL(odp_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(odp_lastup_date, odp_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'project', CAST(pro_kodu AS NVARCHAR(50)), CAST(pro_adi AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
 FROM PROJELER
 WHERE ISNULL(pro_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(pro_lastup_date, pro_create_date) > @changedSinceUtc)
 UNION ALL
 SELECT 'price_list', CAST(sfl_sirano AS NVARCHAR(20)), CAST(ISNULL(sfl_aciklama, '') AS NVARCHAR(200)),
        CAST(ISNULL(sfl_fiyatformul, '') AS NVARCHAR(500)), CAST(NULL AS NVARCHAR(10)),
-       CAST(ISNULL(sfl_kdvdahil, 0) AS BIT)
+       CAST(ISNULL(sfl_kdvdahil, 0) AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
 FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI
 WHERE ISNULL(sfl_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sfl_lastup_date, sfl_create_date) > @changedSinceUtc)
@@ -447,11 +472,29 @@ UNION ALL
 -- ERP yazım 3 Y2b: gider kartları (MASRAF_HESAPLARI). Telefon gider girerken bunlardan birini
 -- seçer ve kodu `cha_kasa_hizkod` olarak Mikro'ya yazılır (referans §13). Kendi bölümü yerine
 -- lookups içinde taşınır: 19 satırlık bir katalog için var olan boru hattı yeterli.
+-- Gider ERP uyumu: Mikro'nun kart başlıkları da gider — grup (ParentCode), tip, sınıf, birim,
+-- döviz cinsi. Telefon kartları Mikro'daki gibi gruplar (Fora'nın tip/sınıf/grup süzgeci).
 SELECT 'expense_card', CAST(his_kod AS NVARCHAR(50)), CAST(ISNULL(his_isim, '') AS NVARCHAR(200)),
-       CAST(NULL AS NVARCHAR(500)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT)
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(his_grupkod, ''))), '') AS NVARCHAR(50)),
+       CAST(ISNULL(his_dovcinsi, 0) AS NVARCHAR(10)), CAST(NULL AS BIT),
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(his_tipkod, ''))), '') AS NVARCHAR(50)),
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(his_sinifkod, ''))), '') AS NVARCHAR(50)),
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(his_birim_ad, ''))), '') AS NVARCHAR(20)),
+       CAST(NULL AS DECIMAL(9,4))
 FROM MASRAF_HESAPLARI
 WHERE ISNULL(his_iptal, 0) = 0 AND ISNULL(his_hidden, 0) = 0
-  AND (@changedSinceUtc IS NULL OR COALESCE(his_lastup_date, his_create_date) > @changedSinceUtc)";
+  AND (@changedSinceUtc IS NULL OR COALESCE(his_lastup_date, his_create_date) > @changedSinceUtc)
+UNION ALL
+-- Gider ERP uyumu: Mikro'nun KDV tanımları (işaretçi 1..10 → fn_VergiYuzde / fn_VergiIsim). Gider KDV'si
+-- Mikro'da işaretçinin kendi kolonuna yazılır (cha_vergi4 = %20); telefon oranı buradan seçer. Tanımların
+-- değişme tarihi yok, bu yüzden yalnız tam okumada gelir — artımlı birleştirme (kind, code) ile korur.
+SELECT 'vat_rate', CAST(v.p AS NVARCHAR(20)), CAST(ISNULL(dbo.fn_VergiIsim(v.p), '') AS NVARCHAR(200)),
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT),
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)),
+       CAST(dbo.fn_VergiYuzde(v.p) AS DECIMAL(9,4))
+FROM (VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)) AS v(p)
+WHERE @changedSinceUtc IS NULL
+  AND (v.p = 1 OR dbo.fn_VergiYuzde(v.p) > 0)";
 
         var rows = await QueryAsync<LookupPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
         var result = rows.ToList();
@@ -579,7 +622,10 @@ SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
        -- A closed (peşin) invoice posts to a kasa (4) or banka (2) in cha_kod; the customer
        -- is the ciro code. CustomerCode stays cha_kod so older phones keep their behaviour.
        CAST(CASE WHEN ISNULL(cha_cari_cins, 0) <> 0 THEN NULLIF(cha_ciro_cari_kodu, '') END AS NVARCHAR(50)) AS CounterpartyCode,
-       CAST(CASE WHEN ISNULL(cha_cari_cins, 0) <> 0 AND ISNULL(cha_tpoz, 0) = 1 THEN 1 ELSE 0 END AS BIT) AS IsClosed
+       CAST(CASE WHEN ISNULL(cha_cari_cins, 0) <> 0 AND ISNULL(cha_tpoz, 0) = 1 THEN 1 ELSE 0 END AS BIT) AS IsClosed,
+       CAST(cha_kasa_hizmet AS INT) AS CashServiceKind,
+       CAST(NULLIF(LTRIM(RTRIM(cha_kasa_hizkod)), '') AS NVARCHAR(50)) AS CashServiceCode,
+       CAST(ISNULL(cha_cari_cins, 0) AS INT) AS AccountKind
 FROM CARI_HESAP_HAREKETLERI
 WHERE ISNULL(cha_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL
@@ -620,6 +666,10 @@ SELECT CAST(sth_RECno AS NVARCHAR(50)) AS Id,
        CAST(CASE WHEN ISNULL(sth_tip, 0) = 0 THEN ISNULL(sth_miktar, 0) ELSE -ISNULL(sth_miktar, 0) END AS DECIMAL(18,6)) AS SignedQuantity,
        CAST(CASE WHEN ISNULL(sth_miktar, 0) = 0 THEN 0 ELSE ISNULL(sth_tutar, 0) / sth_miktar END AS DECIMAL(18,6)) AS UnitPrice,
        CAST(ISNULL(sth_tutar, 0) AS DECIMAL(18,6)) AS Amount,
+       CAST(ISNULL(sth_iskonto1, 0) + ISNULL(sth_iskonto2, 0)
+            + ISNULL(sth_iskonto3, 0) + ISNULL(sth_iskonto4, 0)
+            + ISNULL(sth_iskonto5, 0) + ISNULL(sth_iskonto6, 0) AS DECIMAL(18,6)) AS DiscountAmount,
+       CAST(ISNULL(sth_vergi, 0) AS DECIMAL(18,6)) AS VatAmount,
        CAST(sth_cari_kodu AS NVARCHAR(50)) AS CustomerCode,
        CAST(sth_giris_depo_no AS INT) AS InWarehouseNo,
        CAST(sth_cikis_depo_no AS INT) AS OutWarehouseNo,

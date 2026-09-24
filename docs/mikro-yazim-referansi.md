@@ -377,10 +377,11 @@ karşı taraf cari'dir. Giderde ise **gider kartı** `cha_kasa_hizmet`'tedir, ö
 | `cha_kod` | ödeyen hesabın kodu (kasa kodu `001`, banka kodu `08`/`10`/`16`) | canlı |
 | `cha_kasa_hizmet` | **5** (Giderimiz) | canlı; `enum_cha_cari_cins.Giderimiz=5` |
 | `cha_kasa_hizkod` | **gider kartı kodu** (`MASRAF_HESAPLARI.his_kod`) | canlı: YAKIT, KİRA, AMBAR… |
-| `cha_meblag`, `cha_aratoplam` | tutar (eşit) | canlı |
+| `cha_meblag` | ödenen tutar (KDV dahil) | canlı |
 | `cha_vade` | evrak tarihi (yyyyMMdd) | canlı |
 | `cha_d_kur`, `cha_altd_kur`, `cha_karsid_kur` | 1 | canlı |
-| `cha_vergipntr`, `cha_vergi1` | KDV işaretçisi ve tutarı | canlı 0 (firma KDV'siz giriyor); telefon KDV gönderirse doldurulur |
+| `cha_vergipntr`, `cha_vergiN` | KDV işaretçisi ve **o işaretçinin kendi kolonunda** KDV tutarı (%20 → `cha_vergi4`); diğer `cha_vergiN` 0. KDV yoksa işaretçi 0 | canlı 37'lerde 0 (firma KDV'siz giriyor); kolon düzeni canlı faturalardan (`cha_vergi4` = %20, 700+ satır) ve Fora `Evrak.AddMasraf` (`Evrak.cs:5420-5512`) |
+| `cha_aratoplam` | **KDV hariç** tutar (`cha_meblag − KDV`); KDV'siz giderde `cha_meblag`'a eşit | Fora `AddMasraf`: `aratoplam = net`, `meblag = net + KDV` |
 | `cha_belge_no` | boş | canlı |
 | **`EVRAK_ACIKLAMALARI`** | **satır yazılmaz** | canlı: `egk_evr_tip=37` için 0 kayıt (64 için 3, 0 için 347) |
 
@@ -391,6 +392,14 @@ yani kredi kartı Mikro'da bir banka hesabı üzerinden yürür.
 
 **Gider kartları:** `MASRAF_HESAPLARI` (19 kart), anahtar `his_kod`, adı `his_isim`; ayrıca
 `his_tipkod`, `his_sinifkod`, `his_grupkod`, `his_muhkod`, `his_birim_ad`. `HIZMET_HESAPLARI` bu firmada **boş**.
+
+**KDV işaretçisi telefondan gelir (2026-09-23, gider ERP uyumu).** Telefon oranı ERP'nin kendi KDV
+tanımlarından (`fn_VergiYuzde`/`fn_VergiIsim`, `lookups` → `vat_rate`) seçer ve belgeyle `vatPointer` olarak
+gönderir. `vatAmount > 0` iken `vatPointer` yoksa çevirmen `MOBILE_APP_UPDATE_REQUIRED` döner (oran tahmin
+edilmez — karışık oranlı fişte kimsenin seçmediği bir oran yazılırdı); işaretçi 1..10 dışındaysa
+`INVALID_DOCUMENT`; Mikro'da oranı 0 olan bir işaretçiye KDV yazılmaz (`VAT_RATE_NOT_FOUND`).
+Ödeyen hesap da telefondan gelir: nakitte `cashCode` (ERP kasa kodu), havale/kredi kartında `bankCode`
+(`BANKALAR.ban_kod`); kodsuz banka adı gelirse eskisi gibi `MOBILE_APP_UPDATE_REQUIRED`.
 
 ## 14. Sayım sonuçları *(ERP yazım 3, Y0b — 2026-09-19)*
 

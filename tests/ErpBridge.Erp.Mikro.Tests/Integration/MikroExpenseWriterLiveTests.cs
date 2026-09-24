@@ -19,11 +19,10 @@ public class MikroExpenseWriterLiveTests
     private const string TestSeries = "ERPBT9";
 
     [Theory]
-    [InlineData(ExpensePaymentMethod.Cash, 225.14)]
-    [InlineData(ExpensePaymentMethod.Transfer, 225.14)]
-    [InlineData(ExpensePaymentMethod.CreditCard, 225.14)]
-    [InlineData(ExpensePaymentMethod.Cash, 0)]
-    public async Task An_expense_credits_the_paying_account_and_names_the_expense_card(ExpensePaymentMethod method, decimal vat)
+    [InlineData(ExpensePaymentMethod.Cash)]
+    [InlineData(ExpensePaymentMethod.Transfer)]
+    [InlineData(ExpensePaymentMethod.CreditCard)]
+    public async Task An_expense_credits_the_paying_account_and_names_the_expense_card(ExpensePaymentMethod method)
     {
         if (!MikroWriteTestDatabase.CanWrite) return;
 
@@ -41,8 +40,8 @@ public class MikroExpenseWriterLiveTests
             1250.75m,
             card,
             account,
-            VatAmount: vat,
-            VatPointer: vat > 0 ? (byte)4 : (byte)0);
+            VatAmount: 225.14m,
+            VatPointer: 4);
 
         await using var session = await MikroWriteSession.BeginAsync(conn, new MikroDocumentLedger(), 0, 0, 1);
 
@@ -65,7 +64,12 @@ public class MikroExpenseWriterLiveTests
         row["cha_kod"].Should().Be(account, "ödeyen hesap cha_kod'dadır");
         row["cha_kasa_hizmet"].Should().Be((byte)5);
         row["cha_kasa_hizkod"].Should().Be(card, "gider kartı kasa_hizkod'dadır");
-        row["cha_vergi1"].Should().Be(vat);
+        // Mikro'nun düzeni: %20 KDV cha_vergi4'te, net ara toplamda (referans §13).
+        Convert.ToDouble(row["cha_vergi4"]).Should().BeApproximately(225.14, 0.0001);
+        Convert.ToDouble(row["cha_vergi1"]).Should().Be(0);
+        row["cha_vergipntr"].Should().Be((byte)4);
+        Convert.ToDouble(row["cha_aratoplam"]).Should().BeApproximately(1025.61, 0.0001);
+        Convert.ToDouble(row["cha_meblag"]).Should().BeApproximately(1250.75, 0.0001);
         row["cha_RECno"].Should().Be(written.HeaderRecNo);
         // Referans §1: Mikro arkasında NULL bırakmaz, writer da bırakmamalı.
         row.Where(c => c.Value is null).Should().BeEmpty();
@@ -76,5 +80,31 @@ public class MikroExpenseWriterLiveTests
             written, session.Transaction);
         descriptions.Should().Be(0);
         // Commit edilmedi: oturum kapanınca her şey geri alınır.
+    }
+    /// <summary>
+    /// KDV işaretçinin kendi kolonuna yazıldığı için işaretçinin Mikro'da bir oranı olmalı; oranı olmayan
+    /// işaretçiye (örn. 7) yazılan KDV Mikro raporlarında "KDV yok" diye okunurdu.
+    /// </summary>
+    [Fact]
+    public async Task Vat_on_a_pointer_without_a_rate_is_refused()
+    {
+        if (!MikroWriteTestDatabase.CanWrite) return;
+
+        await using var conn = await MikroWriteTestDatabase.OpenAsync();
+        var card = await conn.ExecuteScalarAsync<string>("SELECT TOP 1 his_kod FROM MASRAF_HESAPLARI ORDER BY his_kod");
+        var cash = await conn.ExecuteScalarAsync<string>("SELECT TOP 1 kas_kod FROM KASALAR WHERE kas_tip = 0 ORDER BY kas_kod");
+        var noRate = await conn.ExecuteScalarAsync<int?>(
+            "SELECT TOP 1 p FROM (VALUES (6),(7),(8),(9),(10)) v(p) WHERE dbo.fn_VergiYuzde(p) = 0 ORDER BY p");
+        if (card is null || cash is null || noRate is null) return;
+        var command = new ExpenseCommand(
+            new ErpDocumentHeader($"ERPBT-GD-{Guid.NewGuid():N}", new DateTime(2026, 9, 19, 12, 0, 0), CustomerCode: "",
+                SalespersonCode: null, ErpUserNo: 1, Series: TestSeries, Description: null, ExpectedTotal: 100m),
+            ExpensePaymentMethod.Cash, 100m, card, cash, VatAmount: 10m, VatPointer: (byte)noRate.Value);
+
+        await using var session = await MikroWriteSession.BeginAsync(conn, new MikroDocumentLedger(), 0, 0, 1);
+
+        var act = () => MikroExpenseWriter.WriteAsync(session, command, CancellationToken.None);
+
+        (await act.Should().ThrowAsync<MikroWriteException>()).Which.Error.Code.Should().Be(ErpBridge.Shared.ErpWriteError.VatRateNotFoundCode);
     }
 }
