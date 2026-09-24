@@ -59,11 +59,12 @@ public class MikroCustomerLedgerReaderLiveTests
         closedRow.CounterpartyCode.Should().Be(closed.Customer);
         closedRow.CustomerCode.Should().Be(closed.Kasa, "cariKod keeps the posted account so older phones are unchanged");
         closedRow.TransactionType.Should().Be("SATIS");
+        closedRow.AccountKind.Should().Be(4, "a closed sale posts to the kasa side");
 
         var openRecNo = await conn.ExecuteScalarAsync<int>(
             "SELECT TOP 1 cha_RECno FROM CARI_HESAP_HAREKETLERI WHERE cha_evrak_tip = 63 AND cha_cari_cins = 0 AND cha_normal_Iade = 0 ORDER BY cha_RECno DESC");
         rows.Single(r => r.RecNo == openRecNo).Should().Match<ErpBridge.Erp.Abstractions.Sync.CustomerTransactionPayload>(r =>
-            !r.IsClosed && r.CounterpartyCode == null && r.TransactionType == "SATIS");
+            !r.IsClosed && r.CounterpartyCode == null && r.TransactionType == "SATIS" && r.AccountKind == 0);
 
         var salesReturn = await conn.ExecuteScalarAsync<int>(
             "SELECT TOP 1 cha_RECno FROM CARI_HESAP_HAREKETLERI WHERE cha_evrak_tip = 0 AND cha_normal_Iade = 1 ORDER BY cha_RECno DESC");

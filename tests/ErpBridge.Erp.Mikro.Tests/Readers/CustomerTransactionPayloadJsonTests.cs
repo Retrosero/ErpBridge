@@ -26,6 +26,19 @@ public class CustomerTransactionPayloadJsonTests
     }
 
     [Fact]
+    public void A_ledger_row_says_which_side_it_posts_to()
+    {
+        // The panel counts only cha_cari_cins = 0 into a customer's balance, like Mikro (GOAL_PANEL_DUZELTMELER G4).
+        var row = new CustomerTransactionPayload(
+            "8", "8", "MIKRO", "KASA01", new DateTime(2026, 9, 20), 63, "12", 0, 500m, true, null,
+            new DateTime(2026, 9, 20), 8, AccountKind: 4);
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(row));
+
+        json.RootElement.GetProperty("cariCins").GetInt32().Should().Be(4);
+    }
+
+    [Fact]
     public void An_invoice_line_serializes_its_discount_and_vat_under_the_phone_names()
     {
         var line = new StockTransactionPayload(

@@ -433,7 +433,10 @@ kartı değişenler **∪** `CARI_HESAP_HAREKETLERI`'nde (`cha_cari_cins=0`) `CO
 cha_tarihi)` hareket okuyucusunun filigranından (26 saat geri pay dahil) yeni olan cariler; bakiye bu carilerin **tüm**
 (iptal olmayan, cari taraf) hareketlerinden hesaplanır. İptal edilen hareket de "hareket etti" sayılır. Canlı test:
 `MikroCustomerLedgerReaderLiveTests.An_incremental_read_resends_a_customer_whose_ledger_moved_but_whose_card_did_not`
-(yalnız `MikroDB_V15_DEMO`'ya yazar, değeri geri koyar). Müşteri makinelerinde etkisi için **ajan güncellemesi** gerekir.
+(yalnız `MikroDB_V15_DEMO`'ya yazar, değeri geri koyar). Hareket satırı ayrıca `cariCins` (`cha_cari_cins`) taşır;
+panel bakiyesi yalnız `cariCins=0` satırlarını sayar. `SnapshotProjectionVersion` 6 → **7**: eski kuralla bayat kalmış
+bakiyeler imlecin 26 saatlik geri payından eski olduğu için güncellenen ajan **bir kez tam okuma** yapar. Müşteri
+makinelerinde etkisi için **ajan güncellemesi** gerekir.
 
 Asimetri **okuma** tarafındadır: `CustomersAsync` / `ProductCatalogAsync` / `SectionAsync` `AndroidPageRequest.Since` alanını hiç okumaz ve her istekte birleştirilmiş bölümün tamamını sayfalayarak döner. Bu yüzden tek bir satışın yarattığı küçük delta, cihazda tam katalog indirmesine dönüşür.
 

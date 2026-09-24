@@ -624,7 +624,8 @@ SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
        CAST(CASE WHEN ISNULL(cha_cari_cins, 0) <> 0 THEN NULLIF(cha_ciro_cari_kodu, '') END AS NVARCHAR(50)) AS CounterpartyCode,
        CAST(CASE WHEN ISNULL(cha_cari_cins, 0) <> 0 AND ISNULL(cha_tpoz, 0) = 1 THEN 1 ELSE 0 END AS BIT) AS IsClosed,
        CAST(cha_kasa_hizmet AS INT) AS CashServiceKind,
-       CAST(NULLIF(LTRIM(RTRIM(cha_kasa_hizkod)), '') AS NVARCHAR(50)) AS CashServiceCode
+       CAST(NULLIF(LTRIM(RTRIM(cha_kasa_hizkod)), '') AS NVARCHAR(50)) AS CashServiceCode,
+       CAST(ISNULL(cha_cari_cins, 0) AS INT) AS AccountKind
 FROM CARI_HESAP_HAREKETLERI
 WHERE ISNULL(cha_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL
