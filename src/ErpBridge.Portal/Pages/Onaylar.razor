@@ -114,6 +114,15 @@ else
                                            Class="approve-btn" OnClick="() => DecideAsync(request, approve: true)">Onayla</MudButton>
                             </div>
                         }
+                        else if (IsRejected(request) && Session.CanApprove)
+                        {
+                            <div class="approval-actions">
+                                <MudTextField T="string" Value="@NoteFor(request.Id)" ValueChanged="v => _notes[request.Id] = v" Placeholder="Not (isteğe bağlı)"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="500" Class="portal-note" />
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Replay" Disabled="@Busy"
+                                           Class="reopen-btn" OnClick="() => ReopenAsync(request)">Tekrar onaya al</MudButton>
+                            </div>
+                        }
                     </MudPaper>
                 }
             </div>
@@ -306,6 +315,15 @@ else
                                Class="reject-btn" OnClick="() => DecideAsync(shown.Request, approve: false)">Reddet</MudButton>
                     <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Rounded.Check" Disabled="@(Busy || _detailBusy)"
                                Class="approve-btn" OnClick="() => DecideAsync(shown.Request, approve: true)">Onayla</MudButton>
+                </div>
+            }
+            else if (_detail is { } rejected && IsRejected(rejected.Request) && Session.CanApprove)
+            {
+                <div class="approval-actions approval-actions--sheet" id="detail-actions">
+                    <MudTextField T="string" Value="@NoteFor(rejected.Request.Id)" ValueChanged="v => _notes[rejected.Request.Id] = v" Placeholder="Not (isteğe bağlı)"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="500" Class="portal-note" />
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Replay" Disabled="@(Busy || _detailBusy)"
+                               Class="reopen-btn" OnClick="() => ReopenAsync(rejected.Request)">Tekrar onaya al</MudButton>
                 </div>
             }
         </Footer>
@@ -516,7 +534,39 @@ else
         });
     }
 
+    /// <summary>
+    /// A rejected request goes back to the pending queue with its documents unchanged, for an approver to decide
+    /// again. A corrected resubmission is already pending on its own, so only "Rejected" offers this.
+    /// </summary>
+    private async Task ReopenAsync(ApprovalDto request)
+    {
+        Notice = null;
+        await RunAsync(async () =>
+        {
+            try
+            {
+                var note = NoteFor(request.Id);
+                var reopened = await Api.ReopenAsync(request.Id, string.IsNullOrWhiteSpace(note) ? null : note.Trim());
+                _notes.Remove(request.Id);
+                // The rejected tab no longer holds it; the "all" tab shows it pending again.
+                if (_tab == "reddedilen") _rows?.RemoveAll(r => r.Id == request.Id);
+                else if (_rows?.FindIndex(r => r.Id == request.Id) is { } index and >= 0) _rows[index] = reopened;
+                if (_pendingCount is { } count) _pendingCount = count + 1;
+                if (_detailOpen && _detail?.Request.Id == request.Id) CloseDetail();
+                Notice = $"{request.CounterpartyName} — {Fmt.ApprovalKind(request.Kind).ToLower(Fmt.Turkish)} talebi tekrar onaya alındı.";
+            }
+            catch (PortalApiException stale) when (StaleCodes.Contains(stale.Code))
+            {
+                if (_detailOpen) CloseDetail();
+                await LoadPageAsync(append: false);
+                throw;
+            }
+        });
+    }
+
     private static bool IsPending(ApprovalDto request) => string.Equals(request.Status, PendingStatus, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRejected(ApprovalDto request) => string.Equals(request.Status, "Rejected", StringComparison.OrdinalIgnoreCase);
 
     private static string Qty(decimal? value) => value is { } q ? Fmt.Quantity(q) : "—";
 

@@ -91,6 +91,78 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
         cut.FindAll("[data-request] .approve-btn, [data-request] .reject-btn").Should().BeEmpty();
     }
 
+    private const string Rejected = "/api/v1/android/approvals?status=rejected%2Cresubmitted&take=50";
+
+    [Fact]
+    public void A_rejected_request_goes_back_to_the_pending_queue_with_the_note()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(Rejected, new[] { Decided(SaleId, "Rejected", "Patron", "Eksik"), Decided(ReturnId, "Resubmitted", "Patron", null, seq: 6) });
+        api.Answer("/api/v1/android/approvals/summary", new { pendingCount = 2 });
+        api.Answer($"/api/v1/android/approvals/{SaleId}/reopen", Request(SaleId, "sale", "Bakkal Veli", 900m));
+        Services.GetRequiredService<NavigationManager>().NavigateTo("onaylar?durum=reddedilen");
+
+        var cut = Render<Onaylar>();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().HaveCount(2));
+        // A corrected resubmission is already pending on its own; only the rejected request offers the button.
+        cut.FindAll($"[data-request='{ReturnId}'] .reopen-btn").Should().BeEmpty();
+        cut.Find($"[data-request='{SaleId}'] .portal-note input").Change("Fiyat düzeltildi");
+
+        cut.Find($"[data-request='{SaleId}'] .reopen-btn").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().ContainSingle());
+        var call = api.Requests.Single(r => r.PathAndQuery.EndsWith("/reopen"));
+        call.Method.Should().Be(HttpMethod.Post);
+        System.Text.Json.JsonDocument.Parse(call.Body!).RootElement.GetProperty("note").GetString().Should().Be("Fiyat düzeltildi");
+        cut.Find("#page-notice").TextContent.Should().Contain("tekrar onaya alındı");
+        cut.Find("#approvals-pending-count").TextContent.Should().Be("3");
+    }
+
+    [Fact]
+    public void A_rejected_request_can_be_reopened_from_its_detail_but_not_by_a_user_without_approval_rights()
+    {
+        var (api, session, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(Rejected, new[] { Decided(SaleId, "Rejected", "Patron", "Eksik") });
+        api.Answer("/api/v1/android/approvals/summary", new { pendingCount = 0 });
+        api.Answer($"/api/v1/android/approvals/{SaleId}", SaleDetail(SaleId, status: "Rejected"));
+        api.Answer($"/api/v1/android/approvals/{SaleId}/reopen", Request(SaleId, "sale", "Bakkal Veli", 900m));
+        Services.GetRequiredService<NavigationManager>().NavigateTo("onaylar?durum=reddedilen");
+
+        var cut = Render<Onaylar>();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().ContainSingle());
+        cut.Find($"[data-request='{SaleId}'] .approval-open").Click();
+        cut.WaitForAssertion(() => cut.Find("#detail-actions .reopen-btn"));
+        cut.FindAll("#detail-actions .approve-btn").Should().BeEmpty();
+
+        cut.Find("#detail-actions .reopen-btn").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("#approval-detail").Should().BeEmpty());
+        cut.FindAll("[data-request]").Should().BeEmpty();
+
+        session.SignIn(PortalTestSetup.State(role: "MANAGER") with { CanApprove = false }, fresh: true);
+        var readOnly = Render<Onaylar>();
+        readOnly.WaitForAssertion(() => readOnly.FindAll("[data-request]").Should().ContainSingle());
+        readOnly.FindAll(".reopen-btn").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Reopening_a_request_someone_else_already_changed_reads_the_list_again()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(Rejected, new[] { Decided(SaleId, "Rejected", "Patron", null) });
+        api.Answer("/api/v1/android/approvals/summary", new { pendingCount = 0 });
+        api.Fail($"/api/v1/android/approvals/{SaleId}/reopen", HttpStatusCode.Conflict, "APPROVAL_STATE_CHANGED");
+        Services.GetRequiredService<NavigationManager>().NavigateTo("onaylar?durum=reddedilen");
+
+        var cut = Render<Onaylar>();
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().ContainSingle());
+
+        cut.Find($"[data-request='{SaleId}'] .reopen-btn").Click();
+
+        cut.WaitForAssertion(() => cut.Find("#page-error"));
+        api.Requests.Count(r => r.PathAndQuery == Rejected).Should().Be(2);
+    }
+
     private static object Decided(Guid id, string status, string decidedBy, string? note, long seq = 7) => new
     {
         id, externalId = $"APR-{seq}", kind = "sale", counterpartyName = "Bakkal Veli", amount = 900m, status,
