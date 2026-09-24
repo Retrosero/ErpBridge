@@ -230,6 +230,9 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         cut.FindAll("#logout").Should().BeEmpty();
 
         // MudBlazor 9 left a custom activator to open the menu itself; without it "Çıkış yap" never showed.
+        // A native button, so Enter and Space open it without a pointer.
+        cut.Find("#account-menu").TagName.Should().Be("BUTTON");
+        cut.Find("#account-menu").GetAttribute("type").Should().Be("button");
         cut.Find("#account-menu").Click();
         cut.WaitForElement("#logout").Click();
 
