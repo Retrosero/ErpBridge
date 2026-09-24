@@ -136,7 +136,24 @@ SELECT
     public async Task<IReadOnlyList<CustomerPayload>> ReadCustomersAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
     {
         var customerKey = await IdentityExpressionAsync("CARI_HESAPLAR", "cari_RECno", "cari_Guid", ct).ConfigureAwait(false);
+        // An incremental read returns every customer whose card changed OR whose ledger moved since the
+        // watermark: the balance lives in the movements, and a new invoice or collection does not touch
+        // the card. Without the second arm the panel and phones kept a stale card balance until the card
+        // itself was edited (GOAL_PANEL_DUZELTMELER G4). Cancelled movements count as "moved" too — the
+        // balance drops them.
         var sql = $@"
+WITH selected AS (
+    SELECT cari_kod
+    FROM CARI_HESAPLAR
+    WHERE ISNULL(cari_iptal, 0) = 0
+      AND (@changedSinceUtc IS NULL
+           OR COALESCE(cari_lastup_date, cari_create_date) > @changedSinceUtc
+           OR EXISTS (
+               SELECT 1 FROM CARI_HESAP_HAREKETLERI moved
+               WHERE moved.cha_kod = CARI_HESAPLAR.cari_kod
+                 AND ISNULL(moved.cha_cari_cins, 0) = 0
+                 AND COALESCE(moved.cha_lastup_date, moved.cha_create_date, moved.cha_tarihi) > @movedSinceUtc))
+)
 SELECT
     CAST(ISNULL(cari_kod, '') AS NVARCHAR(50))       AS CustomerCode,
     CAST(ISNULL(cari_unvan1, '') AS NVARCHAR(200))    AS Title1,
@@ -167,16 +184,19 @@ LEFT JOIN (
     FROM CARI_HESAP_HAREKETLERI
     WHERE ISNULL(cha_iptal, 0) = 0
       AND ISNULL(cha_cari_cins, 0) = 0
-      AND (@changedSinceUtc IS NULL OR EXISTS (
-          SELECT 1 FROM CARI_HESAPLAR changed
-          WHERE changed.cari_kod = cha_kod
-            AND COALESCE(changed.cari_lastup_date, changed.cari_create_date) > @changedSinceUtc))
+      AND cha_kod IN (SELECT cari_kod FROM selected)
     GROUP BY cha_kod
 ) AS ledger ON ledger.cha_kod = cari_kod
-WHERE ISNULL(cari_iptal, 0) = 0
-  AND (@changedSinceUtc IS NULL OR COALESCE(cari_lastup_date, cari_create_date) > @changedSinceUtc)";
+WHERE cari_kod IN (SELECT cari_kod FROM selected)";
 
-        var rows = await QueryAsync<CustomerRow>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false);
+        // The movement arm uses the ledger reader's watermark (lookback included): cha_lastup_date is not
+        // verified and falls back to the midnight-stamped cha_tarihi, see MikroDateTimeWithLookback.
+        var rows = await QueryAsync<CustomerRow>(sql, new
+        {
+            firmNo,
+            changedSinceUtc = MikroDateTime(changedSinceUtc),
+            movedSinceUtc = MikroDateTimeWithLookback(changedSinceUtc, CoarseWatermarkLookback),
+        }, ct).ConfigureAwait(false);
         // Drop the Addresses/Contacts fields the constructor will initialise to null —
         // supply proper empty lists after Dapper hydrates the scalar columns.
         var result = rows

@@ -130,4 +130,54 @@ ORDER BY COUNT(*) DESC")).ToList();
             "SELECT DISTINCT cha_kod FROM CARI_HESAP_HAREKETLERI WHERE cha_cari_cins = 4 AND cha_kod NOT IN (SELECT cari_kod FROM CARI_HESAPLAR)")).ToList();
         customers.Select(c => c.CustomerCode).Should().NotIntersectWith(kasaCodes);
     }
+
+    /// <summary>
+    /// GOAL_PANEL_DUZELTMELER G4: a customer whose card did not change but whose ledger moved is re-read with its
+    /// new balance. The test touches one movement's <c>cha_lastup_date</c> and puts the old value back; it writes
+    /// only to a test copy (<c>MikroDB_V15_DEMO</c>/<c>_ERPBTEST</c>), never to live company data.
+    /// </summary>
+    [Fact]
+    public async Task An_incremental_read_resends_a_customer_whose_ledger_moved_but_whose_card_did_not()
+    {
+        if (!GateOpen)
+        {
+            return;
+        }
+        Database.Should().BeOneOf(["MikroDB_V15_DEMO", "MikroDB_V15_ERPBTEST"], "this test writes; never point it at live data");
+
+        await using var conn = await OpenAsync();
+        // Mikro keeps local time; the reader converts the UTC watermark the same way.
+        var localNow = await conn.ExecuteScalarAsync<DateTime>("SELECT GETDATE()");
+        var watermark = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var cutoff = localNow.AddDays(-3);
+        var target = await conn.QueryFirstOrDefaultAsync<(int RecNo, string Code, DateTime? LastUp)>(@"
+SELECT TOP 1 h.cha_RECno, h.cha_kod, h.cha_lastup_date
+FROM CARI_HESAP_HAREKETLERI h
+JOIN CARI_HESAPLAR c ON c.cari_kod = h.cha_kod
+WHERE ISNULL(h.cha_iptal, 0) = 0 AND ISNULL(h.cha_cari_cins, 0) = 0 AND ISNULL(c.cari_iptal, 0) = 0
+  AND COALESCE(c.cari_lastup_date, c.cari_create_date) < @cutoff
+  AND NOT EXISTS (SELECT 1 FROM CARI_HESAP_HAREKETLERI o
+                  WHERE o.cha_kod = h.cha_kod AND COALESCE(o.cha_lastup_date, o.cha_create_date, o.cha_tarihi) >= @cutoff)
+ORDER BY h.cha_RECno DESC", new { cutoff });
+        target.Code.Should().NotBeNullOrEmpty("the database needs a customer with an old card and old movements");
+
+        var before = await CreateReader().ReadCustomersAsync(firmNo: 0, changedSinceUtc: watermark);
+        before.Should().NotContain(c => c.CustomerCode == target.Code, "neither its card nor its ledger changed yet");
+
+        try
+        {
+            await conn.ExecuteAsync("UPDATE CARI_HESAP_HAREKETLERI SET cha_lastup_date = GETDATE() WHERE cha_RECno = @RecNo", new { target.RecNo });
+
+            var after = await CreateReader().ReadCustomersAsync(firmNo: 0, changedSinceUtc: watermark);
+            var expected = await conn.ExecuteScalarAsync<decimal>(@"
+SELECT CAST(ISNULL(SUM(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN cha_meblag ELSE -cha_meblag END), 0) AS DECIMAL(18,6))
+FROM CARI_HESAP_HAREKETLERI WHERE cha_kod = @Code AND ISNULL(cha_iptal, 0) = 0 AND ISNULL(cha_cari_cins, 0) = 0", new { target.Code });
+            after.Where(c => c.CustomerCode == target.Code).Should().ContainSingle()
+                .Which.Balance.Should().BeApproximately(expected, 0.01m, "the balance is the whole ledger, not only the moved rows");
+        }
+        finally
+        {
+            await conn.ExecuteAsync("UPDATE CARI_HESAP_HAREKETLERI SET cha_lastup_date = @LastUp WHERE cha_RECno = @RecNo", new { target.LastUp, target.RecNo });
+        }
+    }
 }
