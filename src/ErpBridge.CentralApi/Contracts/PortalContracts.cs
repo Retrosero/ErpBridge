@@ -1,4 +1,4 @@
-namespace ErpBridge.CentralApi.Contracts;
+﻿namespace ErpBridge.CentralApi.Contracts;
 
 /// <summary>A count of documents and their total amount.</summary>
 public sealed class PortalMoneyLine
@@ -541,6 +541,30 @@ public sealed class PortalDocumentResponse
 public sealed class PortalDocumentVoidRequest
 {
     public string? Reason { get; set; }
+    public string? OperationId { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/documents/{key}/edit</c> (GOAL_PANEL_ERPSIZ E5d, D11): the whole
+/// corrected document — the same fields as <see cref="PortalNativeDocumentRequest"/> — plus why the original
+/// is being corrected. The document keeps its kind; <see cref="PartyCode"/> defaults to the original's party
+/// and <see cref="OccurredAt"/> to the original's date. <see cref="DocumentNo"/> left empty (or equal to the
+/// original's) gives the correction a revision number (<c>A-1</c> → <c>A-1-D1</c>).
+/// </summary>
+public sealed class PortalDocumentEditRequest
+{
+    public string? PartyCode { get; set; }
+    public List<PortalNativeDocumentLineRequest> Lines { get; set; } = [];
+    public decimal? Amount { get; set; }
+    public string? PaymentType { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>; defaults to the original document's date when absent.</summary>
+    public string? OccurredAt { get; set; }
+    public string? Description { get; set; }
+    public string? DocumentNo { get; set; }
+
+    /// <summary>Why the original is being corrected — mandatory, the same as a plain void's reason.</summary>
+    public string? VoidReason { get; set; }
     public string? OperationId { get; set; }
 }
 

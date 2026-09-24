@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
@@ -22,6 +22,8 @@ namespace ErpBridge.CentralApi.Endpoints;
 public static class PortalNativeDocumentsEndpoints
 {
     private const string DocumentVoidRejectedErrorCode = "DOCUMENT_VOID_REJECTED";
+    private const string DocumentEditRejectedErrorCode = "DOCUMENT_EDIT_REJECTED";
+    private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
 
     public static IEndpointRouteBuilder MapPortalNativeDocumentsEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -32,6 +34,7 @@ public static class PortalNativeDocumentsEndpoints
         group.MapGet("/documents", ListAsync).WithName("PortalNativeDocuments");
         group.MapGet("/documents/{key}", GetByKeyAsync).WithName("PortalNativeDocumentByKey");
         group.MapPost("/documents/{key}/void", VoidAsync).WithName("PortalVoidNativeDocument");
+        group.MapPost("/documents/{key}/edit", EditAsync).WithName("PortalEditNativeDocument");
         return routes;
     }
 
@@ -120,25 +123,91 @@ public static class PortalNativeDocumentsEndpoints
         if (document.Voided)
             return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "ALREADY_VOIDED", Message = "This document was already cancelled." });
 
-        var voidedKind = document.Kind switch
-        {
-            "sale" => "Satış",
-            "sale_return" => "İade",
-            "purchase" => "Alış",
-            "purchase_return" => "Alış İadesi",
-            _ => "Belge",
-        };
+        var voidedKind = KindLabel(document.Kind);
         var record = await db.MobileRecords.AsNoTracking()
             .FirstOrDefaultAsync(r => r.TenantId == tenant.Id && r.Entity == "customerTransactions" && r.RecordKey == document.Id && !r.IsDeleted, ct);
 
+        // The operation key names the party, not the document key: a document key embeds the document number,
+        // which defaults to the original job's own external id, so key-based ids could pass Jobs.ExternalId's 128.
         var payload = new { targetKey = document.Id, reason };
         var audit = new PortalNativeWriteHelpers.AuditInfo(
             Entity: document.Kind, EntityKey: document.CustomerCode,
             Action: "void", Summary: $"İptal edildi ({voidedKind}): {reason}", BeforeJson: record?.PayloadJson);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant, user!, NativeDocumentProcessor.DocumentVoid,
-            PortalNativeWriteHelpers.OperationKey("portal-document-void", key, body?.OperationId), payload, DocumentVoidRejectedErrorCode, ct, audit);
+            PortalNativeWriteHelpers.OperationKey("portal-document-void", document.CustomerCode, body?.OperationId), payload, DocumentVoidRejectedErrorCode, ct, audit);
     }
+
+    /// <summary>
+    /// Corrects one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5d, D11): <c>document_edit</c> voids
+    /// the original (ledger + stock, exactly as <see cref="VoidAsync"/>) and books the corrected document of the
+    /// same kind in the same transaction — a correction the writer rejects leaves the original untouched.
+    /// The body is checked by the same <see cref="PortalNativeSalesEndpoints.BuildDocumentAsync"/> a new document
+    /// is; <paramref name="key"/> resolves to the original's own ledger row id as in <see cref="VoidAsync"/>.
+    /// </summary>
+    private static async Task<IResult> EditAsync(
+        string key, HttpContext http, [FromBody] PortalDocumentEditRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
+    {
+        var (tenant, user, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
+        if (error is not null) return error;
+        if (body is null) return InvalidEdit("Body required.");
+        var voidReason = body.VoidReason?.Trim();
+        if (string.IsNullOrWhiteSpace(voidReason)) return InvalidEdit("An edit needs a reason for the correction.");
+
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, ct);
+        var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
+        var document = PortalLedger.DocumentByKey(customers, movements, key);
+        if (document is null)
+            return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with that key for this company." });
+        if (document.Voided)
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "ALREADY_VOIDED", Message = "This document was already cancelled." });
+
+        var (documentType, linesRequired) = document.Kind switch
+        {
+            "sale" => (NativeDocumentProcessor.SalesOrder, true),
+            "sale_return" => (NativeDocumentProcessor.SalesReturn, true),
+            "purchase" => (NativeDocumentProcessor.PurchaseReceipt, false),
+            _ => ((string?)null, false),
+        };
+        if (documentType is null)
+            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "DOCUMENT_NOT_EDITABLE", Message = "Only a sale, purchase or return can be edited." });
+
+        var corrected = await PortalNativeSalesEndpoints.BuildDocumentAsync(db, tenant.Id, new PortalNativeDocumentRequest
+        {
+            PartyCode = string.IsNullOrWhiteSpace(body.PartyCode) ? document.CustomerCode : body.PartyCode,
+            Lines = body.Lines,
+            Amount = body.Amount,
+            PaymentType = body.PaymentType,
+            OccurredAt = body.OccurredAt,
+            Description = body.Description,
+            DocumentNo = body.DocumentNo,
+        }, documentType, linesRequired, ct);
+        if (corrected.Error is not null) return InvalidEdit(corrected.Error);
+
+        var record = await db.MobileRecords.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.TenantId == tenant.Id && r.Entity == "customerTransactions" && r.RecordKey == document.Id && !r.IsDeleted, ct);
+        var payload = new { targetKey = document.Id, voidReason, documentType, document = corrected.Payload };
+        var audit = new PortalNativeWriteHelpers.AuditInfo(
+            Entity: document.Kind, EntityKey: document.CustomerCode, Action: "edit",
+            Summary: $"Düzenlendi ({KindLabel(document.Kind)}): {voidReason} — yeni tutar {corrected.Total.ToString("0.00", Turkish)} TL",
+            BeforeJson: record?.PayloadJson);
+        return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
+            http, db, tenant, user!, NativeDocumentProcessor.DocumentEdit,
+            PortalNativeWriteHelpers.OperationKey("portal-document-edit", document.CustomerCode, body.OperationId), payload, DocumentEditRejectedErrorCode, ct, audit);
+    }
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        "sale" => "Satış",
+        "sale_return" => "İade",
+        "purchase" => "Alış",
+        "purchase_return" => "Alış İadesi",
+        _ => "Belge",
+    };
+
+    private static IResult InvalidEdit(string message) =>
+        JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_DOCUMENT_EDIT_REQUEST", Message = message });
 
     private static IResult InvalidVoid(string message) =>
         JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_DOCUMENT_VOID_REQUEST", Message = message });
