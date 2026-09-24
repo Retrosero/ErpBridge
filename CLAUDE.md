@@ -55,6 +55,11 @@ ilgili knowledge_base dosyasını da güncelle.
   onayla"). Aynı yasaklar geçerli: `--force` push (ve rebase sonrası `--force-with-lease`) yasak, CI kırmızıyken
   merge yasak, `main`'e doğrudan push yasak. Bu goal Mikro'ya hiç yazmadığı (`NativeDocumentProcessor` +
   CentralApi PostgreSQL) için Mikro test DB kısıtı bu istisna için geçerli değil.
+- **İstisna (2026-09-24):** aynı yetkiler `docs/GOAL_PANEL_DUZELTMELER.md` (çıkış · tekrar onaya al · stok hızı ·
+  cari bakiyesi) görevleri için de önceden onaylıdır (kullanıcı: "Evet, önceden onaylı"). Test yazımı yalnız
+  **`MikroDB_V15_DEMO`**/`MikroDB_V15_ERPBTEST`'e. Aynı yasaklar geçerli: `--force` push (ve rebase sonrası
+  `--force-with-lease`) yasak, CI kırmızıyken merge yasak, `main`'e doğrudan push yasak, `MikroDB_V15_02` (canlı firma
+  verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak.
 
 ## 3. Test / build
 
