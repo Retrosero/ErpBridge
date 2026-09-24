@@ -426,6 +426,18 @@ Silme olayı yalnızca **fiziksel satır kimliğini** taşır. Bölüm bazında 
 
 Ajan tarafı **zaten artımlı** (`ReadBootstrapChangesAsync`, `*_lastup_date` filtresi) ve boş delta yeni snapshot yaratmaz (`BootstrapSyncService`, `IsEmpty(package)` kontrolü) — yani `PulledAtUtc` yalnızca ERP gerçekten değiştiğinde ilerler.
 
+**Cari bakiyesi (2026-09-24, GOAL_PANEL_DUZELTMELER G4):** Mikro'da bakiye kartta değil hareketlerdedir. Artımlı
+`ReadCustomersAsync` eskiden yalnız **kartı değişen** (`cari_lastup_date`/`cari_create_date`) cariyi döndürüyordu; yeni
+fatura/tahsilat kartı değiştirmediği için o carinin `balance`'ı merkeze ve telefona bayat gidiyordu. Artık küme =
+kartı değişenler **∪** `CARI_HESAP_HAREKETLERI`'nde (`cha_cari_cins=0`) `COALESCE(cha_lastup_date, cha_create_date,
+cha_tarihi)` hareket okuyucusunun filigranından (26 saat geri pay dahil) yeni olan cariler; bakiye bu carilerin **tüm**
+(iptal olmayan, cari taraf) hareketlerinden hesaplanır. İptal edilen hareket de "hareket etti" sayılır. Canlı test:
+`MikroCustomerLedgerReaderLiveTests.An_incremental_read_resends_a_customer_whose_ledger_moved_but_whose_card_did_not`
+(yalnız `MikroDB_V15_DEMO`'ya yazar, değeri geri koyar). Hareket satırı ayrıca `cariCins` (`cha_cari_cins`) taşır;
+panel bakiyesi yalnız `cariCins=0` satırlarını sayar. `SnapshotProjectionVersion` 6 → **7**: eski kuralla bayat kalmış
+bakiyeler imlecin 26 saatlik geri payından eski olduğu için güncellenen ajan **bir kez tam okuma** yapar. Müşteri
+makinelerinde etkisi için **ajan güncellemesi** gerekir.
+
 Asimetri **okuma** tarafındadır: `CustomersAsync` / `ProductCatalogAsync` / `SectionAsync` `AndroidPageRequest.Since` alanını hiç okumaz ve her istekte birleştirilmiş bölümün tamamını sayfalayarak döner. Bu yüzden tek bir satışın yarattığı küçük delta, cihazda tam katalog indirmesine dönüşür.
 
 `mobile_sync_queue`'nun `operation=upsert` akışı bu boşluğu kapatacak veriyi taşır (satır + tüm kolonları), ancak Android'de bunu **veri olarak uygulayan** bir tüketici yoktur — mevcut tüketici yalnızca kimlik haritası için anahtar çıkarır.

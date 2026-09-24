@@ -96,7 +96,10 @@ public sealed class PortalCustomerLedgerRelationalTests : IClassFixture<SqliteCe
             await db.SaveChangesAsync();
         }
         var sameDay = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-3");
-        sameDay.Items.Select(i => (i.Id, i.Balance)).Should().Equal(("10", 0m), ("9", -40m));
+        // C-3's card still says 0 (the agent re-sends a card only when the card changes); the list and the
+        // statement follow the ledger, like Sipariş Cepte.
+        sameDay.Items.Select(i => (i.Id, i.Balance)).Should().Equal(("10", 70m), ("9", 30m));
+        sameDay.Opening.Should().Be(0m);
         await ExpectAsync(c.Patron, "/api/v1/portal/customers/document?code=C-2&key=r11", HttpStatusCode.NotFound, "DOCUMENT_NOT_FOUND");
         await ExpectAsync(c.Patron, "/api/v1/portal/customers/card?code=NOPE", HttpStatusCode.NotFound, "CUSTOMER_NOT_FOUND");
         await ExpectAsync(c.Patron, "/api/v1/portal/customers/ledger?code=C%2F1&kind=gift", HttpStatusCode.BadRequest, "INVALID_QUERY");
@@ -129,8 +132,84 @@ public sealed class PortalCustomerLedgerRelationalTests : IClassFixture<SqliteCe
 
         var ledger = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-3");
         ledger.Items.Select(i => (i.Id, i.Kind)).Should().Equal(("k2", "sale_return"));
-        ledger.Closing.Should().Be(0m, "the statement still ends on the card balance");
+        ledger.Closing.Should().Be(-50m, "the return moved C-3's balance; the closed peşin sale did not");
+        (await GetJsonAsync<PortalCustomerCard>(c.Patron, "/api/v1/portal/customers/card?code=C-3")).Balance.Should().Be(-50m);
         await ExpectAsync(c.Patron, "/api/v1/portal/customers/card?code=001", HttpStatusCode.NotFound, "CUSTOMER_NOT_FOUND");
+    }
+
+    [Fact]
+    public async Task An_erp_company_balance_follows_the_ledger_when_the_agent_card_balance_is_stale()
+    {
+        var c = await CompanyAsync(native: false);
+        await SeedErpLedgerAsync(c.Id);
+        // Warm the panel's caches first: the new movements below must reach an already-built view.
+        (await GetJsonAsync<PortalCustomersResponse>(c.Patron, "/api/v1/portal/customers")).TotalReceivable.Should().Be(700m);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var seq = 2_300_000L;
+            void Add(string entity, string key, object payload) => db.MobileRecords.Add(new MobileRecord
+            {
+                TenantId = c.Id, Entity = entity, RecordKey = key, UpdatedSeq = ++seq, PayloadJson = JsonSerializer.Serialize(payload, Web),
+            });
+            // A new sale and collection for C/1; its card (balance 700) is not re-sent.
+            Add("customerTransactions", "n1", new { id = "n1", erp = "MIKRO", cariKod = "C/1", tarih = "2026-06-01T00:00:00", tutar = 400m, borcMu = true, type = "SATIS", cha_recno = 50 });
+            Add("customerTransactions", "n2", new { id = "n2", erp = "MIKRO", cariKod = " c/1 ", tarih = "2026-06-02T00:00:00", tutar = 150m, borcMu = false, type = "TAHSILAT", cha_recno = 51 });
+            // The agent mirrors the whole ledger: a customer without rows is at zero, whatever the card says.
+            Add("customers", "C-4", new { customerCode = "C-4", title1 = "Devir Ltd", balance = 90 });
+            // Kasa/banka-side rows under a code equal to a customer's never move that customer (cha_cari_cins <> 0):
+            // told by cariCins, or — from an agent before G4 — by the ciro code the reader fills only on that side.
+            Add("customerTransactions", "k1", new { id = "k1", erp = "MIKRO", cariKod = "C-3", cariCins = 4, tarih = "2026-06-03T00:00:00", tutar = 75m, borcMu = true, type = "HAREKET", cha_recno = 52 });
+            Add("customerTransactions", "k2", new { id = "k2", erp = "MIKRO", cariKod = "C-3", ciroCariKod = "C/1", tarih = "2026-06-04T00:00:00", tutar = 25m, borcMu = false, type = "HAREKET", cha_recno = 53 });
+            await db.SaveChangesAsync();
+        }
+
+        var list = await GetJsonAsync<PortalCustomersResponse>(c.Patron, "/api/v1/portal/customers?sort=code");
+        list.Items.Select(i => (i.CustomerCode, i.Balance)).Should().BeEquivalentTo(new[] { ("C/1", 950m), ("C-2", -200m), ("C-3", 0m), ("C-4", 0m) });
+        list.TotalReceivable.Should().Be(950m);
+        list.TotalPayable.Should().Be(200m);
+        (await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-3")).Items.Should().BeEmpty();
+        (await GetJsonAsync<PortalCustomerCard>(c.Patron, "/api/v1/portal/customers/card?code=C%2F1")).Balance.Should().Be(950m);
+
+        var ledger = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C%2F1");
+        ledger.Opening.Should().Be(0m);
+        ledger.Closing.Should().Be(950m, "the statement ends on the balance the list shows");
+        ledger.Items[0].Should().Match<PortalLedgerRow>(i => i.Id == "n2" && i.Balance == 950m);
+
+        var desk = await GetJsonAsync<PortalBalancesResponse>(c.Patron, "/api/v1/portal/balances");
+        desk.Rows.Select(r => (r.CustomerCode, r.Balance)).Should().BeEquivalentTo(new[] { ("C/1", 950m), ("C-2", -200m) });
+        desk.TotalReceivable.Should().Be(950m);
+        (await GetJsonAsync<PortalBalancesResponse>(c.Patron, "/api/v1/portal/balances?search=market")).Rows.Should().ContainSingle().Which.Balance.Should().Be(-200m);
+
+        // C-2's only invoice is deleted in Mikro; its card (-200) is not re-sent. The panel shows zero, not the card.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            var row = db.MobileRecords.Single(r => r.TenantId == c.Id && r.Entity == "customerTransactions" && r.RecordKey == "x1");
+            row.IsDeleted = true;
+            row.UpdatedSeq = 2_300_100;
+            await db.SaveChangesAsync();
+        }
+        (await GetJsonAsync<PortalCustomerCard>(c.Patron, "/api/v1/portal/customers/card?code=C-2")).Balance.Should().Be(0m);
+    }
+
+    [Fact]
+    public async Task An_erp_company_whose_agent_sends_no_ledger_keeps_the_card_balances()
+    {
+        var c = await CompanyAsync(native: false);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            db.MobileRecords.Add(new MobileRecord
+            {
+                TenantId = c.Id, Entity = "customers", RecordKey = "C-9", CustomerKey = "C-9", UpdatedSeq = 2_400_001,
+                PayloadJson = JsonSerializer.Serialize(new { customerCode = "C-9", title1 = "Kart Bakiyeli", balance = 125 }, Web),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        (await GetJsonAsync<PortalCustomersResponse>(c.Patron, "/api/v1/portal/customers")).Items.Should().ContainSingle()
+            .Which.Balance.Should().Be(125m);
     }
 
     [Fact]

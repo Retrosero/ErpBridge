@@ -26,7 +26,9 @@ public sealed record CustomerTransactionPayload(
     // Giderimiz (5) and the code is the expense card (MASRAF_HESAPLARI.his_kod): the phone's expense
     // screen lists ERP expenses under their card. The names are the ones the phone already reads.
     [property: JsonPropertyName("cha_kasa_hizmet")] int? CashServiceKind = null,
-    [property: JsonPropertyName("cha_kasa_hizkod")] string? CashServiceCode = null);
+    [property: JsonPropertyName("cha_kasa_hizkod")] string? CashServiceCode = null,
+    // Mikro cha_cari_cins: 0 = the customer side, the only rows Mikro's balance counts; 4 kasa / 2 banka otherwise.
+    [property: JsonPropertyName("cariCins")] int AccountKind = 0);
 
 /// <summary>A single row from Mikro STOK_HAREKETLERI.</summary>
 public sealed record StockTransactionPayload(

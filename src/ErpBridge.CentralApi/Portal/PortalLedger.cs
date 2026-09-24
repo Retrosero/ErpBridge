@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Endpoints;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -38,10 +39,18 @@ public static class PortalLedger
     /// A peşin invoice Mikro closed to a kasa/banka (<c>kapali</c>): it belongs to the customer in
     /// <c>ciroCariKod</c> but never moved their balance, so statements leave it out.
     /// </param>
+    /// <param name="OtherSide">
+    /// Any other kasa/banka-side Mikro row (<c>cha_cari_cins</c> ≠ 0): its <c>cariKod</c> is a kasa or bank code
+    /// that may equal a customer code. Mikro's balance counts only <c>cha_cari_cins = 0</c>, so neither does the panel.
+    /// </param>
     public sealed record Movement(
         string Customer, string Id, DateTime Date, string Kind, string? SourceType, string? DocumentNo, string? Description,
         decimal Debit, decimal Credit, string? DocumentKey, long? RecNo = null, bool Closed = false, string? PaymentType = null,
-        bool Voided = false, Guid? VoidedByUserId = null, DateTime? VoidedAt = null, string? VoidReason = null);
+        bool Voided = false, Guid? VoidedByUserId = null, DateTime? VoidedAt = null, string? VoidReason = null, bool OtherSide = false)
+    {
+        /// <summary>Moves the customer's balance and shows on their statement.</summary>
+        public bool CustomerSide => !Closed && !OtherSide;
+    }
 
     /// <summary>
     /// Oldest first. Mikro movements of one day share a midnight timestamp, so they follow their record
@@ -67,6 +76,12 @@ public static class PortalLedger
     private sealed record AddressPart(string Code, int No, string? City, string? Text) : CustomerPart;
 
     private sealed record CachedCustomers(long Version, IReadOnlyDictionary<string, Customer> Customers);
+
+    /// <param name="Any">Whether the company has any ledger rows at all.</param>
+    private sealed record CachedBalances(long Version, IReadOnlyDictionary<string, decimal> Balances, bool Any);
+
+    private sealed record CachedLedgerCustomers(
+        IReadOnlyDictionary<string, Customer> Cards, IReadOnlyDictionary<string, decimal> Balances, IReadOnlyDictionary<string, Customer> Customers);
 
     private sealed record CachedMovements(long LedgerVersion, long LinesVersion, long StockVersion, Movements Movements);
 
@@ -95,6 +110,57 @@ public static class PortalLedger
         }
         cache.Set(key, new CachedCustomers(mirror.Version, customers), ViewLifetime);
         return customers;
+    }
+
+    /// <summary>
+    /// The customers with the balance the panel shows. A native company's card balance is the book itself
+    /// (<c>native_customer_balances</c>, opening balance included), so it stands. An ERP company's card balance is
+    /// the agent's snapshot, which the agent re-sends only when the customer card itself changes: a new invoice or
+    /// collection leaves it stale. There the balance is Sipariş Cepte's: the sum of the customer's mirrored ledger
+    /// rows (debit +, credit −, kasa/banka-side rows such as closed peşin invoices left out; Siparis_Cepte
+    /// <c>AppDatabase.pageForBrowse</c>, <c>CustomerDetailLoader</c>). The agent mirrors the whole ledger, and
+    /// Mikro's card balance is that same sum, so a customer without rows is at zero — even when their card still
+    /// shows the balance of an invoice since deleted (Codex, PR #181). Only a company with no ledger rows at all
+    /// (an agent that sends none) keeps the card balances.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<string, Customer>> CustomersAsync(
+        CentralApiDbContext db, IMemoryCache cache, Guid tenantId, string dataSource, CancellationToken ct)
+    {
+        var cards = await CustomersAsync(db, cache, tenantId, ct);
+        if (string.Equals(dataSource, TenantDataSources.Native, StringComparison.Ordinal)) return cards;
+        var ledger = await LedgerBalancesAsync(db, cache, tenantId, ct);
+        if (!ledger.Any) return cards;
+
+        var key = ("portal-customers-ledger", tenantId);
+        if (cache.TryGetValue(key, out CachedLedgerCustomers? cached)
+            && ReferenceEquals(cached!.Cards, cards) && ReferenceEquals(cached.Balances, ledger.Balances))
+            return cached.Customers;
+        var customers = new Dictionary<string, Customer>(cards.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var (code, card) in cards)
+            customers[code] = card with { Balance = ledger.Balances.GetValueOrDefault(code) };
+        cache.Set(key, new CachedLedgerCustomers(cards, ledger.Balances, customers), ViewLifetime);
+        return customers;
+    }
+
+    /// <summary>Each customer's ledger sum, from the ledger mirror alone — the list must not wait for invoice lines.</summary>
+    private static async Task<CachedBalances> LedgerBalancesAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
+    {
+        var mirror = PortalRecordMirror<Movement>.For(cache, "ledger", tenantId, MovementEntities, ParseMovement);
+        var key = ("portal-ledger-balances", tenantId);
+        cache.TryGetValue(key, out CachedBalances? cached);
+        var ledger = await mirror.RefreshAsync(db, cached?.Version, ct);
+        if (ledger is null && cached is not null) return cached;
+
+        var balances = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var movement in ledger ?? [])
+        {
+            // A kasa/banka-side row (a closed invoice among them) never moved the customer's balance.
+            if (!movement.CustomerSide) continue;
+            balances[movement.Customer] = balances.GetValueOrDefault(movement.Customer) + movement.Debit - movement.Credit;
+        }
+        var result = new CachedBalances(mirror.Version, balances, ledger is { Count: > 0 });
+        cache.Set(key, result, ViewLifetime);
+        return result;
     }
 
     public static async Task<Movements> MovementsAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
@@ -178,9 +244,13 @@ public static class PortalLedger
     {
         // A closed invoice's cariKod is the kasa/banka it posted to; its customer is ciroCariKod.
         var closed = AndroidEndpoints.GetBoolean(row, "kapali") ?? false;
-        var customer = (closed ? PortalRecords.Blank(AndroidEndpoints.GetString(row, "ciroCariKod")) : null)
+        var counterparty = PortalRecords.Blank(AndroidEndpoints.GetString(row, "ciroCariKod"));
+        var customer = (closed ? counterparty : null)
             ?? PortalRecords.Blank(AndroidEndpoints.GetFirstString(row, "cariKod", "customerCode"));
         if (customer is null) return null;
+        // Mikro counts only cha_cari_cins = 0. An agent before G4 sends no cariCins; there a ciro code marks the
+        // kasa/banka side (the reader fills it only for cha_cari_cins <> 0).
+        var otherSide = !closed && (AndroidEndpoints.GetInt32(row, "cariCins") is { } side ? side != 0 : counterparty is not null);
         var native = string.Equals(AndroidEndpoints.GetString(row, "erp"), PortalRecords.NativeErp, StringComparison.OrdinalIgnoreCase);
         var sourceType = PortalRecords.Blank(AndroidEndpoints.GetString(row, "type"));
         var kind = KindOf(sourceType);
@@ -212,7 +282,8 @@ public static class PortalLedger
             AndroidEndpoints.GetBoolean(row, "voided") ?? false,
             Guid.TryParse(AndroidEndpoints.GetString(row, "voidedByUserId"), out var voidedBy) ? voidedBy : null,
             PortalRecords.ReadDateTime(AndroidEndpoints.GetString(row, "voidedAt")),
-            PortalRecords.Blank(AndroidEndpoints.GetString(row, "voidReason")));
+            PortalRecords.Blank(AndroidEndpoints.GetString(row, "voidReason")),
+            otherSide);
     }
 
     // ---- queries --------------------------------------------------------------
@@ -276,9 +347,11 @@ public static class PortalLedger
     };
 
     /// <summary>
-    /// A statement. The running balance is anchored to the card balance (the figure the phone
-    /// shows): the last movement ends on it, so a mirror holding only recent history still
-    /// adds up. Opening = card balance − movements from <paramref name="from"/> on.
+    /// A statement. The running balance is anchored to the customer's balance as the panel lists it
+    /// (<see cref="CustomersAsync(CentralApiDbContext, IMemoryCache, Guid, string, CancellationToken)"/>): the last
+    /// movement ends on it. Opening = balance − movements from <paramref name="from"/> on. For an ERP company that
+    /// balance is the ledger sum itself, so the opening is exactly the movements before <paramref name="from"/>; a
+    /// native company's card balance also carries its opening balance.
     ///
     /// <para><paramref name="includeVoided"/> (GOAL_PANEL_ERPSIZ E4d) only hides a voided original from
     /// the rows shown — its reversal still shows (E4a always books one) and every balance figure here
@@ -289,8 +362,8 @@ public static class PortalLedger
     public static PortalLedgerResponse Statement(
         Customer customer, Movements movements, DateOnly? from, DateOnly? to, IReadOnlyCollection<string> kinds, bool includeVoided, int page, int pageSize)
     {
-        // Like Mikro's cari föyü: a closed invoice is a kasa/banka movement, not a balance movement.
-        var all = movements.ByCustomer.TryGetValue(customer.Code, out var list) ? list.Where(m => !m.Closed).ToList() : [];
+        // Like Mikro's cari föyü: a closed invoice or other kasa/banka-side row is not a balance movement.
+        var all = movements.ByCustomer.TryGetValue(customer.Code, out var list) ? list.Where(m => m.CustomerSide).ToList() : [];
         var start = from?.ToDateTime(TimeOnly.MinValue);
         var endExclusive = to?.AddDays(1).ToDateTime(TimeOnly.MinValue);
         var fromOn = start is null ? all : all.Where(m => m.Date >= start).ToList();

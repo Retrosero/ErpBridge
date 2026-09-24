@@ -184,6 +184,10 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<ApprovalDto> DecideAsync(Guid requestId, bool approve, string? note, CancellationToken ct = default) =>
         SendAsync<ApprovalDto>(HttpMethod.Post, $"api/v1/android/approvals/{requestId}/{(approve ? "approve" : "reject")}", new { note }, ct);
 
+    /// <summary>Puts a rejected request back in the pending queue; the same call the phone's "Tekrar onaya al" makes.</summary>
+    public Task<ApprovalDto> ReopenAsync(Guid requestId, string? note, CancellationToken ct = default) =>
+        SendAsync<ApprovalDto>(HttpMethod.Post, $"api/v1/android/approvals/{requestId}/reopen", new { note }, ct);
+
     public Task<DisplayDeviceDto[]> DisplaysAsync(CancellationToken ct = default) =>
         GetAsync<DisplayDeviceDto[]>("api/v1/portal/displays", ct);
 
