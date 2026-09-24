@@ -146,6 +146,28 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     }
 
     [Fact]
+    public void A_rejected_request_of_a_kind_the_user_does_not_decide_offers_no_reopen()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "ACCOUNTING"));
+        // Accounting decides money documents, not card requests: the server marks the row canDecide=false.
+        api.Answer(Rejected, new[]
+        {
+            new
+            {
+                id = SaleId, externalId = "APR-8", kind = "product_card", counterpartyName = "Yeni ürün", amount = 0m, status = "Rejected",
+                requestedByName = "Ali Yılmaz", requestedAtUtc = PortalTestSetup.Now, requestedSeq = 8, canDecide = false, summary = new { },
+            },
+        });
+        api.Answer("/api/v1/android/approvals/summary", new { pendingCount = 0 });
+        Services.GetRequiredService<NavigationManager>().NavigateTo("onaylar?durum=reddedilen");
+
+        var cut = Render<Onaylar>();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-request]").Should().ContainSingle());
+        cut.FindAll(".reopen-btn").Should().BeEmpty();
+    }
+
+    [Fact]
     public void Reopening_a_request_someone_else_already_changed_reads_the_list_again()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());

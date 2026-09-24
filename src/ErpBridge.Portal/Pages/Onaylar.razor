@@ -114,7 +114,7 @@ else
                                            Class="approve-btn" OnClick="() => DecideAsync(request, approve: true)">Onayla</MudButton>
                             </div>
                         }
-                        else if (IsRejected(request) && Session.CanApprove)
+                        else if (CanReopen(request))
                         {
                             <div class="approval-actions">
                                 <MudTextField T="string" Value="@NoteFor(request.Id)" ValueChanged="v => _notes[request.Id] = v" Placeholder="Not (isteğe bağlı)"
@@ -317,7 +317,7 @@ else
                                Class="approve-btn" OnClick="() => DecideAsync(shown.Request, approve: true)">Onayla</MudButton>
                 </div>
             }
-            else if (_detail is { } rejected && IsRejected(rejected.Request) && Session.CanApprove)
+            else if (_detail is { } rejected && CanReopen(rejected.Request) && _opened?.CanDecide != false)
             {
                 <div class="approval-actions approval-actions--sheet" id="detail-actions">
                     <MudTextField T="string" Value="@NoteFor(rejected.Request.Id)" ValueChanged="v => _notes[rejected.Request.Id] = v" Placeholder="Not (isteğe bağlı)"
@@ -566,7 +566,13 @@ else
 
     private static bool IsPending(ApprovalDto request) => string.Equals(request.Status, PendingStatus, StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsRejected(ApprovalDto request) => string.Equals(request.Status, "Rejected", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Only an approver of the request's kind may reopen it (the server answers APPROVER_REQUIRED otherwise):
+    /// accounting decides money documents, not card or count requests. The list row carries the per-kind right;
+    /// the detail's copy may not, so the sheet also asks the row it was opened from.
+    /// </summary>
+    private bool CanReopen(ApprovalDto request) =>
+        Session.CanApprove && request.CanDecide != false && string.Equals(request.Status, "Rejected", StringComparison.OrdinalIgnoreCase);
 
     private static string Qty(decimal? value) => value is { } q ? Fmt.Quantity(q) : "—";
 
