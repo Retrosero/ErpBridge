@@ -135,6 +135,16 @@ SUM(CASE WHEN ISNULL(cha_tip, 0) = 0 THEN ISNULL(cha_meblag, 0)
 - Net Bakiye > 0: Borçlu cari (firmaya borcu var).
 - Net Bakiye < 0: Alacaklı cari (avans / firmadan alacağı var).
 
+**Panelde gösterilen bakiye (2026-09-24, GOAL_PANEL_DUZELTMELER G3):** ERP'li firmada panel (Cariler listesi,
+cari kartı, ekstre, Onay masası bakiyeleri) kart `balance` alanını **kullanmaz**; Sipariş Cepte'nin formülünü uygular:
+carinin `customerTransactions` aynasındaki satırlarının toplamı (`borcMu ? +tutar : −tutar`, cari kodu trim +
+büyük/küçük harf duyarsız). Kasa/banka tarafı satırlar hariç: `kapali` satırlar ve `cariCins ≠ 0` (G4 ajanı gönderir;
+eski ajanda `ciroCariKod` dolu satır). Ajan tüm defteri aynaladığı için hareketi olmayan cari **0**'dır (son faturası
+silinmiş caride kart bakiyesi bayat kalır); yalnız hiç `customerTransactions` göndermeyen firmada kart `balance` kullanılır. Sebep: ajan kart bakiyesini
+yalnız cari kartı değiştiğinde yeniden gönderiyordu; yeni fatura/tahsilat sonrası kart bakiyesi bayat kalıyordu.
+Ekstrenin yürüyen bakiyesi bu sayıya çapalıdır (açılış = aralık öncesi hareketler). ERP'siz firmada kart bakiyesi
+(`native_customer_balances`, açılış bakiyesi dahil) geçerli kalır. Kod: `PortalLedger.CustomersAsync(..., dataSource, ...)`.
+
 **Yazma tarafı karşılığı:** `MikroCollectionWriter` tahsilatı `cha_tip = 1`
 (alacak) yazar. Yanlış değer her carinin bakiyesini sessizce tersine çevirir.
 

@@ -130,11 +130,11 @@ public static class PortalEndpoints
         return JsonResults.Ok(new PortalVisitsResponse { Date = Format(day), Rows = await PortalReports.VisitsAsync(db, tenant!.Id, day, ct) });
     }
 
-    private static async Task<IResult> BalancesAsync(HttpContext http, [FromServices] CentralApiDbContext db, string? search, CancellationToken ct)
+    private static async Task<IResult> BalancesAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, string? search, CancellationToken ct)
     {
         var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
-        return JsonResults.Ok(await PortalReports.BalancesAsync(db, tenant!.Id, search, ct));
+        return JsonResults.Ok(await PortalReports.BalancesAsync(db, cache, tenant!, search, ct));
     }
 
     private static async Task<IResult> StockAsync(HttpContext http, [FromServices] CentralApiDbContext db, string? search, bool? outOfStock, CancellationToken ct)
@@ -191,7 +191,7 @@ public static class PortalEndpoints
         if (sort is not ("title" or "code" or "balance" or "absBalance")) return BadQuery("sort must be title, code, balance or absBalance.");
         if (dir is not (null or "asc" or "desc")) return BadQuery("dir must be asc or desc.");
 
-        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, ct);
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, tenant.DataSource, ct);
         return JsonResults.Ok(PortalLedger.Search(customers, q, balance, sort, dir == "desc",
             Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
     }
@@ -201,8 +201,8 @@ public static class PortalEndpoints
     {
         var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
-        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
-        return customer is null ? CustomerNotFound() : JsonResults.Ok(PortalLedger.Card(customer, tenant.DataSource));
+        var customer = await FindCustomerAsync(db, cache, tenant!, code, ct);
+        return customer is null ? CustomerNotFound() : JsonResults.Ok(PortalLedger.Card(customer, tenant!.DataSource));
     }
 
     /// <summary>
@@ -232,9 +232,9 @@ public static class PortalEndpoints
         if (kinds.FirstOrDefault(k => !PortalLedger.Kinds.Contains(k, StringComparer.Ordinal)) is { } unknown)
             return BadQuery($"kind '{unknown}' is not one of: " + string.Join(", ", PortalLedger.Kinds) + ".");
 
-        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
+        var customer = await FindCustomerAsync(db, cache, tenant!, code, ct);
         if (customer is null) return CustomerNotFound();
-        var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
+        var movements = await PortalLedger.MovementsAsync(db, cache, tenant!.Id, ct);
         var statement = PortalLedger.Statement(customer, movements, start, end, kinds, includeVoided ?? false,
             Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize));
         await AttachEditableAndVoidedByAsync(db, tenant.Id, statement.Items, ct);
@@ -276,9 +276,9 @@ public static class PortalEndpoints
     {
         var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
         if (error is not null) return error;
-        var customer = await FindCustomerAsync(db, cache, tenant!.Id, code, ct);
+        var customer = await FindCustomerAsync(db, cache, tenant!, code, ct);
         if (customer is null) return CustomerNotFound();
-        var document = string.IsNullOrWhiteSpace(key) ? null : PortalLedger.Document(customer, await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct), key);
+        var document = string.IsNullOrWhiteSpace(key) ? null : PortalLedger.Document(customer, await PortalLedger.MovementsAsync(db, cache, tenant!.Id, ct), key);
         return document is null
             ? JsonResults.Status(404, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with lines under that key for this customer." })
             : JsonResults.Ok(document);
@@ -336,10 +336,10 @@ public static class PortalEndpoints
             Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
     }
 
-    private static async Task<PortalLedger.Customer?> FindCustomerAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, string? code, CancellationToken ct)
+    private static async Task<PortalLedger.Customer?> FindCustomerAsync(CentralApiDbContext db, IMemoryCache cache, Tenant tenant, string? code, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(code)) return null;
-        var customers = await PortalLedger.CustomersAsync(db, cache, tenantId, ct);
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant.Id, tenant.DataSource, ct);
         return customers.TryGetValue(code.Trim(), out var customer) ? customer : null;
     }
 

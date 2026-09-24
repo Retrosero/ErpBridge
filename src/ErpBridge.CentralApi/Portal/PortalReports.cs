@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Endpoints;
 using ErpBridge.CentralApi.Team;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ErpBridge.CentralApi.Portal;
 
@@ -244,28 +245,17 @@ public static class PortalReports
 
     // ---- cards --------------------------------------------------------------
 
-    public static async Task<PortalBalancesResponse> BalancesAsync(CentralApiDbContext db, Guid tenantId, string? search, CancellationToken ct)
+    /// <summary>The same balances the customers page lists (<see cref="PortalLedger.CustomersAsync(CentralApiDbContext, IMemoryCache, Guid, string, CancellationToken)"/>).</summary>
+    public static async Task<PortalBalancesResponse> BalancesAsync(CentralApiDbContext db, IMemoryCache cache, Tenant tenant, string? search, CancellationToken ct)
     {
-        var customers = await db.MobileRecords.AsNoTracking()
-            .Where(r => r.TenantId == tenantId && !r.IsDeleted && r.Entity == "customers")
-            .Select(r => r.PayloadJson)
-            .ToListAsync(ct);
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant.Id, tenant.DataSource, ct);
 
         var rows = new List<PortalBalanceRow>();
-        foreach (var payload in customers.Where(p => p is not null))
+        foreach (var customer in customers.Values)
         {
-            using var parsed = JsonDocument.Parse(payload!);
-            var customer = parsed.RootElement;
-            var balance = AndroidEndpoints.GetDecimal(customer, "balance") ?? 0m;
-            if (balance == 0m) continue;
-            var row = new PortalBalanceRow
-            {
-                CustomerCode = AndroidEndpoints.GetString(customer, "customerCode") ?? string.Empty,
-                Title = AndroidEndpoints.JoinAddressLine(AndroidEndpoints.GetString(customer, "title1"), AndroidEndpoints.GetString(customer, "title2")) ?? string.Empty,
-                Balance = balance,
-            };
-            if (!Matches(search, row.CustomerCode, row.Title)) continue;
-            rows.Add(row);
+            if (customer.Balance == 0m) continue;
+            if (!Matches(search, customer.Code, customer.Title)) continue;
+            rows.Add(new PortalBalanceRow { CustomerCode = customer.Code, Title = customer.Title, Balance = customer.Balance });
         }
 
         return new PortalBalancesResponse
