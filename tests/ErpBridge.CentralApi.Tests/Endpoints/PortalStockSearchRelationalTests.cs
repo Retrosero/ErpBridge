@@ -161,7 +161,11 @@ public sealed class PortalStockSearchRelationalTests : IClassFixture<SqliteCentr
             catalog.Products.Single(p => p.Code == code).LastMovement?.ToString("yyyy-MM-dd");
         string Day(int daysAgo) => Today.AddDays(-daysAgo).ToString("yyyy-MM-dd");
 
+        // The page asks for search and facets at once; a cold catalogue is built once, not twice.
+        var cold = await Task.WhenAll(LoadAsync(), LoadAsync());
+        cold[0].Should().BeSameAs(cold[1]);
         var before = await LoadAsync();
+        before.Should().BeSameAs(cold[0]);
         LastOf(before, "C").Should().Be(Day(400));
         (await LoadAsync()).Should().BeSameAs(before, "nothing changed");
 

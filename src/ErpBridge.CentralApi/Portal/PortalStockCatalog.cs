@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
@@ -93,6 +94,8 @@ public static class PortalStockCatalog
             LazyInitializer.EnsureInitialized(ref _facets, () => new Lazy<PortalStockFacetsResponse>(() => BuildFacets(this))).Value;
     }
 
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> BuildGates = new();
+
     private static readonly StringComparer ByText = StringComparer.Create(CultureInfo.GetCultureInfo("tr-TR"), CompareOptions.IgnoreCase);
 
     /// <param name="Stock">The catalogue from the stock entities alone; line dates are laid over it.</param>
@@ -104,11 +107,9 @@ public static class PortalStockCatalog
     /// </summary>
     public static async Task<Catalog> LoadAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
     {
-        var gate = cache.GetOrCreate(("portal-stock-build", tenantId), entry =>
-        {
-            entry.SlidingExpiration = TimeSpan.FromMinutes(30);
-            return new SemaphoreSlim(1, 1);
-        })!;
+        // Not the memory cache: its GetOrCreate may run the factory twice for two cold requests, handing each its
+        // own gate (Codex, PR #183). One small gate per company for the life of the process.
+        var gate = BuildGates.GetOrAdd(tenantId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         try
         {
