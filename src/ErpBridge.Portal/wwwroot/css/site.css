@@ -50,7 +50,8 @@ h1:focus, h1:focus-visible { outline: none; }
 .portal-appbar-tenant { font-weight: 700; font-size: .98rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .portal-appbar-code { font-size: .72rem; color: var(--muted); letter-spacing: .02em; }
 
-.portal-user { display: flex; align-items: center; gap: 10px; padding: 4px 8px 4px 4px; border-radius: 999px; cursor: pointer; transition: background .15s; }
+.portal-user { display: flex; align-items: center; gap: 10px; padding: 4px 8px 4px 4px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .15s; }
+.portal-user:focus-visible { outline: 2px solid var(--mud-palette-primary); outline-offset: 2px; }
 .portal-user:hover { background: var(--line-soft); }
 .portal-user-text { display: flex; flex-direction: column; line-height: 1.15; }
 .portal-user-name { font-weight: 600; font-size: .85rem; color: var(--ink); }

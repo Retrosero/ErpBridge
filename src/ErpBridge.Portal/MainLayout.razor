@@ -20,15 +20,17 @@
             </div>
             <MudSpacer />
             <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true" aria-label="Hesap menüsü">
+                @* MudBlazor 9: a custom activator opens the menu itself; the wrapper no longer listens for the click.
+                   A real button so Enter and Space open it too. *@
                 <ActivatorContent>
-                    <div class="portal-user">
+                    <button type="button" class="portal-user" id="account-menu" aria-haspopup="menu" @onclick="@(e => context.ToggleAsync(e))">
                         <MudAvatar Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">@Initials</MudAvatar>
-                        <div class="portal-user-text">
+                        <span class="portal-user-text">
                             <span class="portal-user-name">@Session.FullName</span>
                             <span class="portal-user-role" id="user-roles">@Fmt.Roles(Session.Roles)</span>
-                        </div>
+                        </span>
                         <MudIcon Icon="@Icons.Material.Rounded.ExpandMore" Size="Size.Small" />
-                    </div>
+                    </button>
                 </ActivatorContent>
                 <ChildContent>
                     <MudMenuItem Icon="@Icons.Material.Rounded.Logout" OnClick="SignOutAsync" id="logout">Çıkış yap</MudMenuItem>
@@ -144,11 +146,19 @@ else
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
+    // The saved session goes first: a page reloaded while it is still stored would sign the user back in.
+    // A storage failure must not keep the user signed in; the full reload drops the circuit and its session.
     private async Task SignOutAsync()
     {
+        try
+        {
+            await Persistence.ClearAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
+        {
+        }
         Session.SignOut();
-        await Persistence.ClearAsync();
-        Nav.NavigateTo("login");
+        Nav.NavigateTo("login", forceLoad: true);
     }
 
     public void Dispose() => Session.Changed -= Redraw;
