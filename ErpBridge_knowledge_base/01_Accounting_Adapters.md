@@ -90,6 +90,28 @@ Sipariş Cepte belgeleri (`mobileDocumentId` taşıyan gövde) yukarıdaki tipli
 Kolon değerlerinin kaynağı `docs/mikro-yazim-referansi.md`; canlı testler yalnız `MikroDB_V15_DEMO`'da, çoğu
 transaction geri alınarak.
 
+### Telefon belgesi writer'ları (ERP yazım 3, 2026-09-19 — alış, gider, sayım)
+
+Aynı `Writers/Documents` altında, `MobileDocumentTranslator`'ın çevirdiği üç komuta karşılık üç yazıcı daha:
+
+- **`MikroExpenseWriter`** (`expense`) — telefon gideri Mikro'nun **kasa masraf fişi** olarak yazar
+  (`cha_evrak_tip=37`, referans §13). Tek `CARI_HESAP_HAREKETLERI` satırı, **serisiz**. Tediyenin aynası
+  değildir: gider kartı (`MASRAF_HESAPLARI.his_kod`) `cha_kasa_hizmet=5`/`cha_kasa_hizkod`'a, ödeyen kasa/banka
+  `cha_cari_cins`/`cha_kod`'a yazılır — cari hiç yoktur. Kredi kartı Mikro'da bir banka hesabıdır (`cha_cinsi=22`).
+  KDV telefondan gelir, ERP'de hesaplanmaz; işaretçisinin kendi kolonuna yazılır (%20 → `cha_vergi4`), `cha_aratoplam`
+  KDV hariç, `cha_meblag` KDV dahildir. Açıklama satırı (`EVRAK_ACIKLAMALARI`)
+  yoktur; not `cha_aciklama`'da kalır. Gider kartı kataloğu `MASRAF_HESAPLARI`'dan `lookups`/`expense_card`
+  kind'iyle telefona senkronlanır (`MikroDbReader`).
+- **`MikroPurchaseInvoiceWriter`** (`purchase_receipt`) — alış faturası: `CARI_HESAP_HAREKETLERI` (`cha_evrak_tip=0`,
+  alacak, `cinsi=6`) + `STOK_HAREKETLERI` (`sth_tip=3`, giriş), aynı transaction. Peşin alış **tek kapalı evraktır**
+  (K13) — ayrı tediye yazılmaz. Evrak numarası tedarikçinin kendi serisinde MAX+1 devam eder (§15); depo firma
+  ayarındaki alış deposu, KDV stok kartının `vergi_pntr`'ından.
+- **`MikroStockCountWriter`** (`stock_count`) — `SAYIM_SONUCLARI`'na depo bazlı MAX+1 fiş numarasıyla yazar (§14).
+  Stoğu kendiliğinden hareket ettirmez; sonuçların stoğa işlenmesi Mikro'nun kendi "sayım sonuçlarını uygula" adımıdır.
+
+Kolon adları `docs/mikro-yazim-referansi.md` §10 (alış), §13 (gider), §14 (sayım)'te; gövde sözleşmesi
+`docs/mobil-belge-sozlesmesi.md` (v3).
+
 #### Uçtan uca akış ve izleme (Y1–Y5)
 
 ```text

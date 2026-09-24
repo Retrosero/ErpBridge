@@ -121,14 +121,23 @@ Bu turda çıkan ikinci bir sessiz kayıp da kapatıldı: kasa kayıtlarının c
 **ada göre** aranıyordu ve aynı adda iki cari varsa arama boş dönüyordu — alış
 faturası Mikro'ya yazılıp ödemesi düşerdi. Kodu bilen taraf artık söylüyor.
 
+## 2026-09-24: gider kapanışı (faz-22-gider-tamamlama)
+
+| Faz | Sonuç |
+|---|---|
+| Y1a | `docs/mobil-belge-sozlesmesi.md` v3: `expense`, `stock_count`, `purchase_receipt` gövdeleri |
+| Y1d | Kapsam dışı tür reddi mesajları Türkçe (`IngestEndpoints`) |
+| Y2a | **Yeni ayar gerekmedi**: gider, ödeyen hesabı telefon göndermezse mevcut `DefaultCashCode` / `DefaultCardBankCode` / `DefaultTransferBankCode`'a düşüyor (`TranslateExpense`); Portal metni bunu söylüyor |
+| Y2c | Portal `/erp-gider-kartlari`: `MASRAF_HESAPLARI` kataloğu, salt okunur, aramalı |
+| Y6a | Gider zaten "Gider" olarak adlandırılıyor (`ErpBelgeler.razor`) — değişiklik gerekmedi |
+| Y6b | Bilgi bankası: `01_Accounting_Adapters.md` (üç yeni yazıcı), `03_Data_Dictionary_and_Rules.md` (`MASRAF_HESAPLARI`, `SAYIM_SONUCLARI`) |
+
+Ana gider işi (kart başlıkları, KDV kolon düzeni, telefon) 2026-09-23'te #176–#178 ile girmişti; bu tur kalan cilayı kapattı.
+
 ## Kalanlar
 
 | Faz | İş |
 |---|---|
-| Y1a | Gövde sözleşmesi v3 belgesi |
 | Y1b | ~~Giderin `disbursement` yerine `expense` ile gelmesi~~ — gider kartının varlığından ayırt edilerek çözüldü (siparis_cepte#85); kasa defterinin çıkış toplamları bozulmasın diye kayıt "Tediye" kalıyor |
-| Y1d | Kapsam dışı tür mesajlarının Türkçeleşmesi |
-| Y2a | `erp_write_settings` + Portal: alış deposu, KDV dahil mi, gider kasası |
-| Y2c | Portal'da gider kartı listesi (uç hazır, ekran yok) |
 | Y5a–Y5d | Canlı uçtan uca doğrulama (`MikroDB_V15_DEMO`) |
-| Y6a–Y6c | Portal Türkçe adlar, bilgi bankası, Play internal |
+| Y6c | Play internal |
