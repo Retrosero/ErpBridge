@@ -4,6 +4,7 @@ using ErpBridge.Portal.Session;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Xunit;
 
@@ -218,5 +219,44 @@ public sealed class PortalLayoutTests : PortalPageTestContext
             .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "cariler", "stok", "tahsilatlar", "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "denetim");
         cut.Find("#user-roles").TextContent.Should().Be("Admin · Muhasebe");
         cut.Find("#session-scope").TextContent.Should().Contain("sekmeye özeldir");
+    }
+
+    [Fact]
+    public void The_account_menu_opens_and_signing_out_forgets_the_session()
+    {
+        var (_, session, storage) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(), inTab: PortalTestSetup.State(), popoverProvider: false);
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        var cut = RenderLayout();
+        cut.FindAll("#logout").Should().BeEmpty();
+
+        // MudBlazor 9 left a custom activator to open the menu itself; without it "Çıkış yap" never showed.
+        cut.Find("#account-menu").Click();
+        cut.WaitForElement("#logout").Click();
+
+        storage.Stored.Should().BeNull();
+        session.IsSignedIn.Should().BeFalse();
+        nav.Uri.Should().EndWith("/login");
+    }
+
+    [Fact]
+    public void Signing_out_completes_when_the_browser_storage_fails()
+    {
+        var (_, session, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(), popoverProvider: false);
+        Services.AddSingleton<ISessionPersistence>(new FailingSessionPersistence());
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        var cut = RenderLayout();
+
+        cut.Find("#account-menu").Click();
+        cut.WaitForElement("#logout").Click();
+        cut.WaitForAssertion(() => session.IsSignedIn.Should().BeFalse());
+        session.IsSignedIn.Should().BeFalse();
+        nav.Uri.Should().EndWith("/login");
+    }
+
+    private sealed class FailingSessionPersistence : ISessionPersistence
+    {
+        public Task SaveAsync(PortalSessionState state) => Task.CompletedTask;
+        public Task<PortalSessionState?> LoadAsync() => Task.FromResult<PortalSessionState?>(null);
+        public Task ClearAsync() => throw new JSException("storage unavailable");
     }
 }

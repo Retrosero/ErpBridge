@@ -20,8 +20,9 @@
             </div>
             <MudSpacer />
             <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true" aria-label="Hesap menüsü">
+                @* MudBlazor 9: a custom activator opens the menu itself; the wrapper no longer listens for the click. *@
                 <ActivatorContent>
-                    <div class="portal-user">
+                    <div class="portal-user" id="account-menu" @onclick="@(e => context.ToggleAsync(e))">
                         <MudAvatar Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">@Initials</MudAvatar>
                         <div class="portal-user-text">
                             <span class="portal-user-name">@Session.FullName</span>
@@ -144,11 +145,19 @@ else
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
+    // The saved session goes first: a page reloaded while it is still stored would sign the user back in.
+    // A storage failure must not keep the user signed in; the full reload drops the circuit and its session.
     private async Task SignOutAsync()
     {
+        try
+        {
+            await Persistence.ClearAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
+        {
+        }
         Session.SignOut();
-        await Persistence.ClearAsync();
-        Nav.NavigateTo("login");
+        Nav.NavigateTo("login", forceLoad: true);
     }
 
     public void Dispose() => Session.Changed -= Redraw;
