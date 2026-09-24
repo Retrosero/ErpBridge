@@ -24,14 +24,24 @@ public sealed class PortalRecordMirror<T> where T : class
     private readonly Guid _tenantId;
     private readonly string[] _entities;
     private readonly Func<string, JsonElement, T?> _parse;
+    private readonly Action<T?, T?>? _applied;
     private long _lastSeq;
 
-    private PortalRecordMirror(Guid tenantId, string[] entities, Func<string, JsonElement, T?> parse)
+    private PortalRecordMirror(Guid tenantId, string[] entities, Func<string, JsonElement, T?> parse, Action<T?, T?>? applied = null)
     {
         _tenantId = tenantId;
         _entities = entities;
         _parse = parse;
+        _applied = applied;
     }
+
+    /// <summary>
+    /// A mirror of one view's own, not shared through the cache: <paramref name="applied"/> sees every change as
+    /// (before, after) — null for "absent" — so the view can keep a running aggregate instead of walking every
+    /// item after each change. Its owner calls <see cref="ApplyAsync"/>, never <see cref="RefreshAsync"/>.
+    /// </summary>
+    public static PortalRecordMirror<T> Folding(Guid tenantId, string[] entities, Func<string, JsonElement, T?> parse, Action<T?, T?> applied) =>
+        new(tenantId, entities, parse, applied);
 
     /// <summary>Changes whenever an applied row changes the items; views built from them cache on it.</summary>
     public long Version { get; private set; }
@@ -51,31 +61,53 @@ public sealed class PortalRecordMirror<T> where T : class
         await _gate.WaitAsync(ct);
         try
         {
-            var since = _lastSeq;
-            var rows = db.MobileRecords.AsNoTracking()
-                .Where(r => r.TenantId == _tenantId && r.UpdatedSeq > since && _entities.Contains(r.Entity))
-                .OrderBy(r => r.UpdatedSeq)
-                .Select(r => new { r.Entity, r.RecordKey, r.IsDeleted, r.UpdatedSeq, r.PayloadJson })
-                .AsAsyncEnumerable();
-            await foreach (var row in rows.WithCancellation(ct))
-            {
-                T? item = null;
-                if (!row.IsDeleted && !string.IsNullOrWhiteSpace(row.PayloadJson))
-                {
-                    using var document = JsonDocument.Parse(row.PayloadJson);
-                    if (document.RootElement.ValueKind == JsonValueKind.Object) item = _parse(row.Entity, document.RootElement);
-                }
-                var key = (row.Entity, row.RecordKey);
-                if (item is null) _items.Remove(key);
-                else _items[key] = item;
-                _lastSeq = row.UpdatedSeq;
-                Version = row.UpdatedSeq;
-            }
+            await ApplyChangesAsync(db, ct);
             return knownVersion == Version ? null : [.. _items.Values];
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    /// <summary>Applies the rows changed since the last call, without copying the items; returns <see cref="Version"/>.</summary>
+    public async Task<long> ApplyAsync(CentralApiDbContext db, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            await ApplyChangesAsync(db, ct);
+            return Version;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task ApplyChangesAsync(CentralApiDbContext db, CancellationToken ct)
+    {
+        var since = _lastSeq;
+        var rows = db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == _tenantId && r.UpdatedSeq > since && _entities.Contains(r.Entity))
+            .OrderBy(r => r.UpdatedSeq)
+            .Select(r => new { r.Entity, r.RecordKey, r.IsDeleted, r.UpdatedSeq, r.PayloadJson })
+            .AsAsyncEnumerable();
+        await foreach (var row in rows.WithCancellation(ct))
+        {
+            T? item = null;
+            if (!row.IsDeleted && !string.IsNullOrWhiteSpace(row.PayloadJson))
+            {
+                using var document = JsonDocument.Parse(row.PayloadJson);
+                if (document.RootElement.ValueKind == JsonValueKind.Object) item = _parse(row.Entity, document.RootElement);
+            }
+            var key = (row.Entity, row.RecordKey);
+            var before = _applied is null ? null : _items.GetValueOrDefault(key);
+            if (item is null) _items.Remove(key);
+            else _items[key] = item;
+            _applied?.Invoke(before, item);
+            _lastSeq = row.UpdatedSeq;
+            Version = row.UpdatedSeq;
         }
     }
 }

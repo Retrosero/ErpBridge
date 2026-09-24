@@ -139,6 +139,73 @@ public sealed class PortalStockSearchRelationalTests : IClassFixture<SqliteCentr
 
     private sealed record Company(Guid Id, string Patron, string Ali);
 
+    [Fact]
+    public async Task A_new_removed_or_redated_movement_moves_the_last_movement_date_without_rebuilding_the_stock_side()
+    {
+        var c = await CompanyAsync(native: false);
+        await SeedErpStockAsync(c.Id);
+        var cache = _factory.Services.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
+        async Task<PortalStockCatalog.Catalog> LoadAsync()
+        {
+            using var scope = _factory.Services.CreateScope();
+            return await PortalStockCatalog.LoadAsync(scope.ServiceProvider.GetRequiredService<CentralApiDbContext>(), cache, c.Id, CancellationToken.None);
+        }
+        async Task ChangeAsync(Action<CentralApiDbContext> change)
+        {
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            change(db);
+            await db.SaveChangesAsync();
+        }
+        string? LastOf(PortalStockCatalog.Catalog catalog, string code) =>
+            catalog.Products.Single(p => p.Code == code).LastMovement?.ToString("yyyy-MM-dd");
+        string Day(int daysAgo) => Today.AddDays(-daysAgo).ToString("yyyy-MM-dd");
+
+        var before = await LoadAsync();
+        LastOf(before, "C").Should().Be(Day(400));
+        (await LoadAsync()).Should().BeSameAs(before, "nothing changed");
+
+        // A sale: one new line. The stock side (cards, prices, quantities) is reused as it was.
+        await ChangeAsync(db => db.MobileRecords.Add(new MobileRecord
+        {
+            TenantId = c.Id, Entity = "stockTransactions", RecordKey = "903", UpdatedSeq = 1_100_001,
+            PayloadJson = JsonSerializer.Serialize(new { id = "903", erp = "MIKRO", stokKod = "c", tarih = Day(10) + "T00:00:00", cikisMiktar = 1 }, Web),
+        }));
+        var afterSale = await LoadAsync();
+        LastOf(afterSale, "C").Should().Be(Day(10));
+        afterSale.Products.Single(p => p.Code == "A").Should().BeSameAs(before.Products.Single(p => p.Code == "A"));
+        (await SearchAsync(c.Patron, "q=Yüzey")).Items.Single().LastMovementDate.Should().Be(Day(10));
+
+        // The line is deleted: the date goes back to the older lines.
+        await ChangeAsync(db =>
+        {
+            var row = db.MobileRecords.Single(r => r.TenantId == c.Id && r.Entity == "stockTransactions" && r.RecordKey == "903");
+            row.IsDeleted = true;
+            row.UpdatedSeq = 1_100_002;
+        });
+        LastOf(await LoadAsync(), "C").Should().Be(Day(400));
+
+        // An older line is re-dated.
+        await ChangeAsync(db =>
+        {
+            var row = db.MobileRecords.Single(r => r.TenantId == c.Id && r.Entity == "stockTransactions" && r.RecordKey == "902");
+            row.PayloadJson = JsonSerializer.Serialize(new { id = "902", erp = "MIKRO", stokKod = "C", tarih = Day(5) + "T00:00:00", cikisMiktar = 1 }, Web);
+            row.UpdatedSeq = 1_100_003;
+        });
+        LastOf(await LoadAsync(), "C").Should().Be(Day(5));
+
+        // The page asks for search and facets at once: a changed catalogue is built once, not twice.
+        await ChangeAsync(db => db.MobileRecords.Add(new MobileRecord
+        {
+            TenantId = c.Id, Entity = "stockTransactions", RecordKey = "904", UpdatedSeq = 1_100_004,
+            PayloadJson = JsonSerializer.Serialize(new { id = "904", erp = "MIKRO", stokKod = "B", tarih = Day(1) + "T00:00:00", cikisMiktar = 1 }, Web),
+        }));
+        var both = await Task.WhenAll(LoadAsync(), LoadAsync());
+        both[0].Should().BeSameAs(both[1]);
+        LastOf(both[0], "B").Should().Be(Day(1));
+        PortalStockCatalog.Facets(both[0]).Should().BeSameAs(PortalStockCatalog.Facets(both[1]), "facets are worked out once per catalogue");
+    }
+
     private async Task SeedErpStockAsync(Guid tenantId)
     {
         using var scope = _factory.Services.CreateScope();
