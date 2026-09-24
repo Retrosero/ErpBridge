@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Endpoints;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -68,6 +69,11 @@ public static class PortalLedger
 
     private sealed record CachedCustomers(long Version, IReadOnlyDictionary<string, Customer> Customers);
 
+    private sealed record CachedBalances(long Version, IReadOnlyDictionary<string, decimal> Balances);
+
+    private sealed record CachedLedgerCustomers(
+        IReadOnlyDictionary<string, Customer> Cards, IReadOnlyDictionary<string, decimal> Balances, IReadOnlyDictionary<string, Customer> Customers);
+
     private sealed record CachedMovements(long LedgerVersion, long LinesVersion, long StockVersion, Movements Movements);
 
     // ---- loading ------------------------------------------------------------
@@ -95,6 +101,52 @@ public static class PortalLedger
         }
         cache.Set(key, new CachedCustomers(mirror.Version, customers), ViewLifetime);
         return customers;
+    }
+
+    /// <summary>
+    /// The customers with the balance the panel shows. A native company's card balance is the book itself
+    /// (<c>native_customer_balances</c>, opening balance included), so it stands. An ERP company's card balance is
+    /// the agent's snapshot, which the agent re-sends only when the customer card itself changes: a new invoice or
+    /// collection leaves it stale. There the balance is Sipariş Cepte's: the sum of the customer's mirrored ledger
+    /// rows (debit +, credit −, closed peşin invoices left out), and the card balance only for a customer with no
+    /// ledger rows (Siparis_Cepte <c>AppDatabase.pageForBrowse</c>, <c>CustomerDetailLoader</c>).
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<string, Customer>> CustomersAsync(
+        CentralApiDbContext db, IMemoryCache cache, Guid tenantId, string dataSource, CancellationToken ct)
+    {
+        var cards = await CustomersAsync(db, cache, tenantId, ct);
+        if (string.Equals(dataSource, TenantDataSources.Native, StringComparison.Ordinal)) return cards;
+        var balances = await LedgerBalancesAsync(db, cache, tenantId, ct);
+
+        var key = ("portal-customers-ledger", tenantId);
+        if (cache.TryGetValue(key, out CachedLedgerCustomers? cached)
+            && ReferenceEquals(cached!.Cards, cards) && ReferenceEquals(cached.Balances, balances))
+            return cached.Customers;
+        var customers = new Dictionary<string, Customer>(cards.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var (code, card) in cards)
+            customers[code] = balances.TryGetValue(code, out var balance) ? card with { Balance = balance } : card;
+        cache.Set(key, new CachedLedgerCustomers(cards, balances, customers), ViewLifetime);
+        return customers;
+    }
+
+    /// <summary>Each customer's ledger sum, from the ledger mirror alone — the list must not wait for invoice lines.</summary>
+    private static async Task<IReadOnlyDictionary<string, decimal>> LedgerBalancesAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
+    {
+        var mirror = PortalRecordMirror<Movement>.For(cache, "ledger", tenantId, MovementEntities, ParseMovement);
+        var key = ("portal-ledger-balances", tenantId);
+        cache.TryGetValue(key, out CachedBalances? cached);
+        var ledger = await mirror.RefreshAsync(db, cached?.Version, ct);
+        if (ledger is null && cached is not null) return cached.Balances;
+
+        var balances = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var movement in ledger ?? [])
+        {
+            // A closed invoice sits under the kasa/banka it was paid to; it never moved the customer's balance.
+            if (movement.Closed) continue;
+            balances[movement.Customer] = balances.GetValueOrDefault(movement.Customer) + movement.Debit - movement.Credit;
+        }
+        cache.Set(key, new CachedBalances(mirror.Version, balances), ViewLifetime);
+        return balances;
     }
 
     public static async Task<Movements> MovementsAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
@@ -276,9 +328,11 @@ public static class PortalLedger
     };
 
     /// <summary>
-    /// A statement. The running balance is anchored to the card balance (the figure the phone
-    /// shows): the last movement ends on it, so a mirror holding only recent history still
-    /// adds up. Opening = card balance − movements from <paramref name="from"/> on.
+    /// A statement. The running balance is anchored to the customer's balance as the panel lists it
+    /// (<see cref="CustomersAsync(CentralApiDbContext, IMemoryCache, Guid, string, CancellationToken)"/>): the last
+    /// movement ends on it. Opening = balance − movements from <paramref name="from"/> on. For an ERP company that
+    /// balance is the ledger sum itself, so the opening is exactly the movements before <paramref name="from"/>; a
+    /// native company's card balance also carries its opening balance.
     ///
     /// <para><paramref name="includeVoided"/> (GOAL_PANEL_ERPSIZ E4d) only hides a voided original from
     /// the rows shown — its reversal still shows (E4a always books one) and every balance figure here
