@@ -99,11 +99,13 @@ internal static class PortalNativeWriteHelpers
                 {
                     TenantId = tenant.Id,
                     UserId = user.Id,
-                    UserName = string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName,
-                    Entity = audit.Entity,
-                    EntityKey = audit.EntityKey,
-                    Action = audit.Action,
-                    Summary = audit.Summary,
+                    // Cut to the columns' own limits: a summary carries the user's free-text reason, and an
+                    // over-long value would fail this second save after the document is already booked.
+                    UserName = Fit(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName, 200),
+                    Entity = Fit(audit.Entity, 40),
+                    EntityKey = Fit(audit.EntityKey, 128),
+                    Action = Fit(audit.Action, 20),
+                    Summary = Fit(audit.Summary, 500),
                     BeforeJson = audit.BeforeJson,
                     AfterJson = audit.Action == "delete" ? null : payloadJson,
                     CreatedAtUtc = DateTimeOffset.UtcNow,
@@ -135,6 +137,9 @@ internal static class PortalNativeWriteHelpers
             .FirstOrDefaultAsync(j => j.TenantId == tenantId && j.DocumentType == documentType && j.ExternalId == externalId, ct);
         return existing is null ? null : JobResult(existing, idempotent: true, StatusCodes.Status200OK);
     }
+
+    /// <summary>Cuts <paramref name="value"/> to <paramref name="max"/> characters, marking the cut with an ellipsis.</summary>
+    internal static string Fit(string value, int max) => value.Length <= max ? value : value[..(max - 1)] + "…";
 
     private static IResult JobResult(Job job, bool idempotent, int statusCode) => JsonResults.Status(statusCode, new IngestJobResponse
     {
