@@ -20,6 +20,8 @@ else
         </Actions>
     </PageHeader>
 
+    <ErpReadOnlyNote />
+
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
@@ -396,6 +398,22 @@ else
 
     private string? Notice { get; set; }
 
+    /// <summary>GOAL_PANEL_ERPSIZ E7c: the menu's "Yeni satış/alış/iade" links open the form straight away.</summary>
+    [SupplyParameterFromQuery(Name = "yeni")] public string? NewKind { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // A menu link followed while this page is already open changes only the query; open the form then too.
+        if (Ready) OpenNewFromAddress();
+    }
+
+    private void OpenNewFromAddress()
+    {
+        if (NewKind is not { } kind || !Session.CanEditNativeData || !EditableKinds.Contains(kind)) return;
+        OpenNew(kind);
+        Nav.NavigateTo("evraklar", new NavigationOptions { ReplaceHistoryEntry = true });
+    }
+
     protected override void OnInitialized()
     {
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
@@ -407,6 +425,7 @@ else
         // The user list is an admin-only call; a manager or accountant reads documents without that filter.
         if (Session.IsAdmin) _users = (await Api.UsersAsync()).Users;
         await LoadListAsync();
+        OpenNewFromAddress();
         if (_openOnLoad is { } key)
         {
             _openOnLoad = null;

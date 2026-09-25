@@ -186,7 +186,8 @@ public static class PortalNativeCardsEndpoints
             BeforeJson: existing is null ? null : JsonSerializer.Serialize(BeforeSnapshot(existing)));
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.StockCard,
-            PortalNativeWriteHelpers.OperationKey("portal-stock", code, body.OperationId), payload, RejectedErrorCode, ct, audit);
+            PortalNativeWriteHelpers.OperationKey("portal-stock", code, body.OperationId), payload, RejectedErrorCode, ct, audit,
+            new NativeBookingOptions(KeepBarcodesWithTheirOwners: true));
     }
 
     private static async Task<IResult> DeleteStockCardAsync(

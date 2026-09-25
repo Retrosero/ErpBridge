@@ -721,6 +721,7 @@ public partial class Program
         app.MapPortalNativeSalesEndpoints();
         app.MapPortalNativeDocumentsEndpoints();
         app.MapPortalNativeStockCountsEndpoints();
+        app.MapPortalNativeCardImportEndpoints();
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
         app.MapAdminParameterEndpoints();

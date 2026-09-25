@@ -318,6 +318,47 @@ public sealed class PortalNativeDocumentRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>Body of <c>POST /api/v1/portal/native/stock-cards/batch</c> (GOAL_PANEL_ERPSIZ E1d): one part of an imported file.</summary>
+public sealed class PortalStockCardBatchRequest
+{
+    public List<PortalStockCardRequest> Cards { get; set; } = [];
+
+    /// <summary>The file row of <c>Cards[0]</c>; skipped rows are reported by file row.</summary>
+    public int FirstRow { get; set; } = 1;
+
+    /// <summary>Each card's own file row, when the caller left rows out (same length as <see cref="Cards"/>); overrides <see cref="FirstRow"/>.</summary>
+    public List<int>? Rows { get; set; }
+    public string? OperationId { get; set; }
+}
+
+/// <summary>Body of <c>POST /api/v1/portal/native/customer-cards/batch</c> (GOAL_PANEL_ERPSIZ E2c).</summary>
+public sealed class PortalCustomerCardBatchRequest
+{
+    public List<PortalCustomerCardRequest> Cards { get; set; } = [];
+    public int FirstRow { get; set; } = 1;
+    public List<int>? Rows { get; set; }
+    public string? OperationId { get; set; }
+}
+
+/// <summary>A row an import left out, and why.</summary>
+public sealed class PortalCardBatchSkip
+{
+    public int Row { get; set; }
+
+    /// <summary>CODE_REQUIRED, CODE_TOO_LONG, NAME_REQUIRED, DUPLICATE_CODE, DUPLICATE_BARCODE, BARCODE_IN_USE, REJECTED (the processor's; see <see cref="Message"/>).</summary>
+    public string Reason { get; set; } = string.Empty;
+    public string? Message { get; set; }
+}
+
+/// <summary>Answer of the card import endpoints: how many cards were booked and which rows were left out.</summary>
+public sealed class PortalCardBatchResponse
+{
+    public Guid? JobId { get; set; }
+    public int Booked { get; set; }
+    public List<PortalCardBatchSkip> Skipped { get; set; } = [];
+    public bool Idempotent { get; set; }
+}
+
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
 public sealed class PortalStockCardDetail
 {
@@ -601,6 +642,46 @@ public sealed class PortalDocumentResponse
     /// <summary>GOAL_PANEL_ERPSIZ E5e — how a native document was settled on the spot (its immediate-payment leg's
     /// <c>paymentType</c>: Nakit, Kredi Kartı…); null for an open-account document or an ERP invoice.</summary>
     public string? PaymentType { get; set; }
+}
+
+/// <summary>One row of GET /api/v1/portal/movements (GOAL_PANEL_ERPSIZ E4e): any customer-side movement of the company.</summary>
+public sealed class PortalMovementRow
+{
+    public string Id { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+    public string CustomerCode { get; set; } = string.Empty;
+    public string CustomerTitle { get; set; } = string.Empty;
+
+    /// <summary>sale, sale_return, purchase, purchase_return, collection, payment, other.</summary>
+    public string Kind { get; set; } = "other";
+
+    /// <summary>The source's own type for an "other" row (Düzeltme, İptal: Satış…).</summary>
+    public string? SourceType { get; set; }
+    public string? DocumentNo { get; set; }
+
+    /// <summary>Set for a sale/purchase/return invoice: opens it (<c>/evraklar?belge=</c>).</summary>
+    public string? DocumentKey { get; set; }
+    public string? Description { get; set; }
+    public string? PaymentType { get; set; }
+    public decimal Debit { get; set; }
+    public decimal Credit { get; set; }
+    public Guid? UserId { get; set; }
+    public string? UserName { get; set; }
+    public bool Voided { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/movements — the company's movements in a date range, newest first.</summary>
+public sealed class PortalMovementsResponse
+{
+    public string From { get; set; } = string.Empty;
+    public string To { get; set; } = string.Empty;
+    public List<PortalMovementRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public decimal TotalDebit { get; set; }
+    public decimal TotalCredit { get; set; }
 }
 
 /// <summary>Body of <c>POST /api/v1/portal/native/documents/{key}/void</c> (GOAL_PANEL_ERPSIZ E5c) —

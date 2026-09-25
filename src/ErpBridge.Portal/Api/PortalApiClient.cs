@@ -104,6 +104,18 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
             ("entity", entity), ("key", entityKey), ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
             ("userId", userId?.ToString()), ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
 
+    /// <summary>GOAL_PANEL_ERPSIZ E4e — every customer-side movement of the company; <paramref name="kinds"/> empty means all.</summary>
+    public Task<CompanyMovementsResponse> CompanyMovementsAsync(
+        DateOnly? from, DateOnly? to, IEnumerable<string> kinds, string? customer, Guid? userId, decimal? minAmount, decimal? maxAmount,
+        bool includeVoided, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<CompanyMovementsResponse>("api/v1/portal/movements" + Query(
+            [("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+             .. kinds.Select(k => ("kind", (string?)k)),
+             ("customer", customer), ("userId", userId?.ToString()),
+             ("minAmount", minAmount?.ToString(CultureInfo.InvariantCulture)), ("maxAmount", maxAmount?.ToString(CultureInfo.InvariantCulture)),
+             ("includeVoided", includeVoided ? "true" : null),
+             ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
+
     /// <summary>Company-wide collections/payments (GOAL_PANEL_ERPSIZ E3c); <paramref name="kinds"/> empty means both.</summary>
     public Task<PaymentsResponse> PaymentsAsync(
         DateOnly? from, DateOnly? to, IEnumerable<string> kinds, string? customer, Guid? userId, int page, int pageSize, CancellationToken ct = default) =>
@@ -124,6 +136,13 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<NativeStockCardDetailDto> NativeStockCardAsync(string code, CancellationToken ct = default) =>
         GetAsync<NativeStockCardDetailDto>($"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}", ct);
 
+    /// <summary>GOAL_PANEL_ERPSIZ E1d — one part (≤ 500 cards) of an imported product file.</summary>
+    public Task<CardBatchResultDto> ImportNativeStockCardsAsync(NativeStockCardBatchRequest request, CancellationToken ct = default) =>
+        SendAsync<CardBatchResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-cards/batch", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E2c — one part (≤ 500 cards) of an imported customer file.</summary>
+    public Task<CardBatchResultDto> ImportNativeCustomerCardsAsync(NativeCustomerCardBatchRequest request, CancellationToken ct = default) =>
+        SendAsync<CardBatchResultDto>(HttpMethod.Post, "api/v1/portal/native/customer-cards/batch", request, ct);
     /// <summary>GOAL_PANEL_ERPSIZ E6a/E6c — one product's movements with the running stock, newest first.</summary>
     public Task<StockMovementsResponse> NativeStockMovementsAsync(
         string code, DateOnly? from, DateOnly? to, bool includeVoided, int page, int pageSize, CancellationToken ct = default) =>
