@@ -697,12 +697,15 @@ else
     private bool _voidOpen;
     private LedgerRowDto? _voiding;
     private string? _voidReason;
+    // One id per opened dialog: a retry after a lost answer replays the same operation instead of meeting ALREADY_VOIDED.
+    private string _voidOperationId = string.Empty;
 
     private void OpenVoidMovement(LedgerRowDto row)
     {
         Notice = null;
         _voiding = row;
         _voidReason = null;
+        _voidOperationId = Guid.NewGuid().ToString("N");
         _voidOpen = true;
     }
 
@@ -720,7 +723,7 @@ else
         var reason = _voidReason!.Trim();
         return RunAsync(async () =>
         {
-            await Api.VoidNativeLedgerEntryAsync(row.Id, new NativeLedgerVoidRequest { Reason = reason, OperationId = Guid.NewGuid().ToString("N") });
+            await Api.VoidNativeLedgerEntryAsync(row.Id, new NativeLedgerVoidRequest { Reason = reason, OperationId = _voidOperationId });
             _voidOpen = false;
             await LoadLedgerAsync();
             await ReloadCardAsync();
