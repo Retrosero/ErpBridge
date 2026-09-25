@@ -39,6 +39,8 @@ else
             Cari
             <input class="portal-input" id="payments-customer" placeholder="Kod ya da ünvan" value="@_customer" disabled="@Busy" @onchange="e => _customer = e.Value?.ToString() ?? string.Empty" />
         </label>
+        @if (_users.Length > 0)
+        {
         <label class="inline-field">
             Kullanıcı
             <select class="portal-select portal-select--short" id="payments-user" value="@(_userId?.ToString() ?? string.Empty)" disabled="@Busy"
@@ -50,6 +52,7 @@ else
                 }
             </select>
         </label>
+        }
         <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" id="payments-search">Süz</MudButton>
     </form>
 
@@ -150,7 +153,8 @@ else
 
     protected override async Task LoadAsync()
     {
-        _users = (await Api.UsersAsync()).Users;
+        // The user list is an admin-only call; a manager or accountant reads payments without that filter.
+        if (Session.IsAdmin) _users = (await Api.UsersAsync()).Users;
         var kinds = string.IsNullOrEmpty(_kind) ? [] : new[] { _kind };
         _result = await Api.PaymentsAsync(_from, _to, kinds, string.IsNullOrWhiteSpace(_customer) ? null : _customer, _userId, _page, 50);
     }

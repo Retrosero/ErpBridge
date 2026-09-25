@@ -54,6 +54,8 @@ else
             Cari
             <input class="portal-input" id="documents-customer" placeholder="Kod" value="@_customer" disabled="@Busy" @onchange="e => _customer = e.Value?.ToString() ?? string.Empty" />
         </label>
+        @if (_users.Length > 0)
+        {
         <label class="inline-field">
             Kullanıcı
             <select class="portal-select portal-select--short" id="documents-user" value="@(_userId?.ToString() ?? string.Empty)" disabled="@Busy"
@@ -65,6 +67,7 @@ else
                 }
             </select>
         </label>
+        }
         <label class="inline-field">
             Durum
             <select class="portal-select portal-select--short" id="documents-status" value="@_status" disabled="@Busy" @onchange="e => _status = e.Value?.ToString() ?? StatusActive">
@@ -401,7 +404,8 @@ else
 
     protected override async Task LoadAsync()
     {
-        _users = (await Api.UsersAsync()).Users;
+        // The user list is an admin-only call; a manager or accountant reads documents without that filter.
+        if (Session.IsAdmin) _users = (await Api.UsersAsync()).Users;
         await LoadListAsync();
         if (_openOnLoad is { } key)
         {
@@ -492,9 +496,13 @@ else
     private bool _voidOpen;
     private string? _voidReason;
 
+    /// <summary>Kept for the dialog's lifetime: a retry after a lost response replays the same void (idempotent 200).</summary>
+    private string _voidOperationId = string.Empty;
+
     private void OpenVoid()
     {
         _voidReason = null;
+        _voidOperationId = Guid.NewGuid().ToString("N");
         _voidOpen = true;
     }
 
@@ -512,7 +520,7 @@ else
         var reason = _voidReason!.Trim();
         return RunAsync(async () =>
         {
-            await Api.VoidNativeDocumentAsync(document.DocumentKey, new NativeLedgerVoidRequest { Reason = reason, OperationId = Guid.NewGuid().ToString("N") });
+            await Api.VoidNativeDocumentAsync(document.DocumentKey, new NativeLedgerVoidRequest { Reason = reason, OperationId = _voidOperationId });
             _voidOpen = false;
             CloseDetail();
             await LoadListAsync();

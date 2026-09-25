@@ -114,7 +114,7 @@ public sealed class PortalDocumentsPageTests : PortalPageTestContext
     [Fact]
     public void A_manager_or_an_erp_company_reads_documents_but_cannot_enter_or_change_them()
     {
-        Setup(role: "MANAGER", rows: [Row(SaleKey, "sale", "S-1", 270m)]);
+        var api = Setup(role: "MANAGER", rows: [Row(SaleKey, "sale", "S-1", 270m)]);
         var cut = Render<Evraklar>();
         cut.WaitForAssertion(() => cut.Find($"tr[data-document='{SaleKey}']"));
         cut.FindAll("#document-new-sale").Should().BeEmpty();
@@ -125,6 +125,34 @@ public sealed class PortalDocumentsPageTests : PortalPageTestContext
         cut.Find("#document-print");
         cut.FindAll("#document-edit").Should().BeEmpty();
         cut.FindAll("#document-void").Should().BeEmpty();
+        // The user filter's list is an admin-only call; a manager's page must not depend on it (Codex #189).
+        api.Requests.Should().NotContain(r => r.PathAndQuery == UsersPath);
+        cut.FindAll("#documents-user").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_void_retried_after_a_lost_answer_reuses_its_operation_id()
+    {
+        var api = Setup(rows: [Row(SaleKey, "sale", "S-1", 270m)]);
+        var cut = Render<Evraklar>();
+        cut.WaitForAssertion(() => cut.Find($"tr[data-document='{SaleKey}']"));
+        cut.Find($"tr[data-document='{SaleKey}']").Click();
+        cut.WaitForAssertion(() => cut.Find("#document-void"));
+        cut.Find("#document-void").Click();
+        cut.WaitForAssertion(() => cut.Find("#document-void-reason"));
+        cut.Find("#document-void-reason").Change("Vazgeçti");
+        api.Fail($"{Documents}/{EscapedSaleKey}/void", System.Net.HttpStatusCode.GatewayTimeout, "UPSTREAM_TIMEOUT");
+        cut.Find("#document-void-form").Submit();
+        cut.WaitForAssertion(() => cut.Find("#page-error"));
+
+        api.Answer($"{Documents}/{EscapedSaleKey}/void", Ok());
+        cut.Find("#document-void-form").Submit();
+
+        cut.WaitForAssertion(() => cut.Find("#page-notice"));
+        var ids = api.Requests.Where(r => r.Method == HttpMethod.Post && r.PathAndQuery.EndsWith("/void"))
+            .Select(r => JsonDocument.Parse(r.Body!).RootElement.GetProperty("operationId").GetString()).ToList();
+        ids.Should().HaveCount(2);
+        ids.Distinct().Should().ContainSingle("the retry replays the same operation");
     }
 
     [Fact]
