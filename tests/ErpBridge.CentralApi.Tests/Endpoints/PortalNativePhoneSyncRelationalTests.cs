@@ -29,37 +29,63 @@ public sealed class PortalNativePhoneSyncRelationalTests : IClassFixture<SqliteC
     public async Task Every_portal_write_reaches_a_phone_through_sync_pull()
     {
         var c = await CompanyAsync();
-        var device = await LoginAsync(c.TenantCode, "patron", "DEV-E8A-1");
-        await SyncAllAsync(c.Id, device);
+        await SeedCustomerAsync(c, "TED-1");
+        var device = new Device(await LoginAsync(c.TenantCode, "patron", "DEV-E8A-1"));
+        await PullAsync(c.Id, device); // the initial snapshot; every pull below continues from this device's cursor
 
         await SeedProductAsync(c, "CAY-1", 40);
-        (await SyncAllAsync(c.Id, device)).Should().Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1", "a new product card");
+        (await PullAsync(c.Id, device)).Should().Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1", "a new product card");
 
         await SeedCustomerAsync(c, "C-001");
-        (await SyncAllAsync(c.Id, device)).Should().Contain(ch => ch.Entity == "cari" && ch.Key == "C-001", "a new customer card");
+        (await PullAsync(c.Id, device)).Should().Contain(ch => ch.Entity == "cari" && ch.Key == "C-001", "a new customer card");
 
         (await PostAsync(c, "collections", new { customerCode = "C-001", amount = 100 })).StatusCode.Should().Be(HttpStatusCode.Created);
-        var collection = await SyncAllAsync(c.Id, device);
-        collection.Should().Contain(ch => ch.Entity == "cariHareketleri").And.Contain(ch => ch.Entity == "cari" && ch.Key == "C-001");
+        var collection = await PullAsync(c.Id, device);
+        collection.Should().Contain(ch => ch.Entity == "cariHareketleri" && ch.Key.EndsWith("|collection"))
+            .And.Contain(ch => ch.Entity == "cari" && ch.Key == "C-001", "the new balance");
 
         await PostSaleAsync(c, "C-001", "S-1", ("CAY-1", 3, 150));
-        var sale = await SyncAllAsync(c.Id, device);
-        sale.Should().Contain(ch => ch.Entity == "stokHareketleri").And.Contain(ch => ch.Entity == "cariHareketleri")
-            .And.Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1");
+        var sale = await PullAsync(c.Id, device);
+        sale.Should().Contain(ch => ch.Entity == "cariHareketleri" && ch.Key.EndsWith("|sale"))
+            .And.Contain(ch => ch.Entity == "stokHareketleri")
+            .And.Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1", "the new stock level");
 
-        var key = (await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}")).Items.Single().DocumentKey;
-        (await _factory.CreateClient().PostJsonAsync($"/api/v1/portal/native/documents/{Uri.EscapeDataString(key)}/edit",
+        (await PostAsync(c, "purchase-receipts", new { partyCode = "TED-1", documentNo = "A-1", lines = new[] { new { productCode = "CAY-1", quantity = 10, unitPrice = 100 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var purchase = await PullAsync(c.Id, device);
+        purchase.Should().Contain(ch => ch.Entity == "cariHareketleri" && ch.Key.EndsWith("|purchase"))
+            .And.Contain(ch => ch.Entity == "stokHareketleri").And.Contain(ch => ch.Entity == "cari" && ch.Key == "TED-1");
+
+        (await PostAsync(c, "sales-returns", new { partyCode = "C-001", documentNo = "I-1", lines = new[] { new { productCode = "CAY-1", quantity = 1, unitPrice = 150 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var saleReturn = await PullAsync(c.Id, device);
+        saleReturn.Should().Contain(ch => ch.Entity == "cariHareketleri" && ch.Key.EndsWith("|return"))
+            .And.Contain(ch => ch.Entity == "stokHareketleri").And.Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1");
+
+        var documents = (await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}")).Items;
+        var returnKey = documents.Single(i => i.DocumentNo == "I-1").DocumentKey;
+        (await _factory.CreateClient().PostJsonAsync($"/api/v1/portal/native/documents/{Uri.EscapeDataString(returnKey)}/void", new { reason = "Vazgeçti" }, c.Patron))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var cancelled = await PullAsync(c.Id, device);
+        cancelled.Should().Contain(ch => ch.Entity == "cariHareketleri" && ch.Key.EndsWith("|return|void"), "the reversal")
+            .And.Contain(ch => ch.Entity == "cariHareketleri" && ch.Key.EndsWith("|return") && ch.Data.GetProperty("voided").GetBoolean(), "the original, now marked void")
+            .And.Contain(ch => ch.Entity == "stokHareketleri" && ch.Key.EndsWith("|void"));
+
+        var saleKey = documents.Single(i => i.DocumentNo == "S-1").DocumentKey;
+        (await _factory.CreateClient().PostJsonAsync($"/api/v1/portal/native/documents/{Uri.EscapeDataString(saleKey)}/edit",
             new { voidReason = "Miktar", lines = new[] { new { productCode = "CAY-1", quantity = 2, unitPrice = 150 } } }, c.Patron))
             .StatusCode.Should().Be(HttpStatusCode.Created);
-        var edit = await SyncAllAsync(c.Id, device);
-        edit.Where(ch => ch.Entity == "stokHareketleri").Should().HaveCountGreaterOrEqualTo(3, "the voided line, its reversal and the corrected line");
-        edit.Where(ch => ch.Entity == "cariHareketleri").Should().HaveCountGreaterOrEqualTo(3);
+        var edit = await PullAsync(c.Id, device);
+        edit.Where(ch => ch.Entity == "stokHareketleri").Should().HaveCount(3, "the voided line, its reversal and the corrected line — only these, from this device's cursor");
+        edit.Where(ch => ch.Entity == "cariHareketleri").Should().HaveCount(3);
 
         (await _factory.CreateClient().PostJsonAsync("/api/v1/portal/native/stock-counts",
             new { reason = "Sayım", lines = new[] { new { productCode = "CAY-1", countedQuantity = 30 } } }, c.Patron))
             .StatusCode.Should().Be(HttpStatusCode.Created);
-        var count = await SyncAllAsync(c.Id, device);
-        count.Should().Contain(ch => ch.Entity == "stokHareketleri").And.Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1");
+        var count = await PullAsync(c.Id, device);
+        count.Should().ContainSingle(ch => ch.Entity == "stokHareketleri").And.Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1");
+
+        (await PullAsync(c.Id, device)).Should().BeEmpty("nothing changed since the last pull");
     }
 
     [Fact]
@@ -158,13 +184,20 @@ public sealed class PortalNativePhoneSyncRelationalTests : IClassFixture<SqliteC
         return (await db.NativeCustomerBalances.SingleAsync(b => b.TenantId == tenantId && b.CustomerCode == customerCode)).Balance;
     }
 
-    private async Task<List<Change>> SyncAllAsync(Guid tenantId, string token)
+    /// <summary>A phone: its token and the cursor its last pull ended at (Codex #194 — each pull continues the same delta feed).</summary>
+    private sealed class Device(string token)
+    {
+        public string Token { get; } = token;
+        public string? Cursor { get; set; }
+    }
+
+    /// <summary>One device's pull from where it left off, every page.</summary>
+    private async Task<List<Change>> PullAsync(Guid tenantId, Device device)
     {
         var changes = new List<Change>();
-        string? cursor = null;
         while (true)
         {
-            var response = await SendAsync(HttpMethod.Post, token, tenantId, "/api/v1/android/sync/pull", new { cursor, limit = 500 });
+            var response = await SendAsync(HttpMethod.Post, device.Token, tenantId, "/api/v1/android/sync/pull", new { cursor = device.Cursor, limit = 500 });
             response.StatusCode.Should().Be(HttpStatusCode.OK);
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var root = document.RootElement;
@@ -175,7 +208,7 @@ public sealed class PortalNativePhoneSyncRelationalTests : IClassFixture<SqliteC
                     change.GetProperty("deleted").GetBoolean(),
                     change.TryGetProperty("data", out var data) ? data.Clone() : default));
             }
-            cursor = root.GetProperty("nextCursor").GetString();
+            device.Cursor = root.GetProperty("nextCursor").GetString();
             if (!root.GetProperty("hasMore").GetBoolean()) return changes;
         }
     }

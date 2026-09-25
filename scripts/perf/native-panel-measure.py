@@ -3,9 +3,14 @@
 Only against a local or test server. The company must be seeded with native-panel-seed.sql and have an ADMIN user
 "patron":
 
-    ERPB_PATRON_PASSWORD=... python scripts/perf/native-panel-measure.py <tenant code>
+    ERPB_PATRON_PASSWORD=... python scripts/perf/native-panel-measure.py <tenant code> [read index]
 
 ERPB_API overrides the server address (default http://localhost:5281).
+
+A cold figure is only honest for the first request a freshly started server answers: the pages share their mirrors,
+so one page's first read warms the next (Codex #194). With a read index (0-6) the script measures only that read —
+cold, then warm — and nothing else; restart the server before each such run. Without it, the full sequence (reads
+twice, writes, reads after writes) measures the warm paths and the saves.
 """
 import json
 import os
@@ -59,7 +64,16 @@ def main():
     ]
 
     rows = []
-    for round_name in ("soğuk", "sıcak"):
+    if len(sys.argv) > 2:
+        name, path = reads[int(sys.argv[2])]
+        for round_name in ("soğuk (tek)", "sıcak"):
+            status, ms, _ = call("GET", path, token=token)
+            rows.append((round_name, name, status, ms))
+        for round_name, name, status, ms in rows:
+            print(f"{round_name:15} {name:28} {status} {ms:8.0f} ms")
+        return
+
+    for round_name in ("ilk tur", "sıcak"):
         for name, path in reads:
             status, ms, _ = call("GET", path, token=token)
             rows.append((round_name, name, status, ms))
