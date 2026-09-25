@@ -71,6 +71,26 @@ public sealed class PortalCustomerLedgerEditTests : PortalPageTestContext
     }
 
     [Fact]
+    public void An_erp_company_reads_why_the_statement_has_no_actions()
+    {
+        Setup([Row("c1|collection", "collection", null, 0, 300, editable: false)], dataSource: "erp");
+        var cut = Render<Cari>();
+
+        cut.WaitForAssertion(() => cut.Find("#erp-read-only").TextContent.Should().Contain("ERP'de yapılır"));
+        cut.FindAll("#customer-collect").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_native_company_sees_no_erp_note_on_the_statement()
+    {
+        Setup([Row("c1|collection", "collection", null, 0, 300, editable: true)]);
+        var cut = Render<Cari>();
+
+        cut.WaitForAssertion(() => cut.Find("#customer-collect"));
+        cut.FindAll("#erp-read-only").Should().BeEmpty();
+    }
+
+    [Fact]
     public void A_voided_movement_reads_struck_through_with_its_reason()
     {
         Setup([Row("c1|collection", "collection", null, 0, 300, editable: false, voided: true, reason: "Yanlış girildi")]);
