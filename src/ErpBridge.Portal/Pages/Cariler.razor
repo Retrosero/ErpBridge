@@ -18,6 +18,7 @@ else
             </form>
             @if (Session.CanEditNativeData)
             {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="@(() => _importOpen = true)" id="customer-import-open">İçe aktar</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNewCard" id="customer-new">Yeni müşteri</MudButton>
             }
         </Actions>
@@ -99,6 +100,8 @@ else
 
     @if (Session.CanEditNativeData)
     {
+        <CardImport Kind="customer" Open="_importOpen" OnClose="@(() => _importOpen = false)" OnImported="ImportedAsync" />
+
         <DetailSheet Id="customer-card-sheet" Open="_cardOpen" Busy="Busy" Eyebrow="Cariler" Title="Yeni müşteri" OnClose="CloseCard">
             <ChildContent>
                 <form class="stack-form" id="customer-card-form" @onsubmit="SaveCardAsync" @onsubmit:preventDefault>
@@ -238,6 +241,12 @@ else
     private string? Notice { get; set; }
     private bool _cardOpen;
     private NativeCustomerCardRequest _card = new();
+
+    // ---- toplu içe aktarma (GOAL_PANEL_ERPSIZ E2c) ---------------------------------------------
+
+    private bool _importOpen;
+
+    private Task ImportedAsync() => RunAsync(LoadAsync);
 
     private void OpenNewCard()
     {

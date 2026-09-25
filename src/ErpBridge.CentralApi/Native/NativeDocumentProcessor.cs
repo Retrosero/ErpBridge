@@ -32,7 +32,10 @@ namespace ErpBridge.CentralApi.Native;
 /// </summary>
 /// <param name="CountAgainstCurrentLevel">GOAL_PANEL_ERPSIZ E6b: a portal <c>stock_count</c> takes its difference against
 /// the stock booked now (read under the tenant lock), not against the <c>expectedQuantity</c> a device saw offline.</param>
-public sealed record NativeBookingOptions(bool CountAgainstCurrentLevel = false);
+/// <param name="KeepBarcodesWithTheirOwners">GOAL_PANEL_ERPSIZ E1d: a portal product card may not take a barcode another
+/// product holds — checked under the tenant lock, so two imports at once cannot both pass an earlier check. The phone's
+/// own cards keep their old rule (the barcode follows the latest card).</param>
+public sealed record NativeBookingOptions(bool CountAgainstCurrentLevel = false, bool KeepBarcodesWithTheirOwners = false);
 
 public sealed class NativeDocumentProcessor
 {
@@ -252,6 +255,9 @@ public sealed class NativeDocumentProcessor
         if (name is null) return "name is required.";
 
         var barcode = Text(card, "barcode");
+        if (barcode is not null && booking.Options.KeepBarcodesWithTheirOwners
+            && await BarcodeOwnerAsync(db, booking.TenantId, barcode, ct) is { } owner && !string.Equals(owner, code, StringComparison.OrdinalIgnoreCase))
+            return $"The barcode {barcode} already belongs to product {owner}.";
         booking.Add("stocks", new JsonObject
         {
             ["stockCode"] = code,
@@ -1244,6 +1250,10 @@ public sealed class NativeDocumentProcessor
         using var document = JsonDocument.Parse(payload);
         return Text(document.RootElement, "stockCode");
     }
+
+    /// <summary>The product a barcode currently names, or null.</summary>
+    private static Task<string?> BarcodeOwnerAsync(CentralApiDbContext db, Guid tenantId, string barcode, CancellationToken ct) =>
+        StockCodeForBarcodeAsync(db, tenantId, barcode, ct);
 
     private static Task<bool> StockCardExistsAsync(CentralApiDbContext db, Guid tenantId, string stockCode, CancellationToken ct) =>
         db.MobileRecords.AsNoTracking()

@@ -21,6 +21,7 @@ else
             </MudButton>
             @if (Session.CanEditNativeData)
             {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="@(() => _importOpen = true)" id="stock-import-open">İçe aktar</MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Checklist" Href="stok/sayim" id="stock-count-open">Sayım</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNewCard" id="stock-new">Yeni ürün</MudButton>
             }
@@ -334,6 +335,7 @@ else
 
     @if (Session.CanEditNativeData)
     {
+        <CardImport Kind="stock" Open="_importOpen" OnClose="@(() => _importOpen = false)" OnImported="ImportedAsync" />
         <DetailSheet Id="stock-movements" Open="_movesOpen" Busy="_movesBusy" Eyebrow="Stok hareketleri" Title="@(_movesName ?? _movesCode ?? "Ürün")" OnClose="CloseMovements">
             <ChildContent>
                 @if (_movesError is not null)
@@ -773,6 +775,11 @@ else
         </th>
     };
 
+    // ---- toplu içe aktarma (GOAL_PANEL_ERPSIZ E1d) ---------------------------------------------
+
+    private bool _importOpen;
+
+    private Task ImportedAsync() => RunAsync(LoadAsync);
     // ---- ürün hareketleri ve sayım iptali (GOAL_PANEL_ERPSIZ E6c) ------------------------------
 
     private bool _movesOpen;
@@ -812,7 +819,6 @@ else
         _voidingCount = null;
     }
 
-    /// <summary>Loads the drawer's page with its own busy flag and error, so the stock list behind it stays as it was.</summary>
     /// <summary>Bumped by every drawer request: only the newest request's answer, error and end of busy apply (Codex #196).</summary>
     private int _movesGeneration;
 
