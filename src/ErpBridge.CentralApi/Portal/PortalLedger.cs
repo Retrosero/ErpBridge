@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
@@ -445,6 +445,13 @@ public static class PortalLedger
     private static PortalDocumentResponse BuildDocumentResponse(string customerCode, string customerTitle, Movement movement, Movements movements, string documentKey)
     {
         var lines = movements.LinesByDocument.TryGetValue(documentKey, out var found) ? found : [];
+        // A native document settled on the spot booked its payment leg under the same job (E5e: the edit form and
+        // the printout show it). An ERP invoice's rows share no job id, so this finds nothing there.
+        var jobId = ExternalIdOf(movement.Id);
+        var paymentLeg = movement.DocumentKey is not null && movements.ByCustomer.TryGetValue(customerCode, out var own)
+            ? own.FirstOrDefault(m => !ReferenceEquals(m, movement) && PaymentKinds.Contains(m.Kind) && m.Id.Contains('|')
+                                      && string.Equals(ExternalIdOf(m.Id), jobId, StringComparison.Ordinal))
+            : null;
         return new PortalDocumentResponse
         {
             Id = movement.Id,
@@ -457,6 +464,7 @@ public static class PortalLedger
             Description = movement.Description,
             Amount = movement.Debit + movement.Credit,
             Voided = movement.Voided,
+            PaymentType = paymentLeg?.PaymentType,
             LinesAvailable = lines.Count > 0,
             Lines = lines.Select(l => new PortalDocumentLine
             {
@@ -483,7 +491,7 @@ public static class PortalLedger
     public static PortalDocumentsResponse Documents(
         IReadOnlyDictionary<string, Customer> customers, Movements movements, DateOnly from, DateOnly to,
         IReadOnlyCollection<string> kinds, string? customerCode, Guid? userId,
-        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize, bool? voided = null)
     {
         var wanted = kinds.Count > 0 ? kinds : DocumentKinds;
         var start = from.ToDateTime(TimeOnly.MinValue);
@@ -494,6 +502,7 @@ public static class PortalLedger
             .SelectMany(list => list)
             .Where(m => !m.Closed && m.DocumentKey is not null && wanted.Contains(m.Kind) && m.Date >= start && m.Date < endExclusive)
             .Where(m => code is null || string.Equals(m.Customer, code, StringComparison.OrdinalIgnoreCase))
+            .Where(m => voided is null || m.Voided == voided)
             .ToList();
         if (userId is { } wantedUser)
             matching = matching.Where(m => creatorOf(ExternalIdOf(m.Id)) == wantedUser).ToList();
@@ -514,6 +523,7 @@ public static class PortalLedger
                 Amount = m.Debit + m.Credit,
                 UserId = creator,
                 UserName = creator is { } id && userNames.TryGetValue(id, out var name) ? name : null,
+                Voided = m.Voided,
             };
         }).ToList();
 

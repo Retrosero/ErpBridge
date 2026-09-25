@@ -1,0 +1,121 @@
+@page "/evrak-yazdir"
+@layout PrintLayout
+@inherits PortalPageBase
+
+<PageTitle>@(_document?.DocumentNo ?? "Evrak") — Yazdır</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else if (Error is not null)
+{
+    <p class="print-error" id="page-error">@Error</p>
+}
+else if (_document is { } document)
+{
+    <div class="print-actions no-print">
+        <button type="button" class="print-button" id="print-now" onclick="window.print()">Yazdır</button>
+        <button type="button" class="print-button print-button--plain" onclick="window.close()">Kapat</button>
+    </div>
+
+    <article class="print-document @(document.Voided ? "is-voided-document" : null)" id="print-document">
+        @if (document.Voided)
+        {
+            <div class="print-stamp" id="print-voided">İPTAL</div>
+        }
+        <header class="print-head">
+            <div>
+                <div class="print-company">@Session.TenantName</div>
+                <h1 class="print-title" id="print-title">@Title(document.Kind)</h1>
+            </div>
+            <dl class="print-facts">
+                <dt>Belge no</dt><dd id="print-number">@(document.DocumentNo ?? "—")</dd>
+                <dt>Tarih</dt><dd>@DayText(document.Date)</dd>
+                <dt>Ödeme</dt><dd>@(document.PaymentType ?? "Açık hesap")</dd>
+            </dl>
+        </header>
+
+        <section class="print-party">
+            <span class="print-label">@(document.Kind == "purchase" ? "Tedarikçi" : "Sayın")</span>
+            <strong id="print-party">@document.CustomerTitle</strong>
+            <span class="print-code">@document.CustomerCode</span>
+        </section>
+
+        @if (document.LinesAvailable)
+        {
+            <table class="print-lines" id="print-lines">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Kod</th>
+                        <th>Ürün</th>
+                        <th class="num">Miktar</th>
+                        <th class="num">Birim fiyat</th>
+                        <th class="num">Tutar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < document.Lines.Count; i++)
+                    {
+                        var line = document.Lines[i];
+                        <tr>
+                            <td>@(i + 1)</td>
+                            <td>@line.StockCode</td>
+                            <td>@(line.Name ?? "—")</td>
+                            <td class="num">@Fmt.Quantity(line.Quantity)</td>
+                            <td class="num">@Fmt.Money(line.UnitPrice)</td>
+                            <td class="num">@Fmt.Money(line.Amount)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <footer class="print-foot">
+            @if (!string.IsNullOrWhiteSpace(document.Description))
+            {
+                <p class="print-note">@document.Description</p>
+            }
+            <div class="print-total">
+                <span>Genel toplam</span>
+                <strong id="print-total">@Fmt.Money(document.Amount)</strong>
+            </div>
+        </footer>
+    </article>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Ledger;
+
+    private string? _key;
+    private NativeDocumentDto? _document;
+
+    protected override void OnInitialized()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        _key = query.TryGetValue("belge", out var key) && !string.IsNullOrWhiteSpace(key) ? key[^1] : null;
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (_key is null)
+        {
+            Error = "Yazdırılacak evrak seçilmedi.";
+            return;
+        }
+        _document = await Api.NativeDocumentAsync(_key);
+    }
+
+    private static string Title(string kind) => kind switch
+    {
+        "sale" => "Satış Faturası",
+        "purchase" => "Alış Faturası",
+        "sale_return" => "İade Faturası",
+        "purchase_return" => "Alış İade Faturası",
+        _ => "Evrak",
+    };
+
+    private static string DayText(string iso) =>
+        Fmt.TryIsoDay(iso, out var day) ? day.ToString("dd.MM.yyyy", Fmt.Turkish) : iso;
+}
