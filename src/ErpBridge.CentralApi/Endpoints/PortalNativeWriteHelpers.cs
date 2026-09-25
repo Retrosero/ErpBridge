@@ -138,8 +138,17 @@ internal static class PortalNativeWriteHelpers
         return existing is null ? null : JobResult(existing, idempotent: true, StatusCodes.Status200OK);
     }
 
-    /// <summary>Cuts <paramref name="value"/> to <paramref name="max"/> characters, marking the cut with an ellipsis.</summary>
-    internal static string Fit(string value, int max) => value.Length <= max ? value : value[..(max - 1)] + "…";
+    /// <summary>
+    /// Cuts <paramref name="value"/> to <paramref name="max"/> characters — Unicode scalars, the way PostgreSQL's
+    /// <c>varchar(n)</c> counts them, so an emoji is one character and is never split — marking the cut with an ellipsis.
+    /// </summary>
+    internal static string Fit(string value, int max)
+    {
+        if (value.Length <= max) return value;
+        var runes = value.EnumerateRunes().ToList();
+        if (runes.Count <= max) return value;
+        return string.Concat(runes.Take(max - 1).Select(r => r.ToString())) + "…";
+    }
 
     private static IResult JobResult(Job job, bool idempotent, int statusCode) => JsonResults.Status(statusCode, new IngestJobResponse
     {
