@@ -573,6 +573,10 @@ public sealed class PortalDocumentResponse
 
     /// <summary>GOAL_PANEL_ERPSIZ E5c — whether <c>document_void</c> already cancelled this document.</summary>
     public bool Voided { get; set; }
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5e — how a native document was settled on the spot (its immediate-payment leg's
+    /// <c>paymentType</c>: Nakit, Kredi Kartı…); null for an open-account document or an ERP invoice.</summary>
+    public string? PaymentType { get; set; }
 }
 
 /// <summary>Body of <c>POST /api/v1/portal/native/documents/{key}/void</c> (GOAL_PANEL_ERPSIZ E5c) —
@@ -624,6 +628,9 @@ public sealed class PortalDocumentRow
     public decimal Amount { get; set; }
     public Guid? UserId { get; set; }
     public string? UserName { get; set; }
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5e — cancelled by <c>document_void</c> (or replaced by <c>document_edit</c>).</summary>
+    public bool Voided { get; set; }
 }
 
 /// <summary>GET /api/v1/portal/native/documents — company-wide sale/purchase/return invoices (GOAL_PANEL_ERPSIZ E5b).</summary>

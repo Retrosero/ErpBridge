@@ -364,6 +364,36 @@ public sealed class PortalNativeDocumentEditRelationalTests : IClassFixture<Sqli
         changes.Should().Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1");
     }
 
+    [Fact]
+    public async Task The_list_marks_and_filters_cancelled_documents_and_the_detail_names_the_payment_type()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001");
+        await PostSaleAsync(c, "C-001", "S-1", ("CAY-1", 1, 150), paymentType: "Nakit");
+        await PostSaleAsync(c, "C-001", "S-2", ("CAY-1", 2, 150));
+        var all = await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}");
+        var cancelledKey = all.Items.Single(i => i.DocumentNo == "S-2").DocumentKey;
+        (await _factory.CreateClient().PostJsonAsync($"/api/v1/portal/native/documents/{Uri.EscapeDataString(cancelledKey)}/void", new { reason = "İptal" }, c.Patron))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var everything = await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}");
+        var active = await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}&status=active");
+        var voided = await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}&status=voided");
+        var bad = await _factory.CreateClient().GetAsync($"/api/v1/portal/native/documents?{AllDates}&status=deleted", c.Patron);
+
+        everything.Items.Should().HaveCount(2).And.ContainSingle(i => i.Voided && i.DocumentNo == "S-2");
+        active.Items.Should().ContainSingle().Which.DocumentNo.Should().Be("S-1");
+        voided.Items.Should().ContainSingle().Which.DocumentNo.Should().Be("S-2");
+        bad.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var cash = await GetJsonAsync<PortalDocumentResponse>(c.Patron,
+            $"/api/v1/portal/native/documents/{Uri.EscapeDataString(active.Items.Single().DocumentKey)}");
+        cash.PaymentType.Should().Be("Nakit");
+        (await GetJsonAsync<PortalDocumentResponse>(c.Patron, $"/api/v1/portal/native/documents/{Uri.EscapeDataString(cancelledKey)}"))
+            .PaymentType.Should().BeNull("an open-account sale has no payment leg");
+    }
+
     // ---- setup ------------------------------------------------------------------------
 
     private sealed record Company(Guid Id, string Patron, string Manager, string TenantCode);

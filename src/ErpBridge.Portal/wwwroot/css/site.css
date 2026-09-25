@@ -643,3 +643,41 @@ h1:focus, h1:focus-visible { outline: none; }
     .desk-list { max-height: 50vh; }
     .desk-detail-head { flex-direction: column; }
 }
+
+/* ---- Evraklar: satış / alış / iade formu (GOAL_PANEL_ERPSIZ E5e) ---------------------- */
+.document-form .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.document-search { display: flex; gap: 8px; align-items: center; }
+.document-search .portal-input { flex: 1; min-width: 0; }
+.document-party { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.pick-list { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--line-soft); border-radius: 8px; max-height: 220px; overflow-y: auto; }
+.pick-item { display: block; width: 100%; text-align: left; padding: 6px 10px; background: none; border: 0; border-bottom: 1px solid var(--line-soft); cursor: pointer; font: inherit; color: inherit; }
+.pick-item:hover, .pick-item:focus-visible { background: var(--surface-muted, rgba(0, 0, 0, .04)); }
+.portal-input--number { width: 88px; text-align: right; }
+.document-total { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.document-total strong { font-size: 1.2rem; }
+
+/* ---- Evrak yazdırma (GOAL_PANEL_ERPSIZ E5e) ---------------------------------------------- */
+.print-shell { background: #fff; color: #111; min-height: 100vh; padding: 24px 16px; }
+.print-actions { display: flex; gap: 8px; justify-content: flex-end; max-width: 800px; margin: 0 auto 16px; }
+.print-button { padding: 8px 16px; border-radius: 6px; border: 1px solid #1f4fbf; background: #1f4fbf; color: #fff; font: inherit; cursor: pointer; }
+.print-button--plain { background: #fff; color: #1f4fbf; }
+.print-document { position: relative; max-width: 800px; margin: 0 auto; font-size: 14px; }
+.print-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 2px solid #111; padding-bottom: 12px; }
+.print-company { font-weight: 600; }
+.print-title { margin: 4px 0 0; font-size: 1.5rem; }
+.print-facts { display: grid; grid-template-columns: auto auto; gap: 2px 12px; margin: 0; }
+.print-facts dt { color: #555; }
+.print-facts dd { margin: 0; text-align: right; }
+.print-party { display: flex; flex-direction: column; gap: 2px; padding: 12px 0; }
+.print-label, .print-code { color: #555; font-size: .85rem; }
+.print-lines { width: 100%; border-collapse: collapse; }
+.print-lines th, .print-lines td { border-bottom: 1px solid #ccc; padding: 6px 4px; text-align: left; }
+.print-lines .num { text-align: right; }
+.print-foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-top: 12px; }
+.print-total { margin-left: auto; display: flex; gap: 16px; align-items: baseline; font-size: 1.1rem; }
+.print-stamp { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-18deg); font-size: 5rem; font-weight: 800; color: rgba(200, 30, 30, .25); border: 6px solid rgba(200, 30, 30, .25); padding: 0 24px; pointer-events: none; }
+.print-error { max-width: 800px; margin: 0 auto; color: #b00020; }
+@media print {
+    .no-print { display: none !important; }
+    .print-shell { padding: 0; }
+}

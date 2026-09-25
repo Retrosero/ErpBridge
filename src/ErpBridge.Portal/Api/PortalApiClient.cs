@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -148,6 +148,37 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     /// <summary>GOAL_PANEL_ERPSIZ E4c/e — void + a corrected re-booking of the same kind, in one transaction (D11).</summary>
     public Task<NativeJobResultDto> EditNativeLedgerEntryAsync(string key, NativeLedgerEditRequest request, CancellationToken ct = default) =>
         SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/ledger/{Uri.EscapeDataString(key)}/edit", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5b/E5e — company-wide sale/purchase/return invoices; <paramref name="status"/>
+    /// is all, active (cancelled ones hidden) or voided.</summary>
+    public Task<NativeDocumentsResponse> NativeDocumentsAsync(
+        DateOnly? from, DateOnly? to, IEnumerable<string> kinds, string? customer, Guid? userId, string status, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<NativeDocumentsResponse>("api/v1/portal/native/documents" + Query(
+            [("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+             .. kinds.Select(k => ("kind", (string?)k)),
+             ("customer", customer), ("userId", userId?.ToString()), ("status", status == "all" ? null : status),
+             ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
+
+    public Task<NativeDocumentDto> NativeDocumentAsync(string key, CancellationToken ct = default) =>
+        GetAsync<NativeDocumentDto>($"api/v1/portal/native/documents/{Uri.EscapeDataString(key)}", ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5a/E5e — a new sale (<c>sale</c>), purchase (<c>purchase</c>) or return (<c>sale_return</c>).</summary>
+    public Task<NativeJobResultDto> PostNativeDocumentAsync(string kind, NativeDocumentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/" + kind switch
+        {
+            "sale" => "sales-orders",
+            "purchase" => "purchase-receipts",
+            "sale_return" => "sales-returns",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Only a sale, purchase or return can be entered."),
+        }, request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5d/E5e — the whole corrected document; the original is cancelled in the same step.</summary>
+    public Task<NativeJobResultDto> EditNativeDocumentAsync(string key, NativeDocumentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/documents/{Uri.EscapeDataString(key)}/edit", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5c/E5e — cancels a whole document (stock and ledger together).</summary>
+    public Task<NativeJobResultDto> VoidNativeDocumentAsync(string key, NativeLedgerVoidRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/documents/{Uri.EscapeDataString(key)}/void", request, ct);
 
     /// <summary>GOAL_PANEL_ERPSIZ E4b/e — a manual correction of a customer's balance; a reason is mandatory.</summary>
     public Task<NativeJobResultDto> PostNativeLedgerAdjustmentAsync(NativeLedgerAdjustmentRequest request, CancellationToken ct = default) =>
