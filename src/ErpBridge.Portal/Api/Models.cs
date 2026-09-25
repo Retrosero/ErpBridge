@@ -294,6 +294,52 @@ public sealed class StockPriceDto
     [JsonPropertyName("price")] public decimal Price { get; set; }
 }
 
+/// <summary>One row of GET …/native/stock-cards/{code}/movements (GOAL_PANEL_ERPSIZ E6a).</summary>
+public sealed class StockMovementRowDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+
+    /// <summary>sale, purchase, sale_return, count, void, other.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "other";
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+    [JsonPropertyName("customerCode")] public string? CustomerCode { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("in")] public decimal In { get; set; }
+    [JsonPropertyName("out")] public decimal Out { get; set; }
+    [JsonPropertyName("balance")] public decimal Balance { get; set; }
+    [JsonPropertyName("voided")] public bool Voided { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+}
+
+public sealed class StockMovementsResponse
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("opening")] public decimal Opening { get; set; }
+    [JsonPropertyName("closing")] public decimal Closing { get; set; }
+    [JsonPropertyName("totalIn")] public decimal TotalIn { get; set; }
+    [JsonPropertyName("totalOut")] public decimal TotalOut { get; set; }
+    [JsonPropertyName("items")] public List<StockMovementRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+}
+
+public sealed class NativeStockCountLine
+{
+    [JsonPropertyName("productCode")] public string ProductCode { get; set; } = string.Empty;
+    [JsonPropertyName("countedQuantity")] public decimal CountedQuantity { get; set; }
+}
+
+/// <summary>Body of POST …/native/stock-counts (GOAL_PANEL_ERPSIZ E6b); the reason is mandatory.</summary>
+public sealed class NativeStockCountRequest
+{
+    [JsonPropertyName("lines")] public List<NativeStockCountLine> Lines { get; set; } = [];
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
 public sealed class StockItemDto
 {
     [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;

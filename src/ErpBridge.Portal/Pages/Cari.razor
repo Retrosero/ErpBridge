@@ -22,6 +22,8 @@ else
         </Actions>
     </PageHeader>
 
+    <ErpReadOnlyNote Text="Bu cari ve hareketleri ERP'den gelir; tahsilat, ödeme, düzeltme ve kart değişikliği ERP'de yapılır." />
+
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
