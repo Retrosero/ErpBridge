@@ -402,6 +402,34 @@ registration ayrı bir composition projesine taşınır.
      `stocks`'ta **var olmalı** (kod doğrudan gelse bile), fiyat ve toplam eksi
      olamaz. Telefon kuyruğu `createdAt` sırasıyla gönderdiği için yeni ürünün
      kartı satıştan önce gider.
+   - **Panel yazma yolu (GOAL_PANEL_ERPSIZ, 2026-09-21…25; plan `docs/GOAL_PANEL_ERPSIZ.md`, durum `…_DURUM.md`).** ERP'siz firmanın admini aynı işleyiciye panelden
+     de yazar: `/api/v1/portal/native/*` uçları yalnız ikinci bir kapıdır, ikinci bir yazma motoru değil (D1).
+     Her uç: firma token'dan, yetki `RolePermissions.CanEditNativeData` (yalnız ADMIN + `DataSource=native`,
+     D4; ERP'li firmada 409 `TENANT_IS_NOT_NATIVE`), `operationId` ile idempotent `externalId`
+     (`PortalNativeWriteHelpers.OperationKey`), işlem kaydı `native_audit_log` (D5). Void/düzenleme uçları
+     "zaten iptal" kontrolünden **önce** aynı işlemi arar (`ReplayAsync`) — yanıtı kaybolan tekrar 200 alır.
+     Uçlar: kartlar (`stock-cards`, `customer-cards`), `collections`/`disbursements`, `ledger-adjustments`,
+     `ledger/{key}/void|edit`, `sales-orders`/`purchase-receipts`/`sales-returns`, `documents` (liste/detay,
+     `status=all|active|voided`, detayda `paymentType`), `documents/{key}/void|edit`,
+     `stock-cards/{code}/movements`, `stock-counts` ve `stock-counts/{key}/void`.
+   - **Düzeltme = storno (D2/D11).** Defterden/evraktan satır fiziksel silinmez ve üzerine yazılmaz:
+     orijinal yerinde `voided` (+ `voidedByUserId`, `voidedAt`, `voidReason`) işaretlenir, ters kayıt
+     `{orijinal id}|void` anahtarıyla ve `voidsKey` alanıyla eklenir; bakiye/stok ters çevrilir, hepsi tek
+     transaction. Belge türleri: `ledger_void` / `ledger_edit` (yalnız tek başına tahsilat/tediye/düzeltme;
+     `ledger_edit`'in kendi satırı yine düzenlenebilir), `ledger_adjustment` (gerekçe zorunlu),
+     `document_void` (satış/alış/iadenin cari bacakları — anında ödeme dahil — **ve** stok satırları birlikte),
+     `document_edit` (`document_void` + aynı türde düzeltilmiş evrak; düzeltme `-D1`, `-D2`… revizyon
+     numarası alır, çünkü native evrak anahtarı cari + evrak no'dur ve iptal edilen orijinal numarasını
+     korur; dolu numara atlanır/reddedilir), `stock_void` (bir sayımın tüm stok satırları). Ters satırlar
+     evrak satırı sayılmaz (`PortalRecords.ParseLine`) ve listelerde varsayılan olarak gizlidir.
+   - **Panel sayımı** `stock_count`'u `againstCurrentLevel=true` ile gönderir: fark, işleyicide tenant kilidi
+     altında o anki `native_stock_levels`'a göre hesaplanır. Telefonun çevrimdışı sayımı (`expectedQuantity`'ye
+     göre fark, sonradan gelen satış korunur) değişmedi.
+   - **Ürün hareketleri** (`PortalStockMovements`): devir mevcut stoktan geriye yürüyerek bulunur — kartın
+     açılış miktarı hareket değildir — böylece devir + hareketler = `native_stock_levels`.
+   - **PostgreSQL notu:** `mobile_records.PayloadJson` `jsonb`'dir; yükte arama `Contains`/`LIKE` ile değil
+     `EF.Functions.JsonContains` (`@>`) ile yapılır (SQLite testleri bunu yakalayamaz;
+     `NativeDocumentNumberQueryTests` sorgunun Npgsql çevirisini sunucusuz doğrular).
 
 16. **Onay merkezi sunucudadır: `Approvals/ApprovalService` (Faz 38, 2026-09-14).**
    Telefon belleğindeki onay listesinin yerini aldı; firmanın tüm onaycıları aynı

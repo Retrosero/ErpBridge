@@ -100,6 +100,32 @@ bilinmeyen kimlikler yanıtta yoktur; 0 ya da 100'den fazla kimlik 400 `INVALID_
 
 ERP'siz firmada bu uçlar 409 `ERP_NOT_CONNECTED` döner.
 
+### Portal ERP'siz firma uçları (`/api/v1/portal/native`, firma kullanıcısı token'ı — GOAL_PANEL_ERPSIZ)
+
+Yazma uçlarının hepsi yalnız **ADMIN** + `DataSource=native` içindir (403 `ROLE_NOT_ALLOWED`, ERP'li
+firmada 409 `TENANT_IS_NOT_NATIVE`); `NativeDocumentProcessor`'a gider, yanıt `IngestJobResponse`
+(`201` yeni, `200` aynı `operationId` ile tekrar). İşleyicinin reddi 422 ve uca özgü `*_REJECTED` kodu.
+Her yazma `native_audit_log`'a düşer (`GET /native/audit`).
+
+| Uç | Açıklama |
+|---|---|
+| `GET /stock-cards/{code}` · `POST /stock-cards` · `DELETE /stock-cards/{code}` | Ürün kartı oku/aç/düzenle/sil (hareketli ürün silinmez) |
+| `GET /stock-cards/{code}/movements` | `from`, `to`, `includeVoided`, `page`, `pageSize`. `opening` (devir), `closing`, `totalIn`/`totalOut`, satırlar en yeni üstte: `kind` (sale/purchase/sale_return/count/void/other), `in`/`out`, `balance` (yürüyen stok), `voided`, `reason` |
+| `POST /customer-cards` | Cari kartı aç/düzenle |
+| `POST /collections` · `POST /disbursements` | Tahsilat / tediye |
+| `POST /ledger-adjustments` | Manuel bakiye düzeltmesi, gerekçe zorunlu |
+| `POST /ledger/{key}/void` · `POST /ledger/{key}/edit` | Tek başına tahsilat/tediye/düzeltmenin iptali / düzeltilmesi (storno), `voidReason` zorunlu |
+| `POST /sales-orders` · `/purchase-receipts` · `/sales-returns` | Satırlı evrak: `partyCode`, `lines[{productCode, quantity, unitPrice, lineTotal?}]`, `amount?`, `paymentType?` (anında ödeme), `occurredAt?`, `documentNo?` |
+| `GET /documents` | Admin, Yönetici, Muhasebe (salt okunur). `from`, `to`, `kind[]`, `customer`, `userId`, `status=all\|active\|voided`, sayfalı; satırda `voided` |
+| `GET /documents/{key}` | Tek evrak: satırlar (ters satırlar hariç), `voided`, `paymentType` |
+| `POST /documents/{key}/void` | Evrağın cari ve stok etkisi birlikte iptal (`reason`) |
+| `POST /documents/{key}/edit` | Evrak gövdesi + `voidReason`; aynı türde düzeltilmiş evrak, `-D1` revizyon numarası (dolu numara atlanır; elle verilen dolu numara 422) |
+| `POST /stock-counts` | `lines[{productCode, countedQuantity}]`, `reason` zorunlu; fark kayıt anındaki stoka göre |
+| `POST /stock-counts/{key}/void` | Sayımın tüm satırlarını geri alır; `key` sayımın iş kimliği ya da bir hareket kimliği |
+| `GET /barcodes/{barcode}` | Barkoda, yoksa ürün koduna **tam** eşleşen ürün kartı (sayım ekranının okutması) |
+
+Void/düzenleme uçları "zaten iptal" kontrolünden **önce** aynı `operationId`'li işi arar: yanıtı kaybolan tekrar 200 alır, 409 değil. `operationId` içindeki `|` `-` olur (hareket anahtarları `{iş}|{ek}`).
+
 ### Admin iş uçları (`/api/v1/admin/jobs`)
 
 Liste öğesi `nextAttemptAtUtc`, `leasedUntilUtc` taşır. `GET /{id}` ek olarak `payloadJson`,
