@@ -1045,6 +1045,10 @@ registration ayrı bir composition projesine taşınır.
      (`TaskSchedule`, saf; testli). Testler zamanlayıcıyı kapatır (`Tasks:SchedulerEnabled=false`) ve kendi saatiyle çağırır.
    - **Hız sınırı kullanıcı başınadır** (`PerMobileUserRateLimitPolicy`, dk'da 120): firma başı 100'lük ortak bütçeyi
      ekibin görev yoklaması tüketmesin.
+   - **Cari ziyaretinde hatırlat (S8):** `tasks.VisitReminder` + `VisitReminderFromMs` (null = hemen). Yalnız cariye
+     bağlı görevde açık kalır (`SetVisitReminder`; cari yoksa sunucu kapatır). Seride `task_series.VisitReminder`;
+     her örnek kendi başlangıcından (`runAt`) itibaren hatırlatır. Hatırlatmayı sunucu göndermez: telefon, atanan
+     kişi cariyi satış için açınca gösterir; "sonra tekrar sor" telefonda yereldir (Sipariş Cepte KB kural 34).
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

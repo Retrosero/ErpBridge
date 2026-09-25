@@ -87,6 +87,7 @@ başlangıç, bitiş yaklaştı/geçti bildirimleri, seri örneklerinin oluştur
 | S5 | `TaskSchedulerWorker` (başlangıç, bitiş, gecikme, seri, temizlik) |
 | S6 | Testler (SQLite ilişkisel) |
 | S7 | Bilgi bankası, PR, `main` → Coolify otomatik dağıtım, `/health/schema` kontrolü |
+| S8 | *(2026-09-25, kullanıcı isteği)* Cari ziyaretinde hatırlat: `VisitReminder`/`VisitReminderFromMs` (görev), `VisitReminder` (seri), migration `GorevZiyaretHatirlatma` |
 
 ### Telefon (Siparis_Cepte) — ayrıntı `Siparis_Cepte/docs/GOAL_GOREVLER.md`
 | # | Görev |
@@ -96,6 +97,7 @@ başlangıç, bitiş yaklaştı/geçti bildirimleri, seri örneklerinin oluştur
 | A3 | Resim: kamera/galeri, küçültme, yükleme kuyruğu, yetkili gösterim |
 | A4 | Bildirim merkezi (zil + rozet + liste), yerel bildirim, uzun yoklama, hatırlatma alarmı |
 | A5 | Modül kaydı (ana sayfa, Diğer menüsü, cari detayı), bilgi bankası, Play internal |
+| A6 | *(2026-09-25)* Cari ziyaretinde hatırlat: görev formunda seçenek (hemen / şu tarihten sonra), satış için cari açılınca hatırlatma penceresi, "sonra tekrar sor" (bir sonraki ziyarette yeniden) |
 
 ## 5. Yetkiler (kullanıcı onayı 2026-09-25)
 Bu belgenin görevleri için dala push, PR, CI yeşilken `main`'e birleştirme (ErpBridge'de Coolify dağıtımı

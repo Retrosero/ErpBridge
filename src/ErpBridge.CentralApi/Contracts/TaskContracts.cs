@@ -81,6 +81,10 @@ public class TaskDto
 
     [JsonPropertyName("customerName")] public string? CustomerName { get; set; }
 
+    [JsonPropertyName("visitReminder")] public bool VisitReminder { get; set; }
+
+    [JsonPropertyName("visitReminderFromMs")] public long? VisitReminderFromMs { get; set; }
+
     [JsonPropertyName("seriesId")] public Guid? SeriesId { get; set; }
 
     [JsonPropertyName("isDeleted")] public bool IsDeleted { get; set; }
@@ -185,6 +189,10 @@ public sealed class TaskOp
     [JsonPropertyName("customerCode")] public string? CustomerCode { get; set; }
 
     [JsonPropertyName("customerName")] public string? CustomerName { get; set; }
+
+    [JsonPropertyName("visitReminder")] public bool? VisitReminder { get; set; }
+
+    [JsonPropertyName("visitReminderFromMs")] public long? VisitReminderFromMs { get; set; }
 
     [JsonPropertyName("assigneeIds")] public Guid[]? AssigneeIds { get; set; }
 
@@ -291,6 +299,8 @@ public sealed class TaskSeriesDto
     [JsonPropertyName("customerCode")] public string? CustomerCode { get; set; }
 
     [JsonPropertyName("customerName")] public string? CustomerName { get; set; }
+
+    [JsonPropertyName("visitReminder")] public bool VisitReminder { get; set; }
 
     [JsonPropertyName("assignees")] public TaskMemberDto[] Assignees { get; set; } = [];
 
