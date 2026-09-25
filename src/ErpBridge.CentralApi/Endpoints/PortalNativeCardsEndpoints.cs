@@ -36,6 +36,7 @@ public static class PortalNativeCardsEndpoints
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapGet("/stock-cards/{code}", GetStockCardAsync).WithName("PortalGetNativeStockCard");
         group.MapGet("/stock-cards/{code}/movements", GetStockMovementsAsync).WithName("PortalGetNativeStockMovements");
+        group.MapGet("/barcodes/{barcode}", GetByBarcodeAsync).WithName("PortalGetNativeStockCardByBarcode");
         group.MapPost("/stock-cards", PutStockCardAsync).WithName("PortalPutNativeStockCard");
         group.MapDelete("/stock-cards/{code}", DeleteStockCardAsync).WithName("PortalDeleteNativeStockCard");
         return routes;
@@ -49,10 +50,32 @@ public static class PortalNativeCardsEndpoints
 
         var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
         var product = catalog.Products.FirstOrDefault(p => string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase));
-        if (product is null)
-            return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "STOCK_CARD_NOT_FOUND", Message = "The product does not exist." });
+        return product is null
+            ? JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "STOCK_CARD_NOT_FOUND", Message = "The product does not exist." })
+            : JsonResults.Ok(Detail(catalog, product));
+    }
 
-        return JsonResults.Ok(new PortalStockCardDetail
+    /// <summary>
+    /// GOAL_PANEL_ERPSIZ E6c: the product a scanned barcode names — an exact match on its barcodes, else on its code
+    /// (the count page's scanner; a substring search could page the exact match out, Codex #193).
+    /// </summary>
+    private static async Task<IResult> GetByBarcodeAsync(
+        string barcode, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
+    {
+        var (tenant, _, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
+        if (error is not null) return error;
+
+        var scanned = barcode.Trim();
+        var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
+        var product = catalog.Products.FirstOrDefault(p => p.Barcodes.Contains(scanned, StringComparer.OrdinalIgnoreCase))
+            ?? catalog.Products.FirstOrDefault(p => string.Equals(p.Code, scanned, StringComparison.OrdinalIgnoreCase));
+        return product is null
+            ? JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "STOCK_CARD_NOT_FOUND", Message = "No product has that barcode or code." })
+            : JsonResults.Ok(Detail(catalog, product));
+    }
+
+    private static PortalStockCardDetail Detail(PortalStockCatalog.Catalog catalog, PortalStockCatalog.Product product) =>
+        new()
         {
             StockCode = product.Code,
             Name = product.Name,
@@ -67,8 +90,7 @@ public static class PortalNativeCardsEndpoints
                 .ToList(),
             Quantity = product.TotalQuantity,
             LastMovementDate = product.LastMovement?.ToString("yyyy-MM-dd"),
-        });
-    }
+        };
 
     /// <summary>
     /// GOAL_PANEL_ERPSIZ E6a: one product's stock movements with the running stock (yürüyen stok), newest first —

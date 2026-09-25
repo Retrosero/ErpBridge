@@ -131,6 +131,24 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     /// <summary>GOAL_PANEL_ERPSIZ E2c — one part (≤ 500 cards) of an imported customer file.</summary>
     public Task<CardBatchResultDto> ImportNativeCustomerCardsAsync(NativeCustomerCardBatchRequest request, CancellationToken ct = default) =>
         SendAsync<CardBatchResultDto>(HttpMethod.Post, "api/v1/portal/native/customer-cards/batch", request, ct);
+    /// <summary>GOAL_PANEL_ERPSIZ E6a/E6c — one product's movements with the running stock, newest first.</summary>
+    public Task<StockMovementsResponse> NativeStockMovementsAsync(
+        string code, DateOnly? from, DateOnly? to, bool includeVoided, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<StockMovementsResponse>($"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}/movements" + Query(
+            ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null), ("includeVoided", includeVoided ? "true" : null),
+            ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E6c — the product a scanned barcode (or code) names exactly; 404 when none.</summary>
+    public Task<NativeStockCardDetailDto> NativeStockCardByBarcodeAsync(string barcode, CancellationToken ct = default) =>
+        GetAsync<NativeStockCardDetailDto>($"api/v1/portal/native/barcodes/{Uri.EscapeDataString(barcode)}", ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E6b/E6c — the difference to the booked stock becomes a movement.</summary>
+    public Task<NativeJobResultDto> PostNativeStockCountAsync(NativeStockCountRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-counts", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E6b/E6c — cancels a whole count; <paramref name="key"/> may be one of its movement ids.</summary>
+    public Task<NativeJobResultDto> VoidNativeStockCountAsync(string key, NativeLedgerVoidRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/stock-counts/{Uri.EscapeDataString(key)}/void", request, ct);
 
     public Task<NativeJobResultDto> SaveNativeStockCardAsync(NativeStockCardRequest request, CancellationToken ct = default) =>
         SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-cards", request, ct);

@@ -80,6 +80,9 @@ public static class PortalMessages
         "DOCUMENT_NOT_FOUND" => "Evrak bulunamadı; liste yenilendi.",
         "DOCUMENT_NOT_EDITABLE" => "Bu evrak türü panelden düzenlenemez.",
         "ALREADY_VOIDED" => "Bu kayıt zaten iptal edilmiş.",
+        "INVALID_STOCK_COUNT" => "Sayım kaydedilemedi: gerekçe zorunlu, miktar eksi olamaz ve her ürün bir kez sayılır.",
+        "STOCK_COUNT_REJECTED" => "Sayım kaydedilemedi: ürünlerden biri bulunamadı ya da sayım zaten iptal edilmiş.",
+        "STOCK_COUNT_NOT_FOUND" => "Sayım bulunamadı; liste yenilendi.",
         _ => $"İşlem tamamlanamadı ({code}). Lütfen tekrar deneyin.",
     };
 }
