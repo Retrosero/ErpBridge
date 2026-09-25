@@ -108,7 +108,7 @@ ERP'siz firmada bu uçlar 409 `ERP_NOT_CONNECTED` döner.
 yanıt `IngestJobResponse` (`201` yeni, `200` aynı `operationId` ile tekrar) — **istisna** toplu içe aktarma uçları
 (`/stock-cards/batch`, `/customer-cards/batch`): her zaman `200` ve aşağıdaki `PortalCardBatchResponse`.
 İşleyicinin reddi 422 ve uca özgü `*_REJECTED` kodu.
-Her yazma `native_audit_log`'a düşer (`GET /native/audit`).
+Her yazma `native_audit_log`'a düşer (`GET /api/v1/portal/native/audit`).
 
 | Uç | Açıklama |
 |---|---|
