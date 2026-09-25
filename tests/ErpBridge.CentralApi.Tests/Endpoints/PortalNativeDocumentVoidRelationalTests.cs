@@ -206,6 +206,26 @@ public sealed class PortalNativeDocumentVoidRelationalTests : IClassFixture<Sqli
         history.Items.Should().Contain(i => i.Action == "void" && i.Summary.Contains("Satış") && i.Summary.Contains("Yanlış girildi"));
     }
 
+    [Fact]
+    public async Task A_very_long_reason_still_books_once_and_its_audit_summary_fits_the_column()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 10);
+        await SeedCustomerAsync(c, "C-001", 0m);
+        (await PostAsync(c, "sales-orders", new { partyCode = "C-001", lines = new[] { new { productCode = "CAY-1", quantity = 1, unitPrice = 150 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var key = await DocumentKeyAsync(c);
+
+        var response = await VoidAsync(c, key, new string('x', 900));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created, "the audit row is written after the booking; an over-long summary must not turn it into an error");
+        (await response.ReadAsJsonAsync<IngestJobResponse>()).Idempotent.Should().BeFalse();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var entry = await db.NativeAuditLogEntries.AsNoTracking().SingleAsync(e => e.TenantId == c.Id && e.Action == "void");
+        entry.Summary.Length.Should().BeLessThanOrEqualTo(500);
+    }
+
     // ---- setup ------------------------------------------------------------------------
 
     private sealed record Company(Guid Id, string Patron, string Manager, string TenantCode);
