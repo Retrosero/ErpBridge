@@ -351,7 +351,7 @@ public sealed class TaskService
             CustomerName = ClipOrNull(op.CustomerName, 200),
             UpdatedSeq = seq,
         };
-        SetVisitReminder(task, op);
+        SetVisitReminder(task, op, creating: true);
         task.Members.AddRange(members);
         var order = 0;
         foreach (var input in subtasks)
@@ -395,7 +395,7 @@ public sealed class TaskService
         task.RequiresPhoto = op.RequiresPhoto ?? false;
         task.CustomerCode = ClipOrNull(op.CustomerCode, 64);
         task.CustomerName = ClipOrNull(op.CustomerName, 200);
-        SetVisitReminder(task, op);
+        SetVisitReminder(task, op, creating: false);
         var seq = await TouchAsync(b, task, ct);
         AddEvent(b, task, WorkTaskActions.Updated, null);
         // Moved from the future to now: the assignees hear of it now, not from the scheduler.
@@ -622,7 +622,8 @@ public sealed class TaskService
         series.RequiresPhoto = op.RequiresPhoto ?? false;
         series.CustomerCode = ClipOrNull(op.CustomerCode, 64);
         series.CustomerName = ClipOrNull(op.CustomerName, 200);
-        series.VisitReminder = series.CustomerCode is not null && (op.VisitReminder ?? false);
+        // An app older than the field sends no value: keep what the series has (see SetVisitReminder).
+        series.VisitReminder = series.CustomerCode is not null && (op.VisitReminder ?? (op.Type == "update_series" && series.VisitReminder));
         series.AssigneesJson = MembersJson(members, WorkTaskMemberRoles.Assignee);
         series.FollowersJson = MembersJson(members, WorkTaskMemberRoles.Follower);
         series.SubtasksJson = JsonSerializer.Serialize(titles);
@@ -1057,11 +1058,27 @@ public sealed class TaskService
             OccurredAtMs = b.Now,
         });
 
-    /// <summary>"Cari ziyaretinde hatırlat" needs a customer; without one the option is simply off.</summary>
-    private static void SetVisitReminder(WorkTask task, TaskOp op)
+    /// <summary>
+    /// "Cari ziyaretinde hatırlat" needs a customer; without one the option is simply off. An update from an
+    /// app built before the field carries no <c>visitReminder</c>: the stored choice is kept rather than read
+    /// as "off", or an older phone editing any other field would silently drop a reminder a newer one set.
+    /// </summary>
+    private static void SetVisitReminder(WorkTask task, TaskOp op, bool creating)
     {
-        task.VisitReminder = task.CustomerCode is not null && (op.VisitReminder ?? false);
-        task.VisitReminderFromMs = task.VisitReminder ? op.VisitReminderFromMs : null;
+        if (op.VisitReminder is null && !creating)
+        {
+            if (task.CustomerCode is not null) return;
+        }
+        else
+        {
+            task.VisitReminder = op.VisitReminder ?? false;
+            task.VisitReminderFromMs = op.VisitReminderFromMs;
+        }
+        if (task.CustomerCode is null || !task.VisitReminder)
+        {
+            task.VisitReminder = false;
+            task.VisitReminderFromMs = null;
+        }
     }
 
     private static MobileUser System(string name) => new() { Id = Guid.Empty, FullName = name };

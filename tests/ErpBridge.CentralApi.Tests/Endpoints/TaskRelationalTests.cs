@@ -256,6 +256,11 @@ public sealed class TaskRelationalTests : IClassFixture<SqliteCentralApiFactory>
         task.VisitReminderFromMs.Should().Be(from);
         created.Tasks.Single(t => t.Id == withoutCustomer).VisitReminder.Should().BeFalse("there is no visit to remind at without a customer");
 
+        // An app released before the field edits the title: the reminder stays as it was.
+        var older = await OpsAsync(c.Mehmet, new { opId = Guid.NewGuid(), type = "update_task", taskId = withCustomer, title = "Rafı kontrol et!", customerCode = "C-1", customerName = "Bakkal" });
+        older.Tasks.Single().VisitReminder.Should().BeTrue();
+        older.Tasks.Single().VisitReminderFromMs.Should().Be(from);
+
         var edited = await OpsAsync(c.Mehmet, new { opId = Guid.NewGuid(), type = "update_task", taskId = withCustomer, title = "Rafı kontrol et", customerCode = "C-1", customerName = "Bakkal", visitReminder = false });
         edited.Tasks.Single().VisitReminder.Should().BeFalse();
         edited.Tasks.Single().VisitReminderFromMs.Should().BeNull();
@@ -267,7 +272,13 @@ public sealed class TaskRelationalTests : IClassFixture<SqliteCentralApiFactory>
             timeOfDayMinutes = 9 * 60, customerCode = "C-1", customerName = "Bakkal", visitReminder = true, assigneeIds = new[] { c.AliId },
         });
         series.Series.Single().VisitReminder.Should().BeTrue();
-        var run = series.Series.Single().NextRunAtMs;
+        var olderSeries = await OpsAsync(c.Mehmet, new
+        {
+            opId = Guid.NewGuid(), type = "update_series", seriesId, title = "Aylık raf", frequency = "DAILY", interval = 1,
+            timeOfDayMinutes = 9 * 60, customerCode = "C-1", customerName = "Bakkal", assigneeIds = new[] { c.AliId },
+        });
+        olderSeries.Series.Single().VisitReminder.Should().BeTrue("an older app's series edit keeps the reminder too");
+        var run = olderSeries.Series.Single().NextRunAtMs;
         await RunSchedulerAsync(run + 1_000);
         var occurrence = (await ListAsync(c.Ali)).Tasks.Single(t => t.SeriesId == seriesId);
         occurrence.VisitReminder.Should().BeTrue();
