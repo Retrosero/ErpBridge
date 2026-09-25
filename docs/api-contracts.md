@@ -102,9 +102,12 @@ ERP'siz firmada bu uçlar 409 `ERP_NOT_CONNECTED` döner.
 
 ### Portal ERP'siz firma uçları (`/api/v1/portal/native`, firma kullanıcısı token'ı — GOAL_PANEL_ERPSIZ)
 
-Yazma uçlarının hepsi yalnız **ADMIN** + `DataSource=native` içindir (403 `ROLE_NOT_ALLOWED`, ERP'li
-firmada 409 `TENANT_IS_NOT_NATIVE`); `NativeDocumentProcessor`'a gider, yanıt `IngestJobResponse`
-(`201` yeni, `200` aynı `operationId` ile tekrar). İşleyicinin reddi 422 ve uca özgü `*_REJECTED` kodu.
+`GET /documents` ve `GET /documents/{key}` dışındaki uçların hepsi yalnız **ADMIN** + `DataSource=native` içindir
+(403 `ROLE_NOT_ALLOWED`, ERP'li firmada 409 `TENANT_IS_NOT_NATIVE`); o iki okuma ucu ekstrenin kapısını
+(`CanViewLedger`: Admin, Yönetici, Muhasebe; ERP'li firma da) kullanır. Yazma uçları `NativeDocumentProcessor`'a gider,
+yanıt `IngestJobResponse` (`201` yeni, `200` aynı `operationId` ile tekrar) — **istisna** toplu içe aktarma uçları
+(`/stock-cards/batch`, `/customer-cards/batch`): her zaman `200` ve aşağıdaki `PortalCardBatchResponse`.
+İşleyicinin reddi 422 ve uca özgü `*_REJECTED` kodu.
 Her yazma `native_audit_log`'a düşer (`GET /native/audit`).
 
 | Uç | Açıklama |

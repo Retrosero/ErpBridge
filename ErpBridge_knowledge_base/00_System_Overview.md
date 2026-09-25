@@ -404,8 +404,10 @@ registration ayrı bir composition projesine taşınır.
      kartı satıştan önce gider.
    - **Panel yazma yolu (GOAL_PANEL_ERPSIZ, 2026-09-21…25; plan `docs/GOAL_PANEL_ERPSIZ.md`, durum `…_DURUM.md`).** ERP'siz firmanın admini aynı işleyiciye panelden
      de yazar: `/api/v1/portal/native/*` uçları yalnız ikinci bir kapıdır, ikinci bir yazma motoru değil (D1).
-     Her uç: firma token'dan, yetki `RolePermissions.CanEditNativeData` (yalnız ADMIN + `DataSource=native`,
-     D4; ERP'li firmada 409 `TENANT_IS_NOT_NATIVE`), `operationId` ile idempotent `externalId`
+     Her yazma ucu (ve kart/hareket/barkod okumaları): firma token'dan, yetki `RolePermissions.CanEditNativeData`
+     (yalnız ADMIN + `DataSource=native`, D4; ERP'li firmada 409 `TENANT_IS_NOT_NATIVE`) — evrak listesi/detayı
+     (`GET documents`, `GET documents/{key}`) ise salt okunur, ekstrenin `CanViewLedger` kapısıyla (Yönetici/Muhasebe
+     ve ERP'li firma da okur); `operationId` ile idempotent `externalId`
      (`PortalNativeWriteHelpers.OperationKey`), işlem kaydı `native_audit_log` (D5). Void/düzenleme uçları
      "zaten iptal" kontrolünden **önce** aynı işlemi arar (`ReplayAsync`) — yanıtı kaybolan tekrar 200 alır.
      Uçlar: kartlar (`stock-cards`, `customer-cards`), `collections`/`disbursements`, `ledger-adjustments`,
@@ -423,7 +425,9 @@ registration ayrı bir composition projesine taşınır.
      `document_edit` (`document_void` + aynı türde düzeltilmiş evrak; düzeltme `-D1`, `-D2`… revizyon
      numarası alır, çünkü native evrak anahtarı cari + evrak no'dur ve iptal edilen orijinal numarasını
      korur; dolu numara atlanır/reddedilir), `stock_void` (bir sayımın tüm stok satırları). Ters satırlar
-     evrak satırı sayılmaz (`PortalRecords.ParseLine`) ve listelerde varsayılan olarak gizlidir.
+     evrak satırı sayılmaz (`PortalRecords.ParseLine`) ve ürün hareketlerinde varsayılan olarak gizlidir. Cari
+     ekstresi ve `/portal/movements` ise iptal edilen **orijinali** varsayılan gizler ama **ters kaydı her zaman
+     gösterir** — görünen satırlar bakiyeyi açıklasın diye.
    - **Panel sayımı** `stock_count`'u `againstCurrentLevel=true` ile gönderir: fark, işleyicide tenant kilidi
      altında o anki `native_stock_levels`'a göre hesaplanır. Telefonun çevrimdışı sayımı (`expectedQuantity`'ye
      göre fark, sonradan gelen satış korunur) değişmedi.
