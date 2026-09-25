@@ -221,6 +221,12 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         cut.Find("#session-scope").TextContent.Should().Contain("sekmeye özeldir");
     }
 
+    /// <summary>
+    /// The account menu opens through MudBlazor's popover, asynchronously; bUnit's one-second default wait was
+    /// too short on a loaded CI runner and failed unrelated pull requests (#187, 2026-09-25).
+    /// </summary>
+    private static readonly TimeSpan MenuTimeout = TimeSpan.FromSeconds(10);
+
     [Fact]
     public void The_account_menu_opens_and_signing_out_forgets_the_session()
     {
@@ -234,7 +240,7 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         cut.Find("#account-menu").TagName.Should().Be("BUTTON");
         cut.Find("#account-menu").GetAttribute("type").Should().Be("button");
         cut.Find("#account-menu").Click();
-        cut.WaitForElement("#logout").Click();
+        cut.WaitForElement("#logout", MenuTimeout).Click();
 
         storage.Stored.Should().BeNull();
         session.IsSignedIn.Should().BeFalse();
@@ -250,8 +256,8 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         var cut = RenderLayout();
 
         cut.Find("#account-menu").Click();
-        cut.WaitForElement("#logout").Click();
-        cut.WaitForAssertion(() => session.IsSignedIn.Should().BeFalse());
+        cut.WaitForElement("#logout", MenuTimeout).Click();
+        cut.WaitForAssertion(() => session.IsSignedIn.Should().BeFalse(), MenuTimeout);
         session.IsSignedIn.Should().BeFalse();
         nav.Uri.Should().EndWith("/login");
     }
