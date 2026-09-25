@@ -21,6 +21,7 @@ else
             </MudButton>
             @if (Session.CanEditNativeData)
             {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Checklist" Href="stok/sayim" id="stock-count-open">Sayım</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNewCard" id="stock-new">Yeni ürün</MudButton>
             }
         </Actions>
@@ -223,6 +224,8 @@ else
                                                     <div class="stock-detail-actions">
                                                         <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit"
                                                                    OnClick="@(() => OpenEditCardAsync(row.StockCode))" data-edit="@row.StockCode">Düzenle</MudButton>
+                                                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.SwapVert"
+                                                                   OnClick="@(() => OpenMovementsAsync(row.StockCode, row.Name))" data-movements="@row.StockCode">Hareketler</MudButton>
                                                     </div>
                                                 }
                                             </div>
@@ -329,6 +332,94 @@ else
 
     @if (Session.CanEditNativeData)
     {
+        <DetailSheet Id="stock-movements" Open="_movesOpen" Busy="_movesBusy" Eyebrow="Stok hareketleri" Title="@(_movesName ?? _movesCode ?? "Ürün")" OnClose="CloseMovements">
+            <ChildContent>
+                @if (_movesError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="movements-error">@_movesError</MudAlert>
+                }
+                <div class="ledger-toolbar">
+                    <label class="inline-field">
+                        Başlangıç
+                        <input type="date" class="portal-input portal-input--date" id="movements-from" value="@(_movesFrom is { } f ? Fmt.IsoDay(f) : null)"
+                               @onchange="e => MovesRangeAsync(e, start: true)" />
+                    </label>
+                    <label class="inline-field">
+                        Bitiş
+                        <input type="date" class="portal-input portal-input--date" id="movements-to" value="@(_movesTo is { } t ? Fmt.IsoDay(t) : null)"
+                               @onchange="e => MovesRangeAsync(e, start: false)" />
+                    </label>
+                    <button type="button" class="kind-toggle @(_movesVoided ? "is-active" : null)" aria-pressed="@(_movesVoided ? "true" : "false")"
+                            id="movements-include-voided" @onclick="ToggleMovesVoidedAsync">İptal edilenleri göster</button>
+                </div>
+                @if (_moves is { } moves)
+                {
+                    <dl class="detail-facts">
+                        <dt>Devir</dt><dd id="movements-opening">@Fmt.Quantity(moves.Opening)</dd>
+                        <dt>Giriş / çıkış</dt><dd>@Fmt.Quantity(moves.TotalIn) / @Fmt.Quantity(moves.TotalOut)</dd>
+                        <dt>Dönem sonu</dt><dd id="movements-closing">@Fmt.Quantity(moves.Closing)</dd>
+                    </dl>
+                    @if (moves.Items.Count == 0)
+                    {
+                        <EmptyState Id="movements-empty" Icon="@Icons.Material.Rounded.SwapVert" Title="Bu aralıkta hareket yok." />
+                    }
+                    else
+                    {
+                        <div class="table-scroll">
+                            <table class="data-table detail-lines" id="movements-table">
+                                <thead>
+                                    <tr><th>Tarih</th><th>Tür</th><th>Belge</th><th class="num">Giriş</th><th class="num">Çıkış</th><th class="num">Stok</th><th></th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var move in moves.Items)
+                                    {
+                                        <tr data-movement="@move.Id" data-kind="@move.Kind" class="@(move.Voided ? "is-voided" : null)">
+                                            <td class="nowrap">@DateText(move.Date)</td>
+                                            <td>
+                                                @MoveKind(move.Kind)
+                                                @if (move.Voided)
+                                                {
+                                                    <div class="cell-sub">İptal: @move.Reason</div>
+                                                }
+                                                else if (move.Description is not null)
+                                                {
+                                                    <div class="cell-sub">@move.Description</div>
+                                                }
+                                            </td>
+                                            <td class="mono">@(move.DocumentNo ?? "—")@(move.CustomerCode is null ? null : $" · {move.CustomerCode}")</td>
+                                            <td class="num">@(move.In == 0 ? null : Fmt.Quantity(move.In))</td>
+                                            <td class="num">@(move.Out == 0 ? null : Fmt.Quantity(move.Out))</td>
+                                            <td class="num">@Fmt.Quantity(move.Balance)</td>
+                                            <td>
+                                                @if (move.Kind == "count" && !move.Voided)
+                                                {
+                                                    <button type="button" class="link-button" data-action="void-count" @onclick="() => OpenVoidCount(move)">Sayımı iptal et</button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <Pager Id="movements-pager" Page="_movesPage" PageSize="_movesPageSize" Total="moves.Total" Busy="_movesBusy" Unit="hareket"
+                               PageChanged="MovesPageAsync" PageSizeChanged="MovesPageSizeAsync" />
+                    }
+                }
+                @if (_voidingCount is { } voiding)
+                {
+                    <form class="stack-form mt-3" id="count-void-form" @onsubmit="ConfirmVoidCountAsync" @onsubmit:preventDefault>
+                        <p class="text-muted">Sayımın bütün satırları geri alınır (@DateText(voiding.Date)).</p>
+                        <MudTextField T="string" @bind-Value="_voidCountReason" Label="Gerekçe" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="count-void-reason" Lines="2" Required="true" />
+                        <div class="form-actions">
+                            <span style="flex: 1"></span>
+                            <MudButton Variant="Variant.Text" OnClick="@(() => _voidingCount = null)">Vazgeç</MudButton>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Error" Disabled="@_movesBusy" id="count-void-confirm">Sayımı iptal et</MudButton>
+                        </div>
+                    </form>
+                }
+            </ChildContent>
+        </DetailSheet>
+
         <DetailSheet Id="stock-card" Open="_cardOpen" Busy="Busy" Eyebrow="Stok" Title="@(_cardIsNew ? "Yeni ürün" : "Ürünü düzenle")" OnClose="CloseCard">
             <ChildContent>
                 <form class="stack-form" id="stock-card-form" @onsubmit="SaveCardAsync" @onsubmit:preventDefault>
@@ -678,6 +769,151 @@ else
                 <span class="sort-arrow" aria-hidden="true">@(active ? (_filter.Descending ? "↓" : "↑") : "↕")</span>
             </button>
         </th>
+    };
+
+    // ---- ürün hareketleri ve sayım iptali (GOAL_PANEL_ERPSIZ E6c) ------------------------------
+
+    private bool _movesOpen;
+    private bool _movesBusy;
+    private string? _movesError;
+    private string? _movesCode;
+    private string? _movesName;
+    private DateOnly? _movesFrom;
+    private DateOnly? _movesTo;
+    private bool _movesVoided;
+    private int _movesPage = 1;
+    private int _movesPageSize = 50;
+    private StockMovementsResponse? _moves;
+    private StockMovementRowDto? _voidingCount;
+    private string? _voidCountReason;
+    private string _voidCountOperationId = string.Empty;
+
+    private Task OpenMovementsAsync(string code, string name)
+    {
+        Notice = null;
+        _movesCode = code;
+        _movesName = name;
+        _movesFrom = null;
+        _movesTo = null;
+        _movesVoided = false;
+        _movesPage = 1;
+        _moves = null;
+        _voidingCount = null;
+        _movesOpen = true;
+        return LoadMovesAsync();
+    }
+
+    private void CloseMovements()
+    {
+        _movesOpen = false;
+        _moves = null;
+        _voidingCount = null;
+    }
+
+    /// <summary>Loads the drawer's page with its own busy flag and error, so the stock list behind it stays as it was.</summary>
+    private async Task LoadMovesAsync()
+    {
+        var code = _movesCode;
+        if (code is null) return;
+        _movesBusy = true;
+        _movesError = null;
+        StateHasChanged();
+        try
+        {
+            var moves = await Api.NativeStockMovementsAsync(code, _movesFrom, _movesTo, _movesVoided, _movesPage, _movesPageSize);
+            if (_movesOpen && _movesCode == code) _moves = moves;
+        }
+        catch (PortalApiException failed)
+        {
+            _movesError = failed.Message;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _movesError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
+        }
+        finally
+        {
+            _movesBusy = false;
+        }
+        StateHasChanged();
+    }
+
+    private Task MovesRangeAsync(ChangeEventArgs e, bool start)
+    {
+        DateOnly? day = Fmt.TryIsoDay(e.Value?.ToString(), out var d) ? d : null;
+        if (start) _movesFrom = day;
+        else _movesTo = day;
+        _movesPage = 1;
+        return LoadMovesAsync();
+    }
+
+    private Task ToggleMovesVoidedAsync()
+    {
+        _movesVoided = !_movesVoided;
+        _movesPage = 1;
+        return LoadMovesAsync();
+    }
+
+    private Task MovesPageAsync(int page)
+    {
+        _movesPage = page;
+        return LoadMovesAsync();
+    }
+
+    private Task MovesPageSizeAsync(int size)
+    {
+        _movesPageSize = size;
+        _movesPage = 1;
+        return LoadMovesAsync();
+    }
+
+    private void OpenVoidCount(StockMovementRowDto move)
+    {
+        _voidingCount = move;
+        _voidCountReason = null;
+        _voidCountOperationId = Guid.NewGuid().ToString("N");
+    }
+
+    private async Task ConfirmVoidCountAsync()
+    {
+        if (_voidingCount is not { } move) return;
+        if (string.IsNullOrWhiteSpace(_voidCountReason))
+        {
+            _movesError = "İptal için gerekçe gerekli.";
+            return;
+        }
+        _movesBusy = true;
+        _movesError = null;
+        try
+        {
+            await Api.VoidNativeStockCountAsync(move.Id, new NativeLedgerVoidRequest { Reason = _voidCountReason.Trim(), OperationId = _voidCountOperationId });
+            _voidingCount = null;
+            Notice = "Sayım iptal edildi; stok geri alındı.";
+        }
+        catch (PortalApiException failed)
+        {
+            _movesError = failed.Message;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _movesError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
+        }
+        finally
+        {
+            _movesBusy = false;
+        }
+        await LoadMovesAsync();
+        if (_voidingCount is null) await RunAsync(LoadAsync);
+    }
+
+    private static string MoveKind(string kind) => kind switch
+    {
+        "sale" => "Satış",
+        "purchase" => "Alış",
+        "sale_return" => "Satış iadesi",
+        "count" => "Sayım",
+        "void" => "İptal",
+        _ => "Diğer",
     };
 
     private static string N(int value) => value.ToString("N0", Fmt.Turkish);

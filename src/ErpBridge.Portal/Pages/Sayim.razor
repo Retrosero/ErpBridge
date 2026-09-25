@@ -1,0 +1,234 @@
+@page "/stok/sayim"
+@inherits PortalPageBase
+
+<PageTitle>Stok sayımı — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Stok sayımı" Eyebrow="Stok" Subtitle="Sayılan miktarı girin; fark, kaydettiğiniz andaki stoka göre işlenir" Busy="Busy">
+        <Actions>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.ArrowBack" Href="stok" id="count-back">Stoka dön</MudButton>
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+
+    @if (!Session.CanEditNativeData)
+    {
+        <EmptyState Id="count-not-allowed" Icon="@Icons.Material.Rounded.Lock" Title="Sayım yalnız ERP'siz firmanın admini içindir."
+                    Hint="ERP kullanan firmada stok ERP'den yönetilir." />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel">
+            <div class="document-form stack-form">
+                <div class="form-row">
+                    <label class="stack-field">
+                        <span class="field-label">Barkod okut</span>
+                        <input class="portal-input" id="count-barcode" placeholder="Barkodu okutun, her okutma 1 ekler" value="@_barcode" autocomplete="off"
+                               @onchange="ScanAsync" />
+                    </label>
+                    <div class="stack-field">
+                        <span class="field-label">Ürün ara</span>
+                        <div class="document-search">
+                            <input class="portal-input" id="count-search" placeholder="Kod ya da ürün adı" value="@_search" @onchange="e => _search = e.Value?.ToString() ?? string.Empty" />
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="SearchAsync" id="count-search-go">Ara</MudButton>
+                        </div>
+                    </div>
+                </div>
+                @if (_results.Count > 0)
+                {
+                    <ul class="pick-list" id="count-results">
+                        @foreach (var found in _results)
+                        {
+                            <li><button type="button" class="pick-item" data-product="@found.StockCode" @onclick="() => Add(found, counted: null)">
+                                <span class="cell-title">@found.Name</span> <span class="cell-sub">@found.StockCode · @Fmt.Quantity(found.Quantity) stokta</span>
+                            </button></li>
+                        }
+                    </ul>
+                }
+                else if (_searched)
+                {
+                    <span class="field-hint" id="count-none">Eşleşen ürün yok.</span>
+                }
+            </div>
+        </MudPaper>
+
+        @if (_lines.Count == 0)
+        {
+            <EmptyState Id="count-empty" Icon="@Icons.Material.Rounded.Checklist" Title="Henüz ürün eklenmedi." Hint="Barkod okutun ya da ürün arayıp ekleyin." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table mt-3">
+                <div class="table-scroll">
+                    <table class="data-table data-table--plain" id="count-lines">
+                        <thead>
+                            <tr><th>Ürün</th><th class="num">Stok</th><th class="num">Sayılan</th><th class="num">Fark</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in _lines)
+                            {
+                                <tr data-line="@line.Code">
+                                    <td class="cell-title">@line.Name<div class="cell-sub">@line.Code</div></td>
+                                    <td class="num">@Fmt.Quantity(line.Current)</td>
+                                    <td class="num">
+                                        <input type="number" class="portal-input portal-input--number line-counted" min="0" step="any" value="@(line.Counted is { } c ? Number(c) : null)"
+                                               @onchange="e => line.Counted = Parse(e.Value)" />
+                                    </td>
+                                    <td class="num line-difference @(line.Difference < 0 ? "portal-negative" : null)">@(line.Difference is { } d ? Signed(d) : "—")</td>
+                                    <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Satırı çıkar" OnClick="() => _lines.Remove(line)" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </MudPaper>
+
+            <form class="stack-form panel mt-3" id="count-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <div class="form-row">
+                    <label class="stack-field">
+                        <span class="field-label">Tarih</span>
+                        <input type="date" class="portal-input" id="count-date" value="@_date" @onchange="e => _date = e.Value?.ToString()" />
+                    </label>
+                </div>
+                <MudTextField T="string" @bind-Value="_reason" Label="Gerekçe" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="count-reason" Lines="2" Required="true"
+                              HelperText="Ay sonu sayımı, fire, kırık…" />
+                <p class="field-hint">Stok sütunu ekrana geldiği andaki miktardır; kaydederken fark o anki stoka göre yeniden hesaplanır.</p>
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="Clear">Temizle</MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="count-save">Sayımı kaydet</MudButton>
+                </div>
+            </form>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Ledger;
+
+    private sealed class CountLine
+    {
+        public string Code { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public decimal Current { get; init; }
+        public decimal? Counted { get; set; }
+        public decimal? Difference => Counted - Current;
+    }
+
+    private readonly List<CountLine> _lines = [];
+    private List<StockItemDto> _results = [];
+    private bool _searched;
+    private string _search = string.Empty;
+    private string _barcode = string.Empty;
+    private string? _date = Fmt.IsoDay(Fmt.Today());
+    private string? _reason;
+    private string _operationId = Guid.NewGuid().ToString("N");
+
+    private string? Notice { get; set; }
+
+    protected override Task LoadAsync() => Task.CompletedTask;
+
+    private Task SearchAsync()
+    {
+        var search = _search.Trim();
+        if (search.Length == 0) return Task.CompletedTask;
+        return RunAsync(async () =>
+        {
+            _results = (await Api.StockSearchAsync(new StockFilter { Search = search, PageSize = 25 })).Items;
+            _searched = true;
+        });
+    }
+
+    /// <summary>A scanner types the barcode and Enter: the product whose barcode (or code) it is gets one more counted.</summary>
+    private Task ScanAsync(ChangeEventArgs e)
+    {
+        var barcode = e.Value?.ToString()?.Trim() ?? string.Empty;
+        _barcode = string.Empty;
+        if (barcode.Length == 0) return Task.CompletedTask;
+        Notice = null;
+        return RunAsync(async () =>
+        {
+            var found = (await Api.StockSearchAsync(new StockFilter { Search = barcode, PageSize = 5 })).Items
+                .FirstOrDefault(i => i.Barcodes.Contains(barcode, StringComparer.OrdinalIgnoreCase) || string.Equals(i.StockCode, barcode, StringComparison.OrdinalIgnoreCase));
+            if (found is null)
+            {
+                Error = $"{barcode} barkodlu ürün bulunamadı.";
+                return;
+            }
+            Add(found, counted: 1);
+        });
+    }
+
+    private void Add(StockItemDto product, decimal? counted)
+    {
+        if (_lines.FirstOrDefault(l => string.Equals(l.Code, product.StockCode, StringComparison.OrdinalIgnoreCase)) is { } existing)
+        {
+            if (counted is { } more) existing.Counted = (existing.Counted ?? 0) + more;
+        }
+        else
+        {
+            _lines.Add(new CountLine { Code = product.StockCode, Name = product.Name, Current = product.Quantity, Counted = counted });
+        }
+        _results = [];
+        _searched = false;
+        _search = string.Empty;
+    }
+
+    private void Clear()
+    {
+        _lines.Clear();
+        _reason = null;
+        _operationId = Guid.NewGuid().ToString("N");
+    }
+
+    private Task SaveAsync()
+    {
+        Notice = null;
+        var problem = _lines.Any(l => l.Counted is null) ? "Her ürünün sayılan miktarını girin."
+            : _lines.Any(l => l.Counted < 0) ? "Sayılan miktar eksi olamaz."
+            : string.IsNullOrWhiteSpace(_reason) ? "Sayım için gerekçe gerekli."
+            : null;
+        if (problem is not null)
+        {
+            Error = problem;
+            return Task.CompletedTask;
+        }
+        var request = new NativeStockCountRequest
+        {
+            Lines = _lines.Select(l => new NativeStockCountLine { ProductCode = l.Code, CountedQuantity = l.Counted!.Value }).ToList(),
+            Reason = _reason!.Trim(),
+            OccurredAt = Fmt.TryIsoDay(_date, out var day) && day != Fmt.Today() ? Fmt.IsoDay(day) : null,
+            OperationId = _operationId,
+        };
+        var count = _lines.Count;
+        var differing = _lines.Count(l => l.Difference != 0);
+        return RunAsync(async () =>
+        {
+            await Api.PostNativeStockCountAsync(request);
+            Clear();
+            Notice = $"Sayım kaydedildi: {count} ürün, {differing} farklı.";
+        });
+    }
+
+    private static string Number(decimal value) => value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Signed(decimal value) => (value > 0 ? "+" : string.Empty) + Fmt.Quantity(value);
+
+    private static decimal? Parse(object? value) =>
+        decimal.TryParse(value?.ToString()?.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var number)
+            ? number
+            : null;
+}
