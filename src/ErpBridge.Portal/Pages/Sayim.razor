@@ -111,7 +111,7 @@ else
                 <div class="form-actions">
                     <span style="flex: 1"></span>
                     <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="Clear">Temizle</MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="count-save">Sayımı kaydet</MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || _pendingScans > 0)" id="count-save">Sayımı kaydet</MudButton>
                 </div>
             </form>
         }
@@ -154,27 +154,44 @@ else
         });
     }
 
+    /// <summary>Scans still waiting for their product; the count cannot be saved until every one has landed (Codex #196).</summary>
+    private int _pendingScans;
+
+    /// <summary>One scan at a time, in the order they came: a fast scanner may send the next code before the last answer.</summary>
+    private readonly SemaphoreSlim _scanOrder = new(1, 1);
+
     /// <summary>A scanner types the barcode and Enter: the product whose barcode (or code) it is — exactly — gets one more counted.</summary>
-    private Task ScanAsync()
+    private async Task ScanAsync()
     {
         var barcode = _barcode.Trim();
         _barcode = string.Empty;
-        if (barcode.Length == 0) return Task.CompletedTask;
+        if (barcode.Length == 0) return;
         Notice = null;
-        return RunAsync(async () =>
+        _pendingScans++;
+        await _scanOrder.WaitAsync();
+        try
         {
-            NativeStockCardDetailDto found;
-            try
+            await RunAsync(async () =>
             {
-                found = await Api.NativeStockCardByBarcodeAsync(barcode);
-            }
-            catch (PortalApiException missing) when (missing.Status == 404)
-            {
-                Error = $"{barcode} barkodlu ürün bulunamadı.";
-                return;
-            }
-            Add(found.StockCode, found.Name, found.Quantity, counted: 1);
-        });
+                NativeStockCardDetailDto found;
+                try
+                {
+                    found = await Api.NativeStockCardByBarcodeAsync(barcode);
+                }
+                catch (PortalApiException missing) when (missing.Status == 404)
+                {
+                    Error = $"{barcode} barkodlu ürün bulunamadı.";
+                    return;
+                }
+                Add(found.StockCode, found.Name, found.Quantity, counted: 1);
+            });
+        }
+        finally
+        {
+            _pendingScans--;
+            _scanOrder.Release();
+            StateHasChanged();
+        }
     }
 
     private void Add(StockItemDto product, decimal? counted) => Add(product.StockCode, product.Name, product.Quantity, counted);
@@ -204,7 +221,8 @@ else
     private Task SaveAsync()
     {
         Notice = null;
-        var problem = _lines.Any(l => l.Counted is null) ? "Her ürünün sayılan miktarını girin."
+        var problem = _pendingScans > 0 ? "Okutulan barkodlar henüz işleniyor; birazdan tekrar deneyin."
+            : _lines.Any(l => l.Counted is null) ? "Her ürünün sayılan miktarını girin."
             : _lines.Any(l => l.Counted < 0) ? "Sayılan miktar eksi olamaz."
             : string.IsNullOrWhiteSpace(_reason) ? "Sayım için gerekçe gerekli."
             : null;

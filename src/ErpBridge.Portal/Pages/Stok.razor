@@ -811,25 +811,30 @@ else
     }
 
     /// <summary>Loads the drawer's page with its own busy flag and error, so the stock list behind it stays as it was.</summary>
+    /// <summary>Bumped by every drawer request: only the newest request's answer, error and end of busy apply (Codex #196).</summary>
+    private int _movesGeneration;
+
     private async Task LoadMovesAsync()
     {
         var code = _movesCode;
         if (code is null) return;
+        var generation = ++_movesGeneration;
+        bool Current() => generation == _movesGeneration && _movesOpen && _movesCode == code;
         _movesBusy = true;
         _movesError = null;
         StateHasChanged();
         try
         {
             var moves = await Api.NativeStockMovementsAsync(code, _movesFrom, _movesTo, _movesVoided, _movesPage, _movesPageSize);
-            if (_movesOpen && _movesCode == code) _moves = moves;
+            if (Current()) _moves = moves;
         }
         catch (PortalApiException failed)
         {
-            _movesError = failed.Message;
+            if (Current()) _movesError = failed.Message;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            _movesError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
+            if (Current()) _movesError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
         }
         catch (SessionEndedException)
         {
@@ -838,7 +843,7 @@ else
         }
         finally
         {
-            _movesBusy = false;
+            if (generation == _movesGeneration) _movesBusy = false;
         }
         StateHasChanged();
     }

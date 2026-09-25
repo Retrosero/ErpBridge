@@ -208,6 +208,51 @@ public sealed class PortalStockMovementsAndCountTests : PortalPageTestContext
     }
 
     [Fact]
+    public void The_count_cannot_be_saved_while_a_scan_is_still_waiting_for_its_product()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer("/api/v1/portal/native/barcodes/111", new { stockCode = "CAY-1", name = "Çay 1 kg", quantity = 40m, barcodes = new[] { "111" } });
+        var slow = api.Hold("/api/v1/portal/native/barcodes/111");
+        var cut = Render<Sayim>();
+        cut.WaitForAssertion(() => cut.Find("#count-barcode"));
+
+        Scan(cut, "111");
+
+        cut.WaitForAssertion(() => cut.FindAll("#count-save").Should().BeEmpty("no line yet, nothing to save"));
+        slow.SetResult();
+        cut.WaitForAssertion(() => cut.Find("tr[data-line='CAY-1']"));
+        cut.WaitForAssertion(() => cut.Find("#count-save").HasAttribute("disabled").Should().BeFalse());
+
+        var second = api.Hold("/api/v1/portal/native/barcodes/111");
+        Scan(cut, "111");
+        cut.WaitForAssertion(() => cut.Find("#count-save").HasAttribute("disabled").Should().BeTrue("a scan is still pending (Codex #196)"));
+        second.SetResult();
+        cut.WaitForAssertion(() => cut.Find("tr[data-line='CAY-1'] .line-counted").GetAttribute("value").Should().Be("2"));
+        cut.WaitForAssertion(() => cut.Find("#count-save").HasAttribute("disabled").Should().BeFalse());
+    }
+
+    [Fact]
+    public void A_late_answer_for_an_older_filter_does_not_overwrite_the_newer_one()
+    {
+        var api = SetupStock();
+        api.Answer($"{Movements}?page=1&pageSize=50", MovesPage(40m, 37m, Move("old|1", "sale", 0, 3, 37)));
+        api.Answer($"{Movements}?includeVoided=true&page=1&pageSize=50", MovesPage(40m, 37m, Move("new|1", "sale", 0, 3, 37), Move("new|2", "sale", 0, 5, 32, voided: true)));
+        var cut = Render<Stok>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-stock='CAY-1']"));
+        cut.Find("tr[data-stock='CAY-1']").Click();
+        var slow = api.Hold($"{Movements}?page=1&pageSize=50");
+        cut.Find("[data-movements='CAY-1']").Click();
+
+        cut.Find("#movements-include-voided").Click();
+        cut.WaitForAssertion(() => cut.Find("tr[data-movement='new|2']"));
+        slow.SetResult();
+
+        cut.WaitForAssertion(() => api.Requests.Count(r => r.PathAndQuery == $"{Movements}?page=1&pageSize=50").Should().Be(1));
+        cut.WaitForAssertion(() => cut.FindAll("tr[data-movement='old|1']").Should().BeEmpty("the older filter's answer arrived last and is dropped"));
+        cut.Find("tr[data-movement='new|2']");
+    }
+
+    [Fact]
     public void A_manager_sees_that_counting_is_for_the_native_admin()
     {
         PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "MANAGER"));
