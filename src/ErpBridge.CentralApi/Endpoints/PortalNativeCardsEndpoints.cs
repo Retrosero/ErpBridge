@@ -101,15 +101,13 @@ public static class PortalNativeCardsEndpoints
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "STOCK_CARD_NOT_FOUND", Message = "The product does not exist." });
 
         // The booked level, not the catalogue copy: the running stock must end exactly where the ledger stands.
-        var levels = await db.NativeStockLevels.AsNoTracking()
-            .Where(l => l.TenantId == tenant.Id && l.StockCode == product.Code)
-            .Select(l => l.Quantity)
-            .ToListAsync(ct);
-        var moves = await PortalStockMovements.For(cache, tenant.Id).ForStockAsync(db, product.Code, ct);
-        var kindOf = await PortalStockMovements.KindResolverAsync(db, tenant.Id, moves, ct);
-        return JsonResults.Ok(PortalStockMovements.Statement(
-            product.Code, levels.Sum(), moves, start, end, includeVoided == true,
-            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize), kindOf));
+        var (quantity, moves) = await PortalStockMovements.For(cache, tenant.Id).SnapshotAsync(db, tenant.Id, product.Code, ct);
+        var (statement, pageMoves) = PortalStockMovements.Statement(
+            product.Code, quantity, moves, start, end, includeVoided == true,
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize));
+        var kindOf = await PortalStockMovements.KindResolverAsync(db, tenant.Id, pageMoves, ct);
+        for (var i = 0; i < statement.Items.Count; i++) statement.Items[i].Kind = kindOf(pageMoves[i]);
+        return JsonResults.Ok(statement);
     }
 
     private static IResult InvalidQuery(string message) =>

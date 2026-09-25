@@ -125,6 +125,28 @@ public sealed class PortalNativeStockMovementsRelationalTests : IClassFixture<Sq
     }
 
     [Fact]
+    public async Task A_page_shows_its_own_rows_with_their_kinds_and_balances()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001");
+        await SeedCustomerAsync(c, "TED-1");
+        (await PostAsync(c, "sales-orders", new { partyCode = "C-001", documentNo = "S-1", occurredAt = "2026-03-01", lines = new[] { new { productCode = "CAY-1", quantity = 3, unitPrice = 150 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await PostAsync(c, "purchase-receipts", new { partyCode = "TED-1", documentNo = "A-1", occurredAt = "2026-03-02", lines = new[] { new { productCode = "CAY-1", quantity = 10, unitPrice = 100 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await PostAsync(c, "sales-returns", new { partyCode = "C-001", documentNo = "I-1", occurredAt = "2026-03-03", lines = new[] { new { productCode = "CAY-1", quantity = 2, unitPrice = 150 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var second = await MovementsAsync(c, "CAY-1", "?pageSize=1&page=2");
+
+        second.Total.Should().Be(3);
+        var row = second.Items.Should().ContainSingle().Which;
+        row.Kind.Should().Be("purchase", "newest first: the return, then the purchase");
+        row.Balance.Should().Be(47m, "40 - 3 + 10");
+    }
+
+    [Fact]
     public async Task An_unknown_product_is_404_and_a_manager_is_refused()
     {
         var c = await CompanyAsync();

@@ -41,15 +41,37 @@ public sealed class PortalStockMovements
             return new PortalStockMovements(tenantId);
         })!;
 
-    /// <summary>The product's movements, oldest first.</summary>
-    public async Task<IReadOnlyList<Move>> ForStockAsync(CentralApiDbContext db, string stockCode, CancellationToken ct)
+    /// <summary>The product's movements, oldest first, and the mirror version they were read at.</summary>
+    public async Task<(long Version, IReadOnlyList<Move> Moves)> ForStockAsync(CentralApiDbContext db, string stockCode, CancellationToken ct)
     {
-        await _mirror.ApplyAsync(db, ct);
+        var version = await _mirror.ApplyAsync(db, ct);
         lock (_sync)
         {
-            return _byCode.TryGetValue(stockCode, out var moves)
+            return (version, _byCode.TryGetValue(stockCode, out var moves)
                 ? [.. moves.Values.OrderBy(m => m.Date).ThenBy(m => m.Id, StringComparer.Ordinal)]
-                : [];
+                : []);
+        }
+    }
+
+    /// <summary>Applies the rows changed since the last read; returns the mirror version.</summary>
+    public Task<long> VersionAsync(CentralApiDbContext db, CancellationToken ct) => _mirror.ApplyAsync(db, ct);
+
+    /// <summary>
+    /// The product's movements and its booked stock read as one consistent pair (Codex #191): a booking commits the
+    /// level and its movement rows together, so a read that saw one without the other would shift the devir. When the
+    /// mirror moved while the level was read, both are read again.
+    /// </summary>
+    public async Task<(decimal Quantity, IReadOnlyList<Move> Moves)> SnapshotAsync(
+        CentralApiDbContext db, Guid tenantId, string stockCode, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var (before, moves) = await ForStockAsync(db, stockCode, ct);
+            var levels = await db.NativeStockLevels.AsNoTracking()
+                .Where(l => l.TenantId == tenantId && l.StockCode == stockCode)
+                .Select(l => l.Quantity)
+                .ToListAsync(ct);
+            if (await VersionAsync(db, ct) == before || attempt == 4) return (levels.Sum(), moves);
         }
     }
 
@@ -96,10 +118,11 @@ public sealed class PortalStockMovements
     /// and its reversal (same day, opposite quantity) are left out unless <paramref name="includeVoided"/>; they still
     /// count in the running stock, which they leave unchanged.
     /// </summary>
-    /// <param name="kindOf">The job type → kind lookup the caller resolved for the page (see <see cref="KindOf"/>).</param>
-    public static PortalStockMovementsResponse Statement(
+    /// <returns>The statement, its rows' <c>Kind</c> not yet filled, and the page's moves in the same order as its items —
+    /// the caller resolves kinds for that page only (<see cref="KindResolverAsync"/>), not the product's whole history.</returns>
+    public static (PortalStockMovementsResponse Statement, IReadOnlyList<Move> PageMoves) Statement(
         string stockCode, decimal currentQuantity, IReadOnlyList<Move> moves, DateOnly? from, DateOnly? to, bool includeVoided,
-        int page, int pageSize, Func<Move, string> kindOf)
+        int page, int pageSize)
     {
         var start = from?.ToDateTime(TimeOnly.MinValue);
         var endExclusive = to?.AddDays(1).ToDateTime(TimeOnly.MinValue);
@@ -107,7 +130,7 @@ public sealed class PortalStockMovements
 
         var running = opening;
         decimal totalIn = 0, totalOut = 0;
-        var rows = new List<PortalStockMovementRow>();
+        var rows = new List<(PortalStockMovementRow Row, Move Move)>();
         foreach (var move in moves)
         {
             if (start is not null && move.Date < start) continue;
@@ -116,11 +139,10 @@ public sealed class PortalStockMovements
             if (!includeVoided && (move.Voided || move.Reversal)) continue;
             if (move.Quantity > 0) totalIn += move.Quantity;
             else totalOut -= move.Quantity;
-            rows.Add(new PortalStockMovementRow
+            rows.Add((new PortalStockMovementRow
             {
                 Id = move.Id,
                 Date = move.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                Kind = kindOf(move),
                 DocumentNo = move.DocumentNo,
                 CustomerCode = move.Party,
                 Description = move.Description,
@@ -129,10 +151,12 @@ public sealed class PortalStockMovements
                 Balance = running,
                 Voided = move.Voided,
                 Reason = move.VoidReason,
-            });
+            }, move));
         }
 
-        return new PortalStockMovementsResponse
+        // Newest first on screen, like the customer statement.
+        var pageRows = Enumerable.Reverse(rows).Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return (new PortalStockMovementsResponse
         {
             StockCode = stockCode,
             From = from?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -141,12 +165,11 @@ public sealed class PortalStockMovements
             Closing = running,
             TotalIn = totalIn,
             TotalOut = totalOut,
-            // Newest first on screen, like the customer statement.
-            Items = Enumerable.Reverse(rows).Skip((page - 1) * pageSize).Take(pageSize).ToList(),
+            Items = pageRows.Select(r => r.Row).ToList(),
             Total = rows.Count,
             Page = page,
             PageSize = pageSize,
-        };
+        }, pageRows.Select(r => r.Move).ToList());
     }
 
     /// <summary>
