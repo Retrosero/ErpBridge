@@ -72,6 +72,18 @@
                     </MudNavMenu>
                 }
 
+                @if (Session.CanEditNativeData)
+                {
+                    @* GOAL_PANEL_ERPSIZ E7c: an ERP-less company's admin enters its own documents here; an ERP company does not. *@
+                    <div class="portal-nav-label">Hızlı giriş</div>
+                    <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                        <MudNavLink Href="evraklar?yeni=sale" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.PointOfSale" id="nav-new-sale">Yeni satış</MudNavLink>
+                        <MudNavLink Href="evraklar?yeni=purchase" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.LocalShipping" id="nav-new-purchase">Yeni alış</MudNavLink>
+                        <MudNavLink Href="evraklar?yeni=sale_return" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.AssignmentReturn" id="nav-new-return">Yeni iade</MudNavLink>
+                        <MudNavLink Href="stok/sayim" Icon="@Icons.Material.Rounded.Checklist" id="nav-stock-count">Stok sayımı</MudNavLink>
+                    </MudNavMenu>
+                }
+
                 @if (Session.Allows(PortalArea.Approvals) || Session.Allows(PortalArea.Warehouse) || Session.Allows(PortalArea.Displays) || Session.Allows(PortalArea.Users) || Session.Allows(PortalArea.NativeAudit))
                 {
                     <div class="portal-nav-label">İşlemler</div>

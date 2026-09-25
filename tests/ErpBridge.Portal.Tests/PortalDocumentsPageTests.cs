@@ -270,6 +270,29 @@ public sealed class PortalDocumentsPageTests : PortalPageTestContext
     }
 
     [Fact]
+    public void The_menus_new_sale_link_opens_the_form_on_arrival()
+    {
+        Setup(address: "evraklar?yeni=sale", rows: [Row(SaleKey, "sale", "S-1", 270m)]);
+
+        var cut = Render<Evraklar>();
+
+        cut.WaitForAssertion(() => cut.Find("#document-form-sheet").TextContent.Should().Contain("Yeni satış"));
+        cut.FindAll("#erp-read-only").Should().BeEmpty("a company without an ERP enters its own documents");
+    }
+
+    [Fact]
+    public void An_erp_company_reads_its_documents_with_a_read_only_note_and_no_form()
+    {
+        Setup(dataSource: "erp", address: "evraklar?yeni=sale", rows: [Row(SaleKey, "sale", "S-1", 270m)]);
+
+        var cut = Render<Evraklar>();
+
+        cut.WaitForAssertion(() => cut.Find("#erp-read-only"));
+        cut.FindAll("#document-form-sheet").Should().BeEmpty();
+        cut.FindAll("#document-new-sale").Should().BeEmpty();
+    }
+
+    [Fact]
     public void The_print_page_shows_the_document_and_stamps_a_cancelled_one()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
