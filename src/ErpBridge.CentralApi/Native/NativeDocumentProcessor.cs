@@ -70,8 +70,10 @@ public sealed class NativeDocumentProcessor
     /// The corrected document is booked under this job's own external id, so it is itself voidable and editable again.</summary>
     public const string DocumentEdit = "document_edit";
 
-    /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id.</summary>
-    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment };
+    /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id —
+    /// including an earlier <see cref="LedgerEdit"/>, whose one row is the corrected entry (it keeps its kind, so it is
+    /// again a standalone collection/disbursement/adjustment).</summary>
+    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment, LedgerEdit };
 
     /// <summary>The document kinds <see cref="DocumentEdit"/> re-books; a document keeps its kind across an edit.</summary>
     public static readonly IReadOnlySet<string> EditableDocumentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesOrder, SalesReturn, PurchaseReceipt };
@@ -1011,6 +1013,7 @@ public sealed class NativeDocumentProcessor
             ["cariKod"] = partyCode,
             [incoming ? "girisDepoNo" : "cikisDepoNo"] = NativeLedgerDefaults.WarehouseNo,
             ["aciklama"] = $"İptal: {reason}",
+            ["voidsKey"] = lineKey,
             ["updatedAt"] = booking.Stamp,
         });
     }

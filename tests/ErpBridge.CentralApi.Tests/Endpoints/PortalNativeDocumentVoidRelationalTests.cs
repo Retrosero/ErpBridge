@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -41,6 +41,11 @@ public sealed class PortalNativeDocumentVoidRelationalTests : IClassFixture<Sqli
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         (await StockAsync(c.Id, "CAY-1")).Should().Be(40m, "the sale's stock effect is reversed");
         (await BalanceAsync(c.Id, "C-001")).Should().Be(0m, "the sale's debit is reversed");
+
+        var detail = await GetJsonAsync<PortalDocumentResponse>(c.Patron, $"/api/v1/portal/native/documents/{Uri.EscapeDataString(key)}");
+        detail.Voided.Should().BeTrue();
+        detail.Lines.Should().ContainSingle("the reversing line is not one of the document's own lines")
+            .Which.Quantity.Should().Be(3m);
 
         var ledger = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001&includeVoided=true");
         ledger.Items.Should().HaveCount(2)

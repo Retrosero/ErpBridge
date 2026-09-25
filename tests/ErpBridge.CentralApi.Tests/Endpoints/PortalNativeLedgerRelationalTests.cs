@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -224,6 +224,26 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
         var statement = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001");
         statement.Items.Should().Contain(i => i.Kind == "collection" && i.Credit == 500m);
         statement.Closing.Should().Be(500m);
+    }
+
+    [Fact]
+    public async Task An_edited_entry_is_itself_editable_and_voidable()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+        (await PostAsync(c, "collections", new { customerCode = "C-001", amount = 300, paymentType = "Nakit" })).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await EditAsync(c, await LedgerKeyAsync(c.Id, "collection"), new { amount = 500, voidReason = "Birinci düzeltme" }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var edited = (await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001"))
+            .Items.Single(i => i.Kind == "collection" && i.Credit == 500m);
+        edited.Editable.Should().BeTrue("the corrected collection is a standalone collection again");
+
+        (await EditAsync(c, edited.Id, new { amount = 450, voidReason = "İkinci düzeltme" })).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(550m);
+        var second = (await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001"))
+            .Items.Single(i => i.Kind == "collection" && i.Credit == 450m);
+        (await VoidAsync(c, second.Id, "Tümden iptal")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1000m);
     }
 
     [Fact]
