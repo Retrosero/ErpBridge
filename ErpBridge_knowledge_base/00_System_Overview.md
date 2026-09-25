@@ -408,8 +408,8 @@ registration ayrı bir composition projesine taşınır.
      (yalnız ADMIN + `DataSource=native`, D4; ERP'li firmada 409 `TENANT_IS_NOT_NATIVE`) — evrak listesi/detayı
      (`GET documents`, `GET documents/{key}`) ise salt okunur, ekstrenin `CanViewLedger` kapısıyla (Yönetici/Muhasebe
      ve ERP'li firma da okur); `operationId` ile idempotent `externalId`
-     (`PortalNativeWriteHelpers.OperationKey`), işlem kaydı `native_audit_log` (D5). Void/düzenleme uçları
-     "zaten iptal" kontrolünden **önce** aynı işlemi arar (`ReplayAsync`) — yanıtı kaybolan tekrar 200 alır.
+     (`PortalNativeWriteHelpers.OperationKey`), işlem kaydı `native_audit_log` (D5). Evrak ve sayım iptal/düzenleme uçları
+     "zaten iptal" kontrolünden **önce** aynı işlemi arar (`ReplayAsync`) — yanıtı kaybolan tekrar 200 alır (cari `ledger/{key}/void|edit` henüz yapmıyor).
      Uçlar: kartlar (`stock-cards`, `customer-cards`), `collections`/`disbursements`, `ledger-adjustments`,
      `ledger/{key}/void|edit`, `sales-orders`/`purchase-receipts`/`sales-returns`, `documents` (liste/detay,
      `status=all|active|voided`, detayda `paymentType`), `documents/{key}/void|edit`,
