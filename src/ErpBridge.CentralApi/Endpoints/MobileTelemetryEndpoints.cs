@@ -97,6 +97,7 @@ public static class MobileTelemetryEndpoints
                 HttpMethod = source.HttpMethod,
                 HttpRoute = source.HttpRoute,
                 HttpStatus = source.HttpStatus,
+                RepeatCount = source.RepeatCount is { } repeat && repeat > 0 ? repeat : 1,
                 PropertiesJson = source.Properties is { ValueKind: JsonValueKind.Object } properties ? properties.GetRawText() : null,
                 BreadcrumbsJson = source.Breadcrumbs is { ValueKind: JsonValueKind.Array } breadcrumbs ? breadcrumbs.GetRawText() : null,
             })
