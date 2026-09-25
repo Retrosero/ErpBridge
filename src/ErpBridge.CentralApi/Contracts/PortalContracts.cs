@@ -336,6 +336,70 @@ public sealed class PortalStockCardDetail
     public string? LastMovementDate { get; set; }
 }
 
+/// <summary>One row of GET /api/v1/portal/native/stock-cards/{code}/movements (GOAL_PANEL_ERPSIZ E6a).</summary>
+public sealed class PortalStockMovementRow
+{
+    public string Id { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+
+    /// <summary>sale, purchase, sale_return, count, void (a cancelled line's reversal), other.</summary>
+    public string Kind { get; set; } = "other";
+    public string? DocumentNo { get; set; }
+
+    /// <summary>The customer/supplier of the document the line belongs to, when it has one.</summary>
+    public string? CustomerCode { get; set; }
+    public string? Description { get; set; }
+    public decimal In { get; set; }
+    public decimal Out { get; set; }
+
+    /// <summary>The product's stock after this line (yürüyen stok).</summary>
+    public decimal Balance { get; set; }
+    public bool Voided { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/native/stock-cards/{code}/movements — one product's movements, newest first.</summary>
+public sealed class PortalStockMovementsResponse
+{
+    public string StockCode { get; set; } = string.Empty;
+    public string? From { get; set; }
+    public string? To { get; set; }
+
+    /// <summary>Stock before the first line shown (devir): with no start date, what the product had before any movement.</summary>
+    public decimal Opening { get; set; }
+    public decimal Closing { get; set; }
+    public decimal TotalIn { get; set; }
+    public decimal TotalOut { get; set; }
+    public List<PortalStockMovementRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}
+
+/// <summary>One line of <c>POST /api/v1/portal/native/stock-counts</c> (GOAL_PANEL_ERPSIZ E6b).</summary>
+public sealed class PortalStockCountLine
+{
+    public string ProductCode { get; set; } = string.Empty;
+    public decimal CountedQuantity { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/stock-counts</c> (GOAL_PANEL_ERPSIZ E6b): what was counted. The difference
+/// is taken against the stock the server holds when the count books, so a sale booked meanwhile is not lost.
+/// </summary>
+public sealed class PortalStockCountRequest
+{
+    public List<PortalStockCountLine> Lines { get; set; } = [];
+
+    /// <summary>Why the stock is corrected (yıl sonu sayımı, fire, kırık…) — mandatory.</summary>
+    public string? Reason { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>; defaults to today when absent.</summary>
+    public string? OccurredAt { get; set; }
+    public string? DocumentNo { get; set; }
+    public string? OperationId { get; set; }
+}
+
 public sealed class PortalNamedNumber
 {
     public int Number { get; set; }

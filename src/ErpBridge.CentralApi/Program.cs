@@ -720,6 +720,7 @@ public partial class Program
         app.MapPortalNativeLedgerEndpoints();
         app.MapPortalNativeSalesEndpoints();
         app.MapPortalNativeDocumentsEndpoints();
+        app.MapPortalNativeStockCountsEndpoints();
         app.MapWarehouseEndpoints();
         app.MapDisplayEndpoints();
         app.MapAdminParameterEndpoints();

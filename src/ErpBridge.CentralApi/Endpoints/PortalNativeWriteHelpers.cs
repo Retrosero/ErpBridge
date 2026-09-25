@@ -44,8 +44,10 @@ internal static class PortalNativeWriteHelpers
     /// own <paramref name="operationId"/> once per save/delete attempt and resends the same one on
     /// retry; without one a fresh key is used, so a caller-less request still works.
     /// </summary>
+    /// <remarks>A <c>|</c> in <paramref name="operationId"/> becomes <c>-</c>: movement keys are <c>"{job}|{suffix}"</c>, and a job
+    /// id holding the separator could claim another job's rows (Codex #192).</remarks>
     public static string OperationKey(string prefix, string code, string? operationId) =>
-        $"{prefix}-{code}-{(string.IsNullOrWhiteSpace(operationId) ? Guid.NewGuid().ToString("N") : operationId.Trim())}";
+        $"{prefix}-{code}-{(string.IsNullOrWhiteSpace(operationId) ? Guid.NewGuid().ToString("N") : operationId.Trim().Replace('|', '-'))}";
 
     /// <summary>
     /// What <see cref="BookNativeDocumentAsync"/> writes to <c>native_audit_log</c> (D5/E7b) once the
@@ -63,7 +65,8 @@ internal static class PortalNativeWriteHelpers
     /// </summary>
     public static async Task<IResult> BookNativeDocumentAsync(
         HttpContext http, CentralApiDbContext db, Tenant tenant, MobileUser user,
-        string documentType, string externalId, object payload, string rejectedErrorCode, CancellationToken ct, AuditInfo? audit = null)
+        string documentType, string externalId, object payload, string rejectedErrorCode, CancellationToken ct, AuditInfo? audit = null,
+        NativeBookingOptions? options = null)
     {
         var existing = await db.Jobs.AsNoTracking()
             .FirstOrDefaultAsync(j => j.TenantId == tenant.Id && j.DocumentType == documentType && j.ExternalId == externalId, ct);
@@ -86,7 +89,7 @@ internal static class PortalNativeWriteHelpers
         var processor = http.RequestServices.GetRequiredService<NativeDocumentProcessor>();
         try
         {
-            var booked = await processor.IngestAsync(db, tenant.Id, job, RolePermissions.IsAdmin(user), ct);
+            var booked = await processor.IngestAsync(db, tenant.Id, job, RolePermissions.IsAdmin(user), ct, options);
             if (booked.Status == JobStatus.Failed)
                 return JsonResults.Status(StatusCodes.Status422UnprocessableEntity, new ApiError
                 {
