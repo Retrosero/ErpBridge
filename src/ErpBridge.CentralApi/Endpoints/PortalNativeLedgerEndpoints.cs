@@ -67,16 +67,11 @@ public static class PortalNativeLedgerEndpoints
         if (job is null || !NativeDocumentProcessor.VoidableLedgerJobTypes.Contains(job.DocumentType))
             return Invalid("Only a collection, a disbursement or a manual adjustment can be cancelled here.");
 
-        var voidedKind = job.DocumentType switch
-        {
-            NativeDocumentProcessor.Collection => "Tahsilat",
-            NativeDocumentProcessor.Disbursement => "Tediye",
-            _ => "Düzeltme",
-        };
+        var kind = LedgerKindOf(job.DocumentType, row);
         var payload = new { targetKey = key, reason };
         var audit = new PortalNativeWriteHelpers.AuditInfo(
-            Entity: job.DocumentType.ToLowerInvariant(), EntityKey: row.TryGetProperty("customerCode", out var code) ? code.GetString() ?? key : key,
-            Action: "void", Summary: $"İptal edildi ({voidedKind}): {reason}", BeforeJson: record.PayloadJson);
+            Entity: kind, EntityKey: row.TryGetProperty("customerCode", out var code) ? code.GetString() ?? key : key,
+            Action: "void", Summary: $"İptal edildi ({KindLabel(kind)}): {reason}", BeforeJson: record.PayloadJson);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.LedgerVoid,
             PortalNativeWriteHelpers.OperationKey("portal-ledger-void", key, body?.OperationId), payload, VoidRejectedErrorCode, ct, audit);
@@ -113,7 +108,8 @@ public static class PortalNativeLedgerEndpoints
         if (job is null || !NativeDocumentProcessor.VoidableLedgerJobTypes.Contains(job.DocumentType))
             return Invalid("Only a collection, a disbursement or a manual adjustment can be edited here.");
 
-        var isAdjustment = job.DocumentType == NativeDocumentProcessor.LedgerAdjustment;
+        var kind = LedgerKindOf(job.DocumentType, row);
+        var isAdjustment = kind == NativeDocumentProcessor.LedgerAdjustment;
         var reason = body.Description?.Trim() is { Length: > 0 } d ? d : body.Reason?.Trim();
         if (isAdjustment && string.IsNullOrWhiteSpace(reason)) return Invalid("The corrected adjustment needs a reason.");
 
@@ -125,24 +121,42 @@ public static class PortalNativeLedgerEndpoints
             occurredAt = day.ToDateTime(new TimeOnly(12, 0)).ToString("O", CultureInfo.InvariantCulture);
         }
 
-        var voidedKind = job.DocumentType switch
-        {
-            NativeDocumentProcessor.Collection => "Tahsilat",
-            NativeDocumentProcessor.Disbursement => "Tediye",
-            _ => "Düzeltme",
-        };
         var payload = new
         {
             targetKey = key, voidReason, amount = body.Amount, debit = body.Debit,
             paymentType = body.PaymentType, description = body.Description, reason = body.Reason, occurredAt,
         };
         var audit = new PortalNativeWriteHelpers.AuditInfo(
-            Entity: job.DocumentType.ToLowerInvariant(), EntityKey: row.TryGetProperty("customerCode", out var code) ? code.GetString() ?? key : key,
-            Action: "edit", Summary: $"Düzenlendi ({voidedKind}): {voidReason}", BeforeJson: record.PayloadJson);
+            Entity: kind, EntityKey: row.TryGetProperty("customerCode", out var code) ? code.GetString() ?? key : key,
+            Action: "edit", Summary: $"Düzenlendi ({KindLabel(kind)}): {voidReason}", BeforeJson: record.PayloadJson);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.LedgerEdit,
             PortalNativeWriteHelpers.OperationKey("portal-ledger-edit", key, body.OperationId), payload, EditRejectedErrorCode, ct, audit);
     }
+
+    /// <summary>
+    /// The movement's own kind (collection, disbursement, ledger_adjustment) — its creating job's type, or for a
+    /// movement an earlier <c>ledger_edit</c> re-booked, the kind that edit kept (the row's own <c>type</c>). The audit
+    /// trail files every void/edit under this kind, so a movement's "Geçmiş" keeps all of its history.
+    /// </summary>
+    private static string LedgerKindOf(string jobType, System.Text.Json.JsonElement row)
+    {
+        if (!string.Equals(jobType, NativeDocumentProcessor.LedgerEdit, StringComparison.OrdinalIgnoreCase)) return jobType.ToLowerInvariant();
+        var type = row.TryGetProperty("type", out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+        return type switch
+        {
+            "Tahsilat" => NativeDocumentProcessor.Collection,
+            "Tediye" => NativeDocumentProcessor.Disbursement,
+            _ => NativeDocumentProcessor.LedgerAdjustment,
+        };
+    }
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        NativeDocumentProcessor.Collection => "Tahsilat",
+        NativeDocumentProcessor.Disbursement => "Tediye",
+        _ => "Düzeltme",
+    };
 
     private static async Task<IResult> AdjustAsync(
         HttpContext http, [FromBody] PortalLedgerAdjustmentRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)

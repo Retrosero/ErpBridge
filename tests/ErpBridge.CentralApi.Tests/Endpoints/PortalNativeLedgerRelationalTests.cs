@@ -244,6 +244,11 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
             .Items.Single(i => i.Kind == "collection" && i.Credit == 450m);
         (await VoidAsync(c, second.Id, "Tümden iptal")).StatusCode.Should().Be(HttpStatusCode.Created);
         (await BalanceAsync(c.Id, "C-001")).Should().Be(1000m);
+
+        // Every step stays in the collection's own history, not under "ledger_edit" (Codex #187).
+        var history = await GetJsonAsync<PortalAuditResponse>(c.Patron, "/api/v1/portal/native/audit?entity=collection&key=C-001");
+        history.Items.Should().Contain(i => i.Action == "edit" && i.Summary.Contains("Tahsilat") && i.Summary.Contains("İkinci düzeltme"))
+            .And.Contain(i => i.Action == "void" && i.Summary.Contains("Tahsilat") && i.Summary.Contains("Tümden iptal"));
     }
 
     [Fact]
