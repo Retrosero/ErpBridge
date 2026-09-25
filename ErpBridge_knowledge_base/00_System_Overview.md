@@ -428,7 +428,8 @@ registration ayrı bir composition projesine taşınır.
      evrak satırı sayılmaz (`PortalRecords.ParseLine`) ve ürün hareketlerinde varsayılan olarak gizlidir. Cari
      ekstresi ve `/portal/movements` ise iptal edilen **orijinali** varsayılan gizler ama **ters kaydı her zaman
      gösterir** — görünen satırlar bakiyeyi açıklasın diye.
-   - **Panel sayımı** `stock_count`'u `againstCurrentLevel=true` ile gönderir: fark, işleyicide tenant kilidi
+   - **Panel sayımı** `stock_count`'u yükte bir alanla değil, yalnız güvenilir çağıranın verebildiği iç seçenekle
+     (`NativeBookingOptions(CountAgainstCurrentLevel: true)`, `IngestAsync` parametresi; yükteki böyle bir alan yok sayılır, telefon bu moda geçemez) işler: fark, işleyicide tenant kilidi
      altında o anki `native_stock_levels`'a göre hesaplanır. Telefonun çevrimdışı sayımı (`expectedQuantity`'ye
      göre fark, sonradan gelen satış korunur) değişmedi.
    - **Ürün hareketleri** (`PortalStockMovements`): devir mevcut stoktan geriye yürüyerek bulunur — kartın

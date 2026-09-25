@@ -112,7 +112,7 @@ Her yazma `native_audit_log`'a düşer (`GET /native/audit`).
 
 | Uç | Açıklama |
 |---|---|
-| `GET /stock-cards/{code}` · `POST /stock-cards` · `DELETE /stock-cards/{code}` | Ürün kartı oku/aç/düzenle/sil (hareketli ürün silinmez) |
+| `GET /stock-cards/{code}` · `POST /stock-cards` · `DELETE /stock-cards/{code}?operationId=` | Ürün kartı oku/aç/düzenle/sil (hareketli ürün silinmez). Silmede `operationId` gövdede değil **sorguda**; verilmezse tekrar yeni işlem sayılır |
 | `GET /stock-cards/{code}/movements` | `from`, `to`, `includeVoided`, `page`, `pageSize`. `opening` (devir), `closing`, `totalIn`/`totalOut`, satırlar en yeni üstte: `kind` (sale/purchase/sale_return/count/void/other), `in`/`out`, `balance` (yürüyen stok), `voided`, `reason` |
 | `POST /customer-cards` | Cari kartı aç/düzenle |
 | `POST /collections` · `POST /disbursements` | Tahsilat / tediye |
