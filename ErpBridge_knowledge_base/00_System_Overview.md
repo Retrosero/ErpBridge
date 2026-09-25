@@ -411,7 +411,9 @@ registration ayrı bir composition projesine taşınır.
      Uçlar: kartlar (`stock-cards`, `customer-cards`), `collections`/`disbursements`, `ledger-adjustments`,
      `ledger/{key}/void|edit`, `sales-orders`/`purchase-receipts`/`sales-returns`, `documents` (liste/detay,
      `status=all|active|voided`, detayda `paymentType`), `documents/{key}/void|edit`,
-     `stock-cards/{code}/movements`, `stock-counts` ve `stock-counts/{key}/void`.
+     `stock-cards/{code}/movements`, `stock-counts` ve `stock-counts/{key}/void`, `barcodes/{barcode}` (tam eşleşme),
+     `stock-cards/batch` ve `customer-cards/batch` (dosyadan içe aktarma; telefonun toplu kart belgeleri, ≤ 500 kart/istek, satır
+     numaralı atlananlar; panel CSV/.xlsx'i kendisi okur — `SpreadsheetReader`, ek kütüphane yok).
    - **Düzeltme = storno (D2/D11).** Defterden/evraktan satır fiziksel silinmez ve üzerine yazılmaz:
      orijinal yerinde `voided` (+ `voidedByUserId`, `voidedAt`, `voidReason`) işaretlenir, ters kayıt
      `{orijinal id}|void` anahtarıyla ve `voidsKey` alanıyla eklenir; bakiye/stok ters çevrilir, hepsi tek
