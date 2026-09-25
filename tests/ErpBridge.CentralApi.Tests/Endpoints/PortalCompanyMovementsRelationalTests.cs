@@ -77,7 +77,10 @@ public sealed class PortalCompanyMovementsRelationalTests : IClassFixture<Sqlite
         inverted.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         var patronId = (await GetJsonAsync<PortalMovementsResponse>(c.Patron, Range)).Items.First(i => i.UserId is not null).UserId!.Value;
-        (await GetJsonAsync<PortalMovementsResponse>(c.Patron, Range + $"&userId={patronId}")).Items.Should().NotBeEmpty();
+        var mine = await GetJsonAsync<PortalMovementsResponse>(c.Patron, Range + $"&userId={patronId}");
+        mine.Items.Should().Contain(i => i.SourceType == "İptal: Satış", "a reversal belongs to whoever cancelled (Codex #200)");
+        mine.Total.Should().Be((await GetJsonAsync<PortalMovementsResponse>(c.Patron, Range)).Total, "the patron wrote every row");
+        (await GetJsonAsync<PortalMovementsResponse>(c.Patron, Range)).Items.Single(i => i.SourceType == "İptal: Satış").UserName.Should().Be("patron");
         (await GetJsonAsync<PortalMovementsResponse>(c.Patron, Range + $"&userId={Guid.NewGuid()}")).Items.Should().BeEmpty();
     }
 

@@ -506,14 +506,24 @@ public static class PortalLedger
             .ToList();
     }
 
+    /// <summary>
+    /// Who cancelled each voided movement, keyed by the reversal's own id (<c>{original}|void</c>): a reversal has no job of its own
+    /// to name its writer, the original row records who voided it (Codex #200).
+    /// </summary>
+    public static Dictionary<string, Guid> ReversalAuthors(Movements movements) =>
+        movements.ByCustomer.Values.SelectMany(list => list)
+            .Where(m => m.Voided && m.VoidedByUserId is not null)
+            .GroupBy(m => m.Id + "|void", StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().VoidedByUserId!.Value, StringComparer.Ordinal);
+
     /// <summary>One page of <see cref="CompanyMovements"/>, with the totals of all of them.</summary>
     public static PortalMovementsResponse MovementsPage(
         IReadOnlyDictionary<string, Customer> customers, List<Movement> matching, DateOnly from, DateOnly to,
-        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+        Func<Movement, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
     {
         var items = matching.Skip((page - 1) * pageSize).Take(pageSize).Select(m =>
         {
-            var creator = creatorOf(ExternalIdOf(m.Id));
+            var creator = creatorOf(m);
             return new PortalMovementRow
             {
                 Id = m.Id,

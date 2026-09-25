@@ -96,7 +96,7 @@ else
                             @foreach (var row in _result.Items)
                             {
                                 <tr data-movement="@row.Id" class="row-clickable @(row.Voided ? "is-voided" : null)" @onclick="() => Open(row)"
-                                    title="@(row.DocumentKey is not null && Session.CanEditNativeData ? "Evrakı aç" : "Cari ekstresini aç")">
+                                    title="@(row.DocumentKey is not null ? "Evrakı aç" : "Cari ekstresini aç")">
                                     <td class="nowrap">@DayText(row.Date)</td>
                                     <td>
                                         <div class="cell-title">@row.CustomerTitle</div>
@@ -175,9 +175,10 @@ else
         return RunAsync(LoadAsync);
     }
 
-    /// <summary>An invoice opens in Evraklar (ERP-less company: edit/cancel/print there); anything else in the customer's statement.</summary>
+    /// <summary>An invoice opens in Evraklar (read-only for every ledger user; an ERP-less admin also edits/cancels there);
+    /// anything else in the customer's statement.</summary>
     private void Open(CompanyMovementDto row) =>
-        Nav.NavigateTo(row.DocumentKey is not null && Session.CanEditNativeData
+        Nav.NavigateTo(row.DocumentKey is not null
             ? "evraklar?belge=" + Uri.EscapeDataString(row.DocumentKey)
             : "cari?kod=" + Uri.EscapeDataString(row.CustomerCode));
 

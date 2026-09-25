@@ -83,6 +83,18 @@ public sealed class PortalCompanyMovementsPageTests : PortalPageTestContext
     }
 
     [Fact]
+    public void A_manager_opens_an_invoice_row_in_the_read_only_document_view_too()
+    {
+        var (_, nav) = Setup(role: "MANAGER", rows: [Row("s|sale", "sale", "C-001", 450m, 0m, documentKey: "dC-001|E-1")]);
+        var cut = Render<Hareketler>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-movement='s|sale']"));
+
+        cut.Find("tr[data-movement='s|sale']").Click();
+
+        nav.Uri.Should().EndWith("evraklar?belge=dC-001%7CE-1", "Evraklar is open to every ledger user; only its edit controls are admin-only (Codex #200)");
+    }
+
+    [Fact]
     public void An_accountant_reads_the_list_without_the_admin_only_user_list()
     {
         var (api, _) = Setup(role: "ACCOUNTING", rows: [Row("c|collection", "collection", "C-002", 0m, 100m)]);

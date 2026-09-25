@@ -371,7 +371,9 @@ public static class PortalEndpoints
         var number = Math.Max(1, page ?? 1);
         // Who wrote a row comes from its job. Without a user filter only the rows on the page need one; with it, every
         // matching row does (bounded by the filter's own date range).
+        var reversalAuthors = PortalLedger.ReversalAuthors(movements);
         var needed = (userId is null ? matching.Skip((number - 1) * size).Take(size) : matching)
+            .Where(m => !reversalAuthors.ContainsKey(m.Id))
             .Select(m => PortalLedger.ExternalIdOf(m.Id)).Distinct(StringComparer.Ordinal).ToList();
         var creators = (await db.Jobs.AsNoTracking()
                 .Where(j => j.TenantId == tenant.Id && needed.Contains(j.ExternalId))
@@ -379,10 +381,12 @@ public static class PortalEndpoints
                 .ToListAsync(ct))
             .GroupBy(j => j.ExternalId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().CreatedByUserId, StringComparer.Ordinal);
-        Guid? CreatorOf(string externalId) => creators.TryGetValue(externalId, out var id) ? id : null;
-        if (userId is { } wanted) matching = matching.Where(m => CreatorOf(PortalLedger.ExternalIdOf(m.Id)) == wanted).ToList();
+        Guid? CreatorOf(PortalLedger.Movement m) =>
+            reversalAuthors.TryGetValue(m.Id, out var voider) ? voider
+            : creators.TryGetValue(PortalLedger.ExternalIdOf(m.Id), out var id) ? id : null;
+        if (userId is { } wanted) matching = matching.Where(m => CreatorOf(m) == wanted).ToList();
 
-        var creatorIds = creators.Values.OfType<Guid>().Distinct().ToList();
+        var creatorIds = creators.Values.OfType<Guid>().Concat(reversalAuthors.Values).Distinct().ToList();
         var userNames = await db.MobileUsers.AsNoTracking()
             .Where(u => u.TenantId == tenant.Id && creatorIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.FullName) ? u.Username : u.FullName, ct);
