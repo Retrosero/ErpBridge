@@ -70,8 +70,10 @@ public sealed class NativeDocumentProcessor
     /// The corrected document is booked under this job's own external id, so it is itself voidable and editable again.</summary>
     public const string DocumentEdit = "document_edit";
 
-    /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id.</summary>
-    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment };
+    /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id —
+    /// including an earlier <see cref="LedgerEdit"/>, whose one row is the corrected entry (it keeps its kind, so it is
+    /// again a standalone collection/disbursement/adjustment).</summary>
+    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment, LedgerEdit };
 
     /// <summary>The document kinds <see cref="DocumentEdit"/> re-books; a document keeps its kind across an edit.</summary>
     public static readonly IReadOnlySet<string> EditableDocumentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesOrder, SalesReturn, PurchaseReceipt };
@@ -853,18 +855,13 @@ public sealed class NativeDocumentProcessor
     /// <summary>
     /// Whether <paramref name="party"/> already has a native document numbered <paramref name="documentNo"/> — a
     /// ledger or stock row with that <c>cariKod</c> + <c>evrakNo</c>, the pair <c>PortalRecords.NativeDocumentKey</c>
-    /// groups a document by. <c>evrakNo</c> lives only in the JSON payload, so the payload text is pre-filtered
-    /// (raw and JSON-escaped spellings) and each candidate is then checked exactly.
+    /// groups a document by. <c>evrakNo</c> lives only in the JSON payload: on PostgreSQL the <c>jsonb</c> column is
+    /// asked by containment (<c>@&gt;</c>; a text <c>LIKE</c> on <c>jsonb</c> does not exist there), elsewhere (the
+    /// SQLite test host) the payload text is pre-filtered. Each candidate is then checked exactly.
     /// </summary>
     private static async Task<bool> DocumentNumberInUseAsync(CentralApiDbContext db, Guid tenantId, string party, string documentNo, CancellationToken ct)
     {
-        var escaped = JsonSerializer.Serialize(documentNo);
-        var quoted = "\"" + documentNo + "\"";
-        var candidates = await db.MobileRecords.AsNoTracking()
-            .Where(r => r.TenantId == tenantId && (r.Entity == "customerTransactions" || r.Entity == "stockTransactions") && !r.IsDeleted
-                        && r.PayloadJson != null && (r.PayloadJson.Contains(escaped) || r.PayloadJson.Contains(quoted)))
-            .Select(r => r.PayloadJson!)
-            .ToListAsync(ct);
+        var candidates = await DocumentNumberCandidates(db, tenantId, documentNo).ToListAsync(ct);
         foreach (var payload in candidates)
         {
             using var row = JsonDocument.Parse(payload);
@@ -873,6 +870,26 @@ public sealed class NativeDocumentProcessor
                 return true;
         }
         return false;
+    }
+
+    /// <summary>The payloads that may carry <paramref name="documentNo"/>; see <see cref="DocumentNumberInUseAsync"/>.</summary>
+    internal static IQueryable<string> DocumentNumberCandidates(CentralApiDbContext db, Guid tenantId, string documentNo)
+    {
+        var rows = db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && (r.Entity == "customerTransactions" || r.Entity == "stockTransactions") && !r.IsDeleted
+                        && r.PayloadJson != null);
+        if (db.Database.IsNpgsql())
+        {
+            var contained = JsonSerializer.Serialize(new Dictionary<string, string> { ["evrakNo"] = documentNo });
+            rows = rows.Where(r => EF.Functions.JsonContains(r.PayloadJson!, contained));
+        }
+        else
+        {
+            var escaped = JsonSerializer.Serialize(documentNo);
+            var quoted = "\"" + documentNo + "\"";
+            rows = rows.Where(r => r.PayloadJson!.Contains(escaped) || r.PayloadJson!.Contains(quoted));
+        }
+        return rows.Select(r => r.PayloadJson!);
     }
 
     /// <summary>The next revision of a document number: <c>A-1</c> → <c>A-1-D1</c>, <c>A-1-D1</c> → <c>A-1-D2</c>.</summary>
@@ -1011,6 +1028,7 @@ public sealed class NativeDocumentProcessor
             ["cariKod"] = partyCode,
             [incoming ? "girisDepoNo" : "cikisDepoNo"] = NativeLedgerDefaults.WarehouseNo,
             ["aciklama"] = $"İptal: {reason}",
+            ["voidsKey"] = lineKey,
             ["updatedAt"] = booking.Stamp,
         });
     }
