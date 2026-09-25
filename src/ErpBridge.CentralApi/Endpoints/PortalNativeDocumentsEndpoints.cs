@@ -40,7 +40,7 @@ public static class PortalNativeDocumentsEndpoints
 
     private static async Task<IResult> ListAsync(
         HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
-        string? from, string? to, string[]? kind, string? customer, Guid? userId, int? page, int? pageSize, CancellationToken ct)
+        string? from, string? to, string[]? kind, string? customer, Guid? userId, int? page, int? pageSize, string? status, CancellationToken ct)
     {
         var (tenant, _, error) = await AuthorizeAsync(http, db, ct);
         if (error is not null) return error;
@@ -54,6 +54,16 @@ public static class PortalNativeDocumentsEndpoints
         else if (!TryDay(from, out start)) return Invalid("from must be yyyy-MM-dd.");
         if (!TryDay(to, out var end)) return Invalid("to must be yyyy-MM-dd.");
         if (end < start) return Invalid("to is before from.");
+
+        // E5e: status=active hides cancelled documents, status=voided shows only them; absent keeps E5b's "all".
+        bool? voided;
+        switch (status?.Trim().ToLowerInvariant())
+        {
+            case null or "" or "all": voided = null; break;
+            case "active": voided = false; break;
+            case "voided": voided = true; break;
+            default: return Invalid("status must be one of: all, active, voided.");
+        }
 
         var kinds = Values(kind);
         if (kinds.FirstOrDefault(k => k is not ("sale" or "sale_return" or "purchase" or "purchase_return")) is { } unknown)
@@ -82,7 +92,7 @@ public static class PortalNativeDocumentsEndpoints
 
         return JsonResults.Ok(PortalLedger.Documents(customers, movements, start, end, kinds, customer, userId,
             externalId => creatorLookup.TryGetValue(externalId, out var uid) ? uid : null, userNames,
-            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize), voided));
     }
 
     private static async Task<IResult> GetByKeyAsync(

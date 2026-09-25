@@ -1,0 +1,729 @@
+@page "/evraklar"
+@inherits PortalPageBase
+
+<PageTitle>Evraklar — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Evraklar" Eyebrow="Kayıtlar" Subtitle="Satış, alış ve iade faturaları" Busy="Busy">
+        <Actions>
+            @if (Session.CanEditNativeData)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.PointOfSale" OnClick="@(() => OpenNew("sale"))" id="document-new-sale">Yeni satış</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Rounded.LocalShipping" OnClick="@(() => OpenNew("purchase"))" id="document-new-purchase">Yeni alış</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Rounded.AssignmentReturn" OnClick="@(() => OpenNew("sale_return"))" id="document-new-return">Yeni iade</MudButton>
+            }
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+
+    <form class="ledger-toolbar" id="documents-filter" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <label class="inline-field">
+            Başlangıç
+            <input type="date" class="portal-input portal-input--date" id="documents-from" value="@Fmt.IsoDay(_from)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _from = d; }" />
+        </label>
+        <label class="inline-field">
+            Bitiş
+            <input type="date" class="portal-input portal-input--date" id="documents-to" value="@Fmt.IsoDay(_to)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _to = d; }" />
+        </label>
+        <label class="inline-field">
+            Tür
+            <select class="portal-select portal-select--short" id="documents-kind" value="@_kind" disabled="@Busy" @onchange="e => _kind = e.Value?.ToString() ?? string.Empty">
+                <option value="">Tümü</option>
+                @foreach (var (kind, label) in Kinds)
+                {
+                    <option value="@kind">@label</option>
+                }
+            </select>
+        </label>
+        <label class="inline-field">
+            Cari
+            <input class="portal-input" id="documents-customer" placeholder="Kod" value="@_customer" disabled="@Busy" @onchange="e => _customer = e.Value?.ToString() ?? string.Empty" />
+        </label>
+        <label class="inline-field">
+            Kullanıcı
+            <select class="portal-select portal-select--short" id="documents-user" value="@(_userId?.ToString() ?? string.Empty)" disabled="@Busy"
+                    @onchange="e => _userId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null">
+                <option value="">Tümü</option>
+                @foreach (var user in _users)
+                {
+                    <option value="@user.Id">@(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName)</option>
+                }
+            </select>
+        </label>
+        <label class="inline-field">
+            Durum
+            <select class="portal-select portal-select--short" id="documents-status" value="@_status" disabled="@Busy" @onchange="e => _status = e.Value?.ToString() ?? StatusActive">
+                <option value="active">Geçerli</option>
+                <option value="voided">İptal edilenler</option>
+                <option value="all">Tümü</option>
+            </select>
+        </label>
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" id="documents-search">Süz</MudButton>
+    </form>
+
+    @if (_result is not null)
+    {
+        @if (_result.Items.Count == 0)
+        {
+            <EmptyState Id="documents-empty" Icon="@Icons.Material.Rounded.ReceiptLong" Title="Bu süzgeçle evrak yok."
+                        Hint="Tarih aralığını genişletin ya da süzgeci kaldırın." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="table-scroll">
+                    <table class="data-table data-table--plain" id="documents-table">
+                        <thead>
+                            <tr>
+                                <th>Tarih</th>
+                                <th>Belge no</th>
+                                <th>Tür</th>
+                                <th>Cari</th>
+                                <th>Kullanıcı</th>
+                                <th class="num">Tutar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _result.Items)
+                            {
+                                <tr data-document="@row.DocumentKey" class="row-clickable @(row.Voided ? "is-voided" : null)" @onclick="() => OpenAsync(row.DocumentKey)" title="Evrakı aç">
+                                    <td class="nowrap">@DayText(row.Date)</td>
+                                    <td class="mono">@(row.DocumentNo ?? "—")</td>
+                                    <td>
+                                        <span class="badge badge--@KindTone(row.Kind)">@KindLabel(row.Kind)</span>
+                                        @if (row.Voided)
+                                        {
+                                            <span class="badge badge--off">İptal</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="cell-title">@row.CustomerTitle</div>
+                                        <div class="cell-sub">@row.CustomerCode</div>
+                                    </td>
+                                    <td>@(row.UserName ?? "—")</td>
+                                    <td class="num">@Fmt.Money(row.Amount)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <Pager Id="documents-pager" Page="_page" PageSize="_pageSize" Total="_result.Total" Busy="Busy" Unit="evrak"
+                       PageChanged="GoToAsync" PageSizeChanged="PageSizeAsync" />
+            </MudPaper>
+        }
+    }
+
+    <DetailSheet Id="document-sheet" Open="_detailOpen" Busy="_detailBusy" Eyebrow="@(_detail is null ? "Evrak" : KindLabel(_detail.Kind))"
+                 Title="@(_detail?.DocumentNo ?? "Evrak")" OnClose="CloseDetail">
+        <ChildContent>
+            @if (_detailError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="document-error">@_detailError</MudAlert>
+            }
+            @if (_detail is { } document)
+            {
+                @if (document.Voided)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="document-voided">Bu evrak iptal edildi; stok ve cari etkisi geri alındı.</MudAlert>
+                }
+                <div class="detail-summary">
+                    <div class="detail-amount" id="document-amount">@Fmt.Money(document.Amount)</div>
+                    <dl class="detail-facts">
+                        <dt>Tarih</dt><dd>@DayText(document.Date)</dd>
+                        <dt>Cari</dt><dd>@document.CustomerTitle <span class="text-muted">(@document.CustomerCode)</span></dd>
+                        <dt>Ödeme</dt><dd id="document-payment-type">@(document.PaymentType ?? "Açık hesap")</dd>
+                        @if (!string.IsNullOrWhiteSpace(document.Description))
+                        {
+                            <dt>Açıklama</dt><dd>@document.Description</dd>
+                        }
+                    </dl>
+                </div>
+                @if (!document.LinesAvailable)
+                {
+                    <EmptyState Id="document-no-lines" Icon="@Icons.Material.Rounded.ListAlt" Title="Bu evrakın kalemi yok." />
+                }
+                else
+                {
+                    <div class="table-scroll">
+                        <table class="data-table detail-lines" id="document-lines">
+                            <thead>
+                                <tr>
+                                    <th>Kod</th>
+                                    <th>Ürün</th>
+                                    <th class="num">Miktar</th>
+                                    <th class="num">Birim fiyat</th>
+                                    <th class="num">Tutar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in document.Lines)
+                                {
+                                    <tr data-line="@line.StockCode">
+                                        <td class="mono">@line.StockCode</td>
+                                        <td class="cell-title">@(line.Name ?? "—")</td>
+                                        <td class="num">@Fmt.Quantity(line.Quantity)</td>
+                                        <td class="num">@Fmt.Money(line.UnitPrice)</td>
+                                        <td class="num">@Fmt.Money(line.Amount)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        </ChildContent>
+        <Footer>
+            @if (_detail is { } opened)
+            {
+                <a class="mud-button-root mud-button mud-button-text mud-button-text-primary" href="@PrintHref(opened.DocumentKey)" target="_blank" id="document-print">Yazdır</a>
+                @if (Session.CanEditNativeData && !opened.Voided && EditableKinds.Contains(opened.Kind))
+                {
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@Busy" OnClick="OpenVoid" id="document-void">İptal et</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" OnClick="OpenEdit" id="document-edit">Düzenle</MudButton>
+                }
+            }
+        </Footer>
+    </DetailSheet>
+
+    @if (Session.CanEditNativeData)
+    {
+        <DetailSheet Id="document-void-sheet" Open="_voidOpen" Busy="Busy" Eyebrow="Evrak" Title="Evrakı iptal et" OnClose="CloseVoid">
+            <ChildContent>
+                @if (_detail is { } voiding)
+                {
+                    <form class="stack-form" id="document-void-form" @onsubmit="ConfirmVoidAsync" @onsubmit:preventDefault>
+                        <p class="text-muted">@KindLabel(voiding.Kind) · @(voiding.DocumentNo) · @Fmt.Money(voiding.Amount)</p>
+                        <p class="field-hint">Stok ve cari etkisi birlikte geri alınır; evrak silinmez, iptal olarak kalır.</p>
+                        <MudTextField T="string" @bind-Value="_voidReason" Label="Gerekçe" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="document-void-reason" Lines="2" Required="true" />
+                        <div class="form-actions">
+                            <span style="flex: 1"></span>
+                            <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseVoid">Vazgeç</MudButton>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Error" Disabled="@Busy" id="document-void-confirm">İptal et</MudButton>
+                        </div>
+                    </form>
+                }
+            </ChildContent>
+        </DetailSheet>
+
+        <DetailSheet Id="document-form-sheet" Open="_formOpen" Busy="Busy" Eyebrow="Evrak" Title="@FormTitle" OnClose="CloseForm">
+            <ChildContent>
+                <form class="stack-form document-form" id="document-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                    <div class="stack-field">
+                        <span class="field-label">@PartyLabel</span>
+                        @if (_party is { } party)
+                        {
+                            <div class="document-party" id="document-party">
+                                <span class="cell-title">@party.Title</span>
+                                <span class="cell-sub">@party.Code</span>
+                                <button type="button" class="link-button" id="document-party-change" @onclick="ClearParty">Değiştir</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="document-search">
+                                <input class="portal-input" id="document-party-search" placeholder="Kod ya da unvan" value="@_partySearch"
+                                       @onchange="e => _partySearch = e.Value?.ToString() ?? string.Empty" />
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="SearchPartyAsync" id="document-party-search-go">Ara</MudButton>
+                            </div>
+                            @if (_partyResults.Count > 0)
+                            {
+                                <ul class="pick-list" id="document-party-results">
+                                    @foreach (var found in _partyResults)
+                                    {
+                                        <li><button type="button" class="pick-item" data-party="@found.CustomerCode" @onclick="() => PickParty(found)">
+                                            <span class="cell-title">@found.Title</span> <span class="cell-sub">@found.CustomerCode</span>
+                                        </button></li>
+                                    }
+                                </ul>
+                            }
+                            else if (_partySearched)
+                            {
+                                <span class="field-hint" id="document-party-none">Eşleşen cari yok.</span>
+                            }
+                        }
+                    </div>
+
+                    <div class="form-row">
+                        <label class="stack-field">
+                            <span class="field-label">Tarih</span>
+                            <input type="date" class="portal-input" id="document-date" value="@_date" @onchange="e => _date = e.Value?.ToString()" />
+                        </label>
+                        <label class="stack-field">
+                            <span class="field-label">Belge no</span>
+                            <input class="portal-input" id="document-no" value="@_form.DocumentNo" maxlength="40"
+                                   placeholder="@(_editing is null ? "Boşsa otomatik" : "Boşsa düzeltme numarası")" @onchange="e => _form.DocumentNo = Blank(e.Value?.ToString())" />
+                        </label>
+                        <label class="stack-field">
+                            <span class="field-label">Ödeme</span>
+                            <select class="portal-select" id="document-payment" value="@(_form.PaymentType ?? string.Empty)" @onchange="e => _form.PaymentType = Blank(e.Value?.ToString())">
+                                <option value="">Açık hesap</option>
+                                @foreach (var type in PaymentTypes)
+                                {
+                                    <option value="@type">@type</option>
+                                }
+                            </select>
+                        </label>
+                    </div>
+
+                    <div class="stack-field">
+                        <span class="field-label">Kalemler</span>
+                        <div class="document-search">
+                            <input class="portal-input" id="document-product-search" placeholder="Ürün kodu, adı ya da barkod" value="@_productSearch"
+                                   @onchange="e => _productSearch = e.Value?.ToString() ?? string.Empty" />
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="SearchProductAsync" id="document-product-search-go">Ara</MudButton>
+                        </div>
+                        @if (_productResults.Count > 0)
+                        {
+                            <ul class="pick-list" id="document-product-results">
+                                @foreach (var found in _productResults)
+                                {
+                                    <li><button type="button" class="pick-item" data-product="@found.StockCode" @onclick="() => AddLine(found)">
+                                        <span class="cell-title">@found.Name</span> <span class="cell-sub">@found.StockCode · @Fmt.Quantity(found.Quantity) stokta · @(found.Price is { } p ? Fmt.Money(p) : "fiyat yok")</span>
+                                    </button></li>
+                                }
+                            </ul>
+                        }
+                        else if (_productSearched)
+                        {
+                            <span class="field-hint" id="document-product-none">Eşleşen ürün yok.</span>
+                        }
+
+                        @if (_lines.Count > 0)
+                        {
+                            <div class="table-scroll">
+                                <table class="data-table detail-lines" id="document-form-lines">
+                                    <thead>
+                                        <tr>
+                                            <th>Ürün</th>
+                                            <th class="num">Miktar</th>
+                                            <th class="num">Birim fiyat</th>
+                                            <th class="num">İsk. %</th>
+                                            <th class="num">Tutar</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var line in _lines)
+                                        {
+                                            <tr data-line="@line.Code">
+                                                <td class="cell-title">@line.Name<div class="cell-sub">@line.Code</div></td>
+                                                <td class="num"><input type="number" class="portal-input portal-input--number line-quantity" min="0" step="any" value="@Number(line.Quantity)" @onchange="e => line.Quantity = Parse(e.Value) ?? line.Quantity" /></td>
+                                                <td class="num"><input type="number" class="portal-input portal-input--number line-price" min="0" step="any" value="@Number(line.UnitPrice)" @onchange="e => line.UnitPrice = Parse(e.Value) ?? line.UnitPrice" /></td>
+                                                <td class="num"><input type="number" class="portal-input portal-input--number line-discount" min="0" max="100" step="any" value="@Number(line.Discount)" @onchange="e => line.Discount = Math.Clamp(Parse(e.Value) ?? 0, 0, 100)" /></td>
+                                                <td class="num line-total">@Fmt.Money(line.Total)</td>
+                                                <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Kalemi çıkar" OnClick="() => _lines.Remove(line)" /></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else if (_formKind == "purchase")
+                        {
+                            <span class="field-hint">Kalemsiz alışta yalnız tutar girilir; stok değişmez.</span>
+                        }
+                    </div>
+
+                    @if (_formKind == "purchase" && _lines.Count == 0)
+                    {
+                        <MudNumericField T="decimal?" @bind-Value="_form.Amount" Label="Tutar" Variant="Variant.Outlined" Margin="Margin.Dense" id="document-amount" Min="@(0.01m)" Adornment="Adornment.End" AdornmentText="TL" />
+                    }
+
+                    <MudTextField T="string" @bind-Value="_form.Description" Label="Açıklama" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="document-description" Lines="2" />
+
+                    <div class="document-total">
+                        <span class="field-label">Toplam</span>
+                        <strong id="document-total">@Fmt.Money(FormTotal)</strong>
+                    </div>
+
+                    @if (_editing is not null)
+                    {
+                        <MudTextField T="string" @bind-Value="_form.VoidReason" Label="Neden düzenleniyor" Variant="Variant.Outlined" Margin="Margin.Dense" InputId="document-edit-reason" Lines="2" Required="true"
+                                      HelperText="Eski evrak iptal edilir, düzeltilmiş evrak yeni numarayla kaydedilir." />
+                    }
+
+                    <div class="form-actions">
+                        <span style="flex: 1"></span>
+                        <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="CloseForm">Vazgeç</MudButton>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="document-save">Kaydet</MudButton>
+                    </div>
+                </form>
+            </ChildContent>
+        </DetailSheet>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Ledger;
+
+    private const string StatusActive = "active";
+    private static readonly (string Kind, string Label)[] Kinds = [("sale", "Satış"), ("purchase", "Alış"), ("sale_return", "Satış iadesi")];
+    private static readonly HashSet<string> EditableKinds = ["sale", "purchase", "sale_return"];
+
+    /// <summary>The server settles these on the spot (a payment leg in the same transaction); "Açık hesap" is none.</summary>
+    private static readonly string[] PaymentTypes = ["Nakit", "Kredi Kartı", "EFT / Havale"];
+
+    private DateOnly _from = new(Fmt.Today().Year, Fmt.Today().Month, 1);
+    private DateOnly _to = Fmt.Today();
+    private string _kind = string.Empty;
+    private string _customer = string.Empty;
+    private Guid? _userId;
+    private string _status = StatusActive;
+    private int _page = 1;
+    private int _pageSize = 50;
+    private NativeDocumentsResponse? _result;
+    private UserDto[] _users = [];
+    private string? _openOnLoad;
+
+    private string? Notice { get; set; }
+
+    protected override void OnInitialized()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (query.TryGetValue("belge", out var key) && !string.IsNullOrWhiteSpace(key)) _openOnLoad = key[^1];
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _users = (await Api.UsersAsync()).Users;
+        await LoadListAsync();
+        if (_openOnLoad is { } key)
+        {
+            _openOnLoad = null;
+            await OpenAsync(key);
+        }
+    }
+
+    private async Task LoadListAsync()
+    {
+        var kinds = string.IsNullOrEmpty(_kind) ? [] : new[] { _kind };
+        _result = await Api.NativeDocumentsAsync(_from, _to, kinds, Blank(_customer), _userId, _status, _page, _pageSize);
+    }
+
+    private Task SearchAsync()
+    {
+        _page = 1;
+        return RunAsync(LoadListAsync);
+    }
+
+    private Task GoToAsync(int page)
+    {
+        _page = page;
+        return RunAsync(LoadListAsync);
+    }
+
+    private Task PageSizeAsync(int size)
+    {
+        _pageSize = size;
+        _page = 1;
+        return RunAsync(LoadListAsync);
+    }
+
+    // ---- detay -------------------------------------------------------------------------
+
+    private bool _detailOpen;
+    private bool _detailBusy;
+    private string? _detailError;
+    private NativeDocumentDto? _detail;
+    private string? _detailKey;
+
+    private async Task OpenAsync(string key)
+    {
+        Notice = null;
+        _detailKey = key;
+        _detail = null;
+        _detailError = null;
+        _detailOpen = true;
+        _detailBusy = true;
+        StateHasChanged();
+        bool Current() => _detailOpen && _detailKey == key;
+        try
+        {
+            var document = await Api.NativeDocumentAsync(key);
+            if (Current()) _detail = document;
+        }
+        catch (PortalApiException failed)
+        {
+            if (Current()) _detailError = failed.Message;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            if (Current()) _detailError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
+        }
+        catch (SessionEndedException)
+        {
+            _detailOpen = false;
+            await RunAsync(LoadListAsync);
+        }
+        finally
+        {
+            if (Current()) _detailBusy = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CloseDetail()
+    {
+        _detailOpen = false;
+        _detail = null;
+        _detailKey = null;
+    }
+
+    private static string PrintHref(string key) => "evrak-yazdir?belge=" + Uri.EscapeDataString(key);
+
+    // ---- iptal (E5c) --------------------------------------------------------------------
+
+    private bool _voidOpen;
+    private string? _voidReason;
+
+    private void OpenVoid()
+    {
+        _voidReason = null;
+        _voidOpen = true;
+    }
+
+    private void CloseVoid() => _voidOpen = false;
+
+    private Task ConfirmVoidAsync()
+    {
+        Notice = null;
+        if (string.IsNullOrWhiteSpace(_voidReason))
+        {
+            Error = "İptal için gerekçe gerekli.";
+            return Task.CompletedTask;
+        }
+        var document = _detail!;
+        var reason = _voidReason!.Trim();
+        return RunAsync(async () =>
+        {
+            await Api.VoidNativeDocumentAsync(document.DocumentKey, new NativeLedgerVoidRequest { Reason = reason, OperationId = Guid.NewGuid().ToString("N") });
+            _voidOpen = false;
+            CloseDetail();
+            await LoadListAsync();
+            Notice = $"{KindLabel(document.Kind)} {document.DocumentNo} iptal edildi.";
+        });
+    }
+
+    // ---- yeni / düzenle (E5a, E5d) ------------------------------------------------------
+
+    private sealed class LineDraft
+    {
+        public string Code { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public decimal Quantity { get; set; } = 1;
+        public decimal UnitPrice { get; set; }
+
+        /// <summary>Line discount in percent.</summary>
+        public decimal Discount { get; set; }
+
+        public decimal Gross => Quantity * UnitPrice;
+        public decimal Total => decimal.Round(Gross * (1 - Discount / 100m), 2);
+    }
+
+    private sealed record Party(string Code, string Title);
+
+    private bool _formOpen;
+    private string _formKind = "sale";
+    private NativeDocumentDto? _editing;
+    private NativeDocumentRequest _form = new();
+    private string? _date;
+    private Party? _party;
+    private readonly List<LineDraft> _lines = [];
+
+    private string _partySearch = string.Empty;
+    private bool _partySearched;
+    private List<CustomerRowDto> _partyResults = [];
+    private string _productSearch = string.Empty;
+    private bool _productSearched;
+    private List<StockItemDto> _productResults = [];
+
+    private string FormTitle => _editing is null ? $"Yeni {KindLabel(_formKind).ToLower(Fmt.Turkish)}" : $"{KindLabel(_formKind)} düzenle";
+
+    private string PartyLabel => _formKind == "purchase" ? "Tedarikçi" : "Müşteri";
+
+    private decimal FormTotal => _lines.Count > 0 ? _lines.Sum(l => l.Total) : _form.Amount ?? 0;
+
+    private void OpenNew(string kind)
+    {
+        Notice = null;
+        Error = null;
+        ResetForm(kind);
+        _date = Fmt.IsoDay(Fmt.Today());
+        _formOpen = true;
+    }
+
+    private void OpenEdit()
+    {
+        if (_detail is not { } document) return;
+        Notice = null;
+        Error = null;
+        ResetForm(document.Kind);
+        _editing = document;
+        _party = new Party(document.CustomerCode, document.CustomerTitle);
+        _date = Fmt.TryIsoDay(document.Date, out var day) ? Fmt.IsoDay(day) : null;
+        _form.Description = document.Description;
+        _form.PaymentType = document.PaymentType is { } paid && PaymentTypes.Contains(paid) ? paid : null;
+        foreach (var line in document.Lines)
+        {
+            var gross = line.Quantity * line.UnitPrice;
+            _lines.Add(new LineDraft
+            {
+                Code = line.StockCode,
+                Name = line.Name ?? line.StockCode,
+                Quantity = line.Quantity,
+                UnitPrice = line.UnitPrice,
+                Discount = gross > 0 && line.Amount < gross ? decimal.Round((1 - line.Amount / gross) * 100m, 2) : 0,
+            });
+        }
+        if (_lines.Count == 0) _form.Amount = document.Amount;
+        _formOpen = true;
+    }
+
+    private void ResetForm(string kind)
+    {
+        _formKind = kind;
+        _editing = null;
+        _form = new NativeDocumentRequest { OperationId = Guid.NewGuid().ToString("N") };
+        _party = null;
+        _lines.Clear();
+        _partySearch = string.Empty;
+        _partySearched = false;
+        _partyResults = [];
+        _productSearch = string.Empty;
+        _productSearched = false;
+        _productResults = [];
+    }
+
+    private void CloseForm() => _formOpen = false;
+
+    private Task SearchPartyAsync()
+    {
+        var search = Blank(_partySearch);
+        if (search is null) return Task.CompletedTask;
+        return RunAsync(async () =>
+        {
+            _partyResults = (await Api.CustomersAsync(search, "all", "title", false, 1, 10)).Items;
+            _partySearched = true;
+        });
+    }
+
+    private void PickParty(CustomerRowDto found)
+    {
+        _party = new Party(found.CustomerCode, found.Title);
+        _partyResults = [];
+        _partySearched = false;
+    }
+
+    private void ClearParty() => _party = null;
+
+    private Task SearchProductAsync()
+    {
+        var search = Blank(_productSearch);
+        if (search is null) return Task.CompletedTask;
+        return RunAsync(async () =>
+        {
+            _productResults = (await Api.StockSearchAsync(new StockFilter { Search = search, PageSize = 25 })).Items;
+            _productSearched = true;
+        });
+    }
+
+    private void AddLine(StockItemDto product)
+    {
+        if (_lines.FirstOrDefault(l => l.Code == product.StockCode) is { } existing) existing.Quantity += 1;
+        else _lines.Add(new LineDraft { Code = product.StockCode, Name = product.Name, UnitPrice = product.Price ?? 0 });
+        _productResults = [];
+        _productSearched = false;
+        _productSearch = string.Empty;
+    }
+
+    private Task SaveAsync()
+    {
+        Notice = null;
+        var problem = _party is null ? $"{PartyLabel} seçin."
+            : _formKind != "purchase" && _lines.Count == 0 ? "En az bir kalem ekleyin."
+            : _lines.Any(l => l.Quantity <= 0) ? "Her kalemin miktarı sıfırdan büyük olmalı."
+            : _lines.Any(l => l.UnitPrice < 0) ? "Birim fiyat eksi olamaz."
+            : _formKind == "purchase" && _lines.Count == 0 && _form.Amount is not > 0 ? "Kalemsiz alışta tutar gerekli."
+            : _editing is not null && string.IsNullOrWhiteSpace(_form.VoidReason) ? "Düzenleme için gerekçe gerekli."
+            : null;
+        if (problem is not null)
+        {
+            Error = problem;
+            return Task.CompletedTask;
+        }
+
+        _form.PartyCode = _party!.Code;
+        _form.OccurredAt = Fmt.TryIsoDay(_date, out var day) ? Fmt.IsoDay(day) : null;
+        _form.Lines = _lines.Select(l => new NativeDocumentLineRequest
+        {
+            ProductCode = l.Code,
+            Quantity = l.Quantity,
+            UnitPrice = l.UnitPrice,
+            LineTotal = l.Discount > 0 ? l.Total : null,
+        }).ToList();
+        if (_lines.Count > 0) _form.Amount = null;
+        _form.VoidReason = _editing is null ? null : _form.VoidReason!.Trim();
+
+        var label = KindLabel(_formKind);
+        var total = FormTotal;
+        var editing = _editing;
+        return RunAsync(async () =>
+        {
+            if (editing is null) await Api.PostNativeDocumentAsync(_formKind, _form);
+            else await Api.EditNativeDocumentAsync(editing.DocumentKey, _form);
+            _formOpen = false;
+            if (editing is not null) CloseDetail();
+            await LoadListAsync();
+            Notice = editing is null
+                ? $"{label} kaydedildi: {Fmt.Money(total)}."
+                : $"{label} {editing.DocumentNo} düzeltildi; eski evrak iptal edildi.";
+        });
+    }
+
+    // ---- yardımcılar ----------------------------------------------------------------------
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        "sale" => "Satış",
+        "purchase" => "Alış",
+        "sale_return" => "Satış iadesi",
+        "purchase_return" => "Alış iadesi",
+        _ => "Evrak",
+    };
+
+    private static string KindTone(string kind) => kind switch
+    {
+        "sale" => "primary",
+        "sale_return" or "purchase_return" => "danger",
+        "purchase" => "warning",
+        _ => "muted",
+    };
+
+    private static string DayText(string iso) =>
+        Fmt.TryIsoDay(iso, out var day) ? day.ToString("dd.MM.yyyy", Fmt.Turkish) : iso;
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string Number(decimal value) => value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static decimal? Parse(object? value) =>
+        decimal.TryParse(value?.ToString()?.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var number)
+            ? number
+            : null;
+}

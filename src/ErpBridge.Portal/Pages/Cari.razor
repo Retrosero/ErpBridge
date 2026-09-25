@@ -241,6 +241,12 @@ else
                     </table>
                 </div>
             }
+            @if (Session.CanEditNativeData)
+            {
+                <div class="form-actions mt-3">
+                    <a class="link-button" href="@($"evraklar?belge={Uri.EscapeDataString(document.DocumentKey)}")" id="document-open-in-documents">Evraklarda aç (düzenle · iptal · yazdır)</a>
+                </div>
+            }
         }
     </DetailSheet>
 

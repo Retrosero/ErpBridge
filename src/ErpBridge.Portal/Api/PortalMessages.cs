@@ -69,6 +69,15 @@ public static class PortalMessages
         "CUSTOMER_CARD_REJECTED" => "Bu cari kaydedilemedi.",
         "INVALID_PAYMENT" => "İşlem kaydedilemedi: cari bulunamadı ya da tutar geçersiz.",
         "PAYMENT_REJECTED" => "Bu işlem kaydedilemedi.",
+        "INVALID_SALES_DOCUMENT" => "Evrak kaydedilemedi: cari bulunamadı, kalem eksik ya da tarih geçersiz.",
+        "SALES_DOCUMENT_REJECTED" => "Evrak kaydedilemedi: kalemlerden biri bilinmeyen bir ürün ya da tutar geçersiz.",
+        "INVALID_DOCUMENT_EDIT_REQUEST" => "Düzeltme kaydedilemedi: gerekçe, cari ve kalemleri kontrol edin.",
+        "DOCUMENT_EDIT_REJECTED" => "Düzeltme kaydedilemedi; eski evrak değişmedi. Kalemleri ve belge numarasını kontrol edin.",
+        "INVALID_DOCUMENT_VOID_REQUEST" => "İptal için gerekçe gerekli.",
+        "DOCUMENT_VOID_REJECTED" => "Evrak iptal edilemedi.",
+        "DOCUMENT_NOT_FOUND" => "Evrak bulunamadı; liste yenilendi.",
+        "DOCUMENT_NOT_EDITABLE" => "Bu evrak türü panelden düzenlenemez.",
+        "ALREADY_VOIDED" => "Bu kayıt zaten iptal edilmiş.",
         _ => $"İşlem tamamlanamadı ({code}). Lütfen tekrar deneyin.",
     };
 }
