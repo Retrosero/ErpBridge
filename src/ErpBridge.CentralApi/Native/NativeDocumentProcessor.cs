@@ -822,9 +822,21 @@ public sealed class NativeDocumentProcessor
 
         var numberField = string.Equals(documentType, PurchaseReceipt, StringComparison.OrdinalIgnoreCase) ? "invoiceNo" : "mobileDocumentId";
         var requested = Text(corrected, numberField);
-        var number = requested is not null && !string.Equals(requested, original.DocumentNo, StringComparison.Ordinal)
-            ? requested
-            : RevisionNumber(original.DocumentNo ?? booking.ExternalId);
+        var party = Text(corrected, "supplierCode", "customerCode");
+        string number;
+        if (requested is not null && !string.Equals(requested, original.DocumentNo, StringComparison.Ordinal))
+        {
+            if (party is not null && await DocumentNumberInUseAsync(db, booking.TenantId, party, requested, ct))
+                return $"Document number {requested} is already used for {party}.";
+            number = requested;
+        }
+        else
+        {
+            number = RevisionNumber(original.DocumentNo ?? booking.ExternalId);
+            // A revision someone already typed by hand (or an earlier chain on another party's number) is skipped.
+            while (party is not null && await DocumentNumberInUseAsync(db, booking.TenantId, party, number, ct))
+                number = RevisionNumber(number);
+        }
         var node = JsonNode.Parse(corrected.GetRawText())!.AsObject();
         node[numberField] = number;
         if (node["occurredAt"] is null) node["occurredAt"] = original.OccurredAt;
@@ -836,6 +848,31 @@ public sealed class NativeDocumentProcessor
             SalesReturn => await BookSalesReturnAsync(db, booking, correctedDocument, ct),
             _ => await BookPurchaseReceiptAsync(db, booking, correctedDocument, ct),
         };
+    }
+
+    /// <summary>
+    /// Whether <paramref name="party"/> already has a native document numbered <paramref name="documentNo"/> — a
+    /// ledger or stock row with that <c>cariKod</c> + <c>evrakNo</c>, the pair <c>PortalRecords.NativeDocumentKey</c>
+    /// groups a document by. <c>evrakNo</c> lives only in the JSON payload, so the payload text is pre-filtered
+    /// (raw and JSON-escaped spellings) and each candidate is then checked exactly.
+    /// </summary>
+    private static async Task<bool> DocumentNumberInUseAsync(CentralApiDbContext db, Guid tenantId, string party, string documentNo, CancellationToken ct)
+    {
+        var escaped = JsonSerializer.Serialize(documentNo);
+        var quoted = "\"" + documentNo + "\"";
+        var candidates = await db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && (r.Entity == "customerTransactions" || r.Entity == "stockTransactions") && !r.IsDeleted
+                        && r.PayloadJson != null && (r.PayloadJson.Contains(escaped) || r.PayloadJson.Contains(quoted)))
+            .Select(r => r.PayloadJson!)
+            .ToListAsync(ct);
+        foreach (var payload in candidates)
+        {
+            using var row = JsonDocument.Parse(payload);
+            if (string.Equals(Text(row.RootElement, "evrakNo"), documentNo, StringComparison.Ordinal)
+                && string.Equals(Text(row.RootElement, "cariKod", "customerCode"), party, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>The next revision of a document number: <c>A-1</c> → <c>A-1-D1</c>, <c>A-1-D1</c> → <c>A-1-D2</c>.</summary>

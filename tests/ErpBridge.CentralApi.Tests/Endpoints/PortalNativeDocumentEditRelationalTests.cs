@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -152,6 +152,66 @@ public sealed class PortalNativeDocumentEditRelationalTests : IClassFixture<Sqli
             .StatusCode.Should().Be(HttpStatusCode.Created);
         (await StockAsync(c.Id, "CAY-1")).Should().Be(40m);
         (await BalanceAsync(c.Id, "C-001")).Should().Be(0m);
+    }
+
+    [Fact]
+    public async Task A_revision_number_already_in_use_for_the_party_is_skipped()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001");
+        await PostSaleAsync(c, "C-001", "S-1", ("CAY-1", 3, 150));
+        var key = await DocumentKeyAsync(c);
+        await PostSaleAsync(c, "C-001", "S-1-D1", ("CAY-1", 1, 150)); // typed by hand, unrelated to the edit
+
+        (await EditAsync(c, key, new { voidReason = "Düzeltme", lines = new[] { new { productCode = "CAY-1", quantity = 2, unitPrice = 150 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var documents = await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}");
+        documents.Items.Select(i => i.DocumentNo).Should().BeEquivalentTo(["S-1", "S-1-D1", "S-1-D2"]);
+        documents.Items.Single(i => i.DocumentNo == "S-1-D1").Amount.Should().Be(150m, "the unrelated document is not merged with the correction");
+    }
+
+    [Fact]
+    public async Task A_requested_number_already_in_use_for_the_party_is_rejected_and_nothing_changes()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001");
+        await PostSaleAsync(c, "C-001", "S-1", ("CAY-1", 3, 150));
+        var key = (await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}")).Items.Single().DocumentKey;
+        await PostSaleAsync(c, "C-001", "S-2", ("CAY-1", 1, 150));
+
+        var response = await EditAsync(c, key, new { voidReason = "Düzeltme", documentNo = "S-2", lines = new[] { new { productCode = "CAY-1", quantity = 2, unitPrice = 150 } } });
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await StockAsync(c.Id, "CAY-1")).Should().Be(36m);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(600m);
+    }
+
+    [Fact]
+    public async Task Retrying_an_edit_or_a_void_with_the_same_operation_id_is_idempotent_not_a_conflict()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001");
+        await PostSaleAsync(c, "C-001", "S-1", ("CAY-1", 3, 150));
+        var key = await DocumentKeyAsync(c);
+        var edit = new { voidReason = "Düzeltme", operationId = "op-edit-1", lines = new[] { new { productCode = "CAY-1", quantity = 2, unitPrice = 150 } } };
+
+        (await EditAsync(c, key, edit)).StatusCode.Should().Be(HttpStatusCode.Created);
+        var retry = await EditAsync(c, key, edit);
+
+        retry.StatusCode.Should().Be(HttpStatusCode.OK, await retry.Content.ReadAsStringAsync());
+        (await retry.ReadAsJsonAsync<IngestJobResponse>()).Idempotent.Should().BeTrue();
+        (await StockAsync(c.Id, "CAY-1")).Should().Be(38m, "the retry booked nothing");
+
+        var correctedKey = (await GetJsonAsync<PortalDocumentsResponse>(c.Patron, $"/api/v1/portal/native/documents?{AllDates}"))
+            .Items.Single(i => i.DocumentNo == "S-1-D1").DocumentKey;
+        var voidPath = $"/api/v1/portal/native/documents/{Uri.EscapeDataString(correctedKey)}/void";
+        (await _factory.CreateClient().PostJsonAsync(voidPath, new { reason = "İptal", operationId = "op-void-1" }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await _factory.CreateClient().PostJsonAsync(voidPath, new { reason = "İptal", operationId = "op-void-1" }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await StockAsync(c.Id, "CAY-1")).Should().Be(40m);
     }
 
     [Fact]

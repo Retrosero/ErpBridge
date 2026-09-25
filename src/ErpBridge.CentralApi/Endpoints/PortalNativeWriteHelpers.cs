@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
@@ -122,6 +122,18 @@ internal static class PortalNativeWriteHelpers
             if (winner is null) throw;
             return JobResult(winner, idempotent: true, StatusCodes.Status200OK);
         }
+    }
+
+    /// <summary>
+    /// The idempotent <c>200</c> for an operation already booked under <paramref name="externalId"/>, or null.
+    /// For an endpoint whose own pre-checks would reject a retry because the first attempt already changed the
+    /// state they read (a void/edit's "already cancelled" 409): it answers the replay before those checks run.
+    /// </summary>
+    public static async Task<IResult?> ReplayAsync(CentralApiDbContext db, Guid tenantId, string documentType, string externalId, CancellationToken ct)
+    {
+        var existing = await db.Jobs.AsNoTracking()
+            .FirstOrDefaultAsync(j => j.TenantId == tenantId && j.DocumentType == documentType && j.ExternalId == externalId, ct);
+        return existing is null ? null : JobResult(existing, idempotent: true, StatusCodes.Status200OK);
     }
 
     private static IResult JobResult(Job job, bool idempotent, int statusCode) => JsonResults.Status(statusCode, new IngestJobResponse

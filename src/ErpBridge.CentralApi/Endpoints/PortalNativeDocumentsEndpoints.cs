@@ -120,6 +120,11 @@ public static class PortalNativeDocumentsEndpoints
         var document = PortalLedger.DocumentByKey(customers, movements, key);
         if (document is null)
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with that key for this company." });
+        // The operation key names the party, not the document key: a document key embeds the document number,
+        // which defaults to the original job's own external id, so key-based ids could pass Jobs.ExternalId's 128.
+        var operationKey = PortalNativeWriteHelpers.OperationKey("portal-document-void", document.CustomerCode, body?.OperationId);
+        // A retry of a void that already booked (its response lost) must get the idempotent 200, not the 409 below.
+        if (await PortalNativeWriteHelpers.ReplayAsync(db, tenant.Id, NativeDocumentProcessor.DocumentVoid, operationKey, ct) is { } replay) return replay;
         if (document.Voided)
             return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "ALREADY_VOIDED", Message = "This document was already cancelled." });
 
@@ -127,15 +132,13 @@ public static class PortalNativeDocumentsEndpoints
         var record = await db.MobileRecords.AsNoTracking()
             .FirstOrDefaultAsync(r => r.TenantId == tenant.Id && r.Entity == "customerTransactions" && r.RecordKey == document.Id && !r.IsDeleted, ct);
 
-        // The operation key names the party, not the document key: a document key embeds the document number,
-        // which defaults to the original job's own external id, so key-based ids could pass Jobs.ExternalId's 128.
         var payload = new { targetKey = document.Id, reason };
         var audit = new PortalNativeWriteHelpers.AuditInfo(
             Entity: document.Kind, EntityKey: document.CustomerCode,
             Action: "void", Summary: $"İptal edildi ({voidedKind}): {reason}", BeforeJson: record?.PayloadJson);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant, user!, NativeDocumentProcessor.DocumentVoid,
-            PortalNativeWriteHelpers.OperationKey("portal-document-void", document.CustomerCode, body?.OperationId), payload, DocumentVoidRejectedErrorCode, ct, audit);
+            operationKey, payload, DocumentVoidRejectedErrorCode, ct, audit);
     }
 
     /// <summary>
@@ -160,6 +163,8 @@ public static class PortalNativeDocumentsEndpoints
         var document = PortalLedger.DocumentByKey(customers, movements, key);
         if (document is null)
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "DOCUMENT_NOT_FOUND", Message = "No document with that key for this company." });
+        var operationKey = PortalNativeWriteHelpers.OperationKey("portal-document-edit", document.CustomerCode, body.OperationId);
+        if (await PortalNativeWriteHelpers.ReplayAsync(db, tenant.Id, NativeDocumentProcessor.DocumentEdit, operationKey, ct) is { } replay) return replay;
         if (document.Voided)
             return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "ALREADY_VOIDED", Message = "This document was already cancelled." });
 
@@ -194,7 +199,7 @@ public static class PortalNativeDocumentsEndpoints
             BeforeJson: record?.PayloadJson);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant, user!, NativeDocumentProcessor.DocumentEdit,
-            PortalNativeWriteHelpers.OperationKey("portal-document-edit", document.CustomerCode, body.OperationId), payload, DocumentEditRejectedErrorCode, ct, audit);
+            operationKey, payload, DocumentEditRejectedErrorCode, ct, audit);
     }
 
     private static string KindLabel(string kind) => kind switch
