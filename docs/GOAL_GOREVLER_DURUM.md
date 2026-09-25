@@ -9,6 +9,7 @@
 | S5 | `TaskSchedulerWorker` | ✅ | | Dakikada bir; kapalı kalınan dönemler için tek örnek |
 | S6 | Testler | ✅ | | `TaskRelationalTests` (9), `TaskScheduleTests` (5) |
 | S7 | Bilgi bankası (00 kural 27, 03), PR, Coolify | ✅ | #203 | Coolify dağıtımı 2026-09-25; `/health/schema` 39 uygulanmış / 0 bekleyen, görev ucu 401 (oturum ister) |
+| S8 | Cari ziyaretinde hatırlat (sunucu alanları) | ✅ | | Migration `GorevZiyaretHatirlatma` (3 sütun, varsayılanlı) |
 | A1–A5 | Telefon | ✅ | siparis_cepte #102 | 1.5.260 Play internal; `Siparis_Cepte/docs/GOAL_GOREVLER.md` |
 
 **Sapma:** görünürlük ileri tarihli görevde gerçek saate değil zamanlayıcının başlatma işaretine

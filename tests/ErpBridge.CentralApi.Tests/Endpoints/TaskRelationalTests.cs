@@ -241,6 +241,39 @@ public sealed class TaskRelationalTests : IClassFixture<SqliteCentralApiFactory>
         people.Select(p => p.FullName).Should().Contain(["Ali Saha", "Mehmet Müdür", "Patron", "Veli Saha"]);
     }
 
+    [Fact]
+    public async Task A_visit_reminder_needs_a_customer_and_repeating_tasks_carry_it_from_their_start()
+    {
+        var c = await CompanyAsync();
+        var withCustomer = Guid.NewGuid();
+        var withoutCustomer = Guid.NewGuid();
+        var from = TaskService.NowMs() + 86_400_000;
+        var created = await OpsAsync(c.Mehmet,
+            new { opId = Guid.NewGuid(), type = "create_task", taskId = withCustomer, title = "Rafı kontrol et", customerCode = "C-1", customerName = "Bakkal", visitReminder = true, visitReminderFromMs = from, assigneeIds = new[] { c.AliId } },
+            new { opId = Guid.NewGuid(), type = "create_task", taskId = withoutCustomer, title = "Carisiz", visitReminder = true, assigneeIds = new[] { c.AliId } });
+        var task = created.Tasks.Single(t => t.Id == withCustomer);
+        task.VisitReminder.Should().BeTrue();
+        task.VisitReminderFromMs.Should().Be(from);
+        created.Tasks.Single(t => t.Id == withoutCustomer).VisitReminder.Should().BeFalse("there is no visit to remind at without a customer");
+
+        var edited = await OpsAsync(c.Mehmet, new { opId = Guid.NewGuid(), type = "update_task", taskId = withCustomer, title = "Rafı kontrol et", customerCode = "C-1", customerName = "Bakkal", visitReminder = false });
+        edited.Tasks.Single().VisitReminder.Should().BeFalse();
+        edited.Tasks.Single().VisitReminderFromMs.Should().BeNull();
+
+        var seriesId = Guid.NewGuid();
+        var series = await OpsAsync(c.Mehmet, new
+        {
+            opId = Guid.NewGuid(), type = "create_series", seriesId, title = "Aylık raf", frequency = "DAILY", interval = 1,
+            timeOfDayMinutes = 9 * 60, customerCode = "C-1", customerName = "Bakkal", visitReminder = true, assigneeIds = new[] { c.AliId },
+        });
+        series.Series.Single().VisitReminder.Should().BeTrue();
+        var run = series.Series.Single().NextRunAtMs;
+        await RunSchedulerAsync(run + 1_000);
+        var occurrence = (await ListAsync(c.Ali)).Tasks.Single(t => t.SeriesId == seriesId);
+        occurrence.VisitReminder.Should().BeTrue();
+        occurrence.VisitReminderFromMs.Should().Be(run, "an occurrence reminds from the moment it appears");
+    }
+
     // ---- helpers -----------------------------------------------------------------------------
 
     private sealed record Company(Guid Id, string Patron, string Mehmet, string Ali, string Veli, Guid PatronId, Guid MehmetId, Guid AliId, Guid VeliId);

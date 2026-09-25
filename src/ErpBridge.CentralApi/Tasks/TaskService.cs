@@ -351,6 +351,7 @@ public sealed class TaskService
             CustomerName = ClipOrNull(op.CustomerName, 200),
             UpdatedSeq = seq,
         };
+        SetVisitReminder(task, op);
         task.Members.AddRange(members);
         var order = 0;
         foreach (var input in subtasks)
@@ -394,6 +395,7 @@ public sealed class TaskService
         task.RequiresPhoto = op.RequiresPhoto ?? false;
         task.CustomerCode = ClipOrNull(op.CustomerCode, 64);
         task.CustomerName = ClipOrNull(op.CustomerName, 200);
+        SetVisitReminder(task, op);
         var seq = await TouchAsync(b, task, ct);
         AddEvent(b, task, WorkTaskActions.Updated, null);
         // Moved from the future to now: the assignees hear of it now, not from the scheduler.
@@ -620,6 +622,7 @@ public sealed class TaskService
         series.RequiresPhoto = op.RequiresPhoto ?? false;
         series.CustomerCode = ClipOrNull(op.CustomerCode, 64);
         series.CustomerName = ClipOrNull(op.CustomerName, 200);
+        series.VisitReminder = series.CustomerCode is not null && (op.VisitReminder ?? false);
         series.AssigneesJson = MembersJson(members, WorkTaskMemberRoles.Assignee);
         series.FollowersJson = MembersJson(members, WorkTaskMemberRoles.Follower);
         series.SubtasksJson = JsonSerializer.Serialize(titles);
@@ -849,6 +852,8 @@ public sealed class TaskService
             RequiresPhoto = series.RequiresPhoto,
             CustomerCode = series.CustomerCode,
             CustomerName = series.CustomerName,
+            VisitReminder = series.VisitReminder,
+            VisitReminderFromMs = series.VisitReminder ? runAt : null,
             SeriesId = series.Id,
             StartNotifiedAtMs = nowMs,
             UpdatedSeq = seq,
@@ -1052,6 +1057,13 @@ public sealed class TaskService
             OccurredAtMs = b.Now,
         });
 
+    /// <summary>"Cari ziyaretinde hatırlat" needs a customer; without one the option is simply off.</summary>
+    private static void SetVisitReminder(WorkTask task, TaskOp op)
+    {
+        task.VisitReminder = task.CustomerCode is not null && (op.VisitReminder ?? false);
+        task.VisitReminderFromMs = task.VisitReminder ? op.VisitReminderFromMs : null;
+    }
+
     private static MobileUser System(string name) => new() { Id = Guid.Empty, FullName = name };
 
     private static string Title(string? value)
@@ -1142,6 +1154,8 @@ public sealed class TaskService
         dto.RequiresPhoto = t.RequiresPhoto;
         dto.CustomerCode = t.CustomerCode;
         dto.CustomerName = t.CustomerName;
+        dto.VisitReminder = t.VisitReminder;
+        dto.VisitReminderFromMs = t.VisitReminderFromMs;
         dto.SeriesId = t.SeriesId;
         dto.IsDeleted = t.IsDeleted;
         dto.UpdatedSeq = t.UpdatedSeq;
@@ -1196,6 +1210,7 @@ public sealed class TaskService
         RequiresPhoto = s.RequiresPhoto,
         CustomerCode = s.CustomerCode,
         CustomerName = s.CustomerName,
+        VisitReminder = s.VisitReminder,
         Assignees = ReadMembers(s.AssigneesJson).Select(m => new TaskMemberDto { UserId = m.UserId, Name = m.Name }).ToArray(),
         Followers = ReadMembers(s.FollowersJson).Select(m => new TaskMemberDto { UserId = m.UserId, Name = m.Name }).ToArray(),
         SubtaskTitles = JsonSerializer.Deserialize<string[]>(s.SubtasksJson) ?? [],

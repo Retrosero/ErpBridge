@@ -53,6 +53,15 @@ public sealed class WorkTask
 
     public string? CustomerName { get; set; }
 
+    /// <summary>
+    /// "Cari ziyaretinde hatırlat": the phone of an assignee reminds them of the task when they open the
+    /// customer for a sale (goal S8). Only with a customer.
+    /// </summary>
+    public bool VisitReminder { get; set; }
+
+    /// <summary>"Şu tarihten sonra": visits before this moment do not remind; null = from now on.</summary>
+    public long? VisitReminderFromMs { get; set; }
+
     /// <summary>The repeating series this task is an occurrence of.</summary>
     public Guid? SeriesId { get; set; }
 
@@ -216,6 +225,9 @@ public sealed class WorkTaskSeries
     public string? CustomerCode { get; set; }
 
     public string? CustomerName { get; set; }
+
+    /// <summary>Every occurrence reminds at the customer's visit from the moment it appears.</summary>
+    public bool VisitReminder { get; set; }
 
     /// <summary><c>[{ userId, userName }]</c>.</summary>
     public string AssigneesJson { get; set; } = "[]";
