@@ -49,6 +49,9 @@ public static class PortalNativeLedgerEndpoints
         if (string.IsNullOrWhiteSpace(key)) return Invalid("A ledger key is required.");
         var reason = body?.Reason?.Trim();
         if (string.IsNullOrWhiteSpace(reason)) return Invalid("A void needs a reason.");
+        var operationKey = PortalNativeWriteHelpers.OperationKey("portal-ledger-void", key, body?.OperationId);
+        // A retry of a void that already booked (its response lost) must get the idempotent 200, not the 409 below.
+        if (await PortalNativeWriteHelpers.ReplayAsync(db, tenant!.Id, NativeDocumentProcessor.LedgerVoid, operationKey, ct) is { } replay) return replay;
 
         var record = await db.MobileRecords.AsNoTracking()
             .FirstOrDefaultAsync(r => r.TenantId == tenant!.Id && r.Entity == "customerTransactions" && r.RecordKey == key && !r.IsDeleted, ct);
@@ -74,7 +77,7 @@ public static class PortalNativeLedgerEndpoints
             Action: "void", Summary: $"İptal edildi ({KindLabel(kind)}): {reason}", BeforeJson: record.PayloadJson);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.LedgerVoid,
-            PortalNativeWriteHelpers.OperationKey("portal-ledger-void", key, body?.OperationId), payload, VoidRejectedErrorCode, ct, audit);
+            operationKey, payload, VoidRejectedErrorCode, ct, audit);
     }
 
     /// <summary>
@@ -92,6 +95,9 @@ public static class PortalNativeLedgerEndpoints
         var voidReason = body?.VoidReason?.Trim();
         if (string.IsNullOrWhiteSpace(voidReason)) return Invalid("An edit needs a reason for the correction.");
         if (body is null || body.Amount <= 0) return Invalid("amount must be positive.");
+        var operationKey = PortalNativeWriteHelpers.OperationKey("portal-ledger-edit", key, body.OperationId);
+        // As for a void: a retried edit that already booked gets its 200 before the "already cancelled" 409.
+        if (await PortalNativeWriteHelpers.ReplayAsync(db, tenant!.Id, NativeDocumentProcessor.LedgerEdit, operationKey, ct) is { } replay) return replay;
 
         var record = await db.MobileRecords.AsNoTracking()
             .FirstOrDefaultAsync(r => r.TenantId == tenant!.Id && r.Entity == "customerTransactions" && r.RecordKey == key && !r.IsDeleted, ct);
@@ -131,7 +137,7 @@ public static class PortalNativeLedgerEndpoints
             Action: "edit", Summary: $"Düzenlendi ({KindLabel(kind)}): {voidReason}", BeforeJson: record.PayloadJson);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.LedgerEdit,
-            PortalNativeWriteHelpers.OperationKey("portal-ledger-edit", key, body.OperationId), payload, EditRejectedErrorCode, ct, audit);
+            operationKey, payload, EditRejectedErrorCode, ct, audit);
     }
 
     /// <summary>

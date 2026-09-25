@@ -339,6 +339,33 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
         (await _factory.CreateClient().SendAsync(request)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task A_retried_void_or_edit_whose_response_was_lost_gets_the_idempotent_200_not_already_voided()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+        await PostAsync(c, "collections", new { customerCode = "C-001", amount = 300 });
+        await PostAsync(c, "disbursements", new { customerCode = "C-001", amount = 100 });
+        var collection = await LedgerKeyAsync(c.Id, "collection");
+        var disbursement = await LedgerKeyAsync(c.Id, "disbursement");
+        var voidPath = $"/api/v1/portal/native/ledger/{Uri.EscapeDataString(collection)}/void";
+        var voidBody = new { reason = "Mükerrer", operationId = "op-void-1" };
+        var edit = new { amount = 150, voidReason = "Yanlış tutar", operationId = "op-edit-1" };
+
+        (await _factory.CreateClient().PostJsonAsync(voidPath, voidBody, c.Patron)).StatusCode.Should().Be(HttpStatusCode.Created);
+        var voidRetry = await _factory.CreateClient().PostJsonAsync(voidPath, voidBody, c.Patron);
+        (await EditAsync(c, disbursement, edit)).StatusCode.Should().Be(HttpStatusCode.Created);
+        var editRetry = await EditAsync(c, disbursement, edit);
+        var otherVoid = await _factory.CreateClient().PostJsonAsync(voidPath, new { reason = "Yine", operationId = "op-void-2" }, c.Patron);
+
+        voidRetry.StatusCode.Should().Be(HttpStatusCode.OK, await voidRetry.Content.ReadAsStringAsync());
+        (await voidRetry.ReadAsJsonAsync<IngestJobResponse>()).Idempotent.Should().BeTrue();
+        editRetry.StatusCode.Should().Be(HttpStatusCode.OK, await editRetry.Content.ReadAsStringAsync());
+        (await editRetry.ReadAsJsonAsync<IngestJobResponse>()).Idempotent.Should().BeTrue();
+        otherVoid.StatusCode.Should().Be(HttpStatusCode.Conflict, "a new operation on a cancelled entry is still refused");
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1150m, "1000 − 300 + 300 (void) + 150 (corrected disbursement); the retries booked nothing");
+    }
+
     // ---- setup ------------------------------------------------------------------------
 
     private Task<HttpResponseMessage> AdjustAsync(Company c, string customerCode, decimal amount, bool debit, string? reason) =>

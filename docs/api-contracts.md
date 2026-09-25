@@ -128,7 +128,7 @@ Her yazma `native_audit_log`'a düşer (`GET /api/v1/portal/native/audit`).
 | `GET /barcodes/{barcode}` | Barkoda, yoksa ürün koduna **tam** eşleşen ürün kartı (sayım ekranının okutması) |
 | `POST /stock-cards/batch` · `POST /customer-cards/batch` | Dosyadan içe aktarma: `cards[]` (≤ 500), `rows[]?` (her kartın dosya satırı) ya da `firstRow`, `operationId`. Yanıt `booked`, `skipped[{row, reason, message}]` (`CODE_REQUIRED`, `CODE_TOO_LONG`, `NAME_REQUIRED`, `DUPLICATE_CODE`, `DUPLICATE_BARCODE`, `BARCODE_IN_USE`, `REJECTED`), `idempotent` |
 
-Evrak (`documents/{key}/void|edit`) ve sayım (`stock-counts/{key}/void`) iptal/düzenleme uçları "zaten iptal" kontrolünden **önce** aynı `operationId`'li işi arar: yanıtı kaybolan tekrar 200 alır, 409 değil. `operationId` içindeki `|` `-` olur (hareket anahtarları `{iş}|{ek}`).
+İptal/düzenleme uçları (`ledger/{key}/void|edit`, `documents/{key}/void|edit`, `stock-counts/{key}/void`) "zaten iptal" kontrolünden **önce** aynı `operationId`'li işi arar: yanıtı kaybolan tekrar 200 alır, 409 değil. `operationId` içindeki `|` `-` olur (hareket anahtarları `{iş}|{ek}`).
 
 ### Admin iş uçları (`/api/v1/admin/jobs`)
 
