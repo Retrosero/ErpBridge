@@ -376,6 +376,30 @@ public sealed class PortalStockMovementsResponse
     public int PageSize { get; set; }
 }
 
+/// <summary>One line of <c>POST /api/v1/portal/native/stock-counts</c> (GOAL_PANEL_ERPSIZ E6b).</summary>
+public sealed class PortalStockCountLine
+{
+    public string ProductCode { get; set; } = string.Empty;
+    public decimal CountedQuantity { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/stock-counts</c> (GOAL_PANEL_ERPSIZ E6b): what was counted. The difference
+/// is taken against the stock the server holds when the count books, so a sale booked meanwhile is not lost.
+/// </summary>
+public sealed class PortalStockCountRequest
+{
+    public List<PortalStockCountLine> Lines { get; set; } = [];
+
+    /// <summary>Why the stock is corrected (yıl sonu sayımı, fire, kırık…) — mandatory.</summary>
+    public string? Reason { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>; defaults to today when absent.</summary>
+    public string? OccurredAt { get; set; }
+    public string? DocumentNo { get; set; }
+    public string? OperationId { get; set; }
+}
+
 public sealed class PortalNamedNumber
 {
     public int Number { get; set; }
