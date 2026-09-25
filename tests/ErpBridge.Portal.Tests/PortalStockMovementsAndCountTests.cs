@@ -119,7 +119,7 @@ public sealed class PortalStockMovementsAndCountTests : PortalPageTestContext
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
         api.Answer(Search + "?q=%C3%A7ay&sort=name&dir=asc&page=1&pageSize=25", Page(Item("CAY-1", "Çay 1 kg", 37)));
-        api.Answer(Search + "?q=8690001&sort=name&dir=asc&page=1&pageSize=5", Page(Item("SEKER-1", "Şeker 5 kg", 20, barcode: "8690001")));
+        api.Answer("/api/v1/portal/native/barcodes/8690001", new { stockCode = "SEKER-1", name = "Şeker 5 kg", quantity = 20m, barcodes = new[] { "8690001" } });
         api.Answer("/api/v1/portal/native/stock-counts", new { jobId = Guid.NewGuid(), status = "Succeeded" }, HttpStatusCode.Created);
         var cut = Render<Sayim>();
         cut.WaitForAssertion(() => cut.Find("#count-search"));
@@ -128,9 +128,9 @@ public sealed class PortalStockMovementsAndCountTests : PortalPageTestContext
         cut.Find("#count-search-go").Click();
         cut.WaitForAssertion(() => cut.Find("[data-product='CAY-1']"));
         cut.Find("[data-product='CAY-1']").Click();
-        cut.Find("#count-barcode").Change("8690001");
+        Scan(cut, "8690001");
         cut.WaitForAssertion(() => cut.Find("tr[data-line='SEKER-1']"));
-        cut.Find("#count-barcode").Change("8690001");
+        Scan(cut, "8690001");
         cut.WaitForAssertion(() => cut.Find("tr[data-line='SEKER-1'] .line-counted").GetAttribute("value").Should().Be("2"));
 
         cut.Find("#count-form").Submit();
@@ -154,14 +154,57 @@ public sealed class PortalStockMovementsAndCountTests : PortalPageTestContext
     public void An_unknown_barcode_says_so()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
-        api.Answer(Search + "?q=000&sort=name&dir=asc&page=1&pageSize=5", Page());
+        api.Fail("/api/v1/portal/native/barcodes/000", HttpStatusCode.NotFound, "STOCK_CARD_NOT_FOUND");
         var cut = Render<Sayim>();
         cut.WaitForAssertion(() => cut.Find("#count-barcode"));
 
-        cut.Find("#count-barcode").Change("000");
+        Scan(cut, "000");
 
         cut.WaitForAssertion(() => cut.Find("#page-error").TextContent.Should().Contain("000"));
         cut.FindAll("#count-lines").Should().BeEmpty();
+    }
+
+    /// <summary>What a scanner does: types into the focused field, then Enter submits its form.</summary>
+    private static void Scan(IRenderedComponent<Sayim> cut, string code)
+    {
+        cut.Find("#count-barcode").Input(code);
+        cut.Find("#count-scan-form").Submit();
+    }
+
+    [Fact]
+    public void A_refused_count_cancellation_keeps_saying_why()
+    {
+        var api = SetupStock();
+        api.Answer($"{Movements}?page=1&pageSize=50", MovesPage(40m, 36m, Move("portal-stock-count-sayim-a|1", "count", 0, 4, 36)));
+        api.Fail("/api/v1/portal/native/stock-counts/portal-stock-count-sayim-a%7C1/void", HttpStatusCode.Conflict, "ALREADY_VOIDED");
+        var cut = Render<Stok>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-stock='CAY-1']"));
+        cut.Find("tr[data-stock='CAY-1']").Click();
+        cut.Find("[data-movements='CAY-1']").Click();
+        cut.WaitForAssertion(() => cut.Find("[data-action='void-count']"));
+        cut.Find("[data-action='void-count']").Click();
+        cut.Find("#count-void-reason").Change("Tekrar");
+
+        cut.Find("#count-void-form").Submit();
+
+        cut.WaitForAssertion(() => cut.Find("#movements-error").TextContent.Should().Contain("zaten iptal"));
+        cut.Find("#count-void-form");
+    }
+
+    [Fact]
+    public void An_ended_session_in_the_drawer_goes_to_the_login_page()
+    {
+        var api = SetupStock();
+        api.Fail($"{Movements}?page=1&pageSize=50", HttpStatusCode.Unauthorized, "TOKEN_EXPIRED");
+        var nav = Services.GetRequiredService<NavigationManager>();
+        var cut = Render<Stok>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-stock='CAY-1']"));
+        cut.Find("tr[data-stock='CAY-1']").Click();
+        api.Fail(Default, HttpStatusCode.Unauthorized, "TOKEN_EXPIRED");
+
+        cut.Find("[data-movements='CAY-1']").Click();
+
+        cut.WaitForAssertion(() => nav.Uri.Should().Contain("login"));
     }
 
     [Fact]

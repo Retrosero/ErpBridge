@@ -831,11 +831,23 @@ else
         {
             _movesError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
         }
+        catch (SessionEndedException)
+        {
+            // The page's own path signs out and goes to the login page (Codex #193).
+            await EndDrawerSessionAsync();
+        }
         finally
         {
             _movesBusy = false;
         }
         StateHasChanged();
+    }
+
+    /// <summary>The session ended while the drawer asked the server: close it and let the page's own reload end the session.</summary>
+    private Task EndDrawerSessionAsync()
+    {
+        CloseMovements();
+        return RunAsync(LoadAsync);
     }
 
     private Task MovesRangeAsync(ChangeEventArgs e, bool start)
@@ -884,10 +896,12 @@ else
         }
         _movesBusy = true;
         _movesError = null;
+        var cancelled = false;
         try
         {
             await Api.VoidNativeStockCountAsync(move.Id, new NativeLedgerVoidRequest { Reason = _voidCountReason.Trim(), OperationId = _voidCountOperationId });
             _voidingCount = null;
+            cancelled = true;
             Notice = "Sayım iptal edildi; stok geri alındı.";
         }
         catch (PortalApiException failed)
@@ -898,12 +912,20 @@ else
         {
             _movesError = "Sunucuya ulaşılamadı. Tekrar deneyin.";
         }
+        catch (SessionEndedException)
+        {
+            await EndDrawerSessionAsync();
+            return;
+        }
         finally
         {
             _movesBusy = false;
         }
+        // Reload only after a cancellation went through: a reload clears the drawer's error, and a refused
+        // cancellation must keep saying why (Codex #193).
+        if (!cancelled) return;
         await LoadMovesAsync();
-        if (_voidingCount is null) await RunAsync(LoadAsync);
+        await RunAsync(LoadAsync);
     }
 
     private static string MoveKind(string kind) => kind switch

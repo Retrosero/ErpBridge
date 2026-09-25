@@ -131,6 +131,10 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
             ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null), ("includeVoided", includeVoided ? "true" : null),
             ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
 
+    /// <summary>GOAL_PANEL_ERPSIZ E6c — the product a scanned barcode (or code) names exactly; 404 when none.</summary>
+    public Task<NativeStockCardDetailDto> NativeStockCardByBarcodeAsync(string barcode, CancellationToken ct = default) =>
+        GetAsync<NativeStockCardDetailDto>($"api/v1/portal/native/barcodes/{Uri.EscapeDataString(barcode)}", ct);
+
     /// <summary>GOAL_PANEL_ERPSIZ E6b/E6c — the difference to the booked stock becomes a movement.</summary>
     public Task<NativeJobResultDto> PostNativeStockCountAsync(NativeStockCountRequest request, CancellationToken ct = default) =>
         SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-counts", request, ct);

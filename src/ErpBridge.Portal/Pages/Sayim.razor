@@ -34,11 +34,13 @@ else
         <MudPaper Outlined="true" Class="panel">
             <div class="document-form stack-form">
                 <div class="form-row">
-                    <label class="stack-field">
-                        <span class="field-label">Barkod okut</span>
-                        <input class="portal-input" id="count-barcode" placeholder="Barkodu okutun, her okutma 1 ekler" value="@_barcode" autocomplete="off"
-                               @onchange="ScanAsync" />
-                    </label>
+                    @* A scanner types the code and presses Enter with the field still focused: Enter submits this form
+                       (a plain change event would wait for the field to lose focus, Codex #193). *@
+                    <form class="stack-field" id="count-scan-form" @onsubmit="ScanAsync" @onsubmit:preventDefault>
+                        <label class="field-label" for="count-barcode">Barkod okut</label>
+                        <input class="portal-input" id="count-barcode" placeholder="Barkodu okutun, her okutma 1 ekler" autocomplete="off"
+                               @bind="_barcode" @bind:event="oninput" />
+                    </form>
                     <div class="stack-field">
                         <span class="field-label">Ürün ara</span>
                         <div class="document-search">
@@ -152,35 +154,40 @@ else
         });
     }
 
-    /// <summary>A scanner types the barcode and Enter: the product whose barcode (or code) it is gets one more counted.</summary>
-    private Task ScanAsync(ChangeEventArgs e)
+    /// <summary>A scanner types the barcode and Enter: the product whose barcode (or code) it is — exactly — gets one more counted.</summary>
+    private Task ScanAsync()
     {
-        var barcode = e.Value?.ToString()?.Trim() ?? string.Empty;
+        var barcode = _barcode.Trim();
         _barcode = string.Empty;
         if (barcode.Length == 0) return Task.CompletedTask;
         Notice = null;
         return RunAsync(async () =>
         {
-            var found = (await Api.StockSearchAsync(new StockFilter { Search = barcode, PageSize = 5 })).Items
-                .FirstOrDefault(i => i.Barcodes.Contains(barcode, StringComparer.OrdinalIgnoreCase) || string.Equals(i.StockCode, barcode, StringComparison.OrdinalIgnoreCase));
-            if (found is null)
+            NativeStockCardDetailDto found;
+            try
+            {
+                found = await Api.NativeStockCardByBarcodeAsync(barcode);
+            }
+            catch (PortalApiException missing) when (missing.Status == 404)
             {
                 Error = $"{barcode} barkodlu ürün bulunamadı.";
                 return;
             }
-            Add(found, counted: 1);
+            Add(found.StockCode, found.Name, found.Quantity, counted: 1);
         });
     }
 
-    private void Add(StockItemDto product, decimal? counted)
+    private void Add(StockItemDto product, decimal? counted) => Add(product.StockCode, product.Name, product.Quantity, counted);
+
+    private void Add(string code, string name, decimal current, decimal? counted)
     {
-        if (_lines.FirstOrDefault(l => string.Equals(l.Code, product.StockCode, StringComparison.OrdinalIgnoreCase)) is { } existing)
+        if (_lines.FirstOrDefault(l => string.Equals(l.Code, code, StringComparison.OrdinalIgnoreCase)) is { } existing)
         {
             if (counted is { } more) existing.Counted = (existing.Counted ?? 0) + more;
         }
         else
         {
-            _lines.Add(new CountLine { Code = product.StockCode, Name = product.Name, Current = product.Quantity, Counted = counted });
+            _lines.Add(new CountLine { Code = code, Name = name, Current = current, Counted = counted });
         }
         _results = [];
         _searched = false;

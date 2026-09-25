@@ -164,6 +164,25 @@ public sealed class PortalNativeStockCountRelationalTests : IClassFixture<Sqlite
         (await MovementsAsync(c, "CAY-1")).Items.Should().ContainSingle(i => i.Kind == "count" && !i.Voided && i.Out == 3m);
     }
 
+    [Fact]
+    public async Task A_scanned_barcode_finds_its_product_exactly_even_among_many_partial_matches()
+    {
+        var c = await CompanyAsync();
+        for (var i = 1; i <= 7; i++)
+            (await _factory.CreateClient().PostJsonAsync("/api/v1/portal/native/stock-cards",
+                new { stockCode = $"A-{i}", name = $"A ürün {i}", barcode = $"869000{i}" + "99", openingQuantity = i }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await _factory.CreateClient().PostJsonAsync("/api/v1/portal/native/stock-cards",
+            new { stockCode = "Z-1", name = "Z ürün", barcode = "8690", openingQuantity = 3 }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var byBarcode = await GetJsonAsync<PortalStockCardDetail>(c.Patron, "/api/v1/portal/native/barcodes/8690");
+        var byCode = await GetJsonAsync<PortalStockCardDetail>(c.Patron, "/api/v1/portal/native/barcodes/A-3");
+
+        byBarcode.StockCode.Should().Be("Z-1", "the exact barcode wins over seven products whose barcodes merely contain it (Codex #193)");
+        byBarcode.Quantity.Should().Be(3m);
+        byCode.StockCode.Should().Be("A-3");
+        (await _factory.CreateClient().GetAsync("/api/v1/portal/native/barcodes/000", c.Patron)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     private Task<PortalStockMovementsResponse> MovementsAsync(Company c, string code, string query = "") =>
         GetJsonAsync<PortalStockMovementsResponse>(c.Patron, $"/api/v1/portal/native/stock-cards/{code}/movements" + query);
 
