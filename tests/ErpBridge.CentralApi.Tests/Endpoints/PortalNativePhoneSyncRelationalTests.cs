@@ -54,7 +54,8 @@ public sealed class PortalNativePhoneSyncRelationalTests : IClassFixture<SqliteC
             .StatusCode.Should().Be(HttpStatusCode.Created);
         var purchase = await PullAsync(c.Id, device);
         purchase.Should().Contain(ch => ch.Entity == "cariHareketleri" && ch.Key.EndsWith("|purchase"))
-            .And.Contain(ch => ch.Entity == "stokHareketleri").And.Contain(ch => ch.Entity == "cari" && ch.Key == "TED-1");
+            .And.Contain(ch => ch.Entity == "stokHareketleri").And.Contain(ch => ch.Entity == "cari" && ch.Key == "TED-1")
+            .And.Contain(ch => ch.Entity == "urun" && ch.Key == "CAY-1", "the phone's product shows the new stock (Codex #197)");
 
         (await PostAsync(c, "sales-returns", new { partyCode = "C-001", documentNo = "I-1", lines = new[] { new { productCode = "CAY-1", quantity = 1, unitPrice = 150 } } }))
             .StatusCode.Should().Be(HttpStatusCode.Created);
