@@ -1015,6 +1015,37 @@ registration ayrı bir composition projesine taşınır.
    - **Dapper kolon sırası:** okuyucuların positional record'larına kolon eklerken SQL'deki sıra kurucuyla aynı olmalı
      (#95'te `VatRate` sırası canlı okumayı kırdı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma testiyle gelir.
 
+27. **Görevler ve bildirimler merkezdedir: `Tasks/TaskService` + `Endpoints/MobileTaskEndpoints` (GOAL_GOREVLER, 2026-09-25).**
+   - **ERP'ye hiç yazılmaz.** Görev, alt görev, yorum, resim ve bildirim ERP'li ve ERP'siz firmada aynı tablolarda
+     (`TenantId`) tutulur; ajan görmez. Ayrıntı ve kararlar: `docs/GOAL_GOREVLER.md`.
+   - **Yazım işlem partisiyle:** telefon çevrimdışı yaptığını `POST /api/v1/android/tasks/ops` ile gönderir. Her işlemin
+     `opId`'si vardır; `task_ops_applied`'da olan id `duplicate` döner, yeniden uygulanmaz. Reddedilen işlem kendi
+     savepoint'ine geri döner ve partinin geri kalanını durdurmaz (`applied|duplicate|rejected`). Görev ve alt nesne
+     kimliklerini telefon üretir. `ingest/jobs` **kullanılmaz** (her tıklama bir iş satırı açardı).
+   - **Okuma:** `GET tasks?changedSinceSeq` (görünürlük filtreli, `mobile_records`/`sync/pull` değil — kural 12'nin yasağı
+     yeni `/sync/<bölüm>` uçlarıdır; görevler kişiye özel olduğu için onay merkezi gibi kendi ucundadır). Değişiklik
+     numaraları (`tasks.UpdatedSeq`, `user_notifications.Seq`, `task_series.UpdatedSeq`) `tenant_sync_counter`'dan
+     yazan işlem içinde ayrılır (kural 11). Bir kişi görevden çıkarılınca artımlı çekmede görev ona hiç gelmez;
+     telefon ara ara tam çekimle (`changedSinceSeq=0`) yerel kopyayı uzlaştırır.
+   - **Görünürlük/yetki:** ADMIN/MANAGER (`TaskService.CanManage`) her görevi görür ve herkese atar; diğerleri yalnız
+     kendine atar, oluşturduğu/atandığı/takip ettiği/alt görevine atandığı görevi görür. İleri tarihli görev
+     (`StartAtMs`) atanana zamanlayıcı başlatana (`StartNotifiedAtMs`) kadar görünmez. Düzenleme oluşturan veya
+     yönetici; tamamlama/alt görev işaretleme/resim atananlar da. `requiresPhoto` görevi resimsiz tamamlanamaz.
+   - **Bildirim:** `user_notifications` kişi başı gelen kutusu. Atanana `TASK_ASSIGNED`, tamamlanınca oluşturan +
+     takipçilere `TASK_COMPLETED`, yorumda `TASK_COMMENTED`, yeniden açılınca `TASK_REOPENED`, zamanlayıcıdan
+     `TASK_DUE_SOON` (60 dk kala) ve `TASK_OVERDUE`. İşlemi yapana kendi işlemi bildirilmez. Push yoktur: telefon
+     açıkken `GET tasks/events` uzun yoklaması (`TenantEventHub` konu `tasks`, sürüm numarası), kapalıyken kendi
+     15 dk'lık işçisi.
+   - **Resim PostgreSQL'dedir:** `task_attachment_blobs` (bytea); Coolify'da kalıcı disk gerekmez, yedeğe girer.
+     Ham gövde `PUT tasks/{id}/attachments/{attachmentId}`, yalnız JPEG/PNG/WEBP (dosya imzası da denetlenir), ≤ 2 MB,
+     görev başı 10, firma kotası 1 GB (`Tasks:*`). `GET` yalnız görevi gören kullanıcıya, değişmez önbellek başlığıyla.
+   - **Zamanlayıcı:** `Workers/TaskSchedulerWorker` dakikada bir `RunSchedulerAsync`: seri örnekleri (sunucu
+     kapalı kaldıysa birikmiş örnek değil **tek** örnek), ileri tarihli başlangıçlar, bitiş uyarıları, 30 günlük
+     temizlik (silinen görevin resimleri, silinen resimler, eski `opId`'ler). Seri saatleri `Europe/Istanbul`
+     (`TaskSchedule`, saf; testli). Testler zamanlayıcıyı kapatır (`Tasks:SchedulerEnabled=false`) ve kendi saatiyle çağırır.
+   - **Hız sınırı kullanıcı başınadır** (`PerMobileUserRateLimitPolicy`, dk'da 120): firma başı 100'lük ortak bütçeyi
+     ekibin görev yoklaması tüketmesin.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

@@ -95,6 +95,17 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 - `erp_write_settings` *(ERP yazım Y1a, 2026-09-17)*: ERP'li firmanın telefon belgelerini ERP'ye nasıl yazacağı, `TenantId` PK (yoksa varsayılanlar). `SalesDocumentKind(16)` order|dispatch|invoice (varsayılan order), `OrderApprovalMode(16)` approved|pending, seriler `OrderSeries/DispatchSeries/InvoiceSeries/ReturnSeries/CollectionSeries` **(6, Mikro genişliği; boş = serisiz)**, varsayılanlar `DefaultWarehouseNo`, `DefaultCashCode(25)`, `DefaultCardBankCode(25)`, `DefaultTransferBankCode(25)`, `DefaultErpUserNo`, `DefaultSalespersonCode(25)`, `DefaultPriceListNo`, portföy kasaları `ChequePortfolioCode` ('ÇEK'), `NotePortfolioCode` ('SENET'), isteğe bağlı `ResponsibilityCenterCode`, `ProjectCode`, `DeliveryDayOffset`; `UpdatedAtUtc/ByUserId`. Ajana iş kiralanırken `erpContext` ile gider (Y1d).
 - `mobile_user_erp_mappings` *(ERP yazım Y1a)*: telefon kullanıcısının ERP karşılıkları, `UserId` PK FK `mobile_users` (cascade), `TenantId` (index). Hepsi boş olabilir — boş değer firma ayarına düşer: `SalespersonCode`, `WarehouseNo`, `CashCode`, `CardBankCode`, `TransferBankCode`, `ErpUserNo` ve seri geçersiz kılmaları. `mobile_users` tablosu değişmez.
 
+- **Görevler** *(GOAL_GOREVLER, 2026-09-25; kural 27)* — zamanlar unix ms (UTC):
+  - `tasks`: `Id` (telefon üretir), `TenantId`, `Title(200)`, `Description(4000)`, `Priority(16)` LOW|NORMAL|HIGH|URGENT, `Status(16)` OPEN|DONE|CANCELLED, `CreatedByUserId/Name(120)`, `CreatedAtMs`, `UpdatedAtMs`, `StartAtMs`, `DueAtMs`, `CompletedAtMs`, `CompletedByUserId/Name`, `RequiresPhoto`, `CustomerCode(64)`, `CustomerName(200)`, `SeriesId`, zamanlayıcı bayrakları `StartNotifiedAtMs`/`DueSoonNotifiedAtMs`/`OverdueNotifiedAtMs`, `IsDeleted`, `DeletedAtMs`, `UpdatedSeq` (`tenant_sync_counter`). İndeks `(TenantId, UpdatedSeq)`, `(Status, DueAtMs)`, `(Status, StartAtMs)`, `(TenantId, CustomerCode)`.
+  - `task_members`: PK `(TaskId, UserId, Role)`, `Role` ASSIGNEE|FOLLOWER, `UserName(120)` anlık kopya.
+  - `task_subtasks`: `Id` (telefon), `TaskId`, `Title(300)`, `IsDone`, `DoneByUserId/Name`, `DoneAtMs`, `AssigneeUserId/Name`, `DueAtMs`, `SortOrder`, `IsDeleted`.
+  - `task_comments`: `Id` (telefon), `TenantId`, `TaskId`, `AuthorUserId/Name`, `Text(2000)`, `CreatedAtMs`, `IsDeleted`.
+  - `task_attachments` (meta; `TenantId, IsDeleted` indeksi kota için) + `task_attachment_blobs` (`AttachmentId` PK, `Data` bytea; ek satırı silinince cascade).
+  - `task_events`: değişmez geçmiş (`Action(24)` CREATED|UPDATED|MEMBERS_CHANGED|COMPLETED|REOPENED|CANCELLED|DELETED|SUBTASK_*|COMMENTED|PHOTO_*, `ActorUserId` sistemde null, `ActorName`, `Detail(500)`, `OccurredAtMs`).
+  - `task_series`: tekrarlayan görev şablonu (başlık, açıklama, öncelik, `RequiresPhoto`, cari, `AssigneesJson`/`FollowersJson` `[{userId,name}]`, `SubtasksJson` başlık dizisi) + kural `Frequency` DAILY|WEEKLY|MONTHLY, `Interval`, `Weekdays` (Pzt=1…Paz=64), `MonthDay`, `TimeOfDayMinutes` (İstanbul), `DueAfterMinutes`, `NextRunAtMs`, `EndsAtMs`, `IsActive`, `UpdatedSeq`.
+  - `task_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` — 30 gün sonra silinir.
+  - `user_notifications`: `Id`, `TenantId`, `UserId`, `Kind(32)`, `Title(200)`, `Body(500)`, `TaskId`, `CreatedAtMs`, `ReadAtMs`, `Seq`. İndeks `(TenantId, UserId, Seq)`, `(TenantId, UserId, ReadAtMs)`.
+
 ---
 
 ## 3. SQLite LocalStore (Ajan İçi Depolama)

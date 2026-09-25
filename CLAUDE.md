@@ -61,6 +61,12 @@ ilgili knowledge_base dosyasını da güncelle.
   `--force-with-lease`) yasak, CI kırmızıyken merge yasak, `main`'e doğrudan push yasak, `MikroDB_V15_02` (canlı firma
   verisi) ve diğer müşteri Mikro DB'lerine yazmak yasak.
 
+- **İstisna (2026-09-25):** aynı yetkiler `docs/GOAL_GOREVLER.md` (görevler + bildirim sistemi; sunucu ve
+  Sipariş Cepte ayağı) görevleri için de önceden onaylıdır (kullanıcı: "yayına sen al"). `main`'e birleştirme
+  Coolify dağıtımını tetikler; dağıtımdan sonra `/health/schema` kontrol edilir. Aynı yasaklar geçerli:
+  `--force` push (ve `--force-with-lease`) yasak, CI kırmızıyken merge yasak, `main`'e doğrudan push yasak,
+  Play production yasak. Görevler ERP'ye yazmaz; Mikro DB'lerine hiçbir yazım yoktur.
+
 ## 3. Test / build
 
 - .NET: `dotnet build ErpBridge.sln -c Debug` (0 uyarı / 0 hata) + `dotnet test ErpBridge.sln`

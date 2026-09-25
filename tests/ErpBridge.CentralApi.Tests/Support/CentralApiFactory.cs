@@ -61,6 +61,8 @@ public class CentralApiFactory : WebApplicationFactory<Program>
         // for every test class costs far more than it proves. ParameterCatalogSeederTests covers
         // the seeding itself directly.
         builder.UseSetting("Parameters:SeedCatalogOnStartup", "false");
+        // Tests drive the task scheduler themselves with a chosen clock (TaskRelationalTests).
+        builder.UseSetting("Tasks:SchedulerEnabled", "false");
         if (_disableRateLimiter)
             builder.UseSetting("RateLimiter:DisabledForTests", "true");
         builder.ConfigureServices(services =>

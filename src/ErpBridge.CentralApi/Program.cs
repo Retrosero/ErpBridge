@@ -77,6 +77,12 @@ public partial class Program
     /// <summary>Legacy tenant-partitioned rate-limit policy (kept as a secondary guard).</summary>
     public const string PerTenantRateLimitPolicy = "Tenant";
 
+    /// <summary>
+    /// Görevler ve bildirimler (docs/GOAL_GOREVLER.md): per signed-in user, so every phone of a team
+    /// long-polling its tasks does not use up the company's shared <see cref="PerTenantRateLimitPolicy"/> budget.
+    /// </summary>
+    public const string PerMobileUserRateLimitPolicy = "per-mobile-user";
+
     /// <summary>Anonymous rate-limit policy (partitioned by remote IP).</summary>
     public const string AnonymousRateLimitPolicy = "Anonymous";
 
@@ -273,6 +279,10 @@ public partial class Program
         // Faz 47: warehouse queue. The event hub is in memory: one CentralApi container (plan step 4).
         builder.Services.AddSingleton<ErpBridge.CentralApi.Notifications.ITenantEventHub, ErpBridge.CentralApi.Notifications.TenantEventHub>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Warehouse.FulfillmentService>();
+        // Görevler ve bildirimler (docs/GOAL_GOREVLER.md).
+        builder.Services.Configure<ErpBridge.CentralApi.Tasks.TaskOptions>(cfg.GetSection(ErpBridge.CentralApi.Tasks.TaskOptions.SectionName));
+        builder.Services.AddScoped<ErpBridge.CentralApi.Tasks.TaskService>();
+        builder.Services.AddHostedService<ErpBridge.CentralApi.Workers.TaskSchedulerWorker>();
     }
 
     /// <summary>
@@ -566,6 +576,18 @@ public partial class Program
                 });
             });
 
+            opt.AddPolicy(PerMobileUserRateLimitPolicy, httpContext =>
+            {
+                var userId = httpContext.User.FindFirst("sub")?.Value ?? "anonymous";
+                return RateLimitPartition.GetFixedWindowLimiter("mobile-user:" + userId, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
             opt.AddPolicy(PerDisplayRateLimitPolicy, httpContext =>
             {
                 var displayId = httpContext.User.FindFirst("sub")?.Value ?? "unknown";
@@ -710,6 +732,7 @@ public partial class Program
         app.MapMobileTelemetryEndpoints();
         app.MapMobileAccountEndpoints();
         app.MapMobileApprovalEndpoints();
+        app.MapMobileTaskEndpoints();
         app.MapPortalEndpoints();
         app.MapPortalErpWriteEndpoints();
         app.MapPortalErpDocumentsEndpoints();
