@@ -27,6 +27,13 @@ namespace ErpBridge.CentralApi.Native;
 /// native lock, so documents from several phones are booked one at a time and a
 /// job can never be stored without its effect, or the effect without the job.</para>
 /// </summary>
+/// <summary>
+/// How a trusted caller wants a document booked — never read from the document itself, so a phone cannot ask for it.
+/// </summary>
+/// <param name="CountAgainstCurrentLevel">GOAL_PANEL_ERPSIZ E6b: a portal <c>stock_count</c> takes its difference against
+/// the stock booked now (read under the tenant lock), not against the <c>expectedQuantity</c> a device saw offline.</param>
+public sealed record NativeBookingOptions(bool CountAgainstCurrentLevel = false);
+
 public sealed class NativeDocumentProcessor
 {
     public const string StockCard = "stock_card";
@@ -132,7 +139,8 @@ public sealed class NativeDocumentProcessor
     /// Infrastructure errors throw and roll everything back.
     /// </summary>
     /// <param name="callerIsAdmin">Whether the signed-in user is a company administrator; product cards need one.</param>
-    public async Task<Job> IngestAsync(CentralApiDbContext db, Guid tenantId, Job job, bool callerIsAdmin, CancellationToken ct)
+    /// <param name="options">Booking modes only a trusted caller (a portal endpoint) sets; null for the phone.</param>
+    public async Task<Job> IngestAsync(CentralApiDbContext db, Guid tenantId, Job job, bool callerIsAdmin, CancellationToken ct, NativeBookingOptions? options = null)
     {
         // An approval posts its documents inside its own transaction; the booking joins
         // it so a failed document rolls the approval back too. The caller then commits
@@ -146,7 +154,7 @@ public sealed class NativeDocumentProcessor
         }
 
         var now = DateTimeOffset.UtcNow;
-        var booking = new Booking(tenantId, job.ExternalId, now, job.CreatedByUserId);
+        var booking = new Booking(tenantId, job.ExternalId, now, job.CreatedByUserId) { Options = options ?? new NativeBookingOptions() };
         string? error;
         using (var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(job.PayloadJson) ? "{}" : job.PayloadJson))
         {
@@ -526,7 +534,8 @@ public sealed class NativeDocumentProcessor
         var reason = Text(document, "reason");
         // The portal (E6b) counts against the stock booked right now, read under the tenant lock; the phone
         // sends what it saw offline, so a sale booked after its count survives (the difference rule above).
-        var againstCurrentLevel = Bool(document, "againstCurrentLevel") == true;
+        // The mode comes from the trusted caller, never from the payload (Codex #192).
+        var againstCurrentLevel = booking.Options.CountAgainstCurrentLevel;
         var differences = new List<(string StockCode, decimal Difference, decimal Counted)>();
         var lineNo = 0;
         foreach (var line in lines.EnumerateArray())
@@ -905,6 +914,19 @@ public sealed class NativeDocumentProcessor
         return rows.Select(r => r.PayloadJson!);
     }
 
+    /// <summary>
+    /// Whether a movement row was written by job <paramref name="jobExternalId"/>: its key is exactly
+    /// <c>"{job}|{suffix}"</c> or <c>"{job}|{suffix}|void"</c> (the reversal). A bare prefix test would also take the rows
+    /// of a job whose own id starts with <c>"{job}|"</c>.
+    /// </summary>
+    internal static bool OwnedByJob(string recordKey, string jobExternalId)
+    {
+        if (!recordKey.StartsWith(jobExternalId + "|", StringComparison.Ordinal)) return false;
+        var rest = recordKey.AsSpan(jobExternalId.Length + 1);
+        var bar = rest.IndexOf('|');
+        return bar < 0 ? rest.Length > 0 : bar > 0 && rest[(bar + 1)..].SequenceEqual("void");
+    }
+
     /// <summary>The next revision of a document number: <c>A-1</c> → <c>A-1-D1</c>, <c>A-1-D1</c> → <c>A-1-D2</c>.</summary>
     internal static string RevisionNumber(string documentNo)
     {
@@ -939,6 +961,9 @@ public sealed class NativeDocumentProcessor
                         && r.RecordKey.StartsWith(jobExternalId + "|") && !r.IsDeleted)
             .Select(r => new { r.RecordKey, r.PayloadJson })
             .ToListAsync(ct);
+        // Keys are "{job}|{suffix}" (and "…|void" once reversed); a prefix alone would also catch another job
+        // whose own id happens to start with "{job}|" (Codex #192).
+        legs = legs.Where(l => OwnedByJob(l.RecordKey, jobExternalId)).ToList();
         if (legs.Count == 0) return ("The document was not found.", null, null, null);
         string? documentNo = null, documentDate = null;
         var legDates = new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -967,7 +992,7 @@ public sealed class NativeDocumentProcessor
                         && r.RecordKey.StartsWith(jobExternalId + "|") && !r.IsDeleted)
             .Select(r => new { r.RecordKey, r.PayloadJson })
             .ToListAsync(ct);
-        foreach (var line in lines)
+        foreach (var line in lines.Where(l => OwnedByJob(l.RecordKey, jobExternalId)))
         {
             if (line.PayloadJson is null) continue;
             await ReverseStockLineAsync(db, booking, line.RecordKey, line.PayloadJson, reason, ct);
@@ -1006,7 +1031,8 @@ public sealed class NativeDocumentProcessor
                         && r.RecordKey.StartsWith(targetKey + "|") && !r.IsDeleted)
             .Select(r => new { r.RecordKey, r.PayloadJson })
             .ToListAsync(ct);
-        var own = lines.Where(l => l.PayloadJson is not null && !l.RecordKey.EndsWith("|void", StringComparison.Ordinal)).ToList();
+        var own = lines.Where(l => l.PayloadJson is not null && OwnedByJob(l.RecordKey, targetKey)
+                                   && !l.RecordKey.EndsWith("|void", StringComparison.Ordinal)).ToList();
         if (own.Count == 0) return "The count changed no stock; there is nothing to cancel.";
         foreach (var line in own)
         {
@@ -1281,6 +1307,7 @@ public sealed class NativeDocumentProcessor
         public DateTimeOffset Now { get; } = now;
         public Guid? UserId { get; } = userId;
         public string Stamp { get; } = now.ToString("O", CultureInfo.InvariantCulture);
+        public NativeBookingOptions Options { get; init; } = new();
         public Dictionary<string, List<JsonElement>> Sections { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, JsonObject> Customers { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, NativeCustomerBalance> CustomerBalances { get; } = new(StringComparer.OrdinalIgnoreCase);
