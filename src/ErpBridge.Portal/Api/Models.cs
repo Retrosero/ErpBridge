@@ -470,6 +470,36 @@ public sealed class CardBatchResultDto
     [JsonPropertyName("skipped")] public List<CardBatchSkipDto> Skipped { get; set; } = [];
 }
 
+/// <summary>One row of GET /api/v1/portal/movements (GOAL_PANEL_ERPSIZ E4e): any customer-side movement of the company.</summary>
+public sealed class CompanyMovementDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("customerTitle")] public string CustomerTitle { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "other";
+    [JsonPropertyName("sourceType")] public string? SourceType { get; set; }
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+    [JsonPropertyName("documentKey")] public string? DocumentKey { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("debit")] public decimal Debit { get; set; }
+    [JsonPropertyName("credit")] public decimal Credit { get; set; }
+    [JsonPropertyName("userName")] public string? UserName { get; set; }
+    [JsonPropertyName("voided")] public bool Voided { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+}
+
+public sealed class CompanyMovementsResponse
+{
+    [JsonPropertyName("items")] public List<CompanyMovementDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+    [JsonPropertyName("totalDebit")] public decimal TotalDebit { get; set; }
+    [JsonPropertyName("totalCredit")] public decimal TotalCredit { get; set; }
+}
+
 public sealed class NativeJobResultDto
 {
     [JsonPropertyName("jobId")] public Guid JobId { get; set; }
