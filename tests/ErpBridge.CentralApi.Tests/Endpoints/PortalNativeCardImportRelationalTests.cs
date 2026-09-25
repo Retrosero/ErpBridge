@@ -61,6 +61,30 @@ public sealed class PortalNativeCardImportRelationalTests : IClassFixture<Sqlite
     }
 
     [Fact]
+    public async Task Two_imports_at_once_cannot_give_one_barcode_to_two_products()
+    {
+        var c = await CompanyAsync();
+
+        // Both may pass the endpoint's early check before either books; the processor re-checks under the tenant lock (Codex #199).
+        var first = ImportAsync(c, "stock-cards", new { cards = new[] { new { stockCode = "A-1", name = "A", barcode = "8699999" } } });
+        var second = ImportAsync(c, "stock-cards", new { cards = new[] { new { stockCode = "B-1", name = "B", barcode = "8699999" } } });
+        var answers = await Task.WhenAll(first, second);
+
+        var results = new List<PortalCardBatchResponse>();
+        foreach (var answer in answers)
+            if (answer.StatusCode == HttpStatusCode.OK) results.Add(await answer.ReadAsJsonAsync<PortalCardBatchResponse>());
+        var booked = results.Sum(r => r.Booked);
+        booked.Should().Be(1, "only one product may hold the barcode; the other is refused (a 422 when it was its only card)");
+        var owners = new List<string>();
+        foreach (var code in new[] { "A-1", "B-1" })
+        {
+            var response = await _factory.CreateClient().GetAsync($"/api/v1/portal/native/stock-cards/{code}", c.Patron);
+            if (response.StatusCode == HttpStatusCode.OK && (await response.ReadAsJsonAsync<PortalStockCardDetail>()).Barcodes.Contains("8699999")) owners.Add(code);
+        }
+        owners.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task A_customer_file_books_its_good_rows_with_opening_balances()
     {
         var c = await CompanyAsync();

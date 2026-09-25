@@ -9,8 +9,8 @@ namespace ErpBridge.Portal.Tests;
 /// <summary>GOAL_PANEL_ERPSIZ E1d/E2c: the import file reader (CSV and .xlsx, no spreadsheet library).</summary>
 public sealed class SpreadsheetReaderTests
 {
-    private static List<string[]> Csv(string text, Encoding? encoding = null) =>
-        SpreadsheetReader.Read(new MemoryStream((encoding ?? new UTF8Encoding(true)).GetPreamble().Concat((encoding ?? Encoding.UTF8).GetBytes(text)).ToArray()), "urunler.csv");
+    private static List<SpreadsheetReader.Row> Csv(string text) =>
+        SpreadsheetReader.Read(new MemoryStream(new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(text)).ToArray()), "urunler.csv");
 
     [Fact]
     public void A_turkish_excel_csv_with_semicolons_quotes_and_blank_lines_reads_row_by_row()
@@ -18,23 +18,23 @@ public sealed class SpreadsheetReaderTests
         var rows = Csv("Kod;Ad;Fiyat\r\nCAY-1;\"Çay; 1 kg\";1.234,50\r\n\r\nSEKER-1;\"Şeker \"\"5\"\" kg\";10\r\n");
 
         rows.Should().HaveCount(3);
-        rows[1].Should().Equal("CAY-1", "Çay; 1 kg", "1.234,50");
-        rows[2].Should().Equal("SEKER-1", "Şeker \"5\" kg", "10");
+        rows[1].Cells.Should().Equal("CAY-1", "Çay; 1 kg", "1.234,50");
+        rows[2].Cells.Should().Equal("SEKER-1", "Şeker \"5\" kg", "10");
+        rows.Select(r => r.Number).Should().Equal(new[] { 1, 2, 4 }, "the blank line keeps its number (Codex #199)");
     }
 
     [Fact]
     public void A_comma_separated_file_and_a_windows_1254_file_read_too()
     {
-        Csv("Kod,Ad\nA,B\n").Should().HaveCount(2).And.Contain(r => r.SequenceEqual(new[] { "A", "B" }));
+        Csv("Kod,Ad\nA,B\n").Should().HaveCount(2).And.Contain(r => r.Cells.SequenceEqual(new[] { "A", "B" }));
 
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        var turkish = Encoding.GetEncoding(1254);
-        var bytes = turkish.GetBytes("Kod;Ad\nSEKER-1;Şeker ığdır\n");
-        SpreadsheetReader.Read(new MemoryStream(bytes), "x.csv")[1].Should().Equal("SEKER-1", "Şeker ığdır");
+        var bytes = Encoding.GetEncoding(1254).GetBytes("Kod;Ad\nSEKER-1;Şeker ığdır\n");
+        SpreadsheetReader.Read(new MemoryStream(bytes), "x.csv")[1].Cells.Should().Equal("SEKER-1", "Şeker ığdır");
     }
 
     [Fact]
-    public void An_xlsx_first_sheet_reads_shared_inline_and_number_cells_in_their_columns()
+    public void An_xlsx_first_sheet_reads_shared_inline_and_number_cells_in_their_columns_and_rows()
     {
         using var file = new MemoryStream();
         using (var zip = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: true))
@@ -51,16 +51,17 @@ public sealed class SpreadsheetReaderTests
             Part("xl/worksheets/urunler.xml", $"<worksheet xmlns=\"{ns}\"><sheetData>"
                 + "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>1</v></c><c r=\"C1\" t=\"inlineStr\"><is><t>Fiyat</t></is></c></row>"
                 + "<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>CAY-1</t></is></c><c r=\"C2\"><v>1234.5</v></c><c r=\"B2\" t=\"s\"><v>2</v></c></row>"
-                + "<row r=\"3\"><c r=\"C3\"><v>7</v></c></row>"
+                + "<row r=\"5\"><c r=\"C5\"><v>7</v></c></row>"
                 + "</sheetData></worksheet>");
         }
         file.Position = 0;
 
         var rows = SpreadsheetReader.Read(file, "urunler.xlsx");
 
-        rows[0].Should().Equal("Kod", "Ad", "Fiyat");
-        rows[1].Should().Equal("CAY-1", "Çay 1 kg", "1234.5");
-        rows[2].Should().Equal(new[] { "", "", "7" }, "a skipped cell keeps its column");
+        rows[0].Cells.Should().Equal("Kod", "Ad", "Fiyat");
+        rows[1].Cells.Should().Equal("CAY-1", "Çay 1 kg", "1234.5");
+        rows[2].Cells.Should().Equal(new[] { "", "", "7" }, "a skipped cell keeps its column");
+        rows[2].Number.Should().Be(5, "the sheet's own row number, rows 3-4 being empty (Codex #199)");
     }
 
     [Theory]
@@ -69,8 +70,11 @@ public sealed class SpreadsheetReaderTests
     [InlineData("1.234,50", 1234.50)]
     [InlineData("1,234.50", 1234.50)]
     [InlineData(" 18 ", 18)]
-    public void Numbers_read_the_way_people_type_them(string text, decimal expected) =>
-        SpreadsheetReader.Number(text, out var valid).Should().Be(expected).And.Match(_ => valid);
+    public void Numbers_read_the_way_people_type_them(string text, decimal expected)
+    {
+        SpreadsheetReader.Number(text, out var valid).Should().Be(expected);
+        valid.Should().BeTrue();
+    }
 
     [Fact]
     public void An_empty_number_is_null_and_a_word_is_invalid()

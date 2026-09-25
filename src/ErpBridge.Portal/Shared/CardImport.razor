@@ -154,7 +154,7 @@
             return;
         }
 
-        List<string[]> rows;
+        List<SpreadsheetReader.Row> rows;
         _busy = true;
         try
         {
@@ -186,7 +186,7 @@
         }
 
         var columns = IsStock ? StockColumns : CustomerColumns;
-        var header = rows[0].Select(Normalize).ToArray();
+        var header = rows[0].Cells.Select(Normalize).ToArray();
         var index = columns.ToDictionary(c => c.Key, c => Array.FindIndex(header, h => c.Value.Contains(h)));
         if (index["code"] < 0 || index["name"] < 0)
         {
@@ -198,7 +198,7 @@
         var barcodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 1; i < rows.Count; i++)
         {
-            var cells = rows[i];
+            var cells = rows[i].Cells;
             string Cell(string key) => index[key] is var at && at >= 0 && at < cells.Length ? cells[at] : string.Empty;
             string? Text(string key) => Cell(key) is { Length: > 0 } value ? value : null;
             var problems = new List<string>();
@@ -235,7 +235,7 @@
                     Email = Text("email"), RegionCode = Text("region"), OpeningBalance = Num("opening", "Açılış bakiyesi"),
                 };
             }
-            _drafts.Add(new Draft { Row = i + 1, Code = code, Name = name, Problem = problems.Count == 0 ? null : string.Join(", ", problems), Card = card });
+            _drafts.Add(new Draft { Row = rows[i].Number, Code = code, Name = name, Problem = problems.Count == 0 ? null : string.Join(", ", problems), Card = card });
         }
     }
 

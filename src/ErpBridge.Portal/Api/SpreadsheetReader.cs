@@ -20,15 +20,23 @@ public static class SpreadsheetReader
     /// <summary>A decompressed part larger than this is refused (a zip bomb, or not a product list).</summary>
     private const long MaxPartBytes = 64L * 1024 * 1024;
 
-    /// <summary>The file's rows, each a list of cell texts (trimmed; missing cells empty). Blank rows are dropped.</summary>
+    /// <summary>One row of the file: its row number as the spreadsheet shows it (1-based, blank rows counted) and its cells.</summary>
+    public sealed record Row(int Number, string[] Cells);
+
+    /// <summary>
+    /// The file's non-blank rows, each with its own row number (a blank row in between does not renumber the rest, so a
+    /// reported row points at the right line — Codex #199) and its cell texts (trimmed; missing cells empty).
+    /// </summary>
     /// <exception cref="InvalidDataException">The file is neither a readable CSV nor an <c>.xlsx</c>.</exception>
-    public static List<string[]> Read(Stream stream, string fileName)
+    public static List<Row> Read(Stream stream, string fileName)
     {
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         buffer.Position = 0;
-        var rows = fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ? ReadXlsx(buffer) : ReadCsv(buffer.ToArray());
-        return rows.Where(r => r.Any(c => c.Length > 0)).ToList();
+        var rows = fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
+            ? ReadXlsx(buffer)
+            : ReadCsv(buffer.ToArray()).Select((cells, i) => new Row(i + 1, cells)).ToList();
+        return rows.Where(r => r.Cells.Any(c => c.Length > 0)).ToList();
     }
 
     // ---- CSV ------------------------------------------------------------------------------
@@ -88,7 +96,7 @@ public static class SpreadsheetReader
 
     // ---- XLSX -----------------------------------------------------------------------------
 
-    private static List<string[]> ReadXlsx(Stream stream)
+    private static List<Row> ReadXlsx(Stream stream)
     {
         ZipArchive zip;
         try
@@ -106,9 +114,12 @@ public static class SpreadsheetReader
                 : [];
             var sheet = zip.GetEntry(FirstSheetPath(zip)) ?? throw new InvalidDataException("The workbook has no sheet.");
 
-            var rows = new List<string[]>();
+            var rows = new List<Row>();
+            var nextRow = 1;
             foreach (var row in Load(sheet).Root!.Element(Main + "sheetData")?.Elements(Main + "row") ?? [])
             {
+                var number = row.Attribute("r") is { } r && int.TryParse(r.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : nextRow;
+                nextRow = number + 1;
                 var cells = new SortedDictionary<int, string>();
                 var next = 0;
                 foreach (var c in row.Elements(Main + "c"))
@@ -121,7 +132,7 @@ public static class SpreadsheetReader
                 var values = new string[cells.Keys.Max() + 1];
                 Array.Fill(values, string.Empty);
                 foreach (var (column, value) in cells) values[column] = value;
-                rows.Add(values);
+                rows.Add(new Row(number, values));
             }
             return rows;
         }

@@ -84,7 +84,8 @@ public static partial class PortalNativeCardImportEndpoints
         }
 
         return await BookAsync(http, db, tenant, user!, NativeDocumentProcessor.StockCardBatch, "portal-stock-import", body.OperationId,
-            cards, rows, skipped, "stock_card", $"Toplu ürün içe aktarma: {cards.Count} kart", ct);
+            cards, rows, skipped, "stock_card", $"Toplu ürün içe aktarma: {cards.Count} kart", ct,
+            new NativeBookingOptions(KeepBarcodesWithTheirOwners: true));
     }
 
     private static async Task<IResult> ImportCustomerCardsAsync(
@@ -130,7 +131,8 @@ public static partial class PortalNativeCardImportEndpoints
 
     private static async Task<IResult> BookAsync(
         HttpContext http, CentralApiDbContext db, Tenant tenant, MobileUser user, string documentType, string keyPrefix, string? operationId,
-        List<object> cards, List<int> rows, List<PortalCardBatchSkip> skipped, string auditEntity, string auditSummary, CancellationToken ct)
+        List<object> cards, List<int> rows, List<PortalCardBatchSkip> skipped, string auditEntity, string auditSummary, CancellationToken ct,
+        NativeBookingOptions? options = null)
     {
         if (cards.Count == 0)
             return JsonResults.Ok(new PortalCardBatchResponse { Booked = 0, Skipped = skipped });
@@ -140,7 +142,7 @@ public static partial class PortalNativeCardImportEndpoints
             .AnyAsync(j => j.TenantId == tenant.Id && j.DocumentType == documentType && j.ExternalId == externalId, ct);
         var audit = new PortalNativeWriteHelpers.AuditInfo(auditEntity, "toplu", "import", auditSummary, BeforeJson: null);
         var result = await PortalNativeWriteHelpers.BookNativeDocumentAsync(
-            http, db, tenant, user, documentType, externalId, new { cards }, RejectedErrorCode, ct, audit);
+            http, db, tenant, user, documentType, externalId, new { cards }, RejectedErrorCode, ct, audit, options);
 
         var job = await db.Jobs.AsNoTracking()
             .FirstOrDefaultAsync(j => j.TenantId == tenant.Id && j.DocumentType == documentType && j.ExternalId == externalId
