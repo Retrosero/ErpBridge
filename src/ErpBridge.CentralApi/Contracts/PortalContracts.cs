@@ -603,6 +603,46 @@ public sealed class PortalDocumentResponse
     public string? PaymentType { get; set; }
 }
 
+/// <summary>One row of GET /api/v1/portal/movements (GOAL_PANEL_ERPSIZ E4e): any customer-side movement of the company.</summary>
+public sealed class PortalMovementRow
+{
+    public string Id { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+    public string CustomerCode { get; set; } = string.Empty;
+    public string CustomerTitle { get; set; } = string.Empty;
+
+    /// <summary>sale, sale_return, purchase, purchase_return, collection, payment, other.</summary>
+    public string Kind { get; set; } = "other";
+
+    /// <summary>The source's own type for an "other" row (Düzeltme, İptal: Satış…).</summary>
+    public string? SourceType { get; set; }
+    public string? DocumentNo { get; set; }
+
+    /// <summary>Set for a sale/purchase/return invoice: opens it (<c>/evraklar?belge=</c>).</summary>
+    public string? DocumentKey { get; set; }
+    public string? Description { get; set; }
+    public string? PaymentType { get; set; }
+    public decimal Debit { get; set; }
+    public decimal Credit { get; set; }
+    public Guid? UserId { get; set; }
+    public string? UserName { get; set; }
+    public bool Voided { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/movements — the company's movements in a date range, newest first.</summary>
+public sealed class PortalMovementsResponse
+{
+    public string From { get; set; } = string.Empty;
+    public string To { get; set; } = string.Empty;
+    public List<PortalMovementRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public decimal TotalDebit { get; set; }
+    public decimal TotalCredit { get; set; }
+}
+
 /// <summary>Body of <c>POST /api/v1/portal/native/documents/{key}/void</c> (GOAL_PANEL_ERPSIZ E5c) —
 /// the document-level sibling of <see cref="PortalLedgerVoidRequest"/> (D11): cancels a whole sale/
 /// purchase/return, not a standalone payment/adjustment.</summary>

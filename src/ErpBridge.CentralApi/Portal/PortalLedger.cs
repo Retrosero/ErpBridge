@@ -483,6 +483,72 @@ public static class PortalLedger
     private static readonly string[] PaymentKinds = ["collection", "payment"];
 
     /// <summary>
+    /// Every customer-side movement of the company in a date range, any kind (GOAL_PANEL_ERPSIZ E4e's <c>/hareketler</c>), newest
+    /// first — the same rows each customer's statement shows (<see cref="Movement.CustomerSide"/>; a cancelled row only when
+    /// <paramref name="includeVoided"/>, its reversal always, as the statement does). The user filter needs each row's job and
+    /// is applied by the caller, which also resolves the creators only for the rows it shows (<see cref="MovementsPage"/>).
+    /// </summary>
+    public static List<Movement> CompanyMovements(
+        Movements movements, DateOnly from, DateOnly to, IReadOnlyCollection<string> kinds, string? customerCode,
+        decimal? minAmount, decimal? maxAmount, bool includeVoided)
+    {
+        var start = from.ToDateTime(TimeOnly.MinValue);
+        var endExclusive = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var code = customerCode?.Trim();
+        return movements.ByCustomer.Values
+            .SelectMany(list => list)
+            .Where(m => m.CustomerSide && m.Date >= start && m.Date < endExclusive)
+            .Where(m => kinds.Count == 0 || kinds.Contains(m.Kind))
+            .Where(m => code is null || string.Equals(m.Customer, code, StringComparison.OrdinalIgnoreCase))
+            .Where(m => includeVoided || !m.Voided)
+            .Where(m => (minAmount is null || m.Debit + m.Credit >= minAmount) && (maxAmount is null || m.Debit + m.Credit <= maxAmount))
+            .OrderByDescending(m => m.Date).ThenByDescending(m => m.Id, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>One page of <see cref="CompanyMovements"/>, with the totals of all of them.</summary>
+    public static PortalMovementsResponse MovementsPage(
+        IReadOnlyDictionary<string, Customer> customers, List<Movement> matching, DateOnly from, DateOnly to,
+        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+    {
+        var items = matching.Skip((page - 1) * pageSize).Take(pageSize).Select(m =>
+        {
+            var creator = creatorOf(ExternalIdOf(m.Id));
+            return new PortalMovementRow
+            {
+                Id = m.Id,
+                Date = m.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                CustomerCode = m.Customer,
+                CustomerTitle = customers.TryGetValue(m.Customer, out var customer) ? customer.Title : m.Customer,
+                Kind = m.Kind,
+                SourceType = m.SourceType,
+                DocumentNo = m.DocumentNo,
+                DocumentKey = m.DocumentKey,
+                Description = m.Description,
+                PaymentType = m.PaymentType,
+                Debit = m.Debit,
+                Credit = m.Credit,
+                UserId = creator,
+                UserName = creator is { } id && userNames.TryGetValue(id, out var name) ? name : null,
+                Voided = m.Voided,
+                Reason = m.VoidReason,
+            };
+        }).ToList();
+
+        return new PortalMovementsResponse
+        {
+            From = from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            To = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Items = items,
+            Total = matching.Count,
+            Page = page,
+            PageSize = pageSize,
+            TotalDebit = matching.Sum(m => m.Debit),
+            TotalCredit = matching.Sum(m => m.Credit),
+        };
+    }
+
+    /// <summary>
     /// Every sale/purchase/return invoice across the company, any customer/supplier (GOAL_PANEL_ERPSIZ
     /// E5b) — the line-carrying kinds, i.e. exactly <see cref="DocumentKinds"/>. Same shape as E3c's
     /// <see cref="Payments"/>: a caller-resolved job lookup for the creator, everything else already

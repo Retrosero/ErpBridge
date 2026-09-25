@@ -216,7 +216,7 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         var cut = RenderLayout();
 
         cut.FindAll("#portal-nav a").Select(a => a.GetAttribute("href"))
-            .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "cariler", "stok", "tahsilatlar", "evraklar", "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "denetim");
+            .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "cariler", "stok", "tahsilatlar", "evraklar", "hareketler", "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "denetim");
         cut.Find("#user-roles").TextContent.Should().Be("Admin · Muhasebe");
         cut.Find("#session-scope").TextContent.Should().Contain("sekmeye özeldir");
     }
