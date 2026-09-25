@@ -124,6 +124,14 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<NativeStockCardDetailDto> NativeStockCardAsync(string code, CancellationToken ct = default) =>
         GetAsync<NativeStockCardDetailDto>($"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}", ct);
 
+    /// <summary>GOAL_PANEL_ERPSIZ E1d — one part (≤ 500 cards) of an imported product file.</summary>
+    public Task<CardBatchResultDto> ImportNativeStockCardsAsync(NativeStockCardBatchRequest request, CancellationToken ct = default) =>
+        SendAsync<CardBatchResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-cards/batch", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E2c — one part (≤ 500 cards) of an imported customer file.</summary>
+    public Task<CardBatchResultDto> ImportNativeCustomerCardsAsync(NativeCustomerCardBatchRequest request, CancellationToken ct = default) =>
+        SendAsync<CardBatchResultDto>(HttpMethod.Post, "api/v1/portal/native/customer-cards/batch", request, ct);
+
     public Task<NativeJobResultDto> SaveNativeStockCardAsync(NativeStockCardRequest request, CancellationToken ct = default) =>
         SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-cards", request, ct);
 

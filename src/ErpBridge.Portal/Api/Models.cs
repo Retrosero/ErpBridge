@@ -389,6 +389,41 @@ public sealed class NativeStockCardRequest
     [JsonPropertyName("operationId")] public string? OperationId { get; set; }
 }
 
+/// <summary>Body of POST …/native/stock-cards/batch (GOAL_PANEL_ERPSIZ E1d): one part (≤ 500) of an imported file.</summary>
+public sealed class NativeStockCardBatchRequest
+{
+    [JsonPropertyName("cards")] public List<NativeStockCardRequest> Cards { get; set; } = [];
+    [JsonPropertyName("firstRow")] public int FirstRow { get; set; } = 1;
+
+    /// <summary>Each card's file row (the page sends only the rows it found valid).</summary>
+    [JsonPropertyName("rows")] public List<int>? Rows { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of POST …/native/customer-cards/batch (GOAL_PANEL_ERPSIZ E2c).</summary>
+public sealed class NativeCustomerCardBatchRequest
+{
+    [JsonPropertyName("cards")] public List<NativeCustomerCardRequest> Cards { get; set; } = [];
+    [JsonPropertyName("firstRow")] public int FirstRow { get; set; } = 1;
+
+    /// <summary>Each card's file row (the page sends only the rows it found valid).</summary>
+    [JsonPropertyName("rows")] public List<int>? Rows { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+public sealed class CardBatchSkipDto
+{
+    [JsonPropertyName("row")] public int Row { get; set; }
+    [JsonPropertyName("reason")] public string Reason { get; set; } = string.Empty;
+    [JsonPropertyName("message")] public string? Message { get; set; }
+}
+
+public sealed class CardBatchResultDto
+{
+    [JsonPropertyName("booked")] public int Booked { get; set; }
+    [JsonPropertyName("skipped")] public List<CardBatchSkipDto> Skipped { get; set; } = [];
+}
+
 public sealed class NativeJobResultDto
 {
     [JsonPropertyName("jobId")] public Guid JobId { get; set; }

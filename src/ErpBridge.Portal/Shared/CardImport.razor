@@ -1,0 +1,313 @@
+@* GOAL_PANEL_ERPSIZ E1d/E2c: import products or customers from a CSV/.xlsx file — template, preview with each row's
+   problem, then the valid rows in parts of 500. The server re-checks every row and reports the ones it leaves out. *@
+@using Microsoft.AspNetCore.Components.Forms
+@inject PortalApiClient Api
+
+<DetailSheet Id="@($"{Kind}-import-sheet")" Open="Open" Busy="_busy" Eyebrow="İçe aktar" Title="@(IsStock ? "Ürünleri dosyadan al" : "Müşterileri dosyadan al")" OnClose="CloseAsync">
+    <ChildContent>
+        <div class="stack-form">
+            <p class="field-hint">
+                İlk satır başlık olmalı. Zorunlu sütunlar: <strong>@(IsStock ? "Kod, Ad" : "Kod, Unvan")</strong>.
+                @(IsStock ? "Açılış miktarı yalnız yeni üründe alınır; var olan ürünün kartı güncellenir." : "Açılış bakiyesi yalnız yeni caride alınır; var olan carinin kartı güncellenir.")
+                Excel'den "CSV (noktalı virgülle ayrılmış)" ya da .xlsx olarak kaydedebilirsiniz.
+            </p>
+            <a class="link-button" href="@TemplateHref" download="@(IsStock ? "urun-sablonu.csv" : "musteri-sablonu.csv")" id="@($"{Kind}-import-template")">Şablonu indir</a>
+            <label class="stack-field">
+                <span class="field-label">Dosya</span>
+                <InputFile OnChange="ReadAsync" accept=".csv,.xlsx,.txt" id="@($"{Kind}-import-file")" disabled="@_busy" />
+            </label>
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="@($"{Kind}-import-error")">@_error</MudAlert>
+            }
+
+            @if (_result is { } result)
+            {
+                <MudAlert Severity="@(result.Skipped.Count == 0 ? Severity.Success : Severity.Warning)" Variant="Variant.Outlined" Class="page-alert" id="@($"{Kind}-import-result")">
+                    @result.Booked kart kaydedildi@(result.Skipped.Count > 0 ? $", {result.Skipped.Count} satır atlandı" : "").
+                </MudAlert>
+                @if (result.Skipped.Count > 0)
+                {
+                    <ul class="plain-list" id="@($"{Kind}-import-skipped")">
+                        @foreach (var skip in result.Skipped.OrderBy(s => s.Row).Take(200))
+                        {
+                            <li data-row="@skip.Row">Satır @skip.Row: @ReasonText(skip.Reason)@(skip.Message is null ? null : $" ({skip.Message})")</li>
+                        }
+                    </ul>
+                }
+            }
+            else if (_drafts.Count > 0)
+            {
+                <p id="@($"{Kind}-import-summary")">
+                    <strong>@_fileName</strong>: @_drafts.Count satır okundu, <strong>@ValidCount</strong> geçerli@(InvalidCount > 0 ? $", {InvalidCount} hatalı (alınmayacak)" : "").
+                </p>
+                <div class="table-scroll">
+                    <table class="data-table detail-lines" id="@($"{Kind}-import-preview")">
+                        <thead>
+                            <tr><th>Satır</th><th>Kod</th><th>@(IsStock ? "Ad" : "Unvan")</th><th>Durum</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var draft in _drafts.OrderBy(d => d.Problem is null).ThenBy(d => d.Row).Take(100))
+                            {
+                                <tr data-row="@draft.Row" class="@(draft.Problem is null ? null : "is-invalid")">
+                                    <td>@draft.Row</td>
+                                    <td class="mono">@draft.Code</td>
+                                    <td>@draft.Name</td>
+                                    <td>@(draft.Problem ?? "✓")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (_drafts.Count > 100)
+                {
+                    <p class="field-hint">İlk 100 satır gösteriliyor (hatalılar önce).</p>
+                }
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_busy || ValidCount == 0)" OnClick="ImportAsync" id="@($"{Kind}-import-confirm")">
+                        @ValidCount satırı içe aktar
+                    </MudButton>
+                </div>
+            }
+        </div>
+    </ChildContent>
+</DetailSheet>
+
+@code {
+    /// <summary>"stock" or "customer".</summary>
+    [Parameter, EditorRequired] public string Kind { get; set; } = "stock";
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Called after an import booked anything, or when the session ended — the page reloads through its own path.</summary>
+    [Parameter] public EventCallback OnImported { get; set; }
+
+    private const int MaxRows = 5000;
+    private const int PartSize = 500;
+    private const long MaxFileBytes = 5L * 1024 * 1024;
+
+    private sealed class Draft
+    {
+        public int Row { get; init; }
+        public string Code { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string? Problem { get; set; }
+        public object Card { get; init; } = default!;
+    }
+
+    private readonly List<Draft> _drafts = [];
+    private string? _fileName;
+    private string? _error;
+    private bool _busy;
+    private CardBatchResultDto? _result;
+    private string _operationBase = Guid.NewGuid().ToString("N");
+
+    private bool IsStock => Kind == "stock";
+    private int ValidCount => _drafts.Count(d => d.Problem is null);
+    private int InvalidCount => _drafts.Count - ValidCount;
+
+    private static readonly string[] StockHeader = ["Kod", "Ad", "Birim", "KDV", "Kategori", "Marka", "Reyon", "Barkod", "Fiyat", "Açılış miktarı"];
+    private static readonly string[] CustomerHeader = ["Kod", "Unvan", "Vergi no", "Vergi dairesi", "Telefon", "E-posta", "Bölge", "Açılış bakiyesi"];
+
+    private string TemplateHref
+    {
+        get
+        {
+            var lines = IsStock
+                ? new[] { string.Join(';', StockHeader), "CAY-1;Çay 1 kg;Adet;1;İçecek;Doğuş;R1;8690000000001;150,00;40" }
+                : new[] { string.Join(';', CustomerHeader), "C-001;Bakkal Ali;1234567890;Kadıköy;05550000000;ali@example.com;İstanbul;0" };
+            return "data:text/csv;charset=utf-8," + Uri.EscapeDataString("﻿" + string.Join("\r\n", lines) + "\r\n");
+        }
+    }
+
+    /// <summary>Header aliases, compared lower-cased (Turkish) without spaces and punctuation.</summary>
+    private static readonly Dictionary<string, string[]> StockColumns = new()
+    {
+        ["code"] = ["kod", "ürünkodu", "stokkodu"], ["name"] = ["ad", "ürünadı", "ürün", "isim"], ["unit"] = ["birim"],
+        ["vat"] = ["kdv", "kdvoranı"], ["category"] = ["kategori", "grup", "anagrup"], ["brand"] = ["marka"], ["aisle"] = ["reyon", "raf"],
+        ["barcode"] = ["barkod"], ["price"] = ["fiyat", "satışfiyatı"], ["opening"] = ["açılışmiktarı", "açılış", "miktar", "stok"],
+    };
+
+    private static readonly Dictionary<string, string[]> CustomerColumns = new()
+    {
+        ["code"] = ["kod", "carikodu", "müşterikodu"], ["name"] = ["unvan", "ünvan", "ad", "müşteri"], ["taxNo"] = ["vergino", "vkn", "tckn"],
+        ["taxOffice"] = ["vergidairesi"], ["phone"] = ["telefon", "tel", "gsm"], ["email"] = ["eposta", "email", "mail"], ["region"] = ["bölge"],
+        ["opening"] = ["açılışbakiyesi", "bakiye", "açılış"],
+    };
+
+    private static string Normalize(string header) =>
+        new(header.ToLower(Fmt.Turkish).Where(char.IsLetterOrDigit).ToArray());
+
+    private async Task ReadAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        _result = null;
+        _drafts.Clear();
+        _operationBase = Guid.NewGuid().ToString("N");
+        var file = e.File;
+        _fileName = file.Name;
+        if (file.Size > MaxFileBytes)
+        {
+            _error = "Dosya 5 MB'tan büyük.";
+            return;
+        }
+
+        List<string[]> rows;
+        _busy = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxFileBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            buffer.Position = 0;
+            rows = SpreadsheetReader.Read(buffer, file.Name);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or System.Xml.XmlException or IOException)
+        {
+            _error = "Dosya okunamadı: CSV ya da .xlsx olmalı.";
+            return;
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        if (rows.Count < 2)
+        {
+            _error = "Dosyada başlık satırından sonra veri yok.";
+            return;
+        }
+        if (rows.Count - 1 > MaxRows)
+        {
+            _error = $"En çok {MaxRows} satır alınır; dosyayı bölün.";
+            return;
+        }
+
+        var columns = IsStock ? StockColumns : CustomerColumns;
+        var header = rows[0].Select(Normalize).ToArray();
+        var index = columns.ToDictionary(c => c.Key, c => Array.FindIndex(header, h => c.Value.Contains(h)));
+        if (index["code"] < 0 || index["name"] < 0)
+        {
+            _error = IsStock ? "Başlıkta \"Kod\" ve \"Ad\" sütunları yok." : "Başlıkta \"Kod\" ve \"Unvan\" sütunları yok.";
+            return;
+        }
+
+        var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var barcodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 1; i < rows.Count; i++)
+        {
+            var cells = rows[i];
+            string Cell(string key) => index[key] is var at && at >= 0 && at < cells.Length ? cells[at] : string.Empty;
+            string? Text(string key) => Cell(key) is { Length: > 0 } value ? value : null;
+            var problems = new List<string>();
+            decimal? Num(string key, string label)
+            {
+                var value = SpreadsheetReader.Number(Cell(key), out var valid);
+                if (!valid) problems.Add($"{label} sayı değil");
+                return value;
+            }
+
+            var code = Cell("code");
+            var name = Cell("name");
+            if (code.Length == 0) problems.Add("Kod boş");
+            else if (code.Length > 64) problems.Add("Kod 64 karakterden uzun");
+            else if (!codes.Add(code)) problems.Add("Kod dosyada birden fazla");
+            if (name.Length == 0) problems.Add(IsStock ? "Ad boş" : "Unvan boş");
+
+            object card;
+            if (IsStock)
+            {
+                var barcode = Text("barcode");
+                if (barcode is not null && !barcodes.Add(barcode)) problems.Add("Barkod dosyada birden fazla");
+                card = new NativeStockCardRequest
+                {
+                    StockCode = code, Name = name, Unit = Text("unit"), VatRate = Num("vat", "KDV"), Category = Text("category"),
+                    Brand = Text("brand"), Aisle = Text("aisle"), Barcode = barcode, Price = Num("price", "Fiyat"), OpeningQuantity = Num("opening", "Açılış miktarı"),
+                };
+            }
+            else
+            {
+                card = new NativeCustomerCardRequest
+                {
+                    CustomerCode = code, Title = name, TaxNo = Text("taxNo"), TaxOffice = Text("taxOffice"), Phone = Text("phone"),
+                    Email = Text("email"), RegionCode = Text("region"), OpeningBalance = Num("opening", "Açılış bakiyesi"),
+                };
+            }
+            _drafts.Add(new Draft { Row = i + 1, Code = code, Name = name, Problem = problems.Count == 0 ? null : string.Join(", ", problems), Card = card });
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        var valid = _drafts.Where(d => d.Problem is null).ToList();
+        var result = new CardBatchResultDto
+        {
+            Skipped = _drafts.Where(d => d.Problem is not null).Select(d => new CardBatchSkipDto { Row = d.Row, Reason = "CLIENT", Message = d.Problem }).ToList(),
+        };
+        _busy = true;
+        _error = null;
+        var booked = false;
+        try
+        {
+            for (var part = 0; part * PartSize < valid.Count; part++)
+            {
+                var slice = valid.Skip(part * PartSize).Take(PartSize).ToList();
+                // One id per part, kept for this file: pressing the button again after a failure replays the parts already booked.
+                var operationId = $"{_operationBase}-{part}";
+                var answer = IsStock
+                    ? await Api.ImportNativeStockCardsAsync(new NativeStockCardBatchRequest
+                    {
+                        Cards = slice.Select(d => (NativeStockCardRequest)d.Card).ToList(), Rows = slice.Select(d => d.Row).ToList(), OperationId = operationId,
+                    })
+                    : await Api.ImportNativeCustomerCardsAsync(new NativeCustomerCardBatchRequest
+                    {
+                        Cards = slice.Select(d => (NativeCustomerCardRequest)d.Card).ToList(), Rows = slice.Select(d => d.Row).ToList(), OperationId = operationId,
+                    });
+                result.Booked += answer.Booked;
+                result.Skipped.AddRange(answer.Skipped);
+                booked |= answer.Booked > 0;
+            }
+            _result = result;
+        }
+        catch (PortalApiException failed)
+        {
+            _error = failed.Message + (result.Booked > 0 ? $" ({result.Booked} kart kaydedildi; tekrar denerseniz kaydedilenler yinelenmez.)" : "");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _error = "Sunucuya ulaşılamadı. Tekrar deneyin; kaydedilen parçalar yinelenmez.";
+        }
+        catch (SessionEndedException)
+        {
+            await OnImported.InvokeAsync();
+            return;
+        }
+        finally
+        {
+            _busy = false;
+        }
+        if (booked) await OnImported.InvokeAsync();
+    }
+
+    private Task CloseAsync()
+    {
+        _drafts.Clear();
+        _result = null;
+        _error = null;
+        return OnClose.InvokeAsync();
+    }
+
+    private static string ReasonText(string reason) => reason switch
+    {
+        "CODE_REQUIRED" => "Kod boş",
+        "CODE_TOO_LONG" => "Kod 64 karakterden uzun",
+        "NAME_REQUIRED" => "Ad/unvan boş",
+        "DUPLICATE_CODE" => "Kod dosyada birden fazla",
+        "DUPLICATE_BARCODE" => "Barkod dosyada birden fazla",
+        "BARCODE_IN_USE" => "Barkod başka bir ürüne ait",
+        "REJECTED" => "Kaydedilemedi",
+        _ => "Alınmadı",
+    };
+}

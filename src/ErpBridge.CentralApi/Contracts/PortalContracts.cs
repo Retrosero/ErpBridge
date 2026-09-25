@@ -318,6 +318,47 @@ public sealed class PortalNativeDocumentRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>Body of <c>POST /api/v1/portal/native/stock-cards/batch</c> (GOAL_PANEL_ERPSIZ E1d): one part of an imported file.</summary>
+public sealed class PortalStockCardBatchRequest
+{
+    public List<PortalStockCardRequest> Cards { get; set; } = [];
+
+    /// <summary>The file row of <c>Cards[0]</c>; skipped rows are reported by file row.</summary>
+    public int FirstRow { get; set; } = 1;
+
+    /// <summary>Each card's own file row, when the caller left rows out (same length as <see cref="Cards"/>); overrides <see cref="FirstRow"/>.</summary>
+    public List<int>? Rows { get; set; }
+    public string? OperationId { get; set; }
+}
+
+/// <summary>Body of <c>POST /api/v1/portal/native/customer-cards/batch</c> (GOAL_PANEL_ERPSIZ E2c).</summary>
+public sealed class PortalCustomerCardBatchRequest
+{
+    public List<PortalCustomerCardRequest> Cards { get; set; } = [];
+    public int FirstRow { get; set; } = 1;
+    public List<int>? Rows { get; set; }
+    public string? OperationId { get; set; }
+}
+
+/// <summary>A row an import left out, and why.</summary>
+public sealed class PortalCardBatchSkip
+{
+    public int Row { get; set; }
+
+    /// <summary>CODE_REQUIRED, CODE_TOO_LONG, NAME_REQUIRED, DUPLICATE_CODE, DUPLICATE_BARCODE, BARCODE_IN_USE, REJECTED (the processor's; see <see cref="Message"/>).</summary>
+    public string Reason { get; set; } = string.Empty;
+    public string? Message { get; set; }
+}
+
+/// <summary>Answer of the card import endpoints: how many cards were booked and which rows were left out.</summary>
+public sealed class PortalCardBatchResponse
+{
+    public Guid? JobId { get; set; }
+    public int Booked { get; set; }
+    public List<PortalCardBatchSkip> Skipped { get; set; } = [];
+    public bool Idempotent { get; set; }
+}
+
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
 public sealed class PortalStockCardDetail
 {

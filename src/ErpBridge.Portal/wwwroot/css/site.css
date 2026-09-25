@@ -681,3 +681,6 @@ h1:focus, h1:focus-visible { outline: none; }
     .no-print { display: none !important; }
     .print-shell { padding: 0; }
 }
+
+/* ---- Dosyadan içe aktarma (GOAL_PANEL_ERPSIZ E1d/E2c) ---- */
+.is-invalid td { color: var(--danger, #b00020); }

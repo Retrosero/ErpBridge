@@ -69,6 +69,8 @@ public static class PortalMessages
         "CUSTOMER_CARD_REJECTED" => "Bu cari kaydedilemedi.",
         "INVALID_PAYMENT" => "İşlem kaydedilemedi: cari bulunamadı ya da tutar geçersiz.",
         "PAYMENT_REJECTED" => "Bu işlem kaydedilemedi.",
+        "INVALID_CARD_BATCH" => "İçe aktarma gönderilemedi: parça boş ya da 500 karttan büyük.",
+        "CARD_BATCH_REJECTED" => "Bu parçadaki kartların hiçbiri kaydedilemedi.",
         "INVALID_SALES_DOCUMENT" => "Evrak kaydedilemedi: cari bulunamadı, kalem eksik ya da tarih geçersiz.",
         "SALES_DOCUMENT_REJECTED" => "Evrak kaydedilemedi: kalemlerden biri bilinmeyen bir ürün ya da tutar geçersiz.",
         "INVALID_DOCUMENT_EDIT_REQUEST" => "Düzeltme kaydedilemedi: gerekçe, cari ve kalemleri kontrol edin.",
