@@ -55,7 +55,6 @@ public static class PortalNativeStockCountsEndpoints
         var payload = new Dictionary<string, object?>
         {
             ["status"] = "COMPLETED",
-            ["againstCurrentLevel"] = true,
             ["reason"] = reason,
             ["occurredAt"] = occurredAt,
             ["mobileDocumentId"] = string.IsNullOrWhiteSpace(body.DocumentNo) ? null : body.DocumentNo.Trim(),
@@ -68,7 +67,8 @@ public static class PortalNativeStockCountsEndpoints
             Entity: NativeDocumentProcessor.StockCount, EntityKey: operationKey, Action: "create",
             Summary: $"Sayım: {label} — {reason}", BeforeJson: null);
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
-            http, db, tenant!, user!, NativeDocumentProcessor.StockCount, operationKey, payload, RejectedErrorCode, ct, audit);
+            http, db, tenant!, user!, NativeDocumentProcessor.StockCount, operationKey, payload, RejectedErrorCode, ct, audit,
+            new NativeBookingOptions(CountAgainstCurrentLevel: true));
     }
 
     /// <summary>
@@ -92,9 +92,9 @@ public static class PortalNativeStockCountsEndpoints
 
         var lines = await db.MobileRecords.AsNoTracking()
             .Where(r => r.TenantId == tenant.Id && r.Entity == "stockTransactions" && r.RecordKey.StartsWith(externalId + "|") && !r.IsDeleted)
-            .Select(r => r.PayloadJson)
+            .Select(r => new { r.RecordKey, r.PayloadJson })
             .ToListAsync(ct);
-        if (lines.Any(IsVoided))
+        if (lines.Where(l => NativeDocumentProcessor.OwnedByJob(l.RecordKey, externalId)).Any(l => IsVoided(l.PayloadJson)))
             return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError { ErrorCode = "ALREADY_VOIDED", Message = "This count was already cancelled." });
 
         var audit = new PortalNativeWriteHelpers.AuditInfo(

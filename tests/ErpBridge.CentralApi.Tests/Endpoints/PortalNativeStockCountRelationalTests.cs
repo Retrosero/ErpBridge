@@ -128,6 +128,42 @@ public sealed class PortalNativeStockCountRelationalTests : IClassFixture<Sqlite
             .And.Contain(i => i.Action == "void" && i.Summary.Contains("Yanlış"));
     }
 
+    [Fact]
+    public async Task A_phone_cannot_ask_for_the_portal_count_mode_its_offline_difference_still_applies()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        await SeedCustomerAsync(c, "C-001");
+        await PostSaleAsync(c, "C-001", "S-1", ("CAY-1", 5, 150));
+        (await PutAsync("/api/v1/android/approvals/rules", new { rules = new { stock_count = false } }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Counted offline: saw 40, counted 30 (-10); uploaded after the sale left 35. The payload's own flag is ignored.
+        var response = await SendAsync(HttpMethod.Post, c.Patron, c.Id, "/api/v1/ingest/jobs", new
+        {
+            externalId = "MOB-COUNT-1", documentType = "stock_count",
+            payload = new { status = "COMPLETED", againstCurrentLevel = true, lines = new[] { new { productCode = "CAY-1", expectedQuantity = 40, countedQuantity = 30 } } },
+        });
+
+        (await response.ReadAsJsonAsync<IngestJobResponse>()).Status.Should().Be("Succeeded", await response.Content.ReadAsStringAsync());
+        (await StockAsync(c.Id, "CAY-1")).Should().Be(25m, "the phone's recorded -10 applies on top of the sale (Codex #192)");
+    }
+
+    [Fact]
+    public async Task Cancelling_one_count_never_touches_another_whose_id_starts_with_it()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 40);
+        (await CountAsync(c, new { reason = "Birinci", operationId = "abc", lines = new[] { new { productCode = "CAY-1", countedQuantity = 38 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await CountAsync(c, new { reason = "İkinci", operationId = "abc|1", lines = new[] { new { productCode = "CAY-1", countedQuantity = 35 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        (await VoidCountAsync(c, "portal-stock-count-sayim-abc", "İptal")).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        (await StockAsync(c.Id, "CAY-1")).Should().Be(37m, "only the first count's -2 is reversed; the second's -3 stays");
+        (await MovementsAsync(c, "CAY-1")).Items.Should().ContainSingle(i => i.Kind == "count" && !i.Voided && i.Out == 3m);
+    }
+
     private Task<PortalStockMovementsResponse> MovementsAsync(Company c, string code, string query = "") =>
         GetJsonAsync<PortalStockMovementsResponse>(c.Patron, $"/api/v1/portal/native/stock-cards/{code}/movements" + query);
 
