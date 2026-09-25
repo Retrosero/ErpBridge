@@ -70,6 +70,10 @@ public sealed class NativeDocumentProcessor
     /// The corrected document is booked under this job's own external id, so it is itself voidable and editable again.</summary>
     public const string DocumentEdit = "document_edit";
 
+    /// <summary>Cancels one whole <see cref="StockCount"/> (GOAL_PANEL_ERPSIZ E6b): every line it booked is reversed,
+    /// storno-style — the stock-side sibling of <see cref="DocumentVoid"/> for a document with no ledger effect.</summary>
+    public const string StockVoid = "stock_void";
+
     /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id —
     /// including an earlier <see cref="LedgerEdit"/>, whose one row is the corrected entry (it keeps its kind, so it is
     /// again a standalone collection/disbursement/adjustment).</summary>
@@ -182,6 +186,9 @@ public sealed class NativeDocumentProcessor
                 DocumentEdit => callerIsAdmin
                     ? await BookDocumentEditAsync(db, booking, document.RootElement, ct)
                     : "Only company administrators can edit a document.",
+                StockVoid => callerIsAdmin
+                    ? await BookStockVoidAsync(db, booking, document.RootElement, ct)
+                    : "Only company administrators can void a stock count.",
                 // Other cash-book documents (return and purchase payments already booked by
                 // their own documents, cash transfers) are kept as records only.
                 _ => null,
@@ -516,6 +523,10 @@ public sealed class NativeDocumentProcessor
         var documentNo = Text(document, "mobileDocumentId") ?? booking.ExternalId;
         var occurredAt = Text(document, "occurredAt") ?? booking.Stamp;
         var countedBy = Text(document, "countedBy");
+        var reason = Text(document, "reason");
+        // The portal (E6b) counts against the stock booked right now, read under the tenant lock; the phone
+        // sends what it saw offline, so a sale booked after its count survives (the difference rule above).
+        var againstCurrentLevel = Bool(document, "againstCurrentLevel") == true;
         var differences = new List<(string StockCode, decimal Difference, decimal Counted)>();
         var lineNo = 0;
         foreach (var line in lines.EnumerateArray())
@@ -526,7 +537,9 @@ public sealed class NativeDocumentProcessor
                 return $"Line {lineNo} names no known product.";
             if (Number(line, "countedQuantity") is not { } counted || counted < 0)
                 return $"Line {lineNo} has no counted quantity.";
-            var expected = Number(line, "expectedQuantity") ?? 0;
+            var expected = againstCurrentLevel
+                ? (await LevelAsync(db, booking.TenantId, stockCode, ct)).Row.Quantity
+                : Number(line, "expectedQuantity") ?? 0;
             if (counted != expected) differences.Add((stockCode, counted - expected, counted));
         }
 
@@ -555,7 +568,7 @@ public sealed class NativeDocumentProcessor
                 ["birimFiyat"] = 0,
                 ["tutar"] = 0,
                 [incoming ? "girisDepoNo" : "cikisDepoNo"] = NativeLedgerDefaults.WarehouseNo,
-                ["aciklama"] = $"Sayım farkı (sayılan {counted}){(countedBy is null ? "" : $" · {countedBy}")}",
+                ["aciklama"] = $"Sayım farkı (sayılan {counted}){(countedBy is null ? "" : $" · {countedBy}")}{(reason is null ? "" : $" · {reason}")}",
                 ["updatedAt"] = booking.Stamp,
             });
         }
@@ -970,6 +983,39 @@ public sealed class NativeDocumentProcessor
         if (string.IsNullOrWhiteSpace(job.PayloadJson)) return null;
         using var payload = JsonDocument.Parse(job.PayloadJson);
         return Text(payload.RootElement, "documentType") is { } type && EditableDocumentTypes.Contains(type) ? type : null;
+    }
+
+    /// <summary>
+    /// Cancels one whole stock count (GOAL_PANEL_ERPSIZ E6b): every <c>stockTransactions</c> line the count's job
+    /// booked is reversed via <see cref="ReverseStockLineAsync"/>, in this booking's one transaction.
+    /// <c>targetKey</c> is the count's job id.
+    /// </summary>
+    private async Task<string?> BookStockVoidAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var targetKey = Text(document, "targetKey");
+        if (targetKey is null) return "targetKey is required.";
+        var reason = Text(document, "reason");
+        if (reason is null) return "A void needs a reason.";
+
+        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == booking.TenantId && j.ExternalId == targetKey, ct);
+        if (job is null || !string.Equals(job.DocumentType, StockCount, StringComparison.OrdinalIgnoreCase))
+            return "Only a stock count can be voided here.";
+
+        var lines = await db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == booking.TenantId && r.Entity == "stockTransactions"
+                        && r.RecordKey.StartsWith(targetKey + "|") && !r.IsDeleted)
+            .Select(r => new { r.RecordKey, r.PayloadJson })
+            .ToListAsync(ct);
+        var own = lines.Where(l => l.PayloadJson is not null && !l.RecordKey.EndsWith("|void", StringComparison.Ordinal)).ToList();
+        if (own.Count == 0) return "The count changed no stock; there is nothing to cancel.";
+        foreach (var line in own)
+        {
+            using var row = JsonDocument.Parse(line.PayloadJson!);
+            if (Bool(row.RootElement, "voided") == true) return "This count is already void.";
+        }
+        foreach (var line in own)
+            await ReverseStockLineAsync(db, booking, line.RecordKey, line.PayloadJson!, reason, ct);
+        return null;
     }
 
     /// <summary>
