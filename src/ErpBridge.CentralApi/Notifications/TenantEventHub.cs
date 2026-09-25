@@ -31,6 +31,9 @@ public static class TenantEventTopics
 {
     public const string Warehouse = "warehouse";
     public const string Approvals = "approvals";
+
+    /// <summary>Tasks and the notifications they produce (docs/GOAL_GOREVLER.md); phones long-poll it.</summary>
+    public const string Tasks = "tasks";
 }
 
 /// <summary>The same per-tenant waiter queue as the bootstrap hub, as a separate instance, plus topic versions.</summary>
