@@ -16,6 +16,7 @@ public sealed class TenantModule
     public DateTimeOffset EnabledAtUtc { get; set; }
 
     /// <summary>The operator who switched it on (admin e-mail); null when unknown.</summary>
+    public const int EnabledByMaxLength = 128;
     public string? EnabledBy { get; set; }
 }
 

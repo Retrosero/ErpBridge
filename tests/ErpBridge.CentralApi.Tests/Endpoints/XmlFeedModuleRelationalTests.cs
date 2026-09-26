@@ -182,6 +182,27 @@ public sealed class XmlFeedModuleRelationalTests : IClassFixture<SqliteCentralAp
     }
 
     [Fact]
+    public async Task A_company_switched_to_its_erp_stops_getting_a_full_import()
+    {
+        var c = await CompanyAsync(TenantDataSources.Native, withModule: true);
+        (await PutConfigOkAsync(c.Patron, ValidConfig(fullImport: true))).FullImport.Should().BeTrue();
+        (await SendAsync(HttpMethod.Put, $"/api/v1/admin/tenants/{c.Id}/mobile/data-source", new { dataSource = TenantDataSources.Erp }, c.AdminToken))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await GetConfigAsync(c.Ali)).FullImport.Should().BeFalse("the ERP now keeps the master data");
+    }
+
+    [Fact]
+    public async Task A_long_operator_email_does_not_break_enabling_a_module()
+    {
+        var c = await CompanyAsync(TenantDataSources.Native, withModule: false);
+        var admin = await _factory.SeedAdminAsync(email: new string('a', 200) + "@test.local");
+        var response = await SendAsync(HttpMethod.Put, $"/api/v1/admin/tenants/{c.Id}/mobile/modules",
+            new { modules = new[] { TenantModules.XmlImport } }, _factory.IssueAdminJwt(admin.Id));
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await MeAsync(c.Ali)).Modules.Should().Equal(TenantModules.XmlImport);
+    }
+
+    [Fact]
     public async Task Deleting_the_feed_returns_it_to_defaults_and_is_idempotent()
     {
         var c = await CompanyAsync(TenantDataSources.Native, withModule: true);

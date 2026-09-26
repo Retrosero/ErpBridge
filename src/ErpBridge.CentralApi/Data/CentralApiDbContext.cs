@@ -255,7 +255,7 @@ public sealed class CentralApiDbContext : DbContext
             b.ToTable("tenant_modules");
             b.HasKey(x => new { x.TenantId, x.ModuleKey });
             b.Property(x => x.ModuleKey).IsRequired().HasMaxLength(64);
-            b.Property(x => x.EnabledBy).HasMaxLength(128);
+            b.Property(x => x.EnabledBy).HasMaxLength(TenantModule.EnabledByMaxLength);
             b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 

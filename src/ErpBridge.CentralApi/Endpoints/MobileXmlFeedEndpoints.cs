@@ -58,7 +58,7 @@ public static class MobileXmlFeedEndpoints
         var access = await AuthorizeAsync(http, db, requireAdmin: false, ct);
         if (access.Error is not null) return access.Error;
         var row = await db.TenantXmlFeedSettings.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == access.Tenant!.Id, ct);
-        return JsonResults.Ok(await ToDtoAsync(db, row, ct));
+        return JsonResults.Ok(await ToDtoAsync(db, row, access.Tenant!, ct));
     }
 
     private static async Task<IResult> PutConfigAsync(HttpContext http, [FromBody] XmlFeedConfigRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
@@ -94,7 +94,7 @@ public static class MobileXmlFeedEndpoints
         row.UpdatedByUserId = access.User!.Id;
         row.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
-        return JsonResults.Ok(await ToDtoAsync(db, row, ct));
+        return JsonResults.Ok(await ToDtoAsync(db, row, tenant, ct));
     }
 
     private static async Task<IResult> DeleteConfigAsync(HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
@@ -162,7 +162,7 @@ public static class MobileXmlFeedEndpoints
         return result;
     }
 
-    private static async Task<XmlFeedConfigDto> ToDtoAsync(CentralApiDbContext db, TenantXmlFeedSettings? row, CancellationToken ct)
+    private static async Task<XmlFeedConfigDto> ToDtoAsync(CentralApiDbContext db, TenantXmlFeedSettings? row, Tenant tenant, CancellationToken ct)
     {
         if (row is null) return new XmlFeedConfigDto();
         string? updatedBy = null;
@@ -180,7 +180,9 @@ public static class MobileXmlFeedEndpoints
             Mapping = JsonSerializer.Deserialize<Dictionary<string, string[]>>(row.MappingJson) ?? new(),
             DownloadImages = row.DownloadImages,
             ImportDescriptions = row.ImportDescriptions,
-            FullImport = row.FullImport,
+            // Derived from the company's current data source: a company switched to its ERP after saving keeps
+            // the stored flag, but phones must never import master data over the ERP.
+            FullImport = row.FullImport && tenant.DataSource == TenantDataSources.Native,
             UpdatedAtUtc = row.UpdatedAtUtc,
             UpdatedByName = updatedBy,
         };

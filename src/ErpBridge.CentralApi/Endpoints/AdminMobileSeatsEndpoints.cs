@@ -155,6 +155,8 @@ public static class AdminMobileSeatsEndpoints
         string? enabledBy = null;
         if (Guid.TryParse(http.User.FindFirstValue("sub"), out var adminId))
             enabledBy = await db.AdminUsers.AsNoTracking().Where(a => a.Id == adminId).Select(a => a.Email).FirstOrDefaultAsync(ct);
+        // Audit only: an admin email may be longer (255) than the column (128).
+        if (enabledBy is { Length: > TenantModule.EnabledByMaxLength }) enabledBy = enabledBy[..TenantModule.EnabledByMaxLength];
         var existing = await db.TenantModules.Where(m => m.TenantId == tenantId).ToListAsync(ct);
         db.TenantModules.RemoveRange(existing.Where(m => !wanted.Contains(m.ModuleKey)));
         var now = DateTimeOffset.UtcNow;
