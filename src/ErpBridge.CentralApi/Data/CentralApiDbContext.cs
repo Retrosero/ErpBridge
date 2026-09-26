@@ -154,6 +154,12 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>GOAL_PANEL_ERPSIZ E7b — who changed what from the portal in a native tenant's own books (D5).</summary>
     public DbSet<NativeAuditLogEntry> NativeAuditLogEntries => Set<NativeAuditLogEntry>();
 
+    /// <summary>Sellable add-ons switched on per company from the Admin console (XML ürün modülü).</summary>
+    public DbSet<TenantModule> TenantModules => Set<TenantModule>();
+
+    /// <summary>A company's XML product feed, written by its administrator from the phone.</summary>
+    public DbSet<TenantXmlFeedSettings> TenantXmlFeedSettings => Set<TenantXmlFeedSettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -242,6 +248,25 @@ public sealed class CentralApiDbContext : DbContext
             b.ToTable("tenant_warehouse_settings");
             b.HasKey(x => x.TenantId);
             b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantWarehouseSettings>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TenantModule>(b =>
+        {
+            b.ToTable("tenant_modules");
+            b.HasKey(x => new { x.TenantId, x.ModuleKey });
+            b.Property(x => x.ModuleKey).IsRequired().HasMaxLength(64);
+            b.Property(x => x.EnabledBy).HasMaxLength(TenantModule.EnabledByMaxLength);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TenantXmlFeedSettings>(b =>
+        {
+            b.ToTable("tenant_xml_feed_settings");
+            b.HasKey(x => x.TenantId);
+            b.Property(x => x.Url).IsRequired().HasMaxLength(2048);
+            b.Property(x => x.RecordPath).IsRequired().HasMaxLength(512);
+            b.Property(x => x.MappingJson).IsRequired().HasColumnType("jsonb");
+            b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantXmlFeedSettings>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 
         ConfigureWorkTasks(modelBuilder);

@@ -1049,6 +1049,27 @@ registration ayrı bir composition projesine taşınır.
      bağlı görevde açık kalır (`SetVisitReminder`; cari yoksa sunucu kapatır). Seride `task_series.VisitReminder`;
      her örnek kendi başlangıcından (`runAt`) itibaren hatırlatır. Hatırlatmayı sunucu göndermez: telefon, atanan
      kişi cariyi satış için açınca gösterir; "sonra tekrar sor" telefonda yereldir (Sipariş Cepte KB kural 34).
+28. **Satılan ek modüller firma bazındadır; XML ürün beslemesi telefonda işlenir: `Endpoints/MobileXmlFeedEndpoints` (XML ürün modülü, 2026-09-26).**
+   - **Modül seti yalnız operatörden:** `tenant_modules` (`TenantId, ModuleKey` birleşik PK). Bilinen anahtarlar tek yerde:
+     `Domain/TenantModules.Known` (şimdilik yalnız `xml_import`). Admin konsolu `/tenants/{id}/mobile` "Ek modüller"
+     paneli → `PUT /api/v1/admin/tenants/{id}/mobile/modules {modules:[…]}` seti **tamamen değiştirir** (204; bilinmeyen
+     anahtar 400 `UNKNOWN_MODULE`, tenant yoksa 404; zaten açık modülün `EnabledAtUtc`'si korunur, `EnabledBy` = admin
+     e-postası). Telefon/panel modülü açamaz. Session (login + `/account/me`) ve konsol overview'ı `modules[]` taşır
+     (sıralı, küçük harf, yoksa boş dizi); telefon satın alınmamış özelliği gizler.
+   - **Besleme ayarı firma geneli:** `tenant_xml_feed_settings` (tenant başına bir satır). `/api/v1/android/xml-feed/config`
+     (`MobileUserPolicy` + firma başı hız sınırı): `GET` firmanın her aktif kullanıcısı; `PUT`/`DELETE` yalnız
+     `RolePermissions.CanManageUsers` (403 `ADMIN_REQUIRED`). Sıra: önce modül (yoksa herkese 403 `MODULE_NOT_ENABLED`),
+     sonra rol, sonra doğrulama (400 `INVALID_XML_FEED_CONFIG`): `url` mutlak http/https ≤ 2048, `recordPath` dolu ≤ 512,
+     `mapping` anahtarları `CODE, IMAGE, DESCRIPTION, BARCODE, TITLE, BRAND, CATEGORY, PRICE, VAT, STOCK` (büyük harf,
+     harfe duyarlı), `CODE` en az bir dolu yol, hedef başı ≤ 10 yol, yol ≤ 256. Boş yollar ve yolsuz kalan hedefler
+     atılır. Satır yokken `GET` `configured=false`, `mapping {}`, `downloadImages=true`, diğerleri false/null döner.
+     `DELETE` idempotent 204.
+   - **ERP'li firmada tam aktarım yok:** `fullImport` yalnız `DataSource = native` ise saklanır; ERP'li firmada telefon ne
+     gönderirse göndersin `false` yazılır — ana veri ERP'nindir, XML yalnız resim/açıklama ekler (Sipariş Cepte
+     `DataEditPolicy`).
+   - **Sunucu beslemeyi indirmez.** URL'yi her telefon kendisi çeker ve kendi yerel veritabanına işler; sunucu yalnız
+     ayarı saklar (SSRF yüzeyi açılmaz, sunucuda XML ayrıştırma yok).
+   - Testler: `XmlFeedModuleRelationalTests`, Admin `TenantMobilePageTests` (modül kutusu).
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

@@ -188,6 +188,7 @@ public static class MobileAccountEndpoints
         Seats = await seats.GetUsageAsync(tenant.Id, ct),
         DataSource = tenant.DataSource,
         ApprovalRules = (await ErpBridge.CentralApi.Approvals.ApprovalService.RulesAsync(db, tenant.Id, ct)).ToMap(),
+        Modules = await MobileXmlFeedEndpoints.ModulesAsync(db, tenant.Id, ct),
     };
 
     internal static MobileUserDto ToDto(MobileUser u) => new()
