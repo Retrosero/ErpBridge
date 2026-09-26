@@ -388,6 +388,9 @@ public sealed class TenantMobileOverviewDto
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
     [JsonPropertyName("approvalRules")] public ApprovalRulesDto ApprovalRules { get; set; } = new();
+
+    /// <summary>Sellable add-ons switched on for the company (<c>xml_import</c>…).</summary>
+    [JsonPropertyName("modules")] public string[] Modules { get; set; } = Array.Empty<string>();
     [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
     [JsonPropertyName("subscriptions")] public SubscriptionDto[] Subscriptions { get; set; } = Array.Empty<SubscriptionDto>();
     [JsonPropertyName("users")] public MobileUserDto[] Users { get; set; } = Array.Empty<MobileUserDto>();
@@ -452,6 +455,7 @@ public static class MobileSeatMessages
         "DEVICE_NOT_FOUND" => "Cihaz bulunamadı; liste yenilendi.",
         "TENANT_NOT_FOUND" => "Müşteri bulunamadı.",
         "TENANT_HAS_ERP_DATA" => "Bu firmada ERP ajanı veya ERP'den gelmiş veri var; ERP'siz kullanıma geçirilemez.",
+        "UNKNOWN_MODULE" => "Bilinmeyen modül; sayfayı yenileyip tekrar deneyin.",
         "TENANT_HAS_NATIVE_DATA" => "Bu firmada telefondan girilmiş ürün veya cari var; ERP bağlantılı kullanıma geçirilemez.",
         _ => api.Message,
     };
@@ -700,6 +704,10 @@ public sealed class CentralApiClient
 
     public Task SetTenantDataSourceAsync(Guid tenantId, string dataSource, CancellationToken ct = default) =>
         SendRawStringAsync(() => _http.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/data-source", new { dataSource }, ct), ct);
+
+    /// <summary>Replaces the company's add-on modules with <paramref name="modules"/>.</summary>
+    public Task SetTenantModulesAsync(Guid tenantId, IReadOnlyCollection<string> modules, CancellationToken ct = default) =>
+        SendRawStringAsync(() => _http.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/modules", new { modules }, ct), ct);
 
     public Task<ApprovalRequestDto[]> GetTenantApprovalsAsync(Guid tenantId, string status = "all", CancellationToken ct = default) =>
         SendAsync<ApprovalRequestDto[]>(() => _http.GetAsync($"/api/v1/admin/tenants/{tenantId}/mobile/approvals?status={Uri.EscapeDataString(status)}&take=50", ct), ct);

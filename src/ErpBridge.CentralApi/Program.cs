@@ -732,6 +732,7 @@ public partial class Program
         app.MapMobileTelemetryEndpoints();
         app.MapMobileAccountEndpoints();
         app.MapMobileApprovalEndpoints();
+        app.MapMobileXmlFeedEndpoints();
         app.MapMobileTaskEndpoints();
         app.MapPortalEndpoints();
         app.MapPortalErpWriteEndpoints();
