@@ -1071,6 +1071,26 @@ registration ayrı bir composition projesine taşınır.
    - **Sunucu beslemeyi indirmez.** URL'yi her telefon kendisi çeker ve kendi yerel veritabanına işler; sunucu yalnız
      ayarı saklar (SSRF yüzeyi açılmaz, sunucuda XML ayrıştırma yok).
    - Testler: `XmlFeedModuleRelationalTests`, Admin `TenantMobilePageTests` (modül kutusu).
+29. **SKT (son kullanma tarihi) kayıtları merkezdedir: `Expiry/StockExpiryService` + `Endpoints/MobileExpiryEndpoints` (2026-09-27).**
+   - **Uygulamanın operasyonel verisidir, ERP ana verisi değil.** Kayıt = ürün (`stockCode`, barkod/ad anlık kopyası) +
+     reyon/raf (`location`) + depo + son kullanma tarihi + isteğe bağlı miktar + not + `closed`. Telefonlardan girilir,
+     firmanın bütün telefonları paylaşır; ERP'li ve ERP'siz firmada aynı tablo (`stock_expiry_records`, `TenantId`),
+     **Mikro'ya hiç yazılmaz**, ajan görmez, `DataEditPolicy`'ye takılmaz. Miktar bilgi amaçlıdır: satış düşmez,
+     raf bitince kayıt kapatılır (`closed`). Modül/rol kapısı yok: firmanın her aktif kullanıcısı okur ve yazar.
+     Panel ekranı yok.
+   - **Yazım görevlerle aynı işlem partisidir** (kural 27): `POST /api/v1/android/expiry/ops` `{ops:[{opId, type:
+     upsert|delete, record}]}` ≤ 200 (fazlası 400 `EXPIRY_BATCH_TOO_LARGE`). `stock_expiry_ops_applied`'da olan
+     `opId` `duplicate`; reddedilen işlem kendi savepoint'ine döner, partiyi durdurmaz. `upsert` yoksa açar
+     (oluşturan yalnız burada), varsa tüm alanları yazar (son yazan kazanır). `delete` yumuşak silmedir; silinmiş
+     kayıt yeniden düzenlenmez (`EXPIRY_NOT_FOUND`), ikinci silme `applied` ama değişiklik değildir. Kimliği telefon
+     üretir ve **tüm firmalar arasında tekildir** (PK); başka firmanın kimliği `EXPIRY_NOT_FOUND`.
+   - **Okuma:** `GET /api/v1/android/expiry?changedSinceSeq&take` (varsayılan 500, en çok 1000), silinenler
+     `deleted=true` ile gelir. `UpdatedSeq` `tenant_sync_counter`'dan yazan işlem içinde ayrılır (kural 11); `upsert`
+     sayacı kaydı aramadan **önce** alır, böylece aynı yeni kimliği açan iki telefon kilitte sıraya girer, PK'da
+     çakışmaz. Kendi ucundadır (`sync/pull` değil): kayıtlar ERP şeklinde değil, telefonun yazdığı veridir.
+   - Doğrulama tek yerde (`EXPIRY_INVALID`, Türkçe mesaj alanı adlandırır); sözleşme `docs/api-contracts.md`.
+     Testler: `ExpiryRelationalTests` (SQLite, uçlar), `StockExpiryServiceTests` (bellek içi, doğrulama).
+     `stock_expiry_ops_applied` henüz temizlenmiyor (`AppliedAtMs` indeksi hazır).
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

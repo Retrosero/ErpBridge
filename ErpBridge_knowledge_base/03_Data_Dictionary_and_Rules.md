@@ -108,6 +108,10 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `task_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` — 30 gün sonra silinir.
   - `user_notifications`: `Id`, `TenantId`, `UserId`, `Kind(32)`, `Title(200)`, `Body(500)`, `TaskId`, `CreatedAtMs`, `ReadAtMs`, `Seq`. İndeks `(TenantId, UserId, Seq)`, `(TenantId, UserId, ReadAtMs)`.
 
+- **SKT kayıtları** *(2026-09-27; kural 29)* — telefonların ortak raf verisi, ERP'ye yazılmaz; zamanlar unix ms (UTC):
+  - `stock_expiry_records`: `Id` uuid PK (telefon üretir, firmalar arası tekil), `TenantId` FK `tenants` cascade, `StockCode(50)`, `Barcode(50)`, `ProductName(200)` anlık kopya, `Location(50)` reyon/raf, `Warehouse(100)`, `ExpiryDate` `date`, `Quantity numeric(18,3)` null (bilgi amaçlı), `Note(500)`, `IsClosed`, `IsDeleted` (yumuşak silme), `CreatedByUserId`, `CreatedByName(120)`, `CreatedAtMs`, `UpdatedAtMs`, `UpdatedSeq` (`tenant_sync_counter`). İndeks `(TenantId, UpdatedSeq)`, `(TenantId, StockCode)`.
+  - `stock_expiry_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` (indeksli; henüz temizlenmiyor).
+
 ---
 
 ## 3. SQLite LocalStore (Ajan İçi Depolama)

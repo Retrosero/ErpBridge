@@ -160,6 +160,11 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>A company's XML product feed, written by its administrator from the phone.</summary>
     public DbSet<TenantXmlFeedSettings> TenantXmlFeedSettings => Set<TenantXmlFeedSettings>();
 
+    // SKT (son kullanma tarihi) kayıtları: telefonlardan girilen raf verisi, yalnız merkezde; ERP'ye yazılmaz.
+    public DbSet<StockExpiryRecord> StockExpiryRecords => Set<StockExpiryRecord>();
+
+    public DbSet<StockExpiryOpApplied> StockExpiryOpsApplied => Set<StockExpiryOpApplied>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -270,6 +275,30 @@ public sealed class CentralApiDbContext : DbContext
         });
 
         ConfigureWorkTasks(modelBuilder);
+
+        modelBuilder.Entity<StockExpiryRecord>(b =>
+        {
+            b.ToTable("stock_expiry_records");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.StockCode).IsRequired().HasMaxLength(50);
+            b.Property(x => x.Barcode).HasMaxLength(50);
+            b.Property(x => x.ProductName).HasMaxLength(200);
+            b.Property(x => x.Location).IsRequired().HasMaxLength(50);
+            b.Property(x => x.Warehouse).HasMaxLength(100);
+            b.Property(x => x.Quantity).HasPrecision(18, 3);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq });
+            b.HasIndex(x => new { x.TenantId, x.StockCode });
+        });
+
+        modelBuilder.Entity<StockExpiryOpApplied>(b =>
+        {
+            b.ToTable("stock_expiry_ops_applied");
+            b.HasKey(x => new { x.TenantId, x.OpId });
+            b.HasIndex(x => x.AppliedAtMs);
+        });
 
         modelBuilder.Entity<DisplayDevice>(b =>
         {
