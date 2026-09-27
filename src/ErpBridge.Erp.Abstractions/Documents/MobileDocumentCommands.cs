@@ -177,9 +177,15 @@ public sealed record DisbursementCommand(
 /// <summary>Alış faturasının bir kalemi: tedarikçinin faturasındaki fiyat ve miktar.</summary>
 /// <param name="StockCode">ERP stok kodu.</param>
 /// <param name="Quantity">Miktar.</param>
-/// <param name="UnitPrice">Tedarikçinin birim fiyatı.</param>
+/// <param name="UnitPrice">Tedarikçinin iskontosuz birim fiyatı.</param>
 /// <param name="UnitPointer"><c>sth_birim_pntr</c>; ana birim 1.</param>
-public sealed record PurchaseInvoiceLine(string StockCode, decimal Quantity, decimal UnitPrice, byte UnitPointer = 1);
+/// <param name="DiscountPercents">
+/// Satırın kendi iskontoları (%), sırayla her biri öncekinden kalan tutara uygulanır; iskonto yoksa <c>null</c>.
+/// Faturanın genel iskontoları <see cref="PurchaseInvoiceCommand.GeneralDiscountPercents"/>'tadır ve satır
+/// iskontolarından sonra gelir.
+/// </param>
+public sealed record PurchaseInvoiceLine(
+    string StockCode, decimal Quantity, decimal UnitPrice, byte UnitPointer = 1, IReadOnlyList<decimal>? DiscountPercents = null);
 
 /// <summary>
 /// Tedarikçiden alınan mal (ERP yazım 3, referans §10 ve §15). Mikro'da alış faturasıdır:
@@ -196,6 +202,10 @@ public sealed record PurchaseInvoiceLine(string StockCode, decimal Quantity, dec
 /// <param name="Lines">Kalemler.</param>
 /// <param name="Settlement">Peşin ödendiyse fatura kapalı yazılır; ödenmediyse açık hesap kalır (K13).</param>
 /// <param name="SettlementAccountCode">Kapatan kasa ya da banka kodu.</param>
+/// <param name="GeneralDiscountPercents">
+/// Faturanın genel iskontoları (%), zincirleme; her satıra o satırın kendi iskontolarından sonra uygulanır.
+/// İskonto yoksa <c>null</c>.
+/// </param>
 public sealed record PurchaseInvoiceCommand(
     ErpDocumentHeader Header,
     int WarehouseNo,
@@ -203,7 +213,8 @@ public sealed record PurchaseInvoiceCommand(
     bool PricesIncludeVat,
     IReadOnlyList<PurchaseInvoiceLine> Lines,
     PurchaseSettlement Settlement = PurchaseSettlement.Open,
-    string? SettlementAccountCode = null);
+    string? SettlementAccountCode = null,
+    IReadOnlyList<decimal>? GeneralDiscountPercents = null);
 
 /// <summary>
 /// Alışın nasıl kapandığı (ERP yazım 3 K13, referans §10).

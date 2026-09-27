@@ -16,6 +16,9 @@ namespace ErpBridge.Erp.Mikro.Writers.Session;
 /// <param name="VatPointer"><c>sth_vergi_pntr</c>.</param>
 /// <param name="VatRate">The pointer's rate in percent (<c>fn_VergiYuzde</c>).</param>
 /// <param name="Vat"><c>sth_vergi</c>.</param>
+/// <param name="Discount4"><c>sth_iskonto4</c>; yalnız alış kullanır.</param>
+/// <param name="Discount5"><c>sth_iskonto5</c>; yalnız alış kullanır.</param>
+/// <param name="Discount6"><c>sth_iskonto6</c>; yalnız alış kullanır.</param>
 public sealed record MikroPricedLine(
     decimal UnitPrice,
     decimal Quantity,
@@ -25,9 +28,12 @@ public sealed record MikroPricedLine(
     decimal Discount3,
     byte VatPointer,
     decimal VatRate,
-    decimal Vat)
+    decimal Vat,
+    decimal Discount4 = 0m,
+    decimal Discount5 = 0m,
+    decimal Discount6 = 0m)
 {
-    public decimal Net => Gross - Discount1 - Discount2 - Discount3;
+    public decimal Net => Gross - Discount1 - Discount2 - Discount3 - Discount4 - Discount5 - Discount6;
 
     public decimal Total => Net + Vat;
 }
@@ -41,6 +47,9 @@ public sealed record MikroPricedDocument(IReadOnlyList<MikroPricedLine> Lines)
     public decimal Discount1 => Lines.Sum(l => l.Discount1);
     public decimal Discount2 => Lines.Sum(l => l.Discount2);
     public decimal Discount3 => Lines.Sum(l => l.Discount3);
+    public decimal Discount4 => Lines.Sum(l => l.Discount4);
+    public decimal Discount5 => Lines.Sum(l => l.Discount5);
+    public decimal Discount6 => Lines.Sum(l => l.Discount6);
     public decimal Vat => Lines.Sum(l => l.Vat);
 
     /// <summary><c>cha_meblag</c>: gross − discounts + VAT.</summary>
@@ -108,23 +117,43 @@ public static class MikroPriceCalculator
         return new MikroPricedLine(unit, quantity, gross, condition, 0m, 0m, vatPointer, vatRate, vat);
     }
 
+    /// <summary>Discount columns on a Mikro stock line (<c>sth_iskonto1..6</c>).</summary>
+    public const int DiscountColumns = 6;
+
     /// <summary>
-    /// An alış line: the supplier's own unit price, with VAT taken from the stock card (K6). A purchase
-    /// carries no discount chain — what the supplier charged is what goes in; a discount the supplier gave
-    /// is already inside the price they invoiced.
+    /// An alış line: the supplier's own unit price, with VAT taken from the stock card (K6), and the
+    /// supplier's discounts as a chain: the line's own, then the invoice's general ones. Each is an amount
+    /// taken from what the previous one left (<c>sth_isk_mas2..6 = 1</c>), rounded like every amount.
+    ///
+    /// <para>Mikro has six discount columns per line, the phone up to six line and six general discounts.
+    /// Amounts fill the columns in chain order; any beyond the sixth are added to the sixth. Each column is
+    /// an amount off what was left, so the net is the same however they are grouped — only Mikro's screen
+    /// shows the grouped column as one percentage.</para>
     /// </summary>
-    /// <param name="unitPrice">The supplier's unit price as the phone recorded it.</param>
+    /// <param name="unitPrice">The supplier's undiscounted unit price as the phone recorded it.</param>
     /// <param name="quantity">Quantity.</param>
     /// <param name="vatPointer">The stock card's VAT pointer.</param>
     /// <param name="vatRate">That pointer's rate in percent.</param>
     /// <param name="priceIncludesVat">Whether the supplier's price already contains VAT.</param>
+    /// <param name="discountPercents">The discount chain in percent, in order; null or empty for none.</param>
     public static MikroPricedLine PurchaseLine(
-        decimal unitPrice, decimal quantity, byte vatPointer, decimal vatRate, bool priceIncludesVat)
+        decimal unitPrice, decimal quantity, byte vatPointer, decimal vatRate, bool priceIncludesVat,
+        IReadOnlyList<decimal>? discountPercents = null)
     {
         var unit = UnitWithoutVat(unitPrice, vatRate, priceIncludesVat);
         var gross = Round(unit * quantity);
-        var vat = Round(gross * vatRate / 100m);
-        return new MikroPricedLine(unit, quantity, gross, 0m, 0m, 0m, vatPointer, vatRate, vat);
+        var columns = new decimal[DiscountColumns];
+        var remaining = gross;
+        var index = 0;
+        foreach (var percent in discountPercents ?? [])
+        {
+            var amount = Round(remaining * percent / 100m);
+            remaining -= amount;
+            columns[Math.Min(index++, DiscountColumns - 1)] += amount;
+        }
+        var vat = Round(remaining * vatRate / 100m);
+        return new MikroPricedLine(
+            unit, quantity, gross, columns[0], columns[1], columns[2], vatPointer, vatRate, vat, columns[3], columns[4], columns[5]);
     }
 
     /// <summary>

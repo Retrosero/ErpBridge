@@ -60,7 +60,8 @@ public sealed class MikroPurchaseInvoiceWriter(MikroDocumentWriteRunner runner)
             if (line.Quantity <= 0) throw new MikroWriteException(ErpWriteError.InvalidQuantity(priced.Count + 1));
             var stock = await lookup.StockAsync(line.StockCode, forSale: false, ct).ConfigureAwait(false);
             // K6: the VAT is the stock card's, not something the phone carries.
-            priced.Add(MikroPriceCalculator.PurchaseLine(line.UnitPrice, line.Quantity, stock.VatPointer, stock.VatRate, command.PricesIncludeVat));
+            priced.Add(MikroPriceCalculator.PurchaseLine(
+                line.UnitPrice, line.Quantity, stock.VatPointer, stock.VatRate, command.PricesIncludeVat, DiscountChain(command, line)));
         }
 
         var document = new MikroPricedDocument(priced);
@@ -82,6 +83,10 @@ public sealed class MikroPurchaseInvoiceWriter(MikroDocumentWriteRunner runner)
 
         return new MikroWrittenDocument(MikroTables.CariHareket.Name, MikroCodes.ChaEvrakTip.AlisFaturasi, series, number, headerRecno);
     }
+
+    /// <summary>A line's discounts in the order they apply: its own, then the invoice's general ones.</summary>
+    internal static IReadOnlyList<decimal> DiscountChain(PurchaseInvoiceCommand command, PurchaseInvoiceLine line) =>
+        [.. line.DiscountPercents ?? [], .. command.GeneralDiscountPercents ?? []];
 
     /// <summary>
     /// What the document says it is. The supplier's own invoice number is worth keeping where a person
@@ -147,6 +152,13 @@ public sealed class MikroPurchaseInvoiceWriter(MikroDocumentWriteRunner runner)
             ["cha_karsid_kur"] = 1d,
             ["cha_meblag"] = document.Total,
             ["cha_aratoplam"] = document.Gross,
+            // Başlıktaki iskontolar satır sütunlarının toplamıdır (referans §2), satış faturasındaki gibi.
+            ["cha_ft_iskonto1"] = document.Discount1,
+            ["cha_ft_iskonto2"] = document.Discount2,
+            ["cha_ft_iskonto3"] = document.Discount3,
+            ["cha_ft_iskonto4"] = document.Discount4,
+            ["cha_ft_iskonto5"] = document.Discount5,
+            ["cha_ft_iskonto6"] = document.Discount6,
             ["cha_vergi1"] = document.VatBucket(1),
             ["cha_vergi2"] = document.VatBucket(2),
             ["cha_vergi3"] = document.VatBucket(3),
@@ -186,7 +198,13 @@ public sealed class MikroPurchaseInvoiceWriter(MikroDocumentWriteRunner runner)
             ["sth_miktar2"] = priced.Quantity,
             ["sth_birim_pntr"] = line.UnitPointer,
             ["sth_tutar"] = priced.Gross,
-            ["sth_iskonto1"] = 0,
+            // Tutar olarak; 1. sütun brütten, sonrakiler kalandan (sth_isk_mas, aşağıda).
+            ["sth_iskonto1"] = priced.Discount1,
+            ["sth_iskonto2"] = priced.Discount2,
+            ["sth_iskonto3"] = priced.Discount3,
+            ["sth_iskonto4"] = priced.Discount4,
+            ["sth_iskonto5"] = priced.Discount5,
+            ["sth_iskonto6"] = priced.Discount6,
             ["sth_vergi_pntr"] = priced.VatPointer,
             ["sth_vergi"] = priced.Vat,
             ["sth_fat_recid_recno"] = headerRecno,

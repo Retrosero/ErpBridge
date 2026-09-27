@@ -204,8 +204,10 @@ kesinleştirilmeyi bekliyor" rozetiyle işaretlenir.
   "supplierCode": "320.010", "warehouseNo": null,
   "invoiceNo": "ÇINAR-000482",
   "settlementMethod": "Nakit", "cashCode": null,
+  "amount": 9775.50, "generalDiscountPercents": [2],
   "lines": [
-    { "productCode": "B575", "quantity": 50, "unitPrice": 210.00, "unitPointer": 1 }
+    { "productCode": "B575", "quantity": 50, "unitPrice": 210.00, "unitPointer": 1,
+      "lineDiscountPercents": [5], "lineTotal": 9775.50, "discountAmount": 724.50 }
   ]
 }
 ```
@@ -214,10 +216,19 @@ kesinleştirilmeyi bekliyor" rozetiyle işaretlenir.
 |---|---|---|
 | `supplierCode` | evet | Cari kodu (`customerCode` değil — alışta tedarikçi alanı ayrı) |
 | `warehouseNo` | hayır | Yoksa ERP aktarım ayarındaki **alış deposu**, o da yoksa genel depo |
-| `lines[].productCode`/`stockCode`, `quantity`, `unitPrice` | evet | Telefon KDV göstermez: `qty × unitPrice` toplamı, KDV stok kartının `vergi_pntr`'ından hesaplanır (K6); fiyatın KDV'li olup olmadığı ERP aktarım ayarındaki "Tedarikçi fiyatı" seçimiyle belirlenir |
+| `lines[].productCode`/`stockCode`, `quantity`, `unitPrice` | evet | `unitPrice` tedarikçinin **iskontosuz** birim fiyatı. KDV stok kartının `vergi_pntr`'ından hesaplanır (K6); fiyatın KDV'li olup olmadığı ERP aktarım ayarındaki "Tedarikçi fiyatı" seçimiyle belirlenir |
+| `lines[].lineDiscountPercents` | hayır | Satırın kendi iskontoları (%), zincirleme; en çok 6, her biri 0–100, 0 = iskonto yok *(2026-09-27)* |
+| `generalDiscountPercents` | hayır | Faturanın genel iskontoları (%), her satıra o satırın iskontolarından **sonra** zincirleme; en çok 6 *(2026-09-27)* |
+| `amount` | evet | İskontolu **KDV hariç** net toplam (fiyat KDV'li ayarda KDV'li toplam); ERP kendi hesabıyla ±0,05 TL karşılaştırır |
+| `lines[].lineTotal`, `lines[].discountAmount` | hayır | Bilgi amaçlı: satırın satır + genel iskontolar düşülmüş neti ve iskonto tutarı (ERP'siz firmada merkez `lineTotal`'ı işler, Portal onay ekranı `discountAmount`'u gösterir) |
 | `settlementMethod` (ya da `paymentType`) | hayır (`Cari Borç`) | `Cari Borç`/boş → açık fatura; `Nakit` → kasadan kapalı; `Havale`/`EFT`/`Banka` → bankadan kapalı |
 | `cashCode` / `bankCode` | hayır | Yoksa firma ayarındaki kasa/havale bankası |
 | `invoiceNo` | hayır | Bilgi amaçlı; evrak numarası ERP'de tedarikçinin kendi serisinden MAX+1 devam eder (§15, K7) — telefondan seri gelmez |
+
+İskontolar Mikro'da satırın `sth_iskonto1..6` sütunlarına tutar olarak yazılır: önce satırın, sonra genel iskontolar;
+6'yı aşan tutarlar 6. sütunda toplanır. İskontoyu bilmeyen eski ajan (< 1.2.0) iskontolu belgeyi iskontosuz hesaplar
+ve `TOTAL_MISMATCH` ile reddeder; ajan güncellenince iş Portal'dan yeniden denenir. Geçersiz zincir satırda
+`INVALID_DISCOUNT`, genelde `INVALID_GENERAL_DISCOUNT`.
 
 Peşin alış **tek kapalı evraktır** (K13): ayrı bir tediye yazılmaz, ödeme aynı `CARI_HESAP_HAREKETLERI` satırını
 kapatır. Eski telefon sürümü (ödeme bilgisiz gövde) fatura**yı açık** yazar; ödemesi ayrı bir `disbursement` olarak

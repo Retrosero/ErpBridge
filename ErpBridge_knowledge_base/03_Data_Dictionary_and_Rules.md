@@ -181,6 +181,12 @@ Stok hareketinde karşılığı: `sth_iskonto1..6` **tutar** olarak saklanır; u
 (canlıda `isk_mas1=0` brüt üzerinden, `2..10=1` kalan üzerinden). Siparişte tutar `sip_iskonto_1..6`, şekil
 `sip_iskonto1..6` (alt çizgisiz).
 
+**Telefon belgelerinde sütun kullanımı:** satış faturası/siparişi `1`=satır, `2`=müşteri, `3`=sepet (genel) iskontosu.
+**Alış faturası (2026-09-27):** önce satırın kendi iskontoları (en çok 6), ardından faturanın genel iskontoları (en çok 6)
+zincir sırasıyla `sth_iskonto1..6`'ya yazılır; 6'yı aşan tutarlar **6. sütunda toplanır**. Her sütun kalandan alınan tutar
+olduğu için net değişmez, yalnız Mikro ekranı birleşen sütunu tek oran gibi gösterir. Başlıkta `cha_ft_iskonto1..6` =
+satır sütunlarının toplamı (`MikroPriceCalculator.PurchaseLine`, `MikroPurchaseInvoiceWriter`).
+
 ### Evrak Seri / Sıra
 
 `(evrak_tip, evrakno_seri, evrakno_sira, satır_no)` üzerinde UNIQUE index vardır.

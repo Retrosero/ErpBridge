@@ -319,6 +319,57 @@ public class MobileDocumentTranslatorExpenseAndCountTests
             .Should().Be(ErpWriteError.UnsupportedPaymentTypeCode);
     }
 
+    /// <summary>
+    /// Alış iskontosu: satırın kendi zinciri ve faturanın genel zinciri ayrı taşınır; boş kutu (0)
+    /// iskonto değildir. Alanları olmayan eski gövdede iskonto yoktur.
+    /// </summary>
+    [Fact]
+    public void A_discounted_purchase_carries_the_line_and_the_general_discount_chains()
+    {
+        var body = Purchase
+            .Replace("\"amount\": 1000.00,", "\"amount\": 837.90, \"generalDiscountPercents\": [2],", StringComparison.Ordinal)
+            .Replace("\"lineTotal\": 1000.00", "\"lineTotal\": 837.90, \"lineDiscountPercents\": [10, 0, 5]", StringComparison.Ordinal);
+
+        var purchase = _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Purchase!;
+
+        purchase.GeneralDiscountPercents.Should().Equal(2m);
+        var line = purchase.Lines.Should().ContainSingle().Subject;
+        line.UnitPrice.Should().Be(100.00m, "fiyat iskontosuz tedarikçi fiyatı kalır");
+        line.DiscountPercents.Should().Equal(10m, 5m);
+
+        var plain = _sut.Translate("purchase_receipt", "MOB-PR-1", Purchase, Context()).Purchase!;
+        plain.GeneralDiscountPercents.Should().BeNull();
+        plain.Lines[0].DiscountPercents.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("\"lineDiscountPercents\": [120]")]
+    [InlineData("\"lineDiscountPercents\": [-5]")]
+    [InlineData("\"lineDiscountPercents\": [\"10\"]")]
+    [InlineData("\"lineDiscountPercents\": 10")]
+    [InlineData("\"lineDiscountPercents\": [1, 1, 1, 1, 1, 1, 1]")]
+    public void A_malformed_line_discount_chain_is_refused_by_line(string field)
+    {
+        var body = Purchase.Replace("\"lineTotal\": 1000.00", "\"lineTotal\": 1000.00, " + field, StringComparison.Ordinal);
+
+        var error = _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Error!;
+
+        error.Code.Should().Be(ErpWriteError.InvalidDiscountCode);
+        error.Message.Should().StartWith("1. satır");
+    }
+
+    [Theory]
+    [InlineData("[101]")]
+    [InlineData("\"2\"")]
+    [InlineData("[1, 1, 1, 1, 1, 1, 1]")]
+    public void A_malformed_general_discount_chain_is_refused(string value)
+    {
+        var body = Purchase.Replace("\"amount\": 1000.00,", $"\"amount\": 1000.00, \"generalDiscountPercents\": {value},", StringComparison.Ordinal);
+
+        _sut.Translate("purchase_receipt", "MOB-PR-1", body, Context()).Error!.Code
+            .Should().Be(ErpWriteError.InvalidGeneralDiscountCode);
+    }
+
     [Fact]
     public void A_purchase_with_no_warehouse_anywhere_names_the_missing_setting()
     {
