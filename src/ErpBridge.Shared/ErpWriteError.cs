@@ -41,6 +41,7 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
     public const string InvalidCountedQuantityCode = "INVALID_COUNTED_QUANTITY";
     public const string InvalidAmountCode = "INVALID_AMOUNT";
     public const string InvalidDiscountCode = "INVALID_DISCOUNT";
+    public const string InvalidGeneralDiscountCode = "INVALID_GENERAL_DISCOUNT";
     public const string InvalidDocumentDateCode = "INVALID_DOCUMENT_DATE";
     public const string UnsupportedCurrencyCode = "UNSUPPORTED_CURRENCY";
     public const string UnsupportedPaymentTypeCode = "UNSUPPORTED_PAYMENT_TYPE";
@@ -74,6 +75,10 @@ public sealed record ErpWriteError(string Code, string Message, bool Retryable =
 
     public static ErpWriteError InvalidDiscount(int lineNo) =>
         new(InvalidDiscountCode, $"{lineNo}. satırın iskonto ya da kondisyon oranı geçersiz.");
+
+    /// <summary>Faturanın genel (alt) iskontosu: bir satıra ait olmadığı için satır numarası taşımaz.</summary>
+    public static ErpWriteError InvalidGeneralDiscount() =>
+        new(InvalidGeneralDiscountCode, "Faturanın genel iskonto oranı geçersiz.");
 
     public static ErpWriteError InvalidDocumentDate() =>
         new(InvalidDocumentDateCode, "Belge tarihi okunamadı.");
