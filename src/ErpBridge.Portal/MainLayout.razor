@@ -61,6 +61,16 @@
                     </MudNavMenu>
                 }
 
+                @if (Session.Allows(PortalArea.Targets))
+                {
+                    <div class="portal-nav-label">Hedefler &amp; rut</div>
+                    <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                        <MudNavLink Href="hedefler" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.TrackChanges" id="nav-targets">Hedef takibi</MudNavLink>
+                        <MudNavLink Href="hedefler/giris" Icon="@Icons.Material.Rounded.EditNote" id="nav-target-entry">Hedef girişi</MudNavLink>
+                        <MudNavLink Href="ekipler" Icon="@Icons.Material.Rounded.Groups" id="nav-teams">Bölge ve ekipler</MudNavLink>
+                    </MudNavMenu>
+                }
+
                 @if (Session.Allows(PortalArea.Ledger))
                 {
                     <div class="portal-nav-label">Kayıtlar</div>

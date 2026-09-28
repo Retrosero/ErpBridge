@@ -27,8 +27,8 @@ public sealed class PortalRolesTests
         PortalRoles.MayUsePortal(roles).Should().Be(allowed);
 
     [Theory]
-    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite,ErpDocuments,NativeAudit", "")]
-    [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse,Displays,ErpDocuments", "")]
+    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite,ErpDocuments,NativeAudit,Targets", "")]
+    [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse,Displays,ErpDocuments,Targets", "")]
     [InlineData(new[] { "ACCOUNTING" }, "Ledger,Approvals,ErpDocuments", "muhasebe")]
     [InlineData(new[] { "WAREHOUSE" }, "Warehouse", "depo")]
     [InlineData(new[] { "ACCOUNTING", "WAREHOUSE" }, "Ledger,Approvals,Warehouse,ErpDocuments", "muhasebe")]
@@ -216,7 +216,7 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         var cut = RenderLayout();
 
         cut.FindAll("#portal-nav a").Select(a => a.GetAttribute("href"))
-            .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "cariler", "stok", "tahsilatlar", "evraklar", "hareketler",
+            .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "hedefler", "hedefler/giris", "ekipler", "cariler", "stok", "tahsilatlar", "evraklar", "hareketler",
                 "evraklar?yeni=sale", "evraklar?yeni=purchase", "evraklar?yeni=sale_return", "stok/sayim",
                 "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "denetim");
         cut.Find("#user-roles").TextContent.Should().Be("Admin · Muhasebe");

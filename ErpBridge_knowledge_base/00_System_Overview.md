@@ -621,7 +621,8 @@ registration ayrı bir composition projesine taşınır.
      karşılığıdır; menü yalnız sunucunun vereceği bölümleri gösterir. Her sayfa
      `PortalPageBase.Requires` ile bir `PortalArea` bildirir: `Reports` (Özet, Plasiyerler, Ziyaretler —
      ADMIN, MANAGER), `Ledger` (Cariler, Stok — + ACCOUNTING), `Approvals` (Onaylar — ADMIN, MANAGER,
-     ACCOUNTING), `Warehouse` (Depo — ADMIN, MANAGER, WAREHOUSE), `Users` (Kullanıcılar — ADMIN). Rolün
+     ACCOUNTING), `Warehouse` (Depo — ADMIN, MANAGER, WAREHOUSE), `Users` (Kullanıcılar — ADMIN), `Targets` (Hedef takibi,
+     Hedef girişi, Bölge ve ekipler — ADMIN, MANAGER; GOAL_HEDEF_RUT, kural 31). Rolün
      açmadığı adres (yer imi, elle yazılan URL) API'ye hiç sormadan kullanıcının **açılış sayfasına**
      gider: raporları görebilen `/`, muhasebe `/muhasebe` (Faz 48), depo `/depo`. Girişten sonra da oraya gidilir.
      `PortalRoles` ile `RolePermissions` birlikte değişir; panel yalnız kolaylıktır, kapı sunucudadır.
@@ -1165,6 +1166,16 @@ registration ayrı bir composition projesine taşınır.
      `(hedef − bugünden önceki gerçekleşen) ÷ kalan iş günü`, `derived=true`. `VISIT` hedefi girilmemişse hedef = dönemde planlanan
      rut durağı. İş günleri `target_settings.WorkDays` (Pzt=1…Paz=64, varsayılan Pzt–Cmt). Ekip/firma satırında `childrenSum` (bir alt
      seviyedeki aynı hedeflerin toplamı).
+   - **Panel (GOAL_HEDEF_RUT P1–P3):** menüde "Hedefler & rut" grubu. `/hedefler` (takip): dönem seçici (`Shared/TargetPeriodPicker`,
+     gün/hafta/ay + önceki/sonraki), ekip süzgeci, firma satırından dört özet kart, kişi/ekip tablosu (ciro ve tahsilat ilerleme
+     çubuğu, tempo altında/yolda rozetleri, tahmin, günde gereken; satıra tıklayınca tüm hedefler). `/hedefler/giris`: kişi/ekip/firma ×
+     ciro/tahsilat/ziyaret/fiş hücre tablosu — değişen hücreler işaretlenir, **tek `operationId` ile toplu kayıt**, sunucunun kalem
+     hatası "kişi · tür" olarak gösterilir ve düzenleme kaybolmaz; sayı `12.500,50` / `12500.5` biçimlerini okur (virgül daima ondalık).
+     Kalem hedefi (ürün/kategori/[ERP'de] alt kategori/marka) arama + seçimle eklenir/silinir; önceki dönemden kopyala (önizle → uygula),
+     dağıt (önizle → tabloya **kaydedilmemiş** aktar), CSV/.xlsx içe aktarma (`Kim;Tür;Ölçü;Kalem;Hedef`, kim = kullanıcı adı/ad
+     soyad/ekip adı/"Firma") ve CSV dışa aktarma (data URI), çalışma günleri. `/ekipler`: bölge → ekip ağacı, admin için
+     oluştur/düzenle/sil (üyeler — başka ekipteki kişi taşınır —, sorumlu yöneticiler yalnız ADMIN/MANAGER), diğerlerine salt okunur.
+     Testler: `PortalTargetPagesTests`.
    - **Uçlar:** panel `GET|POST /api/v1/portal/teams`, `PUT|DELETE /teams/{id}`, `GET|PUT /targets` (pano + toplu kayıt),
      `POST /targets/copy` (±%, önizleme/uygula), `POST /targets/distribute` (EQUAL | LAST_PERIOD_SHARE, yalnız önizleme),
      `GET /targets/items?metric&q` (≤ 50; marka/ana grup adı ajan 1.3.0'ın `stock_brand`/`stock_main_group` lookup'larından —

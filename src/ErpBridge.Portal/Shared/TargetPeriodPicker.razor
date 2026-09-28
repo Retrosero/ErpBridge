@@ -1,0 +1,34 @@
+@* Day / week / month switch with previous-next arrows for the target pages (GOAL_HEDEF_RUT). *@
+<div class="target-period" id="target-period">
+    <div class="seg-tabs" role="tablist">
+        @foreach (var type in Types)
+        {
+            <button type="button" class="seg-tab @(type == Type ? "is-active" : null)" role="tab" aria-selected="@(type == Type)"
+                    id="@($"period-{type.ToLowerInvariant()}")" @onclick="() => ChangeAsync(type, Day)">@TargetText.Period(type)</button>
+        }
+    </div>
+    <div class="target-period-nav">
+        <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" Size="Size.Small" aria-label="Önceki dönem" id="period-prev"
+                       OnClick="() => ChangeAsync(Type, TargetText.Shift(Type, Day, -1))" />
+        <span class="target-period-title" id="period-title">@TargetText.Title(Type, Day)</span>
+        <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" Size="Size.Small" aria-label="Sonraki dönem" id="period-next"
+                       OnClick="() => ChangeAsync(Type, TargetText.Shift(Type, Day, 1))" />
+        @if (TargetText.KeyOf(Type, Day) != TargetText.KeyOf(Type, Fmt.Today()))
+        {
+            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" id="period-today" OnClick="() => ChangeAsync(Type, Fmt.Today())">Bugün</MudButton>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly string[] Types = [TargetText.Daily, TargetText.Weekly, TargetText.Monthly];
+
+    [Parameter] public string Type { get; set; } = TargetText.Monthly;
+
+    /// <summary>Any day of the period shown.</summary>
+    [Parameter] public DateOnly Day { get; set; }
+
+    [Parameter] public EventCallback<(string Type, DateOnly Day)> OnChange { get; set; }
+
+    private Task ChangeAsync(string type, DateOnly day) => OnChange.InvokeAsync((type, day));
+}
