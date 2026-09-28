@@ -14,7 +14,8 @@ public sealed class SessionEndedException(string code) : Exception(PortalMessage
 }
 
 /// <summary>The central API refused the call with an error envelope.</summary>
-public sealed class PortalApiException(string code, int status) : Exception(PortalMessages.For(code))
+/// <param name="serverMessage">The server's own Turkish wording, used for the few codes whose detail only it knows.</param>
+public sealed class PortalApiException(string code, int status, string? serverMessage = null) : Exception(serverMessage ?? PortalMessages.For(code))
 {
     public string Code { get; } = code;
     public int Status { get; } = status;
@@ -332,6 +333,20 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<UserDto> SetUserRolesAsync(Guid userId, UpdateUserRolesRequest request, CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Patch, $"api/v1/android/account/users/{userId}", request, ct);
 
+    // ---- route plans (GOAL_HEDEF_RUT P4–P5) --------------------------------------
+
+    public Task<RoutePlansResponse> RoutePlansAsync(CancellationToken ct = default) =>
+        GetAsync<RoutePlansResponse>("api/v1/portal/routes", ct);
+
+    public Task<RoutePlanDto> SaveRoutePlanAsync(string planId, RoutePlanDto plan, CancellationToken ct = default) =>
+        SendAsync<RoutePlanDto>(HttpMethod.Put, $"api/v1/portal/routes/{Uri.EscapeDataString(planId)}", plan, ct);
+
+    public Task DeleteRoutePlanAsync(string planId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"api/v1/portal/routes/{Uri.EscapeDataString(planId)}", null, ct, emptyOk: true);
+
+    public Task<RouteComplianceResponse> RouteComplianceAsync(DateOnly from, DateOnly to, Guid? teamId, CancellationToken ct = default) =>
+        GetAsync<RouteComplianceResponse>("api/v1/portal/routes/compliance" + Query(("from", Day(from)), ("to", Day(to)), ("teamId", teamId?.ToString())), ct);
+
     // ---- targets and teams (GOAL_HEDEF_RUT) --------------------------------------
 
     public Task<TeamsResponse> TeamsAsync(CancellationToken ct = default) =>
@@ -394,10 +409,27 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
             response.Content = new StringContent(text, System.Text.Encoding.UTF8, "application/json");
         }
 
-        var code = await ReadErrorAsync(response, ct);
+        var (code, message) = await ReadErrorWithMessageAsync(response, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized || SessionEndingCodes.Contains(code))
             throw new SessionEndedException(code);
-        throw new PortalApiException(code, (int)response.StatusCode);
+        throw new PortalApiException(code, (int)response.StatusCode, ServerWordedCodes.Contains(code) ? message : null);
+    }
+
+    /// <summary>Codes whose message the server words in Turkish with a detail the panel cannot know (who, which stop).</summary>
+    private static readonly HashSet<string> ServerWordedCodes = ["ROUTE_INVALID"];
+
+    private static async Task<(string Code, string? Message)> ReadErrorWithMessageAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var error = await response.Content.ReadFromJsonAsync<ApiErrorDto>(Json, ct);
+            if (!string.IsNullOrWhiteSpace(error?.ErrorCode)) return (error.ErrorCode, string.IsNullOrWhiteSpace(error.Message) ? null : error.Message);
+        }
+        catch (JsonException)
+        {
+            // Not an error envelope (proxy page, empty body).
+        }
+        return (response.StatusCode == HttpStatusCode.Unauthorized ? "INVALID_TOKEN" : $"HTTP_{(int)response.StatusCode}", null);
     }
 
     private static async Task<string> ReadErrorAsync(HttpResponseMessage response, CancellationToken ct)

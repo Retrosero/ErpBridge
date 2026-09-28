@@ -506,7 +506,8 @@ registration ayrı bir composition projesine taşınır.
      yeniden gelirse **tamamen değiştirir**), `route_plan_delete` (`planId`), `visit`.
    - **Yetki:** üçü de **oturum açmış firma kullanıcısı** ister; API anahtarı veya ajan
      403 `TEAM_DOCUMENT_REQUIRES_MOBILE_USER`. Rota planlama ve silme (`RolePermissions.CanPlanRoutes`) yalnızca
-     `ADMIN` veya `MANAGER`. Ziyaretin `username`'i **token'daki kullanıcıdan** gelir,
+     `ADMIN` veya `MANAGER`; **ekip/bölgeden sorumlu yönetici yalnız kendi kişilerine atar ve başka ekibin planını
+     değiştiremez/silemez** (`OutOfScopeAsync`, `TeamScope`; GOAL_HEDEF_RUT K14, kural 31) — panelde de telefonda da. Ziyaretin `username`'i **token'daki kullanıcıdan** gelir,
      yükteki isim yok sayılır — telefon başkası adına ziyaret kaydedemez.
    - **Doğrulama:** `planId`/`stopId`/`visitId` ≤ 64; plan ≤ 500 durak, ≤ 100 atanan;
      `dayOfWeek` 1 (Pazartesi)–7; tarihler `yyyy-MM-dd`; ziyaret `status`
@@ -1176,6 +1177,16 @@ registration ayrı bir composition projesine taşınır.
      soyad/ekip adı/"Firma") ve CSV dışa aktarma (data URI), çalışma günleri. `/ekipler`: bölge → ekip ağacı, admin için
      oluştur/düzenle/sil (üyeler — başka ekipteki kişi taşınır —, sorumlu yöneticiler yalnız ADMIN/MANAGER), diğerlerine salt okunur.
      Testler: `PortalTargetPagesTests`.
+   - **Rut (P4–P5, `Endpoints/PortalRouteEndpoints`):** `GET /api/v1/portal/routes` (kapsamdaki planlar + atanabilir kişiler;
+     plan `canEdit` = tüm atananlar kapsamda), `PUT /routes/{planId}` (planId ≤ 64, harf/rakam/-/_), `DELETE /routes/{planId}`,
+     `GET /routes/compliance?from&to&teamId` (≤ 92 gün; varsayılan bu hafta). **İkinci motor yok:** kayıt telefonun
+     `route_plan` / `route_plan_delete` belgesinin aynısıdır (`ExternalId = portal-route:{planId}:{guid}`, her kayıt yeni belge),
+     `TeamDocumentProcessor` işler, telefonlar akıştan (kural 17) alır. Panelde açılan durak id'sini sunucuda alır, yeniden kayıtta
+     korunur (ziyaretler bağlı kalır). İşleyicinin İngilizce reddi panele Türkçe `ROUTE_INVALID` mesajıyla döner (kapsam dışı 403).
+     Uyum: kişi/gün bazında planlanan, ziyaret, atlanan, **kaçırılan** (geçmiş günün kayıtsız durağı; bugünkü değil), plan dışı,
+     uyum = ziyaret ÷ planlanan. Panel `/rut` (plan listesi; editör: ad, başlangıç, etkin, atananlar, Pzt–Paz sekmeleri, durak sırası
+     ↑↓, kaldır, günü başka güne kopyala, cari araması `/portal/customers`) ve `/rut/uyum`. Panel istemcisi `ROUTE_INVALID` için
+     sunucunun metnini gösterir (`PortalApiClient.ServerWordedCodes`). Testler: `RoutePlanPortalRelationalTests`, `PortalRoutePagesTests`.
    - **Uçlar:** panel `GET|POST /api/v1/portal/teams`, `PUT|DELETE /teams/{id}`, `GET|PUT /targets` (pano + toplu kayıt),
      `POST /targets/copy` (±%, önizleme/uygula), `POST /targets/distribute` (EQUAL | LAST_PERIOD_SHARE, yalnız önizleme),
      `GET /targets/items?metric&q` (≤ 50; marka/ana grup adı ajan 1.3.0'ın `stock_brand`/`stock_main_group` lookup'larından —
