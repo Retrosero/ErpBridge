@@ -1,7 +1,10 @@
 using System.Net;
 using ErpBridge.CentralApi.Contracts;
+using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Tests.Endpoints;
 
@@ -185,5 +188,97 @@ public class AdminLicensesTests : IClassFixture<CentralApiFactory>
 
         // Released: another computer may now take the license.
         (await client.PostJsonAsync("/api/v1/go/license/activate", new { licenseKey = go.LicenseKey, machineId = "pc-2" })).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Go_modules_replace_only_the_companys_go_rows_and_reach_every_Go_license_and_the_token()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync(email: "go-modules-admin@test.local");
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, erpLicense) = await _factory.SeedTenantAsync(licenseKey: "GO-MODULES-SEED", tenantName: "Go Modules Tenant");
+        var go = await (await client.PostJsonAsync("/api/v1/admin/licenses", new { tenantId = tenant.Id, product = "go" }, token)).ReadAsJsonAsync<LicenseDto>();
+        go.GoModules.Should().BeEmpty("a Go license always reports its company's modules, even none");
+        var enabledEarlier = DateTimeOffset.UtcNow.AddDays(-10);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            db.TenantModules.Add(new TenantModule { TenantId = tenant.Id, ModuleKey = TenantModules.XmlImport, EnabledAtUtc = enabledEarlier, EnabledBy = "phone-sales@test.local" });
+            db.TenantModules.Add(new TenantModule { TenantId = tenant.Id, ModuleKey = TenantModules.GoErp, EnabledAtUtc = enabledEarlier });
+            db.TenantModules.Add(new TenantModule { TenantId = tenant.Id, ModuleKey = TenantModules.GoAi, EnabledAtUtc = enabledEarlier, EnabledBy = "first@test.local" });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PutJsonAsync($"/api/v1/admin/licenses/{go.Id}/go-modules", new { modules = new[] { "GO_REPORTS", " go_ai ", "go_ai" } }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await response.ReadAsJsonAsync<LicenseDto>();
+        updated.Id.Should().Be(go.Id);
+        updated.GoModules.Should().Equal("go_ai", "go_reports");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var rows = await scope.ServiceProvider.GetRequiredService<CentralApiDbContext>().TenantModules.AsNoTracking()
+                .Where(m => m.TenantId == tenant.Id).ToListAsync();
+            rows.Select(m => m.ModuleKey).Should().BeEquivalentTo(new[] { "xml_import", "go_ai", "go_reports" },"go_erp was switched off and the phone add-on stays");
+            rows.Single(m => m.ModuleKey == "xml_import").EnabledBy.Should().Be("phone-sales@test.local");
+            var kept = rows.Single(m => m.ModuleKey == "go_ai");
+            kept.EnabledBy.Should().Be("first@test.local", "a module already on keeps who switched it on");
+            kept.EnabledAtUtc.Should().BeCloseTo(enabledEarlier, TimeSpan.FromSeconds(1));
+            rows.Single(m => m.ModuleKey == "go_reports").EnabledBy.Should().Be("go-modules-admin@test.local");
+        }
+
+        // Modules belong to the company: a second Go license shows the same set at once, the ErpBridge license none.
+        var second = await (await client.PostJsonAsync("/api/v1/admin/licenses", new { tenantId = tenant.Id, product = "go" }, token)).ReadAsJsonAsync<LicenseDto>();
+        second.GoModules.Should().Equal("go_ai", "go_reports");
+        var listResponse = await client.GetAsync($"/api/v1/admin/licenses?tenantId={tenant.Id}", token);
+        var listed = (await listResponse.ReadAsJsonAsync<LicenseDto[]>())!;
+        listed.Where(l => l.Product == "go").Should().HaveCount(2).And.OnlyContain(l => l.GoModules!.SequenceEqual(new[] { "go_ai", "go_reports" }));
+        listed.Single(l => l.Id == erpLicense.Id).GoModules.Should().BeNull();
+        System.Text.RegularExpressions.Regex.Matches(await listResponse.Content.ReadAsStringAsync(), "\"goModules\"")
+            .Should().HaveCount(2, "the field is omitted for the ErpBridge license");
+
+        var activated = await client.PostJsonAsync("/api/v1/go/license/activate", new { licenseKey = go.LicenseKey, machineId = "pc-modules" });
+        activated.StatusCode.Should().Be(HttpStatusCode.OK);
+        GoLicenseActivateTests.VerifyAndRead((await activated.ReadAsJsonAsync<GoLicenseActivateResponse>()).Token).Modules.Should().Equal("go_ai", "go_reports");
+
+        var cleared = await client.PutJsonAsync($"/api/v1/admin/licenses/{second.Id}/go-modules", new { modules = Array.Empty<string>() }, token);
+        (await cleared.ReadAsJsonAsync<LicenseDto>()).GoModules.Should().BeEmpty();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<CentralApiDbContext>().TenantModules.AsNoTracking()
+                .Where(m => m.TenantId == tenant.Id).Select(m => m.ModuleKey).ToListAsync()).Should().Equal("xml_import");
+        }
+    }
+
+    [Fact]
+    public async Task Go_modules_refuse_unknown_keys_ErpBridge_licenses_missing_licenses_and_a_missing_set()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync(email: "go-modules-refuse-admin@test.local");
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, erpLicense) = await _factory.SeedTenantAsync(licenseKey: "GO-MODULES-REFUSE-SEED", tenantName: "Go Modules Refuse Tenant");
+        var go = await (await client.PostJsonAsync("/api/v1/admin/licenses", new { tenantId = tenant.Id, product = "go" }, token)).ReadAsJsonAsync<LicenseDto>();
+        (await client.PutJsonAsync($"/api/v1/admin/licenses/{go.Id}/go-modules", new { modules = new[] { "go_erp" } }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        foreach (var modules in new[] { new[] { "go_ai", "go_barcode" }, new[] { TenantModules.XmlImport }, new[] { " " } })
+        {
+            var unknown = await client.PutJsonAsync($"/api/v1/admin/licenses/{go.Id}/go-modules", new { modules }, token);
+            unknown.StatusCode.Should().Be(HttpStatusCode.BadRequest, string.Join(",", modules));
+            (await unknown.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("UNKNOWN_MODULE");
+        }
+
+        var notGo = await client.PutJsonAsync($"/api/v1/admin/licenses/{erpLicense.Id}/go-modules", new { modules = new[] { "go_ai" } }, token);
+        notGo.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await notGo.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("NOT_GO_LICENSE");
+
+        var missing = await client.PutJsonAsync($"/api/v1/admin/licenses/{Guid.NewGuid()}/go-modules", new { modules = new[] { "go_ai" } }, token);
+        missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await missing.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("LICENSE_NOT_FOUND");
+
+        (await client.PutJsonAsync($"/api/v1/admin/licenses/{go.Id}/go-modules", new { }, token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        using var scope = _factory.Services.CreateScope();
+        (await scope.ServiceProvider.GetRequiredService<CentralApiDbContext>().TenantModules.AsNoTracking()
+            .Where(m => m.TenantId == tenant.Id).Select(m => m.ModuleKey).ToListAsync()).Should().Equal(["go_erp"], "a refused set changes nothing");
     }
 }

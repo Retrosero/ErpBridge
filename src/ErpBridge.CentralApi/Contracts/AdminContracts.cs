@@ -87,6 +87,21 @@ public sealed class LicenseDto
 
     /// <summary>Go only: the computer the key is bound to; null until first activation.</summary>
     [JsonPropertyName("goInstallation")] public GoInstallationDto? GoInstallation { get; set; }
+
+    /// <summary>
+    /// Go only: the company's Go desktop app modules (<c>go_…</c>, sorted), the ones the next
+    /// license token carries. Modules belong to the company, so every Go license of the tenant
+    /// shows the same set. Omitted for ErpBridge licenses.
+    /// </summary>
+    [JsonPropertyName("goModules")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? GoModules { get; set; }
+}
+
+/// <summary>PUT /api/v1/admin/licenses/{id}/go-modules body: the complete Go module set of the license's company.</summary>
+public sealed class SetGoModulesRequest
+{
+    [JsonPropertyName("modules")] public string[]? Modules { get; set; }
 }
 
 /// <summary>POST /api/v1/admin/licenses body.</summary>

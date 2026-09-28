@@ -1052,10 +1052,13 @@ registration ayrı bir composition projesine taşınır.
      kişi cariyi satış için açınca gösterir; "sonra tekrar sor" telefonda yereldir (Sipariş Cepte KB kural 34).
 28. **Satılan ek modüller firma bazındadır; XML ürün beslemesi telefonda işlenir: `Endpoints/MobileXmlFeedEndpoints` (XML ürün modülü, 2026-09-26).**
    - **Modül seti yalnız operatörden:** `tenant_modules` (`TenantId, ModuleKey` birleşik PK). Bilinen anahtarlar tek yerde:
-     `Domain/TenantModules.Known` (şimdilik yalnız `xml_import`). Admin konsolu `/tenants/{id}/mobile` "Ek modüller"
-     paneli → `PUT /api/v1/admin/tenants/{id}/mobile/modules {modules:[…]}` seti **tamamen değiştirir** (204; bilinmeyen
+     `Domain/TenantModules.Known` (telefon ek modülleri; şimdilik yalnız `xml_import`). Admin konsolu `/tenants/{id}/mobile` "Ek modüller"
+     paneli → `PUT /api/v1/admin/tenants/{id}/mobile/modules {modules:[…]}` **telefon ek modülleri** setini tamamen değiştirir (204; bilinmeyen
      anahtar 400 `UNKNOWN_MODULE`, tenant yoksa 404; zaten açık modülün `EnabledAtUtc`'si korunur, `EnabledBy` = admin
-     e-postası). Telefon/panel modülü açamaz. Session (login + `/account/me`) ve konsol overview'ı `modules[]` taşır
+     e-postası). **Aynı tabloda Go modülleri de durur (`go_` öneki, kural 30):** bu uç `go_` anahtarını kabul etmez (400
+     `UNKNOWN_MODULE`) ve `go_` satırlarını **silmez**; session ve overview `go_` anahtarlarını göstermez (2026-09-28; önceden
+     boş set gönderen kaydetme Go modüllerini de silerdi). Ortak yazım `Endpoints/TenantModuleSets.ReplaceAsync` (kapsam süzgeciyle).
+     Telefon/panel modülü açamaz. Session (login + `/account/me`) ve konsol overview'ı `modules[]` taşır
      (sıralı, küçük harf, yoksa boş dizi); telefon satın alınmamış özelliği gizler.
    - **Besleme ayarı firma geneli:** `tenant_xml_feed_settings` (tenant başına bir satır). `/api/v1/android/xml-feed/config`
      (`MobileUserPolicy` + firma başı hız sınırı): `GET` firmanın her aktif kullanıcısı; `PUT`/`DELETE` yalnız
@@ -1109,14 +1112,38 @@ registration ayrı bir composition projesine taşınır.
      İddialar `GoLicensing/GoLicenseClaims`: `v, kid, product, licenseId, tenantId, tenantName, machineId, issuedAtUtc,
      validUntilUtc, licenseExpiresAtUtc, modules[]`. `validUntilUtc = min(şimdi + GoLicense:OfflineAllowance (3 gün),
      lisans bitişi)` — uygulama bu ana kadar sunucuya ulaşamasa da senkron yapar. `modules` = firmanın `go_` önekli
-     `tenant_modules` anahtarları (Go'nun ücretli modülleri; `TenantModules.Known`'a eklenince konsoldan açılır).
+     `tenant_modules` anahtarları (Go'nun ücretli modülleri; aşağıdaki "Go modülleri" maddesi).
      `kid` = açık anahtarın (SubjectPublicKeyInfo DER) SHA-256'sının ilk 16 hex'i; anahtar değişirse Go'nun yeni sürümü
      yeni açık anahtarı gömülü taşımalıdır.
    - **İmza anahtarı:** `GoLicense__SigningKey` (ECDSA P-256 PKCS#8; PEM ya da tek satır base64). **Açılış şartı değildir:**
      yoksa yalnız Go ucu 503 döner, uyarı loglanır — ErpBridge etkilenmez. Değer depoya asla girmez.
    - **Yenileme anahtarı korur:** `PUT /admin/licenses/{id}/expiry {expiresAtUtc}` (null = süresiz); Go uygulaması yeni
      tarihi bir sonraki yenilemede alır. Konsol: ürün seçimi, ürün süzgeci, Go kartında bilgisayar bilgisi.
-   - Testler: `GoLicenseActivateTests` (imza doğrulama, 1 PC, ürün ayrımı, modüller, 503), `AdminLicensesTests` (ürün, bırakma, süre).
+   - **Go modülleri firma bazındadır, lisans bazında değil (2026-09-28):** bilinen anahtarlar tek yerde
+     `Domain/TenantModules.GoKnown` — Go uygulamasının modül kataloğuyla **birebir aynı** olmalı:
+
+     | Anahtar | Konsol adı |
+     |---|---|
+     | `go_ai` | Yapay zekâ asistanı |
+     | `go_einvoice` | E-fatura / e-arşiv |
+     | `go_erp` | ERP bağlantısı |
+     | `go_reports` | Raporlama ve kâr analizi |
+     | `go_competition` | Rekabet ve akıllı fiyat |
+
+     `PUT /api/v1/admin/licenses/{id}/go-modules {modules:[…]}` lisansın **firmasının** Go modül setini tamamen değiştirir ve
+     güncel `LicenseDto`'yu döner (200). Sıra: lisans yok 404 `LICENSE_NOT_FOUND`; ErpBridge lisansı 400 `NOT_GO_LICENSE`;
+     `modules` yok 400 `INVALID_BODY`; `GoKnown` dışı anahtar (`xml_import` dahil) 400 `UNKNOWN_MODULE` (reddedilen istek hiçbir
+     şeyi değiştirmez). Anahtarlar kırpılır, küçük harfe çevrilir, tekilleştirilir. **Yalnız `go_` satırları değişir**; `xml_import`
+     gibi telefon modüllerine dokunulmaz. Zaten açık modülün `EnabledAtUtc`/`EnabledBy`'ı korunur, yeni açılanın `EnabledBy` = admin
+     e-postası. Firmanın bütün Go lisansları aynı seti taşır. `LicenseDto.goModules` (sıralı dizi) Go lisanslarında liste, oluşturma,
+     süre ve modül cevaplarında hep vardır (boş olabilir); ErpBridge lisansında alan **yazılmaz**. Müşterinin bilgisayarı değişikliği
+     bir sonraki yenilemede alır (Go 6 saatte bir yeniler; Go'nun Lisans ekranında "Şimdi doğrula" hemen yeniler).
+     Konsol: Go kartında "Modüller · firma geneli" çipleri (Admin `Api/GoModuleCatalog` Türkçe adları) + etkin Go lisansında
+     "Modülleri düzenle" onay kutusu paneli (not: firmanın tamamına uygulanır, bir sonraki yenilemede ulaşır). Yeni Go modülü
+     eklenirse `TenantModules.GoKnown` + `GoModuleCatalog` + Go uygulamasının kataloğu birlikte güncellenir.
+   - Testler: `GoLicenseActivateTests` (imza doğrulama, 1 PC, ürün ayrımı, modüller, 503), `AdminLicensesTests` (ürün, bırakma, süre,
+     Go modülleri: yalnız `go_` satırları, token'a ulaşma, 400/404), `XmlFeedModuleRelationalTests` (telefon ve Go modülleri
+     birbirini silmez), Admin `LicensesPageTests` (çipler, düzenleme paneli).
    - **Konsolda ürünler asla karışık listelenmez (2026-09-28):** ürün kimliği tek yerde, Admin `Api/LicenseProductCatalog`:
 
      | Ürün | Anahtar öneki | İşaret | Renk | Anahtarın girildiği yer |
@@ -1128,7 +1155,7 @@ registration ayrı bir composition projesine taşınır.
      (aktif/toplam), açıklama şeridi, özeti ve listesi vardır. **Yeni lisans formunda ürün seçimi yoktur**: ürün açık sekmeden gelir,
      düğme "Go (pazaryeri) lisansı oluştur" der; yanlış ürüne anahtar üretmek için sekme değiştirmek gerekir. Kartta ürün rengiyle sol
      kenar, ürün çipi ve öneki vurgulanmış anahtar; öneksiz eski anahtar "önekten önce üretilmiş" notu alır. Ürüne özel işlemler yalnız
-     kendi kartında: telefon girişi ErpBridge'de, bilgisayar bilgisi/serbest bırakma Go'da. Yeni ürün eklenirse önce
+     kendi kartında: telefon girişi ErpBridge'de, bilgisayar bilgisi/serbest bırakma ve modüller Go'da. Yeni ürün eklenirse önce
      `LicenseProducts` (sunucu) + `LicenseProductCatalog` (konsol) + CSS renk sınıfı `license-product--{anahtar}` eklenir.
      Test: Admin `LicensesPageTests`. Go uygulaması da `LIC-` ile başlayan anahtarı sunucuya sormadan "bu bir ErpBridge anahtarı" diye reddeder.
 

@@ -61,6 +61,9 @@ public sealed class LicenseDto
 
     /// <summary>Go only: the computer the key is bound to; null until first activation.</summary>
     [JsonPropertyName("goInstallation")] public GoInstallationDto? GoInstallation { get; set; }
+
+    /// <summary>Go only: the company's Go app modules (<c>go_…</c>); shared by every Go license of the tenant.</summary>
+    [JsonPropertyName("goModules")] public string[]? GoModules { get; set; }
 }
 
 public sealed class GoInstallationDto
@@ -130,6 +133,30 @@ public static class LicenseProductCatalog
     /// <summary>True when the key does not start with its product's prefix (licenses issued before prefixes existed).</summary>
     public static bool HasForeignPrefix(LicenseDto license) =>
         !license.LicenseKey.StartsWith(Get(license.Product).KeyPrefix, StringComparison.Ordinal);
+}
+
+/// <summary>A paid module of the Go desktop app.</summary>
+/// <param name="Key">Module key as the server and the Go app spell it.</param>
+/// <param name="Name">Console name.</param>
+public sealed record GoModuleInfo(string Key, string Name);
+
+/// <summary>
+/// The Go app's paid modules. Keys must match the server's <c>TenantModules.GoKnown</c> and the Go app's
+/// module catalog exactly; the app opens a module whose key is in its license token.
+/// </summary>
+public static class GoModuleCatalog
+{
+    public static IReadOnlyList<GoModuleInfo> All { get; } =
+    [
+        new("go_ai", "Yapay zekâ asistanı"),
+        new("go_einvoice", "E-fatura / e-arşiv"),
+        new("go_erp", "ERP bağlantısı"),
+        new("go_reports", "Raporlama ve kâr analizi"),
+        new("go_competition", "Rekabet ve akıllı fiyat"),
+    ];
+
+    /// <summary>Console name of a key; an unknown key is shown as it is.</summary>
+    public static string Name(string key) => All.FirstOrDefault(m => m.Key == key)?.Name ?? key;
 }
 
 public sealed class CreateLicenseRequest
@@ -807,6 +834,13 @@ public sealed class CentralApiClient
     /// <summary>Frees a Go license so another computer can activate it.</summary>
     public Task ReleaseGoInstallationAsync(Guid id, CancellationToken ct = default) =>
         SendRawStringAsync(() => _http.PostAsync($"/api/v1/admin/licenses/{id}/go-installation/release", content: null, ct), ct);
+
+    /// <summary>
+    /// Replaces the Go modules of the license's company with <paramref name="modules"/>. The set belongs to the
+    /// company, so every Go license of the tenant carries it; phone add-ons are untouched.
+    /// </summary>
+    public Task<LicenseDto> SetGoModulesAsync(Guid id, IReadOnlyCollection<string> modules, CancellationToken ct = default) =>
+        SendAsync<LicenseDto>(() => _http.PutAsJsonAsync($"/api/v1/admin/licenses/{id}/go-modules", new { modules }, ct), ct);
 
     public Task<IReadOnlyList<AgentDto>> ListAgentsAsync(Guid? tenantId = null, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<AgentDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/agents", tenantId), ct), ct);

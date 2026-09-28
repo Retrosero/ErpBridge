@@ -65,6 +65,48 @@ public sealed class XmlFeedModuleRelationalTests : IClassFixture<SqliteCentralAp
     }
 
     [Fact]
+    public async Task Phone_add_ons_and_Go_modules_share_the_table_but_never_overwrite_each_other()
+    {
+        var c = await CompanyAsync(TenantDataSources.Native, withModule: true);
+        var created = await SendAsync(HttpMethod.Post, "/api/v1/admin/licenses", new { tenantId = c.Id, product = "go" }, c.AdminToken);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var go = await created.ReadAsJsonAsync<LicenseDto>();
+        (await SendAsync(HttpMethod.Put, $"/api/v1/admin/licenses/{go.Id}/go-modules", new { modules = new[] { TenantModules.GoAi, TenantModules.GoCompetition } }, c.AdminToken))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Phones and the console's mobile overview see only phone add-ons.
+        (await MeAsync(c.Ali)).Modules.Should().Equal(TenantModules.XmlImport);
+        (await (await _factory.CreateClient().GetAsync($"/api/v1/admin/tenants/{c.Id}/mobile", c.AdminToken)).ReadAsJsonAsync<TenantMobileOverviewResponse>())
+            .Modules.Should().Equal(TenantModules.XmlImport);
+
+        // Switching the phone add-ons off keeps the Go modules.
+        (await SetModulesAsync(c)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await MeAsync(c.Ali)).Modules.Should().BeEmpty();
+        (await GoModulesAsync(c)).Should().Equal(TenantModules.GoAi, TenantModules.GoCompetition);
+
+        // The phone endpoint does not take Go keys.
+        var goKey = await SetModulesAsync(c, TenantModules.XmlImport, TenantModules.GoErp);
+        goKey.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await goKey.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("UNKNOWN_MODULE");
+
+        // Switching the Go modules off keeps the phone add-on.
+        (await SetModulesAsync(c, TenantModules.XmlImport)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await SendAsync(HttpMethod.Put, $"/api/v1/admin/licenses/{go.Id}/go-modules", new { modules = Array.Empty<string>() }, c.AdminToken))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await GoModulesAsync(c)).Should().BeEmpty();
+        (await MeAsync(c.Ali)).Modules.Should().Equal(TenantModules.XmlImport);
+    }
+
+    /// <summary>The company's Go rows, read from the table (the license list orders by date, which SQLite cannot translate).</summary>
+    private async Task<string[]> GoModulesAsync(Company c)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return (await scope.ServiceProvider.GetRequiredService<CentralApiDbContext>().TenantModules.AsNoTracking()
+                .Where(m => m.TenantId == c.Id).Select(m => m.ModuleKey).ToListAsync())
+            .Where(TenantModules.IsGo).Order(StringComparer.Ordinal).ToArray();
+    }
+
+    [Fact]
     public async Task Without_the_module_the_feed_is_closed_to_everyone()
     {
         var c = await CompanyAsync(TenantDataSources.Native, withModule: false);

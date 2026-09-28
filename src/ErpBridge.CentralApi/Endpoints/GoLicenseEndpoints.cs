@@ -100,7 +100,7 @@ public static class GoLicenseEndpoints
 
         var modules = await db.TenantModules
             .AsNoTracking()
-            .Where(m => m.TenantId == license.TenantId && m.ModuleKey.StartsWith("go_"))
+            .Where(m => m.TenantId == license.TenantId && m.ModuleKey.StartsWith(TenantModules.GoPrefix))
             .Select(m => m.ModuleKey)
             .OrderBy(k => k)
             .ToArrayAsync(ct);

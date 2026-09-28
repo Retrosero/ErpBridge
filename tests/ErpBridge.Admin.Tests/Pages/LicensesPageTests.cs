@@ -18,6 +18,7 @@ namespace ErpBridge.Admin.Tests.Pages;
 public sealed class LicensesPageTests : BunitContext
 {
     private const string TenantId = "77777777-7777-7777-7777-777777777777";
+    private const string GoLicenseId = "88888888-8888-8888-8888-888888888888";
     private readonly Handler _handler = new();
 
     public LicensesPageTests()
@@ -82,15 +83,67 @@ public sealed class LicensesPageTests : BunitContext
         cut.WaitForState(() => cut.FindAll("article.license-card").All(c => c.GetAttribute("data-product") == "go"));
     }
 
+    [Fact]
+    public void Go_cards_show_the_company_modules_and_ErpBridge_cards_do_not()
+    {
+        Services.GetRequiredService<NavigationManager>().NavigateTo("licenses?urun=go");
+        var cut = Render<Licenses>();
+        cut.WaitForState(() => cut.FindAll("article.license-card").Count == 2);
+
+        var modules = cut.Find($".license-modules[data-license='{GoLicenseId}']");
+        modules.QuerySelectorAll(".license-module-chip").Select(c => c.TextContent).Should().Equal("Yapay zekâ asistanı", "Raporlama ve kâr analizi");
+        modules.QuerySelector(".license-modules__title")!.TextContent.Should().Contain("firma geneli");
+        cut.FindAll(".license-modules-toggle").Should().HaveCount(1, "only the active Go license offers the editor");
+
+        cut.Find("#license-tab-erpbridge").Click();
+        cut.WaitForState(() => cut.FindAll("article.license-card").All(c => c.GetAttribute("data-product") == "erpbridge"));
+        cut.FindAll(".license-modules").Should().BeEmpty();
+        cut.FindAll(".license-modules-toggle").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Editing_Go_modules_sends_the_ticked_set_and_explains_where_it_applies()
+    {
+        Services.GetRequiredService<NavigationManager>().NavigateTo("licenses?urun=go");
+        var cut = Render<Licenses>();
+        cut.WaitForState(() => cut.FindAll("article.license-card").Count == 2);
+
+        cut.Find(".license-modules-toggle").Click();
+        cut.Find("#go-module-go_ai").HasAttribute("checked").Should().BeTrue();
+        cut.Find("#go-module-go_erp").HasAttribute("checked").Should().BeFalse();
+        cut.Find(".license-modules-edit__note").TextContent.Should().Contain("firmasının bütün Go lisansları").And.Contain("Şimdi doğrula").And.Contain("6 saatte");
+
+        cut.Find("#go-module-go_ai").Change(false);
+        cut.Find("#go-module-go_einvoice").Change(true);
+        cut.Find("#go-module-go_competition").Change(true);
+        cut.Find("#go-modules-save").Click();
+
+        cut.WaitForState(() => _handler.GoModulesBody is not null && cut.FindAll(".license-modules-edit").Count == 0);
+        _handler.GoModulesBody.Should().Be("""{"modules":["go_einvoice","go_reports","go_competition"]}""", "keys go in catalog order");
+        cut.Find(".license-notice--success strong").TextContent.Should().Contain("Modüller kaydedildi");
+        cut.WaitForState(() => cut.FindAll(".license-module-chip").Count == 6);
+        cut.Find($".license-modules[data-license='{GoLicenseId}']").TextContent.Should().Contain("E-fatura / e-arşiv").And.Contain("Rekabet ve akıllı fiyat");
+    }
+
     private sealed class Handler : HttpMessageHandler
     {
         public string? CreatedBody { get; private set; }
+        public string? GoModulesBody { get; private set; }
+
+        /// <summary>The company's Go modules as the list reports them; a module save replaces them.</summary>
+        public string GoModulesJson { get; private set; } = """["go_ai","go_reports"]""";
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             string json;
             var status = HttpStatusCode.OK;
-            if (request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath == "/api/v1/admin/licenses")
+            if (request.Method == HttpMethod.Put && request.RequestUri!.AbsolutePath == $"/api/v1/admin/licenses/{GoLicenseId}/go-modules")
+            {
+                GoModulesBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                GoModulesJson = System.Text.Json.JsonDocument.Parse(GoModulesBody).RootElement.GetProperty("modules").GetRawText();
+                json = $$"""{"id":"{{GoLicenseId}}","tenantId":"{{TenantId}}","licenseKey":"GO-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","issuedAtUtc":"2026-09-28T10:00:00Z","isActive":true,"product":"go","goModules":{{GoModulesJson}}}""";
+            }
+            else if (request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath == "/api/v1/admin/licenses")
             {
                 CreatedBody = await request.Content!.ReadAsStringAsync(cancellationToken);
                 json = $$"""{"id":"{{Guid.NewGuid()}}","tenantId":"{{TenantId}}","licenseKey":"GO-ffffffffffffffffffffffffffffffff","issuedAtUtc":"2026-09-28T10:00:00Z","isActive":true,"product":"go"}""";
@@ -104,9 +157,10 @@ public sealed class LicensesPageTests : BunitContext
                     "/api/v1/admin/licenses" => $$$"""
                         [
                          {"id":"{{{Guid.NewGuid()}}}","tenantId":"{{{TenantId}}}","licenseKey":"LIC-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","issuedAtUtc":"2026-09-01T10:00:00Z","isActive":true,"product":"erpbridge"},
-                         {"id":"{{{Guid.NewGuid()}}}","tenantId":"{{{TenantId}}}","licenseKey":"GO-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","issuedAtUtc":"2026-09-28T10:00:00Z","isActive":true,"product":"go",
-                          "goInstallation":{"machineName":"DEPO-PC","appVersion":"1.0.0","activatedAtUtc":"2026-09-28T10:05:00Z","lastSeenAtUtc":"2026-09-28T12:00:00Z"}},
-                         {"id":"{{{Guid.NewGuid()}}}","tenantId":"{{{TenantId}}}","licenseKey":"GO-cccccccccccccccccccccccccccccccc","issuedAtUtc":"2026-09-20T10:00:00Z","isActive":false,"product":"go"}
+                         {"id":"{{{GoLicenseId}}}","tenantId":"{{{TenantId}}}","licenseKey":"GO-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","issuedAtUtc":"2026-09-28T10:00:00Z","isActive":true,"product":"go",
+                          "goInstallation":{"machineName":"DEPO-PC","appVersion":"1.0.0","activatedAtUtc":"2026-09-28T10:05:00Z","lastSeenAtUtc":"2026-09-28T12:00:00Z"},
+                          "goModules":{{{GoModulesJson}}}},
+                         {"id":"{{{Guid.NewGuid()}}}","tenantId":"{{{TenantId}}}","licenseKey":"GO-cccccccccccccccccccccccccccccccc","issuedAtUtc":"2026-09-20T10:00:00Z","isActive":false,"product":"go","goModules":{{{GoModulesJson}}}}
                         ]
                         """,
                     _ => "[]",

@@ -9,8 +9,8 @@ using Microsoft.EntityFrameworkCore;
 namespace ErpBridge.CentralApi.Endpoints;
 
 /// <summary>
-/// Maps <c>/api/v1/admin/licenses</c>: list, create, revoke, change the end date and release the
-/// computer a Go license is bound to. Admin-only.
+/// Maps <c>/api/v1/admin/licenses</c>: list, create, revoke, change the end date, release the
+/// computer a Go license is bound to and set the Go modules of its company. Admin-only.
 /// </summary>
 public static class AdminLicensesEndpoints
 {
@@ -49,6 +49,12 @@ public static class AdminLicensesEndpoints
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ApiError>(StatusCodes.Status404NotFound);
 
+        group.MapPut("/{id:guid}/go-modules", SetGoModulesAsync)
+            .WithName("AdminLicensesSetGoModules")
+            .Produces<LicenseDto>(StatusCodes.Status200OK)
+            .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ApiError>(StatusCodes.Status404NotFound);
+
         return routes;
     }
 
@@ -67,8 +73,10 @@ public static class AdminLicensesEndpoints
             : await db.GoInstallations.AsNoTracking()
                 .Where(i => goIds.Contains(i.LicenseId))
                 .ToDictionaryAsync(i => i.LicenseId, ct);
+        var goTenantIds = rows.Where(l => l.Product == LicenseProducts.Go).Select(l => l.TenantId).Distinct().ToList();
+        var goModules = await TenantModuleSets.GoModulesByTenantAsync(db, goTenantIds, ct);
 
-        return JsonResults.Ok(rows.Select(l => ToDto(l, installations.GetValueOrDefault(l.Id))).ToArray());
+        return JsonResults.Ok(rows.Select(l => ToDto(l, installations.GetValueOrDefault(l.Id), goModules.GetValueOrDefault(l.TenantId))).ToArray());
     }
 
     private static async Task<IResult> CreateAsync(
@@ -103,7 +111,7 @@ public static class AdminLicensesEndpoints
         };
         db.Licenses.Add(license);
         await db.SaveChangesAsync(ct);
-        return JsonResults.Status(StatusCodes.Status201Created, ToDto(license, null));
+        return JsonResults.Status(StatusCodes.Status201Created, ToDto(license, null, await GoModulesAsync(db, license, ct)));
     }
 
     private static async Task<IResult> RevokeAsync(
@@ -137,7 +145,7 @@ public static class AdminLicensesEndpoints
         var installation = license.Product == LicenseProducts.Go
             ? await db.GoInstallations.AsNoTracking().FirstOrDefaultAsync(i => i.LicenseId == id, ct)
             : null;
-        return JsonResults.Ok(ToDto(license, installation));
+        return JsonResults.Ok(ToDto(license, installation, await GoModulesAsync(db, license, ct)));
     }
 
     /// <summary>
@@ -157,6 +165,45 @@ public static class AdminLicensesEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>
+    /// Replaces the Go desktop app modules (<see cref="TenantModules.GoKnown"/>) of the license's
+    /// company. Modules are per company, not per license: every Go license of the tenant shares the
+    /// set, so this changes what all of them carry. Only <c>go_</c> rows are replaced; phone add-ons
+    /// such as <c>xml_import</c> are untouched. Keys already on keep their original enable date. The
+    /// customer's computer picks the change up on its next renewal (<c>/go/license/activate</c>).
+    /// </summary>
+    private static async Task<IResult> SetGoModulesAsync(
+        Guid id,
+        HttpContext http,
+        [FromBody] SetGoModulesRequest? body,
+        [FromServices] CentralApiDbContext db,
+        CancellationToken ct)
+    {
+        var license = await db.Licenses.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (license is null)
+            return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "LICENSE_NOT_FOUND", Message = "License not found." });
+        if (license.Product != LicenseProducts.Go)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "NOT_GO_LICENSE", Message = "Go modules can only be set on a Go license." });
+        if (body?.Modules is null)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_BODY", Message = "modules is required." });
+
+        var wanted = TenantModuleSets.Normalize(body.Modules);
+        if (wanted.FirstOrDefault(m => !TenantModules.GoKnown.Contains(m)) is { } unknown)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "UNKNOWN_MODULE", Message = $"Unknown Go module '{unknown}'." });
+
+        await TenantModuleSets.ReplaceAsync(db, http, license.TenantId, wanted, TenantModules.IsGo, ct);
+        await db.SaveChangesAsync(ct);
+
+        var installation = await db.GoInstallations.AsNoTracking().FirstOrDefaultAsync(i => i.LicenseId == id, ct);
+        return JsonResults.Ok(ToDto(license, installation, await GoModulesAsync(db, license, ct)));
+    }
+
+    /// <summary>The Go modules of a Go license's company; null for an ErpBridge license.</summary>
+    private static async Task<string[]?> GoModulesAsync(CentralApiDbContext db, License license, CancellationToken ct) =>
+        license.Product == LicenseProducts.Go
+            ? (await TenantModuleSets.GoModulesByTenantAsync(db, [license.TenantId], ct)).GetValueOrDefault(license.TenantId, [])
+            : null;
+
     /// <summary>Random key: <c>LIC-</c> (ErpBridge) or <c>GO-</c> (Go) and 32 lowercase hex chars.</summary>
     private static string GenerateLicenseKey(string product)
     {
@@ -166,7 +213,8 @@ public static class AdminLicensesEndpoints
         return prefix + Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    private static LicenseDto ToDto(License l, GoInstallation? installation) => new()
+    /// <param name="goModules">The company's Go modules; ignored for an ErpBridge license (always null there).</param>
+    private static LicenseDto ToDto(License l, GoInstallation? installation, string[]? goModules) => new()
     {
         Id = l.Id,
         TenantId = l.TenantId,
@@ -182,5 +230,6 @@ public static class AdminLicensesEndpoints
             ActivatedAtUtc = installation.ActivatedAtUtc,
             LastSeenAtUtc = installation.LastSeenAtUtc,
         },
+        GoModules = l.Product == LicenseProducts.Go ? goModules ?? [] : null,
     };
 }

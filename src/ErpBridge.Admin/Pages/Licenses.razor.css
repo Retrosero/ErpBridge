@@ -32,3 +32,8 @@
 .license-theme--go{--product:#ea580c;--product-soft:#fff7ed;--product-ink:#9a3412;--product-line:#fed7aa}
 .license-theme--erpbridge{--product:#4f46e5;--product-soft:#eef2ff;--product-ink:#3730a3;--product-line:#c7d2fe}
 @media (max-width:767.98px){.license-products{grid-template-columns:1fr}.license-context{align-items:flex-start}}
+.license-modules{margin-top:.6rem}.license-modules__title{align-items:baseline;color:#334155;display:flex;font-size:.8rem;gap:.45rem;margin:0 0 .35rem}.license-modules__title span{color:#94a3b8;font-size:.7rem;font-weight:600}
+.license-module-chips{display:flex;flex-wrap:wrap;gap:.35rem;list-style:none;margin:0;padding:0}.license-module-chip{background:var(--product-soft);border:1px solid var(--product-line);border-radius:999px;color:var(--product-ink);font-size:.72rem;font-weight:700;padding:.12rem .55rem}
+.license-modules-edit{background:#f8fafc;border:1px solid #eef2f7;border-radius:.6rem;margin-top:.75rem;min-width:0;padding:.7rem .8rem}.license-modules-edit legend{color:#334155;float:none;font-size:.8rem;font-weight:750;margin:0;padding:0 .25rem;width:auto}
+.license-modules-edit__options{display:grid;gap:.35rem;grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))}.license-module-option{align-items:center;color:#334155;display:flex;font-size:.82rem;gap:.45rem;min-width:0}.license-module-option input{accent-color:var(--product);flex:none;height:1rem;width:1rem}
+.license-modules-edit__note{color:#64748b;font-size:.74rem;margin:.6rem 0}
