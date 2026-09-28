@@ -1013,8 +1013,12 @@ registration ayrı bir composition projesine taşınır.
    - **Yazma testleri yalnız izinli test kopyasında:** canlı yazım testleri `ERPBridge_RUN_INTEGRATION=1` **ve**
      `ERPBridge_MIKRO_WRITE_DB` ∈ `MikroWriteTestDatabase.AllowedDatabases` (yalnız `MikroDB_V15_DEMO`; ilk kopya `MikroDB_V15_ERPBTEST` 2026-09-17'de silindi)
      ister; müşteri veritabanına (`MikroDB_V15_02` vb.) yazan test yazılmaz. Okuma testleri canlı veritabanına bağlanabilir.
-   - **Dapper kolon sırası:** okuyucuların positional record'larına kolon eklerken SQL'deki sıra kurucuyla aynı olmalı
-     (#95'te `VatRate` sırası canlı okumayı kırdı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma testiyle gelir.
+   - **Dapper kolon sırası:** okuyucuların positional record'larına kolon eklerken SQL'deki sıra **ve CAST tipi** kurucuyla
+     aynı olmalı (#95'te `VatRate` sırası canlı okumayı kırdı; #178 `DiscountAmount`/`VatAmount`'u listenin ortasına koyup
+     tüm senkronu düşürdü, #185 düzeltti; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma testiyle gelir.
+     Stok hareketi projeksiyonu `MikroDbReader.StockTransactionsSql` (`internal`) sabitindedir;
+     `StockTransactionProjectionTests` SELECT listesinden kolon adı/sıra/tipini çıkarıp Dapper'la veritabanısız
+     materyalize eder — CI'da her zaman çalışır. Her kolon `CAST(... AS <tip>) AS <Ad>` biçiminde olmalı.
 
 27. **Görevler ve bildirimler merkezdedir: `Tasks/TaskService` + `Endpoints/MobileTaskEndpoints` (GOAL_GOREVLER, 2026-09-25).**
    - **ERP'ye hiç yazılmaz.** Görev, alt görev, yorum, resim ve bildirim ERP'li ve ERP'siz firmada aynı tablolarda

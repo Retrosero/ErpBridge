@@ -643,10 +643,12 @@ ORDER BY cha_RECno";
         return result;
     }
 
-    /// <inheritdoc />
-    public async Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
-    {
-        const string sql = @"
+    /// <summary>
+    /// The stock movement projection. Dapper binds <see cref="StockTransactionPayload"/>'s constructor by column
+    /// order and exact type, so every column is CAST and listed in constructor order;
+    /// <c>StockTransactionProjectionTests</c> checks that without a SQL Server.
+    /// </summary>
+    internal const string StockTransactionsSql = @"
 SELECT CAST(sth_RECno AS NVARCHAR(50)) AS Id,
        CAST(sth_RECno AS NVARCHAR(50)) AS ErpRef,
        CAST('MIKRO' AS NVARCHAR(20)) AS Erp,
@@ -683,7 +685,10 @@ WHERE ISNULL(sth_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sth_lastup_date, sth_create_date, sth_tarih) > @changedSinceUtc)
 ORDER BY sth_RECno";
 
-        var result = (await QueryAsync<StockTransactionPayload>(sql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false)).ToList();
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StockTransactionPayload>> ReadStockTransactionsAsync(int firmNo, CancellationToken ct = default, DateTimeOffset? changedSinceUtc = null)
+    {
+        var result = (await QueryAsync<StockTransactionPayload>(StockTransactionsSql, new { firmNo, changedSinceUtc = MikroDateTime(changedSinceUtc) }, ct).ConfigureAwait(false)).ToList();
         _logger.LogInformation("Read {Count} stock transactions for firmNo={FirmNo}.", result.Count, firmNo);
         return result;
     }
