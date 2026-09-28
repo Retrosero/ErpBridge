@@ -260,9 +260,14 @@ public sealed class TargetBoard
         return code is not null && string.Equals(code, itemCode, StringComparison.OrdinalIgnoreCase);
     }
 
-    private string? ItemName(string metric, string itemCode) =>
-        metric == TargetMetrics.Product && _facts.Products.TryGetValue(itemCode, out var product) ? product.Name
-        : itemCode.Length > 0 ? itemCode : null;
+    private string? ItemName(string metric, string itemCode) => metric switch
+    {
+        _ when itemCode.Length == 0 => null,
+        TargetMetrics.Product when _facts.Products.TryGetValue(itemCode, out var product) => product.Name,
+        TargetMetrics.Brand when _facts.BrandNames.TryGetValue(itemCode, out var brand) => brand,
+        TargetMetrics.Category when _facts.MainGroupNames.TryGetValue(itemCode, out var group) => group,
+        _ => itemCode,
+    };
 
     private (int Planned, int Completed) VisitCounts(IReadOnlySet<Guid>? users, DateOnly from, DateOnly to)
     {

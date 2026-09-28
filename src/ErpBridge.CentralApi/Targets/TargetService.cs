@@ -465,9 +465,9 @@ public sealed class TargetService(TargetFactReader facts, IMemoryCache cache)
                 .Where(p => Hit(p.Code, p.Name))
                 .OrderBy(p => p.Name, TurkishText)
                 .Select(p => new TargetItemDto { Code = p.Code, Name = p.Name, ProductCount = 1 }),
-            TargetMetrics.Category => Groups(catalog.Products, p => p.MainGroup),
-            TargetMetrics.SubCategory => Groups(catalog.Products, p => p.SubGroup is null ? null : $"{p.MainGroup}|{p.SubGroup}"),
-            TargetMetrics.Brand => Groups(catalog.Products, p => p.Brand),
+            TargetMetrics.Category => Groups(catalog.Products, p => p.MainGroup, catalog.MainGroupNames),
+            TargetMetrics.SubCategory => Groups(catalog.Products, p => p.SubGroup is null ? null : $"{p.MainGroup}|{p.SubGroup}", null),
+            TargetMetrics.Brand => Groups(catalog.Products, p => p.Brand, catalog.BrandNames),
             _ => [],
         };
         if (metric != TargetMetrics.Product) items = items.Where(i => Hit(i.Code, i.Name));
@@ -475,11 +475,13 @@ public sealed class TargetService(TargetFactReader facts, IMemoryCache cache)
         return new TargetItemsResponse { Items = [.. list.Take(MaxPickerItems)], Truncated = list.Count > MaxPickerItems };
     }
 
-    private static IEnumerable<TargetItemDto> Groups(IEnumerable<PortalStockCatalog.Product> products, Func<PortalStockCatalog.Product, string?> code) =>
+    /// <summary>The codes products carry, named from the agent's lookups when it sends them (1.3.0), else by the code.</summary>
+    private static IEnumerable<TargetItemDto> Groups(IEnumerable<PortalStockCatalog.Product> products, Func<PortalStockCatalog.Product, string?> code,
+        IReadOnlyDictionary<string, string>? names) =>
         products.Select(p => code(p)).Where(c => !string.IsNullOrWhiteSpace(c))
             .GroupBy(c => c!, StringComparer.OrdinalIgnoreCase)
-            .OrderBy(g => g.Key, TurkishText)
-            .Select(g => new TargetItemDto { Code = g.Key, Name = g.Key, ProductCount = g.Count() });
+            .Select(g => new TargetItemDto { Code = g.Key, Name = names?.GetValueOrDefault(g.Key) ?? g.Key, ProductCount = g.Count() })
+            .OrderBy(i => i.Name, TurkishText);
 
     public static async Task<int> WorkDaysAsync(CentralApiDbContext db, Guid tenantId, CancellationToken ct) =>
         await db.TargetSettings.AsNoTracking().Where(s => s.TenantId == tenantId).Select(s => (int?)s.WorkDays).FirstOrDefaultAsync(ct)

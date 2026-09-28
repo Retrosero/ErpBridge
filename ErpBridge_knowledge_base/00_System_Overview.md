@@ -1167,7 +1167,8 @@ registration ayrı bir composition projesine taşınır.
      seviyedeki aynı hedeflerin toplamı).
    - **Uçlar:** panel `GET|POST /api/v1/portal/teams`, `PUT|DELETE /teams/{id}`, `GET|PUT /targets` (pano + toplu kayıt),
      `POST /targets/copy` (±%, önizleme/uygula), `POST /targets/distribute` (EQUAL | LAST_PERIOD_SHARE, yalnız önizleme),
-     `GET /targets/items?metric&q` (≤ 50), `GET|PUT /targets/settings`. Okuma `CanViewReports`. Telefon `GET /api/v1/android/targets/mine?date`
+     `GET /targets/items?metric&q` (≤ 50; marka/ana grup adı ajan 1.3.0'ın `stock_brand`/`stock_main_group` lookup'larından —
+     `PortalStockCatalog.Catalog.BrandNames/MainGroupNames`, yoksa kod), `GET|PUT /targets/settings`. Okuma `CanViewReports`. Telefon `GET /api/v1/android/targets/mine?date`
      (gün/hafta/ay, herkes) ve `/team?date&periodType` (ADMIN/MANAGER). Hız sınırı kullanıcı başına. Testler: `TargetRelationalTests`,
      `TargetBoardTests`, `TargetPeriodTests`.
 

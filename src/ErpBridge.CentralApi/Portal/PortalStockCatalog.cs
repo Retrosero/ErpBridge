@@ -87,6 +87,12 @@ public static class PortalStockCatalog
 
         public int? DefaultPriceList => _defaultPriceList.Value;
 
+        /// <summary>Brand code → name, from the agent's <c>stock_brand</c> lookups; empty before agent 1.3.0.</summary>
+        public IReadOnlyDictionary<string, string> BrandNames { get; init; } = new Dictionary<string, string>();
+
+        /// <summary>Main-group code → name, from <c>stock_main_group</c> lookups.</summary>
+        public IReadOnlyDictionary<string, string> MainGroupNames { get; init; } = new Dictionary<string, string>();
+
         /// <summary>The products in the page's default order: name, then code.</summary>
         internal IReadOnlyList<Product> ByName => _byName.Value;
 
@@ -143,7 +149,11 @@ public static class PortalStockCatalog
                 : product);
         }
 
-        var catalog = new Catalog(products, stock.WarehouseNames, stock.PriceListNames, stock.HasReserved);
+        var catalog = new Catalog(products, stock.WarehouseNames, stock.PriceListNames, stock.HasReserved)
+        {
+            BrandNames = stock.BrandNames,
+            MainGroupNames = stock.MainGroupNames,
+        };
         cache.Set(viewKey, new CachedCatalog(stockMirror.Version, daysVersion, stock, catalog), TimeSpan.FromMinutes(30));
         return catalog;
     }
@@ -152,6 +162,8 @@ public static class PortalStockCatalog
     {
         var warehouseNames = new Dictionary<int, string>();
         var priceListNames = new Dictionary<int, string>();
+        var brandNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var mainGroupNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var cards = new Dictionary<string, PortalRecords.CardPart>(StringComparer.OrdinalIgnoreCase);
         var barcodes = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var quantities = new Dictionary<string, Dictionary<int, (decimal Quantity, decimal Reserved)>>(StringComparer.OrdinalIgnoreCase);
@@ -168,6 +180,9 @@ public static class PortalStockCatalog
                     break;
                 case PortalRecords.LookupPart lookup when lookup.Kind == "price_list":
                     priceListNames[lookup.Number] = lookup.Name;
+                    break;
+                case PortalRecords.NamePart name:
+                    (name.Kind == "stock_brand" ? brandNames : mainGroupNames)[name.Code] = name.Name;
                     break;
                 case PortalRecords.CardPart card:
                     cards[card.Code] = card;
@@ -202,7 +217,7 @@ public static class PortalStockCatalog
                 movements.TryGetValue(code, out var last) ? last : null,
                 card.VatRate));
         }
-        return new Catalog(products, warehouseNames, priceListNames, hasReserved);
+        return new Catalog(products, warehouseNames, priceListNames, hasReserved) { BrandNames = brandNames, MainGroupNames = mainGroupNames };
     }
 
     public static PortalStockSearchResponse Search(Catalog catalog, StockQuery query, DateOnly today)
