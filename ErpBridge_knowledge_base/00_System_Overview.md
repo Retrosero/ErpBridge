@@ -1091,6 +1091,32 @@ registration ayrı bir composition projesine taşınır.
    - Doğrulama tek yerde (`EXPIRY_INVALID`, Türkçe mesaj alanı adlandırır); sözleşme `docs/api-contracts.md`.
      Testler: `ExpiryRelationalTests` (SQLite, uçlar), `StockExpiryServiceTests` (bellek içi, doğrulama).
      `stock_expiry_ops_applied` henüz temizlenmiyor (`AppliedAtMs` indeksi hazır).
+30. **Lisans sunucusu iki ürüne hizmet eder: ErpBridge ve Go (`Endpoints/GoLicenseEndpoints`, 2026-09-28).**
+   Go, ayrı bir depodaki (Retrosero/entegrasyon) pazaryeri entegrasyonu masaüstü uygulamasıdır; lisansını bu sunucudan alır.
+   - **Ürün lisansa bağlıdır:** `licenses.Product` = `erpbridge` (varsayılan; migration öncesi tüm anahtarlar) | `go`
+     (`Domain/LicenseProducts`). Go anahtarı `GO-` + 32 hex, ErpBridge anahtarı `LIC-` + 32 hex. **Anahtar yalnız kendi
+     ürününü açar:** `/licenses/validate` ve `/agents/register` Go anahtarına, Go ucu ErpBridge anahtarına bilinmeyen anahtar
+     gibi **404 `LICENSE_NOT_FOUND`** döner. Lisans çözen yeni bir uç yazılırsa ürün filtresi şarttır.
+   - **Tek uç, etkinleştirme = yenileme:** `POST /api/v1/go/license/activate {licenseKey, machineId, machineName?, appVersion?}`
+     (anonim, `Anonymous` hız sınırı). Go uygulaması bunu ilk açılışta ve birkaç saatte bir çağırır. Cevaplar: 200 imzalı belge;
+     400 `MISSING_LICENSE_KEY`/`INVALID_MACHINE_ID` (≤128); 404 `LICENSE_NOT_FOUND`; 410 `LICENSE_REVOKED` (lisans ya da firma
+     pasif) / `LICENSE_EXPIRED`; 409 `DEVICE_LIMIT_REACHED`; 503 `GO_LICENSING_UNAVAILABLE` (imza anahtarı yok).
+   - **1 anahtar = 1 bilgisayar:** `go_installations` (lisans başına tek satır, `LicenseId` unique; `MachineId` uygulamanın
+     ürettiği hash, `MachineName`, `AppVersion`, `ActivatedAtUtc`, `LastSeenAtUtc`). Başka makine 409 alır; eşzamanlı iki ilk
+     etkinleştirmede unique index birini reddeder (409). Taşıma: Admin → Lisanslar → "Bilgisayarı serbest bırak"
+     (`POST /admin/licenses/{id}/go-installation/release`, satırı siler). Firma cihaz limiti (`MaxDeviceCount`) Go'ya uygulanmaz.
+   - **Belge ES256 imzalıdır, uygulama çevrimdışı doğrular:** `base64url(json).base64url(imza)` (IEEE P1363, SHA-256).
+     İddialar `GoLicensing/GoLicenseClaims`: `v, kid, product, licenseId, tenantId, tenantName, machineId, issuedAtUtc,
+     validUntilUtc, licenseExpiresAtUtc, modules[]`. `validUntilUtc = min(şimdi + GoLicense:OfflineAllowance (3 gün),
+     lisans bitişi)` — uygulama bu ana kadar sunucuya ulaşamasa da senkron yapar. `modules` = firmanın `go_` önekli
+     `tenant_modules` anahtarları (Go'nun ücretli modülleri; `TenantModules.Known`'a eklenince konsoldan açılır).
+     `kid` = açık anahtarın (SubjectPublicKeyInfo DER) SHA-256'sının ilk 16 hex'i; anahtar değişirse Go'nun yeni sürümü
+     yeni açık anahtarı gömülü taşımalıdır.
+   - **İmza anahtarı:** `GoLicense__SigningKey` (ECDSA P-256 PKCS#8; PEM ya da tek satır base64). **Açılış şartı değildir:**
+     yoksa yalnız Go ucu 503 döner, uyarı loglanır — ErpBridge etkilenmez. Değer depoya asla girmez.
+   - **Yenileme anahtarı korur:** `PUT /admin/licenses/{id}/expiry {expiresAtUtc}` (null = süresiz); Go uygulaması yeni
+     tarihi bir sonraki yenilemede alır. Konsol: ürün seçimi, ürün süzgeci, Go kartında bilgisayar bilgisi.
+   - Testler: `GoLicenseActivateTests` (imza doğrulama, 1 PC, ürün ayrımı, modüller, 503), `AdminLicensesTests` (ürün, bırakma, süre).
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

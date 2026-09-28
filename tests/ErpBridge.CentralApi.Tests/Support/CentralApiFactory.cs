@@ -26,6 +26,15 @@ namespace ErpBridge.CentralApi.Tests.Support;
 /// </summary>
 public class CentralApiFactory : WebApplicationFactory<Program>
 {
+    /// <summary>ECDSA P-256 private key (PKCS#8, base64) generated once per test run for Go license tokens.</summary>
+    public static readonly string TestGoSigningKey = CreateGoSigningKey();
+
+    private static string CreateGoSigningKey()
+    {
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        return Convert.ToBase64String(key.ExportPkcs8PrivateKey());
+    }
+
     private readonly string _databaseName = "CentralApiTestDb_" + Guid.NewGuid().ToString("N");
     private readonly bool _keepDatabase;
     private readonly bool _disableRateLimiter;
@@ -65,6 +74,8 @@ public class CentralApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Tasks:SchedulerEnabled", "false");
         if (_disableRateLimiter)
             builder.UseSetting("RateLimiter:DisabledForTests", "true");
+        // Go licensing signs with a throwaway key; GoLicenseActivateTests verifies against it.
+        builder.UseSetting("GoLicense:SigningKey", TestGoSigningKey);
         builder.ConfigureServices(services =>
         {
             services.PostConfigure<ApiKeyVaultOptions>(options =>
