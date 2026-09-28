@@ -941,9 +941,13 @@ registration ayrı bir composition projesine taşınır.
      `token=`/`"licenseKey":`/`apiKey:` adlı değerler). Masaüstü telemetri raporlayıcısı da aynı listeyi kullanır; ajan
      tarafında ikinci bir gizli bilgi listesi yazılmaz. `MaskPassword` değeri artık satır sonunda durur (önceden bir
      sonraki satırdaki istisna türünü yutuyordu); tırnaklı değer (`Password="Top;Secret"`) bütün olarak maskelenir.
-   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.2.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
+   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.3.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
      (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır. 1.2.0
      (2026-09-27): alış faturası iskontosu — heartbeat'teki `appVersion` 1.2.0'dan küçük ajan iskontolu alışı yazamaz.
+     1.3.0 (2026-09-28, GOAL_HEDEF_RUT E1/E2): hareket satırlarında `plasiyerKod`, lookups'ta `stock_brand`/`stock_main_group`
+     (projeksiyon 8) **ve stok hareketi okumasının onarımı**: #178'den (2026-09-23) beri `ReadStockTransactionsAsync` her canlı
+     okumada Dapper kurucu eşlemesiyle düşüyordu (aşağıdaki kolon sırası kuralı). 1.2.0 kurulu müşteride stok hareketleri
+     aynaya gelmez; 1.3.0 kurulunca projeksiyon 8 bir kez tam okuma yapar.
    - **Log Merkezi'ne gönderim (L3c):** ajan kodu tanılama olaylarını `Core/Logging/IAgentLogReporter` ile bildirir;
      olay SQLite'taki `agent_log_outbox`'a yazılır (en çok 1.000 / 7 gün) ve heartbeat turunda `AgentLogUploader`
      en çok 50'lik partiyle `POST /api/v1/agents/logs/batch`'e gönderir. Aynı parmak izli hata 10 dakikada bir
@@ -1014,7 +1018,11 @@ registration ayrı bir composition projesine taşınır.
      `ERPBridge_MIKRO_WRITE_DB` ∈ `MikroWriteTestDatabase.AllowedDatabases` (yalnız `MikroDB_V15_DEMO`; ilk kopya `MikroDB_V15_ERPBTEST` 2026-09-17'de silindi)
      ister; müşteri veritabanına (`MikroDB_V15_02` vb.) yazan test yazılmaz. Okuma testleri canlı veritabanına bağlanabilir.
    - **Dapper kolon sırası:** okuyucuların positional record'larına kolon eklerken SQL'deki sıra kurucuyla aynı olmalı
-     (#95'te `VatRate` sırası canlı okumayı kırdı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma testiyle gelir.
+     (#95'te `VatRate` sırası canlı okumayı kırdı; #178'de `DiscountAmount`/`VatAmount` `Amount`'un hemen ardına yazıldı ve
+     stok hareketi okuması 2026-09-23 → 2026-09-28 arası hiç çalışmadı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma
+     testiyle gelir: `MikroSalespersonReaderLiveTests` (salt okunur; `ERPBridge_RUN_INTEGRATION=1`, `ERPBridge_MIKRO_WRITE_DB`,
+     bu makinede `ERPBridge_SCHEMA_SERVER=.` — TCP kapalı). **Dikkat:** `MikroCustomerLedgerReaderLiveTests` içinde yazan test de
+     var; yalnız izinli kopyada (`MikroDB_V15_DEMO`) ve filtreyle çalıştırılır.
 
 27. **Görevler ve bildirimler merkezdedir: `Tasks/TaskService` + `Endpoints/MobileTaskEndpoints` (GOAL_GOREVLER, 2026-09-25).**
    - **ERP'ye hiç yazılmaz.** Görev, alt görev, yorum, resim ve bildirim ERP'li ve ERP'siz firmada aynı tablolarda
