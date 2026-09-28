@@ -150,6 +150,19 @@ public sealed class MobileRecordProjector
             }
         }
 
+        // A product's category is its stock sub-group's name, joined in when the product is served
+        // (StockCategories). When a sub-group appears, is renamed or goes away, the products in it
+        // must reach devices again, yet their own rows did not change: re-stamp them so the feed
+        // carries them once more. After the first upload that carries sub-groups this also delivers
+        // the new category of every existing product to devices that already hold it.
+        var changedGroups = pending
+            .Where(w => string.Equals(w.Entity, "lookups", StringComparison.OrdinalIgnoreCase))
+            .Select(w => StockCategories.SubGroupOfLookupKey(w.RecordKey))
+            .OfType<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (changedGroups.Count > 0)
+            pending.AddRange(await CollectCategoryRestampsAsync(db, tenantId, changedGroups, pending, ct).ConfigureAwait(false));
+
         if (pending.Count == 0) return new ProjectionResult(0, unchanged, 0);
 
         var block = await ReserveAsync(db, tenantId, pending.Count, ct).ConfigureAwait(false);
@@ -377,6 +390,45 @@ public sealed class MobileRecordProjector
         if (db.Database.IsRelational()) return true;
         _logger.LogDebug("Mobile record projection skipped: the configured provider is not relational.");
         return false;
+    }
+
+    /// <summary>
+    /// Stock rows in <paramref name="subGroups"/> that this projection does not already write, as
+    /// unchanged re-stamps (same payload, new sequence). Rare — a sub-group appearing or being
+    /// renamed — so the whole stock entity is scanned rather than indexing group codes.
+    /// </summary>
+    private static async Task<List<PendingWrite>> CollectCategoryRestampsAsync(
+        CentralApiDbContext db,
+        Guid tenantId,
+        IReadOnlySet<string> subGroups,
+        IReadOnlyCollection<PendingWrite> pending,
+        CancellationToken ct)
+    {
+        var alreadyWritten = pending
+            .Where(w => string.Equals(w.Entity, "stocks", StringComparison.OrdinalIgnoreCase))
+            .Select(w => w.RecordKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var candidates = await db.MobileRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Entity == "stocks" && !x.IsDeleted && x.PayloadJson != null)
+            .Select(x => new { x.RecordKey, x.PayloadJson })
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        var keys = new List<string>();
+        foreach (var candidate in candidates)
+        {
+            if (alreadyWritten.Contains(candidate.RecordKey)) continue;
+            using var document = JsonDocument.Parse(candidate.PayloadJson!);
+            var subGroup = StockCategories.SubGroupOf(document.RootElement);
+            if (subGroup is not null && subGroups.Contains(subGroup)) keys.Add(candidate.RecordKey);
+        }
+        if (keys.Count == 0) return [];
+
+        var rows = await LoadAsync(db, tenantId, "stocks", keys, wholeEntity: false, ct).ConfigureAwait(false);
+        return rows.Values
+            .Select(row => new PendingWrite(row, row.Entity, row.RecordKey, row.PayloadJson, row.PayloadSha256,
+                row.StockKey, row.CustomerKey, row.SourceRecordKey, row.SourceDatabase))
+            .ToList();
     }
 
     private async Task<List<MobileRecord>> CollectSweepAsync(

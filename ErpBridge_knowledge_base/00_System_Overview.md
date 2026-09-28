@@ -1100,3 +1100,24 @@ Sözleşme, sıra ve tanım-tamamlandı listesi:
 Özet: adaptör yalnızca `Shared` + `Erp.Abstractions` (+ SQL Server ise `Erp.Sql`)
 referans verir. `SecondAdapterSeamTests` (Logo iskeleti üzerinden) bunu mimari
 değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş demektir.
+
+30. **Ürün kategorisi Mikro stok alt grubunun adıdır: `Sync/StockCategories` (2026-09-28).**
+   - **Ajan:** `MikroDbReader.ReadLookupsAsync` `STOK_ALT_GRUPLARI`'nı `lookups` içinde `stock_sub_group` türüyle
+     gönderir; `code` = `anaGrup|altGrup` (alt grup kodu tek başına benzersiz değil, 03'teki tablo satırı),
+     `name` = `sta_isim`, `parentCode` = ana grup; `sta_iptal` olanlar gitmez, artımlı okuma `sta_lastup_date` ile.
+     Mevcut alt gruplar imleçten eski olduğu için `MikroAdapter.SnapshotProjectionVersion` 8'e çıktı (bir kez tam okuma).
+   - **Merkez:** telefon ürününü kuran iki yol da (`AndroidEndpoints.ProductCatalogAsync` = `sync/urun`,
+     `MobileEntityAssembler.BuildProduct` = `sync/pull` akışı) `StockCategories.Apply` ile `kategori` yazar.
+     Çözüm sırası: (ana, alt) çifti → alt grup kodu tek bir ada çıkıyorsa o ad (ana grubu tutmayan az sayıda kart)
+     → kodun kendisi. `#` ile başlayan yer tutucu (`#YOK`) ve boş kod kategori değildir. Ad yoksa `kategori`
+     **hiç yazılmaz** (asla `""`): ERP'siz firmanın kartı kendi `kategori`'sini taşır ve korunur; telefon da yalnız
+     null'da kendi yedeğine ("Diğer") düşer.
+   - **Yeniden gönderim:** kategori ürün sunulurken birleştirilir, ürün satırının kendisi değişmez. Bu yüzden
+     `MobileRecordProjector` bir `stock_sub_group` kaydı eklendiğinde, adı değiştiğinde ya da silindiğinde o alt gruptaki
+     `stocks` satırlarını **aynı içerikle yeni sıra numarasıyla** yeniden damgalar (`CollectCategoryRestampsAsync`);
+     ürünler akışta bir kez daha gider. Sürüm 8'in ilk tam okuması da budur: her cihaz, elindeki ürünleri kategorili
+     olarak bir kez yeniden alır. Birebir aynı alt grup tekrar yüklenirse hiçbir şey hareket etmez.
+   - Telefon `UrunDto.kategori`'yi zaten okur (`BridgeDeltaSync`, `BridgeSyncHelper.syncUrunler`); uygulama değişmedi.
+   - Testler: `AndroidEndpointsTests.Product_catalog_names_the_category_after_the_stock_sub_group`,
+     `MobileEntityAssemblyTests.A_product_carries_its_stock_sub_group_name_as_category`,
+     `MobileEntityAssemblyTests.A_new_or_renamed_sub_group_resends_only_the_products_in_it`.
