@@ -18,6 +18,9 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<License> Licenses => Set<License>();
+
+    /// <summary>The computer each Go license is bound to (at most one per license).</summary>
+    public DbSet<GoInstallation> GoInstallations => Set<GoInstallation>();
     public DbSet<Agent> Agents => Set<Agent>();
 
     /// <summary>Log Merkezi L3f — a thinned history of agent heartbeats (change or 15 minutes, whichever first).</summary>
@@ -419,10 +422,24 @@ public sealed class CentralApiDbContext : DbContext
             b.HasKey(x => x.Id);
             b.Property(x => x.LicenseKey).IsRequired().HasMaxLength(255);
             b.HasIndex(x => x.LicenseKey).IsUnique();
+            b.Property(x => x.Product).IsRequired().HasMaxLength(LicenseProducts.MaxLength).HasDefaultValue(LicenseProducts.ErpBridge);
             b.HasOne(x => x.Tenant)
                 .WithMany(t => t.Licenses)
                 .HasForeignKey(x => x.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GoInstallation>(b =>
+        {
+            b.ToTable("go_installations");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.MachineId).IsRequired().HasMaxLength(GoInstallation.MachineIdMaxLength);
+            b.Property(x => x.MachineName).HasMaxLength(GoInstallation.MachineNameMaxLength);
+            b.Property(x => x.AppVersion).HasMaxLength(GoInstallation.AppVersionMaxLength);
+            // One computer per Go license; a concurrent second activation loses on this index.
+            b.HasIndex(x => x.LicenseId).IsUnique();
+            b.HasIndex(x => x.TenantId);
+            b.HasOne(x => x.License).WithMany().HasForeignKey(x => x.LicenseId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Agent>(b =>

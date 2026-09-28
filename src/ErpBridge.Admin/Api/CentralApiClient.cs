@@ -55,12 +55,36 @@ public sealed class LicenseDto
     [JsonPropertyName("issuedAtUtc")] public DateTimeOffset IssuedAtUtc { get; set; }
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+
+    /// <summary><c>erpbridge</c> or <c>go</c>.</summary>
+    [JsonPropertyName("product")] public string Product { get; set; } = LicenseProductNames.ErpBridge;
+
+    /// <summary>Go only: the computer the key is bound to; null until first activation.</summary>
+    [JsonPropertyName("goInstallation")] public GoInstallationDto? GoInstallation { get; set; }
+}
+
+public sealed class GoInstallationDto
+{
+    [JsonPropertyName("machineName")] public string? MachineName { get; set; }
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("activatedAtUtc")] public DateTimeOffset ActivatedAtUtc { get; set; }
+    [JsonPropertyName("lastSeenAtUtc")] public DateTimeOffset LastSeenAtUtc { get; set; }
+}
+
+/// <summary>License product keys as the central API spells them, with their console labels.</summary>
+public static class LicenseProductNames
+{
+    public const string ErpBridge = "erpbridge";
+    public const string Go = "go";
+
+    public static string Label(string? product) => product == Go ? "Go (pazaryeri)" : "ErpBridge";
 }
 
 public sealed class CreateLicenseRequest
 {
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
+    [JsonPropertyName("product")] public string? Product { get; set; }
 }
 
 public sealed class AgentDto
@@ -718,11 +742,19 @@ public sealed class CentralApiClient
     public Task<IReadOnlyList<LicenseDto>> ListLicensesAsync(Guid? tenantId = null, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<LicenseDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/licenses", tenantId), ct), ct);
 
-    public Task<LicenseDto> CreateLicenseAsync(Guid tenantId, DateTimeOffset? expiresAtUtc, CancellationToken ct = default) =>
-        SendAsync<LicenseDto>(() => _http.PostAsJsonAsync("/api/v1/admin/licenses", new CreateLicenseRequest { TenantId = tenantId, ExpiresAtUtc = expiresAtUtc }, ct), ct);
+    public Task<LicenseDto> CreateLicenseAsync(Guid tenantId, DateTimeOffset? expiresAtUtc, string? product = null, CancellationToken ct = default) =>
+        SendAsync<LicenseDto>(() => _http.PostAsJsonAsync("/api/v1/admin/licenses", new CreateLicenseRequest { TenantId = tenantId, ExpiresAtUtc = expiresAtUtc, Product = product }, ct), ct);
 
     public Task RevokeLicenseAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<object>(() => _http.PostAsync($"/api/v1/admin/licenses/{id}/revoke", content: null, ct), ct);
+
+    /// <summary>Changes the end date and keeps the key; null makes the license open-ended.</summary>
+    public Task<LicenseDto> UpdateLicenseExpiryAsync(Guid id, DateTimeOffset? expiresAtUtc, CancellationToken ct = default) =>
+        SendAsync<LicenseDto>(() => _http.PutAsJsonAsync($"/api/v1/admin/licenses/{id}/expiry", new { expiresAtUtc }, ct), ct);
+
+    /// <summary>Frees a Go license so another computer can activate it.</summary>
+    public Task ReleaseGoInstallationAsync(Guid id, CancellationToken ct = default) =>
+        SendRawStringAsync(() => _http.PostAsync($"/api/v1/admin/licenses/{id}/go-installation/release", content: null, ct), ct);
 
     public Task<IReadOnlyList<AgentDto>> ListAgentsAsync(Guid? tenantId = null, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<AgentDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/agents", tenantId), ct), ct);

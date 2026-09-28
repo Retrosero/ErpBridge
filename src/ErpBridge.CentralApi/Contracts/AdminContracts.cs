@@ -81,12 +81,27 @@ public sealed class LicenseDto
     [JsonPropertyName("issuedAtUtc")] public DateTimeOffset IssuedAtUtc { get; set; }
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+
+    /// <summary><c>erpbridge</c> or <c>go</c> (<see cref="Domain.LicenseProducts"/>).</summary>
+    [JsonPropertyName("product")] public string Product { get; set; } = Domain.LicenseProducts.ErpBridge;
+
+    /// <summary>Go only: the computer the key is bound to; null until first activation.</summary>
+    [JsonPropertyName("goInstallation")] public GoInstallationDto? GoInstallation { get; set; }
 }
 
 /// <summary>POST /api/v1/admin/licenses body.</summary>
 public sealed class CreateLicenseRequest
 {
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
+
+    /// <summary>Optional; defaults to <c>erpbridge</c>. Unknown values answer 400 <c>UNKNOWN_PRODUCT</c>.</summary>
+    [JsonPropertyName("product")] public string? Product { get; set; }
+}
+
+/// <summary>PUT /api/v1/admin/licenses/{id}/expiry body: the new end date; null makes the license open-ended.</summary>
+public sealed class UpdateLicenseExpiryRequest
+{
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
 }
 

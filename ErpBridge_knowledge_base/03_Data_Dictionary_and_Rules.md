@@ -55,7 +55,8 @@ seçer.
 CentralApi tarafından yönetilen multi-tenant veri modeli:
 
 - `tenants`: Müşteri kiracı kayıtları (`id`, `name`, `status`, `created_at`).
-- `licenses`: Ajan lisansları (`id`, `tenant_id`, `license_key`, `expires_at`, `max_agents`).
+- `licenses`: Lisanslar (`id`, `tenant_id`, `license_key`, `expires_at`, `max_agents`). *(2026-09-28)* `Product` `varchar(16)` not null, varsayılan `erpbridge` | `go`; anahtar yalnız kendi ürününün uçlarında geçer (bkz. 00 kural 30).
+- `go_installations` *(2026-09-28)*: Go lisansının bağlı olduğu tek bilgisayar (`Id`, `LicenseId` unique + FK cascade, `TenantId`, `MachineId(128)`, `MachineName(128)`, `AppVersion(32)`, `ActivatedAtUtc`, `LastSeenAtUtc`). Operatör "serbest bırak" ile satırı siler.
 - `agents`: Kayıtlı Windows Sync Agent'lar (`id`, `tenant_id`, `machine_id`, `last_heartbeat_at`, `last_status`, `last_queue_depth`). *(Log Merkezi L3f)* Ek nullable kolonlar: `last_app_version`, `last_host_kind` (`service`/`ui`), `last_erp_kind`, `last_erp_version`, `last_sync_at_utc` (**canlılıktan farklı**: ajanın tamamladığı son senkron turu), `last_sync_result` (`ok`/`failed`), `last_error_code`, `last_error` (maskeli). Heartbeat'te gönderilmeyen alan saklı değeri silmez — eski ajan gövdesi aynen çalışır.
 - `agent_heartbeat_log` *(Log Merkezi L3f)*: Ajan heartbeat geçmişi (`id`, `tenant_id`, `agent_id`, `received_at_utc`, `status`, `queue_depth`, `last_sync_at_utc`, `last_sync_result`, `last_error_code`, `last_error`, `app_version`, `host_kind`, `erp_kind`, `erp_version`). Satır yalnız **okunabilir bir şey değiştiğinde** (imza: durum, kuyruk derinliği, sonuç, hata, sürümler) ya da son satır **15 dakikadan** eskiyse yazılır — dakikada bir heartbeat günde 1.440 satır etmesin diye. İndeksler: `(agent_id, received_at_utc)`, `(tenant_id, received_at_utc)`.
 - `jobs`: Mobil → Agent yazma iş kuyruğu (`id`, `tenant_id`, `document_type`, `payload`, `status`).

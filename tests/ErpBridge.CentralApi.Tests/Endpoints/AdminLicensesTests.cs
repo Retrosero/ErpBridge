@@ -140,4 +140,50 @@ public class AdminLicensesTests : IClassFixture<CentralApiFactory>
         body.Select(l => l.LicenseKey).Should().Contain(new[] { licenseA.LicenseKey, "TENANT-A-LIC-2" });
         body.Should().NotContain(l => l.TenantId == tenantB.Id);
     }
+
+    [Fact]
+    public async Task Create_defaults_to_erpbridge_and_issues_GO_keys_for_go()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync(email: "go-product-admin@test.local");
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: "GO-PRODUCT-SEED", tenantName: "Go Product Tenant");
+
+        var erp = await (await client.PostJsonAsync("/api/v1/admin/licenses", new { tenantId = tenant.Id }, token)).ReadAsJsonAsync<LicenseDto>();
+        var go = await (await client.PostJsonAsync("/api/v1/admin/licenses", new { tenantId = tenant.Id, product = "Go" }, token)).ReadAsJsonAsync<LicenseDto>();
+        var unknown = await client.PostJsonAsync("/api/v1/admin/licenses", new { tenantId = tenant.Id, product = "other" }, token);
+
+        erp.Product.Should().Be("erpbridge");
+        erp.LicenseKey.Should().StartWith("LIC-");
+        go.Product.Should().Be("go");
+        go.LicenseKey.Should().StartWith("GO-");
+        unknown.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await unknown.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("UNKNOWN_PRODUCT");
+    }
+
+    [Fact]
+    public async Task Go_license_shows_its_computer_and_can_be_released_and_renewed()
+    {
+        var client = _factory.CreateClient();
+        var admin = await _factory.SeedAdminAsync(email: "go-release-admin@test.local");
+        var token = _factory.IssueAdminJwt(admin.Id);
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: "GO-RELEASE-SEED", tenantName: "Go Release Tenant");
+        var go = await (await client.PostJsonAsync("/api/v1/admin/licenses", new { tenantId = tenant.Id, product = "go" }, token)).ReadAsJsonAsync<LicenseDto>();
+        (await client.PostJsonAsync("/api/v1/go/license/activate", new { licenseKey = go.LicenseKey, machineId = "pc-1", machineName = "DEPO-PC" })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var listed = (await (await client.GetAsync($"/api/v1/admin/licenses?tenantId={tenant.Id}", token)).ReadAsJsonAsync<LicenseDto[]>())!.Single(l => l.Id == go.Id);
+        listed.GoInstallation.Should().NotBeNull();
+        listed.GoInstallation!.MachineName.Should().Be("DEPO-PC");
+
+        var newEnd = new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.FromHours(3));
+        var renewed = await client.PutJsonAsync($"/api/v1/admin/licenses/{go.Id}/expiry", new { expiresAtUtc = newEnd }, token);
+        renewed.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await renewed.ReadAsJsonAsync<LicenseDto>()).ExpiresAtUtc.Should().Be(newEnd.ToUniversalTime());
+
+        (await client.PostJsonAsync($"/api/v1/admin/licenses/{go.Id}/go-installation/release", new { }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await client.PostJsonAsync($"/api/v1/admin/licenses/{go.Id}/go-installation/release", new { }, token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // Released: another computer may now take the license.
+        (await client.PostJsonAsync("/api/v1/go/license/activate", new { licenseKey = go.LicenseKey, machineId = "pc-2" })).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
 }

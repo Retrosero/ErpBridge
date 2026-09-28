@@ -61,7 +61,15 @@ ajan olayları kuyrukta tutup yeniden dener. Gizli bilgi ajanda maskelenir.
 ### POST /api/v1/licenses/validate
 
 `{ licenseKey }` → `{ valid, tenantId, expiresAtUtc }`. Agent başlangıcında bir kez
-çağrılır; süre bitiminde tekrar doğrulanır.
+çağrılır; süre bitiminde tekrar doğrulanır. Yalnız `erpbridge` ürünü anahtarları geçer; Go anahtarı 404 alır.
+
+### POST /api/v1/go/license/activate
+
+Go masaüstü uygulamasının tek çağrısı (anonim). `{ licenseKey, machineId, machineName?, appVersion? }` →
+200 `{ token, tenantName, validUntilUtc, licenseExpiresAtUtc, modules[] }`. `token` = `base64url(json).base64url(ES256)`;
+uygulama yalnız imzalı iddialara güvenir. Etkinleştirme ve yenileme aynı çağrıdır; anahtar ilk makineye bağlanır.
+Hatalar: 400 `MISSING_LICENSE_KEY`/`INVALID_MACHINE_ID`, 404 `LICENSE_NOT_FOUND`, 409 `DEVICE_LIMIT_REACHED`,
+410 `LICENSE_REVOKED`/`LICENSE_EXPIRED`, 503 `GO_LICENSING_UNAVAILABLE`. Ayrıntı: KB 00 kural 30.
 
 ### GET /api/v1/jobs/pending
 

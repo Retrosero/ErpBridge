@@ -231,6 +231,11 @@ public partial class Program
         ConfigureRateLimiter(builder.Services);
         builder.Services.Configure<AdminSeedOptions>(cfg.GetSection("Admin"));
 
+        // Go desktop app licensing: signs the tokens /api/v1/go/license/activate returns. A missing
+        // key only disables that endpoint (503), so it is deliberately not a startup requirement.
+        builder.Services.Configure<ErpBridge.CentralApi.GoLicensing.GoLicenseOptions>(cfg.GetSection(ErpBridge.CentralApi.GoLicensing.GoLicenseOptions.SectionName));
+        builder.Services.AddSingleton<ErpBridge.CentralApi.GoLicensing.IGoLicenseSigner, ErpBridge.CentralApi.GoLicensing.GoLicenseSigner>();
+
         // Parametre Yönetimi (P1c): effective-value resolution and Fora's write semantics.
         builder.Services.AddScoped<ParameterResolver>();
         builder.Services.Configure<ApiKeyVaultOptions>(cfg.GetSection("ApiKeyVault"));
@@ -720,6 +725,7 @@ public partial class Program
 
         app.MapAgentsEndpoints();
         app.MapLicensesEndpoints();
+        app.MapGoLicenseEndpoints();
         app.MapJobsEndpoints();
         app.MapBootstrapEndpoints();
         app.MapBootstrapUploadEndpoints();

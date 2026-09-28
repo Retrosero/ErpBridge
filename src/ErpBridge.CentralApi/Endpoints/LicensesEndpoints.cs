@@ -41,7 +41,8 @@ public static class LicensesEndpoints
             .AsNoTracking()
             .FirstOrDefaultAsync(l => l.LicenseKey == body.LicenseKey, ct);
 
-        if (license is null)
+        // A Go key never validates as an agent license; it is reported like an unknown key.
+        if (license is null || license.Product != LicenseProducts.ErpBridge)
         {
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "LICENSE_NOT_FOUND", Message = "License key not recognised." });
         }
