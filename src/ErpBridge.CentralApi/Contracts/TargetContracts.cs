@@ -370,6 +370,12 @@ public sealed class PeriodProgressDto
 
 public sealed class MyTargetsResponse
 {
+    /// <summary>
+    /// Whose figures these are (the token's user). A phone signed in offline as someone else still holds the previous
+    /// user's token; it compares this with its active user and neither shows nor keeps an answer for another person.
+    /// </summary>
+    [JsonPropertyName("username")] public string Username { get; set; } = string.Empty;
+
     [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
 
     [JsonPropertyName("asOfMs")] public long AsOfMs { get; set; }
