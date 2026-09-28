@@ -1,8 +1,10 @@
 using System.Net;
+using System.Text;
 using Bunit;
 using ErpBridge.Portal.Api;
 using ErpBridge.Portal.Pages;
 using FluentAssertions;
+using Microsoft.AspNetCore.Components.Forms;
 using Xunit;
 
 namespace ErpBridge.Portal.Tests;
@@ -148,6 +150,92 @@ public sealed class PortalTargetPagesTests : PortalPageTestContext
         cut.Find("#save-grid").TextContent.Should().Contain("(2)");
         api.Requests.Should().NotContain(r => r.Method == HttpMethod.Put, "the manager saves after reviewing");
         api.Requests.Single(r => r.PathAndQuery == "/api/v1/portal/targets/distribute").Body.Should().Contain("\"sourceOwnerKind\":\"COMPANY\"");
+    }
+
+    [Fact]
+    public void Unsaved_cells_survive_a_reload_from_another_save()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(BoardPath, Board(true, Company(), User(Ali, "Ali Yılmaz", 0m)));
+        api.Answer("/api/v1/portal/targets/settings", new { workDays = 63 });
+        api.AnswerPrefix(HttpMethod.Put, "/api/v1/portal/targets/settings", new { workDays = 31 });
+
+        var cut = Render<HedefGiris>();
+        cut.WaitForAssertion(() => cut.Find($"input[data-cell='USER:{Ali}|REVENUE']"));
+        cut.Find($"input[data-cell='USER:{Ali}|REVENUE']").Change("70.000");
+        cut.Find("[data-day='5']").Change(false);
+        cut.Find("#work-days-save").Click();
+
+        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Contain("Çalışma günleri"));
+        cut.Find($"input[data-cell='USER:{Ali}|REVENUE']").GetAttribute("value").Should().Be("70.000");
+        cut.Find("#save-grid").TextContent.Should().Contain("(1)");
+    }
+
+    [Fact]
+    public void A_copy_can_lower_targets_and_a_typo_in_the_percentage_asks_nothing()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(BoardPath, Board(true, Company()));
+        api.Answer("/api/v1/portal/targets/settings", new { workDays = 63 });
+        api.Answer("/api/v1/portal/targets/copy", new { items = Array.Empty<object>() });
+
+        var cut = Render<HedefGiris>();
+        cut.WaitForAssertion(() => cut.Find("#open-copy"));
+        cut.Find("#open-copy").Click();
+        cut.Find("#copy-percent").Change("yüzde on");
+        cut.Find("#copy-preview").Click();
+        cut.Find("#page-error").TextContent.Should().Contain("-100 ile 1000");
+        api.Requests.Should().NotContain(r => r.PathAndQuery == "/api/v1/portal/targets/copy");
+
+        cut.Find("#copy-percent").Change("-10");
+        cut.Find("#copy-preview").Click();
+
+        cut.WaitForAssertion(() => api.Requests.Single(r => r.PathAndQuery == "/api/v1/portal/targets/copy").Body.Should().Contain("\"percent\":-10"));
+    }
+
+    [Fact]
+    public void A_typo_in_the_value_to_share_is_not_taken_for_an_empty_field()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(BoardPath, Board(true, Company(Row("REVENUE", 90_000m, 0m)), User(Ali, "Ali Yılmaz", 0m)));
+        api.Answer("/api/v1/portal/targets/settings", new { workDays = 63 });
+
+        var cut = Render<HedefGiris>();
+        cut.WaitForAssertion(() => cut.Find("#open-distribute"));
+        cut.Find("#open-distribute").Click();
+        cut.Find("#dist-value").Change("doksan bin");
+        cut.Find("#dist-preview").Click();
+
+        cut.WaitForAssertion(() => cut.Find("#page-error").TextContent.Should().Contain("okunamadı"));
+        api.Requests.Should().NotContain(r => r.PathAndQuery == "/api/v1/portal/targets/distribute");
+    }
+
+    [Fact]
+    public void An_import_refuses_a_name_two_people_share_and_a_measure_it_does_not_know()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer(BoardPath, Board(true, Company(), User(Ali, "Ali Yılmaz", 0m), User(Veli, "Ali Yılmaz", 0m)));
+        api.Answer("/api/v1/portal/targets/settings", new { workDays = 63 });
+        api.Answer("/api/v1/portal/teams", new
+        {
+            teams = Array.Empty<object>(),
+            people = new object[]
+            {
+                new { id = Ali, username = "ali", fullName = "Ali Yılmaz", roles = new[] { "SALES" }, isActive = true },
+                new { id = Veli, username = "ali2", fullName = "Ali Yılmaz", roles = new[] { "SALES" }, isActive = true },
+            },
+            canEdit = true, wholeCompany = true,
+        });
+
+        var cut = Render<HedefGiris>();
+        cut.WaitForAssertion(() => cut.Find("#open-import"));
+        cut.Find("#open-import").Click();
+        cut.WaitForAssertion(() => cut.FindComponent<InputFile>());
+        var file = "Kim;Tür;Ölçü;Kalem;Hedef\nAli Yılmaz;Ciro;;;100\nali;Marka;Miktarr;RIZE;5\nali2;Ciro;;;1000\nFirma;Ciro;;;5000";
+        cut.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromBinary(Encoding.UTF8.GetBytes(file), "hedef.csv"));
+
+        cut.WaitForAssertion(() => cut.Find("#import-count").TextContent.Should().Contain("2 hedef okundu").And.Contain("2 satır atlandı"));
+        cut.Find("#import-errors").TextContent.Should().Contain("Satır 2").And.Contain("birden çok").And.Contain("Satır 3").And.Contain("Miktarr");
     }
 
     [Fact]

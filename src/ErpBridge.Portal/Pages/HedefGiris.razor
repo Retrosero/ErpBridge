@@ -416,9 +416,9 @@ else
 
     protected override async Task LoadAsync()
     {
+        // Unsaved cells survive a reload (a kalem target, a copy, an import, work days): only saving them or leaving the
+        // period drops them (Codex, PR #216).
         _board = await Api.TargetsAsync(_type, TargetText.KeyOf(_type, _day), null);
-        _edits.Clear();
-        _invalid.Clear();
         _savedWorkDays = _workDays = (await Api.TargetSettingsAsync()).WorkDays;
     }
 
@@ -481,6 +481,9 @@ else
         var cells = _edits.ToList();
         var items = cells.Select(c => Input(Owners.First(o => o.Key == c.Key.Owner), c.Key.Metric, null, null, null, c.Value.Length == 0 ? null : ParseNumber(c.Value))).ToArray();
         await SaveAsync(items, cells.Select(c => $"{Owners.First(o => o.Key == c.Key.Owner).Name} · {TargetText.Metric(c.Key.Metric)}").ToList());
+        if (Error is null)
+            foreach (var cell in cells)
+                if (_edits.TryGetValue(cell.Key, out var text) && text == cell.Value) _edits.Remove(cell.Key);
     }
 
     private TargetInput Input(OwnerProgressDto owner, string metric, string? measure, string? itemCode, string? itemName, decimal? value) => new()
@@ -554,25 +557,40 @@ else
         _copyOpen = true;
     }
 
-    private TargetCopyRequest CopyRequest(bool apply) => new()
+    /// <summary>The copy request, or null (with <see cref="PortalPageBase.Error"/> set) when the percentage does not read.</summary>
+    private TargetCopyRequest? CopyRequest(bool apply)
     {
-        PeriodType = _type,
-        FromPeriodKey = TargetText.KeyOf(_type, TargetText.Shift(_type, _day, -1)),
-        ToPeriodKey = TargetText.KeyOf(_type, _day),
-        Percent = ParseNumber(_copyPercent) ?? 0m,
-        Overwrite = _copyOverwrite,
-        Apply = apply,
-        OperationId = Guid.NewGuid(),
-    };
+        var percent = string.IsNullOrWhiteSpace(_copyPercent) ? 0m : ParseSigned(_copyPercent);
+        if (percent is not (>= -100m and <= 1000m))
+        {
+            Error = "Değişim yüzdesi -100 ile 1000 arasında bir sayı olmalı (ör. 10 ya da -5).";
+            return null;
+        }
+        return new TargetCopyRequest
+        {
+            PeriodType = _type,
+            FromPeriodKey = TargetText.KeyOf(_type, TargetText.Shift(_type, _day, -1)),
+            ToPeriodKey = TargetText.KeyOf(_type, _day),
+            Percent = percent.Value,
+            Overwrite = _copyOverwrite,
+            Apply = apply,
+            OperationId = Guid.NewGuid(),
+        };
+    }
 
-    private Task PreviewCopyAsync() => RunAsync(async () => _copyPreview = (await Api.CopyTargetsAsync(CopyRequest(false))).Items);
+    private async Task PreviewCopyAsync()
+    {
+        if (CopyRequest(false) is not { } request) return;
+        await RunAsync(async () => _copyPreview = (await Api.CopyTargetsAsync(request)).Items);
+    }
 
     private async Task ApplyCopyAsync()
     {
+        if (CopyRequest(true) is not { } request) return;
         TargetPreviewResponse? response = null;
         await RunAsync(async () =>
         {
-            response = await Api.CopyTargetsAsync(CopyRequest(true));
+            response = await Api.CopyTargetsAsync(request);
             await LoadAsync();
         });
         if (response?.Result is { } result)
@@ -596,6 +614,12 @@ else
         if (source is null)
         {
             Error = "Kaynak seçin.";
+            return;
+        }
+        // A typo must not fall back to the source's own target (Codex, PR #216): only an empty field does.
+        if (!string.IsNullOrWhiteSpace(_dist.Value) && ParseNumber(_dist.Value) is null)
+        {
+            Error = "Dağıtılacak değer okunamadı; boş bırakırsanız kaynağın hedefi dağıtılır.";
             return;
         }
         _distPreview = (await Api.DistributeTargetAsync(new TargetDistributeRequest
@@ -659,28 +683,45 @@ else
         {
             string Cell(int i) => i < row.Cells.Length ? row.Cells[i].Trim() : string.Empty;
             if (row.Number == 1 && Normalize(Cell(0)) is "kim" or "sahip") continue;
-            var owner = ResolveOwner(Cell(0));
+            var (owner, ownerError) = ResolveOwner(Cell(0));
             var metric = ResolveMetric(Cell(1));
-            if (owner is null) { _importErrors.Add($"Satır {row.Number}: '{Cell(0)}' bulunamadı."); continue; }
+            if (owner is null) { _importErrors.Add($"Satır {row.Number}: {ownerError}"); continue; }
             if (metric is null) { _importErrors.Add($"Satır {row.Number}: tür '{Cell(1)}' tanınmadı."); continue; }
             var itemCode = Cell(3);
             if (TargetText.ItemMetrics.Contains(metric) && itemCode.Length == 0) { _importErrors.Add($"Satır {row.Number}: kalem kodu boş."); continue; }
             if (ParseNumber(Cell(4)) is not { } value) { _importErrors.Add($"Satır {row.Number}: hedef '{Cell(4)}' okunamadı."); continue; }
-            var measure = Normalize(Cell(2)) switch { "miktar" or "quantity" => "QUANTITY", "tutar" or "amount" => AmountMeasure, _ => null };
+            var measure = Normalize(Cell(2)) switch { "" => null, "miktar" or "quantity" => "QUANTITY", "tutar" or "amount" => AmountMeasure, _ => "?" };
+            if (measure == "?") { _importErrors.Add($"Satır {row.Number}: ölçü '{Cell(2)}' tanınmadı (Tutar ya da Miktar)."); continue; }
             items.Add(Input(owner, metric, TargetText.ItemMetrics.Contains(metric) ? measure : null, TargetText.ItemMetrics.Contains(metric) ? itemCode : null, null, value));
         }
         return items;
     }
 
-    private OwnerProgressDto? ResolveOwner(string text)
+    /// <summary>
+    /// The owner a cell names: "Firma", a username (unique), or a full name / team / region name that names exactly one —
+    /// two people, or a team and a region, with the same name are refused, not guessed (Codex, PR #216).
+    /// </summary>
+    private (OwnerProgressDto? Owner, string? Error) ResolveOwner(string text)
     {
         var wanted = Normalize(text);
-        if (wanted.Length == 0) return null;
-        if (wanted is "firma" or "firma geneli" or "company") return Owners.FirstOrDefault(o => o.OwnerKind == TargetOwners.Company);
-        var person = _people?.People.FirstOrDefault(p => Normalize(p.Username) == wanted || Normalize(p.FullName) == wanted);
-        if (person is not null) return Owners.FirstOrDefault(o => o.OwnerKind == TargetOwners.User && o.OwnerId == person.Id);
-        return Owners.FirstOrDefault(o => o.OwnerKind != TargetOwners.Company && Normalize(o.Name) == wanted);
+        if (wanted.Length == 0) return (null, "'Kim' boş.");
+        if (wanted is "firma" or "firma geneli" or "company")
+            return Owners.FirstOrDefault(o => o.OwnerKind == TargetOwners.Company) is { } company ? (company, null) : (null, "Firma geneli hedefi giremezsiniz.");
+        if (_people?.People.FirstOrDefault(p => Normalize(p.Username) == wanted) is { } byUsername)
+            return Visible(byUsername.Id, text);
+
+        var people = _people?.People.Where(p => Normalize(p.FullName) == wanted).Select(p => p.Id).ToList() ?? [];
+        var teams = Owners.Where(o => o.OwnerKind == TargetOwners.Team && Normalize(o.Name) == wanted).ToList();
+        if (people.Count + teams.Count > 1) return (null, $"'{text}' birden çok kişi ya da ekiple eşleşiyor; kullanıcı adını yazın.");
+        if (people.Count == 1) return Visible(people[0], text);
+        if (teams.Count == 1) return (teams[0], null);
+        return (null, $"'{text}' bulunamadı.");
     }
+
+    private (OwnerProgressDto? Owner, string? Error) Visible(Guid userId, string text) =>
+        Owners.FirstOrDefault(o => o.OwnerKind == TargetOwners.User && o.OwnerId == userId) is { } owner
+            ? (owner, null)
+            : (null, $"'{text}' sizin sorumluluğunuzda değil.");
 
     private static string? ResolveMetric(string text) => Normalize(text) switch
     {
@@ -745,6 +786,8 @@ else
         }
         _leaveConfirmed = false;
         Notice = null;
+        _edits.Clear();
+        _invalid.Clear();
         (_type, _day) = period;
         await RunAsync(LoadAsync);
     }
@@ -753,6 +796,13 @@ else
 
     /// <summary>A number as the cell shows it: Turkish thousands dot and decimal comma ("900.000", "12.500,5"); <see cref="ParseNumber"/> reads it back.</summary>
     private static string Plain(decimal value) => value.ToString("#,##0.##", Fmt.Turkish);
+
+    /// <summary>A number that may be negative: a percentage change.</summary>
+    private static decimal? ParseSigned(string? text)
+    {
+        var value = (text ?? string.Empty).Trim();
+        return value.StartsWith('-') ? -ParseNumber(value[1..]) : ParseNumber(value);
+    }
 
     /// <summary>"12500", "12.500", "12.500,50", "12500.5" — a comma is always the decimal mark.</summary>
     private static decimal? ParseNumber(string? text)
