@@ -28,7 +28,10 @@ public sealed record CustomerTransactionPayload(
     [property: JsonPropertyName("cha_kasa_hizmet")] int? CashServiceKind = null,
     [property: JsonPropertyName("cha_kasa_hizkod")] string? CashServiceCode = null,
     // Mikro cha_cari_cins: 0 = the customer side, the only rows Mikro's balance counts; 4 kasa / 2 banka otherwise.
-    [property: JsonPropertyName("cariCins")] int AccountKind = 0);
+    [property: JsonPropertyName("cariCins")] int AccountKind = 0,
+    // Mikro cha_satici_kodu (projection 8): the salesperson a movement is credited to — sales targets (GOAL_HEDEF_RUT K7).
+    // Always written, null or not: its presence tells the server this agent reads the column.
+    [property: JsonPropertyName("plasiyerKod")] string? SalespersonCode = null);
 
 /// <summary>A single row from Mikro STOK_HAREKETLERI.</summary>
 public sealed record StockTransactionPayload(
@@ -54,4 +57,6 @@ public sealed record StockTransactionPayload(
     [property: JsonPropertyName("updatedAt")] DateTime UpdatedAt,
     [property: JsonPropertyName("faturaRecno")] int? InvoiceRecNo,
     [property: JsonPropertyName("discountAmount")] decimal? DiscountAmount = null,
-    [property: JsonPropertyName("vergi")] decimal? VatAmount = null);
+    [property: JsonPropertyName("vergi")] decimal? VatAmount = null,
+    // Mikro sth_plasiyer_kodu (projection 8), as on the customer movement above.
+    [property: JsonPropertyName("plasiyerKod")] string? SalespersonCode = null);

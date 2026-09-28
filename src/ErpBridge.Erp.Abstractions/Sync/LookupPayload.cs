@@ -13,6 +13,8 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 ///   <c>"tax_office"</c>           — vergi daireleri
 ///   <c>"expense_card"</c>         — gider kartları (<c>MASRAF_HESAPLARI</c>)
 ///   <c>"vat_rate"</c>             — KDV tanımları (Mikro vergi işaretçisi → oran)
+///   <c>"stock_brand"</c>          — stok markaları (<c>STOK_MARKALARI</c>; kod → ad)
+///   <c>"stock_main_group"</c>     — stok ana grupları (<c>STOK_ANA_GRUPLARI</c>; kod → ad)
 /// For Phase 5 a single record is enough; typed variants are kept as
 /// skeletons to be filled in by Phase 6+ readers that need richer fields
 /// (warehouse group numbers, salesperson names, etc.).

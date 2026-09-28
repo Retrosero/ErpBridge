@@ -186,6 +186,9 @@ public sealed class TargetRelationalTests : IClassFixture<SqliteCentralApiFactor
             });
             var tarih = Day + "T00:00:00";
             Add("stocks", "CAY-1", new { stockCode = "CAY-1", name = "Çay 1 kg", mainGroupCode = "ICECEK", brandCode = "RIZE" });
+            // Agent 1.3.0 names brands and main groups.
+            Add("lookups", "stock_brand|RIZE", new { kind = "stock_brand", code = "RIZE", name = "Rize Çayları" });
+            Add("lookups", "stock_main_group|ICECEK", new { kind = "stock_main_group", code = "ICECEK", name = "İçecekler" });
             // A sales invoice line of PL01: 1.000 before a 100 discount, without VAT.
             Add("stockTransactions", "1", new { id = "1", erp = "MIKRO", stokKod = "CAY-1", tarih, tip = 1, evrakTip = 4, evrakNo = "F-1", cikisMiktar = 10m, tutar = 1000m, discountAmount = 100m, cariKod = "C-1", faturaRecno = 11, plasiyerKod = "PL01" });
             // Its customer's return, a warehouse transfer (not a sale), and an office sale of another salesperson.
@@ -206,6 +209,9 @@ public sealed class TargetRelationalTests : IClassFixture<SqliteCentralApiFactor
         ali.Summary.Collection.Should().Be(300m);
         ali.Summary.PendingRevenue.Should().Be(200m);
         ali.Targets.Single(t => t.Metric == "BRAND").Actual.Should().Be(700m);
+        ali.Targets.Single(t => t.Metric == "BRAND").ItemName.Should().Be("Rize Çayları");
+        (await GetJsonAsync<TargetItemsResponse>(c.Patron, "/api/v1/portal/targets/items?metric=CATEGORY")).Items
+            .Should().ContainSingle().Which.Should().Match<TargetItemDto>(i => i.Code == "ICECEK" && i.Name == "İçecekler" && i.ProductCount == 1);
         ali.Warning.Should().BeNull();
         board.Owners.Single(o => o.OwnerId == c.MehmetId).Warning.Should().Contain("Plasiyer kodu eşlenmemiş");
         board.Owners.Single(o => o.OwnerKind == "COMPANY").Summary.Revenue.Should().Be(1_100m, "the office sale counts for the company");

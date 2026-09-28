@@ -52,6 +52,11 @@ public sealed class TargetFactSet
     /// <summary>Product code → card, for category, sub-category and brand targets and names.</summary>
     public required IReadOnlyDictionary<string, PortalStockCatalog.Product> Products { get; init; }
 
+    /// <summary>Brand and main-group names by code (agent 1.3.0); empty otherwise.</summary>
+    public IReadOnlyDictionary<string, string> BrandNames { get; init; } = new Dictionary<string, string>();
+
+    public IReadOnlyDictionary<string, string> MainGroupNames { get; init; } = new Dictionary<string, string>();
+
     public Guid? UserOf(TargetFact fact) =>
         fact.UserId ?? (fact.SalespersonCode is { } code && UserOfSalesperson.TryGetValue(code, out var user) ? user : null);
 }
@@ -102,7 +107,8 @@ public sealed class TargetFactReader(IMemoryCache cache)
 
     private async Task<TargetFactSet> BuildAsync(CentralApiDbContext db, Tenant tenant, DateOnly from, DateOnly to, CancellationToken ct)
     {
-        var products = (await PortalStockCatalog.LoadAsync(db, cache, tenant.Id, ct)).Products
+        var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant.Id, ct);
+        var products = catalog.Products
             .GroupBy(p => p.Code, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var visits = await VisitsAsync(db, tenant.Id, from, to, ct);
@@ -124,6 +130,8 @@ public sealed class TargetFactReader(IMemoryCache cache)
                 UsersWithoutSalesperson = new HashSet<Guid>(),
                 Visits = visits,
                 Products = products,
+                BrandNames = catalog.BrandNames,
+                MainGroupNames = catalog.MainGroupNames,
             };
         }
 
@@ -145,6 +153,8 @@ public sealed class TargetFactReader(IMemoryCache cache)
                 UsersWithoutSalesperson = new HashSet<Guid>(),
                 Visits = visits,
                 Products = products,
+                BrandNames = catalog.BrandNames,
+                MainGroupNames = catalog.MainGroupNames,
             };
         }
 
@@ -169,6 +179,8 @@ public sealed class TargetFactReader(IMemoryCache cache)
             UsersWithoutSalesperson = users.Where(u => !userOfCode.ContainsValue(u)).ToHashSet(),
             Visits = visits,
             Products = products,
+            BrandNames = catalog.BrandNames,
+            MainGroupNames = catalog.MainGroupNames,
         };
     }
 

@@ -469,6 +469,20 @@ FROM STOK_SATIS_FIYAT_LISTE_TANIMLARI
 WHERE ISNULL(sfl_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sfl_lastup_date, sfl_create_date) > @changedSinceUtc)
 UNION ALL
+-- GOAL_HEDEF_RUT E2: marka ve ana grup adları. Stok kartı yalnız kodları taşır (brandCode, mainGroupCode);
+-- panelin hedef seçicisi ve raporları adı buradan gösterir.
+SELECT 'stock_brand', CAST(LTRIM(RTRIM(mrk_kod)) AS NVARCHAR(50)), CAST(ISNULL(mrk_ismi, '') AS NVARCHAR(200)),
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
+FROM STOK_MARKALARI
+WHERE ISNULL(mrk_iptal, 0) = 0 AND LTRIM(RTRIM(ISNULL(mrk_kod, ''))) <> ''
+  AND (@changedSinceUtc IS NULL OR COALESCE(mrk_lastup_date, mrk_create_date) > @changedSinceUtc)
+UNION ALL
+SELECT 'stock_main_group', CAST(LTRIM(RTRIM(san_kod)) AS NVARCHAR(50)), CAST(ISNULL(san_isim, '') AS NVARCHAR(200)),
+       CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
+FROM STOK_ANA_GRUPLARI
+WHERE ISNULL(san_iptal, 0) = 0 AND LTRIM(RTRIM(ISNULL(san_kod, ''))) <> ''
+  AND (@changedSinceUtc IS NULL OR COALESCE(san_lastup_date, san_create_date) > @changedSinceUtc)
+UNION ALL
 -- ERP yazım 3 Y2b: gider kartları (MASRAF_HESAPLARI). Telefon gider girerken bunlardan birini
 -- seçer ve kodu `cha_kasa_hizkod` olarak Mikro'ya yazılır (referans §13). Kendi bölümü yerine
 -- lookups içinde taşınır: 19 satırlık bir katalog için var olan boru hattı yeterli.
@@ -625,7 +639,9 @@ SELECT CAST(cha_RECno AS NVARCHAR(50)) AS Id,
        CAST(CASE WHEN ISNULL(cha_cari_cins, 0) <> 0 AND ISNULL(cha_tpoz, 0) = 1 THEN 1 ELSE 0 END AS BIT) AS IsClosed,
        CAST(cha_kasa_hizmet AS INT) AS CashServiceKind,
        CAST(NULLIF(LTRIM(RTRIM(cha_kasa_hizkod)), '') AS NVARCHAR(50)) AS CashServiceCode,
-       CAST(ISNULL(cha_cari_cins, 0) AS INT) AS AccountKind
+       CAST(ISNULL(cha_cari_cins, 0) AS INT) AS AccountKind,
+       -- GOAL_HEDEF_RUT: the salesperson a movement counts for (sales targets).
+       CAST(NULLIF(LTRIM(RTRIM(cha_satici_kodu)), '') AS NVARCHAR(25)) AS SalespersonCode
 FROM CARI_HESAP_HAREKETLERI
 WHERE ISNULL(cha_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL
@@ -666,16 +682,20 @@ SELECT CAST(sth_RECno AS NVARCHAR(50)) AS Id,
        CAST(CASE WHEN ISNULL(sth_tip, 0) = 0 THEN ISNULL(sth_miktar, 0) ELSE -ISNULL(sth_miktar, 0) END AS DECIMAL(18,6)) AS SignedQuantity,
        CAST(CASE WHEN ISNULL(sth_miktar, 0) = 0 THEN 0 ELSE ISNULL(sth_tutar, 0) / sth_miktar END AS DECIMAL(18,6)) AS UnitPrice,
        CAST(ISNULL(sth_tutar, 0) AS DECIMAL(18,6)) AS Amount,
-       CAST(ISNULL(sth_iskonto1, 0) + ISNULL(sth_iskonto2, 0)
-            + ISNULL(sth_iskonto3, 0) + ISNULL(sth_iskonto4, 0)
-            + ISNULL(sth_iskonto5, 0) + ISNULL(sth_iskonto6, 0) AS DECIMAL(18,6)) AS DiscountAmount,
-       CAST(ISNULL(sth_vergi, 0) AS DECIMAL(18,6)) AS VatAmount,
        CAST(sth_cari_kodu AS NVARCHAR(50)) AS CustomerCode,
        CAST(sth_giris_depo_no AS INT) AS InWarehouseNo,
        CAST(sth_cikis_depo_no AS INT) AS OutWarehouseNo,
        CAST(sth_aciklama AS NVARCHAR(500)) AS Description,
        CAST(COALESCE(sth_lastup_date, sth_create_date, sth_tarih) AS DATETIME) AS UpdatedAt,
-       CAST(sth_fat_recid_recno AS INT) AS InvoiceRecNo
+       CAST(sth_fat_recid_recno AS INT) AS InvoiceRecNo,
+       -- Dapper maps a positional record by column ORDER: these follow the record's parameters exactly (KB rule 26).
+       -- #178 put them after Amount and every read of this table failed from 2026-09-23 (found live, GOAL_HEDEF_RUT E1).
+       CAST(ISNULL(sth_iskonto1, 0) + ISNULL(sth_iskonto2, 0)
+            + ISNULL(sth_iskonto3, 0) + ISNULL(sth_iskonto4, 0)
+            + ISNULL(sth_iskonto5, 0) + ISNULL(sth_iskonto6, 0) AS DECIMAL(18,6)) AS DiscountAmount,
+       CAST(ISNULL(sth_vergi, 0) AS DECIMAL(18,6)) AS VatAmount,
+       -- GOAL_HEDEF_RUT: the salesperson a line counts for (sales targets).
+       CAST(NULLIF(LTRIM(RTRIM(sth_plasiyer_kodu)), '') AS NVARCHAR(25)) AS SalespersonCode
 FROM STOK_HAREKETLERI
 WHERE ISNULL(sth_iptal, 0) = 0
   AND (@changedSinceUtc IS NULL OR COALESCE(sth_lastup_date, sth_create_date, sth_tarih) > @changedSinceUtc)
