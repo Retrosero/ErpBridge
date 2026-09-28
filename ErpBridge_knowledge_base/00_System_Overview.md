@@ -1117,6 +1117,20 @@ registration ayrı bir composition projesine taşınır.
    - **Yenileme anahtarı korur:** `PUT /admin/licenses/{id}/expiry {expiresAtUtc}` (null = süresiz); Go uygulaması yeni
      tarihi bir sonraki yenilemede alır. Konsol: ürün seçimi, ürün süzgeci, Go kartında bilgisayar bilgisi.
    - Testler: `GoLicenseActivateTests` (imza doğrulama, 1 PC, ürün ayrımı, modüller, 503), `AdminLicensesTests` (ürün, bırakma, süre).
+   - **Konsolda ürünler asla karışık listelenmez (2026-09-28):** ürün kimliği tek yerde, Admin `Api/LicenseProductCatalog`:
+
+     | Ürün | Anahtar öneki | İşaret | Renk | Anahtarın girildiği yer |
+     |---|---|---|---|---|
+     | `erpbridge` | `LIC-` | E | lacivert `#4f46e5` | ErpBridge ajanı ayar ekranı (+ telefon girişleri) |
+     | `go` | `GO-` | G | turuncu `#ea580c` | Go ilk açılış ekranı (tek bilgisayar) |
+
+     Lisanslar sayfası ürün **sekmelerine** bölünür (`/licenses?urun=go`; boş/bilinmeyen = ErpBridge). Her sekmenin kendi sayacı
+     (aktif/toplam), açıklama şeridi, özeti ve listesi vardır. **Yeni lisans formunda ürün seçimi yoktur**: ürün açık sekmeden gelir,
+     düğme "Go (pazaryeri) lisansı oluştur" der; yanlış ürüne anahtar üretmek için sekme değiştirmek gerekir. Kartta ürün rengiyle sol
+     kenar, ürün çipi ve öneki vurgulanmış anahtar; öneksiz eski anahtar "önekten önce üretilmiş" notu alır. Ürüne özel işlemler yalnız
+     kendi kartında: telefon girişi ErpBridge'de, bilgisayar bilgisi/serbest bırakma Go'da. Yeni ürün eklenirse önce
+     `LicenseProducts` (sunucu) + `LicenseProductCatalog` (konsol) + CSS renk sınıfı `license-product--{anahtar}` eklenir.
+     Test: Admin `LicensesPageTests`. Go uygulaması da `LIC-` ile başlayan anahtarı sunucuya sormadan "bu bir ErpBridge anahtarı" diye reddeder.
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

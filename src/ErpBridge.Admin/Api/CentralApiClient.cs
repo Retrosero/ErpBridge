@@ -77,7 +77,59 @@ public static class LicenseProductNames
     public const string ErpBridge = "erpbridge";
     public const string Go = "go";
 
-    public static string Label(string? product) => product == Go ? "Go (pazaryeri)" : "ErpBridge";
+    public static string Label(string? product) => LicenseProductCatalog.Get(product).Name;
+}
+
+/// <summary>
+/// How the console tells the products apart. Every place that shows a license takes its name, colour, mark
+/// and key prefix from here, so a license can never be shown under the wrong product's look.
+/// </summary>
+/// <param name="Key">Product key as the central API spells it.</param>
+/// <param name="Name">Console name.</param>
+/// <param name="Mark">One letter for the coloured product mark.</param>
+/// <param name="KeyPrefix">Prefix the server gives this product's keys.</param>
+/// <param name="CssModifier">Colour theme, <c>license-product--{modifier}</c>.</param>
+/// <param name="Summary">What the product is, one line.</param>
+/// <param name="WhereUsed">Where the customer types the key.</param>
+public sealed record LicenseProductInfo(
+    string Key,
+    string Name,
+    string Mark,
+    string KeyPrefix,
+    string CssModifier,
+    string Summary,
+    string WhereUsed);
+
+public static class LicenseProductCatalog
+{
+    public static readonly LicenseProductInfo ErpBridge = new(
+        LicenseProductNames.ErpBridge,
+        "ErpBridge",
+        "E",
+        "LIC-",
+        "erpbridge",
+        "ERP köprüsü: Windows ajanı, Sipariş Cepte ve yönetici paneli",
+        "ErpBridge ajanının ayar ekranına girilir; telefon girişleri bu lisansın firmasına açılır.");
+
+    public static readonly LicenseProductInfo Go = new(
+        LicenseProductNames.Go,
+        "Go (pazaryeri)",
+        "G",
+        "GO-",
+        "go",
+        "Pazaryeri entegrasyonu: Trendyol, Hepsiburada ve diğerleri için masaüstü uygulaması",
+        "Go uygulamasının ilk açılış ekranına girilir; anahtar tek bilgisayara bağlanır.");
+
+    /// <summary>Display order of the product tabs.</summary>
+    public static IReadOnlyList<LicenseProductInfo> All { get; } = [ErpBridge, Go];
+
+    /// <summary>Product info for a key; an unknown or missing value is shown as ErpBridge (the server default).</summary>
+    public static LicenseProductInfo Get(string? product) =>
+        All.FirstOrDefault(p => string.Equals(p.Key, product, StringComparison.OrdinalIgnoreCase)) ?? ErpBridge;
+
+    /// <summary>True when the key does not start with its product's prefix (licenses issued before prefixes existed).</summary>
+    public static bool HasForeignPrefix(LicenseDto license) =>
+        !license.LicenseKey.StartsWith(Get(license.Product).KeyPrefix, StringComparison.Ordinal);
 }
 
 public sealed class CreateLicenseRequest
