@@ -246,6 +246,24 @@ metin reddedilir (kesilmez). Miktar bilgi amaçlıdır; satış düşmez, raf bi
 quantity: number | null, note, closed, deleted, createdBy (oluşturanın görünen adı), createdAtMs, updatedAtMs,
 updatedSeq }`. Zamanlar unix ms (UTC).
 
+## Hedefler ve ekipler — `/api/v1/portal/{teams,targets}`, `/api/v1/android/targets` (GOAL_HEDEF_RUT)
+
+Firma kullanıcısı token'ı; firma token'dan. Günler İstanbul `yyyy-MM-dd`. Ayrıntı: KB 00 kural 31.
+
+| Uç | Gövde / yanıt |
+|---|---|
+| `GET /portal/teams` | `{teams:[{id,name,kind,parentId,isActive,memberIds,managerIds}], people:[{id,username,fullName,roles,teamId,isActive}], canEdit, wholeCompany}` |
+| `POST /portal/teams` · `PUT /portal/teams/{id}` | `{name, kind (yalnız oluştururken), parentId, isActive, memberIds?, managerIds?}` → `TeamDto` (201/200). `name` ve `parentId` her seferinde tam gönderilir (bölgesiz gönderilen ekip bölgeden çıkar); `memberIds`/`managerIds` null ise dokunulmaz. Hatalar `TEAM_ADMIN_REQUIRED` 403, `TEAM_NOT_FOUND` 404, `TEAM_NAME_TAKEN` 409, `TEAM_INVALID` 400 |
+| `DELETE /portal/teams/{id}` | 204; altında ekip olan bölge 409 `TEAM_HAS_CHILDREN` |
+| `GET /portal/targets?periodType&periodKey&teamId` | Pano: `{periodType, periodKey, start, end, asOf, workDaysTotal/Elapsed/Left, dataSource, source, warnings[], canManage, wholeCompany, owners:[{ownerKind, ownerId, name, teamId, teamName, teamKind, warning, summary:{revenue, returns, collection, documentCount, visitsPlanned, visitsCompleted, pendingRevenue, pendingCollection}, targets:[{id, metric, measure, itemCode, itemName, value, note, actual, pending, percent, expectedToDate, forecast, requiredPerDay, derived, childrenSum, updatedAtMs, updatedBy}]}]}`. Varsayılan bu ay |
+| `PUT /portal/targets` | `{operationId, items:[{periodType, periodKey, metric, measure?, itemCode?, itemName?, ownerKind, ownerId?, value (null = sil), note?}]}` ≤ 2000 → `{saved, deleted, unchanged, duplicate, errors:[{index, errorCode, message}]}`; hatada 400 (kapsam dışı 403), hiçbiri yazılmaz |
+| `POST /portal/targets/copy` | `{periodType, fromPeriodKey, toPeriodKey, percent, ownerKinds?, overwrite, apply, operationId}` → `{items, result?}` |
+| `POST /portal/targets/distribute` | `{periodType, periodKey, metric, measure?, itemCode?, itemName?, sourceOwnerKind (COMPANY\|TEAM), sourceOwnerId?, value?, method (EQUAL\|LAST_PERIOD_SHARE), targetLevel (USER\|TEAM)}` → `{items}` (önizleme) |
+| `GET /portal/targets/items?metric&q` | `PRODUCT\|CATEGORY\|SUB_CATEGORY\|BRAND` → `{items:[{code,name,productCount}], truncated}` |
+| `GET\|PUT /portal/targets/settings` | `{workDays}` (Pzt=1…Paz=64); yazma tüm firmayı gören yönetici |
+| `GET /android/targets/mine?date` | `{date, asOfMs, dataSource, source, warnings[], canViewTeam, periods:[{periodType, periodKey, start, end, workDaysTotal, workDaysLeft, summary, targets}]}` — gün, hafta, ay |
+| `GET /android/targets/team?date&periodType` | Pano biçimi; yalnız ADMIN/MANAGER (403 `TARGETS_REQUIRE_MANAGER`) |
+
 ## Hata modeli
 
 ```json

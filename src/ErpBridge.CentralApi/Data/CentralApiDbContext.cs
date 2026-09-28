@@ -168,6 +168,19 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<StockExpiryOpApplied> StockExpiryOpsApplied => Set<StockExpiryOpApplied>();
 
+    // GOAL_HEDEF_RUT: satış ekipleri/bölgeleri ve hedefler; yalnız merkezde, ERP'ye yazılmaz.
+    public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
+
+    public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
+
+    public DbSet<SalesTeamManager> SalesTeamManagers => Set<SalesTeamManager>();
+
+    public DbSet<SalesTarget> SalesTargets => Set<SalesTarget>();
+
+    public DbSet<SalesTargetEvent> SalesTargetEvents => Set<SalesTargetEvent>();
+
+    public DbSet<TargetSettings> TargetSettings => Set<TargetSettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -278,6 +291,7 @@ public sealed class CentralApiDbContext : DbContext
         });
 
         ConfigureWorkTasks(modelBuilder);
+        ConfigureSalesTargets(modelBuilder);
 
         modelBuilder.Entity<StockExpiryRecord>(b =>
         {
@@ -1229,6 +1243,71 @@ public sealed class CentralApiDbContext : DbContext
             b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.UserId, x.Seq });
             b.HasIndex(x => new { x.TenantId, x.UserId, x.ReadAtMs });
+        });
+    }
+
+    private static void ConfigureSalesTargets(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SalesTeam>(b =>
+        {
+            b.ToTable("sales_teams");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(10);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.TenantId);
+        });
+
+        modelBuilder.Entity<SalesTeamMember>(b =>
+        {
+            b.ToTable("sales_team_members");
+            b.HasKey(x => new { x.TenantId, x.UserId });
+            b.HasIndex(x => x.TeamId);
+        });
+
+        modelBuilder.Entity<SalesTeamManager>(b =>
+        {
+            b.ToTable("sales_team_managers");
+            b.HasKey(x => new { x.TeamId, x.UserId });
+            b.HasIndex(x => new { x.TenantId, x.UserId });
+        });
+
+        modelBuilder.Entity<SalesTarget>(b =>
+        {
+            b.ToTable("sales_targets");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.PeriodType).IsRequired().HasMaxLength(10);
+            b.Property(x => x.PeriodKey).IsRequired().HasMaxLength(10);
+            b.Property(x => x.PeriodStartDay).IsRequired().HasMaxLength(10);
+            b.Property(x => x.PeriodEndDay).IsRequired().HasMaxLength(10);
+            b.Property(x => x.Metric).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Measure).IsRequired().HasMaxLength(10);
+            b.Property(x => x.ItemCode).IsRequired().HasMaxLength(110);
+            b.Property(x => x.ItemName).HasMaxLength(200);
+            b.Property(x => x.OwnerKind).IsRequired().HasMaxLength(10);
+            b.Property(x => x.Value).HasPrecision(18, 4);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.PeriodType, x.PeriodKey, x.Metric, x.Measure, x.ItemCode, x.OwnerKind, x.OwnerId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.PeriodStartDay, x.PeriodEndDay });
+        });
+
+        modelBuilder.Entity<SalesTargetEvent>(b =>
+        {
+            b.ToTable("sales_target_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Action).IsRequired().HasMaxLength(10);
+            b.Property(x => x.OldValue).HasPrecision(18, 4);
+            b.Property(x => x.NewValue).HasPrecision(18, 4);
+            b.Property(x => x.ActorName).IsRequired().HasMaxLength(120);
+            b.HasIndex(x => new { x.TenantId, x.TargetId });
+            b.HasIndex(x => new { x.TenantId, x.OperationId });
+        });
+
+        modelBuilder.Entity<TargetSettings>(b =>
+        {
+            b.ToTable("target_settings");
+            b.HasKey(x => x.TenantId);
         });
     }
 }

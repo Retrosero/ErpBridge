@@ -165,6 +165,12 @@ public static class RolePermissions
     public static bool CanPlanRoutes(MobileUser user) =>
         Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager);
 
+    /// <summary>
+    /// Writing sales targets (GOAL_HEDEF_RUT K4), within the user's team scope (<see cref="Targets.TeamScope"/>).
+    /// </summary>
+    public static bool CanManageTargets(MobileUser user) =>
+        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager);
+
     public static bool CanOperateWarehouse(MobileUser user) =>
         Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager or MobileUserRoles.Warehouse);
 
