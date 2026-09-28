@@ -80,6 +80,7 @@ public sealed class TargetService(TargetFactReader facts, IMemoryCache cache)
         var name = string.IsNullOrWhiteSpace(scope.User.FullName) ? scope.User.Username : scope.User.FullName;
         return new MyTargetsResponse
         {
+            Username = scope.User.Username,
             Date = TargetPeriod.Format(date),
             AsOfMs = NowMs(),
             DataSource = tenant.DataSource,

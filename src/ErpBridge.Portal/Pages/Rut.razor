@@ -1,0 +1,322 @@
+@page "/rut"
+@inherits PortalPageBase
+
+<PageTitle>Rut planı — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Rut planı" Eyebrow="Hedefler & rut" Subtitle="Haftanın günlerine cari sırası; kaydedilen plan atanan kişilerin telefonuna gider" Busy="Busy">
+        <Actions>
+            @if (_list?.CanPlan == true && _editing is null)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.AddRoad" Disabled="@Busy" OnClick="StartNew" id="new-route">Yeni rut</MudButton>
+            }
+        </Actions>
+    </PageHeader>
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_editing is { } plan && _list is not null)
+    {
+        <MudPaper Outlined="true" Class="panel" id="route-editor">
+            <div class="panel-head">
+                <MudText Typo="Typo.h6">@(_isNew ? "Yeni rut" : plan.Name)</MudText>
+                <div class="form-actions">
+                    @if (!_isNew)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@Busy" OnClick="DeleteAsync" id="route-delete">Sil</MudButton>
+                    }
+                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="Cancel" id="route-cancel">Vazgeç</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" OnClick="SaveAsync" id="route-save">Kaydet</MudButton>
+                </div>
+            </div>
+            <div class="filter-grid">
+                <label class="stack-field">
+                    <span class="field-label">Ad</span>
+                    <input class="portal-input" id="route-name" maxlength="120" value="@plan.Name" @onchange="e => plan.Name = e.Value?.ToString() ?? string.Empty" />
+                </label>
+                <label class="stack-field">
+                    <span class="field-label">Başlangıç (boş: hemen)</span>
+                    <input class="portal-input portal-input--date" type="date" id="route-start" value="@plan.StartDate" @onchange="e => plan.StartDate = e.Value?.ToString() ?? string.Empty" />
+                </label>
+            </div>
+            <label class="stack-field">
+                <span class="field-label">Açıklama</span>
+                <input class="portal-input" id="route-description" maxlength="500" value="@plan.Description" @onchange="e => plan.Description = e.Value?.ToString() ?? string.Empty" />
+            </label>
+            <label class="inline-field"><input type="checkbox" id="route-active" checked="@plan.IsActive" @onchange="e => plan.IsActive = e.Value is true" /> Etkin (telefonlarda görünür)</label>
+
+            <div class="field-label mt-3">Kimin rutu</div>
+            <div class="filter-chips" id="route-assignees">
+                @foreach (var person in _list.People)
+                {
+                    var on = plan.Assignees.Contains(person.Username, StringComparer.OrdinalIgnoreCase);
+                    <label class="inline-field" data-person="@person.Username">
+                        <input type="checkbox" checked="@on" @onchange="e => ToggleAssignee(person.Username, e.Value is true)" />
+                        @person.FullName @if (person.TeamName is not null) { <span class="text-muted">(@person.TeamName)</span> }
+                    </label>
+                }
+            </div>
+
+            <div class="seg-tabs mt-3" role="tablist" id="route-days">
+                @foreach (var (day, shortName, _) in RouteDays.All)
+                {
+                    var count = plan.Stops.Count(s => s.DayOfWeek == day);
+                    <button type="button" class="seg-tab @(day == _day ? "is-active" : null)" data-day="@day" @onclick="() => _day = day">
+                        @shortName @if (count > 0) { <span class="seg-count">@count</span> }
+                    </button>
+                }
+            </div>
+
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="7">
+                    <MudText Typo="Typo.subtitle1">@RouteDays.All[_day - 1].Long durakları</MudText>
+                    @{ var stops = DayStops(plan); }
+                    @if (stops.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="text-muted" id="day-empty">Bu gün için durak yok. Sağdan cari arayıp ekleyin.</MudText>
+                    }
+                    else
+                    {
+                        <ol class="route-stops" id="day-stops">
+                            @foreach (var (stop, index) in stops.Select((s, i) => (s, i)))
+                            {
+                                <li data-customer="@stop.CustomerCode">
+                                    <span class="route-stop-name">@stop.CustomerName <span class="text-muted">@stop.CustomerCode</span></span>
+                                    <MudIconButton Icon="@Icons.Material.Rounded.ArrowUpward" Size="Size.Small" Disabled="@(index == 0)" aria-label="Yukarı" Class="stop-up" OnClick="() => Move(plan, stop, -1)" />
+                                    <MudIconButton Icon="@Icons.Material.Rounded.ArrowDownward" Size="Size.Small" Disabled="@(index == stops.Count - 1)" aria-label="Aşağı" Class="stop-down" OnClick="() => Move(plan, stop, 1)" />
+                                    <MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Color="Color.Error" aria-label="Kaldır" Class="stop-remove" OnClick="() => Remove(plan, stop)" />
+                                </li>
+                            }
+                        </ol>
+                        <div class="inline-field mt-2">
+                            <span>Bu günü kopyala:</span>
+                            <select class="portal-select portal-select--short" id="copy-day" @onchange="e => CopyDay(plan, e.Value?.ToString())">
+                                <option value="">Gün seçin</option>
+                                @foreach (var (day, _, longName) in RouteDays.All.Where(d => d.Day != _day))
+                                {
+                                    <option value="@day">@longName</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                </MudItem>
+                <MudItem xs="12" md="5">
+                    <MudText Typo="Typo.subtitle1">Cari ekle</MudText>
+                    <form class="document-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+                        <input class="portal-input" id="customer-search" placeholder="Kod, unvan ya da telefon" value="@_query" @onchange="e => _query = e.Value?.ToString()" />
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@Busy" id="customer-search-go">Ara</MudButton>
+                    </form>
+                    @if (_found is { } found)
+                    {
+                        <ul class="route-found" id="customer-results">
+                            @foreach (var customer in found)
+                            {
+                                var added = DayStops(plan).Any(s => string.Equals(s.CustomerCode, customer.CustomerCode, StringComparison.OrdinalIgnoreCase));
+                                <li data-customer="@customer.CustomerCode">
+                                    <span>@customer.Title <span class="text-muted">@customer.CustomerCode @(customer.City is null ? "" : "· " + customer.City)</span></span>
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@added" Class="customer-add" OnClick="() => Add(plan, customer)">@(added ? "Eklendi" : "Ekle")</MudButton>
+                                </li>
+                            }
+                            @if (found.Count == 0)
+                            {
+                                <li class="text-muted">Eşleşen cari yok.</li>
+                            }
+                        </ul>
+                    }
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+    else if (_list is not null)
+    {
+        @if (_list.Plans.Length == 0)
+        {
+            <EmptyState Id="routes-empty" Icon="@Icons.Material.Rounded.Route" Title="Henüz rut planı yok."
+                        Hint="Bir rut, haftanın günlerine dağılmış cari sırasıdır; atanan kişi o gün telefonunda sıradaki ziyareti görür." />
+        }
+        else
+        {
+            <div class="team-children" id="route-list">
+                @foreach (var item in _list.Plans)
+                {
+                    <MudPaper Outlined="true" Class="panel" data-plan="@item.PlanId">
+                        <div class="panel-head">
+                            <div>
+                                <MudText Typo="Typo.subtitle1">
+                                    @item.Name
+                                    @if (!item.IsActive)
+                                    {
+                                        <span class="badge badge--off">pasif</span>
+                                    }
+                                </MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">@Names(item.Assignees) · @item.Stops.Count durak</MudText>
+                            </div>
+                            @if (item.CanEdit)
+                            {
+                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="route-edit" OnClick="() => StartEdit(item)">Düzenle</MudButton>
+                            }
+                        </div>
+                        <div class="role-badges">
+                            @foreach (var (day, shortName, _) in RouteDays.All)
+                            {
+                                var count = item.Stops.Count(s => s.DayOfWeek == day);
+                                <span class="badge @(count > 0 ? "badge--primary" : "badge--muted")">@shortName @count</span>
+                            }
+                        </div>
+                    </MudPaper>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Targets;
+
+    private string? Notice { get; set; }
+    private RoutePlansResponse? _list;
+    private RoutePlanDto? _editing;
+    private bool _isNew;
+    private int _day = RouteDays.Of(Fmt.Today());
+    private string? _query;
+    private List<CustomerRowDto>? _found;
+
+    protected override async Task LoadAsync() => _list = await Api.RoutePlansAsync();
+
+    private string Names(IEnumerable<string> usernames)
+    {
+        var names = usernames.Select(u => _list!.People.FirstOrDefault(p => string.Equals(p.Username, u, StringComparison.OrdinalIgnoreCase))?.FullName ?? u).ToList();
+        return names.Count == 0 ? "Atanmamış" : string.Join(", ", names);
+    }
+
+    private void StartNew()
+    {
+        Notice = Error = null;
+        _isNew = true;
+        _editing = new RoutePlanDto { PlanId = Guid.NewGuid().ToString("N"), IsActive = true };
+        _found = null;
+    }
+
+    private void StartEdit(RoutePlanDto plan)
+    {
+        Notice = Error = null;
+        _isNew = false;
+        // A copy: leaving without saving must not change the list.
+        _editing = new RoutePlanDto
+        {
+            PlanId = plan.PlanId, Name = plan.Name, Description = plan.Description, StartDate = plan.StartDate, IsActive = plan.IsActive,
+            Assignees = [.. plan.Assignees],
+            Stops = [.. plan.Stops.Select(s => new RouteStopDto { StopId = s.StopId, DayOfWeek = s.DayOfWeek, CustomerCode = s.CustomerCode, CustomerName = s.CustomerName, VisitOrder = s.VisitOrder })],
+        };
+        _found = null;
+    }
+
+    private void Cancel() => _editing = null;
+
+    private void ToggleAssignee(string username, bool on)
+    {
+        _editing!.Assignees.RemoveAll(a => string.Equals(a, username, StringComparison.OrdinalIgnoreCase));
+        if (on) _editing.Assignees.Add(username);
+    }
+
+    private List<RouteStopDto> DayStops(RoutePlanDto plan) => [.. plan.Stops.Where(s => s.DayOfWeek == _day).OrderBy(s => s.VisitOrder)];
+
+    /// <summary>Numbers the day's stops 1, 2, 3… in their shown order.</summary>
+    private static void Renumber(RoutePlanDto plan, int day)
+    {
+        var order = 1;
+        foreach (var stop in plan.Stops.Where(s => s.DayOfWeek == day).OrderBy(s => s.VisitOrder)) stop.VisitOrder = order++;
+    }
+
+    private void Move(RoutePlanDto plan, RouteStopDto stop, int step)
+    {
+        var stops = DayStops(plan);
+        var index = stops.IndexOf(stop);
+        var other = stops[index + step];
+        (stop.VisitOrder, other.VisitOrder) = (other.VisitOrder, stop.VisitOrder);
+    }
+
+    private void Remove(RoutePlanDto plan, RouteStopDto stop)
+    {
+        plan.Stops.Remove(stop);
+        Renumber(plan, stop.DayOfWeek);
+    }
+
+    private void Add(RoutePlanDto plan, CustomerRowDto customer)
+    {
+        plan.Stops.Add(new RouteStopDto
+        {
+            DayOfWeek = _day, CustomerCode = customer.CustomerCode, CustomerName = customer.Title,
+            VisitOrder = plan.Stops.Where(s => s.DayOfWeek == _day).Select(s => s.VisitOrder).DefaultIfEmpty(0).Max() + 1,
+        });
+    }
+
+    /// <summary>Appends the shown day's stops to another day, skipping customers that day already has.</summary>
+    private void CopyDay(RoutePlanDto plan, string? target)
+    {
+        if (!int.TryParse(target, out var day) || day is < 1 or > 7) return;
+        var next = plan.Stops.Where(s => s.DayOfWeek == day).Select(s => s.VisitOrder).DefaultIfEmpty(0).Max();
+        var copied = 0;
+        foreach (var stop in DayStops(plan))
+        {
+            if (plan.Stops.Any(s => s.DayOfWeek == day && string.Equals(s.CustomerCode, stop.CustomerCode, StringComparison.OrdinalIgnoreCase))) continue;
+            plan.Stops.Add(new RouteStopDto { DayOfWeek = day, CustomerCode = stop.CustomerCode, CustomerName = stop.CustomerName, VisitOrder = ++next });
+            copied++;
+        }
+        Notice = $"{copied} durak {RouteDays.All[day - 1].Long} gününe kopyalandı.";
+    }
+
+    private Task SearchAsync() => RunAsync(async () =>
+        _found = (await Api.CustomersAsync(_query, "all", "title", false, 1, 20)).Items);
+
+    private async Task SaveAsync()
+    {
+        if (_editing is not { } plan) return;
+        if (string.IsNullOrWhiteSpace(plan.Name))
+        {
+            Error = "Rutun bir adı olmalı.";
+            return;
+        }
+        var saved = false;
+        await RunAsync(async () =>
+        {
+            await Api.SaveRoutePlanAsync(plan.PlanId, plan);
+            saved = true;
+            await LoadAsync();
+        });
+        if (saved)
+        {
+            Notice = $"{plan.Name} kaydedildi; atanan telefonlara bir sonraki eşitlemede gider.";
+            _editing = null;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_editing is not { } plan) return;
+        var deleted = false;
+        await RunAsync(async () =>
+        {
+            await Api.DeleteRoutePlanAsync(plan.PlanId);
+            deleted = true;
+            await LoadAsync();
+        });
+        if (deleted)
+        {
+            Notice = $"{plan.Name} silindi.";
+            _editing = null;
+        }
+    }
+}

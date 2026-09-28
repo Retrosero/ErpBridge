@@ -97,7 +97,7 @@ public sealed class TeamDocumentProcessor
                         error = "Only company administrators and managers can delete routes.";
                         break;
                     }
-                    (error, note) = await FindPlanToDeleteAsync(db, tenantId, root, tombstones, ct);
+                    (error, note) = await FindPlanToDeleteAsync(db, tenantId, root, caller, tombstones, ct);
                     break;
                 case Visit:
                     error = BuildVisit(root, caller, now, rows);
@@ -201,6 +201,7 @@ public sealed class TeamDocumentProcessor
             var unknown = assignees.Where(a => !known.Contains(a, StringComparer.OrdinalIgnoreCase)).ToList();
             if (unknown.Count > 0) return $"Unknown users: {string.Join(", ", unknown)}.";
         }
+        if (await OutOfScopeAsync(db, tenantId, caller, planId, assignees, ct) is { } scopeError) return scopeError;
 
         var row = new JsonObject
         {
@@ -219,10 +220,11 @@ public sealed class TeamDocumentProcessor
     }
 
     private static async Task<(string? Error, string? Note)> FindPlanToDeleteAsync(
-        CentralApiDbContext db, Guid tenantId, JsonElement body, List<MobileRecord> tombstones, CancellationToken ct)
+        CentralApiDbContext db, Guid tenantId, JsonElement body, MobileUser caller, List<MobileRecord> tombstones, CancellationToken ct)
     {
         var planId = Text(body, "planId");
         if (planId is null || planId.Length > MaxIdLength) return ($"planId is required (at most {MaxIdLength} characters).", null);
+        if (await OutOfScopeAsync(db, tenantId, caller, planId, [], ct) is { } scopeError) return (scopeError, null);
         var existing = await db.MobileRecords
             .Where(r => r.TenantId == tenantId && r.Entity == RoutePlansSection && r.RecordKey == planId && !r.IsDeleted)
             .ToListAsync(ct);
@@ -231,6 +233,37 @@ public sealed class TeamDocumentProcessor
         if (existing.Count == 0) return (null, $"Route plan {planId} was not on the server; nothing to delete.");
         tombstones.AddRange(existing);
         return (null, null);
+    }
+
+    /// <summary>
+    /// GOAL_HEDEF_RUT K14: a manager responsible for teams plans only for their people — every new assignee, and every
+    /// assignee the plan already has (another team's plan is not theirs to rewrite or delete). A manager with no teams and
+    /// an administrator plan for the whole company, as before teams existed (<see cref="Targets.TeamScope"/>).
+    /// </summary>
+    public static async Task<string?> OutOfScopeAsync(
+        CentralApiDbContext db, Guid tenantId, MobileUser caller, string planId, IReadOnlyCollection<string> assignees, CancellationToken ct)
+    {
+        var scope = await Targets.TeamScope.LoadAsync(db, caller, ct);
+        if (scope.WholeCompany) return null;
+        var existing = await db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.Entity == RoutePlansSection && r.RecordKey == planId && !r.IsDeleted)
+            .Select(r => r.PayloadJson)
+            .FirstOrDefaultAsync(ct);
+        var names = assignees.ToList();
+        if (existing is not null)
+        {
+            using var parsed = JsonDocument.Parse(existing);
+            if (parsed.RootElement.TryGetProperty("assignees", out var current) && current.ValueKind == JsonValueKind.Array)
+                names.AddRange(current.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.String).Select(a => a.GetString()!));
+        }
+        if (names.Count == 0) return null;
+        var lowered = names.Select(n => n.ToLowerInvariant()).Distinct().ToList();
+        var users = await db.MobileUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId && u.DeletedAtUtc == null && lowered.Contains(u.Username.ToLower()))
+            .Select(u => new { u.Id, u.Username })
+            .ToListAsync(ct);
+        var outside = users.Where(u => !scope.SeesUser(u.Id)).Select(u => u.Username).ToList();
+        return outside.Count == 0 ? null : $"These people are not in your teams: {string.Join(", ", outside)}.";
     }
 
     // ---- visits -------------------------------------------------------------

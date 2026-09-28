@@ -748,6 +748,7 @@ public partial class Program
         app.MapMobileExpiryEndpoints();
         app.MapMobileTargetEndpoints();
         app.MapPortalTargetEndpoints();
+        app.MapPortalRouteEndpoints();
         app.MapPortalEndpoints();
         app.MapPortalErpWriteEndpoints();
         app.MapPortalErpDocumentsEndpoints();

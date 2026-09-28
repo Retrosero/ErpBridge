@@ -66,6 +66,7 @@ public sealed class TargetRelationalTests : IClassFixture<SqliteCentralApiFactor
         company.Targets.Single(t => t.Metric == "REVENUE").ChildrenSum.Should().Be(10_000m);
 
         var mine = await GetJsonAsync<MyTargetsResponse>(c.Ali, $"/api/v1/android/targets/mine?date={Day}");
+        mine.Username.Should().Be("ali");
         mine.Periods.Select(p => p.PeriodType).Should().Equal("DAILY", "WEEKLY", "MONTHLY");
         mine.Periods[2].Targets.Single(t => t.Metric == "REVENUE").Actual.Should().Be(600m);
         mine.Periods[0].Targets.Should().Contain(t => t.Metric == "REVENUE" && t.Derived, "the day's share of the month");

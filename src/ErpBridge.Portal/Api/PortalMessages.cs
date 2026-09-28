@@ -25,6 +25,8 @@ public static class PortalMessages
         "TARGET_INVALID_VALUE" => "Değer geçersiz.",
         "TARGET_NO_CHILDREN" => "Dağıtılacak kişi ya da ekip yok.",
         "TARGET_INVALID_SETTINGS" => "En az bir çalışma günü seçilmeli.",
+        "ROUTES_REQUIRE_MANAGER" => "Rut planını yalnız admin ve yöneticiler yapar.",
+        "ROUTE_INVALID" => "Rut planı kaydedilemedi. Alanları kontrol edin.",
         "TARGET_CONFLICT" => "Aynı hedef şu anda başka biri tarafından da kaydedildi. Sayfayı yenileyip tekrar deneyin.",
         "TEAM_ADMIN_REQUIRED" => "Ekip yapısını yalnız admin değiştirebilir.",
         "TEAM_NOT_FOUND" => "Ekip bulunamadı; liste yenilendi.",
