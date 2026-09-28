@@ -698,6 +698,8 @@ h1:focus, h1:focus-visible { outline: none; }
 .target-actual { font-weight: 600; }
 .target-detail > td { background: var(--line-soft); }
 .target-detail-table { width: 100%; }
+.target-detail-table td:first-child { min-width: 220px; }
+.target-grid td:first-child { min-width: 150px; }
 .is-derived { font-style: italic; color: var(--muted); }
 .target-grid .target-cell { width: 128px; text-align: right; }
 .target-cell.is-dirty { border-color: var(--brand-500); background: var(--brand-50); }

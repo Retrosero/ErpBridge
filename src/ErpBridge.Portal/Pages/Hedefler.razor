@@ -199,9 +199,9 @@ else
 
     private string EntryHref => $"hedefler/giris?period={_type}&day={Fmt.IsoDay(_day)}";
 
-    /// <summary>The company first, then regions and teams, then people by how far they are on revenue.</summary>
+    /// <summary>The company first, then regions, teams and people — each by how far they are on revenue.</summary>
     private IEnumerable<OwnerProgressDto> Ordered => _board!.Owners
-        .OrderBy(o => o.OwnerKind switch { TargetOwners.Company => 0, TargetOwners.Team => 1, _ => 2 })
+        .OrderBy(o => o.OwnerKind switch { TargetOwners.Company => 0, TargetOwners.Team => o.TeamKind == TeamKinds.Region ? 1 : 2, _ => 3 })
         .ThenByDescending(o => o.Main(TargetText.Revenue)?.Percent ?? -1)
         .ThenBy(o => o.Name, StringComparer.Create(Fmt.Turkish, true));
 

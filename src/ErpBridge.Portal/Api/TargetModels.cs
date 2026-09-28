@@ -269,9 +269,11 @@ public static class TargetText
         _ => "Tutar",
     };
 
-    /// <summary>A target value as its measure reads: money, quantity or a count.</summary>
+    /// <summary>A target value as its measure reads: money, quantity or a whole count (a pace of visits reads 76, not 76,15).</summary>
     public static string Value(string metric, string measure, decimal value) =>
-        measure == "AMOUNT" || metric is Revenue or Collection ? Fmt.Money(value) : Fmt.Quantity(value);
+        measure == "AMOUNT" || metric is Revenue or Collection ? Fmt.Money(value)
+        : measure == "COUNT" ? Math.Round(value, 0, MidpointRounding.AwayFromZero).ToString("N0", Fmt.Turkish)
+        : Fmt.Quantity(value);
 
     /// <summary>The period holding <paramref name="day"/>, as the API names it.</summary>
     public static string KeyOf(string type, DateOnly day) => type switch

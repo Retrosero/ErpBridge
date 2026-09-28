@@ -436,7 +436,7 @@ else
 
     private static string Caption(OwnerProgressDto owner) => owner.OwnerKind switch
     {
-        TargetOwners.Company => "Firma geneli",
+        TargetOwners.Company => "Tüm satışlar",
         TargetOwners.Team => owner.TeamKind == TeamKinds.Region ? "Bölge" : "Ekip",
         _ => owner.TeamName ?? "Ekipsiz",
     };
@@ -751,8 +751,8 @@ else
 
     private bool _leaveConfirmed;
 
-    /// <summary>A number as the cell shows it: no thousands separator, Turkish decimal comma.</summary>
-    private static string Plain(decimal value) => value.ToString("0.##", Fmt.Turkish);
+    /// <summary>A number as the cell shows it: Turkish thousands dot and decimal comma ("900.000", "12.500,5"); <see cref="ParseNumber"/> reads it back.</summary>
+    private static string Plain(decimal value) => value.ToString("#,##0.##", Fmt.Turkish);
 
     /// <summary>"12500", "12.500", "12.500,50", "12500.5" — a comma is always the decimal mark.</summary>
     private static decimal? ParseNumber(string? text)

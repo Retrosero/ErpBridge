@@ -72,7 +72,7 @@ public sealed class PortalTargetPagesTests : PortalPageTestContext
 
         var cut = Render<HedefGiris>();
         cut.WaitForAssertion(() => cut.FindAll("#target-grid tbody tr").Should().HaveCount(3));
-        cut.Find($"input[data-cell='USER:{Ali}|REVENUE']").GetAttribute("value").Should().Be("40000");
+        cut.Find($"input[data-cell='USER:{Ali}|REVENUE']").GetAttribute("value").Should().Be("40.000");
 
         cut.Find($"input[data-cell='USER:{Veli}|REVENUE']").Change("25.000");
         cut.Find($"input[data-cell='USER:{Ali}|COLLECTION']").Change("12.500,50");
@@ -143,7 +143,7 @@ public sealed class PortalTargetPagesTests : PortalPageTestContext
         cut.WaitForAssertion(() => cut.FindAll("#dist-list li").Should().HaveCount(2));
         cut.Find("#dist-take").Click();
 
-        cut.Find($"input[data-cell='USER:{Veli}|REVENUE']").GetAttribute("value").Should().Be("45000");
+        cut.Find($"input[data-cell='USER:{Veli}|REVENUE']").GetAttribute("value").Should().Be("45.000");
         cut.Find($"input[data-cell='USER:{Veli}|REVENUE']").ClassList.Should().Contain("is-dirty");
         cut.Find("#save-grid").TextContent.Should().Contain("(2)");
         api.Requests.Should().NotContain(r => r.Method == HttpMethod.Put, "the manager saves after reviewing");
