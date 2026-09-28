@@ -109,6 +109,15 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `task_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` — 30 gün sonra silinir.
   - `user_notifications`: `Id`, `TenantId`, `UserId`, `Kind(32)`, `Title(200)`, `Body(500)`, `TaskId`, `CreatedAtMs`, `ReadAtMs`, `Seq`. İndeks `(TenantId, UserId, Seq)`, `(TenantId, UserId, ReadAtMs)`.
 
+- **Hedefler ve ekipler** *(GOAL_HEDEF_RUT, 2026-09-28; kural 31)* — zamanlar unix ms (UTC), günler İstanbul `yyyy-MM-dd`:
+  - `sales_teams`: `Id`, `TenantId` (FK, cascade), `Name(100)`, `Kind(10)` REGION|TEAM, `ParentId` (TEAM → REGION), `IsActive`, `CreatedAtMs`, `UpdatedAtMs`.
+  - `sales_team_members`: PK `(TenantId, UserId)` — kişi tek ekipte; `TeamId` (indeks), `AddedAtMs`.
+  - `sales_team_managers`: PK `(TeamId, UserId)`, `TenantId`; indeks `(TenantId, UserId)`.
+  - `sales_targets`: `Id`, `TenantId` (FK, cascade), `PeriodType(10)`, `PeriodKey(10)`, `PeriodStartDay/PeriodEndDay(10)`, `Metric(20)`, `Measure(10)`, `ItemCode(110)` ('' = kalemsiz), `ItemName(200)` anlık kopya, `OwnerKind(10)`, `OwnerId` (firma `Guid.Empty`), `Value numeric(18,4)`, `Note(500)`, `CreatedByUserId`, `UpdatedByUserId`, `CreatedAtMs`, `UpdatedAtMs`, `IsDeleted`. Tekil `(TenantId, PeriodType, PeriodKey, Metric, Measure, ItemCode, OwnerKind, OwnerId)`; indeks `(TenantId, PeriodStartDay, PeriodEndDay)`.
+  - `sales_target_events`: `Id` (identity), `TenantId`, `TargetId`, `Action(10)` SET|DELETE, `OldValue/NewValue numeric(18,4)`, `ActorUserId`, `ActorName(120)`, `OccurredAtMs`, `OperationId` (ekip silmede null). İndeks `(TenantId, TargetId)`.
+  - `sales_target_operations`: PK `(TenantId, OperationId)`, `UserId`, `AppliedAtMs` — panel kaydının tekrar kontrolü (aynı işlemin ikinci kez uygulanmaması).
+  - `target_settings`: `TenantId` PK, `WorkDays` (Pzt=1…Paz=64; satır yoksa 63 = Pzt–Cmt), `UpdatedAtMs`.
+
 - **SKT kayıtları** *(2026-09-27; kural 29)* — telefonların ortak raf verisi, ERP'ye yazılmaz; zamanlar unix ms (UTC):
   - `stock_expiry_records`: `Id` uuid PK (telefon üretir, firmalar arası tekil), `TenantId` FK `tenants` cascade, `StockCode(50)`, `Barcode(50)`, `ProductName(200)` anlık kopya, `Location(50)` reyon/raf, `Warehouse(100)`, `ExpiryDate` `date`, `Quantity numeric(18,3)` null (bilgi amaçlı), `Note(500)`, `IsClosed`, `IsDeleted` (yumuşak silme), `CreatedByUserId`, `CreatedByName(120)`, `CreatedAtMs`, `UpdatedAtMs`, `UpdatedSeq` (`tenant_sync_counter`). İndeks `(TenantId, UpdatedSeq)`, `(TenantId, StockCode)`.
   - `stock_expiry_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` (indeksli; henüz temizlenmiyor).

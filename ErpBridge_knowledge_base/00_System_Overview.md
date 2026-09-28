@@ -1118,6 +1118,51 @@ registration ayrı bir composition projesine taşınır.
      tarihi bir sonraki yenilemede alır. Konsol: ürün seçimi, ürün süzgeci, Go kartında bilgisayar bilgisi.
    - Testler: `GoLicenseActivateTests` (imza doğrulama, 1 PC, ürün ayrımı, modüller, 503), `AdminLicensesTests` (ürün, bırakma, süre).
 
+31. **Hedefler ve ekipler merkezdedir: `Targets/TargetService` + `Endpoints/PortalTargetEndpoints` / `MobileTargetEndpoints` (GOAL_HEDEF_RUT, 2026-09-28).**
+   Plan ve kararlar: [`docs/GOAL_HEDEF_RUT.md`](../docs/GOAL_HEDEF_RUT.md). ERP'ye yazılmaz; ERP'li ve ERP'siz firma aynı tablolar.
+   - **Ekip modeli (K2):** `sales_teams` (`REGION` | `TEAM`, ekibin isteğe bağlı üst bölgesi `ParentId`), `sales_team_members`
+     (PK `TenantId+UserId` — kişi **tek ekipte**; başka ekibe eklenen eski ekibinden çıkar), `sales_team_managers` (sorumlu
+     yönetici; bölge sorumluluğu altındaki ekipleri kapsar). Yapıyı yalnız ADMIN değiştirir (403 `TEAM_ADMIN_REQUIRED`);
+     sorumlu yalnız ADMIN/MANAGER olabilir; altında ekip olan bölge silinemez (409 `TEAM_HAS_CHILDREN`); silinen ekibin hedefleri
+     `IsDeleted` olur.
+   - **Kapsam tek sınıftadır: `Targets/TeamScope` (K3).** ADMIN tüm firma; en az bir ekip/bölgeden sorumlu MANAGER yalnız o
+     ekipler + üyeleri + kendisi; **sorumluluğu olmayan MANAGER tüm firma** (ekip kavramından önceki davranış); diğerleri yalnız
+     kendisi. Hedef yazma `RolePermissions.CanManageTargets` (ADMIN, MANAGER) + kapsam (403 `TARGET_OUT_OF_SCOPE`); firma geneli
+     hedefi yalnız tüm firmayı gören. Görev ve onay görünürlüğü bu kapsamı **kullanmaz**.
+   - **Hedef (K5):** `sales_targets` — dönem (`DAILY` `2026-10-05` · `WEEKLY` ISO hafta Pazartesi `2026-W41` · `MONTHLY` `2026-10`,
+     İstanbul günü; `Targets/TargetPeriod`), tür (`REVENUE`, `COLLECTION`, `PRODUCT`, `CATEGORY` = ana grup/ERP'siz `kategori`,
+     `SUB_CATEGORY` = `anaGrup|altGrup`, `BRAND`, `VISIT`, `DOCUMENT_COUNT`), ölçü (`AMOUNT` | `QUANTITY` | `COUNT`), kalem kodu, sahip
+     (`USER` | `TEAM` | `COMPANY`, firmada `OwnerId = Guid.Empty`). Doğal anahtar tekil (upsert); `value = null` yumuşak siler.
+     Kayıt **hep ya hiç** (hatalı kalemin `index`'i döner), ≤ 2000 kalem. `operationId` işlemin **ilk yazımı** olarak
+     `sales_target_operations`'a (PK `TenantId+OperationId`) girer: aynı anda gelen tekrar PK'da bekler, sonra `duplicate` alır;
+     aynı doğal anahtarı eşzamanlı yaratan iki farklı kayıttan ikincisi 409 `TARGET_CONFLICT` (Codex, PR #214). Her değişiklik
+     `sales_target_events`'e (eski/yeni değer, kim); ekip silinince hedeflerinin `DELETE` olayı da yazılır.
+   - **Gerçekleşen (K6–K8, `Targets/TargetFactReader`):** ERP'siz firmada `jobs` (`Succeeded`; `PortalReports.PhoneDocumentsAsync`,
+     `occurredAt` İstanbul günü + 7 gün tolerans): satış/iade satırı değeri `lineTotal` → adet × `unitPrice` → adet ×
+     `listUnitPrice` × `conditionPercent` (ERP'siz defterle aynı, KDV ayrımı yapılmaz), anında ödemeli satış aynı zamanda tahsilat.
+     **Panel düzeltmeleri:** `document_void`/`ledger_void` ile iptal edilen belge (`targetKey`'in işi) sayılmaz; ayakta kalan
+     `document_edit`/`ledger_edit` onun yerine sayılır — düzeltilen belgenin **ilk satıcısına**, düzeltmenin tarihiyle (yoksa asılınkiyle).
+     ERP'li firmada **Mikro aynası** (`stockTransactions`, `customerTransactions`, ayrı bir `PortalRecordMirror` "target-rows"):
+     satış = `tip` 1 + `evrakTip` 1/4 (irsaliye/fatura) satırı, iade = `tip` 3 + `evrakTip` 3; tutar `tutar − discountAmount`
+     (faturalanan irsaliye Mikro'da ikinci bir stok satırı açmaz — açsaydı stok iki kez düşerdi; canlı V15_02/V16_03'te satışların
+     tamamı kendi faturasına bağlı `evrakTip` 4, bağlı `evrakTip` 1 satırı yok, 2026-09-28)
+     (KDV hariç); tahsilat = `TAHSILAT` ve kapalı (peşin) `SATIS`. Satır kişiye `plasiyerKod` → `mobile_user_erp_mappings.SalespersonCode`
+     ile bağlanır; kendi kodu olmayan kişinin kişisel gerçekleşeni yoktur (sahip satırında uyarı), firma geneli tüm satırlardır.
+     Kişinin `Pending/Processing` telefon belgeleri ayrı `pending`'dir. **Ajan `plasiyerKod` göndermiyorsa** (hiçbir satırda alan
+     yok) kaynak `phone-documents`: ERP'li Plasiyerler raporu gibi telefon belgeleri (Pending+Processing+Succeeded) sayılır, uyarı döner.
+     Kaynak `source` alanındadır: `server-documents` | `erp-mirror` | `phone-documents`. Bir aralığın olguları 60 sn önbelleklenir.
+     Bilinen sınır: satış türü "sipariş" olan ERP'li firmada telefon satışı Mikro'da faturalanana kadar gerçekleşene girmez.
+   - **Hesap (K9–K11, `Targets/TargetBoard`, saf):** yüzde, bugüne kadar beklenen (iş günü oranı), tempoyla dönem sonu tahmini,
+     kalan ÷ kalan iş günü (bugün dahil). Kendi günlük hedefi olmayan güne **aylık (yoksa haftalık) hedeften pay** türetilir:
+     `(hedef − bugünden önceki gerçekleşen) ÷ kalan iş günü`, `derived=true`. `VISIT` hedefi girilmemişse hedef = dönemde planlanan
+     rut durağı. İş günleri `target_settings.WorkDays` (Pzt=1…Paz=64, varsayılan Pzt–Cmt). Ekip/firma satırında `childrenSum` (bir alt
+     seviyedeki aynı hedeflerin toplamı).
+   - **Uçlar:** panel `GET|POST /api/v1/portal/teams`, `PUT|DELETE /teams/{id}`, `GET|PUT /targets` (pano + toplu kayıt),
+     `POST /targets/copy` (±%, önizleme/uygula), `POST /targets/distribute` (EQUAL | LAST_PERIOD_SHARE, yalnız önizleme),
+     `GET /targets/items?metric&q` (≤ 50), `GET|PUT /targets/settings`. Okuma `CanViewReports`. Telefon `GET /api/v1/android/targets/mine?date`
+     (gün/hafta/ay, herkes) ve `/team?date&periodType` (ADMIN/MANAGER). Hız sınırı kullanıcı başına. Testler: `TargetRelationalTests`,
+     `TargetBoardTests`, `TargetPeriodTests`.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

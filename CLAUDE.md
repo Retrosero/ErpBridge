@@ -66,6 +66,11 @@ ilgili knowledge_base dosyasını da güncelle.
   Coolify dağıtımını tetikler; dağıtımdan sonra `/health/schema` kontrol edilir. Aynı yasaklar geçerli:
   `--force` push (ve `--force-with-lease`) yasak, CI kırmızıyken merge yasak, `main`'e doğrudan push yasak,
   Play production yasak. Görevler ERP'ye yazmaz; Mikro DB'lerine hiçbir yazım yoktur.
+- **İstisna (2026-09-28):** aynı yetkiler `docs/GOAL_HEDEF_RUT.md` (hedefler · ekip/bölge · panel rut editörü) görevleri
+  için de önceden onaylıdır (kullanıcı: "Push+PR+merge önceden onaylı"). GitHub Actions kredisi olmadığı sürece CI
+  kırmızısının sebebi kredi ise **yerel** `dotnet build` (0 uyarı) + `dotnet test` yeşilken birleştirilir (kullanıcı:
+  "Yerel derleme+test yeşilse birleştir"). Play yüklemesi bu istisnanın dışındadır. Aynı yasaklar geçerli; Mikro'ya
+  test yazımı gerekmez (yalnız okuma).
 
 ## 3. Test / build
 

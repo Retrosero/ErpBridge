@@ -93,31 +93,48 @@ public static class PortalReports
             ? new[] { JobStatus.Succeeded }
             : new[] { JobStatus.Pending, JobStatus.Processing, JobStatus.Succeeded };
 
+        var result = new List<MoneyDocument>();
+        foreach (var row in await PhoneDocumentsAsync(db, tenant.Id, from, to, types, statuses, ct))
+        {
+            if (row.DocumentType == Disbursement
+                && string.Equals(ReadString(row.PayloadJson, "approvalKind"), ApprovalKinds.Purchase, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var documentType = returnTypes.Contains(row.DocumentType) ? "return" : row.DocumentType;
+            result.Add(new MoneyDocument(documentType, row.CreatedByUserId, row.BusinessDate, ReadDecimal(row.PayloadJson, "amount") ?? 0m));
+        }
+        return result;
+    }
+
+    public sealed record PhoneDocument(string ExternalId, string DocumentType, JobStatus Status, Guid? CreatedByUserId, DateOnly BusinessDate, string? PayloadJson);
+
+    /// <summary>
+    /// Documents of <paramref name="types"/> in <paramref name="statuses"/> whose business day falls within
+    /// [from, to], received at most <see cref="OfflineTolerance"/> after it.
+    /// </summary>
+    public static async Task<List<PhoneDocument>> PhoneDocumentsAsync(
+        CentralApiDbContext db, Guid tenantId, DateOnly from, DateOnly to, string[] types, JobStatus[] statuses, CancellationToken ct)
+    {
         var windowStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).AddDays(-1);
         var windowEnd = new DateTimeOffset(to.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).AddDays(1) + OfflineTolerance;
 
         var query = db.Jobs.AsNoTracking()
-            .Where(j => j.TenantId == tenant.Id && types.Contains(j.DocumentType) && statuses.Contains(j.Status));
+            .Where(j => j.TenantId == tenantId && types.Contains(j.DocumentType) && statuses.Contains(j.Status));
         // PostgreSQL filters the window itself; SQLite (tests) cannot translate DateTimeOffset
         // comparisons, so there the same window is applied after reading.
         var sqlite = db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
         if (!sqlite) query = query.Where(j => j.EnqueuedAtUtc >= windowStart && j.EnqueuedAtUtc < windowEnd);
 
         var rows = await query
-            .Select(j => new { j.DocumentType, j.CreatedByUserId, j.EnqueuedAtUtc, j.PayloadJson })
+            .Select(j => new { j.ExternalId, j.DocumentType, j.Status, j.CreatedByUserId, j.EnqueuedAtUtc, j.PayloadJson })
             .ToListAsync(ct);
 
-        var result = new List<MoneyDocument>();
+        var result = new List<PhoneDocument>();
         foreach (var row in rows)
         {
             if (row.EnqueuedAtUtc < windowStart || row.EnqueuedAtUtc >= windowEnd) continue;
-            if (row.DocumentType == Disbursement
-                && string.Equals(ReadString(row.PayloadJson, "approvalKind"), ApprovalKinds.Purchase, StringComparison.OrdinalIgnoreCase))
-                continue;
             var date = BusinessDate(row.PayloadJson, row.EnqueuedAtUtc);
             if (date < from || date > to) continue;
-            var documentType = returnTypes.Contains(row.DocumentType) ? "return" : row.DocumentType;
-            result.Add(new MoneyDocument(documentType, row.CreatedByUserId, date, ReadDecimal(row.PayloadJson, "amount") ?? 0m));
+            result.Add(new PhoneDocument(row.ExternalId, row.DocumentType, row.Status, row.CreatedByUserId, date, row.PayloadJson));
         }
         return result;
     }
