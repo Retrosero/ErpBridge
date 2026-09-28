@@ -125,6 +125,38 @@ public sealed class TenantMobilePageTests : BunitContext
         cut.FindAll("button").Should().NotContain(b => b.TextContent.Contains("Onayla"), "the console never decides for a company");
     }
 
+    [Fact]
+    public void Ticking_the_xml_module_sends_the_whole_module_set()
+    {
+        var api = Register(Overview(max: 3, users: [User("patron", "ADMIN")]));
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find("#module-xml-import"));
+        cut.Find("#module-xml-import").HasAttribute("checked").Should().BeFalse();
+        cut.Find("#modules-save").HasAttribute("disabled").Should().BeTrue("nothing changed yet");
+        cut.Find("#module-xml-import").Change(true);
+        cut.Find("#modules-save").Click();
+
+        cut.WaitForAssertion(() => api.LastModulesBody.Should().NotBeNull());
+        api.LastModulesBody!.Value.GetProperty("modules").EnumerateArray().Select(m => m.GetString()).Should().Equal("xml_import");
+    }
+
+    [Fact]
+    public void Unticking_the_xml_module_switches_it_off()
+    {
+        var overview = Overview(max: 3, users: [User("patron", "ADMIN")]);
+        overview.Modules = ["xml_import"];
+        var api = Register(overview);
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find("#module-xml-import").HasAttribute("checked").Should().BeTrue());
+        cut.Find("#module-xml-import").Change(false);
+        cut.Find("#modules-save").Click();
+
+        cut.WaitForAssertion(() => api.LastModulesBody.Should().NotBeNull());
+        api.LastModulesBody!.Value.GetProperty("modules").GetArrayLength().Should().Be(0);
+    }
+
     // ---- helpers -----------------------------------------------------------
 
     private FakeApi Register(TenantMobileOverviewDto overview)
@@ -169,6 +201,7 @@ public sealed class TenantMobilePageTests : BunitContext
         public List<Guid> DeletedUserIds { get; } = new();
         public JsonElement? LastCreatedUserBody { get; private set; }
         public ApprovalRequestDto[] Approvals { get; set; } = [];
+        public JsonElement? LastModulesBody { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -183,6 +216,11 @@ public sealed class TenantMobilePageTests : BunitContext
             {
                 LastSubscriptionBody = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
                 return SubscriptionResponse?.Invoke() ?? Json(HttpStatusCode.OK, _overview.Subscriptions[0]);
+            }
+            if (request.Method == HttpMethod.Put && path == $"{mobileBase}/modules")
+            {
+                LastModulesBody = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
             if (request.Method == HttpMethod.Get && path == $"{mobileBase}/approvals")
                 return Json(HttpStatusCode.OK, Approvals);

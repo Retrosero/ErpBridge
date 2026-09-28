@@ -100,6 +100,36 @@ bilinmeyen kimlikler yanıtta yoktur; 0 ya da 100'den fazla kimlik 400 `INVALID_
 
 ERP'siz firmada bu uçlar 409 `ERP_NOT_CONNECTED` döner.
 
+### Portal ERP'siz firma uçları (`/api/v1/portal/native`, firma kullanıcısı token'ı — GOAL_PANEL_ERPSIZ)
+
+`GET /documents` ve `GET /documents/{key}` dışındaki uçların hepsi yalnız **ADMIN** + `DataSource=native` içindir
+(403 `ROLE_NOT_ALLOWED`, ERP'li firmada 409 `TENANT_IS_NOT_NATIVE`); o iki okuma ucu ekstrenin kapısını
+(`CanViewLedger`: Admin, Yönetici, Muhasebe; ERP'li firma da) kullanır. Yazma uçları `NativeDocumentProcessor`'a gider,
+yanıt `IngestJobResponse` (`201` yeni, `200` aynı `operationId` ile tekrar) — **istisna** toplu içe aktarma uçları
+(`/stock-cards/batch`, `/customer-cards/batch`): her zaman `200` ve aşağıdaki `PortalCardBatchResponse`.
+İşleyicinin reddi 422 ve uca özgü `*_REJECTED` kodu.
+Her yazma `native_audit_log`'a düşer (`GET /api/v1/portal/native/audit`).
+
+| Uç | Açıklama |
+|---|---|
+| `GET /stock-cards/{code}` · `POST /stock-cards` · `DELETE /stock-cards/{code}?operationId=` | Ürün kartı oku/aç/düzenle/sil (hareketli ürün silinmez). Silmede `operationId` gövdede değil **sorguda**; verilmezse tekrar yeni işlem sayılır |
+| `GET /stock-cards/{code}/movements` | `from`, `to`, `includeVoided`, `page`, `pageSize`. `opening` (devir), `closing`, `totalIn`/`totalOut`, satırlar en yeni üstte: `kind` (sale/purchase/sale_return/count/void/other), `in`/`out`, `balance` (yürüyen stok), `voided`, `reason` |
+| `POST /customer-cards` | Cari kartı aç/düzenle |
+| `POST /collections` · `POST /disbursements` | Tahsilat / tediye |
+| `POST /ledger-adjustments` | Manuel bakiye düzeltmesi, gerekçe zorunlu |
+| `POST /ledger/{key}/void` · `POST /ledger/{key}/edit` | Tek başına tahsilat/tediye/düzeltmenin iptali / düzeltilmesi (storno). İptalin gövdesi `reason`, düzeltmeninki düzeltilmiş hareket + `voidReason` (ikisi de zorunlu) |
+| `POST /sales-orders` · `/purchase-receipts` · `/sales-returns` | Satırlı evrak: `partyCode`, `lines[{productCode, quantity, unitPrice, lineTotal?}]`, `amount?`, `paymentType?` (anında ödeme), `occurredAt?`, `documentNo?` |
+| `GET /documents` | Admin, Yönetici, Muhasebe (salt okunur). `from`, `to`, `kind[]`, `customer`, `userId`, `status=all\|active\|voided`, sayfalı; satırda `voided` |
+| `GET /documents/{key}` | Tek evrak: satırlar (ters satırlar hariç), `voided`, `paymentType` |
+| `POST /documents/{key}/void` | Evrağın cari ve stok etkisi birlikte iptal (`reason`) |
+| `POST /documents/{key}/edit` | Evrak gövdesi + `voidReason`; aynı türde düzeltilmiş evrak, `-D1` revizyon numarası (dolu numara atlanır; elle verilen dolu numara 422) |
+| `POST /stock-counts` | `lines[{productCode, countedQuantity}]`, `reason` zorunlu; fark kayıt anındaki stoka göre |
+| `POST /stock-counts/{key}/void` | Sayımın tüm satırlarını geri alır; `key` sayımın iş kimliği ya da bir hareket kimliği |
+| `GET /barcodes/{barcode}` | Barkoda, yoksa ürün koduna **tam** eşleşen ürün kartı (sayım ekranının okutması) |
+| `POST /stock-cards/batch` · `POST /customer-cards/batch` | Dosyadan içe aktarma: `cards[]` (≤ 500), `rows[]?` (her kartın dosya satırı) ya da `firstRow`, `operationId`. Yanıt `booked`, `skipped[{row, reason, message}]` (`CODE_REQUIRED`, `CODE_TOO_LONG`, `NAME_REQUIRED`, `DUPLICATE_CODE`, `DUPLICATE_BARCODE`, `BARCODE_IN_USE`, `REJECTED`), `idempotent` |
+
+İptal/düzenleme uçları (`ledger/{key}/void|edit`, `documents/{key}/void|edit`, `stock-counts/{key}/void`) "zaten iptal" kontrolünden **önce** aynı `operationId`'li işi arar: yanıtı kaybolan tekrar 200 alır, 409 değil. `operationId` içindeki `|` `-` olur (hareket anahtarları `{iş}|{ek}`).
+
 ### Admin iş uçları (`/api/v1/admin/jobs`)
 
 Liste öğesi `nextAttemptAtUtc`, `leasedUntilUtc` taşır. `GET /{id}` ek olarak `payloadJson`,
@@ -170,6 +200,43 @@ için Android aşağıdaki daraltılmış endpointleri kullanabilir:
 Yanıtlar tenant'a kesin olarak izole edilir; body içinde API key veya tenant id
 gönderilmez. `MOBILE_READ_SCOPE_REQUIRED` API key'in yalnızca yazma yetkisi
 olduğunu, `BOOTSTRAP_NOT_FOUND` ise henüz ERP'den veri gelmediğini belirtir.
+
+## SKT (son kullanma tarihi) kayıtları — `/api/v1/android/expiry`
+
+Telefonlardan girilen raf verisi: hangi ürün hangi reyon/rafta, hangi son kullanma tarihiyle duruyor.
+Firmanın bütün telefonları aynı kayıtları paylaşır; ERP'li ve ERP'siz firmada aynı çalışır, **ERP'ye hiçbir
+şey yazılmaz** (Mikro ana verisi değildir). Kimlik: firma kullanıcısı token'ı (`MobileUserPolicy`), hız sınırı
+kullanıcı başına (`PerMobileUserRateLimitPolicy`); her çağrıda kullanıcı, cihaz ve abonelik yeniden denetlenir.
+Firmanın her aktif kullanıcısı okur ve yazar (rol şartı yok). Bilgi bankası kural 29.
+
+| Uç | Açıklama |
+|---|---|
+| `GET /api/v1/android/expiry?changedSinceSeq={long}&take={int}` | Firmanın `updatedSeq > changedSinceSeq` kayıtları, `updatedSeq` sırasıyla. `take` varsayılan 500, 1–1000 aralığına kısılır. Silinenler `deleted=true` ile gelir (telefon yerel kopyasını düşürür). Yanıt `{ records: ExpiryRecordDto[], latestSeq, hasMore }`; `latestSeq` sayfanın son `updatedSeq`'i, sayfa boşsa gönderilen değer. Döngüyü `hasMore` sürdürür. |
+| `POST /api/v1/android/expiry/ops` | Gövde `{ ops: ExpiryOp[] }` (≤ 200; fazlası 400 `EXPIRY_BATCH_TOO_LARGE`, hiçbiri uygulanmaz). Yanıt `{ results: [{ opId, status: "applied"\|"duplicate"\|"rejected", errorCode?, message? }], records: ExpiryRecordDto[] }` — `records` uygulanan işlemlerin dokunduğu kayıtların güncel hâli. |
+
+**`ExpiryOp`:** `{ opId: guid, type: "upsert" | "delete", record: ExpiryRecordInput }`. İşlemler sırayla uygulanır;
+daha önce uygulanmış `opId` `duplicate` döner (yeniden uygulanmaz), reddedilen işlem kendi savepoint'ine geri
+döner ve partinin geri kalanını durdurmaz. Reddedilen işlem yeniden denenmez.
+
+- `upsert`: kimlik firmada yoksa kayıt açılır (oluşturan kullanıcı ve zaman yalnız burada yazılır), varsa
+  düzenlenebilir alanların **tamamı** üzerine yazılır (son yazan kazanır; `null` "boş" demektir, "değişmedi" değil).
+  Silinmiş kayıt düzenlenmez: `EXPIRY_NOT_FOUND` ("Kayıt silinmiş.").
+- `delete`: yumuşak silme (`deleted=true`, yeni `updatedSeq`); yalnız `record.id` okunur. Bilinmeyen kimlik
+  `EXPIRY_NOT_FOUND`; zaten silinmiş kayıt `applied` (değişiklik sayılmaz, `updatedSeq` ilerlemez).
+- Kimlik tüm firmalar arasında tekildir; başka firmanın kaydı görünmez, düzenlenmez, silinmez (`EXPIRY_NOT_FOUND`).
+- Hata kodları: `EXPIRY_OP_ID_REQUIRED` (opId yok), `EXPIRY_OP_UNKNOWN` (bilinmeyen `type`), `EXPIRY_INVALID`
+  (doğrulama; `message` alanı adlandırır, ör. "Son kullanma tarihi okunamadı.", "Reyon/raf boş olamaz.",
+  "Ürün kodu boş olamaz."), `EXPIRY_NOT_FOUND`.
+
+**`ExpiryRecordInput`:** `{ id: guid (telefon üretir, zorunlu), stockCode (zorunlu, ≤ 50), barcode? (≤ 50),
+productName? (≤ 200), location (reyon/raf, zorunlu, ≤ 50), warehouse? (≤ 100), expiryDate: "yyyy-MM-dd"
+(zorunlu, geçerli tarih, yıl 2000–2100), quantity?: number (0–999999999, en çok 3 ondalık), note? (≤ 500),
+closed: bool (varsayılan false) }`. Metinler kırpılır (trim); boş isteğe bağlı alan `null` saklanır; sınırı aşan
+metin reddedilir (kesilmez). Miktar bilgi amaçlıdır; satış düşmez, raf bitince kayıt `closed` yapılır.
+
+**`ExpiryRecordDto`:** `{ id, stockCode, barcode, productName, location, warehouse, expiryDate: "yyyy-MM-dd",
+quantity: number | null, note, closed, deleted, createdBy (oluşturanın görünen adı), createdAtMs, updatedAtMs,
+updatedSeq }`. Zamanlar unix ms (UTC).
 
 ## Hata modeli
 

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ErpBridge.Portal.Api;
@@ -294,6 +294,52 @@ public sealed class StockPriceDto
     [JsonPropertyName("price")] public decimal Price { get; set; }
 }
 
+/// <summary>One row of GET …/native/stock-cards/{code}/movements (GOAL_PANEL_ERPSIZ E6a).</summary>
+public sealed class StockMovementRowDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+
+    /// <summary>sale, purchase, sale_return, count, void, other.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "other";
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+    [JsonPropertyName("customerCode")] public string? CustomerCode { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("in")] public decimal In { get; set; }
+    [JsonPropertyName("out")] public decimal Out { get; set; }
+    [JsonPropertyName("balance")] public decimal Balance { get; set; }
+    [JsonPropertyName("voided")] public bool Voided { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+}
+
+public sealed class StockMovementsResponse
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("opening")] public decimal Opening { get; set; }
+    [JsonPropertyName("closing")] public decimal Closing { get; set; }
+    [JsonPropertyName("totalIn")] public decimal TotalIn { get; set; }
+    [JsonPropertyName("totalOut")] public decimal TotalOut { get; set; }
+    [JsonPropertyName("items")] public List<StockMovementRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+}
+
+public sealed class NativeStockCountLine
+{
+    [JsonPropertyName("productCode")] public string ProductCode { get; set; } = string.Empty;
+    [JsonPropertyName("countedQuantity")] public decimal CountedQuantity { get; set; }
+}
+
+/// <summary>Body of POST …/native/stock-counts (GOAL_PANEL_ERPSIZ E6b); the reason is mandatory.</summary>
+public sealed class NativeStockCountRequest
+{
+    [JsonPropertyName("lines")] public List<NativeStockCountLine> Lines { get; set; } = [];
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
 public sealed class StockItemDto
 {
     [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
@@ -387,6 +433,71 @@ public sealed class NativeStockCardRequest
     [JsonPropertyName("price")] public decimal? Price { get; set; }
     [JsonPropertyName("openingQuantity")] public decimal? OpeningQuantity { get; set; }
     [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of POST …/native/stock-cards/batch (GOAL_PANEL_ERPSIZ E1d): one part (≤ 500) of an imported file.</summary>
+public sealed class NativeStockCardBatchRequest
+{
+    [JsonPropertyName("cards")] public List<NativeStockCardRequest> Cards { get; set; } = [];
+    [JsonPropertyName("firstRow")] public int FirstRow { get; set; } = 1;
+
+    /// <summary>Each card's file row (the page sends only the rows it found valid).</summary>
+    [JsonPropertyName("rows")] public List<int>? Rows { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+/// <summary>Body of POST …/native/customer-cards/batch (GOAL_PANEL_ERPSIZ E2c).</summary>
+public sealed class NativeCustomerCardBatchRequest
+{
+    [JsonPropertyName("cards")] public List<NativeCustomerCardRequest> Cards { get; set; } = [];
+    [JsonPropertyName("firstRow")] public int FirstRow { get; set; } = 1;
+
+    /// <summary>Each card's file row (the page sends only the rows it found valid).</summary>
+    [JsonPropertyName("rows")] public List<int>? Rows { get; set; }
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
+}
+
+public sealed class CardBatchSkipDto
+{
+    [JsonPropertyName("row")] public int Row { get; set; }
+    [JsonPropertyName("reason")] public string Reason { get; set; } = string.Empty;
+    [JsonPropertyName("message")] public string? Message { get; set; }
+}
+
+public sealed class CardBatchResultDto
+{
+    [JsonPropertyName("booked")] public int Booked { get; set; }
+    [JsonPropertyName("skipped")] public List<CardBatchSkipDto> Skipped { get; set; } = [];
+}
+
+/// <summary>One row of GET /api/v1/portal/movements (GOAL_PANEL_ERPSIZ E4e): any customer-side movement of the company.</summary>
+public sealed class CompanyMovementDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("customerTitle")] public string CustomerTitle { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "other";
+    [JsonPropertyName("sourceType")] public string? SourceType { get; set; }
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+    [JsonPropertyName("documentKey")] public string? DocumentKey { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("debit")] public decimal Debit { get; set; }
+    [JsonPropertyName("credit")] public decimal Credit { get; set; }
+    [JsonPropertyName("userName")] public string? UserName { get; set; }
+    [JsonPropertyName("voided")] public bool Voided { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+}
+
+public sealed class CompanyMovementsResponse
+{
+    [JsonPropertyName("items")] public List<CompanyMovementDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+    [JsonPropertyName("totalDebit")] public decimal TotalDebit { get; set; }
+    [JsonPropertyName("totalCredit")] public decimal TotalCredit { get; set; }
 }
 
 public sealed class NativeJobResultDto
@@ -625,6 +736,87 @@ public sealed class CustomerDocumentDto
     [JsonPropertyName("amount")] public decimal Amount { get; set; }
     [JsonPropertyName("lines")] public List<CustomerDocumentLineDto> Lines { get; set; } = [];
     [JsonPropertyName("linesAvailable")] public bool LinesAvailable { get; set; }
+}
+
+// ---- satış / alış / iade evrakları (GOAL_PANEL_ERPSIZ E5e) --------------------------------
+
+/// <summary>One row of GET …/native/documents — a sale/purchase/return invoice, any customer/supplier.</summary>
+public sealed class NativeDocumentRowDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("documentKey")] public string DocumentKey { get; set; } = string.Empty;
+
+    /// <summary>sale, sale_return, purchase, purchase_return.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("customerTitle")] public string CustomerTitle { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
+    [JsonPropertyName("userId")] public Guid? UserId { get; set; }
+    [JsonPropertyName("userName")] public string? UserName { get; set; }
+    [JsonPropertyName("voided")] public bool Voided { get; set; }
+}
+
+public sealed class NativeDocumentsResponse
+{
+    [JsonPropertyName("from")] public string From { get; set; } = string.Empty;
+    [JsonPropertyName("to")] public string To { get; set; } = string.Empty;
+    [JsonPropertyName("items")] public List<NativeDocumentRowDto> Items { get; set; } = [];
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+}
+
+/// <summary>GET …/native/documents/{key} — one invoice with its lines.</summary>
+public sealed class NativeDocumentDto
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("documentKey")] public string DocumentKey { get; set; } = string.Empty;
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("customerTitle")] public string CustomerTitle { get; set; } = string.Empty;
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
+    [JsonPropertyName("lines")] public List<CustomerDocumentLineDto> Lines { get; set; } = [];
+    [JsonPropertyName("linesAvailable")] public bool LinesAvailable { get; set; }
+    [JsonPropertyName("voided")] public bool Voided { get; set; }
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+}
+
+public sealed class NativeDocumentLineRequest
+{
+    [JsonPropertyName("productCode")] public string ProductCode { get; set; } = string.Empty;
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+    [JsonPropertyName("unitPrice")] public decimal UnitPrice { get; set; }
+
+    /// <summary>Set only for a line discount; the server defaults it to quantity × unit price.</summary>
+    [JsonPropertyName("lineTotal")] public decimal? LineTotal { get; set; }
+}
+
+/// <summary>Body of POST …/native/sales-orders, …/purchase-receipts, …/sales-returns (E5a) and, with
+/// <see cref="VoidReason"/>, of POST …/native/documents/{key}/edit (E5d).</summary>
+public sealed class NativeDocumentRequest
+{
+    [JsonPropertyName("partyCode")] public string PartyCode { get; set; } = string.Empty;
+    [JsonPropertyName("lines")] public List<NativeDocumentLineRequest> Lines { get; set; } = [];
+
+    /// <summary>Only for a purchase without lines; otherwise the lines' own total.</summary>
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+
+    /// <summary>Null for an open-account document; a payment type settles it on the spot.</summary>
+    [JsonPropertyName("paymentType")] public string? PaymentType { get; set; }
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+
+    [JsonPropertyName("voidReason")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? VoidReason { get; set; }
+
+    [JsonPropertyName("operationId")] public string? OperationId { get; set; }
 }
 
 // ---- warehouse reports (Faz 50, plan step 8) ----------------------------------------------

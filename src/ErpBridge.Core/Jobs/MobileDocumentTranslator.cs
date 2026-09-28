@@ -496,6 +496,10 @@ public sealed class MobileDocumentTranslator
         var warehouse = phoneWarehouse ?? context.PurchaseWarehouseNo ?? context.WarehouseNo;
         if (warehouse is null) return MobileTranslation.Fail(ErpWriteError.ErpMappingMissing("alış deposu"));
 
+        // Alış iskontoları: satırın kendi zinciri, sonra faturanın genel zinciri (en çok 6'şar, 0..100).
+        if (!DiscountChain(body, "generalDiscountPercents", out var generalDiscounts))
+            return MobileTranslation.Fail(ErpWriteError.InvalidGeneralDiscount());
+
         var purchaseLines = new List<PurchaseInvoiceLine>(lines.Count);
         for (var i = 0; i < lines.Count; i++)
         {
@@ -510,8 +514,10 @@ public sealed class MobileDocumentTranslator
                 return MobileTranslation.Fail(ErpWriteError.MobileAppUpdateRequired());
             if (MalformedNumber(line, "unitPointer", integer: true) || Int(line, "unitPointer") is <= 0)
                 return MobileTranslation.Fail(ErpWriteError.InvalidDocument());
+            if (!DiscountChain(line, "lineDiscountPercents", out var lineDiscounts))
+                return MobileTranslation.Fail(ErpWriteError.InvalidDiscount(i + 1));
             purchaseLines.Add(new PurchaseInvoiceLine(
-                stockCode, Decimal(line, "quantity")!.Value, Decimal(line, "unitPrice")!.Value, (byte)(Int(line, "unitPointer") ?? 1)));
+                stockCode, Decimal(line, "quantity")!.Value, Decimal(line, "unitPrice")!.Value, (byte)(Int(line, "unitPointer") ?? 1), lineDiscounts));
         }
 
         // K13: peşin ödenen alış tek evraktır — kapalı fatura. Ödeme bilgisi yoksa (eski telefon)
@@ -544,7 +550,7 @@ public sealed class MobileDocumentTranslator
 
         return new MobileTranslation(Purchase: new PurchaseInvoiceCommand(
             header, warehouse.Value, Text(body, "invoiceNo"), context.PurchasePricesIncludeVat, purchaseLines,
-            settlement, settlementAccount));
+            settlement, settlementAccount, generalDiscounts));
     }
 
     private static (IReadOnlyList<CollectionPayment>? Payments, ErpWriteError? Error) ParsePayments(
@@ -742,6 +748,30 @@ public sealed class MobileDocumentTranslator
 
     private static int? Int(JsonElement element, string name) =>
         Decimal(element, name) is { } number && number == Math.Truncate(number) && number is >= int.MinValue and <= int.MaxValue ? (int)number : null;
+
+    /// <summary>Most discounts a purchase line or invoice carries: Mikro has six discount columns per line.</summary>
+    private const int MaxDiscounts = 6;
+
+    /// <summary>
+    /// A chain of discount percentages. Absent, JSON null or empty is no discount (<paramref name="chain"/>
+    /// <c>null</c>); anything but an array of at most <see cref="MaxDiscounts"/> numbers, each 0..100, is
+    /// malformed. Zeros are dropped: an empty discount box on the phone is no discount.
+    /// </summary>
+    private static bool DiscountChain(JsonElement element, string name, out IReadOnlyList<decimal>? chain)
+    {
+        chain = null;
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return true;
+        if (value.ValueKind != JsonValueKind.Array) return false;
+        var percents = new List<decimal>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Number || !item.TryGetDecimal(out var percent) || percent is < 0 or > 100) return false;
+            if (percent > 0) percents.Add(percent);
+        }
+        if (percents.Count > MaxDiscounts) return false;
+        chain = percents.Count == 0 ? null : percents;
+        return true;
+    }
 
     /// <summary>
     /// The objects of an array property: empty when the property is absent (an older body), <c>null</c>

@@ -91,6 +91,19 @@ public sealed class PortalPaymentsPageTests : PortalPageTestContext
     }
 
     [Fact]
+    public void An_accountant_sees_the_list_without_the_admin_only_user_filter()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "ACCOUNTING"));
+        api.Answer(DefaultQuery(), Page(0m, 300m, [Row("c1", "collection", "C-001", "Bakkal Ali", 0m, 300m)]));
+
+        var cut = Render<Tahsilatlar>();
+
+        cut.WaitForAssertion(() => cut.FindAll("#payments-table tbody tr").Count.Should().Be(1));
+        api.Requests.Should().NotContain(r => r.PathAndQuery == UsersPath, "the user list answers only an admin (Codex #189)");
+        cut.FindAll("#payments-user").Should().BeEmpty();
+    }
+
+    [Fact]
     public void A_salesperson_cannot_open_the_page()
     {
         PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(role: "SALES"));

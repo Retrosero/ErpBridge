@@ -27,6 +27,16 @@ namespace ErpBridge.CentralApi.Native;
 /// native lock, so documents from several phones are booked one at a time and a
 /// job can never be stored without its effect, or the effect without the job.</para>
 /// </summary>
+/// <summary>
+/// How a trusted caller wants a document booked — never read from the document itself, so a phone cannot ask for it.
+/// </summary>
+/// <param name="CountAgainstCurrentLevel">GOAL_PANEL_ERPSIZ E6b: a portal <c>stock_count</c> takes its difference against
+/// the stock booked now (read under the tenant lock), not against the <c>expectedQuantity</c> a device saw offline.</param>
+/// <param name="KeepBarcodesWithTheirOwners">GOAL_PANEL_ERPSIZ E1d: a portal product card may not take a barcode another
+/// product holds — checked under the tenant lock, so two imports at once cannot both pass an earlier check. The phone's
+/// own cards keep their old rule (the barcode follows the latest card).</param>
+public sealed record NativeBookingOptions(bool CountAgainstCurrentLevel = false, bool KeepBarcodesWithTheirOwners = false);
+
 public sealed class NativeDocumentProcessor
 {
     public const string StockCard = "stock_card";
@@ -65,11 +75,26 @@ public sealed class NativeDocumentProcessor
     /// own row (only a standalone <see cref="Collection"/>/<see cref="Disbursement"/>/<see cref="LedgerAdjustment"/>).</summary>
     public const string DocumentVoid = "document_void";
 
-    /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id.</summary>
-    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment };
+    /// <summary>Corrects one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5d, D11): <see cref="DocumentVoid"/>
+    /// + a re-booked document of the same kind, in one transaction — the document-level sibling of <see cref="LedgerEdit"/>.
+    /// The corrected document is booked under this job's own external id, so it is itself voidable and editable again.</summary>
+    public const string DocumentEdit = "document_edit";
 
-    /// <summary>The job document types <see cref="DocumentVoid"/> may target.</summary>
-    public static readonly IReadOnlySet<string> VoidableDocumentJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesOrder, SalesReturn, PurchaseReceipt };
+    /// <summary>Cancels one whole <see cref="StockCount"/> (GOAL_PANEL_ERPSIZ E6b): every line it booked is reversed,
+    /// storno-style — the stock-side sibling of <see cref="DocumentVoid"/> for a document with no ledger effect.</summary>
+    public const string StockVoid = "stock_void";
+
+    /// <summary>The job document types <see cref="LedgerVoid"/> may target, keyed by the movement's own external id —
+    /// including an earlier <see cref="LedgerEdit"/>, whose one row is the corrected entry (it keeps its kind, so it is
+    /// again a standalone collection/disbursement/adjustment).</summary>
+    public static readonly IReadOnlySet<string> VoidableLedgerJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Collection, Disbursement, LedgerAdjustment, LedgerEdit };
+
+    /// <summary>The document kinds <see cref="DocumentEdit"/> re-books; a document keeps its kind across an edit.</summary>
+    public static readonly IReadOnlySet<string> EditableDocumentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesOrder, SalesReturn, PurchaseReceipt };
+
+    /// <summary>The job document types <see cref="DocumentVoid"/>/<see cref="DocumentEdit"/> may target: the three
+    /// document kinds themselves, and an earlier <see cref="DocumentEdit"/> (whose own rows are the corrected document).</summary>
+    public static readonly IReadOnlySet<string> VoidableDocumentJobTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SalesOrder, SalesReturn, PurchaseReceipt, DocumentEdit };
 
     /// <summary>
     /// Line-carrying documents only the central API books. An ERP agent has no
@@ -117,7 +142,8 @@ public sealed class NativeDocumentProcessor
     /// Infrastructure errors throw and roll everything back.
     /// </summary>
     /// <param name="callerIsAdmin">Whether the signed-in user is a company administrator; product cards need one.</param>
-    public async Task<Job> IngestAsync(CentralApiDbContext db, Guid tenantId, Job job, bool callerIsAdmin, CancellationToken ct)
+    /// <param name="options">Booking modes only a trusted caller (a portal endpoint) sets; null for the phone.</param>
+    public async Task<Job> IngestAsync(CentralApiDbContext db, Guid tenantId, Job job, bool callerIsAdmin, CancellationToken ct, NativeBookingOptions? options = null)
     {
         // An approval posts its documents inside its own transaction; the booking joins
         // it so a failed document rolls the approval back too. The caller then commits
@@ -131,7 +157,7 @@ public sealed class NativeDocumentProcessor
         }
 
         var now = DateTimeOffset.UtcNow;
-        var booking = new Booking(tenantId, job.ExternalId, now, job.CreatedByUserId);
+        var booking = new Booking(tenantId, job.ExternalId, now, job.CreatedByUserId) { Options = options ?? new NativeBookingOptions() };
         string? error;
         using (var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(job.PayloadJson) ? "{}" : job.PayloadJson))
         {
@@ -168,6 +194,12 @@ public sealed class NativeDocumentProcessor
                 DocumentVoid => callerIsAdmin
                     ? await BookDocumentVoidAsync(db, booking, document.RootElement, ct)
                     : "Only company administrators can void a document.",
+                DocumentEdit => callerIsAdmin
+                    ? await BookDocumentEditAsync(db, booking, document.RootElement, ct)
+                    : "Only company administrators can edit a document.",
+                StockVoid => callerIsAdmin
+                    ? await BookStockVoidAsync(db, booking, document.RootElement, ct)
+                    : "Only company administrators can void a stock count.",
                 // Other cash-book documents (return and purchase payments already booked by
                 // their own documents, cash transfers) are kept as records only.
                 _ => null,
@@ -223,6 +255,9 @@ public sealed class NativeDocumentProcessor
         if (name is null) return "name is required.";
 
         var barcode = Text(card, "barcode");
+        if (barcode is not null && booking.Options.KeepBarcodesWithTheirOwners
+            && await BarcodeOwnerAsync(db, booking.TenantId, barcode, ct) is { } owner && !string.Equals(owner, code, StringComparison.OrdinalIgnoreCase))
+            return $"The barcode {barcode} already belongs to product {owner}.";
         booking.Add("stocks", new JsonObject
         {
             ["stockCode"] = code,
@@ -502,6 +537,11 @@ public sealed class NativeDocumentProcessor
         var documentNo = Text(document, "mobileDocumentId") ?? booking.ExternalId;
         var occurredAt = Text(document, "occurredAt") ?? booking.Stamp;
         var countedBy = Text(document, "countedBy");
+        var reason = Text(document, "reason");
+        // The portal (E6b) counts against the stock booked right now, read under the tenant lock; the phone
+        // sends what it saw offline, so a sale booked after its count survives (the difference rule above).
+        // The mode comes from the trusted caller, never from the payload (Codex #192).
+        var againstCurrentLevel = booking.Options.CountAgainstCurrentLevel;
         var differences = new List<(string StockCode, decimal Difference, decimal Counted)>();
         var lineNo = 0;
         foreach (var line in lines.EnumerateArray())
@@ -512,7 +552,9 @@ public sealed class NativeDocumentProcessor
                 return $"Line {lineNo} names no known product.";
             if (Number(line, "countedQuantity") is not { } counted || counted < 0)
                 return $"Line {lineNo} has no counted quantity.";
-            var expected = Number(line, "expectedQuantity") ?? 0;
+            var expected = againstCurrentLevel
+                ? (await LevelAsync(db, booking.TenantId, stockCode, ct)).Row.Quantity
+                : Number(line, "expectedQuantity") ?? 0;
             if (counted != expected) differences.Add((stockCode, counted - expected, counted));
         }
 
@@ -541,7 +583,7 @@ public sealed class NativeDocumentProcessor
                 ["birimFiyat"] = 0,
                 ["tutar"] = 0,
                 [incoming ? "girisDepoNo" : "cikisDepoNo"] = NativeLedgerDefaults.WarehouseNo,
-                ["aciklama"] = $"Sayım farkı (sayılan {counted}){(countedBy is null ? "" : $" · {countedBy}")}",
+                ["aciklama"] = $"Sayım farkı (sayılan {counted}){(countedBy is null ? "" : $" · {countedBy}")}{(reason is null ? "" : $" · {reason}")}",
                 ["updatedAt"] = booking.Stamp,
             });
         }
@@ -763,12 +805,8 @@ public sealed class NativeDocumentProcessor
     }
 
     /// <summary>
-    /// Cancels one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5c, D11): every
-    /// <c>customerTransactions</c> row the document's own job booked — its own line (Satış/Alış/İade) and,
-    /// when it settled on the spot, its immediate-payment leg (<see cref="ImmediatePayments"/>) — is
-    /// reversed via <see cref="ReverseLedgerRowAsync"/>, and every <c>stockTransactions</c> line the same
-    /// job wrote is reversed via <see cref="ReverseStockLineAsync"/>. All in this booking's one
-    /// transaction, the way every other native document is booked whole or not at all.
+    /// Cancels one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5c, D11) — the endpoint-level
+    /// shell around <see cref="VoidDocumentAsync"/>, which just needs a reason.
     /// </summary>
     private async Task<string?> BookDocumentVoidAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
     {
@@ -776,30 +814,183 @@ public sealed class NativeDocumentProcessor
         if (targetKey is null) return "targetKey is required.";
         var reason = Text(document, "reason");
         if (reason is null) return "A void needs a reason.";
-        var occurredAt = Text(document, "occurredAt") ?? booking.Stamp;
+        var result = await VoidDocumentAsync(db, booking, targetKey, reason, Text(document, "occurredAt") ?? booking.Stamp, ct);
+        return result.Error;
+    }
 
+    /// <summary>
+    /// Edits one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5d, D11's void+reissue pattern, the
+    /// document-level sibling of <see cref="BookLedgerEditAsync"/>): <see cref="VoidDocumentAsync"/> reverses the
+    /// original's ledger and stock effect, then the corrected <c>document</c> is booked as a new document of the
+    /// <b>same kind</b> through the very writer the kind already uses (<see cref="BookSaleAsync"/>,
+    /// <see cref="BookSalesReturnAsync"/>, <see cref="BookPurchaseReceiptAsync"/>) — every rule a new document
+    /// obeys holds for the correction too. Both halves share this booking's one transaction; a correction the
+    /// writer rejects rolls the void back with it.
+    ///
+    /// <para>The reversal is dated at the original's own date, so a statement for any period shows only the
+    /// corrected document. The correction keeps the original's date unless it names another. It gets a
+    /// revision number (<c>A-1</c> → <c>A-1-D1</c> → <c>A-1-D2</c>) unless it names a different one: a
+    /// native document is keyed by party + number (<c>PortalRecords.NativeDocumentKey</c>), and the voided
+    /// original keeps its number, so reusing it would merge the two documents' lines.</para>
+    /// </summary>
+    private async Task<string?> BookDocumentEditAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var targetKey = Text(document, "targetKey");
+        if (targetKey is null) return "targetKey is required.";
+        var voidReason = Text(document, "voidReason");
+        if (voidReason is null) return "An edit needs a reason for the correction.";
+        var documentType = Text(document, "documentType");
+        if (documentType is null || !EditableDocumentTypes.Contains(documentType))
+            return "documentType must be sales_order, sales_return or purchase_receipt.";
+        if (!document.TryGetProperty("document", out var corrected) || corrected.ValueKind != JsonValueKind.Object)
+            return "document (the corrected document) is required.";
+
+        var original = await VoidDocumentAsync(db, booking, targetKey, voidReason, occurredAt: null, ct);
+        if (original.Error is not null) return original.Error;
+        if (!string.Equals(original.DocumentType, documentType, StringComparison.OrdinalIgnoreCase))
+            return "An edit keeps the document's kind (a sale stays a sale).";
+
+        var numberField = string.Equals(documentType, PurchaseReceipt, StringComparison.OrdinalIgnoreCase) ? "invoiceNo" : "mobileDocumentId";
+        var requested = Text(corrected, numberField);
+        var party = Text(corrected, "supplierCode", "customerCode");
+        string number;
+        if (requested is not null && !string.Equals(requested, original.DocumentNo, StringComparison.Ordinal))
+        {
+            if (party is not null && await DocumentNumberInUseAsync(db, booking.TenantId, party, requested, ct))
+                return $"Document number {requested} is already used for {party}.";
+            number = requested;
+        }
+        else
+        {
+            number = RevisionNumber(original.DocumentNo ?? booking.ExternalId);
+            // A revision someone already typed by hand (or an earlier chain on another party's number) is skipped.
+            while (party is not null && await DocumentNumberInUseAsync(db, booking.TenantId, party, number, ct))
+                number = RevisionNumber(number);
+        }
+        var node = JsonNode.Parse(corrected.GetRawText())!.AsObject();
+        node[numberField] = number;
+        if (node["occurredAt"] is null) node["occurredAt"] = original.OccurredAt;
+        var correctedDocument = JsonSerializer.SerializeToElement(node);
+
+        return documentType.ToLowerInvariant() switch
+        {
+            SalesOrder => await BookSaleAsync(db, booking, correctedDocument, ct),
+            SalesReturn => await BookSalesReturnAsync(db, booking, correctedDocument, ct),
+            _ => await BookPurchaseReceiptAsync(db, booking, correctedDocument, ct),
+        };
+    }
+
+    /// <summary>
+    /// Whether <paramref name="party"/> already has a native document numbered <paramref name="documentNo"/> — a
+    /// ledger or stock row with that <c>cariKod</c> + <c>evrakNo</c>, the pair <c>PortalRecords.NativeDocumentKey</c>
+    /// groups a document by. <c>evrakNo</c> lives only in the JSON payload: on PostgreSQL the <c>jsonb</c> column is
+    /// asked by containment (<c>@&gt;</c>; a text <c>LIKE</c> on <c>jsonb</c> does not exist there), elsewhere (the
+    /// SQLite test host) the payload text is pre-filtered. Each candidate is then checked exactly.
+    /// </summary>
+    private static async Task<bool> DocumentNumberInUseAsync(CentralApiDbContext db, Guid tenantId, string party, string documentNo, CancellationToken ct)
+    {
+        var candidates = await DocumentNumberCandidates(db, tenantId, documentNo).ToListAsync(ct);
+        foreach (var payload in candidates)
+        {
+            using var row = JsonDocument.Parse(payload);
+            if (string.Equals(Text(row.RootElement, "evrakNo"), documentNo, StringComparison.Ordinal)
+                && string.Equals(Text(row.RootElement, "cariKod", "customerCode"), party, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>The payloads that may carry <paramref name="documentNo"/>; see <see cref="DocumentNumberInUseAsync"/>.</summary>
+    internal static IQueryable<string> DocumentNumberCandidates(CentralApiDbContext db, Guid tenantId, string documentNo)
+    {
+        var rows = db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == tenantId && (r.Entity == "customerTransactions" || r.Entity == "stockTransactions") && !r.IsDeleted
+                        && r.PayloadJson != null);
+        if (db.Database.IsNpgsql())
+        {
+            var contained = JsonSerializer.Serialize(new Dictionary<string, string> { ["evrakNo"] = documentNo });
+            rows = rows.Where(r => EF.Functions.JsonContains(r.PayloadJson!, contained));
+        }
+        else
+        {
+            var escaped = JsonSerializer.Serialize(documentNo);
+            var quoted = "\"" + documentNo + "\"";
+            rows = rows.Where(r => r.PayloadJson!.Contains(escaped) || r.PayloadJson!.Contains(quoted));
+        }
+        return rows.Select(r => r.PayloadJson!);
+    }
+
+    /// <summary>
+    /// Whether a movement row was written by job <paramref name="jobExternalId"/>: its key is exactly
+    /// <c>"{job}|{suffix}"</c> or <c>"{job}|{suffix}|void"</c> (the reversal). A bare prefix test would also take the rows
+    /// of a job whose own id starts with <c>"{job}|"</c>.
+    /// </summary>
+    internal static bool OwnedByJob(string recordKey, string jobExternalId)
+    {
+        if (!recordKey.StartsWith(jobExternalId + "|", StringComparison.Ordinal)) return false;
+        var rest = recordKey.AsSpan(jobExternalId.Length + 1);
+        var bar = rest.IndexOf('|');
+        return bar < 0 ? rest.Length > 0 : bar > 0 && rest[(bar + 1)..].SequenceEqual("void");
+    }
+
+    /// <summary>The next revision of a document number: <c>A-1</c> → <c>A-1-D1</c>, <c>A-1-D1</c> → <c>A-1-D2</c>.</summary>
+    internal static string RevisionNumber(string documentNo)
+    {
+        var index = documentNo.LastIndexOf("-D", StringComparison.Ordinal);
+        if (index > 0 && int.TryParse(documentNo.AsSpan(index + 2), NumberStyles.None, CultureInfo.InvariantCulture, out var revision))
+            return $"{documentNo[..index]}-D{(revision + 1).ToString(CultureInfo.InvariantCulture)}";
+        return documentNo + "-D1";
+    }
+
+    /// <summary>
+    /// Reverses one whole sale/purchase/return document (GOAL_PANEL_ERPSIZ E5c, D11): every
+    /// <c>customerTransactions</c> row the document's own job booked — its own line (Satış/Alış/İade) and,
+    /// when it settled on the spot, its immediate-payment leg (<see cref="ImmediatePayments"/>) — is
+    /// reversed via <see cref="ReverseLedgerRowAsync"/>, and every <c>stockTransactions</c> line the same
+    /// job wrote is reversed via <see cref="ReverseStockLineAsync"/>. All in this booking's one
+    /// transaction, the way every other native document is booked whole or not at all. A null
+    /// <paramref name="occurredAt"/> dates each ledger reversal at its own row's date (the edit path).
+    /// Returns the document's kind (its job's document type, or for an earlier edit the kind that edit
+    /// re-booked), number and date, so an edit can re-book a correction of the same kind.
+    /// </summary>
+    private async Task<(string? Error, string? DocumentType, string? DocumentNo, string? OccurredAt)> VoidDocumentAsync(
+        CentralApiDbContext db, Booking booking, string targetKey, string reason, string? occurredAt, CancellationToken ct)
+    {
         var jobExternalId = ExternalIdOfLedgerKey(targetKey);
         var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == booking.TenantId && j.ExternalId == jobExternalId, ct);
-        if (job is null || !VoidableDocumentJobTypes.Contains(job.DocumentType))
-            return "Only a sale, purchase or return document can be voided here.";
+        var documentType = job is null || !VoidableDocumentJobTypes.Contains(job.DocumentType) ? null : DocumentTypeOf(job);
+        if (documentType is null)
+            return ("Only a sale, purchase or return document can be voided here.", null, null, null);
 
         var legs = await db.MobileRecords.AsNoTracking()
             .Where(r => r.TenantId == booking.TenantId && r.Entity == "customerTransactions"
                         && r.RecordKey.StartsWith(jobExternalId + "|") && !r.IsDeleted)
             .Select(r => new { r.RecordKey, r.PayloadJson })
             .ToListAsync(ct);
-        if (legs.Count == 0) return "The document was not found.";
+        // Keys are "{job}|{suffix}" (and "…|void" once reversed); a prefix alone would also catch another job
+        // whose own id happens to start with "{job}|" (Codex #192).
+        legs = legs.Where(l => OwnedByJob(l.RecordKey, jobExternalId)).ToList();
+        if (legs.Count == 0) return ("The document was not found.", null, null, null);
+        string? documentNo = null, documentDate = null;
+        var legDates = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var leg in legs)
         {
             if (leg.PayloadJson is null) continue;
             using var legDoc = JsonDocument.Parse(leg.PayloadJson);
-            if (Bool(legDoc.RootElement, "voided") == true) return "This document is already void.";
+            if (Bool(legDoc.RootElement, "voided") == true) return ("This document is already void.", null, null, null);
+            legDates[leg.RecordKey] = Text(legDoc.RootElement, "tarih");
+            if (leg.RecordKey == targetKey)
+            {
+                documentNo = Text(legDoc.RootElement, "evrakNo");
+                documentDate = Text(legDoc.RootElement, "tarih");
+            }
         }
 
         foreach (var leg in legs)
         {
-            var (error, _, _, _, _) = await ReverseLedgerRowAsync(db, booking, leg.RecordKey, reason, occurredAt, ct);
-            if (error is not null) return error;
+            var legDate = occurredAt ?? legDates.GetValueOrDefault(leg.RecordKey) ?? booking.Stamp;
+            var (error, _, _, _, _) = await ReverseLedgerRowAsync(db, booking, leg.RecordKey, reason, legDate, ct);
+            if (error is not null) return (error, null, null, null);
         }
 
         var lines = await db.MobileRecords.AsNoTracking()
@@ -807,11 +998,55 @@ public sealed class NativeDocumentProcessor
                         && r.RecordKey.StartsWith(jobExternalId + "|") && !r.IsDeleted)
             .Select(r => new { r.RecordKey, r.PayloadJson })
             .ToListAsync(ct);
-        foreach (var line in lines)
+        foreach (var line in lines.Where(l => OwnedByJob(l.RecordKey, jobExternalId)))
         {
             if (line.PayloadJson is null) continue;
             await ReverseStockLineAsync(db, booking, line.RecordKey, line.PayloadJson, reason, ct);
         }
+        return (null, documentType, documentNo, documentDate);
+    }
+
+    /// <summary>The document kind a job's own rows are: the job's type, or for a <see cref="DocumentEdit"/> the
+    /// kind it re-booked (its payload's <c>documentType</c>, which that edit already validated).</summary>
+    private static string? DocumentTypeOf(Job job)
+    {
+        if (!string.Equals(job.DocumentType, DocumentEdit, StringComparison.OrdinalIgnoreCase)) return job.DocumentType;
+        if (string.IsNullOrWhiteSpace(job.PayloadJson)) return null;
+        using var payload = JsonDocument.Parse(job.PayloadJson);
+        return Text(payload.RootElement, "documentType") is { } type && EditableDocumentTypes.Contains(type) ? type : null;
+    }
+
+    /// <summary>
+    /// Cancels one whole stock count (GOAL_PANEL_ERPSIZ E6b): every <c>stockTransactions</c> line the count's job
+    /// booked is reversed via <see cref="ReverseStockLineAsync"/>, in this booking's one transaction.
+    /// <c>targetKey</c> is the count's job id.
+    /// </summary>
+    private async Task<string?> BookStockVoidAsync(CentralApiDbContext db, Booking booking, JsonElement document, CancellationToken ct)
+    {
+        var targetKey = Text(document, "targetKey");
+        if (targetKey is null) return "targetKey is required.";
+        var reason = Text(document, "reason");
+        if (reason is null) return "A void needs a reason.";
+
+        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.TenantId == booking.TenantId && j.ExternalId == targetKey, ct);
+        if (job is null || !string.Equals(job.DocumentType, StockCount, StringComparison.OrdinalIgnoreCase))
+            return "Only a stock count can be voided here.";
+
+        var lines = await db.MobileRecords.AsNoTracking()
+            .Where(r => r.TenantId == booking.TenantId && r.Entity == "stockTransactions"
+                        && r.RecordKey.StartsWith(targetKey + "|") && !r.IsDeleted)
+            .Select(r => new { r.RecordKey, r.PayloadJson })
+            .ToListAsync(ct);
+        var own = lines.Where(l => l.PayloadJson is not null && OwnedByJob(l.RecordKey, targetKey)
+                                   && !l.RecordKey.EndsWith("|void", StringComparison.Ordinal)).ToList();
+        if (own.Count == 0) return "The count changed no stock; there is nothing to cancel.";
+        foreach (var line in own)
+        {
+            using var row = JsonDocument.Parse(line.PayloadJson!);
+            if (Bool(row.RootElement, "voided") == true) return "This count is already void.";
+        }
+        foreach (var line in own)
+            await ReverseStockLineAsync(db, booking, line.RecordKey, line.PayloadJson!, reason, ct);
         return null;
     }
 
@@ -871,6 +1106,7 @@ public sealed class NativeDocumentProcessor
             ["cariKod"] = partyCode,
             [incoming ? "girisDepoNo" : "cikisDepoNo"] = NativeLedgerDefaults.WarehouseNo,
             ["aciklama"] = $"İptal: {reason}",
+            ["voidsKey"] = lineKey,
             ["updatedAt"] = booking.Stamp,
         });
     }
@@ -1015,6 +1251,10 @@ public sealed class NativeDocumentProcessor
         return Text(document.RootElement, "stockCode");
     }
 
+    /// <summary>The product a barcode currently names, or null.</summary>
+    private static Task<string?> BarcodeOwnerAsync(CentralApiDbContext db, Guid tenantId, string barcode, CancellationToken ct) =>
+        StockCodeForBarcodeAsync(db, tenantId, barcode, ct);
+
     private static Task<bool> StockCardExistsAsync(CentralApiDbContext db, Guid tenantId, string stockCode, CancellationToken ct) =>
         db.MobileRecords.AsNoTracking()
             .AnyAsync(r => r.TenantId == tenantId && r.Entity == "stocks" && r.RecordKey == stockCode && !r.IsDeleted, ct);
@@ -1077,6 +1317,7 @@ public sealed class NativeDocumentProcessor
         public DateTimeOffset Now { get; } = now;
         public Guid? UserId { get; } = userId;
         public string Stamp { get; } = now.ToString("O", CultureInfo.InvariantCulture);
+        public NativeBookingOptions Options { get; init; } = new();
         public Dictionary<string, List<JsonElement>> Sections { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, JsonObject> Customers { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, NativeCustomerBalance> CustomerBalances { get; } = new(StringComparer.OrdinalIgnoreCase);

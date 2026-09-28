@@ -1,0 +1,12 @@
+@* GOAL_PANEL_ERPSIZ E7c/D3: on a company with an ERP the same pages read the ERP's own records, so they say why
+   there is nothing to enter or change here. Shows nothing for a company without an ERP. *@
+@inject PortalSession Session
+
+@if (string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase))
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true" Class="page-alert" id="erp-read-only">@Text</MudAlert>
+}
+
+@code {
+    [Parameter] public string Text { get; set; } = "Bu kayıtlar ERP'den gelir ve orada yönetilir; panelde salt okunurdur.";
+}

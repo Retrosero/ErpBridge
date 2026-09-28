@@ -41,6 +41,7 @@ public static class PortalEndpoints
         group.MapGet("/customers/ledger", CustomerLedgerAsync).WithName("PortalCustomerLedger");
         group.MapGet("/customers/document", CustomerDocumentAsync).WithName("PortalCustomerDocument");
         group.MapGet("/payments", PaymentsAsync).WithName("PortalPayments");
+        group.MapGet("/movements", CompanyMovementsAsync).WithName("PortalCompanyMovements");
         return routes;
     }
 
@@ -334,6 +335,62 @@ public static class PortalEndpoints
         return JsonResults.Ok(PortalLedger.Payments(customers, movements, start, end, kinds, customer, userId,
             externalId => creatorLookup.TryGetValue(externalId, out var uid) ? uid : null, userNames,
             Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize)));
+    }
+
+    /// <summary>
+    /// GOAL_PANEL_ERPSIZ E4e: every customer-side movement of the company (<c>/hareketler</c>) — date range (default this month),
+    /// kinds, customer, user, amount range, cancelled rows on demand, paged. Read-only, the statement's own gate.
+    /// </summary>
+    private static async Task<IResult> CompanyMovementsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        string? from, string? to, string? customer, string[]? kind, Guid? userId, decimal? minAmount, decimal? maxAmount, bool? includeVoided,
+        int? page, int? pageSize, CancellationToken ct)
+    {
+        var (tenant, _, error) = await AuthorizeLedgerAsync(http, db, ct);
+        if (error is not null) return error;
+
+        DateOnly start;
+        if (string.IsNullOrWhiteSpace(from))
+        {
+            var today = PortalReports.BusinessDate(null, DateTimeOffset.UtcNow);
+            start = new DateOnly(today.Year, today.Month, 1);
+        }
+        else if (!TryDay(from, out start)) return BadDate("from");
+        if (!TryDay(to, out var end)) return BadDate("to");
+        if (end < start) return JsonResults.Status(400, new ApiError { ErrorCode = "INVALID_RANGE", Message = "to is before from." });
+        if (minAmount is { } min && maxAmount is { } max && max < min) return BadQuery("maxAmount is below minAmount.");
+
+        var kinds = Values(kind);
+        if (kinds.FirstOrDefault(k => !PortalLedger.Kinds.Contains(k)) is { } unknown)
+            return BadQuery($"kind '{unknown}' is not one of: {string.Join(", ", PortalLedger.Kinds)}.");
+
+        var customers = await PortalLedger.CustomersAsync(db, cache, tenant!.Id, tenant.DataSource, ct);
+        var movements = await PortalLedger.MovementsAsync(db, cache, tenant.Id, ct);
+        var matching = PortalLedger.CompanyMovements(movements, start, end, kinds, customer, minAmount, maxAmount, includeVoided == true);
+
+        var size = Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize);
+        var number = Math.Max(1, page ?? 1);
+        // Who wrote a row comes from its job. Without a user filter only the rows on the page need one; with it, every
+        // matching row does (bounded by the filter's own date range).
+        var reversalAuthors = PortalLedger.ReversalAuthors(movements);
+        var needed = (userId is null ? matching.Skip((number - 1) * size).Take(size) : matching)
+            .Where(m => !reversalAuthors.ContainsKey(m.Id))
+            .Select(m => PortalLedger.ExternalIdOf(m.Id)).Distinct(StringComparer.Ordinal).ToList();
+        var creators = (await db.Jobs.AsNoTracking()
+                .Where(j => j.TenantId == tenant.Id && needed.Contains(j.ExternalId))
+                .Select(j => new { j.ExternalId, j.CreatedByUserId })
+                .ToListAsync(ct))
+            .GroupBy(j => j.ExternalId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().CreatedByUserId, StringComparer.Ordinal);
+        Guid? CreatorOf(PortalLedger.Movement m) =>
+            reversalAuthors.TryGetValue(m.Id, out var voider) ? voider
+            : creators.TryGetValue(PortalLedger.ExternalIdOf(m.Id), out var id) ? id : null;
+        if (userId is { } wanted) matching = matching.Where(m => CreatorOf(m) == wanted).ToList();
+
+        var creatorIds = creators.Values.OfType<Guid>().Concat(reversalAuthors.Values).Distinct().ToList();
+        var userNames = await db.MobileUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenant.Id && creatorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.FullName) ? u.Username : u.FullName, ct);
+        return JsonResults.Ok(PortalLedger.MovementsPage(customers, matching, start, end, CreatorOf, userNames, number, size));
     }
 
     private static async Task<PortalLedger.Customer?> FindCustomerAsync(CentralApiDbContext db, IMemoryCache cache, Tenant tenant, string? code, CancellationToken ct)

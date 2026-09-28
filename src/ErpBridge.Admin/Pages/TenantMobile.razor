@@ -75,6 +75,16 @@ else
 
     <section class="admin-panel seat-panel">
         <div class="admin-panel__header">
+            <div><h2>Ek modüller</h2><p>Ayrı satılan özellikler. Açılan modül telefonlarda bir sonraki oturum yenilemesinde görünür.</p></div>
+        </div>
+        <div class="admin-panel__body seat-form">
+            <label class="seat-check"><input id="module-xml-import" type="checkbox" @bind="_xmlImport" /> <span>XML ürün aktarımı (resim/açıklama; ERP'siz firmada tüm alanlar)</span></label>
+            <button id="modules-save" class="btn btn-outline-primary" @onclick="SaveModulesAsync" disabled="@(_busy || _xmlImport == _overview.Modules.Contains(XmlImportModule))">Kaydet</button>
+        </div>
+    </section>
+
+    <section class="admin-panel seat-panel">
+        <div class="admin-panel__header">
             <div><h2>Ödeme kaydet / koltuk güncelle</h2><p>Her kayıt yeni bir abonelik satırı açar; önceki satırlar geçmişte kalır.</p></div>
         </div>
         <div class="admin-panel__body seat-form">
@@ -334,6 +344,8 @@ else
     private SubscriptionForm _subscription = new();
     private CreateMobileUserRequest _newUser = new() { Role = "ADMIN" };
     private string _dataSource = "erp";
+    private const string XmlImportModule = "xml_import";
+    private bool _xmlImport;
     private ApprovalRequestDto[] _approvals = Array.Empty<ApprovalRequestDto>();
     private string _approvalStatus = "all";
     private string? _approvalsError;
@@ -363,6 +375,7 @@ else
                 ? new SubscriptionForm { EndsAtLocal = DateTime.Today.AddYears(1) }
                 : new SubscriptionForm { Seats = current.Seats, EndsAtLocal = current.EndsAtUtc?.LocalDateTime.Date, Source = current.Source };
             _dataSource = _overview.DataSource;
+            _xmlImport = _overview.Modules.Contains(XmlImportModule);
             // The first user of a company is its administrator; later ones default to field users.
             _newUser = new CreateMobileUserRequest { Role = _overview.Users.Length == 0 ? "ADMIN" : "SALES" };
         }
@@ -426,6 +439,15 @@ else
     private Task SaveDataSourceAsync() =>
         RunAsync(() => Api.SetTenantDataSourceAsync(TenantId, _dataSource),
             _dataSource == "native" ? "Firma ERP'siz kullanıma alındı." : "Firma ERP bağlantılı kullanıma alındı.");
+
+    /// <summary>Sends the whole set: modules not listed are switched off.</summary>
+    private Task SaveModulesAsync()
+    {
+        var modules = _overview!.Modules.Where(m => m != XmlImportModule).ToList();
+        if (_xmlImport) modules.Add(XmlImportModule);
+        return RunAsync(() => Api.SetTenantModulesAsync(TenantId, modules),
+            _xmlImport ? "XML ürün aktarımı açıldı." : "XML ürün aktarımı kapatıldı.");
+    }
 
     private Task CreateUserAsync() =>
         RunAsync(() => Api.CreateMobileUserAsync(TenantId, _newUser), $"{_newUser.Username} kullanıcısı eklendi.");

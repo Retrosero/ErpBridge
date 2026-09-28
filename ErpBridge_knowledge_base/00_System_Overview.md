@@ -402,6 +402,41 @@ registration ayrı bir composition projesine taşınır.
      `stocks`'ta **var olmalı** (kod doğrudan gelse bile), fiyat ve toplam eksi
      olamaz. Telefon kuyruğu `createdAt` sırasıyla gönderdiği için yeni ürünün
      kartı satıştan önce gider.
+   - **Panel yazma yolu (GOAL_PANEL_ERPSIZ, 2026-09-21…25; plan `docs/GOAL_PANEL_ERPSIZ.md`, durum `…_DURUM.md`).** ERP'siz firmanın admini aynı işleyiciye panelden
+     de yazar: `/api/v1/portal/native/*` uçları yalnız ikinci bir kapıdır, ikinci bir yazma motoru değil (D1).
+     Her yazma ucu (ve kart/hareket/barkod okumaları): firma token'dan, yetki `RolePermissions.CanEditNativeData`
+     (yalnız ADMIN + `DataSource=native`, D4; ERP'li firmada 409 `TENANT_IS_NOT_NATIVE`) — evrak listesi/detayı
+     (`GET documents`, `GET documents/{key}`) ise salt okunur, ekstrenin `CanViewLedger` kapısıyla (Yönetici/Muhasebe
+     ve ERP'li firma da okur); `operationId` ile idempotent `externalId`
+     (`PortalNativeWriteHelpers.OperationKey`), işlem kaydı `native_audit_log` (D5). İptal/düzenleme uçları (cari, evrak, sayım)
+     "zaten iptal" kontrolünden **önce** aynı işlemi arar (`ReplayAsync`) — yanıtı kaybolan tekrar 200 alır.
+     Uçlar: kartlar (`stock-cards`, `customer-cards`), `collections`/`disbursements`, `ledger-adjustments`,
+     `ledger/{key}/void|edit`, `sales-orders`/`purchase-receipts`/`sales-returns`, `documents` (liste/detay,
+     `status=all|active|voided`, detayda `paymentType`), `documents/{key}/void|edit`,
+     `stock-cards/{code}/movements`, `stock-counts` ve `stock-counts/{key}/void`, `barcodes/{barcode}` (tam eşleşme),
+     `stock-cards/batch` ve `customer-cards/batch` (dosyadan içe aktarma; telefonun toplu kart belgeleri, ≤ 500 kart/istek, satır
+     numaralı atlananlar; panel CSV/.xlsx'i kendisi okur — `SpreadsheetReader`, ek kütüphane yok).
+   - **Düzeltme = storno (D2/D11).** Defterden/evraktan satır fiziksel silinmez ve üzerine yazılmaz:
+     orijinal yerinde `voided` (+ `voidedByUserId`, `voidedAt`, `voidReason`) işaretlenir, ters kayıt
+     `{orijinal id}|void` anahtarıyla ve `voidsKey` alanıyla eklenir; bakiye/stok ters çevrilir, hepsi tek
+     transaction. Belge türleri: `ledger_void` / `ledger_edit` (yalnız tek başına tahsilat/tediye/düzeltme;
+     `ledger_edit`'in kendi satırı yine düzenlenebilir), `ledger_adjustment` (gerekçe zorunlu),
+     `document_void` (satış/alış/iadenin cari bacakları — anında ödeme dahil — **ve** stok satırları birlikte),
+     `document_edit` (`document_void` + aynı türde düzeltilmiş evrak; düzeltme `-D1`, `-D2`… revizyon
+     numarası alır, çünkü native evrak anahtarı cari + evrak no'dur ve iptal edilen orijinal numarasını
+     korur; dolu numara atlanır/reddedilir), `stock_void` (bir sayımın tüm stok satırları). Ters satırlar
+     evrak satırı sayılmaz (`PortalRecords.ParseLine`) ve ürün hareketlerinde varsayılan olarak gizlidir. Cari
+     ekstresi ve `/portal/movements` ise iptal edilen **orijinali** varsayılan gizler ama **ters kaydı her zaman
+     gösterir** — görünen satırlar bakiyeyi açıklasın diye.
+   - **Panel sayımı** `stock_count`'u yükte bir alanla değil, yalnız güvenilir çağıranın verebildiği iç seçenekle
+     (`NativeBookingOptions(CountAgainstCurrentLevel: true)`, `IngestAsync` parametresi; yükteki böyle bir alan yok sayılır, telefon bu moda geçemez) işler: fark, işleyicide tenant kilidi
+     altında o anki `native_stock_levels`'a göre hesaplanır. Telefonun çevrimdışı sayımı (`expectedQuantity`'ye
+     göre fark, sonradan gelen satış korunur) değişmedi.
+   - **Ürün hareketleri** (`PortalStockMovements`): devir mevcut stoktan geriye yürüyerek bulunur — kartın
+     açılış miktarı hareket değildir — böylece devir + hareketler = `native_stock_levels`.
+   - **PostgreSQL notu:** `mobile_records.PayloadJson` `jsonb`'dir; yükte arama `Contains`/`LIKE` ile değil
+     `EF.Functions.JsonContains` (`@>`) ile yapılır (SQLite testleri bunu yakalayamaz;
+     `NativeDocumentNumberQueryTests` sorgunun Npgsql çevirisini sunucusuz doğrular).
 
 16. **Onay merkezi sunucudadır: `Approvals/ApprovalService` (Faz 38, 2026-09-14).**
    Telefon belleğindeki onay listesinin yerini aldı; firmanın tüm onaycıları aynı
@@ -906,8 +941,9 @@ registration ayrı bir composition projesine taşınır.
      `token=`/`"licenseKey":`/`apiKey:` adlı değerler). Masaüstü telemetri raporlayıcısı da aynı listeyi kullanır; ajan
      tarafında ikinci bir gizli bilgi listesi yazılmaz. `MaskPassword` değeri artık satır sonunda durur (önceden bir
      sonraki satırdaki istisna türünü yutuyordu); tırnaklı değer (`Password="Top;Secret"`) bütün olarak maskelenir.
-   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.1.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
-     (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır.
+   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.2.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
+     (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır. 1.2.0
+     (2026-09-27): alış faturası iskontosu — heartbeat'teki `appVersion` 1.2.0'dan küçük ajan iskontolu alışı yazamaz.
    - **Log Merkezi'ne gönderim (L3c):** ajan kodu tanılama olaylarını `Core/Logging/IAgentLogReporter` ile bildirir;
      olay SQLite'taki `agent_log_outbox`'a yazılır (en çok 1.000 / 7 gün) ve heartbeat turunda `AgentLogUploader`
      en çok 50'lik partiyle `POST /api/v1/agents/logs/batch`'e gönderir. Aynı parmak izli hata 10 dakikada bir
@@ -979,6 +1015,82 @@ registration ayrı bir composition projesine taşınır.
      ister; müşteri veritabanına (`MikroDB_V15_02` vb.) yazan test yazılmaz. Okuma testleri canlı veritabanına bağlanabilir.
    - **Dapper kolon sırası:** okuyucuların positional record'larına kolon eklerken SQL'deki sıra kurucuyla aynı olmalı
      (#95'te `VatRate` sırası canlı okumayı kırdı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma testiyle gelir.
+
+27. **Görevler ve bildirimler merkezdedir: `Tasks/TaskService` + `Endpoints/MobileTaskEndpoints` (GOAL_GOREVLER, 2026-09-25).**
+   - **ERP'ye hiç yazılmaz.** Görev, alt görev, yorum, resim ve bildirim ERP'li ve ERP'siz firmada aynı tablolarda
+     (`TenantId`) tutulur; ajan görmez. Ayrıntı ve kararlar: `docs/GOAL_GOREVLER.md`.
+   - **Yazım işlem partisiyle:** telefon çevrimdışı yaptığını `POST /api/v1/android/tasks/ops` ile gönderir. Her işlemin
+     `opId`'si vardır; `task_ops_applied`'da olan id `duplicate` döner, yeniden uygulanmaz. Reddedilen işlem kendi
+     savepoint'ine geri döner ve partinin geri kalanını durdurmaz (`applied|duplicate|rejected`). Görev ve alt nesne
+     kimliklerini telefon üretir. `ingest/jobs` **kullanılmaz** (her tıklama bir iş satırı açardı).
+   - **Okuma:** `GET tasks?changedSinceSeq` (görünürlük filtreli, `mobile_records`/`sync/pull` değil — kural 12'nin yasağı
+     yeni `/sync/<bölüm>` uçlarıdır; görevler kişiye özel olduğu için onay merkezi gibi kendi ucundadır). Değişiklik
+     numaraları (`tasks.UpdatedSeq`, `user_notifications.Seq`, `task_series.UpdatedSeq`) `tenant_sync_counter`'dan
+     yazan işlem içinde ayrılır (kural 11). Bir kişi görevden çıkarılınca artımlı çekmede görev ona hiç gelmez;
+     telefon ara ara tam çekimle (`changedSinceSeq=0`) yerel kopyayı uzlaştırır.
+   - **Görünürlük/yetki:** ADMIN/MANAGER (`TaskService.CanManage`) her görevi görür ve herkese atar; diğerleri yalnız
+     kendine atar, oluşturduğu/atandığı/takip ettiği/alt görevine atandığı görevi görür. İleri tarihli görev
+     (`StartAtMs`) atanana zamanlayıcı başlatana (`StartNotifiedAtMs`) kadar görünmez. Düzenleme oluşturan veya
+     yönetici; tamamlama/alt görev işaretleme/resim atananlar da. `requiresPhoto` görevi resimsiz tamamlanamaz.
+   - **Bildirim:** `user_notifications` kişi başı gelen kutusu. Atanana `TASK_ASSIGNED`, tamamlanınca oluşturan +
+     takipçilere `TASK_COMPLETED`, yorumda `TASK_COMMENTED`, yeniden açılınca `TASK_REOPENED`, zamanlayıcıdan
+     `TASK_DUE_SOON` (60 dk kala) ve `TASK_OVERDUE`. İşlemi yapana kendi işlemi bildirilmez. Push yoktur: telefon
+     açıkken `GET tasks/events` uzun yoklaması (`TenantEventHub` konu `tasks`, sürüm numarası), kapalıyken kendi
+     15 dk'lık işçisi.
+   - **Resim PostgreSQL'dedir:** `task_attachment_blobs` (bytea); Coolify'da kalıcı disk gerekmez, yedeğe girer.
+     Ham gövde `PUT tasks/{id}/attachments/{attachmentId}`, yalnız JPEG/PNG/WEBP (dosya imzası da denetlenir), ≤ 2 MB,
+     görev başı 10, firma kotası 1 GB (`Tasks:*`). `GET` yalnız görevi gören kullanıcıya, değişmez önbellek başlığıyla.
+   - **Zamanlayıcı:** `Workers/TaskSchedulerWorker` dakikada bir `RunSchedulerAsync`: seri örnekleri (sunucu
+     kapalı kaldıysa birikmiş örnek değil **tek** örnek), ileri tarihli başlangıçlar, bitiş uyarıları, 30 günlük
+     temizlik (silinen görevin resimleri, silinen resimler, eski `opId`'ler). Seri saatleri `Europe/Istanbul`
+     (`TaskSchedule`, saf; testli). Testler zamanlayıcıyı kapatır (`Tasks:SchedulerEnabled=false`) ve kendi saatiyle çağırır.
+   - **Hız sınırı kullanıcı başınadır** (`PerMobileUserRateLimitPolicy`, dk'da 120): firma başı 100'lük ortak bütçeyi
+     ekibin görev yoklaması tüketmesin.
+   - **Cari ziyaretinde hatırlat (S8):** `tasks.VisitReminder` + `VisitReminderFromMs` (null = hemen). Yalnız cariye
+     bağlı görevde açık kalır (`SetVisitReminder`; cari yoksa sunucu kapatır). Seride `task_series.VisitReminder`;
+     her örnek kendi başlangıcından (`runAt`) itibaren hatırlatır. Hatırlatmayı sunucu göndermez: telefon, atanan
+     kişi cariyi satış için açınca gösterir; "sonra tekrar sor" telefonda yereldir (Sipariş Cepte KB kural 34).
+28. **Satılan ek modüller firma bazındadır; XML ürün beslemesi telefonda işlenir: `Endpoints/MobileXmlFeedEndpoints` (XML ürün modülü, 2026-09-26).**
+   - **Modül seti yalnız operatörden:** `tenant_modules` (`TenantId, ModuleKey` birleşik PK). Bilinen anahtarlar tek yerde:
+     `Domain/TenantModules.Known` (şimdilik yalnız `xml_import`). Admin konsolu `/tenants/{id}/mobile` "Ek modüller"
+     paneli → `PUT /api/v1/admin/tenants/{id}/mobile/modules {modules:[…]}` seti **tamamen değiştirir** (204; bilinmeyen
+     anahtar 400 `UNKNOWN_MODULE`, tenant yoksa 404; zaten açık modülün `EnabledAtUtc`'si korunur, `EnabledBy` = admin
+     e-postası). Telefon/panel modülü açamaz. Session (login + `/account/me`) ve konsol overview'ı `modules[]` taşır
+     (sıralı, küçük harf, yoksa boş dizi); telefon satın alınmamış özelliği gizler.
+   - **Besleme ayarı firma geneli:** `tenant_xml_feed_settings` (tenant başına bir satır). `/api/v1/android/xml-feed/config`
+     (`MobileUserPolicy` + firma başı hız sınırı): `GET` firmanın her aktif kullanıcısı; `PUT`/`DELETE` yalnız
+     `RolePermissions.CanManageUsers` (403 `ADMIN_REQUIRED`). Sıra: önce modül (yoksa herkese 403 `MODULE_NOT_ENABLED`),
+     sonra rol, sonra doğrulama (400 `INVALID_XML_FEED_CONFIG`): `url` mutlak http/https ≤ 2048, `recordPath` dolu ≤ 512,
+     `mapping` anahtarları `CODE, IMAGE, DESCRIPTION, BARCODE, TITLE, BRAND, CATEGORY, PRICE, VAT, STOCK` (büyük harf,
+     harfe duyarlı), `CODE` en az bir dolu yol, hedef başı ≤ 10 yol, yol ≤ 256. Boş yollar ve yolsuz kalan hedefler
+     atılır. Satır yokken `GET` `configured=false`, `mapping {}`, `downloadImages=true`, diğerleri false/null döner.
+     `DELETE` idempotent 204.
+   - **ERP'li firmada tam aktarım yok:** `fullImport` yalnız `DataSource = native` ise saklanır; ERP'li firmada telefon ne
+     gönderirse göndersin `false` yazılır — ana veri ERP'nindir, XML yalnız resim/açıklama ekler (Sipariş Cepte
+     `DataEditPolicy`).
+   - **Sunucu beslemeyi indirmez.** URL'yi her telefon kendisi çeker ve kendi yerel veritabanına işler; sunucu yalnız
+     ayarı saklar (SSRF yüzeyi açılmaz, sunucuda XML ayrıştırma yok).
+   - Testler: `XmlFeedModuleRelationalTests`, Admin `TenantMobilePageTests` (modül kutusu).
+29. **SKT (son kullanma tarihi) kayıtları merkezdedir: `Expiry/StockExpiryService` + `Endpoints/MobileExpiryEndpoints` (2026-09-27).**
+   - **Uygulamanın operasyonel verisidir, ERP ana verisi değil.** Kayıt = ürün (`stockCode`, barkod/ad anlık kopyası) +
+     reyon/raf (`location`) + depo + son kullanma tarihi + isteğe bağlı miktar + not + `closed`. Telefonlardan girilir,
+     firmanın bütün telefonları paylaşır; ERP'li ve ERP'siz firmada aynı tablo (`stock_expiry_records`, `TenantId`),
+     **Mikro'ya hiç yazılmaz**, ajan görmez, `DataEditPolicy`'ye takılmaz. Miktar bilgi amaçlıdır: satış düşmez,
+     raf bitince kayıt kapatılır (`closed`). Modül/rol kapısı yok: firmanın her aktif kullanıcısı okur ve yazar.
+     Panel ekranı yok.
+   - **Yazım görevlerle aynı işlem partisidir** (kural 27): `POST /api/v1/android/expiry/ops` `{ops:[{opId, type:
+     upsert|delete, record}]}` ≤ 200 (fazlası 400 `EXPIRY_BATCH_TOO_LARGE`). `stock_expiry_ops_applied`'da olan
+     `opId` `duplicate`; reddedilen işlem kendi savepoint'ine döner, partiyi durdurmaz. `upsert` yoksa açar
+     (oluşturan yalnız burada), varsa tüm alanları yazar (son yazan kazanır). `delete` yumuşak silmedir; silinmiş
+     kayıt yeniden düzenlenmez (`EXPIRY_NOT_FOUND`), ikinci silme `applied` ama değişiklik değildir. Kimliği telefon
+     üretir ve **tüm firmalar arasında tekildir** (PK); başka firmanın kimliği `EXPIRY_NOT_FOUND`.
+   - **Okuma:** `GET /api/v1/android/expiry?changedSinceSeq&take` (varsayılan 500, en çok 1000), silinenler
+     `deleted=true` ile gelir. `UpdatedSeq` `tenant_sync_counter`'dan yazan işlem içinde ayrılır (kural 11); `upsert`
+     sayacı kaydı aramadan **önce** alır, böylece aynı yeni kimliği açan iki telefon kilitte sıraya girer, PK'da
+     çakışmaz. Kendi ucundadır (`sync/pull` değil): kayıtlar ERP şeklinde değil, telefonun yazdığı veridir.
+   - Doğrulama tek yerde (`EXPIRY_INVALID`, Türkçe mesaj alanı adlandırır); sözleşme `docs/api-contracts.md`.
+     Testler: `ExpiryRelationalTests` (SQLite, uçlar), `StockExpiryServiceTests` (bellek içi, doğrulama).
+     `stock_expiry_ops_applied` henüz temizlenmiyor (`AppliedAtMs` indeksi hazır).
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

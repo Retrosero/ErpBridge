@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -41,6 +41,11 @@ public sealed class PortalNativeDocumentVoidRelationalTests : IClassFixture<Sqli
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         (await StockAsync(c.Id, "CAY-1")).Should().Be(40m, "the sale's stock effect is reversed");
         (await BalanceAsync(c.Id, "C-001")).Should().Be(0m, "the sale's debit is reversed");
+
+        var detail = await GetJsonAsync<PortalDocumentResponse>(c.Patron, $"/api/v1/portal/native/documents/{Uri.EscapeDataString(key)}");
+        detail.Voided.Should().BeTrue();
+        detail.Lines.Should().ContainSingle("the reversing line is not one of the document's own lines")
+            .Which.Quantity.Should().Be(3m);
 
         var ledger = await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001&includeVoided=true");
         ledger.Items.Should().HaveCount(2)
@@ -199,6 +204,26 @@ public sealed class PortalNativeDocumentVoidRelationalTests : IClassFixture<Sqli
 
         var history = await GetJsonAsync<PortalAuditResponse>(c.Patron, "/api/v1/portal/native/audit?entity=sale&key=C-001");
         history.Items.Should().Contain(i => i.Action == "void" && i.Summary.Contains("Satış") && i.Summary.Contains("Yanlış girildi"));
+    }
+
+    [Fact]
+    public async Task A_very_long_reason_still_books_once_and_its_audit_summary_fits_the_column()
+    {
+        var c = await CompanyAsync();
+        await SeedProductAsync(c, "CAY-1", 10);
+        await SeedCustomerAsync(c, "C-001", 0m);
+        (await PostAsync(c, "sales-orders", new { partyCode = "C-001", lines = new[] { new { productCode = "CAY-1", quantity = 1, unitPrice = 150 } } }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var key = await DocumentKeyAsync(c);
+
+        var response = await VoidAsync(c, key, new string('x', 900));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created, "the audit row is written after the booking; an over-long summary must not turn it into an error");
+        (await response.ReadAsJsonAsync<IngestJobResponse>()).Idempotent.Should().BeFalse();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        var entry = await db.NativeAuditLogEntries.AsNoTracking().SingleAsync(e => e.TenantId == c.Id && e.Action == "void");
+        entry.Summary.Length.Should().BeLessThanOrEqualTo(500);
     }
 
     // ---- setup ------------------------------------------------------------------------

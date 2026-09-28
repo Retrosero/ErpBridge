@@ -1,4 +1,4 @@
-namespace ErpBridge.CentralApi.Contracts;
+﻿namespace ErpBridge.CentralApi.Contracts;
 
 /// <summary>A count of documents and their total amount.</summary>
 public sealed class PortalMoneyLine
@@ -318,6 +318,47 @@ public sealed class PortalNativeDocumentRequest
     public string? OperationId { get; set; }
 }
 
+/// <summary>Body of <c>POST /api/v1/portal/native/stock-cards/batch</c> (GOAL_PANEL_ERPSIZ E1d): one part of an imported file.</summary>
+public sealed class PortalStockCardBatchRequest
+{
+    public List<PortalStockCardRequest> Cards { get; set; } = [];
+
+    /// <summary>The file row of <c>Cards[0]</c>; skipped rows are reported by file row.</summary>
+    public int FirstRow { get; set; } = 1;
+
+    /// <summary>Each card's own file row, when the caller left rows out (same length as <see cref="Cards"/>); overrides <see cref="FirstRow"/>.</summary>
+    public List<int>? Rows { get; set; }
+    public string? OperationId { get; set; }
+}
+
+/// <summary>Body of <c>POST /api/v1/portal/native/customer-cards/batch</c> (GOAL_PANEL_ERPSIZ E2c).</summary>
+public sealed class PortalCustomerCardBatchRequest
+{
+    public List<PortalCustomerCardRequest> Cards { get; set; } = [];
+    public int FirstRow { get; set; } = 1;
+    public List<int>? Rows { get; set; }
+    public string? OperationId { get; set; }
+}
+
+/// <summary>A row an import left out, and why.</summary>
+public sealed class PortalCardBatchSkip
+{
+    public int Row { get; set; }
+
+    /// <summary>CODE_REQUIRED, CODE_TOO_LONG, NAME_REQUIRED, DUPLICATE_CODE, DUPLICATE_BARCODE, BARCODE_IN_USE, REJECTED (the processor's; see <see cref="Message"/>).</summary>
+    public string Reason { get; set; } = string.Empty;
+    public string? Message { get; set; }
+}
+
+/// <summary>Answer of the card import endpoints: how many cards were booked and which rows were left out.</summary>
+public sealed class PortalCardBatchResponse
+{
+    public Guid? JobId { get; set; }
+    public int Booked { get; set; }
+    public List<PortalCardBatchSkip> Skipped { get; set; } = [];
+    public bool Idempotent { get; set; }
+}
+
 /// <summary>GET /api/v1/portal/native/stock-cards/{code} — fills the edit form with the card's current fields.</summary>
 public sealed class PortalStockCardDetail
 {
@@ -334,6 +375,70 @@ public sealed class PortalStockCardDetail
     public List<PortalStockPrice> Prices { get; set; } = [];
     public decimal Quantity { get; set; }
     public string? LastMovementDate { get; set; }
+}
+
+/// <summary>One row of GET /api/v1/portal/native/stock-cards/{code}/movements (GOAL_PANEL_ERPSIZ E6a).</summary>
+public sealed class PortalStockMovementRow
+{
+    public string Id { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+
+    /// <summary>sale, purchase, sale_return, count, void (a cancelled line's reversal), other.</summary>
+    public string Kind { get; set; } = "other";
+    public string? DocumentNo { get; set; }
+
+    /// <summary>The customer/supplier of the document the line belongs to, when it has one.</summary>
+    public string? CustomerCode { get; set; }
+    public string? Description { get; set; }
+    public decimal In { get; set; }
+    public decimal Out { get; set; }
+
+    /// <summary>The product's stock after this line (yürüyen stok).</summary>
+    public decimal Balance { get; set; }
+    public bool Voided { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/native/stock-cards/{code}/movements — one product's movements, newest first.</summary>
+public sealed class PortalStockMovementsResponse
+{
+    public string StockCode { get; set; } = string.Empty;
+    public string? From { get; set; }
+    public string? To { get; set; }
+
+    /// <summary>Stock before the first line shown (devir): with no start date, what the product had before any movement.</summary>
+    public decimal Opening { get; set; }
+    public decimal Closing { get; set; }
+    public decimal TotalIn { get; set; }
+    public decimal TotalOut { get; set; }
+    public List<PortalStockMovementRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}
+
+/// <summary>One line of <c>POST /api/v1/portal/native/stock-counts</c> (GOAL_PANEL_ERPSIZ E6b).</summary>
+public sealed class PortalStockCountLine
+{
+    public string ProductCode { get; set; } = string.Empty;
+    public decimal CountedQuantity { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/stock-counts</c> (GOAL_PANEL_ERPSIZ E6b): what was counted. The difference
+/// is taken against the stock the server holds when the count books, so a sale booked meanwhile is not lost.
+/// </summary>
+public sealed class PortalStockCountRequest
+{
+    public List<PortalStockCountLine> Lines { get; set; } = [];
+
+    /// <summary>Why the stock is corrected (yıl sonu sayımı, fire, kırık…) — mandatory.</summary>
+    public string? Reason { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>; defaults to today when absent.</summary>
+    public string? OccurredAt { get; set; }
+    public string? DocumentNo { get; set; }
+    public string? OperationId { get; set; }
 }
 
 public sealed class PortalNamedNumber
@@ -533,6 +638,50 @@ public sealed class PortalDocumentResponse
 
     /// <summary>GOAL_PANEL_ERPSIZ E5c — whether <c>document_void</c> already cancelled this document.</summary>
     public bool Voided { get; set; }
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5e — how a native document was settled on the spot (its immediate-payment leg's
+    /// <c>paymentType</c>: Nakit, Kredi Kartı…); null for an open-account document or an ERP invoice.</summary>
+    public string? PaymentType { get; set; }
+}
+
+/// <summary>One row of GET /api/v1/portal/movements (GOAL_PANEL_ERPSIZ E4e): any customer-side movement of the company.</summary>
+public sealed class PortalMovementRow
+{
+    public string Id { get; set; } = string.Empty;
+    public string Date { get; set; } = string.Empty;
+    public string CustomerCode { get; set; } = string.Empty;
+    public string CustomerTitle { get; set; } = string.Empty;
+
+    /// <summary>sale, sale_return, purchase, purchase_return, collection, payment, other.</summary>
+    public string Kind { get; set; } = "other";
+
+    /// <summary>The source's own type for an "other" row (Düzeltme, İptal: Satış…).</summary>
+    public string? SourceType { get; set; }
+    public string? DocumentNo { get; set; }
+
+    /// <summary>Set for a sale/purchase/return invoice: opens it (<c>/evraklar?belge=</c>).</summary>
+    public string? DocumentKey { get; set; }
+    public string? Description { get; set; }
+    public string? PaymentType { get; set; }
+    public decimal Debit { get; set; }
+    public decimal Credit { get; set; }
+    public Guid? UserId { get; set; }
+    public string? UserName { get; set; }
+    public bool Voided { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>GET /api/v1/portal/movements — the company's movements in a date range, newest first.</summary>
+public sealed class PortalMovementsResponse
+{
+    public string From { get; set; } = string.Empty;
+    public string To { get; set; } = string.Empty;
+    public List<PortalMovementRow> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public decimal TotalDebit { get; set; }
+    public decimal TotalCredit { get; set; }
 }
 
 /// <summary>Body of <c>POST /api/v1/portal/native/documents/{key}/void</c> (GOAL_PANEL_ERPSIZ E5c) —
@@ -541,6 +690,30 @@ public sealed class PortalDocumentResponse
 public sealed class PortalDocumentVoidRequest
 {
     public string? Reason { get; set; }
+    public string? OperationId { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST /api/v1/portal/native/documents/{key}/edit</c> (GOAL_PANEL_ERPSIZ E5d, D11): the whole
+/// corrected document — the same fields as <see cref="PortalNativeDocumentRequest"/> — plus why the original
+/// is being corrected. The document keeps its kind; <see cref="PartyCode"/> defaults to the original's party
+/// and <see cref="OccurredAt"/> to the original's date. <see cref="DocumentNo"/> left empty (or equal to the
+/// original's) gives the correction a revision number (<c>A-1</c> → <c>A-1-D1</c>).
+/// </summary>
+public sealed class PortalDocumentEditRequest
+{
+    public string? PartyCode { get; set; }
+    public List<PortalNativeDocumentLineRequest> Lines { get; set; } = [];
+    public decimal? Amount { get; set; }
+    public string? PaymentType { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>; defaults to the original document's date when absent.</summary>
+    public string? OccurredAt { get; set; }
+    public string? Description { get; set; }
+    public string? DocumentNo { get; set; }
+
+    /// <summary>Why the original is being corrected — mandatory, the same as a plain void's reason.</summary>
+    public string? VoidReason { get; set; }
     public string? OperationId { get; set; }
 }
 
@@ -560,6 +733,9 @@ public sealed class PortalDocumentRow
     public decimal Amount { get; set; }
     public Guid? UserId { get; set; }
     public string? UserName { get; set; }
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5e — cancelled by <c>document_void</c> (or replaced by <c>document_edit</c>).</summary>
+    public bool Voided { get; set; }
 }
 
 /// <summary>GET /api/v1/portal/native/documents — company-wide sale/purchase/return invoices (GOAL_PANEL_ERPSIZ E5b).</summary>

@@ -34,6 +34,10 @@ public static class AdminMobileSeatsEndpoints
         group.MapDelete("/users/{userId:guid}", DeleteUserAsync).WithName("AdminMobileDeleteUser");
         group.MapPatch("/devices/{deviceId:guid}", UpdateDeviceAsync).WithName("AdminMobileUpdateDevice");
         group.MapPut("/data-source", SetDataSourceAsync).WithName("AdminMobileSetDataSource");
+        group.MapPut("/modules", SetModulesAsync).WithName("AdminMobileSetModules")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ApiError>(StatusCodes.Status404NotFound);
         group.MapGet("/approvals", ApprovalsAsync).WithName("AdminMobileApprovals");
         return routes;
     }
@@ -77,6 +81,7 @@ public static class AdminMobileSeatsEndpoints
             TenantCode = tenant.Code,
             DataSource = tenant.DataSource,
             ApprovalRules = MobileApprovalEndpoints.RulesDto(await ErpBridge.CentralApi.Approvals.ApprovalService.RulesAsync(db, tenantId, ct), viewer: null),
+            Modules = await MobileXmlFeedEndpoints.ModulesAsync(db, tenantId, ct),
             Seats = await seats.GetUsageAsync(tenantId, ct),
             Subscriptions = subscriptions.Select(ToDto).ToArray(),
             Users = users.Select(MobileAccountEndpoints.ToDto).ToArray(),
@@ -131,6 +136,32 @@ public static class AdminMobileSeatsEndpoints
         if (device is null)
             return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "DEVICE_NOT_FOUND", Message = "Device not found." });
         device.IsActive = isActive;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Replaces the company's sellable add-ons. Modules are sold outside the app, so only the
+    /// operator switches them; keys already on keep their original enable date.
+    /// </summary>
+    private static async Task<IResult> SetModulesAsync(Guid tenantId, HttpContext http, [FromBody] SetTenantModulesRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        if (body?.Modules is null) return BadBody();
+        var wanted = body.Modules.Select(m => m?.Trim().ToLowerInvariant() ?? string.Empty).Distinct(StringComparer.Ordinal).ToList();
+        if (wanted.FirstOrDefault(m => !TenantModules.Known.Contains(m)) is { } unknown)
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "UNKNOWN_MODULE", Message = $"Unknown module '{unknown}'." });
+        if (!await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId, ct)) return TenantNotFound();
+
+        string? enabledBy = null;
+        if (Guid.TryParse(http.User.FindFirstValue("sub"), out var adminId))
+            enabledBy = await db.AdminUsers.AsNoTracking().Where(a => a.Id == adminId).Select(a => a.Email).FirstOrDefaultAsync(ct);
+        // Audit only: an admin email may be longer (255) than the column (128).
+        if (enabledBy is { Length: > TenantModule.EnabledByMaxLength }) enabledBy = enabledBy[..TenantModule.EnabledByMaxLength];
+        var existing = await db.TenantModules.Where(m => m.TenantId == tenantId).ToListAsync(ct);
+        db.TenantModules.RemoveRange(existing.Where(m => !wanted.Contains(m.ModuleKey)));
+        var now = DateTimeOffset.UtcNow;
+        foreach (var key in wanted.Where(k => existing.All(m => m.ModuleKey != k)))
+            db.TenantModules.Add(new TenantModule { TenantId = tenantId, ModuleKey = key, EnabledAtUtc = now, EnabledBy = enabledBy });
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }

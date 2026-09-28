@@ -71,6 +71,26 @@ public sealed class PortalCustomerLedgerEditTests : PortalPageTestContext
     }
 
     [Fact]
+    public void An_erp_company_reads_why_the_statement_has_no_actions()
+    {
+        Setup([Row("c1|collection", "collection", null, 0, 300, editable: false)], dataSource: "erp");
+        var cut = Render<Cari>();
+
+        cut.WaitForAssertion(() => cut.Find("#erp-read-only").TextContent.Should().Contain("ERP'de yapılır"));
+        cut.FindAll("#customer-collect").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_native_company_sees_no_erp_note_on_the_statement()
+    {
+        Setup([Row("c1|collection", "collection", null, 0, 300, editable: true)]);
+        var cut = Render<Cari>();
+
+        cut.WaitForAssertion(() => cut.Find("#customer-collect"));
+        cut.FindAll("#erp-read-only").Should().BeEmpty();
+    }
+
+    [Fact]
     public void A_voided_movement_reads_struck_through_with_its_reason()
     {
         Setup([Row("c1|collection", "collection", null, 0, 300, editable: false, voided: true, reason: "Yanlış girildi")]);
@@ -107,6 +127,31 @@ public sealed class PortalCustomerLedgerEditTests : PortalPageTestContext
         cut.Find("#page-notice").TextContent.Should().Contain("iptal edildi");
         var sent = api.Requests.Single(r => r.Method == HttpMethod.Post && r.PathAndQuery.Contains("/void"));
         JsonDocument.Parse(sent.Body!).RootElement.GetProperty("reason").GetString().Should().Be("Yanlış girildi");
+    }
+
+    [Fact]
+    public void A_void_retried_after_a_lost_answer_reuses_its_operation_id()
+    {
+        var (api, _) = Setup([Row("c1|collection", "collection", null, 0, 300, editable: true)]);
+        var cut = Render<Cari>();
+        cut.WaitForAssertion(() => cut.Find("[data-action='void']"));
+        cut.Find("[data-action='void']").Click();
+        cut.WaitForAssertion(() => cut.Find("#void-reason"));
+        cut.Find("#void-reason").Change("Yanlış girildi");
+        api.Fail("/api/v1/portal/native/ledger/c1%7Ccollection/void", System.Net.HttpStatusCode.GatewayTimeout, "UPSTREAM_TIMEOUT");
+        cut.Find("#void-confirm").Click();
+        cut.WaitForAssertion(() => cut.Find("#page-error"));
+
+        api.Answer("/api/v1/portal/native/ledger/c1%7Ccollection/void", new { jobId = Guid.NewGuid(), status = "Succeeded", idempotent = true });
+        api.Answer(DefaultQuery, Ledger());
+        api.Answer(Customers + "/card?code=C-001", Card(1000m));
+        cut.Find("#void-confirm").Click();
+
+        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Contain("iptal edildi"));
+        var ids = api.Requests.Where(r => r.Method == HttpMethod.Post && r.PathAndQuery.EndsWith("/void"))
+            .Select(r => JsonDocument.Parse(r.Body!).RootElement.GetProperty("operationId").GetString()).ToList();
+        ids.Should().HaveCount(2);
+        ids.Distinct().Should().ContainSingle("the retry replays the same operation");
     }
 
     [Fact]

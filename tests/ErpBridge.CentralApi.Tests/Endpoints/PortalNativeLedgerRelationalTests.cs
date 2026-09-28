@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -227,6 +227,31 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
     }
 
     [Fact]
+    public async Task An_edited_entry_is_itself_editable_and_voidable()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+        (await PostAsync(c, "collections", new { customerCode = "C-001", amount = 300, paymentType = "Nakit" })).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await EditAsync(c, await LedgerKeyAsync(c.Id, "collection"), new { amount = 500, voidReason = "Birinci düzeltme" }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var edited = (await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001"))
+            .Items.Single(i => i.Kind == "collection" && i.Credit == 500m);
+        edited.Editable.Should().BeTrue("the corrected collection is a standalone collection again");
+
+        (await EditAsync(c, edited.Id, new { amount = 450, voidReason = "İkinci düzeltme" })).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(550m);
+        var second = (await GetJsonAsync<PortalLedgerResponse>(c.Patron, "/api/v1/portal/customers/ledger?code=C-001"))
+            .Items.Single(i => i.Kind == "collection" && i.Credit == 450m);
+        (await VoidAsync(c, second.Id, "Tümden iptal")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1000m);
+
+        // Every step stays in the collection's own history, not under "ledger_edit" (Codex #187).
+        var history = await GetJsonAsync<PortalAuditResponse>(c.Patron, "/api/v1/portal/native/audit?entity=collection&key=C-001");
+        history.Items.Should().Contain(i => i.Action == "edit" && i.Summary.Contains("Tahsilat") && i.Summary.Contains("İkinci düzeltme"))
+            .And.Contain(i => i.Action == "void" && i.Summary.Contains("Tahsilat") && i.Summary.Contains("Tümden iptal"));
+    }
+
+    [Fact]
     public async Task Editing_a_manual_adjustment_can_change_its_debit_credit_direction()
     {
         var c = await CompanyAsync();
@@ -312,6 +337,33 @@ public sealed class PortalNativeLedgerRelationalTests : IClassFixture<SqliteCent
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", c.Manager);
         (await _factory.CreateClient().SendAsync(request)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task A_retried_void_or_edit_whose_response_was_lost_gets_the_idempotent_200_not_already_voided()
+    {
+        var c = await CompanyAsync();
+        await SeedCustomerAsync(c, "C-001", 1000m);
+        await PostAsync(c, "collections", new { customerCode = "C-001", amount = 300 });
+        await PostAsync(c, "disbursements", new { customerCode = "C-001", amount = 100 });
+        var collection = await LedgerKeyAsync(c.Id, "collection");
+        var disbursement = await LedgerKeyAsync(c.Id, "disbursement");
+        var voidPath = $"/api/v1/portal/native/ledger/{Uri.EscapeDataString(collection)}/void";
+        var voidBody = new { reason = "Mükerrer", operationId = "op-void-1" };
+        var edit = new { amount = 150, voidReason = "Yanlış tutar", operationId = "op-edit-1" };
+
+        (await _factory.CreateClient().PostJsonAsync(voidPath, voidBody, c.Patron)).StatusCode.Should().Be(HttpStatusCode.Created);
+        var voidRetry = await _factory.CreateClient().PostJsonAsync(voidPath, voidBody, c.Patron);
+        (await EditAsync(c, disbursement, edit)).StatusCode.Should().Be(HttpStatusCode.Created);
+        var editRetry = await EditAsync(c, disbursement, edit);
+        var otherVoid = await _factory.CreateClient().PostJsonAsync(voidPath, new { reason = "Yine", operationId = "op-void-2" }, c.Patron);
+
+        voidRetry.StatusCode.Should().Be(HttpStatusCode.OK, await voidRetry.Content.ReadAsStringAsync());
+        (await voidRetry.ReadAsJsonAsync<IngestJobResponse>()).Idempotent.Should().BeTrue();
+        editRetry.StatusCode.Should().Be(HttpStatusCode.OK, await editRetry.Content.ReadAsStringAsync());
+        (await editRetry.ReadAsJsonAsync<IngestJobResponse>()).Idempotent.Should().BeTrue();
+        otherVoid.StatusCode.Should().Be(HttpStatusCode.Conflict, "a new operation on a cancelled entry is still refused");
+        (await BalanceAsync(c.Id, "C-001")).Should().Be(1150m, "1000 − 300 + 300 (void) + 150 (corrected disbursement); the retries booked nothing");
     }
 
     // ---- setup ------------------------------------------------------------------------

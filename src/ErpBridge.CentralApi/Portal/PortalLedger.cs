@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
@@ -445,6 +445,13 @@ public static class PortalLedger
     private static PortalDocumentResponse BuildDocumentResponse(string customerCode, string customerTitle, Movement movement, Movements movements, string documentKey)
     {
         var lines = movements.LinesByDocument.TryGetValue(documentKey, out var found) ? found : [];
+        // A native document settled on the spot booked its payment leg under the same job (E5e: the edit form and
+        // the printout show it). An ERP invoice's rows share no job id, so this finds nothing there.
+        var jobId = ExternalIdOf(movement.Id);
+        var paymentLeg = movement.DocumentKey is not null && movements.ByCustomer.TryGetValue(customerCode, out var own)
+            ? own.FirstOrDefault(m => !ReferenceEquals(m, movement) && PaymentKinds.Contains(m.Kind) && m.Id.Contains('|')
+                                      && string.Equals(ExternalIdOf(m.Id), jobId, StringComparison.Ordinal))
+            : null;
         return new PortalDocumentResponse
         {
             Id = movement.Id,
@@ -457,6 +464,7 @@ public static class PortalLedger
             Description = movement.Description,
             Amount = movement.Debit + movement.Credit,
             Voided = movement.Voided,
+            PaymentType = paymentLeg?.PaymentType,
             LinesAvailable = lines.Count > 0,
             Lines = lines.Select(l => new PortalDocumentLine
             {
@@ -475,6 +483,82 @@ public static class PortalLedger
     private static readonly string[] PaymentKinds = ["collection", "payment"];
 
     /// <summary>
+    /// Every customer-side movement of the company in a date range, any kind (GOAL_PANEL_ERPSIZ E4e's <c>/hareketler</c>), newest
+    /// first — the same rows each customer's statement shows (<see cref="Movement.CustomerSide"/>; a cancelled row only when
+    /// <paramref name="includeVoided"/>, its reversal always, as the statement does). The user filter needs each row's job and
+    /// is applied by the caller, which also resolves the creators only for the rows it shows (<see cref="MovementsPage"/>).
+    /// </summary>
+    public static List<Movement> CompanyMovements(
+        Movements movements, DateOnly from, DateOnly to, IReadOnlyCollection<string> kinds, string? customerCode,
+        decimal? minAmount, decimal? maxAmount, bool includeVoided)
+    {
+        var start = from.ToDateTime(TimeOnly.MinValue);
+        var endExclusive = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var code = customerCode?.Trim();
+        return movements.ByCustomer.Values
+            .SelectMany(list => list)
+            .Where(m => m.CustomerSide && m.Date >= start && m.Date < endExclusive)
+            .Where(m => kinds.Count == 0 || kinds.Contains(m.Kind))
+            .Where(m => code is null || string.Equals(m.Customer, code, StringComparison.OrdinalIgnoreCase))
+            .Where(m => includeVoided || !m.Voided)
+            .Where(m => (minAmount is null || m.Debit + m.Credit >= minAmount) && (maxAmount is null || m.Debit + m.Credit <= maxAmount))
+            .OrderByDescending(m => m.Date).ThenByDescending(m => m.Id, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Who cancelled each voided movement, keyed by the reversal's own id (<c>{original}|void</c>): a reversal has no job of its own
+    /// to name its writer, the original row records who voided it (Codex #200).
+    /// </summary>
+    public static Dictionary<string, Guid> ReversalAuthors(Movements movements) =>
+        movements.ByCustomer.Values.SelectMany(list => list)
+            .Where(m => m.Voided && m.VoidedByUserId is not null)
+            .GroupBy(m => m.Id + "|void", StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().VoidedByUserId!.Value, StringComparer.Ordinal);
+
+    /// <summary>One page of <see cref="CompanyMovements"/>, with the totals of all of them.</summary>
+    public static PortalMovementsResponse MovementsPage(
+        IReadOnlyDictionary<string, Customer> customers, List<Movement> matching, DateOnly from, DateOnly to,
+        Func<Movement, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+    {
+        var items = matching.Skip((page - 1) * pageSize).Take(pageSize).Select(m =>
+        {
+            var creator = creatorOf(m);
+            return new PortalMovementRow
+            {
+                Id = m.Id,
+                Date = m.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                CustomerCode = m.Customer,
+                CustomerTitle = customers.TryGetValue(m.Customer, out var customer) ? customer.Title : m.Customer,
+                Kind = m.Kind,
+                SourceType = m.SourceType,
+                DocumentNo = m.DocumentNo,
+                DocumentKey = m.DocumentKey,
+                Description = m.Description,
+                PaymentType = m.PaymentType,
+                Debit = m.Debit,
+                Credit = m.Credit,
+                UserId = creator,
+                UserName = creator is { } id && userNames.TryGetValue(id, out var name) ? name : null,
+                Voided = m.Voided,
+                Reason = m.VoidReason,
+            };
+        }).ToList();
+
+        return new PortalMovementsResponse
+        {
+            From = from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            To = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Items = items,
+            Total = matching.Count,
+            Page = page,
+            PageSize = pageSize,
+            TotalDebit = matching.Sum(m => m.Debit),
+            TotalCredit = matching.Sum(m => m.Credit),
+        };
+    }
+
+    /// <summary>
     /// Every sale/purchase/return invoice across the company, any customer/supplier (GOAL_PANEL_ERPSIZ
     /// E5b) — the line-carrying kinds, i.e. exactly <see cref="DocumentKinds"/>. Same shape as E3c's
     /// <see cref="Payments"/>: a caller-resolved job lookup for the creator, everything else already
@@ -483,7 +567,7 @@ public static class PortalLedger
     public static PortalDocumentsResponse Documents(
         IReadOnlyDictionary<string, Customer> customers, Movements movements, DateOnly from, DateOnly to,
         IReadOnlyCollection<string> kinds, string? customerCode, Guid? userId,
-        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize)
+        Func<string, Guid?> creatorOf, IReadOnlyDictionary<Guid, string> userNames, int page, int pageSize, bool? voided = null)
     {
         var wanted = kinds.Count > 0 ? kinds : DocumentKinds;
         var start = from.ToDateTime(TimeOnly.MinValue);
@@ -494,6 +578,7 @@ public static class PortalLedger
             .SelectMany(list => list)
             .Where(m => !m.Closed && m.DocumentKey is not null && wanted.Contains(m.Kind) && m.Date >= start && m.Date < endExclusive)
             .Where(m => code is null || string.Equals(m.Customer, code, StringComparison.OrdinalIgnoreCase))
+            .Where(m => voided is null || m.Voided == voided)
             .ToList();
         if (userId is { } wantedUser)
             matching = matching.Where(m => creatorOf(ExternalIdOf(m.Id)) == wantedUser).ToList();
@@ -514,6 +599,7 @@ public static class PortalLedger
                 Amount = m.Debit + m.Credit,
                 UserId = creator,
                 UserName = creator is { } id && userNames.TryGetValue(id, out var name) ? name : null,
+                Voided = m.Voided,
             };
         }).ToList();
 

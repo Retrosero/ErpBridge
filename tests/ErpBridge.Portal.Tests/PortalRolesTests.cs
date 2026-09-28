@@ -216,9 +216,28 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         var cut = RenderLayout();
 
         cut.FindAll("#portal-nav a").Select(a => a.GetAttribute("href"))
-            .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "cariler", "stok", "tahsilatlar", "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "denetim");
+            .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "cariler", "stok", "tahsilatlar", "evraklar", "hareketler",
+                "evraklar?yeni=sale", "evraklar?yeni=purchase", "evraklar?yeni=sale_return", "stok/sayim",
+                "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "denetim");
         cut.Find("#user-roles").TextContent.Should().Be("Admin · Muhasebe");
         cut.Find("#session-scope").TextContent.Should().Contain("sekmeye özeldir");
+    }
+
+    /// <summary>
+    /// The account menu opens through MudBlazor's popover, asynchronously; bUnit's one-second default wait was
+    /// too short on a loaded CI runner and failed unrelated pull requests (#187, 2026-09-25).
+    /// </summary>
+    private static readonly TimeSpan MenuTimeout = TimeSpan.FromSeconds(10);
+
+    [Fact]
+    public void An_erp_company_admin_has_no_quick_entry_links()
+    {
+        PortalTestSetup.Register(this, signedIn: PortalTestSetup.State() with { DataSource = "erp" }, popoverProvider: false);
+
+        var cut = RenderLayout();
+
+        cut.FindAll("#portal-nav a").Select(a => a.GetAttribute("href")).Should().NotContain(h => h!.StartsWith("evraklar?yeni") || h == "stok/sayim",
+            "an ERP company enters documents in its ERP (GOAL_PANEL_ERPSIZ E7c/D3)");
     }
 
     [Fact]
@@ -234,7 +253,7 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         cut.Find("#account-menu").TagName.Should().Be("BUTTON");
         cut.Find("#account-menu").GetAttribute("type").Should().Be("button");
         cut.Find("#account-menu").Click();
-        cut.WaitForElement("#logout").Click();
+        cut.WaitForElement("#logout", MenuTimeout).Click();
 
         storage.Stored.Should().BeNull();
         session.IsSignedIn.Should().BeFalse();
@@ -250,8 +269,8 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         var cut = RenderLayout();
 
         cut.Find("#account-menu").Click();
-        cut.WaitForElement("#logout").Click();
-        cut.WaitForAssertion(() => session.IsSignedIn.Should().BeFalse());
+        cut.WaitForElement("#logout", MenuTimeout).Click();
+        cut.WaitForAssertion(() => session.IsSignedIn.Should().BeFalse(), MenuTimeout);
         session.IsSignedIn.Should().BeFalse();
         nav.Uri.Should().EndWith("/login");
     }

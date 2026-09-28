@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -104,6 +104,18 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
             ("entity", entity), ("key", entityKey), ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
             ("userId", userId?.ToString()), ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
 
+    /// <summary>GOAL_PANEL_ERPSIZ E4e — every customer-side movement of the company; <paramref name="kinds"/> empty means all.</summary>
+    public Task<CompanyMovementsResponse> CompanyMovementsAsync(
+        DateOnly? from, DateOnly? to, IEnumerable<string> kinds, string? customer, Guid? userId, decimal? minAmount, decimal? maxAmount,
+        bool includeVoided, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<CompanyMovementsResponse>("api/v1/portal/movements" + Query(
+            [("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+             .. kinds.Select(k => ("kind", (string?)k)),
+             ("customer", customer), ("userId", userId?.ToString()),
+             ("minAmount", minAmount?.ToString(CultureInfo.InvariantCulture)), ("maxAmount", maxAmount?.ToString(CultureInfo.InvariantCulture)),
+             ("includeVoided", includeVoided ? "true" : null),
+             ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
+
     /// <summary>Company-wide collections/payments (GOAL_PANEL_ERPSIZ E3c); <paramref name="kinds"/> empty means both.</summary>
     public Task<PaymentsResponse> PaymentsAsync(
         DateOnly? from, DateOnly? to, IEnumerable<string> kinds, string? customer, Guid? userId, int page, int pageSize, CancellationToken ct = default) =>
@@ -123,6 +135,32 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     /// for the edit form — the list row already has most fields, but not the VAT rate or every price list.</summary>
     public Task<NativeStockCardDetailDto> NativeStockCardAsync(string code, CancellationToken ct = default) =>
         GetAsync<NativeStockCardDetailDto>($"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}", ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E1d — one part (≤ 500 cards) of an imported product file.</summary>
+    public Task<CardBatchResultDto> ImportNativeStockCardsAsync(NativeStockCardBatchRequest request, CancellationToken ct = default) =>
+        SendAsync<CardBatchResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-cards/batch", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E2c — one part (≤ 500 cards) of an imported customer file.</summary>
+    public Task<CardBatchResultDto> ImportNativeCustomerCardsAsync(NativeCustomerCardBatchRequest request, CancellationToken ct = default) =>
+        SendAsync<CardBatchResultDto>(HttpMethod.Post, "api/v1/portal/native/customer-cards/batch", request, ct);
+    /// <summary>GOAL_PANEL_ERPSIZ E6a/E6c — one product's movements with the running stock, newest first.</summary>
+    public Task<StockMovementsResponse> NativeStockMovementsAsync(
+        string code, DateOnly? from, DateOnly? to, bool includeVoided, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<StockMovementsResponse>($"api/v1/portal/native/stock-cards/{Uri.EscapeDataString(code)}/movements" + Query(
+            ("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null), ("includeVoided", includeVoided ? "true" : null),
+            ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))), ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E6c — the product a scanned barcode (or code) names exactly; 404 when none.</summary>
+    public Task<NativeStockCardDetailDto> NativeStockCardByBarcodeAsync(string barcode, CancellationToken ct = default) =>
+        GetAsync<NativeStockCardDetailDto>($"api/v1/portal/native/barcodes/{Uri.EscapeDataString(barcode)}", ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E6b/E6c — the difference to the booked stock becomes a movement.</summary>
+    public Task<NativeJobResultDto> PostNativeStockCountAsync(NativeStockCountRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-counts", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E6b/E6c — cancels a whole count; <paramref name="key"/> may be one of its movement ids.</summary>
+    public Task<NativeJobResultDto> VoidNativeStockCountAsync(string key, NativeLedgerVoidRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/stock-counts/{Uri.EscapeDataString(key)}/void", request, ct);
 
     public Task<NativeJobResultDto> SaveNativeStockCardAsync(NativeStockCardRequest request, CancellationToken ct = default) =>
         SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/stock-cards", request, ct);
@@ -148,6 +186,37 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     /// <summary>GOAL_PANEL_ERPSIZ E4c/e — void + a corrected re-booking of the same kind, in one transaction (D11).</summary>
     public Task<NativeJobResultDto> EditNativeLedgerEntryAsync(string key, NativeLedgerEditRequest request, CancellationToken ct = default) =>
         SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/ledger/{Uri.EscapeDataString(key)}/edit", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5b/E5e — company-wide sale/purchase/return invoices; <paramref name="status"/>
+    /// is all, active (cancelled ones hidden) or voided.</summary>
+    public Task<NativeDocumentsResponse> NativeDocumentsAsync(
+        DateOnly? from, DateOnly? to, IEnumerable<string> kinds, string? customer, Guid? userId, string status, int page, int pageSize, CancellationToken ct = default) =>
+        GetAsync<NativeDocumentsResponse>("api/v1/portal/native/documents" + Query(
+            [("from", from is { } f ? Day(f) : null), ("to", to is { } t ? Day(t) : null),
+             .. kinds.Select(k => ("kind", (string?)k)),
+             ("customer", customer), ("userId", userId?.ToString()), ("status", status == "all" ? null : status),
+             ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
+
+    public Task<NativeDocumentDto> NativeDocumentAsync(string key, CancellationToken ct = default) =>
+        GetAsync<NativeDocumentDto>($"api/v1/portal/native/documents/{Uri.EscapeDataString(key)}", ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5a/E5e — a new sale (<c>sale</c>), purchase (<c>purchase</c>) or return (<c>sale_return</c>).</summary>
+    public Task<NativeJobResultDto> PostNativeDocumentAsync(string kind, NativeDocumentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, "api/v1/portal/native/" + kind switch
+        {
+            "sale" => "sales-orders",
+            "purchase" => "purchase-receipts",
+            "sale_return" => "sales-returns",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Only a sale, purchase or return can be entered."),
+        }, request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5d/E5e — the whole corrected document; the original is cancelled in the same step.</summary>
+    public Task<NativeJobResultDto> EditNativeDocumentAsync(string key, NativeDocumentRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/documents/{Uri.EscapeDataString(key)}/edit", request, ct);
+
+    /// <summary>GOAL_PANEL_ERPSIZ E5c/E5e — cancels a whole document (stock and ledger together).</summary>
+    public Task<NativeJobResultDto> VoidNativeDocumentAsync(string key, NativeLedgerVoidRequest request, CancellationToken ct = default) =>
+        SendAsync<NativeJobResultDto>(HttpMethod.Post, $"api/v1/portal/native/documents/{Uri.EscapeDataString(key)}/void", request, ct);
 
     /// <summary>GOAL_PANEL_ERPSIZ E4b/e — a manual correction of a customer's balance; a reason is mandatory.</summary>
     public Task<NativeJobResultDto> PostNativeLedgerAdjustmentAsync(NativeLedgerAdjustmentRequest request, CancellationToken ct = default) =>

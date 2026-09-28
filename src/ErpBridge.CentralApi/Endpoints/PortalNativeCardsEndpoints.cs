@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
@@ -5,6 +6,7 @@ using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Native;
 using ErpBridge.CentralApi.Portal;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace ErpBridge.CentralApi.Endpoints;
@@ -33,6 +35,8 @@ public static class PortalNativeCardsEndpoints
             .RequireAuthorization(Program.MobileUserPolicy)
             .RequireRateLimiting(Program.PerTenantRateLimitPolicy);
         group.MapGet("/stock-cards/{code}", GetStockCardAsync).WithName("PortalGetNativeStockCard");
+        group.MapGet("/stock-cards/{code}/movements", GetStockMovementsAsync).WithName("PortalGetNativeStockMovements");
+        group.MapGet("/barcodes/{barcode}", GetByBarcodeAsync).WithName("PortalGetNativeStockCardByBarcode");
         group.MapPost("/stock-cards", PutStockCardAsync).WithName("PortalPutNativeStockCard");
         group.MapDelete("/stock-cards/{code}", DeleteStockCardAsync).WithName("PortalDeleteNativeStockCard");
         return routes;
@@ -46,10 +50,32 @@ public static class PortalNativeCardsEndpoints
 
         var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
         var product = catalog.Products.FirstOrDefault(p => string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase));
-        if (product is null)
-            return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "STOCK_CARD_NOT_FOUND", Message = "The product does not exist." });
+        return product is null
+            ? JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "STOCK_CARD_NOT_FOUND", Message = "The product does not exist." })
+            : JsonResults.Ok(Detail(catalog, product));
+    }
 
-        return JsonResults.Ok(new PortalStockCardDetail
+    /// <summary>
+    /// GOAL_PANEL_ERPSIZ E6c: the product a scanned barcode names — an exact match on its barcodes, else on its code
+    /// (the count page's scanner; a substring search could page the exact match out, Codex #193).
+    /// </summary>
+    private static async Task<IResult> GetByBarcodeAsync(
+        string barcode, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
+    {
+        var (tenant, _, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
+        if (error is not null) return error;
+
+        var scanned = barcode.Trim();
+        var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
+        var product = catalog.Products.FirstOrDefault(p => p.Barcodes.Contains(scanned, StringComparer.OrdinalIgnoreCase))
+            ?? catalog.Products.FirstOrDefault(p => string.Equals(p.Code, scanned, StringComparison.OrdinalIgnoreCase));
+        return product is null
+            ? JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "STOCK_CARD_NOT_FOUND", Message = "No product has that barcode or code." })
+            : JsonResults.Ok(Detail(catalog, product));
+    }
+
+    private static PortalStockCardDetail Detail(PortalStockCatalog.Catalog catalog, PortalStockCatalog.Product product) =>
+        new()
         {
             StockCode = product.Code,
             Name = product.Name,
@@ -64,8 +90,50 @@ public static class PortalNativeCardsEndpoints
                 .ToList(),
             Quantity = product.TotalQuantity,
             LastMovementDate = product.LastMovement?.ToString("yyyy-MM-dd"),
-        });
+        };
+
+    /// <summary>
+    /// GOAL_PANEL_ERPSIZ E6a: one product's stock movements with the running stock (yürüyen stok), newest first —
+    /// the product-side counterpart of the customer statement. Same gate as the card itself: an ERP company's
+    /// movements come from the ERP and read in its own screens.
+    /// </summary>
+    private static async Task<IResult> GetStockMovementsAsync(
+        string code, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache,
+        string? from, string? to, bool? includeVoided, int? page, int? pageSize, CancellationToken ct)
+    {
+        var (tenant, _, error) = await PortalNativeWriteHelpers.AuthorizeForNativeWriteAsync(http, db, ct);
+        if (error is not null) return error;
+
+        DateOnly? start = null, end = null;
+        if (!string.IsNullOrWhiteSpace(from))
+        {
+            if (!DateOnly.TryParseExact(from, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)) return InvalidQuery("from must be yyyy-MM-dd.");
+            start = day;
+        }
+        if (!string.IsNullOrWhiteSpace(to))
+        {
+            if (!DateOnly.TryParseExact(to, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)) return InvalidQuery("to must be yyyy-MM-dd.");
+            end = day;
+        }
+        if (start is not null && end is not null && end < start) return InvalidQuery("to is before from.");
+
+        var catalog = await PortalStockCatalog.LoadAsync(db, cache, tenant!.Id, ct);
+        var product = catalog.Products.FirstOrDefault(p => string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase));
+        if (product is null)
+            return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "STOCK_CARD_NOT_FOUND", Message = "The product does not exist." });
+
+        // The booked level, not the catalogue copy: the running stock must end exactly where the ledger stands.
+        var (quantity, moves) = await PortalStockMovements.For(cache, tenant.Id).SnapshotAsync(db, tenant.Id, product.Code, ct);
+        var (statement, pageMoves) = PortalStockMovements.Statement(
+            product.Code, quantity, moves, start, end, includeVoided == true,
+            Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, PortalLedger.MaxPageSize));
+        var kindOf = await PortalStockMovements.KindResolverAsync(db, tenant.Id, pageMoves, ct);
+        for (var i = 0; i < statement.Items.Count; i++) statement.Items[i].Kind = kindOf(pageMoves[i]);
+        return JsonResults.Ok(statement);
     }
+
+    private static IResult InvalidQuery(string message) =>
+        JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_QUERY", Message = message });
 
     private static async Task<IResult> PutStockCardAsync(
         HttpContext http, [FromBody] PortalStockCardRequest? body, [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct)
@@ -118,7 +186,8 @@ public static class PortalNativeCardsEndpoints
             BeforeJson: existing is null ? null : JsonSerializer.Serialize(BeforeSnapshot(existing)));
         return await PortalNativeWriteHelpers.BookNativeDocumentAsync(
             http, db, tenant!, user!, NativeDocumentProcessor.StockCard,
-            PortalNativeWriteHelpers.OperationKey("portal-stock", code, body.OperationId), payload, RejectedErrorCode, ct, audit);
+            PortalNativeWriteHelpers.OperationKey("portal-stock", code, body.OperationId), payload, RejectedErrorCode, ct, audit,
+            new NativeBookingOptions(KeepBarcodesWithTheirOwners: true));
     }
 
     private static async Task<IResult> DeleteStockCardAsync(

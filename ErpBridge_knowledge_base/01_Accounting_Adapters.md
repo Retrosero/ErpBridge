@@ -105,7 +105,10 @@ Aynı `Writers/Documents` altında, `MobileDocumentTranslator`'ın çevirdiği �
 - **`MikroPurchaseInvoiceWriter`** (`purchase_receipt`) — alış faturası: `CARI_HESAP_HAREKETLERI` (`cha_evrak_tip=0`,
   alacak, `cinsi=6`) + `STOK_HAREKETLERI` (`sth_tip=3`, giriş), aynı transaction. Peşin alış **tek kapalı evraktır**
   (K13) — ayrı tediye yazılmaz. Evrak numarası tedarikçinin kendi serisinde MAX+1 devam eder (§15); depo firma
-  ayarındaki alış deposu, KDV stok kartının `vergi_pntr`'ından.
+  ayarındaki alış deposu, KDV stok kartının `vergi_pntr`'ından. **İskonto (2026-09-27):** satırın
+  `lineDiscountPercents` + faturanın `generalDiscountPercents` zinciri `sth_iskonto1..6`'ya (fazlası 6. sütunda),
+  toplamları `cha_ft_iskonto1..6`'ya; KDV iskontolu net üzerinden. İskontoyu bilmeyen eski ajan iskontolu belgeyi
+  iskontosuz hesaplar ve `TOTAL_MISMATCH` ile reddeder (yanlış yazmaz); ajan güncellenince iş Portal'dan yeniden denenir.
 - **`MikroStockCountWriter`** (`stock_count`) — `SAYIM_SONUCLARI`'na depo bazlı MAX+1 fiş numarasıyla yazar (§14).
   Stoğu kendiliğinden hareket ettirmez; sonuçların stoğa işlenmesi Mikro'nun kendi "sayım sonuçlarını uygula" adımıdır.
 

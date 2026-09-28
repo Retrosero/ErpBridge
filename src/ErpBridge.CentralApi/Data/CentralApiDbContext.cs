@@ -121,6 +121,27 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Faz 47 — the unchangeable history of every fulfillment.</summary>
     public DbSet<OrderFulfillmentEvent> OrderFulfillmentEvents => Set<OrderFulfillmentEvent>();
 
+    // Görevler ve bildirimler (docs/GOAL_GOREVLER.md): yalnız merkezde, ERP'li ve ERP'siz firma aynı tablolar.
+    public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
+
+    public DbSet<WorkTaskMember> WorkTaskMembers => Set<WorkTaskMember>();
+
+    public DbSet<WorkTaskSubtask> WorkTaskSubtasks => Set<WorkTaskSubtask>();
+
+    public DbSet<WorkTaskComment> WorkTaskComments => Set<WorkTaskComment>();
+
+    public DbSet<WorkTaskAttachment> WorkTaskAttachments => Set<WorkTaskAttachment>();
+
+    public DbSet<WorkTaskAttachmentBlob> WorkTaskAttachmentBlobs => Set<WorkTaskAttachmentBlob>();
+
+    public DbSet<WorkTaskEvent> WorkTaskEvents => Set<WorkTaskEvent>();
+
+    public DbSet<WorkTaskSeries> WorkTaskSeries => Set<WorkTaskSeries>();
+
+    public DbSet<WorkTaskOpApplied> WorkTaskOpsApplied => Set<WorkTaskOpApplied>();
+
+    public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
+
     /// <summary>Faz 47 — per-company warehouse module switch and delay thresholds.</summary>
     public DbSet<TenantWarehouseSettings> TenantWarehouseSettings => Set<TenantWarehouseSettings>();
 
@@ -132,6 +153,17 @@ public sealed class CentralApiDbContext : DbContext
 
     /// <summary>GOAL_PANEL_ERPSIZ E7b — who changed what from the portal in a native tenant's own books (D5).</summary>
     public DbSet<NativeAuditLogEntry> NativeAuditLogEntries => Set<NativeAuditLogEntry>();
+
+    /// <summary>Sellable add-ons switched on per company from the Admin console (XML ürün modülü).</summary>
+    public DbSet<TenantModule> TenantModules => Set<TenantModule>();
+
+    /// <summary>A company's XML product feed, written by its administrator from the phone.</summary>
+    public DbSet<TenantXmlFeedSettings> TenantXmlFeedSettings => Set<TenantXmlFeedSettings>();
+
+    // SKT (son kullanma tarihi) kayıtları: telefonlardan girilen raf verisi, yalnız merkezde; ERP'ye yazılmaz.
+    public DbSet<StockExpiryRecord> StockExpiryRecords => Set<StockExpiryRecord>();
+
+    public DbSet<StockExpiryOpApplied> StockExpiryOpsApplied => Set<StockExpiryOpApplied>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -221,6 +253,51 @@ public sealed class CentralApiDbContext : DbContext
             b.ToTable("tenant_warehouse_settings");
             b.HasKey(x => x.TenantId);
             b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantWarehouseSettings>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TenantModule>(b =>
+        {
+            b.ToTable("tenant_modules");
+            b.HasKey(x => new { x.TenantId, x.ModuleKey });
+            b.Property(x => x.ModuleKey).IsRequired().HasMaxLength(64);
+            b.Property(x => x.EnabledBy).HasMaxLength(TenantModule.EnabledByMaxLength);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TenantXmlFeedSettings>(b =>
+        {
+            b.ToTable("tenant_xml_feed_settings");
+            b.HasKey(x => x.TenantId);
+            b.Property(x => x.Url).IsRequired().HasMaxLength(2048);
+            b.Property(x => x.RecordPath).IsRequired().HasMaxLength(512);
+            b.Property(x => x.MappingJson).IsRequired().HasColumnType("jsonb");
+            b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantXmlFeedSettings>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        ConfigureWorkTasks(modelBuilder);
+
+        modelBuilder.Entity<StockExpiryRecord>(b =>
+        {
+            b.ToTable("stock_expiry_records");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.StockCode).IsRequired().HasMaxLength(50);
+            b.Property(x => x.Barcode).HasMaxLength(50);
+            b.Property(x => x.ProductName).HasMaxLength(200);
+            b.Property(x => x.Location).IsRequired().HasMaxLength(50);
+            b.Property(x => x.Warehouse).HasMaxLength(100);
+            b.Property(x => x.Quantity).HasPrecision(18, 3);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq });
+            b.HasIndex(x => new { x.TenantId, x.StockCode });
+        });
+
+        modelBuilder.Entity<StockExpiryOpApplied>(b =>
+        {
+            b.ToTable("stock_expiry_ops_applied");
+            b.HasKey(x => new { x.TenantId, x.OpId });
+            b.HasIndex(x => x.AppliedAtMs);
         });
 
         modelBuilder.Entity<DisplayDevice>(b =>
@@ -1009,6 +1086,132 @@ public sealed class CentralApiDbContext : DbContext
                 x.ParametreUser,
                 x.ParametreID,
             }).IsUnique();
+        });
+    }
+
+    /// <summary>Görevler ve bildirimler (docs/GOAL_GOREVLER.md §2).</summary>
+    private static void ConfigureWorkTasks(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WorkTask>(b =>
+        {
+            b.ToTable("tasks");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            b.Property(x => x.Description).IsRequired().HasMaxLength(4000);
+            b.Property(x => x.Priority).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Status).IsRequired().HasMaxLength(16);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.CompletedByName).HasMaxLength(120);
+            b.Property(x => x.CustomerCode).HasMaxLength(64);
+            b.Property(x => x.CustomerName).HasMaxLength(200);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(x => x.Members).WithOne(m => m.Task).HasForeignKey(m => m.TaskId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(x => x.Subtasks).WithOne(st => st.Task).HasForeignKey(st => st.TaskId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq });
+            // The scheduler looks for open tasks by start and due time.
+            b.HasIndex(x => new { x.Status, x.DueAtMs });
+            b.HasIndex(x => new { x.Status, x.StartAtMs });
+            b.HasIndex(x => new { x.TenantId, x.CustomerCode });
+        });
+
+        modelBuilder.Entity<WorkTaskMember>(b =>
+        {
+            b.ToTable("task_members");
+            b.HasKey(x => new { x.TaskId, x.UserId, x.Role });
+            b.Property(x => x.Role).IsRequired().HasMaxLength(16);
+            b.Property(x => x.UserName).IsRequired().HasMaxLength(120);
+            b.HasIndex(x => x.UserId);
+        });
+
+        modelBuilder.Entity<WorkTaskSubtask>(b =>
+        {
+            b.ToTable("task_subtasks");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(300);
+            b.Property(x => x.DoneByName).HasMaxLength(120);
+            b.Property(x => x.AssigneeName).HasMaxLength(120);
+            b.HasIndex(x => new { x.TaskId, x.SortOrder });
+            b.HasIndex(x => x.AssigneeUserId);
+        });
+
+        modelBuilder.Entity<WorkTaskComment>(b =>
+        {
+            b.ToTable("task_comments");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.AuthorName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.Text).IsRequired().HasMaxLength(2000);
+            b.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TaskId, x.CreatedAtMs });
+        });
+
+        modelBuilder.Entity<WorkTaskAttachment>(b =>
+        {
+            b.ToTable("task_attachments");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.UploadedByName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.ContentType).IsRequired().HasMaxLength(32);
+            b.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TaskId, x.CreatedAtMs });
+            // The quota sums a company's live pictures.
+            b.HasIndex(x => new { x.TenantId, x.IsDeleted });
+        });
+
+        modelBuilder.Entity<WorkTaskAttachmentBlob>(b =>
+        {
+            b.ToTable("task_attachment_blobs");
+            b.HasKey(x => x.AttachmentId);
+            b.Property(x => x.Data).IsRequired();
+            b.HasOne<WorkTaskAttachment>().WithOne().HasForeignKey<WorkTaskAttachmentBlob>(x => x.AttachmentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WorkTaskEvent>(b =>
+        {
+            b.ToTable("task_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedOnAdd();
+            b.Property(x => x.Action).IsRequired().HasMaxLength(24);
+            b.Property(x => x.ActorName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.Detail).HasMaxLength(500);
+            b.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TaskId, x.OccurredAtMs });
+        });
+
+        modelBuilder.Entity<WorkTaskSeries>(b =>
+        {
+            b.ToTable("task_series");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            b.Property(x => x.Description).IsRequired().HasMaxLength(4000);
+            b.Property(x => x.Priority).IsRequired().HasMaxLength(16);
+            b.Property(x => x.CustomerCode).HasMaxLength(64);
+            b.Property(x => x.CustomerName).HasMaxLength(200);
+            b.Property(x => x.AssigneesJson).IsRequired();
+            b.Property(x => x.FollowersJson).IsRequired();
+            b.Property(x => x.SubtasksJson).IsRequired();
+            b.Property(x => x.Frequency).IsRequired().HasMaxLength(16);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.IsActive, x.NextRunAtMs });
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq });
+        });
+
+        modelBuilder.Entity<WorkTaskOpApplied>(b =>
+        {
+            b.ToTable("task_ops_applied");
+            b.HasKey(x => new { x.TenantId, x.OpId });
+            b.HasIndex(x => x.AppliedAtMs);
+        });
+
+        modelBuilder.Entity<UserNotification>(b =>
+        {
+            b.ToTable("user_notifications");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            b.Property(x => x.Body).IsRequired().HasMaxLength(500);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.UserId, x.Seq });
+            b.HasIndex(x => new { x.TenantId, x.UserId, x.ReadAtMs });
         });
     }
 }

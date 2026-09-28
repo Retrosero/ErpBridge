@@ -43,6 +43,9 @@ public sealed class MobileSessionDto
 
     /// <summary>Operations that go to the approval centre, keyed by approval kind.</summary>
     [JsonPropertyName("approvalRules")] public Dictionary<string, bool> ApprovalRules { get; set; } = new();
+
+    /// <summary>Sellable add-ons the company bought (<c>xml_import</c>…), sorted, lowercase; empty when none.</summary>
+    [JsonPropertyName("modules")] public string[] Modules { get; set; } = [];
 }
 
 /// <summary>Seat capacity and subscription state of a tenant.</summary>
@@ -177,6 +180,7 @@ public sealed class TenantMobileOverviewResponse
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
     [JsonPropertyName("approvalRules")] public ApprovalRulesDto ApprovalRules { get; set; } = new();
+    [JsonPropertyName("modules")] public string[] Modules { get; set; } = [];
     [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
     [JsonPropertyName("subscriptions")] public SubscriptionDto[] Subscriptions { get; set; } = Array.Empty<SubscriptionDto>();
     [JsonPropertyName("users")] public MobileUserDto[] Users { get; set; } = Array.Empty<MobileUserDto>();
@@ -187,6 +191,12 @@ public sealed class TenantMobileOverviewResponse
 public sealed class UpdateMobileDeviceRequest
 {
     [JsonPropertyName("isActive")] public bool? IsActive { get; set; }
+}
+
+/// <summary>PUT /api/v1/admin/tenants/{id}/mobile/modules body: the complete set of add-ons.</summary>
+public sealed class SetTenantModulesRequest
+{
+    [JsonPropertyName("modules")] public string[]? Modules { get; set; }
 }
 
 /// <summary>PUT /api/v1/admin/tenants/{id}/mobile/data-source body.</summary>

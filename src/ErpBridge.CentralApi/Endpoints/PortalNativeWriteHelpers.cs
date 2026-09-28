@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
@@ -44,8 +44,10 @@ internal static class PortalNativeWriteHelpers
     /// own <paramref name="operationId"/> once per save/delete attempt and resends the same one on
     /// retry; without one a fresh key is used, so a caller-less request still works.
     /// </summary>
+    /// <remarks>A <c>|</c> in <paramref name="operationId"/> becomes <c>-</c>: movement keys are <c>"{job}|{suffix}"</c>, and a job
+    /// id holding the separator could claim another job's rows (Codex #192).</remarks>
     public static string OperationKey(string prefix, string code, string? operationId) =>
-        $"{prefix}-{code}-{(string.IsNullOrWhiteSpace(operationId) ? Guid.NewGuid().ToString("N") : operationId.Trim())}";
+        $"{prefix}-{code}-{(string.IsNullOrWhiteSpace(operationId) ? Guid.NewGuid().ToString("N") : operationId.Trim().Replace('|', '-'))}";
 
     /// <summary>
     /// What <see cref="BookNativeDocumentAsync"/> writes to <c>native_audit_log</c> (D5/E7b) once the
@@ -63,7 +65,8 @@ internal static class PortalNativeWriteHelpers
     /// </summary>
     public static async Task<IResult> BookNativeDocumentAsync(
         HttpContext http, CentralApiDbContext db, Tenant tenant, MobileUser user,
-        string documentType, string externalId, object payload, string rejectedErrorCode, CancellationToken ct, AuditInfo? audit = null)
+        string documentType, string externalId, object payload, string rejectedErrorCode, CancellationToken ct, AuditInfo? audit = null,
+        NativeBookingOptions? options = null)
     {
         var existing = await db.Jobs.AsNoTracking()
             .FirstOrDefaultAsync(j => j.TenantId == tenant.Id && j.DocumentType == documentType && j.ExternalId == externalId, ct);
@@ -86,7 +89,7 @@ internal static class PortalNativeWriteHelpers
         var processor = http.RequestServices.GetRequiredService<NativeDocumentProcessor>();
         try
         {
-            var booked = await processor.IngestAsync(db, tenant.Id, job, RolePermissions.IsAdmin(user), ct);
+            var booked = await processor.IngestAsync(db, tenant.Id, job, RolePermissions.IsAdmin(user), ct, options);
             if (booked.Status == JobStatus.Failed)
                 return JsonResults.Status(StatusCodes.Status422UnprocessableEntity, new ApiError
                 {
@@ -99,11 +102,13 @@ internal static class PortalNativeWriteHelpers
                 {
                     TenantId = tenant.Id,
                     UserId = user.Id,
-                    UserName = string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName,
-                    Entity = audit.Entity,
-                    EntityKey = audit.EntityKey,
-                    Action = audit.Action,
-                    Summary = audit.Summary,
+                    // Cut to the columns' own limits: a summary carries the user's free-text reason, and an
+                    // over-long value would fail this second save after the document is already booked.
+                    UserName = Fit(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName, 200),
+                    Entity = Fit(audit.Entity, 40),
+                    EntityKey = Fit(audit.EntityKey, 128),
+                    Action = Fit(audit.Action, 20),
+                    Summary = Fit(audit.Summary, 500),
                     BeforeJson = audit.BeforeJson,
                     AfterJson = audit.Action == "delete" ? null : payloadJson,
                     CreatedAtUtc = DateTimeOffset.UtcNow,
@@ -122,6 +127,30 @@ internal static class PortalNativeWriteHelpers
             if (winner is null) throw;
             return JobResult(winner, idempotent: true, StatusCodes.Status200OK);
         }
+    }
+
+    /// <summary>
+    /// The idempotent <c>200</c> for an operation already booked under <paramref name="externalId"/>, or null.
+    /// For an endpoint whose own pre-checks would reject a retry because the first attempt already changed the
+    /// state they read (a void/edit's "already cancelled" 409): it answers the replay before those checks run.
+    /// </summary>
+    public static async Task<IResult?> ReplayAsync(CentralApiDbContext db, Guid tenantId, string documentType, string externalId, CancellationToken ct)
+    {
+        var existing = await db.Jobs.AsNoTracking()
+            .FirstOrDefaultAsync(j => j.TenantId == tenantId && j.DocumentType == documentType && j.ExternalId == externalId, ct);
+        return existing is null ? null : JobResult(existing, idempotent: true, StatusCodes.Status200OK);
+    }
+
+    /// <summary>
+    /// Cuts <paramref name="value"/> to <paramref name="max"/> characters — Unicode scalars, the way PostgreSQL's
+    /// <c>varchar(n)</c> counts them, so an emoji is one character and is never split — marking the cut with an ellipsis.
+    /// </summary>
+    internal static string Fit(string value, int max)
+    {
+        if (value.Length <= max) return value;
+        var runes = value.EnumerateRunes().ToList();
+        if (runes.Count <= max) return value;
+        return string.Concat(runes.Take(max - 1).Select(r => r.ToString())) + "…";
     }
 
     private static IResult JobResult(Job job, bool idempotent, int statusCode) => JsonResults.Status(statusCode, new IngestJobResponse

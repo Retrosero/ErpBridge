@@ -31,7 +31,8 @@ public class MikroPurchaseInvoiceWriterTests
 
     private static MikroPricedDocument Priced(PurchaseInvoiceCommand command, decimal vatRate = 20m, byte vatPointer = 4) =>
         new(command.Lines
-            .Select(l => MikroPriceCalculator.PurchaseLine(l.UnitPrice, l.Quantity, vatPointer, vatRate, command.PricesIncludeVat))
+            .Select(l => MikroPriceCalculator.PurchaseLine(
+                l.UnitPrice, l.Quantity, vatPointer, vatRate, command.PricesIncludeVat, MikroPurchaseInvoiceWriter.DiscountChain(command, l)))
             .ToList());
 
     [Fact]
@@ -116,9 +117,9 @@ public class MikroPurchaseInvoiceWriterTests
         });
     }
 
-    /// <summary>K6: KDV stok kartından gelir; alışta iskonto zinciri yoktur.</summary>
+    /// <summary>K6: KDV stok kartından gelir; iskontosuz satırın iskonto sütunları boştur.</summary>
     [Fact]
-    public void Vat_comes_from_the_stock_card_and_the_price_carries_no_discount_chain()
+    public void Vat_comes_from_the_stock_card_and_an_undiscounted_line_has_no_discount()
     {
         var line = MikroPriceCalculator.PurchaseLine(unitPrice: 100m, quantity: 10m, vatPointer: 4, vatRate: 20m, priceIncludesVat: false);
 
@@ -126,7 +127,103 @@ public class MikroPurchaseInvoiceWriterTests
         line.Vat.Should().Be(200m);
         line.Total.Should().Be(1200m);
         line.VatPointer.Should().Be(4);
-        (line.Discount1 + line.Discount2 + line.Discount3).Should().Be(0m);
+        (line.Discount1 + line.Discount2 + line.Discount3 + line.Discount4 + line.Discount5 + line.Discount6).Should().Be(0m);
+    }
+
+    /// <summary>
+    /// Alış iskontosu: önce satırın kendi iskontoları, sonra faturanın genel iskontoları; her biri kalandan
+    /// alınan, 2 haneye yuvarlanan bir tutar; KDV iskontolu net üzerinden. Telefonun
+    /// <c>ErpPurchasePricing</c> testi aynı rakamları sabitler.
+    /// </summary>
+    [Fact]
+    public void Line_then_general_discounts_chain_on_what_the_previous_one_left()
+    {
+        var line = MikroPriceCalculator.PurchaseLine(100m, 10m, 4, 20m, priceIncludesVat: false, [10m, 5m, 2m]);
+
+        line.Discount1.Should().Be(100m);
+        line.Discount2.Should().Be(45m);
+        line.Discount3.Should().Be(17.10m);
+        line.Net.Should().Be(837.90m);
+        line.Vat.Should().Be(167.58m);
+        line.Total.Should().Be(1005.48m);
+    }
+
+    /// <summary>
+    /// Mikro'da satır başına 6 iskonto sütunu var; 6 satır + 6 genel iskontonun fazlası 6. sütunda toplanır.
+    /// Her sütun kalandan alınan tutar olduğu için net, sütunlara nasıl dağıldığından bağımsızdır.
+    /// </summary>
+    [Fact]
+    public void Discounts_beyond_the_sixth_column_are_added_to_the_sixth()
+    {
+        var line = MikroPriceCalculator.PurchaseLine(100m, 10m, 4, 0m, priceIncludesVat: false, Enumerable.Repeat(10m, 12).ToList());
+
+        line.Discount1.Should().Be(100m);
+        line.Discount5.Should().Be(65.61m);
+        // 59.05 + 53.14 + 47.83 + 43.05 + 38.74 + 34.87 + 31.38
+        line.Discount6.Should().Be(308.06m);
+        line.Net.Should().Be(282.43m);
+    }
+
+    [Fact]
+    public void A_discounted_line_writes_every_discount_column_and_the_header_their_sums()
+    {
+        var command = Command(lines: [
+            new PurchaseInvoiceLine("59030", 10m, 100m, DiscountPercents: [10m, 5m]),
+            new PurchaseInvoiceLine("59031", 1m, 50m),
+        ]) with { GeneralDiscountPercents = [2m] };
+        var document = Priced(command);
+
+        var first = MikroPurchaseInvoiceWriter.LineRow(command, 0, document.Lines[0], "JUMBO", 88, headerRecno: 500);
+        var second = MikroPurchaseInvoiceWriter.LineRow(command, 1, document.Lines[1], "JUMBO", 88, headerRecno: 500);
+        var header = MikroPurchaseInvoiceWriter.HeaderRow(command, Supplier, closing: null, document, "JUMBO", 88, Guid.Empty);
+
+        first.Should().Contain(new Dictionary<string, object?>
+        {
+            ["sth_tutar"] = 1000m,
+            ["sth_iskonto1"] = 100m,
+            ["sth_iskonto2"] = 45m,
+            ["sth_iskonto3"] = 17.10m,
+            ["sth_iskonto4"] = 0m,
+            ["sth_iskonto5"] = 0m,
+            ["sth_iskonto6"] = 0m,
+            ["sth_vergi"] = 167.58m,
+            // 1. sütun brütten, sonrakiler kalandan.
+            ["sth_isk_mas1"] = 0,
+            ["sth_isk_mas2"] = 1,
+        });
+        // Satır iskontosu olmayan satırda genel iskonto ilk sütundadır.
+        second.Should().Contain(new Dictionary<string, object?>
+        {
+            ["sth_tutar"] = 50m,
+            ["sth_iskonto1"] = 1m,
+            ["sth_iskonto2"] = 0m,
+            ["sth_vergi"] = 9.80m,
+        });
+        header.Should().Contain(new Dictionary<string, object?>
+        {
+            ["cha_aratoplam"] = 1050m,
+            ["cha_ft_iskonto1"] = 101m,
+            ["cha_ft_iskonto2"] = 45m,
+            ["cha_ft_iskonto3"] = 17.10m,
+            ["cha_ft_iskonto4"] = 0m,
+            ["cha_ft_iskonto5"] = 0m,
+            ["cha_ft_iskonto6"] = 0m,
+            ["cha_meblag"] = 1064.28m,
+        });
+    }
+
+    /// <summary>
+    /// İskontoyu bilmeyen eski ajan iskontolu belgeyi iskontosuz hesaplar; telefonun iskontolu toplamı
+    /// tutmadığı için belge yazılmaz, ret edilir (ajan güncellenince iş yeniden denenir).
+    /// </summary>
+    [Fact]
+    public void A_discounted_total_does_not_pass_an_undiscounted_calculation()
+    {
+        var undiscounted = new MikroPricedDocument([MikroPriceCalculator.PurchaseLine(100m, 10m, 4, 20m, priceIncludesVat: false)]);
+
+        var act = () => MikroPriceCalculator.EnsurePurchaseTotal(undiscounted, expectedTotal: 837.90m, pricesIncludeVat: false);
+
+        act.Should().Throw<MikroWriteException>();
     }
 
     [Fact]

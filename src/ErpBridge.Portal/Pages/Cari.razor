@@ -22,6 +22,8 @@ else
         </Actions>
     </PageHeader>
 
+    <ErpReadOnlyNote Text="Bu cari ve hareketleri ERP'den gelir; tahsilat, ödeme, düzeltme ve kart değişikliği ERP'de yapılır." />
+
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
@@ -239,6 +241,12 @@ else
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+            }
+            @if (Session.CanEditNativeData)
+            {
+                <div class="form-actions mt-3">
+                    <a class="link-button" href="@($"evraklar?belge={Uri.EscapeDataString(document.DocumentKey)}")" id="document-open-in-documents">Evraklarda aç (düzenle · iptal · yazdır)</a>
                 </div>
             }
         }
@@ -689,12 +697,15 @@ else
     private bool _voidOpen;
     private LedgerRowDto? _voiding;
     private string? _voidReason;
+    // One id per opened dialog: a retry after a lost answer replays the same operation instead of meeting ALREADY_VOIDED.
+    private string _voidOperationId = string.Empty;
 
     private void OpenVoidMovement(LedgerRowDto row)
     {
         Notice = null;
         _voiding = row;
         _voidReason = null;
+        _voidOperationId = Guid.NewGuid().ToString("N");
         _voidOpen = true;
     }
 
@@ -712,7 +723,7 @@ else
         var reason = _voidReason!.Trim();
         return RunAsync(async () =>
         {
-            await Api.VoidNativeLedgerEntryAsync(row.Id, new NativeLedgerVoidRequest { Reason = reason, OperationId = Guid.NewGuid().ToString("N") });
+            await Api.VoidNativeLedgerEntryAsync(row.Id, new NativeLedgerVoidRequest { Reason = reason, OperationId = _voidOperationId });
             _voidOpen = false;
             await LoadLedgerAsync();
             await ReloadCardAsync();

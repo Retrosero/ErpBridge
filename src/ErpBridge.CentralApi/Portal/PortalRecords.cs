@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using ErpBridge.CentralApi.Endpoints;
 using Microsoft.Extensions.Caching.Memory;
@@ -92,6 +92,10 @@ public static class PortalRecords
     {
         var stockCode = Blank(AndroidEndpoints.GetFirstString(item, "stokKod", "urunKod"));
         if (stockCode is null) return null;
+        // A voided native document's reversing line (GOAL_PANEL_ERPSIZ E5c) carries the same customer and evrakNo,
+        // so it would join the document's own lines and show every line twice. Rows written before voidsKey
+        // existed are known by their "|void" id suffix.
+        if (IsNativeReversal(item)) return null;
         var quantity = AndroidEndpoints.GetDecimal(item, "cikisMiktar") is { } outQty and not 0 ? outQty
             : AndroidEndpoints.GetDecimal(item, "girisMiktar") is { } inQty and not 0 ? inQty
             : Math.Abs(AndroidEndpoints.GetDecimal(item, "miktar") ?? 0m);
@@ -112,6 +116,11 @@ public static class PortalRecords
             AndroidEndpoints.GetInt32(item, "cikisDepoNo") ?? AndroidEndpoints.GetInt32(item, "girisDepoNo"),
             Blank(AndroidEndpoints.GetString(item, "aciklama")));
     }
+
+    private static bool IsNativeReversal(JsonElement item) =>
+        string.Equals(AndroidEndpoints.GetString(item, "erp"), NativeErp, StringComparison.OrdinalIgnoreCase)
+        && (Blank(AndroidEndpoints.GetString(item, "voidsKey")) is not null
+            || AndroidEndpoints.GetString(item, "id")?.EndsWith("|void", StringComparison.Ordinal) == true);
 
     public static string ErpDocumentKey(int recNo) => "r" + recNo.ToString(CultureInfo.InvariantCulture);
 
