@@ -179,6 +179,8 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<SalesTargetEvent> SalesTargetEvents => Set<SalesTargetEvent>();
 
+    public DbSet<SalesTargetOperation> SalesTargetOperations => Set<SalesTargetOperation>();
+
     public DbSet<TargetSettings> TargetSettings => Set<TargetSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -1301,7 +1303,12 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.NewValue).HasPrecision(18, 4);
             b.Property(x => x.ActorName).IsRequired().HasMaxLength(120);
             b.HasIndex(x => new { x.TenantId, x.TargetId });
-            b.HasIndex(x => new { x.TenantId, x.OperationId });
+        });
+
+        modelBuilder.Entity<SalesTargetOperation>(b =>
+        {
+            b.ToTable("sales_target_operations");
+            b.HasKey(x => new { x.TenantId, x.OperationId });
         });
 
         modelBuilder.Entity<TargetSettings>(b =>

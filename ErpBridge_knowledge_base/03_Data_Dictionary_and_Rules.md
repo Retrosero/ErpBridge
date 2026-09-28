@@ -114,7 +114,8 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `sales_team_members`: PK `(TenantId, UserId)` — kişi tek ekipte; `TeamId` (indeks), `AddedAtMs`.
   - `sales_team_managers`: PK `(TeamId, UserId)`, `TenantId`; indeks `(TenantId, UserId)`.
   - `sales_targets`: `Id`, `TenantId` (FK, cascade), `PeriodType(10)`, `PeriodKey(10)`, `PeriodStartDay/PeriodEndDay(10)`, `Metric(20)`, `Measure(10)`, `ItemCode(110)` ('' = kalemsiz), `ItemName(200)` anlık kopya, `OwnerKind(10)`, `OwnerId` (firma `Guid.Empty`), `Value numeric(18,4)`, `Note(500)`, `CreatedByUserId`, `UpdatedByUserId`, `CreatedAtMs`, `UpdatedAtMs`, `IsDeleted`. Tekil `(TenantId, PeriodType, PeriodKey, Metric, Measure, ItemCode, OwnerKind, OwnerId)`; indeks `(TenantId, PeriodStartDay, PeriodEndDay)`.
-  - `sales_target_events`: `Id` (identity), `TenantId`, `TargetId`, `Action(10)` SET|DELETE|NOOP, `OldValue/NewValue numeric(18,4)`, `ActorUserId`, `ActorName(120)`, `OccurredAtMs`, `OperationId` (indeks `(TenantId, OperationId)` — tekrar kontrolü).
+  - `sales_target_events`: `Id` (identity), `TenantId`, `TargetId`, `Action(10)` SET|DELETE, `OldValue/NewValue numeric(18,4)`, `ActorUserId`, `ActorName(120)`, `OccurredAtMs`, `OperationId` (ekip silmede null). İndeks `(TenantId, TargetId)`.
+  - `sales_target_operations`: PK `(TenantId, OperationId)`, `UserId`, `AppliedAtMs` — panel kaydının tekrar kontrolü (aynı işlemin ikinci kez uygulanmaması).
   - `target_settings`: `TenantId` PK, `WorkDays` (Pzt=1…Paz=64; satır yoksa 63 = Pzt–Cmt), `UpdatedAtMs`.
 
 - **SKT kayıtları** *(2026-09-27; kural 29)* — telefonların ortak raf verisi, ERP'ye yazılmaz; zamanlar unix ms (UTC):

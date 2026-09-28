@@ -73,6 +73,38 @@ public sealed class TargetRelationalTests : IClassFixture<SqliteCentralApiFactor
     }
 
     [Fact]
+    public async Task Without_an_erp_a_voided_document_drops_out_and_a_corrected_one_counts_for_its_salesperson()
+    {
+        var c = await CompanyAsync(native: true);
+        await PostAsync(c, c.Ali, "sales_order", "SO-1", Sale("SO-1", 3, 150m, "Cari Borç"));
+        await PostAsync(c, c.Ali, "sales_order", "SO-2", Sale("SO-2", 1, 150m, "Cari Borç"));
+        await PostAsync(c, c.Ali, "collection", "TAH-1", new { mobileDocumentId = "TAH-1", occurredAt = Day + "T15:00:00", counterparty = "Bakkal Ali", customerCode = "C-001", amount = 200, paymentType = "Nakit" });
+        var documents = await GetJsonAsync<PortalDocumentsResponse>(c.Patron, "/api/v1/portal/native/documents?from=2000-01-01");
+        string KeyOf(string number) => Uri.EscapeDataString(documents.Items.Single(d => d.DocumentNo == number).DocumentKey);
+
+        (await SendAsync(HttpMethod.Post, c.Patron, $"/api/v1/portal/native/documents/{KeyOf("SO-2")}/void", new { reason = "Mükerrer" })).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await SendAsync(HttpMethod.Post, c.Patron, $"/api/v1/portal/native/documents/{KeyOf("SO-1")}/edit",
+            new { voidReason = "Miktar yanlış", lines = new[] { new { productCode = "CAY-1", quantity = 2, unitPrice = 150 } } })).StatusCode.Should().Be(HttpStatusCode.Created);
+        string collectionKey;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            collectionKey = db.MobileRecords.Where(r => r.TenantId == c.Id && r.Entity == "customerTransactions").Select(r => r.RecordKey)
+                .AsEnumerable().Single(k => k.StartsWith("TAH-1|", StringComparison.Ordinal));
+        }
+        (await SendAsync(HttpMethod.Post, c.Patron, $"/api/v1/portal/native/ledger/{Uri.EscapeDataString(collectionKey)}/edit", new { amount = 150, voidReason = "Yanlış tutar" }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var board = await GetJsonAsync<TargetBoardResponse>(c.Patron, $"/api/v1/portal/targets?periodType=MONTHLY&periodKey={Month.Key}");
+
+        var ali = board.Owners.Single(o => o.OwnerId == c.AliId);
+        ali.Summary.Revenue.Should().Be(300m, "SO-2 was voided and SO-1 corrected to 2 × 150");
+        ali.Summary.Collection.Should().Be(150m);
+        ali.Summary.DocumentCount.Should().Be(1);
+        board.Owners.Single(o => o.OwnerKind == "COMPANY").Summary.Revenue.Should().Be(300m, "the administrator who corrected it did not sell it");
+    }
+
+    [Fact]
     public async Task A_save_is_all_or_nothing_and_a_repeated_one_is_not_applied_twice()
     {
         var c = await CompanyAsync(native: true);
@@ -129,7 +161,14 @@ public sealed class TargetRelationalTests : IClassFixture<SqliteCentralApiFactor
         await ExpectAsync(await SendAsync(HttpMethod.Delete, c.Patron, $"/api/v1/portal/teams/{region.Id}", null), HttpStatusCode.Conflict, "TEAM_HAS_CHILDREN");
         await ExpectAsync(await SendAsync(HttpMethod.Post, c.Patron, "/api/v1/portal/teams", new { name = "a", kind = "TEAM" }), HttpStatusCode.Conflict, "TEAM_NAME_TAKEN");
         await ExpectAsync(await SendAsync(HttpMethod.Put, c.Patron, $"/api/v1/portal/teams/{b.Id}", new { name = "B", managerIds = new[] { c.AliId } }), HttpStatusCode.BadRequest, "TEAM_INVALID");
+        (await SaveAsync(c.Patron, Revenue("TEAM", a.Id, 700m))).Saved.Should().Be(1);
         (await SendAsync(HttpMethod.Delete, c.Patron, $"/api/v1/portal/teams/{a.Id}", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+            db.SalesTargetEvents.Where(e => e.TenantId == c.Id && e.Action == "DELETE").Select(e => e.OldValue).ToList()
+                .Should().Equal([700m], "the team's target left a trail when the team went");
+        }
         (await SendAsync(HttpMethod.Delete, c.Patron, $"/api/v1/portal/teams/{region.Id}", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 

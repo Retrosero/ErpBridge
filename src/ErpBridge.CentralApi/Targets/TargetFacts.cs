@@ -112,10 +112,13 @@ public sealed class TargetFactReader(IMemoryCache cache)
         if (native)
         {
             var booked = await PortalReports.PhoneDocumentsAsync(db, tenant.Id, from, to, documentTypes, [JobStatus.Succeeded], ct);
+            var (voided, replacements) = await NativeCorrectionsAsync(db, tenant.Id, ct);
+            var facts = booked.Where(d => !voided.Contains(d.ExternalId)).SelectMany(FromDocument).ToList();
+            facts.AddRange(replacements.Where(r => r.BusinessDate >= from && r.BusinessDate <= to).SelectMany(FromDocument));
             return new TargetFactSet
             {
                 Source = TargetSources.ServerDocuments,
-                Facts = booked.SelectMany(FromDocument).ToList(),
+                Facts = facts,
                 Pending = [],
                 UserOfSalesperson = new Dictionary<string, Guid>(),
                 UsersWithoutSalesperson = new HashSet<Guid>(),
@@ -210,6 +213,88 @@ public sealed class TargetFactReader(IMemoryCache cache)
 
         if (kind == TargetFactKind.Sale && AndroidEndpoints.GetString(root, "paymentType")?.Trim() is { } paymentType && Native.NativeDocumentProcessor.ImmediatePayments.Contains(paymentType))
             yield return new TargetFact(document.BusinessDate, TargetFactKind.Collection, document.CreatedByUserId, null, null, amount, 0m, document.ExternalId);
+    }
+
+    // ---- ERP-less corrections -----------------------------------------------------------------
+
+    private static readonly string[] CorrectionTypes =
+    [
+        Native.NativeDocumentProcessor.DocumentVoid, Native.NativeDocumentProcessor.DocumentEdit,
+        Native.NativeDocumentProcessor.LedgerVoid, Native.NativeDocumentProcessor.LedgerEdit,
+    ];
+
+    /// <summary>
+    /// An ERP-less company's panel corrections (GOAL_PANEL_ERPSIZ E4/E5, storno): a void or edit job names the document it
+    /// cancels by one of its ledger keys (<c>{job}|{suffix}</c>), and that document's own job stays <c>Succeeded</c>. So the
+    /// cancelled jobs are left out, and each edit that is itself still standing counts in their place — as a document of
+    /// the kind it re-booked, for the salesperson of the document it corrects (an administrator fixing a sale in the
+    /// panel does not take the sale over), dated as the correction says or else as the original (Codex, PR #214).
+    /// Corrections are rare manual work, so all of them are read, whatever their date.
+    /// </summary>
+    private static async Task<(HashSet<string> Voided, List<PortalReports.PhoneDocument> Replacements)> NativeCorrectionsAsync(
+        CentralApiDbContext db, Guid tenantId, CancellationToken ct)
+    {
+        var corrections = await db.Jobs.AsNoTracking()
+            .Where(j => j.TenantId == tenantId && j.Status == JobStatus.Succeeded && CorrectionTypes.Contains(j.DocumentType))
+            .Select(j => new { j.ExternalId, j.DocumentType, j.PayloadJson })
+            .ToListAsync(ct);
+        var voided = new HashSet<string>(StringComparer.Ordinal);
+        var targetOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var correction in corrections)
+        {
+            if (JobOfLedgerKey(PortalReports.ReadString(correction.PayloadJson, "targetKey")) is not { } target) continue;
+            voided.Add(target);
+            targetOf[correction.ExternalId] = target;
+        }
+        if (voided.Count == 0) return (voided, []);
+
+        // The document at the start of each chain of edits: its author and date stand for every correction of it.
+        string Root(string id)
+        {
+            for (var hops = 0; targetOf.TryGetValue(id, out var target) && hops < 50; hops++) id = target;
+            return id;
+        }
+        var roots = targetOf.Values.Select(Root).Distinct(StringComparer.Ordinal).ToList();
+        var originals = (await db.Jobs.AsNoTracking()
+                .Where(j => j.TenantId == tenantId && roots.Contains(j.ExternalId))
+                .Select(j => new { j.ExternalId, j.DocumentType, j.CreatedByUserId, j.EnqueuedAtUtc, j.PayloadJson })
+                .ToListAsync(ct))
+            .GroupBy(j => j.ExternalId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+        var replacements = new List<PortalReports.PhoneDocument>();
+        foreach (var edit in corrections.Where(c => !voided.Contains(c.ExternalId)
+                                                    && c.DocumentType is Native.NativeDocumentProcessor.DocumentEdit or Native.NativeDocumentProcessor.LedgerEdit))
+        {
+            if (!targetOf.TryGetValue(edit.ExternalId, out var target) || !originals.TryGetValue(Root(target), out var original)) continue;
+            var originalDay = PortalReports.BusinessDate(original.PayloadJson, original.EnqueuedAtUtc);
+            using var parsed = JsonDocument.Parse(edit.PayloadJson!);
+            var root = parsed.RootElement;
+            if (edit.DocumentType == Native.NativeDocumentProcessor.DocumentEdit)
+            {
+                var kind = AndroidEndpoints.GetString(root, "documentType");
+                if (kind is not (PortalReports.SalesOrder or Native.NativeDocumentProcessor.SalesReturn)) continue;
+                if (!root.TryGetProperty("document", out var document) || document.ValueKind != JsonValueKind.Object) continue;
+                var payload = document.GetRawText();
+                var day = AndroidEndpoints.GetString(document, "occurredAt") is null ? originalDay : PortalReports.BusinessDate(payload, original.EnqueuedAtUtc);
+                replacements.Add(new PortalReports.PhoneDocument(edit.ExternalId, kind, JobStatus.Succeeded, original.CreatedByUserId, day, payload));
+            }
+            else if (original.DocumentType == PortalReports.Collection)
+            {
+                var amount = AndroidEndpoints.GetDecimal(root, "amount") ?? 0m;
+                var day = AndroidEndpoints.GetString(root, "occurredAt") is null ? originalDay : PortalReports.BusinessDate(edit.PayloadJson, original.EnqueuedAtUtc);
+                replacements.Add(new PortalReports.PhoneDocument(edit.ExternalId, PortalReports.Collection, JobStatus.Succeeded, original.CreatedByUserId, day,
+                    JsonSerializer.Serialize(new { amount })));
+            }
+        }
+        return (voided, replacements);
+    }
+
+    /// <summary>The job a native ledger row belongs to: its key without the last <c>|suffix</c>.</summary>
+    private static string? JobOfLedgerKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        var bar = key.LastIndexOf('|');
+        return bar <= 0 ? key : key[..bar];
     }
 
     // ---- Mikro rows ------------------------------------------------------------------------

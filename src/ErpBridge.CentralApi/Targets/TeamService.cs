@@ -165,8 +165,15 @@ public sealed class TeamService
         db.SalesTeamMembers.RemoveRange(await db.SalesTeamMembers.Where(m => m.TenantId == tenantId && m.TeamId == id).ToListAsync(ct));
         db.SalesTeamManagers.RemoveRange(await db.SalesTeamManagers.Where(m => m.TeamId == id).ToListAsync(ct));
         var now = TargetService.NowMs();
+        var actorName = string.IsNullOrWhiteSpace(actor.FullName) ? actor.Username : actor.FullName;
         foreach (var target in await db.SalesTargets.Where(t => t.TenantId == tenantId && t.OwnerKind == TargetOwnerKinds.Team && t.OwnerId == id && !t.IsDeleted).ToListAsync(ct))
         {
+            // The same trail a deletion from the targets page leaves (Codex, PR #214).
+            db.SalesTargetEvents.Add(new SalesTargetEvent
+            {
+                TenantId = tenantId, TargetId = target.Id, Action = "DELETE", OldValue = target.Value,
+                ActorUserId = actor.Id, ActorName = actorName.Length <= 120 ? actorName : actorName[..120], OccurredAtMs = now,
+            });
             target.IsDeleted = true;
             target.UpdatedAtMs = now;
             target.UpdatedByUserId = actor.Id;

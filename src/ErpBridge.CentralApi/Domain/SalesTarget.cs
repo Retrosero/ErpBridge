@@ -141,8 +141,23 @@ public sealed class SalesTargetEvent
 
     public long OccurredAtMs { get; set; }
 
-    /// <summary>The panel's operation id; a repeated request is answered without writing again.</summary>
+    /// <summary>The panel save that wrote it (<see cref="SalesTargetOperation"/>); null for a team deletion.</summary>
     public Guid? OperationId { get; set; }
+}
+
+/// <summary>
+/// A target save the server applied, by the panel's operation id. The primary key makes a retried save that overlaps
+/// the first one wait for it and then find it, instead of writing the batch twice.
+/// </summary>
+public sealed class SalesTargetOperation
+{
+    public Guid TenantId { get; set; }
+
+    public Guid OperationId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public long AppliedAtMs { get; set; }
 }
 
 /// <summary>A company's target settings; a missing row means the defaults.</summary>

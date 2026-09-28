@@ -104,9 +104,11 @@ public static class PortalTargetEndpoints
         var (tenant, scope, error) = await AuthorizeAsync(http, db, ct, manage: true);
         if (error is not null) return error;
         var result = await targets.SaveAsync(db, tenant!, scope!, body ?? new TargetsSaveRequest(), ct);
-        return result.Errors.Length > 0
-            ? JsonResults.Status(result.Errors.Any(e => e.ErrorCode == "TARGET_OUT_OF_SCOPE") ? StatusCodes.Status403Forbidden : StatusCodes.Status400BadRequest, result)
-            : JsonResults.Ok(result);
+        if (result.Errors.Length == 0) return JsonResults.Ok(result);
+        var status = result.Errors.Any(e => e.ErrorCode == "TARGET_OUT_OF_SCOPE") ? StatusCodes.Status403Forbidden
+            : result.Errors.Any(e => e.ErrorCode == "TARGET_CONFLICT") ? StatusCodes.Status409Conflict
+            : StatusCodes.Status400BadRequest;
+        return JsonResults.Status(status, result);
     }
 
     private static async Task<IResult> CopyAsync(HttpContext http, [FromBody] TargetCopyRequest? body, [FromServices] CentralApiDbContext db,

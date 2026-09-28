@@ -2786,11 +2786,28 @@ namespace ErpBridge.CentralApi.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId", "OperationId");
-
                     b.HasIndex("TenantId", "TargetId");
 
                     b.ToTable("sales_target_events", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTargetOperation", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AppliedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TenantId", "OperationId");
+
+                    b.ToTable("sales_target_operations", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTeam", b =>

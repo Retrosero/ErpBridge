@@ -160,7 +160,7 @@ public sealed class TargetService(TargetFactReader facts, IMemoryCache cache)
             return Error(-1, "TARGET_OPERATION_REQUIRED", "Kayıt işlemi kimliği gerekli.");
         if (request.Items.Length > MaxItemsPerSave)
             return Error(-1, "TARGET_BATCH_TOO_LARGE", $"Bir seferde en çok {MaxItemsPerSave} hedef kaydedilebilir.");
-        if (await db.SalesTargetEvents.AnyAsync(e => e.TenantId == tenant.Id && e.OperationId == request.OperationId, ct))
+        if (await db.SalesTargetOperations.AnyAsync(o => o.TenantId == tenant.Id && o.OperationId == request.OperationId, ct))
             return new TargetsSaveResponse { Duplicate = true };
 
         var users = await db.MobileUsers.AsNoTracking()
@@ -183,6 +183,20 @@ public sealed class TargetService(TargetFactReader facts, IMemoryCache cache)
         var actorName = Clip(string.IsNullOrWhiteSpace(scope.User.FullName) ? scope.User.Username : scope.User.FullName, 120);
         var relational = db.Database.IsRelational();
         await using var transaction = relational ? await db.Database.BeginTransactionAsync(ct) : null;
+
+        // The operation row first: a retry overlapping the first request waits on its primary key until the first
+        // commits, then fails here and is answered as the duplicate it is (Codex, PR #214).
+        db.SalesTargetOperations.Add(new SalesTargetOperation { TenantId = tenant.Id, OperationId = request.OperationId, UserId = scope.User.Id, AppliedAtMs = now });
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            return new TargetsSaveResponse { Duplicate = true };
+        }
 
         var keys = valid.Select(v => (v.Period.Type, v.Period.Key)).Distinct().ToList();
         var periodKeys = keys.Select(k => k.Key).ToList();
@@ -239,10 +253,17 @@ public sealed class TargetService(TargetFactReader facts, IMemoryCache cache)
             response.Saved++;
         }
 
-        // Nothing changed still records the operation, so a retried save is answered as a duplicate.
-        if (response.Saved + response.Deleted == 0)
-            Log(db, tenant.Id, Guid.Empty, "NOOP", null, null, scope.User.Id, actorName, now, request.OperationId);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Another save created one of these targets in the meantime (the natural key is unique).
+            if (transaction is not null) await transaction.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            return Error(-1, "TARGET_CONFLICT", "Aynı hedef şu anda başka biri tarafından da kaydedildi. Sayfayı yenileyip tekrar deneyin.");
+        }
         if (transaction is not null) await transaction.CommitAsync(ct);
         return response;
     }

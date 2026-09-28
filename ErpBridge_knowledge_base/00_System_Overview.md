@@ -1133,13 +1133,19 @@ registration ayrı bir composition projesine taşınır.
      İstanbul günü; `Targets/TargetPeriod`), tür (`REVENUE`, `COLLECTION`, `PRODUCT`, `CATEGORY` = ana grup/ERP'siz `kategori`,
      `SUB_CATEGORY` = `anaGrup|altGrup`, `BRAND`, `VISIT`, `DOCUMENT_COUNT`), ölçü (`AMOUNT` | `QUANTITY` | `COUNT`), kalem kodu, sahip
      (`USER` | `TEAM` | `COMPANY`, firmada `OwnerId = Guid.Empty`). Doğal anahtar tekil (upsert); `value = null` yumuşak siler.
-     Kayıt **hep ya hiç** (hatalı kalemin `index`'i döner), ≤ 2000 kalem, `operationId` tekrarında `duplicate` (değişiklik
-     olmasa da `NOOP` olayı yazılır). Her yazım `sales_target_events`'e (eski/yeni değer, kim).
+     Kayıt **hep ya hiç** (hatalı kalemin `index`'i döner), ≤ 2000 kalem. `operationId` işlemin **ilk yazımı** olarak
+     `sales_target_operations`'a (PK `TenantId+OperationId`) girer: aynı anda gelen tekrar PK'da bekler, sonra `duplicate` alır;
+     aynı doğal anahtarı eşzamanlı yaratan iki farklı kayıttan ikincisi 409 `TARGET_CONFLICT` (Codex, PR #214). Her değişiklik
+     `sales_target_events`'e (eski/yeni değer, kim); ekip silinince hedeflerinin `DELETE` olayı da yazılır.
    - **Gerçekleşen (K6–K8, `Targets/TargetFactReader`):** ERP'siz firmada `jobs` (`Succeeded`; `PortalReports.PhoneDocumentsAsync`,
      `occurredAt` İstanbul günü + 7 gün tolerans): satış/iade satırı değeri `lineTotal` → adet × `unitPrice` → adet ×
      `listUnitPrice` × `conditionPercent` (ERP'siz defterle aynı, KDV ayrımı yapılmaz), anında ödemeli satış aynı zamanda tahsilat.
+     **Panel düzeltmeleri:** `document_void`/`ledger_void` ile iptal edilen belge (`targetKey`'in işi) sayılmaz; ayakta kalan
+     `document_edit`/`ledger_edit` onun yerine sayılır — düzeltilen belgenin **ilk satıcısına**, düzeltmenin tarihiyle (yoksa asılınkiyle).
      ERP'li firmada **Mikro aynası** (`stockTransactions`, `customerTransactions`, ayrı bir `PortalRecordMirror` "target-rows"):
      satış = `tip` 1 + `evrakTip` 1/4 (irsaliye/fatura) satırı, iade = `tip` 3 + `evrakTip` 3; tutar `tutar − discountAmount`
+     (faturalanan irsaliye Mikro'da ikinci bir stok satırı açmaz — açsaydı stok iki kez düşerdi; canlı V15_02/V16_03'te satışların
+     tamamı kendi faturasına bağlı `evrakTip` 4, bağlı `evrakTip` 1 satırı yok, 2026-09-28)
      (KDV hariç); tahsilat = `TAHSILAT` ve kapalı (peşin) `SATIS`. Satır kişiye `plasiyerKod` → `mobile_user_erp_mappings.SalespersonCode`
      ile bağlanır; kendi kodu olmayan kişinin kişisel gerçekleşeni yoktur (sahip satırında uyarı), firma geneli tüm satırlardır.
      Kişinin `Pending/Processing` telefon belgeleri ayrı `pending`'dir. **Ajan `plasiyerKod` göndermiyorsa** (hiçbir satırda alan

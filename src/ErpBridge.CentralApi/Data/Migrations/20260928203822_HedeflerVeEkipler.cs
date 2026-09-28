@@ -34,6 +34,20 @@ namespace ErpBridge.CentralApi.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "sales_target_operations",
+                columns: table => new
+                {
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    OperationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    AppliedAtMs = table.Column<long>(type: "bigint", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_sales_target_operations", x => new { x.TenantId, x.OperationId });
+                });
+
+            migrationBuilder.CreateTable(
                 name: "sales_targets",
                 columns: table => new
                 {
@@ -133,11 +147,6 @@ namespace ErpBridge.CentralApi.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_sales_target_events_TenantId_OperationId",
-                table: "sales_target_events",
-                columns: new[] { "TenantId", "OperationId" });
-
-            migrationBuilder.CreateIndex(
                 name: "IX_sales_target_events_TenantId_TargetId",
                 table: "sales_target_events",
                 columns: new[] { "TenantId", "TargetId" });
@@ -174,6 +183,9 @@ namespace ErpBridge.CentralApi.Data.Migrations
         {
             migrationBuilder.DropTable(
                 name: "sales_target_events");
+
+            migrationBuilder.DropTable(
+                name: "sales_target_operations");
 
             migrationBuilder.DropTable(
                 name: "sales_targets");
