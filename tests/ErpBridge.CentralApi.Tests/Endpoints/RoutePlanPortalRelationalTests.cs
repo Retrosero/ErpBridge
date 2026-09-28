@@ -92,7 +92,8 @@ public sealed class RoutePlanPortalRelationalTests : IClassFixture<SqliteCentral
         var c = await CompanyAsync();
         await SendJsonAsync<RoutePlanDto>(HttpMethod.Put, c.Patron, "/api/v1/portal/routes/p", Plan("Rut", ["ali"],
             (YesterdayRouteDay, "C-1", "Dün 1"), (YesterdayRouteDay, "C-2", "Dün 2"), (TodayRouteDay, "C-3", "Bugün")));
-        var plan = (await GetJsonAsync<RoutePlansResponse>(c.Patron, "/api/v1/portal/routes")).Plans.Single();
+        await BackdateRouteJobsAsync(c, days: 3);
+        var plan = await GetJsonAsync<RoutePlanDto>(c.Patron, "/api/v1/portal/routes/p");
         var yesterday = Today.AddDays(-1).ToString("yyyy-MM-dd");
         var first = plan.Stops.First(s => s.CustomerCode == "C-1").StopId;
         await PostVisitAsync(c, c.Ali, "v1", new { visitId = "v1", planId = "p", stopId = first, customerCode = "C-1", visitDate = yesterday, status = "COMPLETED" });
@@ -109,6 +110,38 @@ public sealed class RoutePlanPortalRelationalTests : IClassFixture<SqliteCentral
         ali.Compliance.Should().Be(33.3m);
         report.Days.Should().HaveCount(2);
         (await SendAsync(HttpMethod.Get, c.Patron, "/api/v1/portal/routes/compliance?from=2026-01-01&to=2026-09-01", null)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        // Deleting the plan today does not rewrite yesterday (Codex, PR #217).
+        (await SendAsync(HttpMethod.Delete, c.Patron, "/api/v1/portal/routes/p", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var after = await GetJsonAsync<RouteComplianceResponse>(c.Patron, $"/api/v1/portal/routes/compliance?from={yesterday}&to={yesterday}");
+        after.Rows.Single(r => r.Username == "ali").Should().Match<RouteComplianceRow>(r => r.Planned == 2 && r.Completed == 1 && r.Unplanned == 1);
+        (await SendAsync(HttpMethod.Get, c.Patron, "/api/v1/portal/routes/p", null)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task A_visit_counts_for_the_plan_it_names_when_two_plans_share_a_stop_id()
+    {
+        var c = await CompanyAsync();
+        var yesterday = Today.AddDays(-1).ToString("yyyy-MM-dd");
+        foreach (var planId in new[] { "A", "B" })
+        {
+            var response = await SendAsync(HttpMethod.Post, c.Patron, "/api/v1/ingest/jobs", new
+            {
+                externalId = "rp-" + planId, documentType = "route_plan",
+                payload = new
+                {
+                    planId, name = planId, isActive = true, assignees = new[] { "ali" },
+                    stops = new[] { new { stopId = "s1", dayOfWeek = YesterdayRouteDay, customerCode = "C-" + planId, customerName = planId, visitOrder = 1 } },
+                },
+            }, c.Id);
+            (await response.ReadAsJsonAsync<IngestJobResponse>()).Status.Should().Be("Succeeded");
+        }
+        await BackdateRouteJobsAsync(c, days: 3);
+        await PostVisitAsync(c, c.Ali, "vb", new { visitId = "vb", planId = "B", stopId = "s1", customerCode = "C-B", visitDate = yesterday, status = "COMPLETED" });
+
+        var report = await GetJsonAsync<RouteComplianceResponse>(c.Patron, $"/api/v1/portal/routes/compliance?from={yesterday}&to={yesterday}");
+
+        report.Rows.Single(r => r.Username == "ali").Should().Match<RouteComplianceRow>(r => r.Planned == 2 && r.Completed == 1 && r.Missed == 1 && r.Unplanned == 0);
     }
 
     [Fact]
@@ -132,6 +165,19 @@ public sealed class RoutePlanPortalRelationalTests : IClassFixture<SqliteCentral
         Assignees = assignees,
         Stops = [.. stops.Select((s, i) => new RouteStopDto { DayOfWeek = s.Day, CustomerCode = s.Code, CustomerName = s.Name, VisitOrder = i + 1 })],
     };
+
+    /// <summary>Plans saved "days ago": a plan is in force from the day it was saved.</summary>
+    private async Task BackdateRouteJobsAsync(Company c, int days)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        foreach (var job in db.Jobs.Where(j => j.TenantId == c.Id && j.DocumentType == "route_plan").ToList())
+        {
+            job.EnqueuedAtUtc = job.EnqueuedAtUtc.AddDays(-days);
+            job.CompletedAtUtc = job.CompletedAtUtc?.AddDays(-days);
+        }
+        await db.SaveChangesAsync();
+    }
 
     private async Task PostVisitAsync(Company c, string token, string externalId, object payload)
     {

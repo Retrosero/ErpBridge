@@ -1184,7 +1184,11 @@ registration ayrı bir composition projesine taşınır.
      `TeamDocumentProcessor` işler, telefonlar akıştan (kural 17) alır. Panelde açılan durak id'sini sunucuda alır, yeniden kayıtta
      korunur (ziyaretler bağlı kalır). İşleyicinin İngilizce reddi panele Türkçe `ROUTE_INVALID` mesajıyla döner (kapsam dışı 403).
      Uyum: kişi/gün bazında planlanan, ziyaret, atlanan, **kaçırılan** (geçmiş günün kayıtsız durağı; bugünkü değil), plan dışı,
-     uyum = ziyaret ÷ planlanan. Panel `/rut` (plan listesi; editör: ad, başlangıç, etkin, atananlar, Pzt–Paz sekmeleri, durak sırası
+     uyum = ziyaret ÷ planlanan. **Her gün o gün geçerli plan sürümüyle hesaplanır** (`PortalReports.RoutePlanHistory`: `Succeeded`
+     `route_plan`/`route_plan_delete` işlerinden, gün sonundan önceki son sürüm; iş geçmişi olmayan eski plan bugünkü haliyle) —
+     sonradan düzenleme/silme geçmişi değiştirmez; plan kaydedildiği günden itibaren geçerlidir. **Ziyaret durağa `(planId, stopId,
+     kullanıcı)` ile bağlanır** (`BuildVisits`; durak kimliği yalnız plan içinde tekildir), `planId` taşımayan eski ziyaret yalnız
+     `stopId` ile eşleşir (Codex, PR #217). `GET /routes/{planId}` tek plan (liste kuralları; yoksa 404 `ROUTE_NOT_FOUND`). Panel `/rut` (plan listesi; editör: ad, başlangıç, etkin, atananlar, Pzt–Paz sekmeleri, durak sırası
      ↑↓, kaldır, günü başka güne kopyala, cari araması `/portal/customers`) ve `/rut/uyum`. Panel istemcisi `ROUTE_INVALID` için
      sunucunun metnini gösterir (`PortalApiClient.ServerWordedCodes`). Testler: `RoutePlanPortalRelationalTests`, `PortalRoutePagesTests`.
    - **Uçlar:** panel `GET|POST /api/v1/portal/teams`, `PUT|DELETE /teams/{id}`, `GET|PUT /targets` (pano + toplu kayıt),

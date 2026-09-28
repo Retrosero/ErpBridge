@@ -29,6 +29,7 @@ public static class PortalRouteEndpoints
             .RequireAuthorization(Program.MobileUserPolicy)
             .RequireRateLimiting(Program.PerMobileUserRateLimitPolicy);
         group.MapGet("/", ListAsync).WithName("PortalRoutePlans");
+        group.MapGet("/{planId}", GetAsync).WithName("PortalRoutePlan");
         group.MapPut("/{planId}", SaveAsync).WithName("PortalRoutePlanSave");
         group.MapDelete("/{planId}", DeleteAsync).WithName("PortalRoutePlanDelete");
         group.MapGet("/compliance", ComplianceAsync).WithName("PortalRouteCompliance");
@@ -39,25 +40,44 @@ public static class PortalRouteEndpoints
     {
         var (tenant, scope, error) = await AuthorizeAsync(http, db, plan: false, ct);
         if (error is not null) return error;
-        var people = await PeopleAsync(db, tenant!.Id, scope!, ct);
+        return JsonResults.Ok(await BuildListAsync(db, tenant!, scope!, ct));
+    }
+
+    /// <summary>One plan, under the list's visibility and edit rules.</summary>
+    private static async Task<IResult> GetAsync(HttpContext http, string planId, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        var (tenant, scope, error) = await AuthorizeAsync(http, db, plan: false, ct);
+        if (error is not null) return error;
+        return (await BuildListAsync(db, tenant!, scope!, ct)).Plans.FirstOrDefault(p => p.PlanId == planId) is { } plan
+            ? JsonResults.Ok(plan)
+            : Fail(StatusCodes.Status404NotFound, "ROUTE_NOT_FOUND", "Rut planı bulunamadı.");
+    }
+
+    /// <summary>
+    /// The plans the caller sees — whole company, or any plan with one of their people (an unassigned plan only to its
+    /// author) — each editable when every assignee is theirs.
+    /// </summary>
+    private static async Task<RoutePlansResponse> BuildListAsync(CentralApiDbContext db, Tenant tenant, TeamScope scope, CancellationToken ct)
+    {
+        var people = await PeopleAsync(db, tenant.Id, scope, ct);
         var ids = people.ToDictionary(p => p.Username, p => p.Id, StringComparer.OrdinalIgnoreCase);
         var plans = new List<RoutePlanDto>();
         foreach (var plan in await PlansAsync(db, tenant.Id, ct))
         {
             var inScope = plan.Assignees.Where(ids.ContainsKey).ToList();
-            var visible = scope!.WholeCompany || inScope.Count > 0
+            var visible = scope.WholeCompany || inScope.Count > 0
                           || (plan.Assignees.Length == 0 && string.Equals(plan.UpdatedBy, scope.User.Username, StringComparison.OrdinalIgnoreCase));
             if (!visible) continue;
             plan.CanEdit = RolePermissions.CanPlanRoutes(scope.User) && (scope.WholeCompany || inScope.Count == plan.Assignees.Length);
             plans.Add(plan);
         }
-        return JsonResults.Ok(new RoutePlansResponse
+        return new RoutePlansResponse
         {
             Plans = [.. plans.OrderBy(p => p.IsActive ? 0 : 1).ThenBy(p => p.Name, StringComparer.Create(CultureInfo.GetCultureInfo("tr-TR"), true))],
             People = [.. people.Select(p => new RoutePersonDto { Username = p.Username, FullName = p.Name, TeamName = p.TeamName })],
-            CanPlan = RolePermissions.CanPlanRoutes(scope!.User),
+            CanPlan = RolePermissions.CanPlanRoutes(scope.User),
             WholeCompany = scope.WholeCompany,
-        });
+        };
     }
 
     private static async Task<IResult> SaveAsync(HttpContext http, string planId, [FromBody] RoutePlanDto? body, [FromServices] CentralApiDbContext db,
@@ -129,12 +149,12 @@ public static class PortalRouteEndpoints
         }
         var rows = people.ToDictionary(p => p.Username, p => new RouteComplianceRow { Username = p.Username, FullName = p.Name, TeamName = p.TeamName },
             StringComparer.OrdinalIgnoreCase);
-        var records = await PortalReports.RouteRecordsAsync(db, tenant.Id, ct);
+        var history = await PortalReports.RoutePlanHistory.LoadAsync(db, tenant.Id, ct);
         var days = new List<RouteComplianceDay>();
         for (var day = start; day <= end; day = day.AddDays(1))
         {
             var total = new RouteComplianceDay { Date = TargetPeriod.Format(day) };
-            foreach (var visit in PortalReports.BuildVisits(records, day))
+            foreach (var visit in PortalReports.BuildVisits(history.For(day), day))
             {
                 if (!rows.TryGetValue(visit.Username, out var row)) continue;
                 if (!visit.Planned)
