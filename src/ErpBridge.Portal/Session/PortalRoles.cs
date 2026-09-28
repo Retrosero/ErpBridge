@@ -29,6 +29,9 @@ public enum PortalArea
 
     /// <summary>Who changed a card/payment from the portal, and when (Denetim, GOAL_PANEL_ERPSIZ E7b/D5).</summary>
     NativeAudit,
+
+    /// <summary>Sales targets, teams and route plans (GOAL_HEDEF_RUT): the server's <c>CanManageTargets</c>.</summary>
+    Targets,
 }
 
 /// <summary>
@@ -82,6 +85,7 @@ public static class PortalRoles
         PortalArea.ErpDocuments => roles.Any(r => r is Admin or Manager or Accounting),
         // D4: only ADMIN edits a native tenant's books, so only ADMIN needs its audit trail.
         PortalArea.NativeAudit => roles.Contains(Admin),
+        PortalArea.Targets => roles.Any(r => r is Admin or Manager),
         _ => false,
     };
 

@@ -1,0 +1,273 @@
+@page "/hedefler"
+@inherits PortalPageBase
+
+<PageTitle>Hedef takibi — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Hedef takibi" Eyebrow="Hedefler & rut" Subtitle="Gerçekleşen, bugünkü tempoyla dönem sonu tahmini ve hedefe ulaşmak için günde gereken" Busy="Busy">
+        <Actions>
+            @if (_board?.CanManage == true)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.EditNote" Href="@EntryHref" id="go-entry">Hedef gir</MudButton>
+            }
+        </Actions>
+    </PageHeader>
+
+    <div class="stock-toolbar">
+        <TargetPeriodPicker Type="_type" Day="_day" OnChange="ChangePeriodAsync" />
+        @if (_teams.Count > 0)
+        {
+            <select class="portal-select" id="team-filter" value="@(_teamId?.ToString() ?? "")" @onchange="ChangeTeamAsync" aria-label="Ekip">
+                <option value="">Tüm kapsam</option>
+                @foreach (var team in _teams)
+                {
+                    <option value="@team.OwnerId">@(team.TeamKind == TeamKinds.Region ? "Bölge: " : "")@team.Name</option>
+                }
+            </select>
+        }
+    </div>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_board is not null)
+    {
+        @foreach (var warning in _board.Warnings)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="board-warning">@warning</MudAlert>
+        }
+        <MudText Typo="Typo.body2" Class="text-muted target-meta" id="board-meta">
+            @($"İş günü: {_board.WorkDaysElapsed} / {_board.WorkDaysTotal} · kalan {_board.WorkDaysLeft}") · Kaynak: @TargetText.Source(_board.Source)
+        </MudText>
+
+        var headline = _board.Owners.FirstOrDefault(o => o.OwnerKind == TargetOwners.Company)
+                       ?? (_board.Owners.Length == 1 ? _board.Owners[0] : null);
+        @if (headline is not null)
+        {
+            <section class="stat-grid stat-grid--four" id="headline">
+                <StatCard Id="stat-revenue" Label="Ciro" Value="@Fmt.Money(headline.Summary.Revenue)" Caption="@Against(headline, TargetText.Revenue)"
+                          Icon="@Icons.Material.Rounded.TrendingUp" Tone="primary" />
+                <StatCard Id="stat-collection" Label="Tahsilat" Value="@Fmt.Money(headline.Summary.Collection)" Caption="@Against(headline, TargetText.Collection)"
+                          Icon="@Icons.Material.Rounded.Payments" Tone="success" />
+                <StatCard Id="stat-visits" Label="Ziyaret" Value="@($"{headline.Summary.VisitsCompleted} / {headline.Summary.VisitsPlanned}")" Caption="yapılan / planlanan"
+                          Icon="@Icons.Material.Rounded.Route" Tone="info" />
+                <StatCard Id="stat-documents" Label="Satış fişi" Value="@headline.Summary.DocumentCount.ToString(Fmt.Turkish)"
+                          Caption="@(headline.Summary.PendingRevenue > 0 ? $"yolda {Fmt.Money(headline.Summary.PendingRevenue)}" : "belge")"
+                          Icon="@Icons.Material.Rounded.ReceiptLong" Tone="violet" />
+            </section>
+        }
+
+        @if (_board.Owners.Length == 0)
+        {
+            <EmptyState Id="board-empty" Icon="@Icons.Material.Rounded.TrackChanges" Title="Gösterilecek kişi ya da ekip yok." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table mt-3">
+                <div class="panel-head">
+                    <div>
+                        <MudText Typo="Typo.h6">Kişiler ve ekipler</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted">Satıra tıklayınca ürün, kategori ve marka hedefleri açılır. İtalik hedef girilmemiş, hesaplanmıştır (aylık hedefin günlük payı ya da rut planı).</MudText>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table" id="board-table">
+                        <thead>
+                            <tr>
+                                <th>Kim</th>
+                                <th>Ciro</th>
+                                <th>Tahsilat</th>
+                                <th class="num">Ziyaret</th>
+                                <th class="num">Tahmin (ciro)</th>
+                                <th class="num">Günde gereken</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var owner in Ordered)
+                            {
+                                var revenue = owner.Main(TargetText.Revenue);
+                                var open = _open.Contains(owner.Key);
+                                <tr data-owner="@owner.Key" class="target-row @(open ? "is-editing" : null)" @onclick="() => Toggle(owner)">
+                                    <td>
+                                        <div class="person">
+                                            <MudAvatar Size="Size.Small" Color="@(owner.OwnerKind == TargetOwners.User ? Color.Primary : Color.Secondary)" Variant="Variant.Outlined">
+                                                @(owner.OwnerKind == TargetOwners.User ? Fmt.Initials(owner.Name) : owner.OwnerKind == TargetOwners.Company ? "F" : owner.TeamKind == TeamKinds.Region ? "B" : "E")
+                                            </MudAvatar>
+                                            <div>
+                                                <div class="person-name">@owner.Name</div>
+                                                <div class="person-sub">@OwnerCaption(owner)</div>
+                                                @if (owner.Warning is not null)
+                                                {
+                                                    <div class="field-hint field-hint--warn" data-warning>@owner.Warning</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>@Progress(owner, TargetText.Revenue, owner.Summary.Revenue)</td>
+                                    <td>@Progress(owner, TargetText.Collection, owner.Summary.Collection)</td>
+                                    <td class="num">@VisitCell(owner)</td>
+                                    <td class="num">@(revenue is null ? "—" : Fmt.Money(revenue.Forecast))</td>
+                                    <td class="num">@(revenue?.RequiredPerDay is { } need ? Fmt.Money(need) : "—")</td>
+                                </tr>
+                                @if (open)
+                                {
+                                    <tr class="target-detail" data-detail="@owner.Key">
+                                        <td colspan="6">
+                                            @if (owner.Targets.Length == 0)
+                                            {
+                                                <span class="text-muted">Bu dönem için hedef yok.</span>
+                                            }
+                                            else
+                                            {
+                                                <table class="data-table target-detail-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Hedef</th>
+                                                            <th class="num">Hedef değer</th>
+                                                            <th class="num">Gerçekleşen</th>
+                                                            <th class="num">%</th>
+                                                            <th class="num">Beklenen (bugün)</th>
+                                                            <th class="num">Tahmin</th>
+                                                            <th class="num">Günde gereken</th>
+                                                            <th class="num">Yolda</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var target in owner.Targets)
+                                                        {
+                                                            <tr data-target="@($"{target.Metric}|{target.ItemCode}")" class="@(target.Derived ? "is-derived" : null)">
+                                                                <td>
+                                                                    @TargetText.Metric(target.Metric)
+                                                                    @if (target.ItemCode.Length > 0)
+                                                                    {
+                                                                        <span class="text-muted"> · @(target.ItemName ?? target.ItemCode) (@TargetText.Measure(target.Measure).ToLower(Fmt.Turkish))</span>
+                                                                    }
+                                                                    @if (target.ChildrenSum is { } sum && sum != target.Value)
+                                                                    {
+                                                                        <span class="badge badge--warn" title="Bir alt seviyedeki hedeflerin toplamı">alt toplam @TargetText.Value(target.Metric, target.Measure, sum)</span>
+                                                                    }
+                                                                </td>
+                                                                <td class="num">@TargetText.Value(target.Metric, target.Measure, target.Value)</td>
+                                                                <td class="num">@TargetText.Value(target.Metric, target.Measure, target.Actual)</td>
+                                                                <td class="num">@(target.Percent is { } p ? $"%{p.ToString("N1", Fmt.Turkish)}" : "—")</td>
+                                                                <td class="num">@TargetText.Value(target.Metric, target.Measure, target.ExpectedToDate)</td>
+                                                                <td class="num">@TargetText.Value(target.Metric, target.Measure, target.Forecast)</td>
+                                                                <td class="num">@(target.RequiredPerDay is { } r ? TargetText.Value(target.Metric, target.Measure, r) : "—")</td>
+                                                                <td class="num">@(target.Pending > 0 ? TargetText.Value(target.Metric, target.Measure, target.Pending) : "—")</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Targets;
+
+    private string _type = TargetText.Monthly;
+    private DateOnly _day;
+    private Guid? _teamId;
+    private TargetBoardResponse? _board;
+    private List<OwnerProgressDto> _teams = [];
+    private readonly HashSet<string> _open = [];
+
+    protected override void OnInitialized() => _day = Fmt.Today();
+
+    protected override async Task LoadAsync()
+    {
+        _board = await Api.TargetsAsync(_type, TargetText.KeyOf(_type, _day), _teamId);
+        // The filter keeps every team of the unfiltered board; a filtered board lists only its own.
+        if (_teamId is null) _teams = [.. _board.Owners.Where(o => o.OwnerKind == TargetOwners.Team)];
+    }
+
+    private string EntryHref => $"hedefler/giris?period={_type}&day={Fmt.IsoDay(_day)}";
+
+    /// <summary>The company first, then regions and teams, then people by how far they are on revenue.</summary>
+    private IEnumerable<OwnerProgressDto> Ordered => _board!.Owners
+        .OrderBy(o => o.OwnerKind switch { TargetOwners.Company => 0, TargetOwners.Team => 1, _ => 2 })
+        .ThenByDescending(o => o.Main(TargetText.Revenue)?.Percent ?? -1)
+        .ThenBy(o => o.Name, StringComparer.Create(Fmt.Turkish, true));
+
+    private async Task ChangePeriodAsync((string Type, DateOnly Day) period)
+    {
+        (_type, _day) = period;
+        _open.Clear();
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task ChangeTeamAsync(ChangeEventArgs e)
+    {
+        _teamId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        await RunAsync(LoadAsync);
+    }
+
+    private void Toggle(OwnerProgressDto owner)
+    {
+        if (!_open.Remove(owner.Key)) _open.Add(owner.Key);
+    }
+
+    private static string OwnerCaption(OwnerProgressDto owner) => owner.OwnerKind switch
+    {
+        TargetOwners.Company => "Firma geneli",
+        TargetOwners.Team => owner.TeamKind == TeamKinds.Region ? "Bölge" : owner.TeamName is null ? "Ekip" : $"Ekip · {owner.TeamName}",
+        _ => owner.TeamName ?? "Ekipsiz",
+    };
+
+    private static string Against(OwnerProgressDto owner, string metric) =>
+        owner.Main(metric) is { } target
+            ? $"hedef {Fmt.Money(target.Value)}{(target.Percent is { } p ? $" · %{p.ToString("N0", Fmt.Turkish)}" : "")}"
+            : "hedef yok";
+
+    private static RenderFragment Progress(OwnerProgressDto owner, string metric, decimal actual) => __builder =>
+    {
+        var target = owner.Main(metric);
+        if (target is null)
+        {
+            <span class="target-actual">@Fmt.Money(actual)</span>
+            <div class="text-muted target-sub">hedef yok</div>
+            return;
+        }
+        var percent = (double)Math.Min(100m, target.Percent ?? 0m);
+        var behind = target.Actual < target.ExpectedToDate;
+        <div class="target-progress" data-metric="@metric">
+            <div class="progress-label">
+                <strong>@Fmt.Money(target.Actual)</strong>
+                <span class="@(target.Derived ? "is-derived" : null)">/ @Fmt.Money(target.Value)</span>
+            </div>
+            <MudProgressLinear Color="@(target.Percent >= 100 ? Color.Success : behind ? Color.Warning : Color.Primary)" Rounded="true" Size="Size.Small" Value="@percent" />
+            <div class="target-sub text-muted">
+                @(target.Percent is { } p ? $"%{p.ToString("N0", Fmt.Turkish)}" : "")
+                @if (behind && target.Percent < 100)
+                {
+                    <span class="badge badge--warn">tempo altında</span>
+                }
+                @if (target.Pending > 0)
+                {
+                    <span class="badge badge--info">yolda @Fmt.Money(target.Pending)</span>
+                }
+            </div>
+        </div>
+    };
+
+    private static string VisitCell(OwnerProgressDto owner) =>
+        owner.Main(TargetText.Visit) is { } visit
+            ? $"{Fmt.Quantity(visit.Actual)} / {Fmt.Quantity(visit.Value)}"
+            : owner.Summary.VisitsCompleted > 0 ? owner.Summary.VisitsCompleted.ToString(Fmt.Turkish) : "—";
+}

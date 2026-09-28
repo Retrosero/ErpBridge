@@ -1,0 +1,766 @@
+@page "/hedefler/giris"
+@inherits PortalPageBase
+@using System.Globalization
+@using System.Text
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>Hedef girişi — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Hedef girişi" Eyebrow="Hedefler & rut" Subtitle="Gün, hafta ya da ay için kişi, ekip ve firma hedefleri" Busy="Busy">
+        <Actions>
+            @if (_board?.CanManage == true)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.ContentCopy" Disabled="@Busy" OnClick="OpenCopy" id="open-copy">Önceki dönemden kopyala</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.CallSplit" Disabled="@Busy" OnClick="OpenDistribute" id="open-distribute">Dağıt</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.UploadFile" Disabled="@Busy" OnClick="OpenImport" id="open-import">İçe aktar</MudButton>
+            }
+            @if (_board is not null)
+            {
+                <a class="link-button" href="@ExportHref" download="@($"hedefler-{_board.PeriodKey}.csv")" id="export-csv">Dışa aktar (CSV)</a>
+            }
+        </Actions>
+    </PageHeader>
+
+    <div class="stock-toolbar">
+        <TargetPeriodPicker Type="_type" Day="_day" OnChange="ChangePeriodAsync" />
+    </div>
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_board is not null)
+    {
+        @if (!_board.CanManage)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="page-alert" id="read-only">Hedefleri yalnız admin ve yöneticiler girebilir.</MudAlert>
+        }
+
+        <MudPaper Outlined="true" Class="panel panel--table">
+            <div class="panel-head">
+                <div>
+                    <MudText Typo="Typo.h6">Ciro, tahsilat, ziyaret ve fiş hedefleri</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        Boş bırakılan hücre hedef değildir; silmek için değeri temizleyin. Soluk yazı hesaplanan değerdir
+                        (aylık hedefin günlük payı ya da rut planındaki durak sayısı).
+                    </MudText>
+                </div>
+                @if (_board.CanManage)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || DirtyCount == 0)" OnClick="SaveGridAsync" id="save-grid">
+                        @(DirtyCount == 0 ? "Kaydet" : $"Kaydet ({DirtyCount})")
+                    </MudButton>
+                }
+            </div>
+            <div class="table-scroll">
+                <MudSimpleTable Dense="true" Elevation="0" Class="data-table target-grid" id="target-grid">
+                    <thead>
+                        <tr>
+                            <th>Kim</th>
+                            @foreach (var metric in TargetText.PlainMetrics)
+                            {
+                                <th class="num">@TargetText.Metric(metric)</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var owner in Owners)
+                        {
+                            <tr data-owner="@owner.Key">
+                                <td>
+                                    <div class="person-name">@owner.Name</div>
+                                    <div class="person-sub">@Caption(owner)</div>
+                                </td>
+                                @foreach (var metric in TargetText.PlainMetrics)
+                                {
+                                    var cell = (owner.Key, metric);
+                                    var target = owner.Main(metric);
+                                    var invalid = _invalid.Contains(cell);
+                                    <td class="num">
+                                        <input class="portal-input target-cell @(invalid ? "is-invalid" : null) @(_edits.ContainsKey(cell) ? "is-dirty" : null)"
+                                               data-cell="@($"{owner.Key}|{metric}")" inputmode="decimal" autocomplete="off"
+                                               value="@CellText(owner, metric)" placeholder="@(target?.Derived == true ? Plain(target.Value) : "—")"
+                                               disabled="@(!_board.CanManage || Busy)" @onchange="e => Edit(cell, e.Value?.ToString())" />
+                                        <div class="target-sub text-muted">
+                                            gerç. @(target is null ? Actual(owner, metric) : TargetText.Value(metric, target.Measure, target.Actual))
+                                            @if (target?.ChildrenSum is { } sum && !target.Derived && sum != target.Value)
+                                            {
+                                                <span class="badge badge--warn" title="Bir alt seviyedeki hedeflerin toplamı">alt @Plain(sum)</span>
+                                            }
+                                        </div>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </div>
+        </MudPaper>
+
+        <MudGrid Spacing="3" Class="mt-2">
+            <MudItem xs="12" lg="8">
+                <MudPaper Outlined="true" Class="panel panel--table" id="item-targets">
+                    <div class="panel-head">
+                        <div>
+                            <MudText Typo="Typo.h6">Ürün, kategori ve marka hedefleri</MudText>
+                            <MudText Typo="Typo.body2" Class="text-muted">Tutar KDV hariç, iskontolar düşülmüş satıştır; iadeler düşer.</MudText>
+                        </div>
+                    </div>
+                    @if (ItemRows.Count == 0)
+                    {
+                        <EmptyState Id="items-empty" Icon="@Icons.Material.Rounded.Category" Title="Bu dönem için kalem hedefi yok." />
+                    }
+                    else
+                    {
+                        <div class="table-scroll">
+                            <MudSimpleTable Dense="true" Elevation="0" Class="data-table" id="item-table">
+                                <thead>
+                                    <tr><th>Kim</th><th>Hedef</th><th class="num">Değer</th><th class="num">Gerçekleşen</th><th class="num">%</th><th></th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var (owner, target) in ItemRows)
+                                    {
+                                        <tr data-item="@($"{owner.Key}|{target.Metric}|{target.ItemCode}")">
+                                            <td>@owner.Name</td>
+                                            <td>@TargetText.Metric(target.Metric) · @(target.ItemName ?? target.ItemCode) <span class="text-muted">(@TargetText.Measure(target.Measure).ToLower(Fmt.Turkish))</span></td>
+                                            <td class="num">@TargetText.Value(target.Metric, target.Measure, target.Value)</td>
+                                            <td class="num">@TargetText.Value(target.Metric, target.Measure, target.Actual)</td>
+                                            <td class="num">@(target.Percent is { } p ? $"%{p.ToString("N0", Fmt.Turkish)}" : "—")</td>
+                                            <td class="num">
+                                                @if (_board.CanManage)
+                                                {
+                                                    <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" Color="Color.Error" aria-label="Sil" Disabled="@Busy"
+                                                                   Class="item-delete" OnClick="() => DeleteItemAsync(owner, target)" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        </div>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" lg="4">
+                <div class="side-stack">
+                    @if (_board.CanManage)
+                    {
+                        <MudPaper Outlined="true" Class="panel" id="item-form">
+                            <div class="panel-head">
+                                <MudText Typo="Typo.h6">Kalem hedefi ekle</MudText>
+                                <MudIcon Icon="@Icons.Material.Rounded.AddTask" Color="Color.Primary" />
+                            </div>
+                            <form class="stack-form" @onsubmit="AddItemAsync" @onsubmit:preventDefault>
+                                <label class="stack-field">
+                                    <span class="field-label">Kim</span>
+                                    <select class="portal-select" id="item-owner" value="@_item.OwnerKey" @onchange="e => _item.OwnerKey = e.Value?.ToString() ?? string.Empty">
+                                        <option value="">Seçin</option>
+                                        @foreach (var owner in Owners)
+                                        {
+                                            <option value="@owner.Key">@owner.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                                <div class="filter-grid">
+                                    <label class="stack-field">
+                                        <span class="field-label">Tür</span>
+                                        <select class="portal-select" id="item-metric" value="@_item.Metric" @onchange="ChangeItemMetric">
+                                            @foreach (var metric in ItemMetrics)
+                                            {
+                                                <option value="@metric">@TargetText.Metric(metric)</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label class="stack-field">
+                                        <span class="field-label">Ölçü</span>
+                                        <select class="portal-select" id="item-measure" value="@_item.Measure" @onchange="e => _item.Measure = e.Value?.ToString() ?? AmountMeasure">
+                                            <option value="AMOUNT">Tutar (TL)</option>
+                                            <option value="QUANTITY">Miktar</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <label class="stack-field">
+                                    <span class="field-label">@TargetText.Metric(_item.Metric) ara</span>
+                                    <div class="document-search">
+                                        <input class="portal-input" id="item-search" value="@_item.Query" @onchange="e => _item.Query = e.Value?.ToString()" placeholder="Kod ya da ad" />
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@Busy" OnClick="SearchItemsAsync" id="item-search-go">Ara</MudButton>
+                                    </div>
+                                </label>
+                                @if (_item.Found is { } found)
+                                {
+                                    <div class="item-picks" id="item-picks">
+                                        @foreach (var candidate in found)
+                                        {
+                                            <button type="button" class="filter-chip @(candidate.Code == _item.Code ? "is-selected" : null)" data-code="@candidate.Code"
+                                                    @onclick="() => Pick(candidate)">@(candidate.Name == candidate.Code ? candidate.Code : $"{candidate.Name} ({candidate.Code})")</button>
+                                        }
+                                        @if (found.Count == 0)
+                                        {
+                                            <span class="text-muted">Eşleşen yok.</span>
+                                        }
+                                    </div>
+                                }
+                                <label class="stack-field">
+                                    <span class="field-label">Hedef</span>
+                                    <input class="portal-input" id="item-value" inputmode="decimal" value="@_item.Value" @onchange="e => _item.Value = e.Value?.ToString()" />
+                                </label>
+                                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="item-add">Ekle</MudButton>
+                            </form>
+                        </MudPaper>
+                    }
+
+                    <MudPaper Outlined="true" Class="panel" id="work-days">
+                        <div class="panel-head">
+                            <MudText Typo="Typo.h6">Çalışma günleri</MudText>
+                            <MudIcon Icon="@Icons.Material.Rounded.EventAvailable" Color="Color.Primary" />
+                        </div>
+                        <MudText Typo="Typo.caption" Class="text-muted panel-note">Günlük pay, tempo ve günde gereken bu günlere göre hesaplanır.</MudText>
+                        <div class="filter-chips">
+                            @for (var i = 0; i < 7; i++)
+                            {
+                                var bit = 1 << i;
+                                <label class="inline-field">
+                                    <input type="checkbox" data-day="@i" checked="@((_workDays & bit) != 0)" disabled="@(!CanEditWorkDays || Busy)"
+                                           @onchange="e => ToggleDay(bit, e.Value is true)" /> @DayNames[i]
+                                </label>
+                            }
+                        </div>
+                        @if (CanEditWorkDays)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" Disabled="@(Busy || _workDays == _savedWorkDays)" OnClick="SaveWorkDaysAsync" id="work-days-save">Kaydet</MudButton>
+                        }
+                    </MudPaper>
+                </div>
+            </MudItem>
+        </MudGrid>
+    }
+
+    <DetailSheet Id="copy-sheet" Open="_copyOpen" Busy="Busy" Eyebrow="Hedef girişi" Title="Önceki dönemden kopyala" OnClose="() => _copyOpen = false">
+        <form class="stack-form" @onsubmit="PreviewCopyAsync" @onsubmit:preventDefault>
+            <MudText Typo="Typo.body2">@TargetText.Title(_type, TargetText.Shift(_type, _day, -1)) hedefleri @TargetText.Title(_type, _day) dönemine taşınır.</MudText>
+            <label class="stack-field">
+                <span class="field-label">Değişim (%)</span>
+                <input class="portal-input portal-input--short" id="copy-percent" inputmode="decimal" value="@_copyPercent" @onchange="e => _copyPercent = e.Value?.ToString() ?? string.Empty" />
+            </label>
+            <label class="inline-field"><input type="checkbox" id="copy-overwrite" checked="@_copyOverwrite" @onchange="e => _copyOverwrite = e.Value is true" /> Bu dönemde zaten olan hedeflerin üzerine yaz</label>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@Busy" id="copy-preview">Önizle</MudButton>
+        </form>
+        @if (_copyPreview is { } preview)
+        {
+            <MudText Typo="Typo.body2" Class="mt-3" id="copy-count">@preview.Length hedef kopyalanacak.</MudText>
+            <ul class="preview-list">
+                @foreach (var item in preview.Take(30))
+                {
+                    <li>@OwnerName(item) · @TargetText.Metric(item.Metric)@(string.IsNullOrEmpty(item.ItemCode) ? "" : $" · {item.ItemName ?? item.ItemCode}"): <strong>@Plain(item.Value ?? 0)</strong></li>
+                }
+            </ul>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || preview.Length == 0)" OnClick="ApplyCopyAsync" id="copy-apply">Uygula</MudButton>
+        }
+    </DetailSheet>
+
+    <DetailSheet Id="distribute-sheet" Open="_distributeOpen" Busy="Busy" Eyebrow="Hedef girişi" Title="Hedefi dağıt" OnClose="() => _distributeOpen = false">
+        <form class="stack-form" @onsubmit="PreviewDistributeAsync" @onsubmit:preventDefault>
+            <label class="stack-field">
+                <span class="field-label">Kaynak</span>
+                <select class="portal-select" id="dist-source" value="@_dist.Source" @onchange="e => _dist.Source = e.Value?.ToString() ?? string.Empty">
+                    @foreach (var owner in Owners.Where(o => o.OwnerKind != TargetOwners.User))
+                    {
+                        <option value="@owner.Key">@owner.Name</option>
+                    }
+                </select>
+            </label>
+            <div class="filter-grid">
+                <label class="stack-field">
+                    <span class="field-label">Tür</span>
+                    <select class="portal-select" id="dist-metric" value="@_dist.Metric" @onchange="e => _dist.Metric = e.Value?.ToString() ?? TargetText.Revenue">
+                        @foreach (var metric in TargetText.PlainMetrics)
+                        {
+                            <option value="@metric">@TargetText.Metric(metric)</option>
+                        }
+                    </select>
+                </label>
+                <label class="stack-field">
+                    <span class="field-label">Değer (boşsa kaynağın hedefi)</span>
+                    <input class="portal-input" id="dist-value" inputmode="decimal" value="@_dist.Value" @onchange="e => _dist.Value = e.Value?.ToString()" />
+                </label>
+                <label class="stack-field">
+                    <span class="field-label">Yöntem</span>
+                    <select class="portal-select" id="dist-method" value="@_dist.Method" @onchange="e => _dist.Method = e.Value?.ToString() ?? EqualMethod">
+                        <option value="EQUAL">Eşit</option>
+                        <option value="LAST_PERIOD_SHARE">Geçen dönemdeki paya göre</option>
+                    </select>
+                </label>
+                <label class="stack-field">
+                    <span class="field-label">Kime</span>
+                    <select class="portal-select" id="dist-level" value="@_dist.Level" @onchange="e => _dist.Level = e.Value?.ToString() ?? TargetOwners.User">
+                        <option value="USER">Kişilere</option>
+                        <option value="TEAM">Bir alt ekiplere</option>
+                    </select>
+                </label>
+            </div>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@Busy" id="dist-preview">Önizle</MudButton>
+        </form>
+        @if (_distPreview is { } shares)
+        {
+            <ul class="preview-list" id="dist-list">
+                @foreach (var item in shares)
+                {
+                    <li>@OwnerName(item): <strong>@Plain(item.Value ?? 0)</strong></li>
+                }
+            </ul>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || shares.Length == 0)" OnClick="TakeDistribution" id="dist-take">Tabloya aktar</MudButton>
+            <MudText Typo="Typo.caption" Class="text-muted">Aktarılan değerler tabloda işaretlenir; kaydetmeden önce düzeltebilirsiniz.</MudText>
+        }
+    </DetailSheet>
+
+    <DetailSheet Id="import-sheet" Open="_importOpen" Busy="Busy" Eyebrow="Hedef girişi" Title="Dosyadan içe aktar" OnClose="() => _importOpen = false">
+        <div class="stack-form">
+            <MudText Typo="Typo.body2">
+                CSV (;) ya da .xlsx. Sütunlar: <strong>Kim</strong> (kullanıcı adı, ad soyad, ekip/bölge adı ya da "Firma"), <strong>Tür</strong>
+                (Ciro, Tahsilat, Ziyaret, Fiş adedi, Ürün, Kategori, Alt kategori, Marka), <strong>Ölçü</strong> (Tutar/Miktar, boş olabilir),
+                <strong>Kalem</strong> (ürün/kategori/marka kodu), <strong>Hedef</strong>. Hepsi @TargetText.Title(_type, _day) dönemine yazılır.
+            </MudText>
+            <a class="link-button" href="@TemplateHref" download="hedef-sablonu.csv" id="import-template">Şablonu indir</a>
+            <InputFile OnChange="ReadImportAsync" accept=".csv,.xlsx,.txt" id="import-file" disabled="@Busy" />
+            @if (_importErrors.Count > 0)
+            {
+                <ul class="preview-list preview-list--errors" id="import-errors">
+                    @foreach (var error in _importErrors.Take(20))
+                    {
+                        <li>@error</li>
+                    }
+                </ul>
+            }
+            @if (_importItems is { } rows)
+            {
+                <MudText Typo="Typo.body2" id="import-count">@rows.Count hedef okundu@(_importErrors.Count > 0 ? $", {_importErrors.Count} satır atlandı" : "").</MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || rows.Count == 0)" OnClick="SaveImportAsync" id="import-save">Kaydet</MudButton>
+            }
+        </div>
+    </DetailSheet>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Targets;
+
+    private const string AmountMeasure = "AMOUNT";
+    private const string EqualMethod = "EQUAL";
+    private static readonly string[] DayNames = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+
+    [SupplyParameterFromQuery(Name = "period")] public string? PeriodQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "day")] public string? DayQuery { get; set; }
+
+    private string? Notice { get; set; }
+
+    private string _type = TargetText.Monthly;
+    private DateOnly _day;
+    private TargetBoardResponse? _board;
+    private TeamsResponse? _people;
+    private readonly Dictionary<(string Owner, string Metric), string> _edits = [];
+    private readonly HashSet<(string Owner, string Metric)> _invalid = [];
+    private int _workDays = 63;
+    private int _savedWorkDays = 63;
+
+    private sealed class ItemForm
+    {
+        public string OwnerKey { get; set; } = string.Empty;
+        public string Metric { get; set; } = TargetText.Product;
+        public string Measure { get; set; } = AmountMeasure;
+        public string? Query { get; set; }
+        public List<TargetItemDto>? Found { get; set; }
+        public string? Code { get; set; }
+        public string? Name { get; set; }
+        public string? Value { get; set; }
+    }
+
+    private ItemForm _item = new();
+
+    private bool _copyOpen;
+    private string _copyPercent = "0";
+    private bool _copyOverwrite;
+    private TargetInput[]? _copyPreview;
+
+    private sealed class DistributeForm
+    {
+        public string Source { get; set; } = TargetOwners.Company;
+        public string Metric { get; set; } = TargetText.Revenue;
+        public string? Value { get; set; }
+        public string Method { get; set; } = EqualMethod;
+        public string Level { get; set; } = TargetOwners.User;
+    }
+
+    private bool _distributeOpen;
+    private DistributeForm _dist = new();
+    private TargetInput[]? _distPreview;
+
+    private bool _importOpen;
+    private List<TargetInput>? _importItems;
+    private readonly List<string> _importErrors = [];
+
+    protected override void OnInitialized()
+    {
+        _type = PeriodQuery is TargetText.Daily or TargetText.Weekly or TargetText.Monthly ? PeriodQuery : TargetText.Monthly;
+        _day = Fmt.TryIsoDay(DayQuery, out var day) ? day : Fmt.Today();
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _board = await Api.TargetsAsync(_type, TargetText.KeyOf(_type, _day), null);
+        _edits.Clear();
+        _invalid.Clear();
+        _savedWorkDays = _workDays = (await Api.TargetSettingsAsync()).WorkDays;
+    }
+
+    private IEnumerable<OwnerProgressDto> Owners => _board?.Owners ?? [];
+
+    private IEnumerable<string> ItemMetrics =>
+        string.Equals(_board?.DataSource, "erp", StringComparison.OrdinalIgnoreCase) ? TargetText.ItemMetrics : TargetText.ItemMetrics.Where(m => m != TargetText.SubCategory);
+
+    private List<(OwnerProgressDto Owner, TargetRowDto Target)> ItemRows =>
+        [.. Owners.SelectMany(o => o.Targets.Where(t => !t.Derived && t.ItemCode.Length > 0).Select(t => (o, t)))];
+
+    private bool CanEditWorkDays => _board is { CanManage: true, WholeCompany: true };
+
+    private int DirtyCount => _edits.Count;
+
+    private static string Caption(OwnerProgressDto owner) => owner.OwnerKind switch
+    {
+        TargetOwners.Company => "Firma geneli",
+        TargetOwners.Team => owner.TeamKind == TeamKinds.Region ? "Bölge" : "Ekip",
+        _ => owner.TeamName ?? "Ekipsiz",
+    };
+
+    private string OwnerName(TargetInput item) =>
+        item.OwnerKind == TargetOwners.Company ? "Firma geneli"
+        : Owners.FirstOrDefault(o => o.OwnerKind == item.OwnerKind && o.OwnerId == item.OwnerId)?.Name ?? "?";
+
+    // ---- the grid --------------------------------------------------------------------------
+
+    private string CellText(OwnerProgressDto owner, string metric) =>
+        _edits.TryGetValue((owner.Key, metric), out var edited) ? edited
+        : owner.Explicit(metric) is { } target ? Plain(target.Value) : string.Empty;
+
+    private static string Actual(OwnerProgressDto owner, string metric) => metric switch
+    {
+        TargetText.Revenue => Fmt.Money(owner.Summary.Revenue),
+        TargetText.Collection => Fmt.Money(owner.Summary.Collection),
+        TargetText.Visit => owner.Summary.VisitsCompleted.ToString(Fmt.Turkish),
+        _ => owner.Summary.DocumentCount.ToString(Fmt.Turkish),
+    };
+
+    private void Edit((string Owner, string Metric) cell, string? text)
+    {
+        Notice = null;
+        var owner = Owners.First(o => o.Key == cell.Owner);
+        var saved = owner.Explicit(cell.Metric) is { } target ? Plain(target.Value) : string.Empty;
+        text = text?.Trim() ?? string.Empty;
+        _invalid.Remove(cell);
+        if (text == saved) _edits.Remove(cell);
+        else _edits[cell] = text;
+        if (text.Length > 0 && ParseNumber(text) is null) _invalid.Add(cell);
+    }
+
+    private async Task SaveGridAsync()
+    {
+        if (_invalid.Count > 0)
+        {
+            Error = "Okunamayan değerler var; kırmızı hücreleri düzeltin.";
+            return;
+        }
+        var cells = _edits.ToList();
+        var items = cells.Select(c => Input(Owners.First(o => o.Key == c.Key.Owner), c.Key.Metric, null, null, null, c.Value.Length == 0 ? null : ParseNumber(c.Value))).ToArray();
+        await SaveAsync(items, cells.Select(c => $"{Owners.First(o => o.Key == c.Key.Owner).Name} · {TargetText.Metric(c.Key.Metric)}").ToList());
+    }
+
+    private TargetInput Input(OwnerProgressDto owner, string metric, string? measure, string? itemCode, string? itemName, decimal? value) => new()
+    {
+        PeriodType = _type,
+        PeriodKey = TargetText.KeyOf(_type, _day),
+        Metric = metric,
+        Measure = measure,
+        ItemCode = itemCode,
+        ItemName = itemName,
+        OwnerKind = owner.OwnerKind,
+        OwnerId = owner.OwnerKind == TargetOwners.Company ? null : owner.OwnerId,
+        Value = value,
+    };
+
+    /// <summary>Saves a batch; <paramref name="labels"/> names each item for the server's per-item errors.</summary>
+    private async Task SaveAsync(TargetInput[] items, IReadOnlyList<string> labels, string? done = null)
+    {
+        TargetsSaveResponse? result = null;
+        await RunAsync(async () =>
+        {
+            result = await Api.SaveTargetsAsync(new TargetsSaveRequest { OperationId = Guid.NewGuid(), Items = items });
+            if (result.Errors.Length > 0)
+            {
+                Error = string.Join(" ", result.Errors.Select(e =>
+                    (e.Index >= 0 && e.Index < labels.Count ? labels[e.Index] + ": " : "") + (string.IsNullOrWhiteSpace(e.Message) ? PortalMessages.For(e.ErrorCode) : e.Message)));
+                return;
+            }
+            await LoadAsync();
+        });
+        if (result is { Errors.Length: 0 } ok)
+            Notice = done ?? $"{ok.Saved} hedef kaydedildi{(ok.Deleted > 0 ? $", {ok.Deleted} silindi" : "")}.";
+    }
+
+    // ---- item targets ---------------------------------------------------------------------------
+
+    private void ChangeItemMetric(ChangeEventArgs e)
+    {
+        _item.Metric = e.Value?.ToString() ?? TargetText.Product;
+        _item.Found = null;
+        _item.Code = _item.Name = null;
+    }
+
+    private Task SearchItemsAsync() => RunAsync(async () => _item.Found = [.. (await Api.TargetItemsAsync(_item.Metric, _item.Query)).Items]);
+
+    private void Pick(TargetItemDto item)
+    {
+        _item.Code = item.Code;
+        _item.Name = item.Name;
+    }
+
+    private async Task AddItemAsync()
+    {
+        Notice = null;
+        var owner = Owners.FirstOrDefault(o => o.Key == _item.OwnerKey);
+        if (owner is null) { Error = "Hedefin kime ait olduğunu seçin."; return; }
+        if (_item.Code is null) { Error = "Aradıktan sonra bir kalem seçin."; return; }
+        if (ParseNumber(_item.Value) is not { } value) { Error = "Hedef değeri okunamadı."; return; }
+        await SaveAsync([Input(owner, _item.Metric, _item.Measure, _item.Code, _item.Name, value)], [owner.Name], "Kalem hedefi eklendi.");
+        if (Error is null) _item = new ItemForm { OwnerKey = _item.OwnerKey, Metric = _item.Metric, Measure = _item.Measure };
+    }
+
+    private Task DeleteItemAsync(OwnerProgressDto owner, TargetRowDto target) =>
+        SaveAsync([Input(owner, target.Metric, target.Measure, target.ItemCode, null, null)], [owner.Name], "Kalem hedefi silindi.");
+
+    // ---- copy, distribute, import -----------------------------------------------------------------
+
+    private void OpenCopy()
+    {
+        _copyPreview = null;
+        _copyOpen = true;
+    }
+
+    private TargetCopyRequest CopyRequest(bool apply) => new()
+    {
+        PeriodType = _type,
+        FromPeriodKey = TargetText.KeyOf(_type, TargetText.Shift(_type, _day, -1)),
+        ToPeriodKey = TargetText.KeyOf(_type, _day),
+        Percent = ParseNumber(_copyPercent) ?? 0m,
+        Overwrite = _copyOverwrite,
+        Apply = apply,
+        OperationId = Guid.NewGuid(),
+    };
+
+    private Task PreviewCopyAsync() => RunAsync(async () => _copyPreview = (await Api.CopyTargetsAsync(CopyRequest(false))).Items);
+
+    private async Task ApplyCopyAsync()
+    {
+        TargetPreviewResponse? response = null;
+        await RunAsync(async () =>
+        {
+            response = await Api.CopyTargetsAsync(CopyRequest(true));
+            await LoadAsync();
+        });
+        if (response?.Result is { } result)
+        {
+            _copyOpen = false;
+            Notice = result.Errors.Length > 0 ? null : $"{result.Saved} hedef kopyalandı.";
+            if (result.Errors.Length > 0) Error = string.Join(" ", result.Errors.Select(e => e.Message));
+        }
+    }
+
+    private void OpenDistribute()
+    {
+        _distPreview = null;
+        _dist = new DistributeForm { Source = Owners.FirstOrDefault(o => o.OwnerKind != TargetOwners.User)?.Key ?? string.Empty };
+        _distributeOpen = true;
+    }
+
+    private Task PreviewDistributeAsync() => RunAsync(async () =>
+    {
+        var source = Owners.FirstOrDefault(o => o.Key == _dist.Source);
+        if (source is null)
+        {
+            Error = "Kaynak seçin.";
+            return;
+        }
+        _distPreview = (await Api.DistributeTargetAsync(new TargetDistributeRequest
+        {
+            PeriodType = _type,
+            PeriodKey = TargetText.KeyOf(_type, _day),
+            Metric = _dist.Metric,
+            SourceOwnerKind = source.OwnerKind,
+            SourceOwnerId = source.OwnerKind == TargetOwners.Company ? null : source.OwnerId,
+            Value = string.IsNullOrWhiteSpace(_dist.Value) ? null : ParseNumber(_dist.Value),
+            Method = _dist.Method,
+            TargetLevel = _dist.Level,
+        })).Items;
+    });
+
+    /// <summary>The shares go into the grid as unsaved edits: the manager reviews them there and saves.</summary>
+    private void TakeDistribution()
+    {
+        foreach (var item in _distPreview ?? [])
+        {
+            var key = item.OwnerKind == TargetOwners.Company ? TargetOwners.Company : $"{item.OwnerKind}:{item.OwnerId}";
+            if (Owners.Any(o => o.Key == key)) Edit((key, item.Metric), Plain(item.Value ?? 0));
+        }
+        _distributeOpen = false;
+        Notice = "Dağıtım tabloya aktarıldı; kontrol edip kaydedin.";
+    }
+
+    private async Task OpenImport()
+    {
+        _importItems = null;
+        _importErrors.Clear();
+        _importOpen = true;
+        if (_people is null) await RunAsync(async () => _people = await Api.TeamsAsync());
+    }
+
+    private async Task ReadImportAsync(InputFileChangeEventArgs e)
+    {
+        _importItems = null;
+        _importErrors.Clear();
+        List<SpreadsheetReader.Row> rows;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(5 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            buffer.Position = 0;
+            rows = SpreadsheetReader.Read(buffer, e.File.Name);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        {
+            _importErrors.Add("Dosya okunamadı: CSV ya da .xlsx olmalı, en çok 5 MB.");
+            return;
+        }
+        _importItems = ParseImport(rows);
+    }
+
+    private List<TargetInput> ParseImport(List<SpreadsheetReader.Row> rows)
+    {
+        var items = new List<TargetInput>();
+        foreach (var row in rows)
+        {
+            string Cell(int i) => i < row.Cells.Length ? row.Cells[i].Trim() : string.Empty;
+            if (row.Number == 1 && Normalize(Cell(0)) is "kim" or "sahip") continue;
+            var owner = ResolveOwner(Cell(0));
+            var metric = ResolveMetric(Cell(1));
+            if (owner is null) { _importErrors.Add($"Satır {row.Number}: '{Cell(0)}' bulunamadı."); continue; }
+            if (metric is null) { _importErrors.Add($"Satır {row.Number}: tür '{Cell(1)}' tanınmadı."); continue; }
+            var itemCode = Cell(3);
+            if (TargetText.ItemMetrics.Contains(metric) && itemCode.Length == 0) { _importErrors.Add($"Satır {row.Number}: kalem kodu boş."); continue; }
+            if (ParseNumber(Cell(4)) is not { } value) { _importErrors.Add($"Satır {row.Number}: hedef '{Cell(4)}' okunamadı."); continue; }
+            var measure = Normalize(Cell(2)) switch { "miktar" or "quantity" => "QUANTITY", "tutar" or "amount" => AmountMeasure, _ => null };
+            items.Add(Input(owner, metric, TargetText.ItemMetrics.Contains(metric) ? measure : null, TargetText.ItemMetrics.Contains(metric) ? itemCode : null, null, value));
+        }
+        return items;
+    }
+
+    private OwnerProgressDto? ResolveOwner(string text)
+    {
+        var wanted = Normalize(text);
+        if (wanted.Length == 0) return null;
+        if (wanted is "firma" or "firma geneli" or "company") return Owners.FirstOrDefault(o => o.OwnerKind == TargetOwners.Company);
+        var person = _people?.People.FirstOrDefault(p => Normalize(p.Username) == wanted || Normalize(p.FullName) == wanted);
+        if (person is not null) return Owners.FirstOrDefault(o => o.OwnerKind == TargetOwners.User && o.OwnerId == person.Id);
+        return Owners.FirstOrDefault(o => o.OwnerKind != TargetOwners.Company && Normalize(o.Name) == wanted);
+    }
+
+    private static string? ResolveMetric(string text) => Normalize(text) switch
+    {
+        "ciro" or "revenue" => TargetText.Revenue,
+        "tahsilat" or "collection" => TargetText.Collection,
+        "ziyaret" or "visit" => TargetText.Visit,
+        "fiş adedi" or "fis adedi" or "fiş" or "document_count" => TargetText.DocumentCount,
+        "ürün" or "urun" or "product" => TargetText.Product,
+        "kategori" or "category" => TargetText.Category,
+        "alt kategori" or "sub_category" => TargetText.SubCategory,
+        "marka" or "brand" => TargetText.Brand,
+        _ => null,
+    };
+
+    private static string Normalize(string? text) => (text ?? string.Empty).Trim().ToLower(Fmt.Turkish);
+
+    private async Task SaveImportAsync()
+    {
+        var items = _importItems ?? [];
+        await SaveAsync([.. items], items.Select(OwnerName).ToList(), null);
+        if (Error is null) _importOpen = false;
+    }
+
+    private string TemplateHref => DataUri(["Kim;Tür;Ölçü;Kalem;Hedef", "Firma;Ciro;;;500000", "ali;Ciro;;;120000", "ali;Marka;Tutar;RIZE;20000"]);
+
+    private string ExportHref => DataUri(
+    [
+        "Kim;Tür;Ölçü;Kalem;Hedef",
+        .. Owners.SelectMany(o => o.Targets.Where(t => !t.Derived).Select(t =>
+            string.Join(';', Csv(o.OwnerKind == TargetOwners.Company ? "Firma" : UsernameOf(o)), TargetText.Metric(t.Metric),
+                t.ItemCode.Length > 0 ? TargetText.Measure(t.Measure) : string.Empty, Csv(t.ItemCode), Plain(t.Value)))),
+    ]);
+
+    private string UsernameOf(OwnerProgressDto owner) =>
+        owner.OwnerKind == TargetOwners.User && _people?.People.FirstOrDefault(p => p.Id == owner.OwnerId) is { } person ? person.Username : owner.Name;
+
+    private static string Csv(string value) => value.Contains(';') || value.Contains('"') ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
+
+    private static string DataUri(IEnumerable<string> lines) =>
+        "data:text/csv;charset=utf-8," + Uri.EscapeDataString("﻿" + string.Join("\r\n", lines));
+
+    // ---- work days ------------------------------------------------------------------------------------
+
+    private void ToggleDay(int bit, bool on) => _workDays = on ? _workDays | bit : _workDays & ~bit;
+
+    private Task SaveWorkDaysAsync() => RunAsync(async () =>
+    {
+        _savedWorkDays = _workDays = (await Api.SaveTargetSettingsAsync(new TargetSettingsDto { WorkDays = _workDays })).WorkDays;
+        await LoadAsync();
+        Notice = "Çalışma günleri kaydedildi.";
+    });
+
+    // ---- period and numbers -----------------------------------------------------------------------------
+
+    private async Task ChangePeriodAsync((string Type, DateOnly Day) period)
+    {
+        if (_edits.Count > 0 && !_leaveConfirmed)
+        {
+            Error = "Kaydedilmemiş değişiklikler var. Kaydedin ya da dönemi yeniden seçerek vazgeçin.";
+            _leaveConfirmed = true;
+            return;
+        }
+        _leaveConfirmed = false;
+        Notice = null;
+        (_type, _day) = period;
+        await RunAsync(LoadAsync);
+    }
+
+    private bool _leaveConfirmed;
+
+    /// <summary>A number as the cell shows it: no thousands separator, Turkish decimal comma.</summary>
+    private static string Plain(decimal value) => value.ToString("0.##", Fmt.Turkish);
+
+    /// <summary>"12500", "12.500", "12.500,50", "12500.5" — a comma is always the decimal mark.</summary>
+    private static decimal? ParseNumber(string? text)
+    {
+        var value = (text ?? string.Empty).Trim().Replace(" ", string.Empty).Replace("TL", string.Empty, StringComparison.OrdinalIgnoreCase);
+        if (value.Length == 0) return null;
+        if (value.Contains(',')) value = value.Replace(".", string.Empty).Replace(',', '.');
+        else if (value.Count(c => c == '.') > 1 || (value.LastIndexOf('.') is var dot and >= 0 && value.Length - dot - 1 == 3)) value = value.Replace(".", string.Empty);
+        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var number) && number >= 0 ? number : null;
+    }
+}

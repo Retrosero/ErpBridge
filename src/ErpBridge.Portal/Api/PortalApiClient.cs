@@ -332,11 +332,48 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<UserDto> SetUserRolesAsync(Guid userId, UpdateUserRolesRequest request, CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Patch, $"api/v1/android/account/users/{userId}", request, ct);
 
+    // ---- targets and teams (GOAL_HEDEF_RUT) --------------------------------------
+
+    public Task<TeamsResponse> TeamsAsync(CancellationToken ct = default) =>
+        GetAsync<TeamsResponse>("api/v1/portal/teams", ct);
+
+    public Task<TeamDto> SaveTeamAsync(Guid? id, TeamSaveRequest request, CancellationToken ct = default) =>
+        id is { } existing
+            ? SendAsync<TeamDto>(HttpMethod.Put, $"api/v1/portal/teams/{existing}", request, ct)
+            : SendAsync<TeamDto>(HttpMethod.Post, "api/v1/portal/teams", request, ct);
+
+    public Task DeleteTeamAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"api/v1/portal/teams/{id}", null, ct, emptyOk: true);
+
+    public Task<TargetBoardResponse> TargetsAsync(string periodType, string periodKey, Guid? teamId, CancellationToken ct = default) =>
+        GetAsync<TargetBoardResponse>("api/v1/portal/targets" + Query(("periodType", periodType), ("periodKey", periodKey), ("teamId", teamId?.ToString())), ct);
+
+    /// <summary>A save the server refuses item by item comes back with <see cref="TargetsSaveResponse.Errors"/> filled, not as an exception.</summary>
+    public Task<TargetsSaveResponse> SaveTargetsAsync(TargetsSaveRequest request, CancellationToken ct = default) =>
+        SendAsync<TargetsSaveResponse>(HttpMethod.Put, "api/v1/portal/targets", request, ct, errorBodyOk: true);
+
+    public Task<TargetPreviewResponse> CopyTargetsAsync(TargetCopyRequest request, CancellationToken ct = default) =>
+        SendAsync<TargetPreviewResponse>(HttpMethod.Post, "api/v1/portal/targets/copy", request, ct);
+
+    public Task<TargetPreviewResponse> DistributeTargetAsync(TargetDistributeRequest request, CancellationToken ct = default) =>
+        SendAsync<TargetPreviewResponse>(HttpMethod.Post, "api/v1/portal/targets/distribute", request, ct);
+
+    public Task<TargetItemsResponse> TargetItemsAsync(string metric, string? q, CancellationToken ct = default) =>
+        GetAsync<TargetItemsResponse>("api/v1/portal/targets/items" + Query(("metric", metric), ("q", q)), ct);
+
+    public Task<TargetSettingsDto> TargetSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<TargetSettingsDto>("api/v1/portal/targets/settings", ct);
+
+    public Task<TargetSettingsDto> SaveTargetSettingsAsync(TargetSettingsDto settings, CancellationToken ct = default) =>
+        SendAsync<TargetSettingsDto>(HttpMethod.Put, "api/v1/portal/targets/settings", settings, ct);
+
     // ---- plumbing ------------------------------------------------------------
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct)
+    /// <param name="emptyOk">A success without a body (204) is fine; the default value comes back.</param>
+    /// <param name="errorBodyOk">A 400/403/409 whose body is a <typeparamref name="T"/> with its own error list comes back as such.</param>
+    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct, bool emptyOk = false, bool errorBodyOk = false)
     {
         if (!session.IsSignedIn) throw new SessionEndedException("INVALID_TOKEN");
         using var request = new HttpRequestMessage(method, path);
@@ -345,7 +382,17 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
 
         using var response = await http.SendAsync(request, ct);
         if (response.IsSuccessStatusCode)
+        {
+            if (emptyOk && (response.StatusCode == HttpStatusCode.NoContent || response.Content.Headers.ContentLength == 0)) return default!;
             return (await response.Content.ReadFromJsonAsync<T>(Json, ct))!;
+        }
+        if (errorBodyOk && response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Forbidden or HttpStatusCode.Conflict)
+        {
+            var text = await response.Content.ReadAsStringAsync(ct);
+            if (text.Contains("\"errors\"", StringComparison.Ordinal))
+                return JsonSerializer.Deserialize<T>(text, Json)!;
+            response.Content = new StringContent(text, System.Text.Encoding.UTF8, "application/json");
+        }
 
         var code = await ReadErrorAsync(response, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized || SessionEndingCodes.Contains(code))

@@ -684,3 +684,31 @@ h1:focus, h1:focus-visible { outline: none; }
 
 /* ---- Dosyadan içe aktarma (GOAL_PANEL_ERPSIZ E1d/E2c) ---- */
 .is-invalid td { color: var(--danger, #b00020); }
+
+/* ---------- targets and teams (GOAL_HEDEF_RUT) ---------- */
+.target-period { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.target-period .seg-tabs { margin: 0; }
+.target-period-nav { display: inline-flex; align-items: center; gap: 4px; }
+.target-period-title { font-weight: 600; min-width: 180px; text-align: center; }
+.target-meta { margin: 0 0 12px; }
+.target-row { cursor: pointer; }
+.target-progress { min-width: 180px; }
+.target-progress .progress-label { margin-bottom: 4px; }
+.target-sub { font-size: .75rem; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.target-actual { font-weight: 600; }
+.target-detail > td { background: var(--line-soft); }
+.target-detail-table { width: 100%; }
+.is-derived { font-style: italic; color: var(--muted); }
+.target-grid .target-cell { width: 128px; text-align: right; }
+.target-cell.is-dirty { border-color: var(--brand-500); background: var(--brand-50); }
+.target-cell.is-invalid { border-color: var(--danger); background: var(--danger-50); }
+.item-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.item-picks .filter-chip { cursor: pointer; padding: 3px 10px; }
+.filter-chip.is-selected { background: var(--brand-600); color: #fff; }
+.preview-list { margin: 8px 0 12px; padding-left: 18px; font-size: .88rem; max-height: 320px; overflow: auto; }
+.preview-list--errors { color: var(--danger); }
+.team-tree { display: grid; gap: 16px; }
+.team-children { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.team-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--surface); }
+.check-list { display: grid; gap: 6px; max-height: 260px; overflow: auto; padding: 4px 0; }
+.field-hint--warn { color: var(--warning); font-size: .75rem; max-width: 320px; }
