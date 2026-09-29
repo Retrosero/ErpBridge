@@ -141,27 +141,20 @@ public static class AdminMobileSeatsEndpoints
     }
 
     /// <summary>
-    /// Replaces the company's sellable add-ons. Modules are sold outside the app, so only the
-    /// operator switches them; keys already on keep their original enable date.
+    /// Replaces the company's phone add-ons (<see cref="TenantModules.Known"/>). Modules are sold
+    /// outside the app, so only the operator switches them; keys already on keep their original
+    /// enable date. Go desktop app modules (<c>go_</c>) live in the same table but are not part of
+    /// this set: they are neither accepted nor removed here (<c>PUT /admin/licenses/{id}/go-modules</c>).
     /// </summary>
     private static async Task<IResult> SetModulesAsync(Guid tenantId, HttpContext http, [FromBody] SetTenantModulesRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
     {
         if (body?.Modules is null) return BadBody();
-        var wanted = body.Modules.Select(m => m?.Trim().ToLowerInvariant() ?? string.Empty).Distinct(StringComparer.Ordinal).ToList();
+        var wanted = TenantModuleSets.Normalize(body.Modules);
         if (wanted.FirstOrDefault(m => !TenantModules.Known.Contains(m)) is { } unknown)
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "UNKNOWN_MODULE", Message = $"Unknown module '{unknown}'." });
         if (!await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId, ct)) return TenantNotFound();
 
-        string? enabledBy = null;
-        if (Guid.TryParse(http.User.FindFirstValue("sub"), out var adminId))
-            enabledBy = await db.AdminUsers.AsNoTracking().Where(a => a.Id == adminId).Select(a => a.Email).FirstOrDefaultAsync(ct);
-        // Audit only: an admin email may be longer (255) than the column (128).
-        if (enabledBy is { Length: > TenantModule.EnabledByMaxLength }) enabledBy = enabledBy[..TenantModule.EnabledByMaxLength];
-        var existing = await db.TenantModules.Where(m => m.TenantId == tenantId).ToListAsync(ct);
-        db.TenantModules.RemoveRange(existing.Where(m => !wanted.Contains(m.ModuleKey)));
-        var now = DateTimeOffset.UtcNow;
-        foreach (var key in wanted.Where(k => existing.All(m => m.ModuleKey != k)))
-            db.TenantModules.Add(new TenantModule { TenantId = tenantId, ModuleKey = key, EnabledAtUtc = now, EnabledBy = enabledBy });
+        await TenantModuleSets.ReplaceAsync(db, http, tenantId, wanted, key => !TenantModules.IsGo(key), ct);
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }

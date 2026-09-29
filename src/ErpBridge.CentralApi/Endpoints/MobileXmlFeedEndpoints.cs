@@ -48,10 +48,15 @@ public static class MobileXmlFeedEndpoints
         return routes;
     }
 
-    /// <summary>The company's modules, sorted and lowercase — what the session carries.</summary>
+    /// <summary>
+    /// The company's phone add-ons, sorted and lowercase — what the session and the console's mobile
+    /// overview carry. Go desktop app modules (<c>go_</c>) are left out: phones have no use for them,
+    /// and the console's add-on panel sends the set back, which must not contain them.
+    /// </summary>
     internal static async Task<string[]> ModulesAsync(CentralApiDbContext db, Guid tenantId, CancellationToken ct) =>
         (await db.TenantModules.AsNoTracking().Where(m => m.TenantId == tenantId).Select(m => m.ModuleKey).ToListAsync(ct))
-        .Select(k => k.ToLowerInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        .Select(k => k.ToLowerInvariant()).Where(k => !TenantModules.IsGo(k))
+        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
 
     private static async Task<IResult> GetConfigAsync(HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
     {

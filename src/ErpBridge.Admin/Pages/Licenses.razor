@@ -115,6 +115,20 @@
                                         <p class="license-device__meta">Henüz bir bilgisayarda etkinleştirilmedi.</p>
                                     }
                                 </div>
+                                @* Go modülleri firmaya aittir: aynı firmanın bütün Go lisansları aynı seti gösterir ve taşır. *@
+                                <div class="license-modules" data-license="@l.Id">
+                                    <p class="license-modules__title"><strong>Modüller</strong><span>firma geneli</span></p>
+                                    @if (l.GoModules is { Length: > 0 } modules)
+                                    {
+                                        <ul class="license-module-chips">
+                                            @foreach (var m in modules) { <li class="license-module-chip">@GoModuleCatalog.Name(m)</li> }
+                                        </ul>
+                                    }
+                                    else
+                                    {
+                                        <p class="license-device__meta">Açık modül yok.</p>
+                                    }
+                                </div>
                             }
                             <div class="license-card__actions">
                                 @if (!isGo)
@@ -124,6 +138,10 @@
                                 @if (l.IsActive)
                                 {
                                     <button class="btn btn-outline-secondary" @onclick="() => ToggleExpiry(l)" aria-expanded="@(_expiryFor == l.Id)">Süreyi değiştir</button>
+                                }
+                                @if (isGo && l.IsActive)
+                                {
+                                    <button class="btn btn-outline-secondary license-modules-toggle" @onclick="() => ToggleModules(l)" aria-expanded="@(_modulesFor == l.Id)">Modülleri düzenle</button>
                                 }
                                 @if (isGo && l.GoInstallation is not null)
                                 {
@@ -137,6 +155,24 @@
                                     <label><span>Yeni bitiş tarihi <em>(boş = süresiz)</em></span><input class="form-control" type="datetime-local" @bind="_expiryLocal" /></label>
                                     <button class="btn btn-primary" @onclick="() => SaveExpiryAsync(l.Id)" disabled="@_busy">Kaydet</button>
                                 </div>
+                            }
+                            @if (_modulesFor == l.Id)
+                            {
+                                <fieldset class="license-modules-edit">
+                                    <legend>Go modülleri</legend>
+                                    <div class="license-modules-edit__options">
+                                        @foreach (var m in GoModuleCatalog.All)
+                                        {
+                                            var key = m.Key;
+                                            <label class="license-module-option"><input type="checkbox" id="go-module-@key" checked="@_modulesDraft.Contains(key)" @onchange="e => ToggleModule(key, e.Value is true)" /><span>@m.Name</span></label>
+                                        }
+                                    </div>
+                                    <p class="license-modules-edit__note">
+                                        Modüller lisansa değil firmaya açılır: <strong>@TenantName(l.TenantId)</strong> firmasının bütün Go lisansları aynı modülleri taşır.
+                                        Değişiklik müşterinin bilgisayarına bir sonraki lisans yenilemesinde ulaşır: uygulama 6 saatte bir yeniler, hemen almak için Go'nun Lisans ekranında "Şimdi doğrula"ya basılır.
+                                    </p>
+                                    <button id="go-modules-save" class="btn btn-primary" @onclick="() => SaveModulesAsync(l.Id)" disabled="@_busy">Kaydet</button>
+                                </fieldset>
                             }
                             @if (_mobileLoginFor == l.Id)
                             {
@@ -167,6 +203,9 @@
     private Guid? _mobileLoginFor;
     private Guid? _expiryFor;
     private DateTime? _expiryLocal;
+    // Go module editor: one license at a time; the draft holds the ticked keys until saved.
+    private Guid? _modulesFor;
+    private readonly HashSet<string> _modulesDraft = new(StringComparer.Ordinal);
 
     private LicenseProductInfo Current => LicenseProductCatalog.Get(ProductQuery);
     private List<LicenseDto> Visible => _licenses.Where(l => LicenseProductCatalog.Get(l.Product).Key == Current.Key).ToList();
@@ -175,6 +214,7 @@
     {
         _mobileLoginFor = null;
         _expiryFor = null;
+        _modulesFor = null;
         _lastIssued = null;
         _info = null;
         _error = null;
@@ -183,6 +223,16 @@
 
     private void ToggleMobileLogin(Guid licenseId) => _mobileLoginFor = _mobileLoginFor == licenseId ? null : licenseId;
     private void ToggleExpiry(LicenseDto l) { _expiryFor = _expiryFor == l.Id ? null : l.Id; _expiryLocal = l.ExpiresAtUtc?.LocalDateTime; }
+
+    /// <summary>Opens the module editor with the company's current set; keys the console does not know are left out (the server would refuse them).</summary>
+    private void ToggleModules(LicenseDto l)
+    {
+        _modulesFor = _modulesFor == l.Id ? null : l.Id;
+        _modulesDraft.Clear();
+        foreach (var key in l.GoModules ?? []) if (GoModuleCatalog.All.Any(m => m.Key == key)) _modulesDraft.Add(key);
+    }
+
+    private void ToggleModule(string key, bool on) { if (on) _modulesDraft.Add(key); else _modulesDraft.Remove(key); }
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
     private static DateTimeOffset? ToOffset(DateTime? local) => local is { } d ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Local)) : null;
     protected override async Task OnInitializedAsync() => await ReloadAsync();
@@ -190,5 +240,6 @@
     private async Task CreateAsync() { _busy = true; _error = null; _info = null; try { _lastIssued = await Api.CreateLicenseAsync(_create.TenantId, ToOffset(_create.ExpiresAtLocal), Current.Key); await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
     private async Task RevokeAsync(Guid id) { _busy = true; _info = null; try { await Api.RevokeLicenseAsync(id); await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
     private async Task SaveExpiryAsync(Guid id) { _busy = true; _error = null; _info = null; try { await Api.UpdateLicenseExpiryAsync(id, ToOffset(_expiryLocal)); _expiryFor = null; _info = "Bitiş tarihi güncellendi. Uygulama yeni tarihi bir sonraki doğrulamada alır."; await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
+    private async Task SaveModulesAsync(Guid id) { _busy = true; _error = null; _info = null; try { await Api.SetGoModulesAsync(id, GoModuleCatalog.All.Select(m => m.Key).Where(_modulesDraft.Contains).ToList()); _modulesFor = null; _info = "Modüller kaydedildi. Firmanın Go lisanslarının hepsine uygulanır; müşterinin bilgisayarı bir sonraki lisans yenilemesinde alır (6 saatte bir ya da Lisans ekranında \"Şimdi doğrula\")."; await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
     private async Task ReleaseAsync(Guid id) { _busy = true; _error = null; _info = null; try { await Api.ReleaseGoInstallationAsync(id); _info = "Bilgisayar serbest bırakıldı. Anahtarı yeni bilgisayarda hemen etkinleştirin; eski bilgisayar açıksa ve önce yenilerse anahtarı yeniden alır."; await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
 }
