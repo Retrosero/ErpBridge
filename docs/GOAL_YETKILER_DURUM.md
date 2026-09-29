@@ -5,8 +5,8 @@ Plan: `GOAL_YETKILER.md`.
 | Aşama | Durum | PR |
 |---|---|---|
 | S1 katalog + hesaplayıcı + parite testi | tamam | #219 |
-| S2 tablolar + oturum alanları + katalog ucu | bu PR | — |
-| S3 rol/kullanıcı yetki uçları + denetim | bekliyor | — |
+| S2 tablolar + oturum alanları + katalog ucu | tamam, canlı | #220 |
+| S3 rol/kullanıcı yetki uçları + denetim | bu PR | — |
 | S6 panel (Kullanıcılar yetkileri, Yetkiler sayfası) | bekliyor | — |
 | P1 telefon izin modeli + önbellek | bekliyor | — |
 | S4 ∥ P2 sunucu geçişi ∥ telefon uygulama yerleri | bekliyor | — |
