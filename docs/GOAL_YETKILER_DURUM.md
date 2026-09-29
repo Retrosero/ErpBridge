@@ -7,9 +7,9 @@ Plan: `GOAL_YETKILER.md`.
 | S1 katalog + hesaplayıcı + parite testi | tamam | #219 |
 | S2 tablolar + oturum alanları + katalog ucu | tamam, canlı | #220 |
 | S3 rol/kullanıcı yetki uçları + denetim | tamam, canlı | #221 |
-| S6 panel (Kullanıcılar yetkileri, Yetkiler sayfası) | bu PR | — |
-| P1 telefon izin modeli + önbellek | bekliyor | — |
-| S4 ∥ P2 sunucu geçişi ∥ telefon uygulama yerleri | bekliyor | — |
+| S6 panel (Kullanıcılar yetkileri, Yetkiler sayfası) | tamam, canlı | #222 |
+| P1 telefon izin modeli + önbellek | tamam | siparis_cepte#144 |
+| S4 ∥ P2 sunucu geçişi ∥ telefon uygulama yerleri | P2 tamam (siparis_cepte#145, Play 1.5.288); S4 bu PR | — |
 | P3 telefon limitleri | bekliyor | — |
 | S5 ingest modül + limit → 409 | bekliyor | — |
 | P4 telefon editörleri | bekliyor | — |

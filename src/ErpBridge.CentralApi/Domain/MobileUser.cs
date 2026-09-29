@@ -163,29 +163,36 @@ public static class RolePermissions
 
     public static bool CanManageUsers(MobileUser user) => IsAdmin(user);
 
+    /// <summary>
+    /// A permission of the user (GOAL_YETKILER): the company's role templates and the person's overrides, as loaded for
+    /// this request (<see cref="global::ErpBridge.CentralApi.Permissions.PermissionLoader"/>). A user row loaded without
+    /// them (outside the per-request check) gets the catalogue defaults, which are exactly the role rules below had
+    /// before permissions — never more.
+    /// </summary>
+    public static bool Can(MobileUser user, string key) => Effective(user).Can(key);
+
+    private static global::ErpBridge.CentralApi.Permissions.EffectivePermissions Effective(MobileUser user) =>
+        user.Permissions ?? global::ErpBridge.CentralApi.Permissions.PermissionResolver.Resolve(user, [], NoOverrides);
+
+    private static readonly IReadOnlyDictionary<string, string> NoOverrides = new Dictionary<string, string>();
+
     /// <summary>Company-wide sales, collection and route reports.</summary>
-    public static bool CanViewReports(MobileUser user) =>
-        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager);
+    public static bool CanViewReports(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.PortalReports);
 
     /// <summary>Customer balances and stock.</summary>
-    public static bool CanViewLedger(MobileUser user) =>
-        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager or MobileUserRoles.Accounting);
+    public static bool CanViewLedger(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.PortalLedger);
 
-    public static bool CanPlanRoutes(MobileUser user) =>
-        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager);
+    public static bool CanPlanRoutes(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.RoutePlan);
 
     /// <summary>
     /// Writing sales targets (GOAL_HEDEF_RUT K4), within the user's team scope (<see cref="Targets.TeamScope"/>).
     /// </summary>
-    public static bool CanManageTargets(MobileUser user) =>
-        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager);
+    public static bool CanManageTargets(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.TargetsManage);
 
-    public static bool CanOperateWarehouse(MobileUser user) =>
-        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager or MobileUserRoles.Warehouse);
+    public static bool CanOperateWarehouse(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.ModuleWarehouseQueue);
 
     /// <summary>Cancelling and reassigning orders, undoing anyone's step, the warehouse settings.</summary>
-    public static bool CanManageWarehouse(MobileUser user) =>
-        Of(user).Any(r => r is MobileUserRoles.Admin or MobileUserRoles.Manager);
+    public static bool CanManageWarehouse(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.WarehouseManage);
 
     /// <summary>
     /// Writing product/customer cards, sales/purchase/return documents, collections and ledger
@@ -193,7 +200,7 @@ public static class RolePermissions
     /// D4. Admin-only by user decision (2026-09-21): a single person is accountable for the company's
     /// books when there is no ERP behind them.
     /// </summary>
-    public static bool CanEditNativeData(MobileUser user) => IsAdmin(user);
+    public static bool CanEditNativeData(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.NativeBooksEdit);
 }
 
 /// <summary>What a user may do in the approval centre, from their current row.</summary>
