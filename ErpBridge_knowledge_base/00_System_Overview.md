@@ -1198,6 +1198,17 @@ registration ayrı bir composition projesine taşınır.
      (gün/hafta/ay, herkes) ve `/team?date&periodType` (ADMIN/MANAGER). Hız sınırı kullanıcı başına. Testler: `TargetRelationalTests`,
      `TargetBoardTests`, `TargetPeriodTests`.
 
+32. **Bekleyen siparişler merkezdedir: `SuspendedSales/SuspendedSaleService` + `Endpoints/MobileSuspendedSaleEndpoints` (2026-09-29).**
+   - Telefonda beklemeye alınan sepet (cari, depo, not, satırlar) firmanın bütün telefonlarında görünür; biri açıp
+     tamamlar. Önceden yalnız o telefonun belleğindeydi (uygulama kapanınca kayboluyordu). ERP'ye yazılmaz, ajan görmez;
+     ERP'li ve ERP'siz firmada aynı tablo (`suspended_sales`, satırlar `LinesJson` jsonb). Panel ekranı yok.
+   - **SKT'nin (kural 29) işlem partisi, üstüne iki kural** (kullanıcı kararı): `claim` = telefonda açmak; firmanın her
+     kullanıcısı açabilir, açılan sipariş herkesten kalkar, ikinci açma `SUSPENDED_SALE_TAKEN` + kimin aldığı (aynı sipariş
+     iki kez girilmez). `delete` (iptal) ve var olanı `upsert` yalnız oluşturan ya da ADMIN/MANAGER
+     (`SuspendedSaleService.CanManage`). `claim`/`delete` de sayacı kaydı okumadan önce alır: eş zamanlı iki açma kilitte sıralanır.
+   - Reddedilen işlemin dokunduğu sipariş de yanıtta döner: telefon "başkası açtı" bilgisini ve mezar taşını aynı yanıtta alır.
+   - Sözleşme `docs/api-contracts.md`; testler `SuspendedSaleRelationalTests` (SQLite). `suspended_sale_ops_applied` henüz temizlenmiyor.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

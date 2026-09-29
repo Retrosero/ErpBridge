@@ -168,6 +168,10 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<StockExpiryOpApplied> StockExpiryOpsApplied => Set<StockExpiryOpApplied>();
 
+    public DbSet<SuspendedSale> SuspendedSales => Set<SuspendedSale>();
+
+    public DbSet<SuspendedSaleOpApplied> SuspendedSaleOpsApplied => Set<SuspendedSaleOpApplied>();
+
     // GOAL_HEDEF_RUT: satış ekipleri/bölgeleri ve hedefler; yalnız merkezde, ERP'ye yazılmaz.
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
 
@@ -315,6 +319,31 @@ public sealed class CentralApiDbContext : DbContext
         modelBuilder.Entity<StockExpiryOpApplied>(b =>
         {
             b.ToTable("stock_expiry_ops_applied");
+            b.HasKey(x => new { x.TenantId, x.OpId });
+            b.HasIndex(x => x.AppliedAtMs);
+        });
+
+        modelBuilder.Entity<SuspendedSale>(b =>
+        {
+            b.ToTable("suspended_sales");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.DocNo).IsRequired().HasMaxLength(20);
+            b.Property(x => x.CustomerId).HasMaxLength(100);
+            b.Property(x => x.CustomerName).IsRequired().HasMaxLength(200);
+            b.Property(x => x.Warehouse).HasMaxLength(100);
+            b.Property(x => x.Note).HasMaxLength(1000);
+            b.Property(x => x.TotalAmount).HasPrecision(18, 2);
+            b.Property(x => x.LinesJson).IsRequired().HasColumnType("jsonb");
+            b.Property(x => x.ClosedReason).HasMaxLength(20);
+            b.Property(x => x.ClosedByName).HasMaxLength(120);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq });
+        });
+
+        modelBuilder.Entity<SuspendedSaleOpApplied>(b =>
+        {
+            b.ToTable("suspended_sale_ops_applied");
             b.HasKey(x => new { x.TenantId, x.OpId });
             b.HasIndex(x => x.AppliedAtMs);
         });
