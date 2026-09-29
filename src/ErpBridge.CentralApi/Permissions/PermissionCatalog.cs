@@ -146,7 +146,7 @@ public static class PermissionCatalog
             Flag(K.NativeBooksEdit, PermissionGroup.Actions, "Belge ve hesap düzeltme", "ERP'siz firmada panelden belge, ödeme ve cari hareketi düzeltme veya iptal.", admin, server: true),
             Flag(K.XmlFeedManage, PermissionGroup.Actions, "XML ürün modülü ayarları", "XML ürün beslemesini kurma ve değiştirme.", admin, server: true),
             Flag(K.SaleNegativeStock, PermissionGroup.Actions, "Eksi stoğa satış", "Firma eksi stoğa izin veriyorsa, stoğu olmayan ürünü satabilir.", field),
-            Flag(K.SaleOpenAccount, PermissionGroup.Actions, "Açık hesap (veresiye) satış", "Satışı cari borç olarak kapatabilir.", field),
+            Flag(K.SaleOpenAccount, PermissionGroup.Actions, "Açık hesap (veresiye) satış", "Satışı cari borç olarak kapatabilir; yetkisi yoksa cari borçlu satış onaya gider.", field, server: true),
 
             Flag(K.ViewEodAllUsers, PermissionGroup.Visibility, "Gün sonunda bütün ekip", "Gün sonunda herkesin işlemlerini görür; kapalıysa yalnız kendisininkini.", managers),
             Flag(K.ViewExpensesAllUsers, PermissionGroup.Visibility, "Bütün ekibin masrafları", "ERP masraf geçmişinde herkesin masraflarını görür.", managers),

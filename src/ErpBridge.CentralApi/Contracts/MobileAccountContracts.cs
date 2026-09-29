@@ -55,6 +55,12 @@ public sealed class MobileSessionDto
 
     /// <summary>The catalogue version the maps follow; 0 (absent) = a server without permissions.</summary>
     [JsonPropertyName("permissionsVersion")] public int PermissionsVersion { get; set; }
+
+    /// <summary>
+    /// Fingerprint of the roles and permissions above; every signed-in response carries the current one in the
+    /// <c>X-Permissions-Stamp</c> header, and a phone that sees another one re-reads <c>/me</c>.
+    /// </summary>
+    [JsonPropertyName("permissionsStamp")] public string? PermissionsStamp { get; set; }
 }
 
 /// <summary>Seat capacity and subscription state of a tenant.</summary>

@@ -76,11 +76,24 @@ public sealed class IngestPermissionRelationalTests : IClassFixture<SqliteCentra
         (await IngestAsync(c, c.Patron, "sales_order", "MOB-SO-M2", Sale("MOB-SO-M2", quantity: 5))).StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
+    [Fact]
+    public async Task A_sale_on_account_without_the_right_goes_to_approval_and_a_cash_sale_is_posted()
+    {
+        var c = await CompanyAsync();
+        await OverrideAsync(c, new() { [K.SaleOpenAccount] = "deny" });
+
+        var onAccount = await IngestAsync(c, c.Ali, "sales_order", "MOB-SO-A1", Sale("MOB-SO-A1", quantity: 1));
+        onAccount.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await onAccount.ReadAsJsonAsync<ApiError>()).Message.Should().Contain("Açık hesap");
+
+        (await IngestAsync(c, c.Ali, "sales_order", "MOB-SO-A2", Sale("MOB-SO-A2", quantity: 1, paymentType: "Nakit"))).StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
     // ---- helpers -----------------------------------------------------------
 
     private sealed record Company(Guid Id, string Patron, string Ali, Guid AliId, string Veli);
 
-    private static object Sale(string id, int quantity, decimal lineDiscountPercent = 0) => new
+    private static object Sale(string id, int quantity, decimal lineDiscountPercent = 0, string paymentType = "Cari Borç") => new
     {
         mobileDocumentId = id,
         occurredAt = "2026-09-29T10:00:00",
@@ -88,7 +101,7 @@ public sealed class IngestPermissionRelationalTests : IClassFixture<SqliteCentra
         counterparty = "Bakkal Ali",
         customerCode = "C-001",
         amount = quantity * 150m,
-        paymentType = "Cari Borç",
+        paymentType,
         lines = new[] { new { barcode = "8690000000011", productCode = "CAY-1", productTitle = "Çay 1 kg", quantity, unitPrice = 150m, lineDiscountPercent, lineTotal = quantity * 150m } },
     };
 

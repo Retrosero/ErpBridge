@@ -25,8 +25,8 @@ public sealed class DocumentPermissionCheckTests
               {"note": "no discount"}]}
             """);
 
-        facts.Should().Be(new DocumentLimitFacts(1200.5m, 12.5m, 2m));
-        DocumentLimitFacts.Read("""{"total": 40}""").Should().Be(new DocumentLimitFacts(40m, null, null));
+        facts.Should().Be(new DocumentLimitFacts(1200.5m, 12.5m, 2m, OnAccount: true));
+        DocumentLimitFacts.Read("""{"total": 40, "paymentType": "Nakit"}""").Should().Be(new DocumentLimitFacts(40m, null, null));
         DocumentLimitFacts.Read("not json").Should().Be(DocumentLimitFacts.None);
         DocumentLimitFacts.Read(null).Should().Be(DocumentLimitFacts.None);
     }
@@ -46,6 +46,22 @@ public sealed class DocumentPermissionCheckTests
         DocumentPermissionCheck.Refusal(limited, ApprovalKinds.Sale, new DocumentLimitFacts(1000.01m, null, null))
             .Should().Contain("Satış tutarı").And.Contain("onaya");
         DocumentPermissionCheck.Refusal(limited, ApprovalKinds.Sale, DocumentLimitFacts.None).Should().BeNull();
+    }
+
+    [Fact]
+    public void A_sale_on_account_needs_the_open_account_right()
+    {
+        DocumentLimitFacts.Read("""{"paymentType": "Cari Borç", "amount": 10}""").OnAccount.Should().BeTrue();
+        DocumentLimitFacts.Read("""{"amount": 10}""").OnAccount.Should().BeTrue("an empty payment type books the sale on account");
+        DocumentLimitFacts.Read("""{"paymentType": "Nakit", "amount": 10}""").OnAccount.Should().BeFalse();
+        DocumentLimitFacts.Read("""{"paymentType": "Cari Borç", "payments": [{"type": "cash", "amount": 10}]}""").OnAccount.Should().BeFalse();
+        DocumentLimitFacts.None.OnAccount.Should().BeFalse();
+
+        var noAccount = Sales(new() { [K.SaleOpenAccount] = PermissionValues.False });
+        DocumentPermissionCheck.Refusal(noAccount, ApprovalKinds.Sale, new DocumentLimitFacts(10m, null, null, OnAccount: true))
+            .Should().Contain("Açık hesap");
+        DocumentPermissionCheck.Refusal(noAccount, ApprovalKinds.Sale, new DocumentLimitFacts(10m, null, null)).Should().BeNull();
+        DocumentPermissionCheck.Refusal(Sales(new()), ApprovalKinds.Sale, new DocumentLimitFacts(10m, null, null, OnAccount: true)).Should().BeNull();
     }
 
     [Fact]

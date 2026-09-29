@@ -189,6 +189,7 @@ public static class MobileAccountEndpoints
     {
         var access = await MobileUserAccess.CheckAsync(http.User, db, ct, MobileUserAccess.MinWarehousePhoneVersion(http.RequestServices));
         if (!access.Allowed) return (null, null, Error(access.StatusCode, access.ErrorCode!, access.Message!));
+        ErpBridge.CentralApi.Permissions.PermissionStamp.Stamp(http, access.User!);
         if (requireAdmin && !RolePermissions.CanManageUsers(access.User!))
             return (null, null, Error(403, "ADMIN_REQUIRED", "Only company administrators can manage users."));
         return (access.Tenant, access.User, null);
@@ -201,6 +202,7 @@ public static class MobileAccountEndpoints
         session.Permissions = new Dictionary<string, bool>(permissions.Flags());
         session.Limits = new Dictionary<string, decimal?>(permissions.Limits());
         session.PermissionsVersion = ErpBridge.CentralApi.Permissions.PermissionCatalog.Version;
+        session.PermissionsStamp = ErpBridge.CentralApi.Permissions.PermissionStamp.Of(user, permissions);
         return session;
     }
 
