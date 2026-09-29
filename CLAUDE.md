@@ -72,6 +72,11 @@ ilgili knowledge_base dosyasını da güncelle.
   "Yerel derleme+test yeşilse birleştir"). Play yüklemesi bu istisnanın dışındadır. Aynı yasaklar geçerli; Mikro'ya
   test yazımı gerekmez (yalnız okuma).
 
+- **İstisna (2026-09-29):** aynı yetkiler `docs/GOAL_YETKILER.md` (gelişmiş kullanıcı yetkileri; sunucu, panel ve
+  Sipariş Cepte ayağı) görevleri için de önceden onaylıdır (kullanıcı: "Hepsi önceden onaylı"): dala push, PR, CI yeşilken
+  (Actions kredisi yoksa yerel `dotnet build` 0 uyarı + `dotnet test` yeşilken) `main`'e squash-merge, Coolify dağıtımı ve
+  `/health/schema` kontrolü, Sipariş Cepte'yi Play **internal**'a yükleme. Aynı yasaklar geçerli; Mikro'ya yazım yok.
+
 ## 3. Test / build
 
 - .NET: `dotnet build ErpBridge.sln -c Debug` (0 uyarı / 0 hata) + `dotnet test ErpBridge.sln`
