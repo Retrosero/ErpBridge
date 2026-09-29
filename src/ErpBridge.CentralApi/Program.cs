@@ -291,6 +291,7 @@ public partial class Program
         // SKT (son kullanma tarihi) kayıtları: telefonların ortak raf verisi, ERP'ye yazılmaz.
         builder.Services.AddScoped<ErpBridge.CentralApi.Expiry.StockExpiryService>();
         builder.Services.AddScoped<ErpBridge.CentralApi.SuspendedSales.SuspendedSaleService>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Permissions.PermissionService>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TargetFactReader>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TargetService>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TeamService>();
