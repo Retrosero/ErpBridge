@@ -127,7 +127,7 @@ public static class MobileAccountEndpoints
     {
         var access = await AuthorizeAsync(http, db, requireAdmin: true, ct);
         if (access.Error is not null) return access.Error;
-        var users = await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
+        var users = await db.MobileUsers.AsNoTracking().Include(u => u.Roles).Include(u => u.PermissionOverrides)
             .Where(u => u.TenantId == access.Tenant!.Id && u.DeletedAtUtc == null)
             .OrderBy(u => u.Username)
             .ToListAsync(ct);
@@ -179,7 +179,17 @@ public static class MobileAccountEndpoints
         return (access.Tenant, access.User, null);
     }
 
-    private static async Task<MobileSessionDto> SessionAsync(CentralApiDbContext db, MobileSeatService seats, Tenant tenant, MobileUser user, CancellationToken ct) => new()
+    private static async Task<MobileSessionDto> SessionAsync(CentralApiDbContext db, MobileSeatService seats, Tenant tenant, MobileUser user, CancellationToken ct)
+    {
+        var permissions = user.Permissions ?? await ErpBridge.CentralApi.Permissions.PermissionLoader.LoadAsync(db, user, ct);
+        var session = await SessionWithoutPermissionsAsync(db, seats, tenant, user, ct);
+        session.Permissions = new Dictionary<string, bool>(permissions.Flags());
+        session.Limits = new Dictionary<string, decimal?>(permissions.Limits());
+        session.PermissionsVersion = ErpBridge.CentralApi.Permissions.PermissionCatalog.Version;
+        return session;
+    }
+
+    private static async Task<MobileSessionDto> SessionWithoutPermissionsAsync(CentralApiDbContext db, MobileSeatService seats, Tenant tenant, MobileUser user, CancellationToken ct) => new()
     {
         User = ToDto(user),
         TenantId = tenant.Id,
@@ -203,6 +213,7 @@ public static class MobileAccountEndpoints
         IsActive = u.IsActive,
         CreatedAtUtc = u.CreatedAtUtc,
         LastLoginAtUtc = u.LastLoginAtUtc,
+        PermissionOverrideCount = u.PermissionOverrides.Count,
     };
 
     private static IResult Error(int status, string code, string message) =>

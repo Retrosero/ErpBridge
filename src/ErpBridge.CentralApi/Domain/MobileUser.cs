@@ -51,6 +51,15 @@ public sealed class MobileUser
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? LastLoginAtUtc { get; set; }
+
+    /// <summary>Permissions set for this person apart from their roles (GOAL_YETKILER).</summary>
+    public List<MobileUserPermissionOverride> PermissionOverrides { get; set; } = [];
+
+    /// <summary>
+    /// What the user may do, resolved for this request (<see cref="global::ErpBridge.CentralApi.Permissions.PermissionLoader"/>);
+    /// not stored. Null until loaded.
+    /// </summary>
+    public global::ErpBridge.CentralApi.Permissions.EffectivePermissions? Permissions { get; set; }
 }
 
 /// <summary>One role of a user. A user holds any combination; permissions are their union.</summary>
