@@ -297,7 +297,9 @@ Ret kodları: `ADMIN_REQUIRED` (403), `ADMIN_ROLE_LOCKED`, `ADMIN_USER_LOCKED`, 
 `UNKNOWN_PERMISSION`, `INVALID_PERMISSION_VALUE` (400; limit 0 ve üstü, yüzde en çok 100).
 
 Oturum (`/login`, `/me`): `permissions: {anahtar: bool}`, `limits: {anahtar: sayı \| null}`, `permissionsVersion` (0 = yetkisiz
-eski sunucu). Ingest: mobil kullanıcının doğrudan belgesi modül yetkisi yoksa ya da limit aşılırsa
+eski sunucu), `permissionsStamp` (roller + yetkilerin 16 haneli özeti). Her imzalı mobil yanıt güncel damgayı
+`X-Permissions-Stamp` başlığında taşır; telefon farklı damga görünce `/me`'yi yeniden okur (yeniden giriş gerekmez).
+Ingest: mobil kullanıcının doğrudan belgesi modül yetkisi yoksa, açık hesap (cari borç) satış yetkisi olmadan cari borçlu satışsa ya da limit aşılırsa
 `409 APPROVAL_REQUIRED` (mesaj nedeni söyler); belge onay talebi olarak yeniden gönderilir.
 
 ## Hedefler ve ekipler — `/api/v1/portal/{teams,targets}`, `/api/v1/android/targets` (GOAL_HEDEF_RUT)

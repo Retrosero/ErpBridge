@@ -1227,13 +1227,18 @@ registration ayrı bir composition projesine taşınır.
      `CanUsePortal`, ekip kapsamı) rolde kalır.
    - **Ingest (S5):** mobil kullanıcının doğrudan gönderdiği belge (`ApprovalKinds.ForDocument`) göndericinin modül yetkisine ve
      limitlerine göre denetlenir (`DocumentPermissionCheck`, `DocumentLimitFacts`: tutar = `grossAmount ?? amount ?? total`,
-     satırların en yüksek `lineDiscountPercent`'i, `generalDiscountPercent`). Aşanda **ret değil** `409 APPROVAL_REQUIRED` +
+     satırların en yüksek `lineDiscountPercent`'i, `generalDiscountPercent`; satış `paymentType` "Cari Borç"/boş ve `payments`
+     boşsa açık hesaptır → `action.sale.open_account` gerekir). Aşanda **ret değil** `409 APPROVAL_REQUIRED` +
      Türkçe neden: her telefon sürümü bunu onay talebine çevirir. Firmanın onay kuralı kapalı olsa da çalışır; onay talebi
      (`approval_request`), onaylanıp kaydedilen belge, Admin ve API anahtarı etkilenmez. Belgede olmayan alan denetlenmez.
    - **Uçlar** (`Endpoints/MobilePermissionEndpoints`, `/api/v1/android/account`): katalog, rol şablonları (Admin), kişi
      yetkileri (Admin herkesinkini, herkes kendininkini), değişiklik geçmişi. Oturum (`/login`, `/me`) `permissions`, `limits`,
      `permissionsVersion` taşır; `MobileUserDto.permissionOverrideCount`. Panel: `/yetkiler` (rol × izin matrisi, geçmiş) ve
      Kullanıcılar → Yetkiler (`UserPermissionsSheet`); `PortalRoles.Allows` oturum yetkisine bakar. Telefon: Siparis_Cepte KB kural 51.
+   - **Yetki damgası:** her imzalı mobil yanıt `X-Permissions-Stamp` başlığı taşır (`PermissionStamp`: roller + bütün yetki ve
+     limitlerin SHA-256 özetinin ilk 16 hanesi; `MobileUserStateHandler` ve `MobileAccountEndpoints.AuthorizeAsync` koyar),
+     oturum da `permissionsStamp`. Telefon kaydettiğinden farklı damga görünce `/me`'yi yeniden okur: panelde yapılan değişiklik
+     "beni hatırla" ile haftalarca açık kalan telefona yeniden giriş gerekmeden bir sonraki çağrıda (arka plan eşitlemesi dahil) ulaşır.
    - Sözleşme `docs/api-contracts.md`; testler `PermissionResolverTests`, `DocumentPermissionCheckTests`,
      `Permission*RelationalTests`, `IngestPermissionRelationalTests`, `PortalPermissionsTests`.
 

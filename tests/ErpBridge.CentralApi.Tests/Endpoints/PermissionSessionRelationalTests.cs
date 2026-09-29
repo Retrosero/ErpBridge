@@ -60,6 +60,32 @@ public sealed class PermissionSessionRelationalTests : IClassFixture<SqliteCentr
         list.Users.Single(u => u.Id == c.AliId).PermissionOverrideCount.Should().Be(1);
     }
 
+    /// <summary>
+    /// A phone stays signed in for weeks: every response carries the stamp of the caller's permissions, so the phone
+    /// re-reads its session after a change at its next call — any call, a background sync included.
+    /// </summary>
+    [Fact]
+    public async Task Every_response_carries_a_stamp_that_changes_with_the_permissions()
+    {
+        var c = await CompanyAsync();
+        var client = _factory.CreateClient();
+        const string sync = "/api/v1/android/suspended-sales?changedSinceSeq=0";
+
+        var before = await client.GetAsync(sync, c.Ali);
+        before.StatusCode.Should().Be(HttpStatusCode.OK);
+        var stamp = before.Headers.GetValues(PermissionStamp.Header).Single();
+        (await MeAsync(c.Ali)).PermissionsStamp.Should().Be(stamp);
+        (await client.GetAsync(sync, c.Ali)).Headers.GetValues(PermissionStamp.Header).Single().Should().Be(stamp, "nothing changed");
+
+        (await client.PutJsonAsync($"/api/v1/android/account/users/{c.AliId}/permissions",
+            new { overrides = new Dictionary<string, string?> { [K.LimitSaleAmount] = "5000" } }, c.Patron)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var after = (await client.GetAsync(sync, c.Ali)).Headers.GetValues(PermissionStamp.Header).Single();
+        after.Should().NotBe(stamp);
+        (await MeAsync(c.Ali)).PermissionsStamp.Should().Be(after);
+        (await client.GetAsync(sync, c.Patron)).Headers.GetValues(PermissionStamp.Header).Single().Should().NotBe(after, "another person's permissions");
+    }
+
     [Fact]
     public async Task The_catalogue_is_served_to_any_signed_in_user()
     {

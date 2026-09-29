@@ -5,11 +5,11 @@ using ErpBridge.CentralApi.Domain;
 namespace ErpBridge.CentralApi.Permissions;
 
 /// <summary>
-/// What a phone document says about the user's limits: its amount (gross when the payload carries it) and the highest
-/// line and order discounts. A field the payload does not carry is unknown and checks nothing: an older phone's
-/// document is never refused for a value it did not send.
+/// What a phone document says about the user's limits: its amount (gross when the payload carries it), the highest
+/// line and order discounts, and whether a sale closes on the customer's account. A field the payload does not carry is
+/// unknown and checks nothing: an older phone's document is never refused for a value it did not send.
 /// </summary>
-public sealed record DocumentLimitFacts(decimal? Amount, decimal? MaxLineDiscountPercent, decimal? MaxGeneralDiscountPercent)
+public sealed record DocumentLimitFacts(decimal? Amount, decimal? MaxLineDiscountPercent, decimal? MaxGeneralDiscountPercent, bool OnAccount = false)
 {
     public static readonly DocumentLimitFacts None = new(null, null, null);
 
@@ -32,13 +32,25 @@ public sealed record DocumentLimitFacts(decimal? Amount, decimal? MaxLineDiscoun
                     general = Max(general, Number(item, "generalDiscountPercent"));
                 }
             }
-            return new DocumentLimitFacts(amount, line, general);
+            return new DocumentLimitFacts(amount, line, general, BooksOnAccount(root));
         }
         catch (JsonException)
         {
             // Unreadable documents are refused later by their own validation; the limits check nothing here.
             return None;
         }
+    }
+
+    /// <summary>
+    /// The mobile document contract: <c>paymentType</c> "Cari Borç" or empty books the sale on account, unless
+    /// <c>payments</c> collects it in the same operation.
+    /// </summary>
+    private static bool BooksOnAccount(JsonElement root)
+    {
+        if (root.TryGetProperty("payments", out var payments) && payments.ValueKind == JsonValueKind.Array && payments.GetArrayLength() > 0)
+            return false;
+        var type = root.TryGetProperty("paymentType", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
+        return string.IsNullOrEmpty(type) || string.Equals(type, "Cari Borç", StringComparison.OrdinalIgnoreCase);
     }
 
     private static decimal? Number(JsonElement element, string name) =>
@@ -75,7 +87,10 @@ public static class DocumentPermissionCheck
         return approvalKind switch
         {
             ApprovalKinds.Sale =>
-                Over(permissions, PermissionKeys.LimitSaleLineDiscountPct, facts.MaxLineDiscountPercent, "Satır iskontosu", "%")
+                (facts.OnAccount && !permissions.Can(PermissionKeys.SaleOpenAccount)
+                    ? "Açık hesap (veresiye) satış yetkiniz yok; belge onaya gönderilmeli."
+                    : null)
+                ?? Over(permissions, PermissionKeys.LimitSaleLineDiscountPct, facts.MaxLineDiscountPercent, "Satır iskontosu", "%")
                 ?? Over(permissions, PermissionKeys.LimitSaleGeneralDiscountPct, facts.MaxGeneralDiscountPercent, "Sipariş iskontosu", "%")
                 ?? Over(permissions, PermissionKeys.LimitSaleAmount, facts.Amount, "Satış tutarı", "TL"),
             ApprovalKinds.Return => Over(permissions, PermissionKeys.LimitReturnAmount, facts.Amount, "İade tutarı", "TL"),
