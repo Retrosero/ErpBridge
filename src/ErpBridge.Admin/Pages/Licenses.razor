@@ -1,19 +1,47 @@
 @page "/licenses"
 @inject ErpBridge.Admin.Api.CentralApiClient Api
+@inject NavigationManager Nav
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using ErpBridge.Admin.Api
 
-<PageTitle>Lisanslar — ErpBridge Admin</PageTitle>
+<PageTitle>@Current.Name lisansları — ErpBridge Admin</PageTitle>
 
-<section class="license-page" aria-labelledby="licenses-title">
+@* Ürünler hiçbir zaman aynı listede görünmez: her ürünün kendi sekmesi, rengi, harf işareti ve anahtar öneki vardır.
+   Yeni lisans formu açık sekmenin ürününe kilitlidir, yanlış ürüne anahtar üretilemez. *@
+<section class="license-page license-theme--@Current.CssModifier" aria-labelledby="licenses-title">
     <header class="license-page__header">
         <div>
-            <p class="license-page__eyebrow">ERPBIDGE ADMIN</p>
+            <p class="license-page__eyebrow">ERPBIDGE ADMIN · LİSANS SUNUCUSU</p>
             <h1 id="licenses-title">Lisanslar</h1>
-            <p class="license-page__subtitle">ErpBridge ve Go (pazaryeri) lisanslarını oluşturun, sürelerini yönetin ve erişim durumlarını izleyin.</p>
+            <p class="license-page__subtitle">Her ürünün lisansları ayrı tutulur. Bir ürünün anahtarı yalnız o üründe çalışır; öneki ve rengi ürünü gösterir.</p>
         </div>
         <button class="btn license-refresh" @onclick="ReloadAsync" disabled="@_loading" aria-label="Lisans listesini yenile"><span aria-hidden="true">↻</span> Yenile</button>
     </header>
+
+    <nav class="license-products" role="tablist" aria-label="Ürün">
+        @foreach (var p in LicenseProductCatalog.All)
+        {
+            var mine = _licenses.Where(l => LicenseProductCatalog.Get(l.Product).Key == p.Key).ToList();
+            var selected = p.Key == Current.Key;
+            <button type="button" role="tab" id="license-tab-@p.Key" aria-selected="@(selected ? "true" : "false")"
+                    class="license-product-tab license-product--@p.CssModifier @(selected ? "is-selected" : "")" @onclick="() => Select(p.Key)">
+                <span class="license-mark" aria-hidden="true">@p.Mark</span>
+                <span class="license-product-tab__text">
+                    <strong>@p.Name</strong>
+                    <small>@p.Summary</small>
+                </span>
+                <span class="license-product-tab__count" title="Aktif / toplam">@mine.Count(l => l.IsActive)<em>/@mine.Count</em></span>
+            </button>
+        }
+    </nav>
+
+    <div class="license-context license-product--@Current.CssModifier" id="license-context">
+        <span class="license-mark" aria-hidden="true">@Current.Mark</span>
+        <p>
+            Şu an <strong>@Current.Name</strong> lisanslarını görüyorsunuz. Anahtarlar <code class="license-prefix">@Current.KeyPrefix</code> ile başlar
+            ve yalnız bu üründe çalışır. @Current.WhereUsed
+        </p>
+    </div>
 
     @if (_loading)
     {
@@ -21,51 +49,58 @@
     }
     else
     {
-        <div class="license-summary" aria-label="Lisans özeti">
-            <div class="license-stat"><span>Toplam lisans</span><strong>@_licenses.Count</strong></div>
-            <div class="license-stat license-stat--active"><span>Aktif</span><strong>@_licenses.Count(l => l.IsActive)</strong></div>
-            <div class="license-stat license-stat--inactive"><span>Pasif</span><strong>@_licenses.Count(l => !l.IsActive)</strong></div>
+        <div class="license-summary" aria-label="@Current.Name lisans özeti">
+            <div class="license-stat"><span>@Current.Name lisansı</span><strong>@Visible.Count</strong></div>
+            <div class="license-stat license-stat--active"><span>Aktif</span><strong>@Visible.Count(l => l.IsActive)</strong></div>
+            <div class="license-stat license-stat--inactive"><span>Pasif</span><strong>@Visible.Count(l => !l.IsActive)</strong></div>
         </div>
 
         <section class="license-issue" aria-labelledby="issue-license-title">
-            <div class="license-issue__heading"><span class="license-issue__icon" aria-hidden="true">+</span><div><h2 id="issue-license-title">Yeni lisans oluştur</h2><p>Ürünü ve müşteriyi seçin; isterseniz lisans için bitiş tarihi belirleyin. Go anahtarı tek bilgisayarda etkinleşir.</p></div></div>
-            <div class="license-issue__form license-issue__form--product">
-                <label><span>Ürün</span><select class="form-select" @bind="_create.Product" aria-label="Ürün seçin"><option value="@LicenseProductNames.ErpBridge">ErpBridge</option><option value="@LicenseProductNames.Go">Go (pazaryeri)</option></select></label>
+            <div class="license-issue__heading">
+                <span class="license-mark license-product--@Current.CssModifier" aria-hidden="true">@Current.Mark</span>
+                <div><h2 id="issue-license-title">Yeni @Current.Name lisansı</h2><p>Üretilen anahtar <code class="license-prefix">@Current.KeyPrefix</code> ile başlar. Başka bir ürün için yukarıdan o ürünün sekmesine geçin.</p></div>
+            </div>
+            <div class="license-issue__form">
                 <label><span>Müşteri</span><select class="form-select" @bind="_create.TenantIdString" aria-label="Müşteri seçin"><option value="">Müşteri seçin…</option>@foreach (var t in _tenants) { <option value="@t.Id.ToString()">@t.Name</option> }</select></label>
                 <label><span>Bitiş tarihi <em>(isteğe bağlı)</em></span><input class="form-control" type="datetime-local" @bind="_create.ExpiresAtLocal" /></label>
-                <button class="btn btn-primary license-issue__button" @onclick="CreateAsync" disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || _busy)">@(_busy ? "Oluşturuluyor…" : "Lisans oluştur")</button>
+                <button id="license-create" class="btn btn-primary license-issue__button" @onclick="CreateAsync" disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || _busy)">@(_busy ? "Oluşturuluyor…" : $"{Current.Name} lisansı oluştur")</button>
             </div>
         </section>
 
-        @if (!string.IsNullOrEmpty(_lastIssuedKey))
+        @if (_lastIssued is { } issued)
         {
-            <div class="license-notice license-notice--success" role="status"><span class="license-notice__icon" aria-hidden="true">✓</span><div><strong>Lisans başarıyla oluşturuldu</strong><p>Bu anahtar yalnızca şimdi tam olarak görüntülenir.</p><code>@_lastIssuedKey</code></div></div>
+            var product = LicenseProductCatalog.Get(issued.Product);
+            <div class="license-notice license-notice--success" role="status"><span class="license-notice__icon" aria-hidden="true">✓</span><div><strong>@product.Name lisansı oluşturuldu</strong><p>Bu anahtar yalnızca şimdi tam olarak görüntülenir. @product.WhereUsed</p><code id="license-issued-key">@issued.LicenseKey</code></div></div>
         }
         @if (!string.IsNullOrEmpty(_info)) { <div class="license-notice license-notice--success" role="status"><span class="license-notice__icon" aria-hidden="true">✓</span><div><strong>@_info</strong></div></div> }
         @if (!string.IsNullOrEmpty(_error)) { <div class="license-notice license-notice--error" role="alert">@_error</div> }
 
         <section class="license-list" aria-labelledby="license-list-title">
-            <div class="license-list__heading">
-                <div><h2 id="license-list-title">Tüm lisanslar</h2><p>@Visible.Count() kayıt</p></div>
-                <label class="license-filter"><span>Ürün</span><select class="form-select" @bind="_productFilter" aria-label="Ürüne göre süz"><option value="">Tümü</option><option value="@LicenseProductNames.ErpBridge">ErpBridge</option><option value="@LicenseProductNames.Go">Go (pazaryeri)</option></select></label>
-            </div>
-            @if (!Visible.Any())
+            <div class="license-list__heading"><div><h2 id="license-list-title">@Current.Name lisansları</h2><p>@Visible.Count kayıt</p></div></div>
+            @if (Visible.Count == 0)
             {
-                <div class="license-empty"><span aria-hidden="true">⌁</span><h3>Henüz lisans yok</h3><p>İlk lisansı yukarıdaki formdan oluşturabilirsiniz.</p></div>
+                <div class="license-empty"><span aria-hidden="true">⌁</span><h3>Henüz @Current.Name lisansı yok</h3><p>İlk lisansı yukarıdaki formdan oluşturabilirsiniz.</p></div>
             }
             else
             {
                 <div class="license-cards">
                     @foreach (var l in Visible)
                     {
-                        var isGo = l.Product == LicenseProductNames.Go;
-                        <article class="license-card">
+                        var product = LicenseProductCatalog.Get(l.Product);
+                        var isGo = product.Key == LicenseProductNames.Go;
+                        var prefix = product.KeyPrefix;
+                        var hasPrefix = !LicenseProductCatalog.HasForeignPrefix(l);
+                        <article class="license-card license-product--@product.CssModifier" data-product="@product.Key">
                             <div class="license-card__topline">
                                 <span class="license-status @(l.IsActive ? "license-status--active" : "license-status--inactive")"><span aria-hidden="true">●</span>@(l.IsActive ? "Aktif" : "Pasif")</span>
-                                <span class="license-product @(isGo ? "license-product--go" : "")">@LicenseProductNames.Label(l.Product)</span>
+                                <span class="license-product-chip"><span class="license-mark license-mark--small" aria-hidden="true">@product.Mark</span>@product.Name</span>
                                 <span class="license-card__tenant">@(TenantName(l.TenantId))</span>
                             </div>
-                            <code class="license-card__key">@l.LicenseKey</code>
+                            <code class="license-card__key">@if (hasPrefix) { <span class="license-prefix">@prefix</span>@l.LicenseKey[prefix.Length..] } else { @l.LicenseKey }</code>
+                            @if (!hasPrefix)
+                            {
+                                <p class="license-card__legacy">Önekten önce üretilmiş anahtar; ürünü etiketinden anlaşılır.</p>
+                            }
                             <dl class="license-card__details"><div><dt>Oluşturulma</dt><dd>@l.IssuedAtUtc.LocalDateTime.ToString("dd MMM yyyy, HH:mm")</dd></div><div><dt>Bitiş</dt><dd>@(l.ExpiresAtUtc?.LocalDateTime.ToString("dd MMM yyyy, HH:mm") ?? "Süresiz")</dd></div></dl>
                             @if (isGo)
                             {
@@ -116,29 +151,44 @@
 </section>
 
 @code {
+    /// <summary>Açık ürün sekmesi (<c>/licenses?urun=go</c>); boş ya da bilinmeyen değer ErpBridge'dir.</summary>
+    [SupplyParameterFromQuery(Name = "urun")] public string? ProductQuery { get; set; }
+
     private bool _loading = true;
     private bool _busy;
     private IReadOnlyList<LicenseDto> _licenses = Array.Empty<LicenseDto>();
     private IReadOnlyList<TenantDto> _tenants = Array.Empty<TenantDto>();
-    private string? _lastIssuedKey;
+    private LicenseDto? _lastIssued;
     private string? _info;
     private string? _error;
-    private string _productFilter = string.Empty;
     private readonly CreateModel _create = new();
-    private sealed class CreateModel { public string Product { get; set; } = LicenseProductNames.ErpBridge; public string TenantIdString { get; set; } = string.Empty; public DateTime? ExpiresAtLocal { get; set; } public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty; }
+    private sealed class CreateModel { public string TenantIdString { get; set; } = string.Empty; public DateTime? ExpiresAtLocal { get; set; } public Guid TenantId => Guid.TryParse(TenantIdString, out var g) ? g : Guid.Empty; }
     // One license at a time shows the phone-login panel; each panel loads its tenant on demand.
     private Guid? _mobileLoginFor;
     private Guid? _expiryFor;
     private DateTime? _expiryLocal;
-    private IEnumerable<LicenseDto> Visible => string.IsNullOrEmpty(_productFilter) ? _licenses : _licenses.Where(l => l.Product == _productFilter);
+
+    private LicenseProductInfo Current => LicenseProductCatalog.Get(ProductQuery);
+    private List<LicenseDto> Visible => _licenses.Where(l => LicenseProductCatalog.Get(l.Product).Key == Current.Key).ToList();
+
+    private void Select(string product)
+    {
+        _mobileLoginFor = null;
+        _expiryFor = null;
+        _lastIssued = null;
+        _info = null;
+        _error = null;
+        Nav.NavigateTo(Nav.GetUriWithQueryParameter("urun", product));
+    }
+
     private void ToggleMobileLogin(Guid licenseId) => _mobileLoginFor = _mobileLoginFor == licenseId ? null : licenseId;
     private void ToggleExpiry(LicenseDto l) { _expiryFor = _expiryFor == l.Id ? null : l.Id; _expiryLocal = l.ExpiresAtUtc?.LocalDateTime; }
     private string TenantName(Guid id) => _tenants.FirstOrDefault(t => t.Id == id)?.Name ?? id.ToString().Substring(0, 8);
     private static DateTimeOffset? ToOffset(DateTime? local) => local is { } d ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Local)) : null;
     protected override async Task OnInitializedAsync() => await ReloadAsync();
     private async Task ReloadAsync() { _loading = true; _error = null; try { _tenants = await Api.ListTenantsAsync(); _licenses = await Api.ListLicensesAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _loading = false; } }
-    private async Task CreateAsync() { _busy = true; _error = null; _info = null; try { var lic = await Api.CreateLicenseAsync(_create.TenantId, ToOffset(_create.ExpiresAtLocal), _create.Product); _lastIssuedKey = lic.LicenseKey; await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
+    private async Task CreateAsync() { _busy = true; _error = null; _info = null; try { _lastIssued = await Api.CreateLicenseAsync(_create.TenantId, ToOffset(_create.ExpiresAtLocal), Current.Key); await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
     private async Task RevokeAsync(Guid id) { _busy = true; _info = null; try { await Api.RevokeLicenseAsync(id); await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
-    private async Task SaveExpiryAsync(Guid id) { _busy = true; _error = null; _info = null; try { await Api.UpdateLicenseExpiryAsync(id, ToOffset(_expiryLocal)); _expiryFor = null; _info = "Bitiş tarihi güncellendi. Go uygulaması yeni tarihi bir sonraki yenilemede alır."; await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
+    private async Task SaveExpiryAsync(Guid id) { _busy = true; _error = null; _info = null; try { await Api.UpdateLicenseExpiryAsync(id, ToOffset(_expiryLocal)); _expiryFor = null; _info = "Bitiş tarihi güncellendi. Uygulama yeni tarihi bir sonraki doğrulamada alır."; await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
     private async Task ReleaseAsync(Guid id) { _busy = true; _error = null; _info = null; try { await Api.ReleaseGoInstallationAsync(id); _info = "Bilgisayar serbest bırakıldı. Anahtarı yeni bilgisayarda hemen etkinleştirin; eski bilgisayar açıksa ve önce yenilerse anahtarı yeniden alır."; await ReloadAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
 }
