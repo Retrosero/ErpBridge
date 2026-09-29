@@ -172,6 +172,12 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<SuspendedSaleOpApplied> SuspendedSaleOpsApplied => Set<SuspendedSaleOpApplied>();
 
+    public DbSet<TenantRolePermission> TenantRolePermissions => Set<TenantRolePermission>();
+
+    public DbSet<MobileUserPermissionOverride> MobileUserPermissionOverrides => Set<MobileUserPermissionOverride>();
+
+    public DbSet<PermissionChange> PermissionChanges => Set<PermissionChange>();
+
     // GOAL_HEDEF_RUT: satış ekipleri/bölgeleri ve hedefler; yalnız merkezde, ERP'ye yazılmaz.
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
 
@@ -415,6 +421,41 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.Username }).IsUnique().HasFilter("\"DeletedAtUtc\" IS NULL");
             b.HasIndex(x => new { x.TenantId, x.IsActive });
             b.HasMany(x => x.Roles).WithOne(r => r.User).HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(x => x.PermissionOverrides).WithOne(o => o.User).HasForeignKey(o => o.UserId).OnDelete(DeleteBehavior.Cascade);
+            b.Ignore(x => x.Permissions);
+        });
+
+        modelBuilder.Entity<TenantRolePermission>(b =>
+        {
+            b.ToTable("tenant_role_permissions");
+            b.HasKey(x => new { x.TenantId, x.Role, x.Key });
+            b.Property(x => x.Role).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Key).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Value).IsRequired().HasMaxLength(32);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MobileUserPermissionOverride>(b =>
+        {
+            b.ToTable("mobile_user_permission_overrides");
+            b.HasKey(x => new { x.UserId, x.Key });
+            b.Property(x => x.Key).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Value).IsRequired().HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<PermissionChange>(b =>
+        {
+            b.ToTable("permission_changes");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ActorName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.Client).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Scope).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Role).HasMaxLength(16);
+            b.Property(x => x.TargetUserName).HasMaxLength(120);
+            b.Property(x => x.Key).IsRequired().HasMaxLength(64);
+            b.Property(x => x.OldValue).HasMaxLength(256);
+            b.Property(x => x.NewValue).HasMaxLength(256);
+            b.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
         });
 
         modelBuilder.Entity<MobileUserRole>(b =>

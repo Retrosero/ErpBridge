@@ -46,6 +46,15 @@ public sealed class MobileSessionDto
 
     /// <summary>Sellable add-ons the company bought (<c>xml_import</c>…), sorted, lowercase; empty when none.</summary>
     [JsonPropertyName("modules")] public string[] Modules { get; set; } = [];
+
+    /// <summary>The user's yes/no permissions (GOAL_YETKILER), every catalogue key. Absent from older servers.</summary>
+    [JsonPropertyName("permissions")] public Dictionary<string, bool> Permissions { get; set; } = new();
+
+    /// <summary>The user's limits; <c>null</c> = unlimited.</summary>
+    [JsonPropertyName("limits")] public Dictionary<string, decimal?> Limits { get; set; } = new();
+
+    /// <summary>The catalogue version the maps follow; 0 (absent) = a server without permissions.</summary>
+    [JsonPropertyName("permissionsVersion")] public int PermissionsVersion { get; set; }
 }
 
 /// <summary>Seat capacity and subscription state of a tenant.</summary>
@@ -83,6 +92,9 @@ public sealed class MobileUserDto
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
     [JsonPropertyName("createdAtUtc")] public DateTimeOffset CreatedAtUtc { get; set; }
     [JsonPropertyName("lastLoginAtUtc")] public DateTimeOffset? LastLoginAtUtc { get; set; }
+
+    /// <summary>How many permissions are set for this person apart from their roles (a badge in the users list).</summary>
+    [JsonPropertyName("permissionOverrideCount")] public int PermissionOverrideCount { get; set; }
 }
 
 /// <summary>User list with the seat state that decides whether another one fits.</summary>

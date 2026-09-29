@@ -748,6 +748,7 @@ public partial class Program
         app.MapMobileTaskEndpoints();
         app.MapMobileExpiryEndpoints();
         app.MapMobileSuspendedSaleEndpoints();
+        app.MapMobilePermissionEndpoints();
         app.MapMobileTargetEndpoints();
         app.MapPortalTargetEndpoints();
         app.MapPortalRouteEndpoints();
