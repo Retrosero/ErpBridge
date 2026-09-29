@@ -36,6 +36,9 @@ public sealed class SessionDto
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
     [JsonPropertyName("seats")] public SeatsDto Seats { get; set; } = new();
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
+
+    /// <summary>The user's yes/no permissions (GOAL_YETKILER); null from a server without them.</summary>
+    [JsonPropertyName("permissions")] public Dictionary<string, bool>? Permissions { get; set; }
 }
 
 public sealed class SeatsDto
@@ -61,6 +64,9 @@ public sealed class UserDto
     [JsonPropertyName("canManageApprovalRules")] public bool CanManageApprovalRules { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
     [JsonPropertyName("lastLoginAtUtc")] public DateTimeOffset? LastLoginAtUtc { get; set; }
+
+    /// <summary>How many permissions are set for this person apart from their roles (GOAL_YETKILER).</summary>
+    [JsonPropertyName("permissionOverrideCount")] public int PermissionOverrideCount { get; set; }
 
     /// <summary>The roles, or the single role a server before multi-role accounts sends.</summary>
     public IReadOnlyList<string> EffectiveRoles() =>

@@ -62,8 +62,9 @@ public abstract class PortalPageBase : ComponentBase
     {
         try
         {
-            var user = (await Api.MeAsync()).User;
-            Session.Refresh(user.FullName, user.EffectiveRoles(), user.CanApprove);
+            var me = await Api.MeAsync();
+            var user = me.User;
+            Session.Refresh(user.FullName, user.EffectiveRoles(), user.CanApprove, me.Permissions);
             if (Session.Snapshot() is { } current) await Persistence.SaveAsync(current);
             return true;
         }

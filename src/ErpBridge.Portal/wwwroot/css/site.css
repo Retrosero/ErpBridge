@@ -720,3 +720,31 @@ h1:focus, h1:focus-visible { outline: none; }
 .route-stops li::before { counter-increment: stop; content: counter(stop); min-width: 22px; height: 22px; border-radius: 50%; background: var(--brand-50); color: var(--brand-600); font-size: .75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .route-stop-name, .route-found li > span { flex: 1; min-width: 0; }
 .text-danger { color: var(--danger); font-weight: 600; }
+
+/* ---- Yetkiler (GOAL_YETKILER) ---------------------------------------------------------------- */
+.perm-roles { margin-bottom: 8px; }
+.perm-group { margin-top: 16px; }
+.perm-group-title { margin-bottom: 4px; }
+.perm-row { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eef1f5; }
+.perm-text { flex: 1; min-width: 0; }
+.perm-label { font-weight: 600; }
+.perm-desc { font-size: 12px; }
+.perm-source { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; font-size: 12px; }
+.perm-effective { font-weight: 600; }
+.perm-choice { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.tri { display: inline-flex; border: 1px solid #d8dee8; border-radius: 8px; overflow: hidden; }
+.tri-btn { border: 0; background: #fff; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.tri-btn + .tri-btn { border-left: 1px solid #d8dee8; }
+.tri-btn.is-active { background: var(--brand-50); color: var(--brand-600); font-weight: 600; }
+.tri-btn:disabled { cursor: not-allowed; opacity: .55; }
+.perm-limit { width: 110px; text-align: right; }
+.perm-matrix .perm-group-row th { background: #f6f8fb; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.perm-cell.is-custom { background: #fff8e6; }
+.perm-cell.is-changed { outline: 2px solid var(--brand-600); outline-offset: -2px; }
+.perm-toggle { border: 1px solid #d8dee8; border-radius: 999px; padding: 2px 12px; font-size: 12px; cursor: pointer; background: #fff; }
+.perm-toggle.is-on { background: var(--brand-50); color: var(--brand-600); border-color: #d4e0f8; font-weight: 600; }
+.perm-toggle:disabled { cursor: not-allowed; opacity: .6; }
+@media (max-width: 600px) {
+    .perm-row { flex-direction: column; }
+    .perm-choice { align-items: flex-start; }
+}
