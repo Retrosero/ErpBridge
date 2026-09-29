@@ -1,0 +1,214 @@
+@page "/yetkiler"
+@inherits PortalPageBase
+
+<PageTitle>Yetkiler — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Yetkiler" Eyebrow="Yönetim" Subtitle="Rollerin varsayılan yetkileri ve değişiklik geçmişi" Busy="Busy" />
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_catalog is not null && _roles is not null)
+    {
+        <MudPaper Outlined="true" Class="panel panel--table">
+            <div class="panel-head">
+                <div>
+                    <MudText Typo="Typo.h6">Rol şablonları</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        Bir kişinin yetkisi rollerinden gelir; birden çok rolü varsa herhangi birinin verdiği yetki geçerlidir, limitlerde en yükseği.
+                        Kişiye özel istisna <a href="kullanicilar">Kullanıcılar</a> sayfasında. Admin her zaman her şeye yetkilidir.
+                    </MudText>
+                </div>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || _edits.Count == 0)" OnClick="SaveAsync" id="roles-save">
+                    Kaydet@(_edits.Count > 0 ? $" ({_edits.Count})" : "")
+                </MudButton>
+            </div>
+            <div class="table-scroll">
+                <MudSimpleTable Dense="true" Elevation="0" Class="data-table perm-matrix" id="role-matrix">
+                    <thead>
+                        <tr>
+                            <th>Yetki</th>
+                            @foreach (var role in _roles.Roles)
+                            {
+                                <th class="num" data-role="@role.Role">
+                                    <div>@Fmt.Role(role.Role)</div>
+                                    @if (!role.Locked && role.Customized.Length > 0)
+                                    {
+                                        <MudButton Variant="Variant.Text" Size="Size.Small" Disabled="@Busy" Class="reset-role" OnClick="() => ResetRole(role)">Varsayılana dön</MudButton>
+                                    }
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var group in _catalog.Groups)
+                        {
+                            var items = _catalog.Items.Where(i => i.Group == group.Key).ToList();
+                            if (items.Count == 0) continue;
+                            <tr class="perm-group-row"><th colspan="@(_roles.Roles.Length + 1)">@group.Label</th></tr>
+                            @foreach (var item in items)
+                            {
+                                <tr data-key="@item.Key">
+                                    <td>
+                                        <div class="perm-label">@item.Label</div>
+                                        <div class="perm-desc text-muted">@item.Description</div>
+                                    </td>
+                                    @foreach (var role in _roles.Roles)
+                                    {
+                                        var value = Value(role, item);
+                                        var locked = role.Locked || item.Locked;
+                                        var changed = _edits.ContainsKey((role.Role, item.Key));
+                                        var custom = changed ? value != item.Defaults.GetValueOrDefault(role.Role) : role.Customized.Contains(item.Key);
+                                        <td class="num perm-cell @(changed ? "is-changed" : null) @(custom ? "is-custom" : null)" data-role="@role.Role">
+                                            @if (item.IsLimit)
+                                            {
+                                                <input class="portal-input perm-limit" inputmode="decimal" disabled="@locked" placeholder="Sınırsız"
+                                                       value="@LimitText(item, value)" @onchange="e => SetLimit(role, item, e.Value?.ToString())" />
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="perm-toggle @(value == "1" ? "is-on" : "is-off")" disabled="@locked"
+                                                        @onclick='() => Set(role, item, value == "1" ? "0" : "1")'>@(value == "1" ? "Açık" : "Kapalı")</button>
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </div>
+        </MudPaper>
+
+        <MudPaper Outlined="true" Class="panel panel--table" id="permission-history">
+            <div class="panel-head">
+                <MudText Typo="Typo.h6">Değişiklik geçmişi</MudText>
+            </div>
+            @if (_changes.Length == 0)
+            {
+                <EmptyState Title="Henüz değişiklik yok" />
+            }
+            else
+            {
+                <div class="table-scroll">
+                    <MudSimpleTable Dense="true" Elevation="0" Class="data-table">
+                        <thead>
+                            <tr><th>Zaman</th><th>Kim</th><th>Nerede</th><th>Neyi</th><th>Önce</th><th>Sonra</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var change in _changes)
+                            {
+                                var item = _catalog.Items.FirstOrDefault(i => i.Key == change.Key);
+                                <tr data-change="@change.Id">
+                                    <td class="nowrap">@Fmt.Time(change.CreatedAtUtc)</td>
+                                    <td>@change.ActorName <span class="text-muted">(@(change.Client == "portal" ? "panel" : "telefon"))</span></td>
+                                    <td>@Where(change)</td>
+                                    <td>@(item?.Label ?? (change.Key == "roles" ? "Roller" : change.Key))</td>
+                                    <td>@Shown(change, item, change.OldValue)</td>
+                                    <td>@Shown(change, item, change.NewValue)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Users;
+
+    private PermissionCatalogDto? _catalog;
+    private RolePermissionsResponse? _roles;
+    private PermissionChangeDto[] _changes = [];
+    private string? Notice { get; set; }
+
+    /// <summary>Unsaved cells: (role, key) → value (null = back to the catalogue default).</summary>
+    private readonly Dictionary<(string Role, string Key), string?> _edits = new();
+
+    protected override async Task LoadAsync()
+    {
+        _catalog ??= await Api.PermissionCatalogAsync();
+        _roles = await Api.RolePermissionsAsync();
+        // Administrator first, as the column that shows "everything".
+        _roles.Roles = _roles.Roles.OrderBy(r => Array.IndexOf(PortalRoles.All.ToArray(), r.Role)).ToArray();
+        _changes = (await Api.PermissionChangesAsync()).Changes;
+    }
+
+    private string Value(RolePermissionsDto role, PermissionItemDto item) =>
+        _edits.TryGetValue((role.Role, item.Key), out var edited)
+            ? edited ?? item.Defaults.GetValueOrDefault(role.Role) ?? string.Empty
+            : role.Values.GetValueOrDefault(item.Key) ?? string.Empty;
+
+    private static string LimitText(PermissionItemDto item, string value) =>
+        value.Length == 0 ? string.Empty : PermissionText.Value(item, value).TrimStart('%').Replace(" TL", string.Empty);
+
+    private void Set(RolePermissionsDto role, PermissionItemDto item, string? value)
+    {
+        Notice = null;
+        var saved = role.Values.GetValueOrDefault(item.Key);
+        if (value == saved) _edits.Remove((role.Role, item.Key));
+        else _edits[(role.Role, item.Key)] = value;
+    }
+
+    private void SetLimit(RolePermissionsDto role, PermissionItemDto item, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Set(role, item, string.Empty);
+            return;
+        }
+        if (PermissionText.ParseLimit(text) is { } value) Set(role, item, value);
+        else Error = $"{item.Label}: sayı girin.";
+    }
+
+    private void ResetRole(RolePermissionsDto role)
+    {
+        foreach (var key in role.Customized) _edits[(role.Role, key)] = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        Notice = null;
+        var byRole = _edits.GroupBy(e => e.Key.Role).ToList();
+        await RunAsync(async () =>
+        {
+            foreach (var role in byRole)
+            {
+                var request = new UpdateRolePermissionsRequest();
+                foreach (var ((_, key), value) in role) request.Values[key] = value;
+                await Api.SaveRolePermissionsAsync(role.Key, request);
+            }
+            _edits.Clear();
+            await LoadAsync();
+            Notice = $"Yetkiler kaydedildi: {string.Join(", ", byRole.Select(r => Fmt.Role(r.Key)))}.";
+        });
+    }
+
+    private static string Where(PermissionChangeDto change) => change.Scope switch
+    {
+        "role" => $"Rol: {Fmt.Role(change.Role ?? string.Empty)}",
+        "user" or "roles" => change.TargetUserName ?? "Kullanıcı",
+        _ => change.Scope,
+    };
+
+    private static string Shown(PermissionChangeDto change, PermissionItemDto? item, string? value)
+    {
+        if (change.Key == "roles") return string.Join(", ", (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Fmt.Role));
+        if (value is null) return change.Scope == "role" ? "Varsayılan" : "Rolden";
+        return PermissionText.Value(item, value);
+    }
+}

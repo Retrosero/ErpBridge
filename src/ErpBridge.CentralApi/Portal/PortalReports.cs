@@ -93,31 +93,48 @@ public static class PortalReports
             ? new[] { JobStatus.Succeeded }
             : new[] { JobStatus.Pending, JobStatus.Processing, JobStatus.Succeeded };
 
+        var result = new List<MoneyDocument>();
+        foreach (var row in await PhoneDocumentsAsync(db, tenant.Id, from, to, types, statuses, ct))
+        {
+            if (row.DocumentType == Disbursement
+                && string.Equals(ReadString(row.PayloadJson, "approvalKind"), ApprovalKinds.Purchase, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var documentType = returnTypes.Contains(row.DocumentType) ? "return" : row.DocumentType;
+            result.Add(new MoneyDocument(documentType, row.CreatedByUserId, row.BusinessDate, ReadDecimal(row.PayloadJson, "amount") ?? 0m));
+        }
+        return result;
+    }
+
+    public sealed record PhoneDocument(string ExternalId, string DocumentType, JobStatus Status, Guid? CreatedByUserId, DateOnly BusinessDate, string? PayloadJson);
+
+    /// <summary>
+    /// Documents of <paramref name="types"/> in <paramref name="statuses"/> whose business day falls within
+    /// [from, to], received at most <see cref="OfflineTolerance"/> after it.
+    /// </summary>
+    public static async Task<List<PhoneDocument>> PhoneDocumentsAsync(
+        CentralApiDbContext db, Guid tenantId, DateOnly from, DateOnly to, string[] types, JobStatus[] statuses, CancellationToken ct)
+    {
         var windowStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).AddDays(-1);
         var windowEnd = new DateTimeOffset(to.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).AddDays(1) + OfflineTolerance;
 
         var query = db.Jobs.AsNoTracking()
-            .Where(j => j.TenantId == tenant.Id && types.Contains(j.DocumentType) && statuses.Contains(j.Status));
+            .Where(j => j.TenantId == tenantId && types.Contains(j.DocumentType) && statuses.Contains(j.Status));
         // PostgreSQL filters the window itself; SQLite (tests) cannot translate DateTimeOffset
         // comparisons, so there the same window is applied after reading.
         var sqlite = db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
         if (!sqlite) query = query.Where(j => j.EnqueuedAtUtc >= windowStart && j.EnqueuedAtUtc < windowEnd);
 
         var rows = await query
-            .Select(j => new { j.DocumentType, j.CreatedByUserId, j.EnqueuedAtUtc, j.PayloadJson })
+            .Select(j => new { j.ExternalId, j.DocumentType, j.Status, j.CreatedByUserId, j.EnqueuedAtUtc, j.PayloadJson })
             .ToListAsync(ct);
 
-        var result = new List<MoneyDocument>();
+        var result = new List<PhoneDocument>();
         foreach (var row in rows)
         {
             if (row.EnqueuedAtUtc < windowStart || row.EnqueuedAtUtc >= windowEnd) continue;
-            if (row.DocumentType == Disbursement
-                && string.Equals(ReadString(row.PayloadJson, "approvalKind"), ApprovalKinds.Purchase, StringComparison.OrdinalIgnoreCase))
-                continue;
             var date = BusinessDate(row.PayloadJson, row.EnqueuedAtUtc);
             if (date < from || date > to) continue;
-            var documentType = returnTypes.Contains(row.DocumentType) ? "return" : row.DocumentType;
-            result.Add(new MoneyDocument(documentType, row.CreatedByUserId, date, ReadDecimal(row.PayloadJson, "amount") ?? 0m));
+            result.Add(new PhoneDocument(row.ExternalId, row.DocumentType, row.Status, row.CreatedByUserId, date, row.PayloadJson));
         }
         return result;
     }
@@ -153,11 +170,72 @@ public static class PortalReports
             .Select(r => new RouteRecord(r.Entity, r.PayloadJson))
             .ToListAsync(ct);
 
+    /// <summary>
+    /// Every saved version of the company's route plans, from the booked <c>route_plan</c> / <c>route_plan_delete</c> jobs, so
+    /// a report about a past day uses the plan as it stood that day — an edit or a deletion must not rewrite history
+    /// (Codex, PR #217). A plan with no booked job (older than its job history) keeps its current version for every day.
+    /// </summary>
+    public sealed class RoutePlanHistory
+    {
+        private readonly Dictionary<string, List<(DateTimeOffset At, string? Payload)>> _versions = new(StringComparer.Ordinal);
+        private readonly List<RouteRecord> _visits;
+        private readonly List<RouteRecord> _unversioned;
+
+        private RoutePlanHistory(List<RouteRecord> visits, List<RouteRecord> unversioned)
+        {
+            _visits = visits;
+            _unversioned = unversioned;
+        }
+
+        public static async Task<RoutePlanHistory> LoadAsync(CentralApiDbContext db, Guid tenantId, CancellationToken ct)
+        {
+            var current = await RouteRecordsAsync(db, tenantId, ct);
+            var jobs = await db.Jobs.AsNoTracking()
+                .Where(j => j.TenantId == tenantId && j.Status == JobStatus.Succeeded
+                            && (j.DocumentType == TeamDocumentProcessor.RoutePlan || j.DocumentType == TeamDocumentProcessor.RoutePlanDelete))
+                .Select(j => new { j.DocumentType, j.PayloadJson, j.CompletedAtUtc, j.EnqueuedAtUtc })
+                .ToListAsync(ct);
+            var history = new RoutePlanHistory(
+                [.. current.Where(r => r.Entity == TeamDocumentProcessor.RouteVisitsSection)], []);
+            foreach (var job in jobs)
+            {
+                if (ReadString(job.PayloadJson, "planId") is not { Length: > 0 } planId) continue;
+                if (!history._versions.TryGetValue(planId, out var list)) history._versions[planId] = list = [];
+                list.Add((job.CompletedAtUtc ?? job.EnqueuedAtUtc, job.DocumentType == TeamDocumentProcessor.RoutePlan ? job.PayloadJson : null));
+            }
+            foreach (var list in history._versions.Values) list.Sort((a, b) => a.At.CompareTo(b.At));
+            foreach (var plan in current.Where(r => r.Entity == TeamDocumentProcessor.RoutePlansSection))
+                if (ReadString(plan.PayloadJson, "planId") is not { } id || !history._versions.ContainsKey(id)) history._unversioned.Add(plan);
+            return history;
+        }
+
+        /// <summary>The plans as they stood at the end of <paramref name="date"/>, with every visit.</summary>
+        public List<RouteRecord> For(DateOnly date)
+        {
+            var cutoff = IstanbulDayStartUtc(date.AddDays(1));
+            var records = new List<RouteRecord>(_visits);
+            records.AddRange(_unversioned);
+            foreach (var versions in _versions.Values)
+            {
+                string? payload = null;
+                foreach (var (at, version) in versions)
+                {
+                    if (at >= cutoff) break;
+                    payload = version;
+                }
+                if (payload is not null) records.Add(new RouteRecord(TeamDocumentProcessor.RoutePlansSection, payload));
+            }
+            return records;
+        }
+    }
+
     public static List<PortalVisitRow> BuildVisits(IReadOnlyCollection<RouteRecord> records, DateOnly date)
     {
         var day = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var routeDay = RouteDay(date);
-        var visits = new Dictionary<(string StopId, string Username), JsonElement>();
+        // Keyed by plan too: stop ids are unique only within a plan (Codex, PR #217). An old phone's visit without a plan id
+        // is kept under an empty plan id and still matches its stop.
+        var visits = new Dictionary<(string PlanId, string StopId, string Username), JsonElement>();
         var unplanned = new List<JsonElement>();
         var documents = new List<JsonDocument>();
         try
@@ -170,7 +248,7 @@ public static class PortalReports
                 if (AndroidEndpoints.GetString(visit, "visitDate") != day) continue;
                 var stopId = AndroidEndpoints.GetString(visit, "stopId") ?? string.Empty;
                 var username = AndroidEndpoints.GetString(visit, "username") ?? string.Empty;
-                if (stopId.Length > 0) visits[(stopId, username.ToLowerInvariant())] = visit;
+                if (stopId.Length > 0) visits[(AndroidEndpoints.GetString(visit, "planId") ?? string.Empty, stopId, username.ToLowerInvariant())] = visit;
                 else unplanned.Add(visit);
             }
 
@@ -203,7 +281,8 @@ public static class PortalReports
                             CustomerName = AndroidEndpoints.GetString(stop, "customerName") ?? string.Empty,
                             VisitOrder = AndroidEndpoints.GetInt32(stop, "visitOrder") ?? 0,
                         };
-                        if (visits.Remove((stopId, username.ToLowerInvariant()), out var visit)) Fill(row, visit);
+                        var user = username.ToLowerInvariant();
+                        if (visits.Remove((planId, stopId, user), out var visit) || visits.Remove((string.Empty, stopId, user), out visit)) Fill(row, visit);
                         rows.Add(row);
                     }
                 }

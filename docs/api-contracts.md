@@ -246,6 +246,80 @@ metin reddedilir (kesilmez). Miktar bilgi amaçlıdır; satış düşmez, raf bi
 quantity: number | null, note, closed, deleted, createdBy (oluşturanın görünen adı), createdAtMs, updatedAtMs,
 updatedSeq }`. Zamanlar unix ms (UTC).
 
+## Bekleyen siparişler — `/api/v1/android/suspended-sales`
+
+Telefonda beklemeye alınan satış sepetleri (cari, depo, not, satırlar). Firmanın bütün telefonları aynı listeyi
+görür; biri açıp tamamlayabilir. ERP'li ve ERP'siz firmada aynı çalışır, **ERP'ye hiçbir şey yazılmaz** (taslaktır,
+evrak değil). Kimlik: firma kullanıcısı token'ı (`MobileUserPolicy`), hız sınırı kullanıcı başına; her çağrıda
+kullanıcı, cihaz ve abonelik yeniden denetlenir. Bilgi bankası kural 32.
+
+| Uç | Açıklama |
+|---|---|
+| `GET /api/v1/android/suspended-sales?changedSinceSeq={long}&take={int}` | Firmanın `updatedSeq > changedSinceSeq` siparişleri, `updatedSeq` sırasıyla; `take` varsayılan 500, 1–1000. Açılan/silinenler `deleted=true` ile (satırsız) gelir. Yanıt `{ sales: SuspendedSaleDto[], latestSeq, hasMore }`. |
+| `POST /api/v1/android/suspended-sales/ops` | Gövde `{ ops: SuspendedSaleOp[] }` (≤ 200; fazlası 400 `SUSPENDED_SALE_BATCH_TOO_LARGE`). Yanıt `{ results: [{ opId, status: "applied"\|"duplicate"\|"rejected", errorCode?, message? }], sales: SuspendedSaleDto[] }` — `sales` partinin dokunduğu (uygulanan **ve reddedilen**) siparişlerin güncel hâli; telefon "başkası açtı" durumunu buradan öğrenir. |
+
+**`SuspendedSaleOp`:** `{ opId: guid, type: "upsert" | "claim" | "delete", sale: SuspendedSaleInput }`. `duplicate`,
+savepoint ve "reddedilen yeniden denenmez" kuralları SKT ile aynıdır.
+
+- `upsert`: kimlik yoksa sipariş açılır (oluşturan yalnız burada yazılır); varsa tüm alanlar üzerine yazılır — yalnız
+  oluşturan ya da ADMIN/MANAGER (`SUSPENDED_SALE_FORBIDDEN`). Açılmış/silinmiş sipariş yeniden yazılmaz (`SUSPENDED_SALE_TAKEN`).
+- `claim`: telefonda **açmak**. Firmanın her kullanıcısı; sipariş herkesin listesinden kalkar (`closedReason="claimed"`,
+  `closedBy`). Zaten açılmış/silinmiş sipariş `SUSPENDED_SALE_TAKEN`, mesaj kimin aldığını söyler ("… Veli tarafından
+  açıldı."). Aynı anda iki telefon açarsa sayaç kilidinde sıraya girer; ikincisi reddedilir.
+- `delete`: iptal; yalnız oluşturan ya da ADMIN/MANAGER (`SUSPENDED_SALE_FORBIDDEN`). Kendi sildiğini tekrar silmek `applied`.
+- Kimlik tüm firmalar arasında tekildir; başka firmanın siparişi `SUSPENDED_SALE_NOT_FOUND`.
+- Diğer kodlar: `SUSPENDED_SALE_OP_ID_REQUIRED`, `SUSPENDED_SALE_OP_UNKNOWN`, `SUSPENDED_SALE_INVALID` (en az 1, en çok
+  500 satır; miktar > 0, en çok 3 ondalık; iskonto 0–100; tutarlar ≥ 0).
+
+**`SuspendedSaleInput`:** `{ id: guid (telefon üretir), docNo (zorunlu, ≤ 20, görünen no "BS-4821"), customerId? (≤ 100;
+telefonun cari kimliği), customerName? (≤ 200; boşsa "Perakende Müşteri"), warehouse? (≤ 100), note? (≤ 1000),
+totalAmount (bilgi amaçlı, satır iskontolu toplam), lines: [{ barcode (zorunlu, ≤ 50), stockCode? (≤ 50), productName?
+(≤ 200), quantity, price, lineDiscountPercent, note? (≤ 500) }] }`.
+
+**`SuspendedSaleDto`:** girdideki alanlar + `deleted, closedReason ("claimed"|"deleted"), closedBy, createdBy (görünen ad),
+createdByUserId (telefon "sil"i yalnız oluşturana gösterir), createdAtMs, updatedAtMs, updatedSeq`.
+
+## Kullanıcı yetkileri — `/api/v1/android/account/…permissions` (GOAL_YETKILER)
+
+Rol şablonu + kişiye istisna; telefon ve web panel aynı uçları kullanır. Değerler saklama biçimindedir: evet/hayır
+`"1"`/`"0"`, limit sayı (`"10"`, `"25000"`), `""` = sınırsız. Bilgi bankası kural 33.
+
+| Uç | Kim | Açıklama |
+|---|---|---|
+| `GET /permissions/catalog` | herkes | `{ version, groups: [{key,label}], items: [{key, group, type: bool\|limit, unit?, label, description, serverEnforced, locked, defaults: {rol: değer}}], editableRoles }` |
+| `GET /roles/permissions` | Admin | `{ roles: [{ role, locked, values: {anahtar: değer}, customized: [anahtar] }] }` (ADMIN kilitli, her şey açık) |
+| `PUT /roles/{role}/permissions` | Admin | `{ values: { anahtar: değer \| null } }` — `null` = katalog varsayılanı; adı geçmeyen anahtar değişmez. Yanıt güncel `RolePermissionsDto`. |
+| `GET /users/{id}/permissions` | Admin; kişi kendisi | `{ userId, username, fullName, roles, locked, items: [{ key, value, source: admin\|role\|override, roleValue, roleSources, override }] }` |
+| `PUT /users/{id}/permissions` | Admin | `{ overrides: { anahtar: "allow"\|"deny"\|"1"\|"0"\|limit\|"unlimited" \| null } }` — `null` = rollerden gelsin. |
+| `GET /permissions/changes?userId=&role=&take=` | Admin | `{ changes: [{ id, actorName, client, scope, role?, targetUserId?, targetUserName?, key, oldValue?, newValue?, createdAtUtc }] }` |
+
+Ret kodları: `ADMIN_REQUIRED` (403), `ADMIN_ROLE_LOCKED`, `ADMIN_USER_LOCKED`, `PERMISSION_LOCKED` (409),
+`UNKNOWN_PERMISSION`, `INVALID_PERMISSION_VALUE` (400; limit 0 ve üstü, yüzde en çok 100).
+
+Oturum (`/login`, `/me`): `permissions: {anahtar: bool}`, `limits: {anahtar: sayı \| null}`, `permissionsVersion` (0 = yetkisiz
+eski sunucu), `permissionsStamp` (roller + yetkilerin 16 haneli özeti). Her imzalı mobil yanıt güncel damgayı
+`X-Permissions-Stamp` başlığında taşır; telefon farklı damga görünce `/me`'yi yeniden okur (yeniden giriş gerekmez).
+Ingest: mobil kullanıcının doğrudan belgesi modül yetkisi yoksa, açık hesap (cari borç) satış yetkisi olmadan cari borçlu satışsa ya da limit aşılırsa
+`409 APPROVAL_REQUIRED` (mesaj nedeni söyler); belge onay talebi olarak yeniden gönderilir.
+
+## Hedefler ve ekipler — `/api/v1/portal/{teams,targets}`, `/api/v1/android/targets` (GOAL_HEDEF_RUT)
+
+Firma kullanıcısı token'ı; firma token'dan. Günler İstanbul `yyyy-MM-dd`. Ayrıntı: KB 00 kural 31.
+
+| Uç | Gövde / yanıt |
+|---|---|
+| `GET /portal/teams` | `{teams:[{id,name,kind,parentId,isActive,memberIds,managerIds}], people:[{id,username,fullName,roles,teamId,isActive}], canEdit, wholeCompany}` |
+| `POST /portal/teams` · `PUT /portal/teams/{id}` | `{name, kind (yalnız oluştururken), parentId, isActive, memberIds?, managerIds?}` → `TeamDto` (201/200). `name` ve `parentId` her seferinde tam gönderilir (bölgesiz gönderilen ekip bölgeden çıkar); `memberIds`/`managerIds` null ise dokunulmaz. Hatalar `TEAM_ADMIN_REQUIRED` 403, `TEAM_NOT_FOUND` 404, `TEAM_NAME_TAKEN` 409, `TEAM_INVALID` 400 |
+| `DELETE /portal/teams/{id}` | 204; altında ekip olan bölge 409 `TEAM_HAS_CHILDREN` |
+| `GET /portal/targets?periodType&periodKey&teamId` | Pano: `{periodType, periodKey, start, end, asOf, workDaysTotal/Elapsed/Left, dataSource, source, warnings[], canManage, wholeCompany, owners:[{ownerKind, ownerId, name, teamId, teamName, teamKind, warning, summary:{revenue, returns, collection, documentCount, visitsPlanned, visitsCompleted, pendingRevenue, pendingCollection}, targets:[{id, metric, measure, itemCode, itemName, value, note, actual, pending, percent, expectedToDate, forecast, requiredPerDay, derived, childrenSum, updatedAtMs, updatedBy}]}]}`. Varsayılan bu ay |
+| `PUT /portal/targets` | `{operationId, items:[{periodType, periodKey, metric, measure?, itemCode?, itemName?, ownerKind, ownerId?, value (null = sil), note?}]}` ≤ 2000 → `{saved, deleted, unchanged, duplicate, errors:[{index, errorCode, message}]}`; hatada 400 (kapsam dışı 403), hiçbiri yazılmaz |
+| `POST /portal/targets/copy` | `{periodType, fromPeriodKey, toPeriodKey, percent, ownerKinds?, overwrite, apply, operationId}` → `{items, result?}` |
+| `POST /portal/targets/distribute` | `{periodType, periodKey, metric, measure?, itemCode?, itemName?, sourceOwnerKind (COMPANY\|TEAM), sourceOwnerId?, value?, method (EQUAL\|LAST_PERIOD_SHARE), targetLevel (USER\|TEAM)}` → `{items}` (önizleme) |
+| `GET /portal/targets/items?metric&q` | `PRODUCT\|CATEGORY\|SUB_CATEGORY\|BRAND` → `{items:[{code,name,productCount}], truncated}` |
+| `GET\|PUT /portal/targets/settings` | `{workDays}` (Pzt=1…Paz=64); yazma tüm firmayı gören yönetici |
+| `GET /android/targets/mine?date` | `{date, asOfMs, dataSource, source, warnings[], canViewTeam, periods:[{periodType, periodKey, start, end, workDaysTotal, workDaysLeft, summary, targets}]}` — gün, hafta, ay |
+| `GET /android/targets/team?date&periodType` | Pano biçimi; yalnız ADMIN/MANAGER (403 `TARGETS_REQUIRE_MANAGER`) |
+
 ## Hata modeli
 
 ```json

@@ -61,8 +61,7 @@ public sealed class TaskService
     public TaskOptions Options => _options;
 
     /// <summary>ADMIN or MANAGER: assigns anyone, sees every task of the company (goal K3, K4).</summary>
-    public static bool CanManage(MobileUser user) =>
-        RolePermissions.IsAdmin(user) || RolePermissions.Has(user, MobileUserRoles.Manager);
+    public static bool CanManage(MobileUser user) => RolePermissions.Can(user, Permissions.PermissionKeys.TasksManage);
 
     public void Notify(Guid tenantId) => _events.Publish(tenantId, TenantEventTopics.Tasks);
 

@@ -506,7 +506,8 @@ registration ayrı bir composition projesine taşınır.
      yeniden gelirse **tamamen değiştirir**), `route_plan_delete` (`planId`), `visit`.
    - **Yetki:** üçü de **oturum açmış firma kullanıcısı** ister; API anahtarı veya ajan
      403 `TEAM_DOCUMENT_REQUIRES_MOBILE_USER`. Rota planlama ve silme (`RolePermissions.CanPlanRoutes`) yalnızca
-     `ADMIN` veya `MANAGER`. Ziyaretin `username`'i **token'daki kullanıcıdan** gelir,
+     `ADMIN` veya `MANAGER`; **ekip/bölgeden sorumlu yönetici yalnız kendi kişilerine atar ve başka ekibin planını
+     değiştiremez/silemez** (`OutOfScopeAsync`, `TeamScope`; GOAL_HEDEF_RUT K14, kural 31) — panelde de telefonda da. Ziyaretin `username`'i **token'daki kullanıcıdan** gelir,
      yükteki isim yok sayılır — telefon başkası adına ziyaret kaydedemez.
    - **Doğrulama:** `planId`/`stopId`/`visitId` ≤ 64; plan ≤ 500 durak, ≤ 100 atanan;
      `dayOfWeek` 1 (Pazartesi)–7; tarihler `yyyy-MM-dd`; ziyaret `status`
@@ -621,7 +622,8 @@ registration ayrı bir composition projesine taşınır.
      karşılığıdır; menü yalnız sunucunun vereceği bölümleri gösterir. Her sayfa
      `PortalPageBase.Requires` ile bir `PortalArea` bildirir: `Reports` (Özet, Plasiyerler, Ziyaretler —
      ADMIN, MANAGER), `Ledger` (Cariler, Stok — + ACCOUNTING), `Approvals` (Onaylar — ADMIN, MANAGER,
-     ACCOUNTING), `Warehouse` (Depo — ADMIN, MANAGER, WAREHOUSE), `Users` (Kullanıcılar — ADMIN). Rolün
+     ACCOUNTING), `Warehouse` (Depo — ADMIN, MANAGER, WAREHOUSE), `Users` (Kullanıcılar — ADMIN), `Targets` (Hedef takibi,
+     Hedef girişi, Bölge ve ekipler — ADMIN, MANAGER; GOAL_HEDEF_RUT, kural 31). Rolün
      açmadığı adres (yer imi, elle yazılan URL) API'ye hiç sormadan kullanıcının **açılış sayfasına**
      gider: raporları görebilen `/`, muhasebe `/muhasebe` (Faz 48), depo `/depo`. Girişten sonra da oraya gidilir.
      `PortalRoles` ile `RolePermissions` birlikte değişir; panel yalnız kolaylıktır, kapı sunucudadır.
@@ -941,9 +943,13 @@ registration ayrı bir composition projesine taşınır.
      `token=`/`"licenseKey":`/`apiKey:` adlı değerler). Masaüstü telemetri raporlayıcısı da aynı listeyi kullanır; ajan
      tarafında ikinci bir gizli bilgi listesi yazılmaz. `MaskPassword` değeri artık satır sonunda durur (önceden bir
      sonraki satırdaki istisna türünü yutuyordu); tırnaklı değer (`Password="Top;Secret"`) bütün olarak maskelenir.
-   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.2.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
+   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.3.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
      (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır. 1.2.0
      (2026-09-27): alış faturası iskontosu — heartbeat'teki `appVersion` 1.2.0'dan küçük ajan iskontolu alışı yazamaz.
+     1.3.0 (2026-09-28, GOAL_HEDEF_RUT E1/E2): hareket satırlarında `plasiyerKod`, lookups'ta `stock_brand`/`stock_main_group`
+     (projeksiyon 8) **ve stok hareketi okumasının onarımı**: #178'den (2026-09-23) beri `ReadStockTransactionsAsync` her canlı
+     okumada Dapper kurucu eşlemesiyle düşüyordu (aşağıdaki kolon sırası kuralı). 1.2.0 kurulu müşteride stok hareketleri
+     aynaya gelmez; 1.3.0 kurulunca projeksiyon 8 bir kez tam okuma yapar.
    - **Log Merkezi'ne gönderim (L3c):** ajan kodu tanılama olaylarını `Core/Logging/IAgentLogReporter` ile bildirir;
      olay SQLite'taki `agent_log_outbox`'a yazılır (en çok 1.000 / 7 gün) ve heartbeat turunda `AgentLogUploader`
      en çok 50'lik partiyle `POST /api/v1/agents/logs/batch`'e gönderir. Aynı parmak izli hata 10 dakikada bir
@@ -1014,7 +1020,11 @@ registration ayrı bir composition projesine taşınır.
      `ERPBridge_MIKRO_WRITE_DB` ∈ `MikroWriteTestDatabase.AllowedDatabases` (yalnız `MikroDB_V15_DEMO`; ilk kopya `MikroDB_V15_ERPBTEST` 2026-09-17'de silindi)
      ister; müşteri veritabanına (`MikroDB_V15_02` vb.) yazan test yazılmaz. Okuma testleri canlı veritabanına bağlanabilir.
    - **Dapper kolon sırası:** okuyucuların positional record'larına kolon eklerken SQL'deki sıra kurucuyla aynı olmalı
-     (#95'te `VatRate` sırası canlı okumayı kırdı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma testiyle gelir.
+     (#95'te `VatRate` sırası canlı okumayı kırdı; #178'de `DiscountAmount`/`VatAmount` `Amount`'un hemen ardına yazıldı ve
+     stok hareketi okuması 2026-09-23 → 2026-09-28 arası hiç çalışmadı; CI canlı test çalıştırmaz). Yeni okuyucu kolonu canlı okuma
+     testiyle gelir: `MikroSalespersonReaderLiveTests` (salt okunur; `ERPBridge_RUN_INTEGRATION=1`, `ERPBridge_MIKRO_WRITE_DB`,
+     bu makinede `ERPBridge_SCHEMA_SERVER=.` — TCP kapalı). **Dikkat:** `MikroCustomerLedgerReaderLiveTests` içinde yazan test de
+     var; yalnız izinli kopyada (`MikroDB_V15_DEMO`) ve filtreyle çalıştırılır.
 
 27. **Görevler ve bildirimler merkezdedir: `Tasks/TaskService` + `Endpoints/MobileTaskEndpoints` (GOAL_GOREVLER, 2026-09-25).**
    - **ERP'ye hiç yazılmaz.** Görev, alt görev, yorum, resim ve bildirim ERP'li ve ERP'siz firmada aynı tablolarda
@@ -1158,6 +1168,120 @@ registration ayrı bir composition projesine taşınır.
      kendi kartında: telefon girişi ErpBridge'de, bilgisayar bilgisi/serbest bırakma ve modüller Go'da. Yeni ürün eklenirse önce
      `LicenseProducts` (sunucu) + `LicenseProductCatalog` (konsol) + CSS renk sınıfı `license-product--{anahtar}` eklenir.
      Test: Admin `LicensesPageTests`. Go uygulaması da `LIC-` ile başlayan anahtarı sunucuya sormadan "bu bir ErpBridge anahtarı" diye reddeder.
+
+31. **Hedefler ve ekipler merkezdedir: `Targets/TargetService` + `Endpoints/PortalTargetEndpoints` / `MobileTargetEndpoints` (GOAL_HEDEF_RUT, 2026-09-28).**
+   Plan ve kararlar: [`docs/GOAL_HEDEF_RUT.md`](../docs/GOAL_HEDEF_RUT.md). ERP'ye yazılmaz; ERP'li ve ERP'siz firma aynı tablolar.
+   - **Ekip modeli (K2):** `sales_teams` (`REGION` | `TEAM`, ekibin isteğe bağlı üst bölgesi `ParentId`), `sales_team_members`
+     (PK `TenantId+UserId` — kişi **tek ekipte**; başka ekibe eklenen eski ekibinden çıkar), `sales_team_managers` (sorumlu
+     yönetici; bölge sorumluluğu altındaki ekipleri kapsar). Yapıyı yalnız ADMIN değiştirir (403 `TEAM_ADMIN_REQUIRED`);
+     sorumlu yalnız ADMIN/MANAGER olabilir; altında ekip olan bölge silinemez (409 `TEAM_HAS_CHILDREN`); silinen ekibin hedefleri
+     `IsDeleted` olur.
+   - **Kapsam tek sınıftadır: `Targets/TeamScope` (K3).** ADMIN tüm firma; en az bir ekip/bölgeden sorumlu MANAGER yalnız o
+     ekipler + üyeleri + kendisi; **sorumluluğu olmayan MANAGER tüm firma** (ekip kavramından önceki davranış); diğerleri yalnız
+     kendisi. Hedef yazma `RolePermissions.CanManageTargets` (ADMIN, MANAGER) + kapsam (403 `TARGET_OUT_OF_SCOPE`); firma geneli
+     hedefi yalnız tüm firmayı gören. Görev ve onay görünürlüğü bu kapsamı **kullanmaz**.
+   - **Hedef (K5):** `sales_targets` — dönem (`DAILY` `2026-10-05` · `WEEKLY` ISO hafta Pazartesi `2026-W41` · `MONTHLY` `2026-10`,
+     İstanbul günü; `Targets/TargetPeriod`), tür (`REVENUE`, `COLLECTION`, `PRODUCT`, `CATEGORY` = ana grup/ERP'siz `kategori`,
+     `SUB_CATEGORY` = `anaGrup|altGrup`, `BRAND`, `VISIT`, `DOCUMENT_COUNT`), ölçü (`AMOUNT` | `QUANTITY` | `COUNT`), kalem kodu, sahip
+     (`USER` | `TEAM` | `COMPANY`, firmada `OwnerId = Guid.Empty`). Doğal anahtar tekil (upsert); `value = null` yumuşak siler.
+     Kayıt **hep ya hiç** (hatalı kalemin `index`'i döner), ≤ 2000 kalem. `operationId` işlemin **ilk yazımı** olarak
+     `sales_target_operations`'a (PK `TenantId+OperationId`) girer: aynı anda gelen tekrar PK'da bekler, sonra `duplicate` alır;
+     aynı doğal anahtarı eşzamanlı yaratan iki farklı kayıttan ikincisi 409 `TARGET_CONFLICT` (Codex, PR #214). Her değişiklik
+     `sales_target_events`'e (eski/yeni değer, kim); ekip silinince hedeflerinin `DELETE` olayı da yazılır.
+   - **Gerçekleşen (K6–K8, `Targets/TargetFactReader`):** ERP'siz firmada `jobs` (`Succeeded`; `PortalReports.PhoneDocumentsAsync`,
+     `occurredAt` İstanbul günü + 7 gün tolerans): satış/iade satırı değeri `lineTotal` → adet × `unitPrice` → adet ×
+     `listUnitPrice` × `conditionPercent` (ERP'siz defterle aynı, KDV ayrımı yapılmaz), anında ödemeli satış aynı zamanda tahsilat.
+     **Panel düzeltmeleri:** `document_void`/`ledger_void` ile iptal edilen belge (`targetKey`'in işi) sayılmaz; ayakta kalan
+     `document_edit`/`ledger_edit` onun yerine sayılır — düzeltilen belgenin **ilk satıcısına**, düzeltmenin tarihiyle (yoksa asılınkiyle).
+     ERP'li firmada **Mikro aynası** (`stockTransactions`, `customerTransactions`, ayrı bir `PortalRecordMirror` "target-rows"):
+     satış = `tip` 1 + `evrakTip` 1/4 (irsaliye/fatura) satırı, iade = `tip` 3 + `evrakTip` 3; tutar `tutar − discountAmount`
+     (faturalanan irsaliye Mikro'da ikinci bir stok satırı açmaz — açsaydı stok iki kez düşerdi; canlı V15_02/V16_03'te satışların
+     tamamı kendi faturasına bağlı `evrakTip` 4, bağlı `evrakTip` 1 satırı yok, 2026-09-28)
+     (KDV hariç); tahsilat = `TAHSILAT` ve kapalı (peşin) `SATIS`. Satır kişiye `plasiyerKod` → `mobile_user_erp_mappings.SalespersonCode`
+     ile bağlanır; kendi kodu olmayan kişinin kişisel gerçekleşeni yoktur (sahip satırında uyarı), firma geneli tüm satırlardır.
+     Kişinin `Pending/Processing` telefon belgeleri ayrı `pending`'dir. **Ajan `plasiyerKod` göndermiyorsa** (hiçbir satırda alan
+     yok) kaynak `phone-documents`: ERP'li Plasiyerler raporu gibi telefon belgeleri (Pending+Processing+Succeeded) sayılır, uyarı döner.
+     Kaynak `source` alanındadır: `server-documents` | `erp-mirror` | `phone-documents`. Bir aralığın olguları 60 sn önbelleklenir.
+     Bilinen sınır: satış türü "sipariş" olan ERP'li firmada telefon satışı Mikro'da faturalanana kadar gerçekleşene girmez.
+   - **Hesap (K9–K11, `Targets/TargetBoard`, saf):** yüzde, bugüne kadar beklenen (iş günü oranı), tempoyla dönem sonu tahmini,
+     kalan ÷ kalan iş günü (bugün dahil). Kendi günlük hedefi olmayan güne **aylık (yoksa haftalık) hedeften pay** türetilir:
+     `(hedef − bugünden önceki gerçekleşen) ÷ kalan iş günü`, `derived=true`. `VISIT` hedefi girilmemişse hedef = dönemde planlanan
+     rut durağı. İş günleri `target_settings.WorkDays` (Pzt=1…Paz=64, varsayılan Pzt–Cmt). Ekip/firma satırında `childrenSum` (bir alt
+     seviyedeki aynı hedeflerin toplamı).
+   - **Panel (GOAL_HEDEF_RUT P1–P3):** menüde "Hedefler & rut" grubu. `/hedefler` (takip): dönem seçici (`Shared/TargetPeriodPicker`,
+     gün/hafta/ay + önceki/sonraki), ekip süzgeci, firma satırından dört özet kart, kişi/ekip tablosu (ciro ve tahsilat ilerleme
+     çubuğu, tempo altında/yolda rozetleri, tahmin, günde gereken; satıra tıklayınca tüm hedefler). `/hedefler/giris`: kişi/ekip/firma ×
+     ciro/tahsilat/ziyaret/fiş hücre tablosu — değişen hücreler işaretlenir, **tek `operationId` ile toplu kayıt**, sunucunun kalem
+     hatası "kişi · tür" olarak gösterilir ve düzenleme kaybolmaz; sayı `12.500,50` / `12500.5` biçimlerini okur (virgül daima ondalık).
+     Kalem hedefi (ürün/kategori/[ERP'de] alt kategori/marka) arama + seçimle eklenir/silinir; önceki dönemden kopyala (önizle → uygula),
+     dağıt (önizle → tabloya **kaydedilmemiş** aktar), CSV/.xlsx içe aktarma (`Kim;Tür;Ölçü;Kalem;Hedef`, kim = kullanıcı adı/ad
+     soyad/ekip adı/"Firma") ve CSV dışa aktarma (data URI), çalışma günleri. `/ekipler`: bölge → ekip ağacı, admin için
+     oluştur/düzenle/sil (üyeler — başka ekipteki kişi taşınır —, sorumlu yöneticiler yalnız ADMIN/MANAGER), diğerlerine salt okunur.
+     Testler: `PortalTargetPagesTests`.
+   - **Rut (P4–P5, `Endpoints/PortalRouteEndpoints`):** `GET /api/v1/portal/routes` (kapsamdaki planlar + atanabilir kişiler;
+     plan `canEdit` = tüm atananlar kapsamda), `PUT /routes/{planId}` (planId ≤ 64, harf/rakam/-/_), `DELETE /routes/{planId}`,
+     `GET /routes/compliance?from&to&teamId` (≤ 92 gün; varsayılan bu hafta). **İkinci motor yok:** kayıt telefonun
+     `route_plan` / `route_plan_delete` belgesinin aynısıdır (`ExternalId = portal-route:{planId}:{guid}`, her kayıt yeni belge),
+     `TeamDocumentProcessor` işler, telefonlar akıştan (kural 17) alır. Panelde açılan durak id'sini sunucuda alır, yeniden kayıtta
+     korunur (ziyaretler bağlı kalır). İşleyicinin İngilizce reddi panele Türkçe `ROUTE_INVALID` mesajıyla döner (kapsam dışı 403).
+     Uyum: kişi/gün bazında planlanan, ziyaret, atlanan, **kaçırılan** (geçmiş günün kayıtsız durağı; bugünkü değil), plan dışı,
+     uyum = ziyaret ÷ planlanan. **Her gün o gün geçerli plan sürümüyle hesaplanır** (`PortalReports.RoutePlanHistory`: `Succeeded`
+     `route_plan`/`route_plan_delete` işlerinden, gün sonundan önceki son sürüm; iş geçmişi olmayan eski plan bugünkü haliyle) —
+     sonradan düzenleme/silme geçmişi değiştirmez; plan kaydedildiği günden itibaren geçerlidir. **Ziyaret durağa `(planId, stopId,
+     kullanıcı)` ile bağlanır** (`BuildVisits`; durak kimliği yalnız plan içinde tekildir), `planId` taşımayan eski ziyaret yalnız
+     `stopId` ile eşleşir (Codex, PR #217). `GET /routes/{planId}` tek plan (liste kuralları; yoksa 404 `ROUTE_NOT_FOUND`). Panel `/rut` (plan listesi; editör: ad, başlangıç, etkin, atananlar, Pzt–Paz sekmeleri, durak sırası
+     ↑↓, kaldır, günü başka güne kopyala, cari araması `/portal/customers`) ve `/rut/uyum`. Panel istemcisi `ROUTE_INVALID` için
+     sunucunun metnini gösterir (`PortalApiClient.ServerWordedCodes`). Testler: `RoutePlanPortalRelationalTests`, `PortalRoutePagesTests`.
+   - **Uçlar:** panel `GET|POST /api/v1/portal/teams`, `PUT|DELETE /teams/{id}`, `GET|PUT /targets` (pano + toplu kayıt),
+     `POST /targets/copy` (±%, önizleme/uygula), `POST /targets/distribute` (EQUAL | LAST_PERIOD_SHARE, yalnız önizleme),
+     `GET /targets/items?metric&q` (≤ 50; marka/ana grup adı ajan 1.3.0'ın `stock_brand`/`stock_main_group` lookup'larından —
+     `PortalStockCatalog.Catalog.BrandNames/MainGroupNames`, yoksa kod), `GET|PUT /targets/settings`. Okuma `CanViewReports`. Telefon `GET /api/v1/android/targets/mine?date`
+     (gün/hafta/ay, herkes) ve `/team?date&periodType` (ADMIN/MANAGER). Hız sınırı kullanıcı başına. Testler: `TargetRelationalTests`,
+     `TargetBoardTests`, `TargetPeriodTests`.
+
+32. **Bekleyen siparişler merkezdedir: `SuspendedSales/SuspendedSaleService` + `Endpoints/MobileSuspendedSaleEndpoints` (2026-09-29).**
+   - Telefonda beklemeye alınan sepet (cari, depo, not, satırlar) firmanın bütün telefonlarında görünür; biri açıp
+     tamamlar. Önceden yalnız o telefonun belleğindeydi (uygulama kapanınca kayboluyordu). ERP'ye yazılmaz, ajan görmez;
+     ERP'li ve ERP'siz firmada aynı tablo (`suspended_sales`, satırlar `LinesJson` jsonb). Panel ekranı yok.
+   - **SKT'nin (kural 29) işlem partisi, üstüne iki kural** (kullanıcı kararı): `claim` = telefonda açmak; firmanın her
+     kullanıcısı açabilir, açılan sipariş herkesten kalkar, ikinci açma `SUSPENDED_SALE_TAKEN` + kimin aldığı (aynı sipariş
+     iki kez girilmez). `delete` (iptal) ve var olanı `upsert` yalnız oluşturan ya da ADMIN/MANAGER
+     (`SuspendedSaleService.CanManage`). `claim`/`delete` de sayacı kaydı okumadan önce alır: eş zamanlı iki açma kilitte sıralanır.
+   - Reddedilen işlemin dokunduğu sipariş de yanıtta döner: telefon "başkası açtı" bilgisini ve mezar taşını aynı yanıtta alır.
+   - Sözleşme `docs/api-contracts.md`; testler `SuspendedSaleRelationalTests` (SQLite). `suspended_sale_ops_applied` henüz temizlenmiyor.
+
+33. **Kullanıcı yetkileri: rol şablonu + kişiye istisna (`Permissions/`, GOAL_YETKILER, 2026-09-29).**
+   - **Katalog** `PermissionCatalog` (tek kaynak, `Version`): `module.*` (telefon modülleri), `portal.*` (web panel alanları),
+     `action.*` (işlemler), `view.*` (görünürlük), `limit.*` (sayısal; boş = sınırsız). Anahtarlar kalıcıdır, yeniden adlandırılmaz.
+     Varsayılanlar eski rol kurallarıyla birebir aynıdır; `PermissionResolverTests` 31 rol birleşiminin hepsinde bunu garanti eder
+     (hiç kayıt yokken davranış değişmez).
+   - **Hesaplama** `PermissionResolver.Resolve`: ADMIN her şeye yetkili ve sınırsız (şablonu yok, kişisel ayar yapılamaz).
+     Diğerlerinde her rol için firmanın şablon satırı ya da katalog varsayılanı; evet/hayır rollerin VEYA'sı, limit en yükseği
+     (sınırsız kazanır). Yöneticinin `CanApprove` / `CanManageApprovalRules` sütunları onay anahtarlarını yazar. Kişisel istisna
+     en son ezer. Her girdi kaynağını taşır (`admin` / `role` + hangi roller / `override`).
+   - **Saklama seyrektir:** `tenant_role_permissions` ve `mobile_user_permission_overrides` yalnız varsayılandan farkı tutar;
+     "varsayılana dön" / "rolden" satırı siler. Her değişiklik `permission_changes`'e yazılır (kim, istemci, eski → yeni).
+   - **Yükleme:** `MobileUserAccess.CheckAsync` her istekte `PermissionLoader.LoadAsync` ile `MobileUser.Permissions`'ı
+     (`[NotMapped]`) doldurur. `RolePermissions.CanViewReports/Ledger/PlanRoutes/ManageTargets/OperateWarehouse/
+     ManageWarehouse/EditNativeData`, `TaskService.CanManage`, `SuspendedSaleService.CanManage` ve ingest kart yetkisi anahtara
+     bakar; yüklenmemişse katalog varsayılanı (eski rol kuralı). Kimlik kuralları (`IsAdmin`, `CanManageUsers`, `CanUsePhone`,
+     `CanUsePortal`, ekip kapsamı) rolde kalır.
+   - **Ingest (S5):** mobil kullanıcının doğrudan gönderdiği belge (`ApprovalKinds.ForDocument`) göndericinin modül yetkisine ve
+     limitlerine göre denetlenir (`DocumentPermissionCheck`, `DocumentLimitFacts`: tutar = `grossAmount ?? amount ?? total`,
+     satırların en yüksek `lineDiscountPercent`'i, `generalDiscountPercent`; satış `paymentType` "Cari Borç"/boş ve `payments`
+     boşsa açık hesaptır → `action.sale.open_account` gerekir). Aşanda **ret değil** `409 APPROVAL_REQUIRED` +
+     Türkçe neden: her telefon sürümü bunu onay talebine çevirir. Firmanın onay kuralı kapalı olsa da çalışır; onay talebi
+     (`approval_request`), onaylanıp kaydedilen belge, Admin ve API anahtarı etkilenmez. Belgede olmayan alan denetlenmez.
+   - **Uçlar** (`Endpoints/MobilePermissionEndpoints`, `/api/v1/android/account`): katalog, rol şablonları (Admin), kişi
+     yetkileri (Admin herkesinkini, herkes kendininkini), değişiklik geçmişi. Oturum (`/login`, `/me`) `permissions`, `limits`,
+     `permissionsVersion` taşır; `MobileUserDto.permissionOverrideCount`. Panel: `/yetkiler` (rol × izin matrisi, geçmiş) ve
+     Kullanıcılar → Yetkiler (`UserPermissionsSheet`); `PortalRoles.Allows` oturum yetkisine bakar. Telefon: Siparis_Cepte KB kural 51.
+   - **Yetki damgası:** her imzalı mobil yanıt `X-Permissions-Stamp` başlığı taşır (`PermissionStamp`: roller + bütün yetki ve
+     limitlerin SHA-256 özetinin ilk 16 hanesi; `MobileUserStateHandler` ve `MobileAccountEndpoints.AuthorizeAsync` koyar),
+     oturum da `permissionsStamp`. Telefon kaydettiğinden farklı damga görünce `/me`'yi yeniden okur: panelde yapılan değişiklik
+     "beni hatırla" ile haftalarca açık kalan telefona yeniden giriş gerekmeden bir sonraki çağrıda (arka plan eşitlemesi dahil) ulaşır.
+   - Sözleşme `docs/api-contracts.md`; testler `PermissionResolverTests`, `DocumentPermissionCheckTests`,
+     `Permission*RelationalTests`, `IngestPermissionRelationalTests`, `PortalPermissionsTests`.
 
 ## 4. Yeni ERP Adaptörü Eklemek
 

@@ -29,7 +29,7 @@ else
                     <div class="panel-head">
                         <div>
                             <MudText Typo="Typo.h6">Hesaplar</MudText>
-                            <MudText Typo="Typo.body2" Class="text-muted">Devre dışı bırakılan kullanıcı telefondan ve panelden giriş yapamaz. Rol değişikliği bir sonraki işlemde geçerli olur.</MudText>
+                            <MudText Typo="Typo.body2" Class="text-muted">Devre dışı bırakılan kullanıcı telefondan ve panelden giriş yapamaz. Rol ve yetki değişikliği bir sonraki işlemde geçerli olur. Rollerin varsayılan yetkileri <a href="yetkiler">Yetkiler</a> sayfasında.</MudText>
                         </div>
                     </div>
                     <div class="table-scroll">
@@ -68,6 +68,10 @@ else
                                                 {
                                                     <span class="badge badge--muted">onaylayabilir</span>
                                                 }
+                                                @if (user.PermissionOverrideCount > 0)
+                                                {
+                                                    <span class="badge badge--primary" data-overrides="@user.PermissionOverrideCount">@user.PermissionOverrideCount kişisel ayar</span>
+                                                }
                                             </div>
                                         </td>
                                         <td class="nowrap">@(user.LastLoginAtUtc is { } at ? Fmt.Time(at) : "—")</td>
@@ -82,6 +86,8 @@ else
                                             {
                                                 <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="roles-btn"
                                                            OnClick="() => StartEditing(user)">Roller</MudButton>
+                                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="permissions-btn"
+                                                           OnClick="() => OpenPermissions(user)">Yetkiler</MudButton>
                                                 <MudButton Variant="Variant.Text" Size="Size.Small" Color="@(user.IsActive ? Color.Error : Color.Success)" Disabled="@Busy" Class="active-btn"
                                                            OnClick="() => ToggleAsync(user)">
                                                     @(user.IsActive ? "Devre dışı bırak" : "Etkinleştir")
@@ -207,8 +213,27 @@ else
     }
 }
 
+<UserPermissionsSheet User="_permissionsUser" OnClose="ClosePermissions" OnSaved="PermissionsSavedAsync" />
+
 @code {
     protected override PortalArea Requires => PortalArea.Users;
+
+    /// <summary>The person whose permissions sheet is open (GOAL_YETKILER).</summary>
+    private UserDto? _permissionsUser;
+
+    private void OpenPermissions(UserDto user)
+    {
+        Notice = null;
+        _permissionsUser = user;
+    }
+
+    private void ClosePermissions() => _permissionsUser = null;
+
+    private async Task PermissionsSavedAsync(string message)
+    {
+        Notice = message;
+        await RunAsync(LoadAsync);
+    }
 
     private UserListResponse? _list;
     private CreateUserRequest _new = new();

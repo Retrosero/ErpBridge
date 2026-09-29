@@ -1,0 +1,228 @@
+@* One person's permissions (GOAL_YETKILER): what the roles give, what is set personally, and the tri-state editor. *@
+@inject PortalApiClient Api
+
+<DetailSheet Id="user-permissions" Open="@(User is not null)" Busy="@_busy" Title="@(User?.FullName ?? string.Empty)" Eyebrow="Yetkiler" OnClose="CloseAsync">
+    <ChildContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="permissions-error">@_error</MudAlert>
+        }
+        @if (_perms is not null && _catalog is not null)
+        {
+            <div class="role-badges perm-roles">
+                @foreach (var role in _perms.Roles)
+                {
+                    <span class="badge badge--muted">@Fmt.Role(role)</span>
+                }
+            </div>
+            @if (_perms.Locked)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" id="permissions-admin">Admin her zaman bütün yetkilere sahiptir; kişiye özel ayar yapılmaz.</MudAlert>
+            }
+            else
+            {
+                <MudText Typo="Typo.caption" Class="text-muted panel-note">
+                    "Rolden" seçili yetki kişinin rollerinden gelir. İzin ya da Engel yalnız bu kişi için geçerlidir. Limit aşımı işlemi engellemez, onaya gönderir.
+                </MudText>
+            }
+            @foreach (var group in _catalog.Groups)
+            {
+                var items = _catalog.Items.Where(i => i.Group == group.Key).ToList();
+                if (items.Count == 0) continue;
+                <div class="perm-group" data-group="@group.Key">
+                    <div class="field-label perm-group-title">@group.Label</div>
+                    @foreach (var item in items)
+                    {
+                        var entry = _perms.Items.FirstOrDefault(e => e.Key == item.Key);
+                        if (entry is null) continue;
+                        var choice = Choice(item, entry);
+                        var locked = _perms.Locked || IsLocked(item);
+                        <div class="perm-row" data-key="@item.Key">
+                            <div class="perm-text">
+                                <div class="perm-label">@item.Label</div>
+                                <div class="perm-desc text-muted">@item.Description</div>
+                                <div class="perm-source">
+                                    @if (_edits.ContainsKey(item.Key))
+                                    {
+                                        <span class="badge badge--warn">Kaydedilmedi</span>
+                                    }
+                                    else if (entry.Source == "override")
+                                    {
+                                        <span class="badge badge--primary" data-source="override">Kişisel</span>
+                                    }
+                                    else if (entry.Source == "admin")
+                                    {
+                                        <span class="badge badge--violet" data-source="admin">Admin</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge--muted" data-source="role">Rolden@(entry.RoleSources.Length > 0 ? ": " + string.Join(", ", entry.RoleSources.Select(Fmt.Role)) : "")</span>
+                                    }
+                                    <span class="perm-effective" data-effective="@entry.Value">@PermissionText.Value(item, Effective(item, entry))</span>
+                                </div>
+                            </div>
+                            <div class="perm-choice">
+                                @if (item.IsLimit)
+                                {
+                                    <div class="tri" role="group">
+                                        <button type="button" class="tri-btn @(choice == "inherit" ? "is-active" : null)" data-choice="inherit" disabled="@locked" @onclick="() => Set(item, entry, null)">Rolden</button>
+                                        <button type="button" class="tri-btn @(choice == "unlimited" ? "is-active" : null)" data-choice="unlimited" disabled="@locked" @onclick="() => Set(item, entry, string.Empty)">Sınırsız</button>
+                                    </div>
+                                    <input class="portal-input perm-limit" inputmode="decimal" placeholder="@(item.Unit == "%" ? "% sınır" : "TL sınır")" disabled="@locked"
+                                           value="@LimitText(item, entry)" @onchange="e => SetLimit(item, entry, e.Value?.ToString())" />
+                                }
+                                else
+                                {
+                                    <div class="tri" role="group">
+                                        <button type="button" class="tri-btn @(choice == "inherit" ? "is-active" : null)" data-choice="inherit" disabled="@locked" @onclick="() => Set(item, entry, null)">Rolden</button>
+                                        <button type="button" class="tri-btn @(choice == "allow" ? "is-active" : null)" data-choice="allow" disabled="@locked" @onclick='() => Set(item, entry, "1")'>İzin</button>
+                                        <button type="button" class="tri-btn @(choice == "deny" ? "is-active" : null)" data-choice="deny" disabled="@locked" @onclick='() => Set(item, entry, "0")'>Engel</button>
+                                    </div>
+                                }
+                                @if (!_perms.Locked && IsApprovalRight(item) && !IsManager)
+                                {
+                                    <div class="field-hint">Yalnız Yönetici rolündeki kişiye verilir.</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <MudButton Variant="Variant.Text" OnClick="CloseAsync" Disabled="@_busy" id="permissions-cancel">Kapat</MudButton>
+        @if (_perms is { Locked: false })
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_busy || _edits.Count == 0)" OnClick="SaveAsync" id="permissions-save">
+                Kaydet@(_edits.Count > 0 ? $" ({_edits.Count})" : "")
+            </MudButton>
+        }
+    </Footer>
+</DetailSheet>
+
+@code {
+    /// <summary>The person being edited; null closes the sheet.</summary>
+    [Parameter] public UserDto? User { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>After a save: the person's new override count, for the list's badge.</summary>
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private PermissionCatalogDto? _catalog;
+    private UserPermissionsDto? _perms;
+    private Guid? _loadedFor;
+    private bool _busy;
+    private string? _error;
+
+    /// <summary>Unsaved choices: key → new override (null = back to the roles).</summary>
+    private readonly Dictionary<string, string?> _edits = new(StringComparer.Ordinal);
+
+    private bool IsManager => _perms?.Roles.Contains(PortalRoles.Manager) == true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (User is null)
+        {
+            _loadedFor = null;
+            _perms = null;
+            _edits.Clear();
+            return;
+        }
+        if (_loadedFor == User.Id) return;
+        _loadedFor = User.Id;
+        _edits.Clear();
+        _error = null;
+        await RunAsync(async () =>
+        {
+            _catalog ??= await Api.PermissionCatalogAsync();
+            _perms = await Api.UserPermissionsAsync(User.Id);
+        });
+    }
+
+    private static bool IsApprovalRight(PermissionItemDto item) => item.Key is "action.approvals.decide" or "action.approvals.manage_rules";
+
+    /// <summary>Locked keys are admin-only; the approval rights are a manager's switches.</summary>
+    private bool IsLocked(PermissionItemDto item) => IsApprovalRight(item) ? !IsManager : item.Locked;
+
+    private string? Override(PermissionItemDto item, UserPermissionItemDto entry) =>
+        _edits.TryGetValue(item.Key, out var edited) ? edited
+        : IsApprovalRight(item) ? (entry.Source == "override" ? entry.Value : null)
+        : entry.Override;
+
+    private string Choice(PermissionItemDto item, UserPermissionItemDto entry) => Override(item, entry) switch
+    {
+        null => "inherit",
+        "" => "unlimited",
+        "1" when !item.IsLimit => "allow",
+        "0" when !item.IsLimit => "deny",
+        _ => "value",
+    };
+
+    private string Effective(PermissionItemDto item, UserPermissionItemDto entry) =>
+        _edits.TryGetValue(item.Key, out var edited) ? edited ?? entry.RoleValue : entry.Value;
+
+    private string LimitText(PermissionItemDto item, UserPermissionItemDto entry) =>
+        Override(item, entry) is { Length: > 0 } value ? PermissionText.Value(item, value).TrimStart('%').Replace(" TL", string.Empty) : string.Empty;
+
+    private void Set(PermissionItemDto item, UserPermissionItemDto entry, string? value)
+    {
+        var saved = IsApprovalRight(item) ? (entry.Source == "override" ? entry.Value : null) : entry.Override;
+        if (value == saved) _edits.Remove(item.Key); else _edits[item.Key] = value;
+    }
+
+    private void SetLimit(PermissionItemDto item, UserPermissionItemDto entry, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Set(item, entry, null);
+            return;
+        }
+        if (PermissionText.ParseLimit(text) is { } value) Set(item, entry, value);
+        else _error = $"{item.Label}: sayı girin.";
+    }
+
+    private async Task SaveAsync()
+    {
+        if (User is null || _edits.Count == 0) return;
+        var user = User;
+        var request = new UpdateUserPermissionsRequest();
+        foreach (var (key, value) in _edits)
+            // A manager's approval right turned back to "Rolden" means the switch off.
+            request.Overrides[key] = value ?? (IsApprovalRight(_catalog!.Items.First(i => i.Key == key)) ? "0" : null);
+        await RunAsync(async () =>
+        {
+            _perms = await Api.SaveUserPermissionsAsync(user.Id, request);
+            _edits.Clear();
+            await OnSaved.InvokeAsync($"{user.FullName} için yetkiler kaydedildi.");
+        });
+    }
+
+    private async Task CloseAsync()
+    {
+        _edits.Clear();
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task RunAsync(Func<Task> work)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await work();
+        }
+        catch (PortalApiException failed)
+        {
+            _error = failed.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -68,8 +68,12 @@ public sealed class MikroAdapter : IErpAdapter
     /// 7 (2026-09-24, GOAL_PANEL_DUZELTMELER G4): an incremental read re-sends a customer whose ledger moved, and
     /// ledger rows carry <c>cariCins</c> (<c>cha_cari_cins</c>). Balances left stale by the old rule predate the
     /// cursor's lookback, so only a one-time full read repairs them (Codex, PR #182).
+    /// 8 (2026-09-28, GOAL_HEDEF_RUT E1/E2): customer and stock movement rows carry <c>plasiyerKod</c>
+    /// (<c>cha_satici_kodu</c>/<c>sth_plasiyer_kodu</c>) so sales targets count ERP sales per salesperson, and
+    /// lookups carry brand and main-group names (<c>stock_brand</c>, <c>stock_main_group</c>). Past rows predate
+    /// the cursor, so only a one-time full read gives them the new field.
     /// </summary>
-    public int SnapshotProjectionVersion => 7;
+    public int SnapshotProjectionVersion => 8;
 
     /// <summary>
     /// Mikro V15 change log backed only by the existing
