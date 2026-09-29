@@ -123,6 +123,10 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `stock_expiry_records`: `Id` uuid PK (telefon üretir, firmalar arası tekil), `TenantId` FK `tenants` cascade, `StockCode(50)`, `Barcode(50)`, `ProductName(200)` anlık kopya, `Location(50)` reyon/raf, `Warehouse(100)`, `ExpiryDate` `date`, `Quantity numeric(18,3)` null (bilgi amaçlı), `Note(500)`, `IsClosed`, `IsDeleted` (yumuşak silme), `CreatedByUserId`, `CreatedByName(120)`, `CreatedAtMs`, `UpdatedAtMs`, `UpdatedSeq` (`tenant_sync_counter`). İndeks `(TenantId, UpdatedSeq)`, `(TenantId, StockCode)`.
   - `stock_expiry_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` (indeksli; henüz temizlenmiyor).
 
+- **Bekleyen siparişler** *(2026-09-29; kural 32)* — telefonların ortak taslak satışları, ERP'ye yazılmaz; zamanlar unix ms (UTC):
+  - `suspended_sales`: `Id` uuid PK (telefon üretir, firmalar arası tekil), `TenantId` FK `tenants` cascade, `DocNo(20)` görünen no, `CustomerId(100)` telefonun cari kimliği, `CustomerName(200)` anlık kopya, `Warehouse(100)`, `Note(1000)`, `TotalAmount numeric(18,2)` bilgi amaçlı, `LinesJson` jsonb (`[{barcode, stockCode, productName, quantity, price, lineDiscountPercent, note}]`), `LineCount`, `IsDeleted` (açıldı ya da silindi), `ClosedReason(20)` claimed\|deleted, `ClosedByName(120)`, `CreatedByUserId`, `CreatedByName(120)`, `CreatedAtMs`, `UpdatedAtMs`, `UpdatedSeq` (`tenant_sync_counter`). İndeks `(TenantId, UpdatedSeq)`.
+  - `suspended_sale_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` (indeksli; henüz temizlenmiyor).
+
 ---
 
 ## 3. SQLite LocalStore (Ajan İçi Depolama)

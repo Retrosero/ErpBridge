@@ -290,6 +290,7 @@ public partial class Program
         builder.Services.AddHostedService<ErpBridge.CentralApi.Workers.TaskSchedulerWorker>();
         // SKT (son kullanma tarihi) kayıtları: telefonların ortak raf verisi, ERP'ye yazılmaz.
         builder.Services.AddScoped<ErpBridge.CentralApi.Expiry.StockExpiryService>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.SuspendedSales.SuspendedSaleService>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TargetFactReader>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TargetService>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TeamService>();
@@ -746,6 +747,7 @@ public partial class Program
         app.MapMobileXmlFeedEndpoints();
         app.MapMobileTaskEndpoints();
         app.MapMobileExpiryEndpoints();
+        app.MapMobileSuspendedSaleEndpoints();
         app.MapMobileTargetEndpoints();
         app.MapPortalTargetEndpoints();
         app.MapPortalRouteEndpoints();
