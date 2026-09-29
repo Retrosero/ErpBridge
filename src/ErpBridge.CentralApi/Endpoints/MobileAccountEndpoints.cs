@@ -152,7 +152,22 @@ public static class MobileAccountEndpoints
         var access = await AuthorizeAsync(http, db, requireAdmin: true, ct);
         if (access.Error is not null) return access.Error;
         if (body is null) return Error(400, "INVALID_BODY", "Body required.");
+        var rolesBefore = (await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Id == id && u.TenantId == access.Tenant!.Id, ct)) is { } before
+            ? MobileUserRoles.All.Where(RolePermissions.Of(before).Contains).ToList()
+            : null;
         var result = await seats.UpdateUserAsync(access.Tenant!.Id, id, body, ct, access.User!.Id);
+        if (result.Succeeded && rolesBefore is not null)
+        {
+            // Role changes sit next to permission changes in the history (GOAL_YETKILER).
+            var rolesAfter = MobileUserRoles.All.Where(RolePermissions.Of(result.Value!).Contains).ToList();
+            if (!rolesAfter.SequenceEqual(rolesBefore))
+            {
+                db.PermissionChanges.Add(ErpBridge.CentralApi.Permissions.PermissionService.RolesChange(
+                    access.Tenant!.Id, MobilePermissionEndpoints.Actor(http, access.User!), result.Value!, rolesBefore, rolesAfter));
+                await db.SaveChangesAsync(ct);
+            }
+        }
         return result.Succeeded ? JsonResults.Ok(ToDto(result.Value!)) : JsonResults.Status(result.StatusCode, result.Error);
     }
 
