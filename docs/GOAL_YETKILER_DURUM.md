@@ -9,8 +9,8 @@ Plan: `GOAL_YETKILER.md`.
 | S3 rol/kullanıcı yetki uçları + denetim | tamam, canlı | #221 |
 | S6 panel (Kullanıcılar yetkileri, Yetkiler sayfası) | tamam, canlı | #222 |
 | P1 telefon izin modeli + önbellek | tamam | siparis_cepte#144 |
-| S4 ∥ P2 sunucu geçişi ∥ telefon uygulama yerleri | P2 tamam (siparis_cepte#145, Play 1.5.288); S4 bu PR | — |
-| P3 telefon limitleri | bekliyor | — |
-| S5 ingest modül + limit → 409 | bekliyor | — |
+| S4 ∥ P2 sunucu geçişi ∥ telefon uygulama yerleri | tamam, canlı (P2: Play 1.5.288) | #223, siparis_cepte#145 |
+| P3 telefon limitleri | tamam | siparis_cepte#146 |
+| S5 ingest modül + limit → 409 | bu PR | — |
 | P4 telefon editörleri | bekliyor | — |
 | S7/P5 bilgi bankası | bekliyor | — |
