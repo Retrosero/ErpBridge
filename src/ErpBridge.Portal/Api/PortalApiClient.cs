@@ -333,6 +333,26 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<UserDto> SetUserRolesAsync(Guid userId, UpdateUserRolesRequest request, CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Patch, $"api/v1/android/account/users/{userId}", request, ct);
 
+    // ---- permissions (GOAL_YETKILER) ---------------------------------------------------
+
+    public Task<PermissionCatalogDto> PermissionCatalogAsync(CancellationToken ct = default) =>
+        GetAsync<PermissionCatalogDto>("api/v1/android/account/permissions/catalog", ct);
+
+    public Task<RolePermissionsResponse> RolePermissionsAsync(CancellationToken ct = default) =>
+        GetAsync<RolePermissionsResponse>("api/v1/android/account/roles/permissions", ct);
+
+    public Task<RolePermissionsResponse> SaveRolePermissionsAsync(string role, UpdateRolePermissionsRequest request, CancellationToken ct = default) =>
+        SendAsync<RolePermissionsResponse>(HttpMethod.Put, $"api/v1/android/account/roles/{Uri.EscapeDataString(role)}/permissions", request, ct);
+
+    public Task<UserPermissionsDto> UserPermissionsAsync(Guid userId, CancellationToken ct = default) =>
+        GetAsync<UserPermissionsDto>($"api/v1/android/account/users/{userId}/permissions", ct);
+
+    public Task<UserPermissionsDto> SaveUserPermissionsAsync(Guid userId, UpdateUserPermissionsRequest request, CancellationToken ct = default) =>
+        SendAsync<UserPermissionsDto>(HttpMethod.Put, $"api/v1/android/account/users/{userId}/permissions", request, ct);
+
+    public Task<PermissionChangesResponse> PermissionChangesAsync(Guid? userId = null, CancellationToken ct = default) =>
+        GetAsync<PermissionChangesResponse>("api/v1/android/account/permissions/changes" + Query(("userId", userId?.ToString())), ct);
+
     // ---- route plans (GOAL_HEDEF_RUT P4–P5) --------------------------------------
 
     public Task<RoutePlansResponse> RoutePlansAsync(CancellationToken ct = default) =>

@@ -117,6 +117,7 @@
                         @if (Session.Allows(PortalArea.Users))
                         {
                             <MudNavLink Href="kullanicilar" Icon="@Icons.Material.Rounded.ManageAccounts">Kullanıcılar</MudNavLink>
+                            <MudNavLink Href="yetkiler" Icon="@Icons.Material.Rounded.AdminPanelSettings" id="nav-permissions">Yetkiler</MudNavLink>
                         }
                         @if (Session.Allows(PortalArea.ErpDocuments) && string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase))
                         {
