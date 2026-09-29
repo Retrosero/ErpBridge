@@ -371,7 +371,7 @@ public static class IngestEndpoints
             var processor = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
             try
             {
-                var callerIsAdmin = await CallerIsAdminAsync(http, db, ct);
+                var callerIsAdmin = await CallerMayAsync(http, db, documentType, ct);
                 Job booked;
                 if (FulfillmentService.IsQueuedDocument(documentType))
                 {
@@ -492,11 +492,22 @@ public static class IngestEndpoints
     /// A signed-in mobile user is an administrator only if their row says so now;
     /// API keys and agents act for the whole tenant.
     /// </summary>
-    private static async Task<bool> CallerIsAdminAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    /// <summary>
+    /// Whether the phone user may send the native processor's restricted documents (GOAL_YETKILER): product cards need
+    /// "ürün kartı ekler ve düzenler", ledger and document corrections "belge ve hesap düzeltme" — admin-only by default,
+    /// as before. Other document types are not restricted here.
+    /// </summary>
+    private static async Task<bool> CallerMayAsync(HttpContext http, CentralApiDbContext db, string documentType, CancellationToken ct)
     {
         if (!ErpBridge.CentralApi.Mobile.MobileUserAccess.IsMobileUser(http.User)) return true;
         if (!Guid.TryParse(http.User.FindFirst("sub")?.Value, out var userId)) return false;
-        return await db.MobileUsers.AsNoTracking()
-            .AnyAsync(u => u.Id == userId && u.Roles.Any(r => r.Role == MobileUserRoles.Admin) && u.IsActive && u.DeletedAtUtc == null, ct);
+        var user = await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive && u.DeletedAtUtc == null, ct);
+        if (user is null) return false;
+        var permissions = await ErpBridge.CentralApi.Permissions.PermissionLoader.LoadAsync(db, user, ct);
+        var key = documentType.ToLowerInvariant() is ErpBridge.CentralApi.Native.NativeDocumentProcessor.StockCard or ErpBridge.CentralApi.Native.NativeDocumentProcessor.StockCardDelete or ErpBridge.CentralApi.Native.NativeDocumentProcessor.StockCardBatch
+            ? ErpBridge.CentralApi.Permissions.PermissionKeys.ProductsEdit
+            : ErpBridge.CentralApi.Permissions.PermissionKeys.NativeBooksEdit;
+        return permissions.Can(key);
     }
 }

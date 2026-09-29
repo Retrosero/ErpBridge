@@ -56,9 +56,8 @@ public sealed class SuspendedSaleService
 
     public static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-    /// <summary>ADMIN or MANAGER: may delete (cancel) anyone's parked sale.</summary>
-    public static bool CanManage(MobileUser user) =>
-        RolePermissions.IsAdmin(user) || RolePermissions.Has(user, MobileUserRoles.Manager);
+    /// <summary>May delete (cancel) anyone's parked sale: the "başkasının bekleyen satışını siler" permission (ADMIN, MANAGER by default).</summary>
+    public static bool CanManage(MobileUser user) => RolePermissions.Can(user, Permissions.PermissionKeys.SuspendedSalesManageOthers);
 
     // ---- reads ------------------------------------------------------------------------------
 
