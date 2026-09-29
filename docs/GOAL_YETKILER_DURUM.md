@@ -11,6 +11,6 @@ Plan: `GOAL_YETKILER.md`.
 | P1 telefon izin modeli + önbellek | tamam | siparis_cepte#144 |
 | S4 ∥ P2 sunucu geçişi ∥ telefon uygulama yerleri | tamam, canlı (P2: Play 1.5.288) | #223, siparis_cepte#145 |
 | P3 telefon limitleri | tamam | siparis_cepte#146 |
-| S5 ingest modül + limit → 409 | bu PR | — |
-| P4 telefon editörleri | bekliyor | — |
-| S7/P5 bilgi bankası | bekliyor | — |
+| S5 ingest modül + limit → 409 | tamam, canlı | #224 |
+| P4 telefon editörleri | tamam (Play 1.5.289) | siparis_cepte#147 |
+| S7/P5 bilgi bankası | tamam (ErpBridge kural 33, Siparis_Cepte kural 51) | bu PR |

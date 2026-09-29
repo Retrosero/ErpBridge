@@ -279,6 +279,27 @@ totalAmount (bilgi amaçlı, satır iskontolu toplam), lines: [{ barcode (zorunl
 **`SuspendedSaleDto`:** girdideki alanlar + `deleted, closedReason ("claimed"|"deleted"), closedBy, createdBy (görünen ad),
 createdByUserId (telefon "sil"i yalnız oluşturana gösterir), createdAtMs, updatedAtMs, updatedSeq`.
 
+## Kullanıcı yetkileri — `/api/v1/android/account/…permissions` (GOAL_YETKILER)
+
+Rol şablonu + kişiye istisna; telefon ve web panel aynı uçları kullanır. Değerler saklama biçimindedir: evet/hayır
+`"1"`/`"0"`, limit sayı (`"10"`, `"25000"`), `""` = sınırsız. Bilgi bankası kural 33.
+
+| Uç | Kim | Açıklama |
+|---|---|---|
+| `GET /permissions/catalog` | herkes | `{ version, groups: [{key,label}], items: [{key, group, type: bool\|limit, unit?, label, description, serverEnforced, locked, defaults: {rol: değer}}], editableRoles }` |
+| `GET /roles/permissions` | Admin | `{ roles: [{ role, locked, values: {anahtar: değer}, customized: [anahtar] }] }` (ADMIN kilitli, her şey açık) |
+| `PUT /roles/{role}/permissions` | Admin | `{ values: { anahtar: değer \| null } }` — `null` = katalog varsayılanı; adı geçmeyen anahtar değişmez. Yanıt güncel `RolePermissionsDto`. |
+| `GET /users/{id}/permissions` | Admin; kişi kendisi | `{ userId, username, fullName, roles, locked, items: [{ key, value, source: admin\|role\|override, roleValue, roleSources, override }] }` |
+| `PUT /users/{id}/permissions` | Admin | `{ overrides: { anahtar: "allow"\|"deny"\|"1"\|"0"\|limit\|"unlimited" \| null } }` — `null` = rollerden gelsin. |
+| `GET /permissions/changes?userId=&role=&take=` | Admin | `{ changes: [{ id, actorName, client, scope, role?, targetUserId?, targetUserName?, key, oldValue?, newValue?, createdAtUtc }] }` |
+
+Ret kodları: `ADMIN_REQUIRED` (403), `ADMIN_ROLE_LOCKED`, `ADMIN_USER_LOCKED`, `PERMISSION_LOCKED` (409),
+`UNKNOWN_PERMISSION`, `INVALID_PERMISSION_VALUE` (400; limit 0 ve üstü, yüzde en çok 100).
+
+Oturum (`/login`, `/me`): `permissions: {anahtar: bool}`, `limits: {anahtar: sayı \| null}`, `permissionsVersion` (0 = yetkisiz
+eski sunucu). Ingest: mobil kullanıcının doğrudan belgesi modül yetkisi yoksa ya da limit aşılırsa
+`409 APPROVAL_REQUIRED` (mesaj nedeni söyler); belge onay talebi olarak yeniden gönderilir.
+
 ## Hedefler ve ekipler — `/api/v1/portal/{teams,targets}`, `/api/v1/android/targets` (GOAL_HEDEF_RUT)
 
 Firma kullanıcısı token'ı; firma token'dan. Günler İstanbul `yyyy-MM-dd`. Ayrıntı: KB 00 kural 31.

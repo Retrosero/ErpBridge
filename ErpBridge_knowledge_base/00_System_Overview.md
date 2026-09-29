@@ -1209,6 +1209,34 @@ registration ayrı bir composition projesine taşınır.
    - Reddedilen işlemin dokunduğu sipariş de yanıtta döner: telefon "başkası açtı" bilgisini ve mezar taşını aynı yanıtta alır.
    - Sözleşme `docs/api-contracts.md`; testler `SuspendedSaleRelationalTests` (SQLite). `suspended_sale_ops_applied` henüz temizlenmiyor.
 
+33. **Kullanıcı yetkileri: rol şablonu + kişiye istisna (`Permissions/`, GOAL_YETKILER, 2026-09-29).**
+   - **Katalog** `PermissionCatalog` (tek kaynak, `Version`): `module.*` (telefon modülleri), `portal.*` (web panel alanları),
+     `action.*` (işlemler), `view.*` (görünürlük), `limit.*` (sayısal; boş = sınırsız). Anahtarlar kalıcıdır, yeniden adlandırılmaz.
+     Varsayılanlar eski rol kurallarıyla birebir aynıdır; `PermissionResolverTests` 31 rol birleşiminin hepsinde bunu garanti eder
+     (hiç kayıt yokken davranış değişmez).
+   - **Hesaplama** `PermissionResolver.Resolve`: ADMIN her şeye yetkili ve sınırsız (şablonu yok, kişisel ayar yapılamaz).
+     Diğerlerinde her rol için firmanın şablon satırı ya da katalog varsayılanı; evet/hayır rollerin VEYA'sı, limit en yükseği
+     (sınırsız kazanır). Yöneticinin `CanApprove` / `CanManageApprovalRules` sütunları onay anahtarlarını yazar. Kişisel istisna
+     en son ezer. Her girdi kaynağını taşır (`admin` / `role` + hangi roller / `override`).
+   - **Saklama seyrektir:** `tenant_role_permissions` ve `mobile_user_permission_overrides` yalnız varsayılandan farkı tutar;
+     "varsayılana dön" / "rolden" satırı siler. Her değişiklik `permission_changes`'e yazılır (kim, istemci, eski → yeni).
+   - **Yükleme:** `MobileUserAccess.CheckAsync` her istekte `PermissionLoader.LoadAsync` ile `MobileUser.Permissions`'ı
+     (`[NotMapped]`) doldurur. `RolePermissions.CanViewReports/Ledger/PlanRoutes/ManageTargets/OperateWarehouse/
+     ManageWarehouse/EditNativeData`, `TaskService.CanManage`, `SuspendedSaleService.CanManage` ve ingest kart yetkisi anahtara
+     bakar; yüklenmemişse katalog varsayılanı (eski rol kuralı). Kimlik kuralları (`IsAdmin`, `CanManageUsers`, `CanUsePhone`,
+     `CanUsePortal`, ekip kapsamı) rolde kalır.
+   - **Ingest (S5):** mobil kullanıcının doğrudan gönderdiği belge (`ApprovalKinds.ForDocument`) göndericinin modül yetkisine ve
+     limitlerine göre denetlenir (`DocumentPermissionCheck`, `DocumentLimitFacts`: tutar = `grossAmount ?? amount ?? total`,
+     satırların en yüksek `lineDiscountPercent`'i, `generalDiscountPercent`). Aşanda **ret değil** `409 APPROVAL_REQUIRED` +
+     Türkçe neden: her telefon sürümü bunu onay talebine çevirir. Firmanın onay kuralı kapalı olsa da çalışır; onay talebi
+     (`approval_request`), onaylanıp kaydedilen belge, Admin ve API anahtarı etkilenmez. Belgede olmayan alan denetlenmez.
+   - **Uçlar** (`Endpoints/MobilePermissionEndpoints`, `/api/v1/android/account`): katalog, rol şablonları (Admin), kişi
+     yetkileri (Admin herkesinkini, herkes kendininkini), değişiklik geçmişi. Oturum (`/login`, `/me`) `permissions`, `limits`,
+     `permissionsVersion` taşır; `MobileUserDto.permissionOverrideCount`. Panel: `/yetkiler` (rol × izin matrisi, geçmiş) ve
+     Kullanıcılar → Yetkiler (`UserPermissionsSheet`); `PortalRoles.Allows` oturum yetkisine bakar. Telefon: Siparis_Cepte KB kural 51.
+   - Sözleşme `docs/api-contracts.md`; testler `PermissionResolverTests`, `DocumentPermissionCheckTests`,
+     `Permission*RelationalTests`, `IngestPermissionRelationalTests`, `PortalPermissionsTests`.
+
 ## 4. Yeni ERP Adaptörü Eklemek
 
 Sözleşme, sıra ve tanım-tamamlandı listesi:

@@ -125,6 +125,9 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 
 - **Bekleyen siparişler** *(2026-09-29; kural 32)* — telefonların ortak taslak satışları, ERP'ye yazılmaz; zamanlar unix ms (UTC):
   - `suspended_sales`: `Id` uuid PK (telefon üretir, firmalar arası tekil), `TenantId` FK `tenants` cascade, `DocNo(20)` görünen no, `CustomerId(100)` telefonun cari kimliği, `CustomerName(200)` anlık kopya, `Warehouse(100)`, `Note(1000)`, `TotalAmount numeric(18,2)` bilgi amaçlı, `LinesJson` jsonb (`[{barcode, stockCode, productName, quantity, price, lineDiscountPercent, note}]`), `LineCount`, `IsDeleted` (açıldı ya da silindi), `ClosedReason(20)` claimed\|deleted, `ClosedByName(120)`, `CreatedByUserId`, `CreatedByName(120)`, `CreatedAtMs`, `UpdatedAtMs`, `UpdatedSeq` (`tenant_sync_counter`). İndeks `(TenantId, UpdatedSeq)`.
+  - `tenant_role_permissions` (GOAL_YETKILER, kural 33): PK `(TenantId, Role, Key)`, `TenantId` FK `tenants` cascade, `Role(16)` ADMIN dışı rol, `Key(64)` katalog anahtarı, `Value(32)` `"1"`/`"0"` ya da limit (`""` = sınırsız), `UpdatedAtUtc`, `UpdatedByUserId`. Yalnız katalog varsayılanından farklı değerler; satır yok = varsayılan.
+  - `mobile_user_permission_overrides`: PK `(UserId, Key)`, `UserId` FK `mobile_users` cascade, `Key(64)`, `Value(32)`, `UpdatedAtUtc`, `UpdatedByUserId`. Satır yok = rollerden gelir.
+  - `permission_changes`: `Id` bigint PK, `TenantId`, `ActorUserId`, `ActorName(120)` anlık kopya, `Client(16)` android\|portal, `Scope(16)` role\|user\|roles, `Role(16)`, `TargetUserId`, `TargetUserName(120)`, `Key`, `OldValue` (null = satır yoktu), `NewValue` (null = silindi), `CreatedAtUtc`. Yalnız eklenir.
   - `suspended_sale_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` (indeksli; henüz temizlenmiyor).
 
 ---
