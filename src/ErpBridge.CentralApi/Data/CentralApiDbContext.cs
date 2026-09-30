@@ -178,6 +178,9 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<PermissionChange> PermissionChanges => Set<PermissionChange>();
 
+    /// <summary>A phone user's view preferences (one JSON document per user).</summary>
+    public DbSet<MobileUserPreference> MobileUserPreferences => Set<MobileUserPreference>();
+
     // GOAL_HEDEF_RUT: satış ekipleri/bölgeleri ve hedefler; yalnız merkezde, ERP'ye yazılmaz.
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
 
@@ -441,6 +444,14 @@ public sealed class CentralApiDbContext : DbContext
             b.HasKey(x => new { x.UserId, x.Key });
             b.Property(x => x.Key).IsRequired().HasMaxLength(64);
             b.Property(x => x.Value).IsRequired().HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<MobileUserPreference>(b =>
+        {
+            b.ToTable("mobile_user_preferences");
+            b.HasKey(x => x.UserId);
+            b.Property(x => x.Json).IsRequired().HasColumnType("jsonb");
+            b.HasOne(x => x.User).WithOne().HasForeignKey<MobileUserPreference>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PermissionChange>(b =>

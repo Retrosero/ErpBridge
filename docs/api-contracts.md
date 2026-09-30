@@ -279,6 +279,19 @@ totalAmount (bilgi amaçlı, satır iskontolu toplam), lines: [{ barcode (zorunl
 **`SuspendedSaleDto`:** girdideki alanlar + `deleted, closedReason ("claimed"|"deleted"), closedBy, createdBy (görünen ad),
 createdByUserId (telefon "sil"i yalnız oluşturana gösterir), createdAtMs, updatedAtMs, updatedSeq`.
 
+## Kullanıcı görünüm tercihleri — `/api/v1/android/account/preferences`
+
+Oturumdaki kullanıcının kendi görünüm tercihleri (Katalog/Satış listesi varsayılanları, kart alanları, hızlı erişim tasarımı) tek JSON belge.
+Kullanıcı ve firma her zaman jeton'dan gelir; gövdeden asla. Sunucu belgeyi opak tutar (şekli telefon belirler).
+
+| Uç | Kim | Gövde / yanıt |
+|---|---|---|
+| `GET /preferences` | herkes | `{ version, updatedAtUtc?, data? }` — hiç kaydedilmediyse `version: 0`, `data: null` |
+| `PUT /preferences` | herkes | gövde `{ "data": { … } }` — `data` JSON nesnesi olmalı, en çok 16 384 karakter; yanıt güncel `{ version, updatedAtUtc, data }`. Her kayıt `version`'u 1 artırır (belgenin tamamı yer değiştirir). |
+
+Ret: `400 INVALID_PREFERENCES` (gövde nesne değil / `data` nesne değil / tavan aşıldı). Telefon yerelde bekleyen değişikliği kazandırır,
+yoksa sunucudaki daha yüksek `version`'u alır; uç yoksa (eski sunucu, 404) tercihler yalnız telefonda kalır.
+
 ## Kullanıcı yetkileri — `/api/v1/android/account/…permissions` (GOAL_YETKILER)
 
 Rol şablonu + kişiye istisna; telefon ve web panel aynı uçları kullanır. Değerler saklama biçimindedir: evet/hayır

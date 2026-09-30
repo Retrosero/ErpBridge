@@ -1320,3 +1320,10 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
    - Testler: `AndroidEndpointsTests.Product_catalog_names_the_category_after_the_stock_sub_group`,
      `MobileEntityAssemblyTests.A_product_carries_its_stock_sub_group_name_as_category`,
      `MobileEntityAssemblyTests.A_new_or_renamed_sub_group_resends_only_the_products_in_it`.
+
+35. **Kullanıcı görünüm tercihleri merkezdedir: `Endpoints/MobileUserPreferencesEndpoints`, tablo `mobile_user_preferences` (2026-09-30).**
+   - **Tek JSON belge:** kullanıcı başına bir satır (`UserId` PK, `TenantId`, `Json` jsonb, `Version`, `UpdatedAtUtc`). Sunucu belgeyi yorumlamaz;
+     şekil telefonda (`ViewPrefs`). `GET/PUT /api/v1/android/account/preferences`; kullanıcı yalnız jetondan gelir, yani kimse başkasınınkini okuyamaz.
+     PUT belgeyi tümüyle değiştirir ve `Version`'ı artırır; gövde `{ "data": {…} }`, `data` nesne ve ≤ 16 KB olmalı (`400 INVALID_PREFERENCES`).
+   - **Eşitleme telefonda karara bağlanır:** yerelde bekleyen değişiklik kazanır (son yazan), yoksa daha yüksek `Version` alınır. Kullanıcı silinince satırı da gider (cascade).
+   - Test: `UserPreferencesRelationalTests`. Telefon ayağı: Siparis_Cepte KB kural 54.
