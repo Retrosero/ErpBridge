@@ -1308,6 +1308,11 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `stocks` satırlarını **aynı içerikle yeni sıra numarasıyla** yeniden damgalar (`CollectCategoryRestampsAsync`);
      ürünler akışta bir kez daha gider. Sürüm 9'un ilk tam okuması da budur: her cihaz, elindeki ürünleri kategorili
      olarak bir kez yeniden alır. Birebir aynı alt grup tekrar yüklenirse hiçbir şey hareket etmez.
+   - **Bilinen sınır (Codex incelemesi, PR #210):** artımlı okuma `sta_iptal` olan alt grubu göndermez (reader'daki tüm lookup
+     türleri gibi: `iptal = 0` süzgeci, silme mezar taşı yok). Bu yüzden Mikro'da pasife alınan bir alt grup, bir sonraki tam
+     okumaya (projeksiyon sürümü artışı ya da elle yeniden okuma) kadar telefonlarda eski kategori adını korur; ürün
+     yeniden atanmışsa yeni alt grup zaten doğru adı taşır. Mikro dolu bir alt grubun silinmesine pek izin vermediği için
+     mezar taşı eklenmedi; gerekirse tüm lookup türleri için ortak bir silme yolu gerekir.
    - Telefon `UrunDto.kategori`'yi zaten okur (`BridgeDeltaSync`, `BridgeSyncHelper.syncUrunler`); uygulama değişmedi.
    - Testler: `AndroidEndpointsTests.Product_catalog_names_the_category_after_the_stock_sub_group`,
      `MobileEntityAssemblyTests.A_product_carries_its_stock_sub_group_name_as_category`,
