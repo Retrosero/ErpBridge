@@ -119,7 +119,7 @@ public sealed class NativeDocumentProcessor
     public static readonly IReadOnlySet<string> CardTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { StockCard, StockCardDelete, CustomerCard, StockCardBatch, CustomerCardBatch };
 
     /// <summary>Payment types that settle a sale on the spot, so the sale leaves no open balance.</summary>
-    private static readonly HashSet<string> ImmediatePayments = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> ImmediatePayments = new(StringComparer.OrdinalIgnoreCase)
     {
         "Nakit", "Kredi Kartı", "Kredi Karti", "Bank Kartı", "Banka Kartı", "EFT / Havale", "Havale", "EFT", "POS", "Banka İade",
     };

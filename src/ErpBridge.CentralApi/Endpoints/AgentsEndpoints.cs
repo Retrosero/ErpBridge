@@ -73,7 +73,8 @@ public static class AgentsEndpoints
             .AsNoTracking()
             .FirstOrDefaultAsync(l => l.LicenseKey == licenseKey, ct);
 
-        if (license is null) return LicenseResolution.NotFound();
+        // A Go key cannot register an agent; it is reported like an unknown key.
+        if (license is null || license.Product != LicenseProducts.ErpBridge) return LicenseResolution.NotFound();
         if (!license.IsActive) return LicenseResolution.Expired("License is inactive.");
         if (license.Tenant is { IsActive: false }) return LicenseResolution.Expired("Tenant is inactive.");
         if (license.ExpiresAtUtc is { } exp && exp <= DateTimeOffset.UtcNow)

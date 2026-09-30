@@ -32,6 +32,9 @@ public static class PortalRecords
 
     public sealed record LookupPart(string Kind, int Number, string Name) : StockPart;
 
+    /// <summary>A brand or main-group name by its code (agent 1.3.0 lookups <c>stock_brand</c>, <c>stock_main_group</c>).</summary>
+    public sealed record NamePart(string Kind, string Code, string Name) : StockPart;
+
     public static StockPart? ParseStock(string entity, JsonElement item)
     {
         var code = Blank(AndroidEndpoints.GetString(item, "stockCode"));
@@ -62,6 +65,10 @@ public static class PortalRecords
                 return Blank(AndroidEndpoints.GetString(item, "barcode")) is { } barcode ? new BarcodePart(code, barcode) : null;
             case "lookups":
                 var kind = AndroidEndpoints.GetString(item, "kind")?.Trim().ToLowerInvariant();
+                if (kind is "stock_brand" or "stock_main_group")
+                    return Blank(AndroidEndpoints.GetString(item, "code")) is { } nameCode && Blank(AndroidEndpoints.GetString(item, "name")) is { } label
+                        ? new NamePart(kind, nameCode, label)
+                        : null;
                 return kind is "warehouse" or "price_list"
                        && AndroidEndpoints.GetInt32(item, "code") is { } number
                        && Blank(AndroidEndpoints.GetString(item, "name")) is { } name

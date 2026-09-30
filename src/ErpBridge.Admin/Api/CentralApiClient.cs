@@ -55,12 +55,115 @@ public sealed class LicenseDto
     [JsonPropertyName("issuedAtUtc")] public DateTimeOffset IssuedAtUtc { get; set; }
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
     [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+
+    /// <summary><c>erpbridge</c> or <c>go</c>.</summary>
+    [JsonPropertyName("product")] public string Product { get; set; } = LicenseProductNames.ErpBridge;
+
+    /// <summary>Go only: the computer the key is bound to; null until first activation.</summary>
+    [JsonPropertyName("goInstallation")] public GoInstallationDto? GoInstallation { get; set; }
+
+    /// <summary>Go only: the company's Go app modules (<c>go_…</c>); shared by every Go license of the tenant.</summary>
+    [JsonPropertyName("goModules")] public string[]? GoModules { get; set; }
+}
+
+public sealed class GoInstallationDto
+{
+    [JsonPropertyName("machineName")] public string? MachineName { get; set; }
+    [JsonPropertyName("appVersion")] public string? AppVersion { get; set; }
+    [JsonPropertyName("activatedAtUtc")] public DateTimeOffset ActivatedAtUtc { get; set; }
+    [JsonPropertyName("lastSeenAtUtc")] public DateTimeOffset LastSeenAtUtc { get; set; }
+}
+
+/// <summary>License product keys as the central API spells them, with their console labels.</summary>
+public static class LicenseProductNames
+{
+    public const string ErpBridge = "erpbridge";
+    public const string Go = "go";
+
+    public static string Label(string? product) => LicenseProductCatalog.Get(product).Name;
+}
+
+/// <summary>
+/// How the console tells the products apart. Every place that shows a license takes its name, colour, mark
+/// and key prefix from here, so a license can never be shown under the wrong product's look.
+/// </summary>
+/// <param name="Key">Product key as the central API spells it.</param>
+/// <param name="Name">Console name.</param>
+/// <param name="Mark">One letter for the coloured product mark.</param>
+/// <param name="KeyPrefix">Prefix the server gives this product's keys.</param>
+/// <param name="CssModifier">Colour theme, <c>license-product--{modifier}</c>.</param>
+/// <param name="Summary">What the product is, one line.</param>
+/// <param name="WhereUsed">Where the customer types the key.</param>
+public sealed record LicenseProductInfo(
+    string Key,
+    string Name,
+    string Mark,
+    string KeyPrefix,
+    string CssModifier,
+    string Summary,
+    string WhereUsed);
+
+public static class LicenseProductCatalog
+{
+    public static readonly LicenseProductInfo ErpBridge = new(
+        LicenseProductNames.ErpBridge,
+        "ErpBridge",
+        "E",
+        "LIC-",
+        "erpbridge",
+        "ERP köprüsü: Windows ajanı, Sipariş Cepte ve yönetici paneli",
+        "ErpBridge ajanının ayar ekranına girilir; telefon girişleri bu lisansın firmasına açılır.");
+
+    public static readonly LicenseProductInfo Go = new(
+        LicenseProductNames.Go,
+        "Go (pazaryeri)",
+        "G",
+        "GO-",
+        "go",
+        "Pazaryeri entegrasyonu: Trendyol, Hepsiburada ve diğerleri için masaüstü uygulaması",
+        "Go uygulamasının ilk açılış ekranına girilir; anahtar tek bilgisayara bağlanır.");
+
+    /// <summary>Display order of the product tabs.</summary>
+    public static IReadOnlyList<LicenseProductInfo> All { get; } = [ErpBridge, Go];
+
+    /// <summary>Product info for a key; an unknown or missing value is shown as ErpBridge (the server default).</summary>
+    public static LicenseProductInfo Get(string? product) =>
+        All.FirstOrDefault(p => string.Equals(p.Key, product, StringComparison.OrdinalIgnoreCase)) ?? ErpBridge;
+
+    /// <summary>True when the key does not start with its product's prefix (licenses issued before prefixes existed).</summary>
+    public static bool HasForeignPrefix(LicenseDto license) =>
+        !license.LicenseKey.StartsWith(Get(license.Product).KeyPrefix, StringComparison.Ordinal);
+}
+
+/// <summary>A paid module of the Go desktop app.</summary>
+/// <param name="Key">Module key as the server and the Go app spell it.</param>
+/// <param name="Name">Console name.</param>
+public sealed record GoModuleInfo(string Key, string Name);
+
+/// <summary>
+/// The Go app's paid modules. Keys must match the server's <c>TenantModules.GoKnown</c> and the Go app's
+/// module catalog exactly; the app opens a module whose key is in its license token.
+/// </summary>
+public static class GoModuleCatalog
+{
+    public static IReadOnlyList<GoModuleInfo> All { get; } =
+    [
+        new("go_ai", "Yapay zekâ asistanı"),
+        new("go_einvoice", "E-fatura / e-arşiv"),
+        new("go_erp", "ERP bağlantısı"),
+        new("go_reports", "Raporlama ve kâr analizi"),
+        new("go_competition", "Rekabet ve akıllı fiyat"),
+    ];
+
+    /// <summary>Console name of a key; an unknown key is shown as it is.</summary>
+    public static string Name(string key) => All.FirstOrDefault(m => m.Key == key)?.Name ?? key;
 }
 
 public sealed class CreateLicenseRequest
 {
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("expiresAtUtc")] public DateTimeOffset? ExpiresAtUtc { get; set; }
+    [JsonPropertyName("product")] public string? Product { get; set; }
 }
 
 public sealed class AgentDto
@@ -718,11 +821,26 @@ public sealed class CentralApiClient
     public Task<IReadOnlyList<LicenseDto>> ListLicensesAsync(Guid? tenantId = null, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<LicenseDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/licenses", tenantId), ct), ct);
 
-    public Task<LicenseDto> CreateLicenseAsync(Guid tenantId, DateTimeOffset? expiresAtUtc, CancellationToken ct = default) =>
-        SendAsync<LicenseDto>(() => _http.PostAsJsonAsync("/api/v1/admin/licenses", new CreateLicenseRequest { TenantId = tenantId, ExpiresAtUtc = expiresAtUtc }, ct), ct);
+    public Task<LicenseDto> CreateLicenseAsync(Guid tenantId, DateTimeOffset? expiresAtUtc, string? product = null, CancellationToken ct = default) =>
+        SendAsync<LicenseDto>(() => _http.PostAsJsonAsync("/api/v1/admin/licenses", new CreateLicenseRequest { TenantId = tenantId, ExpiresAtUtc = expiresAtUtc, Product = product }, ct), ct);
 
     public Task RevokeLicenseAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<object>(() => _http.PostAsync($"/api/v1/admin/licenses/{id}/revoke", content: null, ct), ct);
+
+    /// <summary>Changes the end date and keeps the key; null makes the license open-ended.</summary>
+    public Task<LicenseDto> UpdateLicenseExpiryAsync(Guid id, DateTimeOffset? expiresAtUtc, CancellationToken ct = default) =>
+        SendAsync<LicenseDto>(() => _http.PutAsJsonAsync($"/api/v1/admin/licenses/{id}/expiry", new { expiresAtUtc }, ct), ct);
+
+    /// <summary>Frees a Go license so another computer can activate it.</summary>
+    public Task ReleaseGoInstallationAsync(Guid id, CancellationToken ct = default) =>
+        SendRawStringAsync(() => _http.PostAsync($"/api/v1/admin/licenses/{id}/go-installation/release", content: null, ct), ct);
+
+    /// <summary>
+    /// Replaces the Go modules of the license's company with <paramref name="modules"/>. The set belongs to the
+    /// company, so every Go license of the tenant carries it; phone add-ons are untouched.
+    /// </summary>
+    public Task<LicenseDto> SetGoModulesAsync(Guid id, IReadOnlyCollection<string> modules, CancellationToken ct = default) =>
+        SendAsync<LicenseDto>(() => _http.PutAsJsonAsync($"/api/v1/admin/licenses/{id}/go-modules", new { modules }, ct), ct);
 
     public Task<IReadOnlyList<AgentDto>> ListAgentsAsync(Guid? tenantId = null, CancellationToken ct = default) =>
         SendAsync<IReadOnlyList<AgentDto>>(() => _http.GetAsync(WithTenant("/api/v1/admin/agents", tenantId), ct), ct);

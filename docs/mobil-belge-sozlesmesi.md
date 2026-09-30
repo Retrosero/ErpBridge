@@ -25,6 +25,7 @@ her zaman `disbursement` (kasa defteri "Gider: …") olarak kalır.
 | Kodlar | `cashCode` (kasa), `bankCode` (banka) telefonda seçildiyse gönderilir; yoksa Portal'daki kullanıcı/firma ayarı |
 | Eski gövde | Liste fiyatı / yapılandırılmış ödeme taşımayan gövde **`MOBILE_APP_UPDATE_REQUIRED`** ile reddedilir; ajan net fiyattan iskonto, açıklama metninden çek/senet bilgisi **çıkarmaz** |
 | Hatalar | Kod ve Türkçe mesaj: `ErpBridge.Shared/ErpWriteError` |
+| Yetki ve limit | Firma kullanıcısının doğrudan belgesi göndericinin modül yetkisine ve kişisel limitlerine göre denetlenir (satırların en yüksek `lineDiscountPercent`'i, `generalDiscountPercent`, tutar `grossAmount` ?? `amount` ?? `total`; `paymentType` "Cari Borç"/boş ve `payments` boş satış açık hesaptır ve `action.sale.open_account` ister). Aşan belge `409 APPROVAL_REQUIRED` alır ve onay talebi olarak yeniden gönderilir; firmanın o tür için onay kuralı kapalı olsa da. Belgede olmayan alan denetlenmez (bilgi bankası kural 33) |
 
 ## `sales_order` — satış
 

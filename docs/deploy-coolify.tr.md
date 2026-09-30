@@ -174,6 +174,7 @@ deploy et. Admin panel stateless bir Blazor Server uygulaması; schema
 | `Logs__InternalIngestKey` | hayır (Log Merkezi için önerilir) | (en az 32 karakter rastgele) | Portal ve Admin'in log satırlarını kabul eden `POST /api/v1/internal/logs` anahtarı. **Aynı değer** Admin ve Portal'a da verilir. Boşsa uç 404 döner, paneller logları yalnız konsola yazar. |
 | `Logs__SlowRequestMs` | hayır | `3000` | Bu süreyi aşan istek Log Merkezi'ne `SLOW_REQUEST` uyarısı olarak yazılır (uzun yoklamalar hariç). |
 | `Logs__Database__Enabled` | hayır | `true` | `false` ise sunucunun uyarı/hata satırları veritabanına yazılmaz. |
+| `GoLicense__SigningKey` | hayır (Go lisansları için evet) | (tek satır base64, PKCS#8 ECDSA P-256) | Go uygulamasına verilen lisans belgelerini imzalar. Boşsa yalnız `POST /api/v1/go/license/activate` 503 döner. Açık anahtarı Go uygulamasına gömülüdür; değiştirmek Go'nun yeni sürümünü gerektirir. |
 
 ### Admin panel
 

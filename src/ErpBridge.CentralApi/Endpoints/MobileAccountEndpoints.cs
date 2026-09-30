@@ -127,7 +127,7 @@ public static class MobileAccountEndpoints
     {
         var access = await AuthorizeAsync(http, db, requireAdmin: true, ct);
         if (access.Error is not null) return access.Error;
-        var users = await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
+        var users = await db.MobileUsers.AsNoTracking().Include(u => u.Roles).Include(u => u.PermissionOverrides)
             .Where(u => u.TenantId == access.Tenant!.Id && u.DeletedAtUtc == null)
             .OrderBy(u => u.Username)
             .ToListAsync(ct);
@@ -152,7 +152,22 @@ public static class MobileAccountEndpoints
         var access = await AuthorizeAsync(http, db, requireAdmin: true, ct);
         if (access.Error is not null) return access.Error;
         if (body is null) return Error(400, "INVALID_BODY", "Body required.");
+        var rolesBefore = (await db.MobileUsers.AsNoTracking().Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Id == id && u.TenantId == access.Tenant!.Id, ct)) is { } before
+            ? MobileUserRoles.All.Where(RolePermissions.Of(before).Contains).ToList()
+            : null;
         var result = await seats.UpdateUserAsync(access.Tenant!.Id, id, body, ct, access.User!.Id);
+        if (result.Succeeded && rolesBefore is not null)
+        {
+            // Role changes sit next to permission changes in the history (GOAL_YETKILER).
+            var rolesAfter = MobileUserRoles.All.Where(RolePermissions.Of(result.Value!).Contains).ToList();
+            if (!rolesAfter.SequenceEqual(rolesBefore))
+            {
+                db.PermissionChanges.Add(ErpBridge.CentralApi.Permissions.PermissionService.RolesChange(
+                    access.Tenant!.Id, MobilePermissionEndpoints.Actor(http, access.User!), result.Value!, rolesBefore, rolesAfter));
+                await db.SaveChangesAsync(ct);
+            }
+        }
         return result.Succeeded ? JsonResults.Ok(ToDto(result.Value!)) : JsonResults.Status(result.StatusCode, result.Error);
     }
 
@@ -174,12 +189,24 @@ public static class MobileAccountEndpoints
     {
         var access = await MobileUserAccess.CheckAsync(http.User, db, ct, MobileUserAccess.MinWarehousePhoneVersion(http.RequestServices));
         if (!access.Allowed) return (null, null, Error(access.StatusCode, access.ErrorCode!, access.Message!));
+        ErpBridge.CentralApi.Permissions.PermissionStamp.Stamp(http, access.User!);
         if (requireAdmin && !RolePermissions.CanManageUsers(access.User!))
             return (null, null, Error(403, "ADMIN_REQUIRED", "Only company administrators can manage users."));
         return (access.Tenant, access.User, null);
     }
 
-    private static async Task<MobileSessionDto> SessionAsync(CentralApiDbContext db, MobileSeatService seats, Tenant tenant, MobileUser user, CancellationToken ct) => new()
+    private static async Task<MobileSessionDto> SessionAsync(CentralApiDbContext db, MobileSeatService seats, Tenant tenant, MobileUser user, CancellationToken ct)
+    {
+        var permissions = user.Permissions ?? await ErpBridge.CentralApi.Permissions.PermissionLoader.LoadAsync(db, user, ct);
+        var session = await SessionWithoutPermissionsAsync(db, seats, tenant, user, ct);
+        session.Permissions = new Dictionary<string, bool>(permissions.Flags());
+        session.Limits = new Dictionary<string, decimal?>(permissions.Limits());
+        session.PermissionsVersion = ErpBridge.CentralApi.Permissions.PermissionCatalog.Version;
+        session.PermissionsStamp = ErpBridge.CentralApi.Permissions.PermissionStamp.Of(user, permissions);
+        return session;
+    }
+
+    private static async Task<MobileSessionDto> SessionWithoutPermissionsAsync(CentralApiDbContext db, MobileSeatService seats, Tenant tenant, MobileUser user, CancellationToken ct) => new()
     {
         User = ToDto(user),
         TenantId = tenant.Id,
@@ -203,6 +230,7 @@ public static class MobileAccountEndpoints
         IsActive = u.IsActive,
         CreatedAtUtc = u.CreatedAtUtc,
         LastLoginAtUtc = u.LastLoginAtUtc,
+        PermissionOverrideCount = u.PermissionOverrides.Count,
     };
 
     private static IResult Error(int status, string code, string message) =>

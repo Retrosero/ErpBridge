@@ -154,7 +154,7 @@ public sealed partial class MobileSeatService
         if (!await LockTenantAsync(tenantId, ct))
             return SeatResult<MobileUser>.Fail(404, "TENANT_NOT_FOUND", "Tenant not found.");
 
-        var user = await _db.MobileUsers.Include(u => u.Roles)
+        var user = await _db.MobileUsers.Include(u => u.Roles).Include(u => u.PermissionOverrides)
             .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && u.DeletedAtUtc == null, ct);
         if (user is null)
             return SeatResult<MobileUser>.Fail(404, "USER_NOT_FOUND", "Mobile user not found.");

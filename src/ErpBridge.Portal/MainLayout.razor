@@ -61,6 +61,18 @@
                     </MudNavMenu>
                 }
 
+                @if (Session.Allows(PortalArea.Targets))
+                {
+                    <div class="portal-nav-label">Hedefler &amp; rut</div>
+                    <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                        <MudNavLink Href="hedefler" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.TrackChanges" id="nav-targets">Hedef takibi</MudNavLink>
+                        <MudNavLink Href="hedefler/giris" Icon="@Icons.Material.Rounded.EditNote" id="nav-target-entry">Hedef girişi</MudNavLink>
+                        <MudNavLink Href="rut" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.Route" id="nav-routes">Rut planı</MudNavLink>
+                        <MudNavLink Href="rut/uyum" Icon="@Icons.Material.Rounded.FactCheck" id="nav-route-compliance">Rut uyumu</MudNavLink>
+                        <MudNavLink Href="ekipler" Icon="@Icons.Material.Rounded.Groups" id="nav-teams">Bölge ve ekipler</MudNavLink>
+                    </MudNavMenu>
+                }
+
                 @if (Session.Allows(PortalArea.Ledger))
                 {
                     <div class="portal-nav-label">Kayıtlar</div>
@@ -105,6 +117,7 @@
                         @if (Session.Allows(PortalArea.Users))
                         {
                             <MudNavLink Href="kullanicilar" Icon="@Icons.Material.Rounded.ManageAccounts">Kullanıcılar</MudNavLink>
+                            <MudNavLink Href="yetkiler" Icon="@Icons.Material.Rounded.AdminPanelSettings" id="nav-permissions">Yetkiler</MudNavLink>
                         }
                         @if (Session.Allows(PortalArea.ErpDocuments) && string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase))
                         {

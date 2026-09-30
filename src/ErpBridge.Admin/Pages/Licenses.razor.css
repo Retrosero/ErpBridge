@@ -4,3 +4,36 @@
 /* Keep the bespoke licence screen within the shared admin shell at every viewport. */
 .license-page{box-sizing:border-box;margin:0 auto;padding-left:0;padding-right:0;width:100%}.license-page *{box-sizing:border-box}.license-page__header>div{min-width:0}.license-page__subtitle{max-width:46rem}.license-summary,.license-issue__form,.license-cards{min-width:0}.license-issue__form>*{min-width:0}.license-card{min-width:0}.license-card__topline{min-width:0}.license-card__tenant{max-width:60%}.license-card__details dd{overflow-wrap:anywhere}.license-revoke{max-width:100%;white-space:normal}@media (max-width:767.98px){.license-page{max-width:none}.license-page__header{margin-bottom:1.2rem}.license-page h1{font-size:2rem}.license-page__subtitle{font-size:.9rem}.license-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.license-list{border-radius:.85rem}.license-card__topline{align-items:flex-start;flex-direction:column}.license-card__tenant{max-width:100%}}@media (max-width:420px){.license-summary{grid-template-columns:1fr}.license-stat{align-items:center;display:flex;justify-content:space-between}.license-stat span{margin:0}.license-card__details{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .license-card__actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem}.license-card__actions .btn{margin:0}
+/* Products: every product has its own colour, one-letter mark and key prefix (LicenseProductCatalog).
+   The --product tokens are set by .license-product--{key}; everything product-coloured reads them. */
+.license-product--erpbridge{--product:#4f46e5;--product-soft:#eef2ff;--product-ink:#3730a3;--product-line:#c7d2fe}
+.license-product--go{--product:#ea580c;--product-soft:#fff7ed;--product-ink:#9a3412;--product-line:#fed7aa}
+.license-mark{align-items:center;background:var(--product,#64748b);border-radius:.55rem;color:#fff;display:inline-flex;flex:0 0 2.25rem;font-size:1.05rem;font-weight:800;height:2.25rem;justify-content:center;width:2.25rem}
+.license-mark--small{border-radius:.35rem;flex-basis:1.2rem;font-size:.68rem;height:1.2rem;width:1.2rem}
+.license-products{display:grid;gap:.75rem;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:1rem}
+.license-product-tab{align-items:center;background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;color:#334155;display:flex;gap:.8rem;padding:.85rem 1rem;text-align:left;transition:border-color .15s,box-shadow .15s}
+.license-product-tab:hover{border-color:var(--product-line)}
+.license-product-tab.is-selected{background:var(--product-soft);border-color:var(--product);box-shadow:inset 0 -3px 0 var(--product)}
+.license-product-tab__text{display:grid;flex:1;min-width:0}
+.license-product-tab__text strong{color:#0f172a;font-size:.98rem}
+.license-product-tab__text small{color:#64748b;font-size:.76rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.license-product-tab__count{color:var(--product-ink);font-size:1.35rem;font-weight:800;white-space:nowrap}
+.license-product-tab__count em{color:#94a3b8;font-size:.85rem;font-style:normal;font-weight:600}
+.license-context{align-items:center;background:var(--product-soft);border:1px solid var(--product-line);border-left:5px solid var(--product);border-radius:.8rem;display:flex;gap:.8rem;margin-bottom:1.25rem;padding:.75rem 1rem}
+.license-context p{color:var(--product-ink);font-size:.86rem;margin:0}
+.license-prefix{background:var(--product-soft);border:1px solid var(--product-line);border-radius:.3rem;color:var(--product-ink);font-weight:800;padding:0 .2rem}
+.license-card{border-left:4px solid var(--product)}
+.license-product-chip{align-items:center;background:var(--product-soft);border-radius:999px;color:var(--product-ink);display:inline-flex;font-size:.72rem;font-weight:750;gap:.35rem;padding:.15rem .55rem .15rem .2rem;white-space:nowrap}
+.license-card__legacy{color:#94a3b8;font-size:.72rem;margin:-.6rem 0 .8rem}
+.license-issue__heading .license-mark{flex-basis:2.25rem}
+.license-device{background:#f8fafc;border:1px solid #eef2f7;border-radius:.6rem;font-size:.8rem;margin-top:.85rem;padding:.6rem .75rem}.license-device p{color:#334155;margin:0}.license-device__meta{color:#64748b!important;font-size:.74rem;margin-top:.2rem!important}
+.license-expiry{align-items:end;display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.75rem}.license-expiry label{color:#334155;display:grid;font-size:.76rem;font-weight:700;gap:.3rem}.license-expiry label em{color:#94a3b8;font-style:normal;font-weight:500}
+.license-theme--go .license-issue__button{background:var(--product,#ea580c);border-color:var(--product,#ea580c)}
+.license-theme--go{--product:#ea580c;--product-soft:#fff7ed;--product-ink:#9a3412;--product-line:#fed7aa}
+.license-theme--erpbridge{--product:#4f46e5;--product-soft:#eef2ff;--product-ink:#3730a3;--product-line:#c7d2fe}
+@media (max-width:767.98px){.license-products{grid-template-columns:1fr}.license-context{align-items:flex-start}}
+.license-modules{margin-top:.6rem}.license-modules__title{align-items:baseline;color:#334155;display:flex;font-size:.8rem;gap:.45rem;margin:0 0 .35rem}.license-modules__title span{color:#94a3b8;font-size:.7rem;font-weight:600}
+.license-module-chips{display:flex;flex-wrap:wrap;gap:.35rem;list-style:none;margin:0;padding:0}.license-module-chip{background:var(--product-soft);border:1px solid var(--product-line);border-radius:999px;color:var(--product-ink);font-size:.72rem;font-weight:700;padding:.12rem .55rem}
+.license-modules-edit{background:#f8fafc;border:1px solid #eef2f7;border-radius:.6rem;margin-top:.75rem;min-width:0;padding:.7rem .8rem}.license-modules-edit legend{color:#334155;float:none;font-size:.8rem;font-weight:750;margin:0;padding:0 .25rem;width:auto}
+.license-modules-edit__options{display:grid;gap:.35rem;grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))}.license-module-option{align-items:center;color:#334155;display:flex;font-size:.82rem;gap:.45rem;min-width:0}.license-module-option input{accent-color:var(--product);flex:none;height:1rem;width:1rem}
+.license-modules-edit__note{color:#64748b;font-size:.74rem;margin:.6rem 0}

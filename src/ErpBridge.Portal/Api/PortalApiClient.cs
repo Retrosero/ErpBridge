@@ -14,7 +14,8 @@ public sealed class SessionEndedException(string code) : Exception(PortalMessage
 }
 
 /// <summary>The central API refused the call with an error envelope.</summary>
-public sealed class PortalApiException(string code, int status) : Exception(PortalMessages.For(code))
+/// <param name="serverMessage">The server's own Turkish wording, used for the few codes whose detail only it knows.</param>
+public sealed class PortalApiException(string code, int status, string? serverMessage = null) : Exception(serverMessage ?? PortalMessages.For(code))
 {
     public string Code { get; } = code;
     public int Status { get; } = status;
@@ -332,11 +333,82 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<UserDto> SetUserRolesAsync(Guid userId, UpdateUserRolesRequest request, CancellationToken ct = default) =>
         SendAsync<UserDto>(HttpMethod.Patch, $"api/v1/android/account/users/{userId}", request, ct);
 
+    // ---- permissions (GOAL_YETKILER) ---------------------------------------------------
+
+    public Task<PermissionCatalogDto> PermissionCatalogAsync(CancellationToken ct = default) =>
+        GetAsync<PermissionCatalogDto>("api/v1/android/account/permissions/catalog", ct);
+
+    public Task<RolePermissionsResponse> RolePermissionsAsync(CancellationToken ct = default) =>
+        GetAsync<RolePermissionsResponse>("api/v1/android/account/roles/permissions", ct);
+
+    public Task<RolePermissionsResponse> SaveRolePermissionsAsync(string role, UpdateRolePermissionsRequest request, CancellationToken ct = default) =>
+        SendAsync<RolePermissionsResponse>(HttpMethod.Put, $"api/v1/android/account/roles/{Uri.EscapeDataString(role)}/permissions", request, ct);
+
+    public Task<UserPermissionsDto> UserPermissionsAsync(Guid userId, CancellationToken ct = default) =>
+        GetAsync<UserPermissionsDto>($"api/v1/android/account/users/{userId}/permissions", ct);
+
+    public Task<UserPermissionsDto> SaveUserPermissionsAsync(Guid userId, UpdateUserPermissionsRequest request, CancellationToken ct = default) =>
+        SendAsync<UserPermissionsDto>(HttpMethod.Put, $"api/v1/android/account/users/{userId}/permissions", request, ct);
+
+    public Task<PermissionChangesResponse> PermissionChangesAsync(Guid? userId = null, CancellationToken ct = default) =>
+        GetAsync<PermissionChangesResponse>("api/v1/android/account/permissions/changes" + Query(("userId", userId?.ToString())), ct);
+
+    // ---- route plans (GOAL_HEDEF_RUT P4–P5) --------------------------------------
+
+    public Task<RoutePlansResponse> RoutePlansAsync(CancellationToken ct = default) =>
+        GetAsync<RoutePlansResponse>("api/v1/portal/routes", ct);
+
+    public Task<RoutePlanDto> SaveRoutePlanAsync(string planId, RoutePlanDto plan, CancellationToken ct = default) =>
+        SendAsync<RoutePlanDto>(HttpMethod.Put, $"api/v1/portal/routes/{Uri.EscapeDataString(planId)}", plan, ct);
+
+    public Task DeleteRoutePlanAsync(string planId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"api/v1/portal/routes/{Uri.EscapeDataString(planId)}", null, ct, emptyOk: true);
+
+    public Task<RouteComplianceResponse> RouteComplianceAsync(DateOnly from, DateOnly to, Guid? teamId, CancellationToken ct = default) =>
+        GetAsync<RouteComplianceResponse>("api/v1/portal/routes/compliance" + Query(("from", Day(from)), ("to", Day(to)), ("teamId", teamId?.ToString())), ct);
+
+    // ---- targets and teams (GOAL_HEDEF_RUT) --------------------------------------
+
+    public Task<TeamsResponse> TeamsAsync(CancellationToken ct = default) =>
+        GetAsync<TeamsResponse>("api/v1/portal/teams", ct);
+
+    public Task<TeamDto> SaveTeamAsync(Guid? id, TeamSaveRequest request, CancellationToken ct = default) =>
+        id is { } existing
+            ? SendAsync<TeamDto>(HttpMethod.Put, $"api/v1/portal/teams/{existing}", request, ct)
+            : SendAsync<TeamDto>(HttpMethod.Post, "api/v1/portal/teams", request, ct);
+
+    public Task DeleteTeamAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"api/v1/portal/teams/{id}", null, ct, emptyOk: true);
+
+    public Task<TargetBoardResponse> TargetsAsync(string periodType, string periodKey, Guid? teamId, CancellationToken ct = default) =>
+        GetAsync<TargetBoardResponse>("api/v1/portal/targets" + Query(("periodType", periodType), ("periodKey", periodKey), ("teamId", teamId?.ToString())), ct);
+
+    /// <summary>A save the server refuses item by item comes back with <see cref="TargetsSaveResponse.Errors"/> filled, not as an exception.</summary>
+    public Task<TargetsSaveResponse> SaveTargetsAsync(TargetsSaveRequest request, CancellationToken ct = default) =>
+        SendAsync<TargetsSaveResponse>(HttpMethod.Put, "api/v1/portal/targets", request, ct, errorBodyOk: true);
+
+    public Task<TargetPreviewResponse> CopyTargetsAsync(TargetCopyRequest request, CancellationToken ct = default) =>
+        SendAsync<TargetPreviewResponse>(HttpMethod.Post, "api/v1/portal/targets/copy", request, ct);
+
+    public Task<TargetPreviewResponse> DistributeTargetAsync(TargetDistributeRequest request, CancellationToken ct = default) =>
+        SendAsync<TargetPreviewResponse>(HttpMethod.Post, "api/v1/portal/targets/distribute", request, ct);
+
+    public Task<TargetItemsResponse> TargetItemsAsync(string metric, string? q, CancellationToken ct = default) =>
+        GetAsync<TargetItemsResponse>("api/v1/portal/targets/items" + Query(("metric", metric), ("q", q)), ct);
+
+    public Task<TargetSettingsDto> TargetSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<TargetSettingsDto>("api/v1/portal/targets/settings", ct);
+
+    public Task<TargetSettingsDto> SaveTargetSettingsAsync(TargetSettingsDto settings, CancellationToken ct = default) =>
+        SendAsync<TargetSettingsDto>(HttpMethod.Put, "api/v1/portal/targets/settings", settings, ct);
+
     // ---- plumbing ------------------------------------------------------------
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct)
+    /// <param name="emptyOk">A success without a body (204) is fine; the default value comes back.</param>
+    /// <param name="errorBodyOk">A 400/403/409 whose body is a <typeparamref name="T"/> with its own error list comes back as such.</param>
+    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct, bool emptyOk = false, bool errorBodyOk = false)
     {
         if (!session.IsSignedIn) throw new SessionEndedException("INVALID_TOKEN");
         using var request = new HttpRequestMessage(method, path);
@@ -345,12 +417,39 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
 
         using var response = await http.SendAsync(request, ct);
         if (response.IsSuccessStatusCode)
+        {
+            if (emptyOk && (response.StatusCode == HttpStatusCode.NoContent || response.Content.Headers.ContentLength == 0)) return default!;
             return (await response.Content.ReadFromJsonAsync<T>(Json, ct))!;
+        }
+        if (errorBodyOk && response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Forbidden or HttpStatusCode.Conflict)
+        {
+            var text = await response.Content.ReadAsStringAsync(ct);
+            if (text.Contains("\"errors\"", StringComparison.Ordinal))
+                return JsonSerializer.Deserialize<T>(text, Json)!;
+            response.Content = new StringContent(text, System.Text.Encoding.UTF8, "application/json");
+        }
 
-        var code = await ReadErrorAsync(response, ct);
+        var (code, message) = await ReadErrorWithMessageAsync(response, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized || SessionEndingCodes.Contains(code))
             throw new SessionEndedException(code);
-        throw new PortalApiException(code, (int)response.StatusCode);
+        throw new PortalApiException(code, (int)response.StatusCode, ServerWordedCodes.Contains(code) ? message : null);
+    }
+
+    /// <summary>Codes whose message the server words in Turkish with a detail the panel cannot know (who, which stop).</summary>
+    private static readonly HashSet<string> ServerWordedCodes = ["ROUTE_INVALID"];
+
+    private static async Task<(string Code, string? Message)> ReadErrorWithMessageAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var error = await response.Content.ReadFromJsonAsync<ApiErrorDto>(Json, ct);
+            if (!string.IsNullOrWhiteSpace(error?.ErrorCode)) return (error.ErrorCode, string.IsNullOrWhiteSpace(error.Message) ? null : error.Message);
+        }
+        catch (JsonException)
+        {
+            // Not an error envelope (proxy page, empty body).
+        }
+        return (response.StatusCode == HttpStatusCode.Unauthorized ? "INVALID_TOKEN" : $"HTTP_{(int)response.StatusCode}", null);
     }
 
     private static async Task<string> ReadErrorAsync(HttpResponseMessage response, CancellationToken ct)

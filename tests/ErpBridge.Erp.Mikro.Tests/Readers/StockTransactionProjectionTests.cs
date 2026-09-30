@@ -11,7 +11,8 @@ namespace ErpBridge.Erp.Mikro.Tests.Readers;
 /// Dapper binds a positional record's constructor by column order and exact type. A SELECT whose columns drift
 /// from <see cref="StockTransactionPayload"/>'s parameters fails every read with "a parameterless default
 /// constructor or one matching signature is required", and with it the agent's whole synchronisation (#178 put
-/// the discount/VAT columns mid-list; #185 moved them back). The live reader tests do not run in CI, so these
+/// the discount/VAT columns mid-list and stock movements went unread for five days). The live reader tests do not
+/// run in CI, so these
 /// rebuild the columns SQL Server returns for the projection — name, order and CAST type — and materialise them
 /// through Dapper without a database.
 /// </summary>
@@ -40,7 +41,8 @@ public class StockTransactionProjectionTests
         UpdatedAt: new DateTime(2026, 9, 28, 14, 5, 15),
         InvoiceRecNo: 85054,
         DiscountAmount: 15.01m,
-        VatAmount: 3.20m);
+        VatAmount: 3.20m,
+        SalespersonCode: "P01");
 
     [Fact]
     public void Projection_columns_follow_the_constructor_order()

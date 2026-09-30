@@ -18,6 +18,9 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<License> Licenses => Set<License>();
+
+    /// <summary>The computer each Go license is bound to (at most one per license).</summary>
+    public DbSet<GoInstallation> GoInstallations => Set<GoInstallation>();
     public DbSet<Agent> Agents => Set<Agent>();
 
     /// <summary>Log Merkezi L3f — a thinned history of agent heartbeats (change or 15 minutes, whichever first).</summary>
@@ -165,6 +168,31 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<StockExpiryOpApplied> StockExpiryOpsApplied => Set<StockExpiryOpApplied>();
 
+    public DbSet<SuspendedSale> SuspendedSales => Set<SuspendedSale>();
+
+    public DbSet<SuspendedSaleOpApplied> SuspendedSaleOpsApplied => Set<SuspendedSaleOpApplied>();
+
+    public DbSet<TenantRolePermission> TenantRolePermissions => Set<TenantRolePermission>();
+
+    public DbSet<MobileUserPermissionOverride> MobileUserPermissionOverrides => Set<MobileUserPermissionOverride>();
+
+    public DbSet<PermissionChange> PermissionChanges => Set<PermissionChange>();
+
+    // GOAL_HEDEF_RUT: satış ekipleri/bölgeleri ve hedefler; yalnız merkezde, ERP'ye yazılmaz.
+    public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
+
+    public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
+
+    public DbSet<SalesTeamManager> SalesTeamManagers => Set<SalesTeamManager>();
+
+    public DbSet<SalesTarget> SalesTargets => Set<SalesTarget>();
+
+    public DbSet<SalesTargetEvent> SalesTargetEvents => Set<SalesTargetEvent>();
+
+    public DbSet<SalesTargetOperation> SalesTargetOperations => Set<SalesTargetOperation>();
+
+    public DbSet<TargetSettings> TargetSettings => Set<TargetSettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -275,6 +303,7 @@ public sealed class CentralApiDbContext : DbContext
         });
 
         ConfigureWorkTasks(modelBuilder);
+        ConfigureSalesTargets(modelBuilder);
 
         modelBuilder.Entity<StockExpiryRecord>(b =>
         {
@@ -296,6 +325,31 @@ public sealed class CentralApiDbContext : DbContext
         modelBuilder.Entity<StockExpiryOpApplied>(b =>
         {
             b.ToTable("stock_expiry_ops_applied");
+            b.HasKey(x => new { x.TenantId, x.OpId });
+            b.HasIndex(x => x.AppliedAtMs);
+        });
+
+        modelBuilder.Entity<SuspendedSale>(b =>
+        {
+            b.ToTable("suspended_sales");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.DocNo).IsRequired().HasMaxLength(20);
+            b.Property(x => x.CustomerId).HasMaxLength(100);
+            b.Property(x => x.CustomerName).IsRequired().HasMaxLength(200);
+            b.Property(x => x.Warehouse).HasMaxLength(100);
+            b.Property(x => x.Note).HasMaxLength(1000);
+            b.Property(x => x.TotalAmount).HasPrecision(18, 2);
+            b.Property(x => x.LinesJson).IsRequired().HasColumnType("jsonb");
+            b.Property(x => x.ClosedReason).HasMaxLength(20);
+            b.Property(x => x.ClosedByName).HasMaxLength(120);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.UpdatedSeq });
+        });
+
+        modelBuilder.Entity<SuspendedSaleOpApplied>(b =>
+        {
+            b.ToTable("suspended_sale_ops_applied");
             b.HasKey(x => new { x.TenantId, x.OpId });
             b.HasIndex(x => x.AppliedAtMs);
         });
@@ -367,6 +421,41 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.Username }).IsUnique().HasFilter("\"DeletedAtUtc\" IS NULL");
             b.HasIndex(x => new { x.TenantId, x.IsActive });
             b.HasMany(x => x.Roles).WithOne(r => r.User).HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(x => x.PermissionOverrides).WithOne(o => o.User).HasForeignKey(o => o.UserId).OnDelete(DeleteBehavior.Cascade);
+            b.Ignore(x => x.Permissions);
+        });
+
+        modelBuilder.Entity<TenantRolePermission>(b =>
+        {
+            b.ToTable("tenant_role_permissions");
+            b.HasKey(x => new { x.TenantId, x.Role, x.Key });
+            b.Property(x => x.Role).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Key).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Value).IsRequired().HasMaxLength(32);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MobileUserPermissionOverride>(b =>
+        {
+            b.ToTable("mobile_user_permission_overrides");
+            b.HasKey(x => new { x.UserId, x.Key });
+            b.Property(x => x.Key).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Value).IsRequired().HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<PermissionChange>(b =>
+        {
+            b.ToTable("permission_changes");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ActorName).IsRequired().HasMaxLength(120);
+            b.Property(x => x.Client).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Scope).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Role).HasMaxLength(16);
+            b.Property(x => x.TargetUserName).HasMaxLength(120);
+            b.Property(x => x.Key).IsRequired().HasMaxLength(64);
+            b.Property(x => x.OldValue).HasMaxLength(256);
+            b.Property(x => x.NewValue).HasMaxLength(256);
+            b.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
         });
 
         modelBuilder.Entity<MobileUserRole>(b =>
@@ -419,10 +508,24 @@ public sealed class CentralApiDbContext : DbContext
             b.HasKey(x => x.Id);
             b.Property(x => x.LicenseKey).IsRequired().HasMaxLength(255);
             b.HasIndex(x => x.LicenseKey).IsUnique();
+            b.Property(x => x.Product).IsRequired().HasMaxLength(LicenseProducts.MaxLength).HasDefaultValue(LicenseProducts.ErpBridge);
             b.HasOne(x => x.Tenant)
                 .WithMany(t => t.Licenses)
                 .HasForeignKey(x => x.TenantId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GoInstallation>(b =>
+        {
+            b.ToTable("go_installations");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.MachineId).IsRequired().HasMaxLength(GoInstallation.MachineIdMaxLength);
+            b.Property(x => x.MachineName).HasMaxLength(GoInstallation.MachineNameMaxLength);
+            b.Property(x => x.AppVersion).HasMaxLength(GoInstallation.AppVersionMaxLength);
+            // One computer per Go license; a concurrent second activation loses on this index.
+            b.HasIndex(x => x.LicenseId).IsUnique();
+            b.HasIndex(x => x.TenantId);
+            b.HasOne(x => x.License).WithMany().HasForeignKey(x => x.LicenseId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Agent>(b =>
@@ -1212,6 +1315,76 @@ public sealed class CentralApiDbContext : DbContext
             b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TenantId, x.UserId, x.Seq });
             b.HasIndex(x => new { x.TenantId, x.UserId, x.ReadAtMs });
+        });
+    }
+
+    private static void ConfigureSalesTargets(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SalesTeam>(b =>
+        {
+            b.ToTable("sales_teams");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(10);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.TenantId);
+        });
+
+        modelBuilder.Entity<SalesTeamMember>(b =>
+        {
+            b.ToTable("sales_team_members");
+            b.HasKey(x => new { x.TenantId, x.UserId });
+            b.HasIndex(x => x.TeamId);
+        });
+
+        modelBuilder.Entity<SalesTeamManager>(b =>
+        {
+            b.ToTable("sales_team_managers");
+            b.HasKey(x => new { x.TeamId, x.UserId });
+            b.HasIndex(x => new { x.TenantId, x.UserId });
+        });
+
+        modelBuilder.Entity<SalesTarget>(b =>
+        {
+            b.ToTable("sales_targets");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.PeriodType).IsRequired().HasMaxLength(10);
+            b.Property(x => x.PeriodKey).IsRequired().HasMaxLength(10);
+            b.Property(x => x.PeriodStartDay).IsRequired().HasMaxLength(10);
+            b.Property(x => x.PeriodEndDay).IsRequired().HasMaxLength(10);
+            b.Property(x => x.Metric).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Measure).IsRequired().HasMaxLength(10);
+            b.Property(x => x.ItemCode).IsRequired().HasMaxLength(110);
+            b.Property(x => x.ItemName).HasMaxLength(200);
+            b.Property(x => x.OwnerKind).IsRequired().HasMaxLength(10);
+            b.Property(x => x.Value).HasPrecision(18, 4);
+            b.Property(x => x.Note).HasMaxLength(500);
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.PeriodType, x.PeriodKey, x.Metric, x.Measure, x.ItemCode, x.OwnerKind, x.OwnerId }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.PeriodStartDay, x.PeriodEndDay });
+        });
+
+        modelBuilder.Entity<SalesTargetEvent>(b =>
+        {
+            b.ToTable("sales_target_events");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Action).IsRequired().HasMaxLength(10);
+            b.Property(x => x.OldValue).HasPrecision(18, 4);
+            b.Property(x => x.NewValue).HasPrecision(18, 4);
+            b.Property(x => x.ActorName).IsRequired().HasMaxLength(120);
+            b.HasIndex(x => new { x.TenantId, x.TargetId });
+        });
+
+        modelBuilder.Entity<SalesTargetOperation>(b =>
+        {
+            b.ToTable("sales_target_operations");
+            b.HasKey(x => new { x.TenantId, x.OperationId });
+        });
+
+        modelBuilder.Entity<TargetSettings>(b =>
+        {
+            b.ToTable("target_settings");
+            b.HasKey(x => x.TenantId);
         });
     }
 }
