@@ -295,6 +295,10 @@ public partial class Program
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TargetFactReader>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TargetService>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TeamService>();
+        // Müşteri kataloğu (docs/GOAL_MUSTERI_KATALOGU.md): per-name sign-in slow-down, shared by the staff,
+        // Admin and catalog sign-ins. In memory: one CentralApi container.
+        builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetService<TimeProvider>() ?? TimeProvider.System));
+        builder.Services.Configure<ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions>(cfg.GetSection(ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions.SectionName));
     }
 
     /// <summary>
@@ -500,6 +504,13 @@ public partial class Program
         var allowedOrigins = cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
         if (allowedOrigins.Length == 0 || allowedOrigins.Any(string.IsNullOrWhiteSpace))
             throw new InvalidOperationException("Cors:AllowedOrigins requires at least one explicit origin outside the test environment.");
+
+        // The public catalog must see its visitors' addresses: without the proxy list every sign-in and image
+        // request of every company would share Traefik's single rate-limit bucket (GOAL_MUSTERI_KATALOGU §6).
+        var forwarded = ForwardedHeadersSetup.FromConfiguration(cfg);
+        if (!string.IsNullOrWhiteSpace(cfg["CustomerCatalog:PublicHost"]) && forwarded is null)
+            throw new InvalidOperationException(
+                $"CustomerCatalog:PublicHost requires {ForwardedHeadersSetup.KnownNetworksKey} or {ForwardedHeadersSetup.KnownProxiesKey} (the reverse proxy) outside the test environment.");
     }
 
     private static void ConfigureCors(IServiceCollection services, IConfiguration cfg, bool allowTestDefaults)
@@ -526,13 +537,20 @@ public partial class Program
     /// by the JWT <c>sub</c> claim (the agent id), which is the brief's
     /// default. The "Tenant" policy partitions by the <c>tenant</c> claim as
     /// a coarser secondary guard. "Anonymous" partitions by remote IP for
-    /// pre-auth calls. A global limiter caps total per-IP throughput.
+    /// pre-auth calls (an IPv6 caller by its /64, <see cref="ClientIpPartition"/>).
+    /// A global limiter caps total per-IP throughput. Every rejection answers
+    /// <see cref="RateLimitedResponse"/>.
     /// </summary>
     public static void ConfigureRateLimiter(IServiceCollection services)
     {
         services.AddRateLimiter(opt =>
         {
             opt.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            // Clients already react to the status; the body and Retry-After tell the web catalog how long to wait.
+            opt.OnRejected = (context, ct) => new ValueTask(RateLimitedResponse.WriteAsync(
+                context.HttpContext,
+                context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) ? retryAfter : null,
+                ct));
 
             opt.AddPolicy(PerAgentRateLimitPolicy, httpContext =>
             {
@@ -614,7 +632,7 @@ public partial class Program
 
             opt.AddPolicy(AnonymousRateLimitPolicy, httpContext =>
             {
-                var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                var remoteIp = ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
                 return RateLimitPartition.GetFixedWindowLimiter("anon:" + remoteIp, _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 60,
@@ -626,7 +644,7 @@ public partial class Program
 
             opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             {
-                var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                var remoteIp = ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
                 return RateLimitPartition.GetFixedWindowLimiter("global:" + remoteIp, _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 1000,
@@ -653,6 +671,11 @@ public partial class Program
     /// </summary>
     public static void ConfigureApp(WebApplication app)
     {
+        // The caller's real address and scheme behind Traefik, before anything reads them (rate limits, logs,
+        // refresh-token audit). Absent unless the operator names the proxy (ForwardedHeadersSetup).
+        if (ForwardedHeadersSetup.FromConfiguration(app.Configuration) is { } forwarded)
+            app.UseForwardedHeaders(forwarded);
+
         // Log Merkezi L0e: every request gets a correlation id first, so the exception handler, the logs and
         // the response all carry the same one. The handler answers an unhandled exception with a bare 500
         // ApiError and records the details in the log centre.

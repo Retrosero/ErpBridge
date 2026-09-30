@@ -1065,7 +1065,7 @@ registration ayrı bir composition projesine taşınır.
      kişi cariyi satış için açınca gösterir; "sonra tekrar sor" telefonda yereldir (Sipariş Cepte KB kural 34).
 28. **Satılan ek modüller firma bazındadır; XML ürün beslemesi telefonda işlenir: `Endpoints/MobileXmlFeedEndpoints` (XML ürün modülü, 2026-09-26).**
    - **Modül seti yalnız operatörden:** `tenant_modules` (`TenantId, ModuleKey` birleşik PK). Bilinen anahtarlar tek yerde:
-     `Domain/TenantModules.Known` (telefon ek modülleri; şimdilik yalnız `xml_import`). Admin konsolu `/tenants/{id}/mobile` "Ek modüller"
+     `Domain/TenantModules.Known` (firma ek modülleri: `xml_import`, `customer_catalog` — kural 36). Admin konsolu `/tenants/{id}/mobile` "Ek modüller"
      paneli → `PUT /api/v1/admin/tenants/{id}/mobile/modules {modules:[…]}` **telefon ek modülleri** setini tamamen değiştirir (204; bilinmeyen
      anahtar 400 `UNKNOWN_MODULE`, tenant yoksa 404; zaten açık modülün `EnabledAtUtc`'si korunur, `EnabledBy` = admin
      e-postası). **Aynı tabloda Go modülleri de durur (`go_` öneki, kural 30):** bu uç `go_` anahtarını kabul etmez (400
@@ -1327,3 +1327,41 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      PUT belgeyi tümüyle değiştirir ve `Version`'ı artırır; gövde `{ "data": {…} }`, `data` nesne ve ≤ 16 KB olmalı (`400 INVALID_PREFERENCES`).
    - **Eşitleme telefonda karara bağlanır:** yerelde bekleyen değişiklik kazanır (son yazan), yoksa daha yüksek `Version` alınır. Kullanıcı silinince satırı da gider (cascade).
    - Test: `UserPreferencesRelationalTests`. Telefon ayağı: Siparis_Cepte KB kural 54.
+
+36. **Müşteri kataloğu temeli: gerçek istemci IP'si, giriş yavaşlatıcı, katalog tabloları, kilitli yetki (GOAL_MUSTERI_KATALOGU S1–S2, 2026-10-01).**
+   - **Gerçek istemci IP'si:** `Security/ForwardedHeadersSetup`. `ForwardedHeaders:KnownNetworks` / `ForwardedHeaders:KnownProxies`
+     (dizi ya da virgüllü tek değer; boş girdi yok sayılır) doluysa pipeline'ın **en başında** `UseForwardedHeaders`
+     (`X-Forwarded-For` + `X-Forwarded-Proto`, `ForwardLimit=1`, varsayılan loopback güveni temizlenir; `X-Forwarded-Host` asla —
+     katalog host denetimi atlatılırdı). Ayar boşsa ara katman eklenmez (eski davranış). Bozuk girdi başlatmayı durdurur.
+     `CustomerCatalog:PublicHost` doluyken bu ayar test dışında **zorunlu** (`Program.ValidateRuntimeConfiguration`): aksi hâlde
+     bütün firmaların katalog girişleri Traefik'in tek IP kovasına düşerdi. `AdminAuthEndpoints.ResolveClientIp` artık ham
+     `X-Forwarded-For` başlığını değil `RemoteIpAddress`'i okur (güvenilmeyen istemci IP uyduramaz).
+   - **Bölümleme:** `Anonymous` politikası ve global limiter anahtarı `Security/ClientIpPartition.Of`: IPv4 aynen, IPv6 **/64 öneki**
+     (`2001:db8:1:2::/64`; sağlayıcı müşteriye bütün bir /64 verir). Yeni katalog politikaları (S5/S6) da bunu kullanır.
+   - **429 gövdesi:** `AddRateLimiter.OnRejected` ve giriş yavaşlatıcı aynı `Security/RateLimitedResponse`'u yazar:
+     `ApiError{errorCode:"RATE_LIMITED", traceId}` + `Retry-After` (tam saniye, yukarı yuvarlanmış, en az 1). Telefon ve panel 429'u
+     durum koduyla işlediği için geriye uyumlu.
+   - **Giriş yavaşlatıcı** `Security/LoginThrottle` (singleton, bellek içi — tek container, `TenantEventHub` gibi). Anahtar = alan
+     (`staff` / `catalog` / `admin`) + firma kodu (büyük harf) + kullanıcı adı (küçük harf); hesap ya da firma olmasa da sayılır.
+     15 dk içinde 5 hata → 60 sn bekleme; sonraki her hata beklemeyi ikiye katlar (üst sınır 15 dk). Beklerken şifre
+     **doğrulanmaz**: doğru ve yanlış şifre aynı 429'u alır (bekleme tahmin denemek için kullanılamaz). Başarılı giriş adı temizler;
+     son hatadan **ve** son beklemenin bitiminden 15 dk sessizlik adı affeder (tavandaki ad 15 dk'da bir tahmin alır). Hesap hiç
+     kilitlenmez. Uygulandığı yerler: `MobileAccountEndpoints.LoginAsync` (personel; telefon + panel) ve `AdminAuthEndpoints.LoginAsync`
+     (e-posta, firma yok). Katalog girişi S6'da `LoginThrottle.CatalogArea` ile bağlanır.
+   - **Tablolar** (03 §2, migration `MusteriKatalogu`): `catalog_settings`, `catalog_category_settings`, `catalog_product_settings`,
+     `catalog_accounts`, `catalog_images`, `catalog_image_blobs`, `catalog_orders` — `Domain/CustomerCatalog.cs`. Katalog hesapları
+     **koltuk değildir**, `mobile_users`'a girmez, personel oturumu açamaz.
+   - **Modül ve yetki:** `TenantModules.CustomerCatalog = "customer_catalog"` (`Known`; oturumun `modules[]`'ına kendiliğinden girer).
+     `PermissionKeys.CustomerCatalogManage = "action.customer_catalog.manage"` **kilitli** (`locked: true`), yalnız ADMIN + MANAGER:
+     rol şablonunda ve kişiye özel açma/kapama `409 PERMISSION_LOCKED`; `PermissionCatalog.Version` = 2;
+     `RolePermissions.CanManageCustomerCatalog`. Bildirim türü `UserNotificationKinds.CatalogOrderNew = "CATALOG_ORDER_NEW"`.
+   - **Yapılandırma** `CustomerCatalog/CustomerCatalogOptions` (`CustomerCatalog` bölümü): `PublicHost` (boş = katalog hiçbir yerde
+     sunulmaz), `PublicBaseUrl`, `TokenDays` 30, `SessionHours` 12, `MaxImageBytesLarge` 1 MB, `MaxImageBytesSmall` 200 KB,
+     `MaxImagesPerProduct` 8, `TenantImageQuotaBytes` 1 GB, `MaxOpenOrders` 20, `MaxOrderLines` 200, `WebRoot` `wwwroot/katalog`.
+     `docker-compose.coolify.yml` `CustomerCatalog__PublicHost`, `CustomerCatalog__PublicBaseUrl`, `ForwardedHeaders__KnownNetworks__0`
+     değişkenlerini boş varsayılanla geçirir (Coolify'da doldurulur, D3).
+   - **Firma kodu güvencesi:** `MobileSeatService.EnsureTenantCodeAsync` — kodu olmayan firmaya (hiç koltuk almamış olabilir) ilk
+     okumada 8 karakterlik kod üretir; yalnız kod hâlâ boşsa yazar, eşzamanlı iki okuma aynı kodu döner.
+   - Testler: `LoginThrottleTests`, `ForwardedHeadersSetupTests`, `RateLimitTests` (XFF bölümleri, güvenilmeyen atlama, /64),
+     `LoginThrottleEndpointTests`, `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
+     `PermissionEndpointsRelationalTests`, `PermissionResolverTests`.

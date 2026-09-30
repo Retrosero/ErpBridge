@@ -54,6 +54,29 @@ public sealed class PermissionEndpointsRelationalTests : IClassFixture<SqliteCen
     }
 
     [Fact]
+    public async Task Web_catalog_management_stays_with_admin_and_manager_whatever_the_templates_say()
+    {
+        var c = await CompanyAsync();
+        async Task ShouldBeLockedAsync(string path, object body)
+        {
+            var response = await _factory.CreateClient().PutJsonAsync(path, body, c.Patron);
+            response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            (await response.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("PERMISSION_LOCKED");
+        }
+
+        await ShouldBeLockedAsync("/api/v1/android/account/roles/SALES/permissions", Values(K.CustomerCatalogManage, "1"));
+        await ShouldBeLockedAsync("/api/v1/android/account/roles/MANAGER/permissions", Values(K.CustomerCatalogManage, "0"));
+        await ShouldBeLockedAsync($"/api/v1/android/account/users/{c.AliId}/permissions", Overrides(K.CustomerCatalogManage, "allow"));
+
+        (await MeAsync(c.Ali)).Permissions[K.CustomerCatalogManage].Should().BeFalse();
+        (await MeAsync(c.Patron)).Permissions[K.CustomerCatalogManage].Should().BeTrue();
+        var catalog = await (await _factory.CreateClient().GetAsync("/api/v1/android/account/permissions/catalog", c.Patron))
+            .ReadAsJsonAsync<PermissionCatalogResponse>();
+        catalog.Version.Should().Be(2);
+        catalog.Items.Single(i => i.Key == K.CustomerCatalogManage).Locked.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task A_role_template_reaches_the_session_and_back_to_default_removes_it()
     {
         var c = await CompanyAsync();

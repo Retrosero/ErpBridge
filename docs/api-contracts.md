@@ -349,6 +349,15 @@ Yaygın kodlar:
 - `TENANT_MISMATCH` — agent kayıtlı tenant ile lisans tenant uyuşmuyor
 - `JOB_NOT_FOUND` — ack gönderilen job zaten işlenmiş
 - `TRANSIENT_UPSTREAM` — 5xx, agent exponential backoff ile retry
+- `RATE_LIMITED` — HTTP 429. Hız sınırının ve giriş yavaşlatıcının her reddi bu gövdeyi taşır; bekleme biliniyorsa
+  `Retry-After` (saniye) başlığı da gelir (GOAL_MUSTERI_KATALOGU §5).
+
+**Giriş yavaşlatıcı** (`/api/v1/android/account/login`, `/api/v1/admin/login`; bilgi bankası kural 36): aynı ad (firma kodu +
+kullanıcı adı, Admin'de e-posta) 15 dakikada 5 kez yanlış girilirse 60 sn bekler; her yeni hata beklemeyi ikiye katlar (en çok
+15 dk). Beklerken şifre denetlenmez, doğru şifre de `429 RATE_LIMITED` alır. Hesap kilitlenmez; başarılı giriş sayacı sıfırlar.
+
+Sunucu Traefik arkasında gerçek istemci IP'sini yalnız `ForwardedHeaders:KnownNetworks` / `KnownProxies` ayarındaki
+vekillerden gelen `X-Forwarded-For` ile öğrenir; IP başına sınırlarda IPv6 adresleri /64 önekine indirgenir.
 
 ## Retry & backoff
 

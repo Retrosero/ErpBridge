@@ -4,6 +4,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Mobile;
+using ErpBridge.CentralApi.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -32,7 +33,8 @@ public static class MobileAccountEndpoints
             .Produces<MobileLoginResponse>(StatusCodes.Status200OK)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
-            .Produces<ApiError>(StatusCodes.Status403Forbidden);
+            .Produces<ApiError>(StatusCodes.Status403Forbidden)
+            .Produces<ApiError>(StatusCodes.Status429TooManyRequests);
 
         var signedIn = routes.MapGroup("/api/v1/android/account")
             .WithTags("Android/Account")
@@ -52,6 +54,7 @@ public static class MobileAccountEndpoints
         [FromServices] MobileSeatService seats,
         [FromServices] IJwtIssuer jwt,
         [FromServices] IConfiguration configuration,
+        [FromServices] LoginThrottle throttle,
         CancellationToken ct)
     {
         var tenantCode = body?.TenantCode?.Trim().ToUpperInvariant();
@@ -65,6 +68,11 @@ public static class MobileAccountEndpoints
         if (client is not (CentralApiClaims.PhoneClient or CentralApiClaims.PortalClient))
             return Error(400, "INVALID_CLIENT", "client must be android or portal.");
 
+        // A name that failed too often waits, and the password is not even checked meanwhile: a right and a
+        // wrong guess get the same 429 (GOAL_MUSTERI_KATALOGU T2).
+        if (throttle.RetryAfter(LoginThrottle.StaffArea, tenantCode, body.Username) is { } wait)
+            return RateLimitedResponse.Result(wait);
+
         var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Code == tenantCode, ct);
         var user = tenant is null || username is null
             ? null
@@ -72,7 +80,11 @@ public static class MobileAccountEndpoints
                 .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Username == username && u.DeletedAtUtc == null, ct);
         var passwordOk = BCrypt.Net.BCrypt.Verify(body.Password, user?.PasswordHash ?? DummyPasswordHash);
         if (tenant is null || user is null || !passwordOk)
+        {
+            throttle.RecordFailure(LoginThrottle.StaffArea, tenantCode, body.Username);
             return Error(401, "INVALID_CREDENTIALS", "Company code, username or password is wrong.");
+        }
+        throttle.RecordSuccess(LoginThrottle.StaffArea, tenantCode, body.Username);
 
         // Only past this point does the caller know the credentials, so the
         // specific reasons below are safe to disclose.

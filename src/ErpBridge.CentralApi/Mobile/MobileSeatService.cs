@@ -350,6 +350,31 @@ public sealed partial class MobileSeatService
         return updated == 1;
     }
 
+    /// <summary>
+    /// The company code, made now if the company has none yet — the web catalog's address is <c>/{code}</c>, and a
+    /// company may open it before it ever had mobile seats (GOAL_MUSTERI_KATALOGU §3). Null when the tenant does not
+    /// exist. Two first readings at once store one code and both return it.
+    /// </summary>
+    public async Task<string?> EnsureTenantCodeAsync(Guid tenantId, CancellationToken ct)
+    {
+        var existing = await _db.Tenants.AsNoTracking().Where(t => t.Id == tenantId).Select(t => new { t.Code }).FirstOrDefaultAsync(ct);
+        if (existing is null) return null;
+        if (!string.IsNullOrEmpty(existing.Code)) return existing.Code;
+
+        var code = await NewTenantCodeAsync(ct);
+        if (!_db.Database.IsRelational())
+        {
+            var tenant = await _db.Tenants.FirstAsync(t => t.Id == tenantId, ct);
+            if (string.IsNullOrEmpty(tenant.Code)) tenant.Code = code;
+            await _db.SaveChangesAsync(ct);
+            return tenant.Code;
+        }
+        // Only a still empty code is written, so a concurrent reading's code is never replaced.
+        await _db.Tenants.Where(t => t.Id == tenantId && (t.Code == null || t.Code == ""))
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.Code, code), ct);
+        return await _db.Tenants.AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Code).FirstAsync(ct);
+    }
+
     private async Task<string> NewTenantCodeAsync(CancellationToken ct)
     {
         for (var attempt = 0; attempt < 20; attempt++)

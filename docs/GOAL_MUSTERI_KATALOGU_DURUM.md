@@ -11,8 +11,8 @@ push'u, Play production.
 
 | # | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| S1 | ForwardedHeaders, /64, giriş yavaşlatıcı, `OnRejected` | ⬜ | | |
-| S2 | Tablolar, migration, modül, kilitli yetki, Admin kutucuğu | ⬜ | | |
+| S1 | ForwardedHeaders, /64, giriş yavaşlatıcı, `OnRejected` | ✅ | | Personel + Admin girişi; katalog girişi S6'da `CatalogArea` |
+| S2 | Tablolar, migration, modül, kilitli yetki, Admin kutucuğu | 🔄 | | Sunucu tarafı bitti (migration `MusteriKatalogu`, `PermissionCatalog.Version` 2); Admin `TenantMobile.razor` kutucuğu panel kolunda |
 | S3 | Katalog derleme (görünüm, görünürlük, fiyat) | ⬜ | | |
 | S4 | Yönetim uçları | ⬜ | | |
 | S5 | Görsel uçları | ⬜ | | |

@@ -56,6 +56,9 @@ public static class PermissionKeys
     public const string MasterDataImport = "action.master_data.import";
     public const string NativeBooksEdit = "action.native_books.edit";
     public const string XmlFeedManage = "action.xml_feed.manage";
+
+    /// <summary>Web catalog layout, customer access and catalog order requests (GOAL_MUSTERI_KATALOGU T6).</summary>
+    public const string CustomerCatalogManage = "action.customer_catalog.manage";
     public const string SaleNegativeStock = "action.sale.negative_stock";
     public const string SaleOpenAccount = "action.sale.open_account";
 

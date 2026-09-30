@@ -92,7 +92,7 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 - `log_error_groups` *(Log Merkezi L0)*: Aynı sorunun WARN+ olayları. `Fingerprint char(64)` UNIQUE (`LogCenter/ErrorFingerprint`: kaynak + tür + istisna tipi + işlem + rakam/GUID/tırnak temizlenmiş mesaj + ilk uygulama yığın satırı), `TotalCount` (tek `UPDATE` ile artar), `First/LastSeenAtUtc/Ms`, `Severity` (görülen en yüksek), `SampleMessage`, `TopFrame`, `LastAppVersion`, `Status` OPEN|RESOLVED|IGNORED, `ReopenedAtMs` (çözülmüş gruba yeni olay gelince OPEN'a döner). Tarifi değiştirmek tüm grupları böler. *ERP yazım Y5b:* ajanın yazamadığı telefon belgesi `POST /jobs/ack`'te `windows_agent` kaynaklı `ERP_WRITE_FAILED` (ERROR) ya da `ERP_WRITE_RETRY` (WARN) olayıdır; `Operation = erp.write.<belge türü>`, `PropertiesJson` `jobId`, `externalId`, `documentType`, `errorCode`, `attempt`.
 - `log_settings` *(Log Merkezi L0)*: Saklama süreleri, tek satır `Id = 1` (yoksa varsayılanlar). `InfoRetentionDays` (14, DEBUG+INFO), `WarnRetentionDays` (90, WARN+ ve bayat açık gruplar), `UpdatedAtUtc`, `UpdatedBy(120)`. Okuyan `LogCenter/LogRetention` değerleri 1–730'a sıkıştırır.
 - `display_pairing_codes` *(Faz 49)*: TV'nin gösterdiği kod. `Code char(6)` PK, `PairingSecretHash char(64)`, `ExpiresAtUtc` (+10 dk), `DisplayDeviceId` (yönetici sahiplenince), `ClaimedAtUtc`. TV token'ı alınca satır silinir.
-- `tenant_modules` *(XML ürün modülü, 2026-09-26)*: Firmaya satılan ek modüller (kural 28). PK `(TenantId, ModuleKey)`, `ModuleKey(64)` (`xml_import`; 2026-09-28'den beri Go modülleri de: `go_ai`, `go_einvoice`, `go_erp`, `go_reports`, `go_competition` — kural 30), `EnabledAtUtc`, `EnabledBy(128)` null = bilinmiyor (operatör e-postası). FK `tenants` cascade. Yalnız Admin konsolu yazar; telefon ucu yalnız `go_` olmayan, Go lisans ucu yalnız `go_` satırlarını değiştirir.
+- `tenant_modules` *(XML ürün modülü, 2026-09-26)*: Firmaya satılan ek modüller (kural 28). PK `(TenantId, ModuleKey)`, `ModuleKey(64)` (`xml_import`, 2026-10-01'den beri `customer_catalog`; 2026-09-28'den beri Go modülleri de: `go_ai`, `go_einvoice`, `go_erp`, `go_reports`, `go_competition` — kural 30), `EnabledAtUtc`, `EnabledBy(128)` null = bilinmiyor (operatör e-postası). FK `tenants` cascade. Yalnız Admin konsolu yazar; telefon ucu yalnız `go_` olmayan, Go lisans ucu yalnız `go_` satırlarını değiştirir.
 - `tenant_xml_feed_settings` *(XML ürün modülü, 2026-09-26)*: `TenantId` PK/FK cascade, `Url(2048)`, `RecordPath(512)`, `MappingJson` jsonb (`{"CODE":["StokKodu"],"IMAGE":[…]}` hedef → aday yollar), `DownloadImages`, `ImportDescriptions`, `FullImport` (ERP'li firmada her zaman false), `UpdatedByUserId` null, `UpdatedAtUtc`. Satır yoksa besleme tanımsız; firma admini telefondan yazar.
 - `tenant_approval_rules` *(Faz 38)*: Tenant başına onay kuralları (`TenantId` PK; `Sale, Purchase, Return, Collection, Disbursement, StockCount, ProductCard, CustomerCard` bool; `UpdatedByName`, `UpdatedAtUtc`). Satır yoksa hepsi açık sayılır.
 - `tenants.DataSource` *(Faz 33)*: `erp` | `native`. `tenants.NativeLockVersion`: native belge transaction'larının satır kilidi sayacı (bkz. 00 kural 15).
@@ -130,6 +130,27 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `mobile_user_permission_overrides`: PK `(UserId, Key)`, `UserId` FK `mobile_users` cascade, `Key(64)`, `Value(32)`, `UpdatedAtUtc`, `UpdatedByUserId`. Satır yok = rollerden gelir.
   - `permission_changes`: `Id` bigint PK, `TenantId`, `ActorUserId`, `ActorName(120)` anlık kopya, `Client(16)` android\|portal, `Scope(16)` role\|user\|roles, `Role(16)`, `TargetUserId`, `TargetUserName(120)`, `Key`, `OldValue` (null = satır yoktu), `NewValue` (null = silindi), `CreatedAtUtc`. Yalnız eklenir.
   - `suspended_sale_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` (indeksli; henüz temizlenmiyor).
+
+- **Müşteri kataloğu** *(GOAL_MUSTERI_KATALOGU S2, 2026-10-01; kural 36; migration `MusteriKatalogu`)* — zamanlar unix ms (UTC); her tablonun
+  `TenantId`'si `tenants`'a cascade. Katalog hesapları koltuk değildir:
+  - `catalog_settings`: PK `TenantId`, `IsEnabled` (firmanın yayın anahtarı; operatörün `customer_catalog` modülü önce gelir), `DefaultPriceListNo`
+    null = liste 1 ya da en küçük, `Revision` (her düzen yazımında +1; eski revizyon 409 `CATALOG_CHANGED`), `UpdatedAtMs`, `UpdatedByUserId`. Satır yok = yayında değil.
+  - `catalog_category_settings`: PK `(TenantId, CategoryKey(160))` — anahtar telefonun gösterdiği kategori adı (kırpılmış); `SortOrder` null = sona, `IsHidden`, `UpdatedAtMs`.
+  - `catalog_product_settings`: PK `(TenantId, StockCode(64))`, `SortOrder` null = sona, `IsHidden`, `NoDiscount`, `CartonOnly`, `CartonQuantity` (≥ 2, ERP `cartonCode`'u ezer), `UpdatedAtMs`. Satır yalnız varsayılandan farklıysa.
+  - `catalog_accounts`: `Id`, `TenantId`, `CustomerCode(64)`, `CustomerName(200)` anlık kopya, `Username(64)` küçük harf `^[a-z0-9._-]{3,64}$`, `PasswordHash(100)` BCrypt,
+    `IsActive`, `DiscountPercent numeric(5,2)` 0–99.99 (Mikro'ya yazılmaz/okunmaz), `PriceListNo` null = firma varsayılanı, `VisibilityJson` jsonb `{mode: all|only, rules[{type,key,effect}]}`,
+    `ShowStatement`, `ShowInvoices`, `ShowPurchased`, `CanOrder`, `ResponsibleUserId`, `TokenVersion` (şifre/pasif/silme/"oturumları kapat" ile +1), `LastLoginAtMs`, `PasswordChangedAtMs`,
+    `CreatedAtMs`, `UpdatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`, `UpdatedByUserId`, `DeletedAtMs` (yumuşak silme). Filtreli UNIQUE `(TenantId, Username)` ve `(TenantId, CustomerCode)`
+    `WHERE "DeletedAtMs" IS NULL` — cari başına tek canlı hesap; silinen hesabın adı ve carisi yeniden kullanılabilir.
+  - `catalog_images`: `Id` (sunucu üretir), `TenantId`, `StockCode(64)`, `Kind(8)` link|file, `Url(2048)` (yalnız link; sunucu indirmez), `SourceHash(80)` göndericinin özgün parmak izi,
+    `Source(8)` phone|panel, `SortOrder`, `SizeBytes` (iki varyant toplamı; kota bunu toplar), `HasSmall`, `HasLarge`, `ContentType(32)`, `Sha256Small/Large(64)`, `CreatedAtMs`, `CreatedByUserId`.
+    UNIQUE `(TenantId, StockCode, SourceHash)` (tekrar yükleme aynı satırı bulur).
+  - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade.
+  - `catalog_orders` (sipariş **talebi**, sipariş değil): `Id` = müşterinin `requestId`'si, `TenantId`, `AccountId` (FK yok; hesap yumuşak silinir), `CustomerCode(64)`, `CustomerName(200)`,
+    `AccountUsername(64)`, `No(16)` `KT-XXXXXX` UNIQUE `(TenantId, No)`, `Status(16)` NEW|CLAIMED|COMPLETED|REJECTED, `Note(1000)`, `RejectReason(500)`, `DocumentRef(128)` (çevrildiği
+    satışın `externalId`'si), `PriceListNo`, `PriceIncludesVat`, `DiscountPercent numeric(5,2)`, `Total numeric(18,2)`, `LineCount`, `LinesJson` jsonb, `AssignedUserId`, `ClaimedByUserId`,
+    `ClaimedByName(120)`, `ClaimedAtMs`, `ClosedByUserId`, `ClosedByName(120)`, `ClosedAtMs`, `SubmittedAtMs`, `UpdatedAtMs`. İndeks `(TenantId, Status, SubmittedAtMs)`,
+    `(TenantId, AccountId, SubmittedAtMs)`, `(TenantId, DocumentRef)`.
 
 ---
 

@@ -8,7 +8,7 @@
 
 | Modül | Dosya Bağlantısı | Ana Başlıklar |
 |---|---|---|
-| **00 — Sistem Mimarisi** | [[00_System_Overview]] | .NET 10, Katmanlı Mimari, Katı Referans Kuralları, WarningsAsErrors, Kullanıcı Yetkileri (kural 33), Kullanıcı Görünüm Tercihleri (kural 35) |
+| **00 — Sistem Mimarisi** | [[00_System_Overview]] | .NET 10, Katmanlı Mimari, Katı Referans Kuralları, WarningsAsErrors, Kullanıcı Yetkileri (kural 33), Kullanıcı Görünüm Tercihleri (kural 35), Müşteri Kataloğu Temeli (kural 36) |
 | **01 — Muhasebe Adaptörleri** | [[01_Accounting_Adapters]] | Mikro V15 (RECno) vs V16 (Guid), 7 Writer, Multi-Firm, Reconciliation |
 | **02 — Evrak & Yazıcı Standartları** | [[02_Hardware_Bluetooth_Printing]] | Evrak Serileri, Matbu İrsaliye, Merkezi Parametre Senkronizasyonu |
 | **03 — Veri Sözlüğü & Kurallar** | [[03_Data_Dictionary_and_Rules]] | Mikro SQL Tabloları, CentralApi PostgreSQL, SQLite LocalStore, Bakiye |

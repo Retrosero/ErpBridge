@@ -56,6 +56,23 @@ public sealed class RuntimeConfigurationTests
     }
 
     [Fact]
+    public void Non_test_host_with_a_public_catalog_requires_the_reverse_proxy_list()
+    {
+        var catalog = new Dictionary<string, string?> { ["CustomerCatalog:PublicHost"] = "katalog.appsgo.cloud" };
+
+        var withoutProxy = () => Program.ValidateRuntimeConfiguration(ValidConfiguration(catalog), allowTestDefaults: false);
+        withoutProxy.Should().Throw<InvalidOperationException>()
+            .WithMessage("*CustomerCatalog:PublicHost*ForwardedHeaders:KnownNetworks*");
+
+        catalog["ForwardedHeaders:KnownNetworks:0"] = "10.0.1.0/24";
+        var withProxy = () => Program.ValidateRuntimeConfiguration(ValidConfiguration(catalog), allowTestDefaults: false);
+        withProxy.Should().NotThrow();
+
+        var withoutCatalog = () => Program.ValidateRuntimeConfiguration(ValidConfiguration(new() { ["CustomerCatalog:PublicHost"] = "" }), allowTestDefaults: false);
+        withoutCatalog.Should().NotThrow("a host without the catalog runs as before");
+    }
+
+    [Fact]
     public void Test_host_allows_factory_defaults()
     {
         var configuration = BuildConfiguration(signingKey: null);
@@ -80,4 +97,18 @@ public sealed class RuntimeConfigurationTests
     }
 
     private static string VaultKey() => Convert.ToBase64String(new byte[32]);
+
+    /// <summary>Everything a production host needs, plus <paramref name="extra"/>.</summary>
+    private static IConfiguration ValidConfiguration(Dictionary<string, string?> extra)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["Jwt:SigningKey"] = "production-signing-key-that-is-long-enough-for-hs256",
+            ["ConnectionStrings:CentralApi"] = "Host=postgres;Database=erpbridge",
+            ["ApiKeyVault:MasterKey"] = VaultKey(),
+            ["Cors:AllowedOrigins:0"] = "https://admin.example.com",
+        };
+        foreach (var (key, value) in extra) settings[key] = value;
+        return new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+    }
 }

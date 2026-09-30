@@ -201,6 +201,12 @@ public static class RolePermissions
     /// books when there is no ERP behind them.
     /// </summary>
     public static bool CanEditNativeData(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.NativeBooksEdit);
+
+    /// <summary>
+    /// The web catalog's layout, customer accounts and every order request (GOAL_MUSTERI_KATALOGU T6). A locked key:
+    /// always admin and manager, never anyone else.
+    /// </summary>
+    public static bool CanManageCustomerCatalog(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.CustomerCatalogManage);
 }
 
 /// <summary>What a user may do in the approval centre, from their current row.</summary>

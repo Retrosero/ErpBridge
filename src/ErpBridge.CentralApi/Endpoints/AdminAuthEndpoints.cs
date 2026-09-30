@@ -3,6 +3,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,6 +34,7 @@ public static class AdminAuthEndpoints
             .Produces<AdminLoginResponse>(StatusCodes.Status200OK)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+            .Produces<ApiError>(StatusCodes.Status429TooManyRequests)
             .AllowAnonymous()
             .RequireRateLimiting(Program.AnonymousRateLimitPolicy);
 
@@ -59,6 +61,7 @@ public static class AdminAuthEndpoints
         [FromBody] AdminLoginRequest body,
         [FromServices] CentralApiDbContext db,
         [FromServices] IJwtIssuer jwt,
+        [FromServices] LoginThrottle throttle,
         HttpContext httpContext,
         CancellationToken ct)
     {
@@ -68,14 +71,20 @@ public static class AdminAuthEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "MISSING_CREDENTIALS", Message = "email and password are required." });
 
         var email = body.Email.Trim().ToLowerInvariant();
+        // Same slow-down as the staff sign-in: while the address waits, no password is checked.
+        if (throttle.RetryAfter(LoginThrottle.AdminArea, null, email) is { } wait)
+            return RateLimitedResponse.Result(wait);
+
         var admin = await db.AdminUsers.FirstOrDefaultAsync(a => a.Email == email, ct);
         // Same response shape for unknown email / wrong password / inactive admin —
         // do not leak which branch the caller hit.
         if (admin is null || !admin.IsActive || !BCrypt.Net.BCrypt.Verify(body.Password, admin.PasswordHash))
         {
+            throttle.RecordFailure(LoginThrottle.AdminArea, null, email);
             return JsonResults.Status(StatusCodes.Status401Unauthorized,
                 new ApiError { ErrorCode = "INVALID_CREDENTIALS", Message = "Invalid email or password." });
         }
+        throttle.RecordSuccess(LoginThrottle.AdminArea, null, email);
 
         // Update LastLoginAtUtc. Load+update (rather than ExecuteUpdate) so the
         // EF Core in-memory test provider — which does not translate
@@ -208,16 +217,10 @@ public static class AdminAuthEndpoints
 
     private static string ResolveClientIp(HttpContext httpContext)
     {
-        // Prefer the forwarded header when sitting behind a reverse proxy;
-        // fall back to the direct remote address. Capped at 64 chars to match
-        // the refresh_tokens.CreatedByIp column width.
-        var forwarded = httpContext.Request.Headers["X-Forwarded-For"].ToString();
-        if (!string.IsNullOrWhiteSpace(forwarded))
-        {
-            var first = forwarded.Split(',', 2)[0].Trim();
-            if (!string.IsNullOrEmpty(first))
-                return first.Length > 64 ? first[..64] : first;
-        }
+        // The connection address: behind Traefik the forwarded-headers middleware has already replaced it with
+        // the caller's (ForwardedHeadersSetup), and only when the proxy is trusted — a raw X-Forwarded-For
+        // header is whatever the caller wants it to be. Capped at 64 chars to match the
+        // refresh_tokens.CreatedByIp column width.
         var remote = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         return remote.Length > 64 ? remote[..64] : remote;
     }

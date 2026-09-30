@@ -72,6 +72,11 @@ services:
       # Go desktop app licensing: ECDSA P-256 private key (PKCS#8, one base64 line) that signs the tokens
       # POST /api/v1/go/license/activate returns. Empty disables only that endpoint (503); never commit it.
       GoLicense__SigningKey: ${GO_LICENSE_SIGNING_KEY:-}
+      # Müşteri kataloğu (docs/GOAL_MUSTERI_KATALOGU.md D3): empty keeps the web catalog off. A public host needs the
+      # reverse proxy (Traefik's network CIDR) or startup stops: without it every visitor shares one rate-limit bucket.
+      CustomerCatalog__PublicHost: ${CustomerCatalog__PublicHost:-}
+      CustomerCatalog__PublicBaseUrl: ${CustomerCatalog__PublicBaseUrl:-}
+      ForwardedHeaders__KnownNetworks__0: ${ForwardedHeaders__KnownNetworks__0:-}
       # Pin the bind port so the entrypoint does not need to rely on $PORT
       # being unset. The Dockerfile entrypoint already pins this in
       # /tmp/bind_port for the centralapi target; we mirror it here for

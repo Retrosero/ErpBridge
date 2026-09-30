@@ -56,7 +56,8 @@ public sealed record PermissionDefinition(
 public static class PermissionCatalog
 {
     /// <summary>Bumped when keys are added or their meaning changes; phones and the portal read it from the session.</summary>
-    public const int Version = 1;
+    /// <remarks>2: <see cref="K.CustomerCatalogManage"/> (GOAL_MUSTERI_KATALOGU).</remarks>
+    public const int Version = 2;
 
     /// <summary>The roles whose template a company may change (ADMIN is fixed at everything).</summary>
     public static readonly IReadOnlyList<string> EditableRoles = [R.Manager, R.Sales, R.Warehouse, R.Accounting];
@@ -145,6 +146,9 @@ public static class PermissionCatalog
             Flag(K.MasterDataImport, PermissionGroup.Actions, "Excel ile toplu aktarım", "Ürün ve carileri Excel'den içe alma.", admin),
             Flag(K.NativeBooksEdit, PermissionGroup.Actions, "Belge ve hesap düzeltme", "ERP'siz firmada panelden belge, ödeme ve cari hareketi düzeltme veya iptal.", admin, server: true),
             Flag(K.XmlFeedManage, PermissionGroup.Actions, "XML ürün modülü ayarları", "XML ürün beslemesini kurma ve değiştirme.", admin, server: true),
+            // Locked: customers' passwords and discounts stay with admin and manager; a template cannot give them away.
+            Flag(K.CustomerCatalogManage, PermissionGroup.Actions, "Web katalog yönetimi",
+                "Müşteri kataloğu düzeni, müşteri erişimi (kullanıcı adı/şifre, iskonto) ve katalog siparişleri.", managers, server: true, locked: true),
             Flag(K.SaleNegativeStock, PermissionGroup.Actions, "Eksi stoğa satış", "Firma eksi stoğa izin veriyorsa, stoğu olmayan ürünü satabilir.", field),
             Flag(K.SaleOpenAccount, PermissionGroup.Actions, "Açık hesap (veresiye) satış", "Satışı cari borç olarak kapatabilir; yetkisi yoksa cari borçlu satış onaya gider.", field, server: true),
 
