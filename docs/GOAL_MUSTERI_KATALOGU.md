@@ -57,7 +57,6 @@ Zamanlar unix ms `long`; tablolar snake_case; her tablonun `TenantId`'si `tenant
 | `catalog_category_settings` PK (`TenantId`,`CategoryKey` varchar 160) | `SortOrder int?`, `IsHidden bool`, `UpdatedAtMs` |
 | `catalog_product_settings` PK (`TenantId`,`StockCode` varchar 64) | `SortOrder int?`, `IsHidden`, `NoDiscount`, `CartonOnly`, `CartonQuantity int?` (≥2), `UpdatedAtMs`. Satır yalnız varsayılandan farklıysa |
 | `catalog_accounts` PK `Id` | `TenantId`, `CustomerCode` (64), `CustomerName` (200), `Username` (64, normalize `^[a-z0-9._-]{3,64}$`), `PasswordHash` (100, BCrypt), `IsActive`, `DiscountPercent numeric(5,2)` 0–99.99, `PriceListNo int?`, `VisibilityJson jsonb` `{mode,rules}`, `ShowStatement`, `ShowInvoices`, `ShowPurchased`, `CanOrder`, `ResponsibleUserId uuid?`, `TokenVersion int`, `LastLoginAtMs?`, `PasswordChangedAtMs`, `CreatedAtMs`, `UpdatedAtMs`, `CreatedByUserId?`, `CreatedByName` (120), `UpdatedByUserId?`, `DeletedAtMs?`. Filtreli unique: (`TenantId`,`Username`) ve (`TenantId`,`CustomerCode`) where `DeletedAtMs IS NULL` |
-| `catalog_login_throttle` PK (`TenantId`,`Username`) | `FailureCount int`, `WindowStartMs long`, `BlockedUntilMs long?` — hesap var olmasa da tutulur (bilgi sızmasın) |
 | `catalog_images` PK `Id` (sunucu üretir) | `TenantId`, `StockCode`, `Kind` `link\|file`, `Url` (2048)?, `SourceHash` (80), `Source` `phone\|panel`, `SortOrder`, `SizeBytes int` (iki varyant toplamı), `HasSmall bool`, `HasLarge bool`, `ContentType` (32)?, `Sha256Small/Large` (64)?, `CreatedAtMs`, `CreatedByUserId?`. Unique (`TenantId`,`StockCode`,`SourceHash`) |
 | `catalog_image_blobs` PK (`ImageId`,`Variant` `s\|l`) | `Data bytea`, FK cascade |
 | `catalog_orders` PK `Id` (müşterinin `requestId`'si) | `TenantId`, `AccountId`, `CustomerCode`, `CustomerName`, `AccountUsername`, `No` (16, `KT-XXXXXX`, unique per tenant), `Status` (16), `Note` (1000)?, `RejectReason` (500)?, `DocumentRef` (128)?, `PriceListNo`, `PriceIncludesVat`, `DiscountPercent`, `Total numeric(18,2)`, `LineCount`, `LinesJson jsonb`, `AssignedUserId?`, `ClaimedByUserId?`, `ClaimedByName`?, `ClaimedAtMs?`, `ClosedByUserId?`, `ClosedByName?`, `ClosedAtMs?`, `SubmittedAtMs`, `UpdatedAtMs`. İndeks (`TenantId`,`Status`,`SubmittedAtMs`), (`TenantId`,`AccountId`,`SubmittedAtMs`), (`TenantId`,`DocumentRef`) |
@@ -188,7 +187,8 @@ max-age=31536000, immutable`, `ETag`, `If-None-Match` → 304 (yalnız meta okun
 - `UseForwardedHeaders` (`XForwardedFor|XForwardedProto`, `ForwardLimit=1`, `KnownNetworks`/`KnownProxies`
   `ForwardedHeaders:*` ayarından; `XForwardedHost` yok). `CustomerCatalog:PublicHost` doluyken ayar zorunlu
   (`ValidateRuntimeConfiguration`). IP bölümlemesi IPv6'da /64. `AdminAuthEndpoints.ResolveClientIp` → `RemoteIpAddress`.
-- Giriş: `BCrypt.Verify` her zaman (hesap yoksa ortak sahte hash); `catalog_login_throttle`; firma başına giriş kovası;
+- Giriş: `BCrypt.Verify` her zaman (hesap yoksa ortak sahte hash); bellek içi `LoginThrottle` (tek container varsayımı,
+  `TenantEventHub`/`PortalRecordMirror` gibi; anahtar = alan + firma + normalize kullanıcı adı, hesap olmasa da sayılır); firma başına giriş kovası;
   BCrypt eşzamanlılık sınırı (8). Aynı yavaşlatıcı personel girişinde.
 - `OnRejected`: tüm 429'lara `RATE_LIMITED` gövdesi + `Retry-After`.
 - Katalog alan adında izin listesi: `/assets/**`, `/robots.txt`, `/favicon.svg`, `/api/v1/catalog/**`, `/health*`, kabuk
