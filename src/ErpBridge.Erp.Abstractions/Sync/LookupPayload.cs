@@ -1,4 +1,4 @@
-namespace ErpBridge.Erp.Abstractions.Sync;
+﻿namespace ErpBridge.Erp.Abstractions.Sync;
 
 /// <summary>
 /// Genel amaçlı lookup (dimension) record carried inside a <see cref="SyncPackage"/>.
@@ -15,6 +15,8 @@ namespace ErpBridge.Erp.Abstractions.Sync;
 ///   <c>"vat_rate"</c>             — KDV tanımları (Mikro vergi işaretçisi → oran)
 ///   <c>"stock_brand"</c>          — stok markaları (<c>STOK_MARKALARI</c>; kod → ad)
 ///   <c>"stock_main_group"</c>     — stok ana grupları (<c>STOK_ANA_GRUPLARI</c>; kod → ad)
+///   <c>"stock_sub_group"</c>      — stok alt grupları (<c>STOK_ALT_GRUPLARI</c>); kod <c>anaGrup|altGrup</c>,
+///                                 ad ürünün telefondaki kategorisi, <see cref="ParentCode"/> ana grup
 /// For Phase 5 a single record is enough; typed variants are kept as
 /// skeletons to be filled in by Phase 6+ readers that need richer fields
 /// (warehouse group numbers, salesperson names, etc.).

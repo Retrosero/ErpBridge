@@ -96,6 +96,53 @@ public class AndroidEndpointsTests : IClassFixture<CentralApiFactory>
         product.GetProperty("stockByWarehouse").GetProperty("Depo 2").GetInt32().Should().Be(3);
     }
 
+    /// <summary>
+    /// Ürün kategorisi Mikro stok alt grubunun adıdır (STOK_ALT_GRUPLARI, lookups `stock_sub_group`,
+    /// kod `anaGrup|altGrup`). Alt grup kodu tek başına benzersiz değildir; ana grup tutmazsa kod tek
+    /// ada çıkıyorsa o ad, `#YOK` kategori değildir, kendi `kategori`'sini taşıyan kart korunur.
+    /// </summary>
+    [Fact]
+    public async Task Product_catalog_names_the_category_after_the_stock_sub_group()
+    {
+        var client = _factory.CreateClient();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync($"ANDROID-CATEGORY-{suffix}", "Category tenant");
+        const string payload = """
+            {
+              "stocks": [
+                {"stockCode":"S1","name":"Simit","mainGroupCode":"DNZ","subGroupCode":"10","barcodes":[]},
+                {"stockCode":"S2","name":"Yelek","mainGroupCode":"OYN","subGroupCode":"10","barcodes":[]},
+                {"stockCode":"S3","name":"Ana grubu tutmayan","mainGroupCode":"XXX","subGroupCode":"O-11","barcodes":[]},
+                {"stockCode":"S4","name":"Grubu yok","mainGroupCode":"","subGroupCode":"#YOK","barcodes":[]},
+                {"stockCode":"S5","name":"Tanımsız grup","subGroupCode":"O-99","barcodes":[]},
+                {"stockCode":"S6","name":"ERP'siz kart","kategori":"Oyuncak","barcodes":[]}
+              ],
+              "lookups": [
+                {"kind":"stock_sub_group","code":"DNZ|10","name":"HAVUZ","parentCode":"DNZ"},
+                {"kind":"stock_sub_group","code":"OYN|10","name":"YELEK","parentCode":"OYN"},
+                {"kind":"stock_sub_group","code":"OYN|O-11","name":"Silahlar","parentCode":"OYN"}
+              ]
+            }
+            """;
+        await _factory.SeedBootstrapPackageAsync(tenant.Id, payload);
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(
+            tenant.Id, $"AK-ANDROID-CATEGORY-{suffix}", scopes: new[] { "mobile:read" });
+        Authorize(client, tenant.Id, rawKey);
+
+        var response = await client.PostAsync("/api/v1/android/sync/urun", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var byCode = document.RootElement.GetProperty("items").EnumerateArray()
+            .ToDictionary(p => p.GetProperty("stockCode").GetString()!, p => p.TryGetProperty("kategori", out var k) ? k.GetString() : null);
+        byCode["S1"].Should().Be("HAVUZ", "(main, sub) pair decides: code 10 is two sub-groups");
+        byCode["S2"].Should().Be("YELEK");
+        byCode["S3"].Should().Be("Silahlar", "the sub-group code names one sub-group even if the main group does not match");
+        byCode["S4"].Should().BeNull("Mikro's #YOK placeholder is no category");
+        byCode["S5"].Should().Be("O-99", "an unknown sub-group still groups its products by code");
+        byCode["S6"].Should().Be("Oyuncak", "an ERP-less card keeps its own category");
+    }
+
     [Fact]
     public async Task Price_list_definitions_return_erp_names()
     {

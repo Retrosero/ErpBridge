@@ -483,6 +483,18 @@ FROM STOK_ANA_GRUPLARI
 WHERE ISNULL(san_iptal, 0) = 0 AND LTRIM(RTRIM(ISNULL(san_kod, ''))) <> ''
   AND (@changedSinceUtc IS NULL OR COALESCE(san_lastup_date, san_create_date) > @changedSinceUtc)
 UNION ALL
+-- Ürün kategorisi: stok alt grubu adı (STOK_ALT_GRUPLARI sta_kod → sta_isim). Alt grup kodu tek başına
+-- benzersiz değildir (V16_03'te '10' hem YELEK hem HAVUZ, farklı ana grupta); kod 'anaGrup|altGrup'
+-- çiftidir, ParentCode ana grup. Telefonun `kategori`'si bundan kurulur (StockCategories).
+SELECT 'stock_sub_group',
+       CAST(ISNULL(LTRIM(RTRIM(sta_ana_grup_kod)), '') + N'|' + LTRIM(RTRIM(sta_kod)) AS NVARCHAR(110)),
+       CAST(ISNULL(sta_isim, '') AS NVARCHAR(200)),
+       CAST(NULLIF(LTRIM(RTRIM(ISNULL(sta_ana_grup_kod, ''))), '') AS NVARCHAR(50)),
+       CAST(NULL AS NVARCHAR(10)), CAST(NULL AS BIT), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(50)), CAST(NULL AS NVARCHAR(20)), CAST(NULL AS DECIMAL(9,4))
+FROM STOK_ALT_GRUPLARI
+WHERE ISNULL(sta_iptal, 0) = 0 AND LTRIM(RTRIM(ISNULL(sta_kod, ''))) <> ''
+  AND (@changedSinceUtc IS NULL OR COALESCE(sta_lastup_date, sta_create_date) > @changedSinceUtc)
+UNION ALL
 -- ERP yazım 3 Y2b: gider kartları (MASRAF_HESAPLARI). Telefon gider girerken bunlardan birini
 -- seçer ve kodu `cha_kasa_hizkod` olarak Mikro'ya yazılır (referans §13). Kendi bölümü yerine
 -- lookups içinde taşınır: 19 satırlık bir katalog için var olan boru hattı yeterli.

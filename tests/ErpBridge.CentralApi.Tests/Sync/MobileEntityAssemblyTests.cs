@@ -57,6 +57,59 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
     }
 
     [Fact]
+    public async Task A_product_carries_its_stock_sub_group_name_as_category()
+    {
+        var ctx = await SeedAsync("CATEGORY");
+        await UploadAsync(ctx, incremental: false,
+            ("stocks", [new { stockCode = "S-1", name = "Simit", mainGroupCode = "DNZ", subGroupCode = "D-02" }]),
+            ("lookups", [new { kind = "stock_sub_group", code = "DNZ|D-02", name = "SİMİTLER", parentCode = "DNZ" }]));
+
+        var page = await PullAsync(ctx, null);
+
+        var product = page.Changes.Should().ContainSingle(c => c.Entity == "urun").Subject;
+        product.Data!.Value.GetProperty("kategori").GetString().Should().Be("SİMİTLER",
+            "the phone's category is the Mikro stock sub-group's name");
+    }
+
+    /// <summary>
+    /// The category is joined in when the product is served, so a sub-group that appears or is
+    /// renamed must send its products again although their own rows did not change. The first
+    /// upload after the agent starts sending sub-groups is exactly this: every device already
+    /// holds the products, without a category.
+    /// </summary>
+    [Fact]
+    public async Task A_new_or_renamed_sub_group_resends_only_the_products_in_it()
+    {
+        var ctx = await SeedAsync("REGROUP");
+        await UploadAsync(ctx, incremental: false,
+            ("stocks", [
+                new { stockCode = "S-1", name = "Simit", mainGroupCode = "DNZ", subGroupCode = "D-02" },
+                new { stockCode = "S-2", name = "Robot", mainGroupCode = "OYN", subGroupCode = "O-38" },
+            ]));
+        var cursor = (await PullAsync(ctx, null)).NextCursor;
+
+        await UploadAsync(ctx, incremental: true,
+            ("lookups", [new { kind = "stock_sub_group", code = "DNZ|D-02", name = "SİMİTLER", parentCode = "DNZ" }]));
+        var added = await PullAsync(ctx, cursor);
+
+        var resent = added.Changes.Where(c => c.Entity == "urun").ToList();
+        resent.Should().ContainSingle("only the product in the new sub-group is affected");
+        resent[0].Key.Should().Be("S-1");
+        resent[0].Data!.Value.GetProperty("kategori").GetString().Should().Be("SİMİTLER");
+
+        await UploadAsync(ctx, incremental: true,
+            ("lookups", [new { kind = "stock_sub_group", code = "DNZ|D-02", name = "DENİZ SİMİTLERİ", parentCode = "DNZ" }]));
+        var renamed = await PullAsync(ctx, added.NextCursor);
+        renamed.Changes.Should().ContainSingle(c => c.Entity == "urun" && c.Key == "S-1").Subject
+            .Data!.Value.GetProperty("kategori").GetString().Should().Be("DENİZ SİMİTLERİ");
+
+        await UploadAsync(ctx, incremental: true,
+            ("lookups", [new { kind = "stock_sub_group", code = "DNZ|D-02", name = "DENİZ SİMİTLERİ", parentCode = "DNZ" }]));
+        var again = await PullAsync(ctx, renamed.NextCursor);
+        again.Changes.Should().BeEmpty("a byte-identical sub-group moves nothing");
+    }
+
+    [Fact]
     public async Task Changing_only_the_price_still_hands_the_client_a_whole_product()
     {
         // The reason the join cannot move to the device: a price row on its own

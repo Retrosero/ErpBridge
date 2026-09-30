@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Snapshots;
+using ErpBridge.CentralApi.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
@@ -349,6 +350,9 @@ public static class AndroidEndpoints
                     .ToList(),
                 StringComparer.OrdinalIgnoreCase);
 
+        // Ürün kategorisi: Mikro stok alt grubunun adı (StockCategories).
+        var categories = StockCategories.From(GetArray(root, "lookups"));
+
         var inventoryByStock = GetArray(root, "inventory")
             .Where(item => !string.IsNullOrWhiteSpace(GetString(item, "stockCode")))
             .GroupBy(item => GetString(item, "stockCode")!, StringComparer.OrdinalIgnoreCase)
@@ -378,6 +382,7 @@ public static class AndroidEndpoints
             mapped["ambalaj"] = ambalaj;
             mapped["marka"] = marka;
             mapped["koliAdet"] = koliAdet;
+            categories.Apply(mapped, stock);
             mapped["sto_yer_kod"] = reyonKod;
             mapped["sto_sektor_kodu"] = olcu;
             mapped["sto_ambalaj_kodu"] = ambalaj;

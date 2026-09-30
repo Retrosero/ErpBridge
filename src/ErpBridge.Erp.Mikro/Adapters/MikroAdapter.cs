@@ -72,8 +72,10 @@ public sealed class MikroAdapter : IErpAdapter
     /// (<c>cha_satici_kodu</c>/<c>sth_plasiyer_kodu</c>) so sales targets count ERP sales per salesperson, and
     /// lookups carry brand and main-group names (<c>stock_brand</c>, <c>stock_main_group</c>). Past rows predate
     /// the cursor, so only a one-time full read gives them the new field.
+    /// 9 (2026-09-30): lookups carry the stock sub-groups (<c>stock_sub_group</c>, <c>STOK_ALT_GRUPLARI</c>) that
+    /// become the phone's product category. Existing sub-groups predate the cursor, so only a full read sends them.
     /// </summary>
-    public int SnapshotProjectionVersion => 8;
+    public int SnapshotProjectionVersion => 9;
 
     /// <summary>
     /// Mikro V15 change log backed only by the existing

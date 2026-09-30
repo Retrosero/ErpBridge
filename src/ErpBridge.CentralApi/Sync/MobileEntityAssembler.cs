@@ -327,6 +327,7 @@ public static class MobileEntityAssembler
         // enough to read whole, and shared by every product on the page.
         var priceListNames = new Dictionary<int, string>();
         var vatIncludedPriceLists = new HashSet<int>();
+        var categories = new StockCategories();
         if (stockCodes.Count > 0)
         {
             var lookups = await db.MobileRecords.AsNoTracking()
@@ -338,7 +339,13 @@ public static class MobileEntityAssembler
                 if (string.IsNullOrWhiteSpace(payload)) continue;
                 using var document = JsonDocument.Parse(payload);
                 var item = document.RootElement;
-                if (!string.Equals(AndroidEndpoints.GetString(item, "kind"), "price_list", StringComparison.OrdinalIgnoreCase))
+                var kind = AndroidEndpoints.GetString(item, "kind");
+                if (string.Equals(kind, StockCategories.LookupKind, StringComparison.OrdinalIgnoreCase))
+                {
+                    categories.Add(AndroidEndpoints.GetString(item, "code"), AndroidEndpoints.GetString(item, "name"));
+                    continue;
+                }
+                if (!string.Equals(kind, "price_list", StringComparison.OrdinalIgnoreCase))
                     continue;
                 var number = AndroidEndpoints.GetInt32(item, "code")
                              ?? (int.TryParse(AndroidEndpoints.GetString(item, "code"), out var parsed) ? parsed : 0);
@@ -348,7 +355,7 @@ public static class MobileEntityAssembler
             }
         }
 
-        return new AssemblySources(stockParts, customerRows, priceListNames, vatIncludedPriceLists);
+        return new AssemblySources(stockParts, customerRows, priceListNames, vatIncludedPriceLists, categories);
     }
 
     /// <summary>Everything needed to rebuild a page's worth of records.</summary>
@@ -356,11 +363,13 @@ public static class MobileEntityAssembler
     /// <param name="Customers">Customer rows, keyed by customer code.</param>
     /// <param name="PriceListNames">Price-list number to display name.</param>
     /// <param name="VatIncludedPriceLists">Numbers of the price lists whose prices include VAT.</param>
+    /// <param name="Categories">Stock sub-group names, which become the product's <c>kategori</c>.</param>
     public sealed record AssemblySources(
         Dictionary<string, List<MobileRecord>> StockParts,
         Dictionary<string, MobileRecord> Customers,
         Dictionary<int, string> PriceListNames,
-        HashSet<int>? VatIncludedPriceLists = null);
+        HashSet<int>? VatIncludedPriceLists = null,
+        StockCategories? Categories = null);
 
     /// <summary>
     /// Rebuilds one product. Returns null when the stock card itself is gone —
@@ -393,6 +402,7 @@ public static class MobileEntityAssembler
         mapped["ambalaj"] = ambalaj;
         mapped["marka"] = marka;
         mapped["koliAdet"] = koliAdet;
+        (sources.Categories ?? new StockCategories()).Apply(mapped, stock);
         mapped["sto_yer_kod"] = reyonKod;
         mapped["sto_sektor_kodu"] = olcu;
         mapped["sto_ambalaj_kodu"] = ambalaj;
