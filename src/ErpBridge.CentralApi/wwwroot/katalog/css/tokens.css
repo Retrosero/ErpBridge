@@ -1,0 +1,299 @@
+/*
+ * KAYNAK: Siparis_Cepte docs/design-tokens.css — birebir kopya (GOAL_MUSTERI_KATALOGU §7).
+ * Burada düzenlenmez: önce uygulamadaki Kotlin token'ı, sonra Siparis_Cepte aynası, sonra bu kopya güncellenir.
+ * Web kataloğuna özgü uyarlamalar css/app.css içindedir.
+ */
+
+/*
+ * Sipariş Cepte - Design Tokens (CSS)
+ *
+ * Bu dosya, uygulamadaki Kotlin tokenlarının birebir aynasıdır.
+ * Amacı: Claude Design tuvali, HTML mockup, sunum veya web tarafı gibi
+ * Kotlin çalıştırmayan ortamlarda AYNI tasarım dilini kullanabilmek.
+ *
+ * TEK DOĞRULUK KAYNAĞI UYGULAMA KODUDUR:
+ *   app/src/main/java/com/example/ui/theme/AppColors.kt
+ *   app/src/main/java/com/example/ui/theme/Tokens.kt
+ *   app/src/main/java/com/example/ui/theme/Type.kt
+ *
+ * Oradaki bir değer değişirse bu dosya da güncellenir.
+ * Dokümantasyon: docs/DESIGN_SYSTEM.md
+ */
+
+:root {
+  /* ---------- Marka (açık mavi / azure) ---------- */
+  --brand-25: #F5FAFF;
+  --brand-50: #EFF8FF;
+  --brand-100: #D1E9FF;
+  --brand-200: #B2DDFF;
+  --brand-300: #84CAFF;
+  --brand-400: #53B1FD;
+  --brand-500: #2E90FA;
+  --brand-600: #1570EF;
+  --brand-700: #175CD3;
+  --brand-800: #1849A9;
+  --brand-900: #194185;
+
+  /* ---------- Nötr ---------- */
+  --gray-25: #FCFCFD;
+  --gray-50: #F9FAFB;
+  --gray-100: #F2F4F7;
+  --gray-200: #EAECF0;
+  --gray-300: #D0D5DD;
+  --gray-400: #98A2B3;
+  --gray-500: #667085;
+  --gray-600: #475467;
+  --gray-700: #344054;
+  --gray-800: #1D2939;
+  --gray-900: #101828;
+
+  /* ---------- Anlamsal: marka / aksiyon ---------- */
+  --color-primary: var(--brand-600);
+  --color-primary-pressed: var(--brand-700);
+  --color-primary-accent: var(--brand-500);
+  --color-primary-soft: var(--brand-50);
+  --color-primary-soft-border: var(--brand-200);
+  --color-on-primary: #FFFFFF;
+  --color-on-primary-soft: var(--brand-700);
+
+  /* ---------- Anlamsal: yüzey ---------- */
+  --color-background: #F6F8FB;
+  --color-surface: #FFFFFF;
+  --color-surface-secondary: var(--gray-100);
+  --color-surface-tertiary: var(--gray-50);
+
+  /* ---------- Anlamsal: kenarlık ---------- */
+  --color-border: var(--gray-200);
+  --color-border-strong: var(--gray-300);
+  --color-divider: var(--gray-200);
+
+  /* ---------- Anlamsal: metin ---------- */
+  --color-text-primary: var(--gray-900);
+  --color-text-secondary: var(--gray-600);
+  --color-text-muted: var(--gray-500);
+  --color-text-disabled: var(--gray-400);
+  --color-text-on-dark: #FFFFFF;
+
+  /* ---------- Durum ---------- */
+  --color-success: #079455;
+  --color-success-strong: #067647;
+  --color-success-soft: #ECFDF3;
+  --color-success-soft-border: #A6F4C5;
+
+  --color-warning: #DC6803;
+  --color-warning-strong: #B54708;
+  --color-warning-soft: #FFFAEB;
+  --color-warning-soft-border: #FEDF89;
+
+  --color-danger: #D92D20;
+  --color-danger-strong: #B42318;
+  --color-danger-soft: #FEF3F2;
+  --color-danger-soft-border: #FECDCA;
+
+  --color-info: var(--brand-600);
+  --color-info-soft: var(--brand-50);
+  --color-info-soft-border: var(--brand-200);
+
+  /* ---------- İş alanı ----------
+     DİKKAT: Uygulamada pozitif bakiye cari BORCUDUR (kırmızı),
+     negatif bakiye cari ALACAĞIDIR (yeşil). */
+  --color-debt: #B42318;
+  --color-credit: #067647;
+  --color-balance-neutral: var(--gray-600);
+  --color-amount-positive: #067647;
+  --color-amount-negative: #B42318;
+
+  --color-scrim: rgba(16, 24, 40, 0.32);
+
+  /* ---------- Boşluk (4px tabanlı) ---------- */
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-xxl: 24px;
+  --space-xxxl: 32px;
+  --space-huge: 40px;
+  --space-screen-h: 8px;
+  --space-bottombar-clearance: 96px;
+
+  /* ---------- Köşe yarıçapı ---------- */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;  /* buton, input */
+  --radius-lg: 16px;  /* kart */
+  --radius-xl: 20px;  /* bottom sheet */
+  --radius-full: 999px;
+
+  /* ---------- Gölge ---------- */
+  --elevation-none: none;
+  --elevation-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --elevation-sm: 0 1px 3px rgba(16, 24, 40, 0.10);
+  --elevation-md: 0 8px 24px rgba(16, 24, 40, 0.12);
+  --elevation-lg: 0 12px 32px rgba(16, 24, 40, 0.16);
+
+  /* ---------- Ölçüler ---------- */
+  --size-touch-min: 48px;
+  --size-button-lg: 52px;
+  --size-button-md: 44px;
+  --size-button-sm: 36px;
+  --size-input: 52px;
+  --size-search-input: 48px;
+  --size-icon-xs: 14px;
+  --size-icon-sm: 18px;
+  --size-icon-md: 20px;
+  --size-icon-lg: 24px;
+  --size-icon-xl: 28px;
+  --size-avatar-sm: 32px;
+  --size-avatar-md: 40px;
+  --size-avatar-lg: 48px;
+  --size-topbar: 56px;
+  --size-bottombar: 60px;
+  --size-nav-icon: 22px;
+  --size-nav-action: 40px;
+  --size-hairline: 1px;
+
+  /* ---------- Hareket ---------- */
+  --motion-instant: 120ms;
+  --motion-fast: 180ms;
+  --motion-normal: 240ms;
+  --motion-search-debounce: 200ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---------- Tipografi ---------- */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-numeric: "tnum";
+}
+
+/* ---------- Tipografi ölçeği ----------
+   Uygulamadaki AppType ile birebir. sp -> px olarak eşlenir. */
+.t-display    { font: 700 28px/34px var(--font-family); letter-spacing: -0.4px; }
+.t-heading    { font: 700 22px/28px var(--font-family); letter-spacing: -0.2px; }
+.t-title      { font: 600 17px/22px var(--font-family); }
+.t-title-sm   { font: 600 15px/20px var(--font-family); }
+.t-body       { font: 400 15px/21px var(--font-family); }
+.t-body-strong{ font: 500 15px/21px var(--font-family); }
+.t-body-sm    { font: 400 13px/18px var(--font-family); }
+.t-label      { font: 500 13px/16px var(--font-family); }
+.t-caption    { font: 400 12px/16px var(--font-family); }
+.t-button     { font: 600 15px/20px var(--font-family); }
+.t-amount     { font: 600 15px/20px var(--font-family); font-feature-settings: var(--font-numeric); }
+.t-amount-lg  { font: 700 20px/26px var(--font-family); font-feature-settings: var(--font-numeric); }
+.t-amount-sm  { font: 500 13px/18px var(--font-family); font-feature-settings: var(--font-numeric); }
+
+/* ---------- Hazır bileşen sınıfları ----------
+   Mockup çizerken bunları kullanmak, tuvaldeki tasarımın
+   uygulamadaki gerçek bileşenlerle aynı görünmesini sağlar. */
+
+.app-screen {
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+}
+
+.app-card {
+  background: var(--color-surface);
+  border: var(--size-hairline) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+}
+
+.app-btn {
+  height: var(--size-button-lg);
+  border-radius: var(--radius-md);
+  border: none;
+  padding: 0 var(--space-lg);
+  font: 600 15px/20px var(--font-family);
+  cursor: pointer;
+}
+.app-btn--primary   { background: var(--color-primary); color: var(--color-on-primary); }
+.app-btn--secondary { background: var(--color-primary-soft); color: var(--color-on-primary-soft); border: var(--size-hairline) solid var(--color-primary-soft-border); }
+.app-btn--ghost     { background: transparent; color: var(--color-text-secondary); border: var(--size-hairline) solid var(--color-border); }
+.app-btn--danger    { background: var(--color-danger); color: #FFFFFF; }
+.app-btn--md { height: var(--size-button-md); }
+.app-btn--sm { height: var(--size-button-sm); font-size: 13px; padding: 0 var(--space-md); }
+
+.app-input {
+  height: var(--size-input);
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: var(--radius-md);
+  border: var(--size-hairline) solid var(--color-border-strong);
+  background: var(--color-surface);
+  padding: 0 var(--space-md);
+  font: 400 15px/21px var(--font-family);
+  color: var(--color-text-primary);
+}
+.app-input::placeholder { color: var(--color-text-disabled); }
+.app-input:focus { outline: none; border-color: var(--color-primary); }
+
+.app-search {
+  height: var(--size-search-input);
+  background: var(--color-surface-secondary);
+  border: none;
+}
+
+.app-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  border-radius: var(--radius-xs);
+  padding: var(--space-xs) var(--space-sm);
+  font: 400 12px/16px var(--font-family);
+  border: var(--size-hairline) solid transparent;
+}
+.app-badge--neutral { background: var(--color-surface-secondary); color: var(--color-text-secondary); border-color: var(--color-border); }
+.app-badge--brand   { background: var(--color-primary-soft); color: var(--color-on-primary-soft); border-color: var(--color-primary-soft-border); }
+.app-badge--success { background: var(--color-success-soft); color: var(--color-success-strong); border-color: var(--color-success-soft-border); }
+.app-badge--warning { background: var(--color-warning-soft); color: var(--color-warning-strong); border-color: var(--color-warning-soft-border); }
+.app-badge--danger  { background: var(--color-danger-soft); color: var(--color-danger-strong); border-color: var(--color-danger-soft-border); }
+
+.app-listitem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-height: var(--size-touch-min);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--color-surface);
+}
+
+.app-divider { height: 1px; background: var(--color-divider); border: 0; margin: 0; }
+
+.app-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: var(--size-topbar);
+  padding: 0 var(--space-sm);
+  background: var(--color-surface);
+  border-bottom: var(--size-hairline) solid var(--color-border);
+}
+
+.app-bottombar {
+  display: flex;
+  align-items: center;
+  min-height: var(--size-bottombar);
+  background: var(--color-surface);
+  border-top: var(--size-hairline) solid var(--color-border);
+}
+.app-bottombar__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xxs);
+  color: var(--color-text-muted);
+  font: 400 12px/16px var(--font-family);
+}
+.app-bottombar__item--active { color: var(--color-primary); font-weight: 600; }
+.app-bottombar__action {
+  width: var(--size-nav-action);
+  height: var(--size-nav-action);
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
