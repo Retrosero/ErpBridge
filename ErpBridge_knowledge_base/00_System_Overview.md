@@ -1025,6 +1025,9 @@ registration ayrı bir composition projesine taşınır.
      testiyle gelir: `MikroSalespersonReaderLiveTests` (salt okunur; `ERPBridge_RUN_INTEGRATION=1`, `ERPBridge_MIKRO_WRITE_DB`,
      bu makinede `ERPBridge_SCHEMA_SERVER=.` — TCP kapalı). **Dikkat:** `MikroCustomerLedgerReaderLiveTests` içinde yazan test de
      var; yalnız izinli kopyada (`MikroDB_V15_DEMO`) ve filtreyle çalıştırılır.
+     Stok hareketi projeksiyonu `MikroDbReader.StockTransactionsSql` (`internal`) sabitindedir;
+     `StockTransactionProjectionTests` SELECT listesinden kolon adı/sıra/CAST tipini çıkarıp Dapper'la veritabanısız
+     materyalize eder — CI'da her zaman çalışır (#185). Her kolon `CAST(... AS <tip>) AS <Ad>` biçiminde olmalı.
 
 27. **Görevler ve bildirimler merkezdedir: `Tasks/TaskService` + `Endpoints/MobileTaskEndpoints` (GOAL_GOREVLER, 2026-09-25).**
    - **ERP'ye hiç yazılmaz.** Görev, alt görev, yorum, resim ve bildirim ERP'li ve ERP'siz firmada aynı tablolarda
