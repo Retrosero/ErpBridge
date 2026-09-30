@@ -1,0 +1,254 @@
+@page "/ekipler"
+@inherits PortalPageBase
+
+<PageTitle>Bölge ve ekipler — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Bölge ve ekipler" Eyebrow="Hedefler & rut" Subtitle="Saha kişileri ekiplere, ekipler bölgelere bağlanır; sorumlu yönetici yalnız kendi ekiplerinin hedef ve rutlarını görür" Busy="Busy">
+        <Actions>
+            @if (_list?.CanEdit == true)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Map" Disabled="@Busy" OnClick="() => Open(null, TeamKinds.Region)" id="new-region">Yeni bölge</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.GroupAdd" Disabled="@Busy" OnClick="() => Open(null, TeamKinds.Team)" id="new-team">Yeni ekip</MudButton>
+            }
+        </Actions>
+    </PageHeader>
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_list is not null)
+    {
+        @if (!_list.CanEdit)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="page-alert" id="read-only">Ekip yapısını yalnız admin değiştirir; burada sorumluluğunuzdaki ekipler görünür.</MudAlert>
+        }
+        @if (_list.Teams.Length == 0)
+        {
+            <EmptyState Id="teams-empty" Icon="@Icons.Material.Rounded.Groups" Title="Henüz bölge ya da ekip yok."
+                        Hint="Ekip kurulmadan da hedef girilebilir; ekipler, yöneticiyi yalnız kendi ekibine sınırlamak ve ekip hedefi vermek içindir." />
+        }
+        else
+        {
+            <div class="team-tree" id="team-tree">
+                @foreach (var region in _list.Teams.Where(t => t.IsRegion))
+                {
+                    <MudPaper Outlined="true" Class="panel" data-team="@region.Id">
+                        @TeamHead(region)
+                        <div class="team-children">
+                            @foreach (var team in _list.Teams.Where(t => !t.IsRegion && t.ParentId == region.Id))
+                            {
+                                <div class="team-card" data-team="@team.Id">@TeamHead(team) @Members(team)</div>
+                            }
+                        </div>
+                    </MudPaper>
+                }
+                @if (LooseTeams.Count > 0)
+                {
+                    <MudPaper Outlined="true" Class="panel" id="loose-teams">
+                        <div class="panel-head"><MudText Typo="Typo.h6">Bölgesi olmayan ekipler</MudText></div>
+                        <div class="team-children">
+                            @foreach (var team in LooseTeams)
+                            {
+                                <div class="team-card" data-team="@team.Id">@TeamHead(team) @Members(team)</div>
+                            }
+                        </div>
+                    </MudPaper>
+                }
+            </div>
+        }
+
+        var unassigned = _list.People.Where(p => p.TeamId is null && p.IsActive && p.Roles.Contains("SALES")).ToList();
+        @if (unassigned.Count > 0)
+        {
+            <MudText Typo="Typo.body2" Class="text-muted mt-3" id="unassigned">Ekibi olmayan saha kullanıcıları: @string.Join(", ", unassigned.Select(p => p.DisplayName))</MudText>
+        }
+    }
+
+    <DetailSheet Id="team-sheet" Open="_editing is not null" Busy="Busy" Eyebrow="@(_editing?.Kind == TeamKinds.Region ? "Bölge" : "Ekip")"
+                 Title="@(_editingId is null ? (_editing?.Kind == TeamKinds.Region ? "Yeni bölge" : "Yeni ekip") : _editing?.Name ?? string.Empty)" OnClose="Close">
+        @if (_editing is { } form && _list is not null)
+        {
+            <form class="stack-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <label class="stack-field">
+                    <span class="field-label">Ad</span>
+                    <input class="portal-input" id="team-name" maxlength="100" value="@form.Name" @onchange="e => form.Name = e.Value?.ToString() ?? string.Empty" />
+                </label>
+                @if (form.Kind == TeamKinds.Team)
+                {
+                    <label class="stack-field">
+                        <span class="field-label">Bölge</span>
+                        <select class="portal-select" id="team-region" value="@(form.ParentId?.ToString() ?? "")"
+                                @onchange="e => form.ParentId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null">
+                            <option value="">Bölgesiz</option>
+                            @foreach (var region in _list.Teams.Where(t => t.IsRegion))
+                            {
+                                <option value="@region.Id">@region.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="field-label">Üyeler <span class="text-muted">(başka ekipteki kişi bu ekibe taşınır)</span></div>
+                    <div class="check-list" id="team-members">
+                        @foreach (var person in _list.People.Where(p => p.IsActive))
+                        {
+                            var other = person.TeamId is { } teamId && teamId != _editingId ? _list.Teams.FirstOrDefault(t => t.Id == teamId)?.Name : null;
+                            <label class="inline-field" data-person="@person.Username">
+                                <input type="checkbox" checked="@_members.Contains(person.Id)" @onchange="e => Toggle(_members, person.Id, e.Value is true)" />
+                                @person.DisplayName @if (other is not null) { <span class="text-muted">(@other)</span> }
+                            </label>
+                        }
+                    </div>
+                }
+                <div class="field-label">Sorumlu yöneticiler</div>
+                <div class="check-list" id="team-managers">
+                    @foreach (var person in _list.People.Where(p => p.IsActive && p.Roles.Any(r => r is "ADMIN" or "MANAGER")))
+                    {
+                        <label class="inline-field" data-manager="@person.Username">
+                            <input type="checkbox" checked="@_managers.Contains(person.Id)" @onchange="e => Toggle(_managers, person.Id, e.Value is true)" />
+                            @person.DisplayName
+                        </label>
+                    }
+                </div>
+                <label class="inline-field"><input type="checkbox" id="team-active" checked="@form.IsActive" @onchange="e => form.IsActive = e.Value is true" /> Etkin</label>
+                <div class="form-actions">
+                    @if (_editingId is { } id)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@Busy" OnClick="() => DeleteAsync(id)" id="team-delete">Sil</MudButton>
+                    }
+                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="Close" id="team-cancel">Vazgeç</MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" id="team-save">Kaydet</MudButton>
+                </div>
+            </form>
+        }
+    </DetailSheet>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Targets;
+
+    private string? Notice { get; set; }
+    private TeamsResponse? _list;
+    private TeamSaveRequest? _editing;
+    private Guid? _editingId;
+    private HashSet<Guid> _members = [];
+    private HashSet<Guid> _managers = [];
+
+    protected override async Task LoadAsync() => _list = await Api.TeamsAsync();
+
+    /// <summary>Teams without a region (or whose region the caller does not see).</summary>
+    private List<TeamDto> LooseTeams =>
+        [.. _list!.Teams.Where(t => !t.IsRegion && (t.ParentId is null || _list.Teams.All(r => r.Id != t.ParentId)))];
+
+    private RenderFragment TeamHead(TeamDto team) => __builder =>
+    {
+        <div class="panel-head">
+            <div>
+                <MudText Typo="@(team.IsRegion ? Typo.h6 : Typo.subtitle1)">
+                    @team.Name
+                    @if (!team.IsActive)
+                    {
+                        <span class="badge badge--off">pasif</span>
+                    }
+                </MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    @(team.IsRegion ? "Bölge" : $"{team.MemberIds.Length} kişi") · Sorumlu: @Names(team.ManagerIds, "yok")
+                </MudText>
+            </div>
+            @if (_list!.CanEdit)
+            {
+                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="team-edit" OnClick="() => Open(team, team.Kind)">Düzenle</MudButton>
+            }
+        </div>
+    };
+
+    private RenderFragment Members(TeamDto team) => __builder =>
+    {
+        <div class="role-badges">
+            @foreach (var id in team.MemberIds)
+            {
+                <span class="badge badge--primary">@Names([id], "?")</span>
+            }
+        </div>
+    };
+
+    private string Names(IEnumerable<Guid> ids, string empty)
+    {
+        var names = ids.Select(id => _list!.People.FirstOrDefault(p => p.Id == id)?.DisplayName).OfType<string>().ToList();
+        return names.Count == 0 ? empty : string.Join(", ", names);
+    }
+
+    private void Open(TeamDto? team, string kind)
+    {
+        Notice = null;
+        Error = null;
+        _editingId = team?.Id;
+        _editing = new TeamSaveRequest
+        {
+            Name = team?.Name ?? string.Empty,
+            Kind = kind,
+            ParentId = team?.ParentId,
+            IsActive = team?.IsActive ?? true,
+        };
+        _members = [.. team?.MemberIds ?? []];
+        _managers = [.. team?.ManagerIds ?? []];
+    }
+
+    private void Close() => _editing = null;
+
+    private static void Toggle(HashSet<Guid> set, Guid id, bool on)
+    {
+        if (on) set.Add(id);
+        else set.Remove(id);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editing is not { } form) return;
+        if (string.IsNullOrWhiteSpace(form.Name))
+        {
+            Error = "Ad boş olamaz.";
+            return;
+        }
+        form.MemberIds = form.Kind == TeamKinds.Team ? [.. _members] : null;
+        form.ManagerIds = [.. _managers];
+        var saved = false;
+        await RunAsync(async () =>
+        {
+            await Api.SaveTeamAsync(_editingId, form);
+            saved = true;
+            await LoadAsync();
+        });
+        if (saved)
+        {
+            Notice = $"{form.Name} kaydedildi.";
+            _editing = null;
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var deleted = false;
+        await RunAsync(async () =>
+        {
+            await Api.DeleteTeamAsync(id);
+            deleted = true;
+            await LoadAsync();
+        });
+        if (deleted)
+        {
+            Notice = "Silindi; ekibin hedefleri de kaldırıldı.";
+            _editing = null;
+        }
+    }
+}

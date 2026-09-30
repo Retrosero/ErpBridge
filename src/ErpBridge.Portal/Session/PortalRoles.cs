@@ -29,6 +29,9 @@ public enum PortalArea
 
     /// <summary>Who changed a card/payment from the portal, and when (Denetim, GOAL_PANEL_ERPSIZ E7b/D5).</summary>
     NativeAudit,
+
+    /// <summary>Sales targets, teams and route plans (GOAL_HEDEF_RUT): the server's <c>CanManageTargets</c>.</summary>
+    Targets,
 }
 
 /// <summary>
@@ -70,6 +73,33 @@ public static class PortalRoles
 
     public static bool MayUsePortal(IEnumerable<string> roles) => roles.Any(r => r is Admin or Manager or Accounting or Warehouse);
 
+    /// <summary>
+    /// The permission key behind an area (GOAL_YETKILER). Users stays with the ADMIN role: managing users and
+    /// permissions is never delegated.
+    /// </summary>
+    public static string? KeyOf(PortalArea area) => area switch
+    {
+        PortalArea.Reports => "portal.reports",
+        PortalArea.Ledger => "portal.ledger",
+        PortalArea.Approvals => "portal.approvals",
+        PortalArea.Warehouse => "module.warehouse_queue",
+        PortalArea.Displays => "portal.displays",
+        PortalArea.ErpWrite => "portal.erp_settings",
+        PortalArea.ErpDocuments => "portal.erp_documents",
+        PortalArea.NativeAudit => "portal.audit",
+        PortalArea.Targets => "portal.targets",
+        _ => null,
+    };
+
+    /// <summary>
+    /// What the user's permissions open; a session without permissions (an older server, or a session saved
+    /// before them) falls back to the roles.
+    /// </summary>
+    public static bool Allows(IReadOnlyCollection<string> roles, IReadOnlyDictionary<string, bool>? permissions, PortalArea area) =>
+        permissions is not null && KeyOf(area) is { } key && permissions.TryGetValue(key, out var allowed)
+            ? allowed
+            : Allows(roles, area);
+
     public static bool Allows(IReadOnlyCollection<string> roles, PortalArea area) => area switch
     {
         PortalArea.Reports => roles.Any(r => r is Admin or Manager),
@@ -82,6 +112,7 @@ public static class PortalRoles
         PortalArea.ErpDocuments => roles.Any(r => r is Admin or Manager or Accounting),
         // D4: only ADMIN edits a native tenant's books, so only ADMIN needs its audit trail.
         PortalArea.NativeAudit => roles.Contains(Admin),
+        PortalArea.Targets => roles.Any(r => r is Admin or Manager),
         _ => false,
     };
 
@@ -89,9 +120,9 @@ public static class PortalRoles
     /// Where a user lands after signing in, and where a page they may not open sends them:
     /// the day summary for managers, the approval desk for accounting, the order queue for the warehouse.
     /// </summary>
-    public static string HomePage(IReadOnlyCollection<string> roles) =>
-        Allows(roles, PortalArea.Reports) ? ""
-        : Allows(roles, PortalArea.Approvals) ? "muhasebe"
-        : Allows(roles, PortalArea.Warehouse) ? "depo"
+    public static string HomePage(IReadOnlyCollection<string> roles, IReadOnlyDictionary<string, bool>? permissions = null) =>
+        Allows(roles, permissions, PortalArea.Reports) ? ""
+        : Allows(roles, permissions, PortalArea.Approvals) ? "muhasebe"
+        : Allows(roles, permissions, PortalArea.Warehouse) ? "depo"
         : "login";
 }

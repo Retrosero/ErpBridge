@@ -68,6 +68,8 @@ public static class MobileUserAccess
         if (!MobileSeatService.AllowsWork(status))
             return Deny(403, status == "none" ? "SUBSCRIPTION_REQUIRED" : "SUBSCRIPTION_EXPIRED", "The company has no active subscription.");
 
+        // Every gate after this reads the user's resolved permissions (GOAL_YETKILER), fresh on every call like the roles.
+        await Permissions.PermissionLoader.LoadAsync(db, user, ct);
         return new MobileUserAccessResult(tenant, user, 200, null, null);
     }
 

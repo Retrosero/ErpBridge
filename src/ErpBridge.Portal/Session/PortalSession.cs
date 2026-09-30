@@ -33,6 +33,9 @@ public sealed class PortalSession
     /// <summary>The server's effective right to decide approval requests (admin, approving manager, accounting).</summary>
     public bool CanApprove { get; private set; }
 
+    /// <summary>The user's yes/no permissions (GOAL_YETKILER); null when the server or the saved session has none.</summary>
+    public IReadOnlyDictionary<string, bool>? Permissions { get; private set; }
+
     /// <summary>Whether the browser keeps the session after the tab closes ("Beni hatırla").</summary>
     public bool RememberMe { get; private set; }
 
@@ -54,12 +57,16 @@ public sealed class PortalSession
     /// documents and ledger corrections can be entered from the portal. Mirrors the server's
     /// <c>RolePermissions.CanEditNativeData</c> gate (admin-only) so the menu shows only what the
     /// server will accept — the server stays the real gate.</summary>
-    public bool CanEditNativeData => IsAdmin && DataSource == "native";
+    public bool CanEditNativeData => DataSource == "native" && Can("action.native_books.edit", IsAdmin);
 
-    public bool Allows(PortalArea area) => PortalRoles.Allows(Roles, area);
+    public bool Allows(PortalArea area) => PortalRoles.Allows(Roles, Permissions, area);
+
+    /// <summary>A permission, or <paramref name="withoutPermissions"/> for a session that has none.</summary>
+    public bool Can(string key, bool withoutPermissions) =>
+        Permissions is not null && Permissions.TryGetValue(key, out var allowed) ? allowed : withoutPermissions;
 
     /// <summary>The first page this user may open; see <see cref="PortalRoles.HomePage"/>.</summary>
-    public string HomePage => PortalRoles.HomePage(Roles);
+    public string HomePage => PortalRoles.HomePage(Roles, Permissions);
 
     /// <summary>Raised on sign-in and sign-out so the layout redraws.</summary>
     public event Action? Changed;
@@ -77,18 +84,20 @@ public sealed class PortalSession
         FullName = state.FullName;
         Roles = state.EffectiveRoles();
         CanApprove = state.CanApprove;
+        Permissions = state.Permissions;
         RememberMe = state.RememberMe;
         RolesReadAtUtc = fresh ? _time.GetUtcNow() : DateTimeOffset.MinValue;
         Changed?.Invoke();
     }
 
-    /// <summary>Takes the user's current name, roles and approval right from the server.</summary>
-    public void Refresh(string fullName, IEnumerable<string> roles, bool canApprove)
+    /// <summary>Takes the user's current name, roles, approval right and permissions from the server.</summary>
+    public void Refresh(string fullName, IEnumerable<string> roles, bool canApprove, IReadOnlyDictionary<string, bool>? permissions = null)
     {
         var current = roles.ToHashSet(StringComparer.Ordinal);
         FullName = fullName;
         Roles = PortalRoles.All.Where(current.Contains).ToArray();
         CanApprove = canApprove;
+        Permissions = permissions;
         RolesReadAtUtc = _time.GetUtcNow();
         Changed?.Invoke();
     }
@@ -100,13 +109,15 @@ public sealed class PortalSession
         TenantName = TenantCode = DataSource = Username = FullName = string.Empty;
         Roles = [];
         CanApprove = false;
+        Permissions = null;
         RememberMe = false;
         RolesReadAtUtc = default;
         Changed?.Invoke();
     }
 
     public PortalSessionState? Snapshot() => IsSignedIn
-        ? new PortalSessionState(Token!, ExpiresAtUtc, TenantName, TenantCode, DataSource, Username, FullName, Legacy(Roles), CanApprove, [.. Roles], RememberMe)
+        ? new PortalSessionState(Token!, ExpiresAtUtc, TenantName, TenantCode, DataSource, Username, FullName, Legacy(Roles), CanApprove, [.. Roles], RememberMe,
+            Permissions is null ? null : new Dictionary<string, bool>(Permissions))
         : null;
 
     private static string Legacy(IReadOnlyList<string> roles) =>
@@ -127,7 +138,8 @@ public sealed record PortalSessionState(
     string Role,
     bool CanApprove,
     string[]? Roles = null,
-    bool RememberMe = false)
+    bool RememberMe = false,
+    Dictionary<string, bool>? Permissions = null)
 {
     /// <summary>The roles, falling back to the single role a session saved by an older portal holds.</summary>
     public IReadOnlyList<string> EffectiveRoles()

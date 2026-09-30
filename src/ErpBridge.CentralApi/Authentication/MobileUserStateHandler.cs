@@ -55,6 +55,8 @@ public sealed class MobileUserStateHandler : AuthorizationHandler<MobileUserStat
         var access = await MobileUserAccess.CheckAsync(context.User, db, http.RequestAborted, MobileUserAccess.MinWarehousePhoneVersion(http.RequestServices));
         if (access.Allowed)
         {
+            // The phone re-reads its session when this changes (GOAL_YETKILER): no new sign-in needed.
+            Permissions.PermissionStamp.Stamp(http, access.User!);
             context.Succeed(requirement);
             return;
         }

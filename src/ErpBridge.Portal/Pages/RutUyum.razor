@@ -1,0 +1,145 @@
+@page "/rut/uyum"
+@inherits PortalPageBase
+
+<PageTitle>Rut uyumu — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Rut uyumu" Eyebrow="Hedefler & rut" Subtitle="Planlanan duraklar ile telefondan kaydedilen ziyaretler" Busy="Busy">
+        <Actions>
+            <input class="portal-input portal-input--date" type="date" id="compliance-from" value="@Fmt.IsoDay(_from)" @onchange="ChangeFromAsync" aria-label="Başlangıç" />
+            <input class="portal-input portal-input--date" type="date" id="compliance-to" value="@Fmt.IsoDay(_to)" @onchange="ChangeToAsync" aria-label="Bitiş" />
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_report is not null)
+    {
+        var planned = _report.Rows.Sum(r => r.Planned);
+        var completed = _report.Rows.Sum(r => r.Completed);
+        <section class="stat-grid stat-grid--four" id="compliance-stats">
+            <StatCard Id="stat-planned" Label="Planlanan" Value="@planned.ToString(Fmt.Turkish)" Caption="durak" Icon="@Icons.Material.Rounded.Route" Tone="primary" />
+            <StatCard Id="stat-completed" Label="Ziyaret edilen" Value="@completed.ToString(Fmt.Turkish)"
+                      Caption="@(planned > 0 ? $"uyum %{Math.Round(100m * completed / planned):N0}" : "plan yok")" Icon="@Icons.Material.Rounded.TaskAlt" Tone="success" />
+            <StatCard Id="stat-missed" Label="Kaçırılan" Value="@_report.Rows.Sum(r => r.Missed).ToString(Fmt.Turkish)" Caption="geçmiş gün, kayıt yok"
+                      Icon="@Icons.Material.Rounded.EventBusy" Tone="danger" Attention="@(_report.Rows.Sum(r => r.Missed) > 0)" />
+            <StatCard Id="stat-unplanned" Label="Plan dışı" Value="@_report.Rows.Sum(r => r.Unplanned).ToString(Fmt.Turkish)" Caption="rut dışında yapılan ziyaret"
+                      Icon="@Icons.Material.Rounded.AltRoute" Tone="info" />
+        </section>
+
+        @if (_report.Rows.Length == 0)
+        {
+            <EmptyState Id="compliance-empty" Icon="@Icons.Material.Rounded.Route" Title="Bu aralıkta planlı durak ya da ziyaret yok." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table mt-3">
+                <div class="panel-head">
+                    <div>
+                        <MudText Typo="Typo.h6">Kişi bazında</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted">Uyum = ziyaret edilen ÷ planlanan. Bugünün kaydedilmemiş durakları henüz kaçırılmış sayılmaz.</MudText>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <MudSimpleTable Dense="true" Hover="true" Elevation="0" Class="data-table" id="compliance-table">
+                        <thead>
+                            <tr><th>Kim</th><th class="num">Planlanan</th><th class="num">Ziyaret</th><th class="num">Atlanan</th><th class="num">Kaçırılan</th><th class="num">Plan dışı</th><th>Uyum</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _report.Rows)
+                            {
+                                <tr data-user="@row.Username">
+                                    <td>
+                                        <div class="person-name">@row.FullName</div>
+                                        <div class="person-sub">@(row.TeamName ?? "Ekipsiz")</div>
+                                    </td>
+                                    <td class="num">@row.Planned</td>
+                                    <td class="num">@row.Completed</td>
+                                    <td class="num">@row.Skipped</td>
+                                    <td class="num @(row.Missed > 0 ? "text-danger" : null)">@row.Missed</td>
+                                    <td class="num">@row.Unplanned</td>
+                                    <td class="target-progress">
+                                        @if (row.Compliance is { } compliance)
+                                        {
+                                            <div class="progress-label"><strong>%@compliance.ToString("N0", Fmt.Turkish)</strong></div>
+                                            <MudProgressLinear Color="@(compliance >= 90 ? Color.Success : compliance >= 70 ? Color.Primary : Color.Warning)" Rounded="true" Size="Size.Small" Value="@((double)compliance)" />
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+            </MudPaper>
+
+            <MudPaper Outlined="true" Class="panel panel--table mt-3">
+                <div class="panel-head"><MudText Typo="Typo.h6">Gün bazında</MudText></div>
+                <div class="table-scroll">
+                    <MudSimpleTable Dense="true" Elevation="0" Class="data-table" id="compliance-days">
+                        <thead><tr><th>Gün</th><th class="num">Planlanan</th><th class="num">Ziyaret</th><th class="num">Atlanan</th><th class="num">Kaçırılan</th></tr></thead>
+                        <tbody>
+                            @foreach (var day in _report.Days.Where(d => d.Planned > 0))
+                            {
+                                <tr data-day="@day.Date">
+                                    <td>@(Fmt.TryIsoDay(day.Date, out var d) ? Fmt.Day(d) : day.Date)</td>
+                                    <td class="num">@day.Planned</td>
+                                    <td class="num">@day.Completed</td>
+                                    <td class="num">@day.Skipped</td>
+                                    <td class="num">@day.Missed</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Targets;
+
+    private const int MaxDays = 92;
+    private DateOnly _from;
+    private DateOnly _to;
+    private RouteComplianceResponse? _report;
+
+    protected override void OnInitialized()
+    {
+        _to = Fmt.Today();
+        _from = _to.AddDays(-((7 + (int)_to.DayOfWeek - 1) % 7)); // this week from Monday
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (_to < _from) { _report = null; Error = PortalMessages.For("INVALID_RANGE"); return; }
+        if (_to.DayNumber - _from.DayNumber + 1 > MaxDays) { _report = null; Error = PortalMessages.For("RANGE_TOO_LONG"); return; }
+        _report = await Api.RouteComplianceAsync(_from, _to, null);
+    }
+
+    private async Task ChangeFromAsync(ChangeEventArgs e)
+    {
+        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
+        _from = day;
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task ChangeToAsync(ChangeEventArgs e)
+    {
+        if (!Fmt.TryIsoDay(e.Value?.ToString(), out var day)) return;
+        _to = day;
+        await RunAsync(LoadAsync);
+    }
+}

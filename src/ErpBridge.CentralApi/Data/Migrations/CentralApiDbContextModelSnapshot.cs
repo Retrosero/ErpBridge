@@ -1019,6 +1019,47 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("fora_import_rows", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.GoInstallation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ActivatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AppVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("LastSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("LicenseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MachineId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("MachineName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LicenseId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("go_installations", (string)null);
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.Job", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1152,6 +1193,13 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Product")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("erpbridge");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -1831,6 +1879,31 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.HasIndex("TenantId");
 
                     b.ToTable("mobile_user_erp_mappings", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.MobileUserPermissionOverride", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("UserId", "Key");
+
+                    b.ToTable("mobile_user_permission_overrides", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.MobileUserRole", b =>
@@ -2565,6 +2638,69 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("parameter_values", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.PermissionChange", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Client")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Role")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("TargetUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TargetUserName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAtUtc");
+
+                    b.ToTable("permission_changes", (string)null);
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2604,6 +2740,239 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("refresh_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("CreatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ItemCode")
+                        .IsRequired()
+                        .HasMaxLength(110)
+                        .HasColumnType("character varying(110)");
+
+                    b.Property<string>("ItemName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Measure")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Metric")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OwnerKind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("PeriodEndDay")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("PeriodKey")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("PeriodStartDay")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("PeriodType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "PeriodStartDay", "PeriodEndDay");
+
+                    b.HasIndex("TenantId", "PeriodType", "PeriodKey", "Metric", "Measure", "ItemCode", "OwnerKind", "OwnerId")
+                        .IsUnique();
+
+                    b.ToTable("sales_targets", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTargetEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("NewValue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<long>("OccurredAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal?>("OldValue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<Guid?>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "TargetId");
+
+                    b.ToTable("sales_target_events", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTargetOperation", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AppliedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TenantId", "OperationId");
+
+                    b.ToTable("sales_target_operations", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTeam", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("CreatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("sales_teams", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTeamManager", b =>
+                {
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TeamId", "UserId");
+
+                    b.HasIndex("TenantId", "UserId");
+
+                    b.ToTable("sales_team_managers", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTeamMember", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AddedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TenantId", "UserId");
+
+                    b.HasIndex("TeamId");
+
+                    b.ToTable("sales_team_members", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.StockExpiryOpApplied", b =>
@@ -2699,6 +3068,121 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.HasIndex("TenantId", "UpdatedSeq");
 
                     b.ToTable("stock_expiry_records", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SuspendedSale", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClosedByName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("ClosedReason")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<long>("CreatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomerId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("DocNo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LineCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LinesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UpdatedSeq")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Warehouse")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UpdatedSeq");
+
+                    b.ToTable("suspended_sales", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SuspendedSaleOpApplied", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OpId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AppliedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TenantId", "OpId");
+
+                    b.HasIndex("AppliedAtMs");
+
+                    b.ToTable("suspended_sale_ops_applied", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.TargetSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("WorkDays")
+                        .HasColumnType("integer");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("target_settings", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.Tenant", b =>
@@ -2811,6 +3295,35 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.HasKey("TenantId", "ModuleKey");
 
                     b.ToTable("tenant_modules", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.TenantRolePermission", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("TenantId", "Role", "Key");
+
+                    b.ToTable("tenant_role_permissions", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.TenantSubscription", b =>
@@ -3768,6 +4281,17 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Navigation("MobileUser");
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.GoInstallation", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.License", "License")
+                        .WithMany()
+                        .HasForeignKey("LicenseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("License");
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.Job", b =>
                 {
                     b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
@@ -3857,6 +4381,17 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.HasOne("ErpBridge.CentralApi.Domain.MobileUser", "User")
                         .WithOne()
                         .HasForeignKey("ErpBridge.CentralApi.Domain.MobileUserErpMapping", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.MobileUserPermissionOverride", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.MobileUser", "User")
+                        .WithMany("PermissionOverrides")
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -4077,7 +4612,40 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTarget", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTeam", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.StockExpiryRecord", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.SuspendedSale", b =>
                 {
                     b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
                         .WithMany()
@@ -4100,6 +4668,17 @@ namespace ErpBridge.CentralApi.Data.Migrations
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.TenantModule", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.TenantRolePermission", b =>
                 {
                     b.HasOne("ErpBridge.CentralApi.Domain.Tenant", "Tenant")
                         .WithMany()
@@ -4285,6 +4864,8 @@ namespace ErpBridge.CentralApi.Data.Migrations
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.MobileUser", b =>
                 {
+                    b.Navigation("PermissionOverrides");
+
                     b.Navigation("Roles");
                 });
 
