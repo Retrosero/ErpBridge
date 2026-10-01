@@ -463,10 +463,27 @@ public sealed class PortalCatalogPagesTests : PortalPageTestContext
     [InlineData("CATALOG_ORDER_TAKEN")]
     [InlineData("CATALOG_ORDER_CLOSED")]
     [InlineData("CATALOG_ORDER_ALREADY_CONVERTED")]
+    [InlineData("CATALOG_ORDER_NOT_FOUND")]
+    [InlineData("INVALID_CARTON_QUANTITY")]
+    [InlineData("INVALID_VISIBILITY")]
+    [InlineData("INVALID_RESPONSIBLE_USER")]
+    [InlineData("CATALOG_IMAGE_NOT_FOUND")]
+    [InlineData("INVALID_BODY")]
     [InlineData("RATE_LIMITED")]
     [InlineData("HTTP_429")]
     public void Catalog_refusals_read_in_turkish(string code) =>
         PortalMessages.For(code).Should().NotContain(code, "an unknown code falls back to a message quoting it");
+
+    [Fact]
+    public void An_unknown_code_takes_the_servers_message_only_when_it_is_turkish()
+    {
+        PortalMessages.For("NEW_CODE", "Koli adedi 2 ile 100000 arasında olmalı.").Should().Be("Koli adedi 2 ile 100000 arasında olmalı.");
+        PortalMessages.For("NEW_CODE", "Body required.").Should().Be(PortalMessages.For("NEW_CODE"));
+        PortalMessages.For("NEW_CODE", null).Should().Be(PortalMessages.For("NEW_CODE"));
+        PortalMessages.For("INVALID_DISCOUNT", "İskonto hatalı ölçü.").Should().Be(PortalMessages.For("INVALID_DISCOUNT"), "a known code keeps the panel's own text");
+        PortalMessages.Knows("INVALID_BODY").Should().BeTrue();
+        PortalMessages.Knows("NEW_CODE").Should().BeFalse();
+    }
 
     [Fact]
     public void Image_addresses_use_the_catalog_host_and_fall_back_to_the_api()

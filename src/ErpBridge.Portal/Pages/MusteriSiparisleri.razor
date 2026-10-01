@@ -255,6 +255,37 @@ else
                         }
                     </section>
                 }
+                else
+                {
+                    <section class="detail-section" id="order-reopen-section">
+                        <div class="detail-section-title">İşlem</div>
+                        @if (_confirm == OrderConfirm.Reopen)
+                        {
+                            <div class="order-confirm" id="order-reopen-form">
+                                <MudAlert Severity="Severity.Warning" Variant="Variant.Text" Dense="true" id="order-reopen-warning">
+                                    @if (order.Status == "COMPLETED")
+                                    {
+                                        @:Talep "Yeni" durumuna döner ve belge bağı silinir. Sipariş ERP'ye ya da deftere zaten girdiyse yeniden açmayın: aynı talepten ikinci sipariş oluşabilir.
+                                    }
+                                    else
+                                    {
+                                        @:Talep "Yeni" durumuna döner, red gerekçesi silinir; müşteri talebini yeniden "Alındı" olarak görür.
+                                    }
+                                </MudAlert>
+                                <div class="form-actions">
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _confirm = null" id="order-reopen-cancel">Vazgeç</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small" Disabled="@Busy" OnClick="ReopenAsync" id="order-reopen-confirm">Yeniden aç</MudButton>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="order-actions">
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => Confirm(OrderConfirm.Reopen)" id="order-reopen">Yeniden aç</MudButton>
+                            </div>
+                        }
+                    </section>
+                }
             }
         </ChildContent>
     </DetailSheet>
@@ -274,6 +305,7 @@ else
     {
         public const string Reject = "reject";
         public const string Complete = "complete";
+        public const string Reopen = "reopen";
     }
 
     private string _status = "yeni";
@@ -402,6 +434,9 @@ else
         }
         return ActAsync(id => Api.RejectCatalogOrderAsync(id, reason), "Talep reddedildi; müşteri gerekçeyi görür.");
     }
+
+    /// <summary>A closed request back to "Yeni" (a mistaken rejection or "entered elsewhere", a sale that never got in).</summary>
+    private Task ReopenAsync() => ActAsync(id => Api.ReopenCatalogOrderAsync(id), "Talep yeniden açıldı; durumu \"Yeni\".");
 
     private Task CompleteAsync()
     {

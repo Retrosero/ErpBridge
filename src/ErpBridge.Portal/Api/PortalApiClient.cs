@@ -14,7 +14,10 @@ public sealed class SessionEndedException(string code) : Exception(PortalMessage
 }
 
 /// <summary>The central API refused the call with an error envelope.</summary>
-/// <param name="serverMessage">The server's own Turkish wording, used for the few codes whose detail only it knows.</param>
+/// <param name="serverMessage">
+/// The server's own wording: used as it is for the few codes whose detail only the server knows, and for a code the
+/// panel has no text for when the server worded it in Turkish (<see cref="PortalMessages.For(string, string?)"/>).
+/// </param>
 public sealed class PortalApiException(string code, int status, string? serverMessage = null) : Exception(serverMessage ?? PortalMessages.For(code))
 {
     public string Code { get; } = code;
@@ -495,6 +498,10 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<CatalogOrderDetailDto> RejectCatalogOrderAsync(Guid orderId, string reason, CancellationToken ct = default) =>
         SendAsync<CatalogOrderDetailDto>(HttpMethod.Post, $"{Catalog}orders/{orderId}/reject", new { reason }, ct);
 
+    /// <summary>A closed request (turned into a sale or rejected) back to "Yeni"; its document and reason are cleared. Catalog managers only.</summary>
+    public Task<CatalogOrderDetailDto> ReopenCatalogOrderAsync(Guid orderId, CancellationToken ct = default) =>
+        SendAsync<CatalogOrderDetailDto>(HttpMethod.Post, $"{Catalog}orders/{orderId}/reopen", new { }, ct);
+
     // ---- plumbing ------------------------------------------------------------
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);
@@ -535,7 +542,8 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
         var (code, message) = await ReadErrorWithMessageAsync(response, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized || SessionEndingCodes.Contains(code))
             throw new SessionEndedException(code);
-        throw new PortalApiException(code, (int)response.StatusCode, ServerWordedCodes.Contains(code) ? message : null);
+        throw new PortalApiException(code, (int)response.StatusCode,
+            ServerWordedCodes.Contains(code) ? message : PortalMessages.Knows(code) ? null : PortalMessages.For(code, message));
     }
 
     /// <summary>Codes whose message the server words in Turkish with a detail the panel cannot know (who, which stop).</summary>

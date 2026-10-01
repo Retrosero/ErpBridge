@@ -170,6 +170,60 @@ public sealed class PortalCustomerOrdersPageTests : PortalPageTestContext
     }
 
     [Fact]
+    public void A_closed_request_is_reopened_only_after_the_warning_is_confirmed()
+    {
+        var api = Setup();
+        api.Answer(OrderPath, Detail("REJECTED", rejectReason: "Yanlışlıkla"));
+        var cut = OpenOrder(api);
+        cut.FindAll("#order-actions-section").Should().BeEmpty();
+
+        cut.Find("#order-reopen").Click();
+        cut.Find("#order-reopen-warning").TextContent.Should().Contain("red gerekçesi silinir");
+        api.Requests.Should().NotContain(r => r.PathAndQuery == OrderPath + "/reopen", "nothing is sent before the confirmation");
+        cut.Find("#order-reopen-cancel").Click();
+        cut.FindAll("#order-reopen-warning").Should().BeEmpty();
+
+        api.Answer(OrderPath + "/reopen", Detail());
+        api.Answer(Orders + "?status=NEW&page=1", List(Counts(newCount: 3), Summary()));
+        cut.Find("#order-reopen").Click();
+        cut.Find("#order-reopen-confirm").Click();
+
+        cut.WaitForAssertion(() => cut.Find("#order-status").TextContent.Should().Be("Yeni"));
+        api.Requests.Count(r => r.Method == HttpMethod.Post && r.PathAndQuery == OrderPath + "/reopen").Should().Be(1);
+        cut.Find("#order-notice").TextContent.Should().Contain("yeniden açıldı");
+        cut.FindAll("#order-reopen-section").Should().BeEmpty("an open request has the usual actions again");
+        cut.Find("#order-claim");
+        cut.Find("[data-status='yeni'] .seg-count").TextContent.Should().Be("3", "the list and its counts are read again");
+    }
+
+    [Fact]
+    public void Reopening_a_request_turned_into_a_sale_warns_about_a_second_order()
+    {
+        var api = Setup();
+        api.Answer(OrderPath, Detail("COMPLETED", documentRef: "MOB-SO-1"));
+        var cut = OpenOrder(api);
+
+        cut.Find("#order-reopen").Click();
+
+        cut.Find("#order-reopen-warning").TextContent.Should().Contain("belge bağı silinir").And.Contain("ikinci sipariş");
+    }
+
+    [Fact]
+    public void A_refusal_the_panel_has_no_text_for_shows_the_servers_turkish_message()
+    {
+        var api = Setup();
+        var cut = OpenOrder(api);
+
+        api.Answer(OrderPath + "/claim", new { errorCode = "CATALOG_SOMETHING_NEW", message = "Talep şu an başka bir işlemde." }, HttpStatusCode.Conflict);
+        cut.Find("#order-claim").Click();
+        cut.WaitForAssertion(() => cut.Find("#order-error").TextContent.Should().Be("Talep şu an başka bir işlemde."));
+
+        api.Answer(OrderPath + "/claim", new { errorCode = "SOMETHING_ELSE", message = "Internal detail" }, HttpStatusCode.BadRequest);
+        cut.Find("#order-claim").Click();
+        cut.WaitForAssertion(() => cut.Find("#order-error").TextContent.Should().Contain("İşlem tamamlanamadı (SOMETHING_ELSE)").And.NotContain("Internal"));
+    }
+
+    [Fact]
     public void A_company_with_an_erp_is_told_that_the_phone_sends_the_order_to_the_erp()
     {
         var api = Setup(dataSource: "erp");
