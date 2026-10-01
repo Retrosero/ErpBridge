@@ -390,7 +390,7 @@ public static class IngestEndpoints
             {
                 var callerIsAdmin = await CallerMayAsync(http, db, documentType, ct);
                 Job booked;
-                if (FulfillmentService.IsQueuedDocument(documentType) || CatalogOrderLinker.Names(payloadJson))
+                if (FulfillmentService.IsQueuedDocument(documentType) || CatalogOrderLinker.Names(documentType, payloadJson))
                 {
                     // A booked sale enters the warehouse queue in the booking's own transaction (Faz 47).
                     var warehouse = http.RequestServices.GetRequiredService<FulfillmentService>();
@@ -398,7 +398,7 @@ public static class IngestEndpoints
                     await using (var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null)
                     {
                         // A sale made from a customer's catalog request completes it in the booking's save (T8).
-                        var link = await CatalogOrderLinker.TryLinkAsync(db, tenantId, job.CreatedByUserId, payloadJson, job.ExternalId, ct);
+                        var link = await CatalogOrderLinker.TryLinkAsync(db, tenantId, job.CreatedByUserId, documentType, payloadJson, job.ExternalId, ct);
                         if (link.Refusal is { } refused)
                             return JsonResults.Status(refused.Status, new ApiError { ErrorCode = refused.Code, Message = refused.Message });
                         booked = await processor.IngestAsync(db, tenantId, job, callerIsAdmin, ct);
@@ -471,11 +471,11 @@ public static class IngestEndpoints
         try
         {
             // A sales order enters the warehouse queue before the agent writes it to the ERP (V2, Faz 47).
-            await using var transaction = (FulfillmentService.IsQueuedDocument(documentType) || CatalogOrderLinker.Names(payloadJson)) && db.Database.IsRelational()
+            await using var transaction = (FulfillmentService.IsQueuedDocument(documentType) || CatalogOrderLinker.Names(documentType, payloadJson)) && db.Database.IsRelational()
                 ? await db.Database.BeginTransactionAsync(ct)
                 : null;
             // A sale made from a customer's catalog request completes it in the job's save; a second sale for it is refused (T8).
-            var link = await CatalogOrderLinker.TryLinkAsync(db, tenantId, job.CreatedByUserId, payloadJson, job.ExternalId, ct);
+            var link = await CatalogOrderLinker.TryLinkAsync(db, tenantId, job.CreatedByUserId, documentType, payloadJson, job.ExternalId, ct);
             if (link.Refusal is { } refused)
                 return JsonResults.Status(refused.Status, new ApiError { ErrorCode = refused.Code, Message = refused.Message });
             db.Jobs.Add(job);

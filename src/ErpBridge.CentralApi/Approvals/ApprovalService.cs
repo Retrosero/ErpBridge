@@ -401,7 +401,7 @@ public sealed class ApprovalService
             };
             // A sale made from a customer's catalog request completes it now, in the approval's transaction (T8); a
             // rejected approval never gets here, so its request stays open.
-            var link = await CatalogOrderLinker.TryLinkAsync(db, tenant.Id, request.RequestedByUserId, job.PayloadJson, externalId, ct);
+            var link = await CatalogOrderLinker.TryLinkAsync(db, tenant.Id, request.RequestedByUserId, documentType, job.PayloadJson, externalId, ct);
             if (link.Refusal is { } refused)
                 return ApprovalResult<ApprovalRequest>.Fail(refused.Status, refused.Code, refused.Message);
             if (tenant.DataSource == TenantDataSources.Native)

@@ -39,6 +39,7 @@ public static class CustomerCatalogOrderEndpoints
         group.MapPost("/{id:guid}/release", ReleaseAsync).WithName("CustomerCatalogOrderRelease");
         group.MapPost("/{id:guid}/complete", CompleteAsync).WithName("CustomerCatalogOrderComplete");
         group.MapPost("/{id:guid}/reject", RejectAsync).WithName("CustomerCatalogOrderReject");
+        group.MapPost("/{id:guid}/reopen", ReopenAsync).WithName("CustomerCatalogOrderReopen");
         return routes;
     }
 
@@ -181,6 +182,30 @@ public static class CustomerCatalogOrderEndpoints
             return null;
         }, ct);
     }
+
+    /// <summary>
+    /// Opens a closed request again (<c>COMPLETED</c>/<c>REJECTED</c> → <c>NEW</c>): a mistaken "entered elsewhere" or
+    /// rejection, or a sale that never reached the ERP. Its document, reason, closer and taker are cleared, so the next
+    /// sale made from it links as on the first day. Catalog managers only; an open request stays as it is.
+    /// </summary>
+    private static Task<IResult> ReopenAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] CatalogViewService views, CancellationToken ct) =>
+        ChangeAsync(id, http, db, views, (order, _, manage, now) =>
+        {
+            if (!manage)
+                return Error(StatusCodes.Status403Forbidden, "CATALOG_MANAGE_REQUIRED", "Kapanmış talebi yalnız katalog yöneticisi yeniden açabilir.");
+            if (CatalogOrderStatuses.IsOpen(order.Status)) return null;
+            order.Status = CatalogOrderStatuses.New;
+            order.DocumentRef = null;
+            order.RejectReason = null;
+            order.ClosedByUserId = null;
+            order.ClosedByName = null;
+            order.ClosedAtMs = null;
+            order.ClaimedByUserId = null;
+            order.ClaimedByName = null;
+            order.ClaimedAtMs = null;
+            order.UpdatedAtMs = now;
+            return null;
+        }, ct);
 
     /// <summary>
     /// One change of a request the caller may see, under its row lock: <paramref name="apply"/> changes the tracked row

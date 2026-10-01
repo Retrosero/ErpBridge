@@ -208,11 +208,12 @@ public sealed class CustomerCatalogOrdersRelationalTests : IClassFixture<Catalog
     public async Task A_sale_carrying_the_request_completes_it_and_a_second_sale_for_it_is_refused_without_a_job()
     {
         var c = await OpenCatalogAsync(_factory);
+        await SeedAsync(_factory, db => db.MobileUserErpMappings.Add(new MobileUserErpMapping { UserId = c.AliId, TenantId = c.Id, SalespersonCode = "P1" }));
         await SalesWithoutApprovalAsync(c);
         await AccountAsync(_factory, c, "C1", "yilmaz", Pass);
         var browser = await SignedInAsync(c, "yilmaz");
         var id = (await OkAsync<CatalogOrderResponse>(await SubmitAsync(browser, c, Guid.NewGuid(), 100m, ("A", 1m)), HttpStatusCode.Created)).Order.Id;
-        (await ClaimAsync(c, c.Mudur, id)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ClaimAsync(c, c.Ali, id)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         await OkAsync<IngestJobResponse>(await IngestAsync(c, c.Ali, "MOB-SO-K1", id), HttpStatusCode.Created);
         var row = await ReadAsync(_factory, db => db.CatalogOrders.AsNoTracking().SingleAsync(o => o.Id == id));
@@ -240,6 +241,84 @@ public sealed class CustomerCatalogOrdersRelationalTests : IClassFixture<Catalog
             .StatusCode.Should().Be(HttpStatusCode.Created);
         (await IngestAsync(c, c.Ali, "MOB-SO-K8", null)).StatusCode.Should().Be(HttpStatusCode.Created);
         (await JobsAsync(c, "MOB-SO-K7", "MOB-SO-K8")).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task A_request_someone_else_took_is_turned_into_a_sale_only_by_them_or_a_manager()
+    {
+        var c = await OpenCatalogAsync(_factory);
+        await SalesWithoutApprovalAsync(c);
+        await AccountAsync(_factory, c, "C1", "yilmaz", Pass);
+        var browser = await SignedInAsync(c, "yilmaz");
+        var id = (await OkAsync<CatalogOrderResponse>(await SubmitAsync(browser, c, Guid.NewGuid(), 100m, ("A", 1m)), HttpStatusCode.Created)).Order.Id;
+        (await ClaimAsync(c, c.Mudur, id)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var taken = await IngestAsync(c, c.Ali, "MOB-SO-T1", id);
+        await ShouldFailAsync(taken, HttpStatusCode.Conflict, "CATALOG_ORDER_TAKEN");
+        (await JobsAsync(c, "MOB-SO-T1")).Should().Be(0, "as the panel's complete: someone else is working on it");
+
+        await OkAsync<IngestJobResponse>(await IngestAsync(c, c.Patron, "MOB-SO-T2", id), HttpStatusCode.Created);
+        (await ReadAsync(_factory, db => db.CatalogOrders.AsNoTracking().SingleAsync(o => o.Id == id)))
+            .Should().Match<CatalogOrder>(o => o.Status == "COMPLETED" && o.DocumentRef == "MOB-SO-T2");
+    }
+
+    [Fact]
+    public async Task Only_a_sales_order_links_and_a_failed_sale_lets_the_corrected_one_take_the_request_over()
+    {
+        var c = await OpenCatalogAsync(_factory);
+        await SalesWithoutApprovalAsync(c);
+        await AccountAsync(_factory, c, "C1", "yilmaz", Pass);
+        var browser = await SignedInAsync(c, "yilmaz");
+        var id = (await OkAsync<CatalogOrderResponse>(await SubmitAsync(browser, c, Guid.NewGuid(), 100m, ("A", 1m)), HttpStatusCode.Created)).Order.Id;
+
+        // Another document carrying the field is stored as it always was and leaves the request alone.
+        (await SendAsync(_factory, HttpMethod.Post, "/api/v1/ingest/jobs", c.Ali, new { externalId = "MOB-OTHER-1", documentType = "visit_note", payload = Sale("C1", id) }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await ReadAsync(_factory, db => db.CatalogOrders.AsNoTracking().SingleAsync(o => o.Id == id))).Status.Should().Be("NEW");
+
+        await OkAsync<IngestJobResponse>(await IngestAsync(c, c.Ali, "MOB-SO-F1", id), HttpStatusCode.Created);
+        await ShouldFailAsync(await IngestAsync(c, c.Ali, "MOB-SO-F2", id), HttpStatusCode.Conflict, "CATALOG_ORDER_ALREADY_CONVERTED");
+
+        // The ERP refused the first sale for good: the corrected sale takes the request over.
+        await SeedAsync(_factory, db => db.Jobs.Single(j => j.TenantId == c.Id && j.ExternalId == "MOB-SO-F1").Status = JobStatus.DeadLetter);
+        await OkAsync<IngestJobResponse>(await IngestAsync(c, c.Ali, "MOB-SO-F2", id), HttpStatusCode.Created);
+        (await ReadAsync(_factory, db => db.CatalogOrders.AsNoTracking().SingleAsync(o => o.Id == id)))
+            .Should().Match<CatalogOrder>(o => o.Status == "COMPLETED" && o.DocumentRef == "MOB-SO-F2");
+        await ShouldFailAsync(await IngestAsync(c, c.Ali, "MOB-SO-F3", id), HttpStatusCode.Conflict, "CATALOG_ORDER_ALREADY_CONVERTED");
+
+        // "Entered elsewhere" (a number that is no job here) stands: only a manager's reopen undoes it.
+        var elsewhere = (await OkAsync<CatalogOrderResponse>(await SubmitAsync(browser, c, Guid.NewGuid(), 100m, ("A", 1m)), HttpStatusCode.Created)).Order.Id;
+        (await PostAsync(c, c.Mudur, elsewhere, "complete", new { documentRef = "SIP-2026-1" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        await ShouldFailAsync(await IngestAsync(c, c.Ali, "MOB-SO-F4", elsewhere), HttpStatusCode.Conflict, "CATALOG_ORDER_ALREADY_CONVERTED");
+        (await JobsAsync(c, "MOB-SO-F3", "MOB-SO-F4")).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_manager_reopens_a_closed_request_and_the_next_sale_links_to_it()
+    {
+        var c = await OpenCatalogAsync(_factory);
+        await SeedAsync(_factory, db => db.MobileUserErpMappings.Add(new MobileUserErpMapping { UserId = c.AliId, TenantId = c.Id, SalespersonCode = "P1" }));
+        await SalesWithoutApprovalAsync(c);
+        await AccountAsync(_factory, c, "C1", "yilmaz", Pass);
+        var browser = await SignedInAsync(c, "yilmaz");
+        var id = (await OkAsync<CatalogOrderResponse>(await SubmitAsync(browser, c, Guid.NewGuid(), 100m, ("A", 1m)), HttpStatusCode.Created)).Order.Id;
+        (await ClaimAsync(c, c.Ali, id)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await PostAsync(c, c.Ali, id, "reject", new { reason = "Yanlışlıkla" })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await ShouldFailAsync(await PostAsync(c, c.Ali, id, "reopen"), HttpStatusCode.Forbidden, "CATALOG_MANAGE_REQUIRED");
+        (await OkAsync<CatalogOrderDetailDto>(await PostAsync(c, c.Mudur, id, "reopen"))).Should().Match<CatalogOrderDetailDto>(d =>
+            d.Status == "NEW" && d.RejectReason == null && d.DocumentRef == null && d.ClosedByName == null && d.ClosedAtMs == null
+            && d.ClaimedByUserId == null && d.ClaimedByName == null);
+        (await OkAsync<CatalogCustomerOrdersResponse>(await GetAsync(browser, Api(c) + "/orders"))).Items.Single()
+            .Should().Match<CatalogCustomerOrderDto>(o => o.Status == "NEW" && o.RejectReason == null);
+        (await PostAsync(c, c.Mudur, id, "reopen")).StatusCode.Should().Be(HttpStatusCode.OK, "an open request stays as it is");
+
+        (await PostAsync(c, c.Mudur, id, "complete", new { documentRef = "SIP-YANLIS" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await PostAsync(c, c.Patron, id, "reopen")).StatusCode.Should().Be(HttpStatusCode.OK);
+        await OkAsync<IngestJobResponse>(await IngestAsync(c, c.Ali, "MOB-SO-R1", id), HttpStatusCode.Created);
+        (await ReadAsync(_factory, db => db.CatalogOrders.AsNoTracking().SingleAsync(o => o.Id == id)))
+            .Should().Match<CatalogOrder>(o => o.Status == "COMPLETED" && o.DocumentRef == "MOB-SO-R1" && o.ClosedByUserId == c.AliId);
+        await ShouldFailAsync(await PostAsync(c, c.Mudur, Guid.NewGuid(), "reopen"), HttpStatusCode.NotFound, "CATALOG_ORDER_NOT_FOUND");
     }
 
     [Fact]
