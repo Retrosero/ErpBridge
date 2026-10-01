@@ -30,9 +30,14 @@ public static class PortalLedger
     private static readonly string[] MovementEntities = ["customerTransactions"];
     private static readonly TimeSpan ViewLifetime = TimeSpan.FromMinutes(30);
 
+    /// <param name="AddressSalespersonCode">
+    /// The salesperson on the customer's addresses (Mikro <c>adr_temsilci_kodu</c>): the lowest-numbered address that names
+    /// one. A catalog request falls back to it when the card's own <paramref name="SalespersonCode"/> maps to nobody (S11).
+    /// </param>
     public sealed record Customer(
         string Code, string Title, decimal Balance, string? Phone, string? Email, string? TaxOffice, string? TaxNo,
-        string? SalespersonCode, string? RegionCode, string? GroupCode, string? Currency, bool IsLocked, string? City, string? Address);
+        string? SalespersonCode, string? RegionCode, string? GroupCode, string? Currency, bool IsLocked, string? City, string? Address,
+        string? AddressSalespersonCode = null);
 
     /// <param name="RecNo">Mikro's <c>cha_recno</c>: the order of movements on the same day (null for native rows).</param>
     /// <param name="Closed">
@@ -73,7 +78,7 @@ public static class PortalLedger
 
     private sealed record CardPart(Customer Customer) : CustomerPart;
 
-    private sealed record AddressPart(string Code, int No, string? City, string? Text) : CustomerPart;
+    private sealed record AddressPart(string Code, int No, string? City, string? Text, string? SalespersonCode) : CustomerPart;
 
     private sealed record CachedCustomers(long Version, IReadOnlyDictionary<string, Customer> Customers);
 
@@ -97,16 +102,23 @@ public static class PortalLedger
         var items = parts ?? [];
 
         var addresses = new Dictionary<string, AddressPart>(StringComparer.OrdinalIgnoreCase);
+        var salespersons = new Dictionary<string, AddressPart>(StringComparer.OrdinalIgnoreCase);
         foreach (var address in items.OfType<AddressPart>())
+        {
             if (!addresses.TryGetValue(address.Code, out var existing) || address.No < existing.No)
                 addresses[address.Code] = address;
+            if (address.SalespersonCode is not null && (!salespersons.TryGetValue(address.Code, out var named) || address.No < named.No))
+                salespersons[address.Code] = address;
+        }
         var customers = new Dictionary<string, Customer>(StringComparer.OrdinalIgnoreCase);
         foreach (var card in items.OfType<CardPart>())
         {
             var customer = card.Customer;
-            customers[customer.Code] = addresses.TryGetValue(customer.Code, out var address)
-                ? customer with { City = address.City, Address = address.Text }
-                : customer;
+            if (addresses.TryGetValue(customer.Code, out var address))
+                customer = customer with { City = address.City, Address = address.Text };
+            if (salespersons.TryGetValue(customer.Code, out var salesperson))
+                customer = customer with { AddressSalespersonCode = salesperson.SalespersonCode };
+            customers[customer.Code] = customer;
         }
         cache.Set(key, new CachedCustomers(mirror.Version, customers), ViewLifetime);
         return customers;
@@ -221,7 +233,8 @@ public static class PortalLedger
                 AndroidEndpoints.JoinAddressLine(
                     AndroidEndpoints.GetString(item, "neighborhood"), AndroidEndpoints.GetString(item, "avenue"), AndroidEndpoints.GetString(item, "street"),
                     AndroidEndpoints.GetString(item, "streetName"), AndroidEndpoints.GetString(item, "apartmentNo"),
-                    AndroidEndpoints.GetString(item, "district"), city));
+                    AndroidEndpoints.GetString(item, "district"), city),
+                PortalRecords.Blank(AndroidEndpoints.GetString(item, "salespersonCode")));
         }
         return new CardPart(new Customer(
             code,

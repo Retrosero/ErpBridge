@@ -82,7 +82,7 @@ internal static class CatalogCustomerOrderEndpoints
             return new CatalogOrderLine(product.Code, product.Name, product.Unit, l.Quantity, product.EffectiveCartonQuantity,
                 l.Price!.List, l.Price.DiscountPercent, l.Price.Net, product.VatRate, l.Gross, l.Discount, l.Vat, l.Total);
         }).ToList();
-        var assigned = await CatalogOrders.AssigneeAsync(db, tenant.Id, account.ResponsibleUserId, card?.SalespersonCode, ct);
+        var assigned = (await CatalogOrders.AssigneeAsync(db, cache, tenant.Id, account.ResponsibleUserId, account.CustomerCode, card, ct)).UserId;
         var recipients = await CatalogOrders.ManagersAsync(db, tenant.Id, ct);
         if (assigned is { } assignee) recipients.Add(assignee);
         var now = NowMs();

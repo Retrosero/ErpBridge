@@ -71,6 +71,9 @@ public sealed class UserDto
     /// <summary>How many permissions are set for this person apart from their roles (GOAL_YETKILER).</summary>
     [JsonPropertyName("permissionOverrideCount")] public int PermissionOverrideCount { get; set; }
 
+    /// <summary>The Mikro salesperson code mapped to the person (users list only); null when none is mapped.</summary>
+    [JsonPropertyName("salespersonCode")] public string? SalespersonCode { get; set; }
+
     /// <summary>The roles, or the single role a server before multi-role accounts sends.</summary>
     public IReadOnlyList<string> EffectiveRoles() =>
         Roles.Length > 0 ? Roles : string.IsNullOrWhiteSpace(Role) ? [] : [Role];

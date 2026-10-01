@@ -4,7 +4,11 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
+using ErpBridge.CentralApi.Endpoints;
+using ErpBridge.CentralApi.Portal;
+using ErpBridge.CentralApi.Team;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ErpBridge.CentralApi.CustomerCatalog;
 
@@ -27,6 +31,22 @@ public sealed record CatalogOrderLine(
     [property: JsonPropertyName("discount")] decimal Discount,
     [property: JsonPropertyName("vat")] decimal Vat,
     [property: JsonPropertyName("total")] decimal Total);
+
+/// <summary>Why a request went to its assignee (<see cref="CatalogOrders.AssigneeAsync"/>); the panel's "who hears of it" names it.</summary>
+public static class CatalogAssigneeSources
+{
+    public const string Responsible = "responsible";
+    public const string Salesperson = "salesperson";
+    public const string Address = "address";
+    public const string Default = "default";
+    public const string Route = "route";
+
+    /// <summary>Nobody matched: the catalog managers alone hear of the request.</summary>
+    public const string ManagersOnly = "managersOnly";
+}
+
+/// <summary>A request's assignee (null: nobody) and the rule that chose them (<see cref="CatalogAssigneeSources"/>).</summary>
+public sealed record CatalogAssignee(Guid? UserId, string Source);
 
 /// <summary>The rules around a customer's order request (GOAL_MUSTERI_KATALOGU §5.2, §5.3): its number, its lines, who hears of it.</summary>
 public static class CatalogOrders
@@ -74,25 +94,97 @@ public static class CatalogOrders
     }
 
     /// <summary>
-    /// The staff member a new request goes to: the account's responsible user while active, else the user whose
-    /// salesperson code is the customer's (Mikro <c>cari_temsilci_kodu</c>; <c>TargetFacts</c>' <c>userOfCode</c>), else none.
+    /// The staff member a new request goes to and why (GOAL_MUSTERI_KATALOGU §5.3, S11), the first that names an active,
+    /// undeleted user: the account's responsible user; the user mapped to the customer's salesperson code (Mikro
+    /// <c>cari_temsilci_kodu</c>; <c>TargetFacts</c>' <c>userOfCode</c>); the one mapped to the salesperson on the customer's
+    /// addresses (<c>adr_temsilci_kodu</c>); the one mapped to the company's default salesperson
+    /// (<see cref="ErpWriteSettings.DefaultSalespersonCode"/>); the first active assignee of the current route plan that stops
+    /// at the customer (the newest by start date; ERP-less companies too). Else nobody: only the catalog managers hear of it.
+    /// One query each for users, settings and mappings; the route plans come from a cached mirror, so a request scans nothing.
     /// </summary>
-    public static async Task<Guid?> AssigneeAsync(CentralApiDbContext db, Guid tenantId, Guid? responsibleUserId, string? salespersonCode, CancellationToken ct)
+    public static async Task<CatalogAssignee> AssigneeAsync(
+        CentralApiDbContext db, IMemoryCache cache, Guid tenantId, Guid? responsibleUserId, string customerCode, PortalLedger.Customer? card, CancellationToken ct)
     {
-        var active = db.MobileUsers.AsNoTracking().Where(u => u.TenantId == tenantId && u.IsActive && u.DeletedAtUtc == null);
-        if (responsibleUserId is { } responsible && await active.AnyAsync(u => u.Id == responsible, ct)) return responsible;
-        var code = salespersonCode?.Trim();
-        if (string.IsNullOrEmpty(code)) return null;
-        var mappings = await db.MobileUserErpMappings.AsNoTracking()
-            .Where(m => m.TenantId == tenantId && m.SalespersonCode != null && m.SalespersonCode != "")
-            .Select(m => new { m.UserId, m.SalespersonCode })
+        var users = await db.MobileUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId && u.IsActive && u.DeletedAtUtc == null)
+            .Select(u => new { u.Id, u.Username })
             .ToListAsync(ct);
-        var candidates = mappings.Where(m => string.Equals(m.SalespersonCode!.Trim(), code, StringComparison.OrdinalIgnoreCase))
-            .Select(m => m.UserId).ToList();
-        if (candidates.Count == 0) return null;
-        var activeIds = await active.Where(u => candidates.Contains(u.Id)).Select(u => u.Id).ToListAsync(ct);
-        var found = candidates.FirstOrDefault(activeIds.Contains);
-        return found == Guid.Empty ? null : found;
+        var active = users.Select(u => u.Id).ToHashSet();
+        if (responsibleUserId is { } responsible && active.Contains(responsible)) return new(responsible, CatalogAssigneeSources.Responsible);
+
+        var codes = new List<(string Code, string Source)>();
+        if (Code(card?.SalespersonCode) is { } own) codes.Add((own, CatalogAssigneeSources.Salesperson));
+        if (Code(card?.AddressSalespersonCode) is { } onAddress) codes.Add((onAddress, CatalogAssigneeSources.Address));
+        var companyDefault = Code(await db.ErpWriteSettings.AsNoTracking()
+            .Where(s => s.TenantId == tenantId).Select(s => s.DefaultSalespersonCode).FirstOrDefaultAsync(ct));
+        if (companyDefault is not null) codes.Add((companyDefault, CatalogAssigneeSources.Default));
+        if (codes.Count > 0)
+        {
+            var mappings = await db.MobileUserErpMappings.AsNoTracking()
+                .Where(m => m.TenantId == tenantId && m.SalespersonCode != null && m.SalespersonCode != "")
+                .Select(m => new { m.UserId, m.SalespersonCode })
+                .ToListAsync(ct);
+            foreach (var (code, source) in codes)
+            {
+                var found = mappings.FirstOrDefault(m => active.Contains(m.UserId) && string.Equals(m.SalespersonCode!.Trim(), code, StringComparison.OrdinalIgnoreCase));
+                if (found is not null) return new(found.UserId, source);
+            }
+        }
+
+        var today = PortalReports.IstanbulDay(DateTimeOffset.UtcNow).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var byName = users.GroupBy(u => u.Username, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+        var plans = (await RoutePlansAsync(db, cache, tenantId, ct))
+            .Where(p => p.IsActive && (p.StartDate.Length == 0 || string.CompareOrdinal(p.StartDate, today) <= 0) && p.Customers.Contains(customerCode))
+            .OrderByDescending(p => p.StartDate, StringComparer.Ordinal)
+            .ThenByDescending(p => p.UpdatedAtUtc, StringComparer.Ordinal)
+            .ThenBy(p => p.PlanId, StringComparer.Ordinal);
+        foreach (var plan in plans)
+            foreach (var username in plan.Assignees)
+                if (byName.TryGetValue(username, out var id)) return new(id, CatalogAssigneeSources.Route);
+        return new(null, CatalogAssigneeSources.ManagersOnly);
+    }
+
+    private static string? Code(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>A route plan as the assignee rule needs it (<c>mobile_records</c> <c>routePlans</c>, <see cref="TeamDocumentProcessor"/>).</summary>
+    private sealed record RoutePlan(string PlanId, bool IsActive, string StartDate, string UpdatedAtUtc, IReadOnlySet<string> Customers, IReadOnlyList<string> Assignees);
+
+    private sealed record CachedRoutePlans(long Version, IReadOnlyList<RoutePlan> Plans);
+
+    private static readonly string[] RoutePlanEntities = [TeamDocumentProcessor.RoutePlansSection];
+
+    /// <summary>The company's route plans, from a mirror that reads only the rows changed since its last read.</summary>
+    private static async Task<IReadOnlyList<RoutePlan>> RoutePlansAsync(CentralApiDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
+    {
+        var mirror = PortalRecordMirror<RoutePlan>.For(cache, "catalog-route-plans", tenantId, RoutePlanEntities, ParseRoutePlan);
+        var key = ("catalog-route-plans", tenantId);
+        cache.TryGetValue(key, out CachedRoutePlans? cached);
+        var plans = await mirror.RefreshAsync(db, cached?.Version, ct);
+        if (plans is null && cached is not null) return cached.Plans;
+        var current = plans ?? [];
+        cache.Set(key, new CachedRoutePlans(mirror.Version, current), TimeSpan.FromMinutes(30));
+        return current;
+    }
+
+    /// <summary>A plan without stops or assignees routes nobody, so it is not kept.</summary>
+    private static RoutePlan? ParseRoutePlan(string entity, JsonElement plan)
+    {
+        var customers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (plan.TryGetProperty("stops", out var stops) && stops.ValueKind == JsonValueKind.Array)
+            foreach (var stop in stops.EnumerateArray())
+                if (Code(AndroidEndpoints.GetString(stop, "customerCode")) is { } code) customers.Add(code);
+        List<string> assignees = plan.TryGetProperty("assignees", out var names) && names.ValueKind == JsonValueKind.Array
+            ? [.. names.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.String).Select(a => a.GetString()!.Trim()).Where(a => a.Length > 0)]
+            : [];
+        return customers.Count == 0 || assignees.Count == 0
+            ? null
+            : new RoutePlan(
+                AndroidEndpoints.GetString(plan, "planId") ?? string.Empty,
+                AndroidEndpoints.GetBoolean(plan, "isActive") ?? true,
+                AndroidEndpoints.GetString(plan, "startDate") ?? string.Empty,
+                AndroidEndpoints.GetString(plan, "updatedAtUtc") ?? string.Empty,
+                customers,
+                assignees);
     }
 
     /// <summary>Active users who manage the catalog: they see every request and hear of every new one.</summary>

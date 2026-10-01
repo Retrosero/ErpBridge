@@ -101,6 +101,12 @@ public sealed class MobileUserDto
 
     /// <summary>How many permissions are set for this person apart from their roles (a badge in the users list).</summary>
     [JsonPropertyName("permissionOverrideCount")] public int PermissionOverrideCount { get; set; }
+
+    /// <summary>
+    /// The person's Mikro salesperson code (<c>MobileUserErpMapping.SalespersonCode</c>), in the users list only; null when
+    /// none is mapped. The panel warns that a customer's catalog request cannot reach a salesperson without one (S11).
+    /// </summary>
+    [JsonPropertyName("salespersonCode")] public string? SalespersonCode { get; set; }
 }
 
 /// <summary>User list with the seat state that decides whether another one fits.</summary>

@@ -116,7 +116,7 @@ yönetim yetkisi istemez: yetkili tümünü, diğerleri yalnız kendine atananı
 | `GET products?category=&q=` | → `{revision, truncated, items[Product]}`; `Product {stockCode, name, unit, brand, categoryKey, sortOrder, hidden, noDiscount, cartonOnly, cartonQuantity, erpCartonQuantity, listPrice, inStock, imageCount, thumbUrl}`. `category` ile kategorinin tamamı (en çok 5000), `q` ile tüm katalogda en çok 50 |
 | `PUT products` | `{revision, items[{stockCode, sortOrder, hidden, noDiscount, cartonOnly, cartonQuantity}]}` (en çok 5000; verilmeyen ürün değişmez) → `{revision}`. Etkin koli yokken `cartonOnly` `400 CARTON_QUANTITY_REQUIRED` |
 | `GET accounts?q=&page=` | → `{items[AccountSummary], total}`; `AccountSummary {id, customerCode, customerName, username, isActive, discountPercent, priceListNo, lastLoginAtMs, openOrderCount}` |
-| `GET accounts/by-customer?code=` | → `{account: Account|null, customerName, suggestedUsername}`; cari yok `404 CUSTOMER_NOT_FOUND` |
+| `GET accounts/by-customer?code=` | → `{account: Account|null, customerName, suggestedUsername, notifyPreview{userId, userName, source}}` (`source`: `responsible|salesperson|address|default|route|managersOnly`, §5.3); cari yok `404 CUSTOMER_NOT_FOUND` |
 | `POST accounts` | `{customerCode, username, password?, isActive, discountPercent, priceListNo?, visibility{mode,rules[{type,key,effect}]}, showStatement, showInvoices, showPurchased, canOrder, responsibleUserId?}` → `201 {account, issuedPassword?}` |
 | `PATCH accounts/{id}` | aynı alanlar (customerCode ve password hariç), hepsi isteğe bağlı → `{account}` |
 | `PUT accounts/{id}/password` | `{password?}` → `{issuedPassword?}` |
@@ -129,6 +129,7 @@ yönetim yetkisi istemez: yetkili tümünü, diğerleri yalnız kendine atananı
 | `PUT images/order?stockCode=` | `{ids[]}` → 204 |
 | `DELETE images/{id}` | → 204 |
 | `GET orders?status=&q=&page=` | → `{items[OrderSummary], total, counts{new,claimed,completed,rejected}}`; `OrderSummary {id, no, customerCode, customerName, status, total, lineCount, submittedAtMs, assignedUserName, claimedByUserId, claimedByName, claimedAtMs}` |
+| `GET orders/counts` | → yalnız `counts{new,claimed,completed,rejected}`, veritabanında sayılır (panel menü rozeti) |
 | `GET orders/{id}` | → `OrderDetail` = summary + `{note, priceListNo, priceListName, priceIncludesVat, discountPercent, rejectReason, documentRef, closedByName, closedAtMs, lines[{stockCode, name, unit, quantity, cartonQuantity, listPrice, discountPercent, vatRate, gross, discount, vat, total, inStockNow}]}` |
 | `POST orders/{id}/claim` | `{force}` (`force` yalnız yetkili) → `OrderDetail`; başkasında `409 CATALOG_ORDER_TAKEN`, kapalı `409 CATALOG_ORDER_CLOSED` |
 | `POST orders/{id}/release` / `complete {documentRef}` / `reject {reason}` | → `OrderDetail` |
@@ -185,9 +186,14 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
   ise yeni satış talebi devralır (iş olmayan "başka yerde girildi" referansı kalıcı; yalnız `reopen`). Onayda reddedilen belge
   ingest'e girmez → talep `CLAIMED` kalır.
 - Yeni talepte `UserNotification{Kind="CATALOG_ORDER_NEW", TaskId=null, Title="Yeni müşteri siparişi: {cari}",
-  Body="{No} · {n} kalem · {toplam} TL"}`. Alıcılar: `ResponsibleUserId` ya da plasiyer eşlemesi
-  (`Customer.SalespersonCode` → `MobileUserErpMapping.SalespersonCode`) → `AssignedUserId`; artı yönetim yetkili aktif
-  kullanıcılar. Sıra `ReserveAsync` ile `SaveChanges`'ten hemen önce; ardından `ITenantEventHub.Publish(Tasks)`.
+  Body="{No} · {n} kalem · {toplam} TL"}`. Alıcılar: `CatalogOrders.AssigneeAsync`'in ilk bulduğu aktif, silinmemiş kişi
+  → `AssignedUserId` (S11), sırasıyla: (1) hesabın `ResponsibleUserId`'si; (2) carinin `SalespersonCode`'u
+  (`cari_temsilci_kodu`) → `MobileUserErpMapping.SalespersonCode`; (3) carinin adreslerindeki temsilci
+  (`adr_temsilci_kodu`; en küçük numaralı, temsilcisi dolu adres) → aynı eşleme; (4) firma varsayılanı
+  `ErpWriteSettings.DefaultSalespersonCode` → aynı eşleme; (5) carinin durak olduğu güncel rut planının (`routePlans`:
+  `isActive`, `startDate` boş ya da bugün/önce; en yeni `startDate`) ilk aktif atananı — ERP'siz firmada da. Hiçbiri yoksa
+  atanmaz; artı yönetim yetkili aktif kullanıcılar her talepte. Panel aynı kuralı `accounts/by-customer`'ın
+  `notifyPreview`'ünde gösterir. Sıra `ReserveAsync` ile `SaveChanges`'ten hemen önce; ardından `ITenantEventHub.Publish(Tasks)`.
 - Durum etiketleri — personel: Yeni / İşlemde ({ad}) / Siparişe çevrildi / Reddedildi; müşteri: Alındı / İnceleniyor /
   Siparişe çevrildi / Reddedildi.
 
@@ -232,6 +238,7 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 | S7 | Müşteri gezinme: `categories`, `products`, `products/detail`, `cart/quote` | Gizli ürün 404; `noDiscount` tek fiyat; fiyatsız ürün yok; stoksuz `inStock=false`; "ışık" "IŞIK"ı bulur; cariye özel açılan ürün başka hesapta görünmez |
 | S8 | Talepler (müşteri + personel), `CatalogOrderLinker` (ingest + onay), bildirim | 0,06 TL fark 409; koli katı olmayan 422; aynı `requestId` tek kayıt; plasiyer eşlemeli carinin talebi o kişiye bildirim; ikinci claim 409; aynı talebe ikinci belge 409 |
 | S9 | `statement`, `invoices`, `invoices/detail`, `purchased` | Bayrak kapalı 403; başka carinin belge anahtarı 404; kasa koduyla çakışan cari başka carinin `r` anahtarıyla 404 |
+| S11 | Talep ataması: sorumlu → cari temsilcisi → adres temsilcisi → firma varsayılanı → aktif rut planı; `notifyPreview`; kullanıcı listesinde `salespersonCode`; `GET orders/counts` | Her adım ayrı testli; pasif/silinmiş kişi atlanır; ERP'siz firmada rut planındaki kişiye atanır; hiçbiri yoksa yalnız yöneticiler |
 
 ### Web (ErpBridge)
 | # | Görev | Kabul |
@@ -251,6 +258,7 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 | P3 | Ürün sheet'inde görseller (2 varyant, sıralı yükleme, link ekleme) | `PUT images/{id}/l` ve `/s` gider |
 | P4 | `CatalogAccessSheet`, Cari düğmesi, Müşteri erişimleri sekmesi, paylaşım | Cari açılışında ek istek yok; `issuedPassword` bir kez |
 | P5 | `/musteri-siparisleri` | Reddetmede gerekçe zorunlu; ERP'li firmada "telefondan çevirin" kutusu |
+| P7 | Bildirim görünürlüğü: menüde yeni talep rozeti (sayfa geçişinde ve 60 sn'de bir), `/musteri-siparisleri` 60 sn'de bir sessizce tazelenir, `CatalogAccessSheet`'te "Bildirim kime gidecek", Kullanıcılar'da temsilcisiz plasiyere "Katalog talepleri bildirilemez" | Rozet sayısı `orders/counts`'tan; açık talep ve yarım form tazelemede bozulmaz; ERP'siz firmada metin plasiyerden söz etmez |
 
 ### Telefon — Siparis_Cepte `docs/GOAL_MUSTERI_KATALOGU.md` (A1–A7)
 
