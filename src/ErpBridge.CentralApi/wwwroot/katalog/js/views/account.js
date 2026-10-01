@@ -217,7 +217,7 @@ export function statementView(ctx) {
     const controller = { current: null };
     let destroyed = false;
 
-    const form = h('form', { class: 'range', onsubmit: e => { e.preventDefault(); apply(fromInput.value, toInput.value); } },
+    const form = h('form', { class: 'range', novalidate: true, onsubmit: e => { e.preventDefault(); apply(fromInput.value, toInput.value); } },
         h('div', { class: 'field' }, h('label', { class: 't-label', for: fromId }, 'Başlangıç'), fromInput),
         h('div', { class: 'field' }, h('label', { class: 't-label', for: toId }, 'Bitiş'), toInput),
         h('button', { type: 'submit', class: 'app-btn app-btn--secondary range__submit' }, 'Göster'));

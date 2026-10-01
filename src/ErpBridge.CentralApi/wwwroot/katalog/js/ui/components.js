@@ -273,9 +273,19 @@ export function skeletonCards(n) {
 /**
  * Modal <dialog>: a bottom sheet on phones, a centred panel from 768px. Esc, the backdrop and a
  * close forced by the browser all go through onRequestClose so the caller keeps history in step.
+ * The caller's own close buttons use the returned requestClose.
  */
 export function openSheet(opts) {
     let closing = false;
+    let requested = false;
+    // At most one request per opening: one gesture can fire several of these (without user
+    // activation Chrome makes Esc's `cancel` uncancelable and `close` follows it), and each
+    // request may be a history.back() — two would leave the catalogue's page.
+    const requestClose = () => {
+        if (closing || requested) return;
+        requested = true;
+        opts.onRequestClose();
+    };
     const dialog = h('dialog', {
         class: ['sheet', opts.className],
         'aria-label': opts.label,
@@ -283,19 +293,18 @@ export function openSheet(opts) {
     });
     dialog.addEventListener('cancel', e => {
         e.preventDefault();
-        opts.onRequestClose();
+        requestClose();
     });
-    dialog.addEventListener('close', () => {
-        if (!closing) opts.onRequestClose();
-    });
+    dialog.addEventListener('close', requestClose);
     dialog.addEventListener('click', e => {
-        if (e.target === dialog) opts.onRequestClose();
+        if (e.target === dialog) requestClose();
     });
     document.body.append(dialog);
     document.documentElement.classList.add('is-modal');
     dialog.showModal();
     return {
         dialog,
+        requestClose,
         close() {
             if (closing) return;
             closing = true;

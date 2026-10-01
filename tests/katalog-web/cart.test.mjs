@@ -69,6 +69,7 @@ test('qtyLabel and unitText', () => {
     assert.equal(qtyLabel(plain, 5), '5 adet');
     assert.equal(qtyLabel(plain, 1200), '1.200 adet');
     assert.equal(qtyLabel(cartonOptional, 12), '12 adet');
+    assert.equal(qtyLabel(cartonOnly, 26), '26 adet', 'not a whole number of cartons: pieces only');
 });
 
 test('setQty adds, updates, removes and keeps a snapshot', () => {

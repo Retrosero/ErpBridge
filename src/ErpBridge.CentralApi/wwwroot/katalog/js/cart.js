@@ -55,11 +55,14 @@ export function unitText(product) {
     return unit ? unit.toLocaleLowerCase('tr-TR') : 'adet';
 }
 
-/** "2 koli · 48 adet" for a carton-only product, "5 adet" otherwise. */
+/**
+ * "2 koli · 48 adet" for a carton-only product, "5 adet" otherwise. A quantity that is not a whole
+ * number of cartons (the carton rule changed after it went into the cart) is told in pieces only.
+ */
 export function qtyLabel(product, qty) {
     const pieces = count(qty) + ' ' + unitText(product);
     const box = boxOf(product);
-    if (box && box.only && qty > 0) return count(qty / box.qty) + ' koli · ' + pieces;
+    if (box && box.only && qty > 0 && qty % box.qty === 0) return count(qty / box.qty) + ' koli · ' + pieces;
     return pieces;
 }
 

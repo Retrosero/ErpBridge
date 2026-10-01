@@ -82,7 +82,7 @@ export function openProduct(ctx, key, onRequestClose) {
     const localCtx = Object.assign({}, ctx, { notify: text => { notice.textContent = text; } });
 
     render(sheet.dialog,
-        h('div', { class: 'sheet__head sheet__head--bare' }, iconButton('back', 'Kapat', onRequestClose)),
+        h('div', { class: 'sheet__head sheet__head--bare' }, iconButton('back', 'Kapat', sheet.requestClose)),
         content, footer);
     render(content, h('div', { class: 'pd' },
         h('div', { class: 'gallery' }, h('div', { class: 'gallery__slide skel' })),
@@ -134,7 +134,7 @@ export function openProduct(ctx, key, onRequestClose) {
                     ? emptyState({
                         icon: 'box',
                         title: 'Ürün bulunamadı ya da artık katalogda değil.',
-                        action: h('button', { type: 'button', class: 'app-btn app-btn--secondary btn-touch', onclick: onRequestClose }, 'Kataloğa dön'),
+                        action: h('button', { type: 'button', class: 'app-btn app-btn--secondary btn-touch', onclick: sheet.requestClose }, 'Kataloğa dön'),
                     })
                     : errorState(err, () => {
                         render(content);

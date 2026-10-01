@@ -144,7 +144,9 @@ export function cartView(ctx) {
                 .filter(Boolean).join(' · ');
             render(price, priceBlock(p.price, { small: true }));
 
-            const code = isFresh && ql ? ql.issue : null;
+            // A line's issue depends on its own product and quantity only, so it stays up while
+            // another line's change is being re-quoted (sending still waits for a fresh quote).
+            const code = ql && ql.quantity === line.quantity ? ql.issue : null;
             row.node.classList.toggle('cline--issue', !!code);
             render(issue, code ? issueNode(line, code) : null);
 
@@ -177,8 +179,9 @@ export function cartView(ctx) {
                 ? h('button', {
                     type: 'button',
                     class: 'app-btn app-btn--secondary app-btn--sm',
+                    'aria-label': (code === 'CARTON_MULTIPLE' ? 'Koli katına yuvarla: ' : 'Miktarı düzelt: ') + qtyLabel(line.product, fixed),
                     onclick: () => changeCart(ctx, line.product, fixed),
-                }, code === 'CARTON_MULTIPLE' ? 'Koli katına yuvarla (' + qtyLabel(line.product, fixed) + ')' : 'Miktarı düzelt')
+                }, code === 'CARTON_MULTIPLE' ? 'Koli katına yuvarla' : 'Miktarı düzelt')
                 : null,
             REMOVE_ONLY.has(code)
                 ? h('button', { type: 'button', class: 'app-btn app-btn--ghost app-btn--sm', onclick: () => removeWithUndo(line) }, 'Sepetten çıkar')
