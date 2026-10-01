@@ -53,7 +53,13 @@ public sealed class StorageOptions
         && !string.IsNullOrWhiteSpace(SecretAccessKey)
         && !string.IsNullOrWhiteSpace(PublicBucket)
         && !string.IsNullOrWhiteSpace(PrivateBucket)
-        && !string.IsNullOrWhiteSpace(PublicBaseUrl);
+        && !string.IsNullOrWhiteSpace(PublicBaseUrl)
+        && !SameBuckets;
+
+    /// <summary>Private files must never land in the bucket the CDN serves: the two names have to differ.</summary>
+    private bool SameBuckets =>
+        !string.IsNullOrWhiteSpace(PublicBucket)
+        && string.Equals(PublicBucket.Trim(), PrivateBucket?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The names of the settings that are still empty (never their values), for the startup warning.</summary>
     public IReadOnlyList<string> MissingSettings()
@@ -65,6 +71,7 @@ public sealed class StorageOptions
         if (string.IsNullOrWhiteSpace(PublicBucket)) missing.Add(nameof(PublicBucket));
         if (string.IsNullOrWhiteSpace(PrivateBucket)) missing.Add(nameof(PrivateBucket));
         if (string.IsNullOrWhiteSpace(PublicBaseUrl)) missing.Add(nameof(PublicBaseUrl));
+        if (SameBuckets) missing.Add(nameof(PrivateBucket) + " (must differ from " + nameof(PublicBucket) + ")");
         return missing;
     }
 }

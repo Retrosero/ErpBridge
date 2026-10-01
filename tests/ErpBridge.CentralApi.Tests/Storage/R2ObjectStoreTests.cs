@@ -49,4 +49,14 @@ public sealed class R2ObjectStoreTests
         var build = () => new R2ObjectStore(Microsoft.Extensions.Options.Options.Create(partial));
         build.Should().Throw<InvalidOperationException>();
     }
+
+    [Fact]
+    public void The_same_bucket_for_public_and_private_files_is_refused()
+    {
+        var same = Options();
+        same.PrivateBucket = " " + same.PublicBucket.ToUpperInvariant();
+
+        same.IsConfigured.Should().BeFalse("a private receipt must never be served by the CDN of the public bucket");
+        same.MissingSettings().Should().ContainSingle().Which.Should().StartWith("PrivateBucket");
+    }
 }
