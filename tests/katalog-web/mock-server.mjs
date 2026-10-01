@@ -491,8 +491,29 @@ async function handleApi(req, res, code, rest, query, autoLogin) {
         const q = fold(query.get('q'));
         if (category) list = list.filter(p => p.categoryId === category);
         if (q.length >= 2) list = list.filter(p => [p.name, p.code, p.barcode, p.brand].some(v => fold(v).includes(q)));
+        const brands = [...new Set(list.map(p => p.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+        list = list.map(p => toCProduct(account, p));
+        const min = query.get('minPrice'), max = query.get('maxPrice');
+        if ((min && (!Number.isFinite(Number(min)) || Number(min) < 0)) || (max && (!Number.isFinite(Number(max)) || Number(max) < 0)) || (min && max && Number(min) > Number(max))) return apiError(res, 400, 'INVALID_BODY');
+        if (query.get('brand')) list = list.filter(p => fold(p.brand) === fold(query.get('brand')));
+        if (query.get('stock') === 'in') list = list.filter(p => p.inStock);
+        if (query.get('stock') === 'out') list = list.filter(p => !p.inStock);
+        if (min) list = list.filter(p => p.price.net >= Number(min));
+        if (max) list = list.filter(p => p.price.net <= Number(max));
+        if (query.get('discounted') === 'true') list = list.filter(p => p.price.discountPercent > 0 && p.price.net < p.price.list);
+        if (query.get('cartonOnly') === 'true') list = list.filter(p => p.box && p.box.only);
+        if (query.get('hasImage') === 'true') list = list.filter(p => p.thumb);
+        const sort = query.get('sort');
+        if (sort && sort !== 'recommended') list.sort((a, b) => {
+            const byCode = a.code.localeCompare(b.code, 'tr');
+            if (sort === 'price-asc') return a.price.net - b.price.net || byCode;
+            if (sort === 'price-desc') return b.price.net - a.price.net || byCode;
+            if (sort === 'name-asc') return a.name.localeCompare(b.name, 'tr') || byCode;
+            if (sort === 'name-desc') return b.name.localeCompare(a.name, 'tr') || byCode;
+            return byCode;
+        });
         const { page, pageSize, start } = paging(query, 48, 60);
-        return json(res, 200, { items: list.slice(start, start + pageSize).map(p => toCProduct(account, p)), total: list.length, page, pageSize });
+        return json(res, 200, { items: list.slice(start, start + pageSize), brands, total: list.length, page, pageSize });
     }
 
     if (rest === 'products/detail' && method === 'GET') {
@@ -540,7 +561,7 @@ async function handleApi(req, res, code, rest, query, autoLogin) {
     if (rest === 'orders/detail' && method === 'GET') {
         const order = ORDERS.find(o => o.id === query.get('id') && o.accountId === account.id);
         if (!order) return apiError(res, 404, 'NOT_FOUND');
-        return json(res, 200, { ...summary(order), note: order.note, lines: order.lines });
+        return json(res, 200, { ...summary(order), note: order.note, lines: order.lines.map(line => { const product = PRODUCTS.find(p => p.key === line.key); return { ...line, thumb: product ? toCProduct(account, product).thumb : null }; }) });
     }
 
     if (rest === 'statement' && method === 'GET') {

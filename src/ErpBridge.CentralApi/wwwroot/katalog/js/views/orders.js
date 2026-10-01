@@ -7,7 +7,7 @@ import { icon } from '../icons.js';
 import { count, dateTime, money } from '../format.js';
 import { orderStatus } from '../order.js';
 import { routePath } from '../route-parse.js';
-import { band, emptyState, errorState, pageHeader } from '../ui/components.js';
+import { band, emptyState, errorState, pageHeader, productMedia } from '../ui/components.js';
 
 const STALE_MS = 60 * 1000;
 
@@ -127,6 +127,7 @@ export function orderView(ctx) {
             h('section', { class: 'app-card odetail__card', 'aria-label': 'Ürünler' },
                 h('h2', { class: 't-title-sm' }, 'Ürünler (' + count(lines.length) + ')'),
                 h('ul', { class: 'olines', role: 'list' }, lines.map(line => h('li', { class: 'oline' },
+                    h('div', { class: 'oline__media' }, productMedia(line.thumb, line.name || line.code, false)),
                     h('div', { class: 'oline__main' },
                         h('p', { class: 't-body-strong' }, line.name || line.code || ''),
                         h('p', { class: 't-body-sm muted tnum' },

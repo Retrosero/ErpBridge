@@ -230,7 +230,7 @@ test('price drift scenario: 409 PRICE_CHANGED with the new quote, the same reque
 
     const detail = await demo.get('orders/detail?id=' + requestId);
     assert.equal(detail.note, 'Kapıya bırakın');
-    assert.deepEqual(Object.keys(detail.lines[0]).sort(), ['code', 'key', 'name', 'net', 'quantity', 'total']);
+    assert.deepEqual(Object.keys(detail.lines[0]).sort(), ['code', 'key', 'name', 'net', 'quantity', 'thumb', 'total']);
     assert.equal(detail.lines[0].quantity, 2);
 
     const tek = client((await login('tek', 'tek12345')).cookie);
@@ -280,4 +280,22 @@ test('password: wrong current, weak (in bytes), success signs other browsers out
 
     // Put it back for anything that signs in as demo later.
     assert.equal((await demo.post('password', { current: 'yeni-sifre-1', next: 'demo1234' })).status, 204);
+});
+
+
+test('advanced filters and sorting cover the complete catalogue before paging', async () => {
+    const { cookie } = await login('demo', 'demo1234');
+    const get = async query => (await fetch(base + '/api/v1/catalog/DEMO1234/products?' + query, { headers: { Cookie: cookie } })).json();
+    const all = await get('sort=price-asc&pageSize=60');
+    assert.ok(all.total > 48);
+    assert.ok(all.brands.length > 1);
+    assert.ok(all.items.every((p, i) => !i || all.items[i - 1].price.net <= p.price.net));
+    const page = await get('sort=price-asc&pageSize=1&page=2');
+    assert.equal(page.items[0].key, all.items[1].key);
+    const filtered = await get('stock=in&discounted=true&minPrice=30&maxPrice=250&hasImage=true');
+    assert.ok(filtered.items.length > 0);
+    assert.ok(filtered.items.every(p => p.inStock && p.thumb && p.price.discountPercent > 0 && p.price.net >= 30 && p.price.net <= 250));
+    const orders = await (await fetch(base + '/api/v1/catalog/DEMO1234/orders', { headers: { Cookie: cookie } })).json();
+    const detail = await (await fetch(base + '/api/v1/catalog/DEMO1234/orders/detail?id=' + orders.items[0].id, { headers: { Cookie: cookie } })).json();
+    assert.ok(detail.lines.every(l => 'thumb' in l));
 });

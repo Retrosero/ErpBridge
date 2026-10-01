@@ -1,6 +1,6 @@
-// Catalogue: sticky search (200 ms debounce), category chips + "all categories" sheet under 840px,
-// a category panel from 840px, and a paged grid that loads on scroll with a "Daha fazla göster"
-// button for keyboards. Leaving and coming back within 5 minutes restores the list and position.
+// Catalogue: server-side filters and sorting, a collapsible filter form on phones/tablets,
+// category chips below 840px and a sidebar above it. The paged grid keeps keyboard load-more,
+// URL filters and a five-minute cache when returning from a product or another page.
 
 import { h, render, uid } from '../dom.js';
 import { icon } from '../icons.js';
@@ -15,6 +15,23 @@ const MIN_QUERY = 2;
 const DEBOUNCE_MS = 200;
 const CACHE_MS = 5 * 60 * 1000;
 const PANEL_FILTER_FROM = 12;
+
+const SORTS = [
+    ['recommended', 'Önerilen sıralama'], ['name-asc', 'Ürün adı: A–Z'], ['name-desc', 'Ürün adı: Z–A'],
+    ['price-asc', 'Fiyat: düşükten yükseğe'], ['price-desc', 'Fiyat: yüksekten düşüğe'], ['code-asc', 'Ürün kodu'],
+];
+
+export function catalogFilters(query = {}) {
+    const price = value => value !== '' && value != null && Number.isFinite(Number(value)) && Number(value) >= 0 ? String(Number(value)) : '';
+    return {
+        brand: String(query.brand || '').trim(), stock: ['in', 'out'].includes(query.stock) ? query.stock : '',
+        minPrice: price(query.minPrice), maxPrice: price(query.maxPrice),
+        discounted: String(query.discounted) === 'true' ? 'true' : '',
+        cartonOnly: String(query.cartonOnly) === 'true' ? 'true' : '',
+        hasImage: String(query.hasImage) === 'true' ? 'true' : '',
+        sort: SORTS.some(s => s[0] === query.sort) ? query.sort : 'recommended',
+    };
+}
 
 let categoryCache = null;
 let listCache = null;
@@ -31,11 +48,13 @@ function effectiveQuery(value) {
 }
 
 export function catalogView(ctx, opts = {}) {
-    const owner = ctx.me.username;
+    const owner = ctx.code + ':' + ctx.me.username;
     const cached = listCache && listCache.owner === owner && Date.now() - listCache.at < CACHE_MS ? listCache : null;
     // Under a deep-linked product dialog the list keeps what the customer last looked at.
     let q = opts.underlay && cached ? cached.q : effectiveQuery(ctx.route.query.q);
     let category = opts.underlay && cached ? cached.category : ctx.route.query.kategori || '';
+    let filters = catalogFilters(opts.underlay && cached ? cached.filters : ctx.route.query);
+    let brands = cached ? cached.brands || [] : [];
     let categories = categoryCache && categoryCache.owner === owner ? categoryCache.items : null;
 
     let items = [];
@@ -100,10 +119,102 @@ export function catalogView(ctx, opts = {}) {
     const grid = h('div', { class: 'grid' });
     const sentinel = h('div', { class: 'sentinel', 'aria-hidden': 'true' });
     const more = h('div', { class: 'more' });
+    const fields = {};
+    function field(label, control) {
+        return h('label', { class: 'catalog-field' }, h('span', { class: 't-label' }, label), control);
+    }
+    function select(name, values) {
+        const el = h('select', { class: 'app-input', name }, values.map(([value, label]) => h('option', { value }, label)));
+        el.value = filters[name];
+        fields[name] = el;
+        return el;
+    }
+    const brandSelect = select('brand', [['', 'Tüm markalar']]);
+    const min = h('input', { class: 'app-input', type: 'number', inputmode: 'decimal', min: '0', step: '0.01', name: 'minPrice', value: filters.minPrice, placeholder: 'En az' });
+    const max = h('input', { class: 'app-input', type: 'number', inputmode: 'decimal', min: '0', step: '0.01', name: 'maxPrice', value: filters.maxPrice, placeholder: 'En çok' });
+    fields.minPrice = min;
+    fields.maxPrice = max;
+    function check(name, label) {
+        const el = h('input', { type: 'checkbox', name, checked: filters[name] === 'true' });
+        fields[name] = el;
+        return h('label', { class: 'catalog-check' }, el, label);
+    }
+    const filterForm = h('form', { class: 'catalog-filters__body' },
+        field('Marka', brandSelect),
+        field('Stok durumu', select('stock', [['', 'Tüm ürünler'], ['in', 'Stokta olanlar'], ['out', 'Stokta olmayanlar']])),
+        h('div', { class: 'catalog-price-range' }, field('En az (₺)', min), field('En çok (₺)', max)),
+        h('div', { class: 'catalog-checks' }, check('discounted', 'İndirimli ürünler'), check('cartonOnly', 'Yalnız koli satılanlar'), check('hasImage', 'Görselli ürünler')),
+        h('button', { type: 'submit', class: 'app-btn app-btn--primary btn-touch btn-block' }, 'Filtreleri uygula'),
+        h('button', { type: 'button', class: 'app-btn app-btn--ghost btn-touch btn-block', onclick: resetFilters }, 'Tümünü temizle'));
+    function validatePrices() {
+        max.setCustomValidity(min.value !== '' && max.value !== '' && Number(min.value) > Number(max.value) ? 'En çok fiyat, en az fiyattan küçük olamaz.' : '');
+    }
+    min.addEventListener('input', validatePrices);
+    max.addEventListener('input', validatePrices);
+    filterForm.addEventListener('submit', e => {
+        e.preventDefault();
+        validatePrices();
+        if (!filterForm.reportValidity()) return;
+        for (const [key, el] of Object.entries(fields)) filters[key] = el.type === 'checkbox' ? (el.checked ? 'true' : '') : el.value;
+        if (!window.matchMedia('(min-width: 840px)').matches) filterPanel.open = false;
+        applyFilters();
+    });
+    const filterPanel = h('details', { class: 'catalog-filters app-card', open: window.matchMedia('(min-width: 840px)').matches },
+        h('summary', null, icon('menu', { size: 20 }), h('span', null, 'Filtreler'), icon('chevronDown', { size: 18 })), filterForm);
+    const sortSelect = select('sort', SORTS);
+    // Sorting applies immediately; draft filter fields are only committed with the form.
+    delete fields.sort;
+    sortSelect.addEventListener('change', () => { filters.sort = sortSelect.value; applyFilters(); });
+    const activeFilters = h('div', { class: 'catalog-active', 'aria-label': 'Etkin filtreler' });
     const node = h('div', { class: 'catalog' },
-        h('h1', { class: 'sr-only' }, 'Ürün kataloğu'),
-        panel,
-        h('section', { class: 'catalog__main', 'aria-label': 'Ürünler' }, chips, countLine, status, grid, sentinel, more));
+        h('header', { class: 'catalog-intro' },
+            h('div', null, h('p', { class: 'catalog-intro__eyebrow' }, 'SİZE ÖZEL KATALOG'), h('h1', null, 'İhtiyacınız olan ürünler, bir arada.'),
+                h('p', { class: 'muted' }, 'Ürünleri keşfedin, size özel fiyatlarla siparişinizi hazırlayın.')),
+            h('a', { class: 'app-btn app-btn--secondary btn-touch', href: routePath(ctx.code, 'orders') }, icon('orders', { size: 20 }), 'Siparişlerim')),
+        h('aside', { class: 'catalog__sidebar', 'aria-label': 'Katalog filtreleri' }, filterPanel, panel),
+        h('section', { class: 'catalog__main', 'aria-label': 'Ürünler' }, chips,
+            h('div', { class: 'catalog-toolbar' }, countLine, field('Sıralama', sortSelect)), activeFilters, status, grid, sentinel, more));
+
+    function syncFields() {
+        for (const [key, el] of Object.entries(fields)) {
+            if (el.type === 'checkbox') el.checked = filters[key] === 'true';
+            else el.value = filters[key];
+        }
+        sortSelect.value = filters.sort;
+        max.setCustomValidity('');
+    }
+    function drawBrands(draft = brandSelect.value) {
+        const values = brands.includes(draft) || !draft ? brands : [draft, ...brands];
+        render(brandSelect, h('option', { value: '' }, 'Tüm markalar'), values.map(b => h('option', { value: b }, b)));
+        brandSelect.value = draft;
+    }
+    function applyFilters() {
+        ctx.update(currentUrl());
+        drawActiveFilters();
+        load(true);
+    }
+    function resetFilters() {
+        filters = catalogFilters();
+        category = '';
+        q = '';
+        input.value = '';
+        clearButton.hidden = true;
+        clearTimeout(searchTimer);
+        syncFields();
+        drawCategories();
+        applyFilters();
+    }
+    function drawActiveFilters() {
+        const labels = { brand: filters.brand, stock: filters.stock === 'in' ? 'Stokta olanlar' : 'Stokta olmayanlar',
+            minPrice: 'En az ' + filters.minPrice + ' ₺', maxPrice: 'En çok ' + filters.maxPrice + ' ₺',
+            discounted: 'İndirimli', cartonOnly: 'Yalnız koli', hasImage: 'Görselli' };
+        const selected = Object.keys(labels).filter(key => filters[key]);
+        render(activeFilters, selected.map(key => h('button', { type: 'button', class: 'chip',
+            'aria-label': labels[key] + ' filtresini kaldır', onclick: () => { filters[key] = ''; syncFields(); applyFilters(); } },
+            labels[key], icon('close', { size: 16 }))));
+    }
+    drawBrands(filters.brand);
+    drawActiveFilters();
 
     const observer = 'IntersectionObserver' in window
         ? new IntersectionObserver(entries => {
@@ -121,7 +232,7 @@ export function catalogView(ctx, opts = {}) {
     }
 
     function currentUrl() {
-        return routePath(ctx.code, 'catalog', { q: q || null, kategori: category || null });
+        return routePath(ctx.code, 'catalog', { q: q || null, kategori: category || null, ...filters, sort: filters.sort === 'recommended' ? null : filters.sort });
     }
 
     function applySearch(value) {
@@ -176,7 +287,7 @@ export function catalogView(ctx, opts = {}) {
         draw();
         try {
             const res = await ctx.api.get('products', {
-                query: { category: category || null, q: q || null, page: page + 1, pageSize: PAGE_SIZE },
+                query: { category: category || null, q: q || null, page: page + 1, pageSize: PAGE_SIZE, ...filters },
                 signal: mine.signal,
             });
             if (destroyed || controller !== mine) return;
@@ -184,6 +295,8 @@ export function catalogView(ctx, opts = {}) {
             const list = Array.isArray(res.items) ? res.items : [];
             page = res.page || page + 1;
             total = Number(res.total) || 0;
+            brands = Array.isArray(res.brands) ? res.brands : [];
+            drawBrands();
             appendCards(list);
             done = list.length === 0 || items.length >= total;
         } catch (err) {
@@ -205,8 +318,7 @@ export function catalogView(ctx, opts = {}) {
     }
 
     function draw() {
-        const settled = page > 0 && items.length > 0;
-        countLine.textContent = settled ? (q ? '“' + q + '” için ' : '') + count(total) + ' ürün' : '';
+        countLine.textContent = loading && page === 0 ? 'Ürünler yükleniyor…' : (q ? '“' + q + '” için ' : '') + count(total) + ' ürün';
 
         if (error && items.length === 0) {
             render(status, errorState(error, () => load(true), 'Ürünler yüklenemedi.'));
@@ -234,6 +346,11 @@ export function catalogView(ctx, opts = {}) {
     }
 
     function emptyView() {
+        if (Object.entries(filters).some(([key, value]) => key !== 'sort' && value)) {
+            return emptyState({ icon: 'search', title: 'Bu filtrelere uygun ürün bulunamadı.',
+                text: 'Fiyat aralığını genişletin veya bazı filtreleri kaldırın.',
+                action: h('button', { type: 'button', class: 'app-btn app-btn--secondary btn-touch', onclick: resetFilters }, 'Filtreleri temizle') });
+        }
         if (q) {
             return emptyState({
                 title: '“' + q + '” için ürün bulunamadı',
@@ -345,7 +462,7 @@ export function catalogView(ctx, opts = {}) {
     // Start: from the cache when the same list was open a moment ago, otherwise from page 1.
     drawCategories();
     loadCategories();
-    if (cached && cached.q === q && cached.category === category) {
+    if (cached && cached.q === q && cached.category === category && JSON.stringify(cached.filters) === JSON.stringify(filters)) {
         appendCards(cached.items);
         total = cached.total;
         page = cached.page;
@@ -374,12 +491,13 @@ export function catalogView(ctx, opts = {}) {
         matches(route) {
             return route.name === 'catalog'
                 && effectiveQuery(route.query.q) === q
-                && (route.query.kategori || '') === category;
+                && (route.query.kategori || '') === category
+                && JSON.stringify(catalogFilters(route.query)) === JSON.stringify(filters);
         },
         url: currentUrl,
         destroy() {
             if (items.length) {
-                listCache = { owner, q, category, items: items.slice(), total, page, done, scrollY: window.scrollY, at: Date.now() };
+                listCache = { owner, q, category, filters: { ...filters }, brands, items: items.slice(), total, page, done, scrollY: window.scrollY, at: Date.now() };
             }
             destroyed = true;
             clearTimeout(searchTimer);
