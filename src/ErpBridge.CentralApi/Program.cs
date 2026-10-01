@@ -778,6 +778,7 @@ public partial class Program
         app.MapMobilePermissionEndpoints();
         app.MapMobileTargetEndpoints();
         app.MapMobileUserPreferencesEndpoints();
+        app.MapCustomerCatalogManageEndpoints();
         app.MapPortalTargetEndpoints();
         app.MapPortalRouteEndpoints();
         app.MapPortalEndpoints();

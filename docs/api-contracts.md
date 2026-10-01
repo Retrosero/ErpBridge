@@ -333,6 +333,39 @@ Firma kullanıcısı token'ı; firma token'dan. Günler İstanbul `yyyy-MM-dd`. 
 | `GET /android/targets/mine?date` | `{date, asOfMs, dataSource, source, warnings[], canViewTeam, periods:[{periodType, periodKey, start, end, workDaysTotal, workDaysLeft, summary, targets}]}` — gün, hafta, ay |
 | `GET /android/targets/team?date&periodType` | Pano biçimi; yalnız ADMIN/MANAGER (403 `TARGETS_REQUIRE_MANAGER`) |
 
+## Müşteri kataloğu yönetimi — `/api/v1/customer-catalog` (GOAL_MUSTERI_KATALOGU §5.1)
+
+Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıcı başına. Gövde/yanıt alanları sözleşme belgesindedir
+(`docs/GOAL_MUSTERI_KATALOGU.md` §5.1); burada sunucunun seçtiği ayrıntılar ve hata kodları var. Ayrıntı: KB 00 kural 36.
+
+- **Sıra:** önce modül (`403 MODULE_NOT_ENABLED`, herkese aynı), sonra kilitli `action.customer_catalog.manage`
+  (`403 CATALOG_MANAGE_REQUIRED`; yalnız ADMIN + MANAGER). Gövde eksik/bozuk `400 INVALID_BODY`.
+- **Düzen yazımları** (`PUT settings|categories|products`) `catalog_settings.Revision`'ı bir
+  artırır; gövdedeki `revision` eskiyse `409 CATALOG_CHANGED`, hiçbir şey yazılmaz. `PUT settings` bilinmeyen liste
+  `400 UNKNOWN_PRICE_LIST`.
+- **`PUT categories`:** dizi sırası = kategori sırası (`sortOrder` = dizin); listede olmayan kategori yerini kaybeder, gizliliği
+  kalır (gizli değilse satırı silinir). Anahtar dolu, ≤ 160, tekrarsız.
+- **`GET products?category=&q=`:** `category` kategorinin tamamı (≤ 5000), `q` ad/kod/marka/barkod tr-TR harf duyarsız (≤ 50),
+  ikisi birlikte kategori içinde arar; hiçbiri yoksa tüm katalog (≤ 5000). `truncated` fazlası olduğunu söyler. `listPrice`
+  firmanın etkin varsayılan listesinden; `cartonOnly` geçerli olanı (istenmiş ve etkin koli ≥ 2), `cartonQuantity` firmanın
+  kendi kolisi.
+- **`PUT products`:** ≤ 5000; verilen her ürünün tüm ayarları yazılır, hepsi varsayılana dönen ürünün satırı silinir.
+  `cartonQuantity` 2–100000 (`400 INVALID_CARTON_QUANTITY`); etkin koli yokken `cartonOnly` `400 CARTON_QUANTITY_REQUIRED`.
+- **Hesaplar:** cari `PortalLedger` carilerinden doğrulanır (`404 CUSTOMER_NOT_FOUND`), hesap kartın kodunu saklar. Kullanıcı
+  adı personelinki gibi normalize edilir (`" A.B "` → `a.b`, `400 INVALID_USERNAME`). Canlı hesaplarda ad tekrarı
+  `409 CATALOG_USERNAME_TAKEN`, aynı cariye ikinci hesap `409 CATALOG_ACCOUNT_EXISTS`. Şifre boşsa sunucu 10 karakter üretir
+  (`a–z` ve `2–9`, karışan `i l o 0 1` yok) ve yalnız o yanıtta `issuedPassword` döner; elle şifre 8–72 bayt
+  (`400 INVALID_PASSWORD`). İskonto 0–99,99, iki haneye yuvarlanır (`400 INVALID_DISCOUNT`); bilinmeyen `priceListNo`
+  `400 UNKNOWN_PRICE_LIST`; görünürlük modu `all|only`, kural `category|product` × `allow|deny`, ≤ 2000
+  (`400 INVALID_VISIBILITY`); `responsibleUserId` firmanın aktif kullanıcısı (`400 INVALID_RESPONSIBLE_USER`). Bilinmeyen ya
+  da silinmiş hesap `404 CATALOG_ACCOUNT_NOT_FOUND`.
+- **`PATCH accounts/{id}`:** yalnız gönderilen alanlar değişir; `priceListNo` / `responsibleUserId` açıkça `null` gönderilirse
+  temizlenir; `customerCode`/`password` yok sayılır. `TokenVersion` +1: pasifleştirme, `PUT password`, `revoke-sessions`,
+  `DELETE` (yumuşak; ad ve cari serbest kalır).
+- **`GET accounts?q=&page=`:** 50'lik sayfa, cari adına (tr-TR) göre; `q` kod/ad/kullanıcı adında arar.
+- **`GET accounts/by-customer?code=`:** `suggestedUsername` cari adından (Türkçe harfler ASCII'ye, şirket ekleri ve tek harfler
+  atılır, kelimeler `-` ile, ≤ 24), olmazsa koddan, olmazsa `musteri`; kullanılıyorsa sonuna 2, 3… eklenir.
+
 ## Hata modeli
 
 ```json

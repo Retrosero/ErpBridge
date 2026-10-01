@@ -35,6 +35,15 @@ public sealed record CatalogProduct(
 
     /// <summary>The price in one list; null when the product has none there (the customer of that list does not see it).</summary>
     public decimal? PriceIn(int? listNo) => listNo is { } no && Prices.TryGetValue(no, out var price) ? price : null;
+
+    private static readonly CompareInfo Turkish = CultureInfo.GetCultureInfo("tr-TR").CompareInfo;
+
+    /// <summary>A search hit: <paramref name="query"/> in the name, code, brand or a barcode, Turkish case ignored ("ışık" finds "IŞIK").</summary>
+    public bool Matches(string query) =>
+        Turkish.IndexOf(Name, query, CompareOptions.IgnoreCase) >= 0
+        || Turkish.IndexOf(Code, query, CompareOptions.IgnoreCase) >= 0
+        || (Brand is { } brand && Turkish.IndexOf(brand, query, CompareOptions.IgnoreCase) >= 0)
+        || Barcodes.Any(b => b.Contains(query, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <param name="Id">The customer API's category id: the first 12 hex of SHA-256(key).</param>
