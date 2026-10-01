@@ -49,6 +49,9 @@ public static class PortalReports
     public static DateOnly IstanbulDay(DateTimeOffset instant) =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, Istanbul).DateTime);
 
+    /// <summary>The Istanbul wall-clock time of a server time: what a phone in Turkey writes as a document's <c>occurredAt</c>.</summary>
+    public static DateTime IstanbulTime(DateTimeOffset instant) => TimeZoneInfo.ConvertTime(instant, Istanbul).DateTime;
+
     /// <summary>The UTC moment an Istanbul day starts; <c>day + 1</c> gives its (exclusive) end.</summary>
     public static DateTimeOffset IstanbulDayStartUtc(DateOnly day) =>
         new(TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), Istanbul), TimeSpan.Zero);
