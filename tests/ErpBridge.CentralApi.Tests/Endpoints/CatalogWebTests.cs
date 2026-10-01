@@ -86,7 +86,10 @@ public sealed partial class CatalogWebTests : IClassFixture<CatalogHostFactory>
         ShouldCarrySecurityHeaders(admin);
         (await browser.GetAsync(Base + "/settings", c.Mudur)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await browser.GetAsync("/api/v1/android/account/me", c.Ali)).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await browser.GetAsync("/")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var root = await browser.GetAsync("/");
+        root.StatusCode.Should().Be(HttpStatusCode.OK, "the bare name tells the visitor to use the link the company sent");
+        (await root.Content.ReadAsStringAsync()).Should().Contain("/js/main.js");
+        ShouldCarrySecurityHeaders(root);
         (await browser.PostJsonAsync("/" + c.Code, new { })).StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         var info = await browser.GetAsync(Api(c) + "/info");

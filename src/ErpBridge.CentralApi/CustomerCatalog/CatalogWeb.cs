@@ -130,6 +130,12 @@ public sealed class CatalogWeb
                 .RequireRateLimiting(Program.CatalogPublicRateLimitPolicy)
                 .ExcludeFromDescription();
         }
+        // The bare name (someone typed the address without a company code): the shell says to use the shared link.
+        routes.MapGet("/", RootShell)
+            .RequireHost(_host)
+            .AllowAnonymous()
+            .RequireRateLimiting(Program.CatalogPublicRateLimitPolicy)
+            .ExcludeFromDescription();
     }
 
     private async Task AllowListAsync(HttpContext http, RequestDelegate next)
@@ -157,6 +163,11 @@ public sealed class CatalogWeb
             await http.Response.SendFileAsync(Path.Combine(_root, "favicon.svg"), http.RequestAborted);
             return;
         }
+        if (readOnly && (path.Value is null or "" or "/"))
+        {
+            await next(http);
+            return;
+        }
         // A shell path: its first segment is a company code ("assets" is one too, but an asset never reaches here).
         var first = path.Value?.Split('/', 3) is { Length: >= 2 } segments ? segments[1] : string.Empty;
         if (readOnly && !path.StartsWithSegments(AssetsPrefix, StringComparison.OrdinalIgnoreCase) && CatalogCookies.CodePattern().IsMatch(first))
@@ -166,6 +177,17 @@ public sealed class CatalogWeb
         }
         http.Response.StatusCode = StatusCodes.Status404NotFound;
         http.Response.Headers.CacheControl = "no-store";
+    }
+
+    private IResult RootShell(HttpContext http)
+    {
+        http.Response.Headers.CacheControl = "no-cache";
+        if (_shell is null) return Results.NotFound();
+        return Results.Content(
+            _shell.Replace("%TITLE%", Html.Encode(GenericTitle), StringComparison.Ordinal),
+            "text/html; charset=utf-8",
+            Encoding.UTF8,
+            StatusCodes.Status200OK);
     }
 
     private async Task<IResult> ShellAsync(string code, HttpContext http, CentralApiDbContext db, IMemoryCache cache, CancellationToken ct)
