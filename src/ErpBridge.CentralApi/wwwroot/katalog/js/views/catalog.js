@@ -1,5 +1,5 @@
-// Catalogue: server-side filters and sorting, a collapsible filter form on phones/tablets,
-// category chips below 840px and a sidebar above it. The paged grid keeps keyboard load-more,
+// Catalogue: server-side filters and sorting in a collapsible sidebar.
+// The full-width paged grid keeps keyboard load-more,
 // URL filters and a five-minute cache when returning from a product or another page.
 
 import { h, render, uid } from '../dom.js';
@@ -7,7 +7,7 @@ import { icon } from '../icons.js';
 import { count, foldText } from '../format.js';
 import { routePath } from '../route-parse.js';
 import {
-    emptyState, errorState, openSheet, productCard, sheetHeader, skeletonCards,
+    emptyState, errorState, productCard, skeletonCards,
 } from '../ui/components.js';
 
 const PAGE_SIZE = 48;
@@ -67,7 +67,6 @@ export function catalogView(ctx, opts = {}) {
     let destroyed = false;
     let searchTimer = 0;
     let restoreScroll = null;
-    let sheet = null;
     const cards = new Map();
 
     // Search box (lives in the top bar).
@@ -112,8 +111,9 @@ export function catalogView(ctx, opts = {}) {
         h('span', { class: 'searchbar__icon', 'aria-hidden': 'true' }, icon('search', { size: 20 })),
         input, clearButton);
 
-    const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Kategoriler' });
     const panel = h('nav', { class: 'catpanel', 'aria-label': 'Kategoriler' });
+    const categoryPanel = h('details', { class: 'catalog-section', open: true },
+        h('summary', null, h('span', null, 'Kategoriler'), icon('chevronDown', { size: 18 })), panel);
     const countLine = h('p', { class: 't-caption muted result-count', 'aria-live': 'polite' });
     const status = h('div', { class: 'catalog__status' });
     const grid = h('div', { class: 'grid' });
@@ -156,24 +156,34 @@ export function catalogView(ctx, opts = {}) {
         validatePrices();
         if (!filterForm.reportValidity()) return;
         for (const [key, el] of Object.entries(fields)) filters[key] = el.type === 'checkbox' ? (el.checked ? 'true' : '') : el.value;
-        if (!window.matchMedia('(min-width: 840px)').matches) filterPanel.open = false;
+        closeMobileMenu();
         applyFilters();
     });
-    const filterPanel = h('details', { class: 'catalog-filters app-card', open: window.matchMedia('(min-width: 840px)').matches },
-        h('summary', null, icon('menu', { size: 20 }), h('span', null, 'Filtreler'), icon('chevronDown', { size: 18 })), filterForm);
+    const filterPanel = h('details', { class: 'catalog-filters catalog-section', open: window.matchMedia('(min-width: 840px)').matches },
+        h('summary', null, h('span', null, 'Filtreler'), icon('chevronDown', { size: 18 })), filterForm);
     const sortSelect = select('sort', SORTS);
     // Sorting applies immediately; draft filter fields are only committed with the form.
     delete fields.sort;
     sortSelect.addEventListener('change', () => { filters.sort = sortSelect.value; applyFilters(); });
     const activeFilters = h('div', { class: 'catalog-active', 'aria-label': 'Etkin filtreler' });
+    const sidebar = h('details', { class: 'catalog__sidebar app-card', open: window.matchMedia('(min-width: 840px)').matches },
+        h('summary', { class: 'catalog__menu-toggle', 'aria-label': 'Katalog menüsü' },
+            icon('menu', { size: 20 }), h('span', null, 'Katalog menüsü'), icon('chevronDown', { size: 18 })),
+        h('div', { class: 'catalog__menu-body' }, categoryPanel, filterPanel));
     const node = h('div', { class: 'catalog' },
         h('header', { class: 'catalog-intro' },
             h('div', null, h('p', { class: 'catalog-intro__eyebrow' }, 'SİZE ÖZEL KATALOG'), h('h1', null, 'İhtiyacınız olan ürünler, bir arada.'),
                 h('p', { class: 'muted' }, 'Ürünleri keşfedin, size özel fiyatlarla siparişinizi hazırlayın.')),
             h('a', { class: 'app-btn app-btn--secondary btn-touch', href: routePath(ctx.code, 'orders') }, icon('orders', { size: 20 }), 'Siparişlerim')),
-        h('aside', { class: 'catalog__sidebar', 'aria-label': 'Katalog filtreleri' }, filterPanel, panel),
-        h('section', { class: 'catalog__main', 'aria-label': 'Ürünler' }, chips,
+        sidebar,
+        h('section', { class: 'catalog__main', 'aria-label': 'Ürünler' },
             h('div', { class: 'catalog-toolbar' }, countLine, field('Sıralama', sortSelect)), activeFilters, status, grid, sentinel, more));
+
+    function closeMobileMenu() {
+        if (window.matchMedia('(min-width: 840px)').matches) return;
+        sidebar.open = false;
+        sidebar.firstElementChild.focus();
+    }
 
     function syncFields() {
         for (const [key, el] of Object.entries(fields)) {
@@ -244,7 +254,7 @@ export function catalogView(ctx, opts = {}) {
     }
 
     function selectCategory(id) {
-        if (sheet) closeSheet();
+        closeMobileMenu();
         if (id === category) return;
         category = id;
         ctx.update(currentUrl());
@@ -376,12 +386,7 @@ export function catalogView(ctx, opts = {}) {
         return emptyState({ icon: 'box', title: 'Kataloğunuzda henüz ürün yok.', text: 'Firmanızla iletişime geçin.' });
     }
 
-    // Categories: chips + sheet under 840px, side panel from 840px (CSS picks one).
-    function categoryName(id) {
-        const found = (categories || []).find(c => c.id === id);
-        return found ? found.name : 'Kategori';
-    }
-
+    // The same category navigation is used at every viewport size.
     function categoryList(filter, onPick) {
         const folded = foldText(filter);
         const all = (categories || []).reduce((sum, c) => sum + (Number(c.count) || 0), 0);
@@ -400,45 +405,17 @@ export function catalogView(ctx, opts = {}) {
     }
 
     function drawCategories() {
-        if (!categories || categories.length === 0) {
-            render(chips);
+        categoryPanel.hidden = !categories || categories.length === 0;
+        if (categoryPanel.hidden) {
             render(panel);
-            chips.hidden = true;
             return;
         }
-        chips.hidden = false;
-        const selectedChip = category ? categoryName(category) : 'Tümü';
-        render(chips,
-            h('button', { type: 'button', class: 'chip chip--menu', 'aria-haspopup': 'dialog', onclick: openCategorySheet },
-                icon('menu', { size: 18 }), h('span', { class: 'sr-only' }, 'Kategoriler: '), selectedChip, icon('chevronDown', { size: 18 })),
-            categories.map(c => h('button', {
-                type: 'button',
-                class: 'chip',
-                'aria-pressed': c.id === category ? 'true' : 'false',
-                onclick: () => selectCategory(c.id === category ? '' : c.id),
-            }, c.name)));
-
         const filterInput = categories.length > PANEL_FILTER_FROM
             ? h('input', { class: 'app-input app-search catpanel__filter', type: 'search', placeholder: 'Kategori ara', 'aria-label': 'Kategori ara' })
             : null;
         const listHost = h('div', null, categoryList('', selectCategory));
         if (filterInput) filterInput.addEventListener('input', () => render(listHost, categoryList(filterInput.value, selectCategory)));
-        render(panel, h('h2', { class: 't-label catpanel__title' }, 'Kategoriler'), filterInput, listHost);
-    }
-
-    function openCategorySheet() {
-        const titleId = uid('cat');
-        const filter = h('input', { class: 'app-input app-search', type: 'search', placeholder: 'Kategori ara', 'aria-label': 'Kategori ara' });
-        const listHost = h('div', { class: 'sheet__content' }, categoryList('', selectCategory));
-        filter.addEventListener('input', () => render(listHost, categoryList(filter.value, selectCategory)));
-        sheet = openSheet({ className: 'sheet--categories', labelledBy: titleId, onRequestClose: closeSheet });
-        render(sheet.dialog, sheetHeader('Kategoriler', titleId, closeSheet), h('div', { class: 'sheet__filter' }, filter), listHost);
-    }
-
-    function closeSheet() {
-        if (!sheet) return;
-        sheet.close();
-        sheet = null;
+        render(panel, filterInput, listHost);
     }
 
     async function loadCategories() {
@@ -452,7 +429,7 @@ export function catalogView(ctx, opts = {}) {
             categories = Array.isArray(res.items) ? res.items : [];
             categoryCache = { owner, items: categories };
         } catch (err) {
-            // Products still load without categories; the chips just stay hidden until the next visit.
+            // Products still load without categories; the section stays hidden until the next visit.
             if (destroyed) return;
             categories = null;
         }
@@ -503,7 +480,6 @@ export function catalogView(ctx, opts = {}) {
             clearTimeout(searchTimer);
             if (controller) controller.abort();
             if (observer) observer.disconnect();
-            closeSheet();
             unsubscribe();
         },
     };

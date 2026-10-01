@@ -1,7 +1,7 @@
 /*
  * Müşteri web kataloğu: kabuk, ızgara, kart, çip, sheet, stepper, durumlar.
  * Renk, ölçü ve yazı tokens.css değişkenlerinden gelir; burada yeni değer uydurulmaz.
- * Mobil önce: <840px alt gezinme + kategori çipleri; >=840px üst gezinme + sol kategori paneli.
+ * Mobil önce: <840px alt gezinme + kapalı katalog menüsü; >=840px üst gezinme + daraltılabilir sol menü.
  * CSP inline stili engeller: bütün görünüm bu dosyadaki sınıflardadır.
  */
 
@@ -826,13 +826,23 @@ a.orow:hover, a.rrow:hover { border-color: var(--color-primary-soft-border); }
 }
 
 /* Catalog discovery: one set of controls for every viewport. */
-.catalog { padding-top: var(--space-lg); }
+.main:has(.catalog), .shell:has(.catalog) .topbar__row { max-width: none; --gutter: 16px; }
+.catalog { padding-top: var(--space-sm); }
 .catalog-intro { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: var(--space-lg); padding: var(--space-xl); margin-bottom: var(--space-lg); border: 1px solid var(--color-primary-soft-border); border-radius: var(--radius-lg); background: linear-gradient(120deg, var(--color-primary-soft), var(--color-surface)); }
 .catalog-intro h1 { font-size: clamp(22px, 3vw, 32px); line-height: 1.25; letter-spacing: -.025em; margin: var(--space-sm) 0; text-wrap: balance; }
 .catalog-intro__eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; color: var(--color-on-primary-soft); }
 .catalog-intro > a { flex: none; }
-.catalog__sidebar { min-width: 0; }
-.catalog-filters { margin-bottom: var(--space-lg); overflow: hidden; }
+.catalog__sidebar { min-width: 0; overflow: hidden; }
+.catalog__sidebar summary { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md); min-height: 48px; cursor: pointer; font-weight: 600; list-style: none; }
+.catalog__sidebar summary::-webkit-details-marker { display: none; }
+.catalog__sidebar summary span { flex: 1; }
+.catalog__sidebar summary > .icon:last-child { transition: transform .15s ease; }
+.catalog__sidebar details[open] > summary > .icon:last-child, .catalog__sidebar[open] > summary > .icon:last-child { transform: rotate(180deg); }
+.catalog__menu-toggle { color: var(--color-on-primary-soft); background: var(--color-primary-soft); }
+.catalog-section { border-top: 1px solid var(--color-border); }
+.catalog .catpanel { display: block; position: static; max-height: none; padding: 0 var(--space-sm) var(--space-sm); }
+.catalog .catpanel__filter { width: 100%; }
+.catalog-filters { overflow: hidden; }
 .catalog-filters summary { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md); min-height: 48px; cursor: pointer; font-weight: 600; list-style: none; }
 .catalog-filters summary::-webkit-details-marker { display: none; }
 .catalog-filters summary span { flex: 1; }
@@ -861,12 +871,14 @@ a.orow:hover, a.rrow:hover { border-color: var(--color-primary-soft-border); }
 .oline__media .media { border: 1px solid var(--color-border); }
 .oline__media .media__empty .icon { width: 24px; height: 24px; }
 @media (min-width: 840px) {
-    .catalog { row-gap: 0; }
-    .catalog__sidebar { position: sticky; top: calc(var(--topbar-h) + var(--space-md)); max-height: calc(100dvh - var(--topbar-h) - var(--space-lg)); overflow-y: auto; padding: 2px; }
-    .catalog .catpanel { position: static; max-height: none; padding: var(--space-sm); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+    .catalog { grid-template-columns: 260px minmax(0, 1fr); column-gap: var(--space-md); row-gap: 0; }
+    .catalog:has(> .catalog__sidebar:not([open])) { grid-template-columns: 56px minmax(0, 1fr); }
+    .catalog__sidebar { position: sticky; top: calc(var(--topbar-h) + var(--space-md)); max-height: calc(100dvh - var(--topbar-h) - var(--space-lg)); overflow-y: auto; }
+    .catalog__sidebar:not([open]) > summary { justify-content: center; padding-inline: 0; }
+    .catalog__sidebar:not([open]) > summary span, .catalog__sidebar:not([open]) > summary > .icon:last-child { display: none; }
 }
 @media (max-width: 839px) {
-    .catalog .chips { position: static; margin: 0 0 var(--space-md); padding: var(--space-xs) 0; }
+    .catalog__sidebar { margin-bottom: var(--space-md); }
     .catalog-intro { padding: var(--space-lg); }
     .catalog-intro > a { display: none; }
     .catalog-filters__body { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -37,3 +37,12 @@ Dal: duzeltme/katalog-kok
 - Derleme ve test çıktıları artifacts/catalog-solution-build.txt, artifacts/catalog-dotnet-tests.txt ve artifacts/catalog-node-tests.txt altında.
 
 Yerel demo: http://localhost:5174/DEMO1234 (demo veriler; sunucu çalışırken erişilebilir).
+
+## Tam genişlik ve sol menü güncellemesi
+
+- Değişen dosyalar: katalog/css/app.css, katalog/js/views/catalog.js ve bu teslim notu.
+- Katalog ve üst çubuk 1280 piksel sınırı olmadan ekranı kullanır; yatay kenar boşluğu 16 pikseldir.
+- Kategori ve filtreler aynı sol menüde ayrı native details bölümleridir. Masaüstünde tüm menü 260 pikselden 56 piksele daraltılabilir. Telefon/tablette kapalı başlar.
+- Mobil kategori seçimi veya filtre uygulama menüyü kapatır ve klavye odağını menü başlığına getirir.
+- Yeni doğrulama senaryoları: Enter ile menüyü açma; kategori bölümünü kapatma; stok filtresini uygulama; mobil kategori seçimi sonrası kapalı menü ve odak; tablet filtre bölümünü açma; 320/390/768/1440/1920 piksel genişlikte taşma kontrolü. Tarayıcı konsolunda hata görülmedi.
+- 77 mevcut JavaScript testi geçti. dotnet build ErpBridge.sln --no-restore: 0 hata, 0 uyarı. Sunucu kodu değişmedi.
