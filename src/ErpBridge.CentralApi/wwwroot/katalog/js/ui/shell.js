@@ -9,7 +9,7 @@ import { routePath } from '../route-parse.js';
 const NAV = [
     { name: 'catalog', label: 'Katalog', icon: 'grid', match: ['catalog', 'product'] },
     { name: 'cart', label: 'Sepet', icon: 'cart', match: ['cart'], order: true },
-    { name: 'orders', label: 'Siparişlerim', icon: 'orders', match: ['orders', 'order'], order: true },
+    { name: 'orders', label: 'Siparişlerim', icon: 'orders', match: ['orders', 'order'] },
     { name: 'account', label: 'Hesabım', icon: 'user', match: ['account', 'statement', 'invoices', 'invoice', 'purchased', 'password'] },
 ];
 

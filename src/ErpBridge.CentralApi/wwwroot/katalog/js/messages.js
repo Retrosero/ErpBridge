@@ -43,7 +43,8 @@ function codeOf(err) {
 export function errorMessage(err, context) {
     const code = codeOf(err);
     const status = err && err.status;
-    if (code === 'RATE_LIMITED' || status === 429) {
+    // A 429 with a code of its own (TOO_MANY_OPEN_ORDERS) says that, not "too fast".
+    if (code === 'RATE_LIMITED' || (status === 429 && !Object.prototype.hasOwnProperty.call(TEXT, code))) {
         const wait = err && err.retryAfter > 0 ? duration(err.retryAfter) : '';
         if (context === 'login') {
             return wait ? 'Çok fazla deneme yapıldı. ' + wait + ' sonra tekrar deneyin.'

@@ -379,6 +379,7 @@ public sealed class CustomerCatalogOrdersRelationalTests : IClassFixture<Catalog
 
         (await SendAsync(_factory, HttpMethod.Patch, $"{Base}/accounts/{accountId}", c.Mudur, new { canOrder = false })).StatusCode.Should().Be(HttpStatusCode.OK);
         await ShouldFailAsync(await SubmitAsync(browser, c, Guid.NewGuid(), 100m, ("A", 1m)), HttpStatusCode.Forbidden, "ORDERING_DISABLED");
+        (await GetAsync(browser, Api(c) + "/orders")).StatusCode.Should().Be(HttpStatusCode.OK, "the customer still reads their earlier requests");
         (await SendAsync(_factory, HttpMethod.Patch, $"{Base}/accounts/{accountId}", c.Mudur, new { canOrder = true })).StatusCode.Should().Be(HttpStatusCode.OK);
 
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

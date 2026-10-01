@@ -15,11 +15,10 @@ import { messagePage } from './views/notfound.js';
 
 const TITLE = 'Müşteri Kataloğu';
 
-// Routes that need an account feature (GOAL_MUSTERI_KATALOGU §5.2 Me.features).
+// Routes that need an account feature (GOAL_MUSTERI_KATALOGU §5.2 Me.features). The customer's own
+// requests stay readable when ordering is turned off; only the cart (and adding to it) goes.
 const FEATURE = {
     cart: 'order',
-    orders: 'order',
-    order: 'order',
     statement: 'statement',
     invoices: 'invoices',
     invoice: 'invoices',

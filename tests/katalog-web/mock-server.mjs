@@ -534,7 +534,7 @@ async function handleApi(req, res, code, rest, query, autoLogin) {
         return json(res, 201, { order: summary(order) });
     }
     if (rest === 'orders' && method === 'GET') {
-        if (!account.features.order) return apiError(res, 403, 'ORDERING_DISABLED');
+        // As the server: the customer's requests are listed whether or not ordering is on now.
         return json(res, 200, { items: ORDERS.filter(o => o.accountId === account.id).map(summary) });
     }
     if (rest === 'orders/detail' && method === 'GET') {

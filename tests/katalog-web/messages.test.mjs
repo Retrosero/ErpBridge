@@ -29,6 +29,14 @@ test('rate limit mentions Retry-After when present', () => {
         'Çok hızlı işlem yapıldı. 5 saniye sonra tekrar deneyin.');
 });
 
+test('a 429 with its own code keeps its own text', () => {
+    assert.equal(errorMessage({ code: 'TOO_MANY_OPEN_ORDERS', status: 429 }),
+        'Açık talep sınırına ulaştınız. Firmanız mevcut talepleri işledikten sonra yeniden deneyin.');
+    assert.equal(errorMessage({ code: 'TOO_MANY_OPEN_ORDERS', status: 429, retryAfter: 30 }),
+        'Açık talep sınırına ulaştınız. Firmanız mevcut talepleri işledikten sonra yeniden deneyin.');
+    assert.match(errorMessage({ code: 'SOMETHING_NEW', status: 429 }), /Çok hızlı işlem yapıldı/);
+});
+
 test('context changes INVALID_CREDENTIALS on the password page', () => {
     assert.equal(errorMessage({ code: 'INVALID_CREDENTIALS', status: 401 }, 'login'), 'Kullanıcı adı veya şifre hatalı.');
     assert.equal(errorMessage({ code: 'INVALID_CREDENTIALS', status: 400 }, 'password'), 'Mevcut şifreniz hatalı.');

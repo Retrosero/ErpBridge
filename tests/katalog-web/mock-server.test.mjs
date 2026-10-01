@@ -155,7 +155,7 @@ test('quote and order: carton multiple 422, stale total 409, same requestId one 
     assert.equal(created.order.status, 'NEW');
 });
 
-test('features off: account pages 403 FEATURE_DISABLED, ordering 403 ORDERING_DISABLED', async () => {
+test('features off: account pages 403 FEATURE_DISABLED, ordering 403 ORDERING_DISABLED, own requests still listed', async () => {
     const tek = await login('tek', 'tek12345');
     assert.equal(tek.body.me.features.order, false);
     assert.equal(tek.body.me.priceList.includesVat, false);
@@ -170,6 +170,9 @@ test('features off: account pages 403 FEATURE_DISABLED, ordering 403 ORDERING_DI
     });
     assert.equal(order.status, 403);
     assert.equal((await order.json()).errorCode, 'ORDERING_DISABLED');
+    const listed = await fetch(base + '/api/v1/catalog/DEMO1234/orders', { headers: { cookie: tek.cookie } });
+    assert.equal(listed.status, 200, 'GET orders does not depend on CanOrder (the server lists them too)');
+    assert.ok(Array.isArray((await listed.json()).items));
 
     const demo = await login('demo', 'demo1234');
     const rows = await fetch(base + '/api/v1/catalog/DEMO1234/statement', { headers: { cookie: demo.cookie } });

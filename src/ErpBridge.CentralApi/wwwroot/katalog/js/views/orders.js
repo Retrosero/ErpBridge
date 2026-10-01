@@ -69,7 +69,10 @@ export function ordersView(ctx) {
                 : emptyState({
                     icon: 'orders',
                     title: 'Henüz sipariş talebiniz yok.',
-                    text: 'Katalogdan ürün seçip sepetinizden talep gönderebilirsiniz.',
+                    // Ordering may be off for the account: its earlier requests are still listed here.
+                    text: ctx.me && ctx.me.features && ctx.me.features.order
+                        ? 'Katalogdan ürün seçip sepetinizden talep gönderebilirsiniz.'
+                        : 'Sipariş talebi gönderme hesabınızda kapalı.',
                     action: h('a', { class: 'app-btn app-btn--secondary btn-touch', href: routePath(ctx.code, 'catalog') }, 'Kataloğa göz at'),
                 }));
         } catch (err) {
