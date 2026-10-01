@@ -126,6 +126,28 @@ public class RateLimitTests
         (await ValidateAsync(client, licenseKey, "2001:db8:1:3::1")).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
     }
 
+    [Fact]
+    public async Task Catalog_pictures_have_a_wider_per_visitor_budget_of_their_own()
+    {
+        using var factory = new ProxiedFactory(IPAddress.Loopback);
+        var client = factory.CreateClient();
+        Task<HttpResponseMessage> PictureAsync(string forwardedFor)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/catalog/img/{Guid.NewGuid()}/s");
+            request.Headers.Add("X-Forwarded-For", forwardedFor);
+            return client.SendAsync(request);
+        }
+
+        // A page of thumbnails is far more than the 60 anonymous calls a minute.
+        for (var i = 0; i < 600; i++)
+            (await PictureAsync("198.51.100.7")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var rejected = await PictureAsync("198.51.100.7");
+        rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await rejected.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("RATE_LIMITED");
+        (await PictureAsync("198.51.100.8")).StatusCode.Should().Be(HttpStatusCode.NotFound, "another visitor has a bucket of its own");
+    }
+
     private static Task<HttpResponseMessage> ValidateAsync(HttpClient client, string licenseKey, string forwardedFor)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/licenses/validate") { Content = JsonContent.Create(new { licenseKey }) };

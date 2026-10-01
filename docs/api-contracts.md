@@ -341,7 +341,8 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
 - **Sıra:** önce modül (`403 MODULE_NOT_ENABLED`, herkese aynı), sonra kilitli `action.customer_catalog.manage`
   (`403 CATALOG_MANAGE_REQUIRED`; yalnız ADMIN + MANAGER). Gövde eksik/bozuk `400 INVALID_BODY`.
 - **Düzen yazımları** (`PUT settings|categories|products`) `catalog_settings.Revision`'ı bir
-  artırır; gövdedeki `revision` eskiyse `409 CATALOG_CHANGED`, hiçbir şey yazılmaz. `PUT settings` bilinmeyen liste
+  artırır; gövdedeki `revision` eskiyse `409 CATALOG_CHANGED`, hiçbir şey yazılmaz. Hiçbir şeyi değiştirmeyen yazım
+  revizyonu artırmaz (aynı bağlantıları yeniden gönderen telefon panelin sonraki kaydını çakışmaya düşürmez). `PUT settings` bilinmeyen liste
   `400 UNKNOWN_PRICE_LIST`.
 - **`PUT categories`:** dizi sırası = kategori sırası (`sortOrder` = dizin); listede olmayan kategori yerini kaybeder, gizliliği
   kalır (gizli değilse satırı silinir). Anahtar dolu, ≤ 160, tekrarsız.
@@ -365,6 +366,24 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
 - **`GET accounts?q=&page=`:** 50'lik sayfa, cari adına (tr-TR) göre; `q` kod/ad/kullanıcı adında arar.
 - **`GET accounts/by-customer?code=`:** `suggestedUsername` cari adından (Türkçe harfler ASCII'ye, şirket ekleri ve tek harfler
   atılır, kelimeler `-` ile, ≤ 24), olmazsa koddan, olmazsa `musteri`; kullanılıyorsa sonuna 2, 3… eklenir.
+- **Görseller** (`images/*`; yükleme uçları `catalog-upload` hız sınırında: kullanıcı başına 300/dk). Her görsel değişikliği
+  revizyonu artırır (katalog görünümü ona göre tazelenir). Ürün başına en çok 8 (`409 CATALOG_IMAGE_LIMIT`), firma kotası 1 GB
+  (`413 CATALOG_IMAGE_QUOTA_EXCEEDED`); bulunamayan ya da başka firmanın görseli `404 CATALOG_IMAGE_NOT_FOUND`.
+  - `POST images {stockCode, sourceHash, source, url?}`: kimliği sunucu üretir; aynı (`stockCode`, `sourceHash`) var olanı döner
+    (sınırı aşmaz). `source` `phone|panel`; `url` verilirse bağlantı görseli olur (panelin "bağlantı ekle"si).
+  - `PUT images/{id}/{s|l}` ham gövde: `Content-Type` `image/jpeg|png|webp` ve ilk baytlar tutmalı (`415 INVALID_IMAGE`);
+    `l` ≤ 1 MB, `s` ≤ 200 KB (`413 IMAGE_TOO_LARGE`; `Content-Length` yoksa okurken). JPEG'in APP1 (EXIF/XMP) bölümleri atılır.
+    Aynı bayt tekrar → değişiklik yok. Bağlantı görseline dosya `400 INVALID_BODY`.
+  - `PUT images/links` (≤ 500 ürün): verilen ürünün yalnız `phone` kaynaklı bağlantılarını değiştirir; dosyalar ve panel
+    görselleri kalır, sınırı aşan bağlantı alınmaz; `updated` = bağlantıları değişen ürün sayısı. Bağlantı: `https`, port 443,
+    IP/`localhost`/`.local` yok, ≤ 2048 (`400 INVALID_IMAGE_URL`). Sunucu bağlantıyı **indirmez**.
+  - `PUT images/order?stockCode=` `{ids}`: verilenler bu sırada, verilmeyenler eski sıralarıyla arkadan.
+  - `thumbUrl`/`fullUrl`: dosyada göreli `/api/v1/catalog/img/{id}/{s|l}?h={sha256 ilk 8}` (istemci kendi kökünü ekler),
+    bağlantıda doğrudan adres; dosyanın boyutu henüz yüklenmemişse null.
+- **Anonim görsel `GET /api/v1/catalog/img/{id}/{s|l}`** (`catalog-public`: IP başına 600/dk, IPv6 /64): `Cache-Control: public,
+  max-age=31536000, immutable`, `ETag` = SHA-256, `If-None-Match` → 304 (bayt okunmaz), `X-Content-Type-Options: nosniff`,
+  `Cross-Origin-Resource-Policy: same-site`. `s` yoksa `l`; bağlantı görseli, bilinmeyen kimlik ya da firmanın modülü kapalıysa
+  `404 NOT_FOUND` (önbellek başlıksız).
 
 ## Hata modeli
 

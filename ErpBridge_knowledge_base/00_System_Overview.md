@@ -1362,6 +1362,13 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      değişkenlerini boş varsayılanla geçirir (Coolify'da doldurulur, D3).
    - **Firma kodu güvencesi:** `MobileSeatService.EnsureTenantCodeAsync` — kodu olmayan firmaya (hiç koltuk almamış olabilir) ilk
      okumada 8 karakterlik kod üretir; yalnız kod hâlâ boşsa yazar, eşzamanlı iki okuma aynı kodu döner.
+   - **Görseller (S5)** `Endpoints/CustomerCatalogImageEndpoints` + `CustomerCatalog/CatalogImages`: baytlar PostgreSQL'de
+     (`catalog_image_blobs`, iki varyant); sunucuda görsel kütüphanesi yok — küçültmeyi gönderen yapar, sunucu yalnız bayt sınırını,
+     sihirli baytı (`TaskService.LooksLike`) denetler ve JPEG APP1'i (EXIF/XMP) atar. Bağlantı görseli hiç indirilmez. Görsel
+     yazımları da `WriteLayoutAsync` revizyon kilidinden geçer (kota yarışı yok; katalog görünümü revizyona göre tazelenir);
+     değişiklik yoksa revizyon artmaz. Anonim `GET /api/v1/catalog/img/{id}/{s|l}` tahmin edilemez kimlikle, `immutable`
+     önbellekle ve yalnız modül açıkken sunulur. Hız politikaları `catalog-upload` (kullanıcı başına 300/dk) ve `catalog-public`
+     (IP başına 600/dk, `ClientIpPartition`). Ayrıntı: `docs/api-contracts.md` "Müşteri kataloğu yönetimi".
    - Testler: `LoginThrottleTests`, `ForwardedHeadersSetupTests`, `RateLimitTests` (XFF bölümleri, güvenilmeyen atlama, /64),
      `LoginThrottleEndpointTests`, `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
-     `PermissionEndpointsRelationalTests`, `PermissionResolverTests`.
+     `PermissionEndpointsRelationalTests`, `PermissionResolverTests`, `CustomerCatalogImagesRelationalTests`.

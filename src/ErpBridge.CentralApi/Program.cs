@@ -86,6 +86,15 @@ public partial class Program
     /// <summary>Anonymous rate-limit policy (partitioned by remote IP).</summary>
     public const string AnonymousRateLimitPolicy = "Anonymous";
 
+    /// <summary>
+    /// Müşteri kataloğu picture uploads (docs/GOAL_MUSTERI_KATALOGU.md §5.1): per signed-in user, wider than
+    /// <see cref="PerMobileUserRateLimitPolicy"/> — a phone sends a whole catalog's pictures in one go.
+    /// </summary>
+    public const string CatalogUploadRateLimitPolicy = "catalog-upload";
+
+    /// <summary>The web catalog's anonymous calls (pictures, company info): per client IP, /64 for IPv6.</summary>
+    public const string CatalogPublicRateLimitPolicy = "catalog-public";
+
     /// <summary>Partition key prefix used for anonymous (pre-auth) calls.</summary>
     public const string RateLimitAnonymousPartition = "anon";
 
@@ -621,6 +630,31 @@ public partial class Program
                 });
             });
 
+            opt.AddPolicy(CatalogUploadRateLimitPolicy, httpContext =>
+            {
+                var userId = httpContext.User.FindFirst("sub")?.Value ?? "anonymous";
+                return RateLimitPartition.GetFixedWindowLimiter("catalog-upload:" + userId, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 300,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
+            // A catalog page shows up to 60 thumbnails; a customer scrolling fast stays well inside this.
+            opt.AddPolicy(CatalogPublicRateLimitPolicy, httpContext =>
+            {
+                var remoteIp = ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
+                return RateLimitPartition.GetFixedWindowLimiter("catalog-public:" + remoteIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 600,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
             opt.AddPolicy(PerDisplayRateLimitPolicy, httpContext =>
             {
                 var displayId = httpContext.User.FindFirst("sub")?.Value ?? "unknown";
@@ -779,6 +813,7 @@ public partial class Program
         app.MapMobileTargetEndpoints();
         app.MapMobileUserPreferencesEndpoints();
         app.MapCustomerCatalogManageEndpoints();
+        app.MapCustomerCatalogImageEndpoints();
         app.MapPortalTargetEndpoints();
         app.MapPortalRouteEndpoints();
         app.MapPortalEndpoints();

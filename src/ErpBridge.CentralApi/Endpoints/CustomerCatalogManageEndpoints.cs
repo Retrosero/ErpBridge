@@ -97,14 +97,14 @@ public static class CustomerCatalogManageEndpoints
         var view = await views.LoadAsync(db, tenantId, forCustomer: false, ct);
         if (body.DefaultPriceListNo is { } listNo && view.PriceList(listNo) is null) return UnknownPriceList();
 
-        var revision = await WriteLayoutAsync(db, tenantId, access.User!.Id, body.Revision, async _ =>
+        var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, body.Revision, async _ =>
         {
             var settings = await db.CatalogSettings.FirstAsync(s => s.TenantId == tenantId, ct);
             settings.IsEnabled = body.IsEnabled;
             settings.DefaultPriceListNo = body.DefaultPriceListNo;
+            return null;
         }, ct);
-        if (revision is null) return Changed();
-        return JsonResults.Ok(await SettingsAsync(db, views, seats, options.Value, tenantId, ct));
+        return error ?? JsonResults.Ok(await SettingsAsync(db, views, seats, options.Value, tenantId, ct));
     }
 
     private static async Task<CatalogSettingsDto> SettingsAsync(
@@ -181,7 +181,7 @@ public static class CustomerCatalogManageEndpoints
         }
 
         var tenantId = access.Tenant!.Id;
-        var revision = await WriteLayoutAsync(db, tenantId, access.User!.Id, body.Revision, async now =>
+        var (revision, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, body.Revision, async now =>
         {
             var rows = (await db.CatalogCategorySettings.Where(s => s.TenantId == tenantId).ToListAsync(ct))
                 .ToDictionary(r => r.CategoryKey, StringComparer.Ordinal);
@@ -194,7 +194,7 @@ public static class CustomerCatalogManageEndpoints
                 }
                 row.SortOrder = i;
                 row.IsHidden = keys[i].Hidden;
-                row.UpdatedAtMs = now;
+                Touch(db, row, r => r.UpdatedAtMs = now);
             }
             foreach (var unlisted in rows.Values)
             {
@@ -205,8 +205,9 @@ public static class CustomerCatalogManageEndpoints
                     unlisted.UpdatedAtMs = now;
                 }
             }
+            return null;
         }, ct);
-        return revision is { } value ? JsonResults.Ok(new CatalogRevisionDto { Revision = value }) : Changed();
+        return error ?? JsonResults.Ok(new CatalogRevisionDto { Revision = revision });
     }
 
     /// <summary>A whole category (at most 5000), or with <paramref name="q"/> up to 50 matches; both together search the category.</summary>
@@ -277,7 +278,7 @@ public static class CustomerCatalogManageEndpoints
             edits.Add((product?.Code ?? code, item));
         }
 
-        var revision = await WriteLayoutAsync(db, tenantId, access.User!.Id, body.Revision, async now =>
+        var (revision, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, body.Revision, async now =>
         {
             var rows = (await db.CatalogProductSettings.Where(s => s.TenantId == tenantId).ToListAsync(ct))
                 .ToDictionary(r => r.StockCode, StringComparer.OrdinalIgnoreCase);
@@ -300,20 +301,23 @@ public static class CustomerCatalogManageEndpoints
                 row.NoDiscount = edit.NoDiscount;
                 row.CartonOnly = edit.CartonOnly;
                 row.CartonQuantity = edit.CartonQuantity;
-                row.UpdatedAtMs = now;
+                Touch(db, row, r => r.UpdatedAtMs = now);
             }
+            return null;
         }, ct);
-        return revision is { } value ? JsonResults.Ok(new CatalogRevisionDto { Revision = value }) : Changed();
+        return error ?? JsonResults.Ok(new CatalogRevisionDto { Revision = revision });
     }
 
     /// <summary>
     /// One layout write under the revision lock (§3 <c>Revision</c>): in one transaction the settings row's revision moves
-    /// by one — only from <paramref name="expected"/> when given — and <paramref name="apply"/> runs. Null when
-    /// <paramref name="expected"/> is stale; nothing is written then. Also used by picture writes, unconditionally:
-    /// the catalog view keys on the revision.
+    /// by one — only from <paramref name="expected"/> when given — and <paramref name="apply"/> changes the tracked rows.
+    /// A stale <paramref name="expected"/> is 409 <c>CATALOG_CHANGED</c>, an error from <paramref name="apply"/> is
+    /// returned as it is; nothing is written then. A write that changes nothing keeps the revision, so a phone sending
+    /// the same links again does not turn the panel's next save into a conflict. Picture writes call it without
+    /// <paramref name="expected"/>: the catalog view keys on the revision. Returns the revision after the write.
     /// </summary>
-    internal static async Task<long?> WriteLayoutAsync(
-        CentralApiDbContext db, Guid tenantId, Guid userId, long? expected, Func<long, Task> apply, CancellationToken ct)
+    internal static async Task<(long Revision, IResult? Error)> WriteLayoutAsync(
+        CentralApiDbContext db, Guid tenantId, Guid userId, long? expected, Func<long, Task<IResult?>> apply, CancellationToken ct)
     {
         await EnsureSettingsAsync(db, tenantId, ct);
         var now = NowMs();
@@ -325,12 +329,20 @@ public static class CustomerCatalogManageEndpoints
             .SetProperty(x => x.Revision, x => x.Revision + 1)
             .SetProperty(x => x.UpdatedAtMs, now)
             .SetProperty(x => x.UpdatedByUserId, userId), ct);
-        if (moved == 0) return null;
-        await apply(now);
-        await db.SaveChangesAsync(ct);
+        if (moved == 0) return (0, Changed());
+        // An error or no change: the transaction is disposed uncommitted, so the revision does not move either.
+        if (await apply(now) is { } error) return (0, error);
         var revision = await db.CatalogSettings.AsNoTracking().Where(s => s.TenantId == tenantId).Select(s => s.Revision).FirstAsync(ct);
+        if (!db.ChangeTracker.HasChanges()) return (revision - 1, null);
+        await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return revision;
+        return (revision, null);
+    }
+
+    /// <summary>Stamps a row only when it is new or something in it changed.</summary>
+    private static void Touch<T>(CentralApiDbContext db, T row, Action<T> stamp) where T : class
+    {
+        if (db.Entry(row).State != EntityState.Unchanged) stamp(row);
     }
 
     /// <summary>The settings row a layout write moves; made on first use (no row = not published, revision 0).</summary>
