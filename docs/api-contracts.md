@@ -449,6 +449,35 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
   durumda **iş yazılmaz** (onayda onay `Pending` kalır). Alan yoksa ya da `null` ise davranış aynen eskisi. ERP'siz firmada
   defter satışı reddederse (iş `Failed`) talep önceki hâline döner (açık ya da devraldığı başarısız satışa bağlı). Reddedilen
   onay hiç iş yazmadığı için talebe dokunmaz.
+- **Panelden siparişe çevirme** (S10, `CustomerCatalog/CatalogOrderConversion` + `Jobs/SalesJobWriter`): panel belge
+  göndermez (`PORTAL_CANNOT_SUBMIT_DOCUMENTS` aynen); belgeyi sunucu talepten kendisi kurar.
+  `GET orders/{id}/conversion` (talebi gören herkes) → `Conversion {orderId, no, status, customerCode, customerName, ownerUserId,
+  ownerName, ownerIsAssignee, priceListNo, priceListName, priceIncludesVat, lines[{stockCode, name, unit, quantity,
+  orderedListPrice, listPrice?, discountPercent, vatRate, orderedTotal, total, priceChanged, issue?}], orderedTotal, total,
+  priceChanged, erp, defaultWarehouseNo?, warehouses[{code, name}], missingMappings[], requiresApproval}`. Satırlar talebin
+  listesinin **bugünkü** fiyatıyla, talepteki cari iskontosuyla (`noDiscount` ürün 0) `CatalogPricing` ile fiyatlanır;
+  ürün yoksa, listede fiyatı yoksa ya da hesabın görünürlüğünden çıktıysa `issue = NOT_AVAILABLE`. Belgenin sahibi talebin
+  `AssignedUserId`'si (aktif kullanıcıysa), yoksa çağıran (`ownerIsAssignee = false`). ERP'li firmada `defaultWarehouseNo` =
+  sahibin eşlemesi → firma ayarı (`ErpWriteContextBuilder`), `warehouses` = ERP'nin `lookups` depoları, `missingMappings` ⊂
+  {"ERP kullanıcı numarası", "depo", "satış belge türü"} (ajanın `ERP_MAPPING_MISSING` sebepleri). `requiresApproval` = çağıran
+  satışa karar veremiyor ve firma kuralı ya da kendi yetki/limiti onaya gönderiyor.
+  `POST orders/{id}/convert {warehouseNo?, expectedTotal}` → `201 {outcome: JOB|APPROVAL, documentRef, jobId?, jobStatus?,
+  approvalRequestId?, order: OrderDetail}`. Erişim: katalog yöneticisi ya da talebi gören ve başkası almamış kişi (başkasının
+  `CLAIMED` talebi yönetici değilse `409 CATALOG_ORDER_TAKEN`); `NEW` talep önce çağıran adına alınır. Sıra: `expectedTotal`
+  yok / `warehouseNo` ≤ 0 `400 INVALID_BODY`; satılamayan satır `422 CART_INVALID`; toplam farkı > 0,05 `409 PRICE_CHANGED`;
+  eşleme eksik `409 ERP_MAPPING_MISSING` (üçü de gövdede güncel `conversion` taşır, hiçbir şey yazılmaz). Gövde telefonun
+  `salesOrderPayload`'ı alan alan: `mobileDocumentId` = `externalId` = `CAT-SO-{Guid}` (her çevirmede yeni), `revision` 1,
+  `occurredAt` İstanbul saatiyle `dd.MM.yyyy HH:mm`, `transactionType` "Satış", `counterparty`, `customerCode`, `amount`
+  (KDV dahil toplam), `currency` "TL", `paymentType` "Cari Borç", `description` "Katalog siparişi KT-…" (+ `\n[Notlar: …]`),
+  `catalogOrderId`, `priceListNo` = talebin listesi, `warehouseNo` yalnız varsayılandan farklı seçildiyse (ERP'li firmada);
+  satırlar `barcode` (varsa), `productCode`, `productTitle`, `quantity`, `unitPrice` (KDV hariç net / miktar), `lineTotal`
+  (KDV hariç net), `unitPointer` 1, `listUnitPrice` (bugünkü), `lineDiscountPercent` 0, `customerDiscountPercent`,
+  `generalDiscountPercent` 0. İşin `CreatedByUserId`'si belgenin sahibidir (ajan depo, seri, temsilci ve ERP kullanıcı
+  numarasını onun eşlemesinden alır); talebi kapatan (`closedBy*`) çağırandır. Çağıran satışa karar verebiliyorsa (ya da onay
+  gerekmiyorsa) iş `SalesJobWriter.WriteAsync` ile yazılır (ERP'siz firmada hemen deftere işlenir; defter reddederse
+  `422 CATALOG_CONVERSION_FAILED`, talep açık kalır); değilse `ApprovalService.SubmitAsync` ile `CAT-APR-{Guid}` onay talebi
+  açılır (`kind` sale, belge aynı gövde) ve talep onay anında kapanır — bu yolda işin sahibi onay isteyendir (çağıran).
+  Aynı talebe ikinci belge linker'dan `409 CATALOG_ORDER_ALREADY_CONVERTED`.
 
 ## Müşteri kataloğu, müşteri tarafı — `/api/v1/catalog/{code}` (GOAL_MUSTERI_KATALOGU §5.2, §6, §7)
 

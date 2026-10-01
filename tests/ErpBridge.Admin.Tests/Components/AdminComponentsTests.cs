@@ -49,7 +49,7 @@ public sealed class AdminComponentsTests : BunitContext
             .Add(p => p.Actions, builder => builder.AddMarkupContent(0, "<button>Yeni müşteri</button>")));
 
         cut.Find("h1").TextContent.Should().Be("Müşteriler");
-        cut.Markup.Should().Contain("ERPBIDGE YÖNETİM");
+        cut.Markup.Should().Contain("ERPBRIDGE YÖNETİM");
         cut.Find("button").TextContent.Should().Be("Yeni müşteri");
     }
 }

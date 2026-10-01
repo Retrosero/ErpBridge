@@ -151,8 +151,28 @@ public static class PortalErpWriteEndpoints
         var (tenant, _, error) = await AuthorizeAsync(http, db, ct);
         if (error is not null) return error;
 
+        var byKind = await ReadLookupsAsync(db, tenant!.Id, ct);
+        return JsonResults.Ok(new PortalErpLookupsResponse
+        {
+            Warehouses = Sorted(byKind, "warehouse"),
+            CashAccounts = Sorted(byKind, "cash"),
+            Banks = Sorted(byKind, "bank"),
+            Salespersons = Sorted(byKind, "salesperson"),
+            PriceLists = Sorted(byKind, "price_list"),
+            Projects = Sorted(byKind, "project"),
+            ExpenseCards = Sorted(byKind, "expense_card"),
+        });
+    }
+
+    /// <summary>The company's ERP warehouses (the bootstrap's <c>lookups</c>), in number order; the panel's "Siparişe çevir" offers them too.</summary>
+    internal static async Task<IReadOnlyList<PortalErpLookupItem>> WarehousesAsync(CentralApiDbContext db, Guid tenantId, CancellationToken ct) =>
+        Sorted(await ReadLookupsAsync(db, tenantId, ct), "warehouse");
+
+    /// <summary>The bootstrap's lookup rows (<c>lookups</c>, <c>cashAndBank</c>) by kind, then code.</summary>
+    private static async Task<Dictionary<string, Dictionary<string, PortalErpLookupItem>>> ReadLookupsAsync(CentralApiDbContext db, Guid tenantId, CancellationToken ct)
+    {
         var rows = await db.MobileRecords.AsNoTracking()
-            .Where(r => r.TenantId == tenant!.Id && !r.IsDeleted && (r.Entity == "lookups" || r.Entity == "cashAndBank"))
+            .Where(r => r.TenantId == tenantId && !r.IsDeleted && (r.Entity == "lookups" || r.Entity == "cashAndBank"))
             .Select(r => r.PayloadJson)
             .ToListAsync(ct);
 
@@ -170,17 +190,7 @@ public static class PortalErpWriteEndpoints
             if (!byKind.TryGetValue(kind, out var items)) byKind[kind] = items = new(StringComparer.Ordinal);
             items[code] = new PortalErpLookupItem { Code = code, Name = name };
         }
-
-        return JsonResults.Ok(new PortalErpLookupsResponse
-        {
-            Warehouses = Sorted(byKind, "warehouse"),
-            CashAccounts = Sorted(byKind, "cash"),
-            Banks = Sorted(byKind, "bank"),
-            Salespersons = Sorted(byKind, "salesperson"),
-            PriceLists = Sorted(byKind, "price_list"),
-            Projects = Sorted(byKind, "project"),
-            ExpenseCards = Sorted(byKind, "expense_card"),
-        });
+        return byKind;
     }
 
     // ---- helpers --------------------------------------------------------------------------

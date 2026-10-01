@@ -1,11 +1,9 @@
 using System.Text.Json;
 using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
-using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
-using ErpBridge.CentralApi.Warehouse;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -382,141 +380,42 @@ public static class IngestEndpoints
             }
         }
 
-        // ---- 6. A tenant without an ERP is booked here, not by an agent. ----
-        if (tenant.DataSource == TenantDataSources.Native)
+        // ---- 6. Product and customer cards are created in the ERP for an ERP tenant; an agent has no
+        //         writer for them, so they would sit in its queue forever. ----
+        if (tenant.DataSource != TenantDataSources.Native)
         {
-            var processor = http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
-            try
-            {
-                var callerIsAdmin = await CallerMayAsync(http, db, documentType, ct);
-                Job booked;
-                if (FulfillmentService.IsQueuedDocument(documentType) || CatalogOrderLinker.Names(documentType, payloadJson))
+            if (ErpBridge.CentralApi.Native.NativeDocumentProcessor.CardTypes.Contains(documentType))
+                return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
                 {
-                    // A booked sale enters the warehouse queue in the booking's own transaction (Faz 47).
-                    var warehouse = http.RequestServices.GetRequiredService<FulfillmentService>();
-                    OrderFulfillment? queued;
-                    await using (var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null)
-                    {
-                        // A sale made from a customer's catalog request completes it in the booking's save (T8).
-                        var link = await CatalogOrderLinker.TryLinkAsync(db, tenantId, job.CreatedByUserId, documentType, payloadJson, job.ExternalId, ct);
-                        if (link.Refusal is { } refused)
-                            return JsonResults.Status(refused.Status, new ApiError { ErrorCode = refused.Code, Message = refused.Message });
-                        booked = await processor.IngestAsync(db, tenantId, job, callerIsAdmin, ct);
-                        if (booked.Status != JobStatus.Succeeded && link.Order is not null)
-                        {
-                            // The ledger refused the sale: the request stays open for the corrected one.
-                            link.Undo();
-                            await db.SaveChangesAsync(ct);
-                        }
-                        queued = await warehouse.EnqueueAsync(db, tenant, booked, approvalRequestId: null, ct);
-                        if (queued is not null) await db.SaveChangesAsync(ct);
-                        if (transaction is not null) await transaction.CommitAsync(ct);
-                    }
-                    // The booking joined this transaction, so waking the phones is left to the caller.
-                    if (booked.Status == JobStatus.Succeeded && db.Database.IsRelational())
-                        http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Notifications.IBootstrapNotificationHub>().Publish(tenantId, DateTimeOffset.UtcNow);
-                    if (queued is not null) warehouse.Notify(tenantId);
-                }
-                else
-                {
-                    booked = await processor.IngestAsync(db, tenantId, job, callerIsAdmin, ct);
-                }
-                return JsonResults.Status(StatusCodes.Status201Created, new IngestJobResponse
-                {
-                    JobId = booked.Id,
-                    TenantId = booked.TenantId,
-                    ExternalId = booked.ExternalId,
-                    DocumentType = booked.DocumentType,
-                    Status = booked.Status.ToString(),
-                    Idempotent = false,
+                    ErrorCode = "CARDS_REQUIRE_NATIVE_TENANT",
+                    Message = "Stok ve cari kartları yalnız ERP'si olmayan firmada telefondan oluşturulabilir.",
                 });
-            }
-            catch (DbUpdateException)
-            {
-                // The same document raced in from a retry; the winner already booked it.
-                db.ChangeTracker.Clear();
-                var winner = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j =>
-                    j.TenantId == tenantId && j.DocumentType == documentType && j.ExternalId == body.ExternalId, ct);
-                if (winner is null) throw;
-                return JsonResults.Ok(new IngestJobResponse
+            if (ErpBridge.CentralApi.Native.NativeDocumentProcessor.RequiresNativeTenant(documentType, payloadJson))
+                return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
                 {
-                    JobId = winner.Id,
-                    TenantId = winner.TenantId,
-                    ExternalId = winner.ExternalId,
-                    DocumentType = winner.DocumentType,
-                    Status = winner.Status.ToString(),
-                    Idempotent = true,
+                    ErrorCode = "DOCUMENT_REQUIRES_NATIVE_TENANT",
+                    Message = "Bu belge yalnız ERP'si olmayan firmada merkezi API tarafından kaydedilir; ERP ajanının bunun için bir yazıcısı yok.",
                 });
-            }
         }
 
-        // Product and customer cards are created in the ERP for an ERP tenant; an
-        // agent has no writer for them, so they would sit in its queue forever.
-        if (ErpBridge.CentralApi.Native.NativeDocumentProcessor.CardTypes.Contains(documentType))
-            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
-            {
-                ErrorCode = "CARDS_REQUIRE_NATIVE_TENANT",
-                Message = "Stok ve cari kartları yalnız ERP'si olmayan firmada telefondan oluşturulabilir.",
-            });
-        if (ErpBridge.CentralApi.Native.NativeDocumentProcessor.RequiresNativeTenant(documentType, payloadJson))
-            return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
-            {
-                ErrorCode = "DOCUMENT_REQUIRES_NATIVE_TENANT",
-                Message = "Bu belge yalnız ERP'si olmayan firmada merkezi API tarafından kaydedilir; ERP ajanının bunun için bir yazıcısı yok.",
-            });
-
-        var erpWarehouse = http.RequestServices.GetRequiredService<FulfillmentService>();
-        OrderFulfillment? erpQueued = null;
-
-        try
+        // ---- 7. The job: a tenant without an ERP books it here, not by an agent; a sale completes the catalog request it
+        //         was made from and enters the warehouse queue in the same transaction (T8, Faz 47). ----
+        var callerIsAdmin = tenant.DataSource == TenantDataSources.Native && await CallerMayAsync(http, db, documentType, ct);
+        var written = await http.RequestServices.GetRequiredService<ErpBridge.CentralApi.Jobs.SalesJobWriter>()
+            .WriteAsync(db, tenant, job, job.CreatedByUserId, callerIsAdmin, ct);
+        if (written.Refusal is { } refused)
+            return JsonResults.Status(refused.Status, new ApiError { ErrorCode = refused.Code, Message = refused.Message });
+        var stored = written.Job!;
+        var response = new IngestJobResponse
         {
-            // A sales order enters the warehouse queue before the agent writes it to the ERP (V2, Faz 47).
-            await using var transaction = (FulfillmentService.IsQueuedDocument(documentType) || CatalogOrderLinker.Names(documentType, payloadJson)) && db.Database.IsRelational()
-                ? await db.Database.BeginTransactionAsync(ct)
-                : null;
-            // A sale made from a customer's catalog request completes it in the job's save; a second sale for it is refused (T8).
-            var link = await CatalogOrderLinker.TryLinkAsync(db, tenantId, job.CreatedByUserId, documentType, payloadJson, job.ExternalId, ct);
-            if (link.Refusal is { } refused)
-                return JsonResults.Status(refused.Status, new ApiError { ErrorCode = refused.Code, Message = refused.Message });
-            db.Jobs.Add(job);
-            erpQueued = await erpWarehouse.EnqueueAsync(db, tenant, job, approvalRequestId: null, ct);
-            await db.SaveChangesAsync(ct);
-            if (transaction is not null) await transaction.CommitAsync(ct);
-        }
-        catch (DbUpdateException)
-        {
-            // A concurrent insert beat us. Re-read the winner and return it.
-            db.ChangeTracker.Clear();
-            var winner = await db.Jobs.AsNoTracking()
-                .FirstOrDefaultAsync(j =>
-                    j.TenantId == tenantId &&
-                    j.DocumentType == documentType &&
-                    j.ExternalId == body.ExternalId, ct);
-            if (winner is not null)
-            {
-                return JsonResults.Ok(new IngestJobResponse
-                {
-                    JobId = winner.Id,
-                    TenantId = winner.TenantId,
-                    ExternalId = winner.ExternalId,
-                    DocumentType = winner.DocumentType,
-                    Status = winner.Status.ToString(),
-                    Idempotent = true,
-                });
-            }
-            throw;
-        }
-        if (erpQueued is not null) erpWarehouse.Notify(tenantId);
-
-        return JsonResults.Status(StatusCodes.Status201Created, new IngestJobResponse
-        {
-            JobId = job.Id,
-            TenantId = job.TenantId,
-            ExternalId = job.ExternalId,
-            DocumentType = job.DocumentType,
-            Status = job.Status.ToString(),
-            Idempotent = false,
-        });
+            JobId = stored.Id,
+            TenantId = stored.TenantId,
+            ExternalId = stored.ExternalId,
+            DocumentType = stored.DocumentType,
+            Status = stored.Status.ToString(),
+            Idempotent = written.Idempotent,
+        };
+        return written.Idempotent ? JsonResults.Ok(response) : JsonResults.Status(StatusCodes.Status201Created, response);
     }
 
     /// <summary>

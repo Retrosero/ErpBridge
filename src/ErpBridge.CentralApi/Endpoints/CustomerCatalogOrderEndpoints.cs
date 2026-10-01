@@ -1,8 +1,10 @@
 using System.Globalization;
+using ErpBridge.CentralApi.Approvals;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
+using ErpBridge.CentralApi.Jobs;
 using ErpBridge.CentralApi.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,8 +18,9 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// permission is not: catalog managers see every request, everyone else only those routed to them or that they took.
 /// A request is taken (<c>claim</c>) before it is turned into a sale; another's request is taken over only with
 /// <c>force</c>, by a manager. Each change runs under the request's row lock, so two people pressing at once get one
-/// winner and one 409. Turning it into a sale is the phone's (the sale carries <c>catalogOrderId</c>,
-/// <see cref="CatalogOrderLinker"/>); <c>complete</c> records one entered elsewhere.
+/// winner and one 409. A request becomes a sale on the phone (the sale carries <c>catalogOrderId</c>,
+/// <see cref="CatalogOrderLinker"/>) or here, <c>convert</c> (S10), which builds the phone's sale itself; <c>complete</c>
+/// records one entered elsewhere.
 /// </summary>
 public static class CustomerCatalogOrderEndpoints
 {
@@ -41,6 +44,8 @@ public static class CustomerCatalogOrderEndpoints
         group.MapPost("/{id:guid}/complete", CompleteAsync).WithName("CustomerCatalogOrderComplete");
         group.MapPost("/{id:guid}/reject", RejectAsync).WithName("CustomerCatalogOrderReject");
         group.MapPost("/{id:guid}/reopen", ReopenAsync).WithName("CustomerCatalogOrderReopen");
+        group.MapGet("/{id:guid}/conversion", ConversionAsync).WithName("CustomerCatalogOrderConversion");
+        group.MapPost("/{id:guid}/convert", ConvertAsync).WithName("CustomerCatalogOrderConvert");
         return routes;
     }
 
@@ -229,6 +234,134 @@ public static class CustomerCatalogOrderEndpoints
             order.UpdatedAtMs = now;
             return null;
         }, ct);
+
+    /// <summary>What "Siparişe çevir" would send now (<see cref="CatalogOrderConversion"/>): any request the caller sees.</summary>
+    private static async Task<IResult> ConversionAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] CatalogViewService views, CancellationToken ct)
+    {
+        var access = await AuthorizeAsync(http, db, manage: false, ct);
+        if (access.Error is not null) return access.Error;
+        var order = await db.CatalogOrders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id && o.TenantId == access.Tenant!.Id, ct);
+        if (order is null || !Sees(order, access.User!)) return NotFound();
+        var plan = await CatalogOrderConversion.PlanAsync(db, views, access.Tenant!, order, access.User!, warehouseNo: null, ct);
+        return JsonResults.Ok(plan.Preview);
+    }
+
+    /// <summary>
+    /// Turns the request into the phone's sale (S10): a catalog manager, or whoever has it — the assignee takes a new one
+    /// first. Today's prices must be the ones the form showed (<c>expectedTotal</c>, else 409 <c>PRICE_CHANGED</c> with the
+    /// new preview); a line no longer sold from the request's list is 422 <c>CART_INVALID</c>; an owner the agent could not
+    /// write for is 409 <c>ERP_MAPPING_MISSING</c> before any job exists. A caller who decides sales writes the job (or
+    /// books it, without an ERP) through <see cref="SalesJobWriter"/>; anyone else, when the company's rule or their own
+    /// limits say so, sends it to the approval queue, and the request is completed when it is approved. A second document
+    /// for the request is refused by the linker (409 <c>CATALOG_ORDER_ALREADY_CONVERTED</c>).
+    /// </summary>
+    private static async Task<IResult> ConvertAsync(Guid id, HttpContext http, [FromBody] CatalogOrderConvertRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] CatalogViewService views, [FromServices] SalesJobWriter writer,
+        [FromServices] ApprovalService approvals, CancellationToken ct)
+    {
+        var access = await AuthorizeAsync(http, db, manage: false, ct);
+        if (access.Error is not null) return access.Error;
+        if (body?.ExpectedTotal is not { } expected) return InvalidBody("expectedTotal gerekli: önizlemedeki toplam.");
+        if (body.WarehouseNo is <= 0) return InvalidBody("warehouseNo pozitif bir depo numarası olmalı.");
+        var tenant = access.Tenant!;
+        var user = access.User!;
+        var manage = RolePermissions.CanManageCustomerCatalog(user);
+
+        var order = await db.CatalogOrders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id && o.TenantId == tenant.Id, ct);
+        if (order is null || !Sees(order, user)) return NotFound();
+        if (order.Status == CatalogOrderStatuses.Claimed && order.ClaimedByUserId != user.Id && !manage) return Taken(order);
+
+        // The form's warehouse counts for an ERP company only; the native ledger has no warehouse choice.
+        var warehouseNo = tenant.DataSource == TenantDataSources.Erp ? body.WarehouseNo : null;
+        var plan = await CatalogOrderConversion.PlanAsync(db, views, tenant, order, user, warehouseNo, ct);
+        var preview = plan.Preview;
+        if (preview.Lines.Any(l => l.Issue is not null))
+            return ConversionError(StatusCodes.Status422UnprocessableEntity, "CART_INVALID",
+                "Talepteki bazı ürünler artık bu fiyat listesinden satılamıyor; talebi düzeltin ya da reddedin.", preview);
+        if (Math.Abs(preview.Total - expected) > CatalogCustomerOrderEndpoints.PriceTolerance)
+            return ConversionError(StatusCodes.Status409Conflict, "PRICE_CHANGED", "Fiyatlar değişti; güncel tutarı kontrol edip yeniden onaylayın.", preview);
+        if (preview.MissingMappings.Length > 0)
+            return ConversionError(StatusCodes.Status409Conflict, "ERP_MAPPING_MISSING",
+                $"Belge {preview.OwnerName} adına kesilecek; ERP eşlemesinde eksik: {string.Join(", ", preview.MissingMappings)}. Kullanıcının Mikro eşlemesini ya da ERP ayarlarını tamamlayın.",
+                preview);
+
+        // A new request is taken in the caller's name first, as "İşleme al" would.
+        if (order.Status == CatalogOrderStatuses.New && await ClaimForConversionAsync(db, tenant.Id, id, user, manage, ct) is { } refused)
+            return refused;
+
+        var now = DateTimeOffset.UtcNow;
+        var externalId = CatalogOrderConversion.DocumentPrefix + Guid.NewGuid().ToString("D");
+        // Only another warehouse than the default goes in the body, as on the phone.
+        var chosenWarehouse = warehouseNo is { } chosen && chosen != preview.DefaultWarehouseNo ? warehouseNo : null;
+        var payloadJson = CatalogOrderConversion.PayloadJson(plan, order, externalId, chosenWarehouse, now);
+        var correlationId = ErpBridge.CentralApi.LogCenter.CorrelationId.Of(http);
+        var response = new CatalogOrderConvertResponse { DocumentRef = externalId };
+
+        if (await CatalogOrderConversion.ApprovalReasonAsync(db, tenant.Id, user, payloadJson, ct) is { } reason)
+        {
+            var approvalPayload = CatalogOrderConversion.ApprovalPayloadJson(plan, order, externalId, payloadJson, reason);
+            var submitted = await approvals.SubmitAsync(db, tenant, user, CatalogOrderConversion.ApprovalPrefix + Guid.NewGuid().ToString("D"), approvalPayload, ct, correlationId);
+            if (!submitted.Succeeded) return JsonResults.Status(submitted.StatusCode, submitted.Error);
+            response.Outcome = "APPROVAL";
+            response.ApprovalRequestId = submitted.Value!.Id;
+        }
+        else
+        {
+            var job = new Job
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenant.Id,
+                ExternalId = externalId,
+                DocumentType = CatalogOrderLinker.SalesOrderType,
+                PayloadJson = payloadJson,
+                Status = JobStatus.Pending,
+                EnqueuedAtUtc = now,
+                // The customer's salesperson's document, else the approver's (the user's decision): the agent writes it
+                // with that person's mapping, and the reports count it as theirs.
+                CreatedByUserId = plan.Owner.Id,
+                CorrelationId = correlationId,
+            };
+            // The caller completes the request: they have it, or they manage the catalog, as the linker requires.
+            var written = await writer.WriteAsync(db, tenant, job, user.Id, callerIsAdmin: false, ct);
+            if (written.Refusal is { } linkRefusal) return Error(linkRefusal.Status, linkRefusal.Code, linkRefusal.Message);
+            if (written.Job!.Status == JobStatus.Failed)
+                return Error(StatusCodes.Status422UnprocessableEntity, "CATALOG_CONVERSION_FAILED",
+                    "Satış deftere işlenemedi; talep açık kaldı. Cari ve ürün kartlarını kontrol edin.");
+            response.Outcome = "JOB";
+            response.JobId = written.Job.Id;
+            response.JobStatus = written.Job.Status.ToString();
+        }
+
+        db.ChangeTracker.Clear();
+        var after = await db.CatalogOrders.AsNoTracking().FirstAsync(o => o.Id == id, ct);
+        response.Order = await DetailAsync(db, views, after, ct);
+        return JsonResults.Status(StatusCodes.Status201Created, response);
+    }
+
+    /// <summary>Takes a new request for the caller under its row lock; null when it is theirs now (or a manager may convert it anyway).</summary>
+    private static async Task<IResult?> ClaimForConversionAsync(CentralApiDbContext db, Guid tenantId, Guid id, MobileUser user, bool manage, CancellationToken ct)
+    {
+        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        await CatalogOrders.LockAsync(db, tenantId, id, ct);
+        var order = await db.CatalogOrders.FirstAsync(o => o.Id == id && o.TenantId == tenantId, ct);
+        if (order.Status == CatalogOrderStatuses.Claimed && order.ClaimedByUserId != user.Id && !manage) return Taken(order);
+        if (order.Status == CatalogOrderStatuses.New)
+        {
+            var now = NowMs();
+            order.Status = CatalogOrderStatuses.Claimed;
+            order.ClaimedByUserId = user.Id;
+            order.ClaimedByName = NameOf(user);
+            order.ClaimedAtMs = now;
+            order.UpdatedAtMs = now;
+            await db.SaveChangesAsync(ct);
+        }
+        if (transaction is not null) await transaction.CommitAsync(ct);
+        // Anything else (closed meanwhile) is the linker's to answer.
+        return null;
+    }
+
+    private static IResult ConversionError(int status, string code, string message, CatalogOrderConversionDto conversion) =>
+        JsonResults.Status(status, new CatalogOrderConversionErrorDto { ErrorCode = code, Message = message, Conversion = conversion });
 
     /// <summary>
     /// One change of a request the caller may see, under its row lock: <paramref name="apply"/> changes the tracked row

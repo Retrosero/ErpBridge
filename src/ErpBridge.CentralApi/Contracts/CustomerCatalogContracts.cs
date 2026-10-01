@@ -685,3 +685,130 @@ public sealed class CatalogOrderRejectRequest
 {
     [JsonPropertyName("reason")] public string? Reason { get; set; }
 }
+
+// ---- turning a request into a sale from the panel (S10) ----------------------------------------------------------------
+
+/// <summary>
+/// <c>GET orders/{id}/conversion</c>: what "Siparişe çevir" would send — each line at the price of the request's list
+/// now, against what the customer was shown; whose name the document goes out in; the warehouse; what the ERP mapping
+/// still lacks; and whether it goes to the approval queue first.
+/// </summary>
+public sealed class CatalogOrderConversionDto
+{
+    [JsonPropertyName("orderId")] public Guid OrderId { get; set; }
+
+    [JsonPropertyName("no")] public string No { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("customerName")] public string CustomerName { get; set; } = string.Empty;
+
+    /// <summary>The document is the customer's salesperson's (the request's assignee, while active), else the caller's.</summary>
+    [JsonPropertyName("ownerUserId")] public Guid OwnerUserId { get; set; }
+
+    [JsonPropertyName("ownerName")] public string OwnerName { get; set; } = string.Empty;
+
+    /// <summary>True when the owner is the request's assignee; false when the caller stands in for a missing one.</summary>
+    [JsonPropertyName("ownerIsAssignee")] public bool OwnerIsAssignee { get; set; }
+
+    [JsonPropertyName("priceListNo")] public int PriceListNo { get; set; }
+
+    [JsonPropertyName("priceListName")] public string? PriceListName { get; set; }
+
+    [JsonPropertyName("priceIncludesVat")] public bool PriceIncludesVat { get; set; }
+
+    [JsonPropertyName("lines")] public CatalogOrderConversionLineDto[] Lines { get; set; } = [];
+
+    /// <summary>The request's total, as the customer saw it.</summary>
+    [JsonPropertyName("orderedTotal")] public decimal OrderedTotal { get; set; }
+
+    /// <summary>The sale's total at today's prices (lines without an issue); <c>expectedTotal</c> of the convert call.</summary>
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+
+    [JsonPropertyName("priceChanged")] public bool PriceChanged { get; set; }
+
+    /// <summary>The company keeps its books in an ERP: the agent writes the sale; warehouses and the mapping apply.</summary>
+    [JsonPropertyName("erp")] public bool Erp { get; set; }
+
+    /// <summary>The owner's warehouse, else the company's (ErpWriteContextBuilder); null when neither is set.</summary>
+    [JsonPropertyName("defaultWarehouseNo")] public int? DefaultWarehouseNo { get; set; }
+
+    [JsonPropertyName("warehouses")] public PortalErpLookupItem[] Warehouses { get; set; } = [];
+
+    /// <summary>What the owner's ERP mapping lacks ("ERP kullanıcı numarası", "depo", "satış belge türü"); empty when complete.</summary>
+    [JsonPropertyName("missingMappings")] public string[] MissingMappings { get; set; } = [];
+
+    /// <summary>The caller may not decide sales and the company's rule or their limits send it to the approval queue.</summary>
+    [JsonPropertyName("requiresApproval")] public bool RequiresApproval { get; set; }
+}
+
+public sealed class CatalogOrderConversionLineDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+
+    /// <summary>The list price the customer was shown.</summary>
+    [JsonPropertyName("orderedListPrice")] public decimal OrderedListPrice { get; set; }
+
+    /// <summary>The list price now; null when the product is gone, unpriced in the list or hidden from the customer.</summary>
+    [JsonPropertyName("listPrice")] public decimal? ListPrice { get; set; }
+
+    [JsonPropertyName("discountPercent")] public decimal DiscountPercent { get; set; }
+
+    [JsonPropertyName("vatRate")] public decimal VatRate { get; set; }
+
+    [JsonPropertyName("orderedTotal")] public decimal OrderedTotal { get; set; }
+
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+
+    [JsonPropertyName("priceChanged")] public bool PriceChanged { get; set; }
+
+    /// <summary><c>NOT_AVAILABLE</c> when the line can no longer be sold from the request's list.</summary>
+    [JsonPropertyName("issue")] public string? Issue { get; set; }
+}
+
+/// <summary><c>POST orders/{id}/convert</c>.</summary>
+public sealed class CatalogOrderConvertRequest
+{
+    /// <summary>Another warehouse than <see cref="CatalogOrderConversionDto.DefaultWarehouseNo"/>; null keeps the default.</summary>
+    [JsonPropertyName("warehouseNo")] public int? WarehouseNo { get; set; }
+
+    /// <summary>The preview's total; more than 0,05 off today's is 409 <c>PRICE_CHANGED</c> with the new preview.</summary>
+    [JsonPropertyName("expectedTotal")] public decimal? ExpectedTotal { get; set; }
+}
+
+public sealed class CatalogOrderConvertResponse
+{
+    /// <summary><c>JOB</c>: the sale is a job (the agent writes it; without an ERP it is booked); <c>APPROVAL</c>: it waits in the approval queue.</summary>
+    [JsonPropertyName("outcome")] public string Outcome { get; set; } = string.Empty;
+
+    /// <summary>The sale's <c>externalId</c> (<c>CAT-SO-…</c>).</summary>
+    [JsonPropertyName("documentRef")] public string DocumentRef { get; set; } = string.Empty;
+
+    [JsonPropertyName("jobId")] public Guid? JobId { get; set; }
+
+    [JsonPropertyName("jobStatus")] public string? JobStatus { get; set; }
+
+    [JsonPropertyName("approvalRequestId")] public Guid? ApprovalRequestId { get; set; }
+
+    [JsonPropertyName("order")] public CatalogOrderDetailDto Order { get; set; } = new();
+}
+
+/// <summary>409 <c>PRICE_CHANGED</c> / <c>ERP_MAPPING_MISSING</c> and 422 <c>CART_INVALID</c> of the convert call: the error with the preview as it is now.</summary>
+public sealed class CatalogOrderConversionErrorDto
+{
+    [JsonPropertyName("errorCode")] public string ErrorCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
+
+    [JsonPropertyName("traceId")] public string? TraceId { get; set; }
+
+    [JsonPropertyName("conversion")] public CatalogOrderConversionDto Conversion { get; set; } = new();
+}

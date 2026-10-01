@@ -11,11 +11,11 @@
 <section class="license-page license-theme--@Current.CssModifier" aria-labelledby="licenses-title">
     <header class="license-page__header">
         <div>
-            <p class="license-page__eyebrow">ERPBIDGE ADMIN · LİSANS SUNUCUSU</p>
+            <p class="license-page__eyebrow">ERPBRIDGE / ERİŞİM YÖNETİMİ</p>
             <h1 id="licenses-title">Lisanslar</h1>
             <p class="license-page__subtitle">Her ürünün lisansları ayrı tutulur. Bir ürünün anahtarı yalnız o üründe çalışır; öneki ve rengi ürünü gösterir.</p>
         </div>
-        <button class="btn license-refresh" @onclick="ReloadAsync" disabled="@_loading" aria-label="Lisans listesini yenile"><span aria-hidden="true">↻</span> Yenile</button>
+        <button class="btn license-refresh" @onclick="ReloadAsync" disabled="@_loading" aria-label="Lisans listesini yenile"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#refresh" /></svg> Yenile</button>
     </header>
 
     <nav class="license-products" role="tablist" aria-label="Ürün">
@@ -50,9 +50,9 @@
     else
     {
         <div class="license-summary" aria-label="@Current.Name lisans özeti">
-            <div class="license-stat"><span>@Current.Name lisansı</span><strong>@Visible.Count</strong></div>
-            <div class="license-stat license-stat--active"><span>Aktif</span><strong>@Visible.Count(l => l.IsActive)</strong></div>
-            <div class="license-stat license-stat--inactive"><span>Pasif</span><strong>@Visible.Count(l => !l.IsActive)</strong></div>
+            <div class="license-stat"><span>@Current.Name lisansı</span><strong>@Visible.Count</strong><small>@Current.Name müşteri lisansları</small></div>
+            <div class="license-stat license-stat--active"><span>Aktif lisans</span><strong>@Visible.Count(l => l.IsActive)</strong><small>Erişimi açık lisanslar</small></div>
+            <div class="license-stat license-stat--inactive"><span>Pasif lisans</span><strong>@Visible.Count(l => !l.IsActive)</strong><small>Erişimi kapalı lisanslar</small></div>
         </div>
 
         <section class="license-issue" aria-labelledby="issue-license-title">
@@ -62,7 +62,7 @@
             </div>
             <div class="license-issue__form">
                 <label><span>Müşteri</span><select class="form-select" @bind="_create.TenantIdString" aria-label="Müşteri seçin"><option value="">Müşteri seçin…</option>@foreach (var t in _tenants) { <option value="@t.Id.ToString()">@t.Name</option> }</select></label>
-                <label><span>Bitiş tarihi <em>(isteğe bağlı)</em></span><input class="form-control" type="datetime-local" @bind="_create.ExpiresAtLocal" /></label>
+                <label><span>Bitiş tarihi <em>(isteğe bağlı)</em></span><input class="form-control" type="datetime-local" @bind="_create.ExpiresAtLocal" /><small>Tarih seçilmezse lisans süresiz olur.</small></label>
                 <button id="license-create" class="btn btn-primary license-issue__button" @onclick="CreateAsync" disabled="@(string.IsNullOrEmpty(_create.TenantIdString) || _busy)">@(_busy ? "Oluşturuluyor…" : $"{Current.Name} lisansı oluştur")</button>
             </div>
         </section>
@@ -76,10 +76,10 @@
         @if (!string.IsNullOrEmpty(_error)) { <div class="license-notice license-notice--error" role="alert">@_error</div> }
 
         <section class="license-list" aria-labelledby="license-list-title">
-            <div class="license-list__heading"><div><h2 id="license-list-title">@Current.Name lisansları</h2><p>@Visible.Count kayıt</p></div></div>
+            <div class="license-list__heading"><div><h2 id="license-list-title">@Current.Name lisansları</h2><p>Müşteri erişimleri ve lisans geçerlilik bilgileri</p></div><span class="license-list__count">@Visible.Count kayıt</span></div>
             @if (Visible.Count == 0)
             {
-                <div class="license-empty"><span aria-hidden="true">⌁</span><h3>Henüz @Current.Name lisansı yok</h3><p>İlk lisansı yukarıdaki formdan oluşturabilirsiniz.</p></div>
+                <div class="license-empty"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#license" /></svg><h3>Henüz @Current.Name lisansı yok</h3><p>İlk lisansı yukarıdaki formdan oluşturabilirsiniz.</p></div>
             }
             else
             {
@@ -92,11 +92,10 @@
                         var hasPrefix = !LicenseProductCatalog.HasForeignPrefix(l);
                         <article class="license-card license-product--@product.CssModifier" data-product="@product.Key">
                             <div class="license-card__topline">
-                                <span class="license-status @(l.IsActive ? "license-status--active" : "license-status--inactive")"><span aria-hidden="true">●</span>@(l.IsActive ? "Aktif" : "Pasif")</span>
-                                <span class="license-product-chip"><span class="license-mark license-mark--small" aria-hidden="true">@product.Mark</span>@product.Name</span>
-                                <span class="license-card__tenant">@(TenantName(l.TenantId))</span>
+                                <div class="license-card__customer"><span class="license-card__mark" aria-hidden="true"><svg class="admin-icon"><use href="icons.svg#customers" /></svg></span><div><small>Müşteri</small><h3 class="license-card__tenant">@(TenantName(l.TenantId))</h3></div></div>
+                                <span class="license-status @(l.IsActive ? "license-status--active" : "license-status--inactive")"><i aria-hidden="true"></i>@(l.IsActive ? "Aktif" : "Pasif")</span>
                             </div>
-                            <code class="license-card__key">@if (hasPrefix) { <span class="license-prefix">@prefix</span>@l.LicenseKey[prefix.Length..] } else { @l.LicenseKey }</code>
+                            <div class="license-card__identity"><span class="license-product-chip"><span class="license-mark license-mark--small" aria-hidden="true">@product.Mark</span>@product.Name · Lisans anahtarı</span><code class="license-card__key">@if (hasPrefix) { <span class="license-prefix">@prefix</span>@l.LicenseKey[prefix.Length..] } else { @l.LicenseKey }</code></div>
                             @if (!hasPrefix)
                             {
                                 <p class="license-card__legacy">Önekten önce üretilmiş anahtar; ürünü etiketinden anlaşılır.</p>
@@ -133,15 +132,15 @@
                             <div class="license-card__actions">
                                 @if (!isGo)
                                 {
-                                    <button class="btn btn-outline-primary license-mobile-toggle" @onclick="() => ToggleMobileLogin(l.Id)" aria-expanded="@(_mobileLoginFor == l.Id)">@(_mobileLoginFor == l.Id ? "Telefon girişini kapat" : "Telefon girişi oluştur")</button>
+                                    <button class="btn btn-outline-primary license-mobile-toggle" @onclick="() => ToggleMobileLogin(l.Id)" aria-expanded="@(_mobileLoginFor == l.Id ? "true" : "false")">@(_mobileLoginFor == l.Id ? "Telefon girişini kapat" : "Telefon girişi oluştur")</button>
                                 }
                                 @if (l.IsActive)
                                 {
-                                    <button class="btn btn-outline-secondary" @onclick="() => ToggleExpiry(l)" aria-expanded="@(_expiryFor == l.Id)">Süreyi değiştir</button>
+                                    <button class="btn btn-outline-secondary" @onclick="() => ToggleExpiry(l)" aria-expanded="@(_expiryFor == l.Id ? "true" : "false")">Süreyi değiştir</button>
                                 }
                                 @if (isGo && l.IsActive)
                                 {
-                                    <button class="btn btn-outline-secondary license-modules-toggle" @onclick="() => ToggleModules(l)" aria-expanded="@(_modulesFor == l.Id)">Modülleri düzenle</button>
+                                    <button class="btn btn-outline-secondary license-modules-toggle" @onclick="() => ToggleModules(l)" aria-expanded="@(_modulesFor == l.Id ? "true" : "false")">Modülleri düzenle</button>
                                 }
                                 @if (isGo && l.GoInstallation is not null)
                                 {

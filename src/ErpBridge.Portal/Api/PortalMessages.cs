@@ -145,6 +145,10 @@ public static class PortalMessages
         "CATALOG_ORDER_TAKEN" => "Bu siparişle az önce başka biri ilgilenmeye başladı.",
         "CATALOG_ORDER_CLOSED" => "Bu sipariş kapanmış (siparişe çevrilmiş ya da reddedilmiş); liste yenilendi.",
         "CATALOG_ORDER_ALREADY_CONVERTED" => "Bu müşteri siparişi başka bir belgeyle zaten siparişe çevrilmiş.",
+        "PRICE_CHANGED" => "Fiyatlar bu arada değişti; güncel tutarı kontrol edip yeniden onaylayın.",
+        "CART_INVALID" => "Talepteki bazı ürünler artık satılamıyor (gizlendi ya da talebin fiyat listesinde fiyatı yok).",
+        "ERP_MAPPING_MISSING" => "Belgenin kesileceği kişinin ERP eşlemesi eksik; Kullanıcılar > Mikro eşlemesini ya da ERP ayarlarını tamamlayın.",
+        "CATALOG_CONVERSION_FAILED" => "Satış deftere işlenemedi; talep açık kaldı. Cari ve ürün kartlarını kontrol edin.",
         "RATE_LIMITED" or "HTTP_429" => "Çok fazla istek gönderildi; biraz bekleyip tekrar deneyin.",
         _ => null,
     };
