@@ -81,6 +81,10 @@ ilgili knowledge_base dosyasını da güncelle.
   PR, CI yeşilken (Actions kredisi yoksa yerel `dotnet build` 0 uyarı + `dotnet test` yeşilken) `main`'e birleştirme,
   Coolify dağıtımı ve `/health/schema` kontrolü, Sipariş Cepte'yi Play **internal**'a yükleme. Cloudflare DNS, Coolify
   alan adı/ortam değişkenleri ve modülü bir firmaya açmak kullanıcıdadır. Aynı yasaklar geçerli; Mikro'ya yazım yok.
+- **İstisna (2026-10-01):** aynı yetkiler `docs/GOAL_DEPOLAMA_R2.md` (Cloudflare R2 merkezi dosya deposu, kota, temizlik;
+  sunucu, panel, Admin ve Sipariş Cepte ayağı) görevleri için de önceden onaylıdır (kullanıcı: "onaylıyorum"): dala push,
+  PR, CI yeşilken `main`'e birleştirme, Coolify dağıtımı ve `/health/schema` kontrolü, Sipariş Cepte'yi Play **internal**'a
+  yükleme. R2 API anahtarı değerleri kullanıcıdadır (Claude görmez/girmez). Aynı yasaklar geçerli; Mikro'ya yazım yok.
 
 ## 3. Test / build
 
