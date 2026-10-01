@@ -1,9 +1,9 @@
 using System.Linq.Expressions;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
-using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
+using ErpBridge.CentralApi.Jobs;
 using ErpBridge.CentralApi.Native;
 using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Warehouse;
@@ -39,14 +39,14 @@ public sealed class ApprovalService
     public const int MaxDocumentsPerRequest = 20;
     public const int MaxNoteLength = 500;
 
-    private readonly NativeDocumentProcessor _native;
+    private readonly SalesJobWriter _jobs;
     private readonly IBootstrapNotificationHub _hub;
     private readonly FulfillmentService _warehouse;
     private readonly ITenantEventHub _portal;
 
-    public ApprovalService(NativeDocumentProcessor native, IBootstrapNotificationHub hub, FulfillmentService warehouse, ITenantEventHub portal)
+    public ApprovalService(SalesJobWriter jobs, IBootstrapNotificationHub hub, FulfillmentService warehouse, ITenantEventHub portal)
     {
-        _native = native;
+        _jobs = jobs;
         _hub = hub;
         _warehouse = warehouse;
         _portal = portal;
@@ -400,28 +400,15 @@ public sealed class ApprovalService
                 CorrelationId = request.CorrelationId,
             };
             // A sale made from a customer's catalog request completes it now, in the approval's transaction (T8); a
-            // rejected approval never gets here, so its request stays open.
-            var link = await CatalogOrderLinker.TryLinkAsync(db, tenant.Id, request.RequestedByUserId, documentType, job.PayloadJson, externalId, ct);
-            if (link.Refusal is { } refused)
+            // rejected approval never gets here, so its request stays open. Without an ERP the booking joins this
+            // transaction, approval standing in for the administrator a product card otherwise needs; an approved sale
+            // goes to the warehouse in it too (Faz 47).
+            var placed = await _jobs.PlaceAsync(db, tenant, job, request.RequestedByUserId, callerIsAdmin: true, request.Id, ct);
+            if (placed.Refusal is { } refused)
                 return ApprovalResult<ApprovalRequest>.Fail(refused.Status, refused.Code, refused.Message);
-            if (tenant.DataSource == TenantDataSources.Native)
-            {
-                // Joins this transaction. Approval stands in for the administrator a
-                // product card otherwise needs.
-                var booked = await _native.IngestAsync(db, tenant.Id, job, callerIsAdmin: true, ct);
-                if (booked.Status == JobStatus.Failed)
-                {
-                    // Rolled back with the approval; put back for a provider without transactions too.
-                    link.Undo();
-                    return ApprovalResult<ApprovalRequest>.Fail(422, "APPROVAL_DOCUMENT_FAILED", booked.LastError ?? "The document could not be booked.");
-                }
-            }
-            else
-            {
-                db.Jobs.Add(job);
-            }
-            // An approved sale goes to the warehouse in the approval's transaction (Faz 47).
-            await _warehouse.EnqueueAsync(db, tenant, job, request.Id, ct);
+            // Rolled back with the approval; the request was put back for a provider without transactions too.
+            if (placed.Job!.Status == JobStatus.Failed)
+                return ApprovalResult<ApprovalRequest>.Fail(422, "APPROVAL_DOCUMENT_FAILED", placed.Job.LastError ?? "The document could not be booked.");
         }
         return null;
     }

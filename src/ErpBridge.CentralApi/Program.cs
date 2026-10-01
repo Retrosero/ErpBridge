@@ -306,6 +306,7 @@ public partial class Program
         builder.Services.AddHostedService<ErpBridge.CentralApi.LogCenter.LogRetentionWorker>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Native.NativeDocumentProcessor>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Team.TeamDocumentProcessor>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Jobs.SalesJobWriter>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Approvals.ApprovalService>();
         // Faz 47: warehouse queue. The event hub is in memory: one CentralApi container (plan step 4).
         builder.Services.AddSingleton<ErpBridge.CentralApi.Notifications.ITenantEventHub, ErpBridge.CentralApi.Notifications.TenantEventHub>();

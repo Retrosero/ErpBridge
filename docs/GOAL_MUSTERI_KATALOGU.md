@@ -134,6 +134,8 @@ yönetim yetkisi istemez: yetkili tümünü, diğerleri yalnız kendine atananı
 | `POST orders/{id}/claim` | `{force}` (`force` yalnız yetkili) → `OrderDetail`; başkasında `409 CATALOG_ORDER_TAKEN`, kapalı `409 CATALOG_ORDER_CLOSED` |
 | `POST orders/{id}/release` / `complete {documentRef}` / `reject {reason}` | → `OrderDetail` |
 | `POST orders/{id}/reopen` | → `OrderDetail`. Yalnız yönetim yetkili (`403 CATALOG_MANAGE_REQUIRED`): `COMPLETED`/`REJECTED` → `NEW`; `documentRef`, `rejectReason`, `closedBy*`, `claimedBy*` temizlenir; açık talepte değişiklik yok. Panel: onaylı uyarıyla "Yeniden aç" |
+| `GET orders/{id}/conversion` | → `Conversion {owner*, lines[{orderedListPrice, listPrice?, total, priceChanged, issue?}], orderedTotal, total, priceChanged, erp, defaultWarehouseNo?, warehouses[], missingMappings[], requiresApproval}` — "Siparişe çevir" önizlemesi: talebin listesinin bugünkü fiyatı; belge sahibi = atanan plasiyer, yoksa çağıran (S10) |
+| `POST orders/{id}/convert` | `{warehouseNo?, expectedTotal}` → `201 {outcome JOB\|APPROVAL, documentRef CAT-SO-…, jobId?, jobStatus?, approvalRequestId?, order}`. Telefonun `salesOrderPayload` gövdesini sunucu kurar; `422 CART_INVALID`, `409 PRICE_CHANGED`, `409 ERP_MAPPING_MISSING` (+ güncel `conversion`), ikinci belge `409 CATALOG_ORDER_ALREADY_CONVERTED` |
 
 Görsel boyutu: `l` ≤ 1 MB ve uzun kenar ≤ 1280; `s` ≤ 200 KB ve ≤ 400 (boyut istemci sorumluluğunda; sunucu bayt
 sınırını ve sihirli baytı denetler, `415 INVALID_IMAGE`, `413 IMAGE_TOO_LARGE`). Ürün başına en çok 8 görsel
@@ -196,6 +198,11 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
   `notifyPreview`'ünde gösterir. Sıra `ReserveAsync` ile `SaveChanges`'ten hemen önce; ardından `ITenantEventHub.Publish(Tasks)`.
 - Durum etiketleri — personel: Yeni / İşlemde ({ad}) / Siparişe çevrildi / Reddedildi; müşteri: Alındı / İnceleniyor /
   Siparişe çevrildi / Reddedildi.
+- **Panelden çevirme (S10, 2026-10-01 kullanıcı kararı):** talep panelden de siparişe çevrilir. Panel belge göndermez;
+  sunucu talepten telefonun satış gövdesini kurar (`CatalogOrderConversion`) ve ingest/onay ile aynı yazıcıdan
+  (`Jobs/SalesJobWriter`) geçirir. Fiyat talebin listesinin güncel fiyatıdır; talep fiyatından farkı formda gösterilir ve
+  onaylanır. Belge carinin plasiyeri (`AssignedUserId`) adına, plasiyer yoksa çeviren adına kesilir (`Job.CreatedByUserId`);
+  depo formda değiştirilebilir. Onay yetkisi olmayanda firma kuralı/limit varsa onay talebi açılır.
 
 ## 6. Güvenlik
 
@@ -238,6 +245,7 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 | S7 | Müşteri gezinme: `categories`, `products`, `products/detail`, `cart/quote` | Gizli ürün 404; `noDiscount` tek fiyat; fiyatsız ürün yok; stoksuz `inStock=false`; "ışık" "IŞIK"ı bulur; cariye özel açılan ürün başka hesapta görünmez |
 | S8 | Talepler (müşteri + personel), `CatalogOrderLinker` (ingest + onay), bildirim | 0,06 TL fark 409; koli katı olmayan 422; aynı `requestId` tek kayıt; plasiyer eşlemeli carinin talebi o kişiye bildirim; ikinci claim 409; aynı talebe ikinci belge 409 |
 | S9 | `statement`, `invoices`, `invoices/detail`, `purchased` | Bayrak kapalı 403; başka carinin belge anahtarı 404; kasa koduyla çakışan cari başka carinin `r` anahtarıyla 404 |
+| S10 | Panelden siparişe çevirme: ortak `Jobs/SalesJobWriter` (ingest + onay + panel), `GET orders/{id}/conversion`, `POST orders/{id}/convert` | Gövde telefon gövdesiyle alan alan aynı ve `MobileDocumentTranslator` ile çevrilir; `CreatedByUserId` = atanan plasiyer, yoksa çağıran; fiyat değişince 409; ikinci çevirme 409; onay yetkisi olmayanda onay talebi; ERP'siz firmada defter kaydı; mevcut ingest/onay testleri değişmeden yeşil |
 | S11 | Talep ataması: sorumlu → cari temsilcisi → adres temsilcisi → firma varsayılanı → aktif rut planı; `notifyPreview`; kullanıcı listesinde `salespersonCode`; `GET orders/counts` | Her adım ayrı testli; pasif/silinmiş kişi atlanır; ERP'siz firmada rut planındaki kişiye atanır; hiçbiri yoksa yalnız yöneticiler |
 
 ### Web (ErpBridge)
@@ -257,7 +265,8 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 | P2 | `/katalog`: Genel, Kategoriler & Ürünler (sıra, bayraklar, toplu seçim) | 409'da yeniden okuma; kaydedilmemiş değişiklikte uyarı |
 | P3 | Ürün sheet'inde görseller (2 varyant, sıralı yükleme, link ekleme) | `PUT images/{id}/l` ve `/s` gider |
 | P4 | `CatalogAccessSheet`, Cari düğmesi, Müşteri erişimleri sekmesi, paylaşım | Cari açılışında ek istek yok; `issuedPassword` bir kez |
-| P5 | `/musteri-siparisleri` | Reddetmede gerekçe zorunlu; ERP'li firmada "telefondan çevirin" kutusu |
+| P5 | `/musteri-siparisleri` | Reddetmede gerekçe zorunlu; ERP'li firmada "telefondan çevirin" kutusu (P6 ile iki yolu anlatan nota döndü) |
+| P6 | `/musteri-siparisleri` "Siparişe çevir" formu | Kimin adına, depo seçimi, "Talep: x → Güncel: y", eksik eşleme uyarısı (eksikken gönderilmez); `PRICE_CHANGED`'de form güncel önizlemeyle açık kalır; onaya giden satışta bilgi |
 | P7 | Bildirim görünürlüğü: menüde yeni talep rozeti (sayfa geçişinde ve 60 sn'de bir), `/musteri-siparisleri` 60 sn'de bir sessizce tazelenir, `CatalogAccessSheet`'te "Bildirim kime gidecek", Kullanıcılar'da temsilcisiz plasiyere "Katalog talepleri bildirilemez" | Rozet sayısı `orders/counts`'tan; açık talep ve yarım form tazelemede bozulmaz; ERP'siz firmada metin plasiyerden söz etmez |
 
 ### Telefon — Siparis_Cepte `docs/GOAL_MUSTERI_KATALOGU.md` (A1–A7)

@@ -11,9 +11,9 @@ using Xunit;
 namespace ErpBridge.Portal.Tests;
 
 /// <summary>
-/// GOAL_MUSTERI_KATALOGU P5: the customers' order requests — status tabs with counts, the request's lines, claiming
-/// (someone else's claim is a 409 that offers "Devral"), rejecting only with a reason, and the note that the phone turns a
-/// request into a sale.
+/// GOAL_MUSTERI_KATALOGU P5/P6: the customers' order requests — status tabs with counts, the request's lines, claiming
+/// (someone else's claim is a 409 that offers "Devral"), rejecting only with a reason, and "Siparişe çevir": today's prices
+/// against the request's, whose name and which warehouse, a missing ERP mapping told before anything is sent.
 /// </summary>
 public sealed class PortalCustomerOrdersPageTests : PortalPageTestContext
 {
@@ -247,30 +247,159 @@ public sealed class PortalCustomerOrdersPageTests : PortalPageTestContext
         cut.WaitForAssertion(() => cut.Find("#order-error").TextContent.Should().Contain("İşlem tamamlanamadı (SOMETHING_ELSE)").And.NotContain("Internal"));
     }
 
+    private static object Conversion(decimal orderedTotal = 1234.5m, decimal total = 1234.5m, bool erp = true, int? defaultWarehouseNo = 3,
+        string[]? missing = null, bool requiresApproval = false, decimal listPrice = 30m) => new
+    {
+        orderId = OrderId, no = "KT-000123", status = "NEW", customerCode = "C/1", customerName = "Bakkal Ali",
+        ownerUserId = Guid.NewGuid(), ownerName = "Ali Plasiyer", ownerIsAssignee = true,
+        priceListNo = 1, priceListName = "Perakende", priceIncludesVat = true,
+        lines = new[]
+        {
+            new
+            {
+                stockCode = "CAY-1", name = "Çay 1 kg", unit = "Adet", quantity = 36m, orderedListPrice = 30m, listPrice = (decimal?)listPrice,
+                discountPercent = 10m, vatRate = 20m, orderedTotal = 972m, total = 972m, priceChanged = listPrice != 30m, issue = (string?)null,
+            },
+            new
+            {
+                stockCode = "KAHVE", name = "Kahve", unit = "Adet", quantity = 5m, orderedListPrice = 50m, listPrice = (decimal?)50m,
+                discountPercent = 0m, vatRate = 20m, orderedTotal = 262.5m, total = 262.5m, priceChanged = false, issue = (string?)null,
+            },
+        },
+        orderedTotal, total, priceChanged = total != orderedTotal, erp, defaultWarehouseNo,
+        warehouses = erp ? new object[] { new { code = "1", name = "Merkez" }, new { code = "3", name = "Şube" } } : Array.Empty<object>(),
+        missingMappings = missing ?? [], requiresApproval,
+    };
+
+    private static object Converted(string outcome = "JOB", string? jobStatus = "Pending") => new
+    {
+        outcome, documentRef = "CAT-SO-1", jobId = outcome == "JOB" ? Guid.NewGuid() : (Guid?)null, jobStatus = outcome == "JOB" ? jobStatus : null,
+        approvalRequestId = outcome == "APPROVAL" ? Guid.NewGuid() : (Guid?)null,
+        order = outcome == "JOB" ? Detail("COMPLETED", documentRef: "CAT-SO-1") : Detail("CLAIMED", claimedBy: "Firma Sahibi"),
+    };
+
+    private IRenderedComponent<MusteriSiparisleri> OpenConversion(FakeCentralApi api, object conversion)
+    {
+        api.Answer(OrderPath + "/conversion", conversion);
+        var cut = OpenOrder(api);
+        cut.Find("#order-convert").Click();
+        cut.WaitForAssertion(() => cut.Find("#order-convert-facts"));
+        return cut;
+    }
+
     [Fact]
-    public void A_company_with_an_erp_is_told_that_the_phone_sends_the_order_to_the_erp()
+    public void A_request_is_turned_into_a_sale_at_todays_prices_in_the_salespersons_name_and_warehouse()
+    {
+        var api = Setup(dataSource: "erp");
+        var cut = OpenConversion(api, Conversion(total: 1342.5m, listPrice: 33m));
+
+        cut.Find("#order-convert-owner").TextContent.Should().Contain("Ali Plasiyer").And.Contain("carinin plasiyeri");
+        cut.Find("#order-convert-total").TextContent.Should().Contain("Talep: 1.234,50 TL → Güncel: 1.342,50 TL");
+        cut.Find("#order-convert-changes tr[data-stock='CAY-1']").TextContent.Should().Contain("Talep: 30,00 TL → Güncel: 33,00 TL");
+        cut.FindAll("#order-convert-changes tr[data-stock='KAHVE']").Should().BeEmpty("only what changed is listed");
+        cut.Find("#order-convert-warehouse option[selected]").TextContent.Should().Be("3 — Şube (varsayılan)");
+        cut.FindAll("#order-convert-missing").Should().BeEmpty();
+        cut.Find("#order-convert-confirm").TextContent.Trim().Should().Be("Onayla ve ERP'ye gönder");
+        api.Requests.Should().NotContain(r => r.PathAndQuery == OrderPath + "/convert", "nothing is sent before the confirmation");
+
+        api.Answer(OrderPath + "/convert", Converted(), HttpStatusCode.Created);
+        api.Answer(Orders + "?status=NEW&page=1", List(Counts(newCount: 1, completed: 6)));
+        cut.Find("#order-convert-warehouse").Change("1");
+        cut.Find("#order-convert-form").Submit();
+
+        cut.WaitForAssertion(() => cut.Find("#order-status").TextContent.Should().Be("Siparişe çevrildi"));
+        var body = Body(api, OrderPath + "/convert");
+        body.GetProperty("warehouseNo").GetInt32().Should().Be(1);
+        body.GetProperty("expectedTotal").GetDecimal().Should().Be(1342.5m, "the total the form showed");
+        cut.Find("#order-document-ref").TextContent.Should().Be("CAT-SO-1");
+        cut.Find("#order-notice").TextContent.Should().Contain("CAT-SO-1").And.Contain("ajanı bekliyor");
+        cut.FindAll("#order-convert-form").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_price_changed_meanwhile_keeps_the_form_open_with_the_new_total()
+    {
+        var api = Setup(dataSource: "erp");
+        var cut = OpenConversion(api, Conversion());
+
+        api.Fail(OrderPath + "/convert", HttpStatusCode.Conflict, "PRICE_CHANGED");
+        api.Answer(OrderPath + "/conversion", Conversion(total: 1342.5m, listPrice: 33m));
+        cut.Find("#order-convert-form").Submit();
+
+        cut.WaitForAssertion(() => cut.Find("#order-error").TextContent.Should().Contain("Fiyatlar bu arada değişti"));
+        cut.Find("#order-convert-total").TextContent.Should().Contain("Güncel: 1.342,50 TL");
+        cut.Find("#order-convert-changes").TextContent.Should().Contain("Güncel: 33,00 TL");
+        cut.Find("#order-status").TextContent.Should().Be("Yeni");
+
+        api.Answer(OrderPath + "/convert", Converted(), HttpStatusCode.Created);
+        cut.Find("#order-convert-form").Submit();
+        cut.WaitForAssertion(() => cut.Find("#order-status").TextContent.Should().Be("Siparişe çevrildi"));
+        Body(api, OrderPath + "/convert").GetProperty("expectedTotal").GetDecimal().Should().Be(1342.5m, "the new total was accepted");
+    }
+
+    [Fact]
+    public void A_missing_erp_mapping_is_shown_and_nothing_is_sent_until_it_is_settled()
+    {
+        var api = Setup(dataSource: "erp");
+        var cut = OpenConversion(api, Conversion(defaultWarehouseNo: null, missing: ["ERP kullanıcı numarası", "depo"]));
+
+        cut.Find("#order-convert-missing").TextContent.Should().Contain("Ali Plasiyer").And.Contain("ERP kullanıcı numarası, depo");
+        cut.Find("#order-convert-confirm").HasAttribute("disabled").Should().BeTrue();
+
+        cut.Find("#order-convert-warehouse").Change("1");
+        cut.Find("#order-convert-missing").TextContent.Should().Contain("ERP kullanıcı numarası").And.NotContain("depo", "a chosen warehouse settles it");
+        cut.Find("#order-convert-confirm").HasAttribute("disabled").Should().BeTrue("the ERP user number is still missing");
+        cut.Find("#order-convert-form").Submit();
+        api.Requests.Should().NotContain(r => r.PathAndQuery == OrderPath + "/convert");
+
+        api.Answer(OrderPath + "/conversion", Conversion(defaultWarehouseNo: null, missing: ["depo"]));
+        cut.Find("#order-convert-cancel").Click();
+        cut.Find("#order-convert").Click();
+        cut.WaitForAssertion(() => cut.Find("#order-convert-missing").TextContent.Should().Contain("depo"));
+        cut.Find("#order-convert-warehouse").Change("3");
+        cut.FindAll("#order-convert-missing").Should().BeEmpty();
+        cut.Find("#order-convert-confirm").HasAttribute("disabled").Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_sale_that_needs_approval_goes_to_the_approval_queue()
+    {
+        var api = Setup();
+        var cut = OpenConversion(api, Conversion(erp: false, defaultWarehouseNo: null, requiresApproval: true));
+
+        cut.FindAll("#order-convert-warehouse").Should().BeEmpty("the ledger has no warehouse choice");
+        cut.Find("#order-convert-approval").TextContent.Should().Contain("onay merkezine").And.Contain("deftere işlenir");
+        cut.Find("#order-convert-confirm").TextContent.Trim().Should().Be("Onayla ve deftere işle");
+
+        api.Answer(OrderPath + "/convert", Converted("APPROVAL"), HttpStatusCode.Created);
+        cut.Find("#order-convert-form").Submit();
+
+        cut.WaitForAssertion(() => cut.Find("#order-notice").TextContent.Should().Contain("onay merkezine gönderildi"));
+        Body(api, OrderPath + "/convert").GetProperty("warehouseNo").ValueKind.Should().Be(JsonValueKind.Null);
+        cut.Find("#order-status").TextContent.Should().Be("İşlemde (Firma Sahibi)");
+    }
+
+    [Fact]
+    public void Both_ways_of_turning_a_request_into_a_sale_are_named()
     {
         var api = Setup(dataSource: "erp");
 
         var cut = OpenOrder(api);
 
-        cut.Find("#customer-orders-erp-note").TextContent.Trim().Should()
-            .Be("ERP'ye gönderim telefondan yapılır: talebi Sipariş Cepte'de Müşteri siparişleri'nden açıp Satışa aktarın.");
-        cut.FindAll("#customer-orders-phone-note").Should().BeEmpty();
-        cut.Find("#order-actions-section").TextContent.Should().Contain("ERP'ye gönderim telefondan yapılır");
-        cut.FindAll("#order-actions-section button").Select(b => b.TextContent.Trim()).Should().NotContain(t => t.Contains("Siparişe çevir", StringComparison.Ordinal),
-            "the panel never books a document");
+        cut.Find("#customer-orders-convert-note").TextContent.Should().Contain("Siparişe çevir").And.Contain("Sipariş Cepte").And.Contain("ikinci belge oluşmaz")
+            .And.Contain("ajan");
+        cut.FindAll("#customer-orders-erp-note, #customer-orders-phone-note").Should().BeEmpty();
+        cut.Find("#order-convert").TextContent.Trim().Should().Be("Siparişe çevir");
     }
 
     [Fact]
-    public void A_company_without_an_erp_gets_the_phone_note_instead()
+    public void A_company_without_an_erp_reads_the_same_note_without_the_agent()
     {
         Setup();
 
         var cut = Render<MusteriSiparisleri>();
 
-        cut.WaitForAssertion(() => cut.Find("#customer-orders-phone-note"));
-        cut.FindAll("#customer-orders-erp-note").Should().BeEmpty();
+        cut.WaitForAssertion(() => cut.Find("#customer-orders-convert-note").TextContent.Should().Contain("Siparişe çevir").And.NotContain("ajan"));
     }
 
     [Fact]
