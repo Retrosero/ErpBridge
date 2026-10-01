@@ -295,6 +295,24 @@ public sealed class CatalogAccountByCustomerResponse
     [JsonPropertyName("customerName")] public string CustomerName { get; set; } = string.Empty;
 
     [JsonPropertyName("suggestedUsername")] public string SuggestedUsername { get; set; } = string.Empty;
+
+    /// <summary>Who a new request of this customer would be routed to now, with the account's saved responsible user (S11).</summary>
+    [JsonPropertyName("notifyPreview")] public CatalogNotifyPreviewDto NotifyPreview { get; set; } = new();
+}
+
+/// <summary>
+/// The person a new request goes to (null: nobody, the catalog managers alone hear of it) and the rule that chose them:
+/// <c>responsible</c>, <c>salesperson</c>, <c>address</c>, <c>default</c>, <c>route</c> or <c>managersOnly</c>. The managers
+/// hear of every request besides.
+/// </summary>
+public sealed class CatalogNotifyPreviewDto
+{
+    [JsonPropertyName("userId")] public Guid? UserId { get; set; }
+
+    /// <summary>The person's full name, or their username when it is blank.</summary>
+    [JsonPropertyName("userName")] public string? UserName { get; set; }
+
+    [JsonPropertyName("source")] public string Source { get; set; } = "managersOnly";
 }
 
 public sealed class CatalogAccountCreateRequest

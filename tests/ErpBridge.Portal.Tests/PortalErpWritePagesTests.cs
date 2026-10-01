@@ -134,6 +134,59 @@ public sealed class PortalErpWritePagesTests : PortalPageTestContext
         cut.FindAll("#user-erp-edit").Should().BeEmpty();
     }
 
+    /// <summary>GOAL_MUSTERI_KATALOGU P7: a catalog request reaches a salesperson only through their Mikro salesperson code.</summary>
+    [Fact]
+    public void A_salesperson_without_a_salesperson_code_is_marked_until_one_is_mapped()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: ErpAdmin() with { Modules = ["customer_catalog"] });
+        api.Answer("/api/v1/android/account/users", new
+        {
+            seats = new { max = 5, used = 4, status = "active" },
+            users = new object[]
+            {
+                new { id = Guid.NewGuid(), username = "patron", fullName = "Firma Sahibi", role = "ADMIN", roles = new[] { "ADMIN" }, isActive = true },
+                new { id = AliId, username = "ali", fullName = "Ali Yılmaz", role = "SALES", roles = new[] { "SALES" }, isActive = true },
+                new { id = Guid.NewGuid(), username = "veli", fullName = "Veli Kaya", role = "SALES", roles = new[] { "SALES" }, isActive = true, salespersonCode = "P2" },
+                new { id = Guid.NewGuid(), username = "eski", fullName = "Eski Kişi", role = "SALES", roles = new[] { "SALES" }, isActive = false },
+            },
+        });
+        api.Answer("/api/v1/portal/erp-lookups", Lookups());
+        api.Answer($"/api/v1/portal/users/{AliId}/erp-mapping", new { userId = AliId, series = new { } });
+
+        var cut = Render<Kullanicilar>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-user=ali]"));
+
+        cut.FindAll("[data-catalog-unmapped]").Select(b => b.Closest("tr")!.GetAttribute("data-user")).Should().Equal(["ali"],
+            "the salesperson with a code, the administrator and the passive one are not marked");
+        cut.Find("tr[data-user=ali] [data-catalog-unmapped]").TextContent.Should().Be("Katalog talepleri bildirilemez");
+        cut.Find("tr[data-user=ali] [data-catalog-unmapped]").GetAttribute("title").Should().Contain("Temsilci boş");
+
+        cut.Find("tr[data-user=ali] .erp-btn").Click();
+        cut.WaitForAssertion(() => cut.Find("#user-erp-edit"));
+        cut.Find("#map-salesperson").Change("P1");
+        cut.Find("#user-erp-edit form").Submit();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-catalog-unmapped]").Should().BeEmpty());
+    }
+
+    [Theory]
+    [InlineData("erp", false)]
+    [InlineData("native", true)]
+    public void The_mark_needs_an_erp_company_with_the_catalog(string dataSource, bool module)
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State() with { DataSource = dataSource, Modules = module ? ["customer_catalog"] : [] });
+        api.Answer("/api/v1/android/account/users", new
+        {
+            seats = new { max = 5, used = 1, status = "active" },
+            users = new object[] { new { id = AliId, username = "ali", fullName = "Ali Yılmaz", role = "SALES", roles = new[] { "SALES" }, isActive = true } },
+        });
+
+        var cut = Render<Kullanicilar>();
+        cut.WaitForAssertion(() => cut.Find("tr[data-user=ali]"));
+
+        cut.FindAll("[data-catalog-unmapped]").Should().BeEmpty();
+    }
+
     [Fact]
     public void A_company_without_an_erp_has_no_mikro_button()
     {

@@ -37,6 +37,7 @@ public static class CustomerCatalogOrderEndpoints
             .RequireAuthorization(Program.MobileUserPolicy)
             .RequireRateLimiting(Program.PerMobileUserRateLimitPolicy);
         group.MapGet(string.Empty, ListAsync).WithName("CustomerCatalogOrdersList");
+        group.MapGet("/counts", CountsAsync).WithName("CustomerCatalogOrderCounts");
         group.MapGet("/{id:guid}", GetAsync).WithName("CustomerCatalogOrderGet");
         group.MapPost("/{id:guid}/claim", ClaimAsync).WithName("CustomerCatalogOrderClaim");
         group.MapPost("/{id:guid}/release", ReleaseAsync).WithName("CustomerCatalogOrderRelease");
@@ -97,6 +98,28 @@ public static class CustomerCatalogOrderEndpoints
                 Completed = visible.Count(o => o.Status == CatalogOrderStatuses.Completed),
                 Rejected = visible.Count(o => o.Status == CatalogOrderStatuses.Rejected),
             },
+        });
+    }
+
+    /// <summary>
+    /// The list's <c>counts</c> alone, counted in the database: the panel menu's "new requests" badge reads it on every page
+    /// change and once a minute, so it must not load the requests themselves.
+    /// </summary>
+    private static async Task<IResult> CountsAsync(HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        var access = await AuthorizeAsync(http, db, manage: false, ct);
+        if (access.Error is not null) return access.Error;
+        var user = access.User!;
+        var query = db.CatalogOrders.AsNoTracking().Where(o => o.TenantId == access.Tenant!.Id);
+        if (!RolePermissions.CanManageCustomerCatalog(user)) query = query.Where(o => o.AssignedUserId == user.Id || o.ClaimedByUserId == user.Id);
+        var byStatus = await query.GroupBy(o => o.Status).Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync(ct);
+        int Of(string status) => byStatus.FirstOrDefault(s => s.Status == status)?.Count ?? 0;
+        return JsonResults.Ok(new CatalogOrderCountsDto
+        {
+            New = Of(CatalogOrderStatuses.New),
+            Claimed = Of(CatalogOrderStatuses.Claimed),
+            Completed = Of(CatalogOrderStatuses.Completed),
+            Rejected = Of(CatalogOrderStatuses.Rejected),
         });
     }
 

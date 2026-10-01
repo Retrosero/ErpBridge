@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Bunit;
 using ErpBridge.Portal.Pages;
+using ErpBridge.Portal.Session;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,10 +55,10 @@ public sealed class PortalCustomerOrdersPageTests : PortalPageTestContext
         },
     };
 
-    private FakeCentralApi Setup(string dataSource = "native")
+    private FakeCentralApi Setup(string dataSource = "native", PortalRefreshTiming? refresh = null)
     {
         var state = PortalTestSetup.State() with { Modules = ["customer_catalog"], DataSource = dataSource };
-        var (api, _, _) = PortalTestSetup.Register(this, signedIn: state);
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: state, refreshTiming: refresh);
         Services.GetRequiredService<NavigationManager>().NavigateTo("musteri-siparisleri");
         api.Answer(Orders + "?status=NEW&page=1", List(Counts(), Summary()));
         api.Answer(OrderPath, Detail());
@@ -104,6 +105,29 @@ public sealed class PortalCustomerOrdersPageTests : PortalPageTestContext
         cut.Find("[data-status='islemde']").Click();
         cut.WaitForAssertion(() => cut.Find($"#customer-orders tr[data-order='{OrderId}']").TextContent.Should().Contain("İşlemde (Veli)"));
         api.Requests.Last().PathAndQuery.Should().Be(Orders + "?status=CLAIMED&page=1");
+    }
+
+    /// <summary>P7: the list reads again on its own; an open request with a half-written form stays untouched.</summary>
+    [Fact]
+    public void The_list_reads_again_on_its_own_and_leaves_the_open_request_as_it_is()
+    {
+        var api = Setup(refresh: new PortalRefreshTiming { CustomerOrders = TimeSpan.FromMilliseconds(40) });
+        var cut = Render<MusteriSiparisleri>();
+        // The list redraws every few milliseconds here, so each find-and-act runs on the renderer, between two redraws.
+        cut.WaitForAssertion(() => cut.Find($"#customer-orders tr[data-order='{OrderId}']"));
+        cut.InvokeAsync(() => cut.Find($"#customer-orders tr[data-order='{OrderId}']").Click());
+        cut.WaitForAssertion(() => cut.Find("#order-reject"));
+        cut.InvokeAsync(() => cut.Find("#order-reject").Click());
+        cut.WaitForAssertion(() => cut.Find("#order-reject-reason"));
+        cut.InvokeAsync(() => cut.Find("#order-reject-reason").Input("Stok yok"));
+
+        api.Answer(Orders + "?status=NEW&page=1", List(Counts(newCount: 4), Summary()));
+
+        cut.WaitForAssertion(() => cut.Find("[data-status='yeni'] .seg-count").TextContent.Should().Be("4"), TimeSpan.FromSeconds(5));
+        cut.Find("#order-reject-form").Should().NotBeNull("the form being filled stays open");
+        cut.Find("#order-reject-reason").GetAttribute("value").Should().Be("Stok yok");
+        cut.FindAll("#page-error").Should().BeEmpty();
+        api.Requests.Count(r => r.PathAndQuery == OrderPath).Should().Be(1, "the open request is not read again");
     }
 
     [Fact]

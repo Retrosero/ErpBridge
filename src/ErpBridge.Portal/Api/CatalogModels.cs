@@ -237,6 +237,20 @@ public sealed class CatalogAccountLookupDto
     [JsonPropertyName("account")] public CatalogAccountDto? Account { get; set; }
     [JsonPropertyName("customerName")] public string CustomerName { get; set; } = string.Empty;
     [JsonPropertyName("suggestedUsername")] public string? SuggestedUsername { get; set; }
+
+    /// <summary>Who a new request of this customer goes to now, with the saved responsible user; null from an older server.</summary>
+    [JsonPropertyName("notifyPreview")] public CatalogNotifyPreviewDto? NotifyPreview { get; set; }
+}
+
+/// <summary>
+/// The person a new request is routed to (null: nobody, only the catalog managers hear of it) and the rule that chose them:
+/// <c>responsible</c>, <c>salesperson</c>, <c>address</c>, <c>default</c>, <c>route</c> or <c>managersOnly</c>.
+/// </summary>
+public sealed class CatalogNotifyPreviewDto
+{
+    [JsonPropertyName("userId")] public Guid? UserId { get; set; }
+    [JsonPropertyName("userName")] public string? UserName { get; set; }
+    [JsonPropertyName("source")] public string Source { get; set; } = "managersOnly";
 }
 
 public sealed class CatalogAccountCreateRequest

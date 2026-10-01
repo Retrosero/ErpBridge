@@ -25,6 +25,8 @@ push'u, Play production.
 | W1–W5 | Web katalog | ✅ canlı | #229 | Statik SPA `wwwroot/katalog` (giriş, katalog, sepet, talepler, hesabım); `node --test tests/katalog-web/` |
 | P1–P5 | Panel | ✅ canlı | #229 | `/katalog`, ürün sheet'i görselleri, `CatalogAccessSheet`, `/musteri-siparisleri` (yeniden aç dahil) |
 | P6 | Panel "Siparişe çevir" formu | 🔄 dal `ozellik/katalog-cevirme` | | `MusteriSiparisleri.razor`; bUnit `PortalCustomerOrdersPageTests` |
+| S11 | Talep ataması (adres temsilcisi, firma varsayılanı, rut planı) + `notifyPreview` + `orders/counts` | ✅ canlı | #232 | `ozellik/katalog-bildirim`; `CatalogOrders.AssigneeAsync`, `CustomerCatalogAssigneeRelationalTests` |
+| P7 | Panel bildirim görünürlüğü (menü rozeti, 60 sn tazeleme, bildirim önizlemesi, temsilcisiz plasiyer rozeti) | ✅ canlı | #232 | `ozellik/katalog-bildirim`; `PortalRefreshTiming` |
 | A1–A7 | Telefon (Siparis_Cepte) | ✅ Play internal 1.5.297 | siparis_cepte#156 | |
 | D1 | DNS + Coolify alan adı | ✅ | | `sipariscepte.appsgo.cloud` → sunucu IP'si (kullanıcı); Coolify centralapi alanı (Claude), geçerli sertifika |
 | D2 | CentralApi dağıtımı | ✅ | #229 | `/health/schema` current, applied 49, pending 0 |

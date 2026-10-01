@@ -136,7 +136,8 @@ public static class PortalTestSetup
     /// <summary>Registers the portal's services around a fake API; returns the pieces a test inspects.</summary>
     /// <param name="popoverProvider">False when the test renders the layout, which brings its own.</param>
     /// <param name="kioskTiming">The TV board's rhythm; by default shortened to a few dozen milliseconds.</param>
-    public static (FakeCentralApi Api, PortalSession Session, MemorySessionPersistence Storage) Register(BunitContext context, PortalSessionState? signedIn = null, PortalSessionState? inTab = null, bool popoverProvider = true, KioskTiming? kioskTiming = null)
+    /// <param name="refreshTiming">How often screens read again on their own; by default a minute, as in production.</param>
+    public static (FakeCentralApi Api, PortalSession Session, MemorySessionPersistence Storage) Register(BunitContext context, PortalSessionState? signedIn = null, PortalSessionState? inTab = null, bool popoverProvider = true, KioskTiming? kioskTiming = null, PortalRefreshTiming? refreshTiming = null)
     {
         var api = new FakeCentralApi();
         var clock = new TestClock(Now);
@@ -161,6 +162,7 @@ public static class PortalTestSetup
             Rotate = TimeSpan.FromMilliseconds(150),
             CardsPerPage = 3,
         });
+        context.Services.AddSingleton(refreshTiming ?? new PortalRefreshTiming());
         // MudBlazor components call into their JS module; the tests only check markup and API calls.
         context.Services.AddMudServices();
         context.JSInterop.Mode = JSRuntimeMode.Loose;

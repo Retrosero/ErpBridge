@@ -1430,8 +1430,23 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      → açık talep sınırı → talep + bildirimler; sayaç (`ReserveAsync`) `SaveChanges`'in hemen önünde (kural 11); commit sonrası
      `Publish(Tasks)`. `requestId` = talebin PK'sı: aynı hesap → aynı talep (201), başka hesap → içeriksiz `409 REQUEST_ID_CONFLICT`.
      Personel eylemleri (`claim{force}`/`release`/`complete`/`reject`) talep satırının kilidi altında (aynı anda iki kişi → biri 409).
-     Bildirim `CATALOG_ORDER_NEW` (`TaskId` null; `TaskService` türe göre süzmez): sorumlu kişi ya da plasiyer eşlemesi
-     (`Customer.SalespersonCode` → `MobileUserErpMapping.SalespersonCode`, aktif kullanıcı) + aktif katalog yöneticileri.
+     Bildirim `CATALOG_ORDER_NEW` (`TaskId` null; `TaskService` türe göre süzmez): `AssignedUserId` + aktif katalog yöneticileri.
+   - **Talep ataması (S11)** `CatalogOrders.AssigneeAsync(db, cache, tenantId, responsibleUserId, customerCode, card)` →
+     `CatalogAssignee(UserId, Source)`; ilk eşleşen **aktif ve silinmemiş** kişi: (1) hesabın `ResponsibleUserId`'si
+     (`responsible`); (2) kartın `SalespersonCode`'u (`cari_temsilci_kodu`) → `MobileUserErpMapping.SalespersonCode`
+     (`salesperson`; kırpılmış, büyük/küçük harf duyarsız); (3) `PortalLedger.Customer.AddressSalespersonCode` — adres
+     aynasındaki (`customerAddresses.salespersonCode` = `adr_temsilci_kodu`) temsilcisi dolu en küçük numaralı adres → aynı eşleme
+     (`address`); (4) `ErpWriteSettings.DefaultSalespersonCode` → aynı eşleme (`default`); (5) `routePlans` aynasından
+     (`PortalRecordMirror`, `catalog-route-plans`; yalnız değişen satırlar okunur) carinin durak olduğu, `isActive` ve
+     `startDate` boş ya da İstanbul bugününe eşit/önce planlar — en yeni `startDate`, sonra `updatedAtUtc` — içinde ilk aktif
+     atanan (kullanıcı adı, harf duyarsız; `route`; ERP'siz firmada da çalışır). Hiçbiri: `null` + `managersOnly`. Sorgu sayısı
+     sabit (kullanıcılar, ayar, eşlemeler; plan aynası önbellekte). Panel önizlemesi `GET accounts/by-customer` →
+     `notifyPreview {userId, userName, source}` (hesabın kayıtlı sorumlusuyla). Kullanıcı listesi (`GET android/account/users`)
+     her kişinin `salespersonCode`'unu taşır; panel `Kullanicilar.razor` ERP'li + katalog modüllü firmada temsilcisi boş aktif
+     SALES'e "Katalog talepleri bildirilemez" rozeti koyar. `GET orders/counts` = listenin `counts`'u veritabanında sayılmış
+     (satır okunmaz): panel `MainLayout` menüsündeki "Müşteri siparişleri" rozeti onu sayfa geçişinde (yalnız yol değişince) ve
+     `PortalRefreshTiming.CustomerOrders`'ta (60 sn; `PeriodicTimer`, dispose'da iptal) okur; `MusteriSiparisleri.razor` listeyi
+     aynı aralıkla sessizce tazeler (meşgulken ya da kullanıcı süzgeci/sayfayı değiştirdiyse yanıt atılır; açık talep okunmaz).
    - **Talep ↔ satış bağı (T8)** `CustomerCatalog/CatalogOrderLinker.TryLinkAsync`: satış gövdesinin üst düzey `catalogOrderId`'si
      `IngestEndpoints`'te iş eklenmeden hemen önce (idempotent iş + onay/yetki denetimlerinden sonra; ERP yolunda ve ERP'siz
      yolda — o zaman defter kaydının kendi `SaveChanges`'inde) ve `ApprovalService.PostDocumentsAsync`'te (onay işleminde) okunur.

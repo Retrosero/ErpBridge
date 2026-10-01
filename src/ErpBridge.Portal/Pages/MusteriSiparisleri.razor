@@ -1,5 +1,7 @@
 @page "/musteri-siparisleri"
 @inherits PortalPageBase
+@implements IDisposable
+@inject PortalRefreshTiming Refresh
 
 <PageTitle>Müşteri siparişleri — Yönetim Paneli</PageTitle>
 
@@ -419,7 +421,55 @@ else
         if (int.TryParse(One("sayfa"), out var page) && page > 0) _page = page;
     }
 
-    protected override Task LoadAsync() => LoadListAsync();
+    // P7: the list reads again once a minute, quietly; an open request and its forms stay as they are.
+    private readonly CancellationTokenSource _live = new();
+
+    protected override Task LoadAsync()
+    {
+        _ = WatchAsync(_live.Token);
+        return LoadListAsync();
+    }
+
+    private async Task WatchAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(Refresh.CustomerOrders);
+            while (await timer.WaitForNextTickAsync(token)) await InvokeAsync(RefreshListAsync);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// The same tab, search and page read again without the busy state or an error banner: the next minute tries again. The
+    /// answer is dropped when the user changed the list or started something meanwhile, so it never overwrites theirs.
+    /// </summary>
+    private async Task RefreshListAsync()
+    {
+        if (_live.IsCancellationRequested || Busy) return;
+        var (status, query, page) = (_status, _query, _page);
+        CatalogOrdersDto fresh;
+        try
+        {
+            fresh = await Api.CatalogOrdersAsync(Statuses.First(s => s.Key == status).Status, query, page, _live.Token);
+        }
+        catch (SessionEndedException ended)
+        {
+            await EndSessionAsync(ended.Code);
+            return;
+        }
+        catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+        {
+            return;
+        }
+        if (_live.IsCancellationRequested || Busy || (status, query, page) != (_status, _query, _page)) return;
+        _result = fresh;
+        StateHasChanged();
+    }
+
+    public void Dispose() => _live.Cancel();
 
     private async Task LoadListAsync()
     {

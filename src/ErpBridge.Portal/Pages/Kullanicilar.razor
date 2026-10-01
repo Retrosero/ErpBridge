@@ -72,6 +72,11 @@ else
                                                 {
                                                     <span class="badge badge--primary" data-overrides="@user.PermissionOverrideCount">@user.PermissionOverrideCount kişisel ayar</span>
                                                 }
+                                                @if (MissesCatalogRequests(user, roles))
+                                                {
+                                                    <span class="badge badge--warn" data-catalog-unmapped="true"
+                                                          title="Mikro eşlemesinde Temsilci boş: carinin plasiyeri bu kişi olsa da katalog talebi ona atanamaz. Mikro düğmesinden temsilci kodunu seçin.">Katalog talepleri bildirilemez</span>
+                                                }
                                             </div>
                                         </td>
                                         <td class="nowrap">@(user.LastLoginAtUtc is { } at ? Fmt.Time(at) : "—")</td>
@@ -256,6 +261,14 @@ else
 
     private bool IsErpCompany => string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// GOAL_MUSTERI_KATALOGU P7: an active salesperson of an ERP company with the catalog whose Mikro mapping has no
+    /// salesperson code. A request is routed by the customer's salesperson code (S11), so none can reach them that way.
+    /// </summary>
+    private bool MissesCatalogRequests(UserDto user, IReadOnlyList<string> roles) =>
+        IsErpCompany && Session.HasModule(PortalModules.CustomerCatalog) && user.IsActive && roles.Contains(PortalRoles.Sales)
+        && string.IsNullOrWhiteSpace(user.SalespersonCode);
+
     protected override async Task LoadAsync() => _list = await Api.UsersAsync();
 
     private bool IsSelf(UserDto user) => string.Equals(user.Username, Session.Username, StringComparison.OrdinalIgnoreCase);
@@ -329,6 +342,7 @@ else
         await RunAsync(async () =>
         {
             await Api.SaveUserErpMappingAsync(user.Id, mapping);
+            user.SalespersonCode = string.IsNullOrWhiteSpace(mapping.SalespersonCode) ? null : mapping.SalespersonCode.Trim();
             StopMapping();
             Notice = $"{user.FullName} için Mikro karşılıkları kaydedildi.";
         });
