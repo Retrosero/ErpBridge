@@ -21,7 +21,11 @@ public static class PortalRecords
     public abstract record StockPart;
 
     /// <summary>A stock card: Mikro <c>mainGroupCode/subGroupCode/brandCode/shelfCode/unit1</c>, native <c>kategori/marka/shelfCode/birim</c>.</summary>
-    public sealed record CardPart(string Code, string Name, string? Unit, string? MainGroup, string? SubGroup, string? Brand, string? Shelf, decimal? VatRate) : StockPart;
+    /// <param name="Category">The native card's own category (<c>kategori</c>); Mikro's is its sub-group (<see cref="SubGroupPart"/>).</param>
+    /// <param name="CartonCode">The ERP's carton text (<c>cartonCode</c>, the phone's <c>koliAdet</c>); a whole number above 1 is a carton.</param>
+    public sealed record CardPart(
+        string Code, string Name, string? Unit, string? MainGroup, string? SubGroup, string? Brand, string? Shelf, decimal? VatRate,
+        string? Category = null, string? CartonCode = null) : StockPart;
 
     /// <summary>Mikro sends one company-wide quantity under the configured warehouse, reserved 0 and no date.</summary>
     public sealed record InventoryPart(string Code, int WarehouseNo, decimal Quantity, decimal Reserved, DateOnly? LastMovement) : StockPart;
@@ -30,10 +34,17 @@ public static class PortalRecords
 
     public sealed record BarcodePart(string Code, string Barcode) : StockPart;
 
-    public sealed record LookupPart(string Kind, int Number, string Name) : StockPart;
+    /// <param name="IncludesVat">A price list's prices carry the VAT (Mikro <c>includesVat</c>); false for warehouses.</param>
+    public sealed record LookupPart(string Kind, int Number, string Name, bool IncludesVat = false) : StockPart;
 
     /// <summary>A brand or main-group name by its code (agent 1.3.0 lookups <c>stock_brand</c>, <c>stock_main_group</c>).</summary>
     public sealed record NamePart(string Kind, string Code, string Name) : StockPart;
+
+    /// <summary>
+    /// A Mikro stock sub-group (<c>stock_sub_group</c>, code <c>mainGroup|subGroup</c>) whose name is the phone's category
+    /// (<see cref="Sync.StockCategories"/>). Not a <see cref="NamePart"/>: the stock page files those under main groups.
+    /// </summary>
+    public sealed record SubGroupPart(string Code, string Name) : StockPart;
 
     public static StockPart? ParseStock(string entity, JsonElement item)
     {
@@ -49,7 +60,9 @@ public static class PortalRecords
                     Blank(AndroidEndpoints.GetFirstString(item, "subGroupCode")),
                     Blank(AndroidEndpoints.GetFirstString(item, "brandCode", "marka")),
                     Blank(AndroidEndpoints.GetFirstString(item, "shelfCode", "sto_yer_kod")),
-                    AndroidEndpoints.GetDecimal(item, "kdvOrani"));
+                    AndroidEndpoints.GetDecimal(item, "kdvOrani"),
+                    Blank(AndroidEndpoints.GetFirstString(item, "kategori", "category")),
+                    Blank(AndroidEndpoints.GetFirstString(item, "cartonCode", "koliAdet", "sto_kalkon_kodu")));
             case "inventory" when code is not null:
                 return new InventoryPart(
                     code,
@@ -69,10 +82,14 @@ public static class PortalRecords
                     return Blank(AndroidEndpoints.GetString(item, "code")) is { } nameCode && Blank(AndroidEndpoints.GetString(item, "name")) is { } label
                         ? new NamePart(kind, nameCode, label)
                         : null;
+                if (kind == Sync.StockCategories.LookupKind)
+                    return Blank(AndroidEndpoints.GetString(item, "code")) is { } subCode && Blank(AndroidEndpoints.GetString(item, "name")) is { } subName
+                        ? new SubGroupPart(subCode, subName)
+                        : null;
                 return kind is "warehouse" or "price_list"
                        && AndroidEndpoints.GetInt32(item, "code") is { } number
                        && Blank(AndroidEndpoints.GetString(item, "name")) is { } name
-                    ? new LookupPart(kind, number, name)
+                    ? new LookupPart(kind, number, name, kind == "price_list" && AndroidEndpoints.GetBoolean(item, "includesVat") == true)
                     : null;
             default:
                 return null;

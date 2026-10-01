@@ -13,7 +13,7 @@ push'u, Play production.
 |---|---|---|---|---|
 | S1 | ForwardedHeaders, /64, giriş yavaşlatıcı, `OnRejected` | ✅ | | Personel + Admin girişi; katalog girişi S6'da `CatalogArea` |
 | S2 | Tablolar, migration, modül, kilitli yetki, Admin kutucuğu | 🔄 | | Sunucu tarafı bitti (migration `MusteriKatalogu`, `PermissionCatalog.Version` 2); Admin `TenantMobile.razor` kutucuğu panel kolunda |
-| S3 | Katalog derleme (görünüm, görünürlük, fiyat) | ⬜ | | |
+| S3 | Katalog derleme (görünüm, görünürlük, fiyat) | ✅ | | `CatalogViewService` (stok aynası + `Revision`), `CatalogVisibility`, `CatalogPricing` (`ErpSalePricingTest` örnekleri) |
 | S4 | Yönetim uçları | ⬜ | | |
 | S5 | Görsel uçları | ⬜ | | |
 | S6 | Müşteri oturumu | ⬜ | | |

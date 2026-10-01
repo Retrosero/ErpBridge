@@ -299,6 +299,9 @@ public partial class Program
         // Admin and catalog sign-ins. In memory: one CentralApi container.
         builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetService<TimeProvider>() ?? TimeProvider.System));
         builder.Services.Configure<ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions>(cfg.GetSection(ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions.SectionName));
+        // Each company's built catalog, over the shared stock mirror; in memory like the mirror itself.
+        builder.Services.AddSingleton(sp => new ErpBridge.CentralApi.CustomerCatalog.CatalogViewService(
+            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetService<TimeProvider>() ?? TimeProvider.System));
     }
 
     /// <summary>
