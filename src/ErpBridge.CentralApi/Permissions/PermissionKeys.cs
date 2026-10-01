@@ -59,6 +59,9 @@ public static class PermissionKeys
 
     /// <summary>Web catalog layout, customer access and catalog order requests (GOAL_MUSTERI_KATALOGU T6).</summary>
     public const string CustomerCatalogManage = "action.customer_catalog.manage";
+
+    /// <summary>The company file store: usage by area, the clean-up and the trash (GOAL_DEPOLAMA_R2 S8/S9).</summary>
+    public const string StorageManage = "action.storage.manage";
     public const string SaleNegativeStock = "action.sale.negative_stock";
     public const string SaleOpenAccount = "action.sale.open_account";
 

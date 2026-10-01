@@ -55,8 +55,10 @@ public static partial class LogScrubber
         return match.Groups["key"].Value + match.Groups["sep"].Value + quote + Masked + quote;
     }
 
-    // password=..., "apiKey": "...", Pwd=...; in connection strings, query strings and JSON.
-    [GeneratedRegex(@"(?<key>\b(?:password|passwd|pwd|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|x-api-key|authorization|licen[sc]e[_-]?key)""?)(?<sep>\s*[=:]\s*)(?<value>""(?:[^""\\]|\\.)*""|'[^']*'|[^;,&}\r\n]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 200)]
+    // password=..., "apiKey": "...", Pwd=...; in connection strings, query strings and JSON. Object storage (R2/S3) keys
+    // also as environment names (Storage__SecretAccessKey, aws_secret_access_key: no word boundary after "_"), and the
+    // signature/credential of a presigned address.
+    [GeneratedRegex(@"(?<key>(?:\b(?:password|passwd|pwd|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|x-api-key|authorization|licen[sc]e[_-]?key|x-amz-signature|x-amz-credential|x-amz-security-token)|secret[_-]?access[_-]?key|access[_-]?key[_-]?id)""?)(?<sep>\s*[=:]\s*)(?<value>""(?:[^""\\]|\\.)*""|'[^']*'|[^;,&}\r\n]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 200)]
     private static partial Regex SecretPairPattern();
 
     [GeneratedRegex(@"(?<key>\b(?:user\s?id|uid))\s*=\s*[^;""]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, 200)]

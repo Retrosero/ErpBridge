@@ -56,8 +56,8 @@ public sealed record PermissionDefinition(
 public static class PermissionCatalog
 {
     /// <summary>Bumped when keys are added or their meaning changes; phones and the portal read it from the session.</summary>
-    /// <remarks>2: <see cref="K.CustomerCatalogManage"/> (GOAL_MUSTERI_KATALOGU).</remarks>
-    public const int Version = 2;
+    /// <remarks>2: <see cref="K.CustomerCatalogManage"/> (GOAL_MUSTERI_KATALOGU). 3: <see cref="K.StorageManage"/> (GOAL_DEPOLAMA_R2).</remarks>
+    public const int Version = 3;
 
     /// <summary>The roles whose template a company may change (ADMIN is fixed at everything).</summary>
     public static readonly IReadOnlyList<string> EditableRoles = [R.Manager, R.Sales, R.Warehouse, R.Accounting];
@@ -149,6 +149,9 @@ public static class PermissionCatalog
             // Locked: customers' passwords and discounts stay with admin and manager; a template cannot give them away.
             Flag(K.CustomerCatalogManage, PermissionGroup.Actions, "Web katalog yönetimi",
                 "Müşteri kataloğu düzeni, müşteri erişimi (kullanıcı adı/şifre, iskonto) ve katalog siparişleri.", managers, server: true, locked: true),
+            // Locked: deleting a company's pictures and seeing every area's usage stays with admin and manager.
+            Flag(K.StorageManage, PermissionGroup.Actions, "Depolama yönetimi",
+                "Firma depolamasının alanlara göre kullanımı, kullanılmayan görselleri temizleme ve çöp kutusu.", managers, server: true, locked: true),
             Flag(K.SaleNegativeStock, PermissionGroup.Actions, "Eksi stoğa satış", "Firma eksi stoğa izin veriyorsa, stoğu olmayan ürünü satabilir.", field),
             Flag(K.SaleOpenAccount, PermissionGroup.Actions, "Açık hesap (veresiye) satış", "Satışı cari borç olarak kapatabilir; yetkisi yoksa cari borçlu satış onaya gider.", field, server: true),
 

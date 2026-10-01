@@ -127,3 +127,16 @@
     width: auto;
     display: inline-block;
 }
+
+.storage-areas {
+    display: grid;
+    gap: .35rem;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.storage-area span {
+    color: var(--muted);
+}

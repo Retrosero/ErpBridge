@@ -646,7 +646,7 @@ public sealed class TaskService
         CentralApiDbContext db, Tenant tenant, MobileUser user, Guid taskId, Guid attachmentId, string? contentType, byte[] data, CancellationToken ct)
     {
         var type = (contentType ?? string.Empty).Split(';')[0].Trim().ToLowerInvariant();
-        if (!ImageTypes.Contains(type) || !LooksLike(type, data))
+        if (!ImageTypes.Contains(type) || !Storage.ImageBytes.LooksLike(type, data))
             return TaskResult<TaskAttachmentDto>.Fail(415, "TASK_ATTACHMENT_TYPE", "Yalnız JPEG, PNG ya da WEBP resim eklenebilir.");
         if (data.Length == 0 || data.Length > _options.MaxAttachmentBytes)
             return TaskResult<TaskAttachmentDto>.Fail(413, "TASK_ATTACHMENT_TOO_LARGE", $"Resim en çok {_options.MaxAttachmentBytes / 1024 / 1024} MB olabilir.");
@@ -733,16 +733,6 @@ public sealed class TaskService
             ? TaskResult<(byte[], string)>.Fail(404, "TASK_ATTACHMENT_NOT_FOUND", "Resim bulunamadı.")
             : TaskResult<(byte[], string)>.Ok((blob.Data, attachment!.ContentType));
     }
-
-    /// <summary>A header that matches the declared type: a renamed file or a script is refused.</summary>
-    internal static bool LooksLike(string type, byte[] data) => type switch
-    {
-        "image/jpeg" => data.Length > 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF,
-        "image/png" => data.Length > 8 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47,
-        "image/webp" => data.Length > 12 && data[0] == (byte)'R' && data[1] == (byte)'I' && data[2] == (byte)'F' && data[3] == (byte)'F'
-            && data[8] == (byte)'W' && data[9] == (byte)'E' && data[10] == (byte)'B' && data[11] == (byte)'P',
-        _ => false,
-    };
 
     // ---- scheduler --------------------------------------------------------------------------
 

@@ -72,7 +72,7 @@ public sealed class PermissionEndpointsRelationalTests : IClassFixture<SqliteCen
         (await MeAsync(c.Patron)).Permissions[K.CustomerCatalogManage].Should().BeTrue();
         var catalog = await (await _factory.CreateClient().GetAsync("/api/v1/android/account/permissions/catalog", c.Patron))
             .ReadAsJsonAsync<PermissionCatalogResponse>();
-        catalog.Version.Should().Be(2);
+        catalog.Version.Should().BeGreaterThanOrEqualTo(2, "the catalog key came with version 2");
         catalog.Items.Single(i => i.Key == K.CustomerCatalogManage).Locked.Should().BeTrue();
     }
 

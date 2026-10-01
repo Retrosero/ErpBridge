@@ -77,6 +77,14 @@ services:
       CustomerCatalog__PublicHost: ${CustomerCatalog__PublicHost:-}
       CustomerCatalog__PublicBaseUrl: ${CustomerCatalog__PublicBaseUrl:-}
       ForwardedHeaders__KnownNetworks__0: ${ForwardedHeaders__KnownNetworks__0:-}
+      # Merkezi dosya deposu (docs/GOAL_DEPOLAMA_R2.md): Cloudflare R2. Any value empty keeps the API running with the
+      # storage endpoints answering 503 STORAGE_UNAVAILABLE. The key pair is a Coolify secret; never commit its values.
+      Storage__AccountId: ${Storage__AccountId:-}
+      Storage__AccessKeyId: ${Storage__AccessKeyId:-}
+      Storage__SecretAccessKey: ${Storage__SecretAccessKey:-}
+      Storage__PublicBucket: ${Storage__PublicBucket:-}
+      Storage__PrivateBucket: ${Storage__PrivateBucket:-}
+      Storage__PublicBaseUrl: ${Storage__PublicBaseUrl:-}
       # Pin the bind port so the entrypoint does not need to rely on $PORT
       # being unset. The Dockerfile entrypoint already pins this in
       # /tmp/bind_port for the centralapi target; we mirror it here for

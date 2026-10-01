@@ -158,6 +158,15 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     discountPercent, net, vatRate, gross, discount, vat, total}]`, sunucunun gönderim anındaki fiyatı), `AssignedUserId`, `ClaimedByUserId`,
     `ClaimedByName(120)`, `ClaimedAtMs`, `ClosedByUserId`, `ClosedByName(120)`, `ClosedAtMs`, `SubmittedAtMs`, `UpdatedAtMs`. İndeks `(TenantId, Status, SubmittedAtMs)`,
     `(TenantId, AccountId, SubmittedAtMs)`, `(TenantId, DocumentRef)`.
+- **Merkezi dosya deposu** *(GOAL_DEPOLAMA_R2 S1, migration `MerkeziDepolama`; kural 37)*:
+  - `tenant_storage`: PK `TenantId` (FK `tenants` cascade), `QuotaBytes` null = `Storage:DefaultQuotaBytes` (5 GB), `UsedBytes` (etkin
+    ve çöpteki dosyalar; dosya kalıcı silinince düşer), `ReservedBytes` (süren yüklemeler), `RecountedAtMs`, `UpdatedAtMs`. İlk yüklemede ya da Admin kota
+    girişinde oluşur. Yükleme tek koşullu `UPDATE` ile yer ayırır (`Used + Reserved + boyut ≤ kota`).
+  - `stored_files`: `Id` uuid (tahmin edilemez, nesne anahtarında), `TenantId` (cascade), `Area(16)` product|xml|catalog|banner|task|expense|vehicle,
+    `Bucket(8)` public|private (alandan gelir), `ObjectKey(512)` `{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id:N}-{varyant}.{uzantı}`, `Variant(1)` s|l|o,
+    `ContentType(32)`, `SizeBytes`, `Sha256(64)`, `OwnerType(32)` + `OwnerKey(128)` (dosyanın bağlı olduğu kayıt), `Status(16)`
+    active|trashed|purging, `CreatedAtMs`, `CreatedByUserId?`, `TrashedAtMs?`, `TrashedByUserId?`. İndeks `(TenantId, Area, Status)`,
+    `(TenantId, OwnerType, OwnerKey)`, UNIQUE `(Bucket, ObjectKey)`. Yalnız `Storage/FileStore` yazar.
 
 ---
 

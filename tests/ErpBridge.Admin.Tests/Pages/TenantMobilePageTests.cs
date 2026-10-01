@@ -192,7 +192,83 @@ public sealed class TenantMobilePageTests : BunitContext
         api.LastModulesBody!.Value.GetProperty("modules").EnumerateArray().Select(m => m.GetString()).Should().Equal("xml_import");
     }
 
+    [Fact]
+    public void Shows_storage_used_over_quota_and_warns_from_eighty_percent()
+    {
+        var api = Register(Overview(max: 3, users: [User("patron", "ADMIN")]));
+        api.Storage = Storage(used: 9L * StorageTexts.GigaByte / 2, quota: 5L * StorageTexts.GigaByte);
+        api.Storage.Areas = [new StorageAreaUsageDto { Area = "product", UsedBytes = 3L * StorageTexts.GigaByte, FileCount = 1200 }, new StorageAreaUsageDto { Area = "task", UsedBytes = 0, FileCount = 0 }];
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+
+        cut.WaitForAssertion(() => cut.Find(".storage-usage").TextContent.Should().Be("4,5 GB / 5 GB"));
+        cut.Find("#storage-stat").ClassList.Should().Contain("admin-stat--warning");
+        cut.Find("#storage-stat").TextContent.Should().Contain("%90 dolu").And.Contain("varsayılan kota");
+        cut.FindAll(".storage-area").Select(a => a.GetAttribute("data-area")).Should().Equal("product");
+        cut.Find(".storage-area").TextContent.Should().Contain("Ürün fotoğrafı").And.Contain("3 GB").And.Contain("1200 dosya");
+        cut.Find("#storage-default").HasAttribute("checked").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Saving_a_company_quota_sends_bytes_and_the_default_sends_null()
+    {
+        var api = Register(Overview(max: 3, users: [User("patron", "ADMIN")]));
+        api.Storage = Storage(used: 0, quota: 5L * StorageTexts.GigaByte);
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find("#storage-default"));
+        cut.Find("#storage-default").Change(false);
+        cut.Find("#storage-quota-gb").Change("12.5");
+        cut.Find("#storage-save").Click();
+
+        cut.WaitForAssertion(() => api.StorageBodies.Should().HaveCount(1));
+        api.StorageBodies[0].GetProperty("quotaBytes").GetInt64().Should().Be(25L * StorageTexts.GigaByte / 2);
+        cut.WaitForAssertion(() => cut.Find(".seat-notice--success").TextContent.Should().Contain("12,5 GB"));
+
+        cut.WaitForAssertion(() => cut.Find("#storage-default").HasAttribute("checked").Should().BeFalse());
+        cut.Find("#storage-default").Change(true);
+        cut.Find("#storage-save").Click();
+        cut.WaitForAssertion(() => api.StorageBodies.Should().HaveCount(2));
+        api.StorageBodies[1].GetProperty("quotaBytes").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public void Recount_shows_the_figures_before_and_after()
+    {
+        var api = Register(Overview(max: 3, users: [User("patron", "ADMIN")]));
+        api.Storage = Storage(used: 2048, quota: 5L * StorageTexts.GigaByte);
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find("#storage-recount"));
+        cut.Find("#storage-recount").Click();
+
+        cut.WaitForAssertion(() => cut.Find(".seat-notice--success").TextContent.Should().Contain("2 KB → 1 KB"));
+        api.Recounts.Should().Be(1);
+    }
+
+    [Fact]
+    public void A_server_without_r2_settings_says_uploads_are_off()
+    {
+        var api = Register(Overview(max: 3, users: [User("patron", "ADMIN")]));
+        api.Storage = Storage(used: 0, quota: 5L * StorageTexts.GigaByte);
+        api.Storage.Available = false;
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+
+        cut.WaitForAssertion(() => cut.Find("#storage-stat").TextContent.Should().Contain("Depo ayarlı değil"));
+        cut.Find("#storage-empty").Should().NotBeNull();
+    }
+
     // ---- helpers -----------------------------------------------------------
+
+    private static TenantStorageDto Storage(long used, long quota) => new()
+    {
+        TenantId = TenantId,
+        Available = true,
+        UsedBytes = used,
+        QuotaBytes = quota,
+        DefaultQuotaBytes = 5L * StorageTexts.GigaByte,
+    };
 
     private FakeApi Register(TenantMobileOverviewDto overview)
     {
@@ -237,6 +313,9 @@ public sealed class TenantMobilePageTests : BunitContext
         public JsonElement? LastCreatedUserBody { get; private set; }
         public ApprovalRequestDto[] Approvals { get; set; } = [];
         public JsonElement? LastModulesBody { get; private set; }
+        public TenantStorageDto? Storage { get; set; }
+        public List<JsonElement> StorageBodies { get; } = new();
+        public int Recounts { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -256,6 +335,26 @@ public sealed class TenantMobilePageTests : BunitContext
             {
                 LastModulesBody = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            var storageBase = $"/api/v1/admin/tenants/{TenantId}/storage";
+            if (path == storageBase && Storage is not null)
+            {
+                if (request.Method == HttpMethod.Put)
+                {
+                    var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
+                    StorageBodies.Add(body);
+                    var quota = body.GetProperty("quotaBytes");
+                    Storage.CustomQuotaBytes = quota.ValueKind == JsonValueKind.Null ? null : quota.GetInt64();
+                    Storage.QuotaBytes = Storage.CustomQuotaBytes ?? Storage.DefaultQuotaBytes;
+                }
+                return Json(HttpStatusCode.OK, Storage);
+            }
+            if (request.Method == HttpMethod.Post && path == $"{storageBase}/recount" && Storage is not null)
+            {
+                Recounts++;
+                var before = Storage.UsedBytes;
+                Storage.UsedBytes = 1024;
+                return Json(HttpStatusCode.OK, new TenantStorageRecountDto { UsedBytesBefore = before, UsedBytesAfter = 1024, Storage = Storage });
             }
             if (request.Method == HttpMethod.Get && path == $"{mobileBase}/approvals")
                 return Json(HttpStatusCode.OK, Approvals);

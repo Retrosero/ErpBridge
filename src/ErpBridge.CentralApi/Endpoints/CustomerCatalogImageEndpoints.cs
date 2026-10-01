@@ -226,9 +226,9 @@ public static class CustomerCatalogImageEndpoints
         }
         var type = (http.Request.ContentType ?? string.Empty).Split(';')[0].Trim().ToLowerInvariant();
         var data = buffer.ToArray();
-        if (!CatalogImages.ContentTypes.Contains(type) || !Tasks.TaskService.LooksLike(type, data))
+        if (!Storage.ImageBytes.ContentTypes.Contains(type) || !Storage.ImageBytes.LooksLike(type, data))
             return Error(StatusCodes.Status415UnsupportedMediaType, "INVALID_IMAGE", "Yalnız JPEG, PNG ya da WEBP görsel yüklenebilir.");
-        data = CatalogImages.StripMetadata(type, data);
+        data = Storage.ImageBytes.StripMetadata(type, data);
         var sha = Convert.ToHexStringLower(SHA256.HashData(data));
 
         var tenantId = access.Tenant!.Id;
@@ -343,7 +343,7 @@ public static class CustomerCatalogImageEndpoints
             return Results.StatusCode(StatusCodes.Status304NotModified);
 
         var data = await db.CatalogImageBlobs.AsNoTracking().Where(b => b.ImageId == id && b.Variant == served).Select(b => b.Data).FirstOrDefaultAsync(ct);
-        if (data is null || CatalogImages.Sniff(data) is not { } type)
+        if (data is null || Storage.ImageBytes.Sniff(data) is not { } type)
         {
             headers.Remove(HeaderNames.CacheControl);
             headers.Remove(HeaderNames.ETag);

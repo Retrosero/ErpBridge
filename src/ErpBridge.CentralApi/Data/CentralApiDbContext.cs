@@ -213,6 +213,12 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<CatalogBanner> CatalogBanners => Set<CatalogBanner>();
 
+    /// <summary>Merkezi dosya deposu (GOAL_DEPOLAMA_R2): one quota counter per company.</summary>
+    public DbSet<TenantStorage> TenantStorage => Set<TenantStorage>();
+
+    /// <summary>Merkezi dosya deposu: one row per R2 object.</summary>
+    public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -1523,6 +1529,36 @@ public sealed class CentralApiDbContext : DbContext
             // A picture deleted on its own (images API) leaves the banner without one rather than failing.
             b.HasOne<CatalogImage>().WithMany().HasForeignKey(x => x.ImageId).OnDelete(DeleteBehavior.SetNull);
             b.HasIndex(x => new { x.TenantId, x.SortOrder });
+        });
+
+        // Merkezi dosya deposu (GOAL_DEPOLAMA_R2 §3).
+        modelBuilder.Entity<TenantStorage>(b =>
+        {
+            b.ToTable("tenant_storage");
+            b.HasKey(x => x.TenantId);
+            b.Property(x => x.TenantId).ValueGeneratedNever();
+            b.HasOne<Tenant>().WithOne().HasForeignKey<TenantStorage>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<StoredFile>(b =>
+        {
+            b.ToTable("stored_files");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.Area).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Bucket).IsRequired().HasMaxLength(8);
+            b.Property(x => x.ObjectKey).IsRequired().HasMaxLength(StoredFile.MaxObjectKeyLength);
+            b.Property(x => x.Variant).IsRequired().HasMaxLength(1);
+            b.Property(x => x.ContentType).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Sha256).IsRequired().HasMaxLength(64);
+            b.Property(x => x.OwnerType).IsRequired().HasMaxLength(StoredFile.MaxOwnerTypeLength);
+            b.Property(x => x.OwnerKey).IsRequired().HasMaxLength(StoredFile.MaxOwnerKeyLength);
+            b.Property(x => x.Status).IsRequired().HasMaxLength(16);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // Usage by area and the clean-up groups; the owner's files; one ledger row per object.
+            b.HasIndex(x => new { x.TenantId, x.Area, x.Status });
+            b.HasIndex(x => new { x.TenantId, x.OwnerType, x.OwnerKey });
+            b.HasIndex(x => new { x.Bucket, x.ObjectKey }).IsUnique();
         });
     }
 }
