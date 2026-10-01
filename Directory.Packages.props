@@ -46,6 +46,8 @@
     <PackageVersion Include="Serilog.Settings.Configuration" Version="8.0.4" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageVersion Include="SkiaSharp" Version="4.153.1" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.1" />
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.5.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.13" />

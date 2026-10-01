@@ -389,6 +389,16 @@
         "resolved": "8.4.2",
         "contentHash": "BpE2I6HBYYA5tF0Vn4eoQOGYTYIK1BlF5EXVgkWGn3mqUUjbXAr13J6fZVbp7Q3epRR8yshacBMlsHMhpOiV3g=="
       },
+      "SkiaSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "4.153.1",
+        "contentHash": "YTojWeWIhnpF7uC8vpMxB5wRONKkDB2t3r/nNPA3DL2pgj9fqMXRevA/rIanYazWnco4jo1ufgp3HkXuh1Tz8A=="
+      },
+      "SkiaSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "4.153.1",
+        "contentHash": "Yqg6rChTVh0BUE8QQxtOA3uUBnihfgID4yex/AvDa0+os2bVcBjmI3Qj9tnOB+R1hd/Jry1Gwl8qw5JI9HZG8Q=="
+      },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
         "resolved": "2.1.12",
@@ -503,6 +513,8 @@
           "Microsoft.EntityFrameworkCore.InMemory": "[10.0.11, )",
           "Microsoft.EntityFrameworkCore.Relational": "[10.0.11, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
+          "SkiaSharp": "[4.153.1, )",
+          "SkiaSharp.NativeAssets.Linux.NoDependencies": "[4.153.1, )",
           "Swashbuckle.AspNetCore": "[6.5.0, )",
           "System.IdentityModel.Tokens.Jwt": "[8.22.0, )"
         }
@@ -752,6 +764,22 @@
         "dependencies": {
           "Polly.Core": "8.4.2"
         }
+      },
+      "SkiaSharp": {
+        "type": "CentralTransitive",
+        "requested": "[4.153.1, )",
+        "resolved": "4.153.1",
+        "contentHash": "TghYLOUaP3q6rTjQw7U9uQaaXh8lEs9rfA1U7/VtmyAptVDtj/SmjtcWzFWmcC/VMWxe3QgbV9uyvqDL7ySFtQ==",
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Win32": "4.153.1",
+          "SkiaSharp.NativeAssets.macOS": "4.153.1"
+        }
+      },
+      "SkiaSharp.NativeAssets.Linux.NoDependencies": {
+        "type": "CentralTransitive",
+        "requested": "[4.153.1, )",
+        "resolved": "4.153.1",
+        "contentHash": "NrnPjcxjcRau4GMOY0BTpUdMey+MnmLU3jC5AuExEFHPS2NkX1tdkXW0n/c5nQMMHBTAMpHnt7qEOpXs2FNfIQ=="
       },
       "Swashbuckle.AspNetCore": {
         "type": "CentralTransitive",
