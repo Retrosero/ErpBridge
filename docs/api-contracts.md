@@ -573,6 +573,28 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
   object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`), `X-Robots-Tag: noindex`,
   `Referrer-Policy: same-origin`, `Strict-Transport-Security: max-age=31536000`, `X-Content-Type-Options: nosniff`.
 
+## Merkezi dosya deposu — `/api/v1/storage`, `/api/v1/admin/tenants/{id}/storage` (GOAL_DEPOLAMA_R2 S1, S8)
+
+Firmanın kalıcı resimleri Cloudflare R2'de, firma kodunun klasöründe (`{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id}-{varyant}.{uzantı}`)
+ve tek kotayla durur. Alanlar: herkese açık kova `product`, `xml`, `catalog`, `banner`; kimliğe bağlı kova `task`, `expense`,
+`vehicle`. Bu sürümde yalnız temel uçlar vardır; katalog, görev, gider uçları S3–S5'te bu depoya geçer (yolları değişmez).
+Bilgi bankası kural 37.
+
+| Uç | Kim | Gövde / yanıt |
+|---|---|---|
+| `GET /api/v1/storage/usage` | firma kullanıcısı | `{ available, usedBytes, quotaBytes, freeBytes, areas?: [{ area, usedBytes, fileCount }], trashedBytes?, trashedCount? }` — `areas` ve çöp kutusu yalnız `action.storage.manage` (Admin, Yönetici; kilitli) sahibine; diğerleri yalnız toplamı görür. `available: false` = sunucuda R2 ayarı yok, yükleme `503` döner |
+| `GET /api/v1/storage/files/{id}` | yükleyen; `action.storage.manage`; alan kuralı (S4/S5) | `302` → özel dosyada 5 dakikalık imzalı R2 adresi, herkese açık dosyada `https://img.appsgo.cloud/…`; `Cache-Control: private, no-store`. Başka firmanın, çöpteki ya da açma yetkisi olmayan dosya aynı `404 STORED_FILE_NOT_FOUND`; depo ayarsızsa `503 STORAGE_UNAVAILABLE` |
+| `GET /api/v1/admin/tenants/{id}/storage` | Admin konsolu | `{ tenantId, available, usedBytes, reservedBytes, quotaBytes, defaultQuotaBytes, customQuotaBytes?, recountedAtMs?, areas: [...], trashedBytes, trashedCount }`; firma yoksa `404 TENANT_NOT_FOUND` |
+| `PUT /api/v1/admin/tenants/{id}/storage` | Admin konsolu | `{ quotaBytes: sayı \| null }` — `null` = varsayılan (5 GB, `Storage:DefaultQuotaBytes`); 0..10 TB, değilse `400 INVALID_QUOTA`. Kullanılanın altına inebilir (yeni yükleme durur). Yanıt güncel görünüm |
+| `POST /api/v1/admin/tenants/{id}/storage/recount` | Admin konsolu | `{ usedBytesBefore, usedBytesAfter, storage }` — kullanılan bayt defterdeki etkin dosyalardan yeniden hesaplanır (aynı iş her gün `Storage:MaintenanceHourUtc`'de çalışır) |
+
+Yeni hata kodları:
+- `413 STORAGE_QUOTA_EXCEEDED` — `{ errorCode, message, traceId, usedBytes, quotaBytes }`. Telefon metni: "Firmanızın depolama
+  alanı doldu. Yöneticiniz panelden alan açabilir." Eski `CATALOG_IMAGE_QUOTA_EXCEEDED` / `TASK_ATTACHMENT_QUOTA` kodları
+  S3/S4'te aynı durumda geriye uyum için korunur.
+- `503 STORAGE_UNAVAILABLE` — R2 ayarı yok ya da R2 yanıt vermedi; telefon kuyruğu sonra yeniden dener.
+- `415 INVALID_IMAGE` — yalnız JPEG, PNG, WebP (ilk baytlarından denetlenir).
+
 ## Hata modeli
 
 ```json

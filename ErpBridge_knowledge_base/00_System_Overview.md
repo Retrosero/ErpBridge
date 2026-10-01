@@ -1381,7 +1381,7 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      okumada 8 karakterlik kod üretir; yalnız kod hâlâ boşsa yazar, eşzamanlı iki okuma aynı kodu döner.
    - **Görseller (S5)** `Endpoints/CustomerCatalogImageEndpoints` + `CustomerCatalog/CatalogImages`: baytlar PostgreSQL'de
      (`catalog_image_blobs`, iki varyant); sunucuda görsel kütüphanesi yok — küçültmeyi gönderen yapar, sunucu yalnız bayt sınırını,
-     sihirli baytı (`TaskService.LooksLike`) denetler ve üst veriyi kütüphanesiz atar (`CatalogImages.StripMetadata`: JPEG APP1
+     sihirli baytı (`Storage/ImageBytes.LooksLike`, kural 37) denetler ve üst veriyi kütüphanesiz atar (`ImageBytes.StripMetadata`: JPEG APP1
      EXIF/XMP; PNG `eXIf`/`tEXt`/`iTXt`/`zTXt` parçaları — CRC parça başına olduğu için kalanlar geçerli; WebP `EXIF`/`XMP `
      parçaları, VP8X bayraklarından 0x08/0x04 silinir, RIFF boyu yeniden yazılır; okunamayan dosya olduğu gibi kalır). JPEG yön
      bilgisi EXIF'le gider: telefon ve panel görseli zaten döndürüp yeniden kodlayarak gönderir. Bağlantı görseli hiç indirilmez.
@@ -1527,3 +1527,54 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CustomerCatalogBannersRelationalTests`, panel `PortalCatalogBannersTests`, web `tests/katalog-web/banners.test.mjs`,
      `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
+
+37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1, S2, S8, 2026-10-01).**
+   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Bu kural temeli anlatır; katalog/banner (S3), görev (S4),
+   gider/araç fişi (S5), ürün fotoğrafı (S6), XML eşitleyici (S7), temizlik (S9) ve bytea göçü (S10) bu temeli kullanacak — o işlere
+   kadar mevcut katalog ve görev resimleri PostgreSQL bytea'sında kalır.
+   - **Depo Cloudflare R2, iki kova:** herkese açık (`product`, `xml`, `catalog`, `banner`; `Storage:PublicBaseUrl` =
+     `https://img.appsgo.cloud`) ve kimliğe bağlı (`task`, `expense`, `vehicle`). Kova alandan çıkar (`StorageAreas.BucketOf`), çağıranın
+     seçimi değildir: R2'de erişim kova düzeyinde açıldığı için özel dosya herkese açık kovaya giremez. Nesne anahtarı
+     `{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id:N}-{varyant}.{uzantı}`; kod boşsa `MobileSeatService.EnsureTenantCodeAsync` üretir.
+   - **Ayarlar** `Storage/StorageOptions` (`Storage:*`, Coolify `Storage__*`; anahtar çifti Coolify Secret): `AccountId`, `AccessKeyId`,
+     `SecretAccessKey`, `PublicBucket`, `PrivateBucket`, `PublicBaseUrl`, `DefaultQuotaBytes` 5 GB, `PresignMinutes` 5, `TrashDays` 7,
+     `DeletedOwnerPurgeDays` 30, `MaintenanceEnabled`, `MaintenanceHourUtc` 2. Biri eksikse API **açılır**: `IObjectStore` =
+     `UnavailableObjectStore`, depolama uçları `503 STORAGE_UNAVAILABLE`, açılışta eksik ayarların **adları** uyarılır; `PublicBaseUrl`
+     doluysa https olmalı (`ValidateRuntimeConfiguration`).
+   - **R2 istemcisi** `Storage/R2ObjectStore` (`AWSSDK.S3` 4.x): `https://{AccountId}.r2.cloudflarestorage.com`, path-style, imza bölgesi
+     `auto`, sağlama yalnız gerektiğinde (`WHEN_REQUIRED`) ve yüklemede yük imzası kapalı (R2 yeni akış sağlama eklerini almaz). SDK
+     günlüğü kapalı; SDK istisnası imzalı başlıklar taşıdığı için iç istisna olarak iletilmez (yalnız tür/durum/kod). `LogScrubber`
+     `SecretAccessKey`/`AccessKeyId` (ortam adı biçiminde `Storage__…`, `aws_secret_access_key` de) ve `X-Amz-Signature/Credential` değerlerini
+     maskeler. Testler `tests/.../Support/InMemoryObjectStore` + `StorageCentralApiFactory` kullanır.
+   - **Yükleme** `FileStore.PutAsync(tenant, area, ownerType, ownerKey, variant, contentType, bytes, userId)`: tür ilk baytlardan
+     (`Storage/ImageBytes` — `CatalogImages`/`TaskService`'teki denetim ve üst veri temizliği buraya taşındı, davranış aynı), üst veri
+     silinir, kota `tenant_storage` satırında **tek koşullu UPDATE** ile ayrılır (paralel 20 yükleme kotayı aşamaz; SQLite testinde de),
+     **önce R2 PUT, sonra** tek işlemde `stored_files` + `Reserved → Used`. R2 hatasında ayırma geri verilir, satır kalmaz (`503`); defter
+     yazılamazsa ayırma geri verilir ve nesne silinmeye çalışılır. Çağıran bekleyen değişikliksiz ve işlem dışında çağırır (servis kendi
+     kaydeder; aksi `InvalidOperationException`), dönen dosyayı sonra kendi kaydına bağlar. İlişkisel veritabanı şart (satır kilidi).
+     Küçültme çağıranın adımıdır (`ImageProcessor`, aşağıda). `413 STORAGE_QUOTA_EXCEEDED {usedBytes, quotaBytes}`, `415 INVALID_IMAGE`.
+   - **Çöp / geri al / kalıcı silme:** `TrashAsync` kotayı hemen düşürür, bayt çöp süresince R2'de kalır; `RestoreAsync` kotayı yeniden
+     ayırır, aşıyorsa `413` ve dosya çöpte kalır; `PurgeAsync` satırı önce `purging` yapar (etkin dosyada kotadan düşer), R2'den siler,
+     sonra satırı siler — R2 hatasında satır `purging` kalır, sonraki geçiş tamamlar. Her durum değişikliği koşullu UPDATE'tir (iki kez
+     çöpe atma bir kez düşer).
+   - **Adres** `FileStore.UrlFor`: herkese açık dosya `PublicBaseUrl/ObjectKey`, özel dosya `/api/v1/storage/files/{id}`. Bu uç
+     (`Endpoints/StorageEndpoints`, `MobileUserPolicy`) yükleyen ya da `action.storage.manage` sahibine 302 verir (özel dosya
+     `PresignMinutes` dakikalık imzalı R2 adresi, `private, no-store`); ileride alan bazlı yetki `IStoredFileReadRule` kaydıyla eklenir
+     (S4 görev, S5 gider). Başka firmanın, çöpteki ve yetkisiz dosya aynı `404 STORED_FILE_NOT_FOUND`.
+   - **Görsel işleme (S2)** `Storage/ImageProcessor` (SkiaSharp 4.x, MIT; Linux'ta `SkiaSharp.NativeAssets.Linux.NoDependencies`):
+     JPEG/PNG/WebP çözer, EXIF yönüne göre döndürür, kutuya sığdırır (`ImageBox.Large` 1280, `Small` 400, `BannerLarge` 1920×720,
+     `BannerSmall` 800×300; büyütmez, oran korunur), WebP kalite 80 yazar; çıktıda üst veri yoktur. JPEG yeterliyse ölçekli çözülür;
+     50 MP üstü, bozuk, kesik ya da desteklenmeyen girdi `ImageProcessingException`.
+   - **Kota ve kullanım (S8):** `GET /api/v1/storage/usage` herkese toplam/kota/boş alan ve `available`; alanlara göre dağılım ve çöp
+     kutusu yalnız `PermissionKeys.StorageManage = "action.storage.manage"` (kilitli, ADMIN + MANAGER, `PermissionCatalog.Version` = 3,
+     `RolePermissions.CanManageStorage`). Admin `GET/PUT /api/v1/admin/tenants/{id}/storage` (firmaya özel kota, `null` = varsayılan,
+     0..10 TB, kullanılanın altına inebilir) ve `POST .../storage/recount`. Admin konsolu `TenantMobile.razor` "Depolama" kartı (%80 sarı,
+     %95 kırmızı), kota alanı, "Yeniden hesapla".
+   - **Sayaç yeniden hesabı** `FileStore.RecountAsync`: önce sayaç satırı kilitlenir, sonra etkin dosyalar toplanır (eşzamanlı commit bir
+     kez sayılır); 1 saatten eski (`StaleReservation`) ayırma geri verilir; sapma uyarı olarak loglanır. `Storage/StorageMaintenanceWorker`
+     (LogRetentionWorker deseni) her gün `MaintenanceHourUtc`'de `StorageMaintenance.RunOnceAsync` ile bütün firmaları yeniden hesaplar;
+     S9'un temizlikleri buraya eklenecek. Testlerde kapalı (`Storage:MaintenanceEnabled=false`).
+   - Testler: `tests/ErpBridge.CentralApi.Tests/Storage/` — `FileStoreRelationalTests` (yükleme → nesne + defter + kota, firma kodu klasörü,
+     paralel 20 yükleme, R2 hatası, tür reddi, çöp/geri al/kalıcı silme, `purging` yeniden deneme, yeniden hesap), `StorageFileEndpointRelationalTests`
+     (302 yetkisi, 404'ler, alan kuralı, depo ayarsızken 503), `StorageUsageRelationalTests` (kullanım, Admin kota/yeniden hesap, günlük
+     geçiş, kilitli yetki), `ImageProcessorTests`, `R2ObjectStoreTests` (çevrimdışı imzalı adres); Admin `TenantMobilePageTests`.
