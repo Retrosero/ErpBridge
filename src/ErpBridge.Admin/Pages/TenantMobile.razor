@@ -102,7 +102,7 @@ else
             <div class="admin-panel__body seat-form">
                 <label class="seat-check"><input id="storage-default" type="checkbox" @bind="_quotaDefault" /> <span>Varsayılan kota (@StorageTexts.Size(_storage.DefaultQuotaBytes))</span></label>
                 <label><span>Firmaya özel kota <em>(GB)</em></span><input id="storage-quota-gb" class="form-control" type="number" min="0" step="0.5" disabled="@_quotaDefault" @bind="_quotaGb" /></label>
-                <button id="storage-save" class="btn btn-outline-primary" @onclick="SaveQuotaAsync" disabled="@(_busy || (!_quotaDefault && _quotaGb is not > 0))">Kotayı kaydet</button>
+                <button id="storage-save" class="btn btn-outline-primary" @onclick="SaveQuotaAsync" disabled="@(_busy || (!_quotaDefault && _quotaGb is not >= 0))">Kotayı kaydet</button>
                 <button id="storage-recount" class="btn btn-outline-secondary" @onclick="RecountStorageAsync" disabled="@_busy">Yeniden hesapla</button>
             </div>
             <div class="admin-panel__body">

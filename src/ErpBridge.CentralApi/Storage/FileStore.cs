@@ -227,6 +227,14 @@ public sealed partial class FileStore
                 .ExecuteUpdateAsync(u => u.SetProperty(f => f.Status, StoredFileStatuses.Purging), ct);
             if (marked == 1) await AddUsedAsync(tenantId, -file.SizeBytes, now, ct);
             await transaction.CommitAsync(ct);
+            if (marked == 0)
+            {
+                // Someone trashed or restored the file between the read and the mark: never delete the object of a row
+                // that is not ours to purge. Only a row another purge already marked goes on to R2.
+                var current = await FindAsync(tenantId, fileId, ct);
+                if (current is null) return StorageResult<bool>.Ok(true);
+                if (current.Status != StoredFileStatuses.Purging) return StorageResult<bool>.Ok(false);
+            }
         }
 
         try
