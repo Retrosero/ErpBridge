@@ -239,6 +239,22 @@ public sealed class PortalRolesTests
 /// <summary>The menu offers only what the user's roles open.</summary>
 public sealed class PortalLayoutTests : PortalPageTestContext
 {
+    [Fact]
+    public void Keyboard_users_can_skip_the_drawer_and_reach_the_page_content()
+    {
+        PortalTestSetup.Register(this, signedIn: PortalTestSetup.State(), popoverProvider: false);
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().NavigateTo("stok?search=demo");
+        var cut = RenderLayout();
+
+        var target = cut.Find(".skip-link").GetAttribute("href");
+        target.Should().Be("http://localhost/stok?search=demo#portal-content");
+        var main = cut.Find(new Uri(target!).Fragment);
+        cut.FindAll("main").Should().ContainSingle();
+        main.TagName.Should().Be("MAIN");
+        main.GetAttribute("tabindex").Should().Be("-1");
+        main.TextContent.Should().Contain("içerik");
+    }
+
     private IRenderedComponent<ErpBridge.Portal.MainLayout> RenderLayout() =>
         Render<ErpBridge.Portal.MainLayout>(p => p.Add(l => l.Body, (Microsoft.AspNetCore.Components.RenderFragment)(b => b.AddContent(0, "içerik"))));
 
