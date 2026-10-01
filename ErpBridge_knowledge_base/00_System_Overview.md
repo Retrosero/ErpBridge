@@ -1365,7 +1365,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      girişleri Admin konteynerinin adresinden gelir — orada adres ayrımı yoktur (aynı adı yabancı ve sahibi aynı kovada denerse
      sahibi de bekler); telefon ve katalog girişleri gerçek istemci adresiyle gelir.
    - **Tablolar** (03 §2, migration `MusteriKatalogu`): `catalog_settings`, `catalog_category_settings`, `catalog_product_settings`,
-     `catalog_accounts`, `catalog_images`, `catalog_image_blobs`, `catalog_orders` — `Domain/CustomerCatalog.cs`. Katalog hesapları
+     `catalog_accounts`, `catalog_images`, `catalog_image_blobs`, `catalog_orders` (+ `catalog_banners`, migration `KatalogBannerlari`)
+     — `Domain/CustomerCatalog.cs`. Katalog hesapları
      **koltuk değildir**, `mobile_users`'a girmez, personel oturumu açamaz.
    - **Modül ve yetki:** `TenantModules.CustomerCatalog = "customer_catalog"` (`Known`; oturumun `modules[]`'ına kendiliğinden girer).
      `PermissionKeys.CustomerCatalogManage = "action.customer_catalog.manage"` **kilitli** (`locked: true`), yalnız ADMIN + MANAGER:
@@ -1456,10 +1457,31 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `invoices` / `invoices/detail?key=` (izinli küme = carinin kendi `sale|sale_return`, `!OtherSide`, anahtarlı satırları; detay
      anahtarı önce bu kümede aranır, `DocumentByKey` **kullanılmaz** — kasa koduyla çakışan cari başka carinin `r` anahtarını
      açamaz), `purchased` (iptalsiz satışların `LinesByDocument` satırları stok koduna göre). Bayrak kapalı `403 FEATURE_DISABLED`.
+   - **Bannerlar (S12/W6/P8, 2026-10-01)** `Endpoints/CustomerCatalogBannerEndpoints` + `Domain.CatalogBanner`: kataloğun üstünde
+     tüm müşterilere aynı kayan şerit (görsel + başlık/kısa metin, tıklanınca kategori/ürün/https). Yönetim `/api/v1/customer-catalog/banners`
+     (`GET`, `POST`, `PUT {id}`, `DELETE {id}`, `PUT order`; modül + `CanManageCustomerCatalog`); yazımlar
+     `WriteLayoutAsync(..., pictures: true)` — `ImageRevision` artar, düzen `Revision`'ı artmaz; sürüm denetimi yok. Bağlantı kayıtta
+     doğrulanır: `url` = `CatalogImages.ValidLink`, `category` = görünümdeki kategori anahtarı, `product` = görünümdeki stok kodu (kartın
+     kodu saklanır), değilse `400 INVALID_BANNER_LINK`; ters tarih `INVALID_BANNER_DATES`; en çok 20 (`CATALOG_BANNER_LIMIT`).
+     **Görsel ayrı tabloya değil `catalog_images`'a** `StockCode = CatalogBanners.ImageStockCode` (`"~banner"`) ile girer: yükleme,
+     sihirli bayt, üst veri temizliği, kota ve anonim `img` ucu ürünlerinkiyle aynı. `~` öneki (`CatalogBanners.IsReservedStockCode`)
+     ürün değildir: ürün başına 8 sınırı yerine banner için 40 (`CatalogBanners.MaxImages`), `images/manifest` ve `CatalogViewService`
+     (görünümün görsel sorgusu) bunları dışlar, kota sayar; `~banner` dışı `~` kodları ile `images/links` ve `images/order`'da `~` kodları
+     400. Yeni `~banner` kaydında bir günden eski ve hiçbir bannerın kullanmadığı banner görselleri (kaydedilmemiş panel düzenlemesi)
+     silinir. Banner silinince ya da görseli değişince eski görsel başka banner göstermiyorsa silinir; görsel images API'siyle
+     silinirse `ImageId` FK `SET NULL`. Müşteri `GET /api/v1/catalog/{code}/banners` (`CatalogCustomerPolicy`, `private, no-store`):
+     `IsActive` ve `StartsAtMs ≤ şimdi < EndsAtMs` (`TimeProvider`), sırayla; bağlantı `CatalogCustomerView` ile süzülür (görmediği
+     ürün ya da hiç görünür ürünü olmayan kategori → `link: null`). Web `js/banners.js` (saf: hedef, https denetimi, nokta dizini) +
+     `js/ui/banner-strip.js` (scroll-snap, otomatik kayma yok, noktalar, ok/Home/End, ilk görsel eager, `srcset` s 800w / l 1920w);
+     `catalog.js` şeridi `header.catalog-intro` altına koyar, hesap başına 5 dk önbellekler, hata ya da boş listede hiç çizmez.
+     Panel `Katalog.razor` "Bannerlar" sekmesi + `Shared/CatalogBannerSheet.razor`; `IImageShrinker.ShrinkAsync(file, maxWidth,
+     maxHeight, maxBytes)` geniş kutusu (1920 × 720, 800 × 300; kare olan eski imza buna devreder); günler İstanbul
+     (`Fmt.DayStartMs`/`DayOfMs`), bitiş günü dahil gösterilir, sunucuya ertesi günün başı (hariç) gider.
    - Testler: `LoginThrottleTests` (paralel deneme, devam eden deneme, anahtar sınırı, adres bölümü), `ForwardedHeadersSetupTests`
      (tek seferlik uyarı), `RateLimitTests` (XFF bölümleri, güvenilmeyen atlama, /64, `catalog-login`, oturumsuz istek IP kovası),
      `LoginThrottleEndpointTests` (başka adres, kayıtlı telefon, Admin adres + sahte hash), `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
      `PermissionEndpointsRelationalTests`, `PermissionResolverTests`, `CustomerCatalogImagesRelationalTests`,
      `CustomerCatalogLoginRelationalTests`, `CustomerCatalogBrowseRelationalTests`, `CustomerCatalogOrdersRelationalTests`,
+     `CustomerCatalogBannersRelationalTests`, panel `PortalCatalogBannersTests`, web `tests/katalog-web/banners.test.mjs`,
      `CustomerCatalogLedgerRelationalTests`, `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
