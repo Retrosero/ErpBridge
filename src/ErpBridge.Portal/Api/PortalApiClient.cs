@@ -498,6 +498,10 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<CatalogOrdersDto> CatalogOrdersAsync(string? status, string? q, int page, CancellationToken ct = default) =>
         GetAsync<CatalogOrdersDto>(Catalog + "orders" + Query(("status", status), ("q", q), ("page", page.ToString(CultureInfo.InvariantCulture))), ct);
 
+    /// <summary>The request counts by status alone (the menu's "new requests" badge); counted by the server, no rows.</summary>
+    public Task<CatalogOrderCountsDto> CatalogOrderCountsAsync(CancellationToken ct = default) =>
+        GetAsync<CatalogOrderCountsDto>(Catalog + "orders/counts", ct);
+
     public Task<CatalogOrderDetailDto> CatalogOrderAsync(Guid orderId, CancellationToken ct = default) =>
         GetAsync<CatalogOrderDetailDto>($"{Catalog}orders/{orderId}", ct);
 

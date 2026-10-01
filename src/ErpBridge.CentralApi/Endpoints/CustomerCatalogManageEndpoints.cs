@@ -424,7 +424,19 @@ public static class CustomerCatalogManageEndpoints
             Account = account is null ? null : await ToDtoAsync(db, account, ct),
             CustomerName = customer.Title,
             SuggestedUsername = CatalogAccounts.FirstFree(suggestion, taken),
+            NotifyPreview = await NotifyPreviewAsync(db, cache, tenantId, account?.ResponsibleUserId, customer, ct),
         });
+    }
+
+    /// <summary>The rule a submitted request follows (<see cref="CatalogOrders.AssigneeAsync"/>), named for the panel.</summary>
+    private static async Task<CatalogNotifyPreviewDto> NotifyPreviewAsync(
+        CentralApiDbContext db, IMemoryCache cache, Guid tenantId, Guid? responsibleUserId, PortalLedger.Customer customer, CancellationToken ct)
+    {
+        var assignee = await CatalogOrders.AssigneeAsync(db, cache, tenantId, responsibleUserId, customer.Code, customer, ct);
+        var name = assignee.UserId is { } userId
+            ? await db.MobileUsers.AsNoTracking().Where(u => u.Id == userId).Select(u => u.FullName.Trim() == "" ? u.Username : u.FullName).FirstOrDefaultAsync(ct)
+            : null;
+        return new CatalogNotifyPreviewDto { UserId = assignee.UserId, UserName = name, Source = assignee.Source };
     }
 
     private static async Task<IResult> CreateAccountAsync(HttpContext http, [FromBody] CatalogAccountCreateRequest? body, [FromServices] CentralApiDbContext db,

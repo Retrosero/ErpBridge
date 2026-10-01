@@ -20,9 +20,11 @@ push'u, Play production.
 | S7 | Müşteri gezinme + quote | ✅ canlı | #229 | `CatalogCustomerView`, `CatalogQuote` (categories, products, products/detail, cart/quote) |
 | S8 | Talepler + belge bağı + bildirim | ✅ canlı | #229 | `CatalogCustomerOrderEndpoints` (müşteri), `CustomerCatalogOrderEndpoints` (personel), `CatalogOrderLinker` (ingest + onay), `CATALOG_ORDER_NEW` bildirimi |
 | S9 | Ekstre, faturalar, aldıkları | ✅ canlı | #229 | `CatalogCustomerLedgerEndpoints` (statement, invoices, invoices/detail, purchased) |
+| S11 | Talep ataması (adres temsilcisi, firma varsayılanı, rut planı) + `notifyPreview` + `orders/counts` | 🟡 dalda | | `ozellik/katalog-bildirim`; `CatalogOrders.AssigneeAsync`, `CustomerCatalogAssigneeRelationalTests` |
 | W0 | Web barındırma | ✅ canlı | #229 | `CatalogWeb` (`/assets/{v}`, kabuk, başlıklar, izin listesi); dosyalar W1+ |
 | W1–W5 | Web katalog | ✅ canlı | #229 | Statik SPA `wwwroot/katalog` (giriş, katalog, sepet, talepler, hesabım); `node --test tests/katalog-web/` |
 | P1–P5 | Panel | ✅ canlı | #229 | `/katalog`, ürün sheet'i görselleri, `CatalogAccessSheet`, `/musteri-siparisleri` (yeniden aç dahil) |
+| P7 | Panel bildirim görünürlüğü (menü rozeti, 60 sn tazeleme, bildirim önizlemesi, temsilcisiz plasiyer rozeti) | 🟡 dalda | | `ozellik/katalog-bildirim`; `PortalRefreshTiming` |
 | A1–A7 | Telefon (Siparis_Cepte) | ✅ Play internal 1.5.297 | siparis_cepte#156 | |
 | S12 · W6 · P8 | Katalog bannerları (sunucu, web şeridi, panel sekmesi) | 🔄 dalda | | `ozellik/katalog-banner`: migration `KatalogBannerlari`, `CustomerCatalogBannerEndpoints`, `ui/banner-strip.js`, `CatalogBannerSheet`; yerel derleme + testler yeşil, PR bekliyor |
 | D1 | DNS + Coolify alan adı | ✅ | | `sipariscepte.appsgo.cloud` → sunucu IP'si (kullanıcı); Coolify centralapi alanı (Claude), geçerli sertifika |

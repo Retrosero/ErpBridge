@@ -367,6 +367,10 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
 - **`GET accounts?q=&page=`:** 50'lik sayfa, cari adına (tr-TR) göre; `q` kod/ad/kullanıcı adında arar.
 - **`GET accounts/by-customer?code=`:** `suggestedUsername` cari adından (Türkçe harfler ASCII'ye, şirket ekleri ve tek harfler
   atılır, kelimeler `-` ile, ≤ 24), olmazsa koddan, olmazsa `musteri`; kullanılıyorsa sonuna 2, 3… eklenir.
+  `notifyPreview {userId, userName, source}`: carinin yeni talebi şu an kime atanır (hesabın kayıtlı sorumlusuyla; S11).
+  `source` = `responsible` | `salesperson` (carinin temsilci kodu) | `address` (adres temsilcisi) | `default` (firma varsayılan
+  temsilcisi) | `route` (aktif rut planı) | `managersOnly` (kimse; `userId`/`userName` null). Yöneticiler her talepte ayrıca
+  bildirim alır.
 - **Görseller** (`images/*`; yükleme uçları `catalog-upload` hız sınırında: kullanıcı başına 300/dk, oturumsuz istek IP kovasına).
   Her görsel değişikliği **görsel sayacını** (`catalog_settings.ImageRevision`) artırır, düzen revizyonunu değil: panelde ya da
   telefonda açık bir düzen düzenlemesi görsel yüklemesi yüzünden `409 CATALOG_CHANGED` almaz; katalog görünümü iki sayaca birden
@@ -420,7 +424,8 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
   katalog yöneticisi (ADMIN/MANAGER) hepsini, diğerleri yalnız `AssignedUserId` ya da `ClaimedByUserId` kendisi olanları görür
   (görmediği talep `404 CATALOG_ORDER_NOT_FOUND`). `GET orders?status=&q=&page=`: yeniden eskiye, 50'lik sayfa; `status`
   `NEW|CLAIMED|COMPLETED|REJECTED` (başkası `400 INVALID_BODY`); `q` talep no / cari kodu / cari adı (tr-TR); `counts` görülebilen
-  bütün taleplerin durum sayıları (süzgeçsiz). `assignedUserName` = talebin düştüğü kişi. Değiştirici uçlar talebin satır kilidi
+  bütün taleplerin durum sayıları (süzgeçsiz). `GET orders/counts` yalnız bu sayıları döner (veritabanında sayılır; panel
+  menüsündeki "yeni talep" rozeti). `assignedUserName` = talebin düştüğü kişi. Değiştirici uçlar talebin satır kilidi
   altında çalışır (aynı anda iki kişi: biri 200, öbürü 409) ve talebin son hâlini (`OrderDetail`) döner:
   `claim {force}` — kapalı `409 CATALOG_ORDER_CLOSED`, başkasında `409 CATALOG_ORDER_TAKEN`, kendisininkini yeniden almak
   değişiklik yapmaz; `force` yalnız yönetici (`403 CATALOG_MANAGE_REQUIRED`). `release` — alan kişi ya da yönetici; `NEW` ise

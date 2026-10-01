@@ -146,10 +146,18 @@ public static class MobileAccountEndpoints
             .Where(u => u.TenantId == access.Tenant!.Id && u.DeletedAtUtc == null)
             .OrderBy(u => u.Username)
             .ToListAsync(ct);
+        var salespersons = await db.MobileUserErpMappings.AsNoTracking()
+            .Where(m => m.TenantId == access.Tenant!.Id && m.SalespersonCode != null && m.SalespersonCode != "")
+            .ToDictionaryAsync(m => m.UserId, m => m.SalespersonCode!.Trim(), ct);
         return JsonResults.Ok(new MobileUserListResponse
         {
             Seats = await seats.GetUsageAsync(access.Tenant!.Id, ct),
-            Users = users.Select(ToDto).ToArray(),
+            Users = users.Select(u =>
+            {
+                var dto = ToDto(u);
+                dto.SalespersonCode = salespersons.GetValueOrDefault(u.Id) is { Length: > 0 } code ? code : null;
+                return dto;
+            }).ToArray(),
         });
     }
 

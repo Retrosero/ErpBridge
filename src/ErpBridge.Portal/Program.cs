@@ -40,6 +40,7 @@ builder.Services.AddHttpClient<DisplayApiClient>(client =>
 }).AddHttpMessageHandler<CorrelationIdHandler>();
 builder.Services.AddScoped<IDisplaySessionStore, ProtectedDisplaySessionStore>();
 builder.Services.AddSingleton(new KioskTiming());
+builder.Services.AddSingleton(new PortalRefreshTiming());
 
 // Customer catalog images are sized in the browser before they are sent (GOAL_MUSTERI_KATALOGU P3).
 builder.Services.AddSingleton<IImageShrinker, BrowserImageShrinker>();
