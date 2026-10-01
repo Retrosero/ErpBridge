@@ -1328,7 +1328,7 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
    - **Eşitleme telefonda karara bağlanır:** yerelde bekleyen değişiklik kazanır (son yazan), yoksa daha yüksek `Version` alınır. Kullanıcı silinince satırı da gider (cascade).
    - Test: `UserPreferencesRelationalTests`. Telefon ayağı: Siparis_Cepte KB kural 54.
 
-36. **Müşteri kataloğu: gerçek istemci IP'si, giriş yavaşlatıcı, katalog tabloları, kilitli yetki, müşteri oturumu, talepler ve belge bağı (GOAL_MUSTERI_KATALOGU S1–S9, 2026-10-01).**
+36. **Müşteri kataloğu: gerçek istemci IP'si, giriş yavaşlatıcı, katalog tabloları, kilitli yetki, müşteri oturumu, talepler, belge bağı ve panelden siparişe çevirme (GOAL_MUSTERI_KATALOGU S1–S10, 2026-10-01).**
    - **Gerçek istemci IP'si:** `Security/ForwardedHeadersSetup`. `ForwardedHeaders:KnownNetworks` / `ForwardedHeaders:KnownProxies`
      (dizi ya da virgüllü tek değer; boş girdi yok sayılır) doluysa pipeline'ın **en başında** `UseForwardedHeaders`
      (`X-Forwarded-For` + `X-Forwarded-Proto`, `ForwardLimit=1`, varsayılan loopback güveni temizlenir; `X-Forwarded-Host` asla —
@@ -1445,10 +1445,37 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      denenirse (`PortalErpDocumentsEndpoints` retry) ikinci sipariş olabilir. Reddedilmiş `409 CATALOG_ORDER_CLOSED`, bilinmeyen
      `409 CATALOG_ORDER_NOT_FOUND`: iş yazılmaz. Alan yoksa hiçbir şey olmaz (eski davranış). ERP'siz defter satışı reddederse
      (`Failed` iş) `Link.Undo()` talebi önceki hâline (açık ya da devraldığı satışa bağlı) döndürür.
+   - **Ortak iş yazıcı** `Jobs/SalesJobWriter` (scoped; S10): ingest, onay ve panelden çevirme işi tek yoldan yazar.
+     `PlaceAsync` çağıranın işleminde çalışır ve kaydetmeyi ona bırakır (onay: `PostDocumentsAsync`, `callerIsAdmin: true`,
+     `approvalRequestId`): `CatalogOrderLinker.TryLinkAsync` → ERP'siz firmada `NativeDocumentProcessor.IngestAsync` (defter
+     reddederse `Link.Undo()`, iş `Failed` döner, depo kuyruğuna girmez) / ERP'li firmada `db.Jobs.Add` → `FulfillmentService.EnqueueAsync`.
+     `WriteAsync` kendi başına: aynı anahtarlı iş varsa onu döner (`Idempotent`), satış ya da talep bağlı belgede kendi işlemini
+     açar, `SaveChanges` + commit, `DbUpdateException`'da kazananı döner; commit sonrası ERP'siz başarılı satışta telefonlar,
+     depo satırında depo ekranları uyandırılır. `IngestEndpoints` ilk mevcut-iş denetimini (onay kurallarından önce) aynen tutar.
    - **Yeniden açma** `POST /api/v1/customer-catalog/orders/{id}/reopen` (`CustomerCatalogOrderEndpoints.ReopenAsync`, talep
      satır kilidi altında; yalnız `CanManageCustomerCatalog`, değilse `403 CATALOG_MANAGE_REQUIRED`): `COMPLETED`/`REJECTED` → `NEW`;
      `DocumentRef`, `RejectReason`, `Closed*`, `Claimed*` temizlenir; açık talep değişmez. Panel `MusteriSiparisleri.razor`
      kapalı talepte "Yeniden aç" (onaylı satır içi uyarı; çevrilmiş talepte ikinci sipariş uyarısı), `PortalApiClient.ReopenCatalogOrderAsync`.
+   - **Panelden siparişe çevirme (S10)** `CustomerCatalog/CatalogOrderConversion` + `CustomerCatalogOrderEndpoints`
+     `GET orders/{id}/conversion` / `POST orders/{id}/convert {warehouseNo?, expectedTotal}`. Panel belge **göndermez**
+     (`PORTAL_CANNOT_SUBMIT_DOCUMENTS` aynen); sunucu talepten Sipariş Cepte'nin `salesOrderPayload` gövdesini alan alan kurar:
+     `CAT-SO-{Guid}` (her çevirmede yeni; başarısız işin anahtarıyla çakışmaz), `occurredAt` = `PortalReports.IstanbulTime`
+     `dd.MM.yyyy HH:mm`, "Cari Borç", "Katalog siparişi KT-…" (+ `\n[Notlar: …]`), `catalogOrderId`, `priceListNo` = talebin
+     listesi, `warehouseNo` yalnız varsayılandan farklı seçildiyse (ERP'li); satırda `listUnitPrice` = listenin **bugünkü** fiyatı,
+     `customerDiscountPercent` = talepteki (`noDiscount` 0), satır/genel iskonto 0, `unitPrice`/`lineTotal` KDV hariç net
+     (`CatalogPricing` = Mikro hesabı). Ürün yok/fiyatsız/hesabın görünürlüğünden çıkmış → `422 CART_INVALID`; toplam > 0,05 farklı
+     → `409 PRICE_CHANGED`; ERP'li firmada sahibin bağlamında (`ErpWriteContextBuilder`, ajanın kira anındaki hesabı) ERP kullanıcı no /
+     depo / satış belge türü yoksa iş yazılmadan `409 ERP_MAPPING_MISSING` (üçü de güncel önizlemeyle). **`CreatedByUserId` kuralı
+     (kullanıcı kararı):** belge carinin plasiyeri = talebin `AssignedUserId`'si (aktif kullanıcıysa), yoksa çeviren adına; ajan
+     depo/seri/temsilci/ERP kullanıcı numarasını bu kişinin eşlemesinden alır, raporlar onun sayar. Talebi kapatan (`closedBy*`,
+     linker kullanıcısı) çevirendir. Erişim: katalog yöneticisi ya da talebi gören ve başkası almamış kişi; `NEW` talep önce
+     çeviren adına alınır (claim, satır kilidi). Çeviren satışa karar veremiyor (`ApprovalPermissions.CanDecide(user, sale)`) ve
+     firma kuralı ya da kendi yetki/limiti (`DocumentPermissionCheck`, ingest 5b/5b2 ile aynı) onay istiyorsa
+     `ApprovalService.SubmitAsync` ile `CAT-APR-{Guid}` onay talebi açılır; talep onay anında kapanır ve o yolda işin sahibi onay
+     isteyendir (`PostDocumentsAsync` kuralı). Aksi hâlde `SalesJobWriter.WriteAsync` (ERP'siz firmada defter reddederse
+     `422 CATALOG_CONVERSION_FAILED`, talep açık). Panel `MusteriSiparisleri.razor` "Siparişe çevir" formu (kimin adına, depo seçimi,
+     "Talep: x → Güncel: y", eksik eşleme uyarısı — eksikken gönderilmez; `PRICE_CHANGED`/`CART_INVALID`/`ERP_MAPPING_MISSING`'de
+     form güncel önizlemeyle açık kalır), `PortalApiClient.CatalogOrderConversionAsync` / `ConvertCatalogOrderAsync`. Telefon değişmedi.
    - **Panel hata metinleri** `ErpBridge.Portal/Api/PortalMessages`: bilinen koda panelin metni; bilinmeyen kodda sunucunun mesajı
      Türkçe harf içeriyorsa (`LooksTurkish`; katalog uçları Türkçe yazar) o, değilse kodlu genel metin
      (`PortalApiClient.SendAsync` → `PortalMessages.For(code, message)`).
@@ -1461,5 +1488,5 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `LoginThrottleEndpointTests` (başka adres, kayıtlı telefon, Admin adres + sahte hash), `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
      `PermissionEndpointsRelationalTests`, `PermissionResolverTests`, `CustomerCatalogImagesRelationalTests`,
      `CustomerCatalogLoginRelationalTests`, `CustomerCatalogBrowseRelationalTests`, `CustomerCatalogOrdersRelationalTests`,
-     `CustomerCatalogLedgerRelationalTests`, `CatalogWebTests` (fixture
+     `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
