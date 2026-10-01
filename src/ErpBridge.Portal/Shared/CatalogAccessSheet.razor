@@ -1,0 +1,571 @@
+@* GOAL_MUSTERI_KATALOGU P4: one customer's access to the web catalog — create or change it, reset its password, close
+   its sessions, delete it, and share the address. Opened from the customer's page and from the catalog's "Müşteri
+   erişimleri" tab. Nothing is read until it opens, so the customer page makes no extra call. *@
+@using System.Globalization
+@inject PortalApiClient Api
+@inject PortalSession Session
+@inject IJSRuntime JS
+
+<DetailSheet Id="catalog-access-sheet" Open="CustomerCode is not null" Busy="_busy" Eyebrow="Katalog erişimi" Title="@CustomerTitle" OnClose="CloseAsync">
+    <ChildContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="access-error">@_error</MudAlert>
+        }
+        @if (_notice is not null)
+        {
+            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="access-notice">@_notice</MudAlert>
+        }
+        @if (_issuedPassword is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="access-issued">
+                Şifre: <strong class="mono" id="access-issued-password">@_issuedPassword</strong> — yalnız şimdi gösterilir; bu pencere kapanınca bir daha görülmez.
+            </MudAlert>
+        }
+
+        @if (_lookup is not null && _settings is { } settings)
+        {
+            @if (_account is { } account)
+            {
+                <dl class="detail-facts" id="access-facts">
+                    <dt>Kullanıcı adı</dt>
+                    <dd class="mono">@account.Username</dd>
+                    <dt>Durum</dt>
+                    <dd><span class="badge @(account.IsActive ? "badge--ok" : "badge--off")">@(account.IsActive ? "Açık" : "Kapalı")</span></dd>
+                    <dt>Son giriş</dt>
+                    <dd id="access-last-login">@(account.LastLoginAtMs is { } last ? When(last) : "Henüz giriş yapmadı")</dd>
+                    <dt>Oluşturan</dt>
+                    <dd id="access-created">@(account.CreatedByName ?? "—") · @When(account.CreatedAtMs)</dd>
+                    <dt>Açık talep</dt>
+                    <dd>@account.OpenOrderCount</dd>
+                </dl>
+
+                <section class="detail-section" id="access-share">
+                    <div class="detail-section-title">Paylaş</div>
+                    @if (string.IsNullOrWhiteSpace(settings.PublicUrl))
+                    {
+                        <p class="text-muted">Katalog adresi henüz hazır değil.</p>
+                    }
+                    else
+                    {
+                        <p class="access-message" id="access-message">@ShareText(settings.PublicUrl, account)</p>
+                        @if (_issuedPassword is not null)
+                        {
+                            <label class="inline-field">
+                                <input type="checkbox" id="access-include-password" checked="@_includePassword" @onchange="e => _includePassword = e.Value is true" />
+                                Şifreyi mesaja ekle (mesaj geçmişinde kalır)
+                            </label>
+                        }
+                        <div class="access-share-actions">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Rounded.ContentCopy"
+                                       OnClick="() => CopyAsync(ShareText(settings.PublicUrl, account))" id="access-copy">Kopyala</MudButton>
+                            <a class="link-button" id="access-whatsapp" href="@CatalogText.WhatsAppLink(_phone, ShareText(settings.PublicUrl, account))" target="_blank" rel="noopener">WhatsApp ile gönder</a>
+                            @if (_copyNote is not null)
+                            {
+                                <span class="field-hint" id="access-copied">@_copyNote</span>
+                            }
+                        </div>
+                    }
+                </section>
+
+                <div class="access-account-actions" id="access-account-actions">
+                    @if (_confirmDelete)
+                    {
+                        <span class="text-danger">Erişim silinsin mi? Müşteri kataloğa giremez.</span>
+                        <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" Disabled="@_busy" OnClick="DeleteAsync" id="access-delete-confirm">Erişimi sil</MudButton>
+                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _confirmDelete = false" id="access-delete-cancel">Vazgeç</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@_busy" OnClick="ResetPasswordAsync" id="access-reset-password">Şifreyi sıfırla</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@_busy" OnClick="RevokeSessionsAsync" id="access-revoke">Oturumları kapat</MudButton>
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" Disabled="@_busy" OnClick="() => _confirmDelete = true" id="access-delete">Erişimi sil</MudButton>
+                    }
+                </div>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Class="text-muted" id="access-none">Bu carinin katalog erişimi yok. Aşağıdaki bilgilerle oluşturun.</MudText>
+            }
+
+            @* Not a <form>: Enter in the product search must search, not save. *@
+            <div class="stack-form mt-3" id="access-form">
+                <label class="stack-field">
+                    <span class="field-label">Kullanıcı adı</span>
+                    <input class="portal-input" id="access-username" maxlength="64" autocomplete="off" value="@_form.Username" @onchange="e => _form.Username = e.Value?.ToString() ?? string.Empty" />
+                    <span class="field-hint">Küçük harf, rakam, nokta, alt çizgi ve tire; 3–64 karakter.</span>
+                </label>
+
+                @if (_account is null)
+                {
+                    <div class="stack-field" role="radiogroup" aria-label="Şifre">
+                        <span class="field-label">Şifre</span>
+                        <label class="inline-field">
+                            <input type="radio" name="access-password-mode" id="access-password-auto" checked="@_form.GeneratePassword" @onchange="() => _form.GeneratePassword = true" />
+                            Otomatik üret (bir kez gösterilir)
+                        </label>
+                        <label class="inline-field">
+                            <input type="radio" name="access-password-mode" id="access-password-manual" checked="@(!_form.GeneratePassword)" @onchange="() => _form.GeneratePassword = false" />
+                            Kendim belirleyeyim
+                        </label>
+                        @if (!_form.GeneratePassword)
+                        {
+                            <input type="password" class="portal-input" id="access-password" autocomplete="new-password" maxlength="72" aria-label="Şifre"
+                                   value="@_form.Password" @onchange="e => _form.Password = e.Value?.ToString()" />
+                            <span class="field-hint">8–72 karakter. Müşteri kataloğa girince kendi şifresini değiştirebilir.</span>
+                        }
+                    </div>
+                }
+
+                <label class="stack-field">
+                    <span class="field-label">İskonto %</span>
+                    <input type="number" min="0" max="99.99" step="0.01" class="portal-input portal-input--number" id="access-discount"
+                           value="@_form.DiscountText" @oninput="e => _form.DiscountText = e.Value?.ToString() ?? string.Empty" />
+                    <span class="field-hint" id="access-discount-preview">
+                        @if (CatalogText.ParseDiscount(_form.DiscountText) is { } discount)
+                        {
+                            <span class="price-preview"><s>@Fmt.Money(100m)</s> → <strong>@Fmt.Money(CatalogText.Net(100m, discount))</strong></span>
+                        }
+                        Liste fiyatı üstü çizili, iskontolu fiyat yanında gösterilir. İskontosuz işaretli ürünlere uygulanmaz.
+                    </span>
+                </label>
+
+                <label class="stack-field">
+                    <span class="field-label">Fiyat listesi</span>
+                    <select class="portal-select" id="access-price-list" value="@(_form.PriceListNo?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)"
+                            @onchange="e => _form.PriceListNo = int.TryParse(e.Value?.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var no) ? no : null">
+                        <option value="">Firma varsayılanı (@DefaultListText(settings))</option>
+                        @foreach (var list in settings.PriceLists)
+                        {
+                            <option value="@list.No">@list.No — @list.Name (@Vat(list))</option>
+                        }
+                    </select>
+                </label>
+
+                <div class="stack-field">
+                    <span class="field-label">Görünürlük</span>
+                    <div class="seg-tabs" role="tablist" id="access-visibility">
+                        @foreach (var (mode, label) in Modes)
+                        {
+                            <button type="button" role="tab" class="seg-tab @(mode == _form.Visibility ? "is-active" : null)" aria-selected="@(mode == _form.Visibility ? "true" : "false")"
+                                    data-mode="@mode" disabled="@_busy" @onclick="() => SetVisibilityAsync(mode)">@label</button>
+                        }
+                    </div>
+                    <span class="field-hint" id="access-visibility-hint">@VisibilityHint</span>
+
+                    @if (_form.Visibility != CatalogAccessForm.Main && _categories is not null)
+                    {
+                        <FacetChecklist Id="access-categories" Title="@(_form.Visibility == CatalogAccessForm.Only ? "Gösterilecek kategoriler" : "Gizlenecek kategoriler")"
+                                        Options="CategoryOptions" Selected="_form.Categories" EmptyText="Katalogda kategori yok." />
+                        <div class="field-label mt-2">@(_form.Visibility == CatalogAccessForm.Only ? "Gösterilecek ürünler" : "Gizlenecek ürünler")</div>
+                        <div class="filter-chips" id="access-products">
+                            @foreach (var stockCode in _form.Products)
+                            {
+                                <span class="access-chip" data-stock="@stockCode">
+                                    @ProductName(stockCode)
+                                    <button type="button" class="access-chip-remove" aria-label="@($"{stockCode} çıkar")" @onclick="() => _form.Products.Remove(stockCode)">×</button>
+                                </span>
+                            }
+                            @if (_form.Products.Count == 0)
+                            {
+                                <span class="text-muted">Ürün seçilmedi; aşağıdan arayıp ekleyin.</span>
+                            }
+                        </div>
+                    }
+
+                    @if (_form.Visibility != CatalogAccessForm.Only)
+                    {
+                        <div class="field-label mt-2">Bu cariye gösterilen gizli ürünler</div>
+                        <div class="filter-chips" id="access-revealed">
+                            @foreach (var stockCode in _form.Revealed)
+                            {
+                                <span class="access-chip" data-stock="@stockCode">
+                                    @ProductName(stockCode)
+                                    <button type="button" class="access-chip-remove" aria-label="@($"{stockCode} çıkar")" @onclick="() => _form.Revealed.Remove(stockCode)">×</button>
+                                </span>
+                            }
+                            @if (_form.Revealed.Count == 0)
+                            {
+                                <span class="text-muted">Yok. Firmanın gizlediği bir ürünü yalnız bu cariye açmak için arayın.</span>
+                            }
+                        </div>
+                    }
+
+                    <div class="document-search mt-2">
+                        <input class="portal-input" id="access-product-search" placeholder="Ürün kodu ya da adı" aria-label="Ürün ara"
+                               @bind="_productQuery" @bind:event="oninput" @onkeydown="SearchKeyAsync" />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" Disabled="@_busy" OnClick="SearchProductsAsync" id="access-product-search-go">Ara</MudButton>
+                    </div>
+                    @if (_found is { } found)
+                    {
+                        <ul class="route-found" id="access-product-results">
+                            @foreach (var product in found)
+                            {
+                                var picked = _form.Products.Contains(product.StockCode, StringComparer.OrdinalIgnoreCase);
+                                var revealed = _form.Revealed.Contains(product.StockCode, StringComparer.OrdinalIgnoreCase);
+                                <li data-stock="@product.StockCode">
+                                    <span>
+                                        @product.Name <span class="text-muted">@product.StockCode · @product.CategoryKey</span>
+                                        @if (product.Hidden)
+                                        {
+                                            <span class="badge badge--muted">Gizli</span>
+                                        }
+                                    </span>
+                                    @if (_form.Visibility != CatalogAccessForm.Main)
+                                    {
+                                        <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@picked" Class="product-pick" OnClick="() => Pick(product)">@(picked ? "Seçildi" : "Seç")</MudButton>
+                                    }
+                                    @if (_form.Visibility != CatalogAccessForm.Only && product.Hidden)
+                                    {
+                                        <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@revealed" Class="product-reveal" OnClick="() => Reveal(product)">@(revealed ? "Gösteriliyor" : "Bu cariye göster")</MudButton>
+                                    }
+                                </li>
+                            }
+                            @if (found.Length == 0)
+                            {
+                                <li class="text-muted">Eşleşen ürün yok.</li>
+                            }
+                        </ul>
+                    }
+                </div>
+
+                <div class="stack-field">
+                    <span class="field-label">Müşteri neleri görür</span>
+                    <label class="inline-field"><input type="checkbox" id="access-statement" checked="@_form.ShowStatement" @onchange="e => _form.ShowStatement = e.Value is true" /> Ekstre ve bakiye</label>
+                    <label class="inline-field"><input type="checkbox" id="access-invoices" checked="@_form.ShowInvoices" @onchange="e => _form.ShowInvoices = e.Value is true" /> Faturalar</label>
+                    <label class="inline-field"><input type="checkbox" id="access-purchased" checked="@_form.ShowPurchased" @onchange="e => _form.ShowPurchased = e.Value is true" /> Daha önce aldıkları</label>
+                    <label class="inline-field"><input type="checkbox" id="access-order" checked="@_form.CanOrder" @onchange="e => _form.CanOrder = e.Value is true" /> Sipariş verebilir</label>
+                </div>
+
+                @if (_users is { } users)
+                {
+                    <label class="stack-field">
+                        <span class="field-label">Sorumlu personel</span>
+                        <select class="portal-select" id="access-responsible" value="@(_form.ResponsibleUserId?.ToString() ?? string.Empty)"
+                                @onchange="e => _form.ResponsibleUserId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null">
+                            <option value="">Seçilmedi (carinin plasiyeri)</option>
+                            @foreach (var user in users)
+                            {
+                                <option value="@user.Id">@(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName)</option>
+                            }
+                        </select>
+                        <span class="field-hint">Yeni sipariş talebinin bildirimi bu kişiye gider; seçilmezse carinin plasiyerine.</span>
+                    </label>
+                }
+                else
+                {
+                    <span class="field-hint">Talep bildirimi carinin plasiyerine gider; sorumlu personeli firma admini seçer.</span>
+                }
+
+                <label class="inline-field">
+                    <input type="checkbox" id="access-active" checked="@_form.IsActive" @onchange="e => _form.IsActive = e.Value is true" />
+                    Erişim açık (kapatılınca müşteri giremez)
+                </label>
+
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@_busy" OnClick="CloseAsync" id="access-close">Kapat</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@_busy" OnClick="SaveAsync" id="access-save">
+                        @(_account is null ? "Erişimi oluştur" : "Kaydet")
+                    </MudButton>
+                </div>
+            </div>
+        }
+    </ChildContent>
+</DetailSheet>
+
+@code {
+    /// <summary>The customer whose access is shown; null closes the sheet.</summary>
+    [Parameter] public string? CustomerCode { get; set; }
+
+    /// <summary>The customer's name as the opening page knows it, until the server's arrives.</summary>
+    [Parameter] public string? CustomerName { get; set; }
+
+    /// <summary>The customer's phone, for the WhatsApp link.</summary>
+    [Parameter] public string? Phone { get; set; }
+
+    /// <summary>True when the opening page has no phone: the sheet reads it from the customer's card.</summary>
+    [Parameter] public bool LookUpPhone { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>An access was created, changed or deleted; a list redraws.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>The server ended the session; the page signs out with this code.</summary>
+    [Parameter] public EventCallback<string> OnSessionEnded { get; set; }
+
+    private static readonly (string Mode, string Label)[] Modes =
+    [
+        (CatalogAccessForm.Main, "Ana katalog"), (CatalogAccessForm.Only, "Yalnız seçilenler"), (CatalogAccessForm.Except, "Seçilenler hariç"),
+    ];
+
+    private string? _openFor;
+    private CatalogAccountLookupDto? _lookup;
+    private CatalogAccountDto? _account;
+    private CatalogSettingsDto? _settings;
+    private CatalogCategoryDto[]? _categories;
+    private UserDto[]? _users;
+    private string? _phone;
+    private CatalogAccessForm _form = new();
+
+    /// <summary>The password the server just made: shown until the sheet closes, never stored.</summary>
+    private string? _issuedPassword;
+    private bool _includePassword;
+    private bool _confirmDelete;
+    private string? _productQuery;
+    private CatalogProductDto[]? _found;
+    private readonly Dictionary<string, string> _productNames = new(StringComparer.OrdinalIgnoreCase);
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+    private string? _copyNote;
+    private bool _ended;
+
+    private string CustomerTitle => !string.IsNullOrWhiteSpace(_lookup?.CustomerName) ? _lookup.CustomerName : CustomerName ?? CustomerCode ?? string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (CustomerCode == _openFor) return;
+        _openFor = CustomerCode;
+        _lookup = null;
+        _account = null;
+        _settings = null;
+        _categories = null;
+        _users = null;
+        _found = null;
+        _form = new CatalogAccessForm();
+        _issuedPassword = null;
+        _includePassword = _confirmDelete = false;
+        _productQuery = _error = _notice = _copyNote = null;
+        _phone = Phone;
+        if (CustomerCode is { } code) await RunAsync(() => OpenAsync(code));
+    }
+
+    private async Task OpenAsync(string code)
+    {
+        _lookup = await Api.CatalogAccountByCustomerAsync(code);
+        _settings = await Api.CatalogSettingsAsync();
+        Show(_lookup.Account);
+        if (_form.Visibility != CatalogAccessForm.Main) await LoadCategoriesAsync();
+        if (Session.Allows(PortalArea.Users)) _users = await ActiveUsersAsync();
+        if (LookUpPhone && _phone is null) _phone = await PhoneAsync(code);
+    }
+
+    private void Show(CatalogAccountDto? account)
+    {
+        _account = account;
+        _form = account is null ? CatalogAccessForm.New(_lookup?.SuggestedUsername) : CatalogAccessForm.From(account);
+        _confirmDelete = false;
+    }
+
+    private async Task LoadCategoriesAsync() => _categories = (await Api.CatalogCategoriesAsync()).Items;
+
+    /// <summary>The people a request may go to; the list is the administrator's, so it may be refused and the picker hides.</summary>
+    private async Task<UserDto[]?> ActiveUsersAsync()
+    {
+        try
+        {
+            return [.. (await Api.UsersAsync()).Users.Where(u => u.IsActive)];
+        }
+        catch (PortalApiException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The phone on the customer's card; without it the WhatsApp link lets the user pick the chat.</summary>
+    private async Task<string?> PhoneAsync(string code)
+    {
+        try
+        {
+            return (await Api.CustomerCardAsync(code)).Phone;
+        }
+        catch (PortalApiException)
+        {
+            return null;
+        }
+    }
+
+    private async Task SetVisibilityAsync(string mode)
+    {
+        _form.Visibility = mode;
+        if (mode != CatalogAccessForm.Main && _categories is null) await RunAsync(LoadCategoriesAsync);
+    }
+
+    private List<FacetValueDto> CategoryOptions => [.. (_categories ?? []).Select(c => new FacetValueDto { Code = c.Key, Count = c.ProductCount })];
+
+    private string VisibilityHint => _form.Visibility switch
+    {
+        CatalogAccessForm.Only => "Müşteri yalnız seçilen kategorileri ve ürünleri görür; seçilen ürün firmada gizli olsa da görünür.",
+        CatalogAccessForm.Except => "Müşteri ana kataloğu görür; seçilen kategoriler ve ürünler ona gösterilmez.",
+        _ => "Müşteri ana kataloğu (sıra ve gizlemeler) görür.",
+    };
+
+    private async Task SearchProductsAsync()
+    {
+        var q = _productQuery?.Trim();
+        if (string.IsNullOrEmpty(q)) return;
+        await RunAsync(async () =>
+        {
+            _found = (await Api.CatalogProductsAsync(null, q)).Items;
+            foreach (var product in _found) _productNames[product.StockCode] = product.Name;
+        });
+    }
+
+    private Task SearchKeyAsync(KeyboardEventArgs e) => e.Key == "Enter" ? SearchProductsAsync() : Task.CompletedTask;
+
+    private void Pick(CatalogProductDto product)
+    {
+        if (!_form.Products.Contains(product.StockCode, StringComparer.OrdinalIgnoreCase)) _form.Products.Add(product.StockCode);
+        if (_form.Visibility == CatalogAccessForm.Except) _form.Revealed.RemoveAll(c => string.Equals(c, product.StockCode, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void Reveal(CatalogProductDto product)
+    {
+        if (!_form.Revealed.Contains(product.StockCode, StringComparer.OrdinalIgnoreCase)) _form.Revealed.Add(product.StockCode);
+        if (_form.Visibility == CatalogAccessForm.Except) _form.Products.RemoveAll(c => string.Equals(c, product.StockCode, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string ProductName(string code) => _productNames.TryGetValue(code, out var name) ? $"{name} ({code})" : code;
+
+    private async Task SaveAsync()
+    {
+        if (CustomerCode is not { } code) return;
+        _notice = null;
+        var creating = _account is null;
+        if (_form.Problem(creating) is { } problem)
+        {
+            _error = problem;
+            return;
+        }
+        var saved = false;
+        await RunAsync(async () =>
+        {
+            if (creating)
+            {
+                var created = await Api.CreateCatalogAccountAsync(_form.ToCreate(code));
+                Show(created.Account);
+                _issuedPassword = created.IssuedPassword;
+                _includePassword = false;
+                _notice = created.IssuedPassword is null
+                    ? "Katalog erişimi oluşturuldu."
+                    : "Katalog erişimi oluşturuldu. Şifreyi şimdi paylaşın; bu pencere kapanınca bir daha gösterilmez.";
+            }
+            else
+            {
+                Show((await Api.UpdateCatalogAccountAsync(_account!.Id, _form.ToPatch())).Account);
+                _notice = "Katalog erişimi kaydedildi.";
+            }
+            saved = true;
+        });
+        if (saved) await OnChanged.InvokeAsync();
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (_account is not { } account) return;
+        _notice = null;
+        await RunAsync(async () =>
+        {
+            _issuedPassword = (await Api.SetCatalogAccountPasswordAsync(account.Id, null)).IssuedPassword;
+            _includePassword = false;
+            _notice = "Yeni şifre üretildi ve müşterinin açık oturumları kapandı. Şifreyi şimdi paylaşın; bu pencere kapanınca bir daha gösterilmez.";
+        });
+    }
+
+    private async Task RevokeSessionsAsync()
+    {
+        if (_account is not { } account) return;
+        _notice = null;
+        await RunAsync(async () =>
+        {
+            await Api.RevokeCatalogAccountSessionsAsync(account.Id);
+            _notice = "Müşterinin açık oturumları kapatıldı; kataloğa yeniden giriş yapması gerekir.";
+        });
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_account is not { } account || CustomerCode is not { } code) return;
+        _confirmDelete = false;
+        _notice = null;
+        var deleted = false;
+        await RunAsync(async () =>
+        {
+            await Api.DeleteCatalogAccountAsync(account.Id);
+            _issuedPassword = null;
+            deleted = true;
+            _lookup = await Api.CatalogAccountByCustomerAsync(code);
+            Show(_lookup.Account);
+            _notice = "Katalog erişimi silindi; müşteri artık kataloğa giremez.";
+        });
+        if (deleted) await OnChanged.InvokeAsync();
+    }
+
+    private string ShareText(string link, CatalogAccountDto account) =>
+        CatalogText.ShareMessage(CustomerTitle, Session.TenantName, link, account.Username, _includePassword ? _issuedPassword : null);
+
+    private async Task CopyAsync(string text)
+    {
+        bool copied;
+        try
+        {
+            copied = await JS.InvokeAsync<bool>("portalClipboard.copy", text);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException)
+        {
+            copied = false;
+        }
+        _copyNote = copied ? "Mesaj kopyalandı." : "Kopyalanamadı; mesajı seçip kopyalayın.";
+    }
+
+    private Task CloseAsync()
+    {
+        // The issued password lives only while the sheet is open; the server keeps just its hash.
+        _issuedPassword = null;
+        _includePassword = false;
+        return OnClose.InvokeAsync();
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_ended) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+        }
+        catch (SessionEndedException ended)
+        {
+            // Once: a later call would end it again with the signed-out session's own code.
+            _ended = true;
+            await OnSessionEnded.InvokeAsync(ended.Code);
+        }
+        catch (PortalApiException failed)
+        {
+            // The shared wording is the staff password's (6 characters); a catalog password needs 8.
+            _error = failed.Code == "INVALID_PASSWORD" ? CatalogAccessForm.PasswordRule : failed.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+        }
+        catch (TaskCanceledException)
+        {
+            _error = "Sunucu zamanında yanıt vermedi. Tekrar deneyin.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string When(long ms) => Fmt.Time(DateTimeOffset.FromUnixTimeMilliseconds(ms));
+
+    private static string Vat(CatalogPriceListDto list) => list.IncludesVat ? "KDV dahil" : "KDV hariç";
+
+    private static string DefaultListText(CatalogSettingsDto settings) =>
+        settings.PriceLists.FirstOrDefault(l => l.No == settings.EffectiveDefaultPriceListNo) is { } list ? $"{list.Name}, {Vat(list)}" : "liste yok";
+}

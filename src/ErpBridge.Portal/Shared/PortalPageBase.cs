@@ -64,7 +64,7 @@ public abstract class PortalPageBase : ComponentBase
         {
             var me = await Api.MeAsync();
             var user = me.User;
-            Session.Refresh(user.FullName, user.EffectiveRoles(), user.CanApprove, me.Permissions);
+            Session.Refresh(user.FullName, user.EffectiveRoles(), user.CanApprove, me.Permissions, me.Modules);
             if (Session.Snapshot() is { } current) await Persistence.SaveAsync(current);
             return true;
         }
@@ -85,7 +85,8 @@ public abstract class PortalPageBase : ComponentBase
         }
     }
 
-    private async Task EndSessionAsync(string reason)
+    /// <summary>Forgets the session and goes to the login page with the reason; also for a sheet that saw the session end.</summary>
+    protected async Task EndSessionAsync(string reason)
     {
         Session.SignOut();
         await Persistence.ClearAsync();

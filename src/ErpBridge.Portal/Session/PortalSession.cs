@@ -36,6 +36,11 @@ public sealed class PortalSession
     /// <summary>The user's yes/no permissions (GOAL_YETKILER); null when the server or the saved session has none.</summary>
     public IReadOnlyDictionary<string, bool>? Permissions { get; private set; }
 
+    /// <summary>The company's add-on modules (<see cref="PortalModules"/>); empty for a session saved before them.</summary>
+    public IReadOnlyList<string> Modules { get; private set; } = [];
+
+    public bool HasModule(string module) => Modules.Contains(module, StringComparer.Ordinal);
+
     /// <summary>Whether the browser keeps the session after the tab closes ("Beni hatırla").</summary>
     public bool RememberMe { get; private set; }
 
@@ -59,7 +64,9 @@ public sealed class PortalSession
     /// server will accept — the server stays the real gate.</summary>
     public bool CanEditNativeData => DataSource == "native" && Can("action.native_books.edit", IsAdmin);
 
-    public bool Allows(PortalArea area) => PortalRoles.Allows(Roles, Permissions, area);
+    /// <summary>What the roles and permissions open, and for an add-on area only while the company has the module.</summary>
+    public bool Allows(PortalArea area) =>
+        (PortalModules.For(area) is not { } module || HasModule(module)) && PortalRoles.Allows(Roles, Permissions, area);
 
     /// <summary>A permission, or <paramref name="withoutPermissions"/> for a session that has none.</summary>
     public bool Can(string key, bool withoutPermissions) =>
@@ -85,19 +92,25 @@ public sealed class PortalSession
         Roles = state.EffectiveRoles();
         CanApprove = state.CanApprove;
         Permissions = state.Permissions;
+        Modules = state.Modules ?? [];
         RememberMe = state.RememberMe;
         RolesReadAtUtc = fresh ? _time.GetUtcNow() : DateTimeOffset.MinValue;
         Changed?.Invoke();
     }
 
-    /// <summary>Takes the user's current name, roles, approval right and permissions from the server.</summary>
-    public void Refresh(string fullName, IEnumerable<string> roles, bool canApprove, IReadOnlyDictionary<string, bool>? permissions = null)
+    /// <summary>
+    /// Takes the user's current name, roles, approval right, permissions and the company's modules from the server.
+    /// <paramref name="modules"/> null (a server without them) keeps the ones held.
+    /// </summary>
+    public void Refresh(string fullName, IEnumerable<string> roles, bool canApprove, IReadOnlyDictionary<string, bool>? permissions = null,
+        IReadOnlyCollection<string>? modules = null)
     {
         var current = roles.ToHashSet(StringComparer.Ordinal);
         FullName = fullName;
         Roles = PortalRoles.All.Where(current.Contains).ToArray();
         CanApprove = canApprove;
         Permissions = permissions;
+        if (modules is not null) Modules = [.. modules];
         RolesReadAtUtc = _time.GetUtcNow();
         Changed?.Invoke();
     }
@@ -110,6 +123,7 @@ public sealed class PortalSession
         Roles = [];
         CanApprove = false;
         Permissions = null;
+        Modules = [];
         RememberMe = false;
         RolesReadAtUtc = default;
         Changed?.Invoke();
@@ -117,7 +131,7 @@ public sealed class PortalSession
 
     public PortalSessionState? Snapshot() => IsSignedIn
         ? new PortalSessionState(Token!, ExpiresAtUtc, TenantName, TenantCode, DataSource, Username, FullName, Legacy(Roles), CanApprove, [.. Roles], RememberMe,
-            Permissions is null ? null : new Dictionary<string, bool>(Permissions))
+            Permissions is null ? null : new Dictionary<string, bool>(Permissions), [.. Modules])
         : null;
 
     private static string Legacy(IReadOnlyList<string> roles) =>
@@ -127,6 +141,7 @@ public sealed class PortalSession
 /// <summary>What a browser keeps of its session between page reloads.</summary>
 /// <param name="Role">The single role of the session format before multi-role accounts.</param>
 /// <param name="Roles">Every role; <c>null</c> in a session saved before multi-role accounts.</param>
+/// <param name="Modules">The company's add-on modules; <c>null</c> in a session saved before them.</param>
 public sealed record PortalSessionState(
     string Token,
     DateTimeOffset ExpiresAtUtc,
@@ -139,7 +154,8 @@ public sealed record PortalSessionState(
     bool CanApprove,
     string[]? Roles = null,
     bool RememberMe = false,
-    Dictionary<string, bool>? Permissions = null)
+    Dictionary<string, bool>? Permissions = null,
+    string[]? Modules = null)
 {
     /// <summary>The roles, falling back to the single role a session saved by an older portal holds.</summary>
     public IReadOnlyList<string> EffectiveRoles()

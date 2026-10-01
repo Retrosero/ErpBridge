@@ -41,6 +41,9 @@ builder.Services.AddHttpClient<DisplayApiClient>(client =>
 builder.Services.AddScoped<IDisplaySessionStore, ProtectedDisplaySessionStore>();
 builder.Services.AddSingleton(new KioskTiming());
 
+// Customer catalog images are sized in the browser before they are sent (GOAL_MUSTERI_KATALOGU P3).
+builder.Services.AddSingleton<IImageShrinker, BrowserImageShrinker>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())

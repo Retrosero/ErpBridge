@@ -22,6 +22,7 @@ public sealed class PortalPagesTests : PortalPageTestContext
             tenantName = "Ege Dağıtım",
             tenantCode = "EGE123",
             dataSource = "native",
+            modules = new[] { "customer_catalog" },
         },
     };
 
@@ -45,7 +46,9 @@ public sealed class PortalPagesTests : PortalPageTestContext
 
         cut.WaitForAssertion(() => session.IsSignedIn.Should().BeTrue());
         session.TenantName.Should().Be("Ege Dağıtım");
+        session.HasModule("customer_catalog").Should().BeTrue();
         storage.Stored!.Token.Should().Be("tok-new");
+        storage.Stored.Modules.Should().Equal("customer_catalog");
         nav.Uri.Should().Be(nav.BaseUri);
     }
 

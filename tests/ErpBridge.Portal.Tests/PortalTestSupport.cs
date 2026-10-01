@@ -28,13 +28,13 @@ public sealed class FakeCentralApi : HttpMessageHandler
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
     private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _answers = new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly List<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body)> _requests = [];
+    private readonly List<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body, string? ContentType)> _requests = [];
 
     /// <summary>
     /// A snapshot of what was sent so far. Pages with live loops (desk, TV board) call the API from background
     /// tasks while the test reads, so the log is copied under a lock rather than exposed as a live list.
     /// </summary>
-    public IReadOnlyList<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body)> Requests
+    public IReadOnlyList<(HttpMethod Method, string PathAndQuery, string? Authorization, string? Body, string? ContentType)> Requests
     {
         get { lock (_requests) return [.. _requests]; }
     }
@@ -74,7 +74,7 @@ public sealed class FakeCentralApi : HttpMessageHandler
     {
         var path = request.RequestUri!.PathAndQuery;
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-        lock (_requests) _requests.Add((request.Method, path, request.Headers.Authorization?.ToString(), body));
+        lock (_requests) _requests.Add((request.Method, path, request.Headers.Authorization?.ToString(), body, request.Content?.Headers.ContentType?.MediaType));
         if (_holds.Remove(path, out var gate)) await gate.Task.WaitAsync(cancellationToken);
         (HttpStatusCode Status, string Body)? found;
         lock (_answers) found = _answers.TryGetValue(path, out var answer) ? answer : null;
@@ -98,6 +98,16 @@ public sealed class MemorySessionPersistence : ISessionPersistence
     public Task SaveAsync(PortalSessionState state) { Stored = state; return Task.CompletedTask; }
     public Task<PortalSessionState?> LoadAsync() => Task.FromResult(Stored);
     public Task ClearAsync() { Stored = null; return Task.CompletedTask; }
+}
+
+/// <summary>
+/// Stands in for the browser's resizing, which bUnit cannot run: each variant's bytes name the file and the size asked
+/// for ("foto.jpg@1280"), so a test can tell the large from the small one on the wire.
+/// </summary>
+public sealed class FakeImageShrinker : IImageShrinker
+{
+    public Task<ShrunkImage?> ShrinkAsync(Microsoft.AspNetCore.Components.Forms.IBrowserFile file, int maxSide, long maxBytes, CancellationToken ct = default) =>
+        Task.FromResult<ShrunkImage?>(new ShrunkImage(Encoding.ASCII.GetBytes($"{file.Name}@{maxSide}"), "image/jpeg"));
 }
 
 /// <summary>A TV's stored pairing, in memory.</summary>
@@ -140,6 +150,7 @@ public static class PortalTestSetup
         context.Services.AddSingleton(new PortalApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }, session));
         context.Services.AddSingleton(new DisplayApiClient(new HttpClient(api) { BaseAddress = new Uri("https://central.test/") }));
         context.Services.AddSingleton<IDisplaySessionStore>(new MemoryDisplaySessionStore());
+        context.Services.AddSingleton<IImageShrinker>(new FakeImageShrinker());
         // The board's rhythm, shortened so a test sees pairing, polling and page turns within a second.
         context.Services.AddSingleton(kioskTiming ?? new KioskTiming
         {

@@ -245,9 +245,9 @@ max-age=31536000, immutable`, `ETag`, `If-None-Match` → 304 (yalnız meta okun
 ### Dağıtım ve insan kapıları
 | # | Kim | İş |
 |---|---|---|
-| D1 | Kullanıcı | Cloudflare Tunnel `sipariscepte` (kullanıcı açtı); Coolify centralapi Domains'e `https://sipariscepte.appsgo.cloud` |
+| D1 | Kullanıcı + Claude | DNS `sipariscepte.appsgo.cloud` → sunucu IP'si (kullanıcı açtı, ✅); Coolify centralapi Domains'e `https://sipariscepte.appsgo.cloud` (Claude ekledi, ✅) |
 | D2 | Claude (K8) | CentralApi dağıtımı; `https://lisans.appsgo.cloud/health/schema` → `current`, `pending:0` |
-| D3 | Kullanıcı + Claude | Coolify ortam: `CustomerCatalog__PublicHost=sipariscepte.appsgo.cloud`, `CustomerCatalog__PublicBaseUrl=https://sipariscepte.appsgo.cloud`, `ForwardedHeaders__KnownNetworks__0=<Traefik ağı CIDR>`; `ports: 5080` dışa açık mı ve Cloudflare proxy durumu kontrol. Loglarda gerçek istemci IP'si görülene kadar modül hiçbir firmaya açılmaz |
+| D3 | Kullanıcı + Claude | Coolify ortam: `CustomerCatalog__PublicHost=sipariscepte.appsgo.cloud`, `CustomerCatalog__PublicBaseUrl=https://sipariscepte.appsgo.cloud`, `ForwardedHeaders__KnownNetworks__0=10.0.1.0/24` (coolify ağı; Claude ekledi, ✅); `ports: 5080` dışa açık mı ve Cloudflare proxy durumu kontrol. Loglarda gerçek istemci IP'si görülene kadar modül hiçbir firmaya açılmaz |
 | D4 | Claude (K8) | Portal ve Admin ayrı dağıtım |
 | D5 | Kullanıcı | Test firmasında Admin'den `customer_catalog`; uçtan uca duman testi |
 | D6 | Claude (K8) | Play internal |
