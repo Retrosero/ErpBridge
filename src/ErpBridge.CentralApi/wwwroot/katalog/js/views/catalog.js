@@ -9,6 +9,7 @@ import { routePath } from '../route-parse.js';
 import {
     emptyState, errorState, productCard, skeletonCards,
 } from '../ui/components.js';
+import { bannerStrip } from '../ui/banner-strip.js';
 
 const PAGE_SIZE = 48;
 const MIN_QUERY = 2;
@@ -34,11 +35,13 @@ export function catalogFilters(query = {}) {
 }
 
 let categoryCache = null;
+let bannerCache = null;
 let listCache = null;
 
 /** Sign-in and sign-out drop everything another account may have loaded. */
 export function resetCatalogCache() {
     categoryCache = null;
+    bannerCache = null;
     listCache = null;
 }
 
@@ -56,6 +59,7 @@ export function catalogView(ctx, opts = {}) {
     let filters = catalogFilters(opts.underlay && cached ? cached.filters : ctx.route.query);
     let brands = cached ? cached.brands || [] : [];
     let categories = categoryCache && categoryCache.owner === owner ? categoryCache.items : null;
+    const banners = bannerCache && bannerCache.owner === owner && Date.now() - bannerCache.at < CACHE_MS ? bannerCache.items : null;
 
     let items = [];
     let total = 0;
@@ -111,6 +115,8 @@ export function catalogView(ctx, opts = {}) {
         h('span', { class: 'searchbar__icon', 'aria-hidden': 'true' }, icon('search', { size: 20 })),
         input, clearButton);
 
+    // Banners (S12) under the intro; the strip is drawn only when there is at least one.
+    const bannerHost = h('div', { class: 'catalog-banners', hidden: true });
     const panel = h('nav', { class: 'catpanel', 'aria-label': 'Kategoriler' });
     const categoryPanel = h('details', { class: 'catalog-section', open: true },
         h('summary', null, h('span', null, 'Kategoriler'), icon('chevronDown', { size: 18 })), panel);
@@ -175,6 +181,7 @@ export function catalogView(ctx, opts = {}) {
             h('div', null, h('p', { class: 'catalog-intro__eyebrow' }, 'SİZE ÖZEL KATALOG'), h('h1', null, 'İhtiyacınız olan ürünler, bir arada.'),
                 h('p', { class: 'muted' }, 'Ürünleri keşfedin, size özel fiyatlarla siparişinizi hazırlayın.')),
             h('a', { class: 'app-btn app-btn--secondary btn-touch', href: routePath(ctx.code, 'orders') }, icon('orders', { size: 20 }), 'Siparişlerim')),
+        bannerHost,
         sidebar,
         h('section', { class: 'catalog__main', 'aria-label': 'Ürünler' },
             h('div', { class: 'catalog-toolbar' }, countLine, field('Sıralama', sortSelect)), activeFilters, status, grid, sentinel, more));
@@ -436,7 +443,30 @@ export function catalogView(ctx, opts = {}) {
         drawCategories();
     }
 
+    function drawBanners(items) {
+        const strip = bannerStrip(ctx.code, items, selectCategory);
+        bannerHost.hidden = !strip;
+        render(bannerHost, strip);
+    }
+
+    async function loadBanners() {
+        if (banners) {
+            drawBanners(banners);
+            return;
+        }
+        try {
+            const res = await ctx.api.get('banners');
+            if (destroyed) return;
+            const items = Array.isArray(res.items) ? res.items : [];
+            bannerCache = { owner, items, at: Date.now() };
+            drawBanners(items);
+        } catch (err) {
+            // Banners are extra: the catalogue works without them, so a failure leaves the strip out.
+        }
+    }
+
     // Start: from the cache when the same list was open a moment ago, otherwise from page 1.
+    loadBanners();
     drawCategories();
     loadCategories();
     if (cached && cached.q === q && cached.category === category && JSON.stringify(cached.filters) === JSON.stringify(filters)) {

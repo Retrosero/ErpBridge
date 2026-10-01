@@ -299,3 +299,27 @@ test('advanced filters and sorting cover the complete catalogue before paging', 
     const detail = await (await fetch(base + '/api/v1/catalog/DEMO1234/orders/detail?id=' + orders.items[0].id, { headers: { Cookie: cookie } })).json();
     assert.ok(detail.lines.every(l => 'thumb' in l));
 });
+
+test('banners: live ones in order with picture addresses; a link outside the list of the account is dropped', async () => {
+    const read = async (username, password) => {
+        const { cookie } = await login(username, password);
+        const res = await fetch(base + '/api/v1/catalog/DEMO1234/banners', { headers: { Cookie: cookie } });
+        assert.equal(res.headers.get('cache-control'), 'private, no-store');
+        return (await res.json()).items;
+    };
+    const demo = await read('demo', 'demo1234');
+    assert.ok(demo.length >= 3);
+    assert.ok(demo.every(b => b.title !== 'Bitmiş kampanya'), 'an ended banner is not listed');
+    assert.ok(demo.some(b => b.link && b.link.type === 'category' && /^[0-9a-f]{12}$/.test(b.link.categoryId)));
+    assert.ok(demo.some(b => b.link && b.link.type === 'url' && b.link.value.startsWith('https://')));
+    const pictured = demo.find(b => b.image);
+    const picture = await fetch(base + pictured.image.full);
+    assert.equal(picture.status, 200);
+    assert.match(picture.headers.get('content-type'), /image\/svg\+xml/);
+    assert.equal((await fetch(base + '/api/v1/catalog/DEMO1234/banners')).status, 401);
+
+    const tek = await read('tek', 'tek12345');
+    const onlyWholesale = tek.find(b => b.title.endsWith('yalnız toptan listede'));
+    assert.equal(onlyWholesale.link, null, 'the product is not in list 2');
+    assert.ok(demo.find(b => b.id === onlyWholesale.id).link, 'list 1 sees it');
+});

@@ -110,6 +110,35 @@ const drifted = new Set();
 // On old invoices only: never in PRODUCTS, so nothing can add it to the cart.
 const DISCONTINUED = { code: '35999', name: 'Eski Ambalaj Çay 500 g', price: 41.9 };
 
+// Banners (S12): live ones in order; a link to a product the account's list does not price is dropped (as the server
+// drops links to what the customer does not see). The ended one never shows.
+const NO_LIST2 = PRODUCTS.find(p => p.prices[2] === null);
+const BANNERS = [
+    { id: randomUUID(), title: 'Yaz fırsatları', text: 'Seçili içeceklerde %15’e varan indirim', image: hex('banner:yaz', 32),
+        link: { type: 'category', value: CATEGORIES[0].name, categoryId: CATEGORIES[0].id } },
+    { id: randomUUID(), title: 'Yeni: ' + DRIFT.name, text: 'Taze çekilmiş, 100 g paketlerde', image: hex('banner:kahve', 32),
+        link: { type: 'product', value: DRIFT.code, productKey: DRIFT.key } },
+    { id: randomUUID(), title: NO_LIST2.name + ' yalnız toptan listede', text: '', image: null,
+        link: { type: 'product', value: NO_LIST2.code, productKey: NO_LIST2.key } },
+    { id: randomUUID(), title: 'Web sitemizi ziyaret edin', text: 'Kampanya koşulları ve iletişim bilgileri', image: null,
+        link: { type: 'url', value: 'https://example.com/kampanya' } },
+    { id: randomUUID(), title: 'Bitmiş kampanya', text: '', image: null, link: null, endsAtMs: Date.now() - DAY_MS },
+];
+const BANNER_IMAGES = new Map(BANNERS.filter(b => b.image).map((b, n) => [b.image, { label: b.title, n }]));
+
+function bannersFor(account) {
+    const now = Date.now();
+    return BANNERS.filter(b => !(b.endsAtMs <= now)).map(b => {
+        const product = b.link && b.link.type === 'product' ? PRODUCTS.find(p => p.key === b.link.productKey) : null;
+        const hidden = product && listPrice(account, product) === null;
+        return {
+            id: b.id, title: b.title, text: b.text,
+            image: b.image ? { thumb: imageUrl(b.image, 's'), full: imageUrl(b.image, 'l') } : null,
+            link: hidden ? null : b.link,
+        };
+    });
+}
+
 const PRICE_LISTS = { 1: { no: 1, name: 'Toptan', includesVat: true }, 2: { no: 2, name: 'Perakende', includesVat: false } };
 
 const ACCOUNTS = [
@@ -398,7 +427,24 @@ async function serveShell(res, known) {
     });
 }
 
+function serveBanner(res, banner, variant) {
+    const width = variant === 'l' ? 1920 : 800;
+    const hue = 200 + banner.n * 70;
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + (width * 6 / 16) + '" viewBox="0 0 1600 600">'
+        + '<rect width="1600" height="600" fill="hsl(' + hue + ',55%,45%)"/>'
+        + '<circle cx="1250" cy="260" r="240" fill="hsl(' + hue + ',60%,62%)"/>'
+        + '<circle cx="1450" cy="120" r="90" fill="hsl(' + hue + ',65%,75%)"/></svg>';
+    send(res, 200, svg, {
+        'Content-Type': 'image/svg+xml',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+        'Cross-Origin-Resource-Policy': 'same-site',
+    });
+}
+
 function serveImage(res, id, variant) {
+    const banner = BANNER_IMAGES.get(id);
+    if (banner) return serveBanner(res, banner, variant);
     const entry = IMAGES.get(id);
     if (!entry) return send(res, 404, 'Not found');
     const size = variant === 'l' ? 1280 : 400;
@@ -478,6 +524,8 @@ async function handleApi(req, res, code, rest, query, autoLogin) {
         auth.session.tokenVersion = account.tokenVersion; // this browser stays signed in, every other one is out
         return send(res, 204, '');
     }
+
+    if (rest === 'banners' && method === 'GET') return json(res, 200, { items: bannersFor(account) });
 
     if (rest === 'categories' && method === 'GET') {
         const counts = new Map();
