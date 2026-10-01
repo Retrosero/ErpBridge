@@ -2,6 +2,7 @@
 @inherits PortalPageBase
 @using System.Globalization
 @inject IJSRuntime JS
+@inject TimeProvider Clock
 
 <PageTitle>Katalog yönetimi — Yönetim Paneli</PageTitle>
 
@@ -26,6 +27,11 @@ else
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || LayoutChanges == 0)" OnClick="SaveLayoutAsync" id="catalog-save">
                     Kaydet@(LayoutChanges > 0 ? $" ({LayoutChanges})" : "")
                 </MudButton>
+            }
+            @if (_tab == "bannerlar" && _banners is not null)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" Disabled="@(Busy || _banners.Length >= MaxBanners)"
+                           OnClick="() => _bannerEdit = new CatalogBannerDto { IsActive = true }" id="catalog-banner-new">Yeni banner</MudButton>
             }
         </Actions>
     </PageHeader>
@@ -350,6 +356,73 @@ else
         }
     }
 
+    @if (_tab == "bannerlar" && _banners is { } banners)
+    {
+        <MudText Typo="Typo.body2" Class="text-muted page-footnote">
+            Bannerlar müşteri kataloğunun üstünde, bu sırayla kayan bir şeritte tüm müşterilere görünür. Aktif ve tarih aralığındakiler gösterilir; en çok @MaxBanners banner.
+        </MudText>
+        @if (banners.Length == 0)
+        {
+            <EmptyState Id="banners-empty" Icon="@Icons.Material.Rounded.ViewCarousel" Title="Henüz banner yok."
+                        Hint="'Yeni banner' ile kampanya görseli, başlık ve bağlantı ekleyin." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="table-scroll">
+                    <MudSimpleTable Dense="true" Elevation="0" Class="data-table data-table--cards" id="catalog-banners">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>Başlık</th>
+                                <th>Bağlantı</th>
+                                <th>Tarih aralığı</th>
+                                <th>Durum</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var (banner, index) in banners.Select((b, i) => (b, i)))
+                            {
+                                var state = BannerState(banner);
+                                <tr data-banner="@banner.Id">
+                                    <td data-label="Görsel">
+                                        @if (BannerThumb(banner) is { } src)
+                                        {
+                                            <img class="banner-thumb" src="@src" alt="" loading="lazy" />
+                                        }
+                                        else
+                                        {
+                                            <span class="banner-thumb banner-thumb--empty"><MudIcon Icon="@Icons.Material.Rounded.Title" Size="Size.Small" /></span>
+                                        }
+                                    </td>
+                                    <td data-label="Başlık">
+                                        <div class="cell-title">@(banner.Title.Length > 0 ? banner.Title : "(başlıksız)")</div>
+                                        @if (banner.Text.Length > 0)
+                                        {
+                                            <div class="cell-sub">@banner.Text</div>
+                                        }
+                                    </td>
+                                    <td data-label="Bağlantı" class="banner-link">@LinkText(banner)</td>
+                                    <td data-label="Tarih aralığı" class="banner-dates-cell">@DateRange(banner)</td>
+                                    <td data-label="Durum"><span class="badge @state.Css banner-state">@state.Label</span></td>
+                                    <td class="card-actions">
+                                        <span class="catalog-move">
+                                            <MudIconButton Icon="@Icons.Material.Rounded.ArrowUpward" Size="Size.Small" Disabled="@(Busy || index == 0)" aria-label="Yukarı" Class="banner-up" OnClick="() => MoveBannerAsync(index, index - 1)" />
+                                            <MudIconButton Icon="@Icons.Material.Rounded.ArrowDownward" Size="Size.Small" Disabled="@(Busy || index == banners.Length - 1)" aria-label="Aşağı" Class="banner-down" OnClick="() => MoveBannerAsync(index, index + 1)" />
+                                            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Class="banner-edit" OnClick="() => _bannerEdit = banner">Düzenle</MudButton>
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+            </MudPaper>
+        }
+    }
+
+    <CatalogBannerSheet Banner="_bannerEdit" PublicUrl="@_settings?.PublicUrl" OnClose="() => _bannerEdit = null" OnChanged="BannerChangedAsync" OnSessionEnded="EndSessionAsync" />
     <CatalogProductSheet Row="_sheetRow" PublicUrl="@_settings?.PublicUrl" OnClose="() => _sheetRow = null" OnChanged="() => Notice = null"
                          OnImagesChanged="ImagesChanged" OnSessionEnded="EndSessionAsync" />
     <CatalogAccessSheet CustomerCode="@_accessCode" CustomerName="@_accessName" LookUpPhone="true" OnClose="() => _accessCode = null"
@@ -360,7 +433,9 @@ else
     protected override PortalArea Requires => PortalArea.CustomerCatalog;
 
     private static readonly (string Key, string Label)[] Tabs =
-        [("genel", "Genel"), ("kategoriler", "Kategoriler ve ürünler"), ("erisimler", "Müşteri erişimleri")];
+        [("genel", "Genel"), ("kategoriler", "Kategoriler ve ürünler"), ("bannerlar", "Bannerlar"), ("erisimler", "Müşteri erişimleri")];
+
+    private const int MaxBanners = 20;
 
     private string _tab = "genel";
     private string? Notice { get; set; }
@@ -396,6 +471,10 @@ else
     private string? _accessCode;
     private string? _accessName;
 
+    /// <summary>The banners tab (S12): the list in its order, and the banner whose sheet is open (an empty id = a new one).</summary>
+    private CatalogBannerDto[]? _banners;
+    private CatalogBannerDto? _bannerEdit;
+
     protected override void OnInitialized()
     {
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
@@ -410,6 +489,7 @@ else
         ResetSettingsForm();
         if (_tab == "kategoriler") await LoadLayoutAsync();
         if (_tab == "erisimler") await LoadAccountsAsync();
+        if (_tab == "bannerlar") await LoadBannersAsync();
         SyncAddress();
     }
 
@@ -522,6 +602,7 @@ else
         Notice = null;
         if (tab == "kategoriler" && _categories is null) await RunAsync(LoadLayoutAsync);
         if (tab == "erisimler" && _accounts is null) await RunAsync(LoadAccountsAsync);
+        if (tab == "bannerlar" && _banners is null) await RunAsync(LoadBannersAsync);
         SyncAddress();
     }
 
@@ -761,6 +842,62 @@ else
 
     private string AccountListName(int? no) =>
         no is null ? "Firma varsayılanı" : _settings?.PriceLists.FirstOrDefault(l => l.No == no) is { } list ? $"{list.No} — {list.Name}" : $"Liste {no}";
+
+    // ---- banners --------------------------------------------------------------------------------
+
+    private async Task LoadBannersAsync() => _banners = (await Api.CatalogBannersAsync()).Items;
+
+    private async Task BannerChangedAsync()
+    {
+        _bannerEdit = null;
+        await RunAsync(LoadBannersAsync);
+        Notice = Error is null ? "Bannerlar güncellendi." : null;
+    }
+
+    /// <summary>The new order goes to the server at once, like a product's pictures.</summary>
+    private Task MoveBannerAsync(int from, int to)
+    {
+        if (_banners is null) return Task.CompletedTask;
+        var order = _banners.ToList();
+        Move(order, from, to);
+        Notice = null;
+        return RunAsync(async () =>
+        {
+            await Api.OrderCatalogBannersAsync(order.Select(b => b.Id));
+            await LoadBannersAsync();
+        });
+    }
+
+    private string? BannerThumb(CatalogBannerDto banner) =>
+        banner.Image is { } image ? CatalogImageAddress.Resolve(image.ThumbUrl ?? image.Url, _settings?.PublicUrl, Api.BaseAddress) : null;
+
+    private static string LinkText(CatalogBannerDto banner) => banner.LinkType switch
+    {
+        "category" => "Kategori: " + (banner.LinkName ?? banner.LinkValue + " (katalogda yok)"),
+        "product" => "Ürün: " + (banner.LinkName ?? banner.LinkValue + " (katalogda yok)"),
+        "url" => banner.LinkValue,
+        _ => "—",
+    };
+
+    /// <summary>Istanbul days; the end is stored exclusive, so the last day shown is the one before it.</summary>
+    private static string DateRange(CatalogBannerDto banner) => (banner.StartsAtMs, banner.EndsAtMs) switch
+    {
+        (null, null) => "Süresiz",
+        ({ } start, null) => Day(start) + " →",
+        (null, { } end) => "→ " + Day(end - 1),
+        ({ } start, { } end) => Day(start) + " – " + Day(end - 1),
+    };
+
+    private static string Day(long unixMs) => Fmt.DayOfMs(unixMs).ToString("dd.MM.yyyy", Fmt.Turkish);
+
+    private (string Label, string Css) BannerState(CatalogBannerDto banner)
+    {
+        var now = Clock.GetUtcNow().ToUnixTimeMilliseconds();
+        if (!banner.IsActive) return ("Pasif", "badge--off");
+        if (banner.StartsAtMs > now) return ("Başlamadı", "badge--info");
+        if (banner.EndsAtMs <= now) return ("Süresi doldu", "badge--muted");
+        return ("Yayında", "badge--ok");
+    }
 
     // ---- formatting ---------------------------------------------------------------------------
 

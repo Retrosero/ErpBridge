@@ -14,7 +14,14 @@ public interface IImageShrinker
 {
     /// <summary>The picture with its long edge at most <paramref name="maxSide"/> pixels and at most <paramref name="maxBytes"/>;
     /// null when the browser cannot read it or no size fits.</summary>
-    Task<ShrunkImage?> ShrinkAsync(IBrowserFile file, int maxSide, long maxBytes, CancellationToken ct = default);
+    Task<ShrunkImage?> ShrinkAsync(IBrowserFile file, int maxSide, long maxBytes, CancellationToken ct = default) =>
+        ShrinkAsync(file, maxSide, maxSide, maxBytes, ct);
+
+    /// <summary>
+    /// The picture fitted inside <paramref name="maxWidth"/> × <paramref name="maxHeight"/> pixels, its proportions kept,
+    /// at most <paramref name="maxBytes"/>: a wide box for a banner (1920 × 720), a square one for a product picture.
+    /// </summary>
+    Task<ShrunkImage?> ShrinkAsync(IBrowserFile file, int maxWidth, int maxHeight, long maxBytes, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -24,17 +31,17 @@ public interface IImageShrinker
 /// </summary>
 public sealed class BrowserImageShrinker : IImageShrinker
 {
-    public async Task<ShrunkImage?> ShrinkAsync(IBrowserFile file, int maxSide, long maxBytes, CancellationToken ct = default)
+    public async Task<ShrunkImage?> ShrinkAsync(IBrowserFile file, int maxWidth, int maxHeight, long maxBytes, CancellationToken ct = default)
     {
         string[] formats = file.ContentType == "image/png" ? ["image/png", "image/jpeg"] : ["image/jpeg"];
         foreach (var format in formats)
         {
-            foreach (var side in new[] { maxSide, maxSide * 3 / 4, maxSide / 2 })
+            foreach (var (width, height) in new[] { (maxWidth, maxHeight), (maxWidth * 3 / 4, maxHeight * 3 / 4), (maxWidth / 2, maxHeight / 2) })
             {
                 IBrowserFile resized;
                 try
                 {
-                    resized = await file.RequestImageFileAsync(format, side, side);
+                    resized = await file.RequestImageFileAsync(format, width, height);
                 }
                 catch (JSException)
                 {

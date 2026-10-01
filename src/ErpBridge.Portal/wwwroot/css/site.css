@@ -772,6 +772,17 @@ h1:focus, h1:focus-visible { outline: none; }
 .catalog-image img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 4px; background: #f8fafc; }
 .catalog-image figcaption { display: flex; flex-wrap: wrap; gap: 4px; }
 .catalog-image-actions { display: flex; justify-content: space-between; align-items: center; }
+/* Catalog banners (S12): list thumbnail and the sheet's 16:6 preview, text over a scrim as the customer sees it. */
+.banner-thumb { width: 96px; aspect-ratio: 16 / 6; border-radius: 6px; object-fit: cover; background: #f2f4f7; display: inline-grid; place-items: center; color: #98a2b3; vertical-align: middle; }
+.banner-preview { position: relative; aspect-ratio: 16 / 6; border-radius: 10px; overflow: hidden; background: linear-gradient(120deg, var(--brand-700), var(--brand-600)); color: #fff; }
+.banner-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.banner-preview__text { position: absolute; inset: auto 0 0; display: grid; gap: 2px; padding: 18px 14px 10px; background: linear-gradient(to top, rgba(16, 24, 40, .82), rgba(16, 24, 40, .45) 65%, rgba(16, 24, 40, 0)); }
+.banner-preview--plain .banner-preview__text { inset: 0; align-content: center; background: none; }
+.banner-preview__text strong { font-size: 1.05rem; line-height: 1.3; }
+.banner-preview__text span { font-size: .85rem; line-height: 1.35; }
+.banner-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.banner-pick { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; max-height: 220px; overflow-y: auto; }
+.banner-pick .link-button { text-align: left; }
 @media (max-width: 720px) {
     /* Like .erp-actions: the product's move and settings buttons take the card's full width, 40px touch targets. */
     .data-table--cards tbody td.card-actions { grid-template-columns: 1fr; padding: 10px 12px !important; }

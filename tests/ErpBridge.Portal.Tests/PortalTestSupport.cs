@@ -102,12 +102,13 @@ public sealed class MemorySessionPersistence : ISessionPersistence
 
 /// <summary>
 /// Stands in for the browser's resizing, which bUnit cannot run: each variant's bytes name the file and the size asked
-/// for ("foto.jpg@1280"), so a test can tell the large from the small one on the wire.
+/// for ("foto.jpg@1280", a wide box "afis.jpg@1920x720"), so a test can tell the large from the small one on the wire.
 /// </summary>
 public sealed class FakeImageShrinker : IImageShrinker
 {
-    public Task<ShrunkImage?> ShrinkAsync(Microsoft.AspNetCore.Components.Forms.IBrowserFile file, int maxSide, long maxBytes, CancellationToken ct = default) =>
-        Task.FromResult<ShrunkImage?>(new ShrunkImage(Encoding.ASCII.GetBytes($"{file.Name}@{maxSide}"), "image/jpeg"));
+    public Task<ShrunkImage?> ShrinkAsync(Microsoft.AspNetCore.Components.Forms.IBrowserFile file, int maxWidth, int maxHeight, long maxBytes, CancellationToken ct = default) =>
+        Task.FromResult<ShrunkImage?>(new ShrunkImage(
+            Encoding.ASCII.GetBytes(maxWidth == maxHeight ? $"{file.Name}@{maxWidth}" : $"{file.Name}@{maxWidth}x{maxHeight}"), "image/jpeg"));
 }
 
 /// <summary>A TV's stored pairing, in memory.</summary>
