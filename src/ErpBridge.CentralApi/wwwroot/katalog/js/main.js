@@ -26,17 +26,18 @@ const FEATURE = {
     purchased: 'purchased',
 };
 
-const pending = () => import('./views/pending.js').then(m => m.pendingView);
+const account = name => () => import('./views/account.js').then(m => m[name]);
+const orders = name => () => import('./views/orders.js').then(m => m[name]);
 const LAZY = {
-    account: () => import('./views/account.js').then(m => m.accountView),
-    cart: pending,
-    orders: pending,
-    order: pending,
-    statement: pending,
-    invoices: pending,
-    invoice: pending,
-    purchased: pending,
-    password: pending,
+    cart: () => import('./views/cart-view.js').then(m => m.cartView),
+    orders: orders('ordersView'),
+    order: orders('orderView'),
+    account: account('accountView'),
+    statement: account('statementView'),
+    invoices: account('invoicesView'),
+    invoice: account('invoiceView'),
+    purchased: account('purchasedView'),
+    password: account('passwordView'),
 };
 
 const RELOAD_KEY = 'katalog:v1:reloaded-at';

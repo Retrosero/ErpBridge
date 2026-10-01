@@ -2,6 +2,7 @@
 // held to the contract here: shell and assets, headers, cookie session, CSRF, pricing and paging.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { createMockServer } from './mock-server.mjs';
 
 let server;
@@ -181,4 +182,99 @@ test('logout ends the session', async () => {
     const out = await fetch(base + '/api/v1/catalog/DEMO1234/logout', { method: 'POST', headers: { cookie, 'X-Katalog': '1' } });
     assert.equal(out.status, 204);
     assert.equal((await fetch(base + '/api/v1/catalog/DEMO1234/me', { headers: { cookie } })).status, 401);
+});
+
+function client(cookie) {
+    const url = path => base + '/api/v1/catalog/DEMO1234/' + path;
+    return {
+        get: async path => (await fetch(url(path), { headers: { cookie } })).json(),
+        raw: path => fetch(url(path), { headers: { cookie } }),
+        post: (path, body) => fetch(url(path), {
+            method: 'POST',
+            headers: { cookie, 'Content-Type': 'application/json', 'X-Katalog': '1' },
+            body: JSON.stringify(body),
+        }),
+    };
+}
+
+test('price drift scenario: 409 PRICE_CHANGED with the new quote, the same requestId then goes through', async () => {
+    const demo = client((await login('demo', 'demo1234')).cookie);
+    const coffee = (await demo.get('products?q=' + encodeURIComponent('türk kahvesi'))).items[0];
+    assert.equal(coffee.name, 'Türk Kahvesi 100 g');
+    const lines = [{ key: coffee.key, quantity: 2 }];
+    const before = await (await demo.post('cart/quote', { lines })).json();
+
+    const requestId = randomUUID();
+    const first = await demo.post('orders', { requestId, lines, note: null, expectedTotal: before.totals.total });
+    assert.equal(first.status, 409);
+    const conflict = await first.json();
+    assert.equal(conflict.errorCode, 'PRICE_CHANGED');
+    assert.ok(conflict.quote.totals.total > before.totals.total, 'the quote in the 409 carries the new price');
+    assert.equal(conflict.quote.lines[0].issue, null);
+
+    const second = await demo.post('orders', { requestId, lines, note: 'Kapıya bırakın', expectedTotal: conflict.quote.totals.total });
+    assert.equal(second.status, 201);
+    const order = (await second.json()).order;
+    assert.equal(order.id, requestId);
+    assert.match(order.no, /^KT-\d{6}$/);
+    assert.equal(order.status, 'NEW');
+
+    const list = await demo.get('orders');
+    assert.equal(list.items[0].id, requestId, 'newest first');
+    assert.deepEqual(Object.keys(list.items[0]).sort(),
+        ['id', 'lineCount', 'no', 'rejectReason', 'status', 'submittedAtMs', 'total'], 'COrder fields of §5.2');
+    assert.ok(list.items.some(o => o.status === 'REJECTED' && o.rejectReason));
+
+    const detail = await demo.get('orders/detail?id=' + requestId);
+    assert.equal(detail.note, 'Kapıya bırakın');
+    assert.deepEqual(Object.keys(detail.lines[0]).sort(), ['code', 'key', 'name', 'net', 'quantity', 'total']);
+    assert.equal(detail.lines[0].quantity, 2);
+
+    const tek = client((await login('tek', 'tek12345')).cookie);
+    assert.equal((await tek.raw('orders/detail?id=' + requestId)).status, 404, 'another account never sees it');
+});
+
+test('invoices, invoice detail, purchased and statement: discontinued products cannot be added', async () => {
+    const demo = client((await login('demo', 'demo1234')).cookie);
+    const invoices = await demo.get('invoices?page=1');
+    assert.equal(invoices.total, 14);
+    assert.deepEqual(Object.keys(invoices.items[0]).sort(), ['date', 'documentNo', 'key', 'kind', 'total']);
+
+    const detail = await demo.get('invoices/detail?key=' + invoices.items[1].key);
+    assert.ok(detail.lines.some(l => l.code === '35999' && l.productKey === null), 'discontinued line');
+    assert.ok(detail.lines.some(l => typeof l.productKey === 'string'), 'catalogue line');
+    assert.equal((await demo.raw('invoices/detail?key=nope')).status, 404);
+
+    const purchased = await demo.get('purchased');
+    assert.ok(purchased.items.some(i => i.product === null));
+    assert.ok(purchased.items.some(i => i.product && i.product.price && i.product.key));
+    const old = await demo.get('purchased?q=' + encodeURIComponent('eski ambalaj'));
+    assert.equal(old.items.length, 1);
+    assert.equal(old.items[0].product, null);
+
+    const statement = await demo.get('statement?from=2000-01-01&to=2100-12-31');
+    assert.ok(statement.rows.length > 0);
+    for (const key of ['date', 'kind', 'documentNo', 'debit', 'credit', 'balance']) assert.ok(key in statement.rows[0], key);
+    assert.equal((await demo.get('statement?from=2000-01-01&to=2000-01-31')).rows.length, 0, 'an empty range');
+});
+
+test('password: wrong current, weak (in bytes), success signs other browsers out', async () => {
+    const mine = await login('demo', 'demo1234');
+    const other = await login('demo', 'demo1234');
+    const demo = client(mine.cookie);
+
+    const wrong = await demo.post('password', { current: 'yanlis', next: 'yeni-sifre-1' });
+    assert.equal(wrong.status, 400);
+    assert.equal((await wrong.json()).errorCode, 'INVALID_CREDENTIALS');
+    const weak = await demo.post('password', { current: 'demo1234', next: 'kisa' });
+    assert.equal((await weak.json()).errorCode, 'INVALID_PASSWORD');
+    const long = await demo.post('password', { current: 'demo1234', next: 'ş'.repeat(37) });
+    assert.equal(long.status, 400, '37 characters but 74 bytes');
+
+    assert.equal((await demo.post('password', { current: 'demo1234', next: 'yeni-sifre-1' })).status, 204);
+    assert.equal((await demo.raw('me')).status, 200, 'this browser stays signed in');
+    assert.equal((await client(other.cookie).raw('me')).status, 401, 'every other one is out');
+
+    // Put it back for anything that signs in as demo later.
+    assert.equal((await demo.post('password', { current: 'yeni-sifre-1', next: 'demo1234' })).status, 204);
 });

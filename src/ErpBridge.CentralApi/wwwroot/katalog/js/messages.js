@@ -24,10 +24,10 @@ const TEXT = {
 };
 
 const ISSUES = {
-    NOT_AVAILABLE: 'Bu ürün artık katalogda yok.',
-    OUT_OF_STOCK: 'Stokta yok.',
-    CARTON_MULTIPLE: 'Yalnız koli katında satılır.',
-    INVALID_QUANTITY: 'Miktar geçersiz.',
+    NOT_AVAILABLE: 'Artık sunulmuyor',
+    OUT_OF_STOCK: 'Stokta yok',
+    CARTON_MULTIPLE: 'Koli katı olmalı',
+    INVALID_QUANTITY: 'Miktar geçersiz',
 };
 
 // Codes that mean "this account cannot use the catalogue right now": shown as a full page, not a band.
@@ -64,7 +64,7 @@ export function errorMessage(err, context) {
 /** cart/quote line issue -> short text, or '' for a line without an issue. */
 export function issueMessage(issue) {
     if (!issue) return '';
-    return Object.prototype.hasOwnProperty.call(ISSUES, issue) ? ISSUES[issue] : 'Bu ürün şu an sipariş edilemiyor.';
+    return Object.prototype.hasOwnProperty.call(ISSUES, issue) ? ISSUES[issue] : 'Şu an sipariş edilemiyor';
 }
 
 /** True when the error closes the catalogue for this account (inactive account, module off, subscription). */

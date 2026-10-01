@@ -26,7 +26,7 @@ export function priceBlock(price, opts = {}) {
                 percent(price.discountPercent), h('span', { class: 'sr-only' }, ' iskonto'))) : null,
         h('div', { class: 'price__row' },
             discounted ? h('span', { class: 'sr-only' }, 'İskontolu fiyat:') : null,
-            h('span', { class: [opts.large ? 't-display tnum' : 't-amount-lg', 'price__net'] }, money(price.net))),
+            h('span', { class: [opts.large ? 't-display tnum' : opts.small ? 't-amount' : 't-amount-lg', 'price__net'] }, money(price.net))),
         h('span', { class: 't-caption muted' }, vatLabel(price.includesVat)));
 }
 
@@ -96,7 +96,7 @@ export function changeCart(ctx, product, requested) {
 }
 
 /** [−] [qty] [+] bound to one product; set() updates it in place so focus is never lost. */
-function createStepper(product, name, onRequest) {
+export function createStepper(product, name, onRequest) {
     let qty = 0;
     const input = h('input', {
         class: 'stepper__qty tnum',
@@ -216,6 +216,26 @@ export function productCard(ctx, product, eager) {
     const control = cartControl(ctx, product, { onQty: q => node.classList.toggle('pcard--in-cart', q > 0) });
     node.append(h('div', { class: 'pcard__actions' }, control.node));
     return { node, update: control.update };
+}
+
+/** Top-bar heading of an inner page, with a back link to its parent ({ href, label }) when given. */
+export function pageHeader(title, back) {
+    return h('div', { class: 'pagehead' },
+        back ? h('a', { class: 'icon-btn', href: back.href, 'aria-label': back.label }, icon('back')) : null,
+        h('h1', { class: 't-title topbar__title' }, title));
+}
+
+/**
+ * Coloured notice inside a page: band('warning', 'Fiyatlar güncellendi', 'Yeni toplam …', action).
+ * Errors are announced at once (role=alert), everything else politely (role=status).
+ */
+export function band(tone, title, text, action) {
+    return h('div', { class: ['band', 'band--' + tone], role: tone === 'danger' ? 'alert' : 'status' },
+        icon(tone === 'success' ? 'check' : 'alert', { size: 20 }),
+        h('div', { class: 'band__body' },
+            h('p', { class: 'band__title' }, title),
+            text ? h('p', null, text) : null,
+            action || null));
 }
 
 export function emptyState(opts) {

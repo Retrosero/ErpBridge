@@ -48,7 +48,10 @@ test('quote issues', () => {
         assert.notEqual(issueMessage(issue), issueMessage('NEW_ISSUE'), issue);
     }
     assert.equal(issueMessage(null), '');
-    assert.equal(issueMessage('NEW_ISSUE'), 'Bu ürün şu an sipariş edilemiyor.');
+    assert.equal(issueMessage('NEW_ISSUE'), 'Şu an sipariş edilemiyor');
+    assert.equal(issueMessage('NOT_AVAILABLE'), 'Artık sunulmuyor');
+    assert.equal(issueMessage('OUT_OF_STOCK'), 'Stokta yok');
+    assert.equal(issueMessage('CARTON_MULTIPLE'), 'Koli katı olmalı');
 });
 
 test('access-blocking errors', () => {

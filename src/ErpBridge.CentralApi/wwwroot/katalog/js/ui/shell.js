@@ -14,6 +14,7 @@ const NAV = [
 ];
 
 const SNACKBAR_MS = 3000;
+const SNACKBAR_ACTION_MS = 6000;
 
 export function createShell(code) {
     const brandBadge = h('span', { class: 'brand__badge', 'aria-hidden': 'true' });
@@ -28,6 +29,8 @@ export function createShell(code) {
     const main = h('main', { id: 'main', class: 'main', tabindex: '-1' });
     const bottomNav = h('nav', { class: 'bottomnav', 'aria-label': 'Ana menü' });
     const snackHost = h('div', { class: 'snackbar-host', role: 'status', 'aria-live': 'polite' });
+    // The cart badge is aria-hidden; this tells screen readers when the number of products changes.
+    const cartLive = h('p', { class: 'sr-only', role: 'status' });
     // Handled here: a #fragment navigation would fire popstate and re-route the page.
     const skip = h('a', {
         class: 'skip-link',
@@ -37,12 +40,18 @@ export function createShell(code) {
             main.focus();
         },
     }, 'İçeriğe geç');
-    const root = h('div', { class: 'shell' }, skip, header, main, bottomNav, snackHost);
+    const root = h('div', { class: 'shell' }, skip, header, main, bottomNav, snackHost, cartLive);
 
     let features = { order: false };
     let active = 'catalog';
     let cartCount = 0;
+    let cartKnown = false;
     let snackTimer = 0;
+
+    function closeSnackbar() {
+        clearTimeout(snackTimer);
+        render(snackHost);
+    }
 
     function navLinks(variant) {
         return NAV.filter(item => !item.order || features.order).map(item => {
@@ -89,7 +98,10 @@ export function createShell(code) {
             drawNav();
         },
         setCartCount(n) {
-            if (n === cartCount) return;
+            if (n === cartCount && cartKnown) return;
+            // The first value is what the page opened with, not a change worth announcing.
+            if (cartKnown && features.order) cartLive.textContent = n > 0 ? 'Sepette ' + n + ' ürün var.' : 'Sepet boş.';
+            cartKnown = true;
             cartCount = n;
             drawNav();
         },
@@ -98,14 +110,27 @@ export function createShell(code) {
             render(slot, node);
             header.classList.toggle('topbar--wide-slot', !!wide);
         },
-        /** snackbar('Sepete eklendi', { label: 'Sepete git', href }) — one at a time, 3 s. */
+        /**
+         * snackbar('Sepete eklendi', { label: 'Sepete git', href }) or { label: 'Geri al', onClick } —
+         * one at a time; 3 s, or 6 s when it offers an action so there is time to reach it.
+         */
         snackbar(text, action) {
             clearTimeout(snackTimer);
-            const actionNode = action
-                ? h('a', { class: 'snackbar__action', href: action.href }, action.label)
-                : null;
+            let actionNode = null;
+            if (action && action.href) {
+                actionNode = h('a', { class: 'snackbar__action', href: action.href }, action.label);
+            } else if (action) {
+                actionNode = h('button', {
+                    type: 'button',
+                    class: 'snackbar__action',
+                    onclick: () => {
+                        closeSnackbar();
+                        action.onClick();
+                    },
+                }, action.label);
+            }
             render(snackHost, h('div', { class: 'snackbar' }, h('span', { class: 'snackbar__text' }, text), actionNode));
-            snackTimer = setTimeout(() => render(snackHost), SNACKBAR_MS);
+            snackTimer = setTimeout(() => render(snackHost), action ? SNACKBAR_ACTION_MS : SNACKBAR_MS);
         },
     };
 }

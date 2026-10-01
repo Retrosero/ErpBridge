@@ -1,8 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    count, date, dateTime, duration, foldText, initials, money, percent, vatLabel,
+    balanceSense, count, date, dateRange, dateTime, duration, foldText, initials, isoDay, kindLabel, money, percent, vatLabel,
 } from '../../src/ErpBridge.CentralApi/wwwroot/katalog/js/format.js';
+
+test('isoDay: the local calendar day, zero-padded', () => {
+    assert.equal(isoDay(new Date(2026, 0, 5)), '2026-01-05');
+    assert.equal(isoDay(new Date(2026, 11, 31, 23, 59)), '2026-12-31');
+});
+
+test('dateRange: statement presets end today', () => {
+    const now = new Date(2026, 9, 1, 15, 0);
+    assert.deepEqual(dateRange('30g', now), { from: '2026-09-02', to: '2026-10-01' });
+    assert.deepEqual(dateRange('3a', now), { from: '2026-07-01', to: '2026-10-01' });
+    assert.deepEqual(dateRange('yil', now), { from: '2026-01-01', to: '2026-10-01' });
+    assert.deepEqual(dateRange('bilinmeyen', now), dateRange('3a', now));
+    assert.deepEqual(dateRange('3a', new Date(2026, 1, 10)), { from: '2025-11-10', to: '2026-02-10' }, 'crosses the year');
+});
+
+test('balanceSense: positive is the customer\'s debt, negative their credit', () => {
+    assert.deepEqual(balanceSense(12345.67), { label: 'Borç', tone: 'debt' });
+    assert.deepEqual(balanceSense(-50), { label: 'Alacak', tone: 'credit' });
+    assert.deepEqual(balanceSense(0), { label: 'Bakiye yok', tone: 'neutral' });
+    assert.deepEqual(balanceSense(-0.001), { label: 'Bakiye yok', tone: 'neutral' });
+    assert.deepEqual(balanceSense(null), { label: 'Bakiye yok', tone: 'neutral' });
+});
+
+test('kindLabel: PortalLedger kinds in Turkish', () => {
+    assert.equal(kindLabel('sale'), 'Satış faturası');
+    assert.equal(kindLabel('sale_return'), 'İade faturası');
+    assert.equal(kindLabel('collection'), 'Tahsilat');
+    assert.equal(kindLabel('other'), 'Diğer');
+    assert.equal(kindLabel('constructor'), 'Diğer');
+});
 
 test('money: tr-TR grouping, two decimals, TL suffix', () => {
     assert.equal(money(1234.5), '1.234,50 TL');

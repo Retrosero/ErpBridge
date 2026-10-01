@@ -9,6 +9,11 @@
 // Test accounts (mock only): demo / demo1234 (10% discount, VAT-inclusive list, every feature),
 // tek / tek12345 (no discount, VAT-exclusive list, ordering and account pages off),
 // pasif / pasif1234 (inactive -> 403 ACCOUNT_INACTIVE).
+//
+// Scenarios: the first POST orders of a request holding "Türk Kahvesi 100 g" raises that product's
+// price by 2,50 TL first, so it answers 409 PRICE_CHANGED with the new quote; sending again (same
+// requestId, the new total) goes through. "Eski Ambalaj Çay 500 g" appears on some invoices but is
+// no longer in the catalogue: invoices/detail gives productKey null, purchased gives product null.
 
 import { createServer } from 'node:http';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -98,6 +103,12 @@ CATEGORY_DATA.forEach(([categoryName, vatRate, names], c) => {
 });
 const IMAGES = new Map();
 for (const p of PRODUCTS) for (const img of p.images) if (!img.missing) IMAGES.set(img.id, { product: p, n: img.n });
+
+const DRIFT = PRODUCTS.find(p => p.name === 'Türk Kahvesi 100 g');
+const DRIFT_STEP = 2.5;
+const drifted = new Set();
+// On old invoices only: never in PRODUCTS, so nothing can add it to the cart.
+const DISCONTINUED = { code: '35999', name: 'Eski Ambalaj Çay 500 g', price: 41.9 };
 
 const PRICE_LISTS = { 1: { no: 1, name: 'Toptan', includesVat: true }, 2: { no: 2, name: 'Perakende', includesVat: false } };
 
@@ -247,6 +258,10 @@ const INVOICES = Array.from({ length: 14 }, (_, i) => {
         const unitPrice = p.prices[1];
         return { code: p.code, name: p.name, quantity, unitPrice, amount: r2(unitPrice * quantity), product: p };
     });
+    if (i % 4 === 1) {
+        const d = DISCONTINUED;
+        lines.push({ code: d.code, name: d.name, quantity: 3, unitPrice: d.price, amount: r2(d.price * 3), product: null });
+    }
     return {
         key: 'inv' + hex('invoice:' + i, 16),
         date: isoDate(Date.now() - (i * 6 + 1) * DAY_MS),
@@ -502,6 +517,13 @@ async function handleApi(req, res, code, rest, query, autoLogin) {
         if (existing) return json(res, 201, { order: summary(existing) });
         const lines = Array.isArray(body.lines) ? body.lines : [];
         if (!lines.length || lines.length > MAX_LINES) return apiError(res, 400, 'INVALID_BODY');
+        if (lines.some(l => l && l.key === DRIFT.key) && !drifted.has(body.requestId)) {
+            // The price moved between the customer's quote and this order (scenario in the header).
+            drifted.add(body.requestId);
+            for (const no of Object.keys(DRIFT.prices)) {
+                if (DRIFT.prices[no] !== null) DRIFT.prices[no] = r2(DRIFT.prices[no] + DRIFT_STEP);
+            }
+        }
         const q = quote(account, lines);
         if (q.lines.some(l => l.issue)) return apiError(res, 422, 'CART_INVALID', { quote: q });
         if (Math.abs(Number(body.expectedTotal) - q.totals.total) > 0.05) return apiError(res, 409, 'PRICE_CHANGED', { quote: q });
@@ -554,7 +576,7 @@ async function handleApi(req, res, code, rest, query, autoLogin) {
             key: inv.key, date: inv.date, documentNo: inv.documentNo, kind: inv.kind, total: inv.total,
             lines: inv.lines.map(l => ({
                 code: l.code, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount,
-                productKey: visible.has(l.product.key) ? l.product.key : null,
+                productKey: l.product && visible.has(l.product.key) ? l.product.key : null,
             })),
         });
     }
@@ -578,7 +600,7 @@ async function handleApi(req, res, code, rest, query, autoLogin) {
             .sort((a, b) => b.lastDate.localeCompare(a.lastDate));
         const { start, pageSize } = paging(query, 20, 50);
         return json(res, 200, {
-            items: list.slice(start, start + pageSize).map(({ p, ...r }) => ({ ...r, product: visible.has(p.key) ? toCProduct(account, p) : null })),
+            items: list.slice(start, start + pageSize).map(({ p, ...r }) => ({ ...r, product: p && visible.has(p.key) ? toCProduct(account, p) : null })),
             total: list.length,
         });
     }

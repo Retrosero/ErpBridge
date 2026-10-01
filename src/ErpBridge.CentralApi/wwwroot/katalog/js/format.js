@@ -58,6 +58,50 @@ export function duration(seconds) {
     return Math.ceil(s / 3600) + ' saat';
 }
 
+function pad2(n) {
+    return (n < 10 ? '0' : '') + n;
+}
+
+/** A local Date -> "2026-10-01" (the device's own calendar day, as statement?from=&to= expect). */
+export function isoDay(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+
+/**
+ * Statement presets -> { from, to } ending today: '30g' the last 30 days, '3a' the last three
+ * months (the default), 'yil' since 1 January. Anything else falls back to '3a'.
+ */
+export function dateRange(preset, now = new Date()) {
+    const to = isoDay(now);
+    if (preset === '30g') return { from: isoDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)), to };
+    if (preset === 'yil') return { from: now.getFullYear() + '-01-01', to };
+    return { from: isoDay(new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())), to };
+}
+
+/**
+ * A balance in the customer's words (DESIGN_SYSTEM §2.5): positive = the customer owes ("Borç",
+ * --color-debt), negative = the firm owes ("Alacak", --color-credit), zero = "Bakiye yok".
+ */
+export function balanceSense(amount) {
+    const n = toNumber(amount);
+    if (!Number.isFinite(n) || Math.abs(n) < 0.005) return { label: 'Bakiye yok', tone: 'neutral' };
+    return n > 0 ? { label: 'Borç', tone: 'debt' } : { label: 'Alacak', tone: 'credit' };
+}
+
+const KINDS = {
+    sale: 'Satış faturası',
+    sale_return: 'İade faturası',
+    purchase: 'Alış faturası',
+    purchase_return: 'Alış iadesi',
+    collection: 'Tahsilat',
+    payment: 'Ödeme',
+};
+
+/** Ledger / invoice kind (PortalLedger.Kinds) -> what the customer reads. */
+export function kindLabel(kind) {
+    return Object.prototype.hasOwnProperty.call(KINDS, kind) ? KINDS[kind] : 'Diğer';
+}
+
 /** The price list's VAT mode as the customer reads it under every price (K5). */
 export function vatLabel(includesVat) {
     return includesVat ? 'KDV dahil' : 'KDV hariç';
