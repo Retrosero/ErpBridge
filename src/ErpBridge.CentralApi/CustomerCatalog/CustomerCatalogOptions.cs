@@ -28,9 +28,6 @@ public sealed class CustomerCatalogOptions
 
     public int MaxImagesPerProduct { get; set; } = 8;
 
-    /// <summary>Stored pictures of one company, both sizes together.</summary>
-    public long TenantImageQuotaBytes { get; set; } = 1024L * 1024 * 1024;
-
     /// <summary>Order requests a customer may have waiting (<c>NEW</c> or <c>CLAIMED</c>) at once.</summary>
     public int MaxOpenOrders { get; set; } = 20;
 

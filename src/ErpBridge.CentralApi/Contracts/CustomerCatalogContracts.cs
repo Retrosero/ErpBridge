@@ -42,6 +42,7 @@ public sealed class CatalogPriceListDto
     [JsonPropertyName("includesVat")] public bool IncludesVat { get; set; }
 }
 
+/// <summary>The company's one storage quota (GOAL_DEPOLAMA_R2: every area, trash included), shown as the catalog's "Görsel kotası".</summary>
 public sealed class CatalogImageQuotaDto
 {
     [JsonPropertyName("usedBytes")] public long UsedBytes { get; set; }
@@ -411,7 +412,10 @@ public sealed class CatalogImageDto
 
     [JsonPropertyName("hasLarge")] public bool HasLarge { get; set; }
 
-    /// <summary>Relative <c>/api/v1/catalog/img/{id}/s?h=…</c> (the link itself for a link); null until a size is uploaded.</summary>
+    /// <summary>
+    /// A stored size's full CDN address (<c>https://img.appsgo.cloud/…</c>), a size from before the central store as the
+    /// relative <c>/api/v1/catalog/img/{id}/s?h=…</c>, the link itself for a link; null until a size is uploaded.
+    /// </summary>
     [JsonPropertyName("thumbUrl")] public string? ThumbUrl { get; set; }
 
     [JsonPropertyName("fullUrl")] public string? FullUrl { get; set; }
@@ -419,6 +423,7 @@ public sealed class CatalogImageDto
 
 public sealed class CatalogImageManifestResponse
 {
+    /// <summary>The company's used storage, every area (GOAL_DEPOLAMA_R2), and its quota below.</summary>
     [JsonPropertyName("usedBytes")] public long UsedBytes { get; set; }
 
     [JsonPropertyName("limitBytes")] public long LimitBytes { get; set; }

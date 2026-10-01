@@ -144,10 +144,12 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     `CreatedAtMs`, `UpdatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`, `UpdatedByUserId`, `DeletedAtMs` (yumuşak silme). Filtreli UNIQUE `(TenantId, Username)` ve `(TenantId, CustomerCode)`
     `WHERE "DeletedAtMs" IS NULL` — cari başına tek canlı hesap; silinen hesabın adı ve carisi yeniden kullanılabilir.
   - `catalog_images`: `Id` (sunucu üretir), `TenantId`, `StockCode(64)`, `Kind(8)` link|file, `Url(2048)` (yalnız link; sunucu indirmez), `SourceHash(80)` göndericinin özgün parmak izi,
-    `Source(8)` phone|panel, `SortOrder`, `SizeBytes` (iki varyant toplamı; kota bunu toplar), `HasSmall`, `HasLarge`, `ContentType(32)`, `Sha256Small/Large(64)`, `CreatedAtMs`, `CreatedByUserId`.
+    `Source(8)` phone|panel, `SortOrder`, `SizeBytes` (iki varyant toplamı; bilgi amaçlı — kota artık `tenant_storage`), `HasSmall`, `HasLarge`, `ContentType(32)`, `Sha256Small/Large(64)`,
+    `StoredFileSmallId?`/`StoredFileLargeId?` *(GOAL_DEPOLAMA_R2 S3, migration `DepolamaAlanlari`; FK yok, indeksli)* boyutun `stored_files` satırı — null ise boyut `catalog_image_blobs`'ta (eski) ya da yüklenmemiş, `CreatedAtMs`, `CreatedByUserId`.
     UNIQUE `(TenantId, StockCode, SourceHash)` (tekrar yükleme aynı satırı bulur). `~` ile başlayan `StockCode` ürün değildir: `~banner` banner görselidir
     (ürün sınırına, manifeste ve katalog görünümüne girmez; kotaya girer).
-  - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade.
+  - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade. 2026-10-01'den beri yeni bayt
+    yazılmaz (R2'ye gider); boyut yeniden yüklenince satırı silinir. S10 göçünden sonra düşürülecek.
   - `catalog_banners` *(S12, migration `KatalogBannerlari`)*: `Id`, `TenantId`, `Title(120)`, `Text(300)`, `ImageId` null = yalnız metin (FK `catalog_images`
     `SET NULL`; görsel `StockCode = "~banner"`), `LinkType(16)` none|category|product|url, `LinkValue(2048)` kategori anahtarı / kartın stok kodu / https adres,
     `SortOrder`, `IsActive`, `StartsAtMs` null = hemen, `EndsAtMs` null = süresiz (**hariç**: müşteri `StartsAtMs ≤ şimdi < EndsAtMs` görür), `CreatedAtMs`,

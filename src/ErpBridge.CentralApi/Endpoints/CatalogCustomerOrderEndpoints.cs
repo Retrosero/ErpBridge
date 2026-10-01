@@ -6,6 +6,7 @@ using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Notifications;
 using ErpBridge.CentralApi.Portal;
+using ErpBridge.CentralApi.Storage;
 using ErpBridge.CentralApi.Sync;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -160,7 +161,8 @@ internal static class CatalogCustomerOrderEndpoints
         return JsonResults.Ok(new CatalogCustomerOrdersResponse { Items = [.. orders.Select(o => Fill(new CatalogCustomerOrderDto(), o))] });
     }
 
-    private static async Task<IResult> DetailAsync(HttpContext http, string? id, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    private static async Task<IResult> DetailAsync(HttpContext http, string? id, [FromServices] CentralApiDbContext db, [FromServices] IOptions<StorageOptions> storage,
+        CancellationToken ct)
     {
         var session = CatalogSession.Of(http);
         var order = Guid.TryParse(id, out var orderId)
@@ -175,8 +177,9 @@ internal static class CatalogCustomerOrderEndpoints
         var pictures = await db.CatalogImages.AsNoTracking()
             .Where(i => i.TenantId == session.Tenant.Id && codes.Contains(i.StockCode))
             .OrderBy(i => i.SortOrder).ThenBy(i => i.CreatedAtMs).ThenBy(i => i.Id).ToListAsync(ct);
+        var urls = await CatalogFileUrls.LoadAsync(db, storage.Value, session.Tenant.Id, pictures, ct);
         var thumbs = pictures.GroupBy(i => i.StockCode, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.Select(CatalogImages.ThumbUrl).FirstOrDefault(url => url is not null), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(g => g.Key, g => g.Select(i => CatalogImages.ThumbUrl(i, urls)).FirstOrDefault(url => url is not null), StringComparer.OrdinalIgnoreCase);
         detail.Lines = [.. lines.Select(l => new CatalogCustomerOrderLineDto
         {
             Thumb = thumbs.GetValueOrDefault(l.StockCode),

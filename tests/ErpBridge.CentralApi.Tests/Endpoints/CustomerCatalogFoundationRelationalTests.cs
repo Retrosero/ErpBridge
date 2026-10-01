@@ -184,7 +184,6 @@ public sealed class CustomerCatalogFoundationRelationalTests : IClassFixture<Sql
         options.MaxImageBytesLarge.Should().Be(1_048_576);
         options.MaxImageBytesSmall.Should().Be(204_800);
         options.MaxImagesPerProduct.Should().Be(8);
-        options.TenantImageQuotaBytes.Should().Be(1_073_741_824);
         options.MaxOpenOrders.Should().Be(20);
         options.MaxOrderLines.Should().Be(200);
         options.WebRoot.Should().Be("wwwroot/katalog");

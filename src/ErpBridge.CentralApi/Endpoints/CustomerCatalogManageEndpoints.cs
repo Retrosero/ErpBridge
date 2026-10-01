@@ -80,15 +80,16 @@ public static class CustomerCatalogManageEndpoints
     // ---- settings ------------------------------------------------------------------------
 
     private static async Task<IResult> GetSettingsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] CatalogViewService views,
-        [FromServices] MobileSeatService seats, [FromServices] IOptions<CustomerCatalogOptions> options, CancellationToken ct)
+        [FromServices] MobileSeatService seats, [FromServices] IOptions<CustomerCatalogOptions> options, [FromServices] Storage.FileStore files, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
-        return JsonResults.Ok(await SettingsAsync(db, views, seats, options.Value, access.Tenant!.Id, ct));
+        return JsonResults.Ok(await SettingsAsync(db, views, seats, files, options.Value, access.Tenant!.Id, ct));
     }
 
     private static async Task<IResult> PutSettingsAsync(HttpContext http, [FromBody] CatalogSettingsRequest? body, [FromServices] CentralApiDbContext db,
-        [FromServices] CatalogViewService views, [FromServices] MobileSeatService seats, [FromServices] IOptions<CustomerCatalogOptions> options, CancellationToken ct)
+        [FromServices] CatalogViewService views, [FromServices] MobileSeatService seats, [FromServices] IOptions<CustomerCatalogOptions> options,
+        [FromServices] Storage.FileStore files, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
@@ -104,16 +105,17 @@ public static class CustomerCatalogManageEndpoints
             settings.DefaultPriceListNo = body.DefaultPriceListNo;
             return null;
         }, ct);
-        return error ?? JsonResults.Ok(await SettingsAsync(db, views, seats, options.Value, tenantId, ct));
+        return error ?? JsonResults.Ok(await SettingsAsync(db, views, seats, files, options.Value, tenantId, ct));
     }
 
     private static async Task<CatalogSettingsDto> SettingsAsync(
-        CentralApiDbContext db, CatalogViewService views, MobileSeatService seats, CustomerCatalogOptions options, Guid tenantId, CancellationToken ct)
+        CentralApiDbContext db, CatalogViewService views, MobileSeatService seats, Storage.FileStore files, CustomerCatalogOptions options, Guid tenantId, CancellationToken ct)
     {
         // The catalog's address is the company code; a company that never had seats gets one now (§3).
         var code = await seats.EnsureTenantCodeAsync(tenantId, ct) ?? string.Empty;
         var view = await views.LoadAsync(db, tenantId, forCustomer: false, ct);
-        var usedBytes = await db.CatalogImages.Where(i => i.TenantId == tenantId).SumAsync(i => (long)i.SizeBytes, ct);
+        // "Görsel kotası" is the company's one storage quota (GOAL_DEPOLAMA_R2 S3): every area, trash included.
+        var (usedBytes, quotaBytes) = await files.QuotaFiguresAsync(tenantId, ct);
         var accounts = await db.CatalogAccounts.CountAsync(a => a.TenantId == tenantId && a.DeletedAtMs == null, ct);
         var openOrders = await db.CatalogOrders.CountAsync(
             o => o.TenantId == tenantId && (o.Status == CatalogOrderStatuses.New || o.Status == CatalogOrderStatuses.Claimed), ct);
@@ -127,7 +129,7 @@ public static class CustomerCatalogManageEndpoints
             TenantCode = code,
             PublicUrl = code.Length == 0 ? string.Empty : baseUrl + "/" + code,
             PriceLists = [.. view.PriceLists.Select(l => new CatalogPriceListDto { No = l.No, Name = l.Name, IncludesVat = l.IncludesVat })],
-            ImageQuota = new CatalogImageQuotaDto { UsedBytes = usedBytes, LimitBytes = options.TenantImageQuotaBytes },
+            ImageQuota = new CatalogImageQuotaDto { UsedBytes = usedBytes, LimitBytes = quotaBytes },
             Counts = new CatalogCountsDto
             {
                 Categories = view.Categories.Count,

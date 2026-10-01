@@ -289,7 +289,8 @@
             var image = await Api.CreateCatalogImageAsync(new CatalogImageCreateRequest { StockCode = ImageStockCode, SourceHash = sourceHash, Source = "panel" });
             if (!image.HasLarge) await Api.UploadCatalogImageAsync(image.Id, "l", large.Content, large.ContentType);
             if (!image.HasSmall) await Api.UploadCatalogImageAsync(image.Id, "s", small.Content, small.ContentType);
-            // The anonymous addresses the server gives; h only busts caches, so the bytes' own hash will do.
+            // The anonymous paths (the server redirects a stored size to its CDN address); h only busts caches, so the bytes'
+            // own hash will do. The banner list read after saving carries the CDN addresses themselves.
             image.HasLarge = image.HasSmall = true;
             image.FullUrl = $"/api/v1/catalog/img/{image.Id:D}/l?h={Convert.ToHexStringLower(SHA256.HashData(large.Content))[..8]}";
             image.ThumbUrl = $"/api/v1/catalog/img/{image.Id:D}/s?h={Convert.ToHexStringLower(SHA256.HashData(small.Content))[..8]}";

@@ -374,26 +374,35 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
 - **Görseller** (`images/*`; yükleme uçları `catalog-upload` hız sınırında: kullanıcı başına 300/dk, oturumsuz istek IP kovasına).
   Her görsel değişikliği **görsel sayacını** (`catalog_settings.ImageRevision`) artırır, düzen revizyonunu değil: panelde ya da
   telefonda açık bir düzen düzenlemesi görsel yüklemesi yüzünden `409 CATALOG_CHANGED` almaz; katalog görünümü iki sayaca birden
-  bakarak tazelenir. Görsel yazımları yine `catalog_settings` satır kilidinden geçer (kota yarışı yok). Ürün başına en çok 8 (`409 CATALOG_IMAGE_LIMIT`), firma kotası 1 GB
-  (`413 CATALOG_IMAGE_QUOTA_EXCEEDED`); bulunamayan ya da başka firmanın görseli `404 CATALOG_IMAGE_NOT_FOUND`.
+  bakarak tazelenir. Görsel yazımları yine `catalog_settings` satır kilidinden geçer. Ürün başına en çok 8 (`409 CATALOG_IMAGE_LIMIT`);
+  baytlar merkezi dosya deposuna (R2, aşağıda "Merkezi dosya deposu") gider ve **firmanın tek depolama kotasına** sayılır: kota
+  aşımında eski kod korunur, gövdeye rakamlar eklenir (`413 CATALOG_IMAGE_QUOTA_EXCEEDED {usedBytes, quotaBytes}`), depo yoksa
+  `503 STORAGE_UNAVAILABLE`; bulunamayan ya da başka firmanın görseli `404 CATALOG_IMAGE_NOT_FOUND`. `GET images/manifest` ve
+  `GET settings`'teki `usedBytes`/`limitBytes` (`imageQuota`) firmanın birleşik kotasıdır (bütün alanlar, çöp dahil).
   - `POST images {stockCode, sourceHash, source, url?}`: kimliği sunucu üretir; aynı (`stockCode`, `sourceHash`) var olanı döner
     (sınırı aşmaz). `source` `phone|panel`; `url` verilirse bağlantı görseli olur (panelin "bağlantı ekle"si).
   - `PUT images/{id}/{s|l}` ham gövde: `Content-Type` `image/jpeg|png|webp` ve ilk baytlar tutmalı (`415 INVALID_IMAGE`);
     `l` ≤ 1 MB, `s` ≤ 200 KB (`413 IMAGE_TOO_LARGE`; `Content-Length` yoksa okurken). Üst veri atılır (kütüphanesiz): JPEG APP1
     (EXIF/XMP), PNG `eXIf`/`tEXt`/`iTXt`/`zTXt`, WebP `EXIF`/`XMP ` (VP8X bayrakları ve RIFF boyu düzeltilir); okunamayan dosya
     olduğu gibi saklanır. JPEG yön bilgisi EXIF'le gider: telefon ve panel görseli zaten döndürüp yeniden kodlayarak gönderir.
-    Aynı bayt tekrar → değişiklik yok. Bağlantı görseline dosya `400 INVALID_BODY`.
+    Aynı bayt tekrar → değişiklik yok. Bağlantı görseline dosya `400 INVALID_BODY`. Bayt R2'ye yazılır (alan `catalog`; stok
+    kodu `~banner` ise `banner`), sonra görsele bağlanır; değiştirilen boyutun eski dosyası (ya da PostgreSQL'deki eski baytı)
+    **kalıcı silinir** — yeni bayt için önce yer gerekir. Görsel silinirse (`DELETE images/{id}`, banner'ın kullanılmayan görseli)
+    dosyaları **çöp kutusuna** gider (7 gün geri alınabilir, o süre kotaya sayılır).
   - `PUT images/links` (≤ 500 ürün): verilen ürünün yalnız `phone` kaynaklı bağlantılarını değiştirir; dosyalar ve panel
     görselleri kalır, sınırı aşan bağlantı alınmaz; `updated` = bağlantıları değişen ürün sayısı. Bağlantı: `https`, port 443,
     IP/`localhost`/`.local` yok, ≤ 2048 (`400 INVALID_IMAGE_URL`). Sunucu bağlantıyı **indirmez**.
   - `PUT images/order?stockCode=` `{ids}`: verilenler bu sırada, verilmeyenler eski sıralarıyla arkadan.
-  - `thumbUrl`/`fullUrl`: dosyada göreli `/api/v1/catalog/img/{id}/{s|l}?h={sha256 ilk 8}` (istemci kendi kökünü ekler),
-    bağlantıda doğrudan adres; dosyanın boyutu henüz yüklenmemişse null.
+  - `thumbUrl`/`fullUrl`: depodaki boyut için tam CDN adresi `https://img.appsgo.cloud/{FIRMAKODU}/catalog/…-{s|l}.{uzantı}`
+    (yeni bayt = yeni adres); depodan önce yüklenmiş boyut için göreli `/api/v1/catalog/img/{id}/{s|l}?h={sha256 ilk 8}`
+    (istemci kendi kökünü ekler; S10 göçüne kadar); bağlantıda doğrudan adres; boyut henüz yüklenmemişse null. Panel ve telefon
+    tam https adresini olduğu gibi kullanır.
 - **Anonim görsel `GET /api/v1/catalog/img/{id}/{s|l}`** (`catalog-public`: IP başına 600/dk, IPv6 /64): `Cache-Control: public,
   max-age=31536000, immutable`, `ETag` = SHA-256, `If-None-Match` → 304 (bayt okunmaz), `X-Content-Type-Options: nosniff`,
   `Cross-Origin-Resource-Policy: same-site`. `s` yoksa `l`; bağlantı görseli, bilinmeyen kimlik, firma pasif ya da modülü kapalıysa
   `404 NOT_FOUND` (önbellek başlıksız). Firmanın "yayında" anahtarı (`IsEnabled`) **sorulmaz**: panel ve telefon katalog
-  yayına alınmadan, hazırlanırken görselleri bu adresten gösterir.
+  yayına alınmadan, hazırlanırken görselleri bu adresten gösterir. Boyut merkezi depodaysa bayt okunmaz: aynı denetimlerden
+  sonra `302` → CDN adresi (`Cache-Control: public, max-age=3600`; eski adresi tutan istemci için).
 - **Bannerlar (`banners*`, S12)** `Endpoints/CustomerCatalogBannerEndpoints`: modül + yönetim yetkisi (diğer yönetim uçları gibi).
   Yazımlar görsel kilidinden geçer (`WriteLayoutAsync(..., pictures: true)`): `ImageRevision` artar, düzen `revision`'ı **artmaz**
   (açık düzen düzenlemesi 409 almaz). Sürüm/çakışma denetimi yok (son yazan kazanır).
@@ -518,7 +527,7 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
 - **Görünürlük ve fiyat** (`CatalogCustomerView`): ürün, hesabın görünürlüğü izin veriyorsa ve hesabın etkin listesinde
   fiyatı varsa görünür (başka listeye düşülmez). `price {list, net, discountPercent, includesVat}`: `discountPercent` hesabın
   iskontosu, `noDiscount` üründe 0; `net = R2(list × (1 − d/100))`; `includesVat` listenin. `box {qty, only}` etkin koli ≥ 2
-  ise, yoksa null. `thumb` ilk görsel (göreli `/api/v1/catalog/img/…` ya da https bağlantı).
+  ise, yoksa null. `thumb` ilk görsel (CDN adresi, eski görselde göreli `/api/v1/catalog/img/…` ya da https bağlantı).
 - **`GET categories`:** yalnız görünür ürünü olan kategoriler, katalog sırasında; `id` = SHA-256(kategori anahtarı) ilk 12 hex.
 - **`GET products?category=&q=&page=&pageSize=`:** `pageSize` varsayılan 48, 1–60'a kırpılır; `page` ≥ 1. `category` bilinmeyen
   kimlik → boş liste. `q` kırpılır; 2 karakterden kısaysa yok sayılır; ad/kod/marka tr-TR harf ve şapka duyarsız
@@ -577,8 +586,7 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
 
 Firmanın kalıcı resimleri Cloudflare R2'de, firma kodunun klasöründe (`{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id}-{varyant}.{uzantı}`)
 ve tek kotayla durur. Alanlar: herkese açık kova `product`, `xml`, `catalog`, `banner`; kimliğe bağlı kova `task`, `expense`,
-`vehicle`. Bu sürümde yalnız temel uçlar vardır; katalog, görev, gider uçları S3–S5'te bu depoya geçer (yolları değişmez).
-Bilgi bankası kural 37.
+`vehicle`. Katalog görseli ve banner (S3) bu depoyu kullanır; uç yolları değişmedi. Bilgi bankası kural 37.
 
 | Uç | Kim | Gövde / yanıt |
 |---|---|---|
@@ -590,8 +598,8 @@ Bilgi bankası kural 37.
 
 Yeni hata kodları:
 - `413 STORAGE_QUOTA_EXCEEDED` — `{ errorCode, message, traceId, usedBytes, quotaBytes }`. Telefon metni: "Firmanızın depolama
-  alanı doldu. Yöneticiniz panelden alan açabilir." Eski `CATALOG_IMAGE_QUOTA_EXCEEDED` / `TASK_ATTACHMENT_QUOTA` kodları
-  S3/S4'te aynı durumda geriye uyum için korunur.
+  alanı doldu. Yöneticiniz panelden alan açabilir." Katalog uçları aynı durumda eski `CATALOG_IMAGE_QUOTA_EXCEEDED` kodunu
+  (aynı rakamlarla) döner; eski telefonlar ona bakıyor.
 - `503 STORAGE_UNAVAILABLE` — R2 ayarı yok ya da R2 yanıt vermedi; telefon kuyruğu sonra yeniden dener.
 - `415 INVALID_IMAGE` — yalnız JPEG, PNG, WebP (ilk baytlarından denetlenir).
 

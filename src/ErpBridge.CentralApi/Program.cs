@@ -345,7 +345,8 @@ public partial class Program
         builder.Services.Configure<ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions>(cfg.GetSection(ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions.SectionName));
         // Each company's built catalog, over the shared stock mirror; in memory like the mirror itself.
         builder.Services.AddSingleton(sp => new ErpBridge.CentralApi.CustomerCatalog.CatalogViewService(
-            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetService<TimeProvider>() ?? TimeProvider.System));
+            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetService<TimeProvider>() ?? TimeProvider.System,
+            sp.GetRequiredService<IOptions<ErpBridge.CentralApi.Storage.StorageOptions>>()));
         // Merkezi dosya deposu (docs/GOAL_DEPOLAMA_R2.md): Cloudflare R2 when every Storage:* connection value is set,
         // otherwise a stand-in that makes the storage endpoints answer 503 STORAGE_UNAVAILABLE while the API runs.
         builder.Services.Configure<ErpBridge.CentralApi.Storage.StorageOptions>(cfg.GetSection(ErpBridge.CentralApi.Storage.StorageOptions.SectionName));

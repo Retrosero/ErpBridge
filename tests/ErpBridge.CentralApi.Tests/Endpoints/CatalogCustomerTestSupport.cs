@@ -14,7 +14,7 @@ namespace ErpBridge.CentralApi.Tests.Endpoints;
 /// The web catalog served on its own host (<c>katalog.test</c>) from the test fixture's files
 /// (<c>CustomerCatalog/WebFixture</c>), over SQLite.
 /// </summary>
-public sealed class CatalogHostFactory : SqliteCentralApiFactory
+public sealed class CatalogHostFactory : StorageCentralApiFactory
 {
     public const string Host = "katalog.test";
     public const string Origin = "https://" + Host;

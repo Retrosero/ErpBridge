@@ -4,8 +4,10 @@ using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Storage;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using static ErpBridge.CentralApi.Endpoints.CustomerCatalogManageEndpoints;
 
 namespace ErpBridge.CentralApi.Endpoints;
@@ -18,7 +20,8 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// clean-up, the quota and the anonymous address are the products' own. Writes go through the picture lock
 /// (<see cref="CustomerCatalogManageEndpoints.WriteLayoutAsync"/> with <c>pictures: true</c>): a layout edit open on the
 /// panel or the phone does not become stale. The customer reads the live ones at <c>GET /api/v1/catalog/{code}/banners</c>;
-/// a link to a category or product that customer does not see is dropped.
+/// a link to a category or product that customer does not see is dropped. A picture no banner shows any more goes with
+/// its files to the trash (GOAL_DEPOLAMA_R2 S3).
 /// </summary>
 public static class CustomerCatalogBannerEndpoints
 {
@@ -43,20 +46,20 @@ public static class CustomerCatalogBannerEndpoints
     // ---- managed ---------------------------------------------------------------------------
 
     private static async Task<IResult> ListAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] CatalogViewService views,
-        [FromServices] TimeProvider time, CancellationToken ct)
+        [FromServices] TimeProvider time, [FromServices] IOptions<StorageOptions> storage, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
         var tenantId = access.Tenant!.Id;
         var banners = InOrder(await db.CatalogBanners.AsNoTracking().Where(b => b.TenantId == tenantId).ToListAsync(ct)).ToList();
-        var images = await ImagesOfAsync(db, banners, ct);
+        var images = await ImagesOfAsync(db, storage.Value, tenantId, banners, ct);
         var view = await views.LoadAsync(db, tenantId, forCustomer: false, ct);
         var now = time.GetUtcNow().ToUnixTimeMilliseconds();
         return JsonResults.Ok(new CatalogBannersResponse { Items = [.. banners.Select(b => ToDto(b, images, view, now))] });
     }
 
     private static async Task<IResult> CreateAsync(HttpContext http, [FromBody] CatalogBannerRequest? body, [FromServices] CentralApiDbContext db,
-        [FromServices] CatalogViewService views, [FromServices] TimeProvider time, CancellationToken ct)
+        [FromServices] CatalogViewService views, [FromServices] TimeProvider time, [FromServices] IOptions<StorageOptions> storage, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
@@ -79,12 +82,13 @@ public static class CustomerCatalogBannerEndpoints
             return null;
         }, ct, pictures: true);
         if (error is not null) return error;
-        return JsonResults.Status(StatusCodes.Status201Created, await DtoAsync(db, banner, view, time, ct));
+        return JsonResults.Status(StatusCodes.Status201Created, await DtoAsync(db, storage.Value, banner, view, time, ct));
     }
 
     /// <summary>Every field replaced; a picture the banner no longer uses goes, unless another banner shows it too.</summary>
     private static async Task<IResult> UpdateAsync(Guid id, HttpContext http, [FromBody] CatalogBannerRequest? body, [FromServices] CentralApiDbContext db,
-        [FromServices] CatalogViewService views, [FromServices] TimeProvider time, CancellationToken ct)
+        [FromServices] CatalogViewService views, [FromServices] TimeProvider time, [FromServices] FileStore files, [FromServices] IOptions<StorageOptions> storage,
+        CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
@@ -94,35 +98,44 @@ public static class CustomerCatalogBannerEndpoints
         if (invalid is not null) return invalid;
 
         CatalogBanner? banner = null;
+        var dropped = new List<Guid>();
         var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async now =>
         {
+            dropped.Clear();
             banner = await db.CatalogBanners.FirstOrDefaultAsync(b => b.Id == id && b.TenantId == tenantId, ct);
             if (banner is null) return BannerNotFound();
             if (await ImageErrorAsync(db, tenantId, fields!.ImageId, ct) is { } imageError) return imageError;
             var oldImage = banner.ImageId;
             Apply(banner, fields, access.User!.Id, now);
-            if (oldImage is { } old && old != banner.ImageId) await DropImageIfUnusedAsync(db, tenantId, old, id, ct);
+            if (oldImage is { } old && old != banner.ImageId) dropped.AddRange(await DropImageIfUnusedAsync(db, tenantId, old, id, ct));
             return null;
         }, ct, pictures: true);
         if (error is not null) return error;
-        return JsonResults.Ok(await DtoAsync(db, banner!, view, time, ct));
+        db.ChangeTracker.Clear();
+        await files.TrashAllAsync(tenantId, dropped, access.User!.Id, ct);
+        return JsonResults.Ok(await DtoAsync(db, storage.Value, banner!, view, time, ct));
     }
 
     /// <summary>The banner and its picture (unless another banner shows the same picture).</summary>
-    private static async Task<IResult> DeleteAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] FileStore files, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
         var tenantId = access.Tenant!.Id;
+        var dropped = new List<Guid>();
         var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async _ =>
         {
+            dropped.Clear();
             var banner = await db.CatalogBanners.FirstOrDefaultAsync(b => b.Id == id && b.TenantId == tenantId, ct);
             if (banner is null) return BannerNotFound();
             db.CatalogBanners.Remove(banner);
-            if (banner.ImageId is { } image) await DropImageIfUnusedAsync(db, tenantId, image, id, ct);
+            if (banner.ImageId is { } image) dropped.AddRange(await DropImageIfUnusedAsync(db, tenantId, image, id, ct));
             return null;
         }, ct, pictures: true);
-        return error ?? Results.NoContent();
+        if (error is not null) return error;
+        db.ChangeTracker.Clear();
+        await files.TrashAllAsync(tenantId, dropped, access.User!.Id, ct);
+        return Results.NoContent();
     }
 
     /// <summary>The banners in this order; banners not named follow in their old order.</summary>
@@ -155,7 +168,7 @@ public static class CustomerCatalogBannerEndpoints
     /// sees, or to a product they do not see, becomes no link: a banner never opens what the customer's catalog hides.
     /// </summary>
     private static async Task<IResult> CustomerBannersAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] CatalogViewService views,
-        [FromServices] TimeProvider time, CancellationToken ct)
+        [FromServices] TimeProvider time, [FromServices] IOptions<StorageOptions> storage, CancellationToken ct)
     {
         var session = CatalogSession.Of(http);
         var now = time.GetUtcNow().ToUnixTimeMilliseconds();
@@ -166,13 +179,13 @@ public static class CustomerCatalogBannerEndpoints
             .ToList();
         if (banners.Count == 0) return JsonResults.Ok(new CatalogCustomerBannersResponse());
 
-        var images = await ImagesOfAsync(db, banners, ct);
+        var images = await ImagesOfAsync(db, storage.Value, session.Tenant.Id, banners, ct);
         var customer = await CustomerCatalogPublicEndpoints.CustomerViewAsync(http, db, views, ct);
         var items = new List<CatalogCustomerBannerDto>(banners.Count);
         foreach (var banner in banners)
         {
-            var image = banner.ImageId is { } imageId && images.GetValueOrDefault(imageId) is { } row
-                && CatalogImages.ThumbUrl(row) is { } thumb && CatalogImages.FullUrl(row) is { } full
+            var image = banner.ImageId is { } imageId && images.Rows.GetValueOrDefault(imageId) is { } row
+                && CatalogImages.ThumbUrl(row, images.Urls) is { } thumb && CatalogImages.FullUrl(row, images.Urls) is { } full
                 ? new CatalogCustomerImageDto { Thumb = thumb, Full = full }
                 : null;
             // A banner whose picture went (or never got its bytes) and has no title has nothing to show.
@@ -270,30 +283,40 @@ public static class CustomerCatalogBannerEndpoints
             ? Error(StatusCodes.Status400BadRequest, "INVALID_BANNER_IMAGE", "Banner görseli bulunamadı; görseli yeniden yükleyin.")
             : null;
 
-    /// <summary>A banner picture no other banner shows is deleted with its sizes (<c>catalog_image_blobs</c> cascade).</summary>
-    private static async Task DropImageIfUnusedAsync(CentralApiDbContext db, Guid tenantId, Guid imageId, Guid bannerId, CancellationToken ct)
+    /// <summary>
+    /// A banner picture no other banner shows is deleted with its old sizes (<c>catalog_image_blobs</c> cascade); its
+    /// stored files are returned for the caller to trash after its commit.
+    /// </summary>
+    private static async Task<List<Guid>> DropImageIfUnusedAsync(CentralApiDbContext db, Guid tenantId, Guid imageId, Guid bannerId, CancellationToken ct)
     {
-        if (await db.CatalogBanners.AnyAsync(b => b.TenantId == tenantId && b.Id != bannerId && b.ImageId == imageId, ct)) return;
+        if (await db.CatalogBanners.AnyAsync(b => b.TenantId == tenantId && b.Id != bannerId && b.ImageId == imageId, ct)) return [];
         var image = await db.CatalogImages.FirstOrDefaultAsync(i => i.Id == imageId && i.TenantId == tenantId && i.StockCode == CatalogBanners.ImageStockCode, ct);
-        if (image is not null) db.CatalogImages.Remove(image);
+        if (image is null) return [];
+        db.CatalogImages.Remove(image);
+        return [.. CatalogImages.StoredFileIds(image)];
     }
 
-    private static async Task<Dictionary<Guid, CatalogImage>> ImagesOfAsync(CentralApiDbContext db, IEnumerable<CatalogBanner> banners, CancellationToken ct)
+    /// <summary>The banners' pictures and the CDN addresses of their stored sizes.</summary>
+    private sealed record BannerImages(IReadOnlyDictionary<Guid, CatalogImage> Rows, CatalogFileUrls Urls);
+
+    private static async Task<BannerImages> ImagesOfAsync(CentralApiDbContext db, StorageOptions storage, Guid tenantId, IEnumerable<CatalogBanner> banners, CancellationToken ct)
     {
         var ids = banners.Where(b => b.ImageId is not null).Select(b => b.ImageId!.Value).Distinct().ToList();
-        return ids.Count == 0 ? [] : await db.CatalogImages.AsNoTracking().Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+        if (ids.Count == 0) return new BannerImages(new Dictionary<Guid, CatalogImage>(), CatalogFileUrls.None);
+        var rows = await db.CatalogImages.AsNoTracking().Where(i => i.TenantId == tenantId && ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+        return new BannerImages(rows, await CatalogFileUrls.LoadAsync(db, storage, tenantId, rows.Values, ct));
     }
 
-    private static async Task<CatalogBannerDto> DtoAsync(CentralApiDbContext db, CatalogBanner banner, CatalogView view, TimeProvider time, CancellationToken ct) =>
-        ToDto(banner, await ImagesOfAsync(db, [banner], ct), view, time.GetUtcNow().ToUnixTimeMilliseconds());
+    private static async Task<CatalogBannerDto> DtoAsync(CentralApiDbContext db, StorageOptions storage, CatalogBanner banner, CatalogView view, TimeProvider time, CancellationToken ct) =>
+        ToDto(banner, await ImagesOfAsync(db, storage, banner.TenantId, [banner], ct), view, time.GetUtcNow().ToUnixTimeMilliseconds());
 
-    private static CatalogBannerDto ToDto(CatalogBanner banner, IReadOnlyDictionary<Guid, CatalogImage> images, CatalogView view, long now) => new()
+    private static CatalogBannerDto ToDto(CatalogBanner banner, BannerImages images, CatalogView view, long now) => new()
     {
         Id = banner.Id,
         Title = banner.Title,
         Text = banner.Text,
         ImageId = banner.ImageId,
-        Image = banner.ImageId is { } id && images.GetValueOrDefault(id) is { } image ? CustomerCatalogImageEndpoints.ToDto(image) : null,
+        Image = banner.ImageId is { } id && images.Rows.GetValueOrDefault(id) is { } image ? CustomerCatalogImageEndpoints.ToDto(image, images.Urls) : null,
         LinkType = banner.LinkType,
         LinkValue = banner.LinkValue,
         LinkName = banner.LinkType switch

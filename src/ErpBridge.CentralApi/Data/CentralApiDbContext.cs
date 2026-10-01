@@ -1481,6 +1481,9 @@ public sealed class CentralApiDbContext : DbContext
             b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
             // A repeated upload of the same original finds its row; it also serves the per-product listing and the quota.
             b.HasIndex(x => new { x.TenantId, x.StockCode, x.SourceHash }).IsUnique();
+            // Which picture a stored file belongs to (the clean-up's orphan check, S9).
+            b.HasIndex(x => x.StoredFileSmallId);
+            b.HasIndex(x => x.StoredFileLargeId);
         });
 
         modelBuilder.Entity<CatalogImageBlob>(b =>

@@ -57,7 +57,7 @@ public sealed class InMemoryObjectStore : IObjectStore
 }
 
 /// <summary>A relational host whose file store is <see cref="InMemoryObjectStore"/>, CDN at <c>https://img.test</c>.</summary>
-public sealed class StorageCentralApiFactory : SqliteCentralApiFactory
+public class StorageCentralApiFactory : SqliteCentralApiFactory
 {
     public InMemoryObjectStore Store { get; } = new();
 

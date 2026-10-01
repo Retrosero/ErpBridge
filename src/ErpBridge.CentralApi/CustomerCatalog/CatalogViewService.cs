@@ -5,9 +5,11 @@ using System.Text;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Portal;
+using ErpBridge.CentralApi.Storage;
 using ErpBridge.CentralApi.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace ErpBridge.CentralApi.CustomerCatalog;
 
@@ -99,7 +101,8 @@ public sealed record CatalogView(
 /// while the cached view is that fresh and its revisions are the stored ones, a customer request takes it without
 /// waiting for the company's build lock (one row read).
 /// </summary>
-public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
+/// <param name="storage">The CDN address of pictures in the central file store; none in tests that do not store pictures.</param>
+public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IOptions<StorageOptions>? storage = null)
 {
     public static readonly TimeSpan CustomerRefreshInterval = TimeSpan.FromSeconds(5);
 
@@ -180,7 +183,8 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
         // Banner pictures (and any other reserved "~" key) are not a product's.
         var images = await db.CatalogImages.AsNoTracking()
             .Where(i => i.TenantId == tenantId && !i.StockCode.StartsWith(CatalogBanners.ReservedPrefix)).ToListAsync(ct);
-        var view = Compose(stock, settings, categoryRows, productRows, images);
+        var urls = await CatalogFileUrls.LoadAsync(db, storage?.Value ?? new StorageOptions(), tenantId, images, ct);
+        var view = Compose(stock, settings, categoryRows, productRows, images, urls);
         cache.Set(key, view, new MemoryCacheEntryOptions { SlidingExpiration = Idle });
         return view;
     }
@@ -250,12 +254,13 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
     }
 
     private static CatalogView Compose(
-        StockSide stock, CatalogSettings? settings, List<CatalogCategorySetting> categoryRows, List<CatalogProductSetting> productRows, List<CatalogImage> images)
+        StockSide stock, CatalogSettings? settings, List<CatalogCategorySetting> categoryRows, List<CatalogProductSetting> productRows, List<CatalogImage> images,
+        CatalogFileUrls urls)
     {
         var categorySettings = categoryRows.ToDictionary(r => r.CategoryKey, StringComparer.Ordinal);
         var productSettings = productRows.ToDictionary(r => r.StockCode, StringComparer.OrdinalIgnoreCase);
         var pictures = images
-            .Select(i => (Image: i, Thumb: CatalogImages.ThumbUrl(i), Full: CatalogImages.FullUrl(i)))
+            .Select(i => (Image: i, Thumb: CatalogImages.ThumbUrl(i, urls), Full: CatalogImages.FullUrl(i, urls)))
             .Where(x => x.Thumb is not null && x.Full is not null)
             .GroupBy(x => x.Image.StockCode, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(

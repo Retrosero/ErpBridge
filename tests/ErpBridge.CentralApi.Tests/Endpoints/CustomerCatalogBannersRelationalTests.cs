@@ -40,7 +40,7 @@ public sealed class CustomerCatalogBannersRelationalTests : IClassFixture<Catalo
         var summer = await CreateAsync(c, new { title = "  Yaz kampanyası ", text = "Çaylarda indirim", imageId = image, linkType = "category", linkValue = "Çay" });
         summer.Should().Match<CatalogBannerDto>(b => b.Title == "Yaz kampanyası" && b.Text == "Çaylarda indirim" && b.ImageId == image
             && b.LinkType == "category" && b.LinkValue == "Çay" && b.LinkName == "Çay" && b.IsActive && b.Live && b.SortOrder == 0);
-        summer.Image!.ThumbUrl.Should().StartWith($"/api/v1/catalog/img/{image}/s?h=");
+        summer.Image!.ThumbUrl.Should().StartWith($"https://img.test/{c.Code.ToUpperInvariant()}/banner/", "a banner picture is stored in its own area");
         var coffee = await CreateAsync(c, new { title = "Kahve", linkType = "product", linkValue = "b" });
         coffee.Should().Match<CatalogBannerDto>(b => b.LinkValue == "B" && b.LinkName == "Kahve Türk" && b.Image == null && b.SortOrder == 1);
         var site = await CreateAsync(c, new { title = "Web sitemiz", linkType = "URL", linkValue = " https://ornek.com/kampanya " });
@@ -124,7 +124,7 @@ public sealed class CustomerCatalogBannersRelationalTests : IClassFixture<Catalo
     {
         var c = await CompanyAsync(_factory);
         var used = await BannerImageAsync(c, "kullanilan", upload: false);
-        var abandoned = await BannerImageAsync(c, "terk", upload: false);
+        var abandoned = await BannerImageAsync(c, "terk");
         var fresh = await BannerImageAsync(c, "yeni", upload: false);
         await CreateAsync(c, new { title = "A", imageId = used });
         var twoDaysAgo = DateTimeOffset.UtcNow.AddDays(-2).ToUnixTimeMilliseconds();
@@ -137,6 +137,8 @@ public sealed class CustomerCatalogBannersRelationalTests : IClassFixture<Catalo
 
         var left = await ReadAsync(_factory, db => db.CatalogImages.AsNoTracking().Where(i => i.TenantId == c.Id).Select(i => i.Id).ToListAsync());
         left.Should().Contain([used, fresh]).And.NotContain(abandoned).And.HaveCount(3);
+        (await FileStatusesAsync(abandoned)).Should().BeEmpty("nobody's delete to undo: its files are purged");
+        (await ReadAsync(_factory, db => db.TenantStorage.AsNoTracking().SingleAsync(s => s.TenantId == c.Id))).UsedBytes.Should().Be(0);
     }
 
     [Fact]
@@ -146,11 +148,11 @@ public sealed class CustomerCatalogBannersRelationalTests : IClassFixture<Catalo
         var first = await BannerImageAsync(c, "ilk");
         var second = await BannerImageAsync(c, "ikinci");
         var banner = await CreateAsync(c, new { title = "A", imageId = first });
-        (await _factory.CreateClient().GetAsync($"/api/v1/catalog/img/{first}/l")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await FileStatusesAsync(first)).Should().Equal(StoredFileStatuses.Active, StoredFileStatuses.Active);
 
         (await SendAsync(_factory, HttpMethod.Put, $"{Banners}/{banner.Id}", c.Mudur, new { title = "A", imageId = second })).StatusCode.Should().Be(HttpStatusCode.OK);
         (await ImageExistsAsync(first)).Should().BeFalse("the replaced picture goes");
-        (await _factory.CreateClient().GetAsync($"/api/v1/catalog/img/{first}/l")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await FileStatusesAsync(first)).Should().Equal([StoredFileStatuses.Trashed, StoredFileStatuses.Trashed], "its files wait in the trash");
 
         var twin = await CreateAsync(c, new { title = "B", imageId = second });
         (await SendAsync(_factory, HttpMethod.Delete, $"{Banners}/{twin.Id}", c.Mudur)).StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -158,7 +160,7 @@ public sealed class CustomerCatalogBannersRelationalTests : IClassFixture<Catalo
 
         (await SendAsync(_factory, HttpMethod.Delete, $"{Banners}/{banner.Id}", c.Mudur)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await ImageExistsAsync(second)).Should().BeFalse();
-        (await ReadAsync(_factory, db => db.CatalogImageBlobs.AnyAsync(b => b.ImageId == second))).Should().BeFalse("its sizes go with it");
+        (await FileStatusesAsync(second)).Should().Equal([StoredFileStatuses.Trashed, StoredFileStatuses.Trashed], "its sizes go with it");
         await ShouldFailAsync(await SendAsync(_factory, HttpMethod.Delete, $"{Banners}/{banner.Id}", c.Mudur), HttpStatusCode.NotFound, "CATALOG_BANNER_NOT_FOUND");
         (await ListAsync(c)).Should().BeEmpty();
 
@@ -231,8 +233,8 @@ public sealed class CustomerCatalogBannersRelationalTests : IClassFixture<Catalo
         items[0].Link.Should().BeEquivalentTo(new CatalogCustomerBannerLinkDto { Type = "url", Value = "https://ornek.com/kampanya" });
         items[0].Image.Should().BeNull();
         items[1].Should().Match<CatalogCustomerBannerDto>(b => b.Id == product.Id && b.Text == "Türk kahvesi");
-        items[1].Image!.Thumb.Should().StartWith($"/api/v1/catalog/img/{image}/s?h=");
-        items[1].Image!.Full.Should().StartWith($"/api/v1/catalog/img/{image}/l?h=");
+        items[1].Image!.Thumb.Should().StartWith($"https://img.test/{c.Code.ToUpperInvariant()}/banner/").And.EndWith("-s.png");
+        items[1].Image!.Full.Should().StartWith($"https://img.test/{c.Code.ToUpperInvariant()}/banner/").And.EndWith("-l.png");
         items[1].Link.Should().BeEquivalentTo(new CatalogCustomerBannerLinkDto { Type = "product", Value = "B", ProductKey = "B" });
         items[2].Link.Should().BeEquivalentTo(new CatalogCustomerBannerLinkDto { Type = "category", Value = "Kahve", CategoryId = CatalogViewService.CategoryId("Kahve") });
 
@@ -282,6 +284,10 @@ public sealed class CustomerCatalogBannersRelationalTests : IClassFixture<Catalo
     }
 
     private Task<bool> ImageExistsAsync(Guid id) => ReadAsync(_factory, db => db.CatalogImages.AnyAsync(i => i.Id == id));
+
+    /// <summary>The statuses of a picture's stored sizes, by variant (l, s).</summary>
+    private Task<List<string>> FileStatusesAsync(Guid imageId) => ReadAsync(_factory, db => db.StoredFiles.AsNoTracking()
+        .Where(f => f.OwnerType == CatalogImages.StoredFileOwnerType && f.OwnerKey == imageId.ToString("D")).OrderBy(f => f.Variant).Select(f => f.Status).ToListAsync());
 
     private async Task<HttpClient> SignedInAsync(CatalogCompany company, string username)
     {
