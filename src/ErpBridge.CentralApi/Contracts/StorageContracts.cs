@@ -11,8 +11,9 @@ public sealed class StorageAreaUsageDto
 }
 
 /// <summary>
-/// <c>GET /api/v1/storage/usage</c> (GOAL_DEPOLAMA_R2 S8). Everyone sees the total and the quota; the breakdown by area
-/// and the trash only who manages storage (<c>action.storage.manage</c>) — omitted otherwise.
+/// <c>GET /api/v1/storage/usage</c> (GOAL_DEPOLAMA_R2 S8). Everyone sees the total, the quota and how much of the total is
+/// in the trash; the breakdown by area and the trash's file count only who manages storage (<c>action.storage.manage</c>)
+/// — omitted otherwise. <see cref="UsedBytes"/> includes the trash: a file counts until it is purged (T8).
 /// </summary>
 public sealed class StorageUsageResponse
 {
@@ -25,9 +26,8 @@ public sealed class StorageUsageResponse
     [JsonPropertyName("areas"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public StorageAreaUsageDto[]? Areas { get; set; }
 
-    /// <summary>Bytes in the trash: still in R2, not counted (T8).</summary>
-    [JsonPropertyName("trashedBytes"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? TrashedBytes { get; set; }
+    /// <summary>Bytes in the trash: part of <see cref="UsedBytes"/> until purged; emptying the trash frees them (T8).</summary>
+    [JsonPropertyName("trashedBytes")] public long TrashedBytes { get; set; }
 
     [JsonPropertyName("trashedCount"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? TrashedCount { get; set; }

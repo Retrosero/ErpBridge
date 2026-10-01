@@ -1553,10 +1553,11 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      yazılamazsa ayırma geri verilir ve nesne silinmeye çalışılır. Çağıran bekleyen değişikliksiz ve işlem dışında çağırır (servis kendi
      kaydeder; aksi `InvalidOperationException`), dönen dosyayı sonra kendi kaydına bağlar. İlişkisel veritabanı şart (satır kilidi).
      Küçültme çağıranın adımıdır (`ImageProcessor`, aşağıda). `413 STORAGE_QUOTA_EXCEEDED {usedBytes, quotaBytes}`, `415 INVALID_IMAGE`.
-   - **Çöp / geri al / kalıcı silme:** `TrashAsync` kotayı hemen düşürür, bayt çöp süresince R2'de kalır; `RestoreAsync` kotayı yeniden
-     ayırır, aşıyorsa `413` ve dosya çöpte kalır; `PurgeAsync` satırı önce `purging` yapar (etkin dosyada kotadan düşer), R2'den siler,
-     sonra satırı siler — R2 hatasında satır `purging` kalır, sonraki geçiş tamamlar. Her durum değişikliği koşullu UPDATE'tir (iki kez
-     çöpe atma bir kez düşer).
+   - **Çöp / geri al / kalıcı silme:** çöpteki dosya **kalıcı silinene kadar kotaya sayılır** (plan T8, inceleme P1): yükle-sil döngüsüyle
+     kota aşılamaz, geri alma her zaman yer bulur. `TrashAsync` yalnız durumu değiştirir (bayt çöp süresince R2'de kalır); `RestoreAsync`
+     kota denetimi yapmaz; `PurgeAsync` satırı önce `purging` yapar ve baytı **burada** kotadan düşer (etkin ya da çöpteki dosya), R2'den
+     siler, sonra satırı siler — R2 hatasında satır `purging` kalır, sonraki geçiş tamamlar. Durum değişiklikleri koşullu UPDATE'tir (iki
+     kez silme bir kez düşer). Yerin hemen açılması için çöpü boşaltma (kalıcı silme) S9'da panele gelir.
    - **Adres** `FileStore.UrlFor`: herkese açık dosya `PublicBaseUrl/ObjectKey`, özel dosya `/api/v1/storage/files/{id}`. Bu uç
      (`Endpoints/StorageEndpoints`, `MobileUserPolicy`) yükleyen ya da `action.storage.manage` sahibine 302 verir (özel dosya
      `PresignMinutes` dakikalık imzalı R2 adresi, `private, no-store`); ileride alan bazlı yetki `IStoredFileReadRule` kaydıyla eklenir
@@ -1565,12 +1566,13 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      JPEG/PNG/WebP çözer, EXIF yönüne göre döndürür, kutuya sığdırır (`ImageBox.Large` 1280, `Small` 400, `BannerLarge` 1920×720,
      `BannerSmall` 800×300; büyütmez, oran korunur), WebP kalite 80 yazar; çıktıda üst veri yoktur. JPEG yeterliyse ölçekli çözülür;
      50 MP üstü, bozuk, kesik ya da desteklenmeyen girdi `ImageProcessingException`.
-   - **Kota ve kullanım (S8):** `GET /api/v1/storage/usage` herkese toplam/kota/boş alan ve `available`; alanlara göre dağılım ve çöp
-     kutusu yalnız `PermissionKeys.StorageManage = "action.storage.manage"` (kilitli, ADMIN + MANAGER, `PermissionCatalog.Version` = 3,
+   - **Kota ve kullanım (S8):** `GET /api/v1/storage/usage` herkese toplam (çöp dahil)/kota/boş alan, `trashedBytes` ve `available`;
+     alanlara göre dağılım ve çöpteki dosya sayısı yalnız `PermissionKeys.StorageManage = "action.storage.manage"` (kilitli, ADMIN + MANAGER, `PermissionCatalog.Version` = 3,
      `RolePermissions.CanManageStorage`). Admin `GET/PUT /api/v1/admin/tenants/{id}/storage` (firmaya özel kota, `null` = varsayılan,
      0..10 TB, kullanılanın altına inebilir) ve `POST .../storage/recount`. Admin konsolu `TenantMobile.razor` "Depolama" kartı (%80 sarı,
      %95 kırmızı), kota alanı, "Yeniden hesapla".
-   - **Sayaç yeniden hesabı** `FileStore.RecountAsync`: önce sayaç satırı kilitlenir, sonra etkin dosyalar toplanır (eşzamanlı commit bir
+   - **Sayaç yeniden hesabı** `FileStore.RecountAsync`: önce sayaç satırı kilitlenir, sonra etkin + çöpteki dosyalar toplanır (`purging`
+     satırı kotadan zaten düşmüştür) (eşzamanlı commit bir
      kez sayılır); 1 saatten eski (`StaleReservation`) ayırma geri verilir; sapma uyarı olarak loglanır. `Storage/StorageMaintenanceWorker`
      (LogRetentionWorker deseni) her gün `MaintenanceHourUtc`'de `StorageMaintenance.RunOnceAsync` ile bütün firmaları yeniden hesaplar;
      S9'un temizlikleri buraya eklenecek. Testlerde kapalı (`Storage:MaintenanceEnabled=false`).

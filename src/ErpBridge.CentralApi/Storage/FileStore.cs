@@ -164,8 +164,9 @@ public sealed partial class FileStore
     // ---- trash, restore, purge ------------------------------------------------------------------
 
     /// <summary>
-    /// Moves an active file to the trash: its bytes leave the quota at once, the object stays in R2 until the trash
-    /// period ends (T8). A file already in the trash is answered as it is.
+    /// Moves an active file to the trash. Its bytes keep counting until it is purged (T8, review P1): uploading and
+    /// trashing in a loop cannot go past the quota, and a restore always finds room. The object stays in R2 for the trash
+    /// period. A file already in the trash is answered as it is.
     /// </summary>
     public async Task<StorageResult<StoredFile>> TrashAsync(Guid tenantId, Guid fileId, Guid? userId, CancellationToken ct)
     {
@@ -175,22 +176,19 @@ public sealed partial class FileStore
         if (file.Status == StoredFileStatuses.Trashed) return StorageResult<StoredFile>.Ok(file);
 
         var now = NowMs();
-        await using (var transaction = await _db.Database.BeginTransactionAsync(ct))
-        {
-            // Conditional on the status read: a second trash of the same file at the same moment changes nothing twice.
-            var moved = await _db.StoredFiles.Where(f => f.Id == fileId && f.Status == StoredFileStatuses.Active).ExecuteUpdateAsync(u => u
-                .SetProperty(f => f.Status, StoredFileStatuses.Trashed)
-                .SetProperty(f => f.TrashedAtMs, now)
-                .SetProperty(f => f.TrashedByUserId, userId), ct);
-            if (moved == 1) await AddUsedAsync(tenantId, -file.SizeBytes, now, ct);
-            await transaction.CommitAsync(ct);
-        }
-        return StorageResult<StoredFile>.Ok((await FindAsync(tenantId, fileId, ct))!);
+        // Conditional on the status: a purge that started meanwhile is not turned back into a trashed file.
+        await _db.StoredFiles.Where(f => f.Id == fileId && f.Status == StoredFileStatuses.Active).ExecuteUpdateAsync(u => u
+            .SetProperty(f => f.Status, StoredFileStatuses.Trashed)
+            .SetProperty(f => f.TrashedAtMs, now)
+            .SetProperty(f => f.TrashedByUserId, userId), ct);
+        return await FindAsync(tenantId, fileId, ct) is { } trashed
+            ? StorageResult<StoredFile>.Ok(trashed)
+            : StorageResult<StoredFile>.Fail(StorageErrors.FileNotFound());
     }
 
     /// <summary>
-    /// Takes a file back out of the trash. Its bytes count again, so a company now over its quota gets
-    /// <c>413 STORAGE_QUOTA_EXCEEDED</c> and the file stays in the trash.
+    /// Takes a file back out of the trash. Its bytes never left the quota, so there is nothing to check: a restore
+    /// always succeeds while the file is still in the trash.
     /// </summary>
     public async Task<StorageResult<StoredFile>> RestoreAsync(Guid tenantId, Guid fileId, CancellationToken ct)
     {
@@ -199,35 +197,18 @@ public sealed partial class FileStore
         if (file is null || file.Status == StoredFileStatuses.Purging) return StorageResult<StoredFile>.Fail(StorageErrors.FileNotFound());
         if (file.Status == StoredFileStatuses.Active) return StorageResult<StoredFile>.Ok(file);
 
-        var now = NowMs();
-        await EnsureCounterAsync(tenantId, now, ct);
-        await using (var transaction = await _db.Database.BeginTransactionAsync(ct))
-        {
-            var restored = await _db.StoredFiles.Where(f => f.Id == fileId && f.Status == StoredFileStatuses.Trashed).ExecuteUpdateAsync(u => u
-                .SetProperty(f => f.Status, StoredFileStatuses.Active)
-                .SetProperty(f => f.TrashedAtMs, (long?)null)
-                .SetProperty(f => f.TrashedByUserId, (Guid?)null), ct);
-            if (restored == 1)
-            {
-                var size = file.SizeBytes;
-                var defaultQuota = _options.DefaultQuotaBytes;
-                var counted = await _db.TenantStorage
-                    .Where(s => s.TenantId == tenantId && s.UsedBytes + s.ReservedBytes + size <= (s.QuotaBytes ?? defaultQuota))
-                    .ExecuteUpdateAsync(u => u.SetProperty(s => s.UsedBytes, s => s.UsedBytes + size).SetProperty(s => s.UpdatedAtMs, now), ct);
-                if (counted == 0)
-                {
-                    await transaction.RollbackAsync(ct);
-                    return StorageResult<StoredFile>.Fail(await QuotaExceededAsync(tenantId, ct));
-                }
-            }
-            await transaction.CommitAsync(ct);
-        }
-        return StorageResult<StoredFile>.Ok((await FindAsync(tenantId, fileId, ct))!);
+        await _db.StoredFiles.Where(f => f.Id == fileId && f.Status == StoredFileStatuses.Trashed).ExecuteUpdateAsync(u => u
+            .SetProperty(f => f.Status, StoredFileStatuses.Active)
+            .SetProperty(f => f.TrashedAtMs, (long?)null)
+            .SetProperty(f => f.TrashedByUserId, (Guid?)null), ct);
+        return await FindAsync(tenantId, fileId, ct) is { Status: StoredFileStatuses.Active } restored
+            ? StorageResult<StoredFile>.Ok(restored)
+            : StorageResult<StoredFile>.Fail(StorageErrors.FileNotFound());
     }
 
     /// <summary>
-    /// Deletes the file for good: R2 object and ledger row. An active file leaves the quota first (the XML sync deletes
-    /// its pictures without the trash, R6). The row is marked <see cref="StoredFileStatuses.Purging"/> before R2 is asked,
+    /// Deletes the file for good: R2 object and ledger row. This is where its bytes leave the quota — from the trash, or
+    /// straight from active (the XML sync deletes its pictures without the trash, R6). The row is marked <see cref="StoredFileStatuses.Purging"/> before R2 is asked,
     /// so a failure leaves a row the maintenance pass retries — never an object nobody knows about. 503 when R2 fails.
     /// </summary>
     public async Task<StorageResult<bool>> PurgeAsync(Guid tenantId, Guid fileId, CancellationToken ct)
@@ -244,7 +225,7 @@ public sealed partial class FileStore
             await using var transaction = await _db.Database.BeginTransactionAsync(ct);
             var marked = await _db.StoredFiles.Where(f => f.Id == fileId && f.Status == was)
                 .ExecuteUpdateAsync(u => u.SetProperty(f => f.Status, StoredFileStatuses.Purging), ct);
-            if (marked == 1 && was == StoredFileStatuses.Active) await AddUsedAsync(tenantId, -file.SizeBytes, now, ct);
+            if (marked == 1) await AddUsedAsync(tenantId, -file.SizeBytes, now, ct);
             await transaction.CommitAsync(ct);
         }
 
@@ -268,7 +249,7 @@ public sealed partial class FileStore
 
     /// <summary>
     /// Sets the counter from the ledger again (daily pass and Admin "yeniden hesapla"): used bytes = the company's active
-    /// files. The counter row is locked first, so an upload committing meanwhile is counted exactly once (its own update
+    /// and trashed files (a file counts until it is purged; a purging row has already left the quota). The counter row is locked first, so an upload committing meanwhile is counted exactly once (its own update
     /// waits for the lock and adds after). A reservation older than <see cref="StaleReservation"/> has no upload behind it
     /// any more and is given back. Returns the used bytes before and after.
     /// </summary>
@@ -281,7 +262,9 @@ public sealed partial class FileStore
         // The lock: an update that changes nothing but the recount time.
         await _db.TenantStorage.Where(s => s.TenantId == tenantId).ExecuteUpdateAsync(u => u.SetProperty(s => s.RecountedAtMs, now), ct);
         var row = await _db.TenantStorage.AsNoTracking().FirstAsync(s => s.TenantId == tenantId, ct);
-        var used = await _db.StoredFiles.Where(f => f.TenantId == tenantId && f.Status == StoredFileStatuses.Active).SumAsync(f => (long?)f.SizeBytes, ct) ?? 0;
+        var used = await _db.StoredFiles
+            .Where(f => f.TenantId == tenantId && (f.Status == StoredFileStatuses.Active || f.Status == StoredFileStatuses.Trashed))
+            .SumAsync(f => (long?)f.SizeBytes, ct) ?? 0;
         var staleBefore = now - (long)StaleReservation.TotalMilliseconds;
         var reserved = row.UpdatedAtMs < staleBefore ? 0 : row.ReservedBytes;
         await _db.TenantStorage.Where(s => s.TenantId == tenantId).ExecuteUpdateAsync(u => u

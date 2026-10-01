@@ -582,11 +582,11 @@ Bilgi bankası kural 37.
 
 | Uç | Kim | Gövde / yanıt |
 |---|---|---|
-| `GET /api/v1/storage/usage` | firma kullanıcısı | `{ available, usedBytes, quotaBytes, freeBytes, areas?: [{ area, usedBytes, fileCount }], trashedBytes?, trashedCount? }` — `areas` ve çöp kutusu yalnız `action.storage.manage` (Admin, Yönetici; kilitli) sahibine; diğerleri yalnız toplamı görür. `available: false` = sunucuda R2 ayarı yok, yükleme `503` döner |
+| `GET /api/v1/storage/usage` | firma kullanıcısı | `{ available, usedBytes, quotaBytes, freeBytes, trashedBytes, areas?: [{ area, usedBytes, fileCount }], trashedCount? }` — `usedBytes` çöp kutusunu da içerir (dosya kalıcı silinene kadar kotaya sayılır; `trashedBytes` bunun çöpteki kısmı, çöp boşaltılınca açılır). `areas` (etkin dosyalar) ve `trashedCount` yalnız `action.storage.manage` (Admin, Yönetici; kilitli) sahibine. `available: false` = sunucuda R2 ayarı yok, yükleme `503` döner |
 | `GET /api/v1/storage/files/{id}` | yükleyen; `action.storage.manage`; alan kuralı (S4/S5) | `302` → özel dosyada 5 dakikalık imzalı R2 adresi, herkese açık dosyada `https://img.appsgo.cloud/…`; `Cache-Control: private, no-store`. Başka firmanın, çöpteki ya da açma yetkisi olmayan dosya aynı `404 STORED_FILE_NOT_FOUND`; depo ayarsızsa `503 STORAGE_UNAVAILABLE` |
 | `GET /api/v1/admin/tenants/{id}/storage` | Admin konsolu | `{ tenantId, available, usedBytes, reservedBytes, quotaBytes, defaultQuotaBytes, customQuotaBytes?, recountedAtMs?, areas: [...], trashedBytes, trashedCount }`; firma yoksa `404 TENANT_NOT_FOUND` |
 | `PUT /api/v1/admin/tenants/{id}/storage` | Admin konsolu | `{ quotaBytes: sayı \| null }` — `null` = varsayılan (5 GB, `Storage:DefaultQuotaBytes`); 0..10 TB, değilse `400 INVALID_QUOTA`. Kullanılanın altına inebilir (yeni yükleme durur). Yanıt güncel görünüm |
-| `POST /api/v1/admin/tenants/{id}/storage/recount` | Admin konsolu | `{ usedBytesBefore, usedBytesAfter, storage }` — kullanılan bayt defterdeki etkin dosyalardan yeniden hesaplanır (aynı iş her gün `Storage:MaintenanceHourUtc`'de çalışır) |
+| `POST /api/v1/admin/tenants/{id}/storage/recount` | Admin konsolu | `{ usedBytesBefore, usedBytesAfter, storage }` — kullanılan bayt defterdeki etkin ve çöpteki dosyalardan yeniden hesaplanır (aynı iş her gün `Storage:MaintenanceHourUtc`'de çalışır) |
 
 Yeni hata kodları:
 - `413 STORAGE_QUOTA_EXCEEDED` — `{ errorCode, message, traceId, usedBytes, quotaBytes }`. Telefon metni: "Firmanızın depolama

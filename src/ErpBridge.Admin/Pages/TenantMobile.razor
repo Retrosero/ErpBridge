@@ -113,7 +113,7 @@ else
                     }
                     @if (_storage.TrashedCount > 0)
                     {
-                        <li class="storage-area" data-area="trash"><span>Çöp kutusu (kotaya sayılmaz)</span> <strong>@StorageTexts.Size(_storage.TrashedBytes)</strong> <small>(@_storage.TrashedCount dosya)</small></li>
+                        <li class="storage-area" data-area="trash"><span>Çöp kutusu (kalıcı silinene kadar kotaya sayılır)</span> <strong>@StorageTexts.Size(_storage.TrashedBytes)</strong> <small>(@_storage.TrashedCount dosya)</small></li>
                     }
                 </ul>
                 @if (_storage.Areas.All(a => a.FileCount == 0) && _storage.TrashedCount == 0)

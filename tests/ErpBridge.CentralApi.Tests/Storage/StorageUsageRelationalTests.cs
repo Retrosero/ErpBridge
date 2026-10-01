@@ -33,7 +33,7 @@ public sealed class StorageUsageRelationalTests : IClassFixture<StorageCentralAp
 
         var manager = await UsageAsync(company["mudur"].Token);
         manager.Available.Should().BeTrue();
-        manager.UsedBytes.Should().Be(product.SizeBytes + task.SizeBytes);
+        manager.UsedBytes.Should().Be(product.SizeBytes + task.SizeBytes + trashed.SizeBytes, "the trash counts until it is purged");
         manager.QuotaBytes.Should().Be(5L * 1024 * 1024 * 1024);
         manager.FreeBytes.Should().Be(manager.QuotaBytes - manager.UsedBytes);
         manager.Areas!.Select(a => a.Area).Should().Equal(StorageAreas.All);
@@ -46,8 +46,9 @@ public sealed class StorageUsageRelationalTests : IClassFixture<StorageCentralAp
         using var json = JsonDocument.Parse(raw);
         json.RootElement.GetProperty("usedBytes").GetInt64().Should().Be(manager.UsedBytes);
         json.RootElement.GetProperty("quotaBytes").GetInt64().Should().Be(manager.QuotaBytes);
-        json.RootElement.TryGetProperty("areas", out _).Should().BeFalse("a salesperson sees only the total");
-        json.RootElement.TryGetProperty("trashedBytes", out _).Should().BeFalse();
+        json.RootElement.GetProperty("trashedBytes").GetInt64().Should().Be(trashed.SizeBytes, "everyone sees how much of the total is in the trash");
+        json.RootElement.TryGetProperty("areas", out _).Should().BeFalse("a salesperson sees no breakdown by area");
+        json.RootElement.TryGetProperty("trashedCount", out _).Should().BeFalse();
     }
 
     [Fact]

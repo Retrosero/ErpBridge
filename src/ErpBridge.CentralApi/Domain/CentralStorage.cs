@@ -4,7 +4,7 @@ namespace ErpBridge.CentralApi.Domain;
 /// A company's storage counter (GOAL_DEPOLAMA_R2 T8, table <c>tenant_storage</c>). Uploads reserve their bytes with one
 /// conditional update of this row (<c>Used + Reserved + size ≤ quota</c>), so two uploads at once can never both slip
 /// under the quota; a finished upload moves its bytes from <see cref="ReservedBytes"/> to <see cref="UsedBytes"/>, a
-/// failed one gives them back. Trashed files do not count. The daily recount sets <see cref="UsedBytes"/> from
+/// failed one gives them back. Trashed files count until they are purged (T8). The daily recount sets <see cref="UsedBytes"/> from
 /// <see cref="StoredFile"/> again.
 /// </summary>
 public sealed class TenantStorage
@@ -14,7 +14,7 @@ public sealed class TenantStorage
     /// <summary>The company's own quota; null = <c>Storage:DefaultQuotaBytes</c> (5 GB).</summary>
     public long? QuotaBytes { get; set; }
 
-    /// <summary>Bytes of the company's active files.</summary>
+    /// <summary>Bytes of the company's active and trashed files (a file leaves the quota when it is purged).</summary>
     public long UsedBytes { get; set; }
 
     /// <summary>Bytes of uploads in flight (reserved, not yet in the ledger).</summary>

@@ -11,7 +11,7 @@ namespace ErpBridge.CentralApi.Endpoints;
 
 /// <summary>
 /// Maps <c>/api/v1/storage</c> (GOAL_DEPOLAMA_R2): the central file store's signed-in surface for phones and the panel.
-/// <c>GET usage</c> is the company's total and quota for everyone, by area and with the trash for who manages storage.
+/// <c>GET usage</c> is the company's total (trash included), quota and trash for everyone, by area for who manages storage.
 /// <c>GET files/{id}</c> answers a stored file with a 302 to where it can be loaded — a short presigned R2 address for a
 /// private file, the CDN address for a public one — after checking the user may open it (<see cref="StoredFileAccess"/>).
 /// </summary>
@@ -48,7 +48,7 @@ public static class StorageEndpoints
             QuotaBytes = quota,
             FreeBytes = Math.Max(0, quota - usage.UsedBytes),
             Areas = detailed ? usage.Areas : null,
-            TrashedBytes = detailed ? usage.TrashedBytes : null,
+            TrashedBytes = usage.TrashedBytes,
             TrashedCount = detailed ? usage.TrashedCount : null,
         });
     }

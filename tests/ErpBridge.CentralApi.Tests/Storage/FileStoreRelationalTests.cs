@@ -112,7 +112,7 @@ public sealed class FileStoreRelationalTests : IClassFixture<StorageCentralApiFa
     }
 
     [Fact]
-    public async Task Trash_frees_the_quota_at_once_and_restore_takes_it_again()
+    public async Task A_trashed_file_keeps_counting_and_restore_always_finds_room()
     {
         var tenantId = await TenantAsync("TRS" + Suffix(5));
         var data = Jpeg(1000);
@@ -123,36 +123,53 @@ public sealed class FileStoreRelationalTests : IClassFixture<StorageCentralApiFa
         var trashed = await WithStoreAsync(store => store.TrashAsync(tenantId, first.Id, userId, default));
         trashed.Value!.Status.Should().Be(StoredFileStatuses.Trashed);
         trashed.Value.TrashedByUserId.Should().Be(userId);
-        (await CounterAsync(tenantId)).UsedBytes.Should().Be(data.Length);
+        trashed.Value.TrashedAtMs.Should().NotBeNull();
+        (await CounterAsync(tenantId)).UsedBytes.Should().Be(2L * data.Length, "a trashed file counts until it is purged");
         _factory.Store.Bytes(StorageBuckets.Public, first.ObjectKey).Should().NotBeNull("the bytes stay in R2 while the file is in the trash");
-        (await WithStoreAsync(store => store.TrashAsync(tenantId, first.Id, userId, default))).Succeeded.Should().BeTrue();
-        (await CounterAsync(tenantId)).UsedBytes.Should().Be(data.Length, "trashing twice frees once");
+        (await WithStoreAsync(store => store.TrashAsync(tenantId, first.Id, userId, default))).Succeeded.Should().BeTrue("trashing twice is answered as it is");
 
+        // A full company still takes its file back: the bytes never left the quota.
+        await SetQuotaAsync(tenantId, 2L * data.Length);
         var restored = await WithStoreAsync(store => store.RestoreAsync(tenantId, first.Id, default));
         restored.Value!.Status.Should().Be(StoredFileStatuses.Active);
         restored.Value.TrashedAtMs.Should().BeNull();
+        restored.Value.TrashedByUserId.Should().BeNull();
         (await CounterAsync(tenantId)).UsedBytes.Should().Be(2L * data.Length);
-
-        // A company that filled its quota meanwhile cannot take a trashed file back.
-        await WithStoreAsync(store => store.TrashAsync(tenantId, second.Id, null, default));
-        await SetQuotaAsync(tenantId, data.Length);
-        var refused = await WithStoreAsync(store => store.RestoreAsync(tenantId, second.Id, default));
-        refused.Error!.Status.Should().Be(413);
-        refused.Error.UsedBytes.Should().Be(data.Length);
-        (await ReadAsync(db => db.StoredFiles.SingleAsync(f => f.Id == second.Id))).Status.Should().Be(StoredFileStatuses.Trashed);
+        (await WithStoreAsync(store => store.RestoreAsync(tenantId, second.Id, default))).Value!.Status.Should().Be(StoredFileStatuses.Active, "restoring an active file changes nothing");
     }
 
     [Fact]
-    public async Task Purge_deletes_the_object_and_the_row_and_an_active_file_leaves_the_quota()
+    public async Task Upload_and_trash_in_a_loop_cannot_go_past_the_quota()
+    {
+        var tenantId = await TenantAsync("LOP" + Suffix(5));
+        var data = Jpeg(1000);
+        await SetQuotaAsync(tenantId, 2L * data.Length);
+
+        for (var i = 0; i < 2; i++)
+        {
+            var file = (await PutAsync(tenantId, StorageAreas.Product, data)).Value!;
+            (await WithStoreAsync(store => store.TrashAsync(tenantId, file.Id, null, default))).Succeeded.Should().BeTrue();
+        }
+        var third = await PutAsync(tenantId, StorageAreas.Product, data);
+
+        third.Error!.Code.Should().Be(StorageErrors.QuotaExceededCode, "the trash still holds the quota until it is emptied");
+        third.Error.UsedBytes.Should().Be(2L * data.Length);
+    }
+
+    [Fact]
+    public async Task Purge_deletes_the_object_and_the_row_and_frees_the_quota()
     {
         var tenantId = await TenantAsync("PRG" + Suffix(5));
         var data = Jpeg(800);
         var active = (await PutAsync(tenantId, StorageAreas.Xml, data)).Value!;
         var trashed = (await PutAsync(tenantId, StorageAreas.Xml, data)).Value!;
         await WithStoreAsync(store => store.TrashAsync(tenantId, trashed.Id, null, default));
+        (await CounterAsync(tenantId)).UsedBytes.Should().Be(2L * data.Length);
 
-        (await WithStoreAsync(store => store.PurgeAsync(tenantId, active.Id, default))).Succeeded.Should().BeTrue();
         (await WithStoreAsync(store => store.PurgeAsync(tenantId, trashed.Id, default))).Succeeded.Should().BeTrue();
+        (await CounterAsync(tenantId)).UsedBytes.Should().Be(data.Length, "emptying the trash frees its bytes");
+        (await WithStoreAsync(store => store.PurgeAsync(tenantId, active.Id, default))).Succeeded.Should().BeTrue();
+        (await WithStoreAsync(store => store.PurgeAsync(tenantId, active.Id, default))).Succeeded.Should().BeTrue("a second purge finds nothing to do");
 
         _factory.Store.Bytes(StorageBuckets.Public, active.ObjectKey).Should().BeNull();
         _factory.Store.Bytes(StorageBuckets.Public, trashed.ObjectKey).Should().BeNull();
@@ -165,6 +182,7 @@ public sealed class FileStoreRelationalTests : IClassFixture<StorageCentralApiFa
     {
         var tenantId = await TenantAsync("PRF" + Suffix(5));
         var file = (await PutAsync(tenantId, StorageAreas.Catalog, Jpeg(300))).Value!;
+        await WithStoreAsync(store => store.TrashAsync(tenantId, file.Id, null, default));
         _factory.Store.FailDeletes = true;
         try
         {
@@ -188,6 +206,8 @@ public sealed class FileStoreRelationalTests : IClassFixture<StorageCentralApiFa
         var tenantId = await TenantAsync("RCN" + Suffix(5));
         var data = Jpeg(700);
         await PutAsync(tenantId, StorageAreas.Catalog, data);
+        var inTrash = (await PutAsync(tenantId, StorageAreas.Catalog, Jpeg(100))).Value!;
+        await WithStoreAsync(store => store.TrashAsync(tenantId, inTrash.Id, null, default));
         var stale = DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeMilliseconds();
         await WriteAsync(db => db.TenantStorage.Where(s => s.TenantId == tenantId)
             .ExecuteUpdateAsync(u => u.SetProperty(s => s.UsedBytes, 999_999L).SetProperty(s => s.ReservedBytes, 5_000L).SetProperty(s => s.UpdatedAtMs, stale)));
@@ -195,10 +215,10 @@ public sealed class FileStoreRelationalTests : IClassFixture<StorageCentralApiFa
         var recount = await WithStoreAsync(store => store.RecountAsync(tenantId, default));
 
         recount.UsedBefore.Should().Be(999_999);
-        recount.UsedAfter.Should().Be(data.Length);
+        recount.UsedAfter.Should().Be(data.Length + inTrash.SizeBytes, "active and trashed files count");
         recount.ReservedAfter.Should().Be(0);
         var counter = await CounterAsync(tenantId);
-        counter.UsedBytes.Should().Be(data.Length);
+        counter.UsedBytes.Should().Be(data.Length + inTrash.SizeBytes);
         counter.ReservedBytes.Should().Be(0);
         counter.RecountedAtMs.Should().NotBeNull();
     }
