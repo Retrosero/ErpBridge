@@ -46,3 +46,12 @@ Yerel demo: http://localhost:5174/DEMO1234 (demo veriler; sunucu çalışırken 
 - Mobil kategori seçimi veya filtre uygulama menüyü kapatır ve klavye odağını menü başlığına getirir.
 - Yeni doğrulama senaryoları: Enter ile menüyü açma; kategori bölümünü kapatma; stok filtresini uygulama; mobil kategori seçimi sonrası kapalı menü ve odak; tablet filtre bölümünü açma; 320/390/768/1440/1920 piksel genişlikte taşma kontrolü. Tarayıcı konsolunda hata görülmedi.
 - 77 mevcut JavaScript testi geçti. dotnet build ErpBridge.sln --no-restore: 0 hata, 0 uyarı. Sunucu kodu değişmedi.
+
+## Tam yüksekliğe sabitlenen sol panel ve navbar hizası
+
+- Değişen dosya: katalog/css/app.css ve bu teslim notu.
+- Masaüstü katalog menüsü viewport'un x=0/y=0 konumundan alt kenarına kadar sabittir. Açıkken 260, kapalıyken 56 piksel genişliğindedir; kendi içinde kaydırılır. Menü başlığı kaydırmada görünür kalır.
+- Navbar'ın tam genişlik kuralı bütün katalog uygulaması sayfalarına taşındı. Kaydırma çubuğu için sabit yer ayrılarak kısa/uzun sayfalardaki küçük hizalama farkı da giderildi.
+- Yeni manuel senaryolar: 1440x900 ekranda panel x=0,y=0,height=900; kapatınca width=56,height=900; katalog/sepet/sipariş sayfalarında navbar sağ kenarı 1408.8 piksel; 320/390/768 pikselde menü açık/kapalı yatay taşma kontrolü.
+- 77 JavaScript testi geçti. Çözüm derlemesi 0 hata, 0 uyarı. Sunucu davranışı değişmedi.
+- 840 piksel genişlikte navbar bağlantıları erişilebilir metinleri korunarak simge görünümüne geçer; arama alanı kaybolmaz. Çevrimdışı uyarısının sol boşluğu da panel genişliğine göre ayarlanır.
