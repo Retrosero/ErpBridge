@@ -489,3 +489,44 @@
 - Admin bileşen testleri: 15/15 başarılı.
 - `dotnet build ErpBridge.sln`: başarılı, 0 uyarı, 0 hata.
 - `dotnet test`: Admin ve diğer bağımsız test projeleri başarılıdır. Tüm çözüm koşusunda canlı Mikro testleri atlandı ve mevcut `DotEnvLoaderSmokeTests` testi yerel `ERPBridge_TULPAR_*` bağlantı değişkenleri bulunmadığı için başarısız oldu. Bu modernizasyonla ilişkili değildir ve hiçbir gizli değer oluşturulmamıştır.
+
+---
+
+## 2026-10-01 — Admin lisans ve müşteri portalı tasarım yenilemesi
+
+Lacivert navigasyon, ortak mavi vurgu rengi, daha belirgin başlıklar ve sade veri kartları uygulandı. Lisanslarda müşteri adı, erişim durumu, anahtar ve tarih bilgileri yeniden düzenlendi. Formlar, menüler ve işlem düğmeleri telefon, tablet ve masaüstüne uyarlandı.
+
+### Değişen dosyalar
+
+- `src/ErpBridge.Admin/MainLayout.razor`
+- `src/ErpBridge.Admin/Pages/Licenses.razor`
+- `src/ErpBridge.Admin/Pages/Licenses.razor.css`
+- `src/ErpBridge.Admin/Pages/_Host.cshtml`
+- `src/ErpBridge.Admin/Shared/AdminPageHeader.razor`
+- `src/ErpBridge.Admin/wwwroot/css/site.css`
+- `src/ErpBridge.Admin/wwwroot/icons.svg` (yeni SVG simgeleri)
+- `src/ErpBridge.Portal/MainLayout.razor`
+- `src/ErpBridge.Portal/Pages/_Host.cshtml`
+- `src/ErpBridge.Portal/Shared/PortalTheme.cs`
+- `src/ErpBridge.Portal/wwwroot/css/site.css`
+- `tests/ErpBridge.Admin.Tests/Components/AdminLayoutTests.cs` (yeni)
+- `tests/ErpBridge.Admin.Tests/Components/AdminComponentsTests.cs`
+- `tests/ErpBridge.Portal.Tests/PortalRolesTests.cs`
+
+### Davranış ve yeni testler
+
+- Admin menüsü tablet ve telefonda çekmeceye dönüşür; sayfa seçimi ve Escape ile kapanır. Açık/kapalı durumu ekran okuyucuya doğru aktarılır.
+- Her iki uygulamada klavye kullanıcıları navigasyonu atlayarak mevcut sayfanın ana içeriğine geçebilir. Bağlantı alt sayfayı ve sorgu parametrelerini korur; odak gerçek tarayıcıda kontrol edildi.
+- Yeni AdminLayout testi menü açma/kapatma, Escape ve içerik hedefini doğrular. Yeni PortalLayout testi alt sayfadaki içerik bağlantısını ve tek ana içerik alanını doğrular.
+- CSS sürümleme eklendi; tarayıcı yeni tasarım dosyasını içerik sürümüne göre alır.
+
+### Doğrulama
+
+- Son `dotnet build ErpBridge.sln --no-restore -m:1 -nr:false -p:UseSharedCompilation=false`: başarılı, **0 uyarı / 0 hata**.
+- Son Admin test paketi: **121 başarılı**. Son Portal test paketi: **350 başarılı**.
+- Tam çözüm test koşusu: **2700 başarılı, 16 atlanan, 0 başarısız**. Atlananlar canlı Mikro bağlantısı gerektirir. Windows Event Log erişimi test ortamında kısıtlı olduğu için bu koşuda yalnızca test işleminin `Logging__EventLog__LogLevel__Default=None` ayarı kullanıldı.
+- Gerçek Edge tarayıcısında 320, 375, 768, 1024 ve 1440 piksel genişlikler: dashboard, lisanslar, telefon giriş formu ve giriş ekranlarında **32 ekran kontrolü başarılı**. Sayfa genelinde yatay taşma yok; lisans işlem düğmeleri en az 44 piksel; ürün ayrımı, Go modül düzenleyicisi, hesap menüsü, Escape ve içerik odağı kontrolleri başarılı.
+- `git diff --check`: başarılı.
+- Yerel örnek verilerle alınan önizlemeler: `artifacts/ui-refresh/`.
+
+Yayın paketi güncel `main` (`ddb4a9f`) ile birleştirildi; ürün sekmeleri, Go modülleri, bilgisayar/süre yönetimi ve Portal yeni ekranları korundu. Canlı hedefler: `https://admin.lisans.appsgo.cloud` ve `https://panel.admin.lisans.appsgo.cloud`. Yayın korumalı `main` dalına PR ve zorunlu `build-test` kontrolü üzerinden uygulanır; canlı doğrulama panel erişimi, CSS içerik eşleşmesi/sürümleme, simgeler, lisans stilleri ve API `/health/schema` kontrolünü kapsar.

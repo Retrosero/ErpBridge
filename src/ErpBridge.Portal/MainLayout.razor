@@ -13,6 +13,7 @@
 
 @if (Session.IsSignedIn)
 {
+    <a class="skip-link" href="@(Nav.Uri.Split('#')[0] + "#portal-content")" @onclick="async () => await _content.FocusAsync()" @onclick:preventDefault>İçeriğe geç</a>
     <MudLayout Class="portal-shell">
         <MudAppBar Elevation="0" Class="portal-appbar" Gutters="true">
             <MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" aria-label="Menüyü aç veya kapat" />
@@ -40,7 +41,7 @@
             </MudMenu>
         </MudAppBar>
 
-        <MudDrawer @bind-Open="_drawerOpen" Elevation="0" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Never" Class="portal-drawer">
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="0" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md" ClipMode="DrawerClipMode.Never" Class="portal-drawer">
             <div class="portal-brand">
                 <div class="portal-brand-mark">
                     <MudIcon Icon="@Icons.Material.Rounded.Insights" />
@@ -162,7 +163,7 @@
 
         <MudMainContent Class="portal-main">
             <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="portal-container">
-                <PortalErrorBoundary @ref="_errorBoundary">@Body</PortalErrorBoundary>
+                <main id="portal-content" tabindex="-1" @ref="_content"><PortalErrorBoundary @ref="_errorBoundary">@Body</PortalErrorBoundary></main>
             </MudContainer>
         </MudMainContent>
     </MudLayout>
@@ -174,6 +175,7 @@ else
 
 @code {
     private bool _drawerOpen = true;
+    private ElementReference _content;
     private PortalErrorBoundary? _errorBoundary;
     private PortalErrorBoundary? _signedOutErrorBoundary;
 

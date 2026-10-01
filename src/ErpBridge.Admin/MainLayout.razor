@@ -1,42 +1,44 @@
 @inherits LayoutComponentBase
+@inject NavigationManager Nav
 
 <PageTitle>ErpBridge Yönetim</PageTitle>
 
-<div class="admin-shell @(_menuOpen ? "admin-shell--menu-open" : null)">
-    <button class="admin-menu-backdrop" aria-label="Menüyü kapat" @onclick="CloseMenu"></button>
-    <aside class="admin-sidebar" aria-label="Ana navigasyon">
+<a class="skip-link" href="@(Nav.Uri.Split('#')[0] + "#main-content")" @onclick="async () => await _content.FocusAsync()" @onclick:preventDefault>İçeriğe geç</a>
+<div class="admin-shell @(_menuOpen ? "admin-shell--menu-open" : null)" @onkeydown="HandleKeyDown">
+    <button class="admin-menu-backdrop" type="button" tabindex="-1" aria-label="Menüyü kapat" @onclick="CloseMenu"></button>
+    <aside id="admin-navigation" class="admin-sidebar" aria-label="Ana navigasyon">
         <div class="admin-brand">
             <a href="/" class="admin-brand__link" @onclick="CloseMenu">
                 <span class="admin-brand__mark" aria-hidden="true">EB</span>
                 <span><strong>ErpBridge</strong><small>YÖNETİM MERKEZİ</small></span>
             </a>
-            <button class="admin-icon-button admin-sidebar__close" type="button" aria-label="Menüyü kapat" @onclick="CloseMenu">×</button>
+            <button class="admin-icon-button admin-sidebar__close" type="button" aria-label="Menüyü kapat" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#close" /></svg></button>
         </div>
         <AuthorizeView>
             <Authorized>
                 <nav class="admin-nav">
                     <p class="admin-nav__label">GENEL</p>
-                    <NavLink class="admin-nav__link" href="" Match="NavLinkMatch.All" @onclick="CloseMenu"><span aria-hidden="true">⌂</span> Genel bakış</NavLink>
-                    <NavLink class="admin-nav__link" href="tenants" @onclick="CloseMenu"><span aria-hidden="true">◇</span> Müşteriler</NavLink>
-                    <NavLink class="admin-nav__link" href="licenses" @onclick="CloseMenu"><span aria-hidden="true">✓</span> Lisanslar</NavLink>
+                    <NavLink class="admin-nav__link" href="" Match="NavLinkMatch.All" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#overview" /></svg> Genel bakış</NavLink>
+                    <NavLink class="admin-nav__link" href="tenants" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#customers" /></svg> Müşteriler</NavLink>
+                    <NavLink class="admin-nav__link" href="licenses" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#license" /></svg> Lisanslar</NavLink>
                     <p class="admin-nav__label">ERİŞİM</p>
-                    <NavLink class="admin-nav__link" href="apikeys" @onclick="CloseMenu"><span aria-hidden="true">⌁</span> API anahtarları</NavLink>
-                    <NavLink class="admin-nav__link" href="webhooks" @onclick="CloseMenu"><span aria-hidden="true">↗</span> Webhooklar</NavLink>
+                    <NavLink class="admin-nav__link" href="apikeys" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#key" /></svg> API anahtarları</NavLink>
+                    <NavLink class="admin-nav__link" href="webhooks" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#webhook" /></svg> Webhooklar</NavLink>
                     <p class="admin-nav__label">OPERASYON</p>
-                    <NavLink class="admin-nav__link" href="logs" @onclick="CloseMenu"><span aria-hidden="true">☰</span> Log Merkezi</NavLink>
-                    <NavLink class="admin-nav__link" href="agents" @onclick="CloseMenu"><span aria-hidden="true">◉</span> Ajanlar</NavLink>
-                    <NavLink class="admin-nav__link" href="jobs" @onclick="CloseMenu"><span aria-hidden="true">≡</span> İş kuyruğu</NavLink>
-                    <NavLink class="admin-nav__link" href="errors" @onclick="CloseMenu"><span aria-hidden="true">!</span> Hata kayıtları</NavLink>
-                    <NavLink class="admin-nav__link" href="telemetry" @onclick="CloseMenu"><span aria-hidden="true">⌁</span> Telefon ve ajan tanılama</NavLink>
-                    <NavLink class="admin-nav__link" href="bootstrap" @onclick="CloseMenu"><span aria-hidden="true">↻</span> Veri özeti</NavLink>
-                    <NavLink class="admin-nav__link" href="sync-history" @onclick="CloseMenu"><span aria-hidden="true">⇆</span> Sync geçmişi</NavLink>
-                    <NavLink class="admin-nav__link" href="sync-queue" @onclick="CloseMenu"><span aria-hidden="true">≣</span> Senkron kuyruğu</NavLink>
-                    <NavLink class="admin-nav__link" href="parameters" @onclick="CloseMenu"><span aria-hidden="true">⚙</span> Parametreler</NavLink>
+                    <NavLink class="admin-nav__link" href="logs" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#logs" /></svg> Log Merkezi</NavLink>
+                    <NavLink class="admin-nav__link" href="agents" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#agents" /></svg> Ajanlar</NavLink>
+                    <NavLink class="admin-nav__link" href="jobs" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#queue" /></svg> İş kuyruğu</NavLink>
+                    <NavLink class="admin-nav__link" href="errors" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#alert" /></svg> Hata kayıtları</NavLink>
+                    <NavLink class="admin-nav__link" href="telemetry" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#activity" /></svg> Telefon ve ajan tanılama</NavLink>
+                    <NavLink class="admin-nav__link" href="bootstrap" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#data" /></svg> Veri özeti</NavLink>
+                    <NavLink class="admin-nav__link" href="sync-history" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#sync" /></svg> Sync geçmişi</NavLink>
+                    <NavLink class="admin-nav__link" href="sync-queue" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#queue" /></svg> Senkron kuyruğu</NavLink>
+                    <NavLink class="admin-nav__link" href="parameters" @onclick="CloseMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#settings" /></svg> Parametreler</NavLink>
                 </nav>
                 <div class="admin-sidebar__account">
                     <span class="admin-avatar" aria-hidden="true">@Initial(context.User.Identity?.Name)</span>
                     <span class="admin-account-copy"><strong>@(context.User.Identity?.Name ?? "Yönetici")</strong><small>Yönetici hesabı</small></span>
-                    <a class="admin-icon-button" href="logout" title="Çıkış yap" aria-label="Çıkış yap">↪</a>
+                    <a class="admin-icon-button" href="logout" title="Çıkış yap" aria-label="Çıkış yap"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#logout" /></svg></a>
                 </div>
             </Authorized>
             <NotAuthorized><nav class="admin-nav"><NavLink class="admin-nav__link" href="login" @onclick="CloseMenu">Giriş yap</NavLink></nav></NotAuthorized>
@@ -44,21 +46,23 @@
     </aside>
     <div class="admin-main">
         <header class="admin-topbar">
-            <button class="admin-icon-button admin-menu-button" type="button" aria-label="Menüyü aç" aria-expanded="@_menuOpen" @onclick="ToggleMenu">☰</button>
-            <div class="admin-topbar__title"><span class="admin-brand__mark" aria-hidden="true">EB</span><strong>ErpBridge</strong></div>
-            <AuthorizeView><Authorized><span class="admin-topbar__status"><i aria-hidden="true"></i> Sistem bağlı</span></Authorized></AuthorizeView>
+            <button class="admin-icon-button admin-menu-button" type="button" aria-label="Menüyü aç" aria-controls="admin-navigation" aria-expanded="@(_menuOpen ? "true" : "false")" @onclick="ToggleMenu"><svg class="admin-icon" aria-hidden="true"><use href="icons.svg#menu" /></svg></button>
+            <div class="admin-topbar__title"><span class="admin-brand__mark" aria-hidden="true">EB</span><div><strong>Yönetim merkezi</strong><small>ErpBridge</small></div></div>
+            <AuthorizeView><Authorized><span class="admin-topbar__status"><i aria-hidden="true"></i> Yönetici oturumu</span></Authorized></AuthorizeView>
         </header>
-        <main id="main-content" class="admin-content" tabindex="-1"><AdminErrorBoundary @ref="_errorBoundary">@Body</AdminErrorBoundary></main>
+        <main id="main-content" class="admin-content" tabindex="-1" @ref="_content"><AdminErrorBoundary @ref="_errorBoundary">@Body</AdminErrorBoundary></main>
     </div>
 </div>
 
 @code {
     private bool _menuOpen;
+    private ElementReference _content;
     private AdminErrorBoundary? _errorBoundary;
 
     // A new page starts clean: an error shown on the previous page must not stick to the next one.
     protected override void OnParametersSet() => _errorBoundary?.Recover();
     private void ToggleMenu() => _menuOpen = !_menuOpen;
     private void CloseMenu() => _menuOpen = false;
+    private void HandleKeyDown(KeyboardEventArgs args) { if (args.Key == "Escape") CloseMenu(); }
     private static string Initial(string? value) => string.IsNullOrWhiteSpace(value) ? "Y" : value.Trim()[0].ToString().ToUpperInvariant();
 }
