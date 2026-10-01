@@ -14,7 +14,10 @@ public sealed class SessionEndedException(string code) : Exception(PortalMessage
 }
 
 /// <summary>The central API refused the call with an error envelope.</summary>
-/// <param name="serverMessage">The server's own Turkish wording, used for the few codes whose detail only it knows.</param>
+/// <param name="serverMessage">
+/// The server's own wording: used as it is for the few codes whose detail only the server knows, and for a code the
+/// panel has no text for when the server worded it in Turkish (<see cref="PortalMessages.For(string, string?)"/>).
+/// </param>
 public sealed class PortalApiException(string code, int status, string? serverMessage = null) : Exception(serverMessage ?? PortalMessages.For(code))
 {
     public string Code { get; } = code;
@@ -41,6 +44,9 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     /// without the login piling up a new device every time.
     /// </summary>
     public static string DeviceIdFor(string username) => "web-portal:" + username.Trim().ToLowerInvariant();
+
+    /// <summary>The central API's address; a catalog image falls back to it when the public catalog host is not set up.</summary>
+    public Uri? BaseAddress => http.BaseAddress;
 
     public async Task<LoginResponse> LoginAsync(string tenantCode, string username, string password, bool rememberMe = false, CancellationToken ct = default)
     {
@@ -402,10 +408,113 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<TargetSettingsDto> SaveTargetSettingsAsync(TargetSettingsDto settings, CancellationToken ct = default) =>
         SendAsync<TargetSettingsDto>(HttpMethod.Put, "api/v1/portal/targets/settings", settings, ct);
 
+    // ---- customer catalog (GOAL_MUSTERI_KATALOGU §5.1) ---------------------------------
+    // Shared with the phone. Stock codes, customer codes and category keys go in the query or the body, never the path.
+
+    private const string Catalog = "api/v1/customer-catalog/";
+
+    /// <summary>
+    /// Rows per page of the accounts and order lists. The contract sends only <c>page</c>, so the server's page size is
+    /// fixed and the pager counts with the same number.
+    /// </summary>
+    public const int CatalogPageSize = 50;
+
+    public Task<CatalogSettingsDto> CatalogSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<CatalogSettingsDto>(Catalog + "settings", ct);
+
+    public Task<CatalogSettingsDto> SaveCatalogSettingsAsync(CatalogSettingsSaveRequest request, CancellationToken ct = default) =>
+        SendAsync<CatalogSettingsDto>(HttpMethod.Put, Catalog + "settings", request, ct);
+
+    public Task<CatalogCategoriesDto> CatalogCategoriesAsync(CancellationToken ct = default) =>
+        GetAsync<CatalogCategoriesDto>(Catalog + "categories", ct);
+
+    public Task<CatalogRevisionDto> SaveCatalogCategoriesAsync(CatalogCategoriesSaveRequest request, CancellationToken ct = default) =>
+        SendAsync<CatalogRevisionDto>(HttpMethod.Put, Catalog + "categories", request, ct);
+
+    /// <summary>A whole category (at most 5000), or with <paramref name="q"/> up to 50 matches across the catalog.</summary>
+    public Task<CatalogProductsDto> CatalogProductsAsync(string? category, string? q = null, CancellationToken ct = default) =>
+        GetAsync<CatalogProductsDto>(Catalog + "products" + Query(("category", category), ("q", q)), ct);
+
+    public Task<CatalogRevisionDto> SaveCatalogProductsAsync(CatalogProductsSaveRequest request, CancellationToken ct = default) =>
+        SendAsync<CatalogRevisionDto>(HttpMethod.Put, Catalog + "products", request, ct);
+
+    public Task<CatalogAccountsDto> CatalogAccountsAsync(string? q, int page, CancellationToken ct = default) =>
+        GetAsync<CatalogAccountsDto>(Catalog + "accounts" + Query(("q", q), ("page", page.ToString(CultureInfo.InvariantCulture))), ct);
+
+    public Task<CatalogAccountLookupDto> CatalogAccountByCustomerAsync(string customerCode, CancellationToken ct = default) =>
+        GetAsync<CatalogAccountLookupDto>(Catalog + "accounts/by-customer" + Query(("code", customerCode)), ct);
+
+    public Task<CatalogAccountSavedDto> CreateCatalogAccountAsync(CatalogAccountCreateRequest request, CancellationToken ct = default) =>
+        SendAsync<CatalogAccountSavedDto>(HttpMethod.Post, Catalog + "accounts", request, ct);
+
+    public Task<CatalogAccountSavedDto> UpdateCatalogAccountAsync(Guid accountId, CatalogAccountPatchRequest request, CancellationToken ct = default) =>
+        SendAsync<CatalogAccountSavedDto>(HttpMethod.Patch, $"{Catalog}accounts/{accountId}", request, ct);
+
+    /// <summary>A null <paramref name="password"/> lets the server make one, returned once.</summary>
+    public Task<CatalogPasswordDto> SetCatalogAccountPasswordAsync(Guid accountId, string? password, CancellationToken ct = default) =>
+        SendAsync<CatalogPasswordDto>(HttpMethod.Put, $"{Catalog}accounts/{accountId}/password", new { password }, ct);
+
+    public Task RevokeCatalogAccountSessionsAsync(Guid accountId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Post, $"{Catalog}accounts/{accountId}/revoke-sessions", new { }, ct, emptyOk: true);
+
+    public Task DeleteCatalogAccountAsync(Guid accountId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"{Catalog}accounts/{accountId}", null, ct, emptyOk: true);
+
+    public Task<CatalogImageManifestDto> CatalogImageManifestAsync(CancellationToken ct = default) =>
+        GetAsync<CatalogImageManifestDto>(Catalog + "images/manifest", ct);
+
+    public async Task<CatalogImageDto> CreateCatalogImageAsync(CatalogImageCreateRequest request, CancellationToken ct = default) =>
+        (await SendAsync<CatalogImageCreatedDto>(HttpMethod.Post, Catalog + "images", request, ct)).Image;
+
+    /// <summary>One variant's bytes: <c>l</c> (≤ 1280 px, ≤ 1 MB) or <c>s</c> (≤ 400 px, ≤ 200 KB); JPEG, PNG or WebP.</summary>
+    public Task UploadCatalogImageAsync(Guid imageId, string variant, byte[] content, string contentType, CancellationToken ct = default) =>
+        PutBytesAsync($"{Catalog}images/{imageId}/{variant}", content, contentType, ct);
+
+    /// <summary>The product's images in this order; the first is the cover.</summary>
+    public Task OrderCatalogImagesAsync(string stockCode, IEnumerable<Guid> ids, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Put, Catalog + "images/order" + Query(("stockCode", stockCode)), new { ids = ids.ToArray() }, ct, emptyOk: true);
+
+    public Task DeleteCatalogImageAsync(Guid imageId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"{Catalog}images/{imageId}", null, ct, emptyOk: true);
+
+    /// <summary><paramref name="status"/> <c>NEW</c>, <c>CLAIMED</c>, <c>COMPLETED</c>, <c>REJECTED</c>, or null for all.</summary>
+    public Task<CatalogOrdersDto> CatalogOrdersAsync(string? status, string? q, int page, CancellationToken ct = default) =>
+        GetAsync<CatalogOrdersDto>(Catalog + "orders" + Query(("status", status), ("q", q), ("page", page.ToString(CultureInfo.InvariantCulture))), ct);
+
+    public Task<CatalogOrderDetailDto> CatalogOrderAsync(Guid orderId, CancellationToken ct = default) =>
+        GetAsync<CatalogOrderDetailDto>($"{Catalog}orders/{orderId}", ct);
+
+    /// <summary><paramref name="force"/> takes it from someone else; the server allows that to a catalog manager only.</summary>
+    public Task<CatalogOrderDetailDto> ClaimCatalogOrderAsync(Guid orderId, bool force = false, CancellationToken ct = default) =>
+        SendAsync<CatalogOrderDetailDto>(HttpMethod.Post, $"{Catalog}orders/{orderId}/claim", new { force }, ct);
+
+    public Task<CatalogOrderDetailDto> ReleaseCatalogOrderAsync(Guid orderId, CancellationToken ct = default) =>
+        SendAsync<CatalogOrderDetailDto>(HttpMethod.Post, $"{Catalog}orders/{orderId}/release", new { }, ct);
+
+    /// <summary>"Başka yerde girildi": the order was entered elsewhere, under <paramref name="documentRef"/> if known.</summary>
+    public Task<CatalogOrderDetailDto> CompleteCatalogOrderAsync(Guid orderId, string? documentRef, CancellationToken ct = default) =>
+        SendAsync<CatalogOrderDetailDto>(HttpMethod.Post, $"{Catalog}orders/{orderId}/complete", new { documentRef }, ct);
+
+    public Task<CatalogOrderDetailDto> RejectCatalogOrderAsync(Guid orderId, string reason, CancellationToken ct = default) =>
+        SendAsync<CatalogOrderDetailDto>(HttpMethod.Post, $"{Catalog}orders/{orderId}/reject", new { reason }, ct);
+
+    /// <summary>A closed request (turned into a sale or rejected) back to "Yeni"; its document and reason are cleared. Catalog managers only.</summary>
+    public Task<CatalogOrderDetailDto> ReopenCatalogOrderAsync(Guid orderId, CancellationToken ct = default) =>
+        SendAsync<CatalogOrderDetailDto>(HttpMethod.Post, $"{Catalog}orders/{orderId}/reopen", new { }, ct);
+
     // ---- plumbing ------------------------------------------------------------
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);
 
+    /// <summary>Raw bytes with their media type (an image variant); a 204 is the success.</summary>
+    private Task PutBytesAsync(string path, byte[] content, string contentType, CancellationToken ct)
+    {
+        var body = new ByteArrayContent(content);
+        body.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        return SendAsync<object>(HttpMethod.Put, path, body, ct, emptyOk: true);
+    }
+
+    /// <param name="body">Sent as JSON, or as is when it is already <see cref="HttpContent"/>.</param>
     /// <param name="emptyOk">A success without a body (204) is fine; the default value comes back.</param>
     /// <param name="errorBodyOk">A 400/403/409 whose body is a <typeparamref name="T"/> with its own error list comes back as such.</param>
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct, bool emptyOk = false, bool errorBodyOk = false)
@@ -413,7 +522,8 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
         if (!session.IsSignedIn) throw new SessionEndedException("INVALID_TOKEN");
         using var request = new HttpRequestMessage(method, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Token);
-        if (body is not null) request.Content = JsonContent.Create(body, options: Json);
+        if (body is HttpContent raw) request.Content = raw;
+        else if (body is not null) request.Content = JsonContent.Create(body, options: Json);
 
         using var response = await http.SendAsync(request, ct);
         if (response.IsSuccessStatusCode)
@@ -432,7 +542,8 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
         var (code, message) = await ReadErrorWithMessageAsync(response, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized || SessionEndingCodes.Contains(code))
             throw new SessionEndedException(code);
-        throw new PortalApiException(code, (int)response.StatusCode, ServerWordedCodes.Contains(code) ? message : null);
+        throw new PortalApiException(code, (int)response.StatusCode,
+            ServerWordedCodes.Contains(code) ? message : PortalMessages.Knows(code) ? null : PortalMessages.For(code, message));
     }
 
     /// <summary>Codes whose message the server words in Turkish with a detail the panel cannot know (who, which stop).</summary>

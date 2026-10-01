@@ -365,4 +365,7 @@ public static class UserNotificationKinds
     public const string TaskCommented = "TASK_COMMENTED";
     public const string TaskDueSoon = "TASK_DUE_SOON";
     public const string TaskOverdue = "TASK_OVERDUE";
+
+    /// <summary>A customer sent an order request from the web catalog (GOAL_MUSTERI_KATALOGU §5.3); no task.</summary>
+    public const string CatalogOrderNew = "CATALOG_ORDER_NEW";
 }

@@ -157,6 +157,41 @@ public sealed class TenantMobilePageTests : BunitContext
         api.LastModulesBody!.Value.GetProperty("modules").GetArrayLength().Should().Be(0);
     }
 
+    [Fact]
+    public void Ticking_the_customer_catalog_sends_it_with_the_modules_already_on()
+    {
+        var overview = Overview(max: 3, users: [User("patron", "ADMIN")]);
+        overview.Modules = ["xml_import"];
+        var api = Register(overview);
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find("#module-customer-catalog"));
+        cut.Find("#module-customer-catalog").HasAttribute("checked").Should().BeFalse();
+        cut.Find("#module-customer-catalog").ParentElement!.TextContent.Should().Contain("Müşteri kataloğu (web");
+        cut.Find("#modules-save").HasAttribute("disabled").Should().BeTrue("nothing changed yet");
+        cut.Find("#module-customer-catalog").Change(true);
+        cut.Find("#modules-save").Click();
+
+        cut.WaitForAssertion(() => api.LastModulesBody.Should().NotBeNull());
+        api.LastModulesBody!.Value.GetProperty("modules").EnumerateArray().Select(m => m.GetString()).Should().Equal("xml_import", "customer_catalog");
+    }
+
+    [Fact]
+    public void Unticking_the_customer_catalog_switches_only_it_off()
+    {
+        var overview = Overview(max: 3, users: [User("patron", "ADMIN")]);
+        overview.Modules = ["customer_catalog", "xml_import"];
+        var api = Register(overview);
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find("#module-customer-catalog").HasAttribute("checked").Should().BeTrue());
+        cut.Find("#module-customer-catalog").Change(false);
+        cut.Find("#modules-save").Click();
+
+        cut.WaitForAssertion(() => api.LastModulesBody.Should().NotBeNull());
+        api.LastModulesBody!.Value.GetProperty("modules").EnumerateArray().Select(m => m.GetString()).Should().Equal("xml_import");
+    }
+
     // ---- helpers -----------------------------------------------------------
 
     private FakeApi Register(TenantMobileOverviewDto overview)

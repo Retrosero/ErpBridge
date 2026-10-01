@@ -539,6 +539,391 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("bootstrap_snapshot_chunks", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("CanOrder")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("CreatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomerCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long?>("DeletedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("DiscountPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<long?>("LastLoginAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PasswordChangedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("PriceListNo")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ResponsibleUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("ShowInvoices")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowPurchased")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ShowStatement")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TokenVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("VisibilityJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerCode")
+                        .IsUnique()
+                        .HasFilter("\"DeletedAtMs\" IS NULL");
+
+                    b.HasIndex("TenantId", "Username")
+                        .IsUnique()
+                        .HasFilter("\"DeletedAtMs\" IS NULL");
+
+                    b.ToTable("catalog_accounts", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogCategorySetting", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CategoryKey")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId", "CategoryKey");
+
+                    b.ToTable("catalog_category_settings", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long>("CreatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("HasLarge")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("HasSmall")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Sha256Large")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Sha256Small")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("SizeBytes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("SourceHash")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("StockCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "StockCode", "SourceHash")
+                        .IsUnique();
+
+                    b.ToTable("catalog_images", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogImageBlob", b =>
+                {
+                    b.Property<Guid>("ImageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Variant")
+                        .HasMaxLength(1)
+                        .HasColumnType("character varying(1)");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("ImageId", "Variant");
+
+                    b.ToTable("catalog_image_blobs", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccountUsername")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("AssignedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("ClaimedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ClaimedByName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid?>("ClaimedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("ClosedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ClosedByName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid?>("ClosedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomerCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal>("DiscountPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("DocumentRef")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("LineCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LinesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("No")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("PriceIncludesVat")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PriceListNo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<long>("SubmittedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Total")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "DocumentRef");
+
+                    b.HasIndex("TenantId", "No")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "AccountId", "SubmittedAtMs");
+
+                    b.HasIndex("TenantId", "Status", "SubmittedAtMs");
+
+                    b.ToTable("catalog_orders", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogProductSetting", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StockCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<bool>("CartonOnly")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("CartonQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NoDiscount")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId", "StockCode");
+
+                    b.ToTable("catalog_product_settings", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("DefaultPriceListNo")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("ImageRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UpdatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("catalog_settings", (string)null);
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ChangeSetAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4196,6 +4581,69 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Snapshot");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogAccount", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogCategorySetting", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogImage", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogImageBlob", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.CatalogImage", null)
+                        .WithMany()
+                        .HasForeignKey("ImageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogOrder", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogProductSetting", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.CatalogSettings", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", null)
+                        .WithOne()
+                        .HasForeignKey("ErpBridge.CentralApi.Domain.CatalogSettings", "TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ChangeSetAuditEntry", b =>

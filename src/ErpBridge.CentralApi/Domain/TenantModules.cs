@@ -30,10 +30,17 @@ public static class TenantModules
     public const string XmlImport = "xml_import";
 
     /// <summary>
-    /// Phone add-ons, managed by <c>PUT /admin/tenants/{id}/mobile/modules</c>. Never holds a
-    /// <see cref="GoPrefix"/> key: that endpoint leaves Go modules alone.
+    /// The web catalog customers sign in to (docs/GOAL_MUSTERI_KATALOGU.md). The company still publishes it
+    /// itself (<c>catalog_settings.IsEnabled</c>); without this module it is never served.
     /// </summary>
-    public static readonly IReadOnlySet<string> Known = new HashSet<string>(StringComparer.Ordinal) { XmlImport };
+    public const string CustomerCatalog = "customer_catalog";
+
+    /// <summary>
+    /// Company add-ons of the phone and the portal, managed by <c>PUT /admin/tenants/{id}/mobile/modules</c>
+    /// and carried in the session's <c>modules</c>. Never holds a <see cref="GoPrefix"/> key: that endpoint
+    /// leaves Go modules alone.
+    /// </summary>
+    public static readonly IReadOnlySet<string> Known = new HashSet<string>(StringComparer.Ordinal) { XmlImport, CustomerCatalog };
 
     /// <summary>
     /// Prefix of every Go desktop app module. The Go license token carries the company's keys

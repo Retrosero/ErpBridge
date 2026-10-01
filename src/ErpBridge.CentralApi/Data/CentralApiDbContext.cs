@@ -196,6 +196,21 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<TargetSettings> TargetSettings => Set<TargetSettings>();
 
+    /// <summary>Müşteri kataloğu (docs/GOAL_MUSTERI_KATALOGU.md §3).</summary>
+    public DbSet<CatalogSettings> CatalogSettings => Set<CatalogSettings>();
+
+    public DbSet<CatalogCategorySetting> CatalogCategorySettings => Set<CatalogCategorySetting>();
+
+    public DbSet<CatalogProductSetting> CatalogProductSettings => Set<CatalogProductSetting>();
+
+    public DbSet<CatalogAccount> CatalogAccounts => Set<CatalogAccount>();
+
+    public DbSet<CatalogImage> CatalogImages => Set<CatalogImage>();
+
+    public DbSet<CatalogImageBlob> CatalogImageBlobs => Set<CatalogImageBlob>();
+
+    public DbSet<CatalogOrder> CatalogOrders => Set<CatalogOrder>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -307,6 +322,7 @@ public sealed class CentralApiDbContext : DbContext
 
         ConfigureWorkTasks(modelBuilder);
         ConfigureSalesTargets(modelBuilder);
+        ConfigureCustomerCatalog(modelBuilder);
 
         modelBuilder.Entity<StockExpiryRecord>(b =>
         {
@@ -1396,6 +1412,101 @@ public sealed class CentralApiDbContext : DbContext
         {
             b.ToTable("target_settings");
             b.HasKey(x => x.TenantId);
+        });
+    }
+
+    /// <summary>Müşteri kataloğu (docs/GOAL_MUSTERI_KATALOGU.md §3). Every table goes with its company.</summary>
+    private static void ConfigureCustomerCatalog(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CatalogSettings>(b =>
+        {
+            b.ToTable("catalog_settings");
+            b.HasKey(x => x.TenantId);
+            b.HasOne<Tenant>().WithOne().HasForeignKey<CatalogSettings>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CatalogCategorySetting>(b =>
+        {
+            b.ToTable("catalog_category_settings");
+            b.HasKey(x => new { x.TenantId, x.CategoryKey });
+            b.Property(x => x.CategoryKey).HasMaxLength(160);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CatalogProductSetting>(b =>
+        {
+            b.ToTable("catalog_product_settings");
+            b.HasKey(x => new { x.TenantId, x.StockCode });
+            b.Property(x => x.StockCode).HasMaxLength(64);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CatalogAccount>(b =>
+        {
+            b.ToTable("catalog_accounts");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.CustomerCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.CustomerName).IsRequired().HasMaxLength(200);
+            b.Property(x => x.Username).IsRequired().HasMaxLength(64);
+            b.Property(x => x.PasswordHash).IsRequired().HasMaxLength(100);
+            b.Property(x => x.DiscountPercent).HasPrecision(5, 2);
+            b.Property(x => x.VisibilityJson).IsRequired().HasColumnType("jsonb");
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // Live accounts only (the mobile_users pattern): a deleted account frees its name and its customer.
+            b.HasIndex(x => new { x.TenantId, x.Username }).IsUnique().HasFilter("\"DeletedAtMs\" IS NULL");
+            b.HasIndex(x => new { x.TenantId, x.CustomerCode }).IsUnique().HasFilter("\"DeletedAtMs\" IS NULL");
+        });
+
+        modelBuilder.Entity<CatalogImage>(b =>
+        {
+            b.ToTable("catalog_images");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.StockCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(8);
+            b.Property(x => x.Url).HasMaxLength(2048);
+            b.Property(x => x.SourceHash).IsRequired().HasMaxLength(80);
+            b.Property(x => x.Source).IsRequired().HasMaxLength(8);
+            b.Property(x => x.ContentType).HasMaxLength(32);
+            b.Property(x => x.Sha256Small).HasMaxLength(64);
+            b.Property(x => x.Sha256Large).HasMaxLength(64);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // A repeated upload of the same original finds its row; it also serves the per-product listing and the quota.
+            b.HasIndex(x => new { x.TenantId, x.StockCode, x.SourceHash }).IsUnique();
+        });
+
+        modelBuilder.Entity<CatalogImageBlob>(b =>
+        {
+            b.ToTable("catalog_image_blobs");
+            b.HasKey(x => new { x.ImageId, x.Variant });
+            b.Property(x => x.Variant).HasMaxLength(1);
+            b.Property(x => x.Data).IsRequired();
+            b.HasOne<CatalogImage>().WithMany().HasForeignKey(x => x.ImageId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CatalogOrder>(b =>
+        {
+            b.ToTable("catalog_orders");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.CustomerCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.CustomerName).IsRequired().HasMaxLength(200);
+            b.Property(x => x.AccountUsername).IsRequired().HasMaxLength(64);
+            b.Property(x => x.No).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Status).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Note).HasMaxLength(1000);
+            b.Property(x => x.RejectReason).HasMaxLength(500);
+            b.Property(x => x.DocumentRef).HasMaxLength(128);
+            b.Property(x => x.DiscountPercent).HasPrecision(5, 2);
+            b.Property(x => x.Total).HasPrecision(18, 2);
+            b.Property(x => x.LinesJson).IsRequired().HasColumnType("jsonb");
+            b.Property(x => x.ClaimedByName).HasMaxLength(120);
+            b.Property(x => x.ClosedByName).HasMaxLength(120);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.TenantId, x.No }).IsUnique();
+            b.HasIndex(x => new { x.TenantId, x.Status, x.SubmittedAtMs });
+            b.HasIndex(x => new { x.TenantId, x.AccountId, x.SubmittedAtMs });
+            // A sale carrying catalogOrderId is checked against the request it completes (T8).
+            b.HasIndex(x => new { x.TenantId, x.DocumentRef });
         });
     }
 }

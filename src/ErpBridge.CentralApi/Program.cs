@@ -86,6 +86,32 @@ public partial class Program
     /// <summary>Anonymous rate-limit policy (partitioned by remote IP).</summary>
     public const string AnonymousRateLimitPolicy = "Anonymous";
 
+    /// <summary>
+    /// Müşteri kataloğu picture uploads (docs/GOAL_MUSTERI_KATALOGU.md §5.1): per signed-in user, wider than
+    /// <see cref="PerMobileUserRateLimitPolicy"/> — a phone sends a whole catalog's pictures in one go.
+    /// </summary>
+    public const string CatalogUploadRateLimitPolicy = "catalog-upload";
+
+    /// <summary>The web catalog's anonymous calls (pictures, company info): per client IP, /64 for IPv6.</summary>
+    public const string CatalogPublicRateLimitPolicy = "catalog-public";
+
+    /// <summary>
+    /// The web catalog's sign-in: per client IP (/64 for IPv6). The per-company budget and the cap on concurrent
+    /// BCrypt work are <see cref="ErpBridge.CentralApi.CustomerCatalog.CatalogLoginGate"/>'s.
+    /// </summary>
+    public const string CatalogLoginRateLimitPolicy = "catalog-login";
+
+    /// <summary>A signed-in web catalog customer: per account (JWT <c>sub</c>).</summary>
+    public const string PerCatalogAccountRateLimitPolicy = "per-catalog-account";
+
+    /// <summary>
+    /// A web catalog customer (<c>scope=customer-catalog</c>, docs/GOAL_MUSTERI_KATALOGU.md §5.2) whose account,
+    /// company, module, published switch and subscription still hold (<see cref="CatalogAccountStateRequirement"/>).
+    /// </summary>
+    public const string CatalogCustomerPolicy = "CatalogCustomer";
+
+    public const int CatalogLoginPermitsPerMinute = 10;
+
     /// <summary>Partition key prefix used for anonymous (pre-auth) calls.</summary>
     public const string RateLimitAnonymousPartition = "anon";
 
@@ -295,6 +321,14 @@ public partial class Program
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TargetFactReader>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TargetService>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Targets.TeamService>();
+        // Müşteri kataloğu (docs/GOAL_MUSTERI_KATALOGU.md): per-name sign-in slow-down, shared by the staff,
+        // Admin and catalog sign-ins. In memory: one CentralApi container.
+        builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetService<TimeProvider>() ?? TimeProvider.System));
+        builder.Services.AddSingleton<ErpBridge.CentralApi.CustomerCatalog.CatalogLoginGate>();
+        builder.Services.Configure<ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions>(cfg.GetSection(ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions.SectionName));
+        // Each company's built catalog, over the shared stock mirror; in memory like the mirror itself.
+        builder.Services.AddSingleton(sp => new ErpBridge.CentralApi.CustomerCatalog.CatalogViewService(
+            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetService<TimeProvider>() ?? TimeProvider.System));
     }
 
     /// <summary>
@@ -367,6 +401,7 @@ public partial class Program
         });
         services.AddSingleton<IJwtIssuer, JwtIssuer>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, MobileUserStateHandler>();
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, CatalogAccountStateHandler>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, MobileUserAuthorizationResultHandler>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -383,6 +418,11 @@ public partial class Program
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.FromSeconds(30),
+                };
+                // The web catalog's session is an HttpOnly cookie, read only for its own /api/v1/catalog/{code}/ paths.
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = ErpBridge.CentralApi.CustomerCatalog.CatalogCookies.ReadSessionAsync,
                 };
             })
             // API-key scheme sits alongside JWT. IngestEndpoints authorizes
@@ -453,6 +493,13 @@ public partial class Program
                     ctx.User.HasClaim("scope", CentralApiClaims.MobileUserScope))
                 .AddRequirements(new MobileUserStateRequirement { PhoneClientOnly = true }));
 
+            // A web catalog customer only; its token is refused everywhere else (no other policy accepts its scope).
+            options.AddPolicy(CatalogCustomerPolicy, policy => policy
+                .RequireAuthenticatedUser()
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                .RequireClaim("scope", CentralApiClaims.CustomerCatalogScope)
+                .AddRequirements(new CatalogAccountStateRequirement()));
+
             options.AddPolicy(AgentOrApiKeyPolicy, policy => policy
                 .RequireAuthenticatedUser()
                 .AddAuthenticationSchemes(
@@ -500,6 +547,13 @@ public partial class Program
         var allowedOrigins = cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
         if (allowedOrigins.Length == 0 || allowedOrigins.Any(string.IsNullOrWhiteSpace))
             throw new InvalidOperationException("Cors:AllowedOrigins requires at least one explicit origin outside the test environment.");
+
+        // The public catalog must see its visitors' addresses: without the proxy list every sign-in and image
+        // request of every company would share Traefik's single rate-limit bucket (GOAL_MUSTERI_KATALOGU §6).
+        var forwarded = ForwardedHeadersSetup.FromConfiguration(cfg);
+        if (!string.IsNullOrWhiteSpace(cfg["CustomerCatalog:PublicHost"]) && forwarded is null)
+            throw new InvalidOperationException(
+                $"CustomerCatalog:PublicHost requires {ForwardedHeadersSetup.KnownNetworksKey} or {ForwardedHeadersSetup.KnownProxiesKey} (the reverse proxy) outside the test environment.");
     }
 
     private static void ConfigureCors(IServiceCollection services, IConfiguration cfg, bool allowTestDefaults)
@@ -526,13 +580,20 @@ public partial class Program
     /// by the JWT <c>sub</c> claim (the agent id), which is the brief's
     /// default. The "Tenant" policy partitions by the <c>tenant</c> claim as
     /// a coarser secondary guard. "Anonymous" partitions by remote IP for
-    /// pre-auth calls. A global limiter caps total per-IP throughput.
+    /// pre-auth calls (an IPv6 caller by its /64, <see cref="ClientIpPartition"/>).
+    /// A global limiter caps total per-IP throughput. Every rejection answers
+    /// <see cref="RateLimitedResponse"/>.
     /// </summary>
     public static void ConfigureRateLimiter(IServiceCollection services)
     {
         services.AddRateLimiter(opt =>
         {
             opt.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            // Clients already react to the status; the body and Retry-After tell the web catalog how long to wait.
+            opt.OnRejected = (context, ct) => new ValueTask(RateLimitedResponse.WriteAsync(
+                context.HttpContext,
+                context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) ? retryAfter : null,
+                ct));
 
             opt.AddPolicy(PerAgentRateLimitPolicy, httpContext =>
             {
@@ -600,6 +661,55 @@ public partial class Program
                 });
             });
 
+            opt.AddPolicy(CatalogUploadRateLimitPolicy, httpContext =>
+            {
+                var userId = httpContext.User.FindFirst("sub")?.Value ?? SignedOutPartition(httpContext);
+                return RateLimitPartition.GetFixedWindowLimiter("catalog-upload:" + userId, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 300,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
+            // A catalog page shows up to 60 thumbnails; a customer scrolling fast stays well inside this.
+            opt.AddPolicy(CatalogPublicRateLimitPolicy, httpContext =>
+            {
+                var remoteIp = ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
+                return RateLimitPartition.GetFixedWindowLimiter("catalog-public:" + remoteIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 600,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
+            opt.AddPolicy(CatalogLoginRateLimitPolicy, httpContext =>
+            {
+                var remoteIp = ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
+                return RateLimitPartition.GetFixedWindowLimiter("catalog-login:" + remoteIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = CatalogLoginPermitsPerMinute,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
+            opt.AddPolicy(PerCatalogAccountRateLimitPolicy, httpContext =>
+            {
+                var accountId = httpContext.User.FindFirst("sub")?.Value ?? SignedOutPartition(httpContext);
+                return RateLimitPartition.GetFixedWindowLimiter("catalog-account:" + accountId, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
             opt.AddPolicy(PerDisplayRateLimitPolicy, httpContext =>
             {
                 var displayId = httpContext.User.FindFirst("sub")?.Value ?? "unknown";
@@ -614,7 +724,7 @@ public partial class Program
 
             opt.AddPolicy(AnonymousRateLimitPolicy, httpContext =>
             {
-                var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                var remoteIp = ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
                 return RateLimitPartition.GetFixedWindowLimiter("anon:" + remoteIp, _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 60,
@@ -626,7 +736,7 @@ public partial class Program
 
             opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             {
-                var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                var remoteIp = ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
                 return RateLimitPartition.GetFixedWindowLimiter("global:" + remoteIp, _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 1000,
@@ -637,6 +747,13 @@ public partial class Program
             });
         });
     }
+
+    /// <summary>
+    /// The bucket of a request without a session on a per-user policy (an expired cookie, a stray call): its caller's
+    /// address, so one visitor's 401s never use up another's budget the way a shared "anonymous" bucket would.
+    /// </summary>
+    internal static string SignedOutPartition(HttpContext httpContext) =>
+        "ip:" + ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
 
     private static string ResolvePartitionKey(HttpContext httpContext)
     {
@@ -653,6 +770,19 @@ public partial class Program
     /// </summary>
     public static void ConfigureApp(WebApplication app)
     {
+        // The caller's real address and scheme behind Traefik, before anything reads them (rate limits, logs,
+        // refresh-token audit). Absent unless the operator names the proxy (ForwardedHeadersSetup).
+        var forwarded = ForwardedHeadersSetup.FromConfiguration(app.Configuration);
+        // A forwarded header from an address that is not the proxy means the proxy setting is missing or wrong: said once.
+        var untrustedForward = new UntrustedForwardWarning(app.Logger, forwarded);
+        app.Use((context, next) =>
+        {
+            untrustedForward.Inspect(context);
+            return next(context);
+        });
+        if (forwarded is not null)
+            app.UseForwardedHeaders(forwarded);
+
         // Log Merkezi L0e: every request gets a correlation id first, so the exception handler, the logs and
         // the response all carry the same one. The handler answers an unhandled exception with a bare 500
         // ApiError and records the details in the log centre.
@@ -664,6 +794,11 @@ public partial class Program
             app.UseSwagger();
             app.UseSwaggerUI();
         }
+
+        // The web catalog's host (CustomerCatalog:PublicHost): its files go out before routing and the rate limiter,
+        // and nothing but the customer API, health and the catalog pages is reachable there.
+        var catalogWeb = ErpBridge.CentralApi.CustomerCatalog.CatalogWeb.Create(app);
+        catalogWeb?.UseFiles(app);
 
         app.UseRouting();
         app.UseCors(ProductionCorsPolicy);
@@ -752,6 +887,11 @@ public partial class Program
         app.MapMobilePermissionEndpoints();
         app.MapMobileTargetEndpoints();
         app.MapMobileUserPreferencesEndpoints();
+        app.MapCustomerCatalogManageEndpoints();
+        app.MapCustomerCatalogImageEndpoints();
+        app.MapCustomerCatalogOrderEndpoints();
+        app.MapCustomerCatalogPublicEndpoints();
+        catalogWeb?.MapShell(app);
         app.MapPortalTargetEndpoints();
         app.MapPortalRouteEndpoints();
         app.MapPortalEndpoints();

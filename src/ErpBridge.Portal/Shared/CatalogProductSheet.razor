@@ -1,0 +1,380 @@
+@* GOAL_MUSTERI_KATALOGU P3: one product in the customer catalog. The flags edit the list's row and go with the page's
+   "Kaydet"; image changes (upload, link, order, delete) reach the server at once. *@
+@using System.Globalization
+@using System.Security.Cryptography
+@using System.Text
+@inject PortalApiClient Api
+@inject IImageShrinker Shrinker
+
+<DetailSheet Id="catalog-product-sheet" Open="Row is not null" Busy="_busy" Eyebrow="Katalog ürünü" Title="@(Row?.Item.Name ?? string.Empty)" OnClose="OnClose">
+    <ChildContent>
+        @if (Row is { } row)
+        {
+            <div class="detail-badges">
+                <span class="mono">@row.StockCode</span>
+                <span class="badge @(row.Item.InStock ? "badge--ok" : "badge--off")">@(row.Item.InStock ? "Stokta" : "Stokta yok")</span>
+                @if (row.Item.ListPrice is { } price)
+                {
+                    <span>@Fmt.Money(price)</span>
+                }
+                else
+                {
+                    <span class="badge badge--warning">Varsayılan listede fiyatı yok</span>
+                }
+            </div>
+
+            <div class="stack-form mt-3">
+                <label class="inline-field">
+                    <input type="checkbox" id="sheet-hidden" checked="@row.Hidden" @onchange="e => ChangeAsync(() => row.Hidden = e.Value is true)" />
+                    Müşterilere gösterme
+                </label>
+                <label class="inline-field">
+                    <input type="checkbox" id="sheet-no-discount" checked="@row.NoDiscount" @onchange="e => ChangeAsync(() => row.NoDiscount = e.Value is true)" />
+                    İskonto uygulanmaz: her müşteri liste fiyatını görür
+                </label>
+                <label class="inline-field">
+                    <input type="checkbox" id="sheet-carton-only" checked="@row.CartonOnly" disabled="@(!row.CartonOnly && row.EffectiveCarton is not >= 2)"
+                           @onchange="e => ChangeAsync(() => row.CartonOnly = e.Value is true)" />
+                    Yalnız koli ile satılır
+                </label>
+                <label class="stack-field">
+                    <span class="field-label">Koli adedi</span>
+                    <input type="number" min="2" step="1" class="portal-input portal-input--number" id="sheet-carton" value="@row.CartonQuantity"
+                           placeholder="@(row.Item.ErpCartonQuantity?.ToString(CultureInfo.InvariantCulture) ?? "—")" @onchange="e => CartonChangedAsync(row, e.Value?.ToString())" />
+                    <span class="field-hint" id="sheet-carton-hint">
+                        ERP'deki: @(row.Item.ErpCartonQuantity?.ToString(CultureInfo.InvariantCulture) ?? "yok"). Boş bırakılırsa ERP'deki kullanılır; yalnız koli için en az 2 gerekir.
+                    </span>
+                </label>
+                @if (_cartonError is not null)
+                {
+                    <span class="field-hint field-hint--warn" id="sheet-carton-error">@_cartonError</span>
+                }
+                <span class="field-hint">Bu ayarlar listedeki "Kaydet" ile kaydedilir.</span>
+            </div>
+
+            <section class="detail-section" id="sheet-images-section">
+                <div class="detail-section-title">Görseller (@_images.Count / @MaxImages)</div>
+                @if (_error is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="sheet-image-error">@_error</MudAlert>
+                }
+                @if (_progress is not null)
+                {
+                    <p class="field-hint" id="sheet-image-progress">@_progress</p>
+                }
+                @if (_loaded && _images.Count == 0)
+                {
+                    <p class="text-muted" id="sheet-images-empty">Bu ürünün görseli yok.</p>
+                }
+                <div class="image-grid" id="sheet-images">
+                    @foreach (var (image, index) in _images.Select((m, i) => (m, i)))
+                    {
+                        <figure class="catalog-image" data-image="@image.Id">
+                            @if (Src(image) is { } src)
+                            {
+                                <img src="@src" alt="@($"{row.Item.Name} görseli {index + 1}")" loading="lazy" />
+                            }
+                            <figcaption>
+                                @if (index == 0)
+                                {
+                                    <span class="badge badge--primary">Kapak</span>
+                                }
+                                <span class="badge badge--muted">@SourceLabel(image)</span>
+                            </figcaption>
+                            @if (_confirmDelete == image.Id)
+                            {
+                                <div class="catalog-image-actions">
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error" Disabled="@_busy" Class="image-delete-confirm" OnClick="() => DeleteAsync(image)">Sil</MudButton>
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" Class="image-delete-cancel" OnClick="() => _confirmDelete = null">Vazgeç</MudButton>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="catalog-image-actions">
+                                    <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" Size="Size.Small" Disabled="@(_busy || index == 0)" aria-label="Öne al" Class="image-left" OnClick="() => MoveAsync(index, index - 1)" />
+                                    <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" Color="Color.Error" Disabled="@_busy" aria-label="Sil" Class="image-delete" OnClick="() => _confirmDelete = image.Id" />
+                                    <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" Size="Size.Small" Disabled="@(_busy || index == _images.Count - 1)" aria-label="Arkaya al" Class="image-right" OnClick="() => MoveAsync(index, index + 1)" />
+                                </div>
+                            }
+                        </figure>
+                    }
+                </div>
+
+                @if (_loaded && _images.Count < MaxImages)
+                {
+                    <label class="stack-field">
+                        <span class="field-label">Dosyadan ekle (JPEG, PNG, WebP)</span>
+                        <InputFile OnChange="UploadAsync" multiple accept="image/jpeg,image/png,image/webp" id="sheet-image-file" disabled="@_busy" />
+                    </label>
+                    <form class="document-search mt-2" @onsubmit="AddLinkAsync" @onsubmit:preventDefault>
+                        <input class="portal-input" id="sheet-image-link" type="url" placeholder="https://… görsel bağlantısı" maxlength="2048" value="@_link" @onchange="e => _link = e.Value?.ToString()" />
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@_busy" id="sheet-image-link-add">Bağlantı ekle</MudButton>
+                    </form>
+                }
+                <p class="field-hint mt-2">
+                    Dosyalar tarayıcıda küçültülür (büyük en çok @LargeSide px, küçük @SmallSide px) ve sırayla gönderilir. Bağlantı görseli sunucuya indirilmez; yalnız https adresi olur.
+                    @if (_limitBytes > 0)
+                    {
+                        <span id="sheet-quota">Firmanın görsel kotası: @Megabytes(_usedBytes) / @Megabytes(_limitBytes).</span>
+                    }
+                </p>
+            </section>
+        }
+    </ChildContent>
+</DetailSheet>
+
+@code {
+    /// <summary>The product being edited; null closes the sheet. Its flags are the list's working copy.</summary>
+    [Parameter] public CatalogProductRow? Row { get; set; }
+
+    /// <summary>The catalog's public address (settings); stored images load from its host.</summary>
+    [Parameter] public string? PublicUrl { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>A flag or the carton size changed; the page redraws the row and its unsaved count.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>The product's images after a change, in order (the first is the cover).</summary>
+    [Parameter] public EventCallback<CatalogImageDto[]> OnImagesChanged { get; set; }
+
+    /// <summary>The server ended the session; the page signs out with this code.</summary>
+    [Parameter] public EventCallback<string> OnSessionEnded { get; set; }
+
+    // GOAL_MUSTERI_KATALOGU §5.1: l ≤ 1 MB and 1280 px, s ≤ 200 KB and 400 px, at most 8 images a product. The byte
+    // limits are kept a little under the server's so a size at the edge is not refused.
+    private const int MaxImages = 8;
+    private const int LargeSide = 1280;
+    private const long LargeBytes = 1_000_000;
+    private const int SmallSide = 400;
+    private const long SmallBytes = 200_000;
+    private const long MaxSourceBytes = 15L * 1024 * 1024;
+    private static readonly HashSet<string> ImageTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    private string? _loadedFor;
+    private bool _loaded;
+    private List<CatalogImageDto> _images = [];
+    private long _usedBytes;
+    private long _limitBytes;
+    private bool _busy;
+    private string? _error;
+    private string? _cartonError;
+    private string? _progress;
+    private string? _link;
+    private Guid? _confirmDelete;
+    private bool _ended;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Row?.StockCode == _loadedFor) return;
+        _loadedFor = Row?.StockCode;
+        _images = [];
+        _loaded = false;
+        _error = _cartonError = _progress = _link = null;
+        _confirmDelete = null;
+        if (Row is { } row) await RunAsync(() => LoadImagesAsync(row.StockCode));
+    }
+
+    private async Task LoadImagesAsync(string stockCode)
+    {
+        var manifest = await Api.CatalogImageManifestAsync();
+        _usedBytes = manifest.UsedBytes;
+        _limitBytes = manifest.LimitBytes;
+        _images = [.. (manifest.Items.FirstOrDefault(i => i.StockCode == stockCode)?.Images ?? []).OrderBy(i => i.SortOrder)];
+        _loaded = true;
+    }
+
+    private Task ChangeAsync(Action change)
+    {
+        change();
+        return OnChanged.InvokeAsync();
+    }
+
+    private Task CartonChangedAsync(CatalogProductRow row, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) row.CartonQuantity = null;
+        else if (int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var quantity) && quantity >= 2) row.CartonQuantity = quantity;
+        else
+        {
+            _cartonError = "Koli adedi en az 2 olan bir tam sayı olmalı.";
+            return Task.CompletedTask;
+        }
+        _cartonError = row.CartonOnly && row.EffectiveCarton is not >= 2 ? "Koli adedi olmadan yalnız koli kaydedilemez." : null;
+        return OnChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Each file in turn: its hash, the two variants, the image record, then the variants' bytes. One file at a time
+    /// keeps the upload inside the server's rate limit; the first refusal stops the rest.
+    /// </summary>
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        if (Row is not { } row) return;
+        var room = MaxImages - _images.Count;
+        if (e.FileCount > room)
+        {
+            _error = $"Bu ürüne en çok {room} görsel daha eklenebilir (ürün başına {MaxImages}).";
+            return;
+        }
+        var files = e.GetMultipleFiles(room);
+        var problems = new List<string>();
+        var uploaded = 0;
+        await RunAsync(async () =>
+        {
+            for (var i = 0; i < files.Count; i++)
+            {
+                _progress = $"{i + 1}/{files.Count} gönderiliyor: {files[i].Name}";
+                StateHasChanged();
+                if (await UploadOneAsync(row.StockCode, files[i], problems)) uploaded++;
+            }
+        });
+        if (problems.Count > 0) _error ??= string.Join(" · ", problems);
+        if (uploaded > 0) await ReloadAsync(row.StockCode);
+    }
+
+    /// <returns>False when the file was left out (listed in <paramref name="problems"/>); a server refusal throws.</returns>
+    private async Task<bool> UploadOneAsync(string stockCode, IBrowserFile file, List<string> problems)
+    {
+        if (!ImageTypes.Contains(file.ContentType))
+        {
+            problems.Add($"{file.Name}: JPEG, PNG ya da WebP değil");
+            return false;
+        }
+        if (file.Size > MaxSourceBytes)
+        {
+            problems.Add($"{file.Name}: 15 MB'tan büyük");
+            return false;
+        }
+        string sourceHash;
+        await using (var stream = file.OpenReadStream(MaxSourceBytes))
+        {
+            sourceHash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream));
+        }
+        var large = await Shrinker.ShrinkAsync(file, LargeSide, LargeBytes);
+        var small = large is null ? null : await Shrinker.ShrinkAsync(file, SmallSide, SmallBytes);
+        if (large is null || small is null)
+        {
+            problems.Add($"{file.Name}: görsel okunamadı ya da yeterince küçültülemedi");
+            return false;
+        }
+        // Idempotent by the hash: the same file again gets the same image, and a variant it already has is not sent twice.
+        var image = await Api.CreateCatalogImageAsync(new CatalogImageCreateRequest { StockCode = stockCode, SourceHash = sourceHash, Source = "panel" });
+        if (!image.HasLarge) await Api.UploadCatalogImageAsync(image.Id, "l", large.Content, large.ContentType);
+        if (!image.HasSmall) await Api.UploadCatalogImageAsync(image.Id, "s", small.Content, small.ContentType);
+        return true;
+    }
+
+    private async Task AddLinkAsync()
+    {
+        if (Row is not { } row) return;
+        var url = _link?.Trim() ?? string.Empty;
+        if (url.Length > 2048 || !Uri.TryCreate(url, UriKind.Absolute, out var address) || address.Scheme != Uri.UriSchemeHttps)
+        {
+            _error = PortalMessages.For("INVALID_IMAGE_URL");
+            return;
+        }
+        var added = false;
+        await RunAsync(async () =>
+        {
+            var image = await Api.CreateCatalogImageAsync(new CatalogImageCreateRequest
+            {
+                StockCode = row.StockCode, SourceHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(url))), Source = "panel", Url = url,
+            });
+            if (image.Kind != "link")
+            {
+                // A server that does not take a link here registered an empty file image instead: take it back.
+                await Api.DeleteCatalogImageAsync(image.Id);
+                _error = "Sunucu panelden bağlantı görseli eklemeyi desteklemiyor.";
+                return;
+            }
+            added = true;
+        });
+        if (!added) return;
+        _link = null;
+        await ReloadAsync(row.StockCode);
+    }
+
+    private async Task MoveAsync(int from, int to)
+    {
+        if (Row is not { } row) return;
+        var order = _images.ToList();
+        var image = order[from];
+        order.RemoveAt(from);
+        order.Insert(to, image);
+        var moved = false;
+        await RunAsync(async () =>
+        {
+            await Api.OrderCatalogImagesAsync(row.StockCode, order.Select(i => i.Id));
+            _images = order;
+            moved = true;
+        });
+        if (moved) await OnImagesChanged.InvokeAsync([.. _images]);
+    }
+
+    private async Task DeleteAsync(CatalogImageDto image)
+    {
+        _confirmDelete = null;
+        var deleted = false;
+        await RunAsync(async () =>
+        {
+            await Api.DeleteCatalogImageAsync(image.Id);
+            _images.Remove(image);
+            deleted = true;
+        });
+        if (deleted) await OnImagesChanged.InvokeAsync([.. _images]);
+    }
+
+    /// <summary>Reads the images after an upload or a new link and tells the page; an error already shown stays.</summary>
+    private async Task ReloadAsync(string stockCode)
+    {
+        if (_ended) return;
+        var error = _error;
+        await RunAsync(() => LoadImagesAsync(stockCode));
+        _error = error ?? _error;
+        await OnImagesChanged.InvokeAsync([.. _images]);
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+        }
+        catch (SessionEndedException ended)
+        {
+            // Once: a later call would end it again with the signed-out session's own code.
+            _ended = true;
+            await OnSessionEnded.InvokeAsync(ended.Code);
+        }
+        catch (PortalApiException failed)
+        {
+            _error = failed.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+        }
+        catch (TaskCanceledException)
+        {
+            _error = "Sunucu zamanında yanıt vermedi. Tekrar deneyin.";
+        }
+        catch (IOException)
+        {
+            _error = "Dosya okunamadı. Tekrar seçip deneyin.";
+        }
+        finally
+        {
+            _busy = false;
+            _progress = null;
+        }
+    }
+
+    private string? Src(CatalogImageDto image) => CatalogImageAddress.Resolve(image.ThumbUrl ?? image.Url, PublicUrl, Api.BaseAddress);
+
+    private static string SourceLabel(CatalogImageDto image) =>
+        image.Kind == "link" ? "Bağlantı" : image.Source == "phone" ? "Telefondan" : "Panelden";
+
+    private static string Megabytes(long bytes) => (bytes / (double)(1L << 20)).ToString("N1", Fmt.Turkish) + " MB";
+}

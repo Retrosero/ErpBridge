@@ -9,7 +9,25 @@ namespace ErpBridge.Portal.Api;
 /// </summary>
 public static class PortalMessages
 {
-    public static string For(string code) => code switch
+    public static string For(string code) => Known(code) ?? $"İşlem tamamlanamadı ({code}). Lütfen tekrar deneyin.";
+
+    /// <summary>Whether the panel has its own wording for the code.</summary>
+    public static bool Knows(string code) => Known(code) is not null;
+
+    /// <summary>
+    /// The text shown for a refusal: the panel's own for a code it knows; for one it does not, the server's message
+    /// when the server worded it in Turkish (the catalog endpoints do), else the generic text quoting the code.
+    /// </summary>
+    public static string For(string code, string? serverMessage) =>
+        Known(code) ?? (LooksTurkish(serverMessage) ? serverMessage!.Trim() : For(code));
+
+    /// <summary>A message with a letter only Turkish uses — the server's English messages have none.</summary>
+    public static bool LooksTurkish(string? message) =>
+        !string.IsNullOrWhiteSpace(message) && message.IndexOfAny(TurkishLetters) >= 0;
+
+    private static readonly char[] TurkishLetters = ['ç', 'ğ', 'ı', 'ö', 'ş', 'ü', 'Ç', 'Ğ', 'İ', 'Ö', 'Ş', 'Ü'];
+
+    private static string? Known(string code) => code switch
     {
         "INVALID_CREDENTIALS" => "Firma kodu, kullanıcı adı veya parola hatalı.",
         "USER_INACTIVE" => "Kullanıcınız devre dışı bırakılmış. Firma yöneticinizle görüşün.",
@@ -97,7 +115,33 @@ public static class PortalMessages
         "INVALID_STOCK_COUNT" => "Sayım kaydedilemedi: gerekçe zorunlu, miktar eksi olamaz ve her ürün bir kez sayılır.",
         "STOCK_COUNT_REJECTED" => "Sayım kaydedilemedi: ürünlerden biri bulunamadı ya da sayım zaten iptal edilmiş.",
         "STOCK_COUNT_NOT_FOUND" => "Sayım bulunamadı; liste yenilendi.",
-        _ => $"İşlem tamamlanamadı ({code}). Lütfen tekrar deneyin.",
+        // Customer catalog management (GOAL_MUSTERI_KATALOGU §5.1).
+        "MODULE_NOT_ENABLED" => "Bu ek modül firmanız için açık değil.",
+        "CATALOG_MANAGE_REQUIRED" => "Müşteri kataloğunu yalnız admin ve yöneticiler yönetebilir.",
+        "CATALOG_CHANGED" => "Katalog bu arada başka biri tarafından değiştirildi; güncel hâli yüklendi. Değişikliklerinizi yeniden yapın.",
+        "UNKNOWN_PRICE_LIST" => "Seçilen fiyat listesi artık yok; listeyi yeniden seçin.",
+        "CARTON_QUANTITY_REQUIRED" => "Yalnız koli satışı için ürünün koli adedi (en az 2) olmalı.",
+        "CUSTOMER_NOT_FOUND" => "Cari bulunamadı.",
+        "CATALOG_ACCOUNT_NOT_FOUND" => "Katalog erişimi bulunamadı; liste yenilendi.",
+        "CATALOG_ACCOUNT_EXISTS" or "CUSTOMER_HAS_ACCOUNT" => "Bu carinin zaten bir katalog erişimi var.",
+        "CATALOG_USERNAME_TAKEN" => "Bu kullanıcı adı başka bir katalog erişiminde kullanılıyor.",
+        "INVALID_DISCOUNT" => "İskonto 0 ile 99,99 arasında olmalı.",
+        "INVALID_IMAGE" => "Dosya JPEG, PNG ya da WebP görseli değil.",
+        "IMAGE_TOO_LARGE" => "Görsel çok büyük: büyük boy en çok 1 MB, küçük boy en çok 200 KB olabilir.",
+        "CATALOG_IMAGE_LIMIT" => "Bir ürüne en çok 8 görsel eklenebilir.",
+        "CATALOG_IMAGE_QUOTA_EXCEEDED" => "Firmanın görsel kotası doldu; kullanılmayan görselleri silin.",
+        "INVALID_IMAGE_URL" => "Görsel bağlantısı https:// ile başlayan, herkese açık bir adres olmalı.",
+        "INVALID_CARTON_QUANTITY" => "Koli adedi en az 2 olmalı (boş bırakılırsa ERP'deki koli kullanılır).",
+        "INVALID_VISIBILITY" => "Ürün görünürlüğü kaydedilemedi: seçilen kategori ya da ürünlerden biri geçersiz.",
+        "INVALID_RESPONSIBLE_USER" => "Sorumlu kişi firmanın aktif bir kullanıcısı olmalı.",
+        "CATALOG_IMAGE_NOT_FOUND" => "Görsel bulunamadı; başka biri silmiş olabilir. Ürünü yeniden açın.",
+        "INVALID_BODY" => "İstek eksik ya da hatalı; alanları kontrol edip tekrar deneyin.",
+        "CATALOG_ORDER_NOT_FOUND" => "Müşteri siparişi bulunamadı; liste yenilendi.",
+        "CATALOG_ORDER_TAKEN" => "Bu siparişle az önce başka biri ilgilenmeye başladı.",
+        "CATALOG_ORDER_CLOSED" => "Bu sipariş kapanmış (siparişe çevrilmiş ya da reddedilmiş); liste yenilendi.",
+        "CATALOG_ORDER_ALREADY_CONVERTED" => "Bu müşteri siparişi başka bir belgeyle zaten siparişe çevrilmiş.",
+        "RATE_LIMITED" or "HTTP_429" => "Çok fazla istek gönderildi; biraz bekleyip tekrar deneyin.",
+        _ => null,
     };
 }
 

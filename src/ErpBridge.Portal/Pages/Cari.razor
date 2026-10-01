@@ -18,6 +18,11 @@ else
                 <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.Balance" OnClick="OpenAdjustment" id="customer-adjust">Manuel düzeltme</MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Edit" OnClick="OpenEditCard" id="customer-edit">Düzenle</MudButton>
             }
+            @if (_card is not null && Session.Allows(PortalArea.CustomerCatalog))
+            {
+                @* GOAL_MUSTERI_KATALOGU P4: the access is read when the sheet opens, not with the page. *@
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Storefront" OnClick="() => _catalogAccessOpen = true" id="customer-catalog-access">Katalog erişimi</MudButton>
+            }
             <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.ArrowBack" Href="@BackHref" id="customer-back">Carilere dön</MudButton>
         </Actions>
     </PageHeader>
@@ -252,6 +257,12 @@ else
         }
     </DetailSheet>
 
+    @if (Session.Allows(PortalArea.CustomerCatalog))
+    {
+        <CatalogAccessSheet CustomerCode="@(_catalogAccessOpen ? _card?.CustomerCode : null)" CustomerName="@_card?.Title" Phone="@_card?.Phone"
+                            OnClose="() => _catalogAccessOpen = false" OnSessionEnded="EndSessionAsync" />
+    }
+
     @if (Session.CanEditNativeData)
     {
         <DetailSheet Id="customer-edit-sheet" Open="_editOpen" Busy="Busy" Eyebrow="Cari" Title="Müşteriyi düzenle" OnClose="CloseEditCard">
@@ -417,6 +428,8 @@ else
     private string? _documentError;
     private LedgerRowDto? _opened;
     private CustomerDocumentDto? _document;
+
+    private bool _catalogAccessOpen;
 
     private static DateOnly Today => Fmt.Today();
 

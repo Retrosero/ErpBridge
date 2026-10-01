@@ -748,3 +748,52 @@ h1:focus, h1:focus-visible { outline: none; }
     .perm-row { flex-direction: column; }
     .perm-choice { align-items: flex-start; }
 }
+
+/* ---- Müşteri kataloğu (GOAL_MUSTERI_KATALOGU P2–P3) ------------------------------------------ */
+.catalog-address { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.catalog-address code { padding: 6px 10px; border-radius: 6px; background: #f2f4f7; font-size: .85rem; word-break: break-all; }
+.catalog-categories li { flex-wrap: wrap; }
+.catalog-categories li.is-selected { border-color: var(--brand-600); background: var(--brand-50); }
+.catalog-categories li.is-hidden .catalog-category-name > span { color: var(--muted); text-decoration: line-through; }
+.catalog-category-name { flex: 1; min-width: 120px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; border: 0; background: none; padding: 2px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.catalog-category-name small { font-size: .75rem; }
+.catalog-move { display: inline-flex; align-items: center; gap: 2px; }
+.catalog-search { max-width: 260px; }
+.catalog-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 14px; border-bottom: 1px solid var(--line-soft); background: var(--surface); position: sticky; top: 0; z-index: 2; }
+.catalog-selected { font-size: .85rem; font-weight: 600; color: var(--brand-600); }
+.catalog-thumb { width: 40px; height: 40px; border-radius: 6px; object-fit: contain; background: #f2f4f7; display: inline-grid; place-items: center; color: #98a2b3; vertical-align: middle; }
+.catalog-products td .cell-title { min-width: 160px; }
+.catalog-flags { display: inline-flex; flex-wrap: nowrap; gap: 4px; }
+.catalog-flags .perm-toggle { white-space: nowrap; padding: 2px 9px; }
+.catalog-carton { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.catalog-products tr.is-changed td:first-child { box-shadow: inset 3px 0 0 var(--brand-600); }
+.image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.catalog-image { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; background: var(--surface); }
+.catalog-image img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 4px; background: #f8fafc; }
+.catalog-image figcaption { display: flex; flex-wrap: wrap; gap: 4px; }
+.catalog-image-actions { display: flex; justify-content: space-between; align-items: center; }
+@media (max-width: 720px) {
+    /* Like .erp-actions: the product's move and settings buttons take the card's full width, 40px touch targets. */
+    .data-table--cards tbody td.card-actions { grid-template-columns: 1fr; padding: 10px 12px !important; }
+    .data-table--cards tbody td.card-actions::before { content: none; }
+    .data-table--cards tbody td.card-actions > * { grid-column: 1; width: 100%; justify-content: space-between; }
+    .catalog-move .mud-icon-button { min-width: 40px; min-height: 40px; }
+    .catalog-search { max-width: none; }
+    .catalog-products td .cell-title { min-width: 0; }
+    .catalog-flags { flex-wrap: wrap; justify-content: flex-end; }
+}
+
+/* ---- Katalog erişimi ve müşteri siparişleri (GOAL_MUSTERI_KATALOGU P4–P5) ------------------------ */
+.accounts-search, .orders-search { max-width: 520px; margin: 0 0 14px; }
+.access-message { margin: 0 0 8px; padding: 10px 12px; border-radius: 8px; background: #f2f4f7; font-size: .86rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.access-share-actions, .access-account-actions, .order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.access-account-actions { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.access-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: .8rem; }
+.access-chip-remove { border: 0; background: none; color: var(--muted); font: inherit; font-size: 1rem; line-height: 1; padding: 2px 6px; border-radius: 999px; cursor: pointer; }
+.access-chip-remove:hover { background: var(--line-soft); color: var(--danger); }
+.price-preview { margin-right: 6px; }
+.price-preview s { color: var(--muted); }
+.order-confirm { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+@media (max-width: 720px) {
+    .access-share-actions .mud-button-root, .access-account-actions .mud-button-root, .order-actions .mud-button-root { min-height: 40px; }
+}

@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "Müşteri web kataloğunun saf modül testleri (bağımlılıksız). node --test tests/katalog-web/ bu klasörü main ile index.mjs'e çözer.",
+  "main": "index.mjs"
+}

@@ -1,0 +1,520 @@
+@page "/musteri-siparisleri"
+@inherits PortalPageBase
+
+<PageTitle>Müşteri siparişleri — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Müşteri siparişleri" Eyebrow="Müşteri kataloğu" Subtitle="Web kataloğundan gelen sipariş talepleri" Busy="Busy" />
+
+    @* GOAL_MUSTERI_KATALOGU T1: the panel never books a document; the phone turns a request into a sale. *@
+    @if (IsErpCompany)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true" Class="page-alert" id="customer-orders-erp-note">
+            ERP'ye gönderim telefondan yapılır: talebi Sipariş Cepte'de Müşteri siparişleri'nden açıp Satışa aktarın.
+        </MudAlert>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true" Class="page-alert" id="customer-orders-phone-note">
+            Talebi siparişe çevirmek için Sipariş Cepte'de Müşteri siparişleri'nden açıp Satışa aktarın.
+        </MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    <div class="seg-tabs" role="tablist" id="customer-orders-tabs">
+        @foreach (var (key, label, _) in Statuses)
+        {
+            <button type="button" role="tab" class="seg-tab @(key == _status ? "is-active" : null)" aria-selected="@(key == _status ? "true" : "false")"
+                    data-status="@key" disabled="@Busy" @onclick="() => ShowStatusAsync(key)">
+                @label
+                @if (_result is not null)
+                {
+                    <span class="seg-count">@Count(key)</span>
+                }
+            </button>
+        }
+    </div>
+
+    <form class="document-search orders-search" id="customer-orders-filter" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <input class="portal-input" id="customer-orders-search" placeholder="Cari kodu ya da unvanı" aria-label="Carilerde ara"
+               value="@_query" @onchange="e => _query = e.Value?.ToString()" />
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@Busy" id="customer-orders-search-go">Ara</MudButton>
+    </form>
+
+    @if (_result is { } result)
+    {
+        @if (result.Items.Length == 0)
+        {
+            <EmptyState Id="customer-orders-empty" Icon="@Icons.Material.Rounded.ShoppingCartCheckout" Title="Bu durumda müşteri siparişi yok."
+                        Hint="Müşteriler katalogdan sipariş verdikçe burada görünür." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="table-scroll">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table data-table--cards" id="customer-orders">
+                        <thead>
+                            <tr>
+                                <th>Tarih</th>
+                                <th>Cari</th>
+                                <th class="num">Kalem</th>
+                                <th class="num">Tutar</th>
+                                <th>Durum</th>
+                                <th>İşlemde</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var order in result.Items)
+                            {
+                                <tr class="row-clickable" data-order="@order.Id" data-status="@order.Status" title="Talebi aç" @onclick="() => OpenAsync(order.Id)">
+                                    <td data-label="Tarih">
+                                        <div class="cell-title">@When(order.SubmittedAtMs)</div>
+                                        <div class="cell-sub mono">@order.No</div>
+                                    </td>
+                                    <td data-label="Cari">
+                                        <div class="cell-title">@order.CustomerName</div>
+                                        <div class="cell-sub">@order.CustomerCode@(order.AssignedUserName is null ? null : " · " + order.AssignedUserName)</div>
+                                    </td>
+                                    <td class="num" data-label="Kalem">@order.LineCount</td>
+                                    <td class="num" data-label="Tutar">@Fmt.Money(order.Total)</td>
+                                    <td data-label="Durum"><span class="badge @Tone(order.Status)">@StatusLabel(order)</span></td>
+                                    <td data-label="İşlemde">@(order.ClaimedByName ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+                <Pager Id="customer-orders-pager" Page="_page" PageSize="PortalApiClient.CatalogPageSize" Total="result.Total" Unit="talep" Busy="Busy" ShowSize="false"
+                       PageChanged="PageAsync" />
+            </MudPaper>
+        }
+    }
+
+    <DetailSheet Id="customer-order-sheet" Open="_openId is not null" Busy="Busy" Eyebrow="Müşteri siparişi" Title="@DetailTitle" OnClose="Close">
+        <ChildContent>
+            @if (_detailError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="order-error">@_detailError</MudAlert>
+            }
+            @if (_detailNotice is not null)
+            {
+                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="order-notice">@_detailNotice</MudAlert>
+            }
+            @if (_detail is { } order)
+            {
+                <div class="detail-badges">
+                    <span class="badge @Tone(order.Status)" id="order-status">@StatusLabel(order)</span>
+                    <span>@When(order.SubmittedAtMs)</span>
+                </div>
+                <dl class="detail-facts mt-3" id="order-facts">
+                    <dt>Cari</dt>
+                    <dd>@order.CustomerName <span class="text-muted">@order.CustomerCode</span></dd>
+                    @if (order.AssignedUserName is not null)
+                    {
+                        <dt>Sorumlu</dt>
+                        <dd>@order.AssignedUserName</dd>
+                    }
+                    @if (order.ClaimedByName is not null)
+                    {
+                        <dt>İşlemde</dt>
+                        <dd>@order.ClaimedByName@(order.ClaimedAtMs is { } claimed ? " · " + When(claimed) : null)</dd>
+                    }
+                    <dt>Fiyat listesi</dt>
+                    <dd>@ListText(order)</dd>
+                    <dt>İskonto</dt>
+                    <dd>@(order.DiscountPercent > 0 ? CatalogText.Percent(order.DiscountPercent) : "Yok")</dd>
+                    <dt>Liste tutarı</dt>
+                    <dd>@Fmt.Money(order.Lines.Sum(l => l.Gross)) <span class="text-muted">KDV hariç</span></dd>
+                    <dt>İskonto tutarı</dt>
+                    <dd>@Fmt.Money(order.Lines.Sum(l => l.Discount))</dd>
+                    <dt>KDV</dt>
+                    <dd>@Fmt.Money(order.Lines.Sum(l => l.Vat))</dd>
+                    <dt>Net toplam</dt>
+                    <dd><strong id="order-total">@Fmt.Money(order.Total)</strong></dd>
+                    @if (order.Status == "REJECTED")
+                    {
+                        <dt>Red nedeni</dt>
+                        <dd id="order-reject-reason-text">@(order.RejectReason ?? "—")</dd>
+                    }
+                    @if (order.Status == "COMPLETED")
+                    {
+                        <dt>Belge</dt>
+                        <dd id="order-document-ref">@(string.IsNullOrWhiteSpace(order.DocumentRef) ? "Başka yerde girildi" : order.DocumentRef)</dd>
+                    }
+                    @if (order.ClosedByName is not null)
+                    {
+                        <dt>Kapatan</dt>
+                        <dd>@order.ClosedByName@(order.ClosedAtMs is { } closed ? " · " + When(closed) : null)</dd>
+                    }
+                </dl>
+
+                @if (!string.IsNullOrWhiteSpace(order.Note))
+                {
+                    <section class="detail-section">
+                        <div class="detail-section-title">Müşteri notu</div>
+                        <p class="access-message" id="order-note">@order.Note</p>
+                    </section>
+                }
+
+                <section class="detail-section">
+                    <div class="detail-section-title">Kalemler (@order.Lines.Length)</div>
+                    <div class="table-scroll">
+                        <table class="data-table data-table--plain" id="order-lines">
+                            <thead>
+                                <tr>
+                                    <th>Ürün</th>
+                                    <th class="num">Miktar</th>
+                                    <th class="num">Liste fiyatı</th>
+                                    <th class="num">İsk.</th>
+                                    <th class="num">Tutar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in order.Lines)
+                                {
+                                    <tr data-stock="@line.StockCode">
+                                        <td>
+                                            <div class="cell-title">@line.Name</div>
+                                            <div class="cell-sub">
+                                                @line.StockCode
+                                                <span class="badge @(line.InStockNow ? "badge--ok" : "badge--off")">@(line.InStockNow ? "Stokta" : "Stokta yok")</span>
+                                            </div>
+                                        </td>
+                                        <td class="num order-quantity">@QuantityText(line)</td>
+                                        <td class="num">@Fmt.Money(line.ListPrice)</td>
+                                        <td class="num">@(line.DiscountPercent > 0 ? CatalogText.Percent(line.DiscountPercent) : "—")</td>
+                                        <td class="num">@Fmt.Money(line.Total)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                @if (order.Status is "NEW" or "CLAIMED")
+                {
+                    <section class="detail-section" id="order-actions-section">
+                        <div class="detail-section-title">İşlem</div>
+                        @if (IsErpCompany)
+                        {
+                            <p class="field-hint">ERP'ye gönderim telefondan yapılır: talebi Sipariş Cepte'de Müşteri siparişleri'nden açıp Satışa aktarın.</p>
+                        }
+                        @if (_confirm == OrderConfirm.Reject)
+                        {
+                            <form class="order-confirm" id="order-reject-form" @onsubmit="RejectAsync" @onsubmit:preventDefault>
+                                <label class="stack-field">
+                                    <span class="field-label">Red gerekçesi (müşteri görür)</span>
+                                    <textarea class="portal-input" id="order-reject-reason" rows="3" maxlength="500" @bind="_reason" @bind:event="oninput"></textarea>
+                                </label>
+                                <div class="form-actions">
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _confirm = null" id="order-reject-cancel">Vazgeç</MudButton>
+                                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" Disabled="@Busy" id="order-reject-confirm">Reddet</MudButton>
+                                </div>
+                            </form>
+                        }
+                        else if (_confirm == OrderConfirm.Complete)
+                        {
+                            <form class="order-confirm" id="order-complete-form" @onsubmit="CompleteAsync" @onsubmit:preventDefault>
+                                <label class="stack-field">
+                                    <span class="field-label">Belge no (isteğe bağlı)</span>
+                                    <input class="portal-input" id="order-document-ref-input" maxlength="128" @bind="_documentRef" @bind:event="oninput" />
+                                    <span class="field-hint">Sipariş ERP'ye ya da başka bir yere elle girildiyse işaretleyin; talep "Siparişe çevrildi" olur.</span>
+                                </label>
+                                <div class="form-actions">
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _confirm = null" id="order-complete-cancel">Vazgeç</MudButton>
+                                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" id="order-complete-confirm">Siparişe çevrildi</MudButton>
+                                </div>
+                            </form>
+                        }
+                        else
+                        {
+                            <div class="order-actions">
+                                @if (order.Status == "NEW")
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" OnClick="() => ClaimAsync(force: false)" id="order-claim">İşleme al</MudButton>
+                                }
+                                else if (ClaimedByMe(order))
+                                {
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="ReleaseAsync" id="order-release">Serbest bırak</MudButton>
+                                }
+                                else
+                                {
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small" Disabled="@Busy" OnClick="() => ClaimAsync(force: true)" id="order-take-over">Devral</MudButton>
+                                }
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => Confirm(OrderConfirm.Complete)" id="order-complete">Başka yerde girildi</MudButton>
+                                <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" Disabled="@Busy" OnClick="() => Confirm(OrderConfirm.Reject)" id="order-reject">Reddet</MudButton>
+                            </div>
+                        }
+                    </section>
+                }
+                else
+                {
+                    <section class="detail-section" id="order-reopen-section">
+                        <div class="detail-section-title">İşlem</div>
+                        @if (_confirm == OrderConfirm.Reopen)
+                        {
+                            <div class="order-confirm" id="order-reopen-form">
+                                <MudAlert Severity="Severity.Warning" Variant="Variant.Text" Dense="true" id="order-reopen-warning">
+                                    @if (order.Status == "COMPLETED")
+                                    {
+                                        @:Talep "Yeni" durumuna döner ve belge bağı silinir. Sipariş ERP'ye ya da deftere zaten girdiyse yeniden açmayın: aynı talepten ikinci sipariş oluşabilir.
+                                    }
+                                    else
+                                    {
+                                        @:Talep "Yeni" durumuna döner, red gerekçesi silinir; müşteri talebini yeniden "Alındı" olarak görür.
+                                    }
+                                </MudAlert>
+                                <div class="form-actions">
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _confirm = null" id="order-reopen-cancel">Vazgeç</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small" Disabled="@Busy" OnClick="ReopenAsync" id="order-reopen-confirm">Yeniden aç</MudButton>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="order-actions">
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => Confirm(OrderConfirm.Reopen)" id="order-reopen">Yeniden aç</MudButton>
+                            </div>
+                        }
+                    </section>
+                }
+            }
+        </ChildContent>
+    </DetailSheet>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.CustomerCatalog;
+
+    /// <summary>The address key, the tab's label and the server's status (null = every status).</summary>
+    private static readonly (string Key, string Label, string? Status)[] Statuses =
+    [
+        ("yeni", "Yeni", "NEW"), ("islemde", "İşlemde", "CLAIMED"), ("cevrildi", "Siparişe çevrildi", "COMPLETED"),
+        ("reddedildi", "Reddedildi", "REJECTED"), ("tumu", "Tümü", null),
+    ];
+
+    private static class OrderConfirm
+    {
+        public const string Reject = "reject";
+        public const string Complete = "complete";
+        public const string Reopen = "reopen";
+    }
+
+    private string _status = "yeni";
+    private string? _query;
+    private int _page = 1;
+    private CatalogOrdersDto? _result;
+
+    private Guid? _openId;
+    private CatalogOrderDetailDto? _detail;
+    private string? _detailError;
+    private string? _detailNotice;
+
+    /// <summary>The inline form open under the actions: <see cref="OrderConfirm"/>, or null.</summary>
+    private string? _confirm;
+    private string? _reason;
+    private string? _documentRef;
+
+    private string DetailTitle => _detail is { } order ? $"{order.No} · {order.CustomerName}" : "Müşteri siparişi";
+
+    private bool IsErpCompany => string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        string? One(string name) => query.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v) ? v[^1]!.Trim() : null;
+        _status = One("durum") is { } status && Statuses.Any(s => s.Key == status) ? status : "yeni";
+        _query = One("ara");
+        if (int.TryParse(One("sayfa"), out var page) && page > 0) _page = page;
+    }
+
+    protected override Task LoadAsync() => LoadListAsync();
+
+    private async Task LoadListAsync()
+    {
+        var status = Statuses.First(s => s.Key == _status).Status;
+        _result = await Api.CatalogOrdersAsync(status, _query, _page);
+        if (_result.Items.Length == 0 && _result.Total > 0 && _page > 1)
+        {
+            _page = Math.Max(1, (int)Math.Ceiling(_result.Total / (double)PortalApiClient.CatalogPageSize));
+            _result = await Api.CatalogOrdersAsync(status, _query, _page);
+        }
+        SyncAddress();
+    }
+
+    private void SyncAddress()
+    {
+        var parts = new List<string>();
+        if (_status != "yeni") parts.Add("durum=" + _status);
+        if (!string.IsNullOrWhiteSpace(_query)) parts.Add("ara=" + Uri.EscapeDataString(_query.Trim()));
+        if (_page > 1) parts.Add("sayfa=" + _page.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Nav.NavigateTo(new Uri(Nav.Uri).GetLeftPart(UriPartial.Path) + (parts.Count == 0 ? string.Empty : "?" + string.Join("&", parts)),
+            new NavigationOptions { ReplaceHistoryEntry = true });
+    }
+
+    private int Count(string key)
+    {
+        var counts = _result!.Counts;
+        return key switch
+        {
+            "yeni" => counts.New,
+            "islemde" => counts.Claimed,
+            "cevrildi" => counts.Completed,
+            "reddedildi" => counts.Rejected,
+            _ => counts.New + counts.Claimed + counts.Completed + counts.Rejected,
+        };
+    }
+
+    private Task ShowStatusAsync(string key)
+    {
+        _status = key;
+        _page = 1;
+        return RunAsync(LoadListAsync);
+    }
+
+    private Task SearchAsync()
+    {
+        _page = 1;
+        return RunAsync(LoadListAsync);
+    }
+
+    private Task PageAsync(int page)
+    {
+        _page = page;
+        return RunAsync(LoadListAsync);
+    }
+
+    // ---- detail and actions -------------------------------------------------------------------
+
+    private async Task OpenAsync(Guid id)
+    {
+        _openId = id;
+        _detail = null;
+        _detailError = _detailNotice = null;
+        _confirm = null;
+        await SheetAsync(async () => _detail = await Api.CatalogOrderAsync(id));
+    }
+
+    private void Close()
+    {
+        _openId = null;
+        _detail = null;
+        _confirm = null;
+    }
+
+    private void Confirm(string form)
+    {
+        _confirm = form;
+        _reason = _documentRef = null;
+        _detailError = _detailNotice = null;
+    }
+
+    private bool ClaimedByMe(CatalogOrderSummaryDto order) => order.ClaimedByUserId is { } id && id == Session.UserId;
+
+    private Task ClaimAsync(bool force) =>
+        ActAsync(id => Api.ClaimCatalogOrderAsync(id, force), force ? "Talep size geçti." : "Talep işleme alındı; başkaları sizin ilgilendiğinizi görür.");
+
+    private Task ReleaseAsync() => ActAsync(id => Api.ReleaseCatalogOrderAsync(id), "Talep serbest bırakıldı.");
+
+    private Task RejectAsync()
+    {
+        var reason = _reason?.Trim();
+        if (string.IsNullOrEmpty(reason))
+        {
+            _detailError = "Red gerekçesi yazın; müşteri bu metni görür.";
+            return Task.CompletedTask;
+        }
+        return ActAsync(id => Api.RejectCatalogOrderAsync(id, reason), "Talep reddedildi; müşteri gerekçeyi görür.");
+    }
+
+    /// <summary>A closed request back to "Yeni" (a mistaken rejection or "entered elsewhere", a sale that never got in).</summary>
+    private Task ReopenAsync() => ActAsync(id => Api.ReopenCatalogOrderAsync(id), "Talep yeniden açıldı; durumu \"Yeni\".");
+
+    private Task CompleteAsync()
+    {
+        var documentRef = string.IsNullOrWhiteSpace(_documentRef) ? null : _documentRef.Trim();
+        return ActAsync(id => Api.CompleteCatalogOrderAsync(id, documentRef), "Talep siparişe çevrildi olarak işaretlendi.");
+    }
+
+    /// <summary>
+    /// One action on the open request. A 409 means it moved meanwhile (someone took it, closed it or turned it into a
+    /// sale): the request and the list are read again so the screen shows why, then the message.
+    /// </summary>
+    private async Task ActAsync(Func<Guid, Task<CatalogOrderDetailDto>> act, string notice)
+    {
+        if (_detail is not { } order) return;
+        _detailNotice = null;
+        var done = false;
+        await SheetAsync(async () =>
+        {
+            try
+            {
+                _detail = await act(order.Id);
+            }
+            catch (PortalApiException conflict) when (conflict.Status == 409)
+            {
+                _confirm = null;
+                _detail = await Api.CatalogOrderAsync(order.Id);
+                await LoadListAsync();
+                throw;
+            }
+            done = true;
+            _confirm = null;
+            await LoadListAsync();
+        });
+        if (done) _detailNotice = notice;
+    }
+
+    /// <summary>Runs a call for the sheet; its failure shows inside the sheet rather than behind it.</summary>
+    private async Task SheetAsync(Func<Task> action)
+    {
+        _detailError = null;
+        await RunAsync(action);
+        if (_openId is null) return;
+        _detailError = Error;
+        Error = null;
+    }
+
+    // ---- formatting ---------------------------------------------------------------------------
+
+    private static string When(long ms) => Fmt.Time(DateTimeOffset.FromUnixTimeMilliseconds(ms));
+
+    /// <summary>Personel wording (§5.3): Yeni / İşlemde ({ad}) / Siparişe çevrildi / Reddedildi.</summary>
+    private static string StatusLabel(CatalogOrderSummaryDto order) => order.Status switch
+    {
+        "NEW" => "Yeni",
+        "CLAIMED" => order.ClaimedByName is { Length: > 0 } name ? $"İşlemde ({name})" : "İşlemde",
+        "COMPLETED" => "Siparişe çevrildi",
+        "REJECTED" => "Reddedildi",
+        _ => order.Status,
+    };
+
+    private static string Tone(string status) => status switch
+    {
+        "NEW" => "badge--info",
+        "CLAIMED" => "badge--primary",
+        "COMPLETED" => "badge--ok",
+        "REJECTED" => "badge--off",
+        _ => "badge--muted",
+    };
+
+    private static string ListText(CatalogOrderDetailDto order) =>
+        $"{order.PriceListNo}{(string.IsNullOrWhiteSpace(order.PriceListName) ? null : " — " + order.PriceListName)} ({(order.PriceIncludesVat ? "KDV dahil" : "KDV hariç")})";
+
+    /// <summary>"3 koli × 12 = 36 Adet" when the quantity fills whole cartons, else the quantity.</summary>
+    private static string QuantityText(CatalogOrderLineDto line)
+    {
+        var unit = string.IsNullOrWhiteSpace(line.Unit) ? string.Empty : " " + line.Unit;
+        return line.CartonQuantity is >= 2 and var carton && line.Quantity > 0 && line.Quantity % carton == 0
+            ? $"{Fmt.Quantity(line.Quantity / carton)} koli × {carton} = {Fmt.Quantity(line.Quantity)}{unit}"
+            : Fmt.Quantity(line.Quantity) + unit;
+    }
+}

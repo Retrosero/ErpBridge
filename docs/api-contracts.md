@@ -333,6 +333,182 @@ Firma kullanıcısı token'ı; firma token'dan. Günler İstanbul `yyyy-MM-dd`. 
 | `GET /android/targets/mine?date` | `{date, asOfMs, dataSource, source, warnings[], canViewTeam, periods:[{periodType, periodKey, start, end, workDaysTotal, workDaysLeft, summary, targets}]}` — gün, hafta, ay |
 | `GET /android/targets/team?date&periodType` | Pano biçimi; yalnız ADMIN/MANAGER (403 `TARGETS_REQUIRE_MANAGER`) |
 
+## Müşteri kataloğu yönetimi — `/api/v1/customer-catalog` (GOAL_MUSTERI_KATALOGU §5.1)
+
+Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıcı başına. Gövde/yanıt alanları sözleşme belgesindedir
+(`docs/GOAL_MUSTERI_KATALOGU.md` §5.1); burada sunucunun seçtiği ayrıntılar ve hata kodları var. Ayrıntı: KB 00 kural 36.
+
+- **Sıra:** önce modül (`403 MODULE_NOT_ENABLED`, herkese aynı), sonra kilitli `action.customer_catalog.manage`
+  (`403 CATALOG_MANAGE_REQUIRED`; yalnız ADMIN + MANAGER). Gövde eksik/bozuk `400 INVALID_BODY`.
+- **Düzen yazımları** (`PUT settings|categories|products`) `catalog_settings.Revision`'ı bir
+  artırır; gövdedeki `revision` eskiyse `409 CATALOG_CHANGED`, hiçbir şey yazılmaz. Hiçbir şeyi değiştirmeyen yazım
+  revizyonu artırmaz (aynı bağlantıları yeniden gönderen telefon panelin sonraki kaydını çakışmaya düşürmez). `PUT settings` bilinmeyen liste
+  `400 UNKNOWN_PRICE_LIST`.
+- **`PUT categories`:** dizi sırası = kategori sırası (`sortOrder` = dizin); listede olmayan kategori yerini kaybeder, gizliliği
+  kalır (gizli değilse satırı silinir). Anahtar dolu, ≤ 160, tekrarsız.
+- **`GET products?category=&q=`:** `category` kategorinin tamamı (≤ 5000), `q` ad/kod/marka/barkod tr-TR harf duyarsız (≤ 50),
+  ikisi birlikte kategori içinde arar; hiçbiri yoksa tüm katalog (≤ 5000). `truncated` fazlası olduğunu söyler. `listPrice`
+  firmanın etkin varsayılan listesinden; `cartonOnly` geçerli olanı (istenmiş ve etkin koli ≥ 2), `cartonQuantity` firmanın
+  kendi kolisi.
+- **`PUT products`:** ≤ 5000; verilen her ürünün tüm ayarları yazılır, hepsi varsayılana dönen ürünün satırı silinir.
+  `cartonQuantity` 2–100000 (`400 INVALID_CARTON_QUANTITY`); etkin koli yokken `cartonOnly` `400 CARTON_QUANTITY_REQUIRED`.
+- **Hesaplar:** cari `PortalLedger` carilerinden doğrulanır (`404 CUSTOMER_NOT_FOUND`), hesap kartın kodunu saklar. Kullanıcı
+  adı personelinki gibi normalize edilir (`" A.B "` → `a.b`, `400 INVALID_USERNAME`). Canlı hesaplarda ad tekrarı
+  `409 CATALOG_USERNAME_TAKEN`, aynı cariye ikinci hesap `409 CATALOG_ACCOUNT_EXISTS`. Şifre boşsa sunucu 10 karakter üretir
+  (`a–z` ve `2–9`, karışan `i l o 0 1` yok) ve yalnız o yanıtta `issuedPassword` döner; elle şifre 8–72 bayt
+  (`400 INVALID_PASSWORD`). İskonto 0–99,99, iki haneye yuvarlanır (`400 INVALID_DISCOUNT`); bilinmeyen `priceListNo`
+  `400 UNKNOWN_PRICE_LIST`; görünürlük modu `all|only`, kural `category|product` × `allow|deny`, ≤ 2000
+  (`400 INVALID_VISIBILITY`); `responsibleUserId` firmanın aktif kullanıcısı (`400 INVALID_RESPONSIBLE_USER`). Bilinmeyen ya
+  da silinmiş hesap `404 CATALOG_ACCOUNT_NOT_FOUND`.
+- **`PATCH accounts/{id}`:** yalnız gönderilen alanlar değişir; `priceListNo` / `responsibleUserId` açıkça `null` gönderilirse
+  temizlenir; `customerCode`/`password` yok sayılır. `TokenVersion` +1 — veritabanında atomik (`TokenVersion + 1`), eşzamanlı iki
+  iptal ikisi de sayılır: pasifleştirme, `PUT password`, `revoke-sessions`, `DELETE` (yumuşak; ad ve cari serbest kalır). Eski
+  sürümün oturumları ve cihaz çerezleri geçersiz olur.
+- **`GET accounts?q=&page=`:** 50'lik sayfa, cari adına (tr-TR) göre; `q` kod/ad/kullanıcı adında arar.
+- **`GET accounts/by-customer?code=`:** `suggestedUsername` cari adından (Türkçe harfler ASCII'ye, şirket ekleri ve tek harfler
+  atılır, kelimeler `-` ile, ≤ 24), olmazsa koddan, olmazsa `musteri`; kullanılıyorsa sonuna 2, 3… eklenir.
+- **Görseller** (`images/*`; yükleme uçları `catalog-upload` hız sınırında: kullanıcı başına 300/dk, oturumsuz istek IP kovasına).
+  Her görsel değişikliği **görsel sayacını** (`catalog_settings.ImageRevision`) artırır, düzen revizyonunu değil: panelde ya da
+  telefonda açık bir düzen düzenlemesi görsel yüklemesi yüzünden `409 CATALOG_CHANGED` almaz; katalog görünümü iki sayaca birden
+  bakarak tazelenir. Görsel yazımları yine `catalog_settings` satır kilidinden geçer (kota yarışı yok). Ürün başına en çok 8 (`409 CATALOG_IMAGE_LIMIT`), firma kotası 1 GB
+  (`413 CATALOG_IMAGE_QUOTA_EXCEEDED`); bulunamayan ya da başka firmanın görseli `404 CATALOG_IMAGE_NOT_FOUND`.
+  - `POST images {stockCode, sourceHash, source, url?}`: kimliği sunucu üretir; aynı (`stockCode`, `sourceHash`) var olanı döner
+    (sınırı aşmaz). `source` `phone|panel`; `url` verilirse bağlantı görseli olur (panelin "bağlantı ekle"si).
+  - `PUT images/{id}/{s|l}` ham gövde: `Content-Type` `image/jpeg|png|webp` ve ilk baytlar tutmalı (`415 INVALID_IMAGE`);
+    `l` ≤ 1 MB, `s` ≤ 200 KB (`413 IMAGE_TOO_LARGE`; `Content-Length` yoksa okurken). Üst veri atılır (kütüphanesiz): JPEG APP1
+    (EXIF/XMP), PNG `eXIf`/`tEXt`/`iTXt`/`zTXt`, WebP `EXIF`/`XMP ` (VP8X bayrakları ve RIFF boyu düzeltilir); okunamayan dosya
+    olduğu gibi saklanır. JPEG yön bilgisi EXIF'le gider: telefon ve panel görseli zaten döndürüp yeniden kodlayarak gönderir.
+    Aynı bayt tekrar → değişiklik yok. Bağlantı görseline dosya `400 INVALID_BODY`.
+  - `PUT images/links` (≤ 500 ürün): verilen ürünün yalnız `phone` kaynaklı bağlantılarını değiştirir; dosyalar ve panel
+    görselleri kalır, sınırı aşan bağlantı alınmaz; `updated` = bağlantıları değişen ürün sayısı. Bağlantı: `https`, port 443,
+    IP/`localhost`/`.local` yok, ≤ 2048 (`400 INVALID_IMAGE_URL`). Sunucu bağlantıyı **indirmez**.
+  - `PUT images/order?stockCode=` `{ids}`: verilenler bu sırada, verilmeyenler eski sıralarıyla arkadan.
+  - `thumbUrl`/`fullUrl`: dosyada göreli `/api/v1/catalog/img/{id}/{s|l}?h={sha256 ilk 8}` (istemci kendi kökünü ekler),
+    bağlantıda doğrudan adres; dosyanın boyutu henüz yüklenmemişse null.
+- **Anonim görsel `GET /api/v1/catalog/img/{id}/{s|l}`** (`catalog-public`: IP başına 600/dk, IPv6 /64): `Cache-Control: public,
+  max-age=31536000, immutable`, `ETag` = SHA-256, `If-None-Match` → 304 (bayt okunmaz), `X-Content-Type-Options: nosniff`,
+  `Cross-Origin-Resource-Policy: same-site`. `s` yoksa `l`; bağlantı görseli, bilinmeyen kimlik, firma pasif ya da modülü kapalıysa
+  `404 NOT_FOUND` (önbellek başlıksız). Firmanın "yayında" anahtarı (`IsEnabled`) **sorulmaz**: panel ve telefon katalog
+  yayına alınmadan, hazırlanırken görselleri bu adresten gösterir.
+
+- **Talepler (`orders*`, S8)** `Endpoints/CustomerCatalogOrderEndpoints`: modül denetlenir, yönetim yetkisi **istenmez**;
+  katalog yöneticisi (ADMIN/MANAGER) hepsini, diğerleri yalnız `AssignedUserId` ya da `ClaimedByUserId` kendisi olanları görür
+  (görmediği talep `404 CATALOG_ORDER_NOT_FOUND`). `GET orders?status=&q=&page=`: yeniden eskiye, 50'lik sayfa; `status`
+  `NEW|CLAIMED|COMPLETED|REJECTED` (başkası `400 INVALID_BODY`); `q` talep no / cari kodu / cari adı (tr-TR); `counts` görülebilen
+  bütün taleplerin durum sayıları (süzgeçsiz). `assignedUserName` = talebin düştüğü kişi. Değiştirici uçlar talebin satır kilidi
+  altında çalışır (aynı anda iki kişi: biri 200, öbürü 409) ve talebin son hâlini (`OrderDetail`) döner:
+  `claim {force}` — kapalı `409 CATALOG_ORDER_CLOSED`, başkasında `409 CATALOG_ORDER_TAKEN`, kendisininkini yeniden almak
+  değişiklik yapmaz; `force` yalnız yönetici (`403 CATALOG_MANAGE_REQUIRED`). `release` — alan kişi ya da yönetici; `NEW` ise
+  değişiklik yok. `complete {documentRef?}` (≤ 128; boş = "başka yerde girildi") — aynı belgeyle (ya da belgesiz) tekrar değişiklik
+  yapmaz, başka belge `409 CATALOG_ORDER_ALREADY_CONVERTED`, reddedilmiş `409 CATALOG_ORDER_CLOSED`. `reject {reason}` — gerekçe
+  zorunlu (`400 INVALID_BODY`, ≤ 500'e kırpılır), tekrar değişiklik yapmaz, çevrilmiş `409 CATALOG_ORDER_CLOSED`. Başkasının
+  aldığı talebi yönetici olmayan bırakamaz/çeviremez/reddedemez (`409 CATALOG_ORDER_TAKEN`). `reopen` — yalnız katalog
+  yöneticisi (`403 CATALOG_MANAGE_REQUIRED`): `COMPLETED`/`REJECTED` → `NEW`; `documentRef`, `rejectReason`, `closedBy*` ve
+  `claimedBy*` temizlenir (sonraki satış talebe ilk günkü gibi bağlanır); açık talepte değişiklik yok. Panel bunu onaylı uyarıyla
+  sunar ("Yeniden aç"). Detay satırları talebin anlık
+  fiyatlarıdır (`listPrice` talebin listesinden, `discountPercent` satırın müşteri iskontosu); `inStockNow` bugünkü stok.
+- **Talep ↔ satış bağı** (`CustomerCatalog/CatalogOrderLinker`, T8): yalnız `documentType = sales_order` gövdesi (`POST
+  /api/v1/ingest/jobs`, ya da onay isteğinin belgesi) üst düzeyde `catalogOrderId` taşıyorsa — başka belge türündeki alan yok
+  sayılır —, iş yazılmadan hemen önce (idempotent iş ve onay/yetki denetimlerinden sonra; onayda karar anında) talep aynı firmada
+  ve `NEW`/`CLAIMED` olmalı → işle aynı kayıtta `COMPLETED`, `documentRef` = satışın `externalId`'si, `closedBy*` = gönderen.
+  Aynı `externalId` tekrar → sorun yok. Başkasının `CLAIMED` talebini, gönderen o kişi ya da katalog yöneticisi değilse
+  `409 CATALOG_ORDER_TAKEN` (personel `complete`'iyle aynı kural). Başka belgeyle çevrilmiş `409 CATALOG_ORDER_ALREADY_CONVERTED`
+  — **ancak** o belgenin işi (`TenantId` + `ExternalId`, `sales_order`) `Failed`/`DeadLetter` ise düzeltilmiş satış talebi
+  devralır; iş olmayan referans (personelin "başka yerde girildi" numarası) kalıcıdır, onu yalnız `reopen` açar. Reddedilmiş
+  `409 CATALOG_ORDER_CLOSED`, bilinmeyen/başka firmanın/kimlik olmayan değer `409 CATALOG_ORDER_NOT_FOUND` — reddedilen her
+  durumda **iş yazılmaz** (onayda onay `Pending` kalır). Alan yoksa ya da `null` ise davranış aynen eskisi. ERP'siz firmada
+  defter satışı reddederse (iş `Failed`) talep önceki hâline döner (açık ya da devraldığı başarısız satışa bağlı). Reddedilen
+  onay hiç iş yazmadığı için talebe dokunmaz.
+
+## Müşteri kataloğu, müşteri tarafı — `/api/v1/catalog/{code}` (GOAL_MUSTERI_KATALOGU §5.2, §6, §7)
+
+Firmanın carileri için; `{code}` firma kodu (`^[A-Za-z0-9]{4,16}$`, harf büyüklüğü fark etmez). Alanlar sözleşme belgesinde;
+burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
+
+- **Oturum:** JWT gövdede dönmez; `__Host-kt_{KOD}` çerezi (HttpOnly, Secure, SameSite=Strict, `Path=/`, Domain yok).
+  "Beni hatırla" (`remember`) → `Max-Age` 30 gün, yoksa oturum çerezi + 12 saatlik token. Token: `sub` hesap, `tenant`,
+  `scope=customer-catalog`, `tv` (hesabın `TokenVersion`'ı), `jti`. JwtBearer çerezi yalnız `/api/v1/catalog/{code}/…` yolunda,
+  `Authorization` başlığı yokken ve yoldaki kodun çerezinden okur. Bu kapsam başka hiçbir politikadan geçmez (personel uçlarında
+  403); personel token'ı katalogda `401 INVALID_TOKEN`.
+- **Her istekte** (`CatalogCustomerPolicy` + `CatalogAccountStateRequirement`): token katalog token'ı değil, firması yok ya da
+  yoldaki kod token'ın firmasının değil → `401 INVALID_TOKEN`; hesap silinmiş ya da `tv` eski → `401 SESSION_REVOKED`; hesap
+  pasif → `403 ACCOUNT_INACTIVE`; firma pasif, modül kapalı ya da `IsEnabled=false` → `403 CATALOG_UNAVAILABLE`; abonelik
+  → `403 SUBSCRIPTION_REQUIRED|SUBSCRIPTION_EXPIRED`. Gövde `ApiError` (Türkçe mesaj). Hız: hesap başına 120/dk (`per-catalog-account`;
+  oturumsuz istek — süresi geçmiş ya da hiç olmayan çerez — ortak bir kovaya değil istemcinin IP kovasına sayılır).
+- **CSRF:** her değiştirici istek (giriş dahil) `X-Katalog: 1` taşımalı; tarayıcı `Origin` gönderiyorsa `https://{PublicHost}`
+  ile birebir aynı olmalı → yoksa `403 CSRF_REJECTED`. `PublicHost` boşken yalnız başlık aranır.
+- **Önbellek:** bu gruptaki her yanıt `Cache-Control: private, no-store`.
+- **`GET info`** (anonim, `catalog-public`): `{companyName, code}`; firma yok/pasif, modül kapalı ya da yayında değil →
+  `404 CATALOG_NOT_FOUND`.
+- **`POST login`** (anonim, `catalog-login`: IP başına 10/dk) `{username, password, remember}` → `{me}` + çerezler. Eksik alan
+  `400 INVALID_REQUEST`. Sıra: cihaz çerezinin imzası (veritabanısız) → çerez yoksa firma başına 300/dk kova (`CatalogLoginGate`,
+  aşılırsa `429 RATE_LIMITED`) → hesap okunur; çerez başka hesabın ya da eski `TokenVersion`'ın ise kova yine uygulanır → ad
+  yavaşlatıcısı (`LoginThrottle` alan `catalog`; beklerken şifre denetlenmez, `429`) → BCrypt (hesap yoksa ortak sahte hash;
+  aynı anda en çok 8) → bilinmeyen firma/kullanıcı/yanlış şifre tek cevap `401 INVALID_CREDENTIALS` → ancak şifre doğruysa
+  `403 ACCOUNT_INACTIVE`, `403 CATALOG_UNAVAILABLE`, `403 SUBSCRIPTION_*`. Başarı `LastLoginAtMs` yazar ve imzalı
+  **cihaz çerezi** `__Host-kt_dev` (180 gün; hesap kimliği + `TokenVersion` + bitiş, `Jwt:SigningKey`'den türetilmiş HMAC)
+  verir: bu çerezi o hesabın **güncel** sürümüyle taşıyan tarayıcı firma kovasını harcamaz ve başkalarının hatalarıyla
+  yavaşlamaz (sayacı hesabın kendisidir, `#{hesapId}`). Şifre değişikliği / oturum iptali / pasifleştirme eski çerezleri düşürür.
+- **`POST logout`** → 204, yalnız bu tarayıcının oturum çerezini siler (cihaz çerezi kalır).
+- **`GET me`:** `priceList` etkin liste (`account.PriceListNo ?? varsayılan`), firmada hiç fiyat yoksa null; `balance` yalnız
+  `features.statement` açıkken (panelin gösterdiği bakiye: ERP'li firmada hareket toplamı), cari aynada yoksa null.
+- **`POST password {current, next}`** → 204: yanlış `current` `400 INVALID_CREDENTIALS` (yavaşlatıcıya **hesap** anahtarıyla
+  `#{hesapId}` sayılır — oturum zaten kanıt; giriş sayfasında adı deneyen yabancı müşterinin şifre değiştirmesini engelleyemez),
+  `next` 8–72 bayt değilse `400 INVALID_PASSWORD`. `TokenVersion` +1 (atomik; diğer bütün oturumlar ve cihaz çerezleri düşer);
+  bu tarayıcıya aynı türde (hatırlanan/oturum) yeni oturum çerezi ve yeni sürümde cihaz çerezi verilir.
+- **Görünürlük ve fiyat** (`CatalogCustomerView`): ürün, hesabın görünürlüğü izin veriyorsa ve hesabın etkin listesinde
+  fiyatı varsa görünür (başka listeye düşülmez). `price {list, net, discountPercent, includesVat}`: `discountPercent` hesabın
+  iskontosu, `noDiscount` üründe 0; `net = R2(list × (1 − d/100))`; `includesVat` listenin. `box {qty, only}` etkin koli ≥ 2
+  ise, yoksa null. `thumb` ilk görsel (göreli `/api/v1/catalog/img/…` ya da https bağlantı).
+- **`GET categories`:** yalnız görünür ürünü olan kategoriler, katalog sırasında; `id` = SHA-256(kategori anahtarı) ilk 12 hex.
+- **`GET products?category=&q=&page=&pageSize=`:** `pageSize` varsayılan 48, 1–60'a kırpılır; `page` ≥ 1. `category` bilinmeyen
+  kimlik → boş liste. `q` kırpılır; 2 karakterden kısaysa yok sayılır; ad/kod/marka tr-TR harf ve şapka duyarsız
+  (`IgnoreCase | IgnoreNonSpace`; ç ğ ı ö ş ü ayrı harf kalır), barkod içerir.
+- **`GET products/detail?key=`** (`key` = stok kodu, harf büyüklüğü fark etmez): görünmeyen ya da olmayan ürün
+  `404 NOT_FOUND`; `images[{thumb, full}]` sıralı.
+- **`POST cart/quote {lines[{key, quantity}]}`:** `lines` yok `400 INVALID_BODY`, 200'den fazla satır `400 INVALID_BODY`.
+  Satır başına sunucu fiyatı (`CatalogPricing`, telefonun `ErpSalePricing`'i); `issue`: görünmeyen/olmayan → `NOT_AVAILABLE`
+  (ürün hakkında hiçbir bilgi dönmez: `code/name/unit/box/price/vatRate` null, tutarlar 0); miktar tam sayı değil, ≤ 0 ya da
+  100000'den büyük → `INVALID_QUANTITY` (tutarlar 0); stokta yok → `OUT_OF_STOCK`; yalnız-koli üründe koli katı değil →
+  `CARTON_MULTIPLE` (bu ikisi fiyatlanır). `totals` yalnız sorunsuz satırların toplamıdır.
+- **`POST orders {requestId, lines[{key, quantity}], note, expectedTotal}`** (S8, `Endpoints/CatalogCustomerOrderEndpoints`):
+  `requestId` boş, `lines` boş ya da 200'den fazla, `expectedTotal` yok, `note` 1000 karakterden uzun → `400 INVALID_BODY`.
+  Sıra: aynı `requestId` bu hesabınsa aynı talep aynı `201 {order}` ile döner (başka hesabın/firmanın kimliğiyse içerik vermeden
+  `409 REQUEST_ID_CONFLICT`) → `CanOrder` kapalı ya da cari kartı kilitli (`isLocked`) `403 ORDERING_DISABLED` → sepet sunucuda
+  yeniden fiyatlanır (`cart/quote` ile aynı): sorunlu satır varsa `422 CART_INVALID {…, quote}`; toplam `expectedTotal`'dan
+  0,05'ten fazla farklıysa `409 PRICE_CHANGED {…, quote}` → hesabın satır kilidi altında açık (`NEW`+`CLAIMED`) talep sayısı
+  `MaxOpenOrders`'a (20) ulaştıysa `429 TOO_MANY_OPEN_ORDERS` (gövde `ApiError`, `Retry-After` yok) → talep `No` = `KT-` + 6 karakter
+  (`A–Z` I/O hariç, `2–9`; firma içinde tekil), satırlar sunucunun fiyatıyla `LinesJson`'a, bildirimler aynı kayıtta (sayaç
+  `ReserveAsync` ile kaydın hemen önünde) → `Publish(Tasks)`. Bildirim: `CATALOG_ORDER_NEW`, `TaskId` null, başlık
+  "Yeni müşteri siparişi: {cari}", gövde "{No} · {n} kalem · {toplam} TL" (tr-TR); alıcılar `ResponsibleUserId` (aktifse) ya da
+  carinin plasiyer kodu (`salespersonCode`, kırpılmış, harf duyarsız) → `MobileUserErpMapping.SalespersonCode` → aktif kullanıcı
+  (bu kişi `AssignedUserId` olur), artı aktif katalog yöneticileri; herkese bir kez.
+- **`GET orders`:** hesabın en yeni 100 talebi. **`GET orders/detail?id=`:** başkasının/bilinmeyen `404 NOT_FOUND`; satırlar
+  `{key, code, name, quantity, net, total}` talebin fiyatıyla.
+- **Hesabım (S9, `Endpoints/CatalogCustomerLedgerEndpoints`):** bayrak kapalıysa `403 FEATURE_DISABLED` (`statement` ←
+  `ShowStatement`, `invoices*` ← `ShowInvoices`, `purchased` ← `ShowPurchased`). Kaynak panelin aynaları (`PortalLedger`); cari
+  aynada yoksa boş. `from`/`to` `yyyy-MM-dd` (bozuksa `400 INVALID_BODY`).
+  - `GET statement?from=&to=`: `balance` carinin bugünkü bakiyesi (`/me` ile aynı), `rows` yeniden eskiye, yalnız cari tarafı
+    satırlar (kapalı peşin/kasa-banka satırları yok), iptal edilen özgün satır gizli (karşı kaydı görünür); **açıklama yok**.
+  - `GET invoices?from=&to=&page=`: `Kind ∈ {sale, sale_return}`, `!OtherSide`, belge anahtarı olan satırlar (peşin kapanmış
+    faturalar dahil), belge başına bir, yeniden eskiye, 50'lik sayfa; `total` = borç + alacak.
+  - `GET invoices/detail?key=`: anahtar önce **aynı süzgeçten** geçen carinin kendi listesinde aranır (başka carinin anahtarı,
+    cari koduyla çakışan kasa/banka satırının `r…` anahtarı, tahsilat → `404 NOT_FOUND`); `DocumentByKey` kullanılmaz. ERP'siz
+    anahtar `d{CARİ}|{evrakNo}` `|` ve `/` içerebilir: sorguda URL-kodlu gider. Satır `productKey` yalnız ürün müşteriye
+    görünüyorsa.
+  - `GET purchased?q=&page=`: iptal edilmemiş satış faturalarının satırları stok koduna göre: `lastDate`, `totalQuantity`, `times`
+    (fatura sayısı); `name` stok kartından (yoksa kod); `product` görünürse `CProduct`, yoksa null; `q` ≥ 2 karakter ad/kod
+    (tr-TR, şapka duyarsız); son alıma göre, 48'lik sayfa.
+- **Web barındırma** (`CustomerCatalog/CatalogWeb`, yalnız `Host == CustomerCatalog:PublicHost`; boşsa hiçbiri yok):
+  `/assets/{v}/…` dosyalar (`CustomerCatalog:WebRoot`; `v` = bütün dosyaların SHA-256'sının ilk 10 hex'i, açılışta bir kez;
+  `Cache-Control: public, max-age=31536000, immutable`; yanlış `v` ya da olmayan dosya `404 no-store`; yönlendirme ve hız
+  sınırından önce). Kabuk `GET /{code}` ve `/{code}/{**rest}`: `index.html` (`%V%` → v, `%TITLE%` → "{Firma} · Müşteri
+  Kataloğu", HTML-encode, 5 dk önbellek), `no-cache`; bilinmeyen/kapalı kodda aynı sayfa genel başlıkla `404`.
+  `/robots.txt` (`Disallow: /`), `/favicon.svg`. Bu host'ta yalnız `/api/v1/catalog/**` ve `/health*` geçer, gerisi `404`.
+  Her yanıtta CSP (`default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self';
+  object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`), `X-Robots-Tag: noindex`,
+  `Referrer-Policy: same-origin`, `Strict-Transport-Security: max-age=31536000`, `X-Content-Type-Options: nosniff`.
+
 ## Hata modeli
 
 ```json
@@ -349,6 +525,23 @@ Yaygın kodlar:
 - `TENANT_MISMATCH` — agent kayıtlı tenant ile lisans tenant uyuşmuyor
 - `JOB_NOT_FOUND` — ack gönderilen job zaten işlenmiş
 - `TRANSIENT_UPSTREAM` — 5xx, agent exponential backoff ile retry
+- `RATE_LIMITED` — HTTP 429. Hız sınırının ve giriş yavaşlatıcının her reddi bu gövdeyi taşır; bekleme biliniyorsa
+  `Retry-After` (saniye) başlığı da gelir (GOAL_MUSTERI_KATALOGU §5).
+
+**Giriş yavaşlatıcı** (`/api/v1/android/account/login`, `/api/v1/admin/login`, `/api/v1/catalog/{code}/login`; bilgi bankası kural 36): aynı ad
+15 dakikada 5 kez yanlış girilirse 60 sn bekler; her yeni hata beklemeyi ikiye katlar (en çok 15 dk). Beklerken şifre
+denetlenmez, doğru şifre de `429 RATE_LIMITED` alır. Hesap kilitlenmez; başarılı giriş sayacı sıfırlar. Devam eden denemeler de
+sayılır: aynı anda en çok kalan hata hakkı kadar deneme yürür (bir kez bekletilmiş adda tek), fazlası `429` (`Retry-After: 1`).
+Anahtarlar: personel = firma kodu + kullanıcı adı + **istemci adres bölümü** (IPv4 / IPv6 /64) — başka adresten deneyen kullanıcıyı
+dışarıda bırakamaz; kullanıcının kayıtlı ve aktif telefonu (`mobile_devices`: aynı firma, `DeviceId`, `IsActive`,
+`LastUserId` = kullanıcı) kendi sayacını kullanır (panelin cihaz kimliği kullanıcı adından türediği için muaf değildir). Admin =
+e-posta + adres bölümü; bilinmeyen e-postada da sahte hash'le BCrypt çalışır. Katalog = firma kodu + kullanıcı adı (güncel cihaz
+çerezli tarayıcı ve oturumdaki şifre değişikliği `#{hesapId}`). **Sınır:** panel ve Admin konsolu girişleri sunucuya kendi
+konteynerlerinin adresinden gelir; orada adres ayrımı yoktur.
+
+Sunucu Traefik arkasında gerçek istemci IP'sini yalnız `ForwardedHeaders:KnownNetworks` / `KnownProxies` ayarındaki
+vekillerden gelen `X-Forwarded-For` ile öğrenir; IP başına sınırlarda IPv6 adresleri /64 önekine indirgenir. Güvenilmeyen bir
+adresten `X-Forwarded-For` gelirse (ayar eksik ya da yanlış) ilk istekte bir kez uyarı loglanır (başlık 64 karaktere kısaltılır).
 
 ## Retry & backoff
 

@@ -56,6 +56,8 @@ public sealed class PermissionResolverTests
         p.Can(K.ApprovalsDecide).Should().Be(ApprovalPermissions.CanDecide(user));
         p.Can(K.ApprovalsManageRules).Should().Be(ApprovalPermissions.CanManageRules(user));
         p.Can(K.ModuleSales).Should().Be(roles.Any(r => r is R.Admin or R.Manager or R.Sales), "field screens are for admin, manager and sales");
+        p.Can(K.CustomerCatalogManage).Should().Be(roles.Any(r => r is R.Admin or R.Manager), "the web catalog is managed by admin and manager only");
+        RolePermissions.CanManageCustomerCatalog(user).Should().Be(p.Can(K.CustomerCatalogManage));
         foreach (var limit in PermissionCatalog.All.Where(d => d.Type == PermissionType.Limit))
             p.Limit(limit.Key).Should().BeNull("no limit exists today");
     }

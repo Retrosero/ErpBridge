@@ -1,15 +1,18 @@
 @* Page range, page size and first/previous/next/last buttons under a server-paged table. *@
 <div class="table-foot pager" id="@Id">
     <span class="pager-range">@RangeText</span>
-    <label class="inline-field">
-        Sayfada
-        <select class="portal-select portal-select--short pager-size" value="@PageSize" @onchange="SizeChangedAsync" disabled="@Busy">
-            @foreach (var size in Sizes)
-            {
-                <option value="@size">@size</option>
-            }
-        </select>
-    </label>
+    @if (ShowSize)
+    {
+        <label class="inline-field">
+            Sayfada
+            <select class="portal-select portal-select--short pager-size" value="@PageSize" @onchange="SizeChangedAsync" disabled="@Busy">
+                @foreach (var size in Sizes)
+                {
+                    <option value="@size">@size</option>
+                }
+            </select>
+        </label>
+    }
     <span class="pager-buttons">
         <MudIconButton Icon="@Icons.Material.Rounded.FirstPage" Size="Size.Small" Disabled="@(Busy || Page <= 1)" OnClick="() => GoAsync(1)" aria-label="İlk sayfa" Class="pager-first" />
         <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" Size="Size.Small" Disabled="@(Busy || Page <= 1)" OnClick="() => GoAsync(Page - 1)" aria-label="Önceki sayfa" Class="pager-prev" />
@@ -27,6 +30,9 @@
     [Parameter] public int PageSize { get; set; } = 50;
     [Parameter] public int Total { get; set; }
     [Parameter] public bool Busy { get; set; }
+
+    /// <summary>False for a list whose page size the server fixes.</summary>
+    [Parameter] public bool ShowSize { get; set; } = true;
 
     /// <summary>What is being counted, e.g. "cari", "hareket".</summary>
     [Parameter] public string Unit { get; set; } = "kayıt";

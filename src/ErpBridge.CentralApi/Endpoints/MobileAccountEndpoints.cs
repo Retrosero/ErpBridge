@@ -4,6 +4,7 @@ using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Mobile;
+using ErpBridge.CentralApi.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,12 +17,6 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// </summary>
 public static class MobileAccountEndpoints
 {
-    /// <summary>
-    /// Verified against when the username or tenant is unknown, so a failed sign-in
-    /// costs the same BCrypt work either way and does not reveal which part was wrong.
-    /// </summary>
-    private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("erpbridge-timing-equalizer");
-
     public static IEndpointRouteBuilder MapMobileAccountEndpoints(this IEndpointRouteBuilder routes)
     {
         var anonymous = routes.MapGroup("/api/v1/android/account")
@@ -32,7 +27,8 @@ public static class MobileAccountEndpoints
             .Produces<MobileLoginResponse>(StatusCodes.Status200OK)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
-            .Produces<ApiError>(StatusCodes.Status403Forbidden);
+            .Produces<ApiError>(StatusCodes.Status403Forbidden)
+            .Produces<ApiError>(StatusCodes.Status429TooManyRequests);
 
         var signedIn = routes.MapGroup("/api/v1/android/account")
             .WithTags("Android/Account")
@@ -47,11 +43,13 @@ public static class MobileAccountEndpoints
     }
 
     private static async Task<IResult> LoginAsync(
+        HttpContext http,
         [FromBody] MobileLoginRequest? body,
         [FromServices] CentralApiDbContext db,
         [FromServices] MobileSeatService seats,
         [FromServices] IJwtIssuer jwt,
         [FromServices] IConfiguration configuration,
+        [FromServices] LoginThrottle throttle,
         CancellationToken ct)
     {
         var tenantCode = body?.TenantCode?.Trim().ToUpperInvariant();
@@ -70,9 +68,26 @@ public static class MobileAccountEndpoints
             ? null
             : await db.MobileUsers.Include(u => u.Roles)
                 .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Username == username && u.DeletedAtUtc == null, ct);
-        var passwordOk = BCrypt.Net.BCrypt.Verify(body.Password, user?.PasswordHash ?? DummyPasswordHash);
+
+        // A name that failed too often waits, and the password is not even checked meanwhile: a right and a
+        // wrong guess get the same 429 (GOAL_MUSTERI_KATALOGU T2). The name is counted per caller address, so
+        // failures from elsewhere do not keep the user out; a phone this user signed in on before (its active
+        // device row) has a count of its own. The panel's device id is made from the username, so it proves nothing.
+        var trustedDevice = user is not null && client == CentralApiClaims.PhoneClient
+            && await db.MobileDevices.AnyAsync(d => d.TenantId == user.TenantId && d.DeviceId == deviceId && d.IsActive && d.LastUserId == user.Id, ct);
+        using var attempt = trustedDevice
+            ? throttle.TryBegin(LoginThrottle.StaffArea, tenantCode, "#" + user!.Id.ToString("N") + "@" + deviceId)
+            : throttle.TryBegin(LoginThrottle.StaffArea, tenantCode, body.Username, ClientIpPartition.Of(http.Connection.RemoteIpAddress));
+        if (attempt.RetryAfter is { } wait)
+            return RateLimitedResponse.Result(wait);
+
+        var passwordOk = BCrypt.Net.BCrypt.Verify(body.Password, user?.PasswordHash ?? PasswordHashing.Dummy);
         if (tenant is null || user is null || !passwordOk)
+        {
+            attempt.Failed();
             return Error(401, "INVALID_CREDENTIALS", "Company code, username or password is wrong.");
+        }
+        attempt.Succeeded();
 
         // Only past this point does the caller know the credentials, so the
         // specific reasons below are safe to disclose.

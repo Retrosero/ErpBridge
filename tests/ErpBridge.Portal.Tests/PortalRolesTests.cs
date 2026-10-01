@@ -27,8 +27,8 @@ public sealed class PortalRolesTests
         PortalRoles.MayUsePortal(roles).Should().Be(allowed);
 
     [Theory]
-    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite,ErpDocuments,NativeAudit,Targets", "")]
-    [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse,Displays,ErpDocuments,Targets", "")]
+    [InlineData(new[] { "ADMIN" }, "Reports,Ledger,Approvals,Warehouse,Users,Displays,ErpWrite,ErpDocuments,NativeAudit,Targets,CustomerCatalog", "")]
+    [InlineData(new[] { "MANAGER" }, "Reports,Ledger,Approvals,Warehouse,Displays,ErpDocuments,Targets,CustomerCatalog", "")]
     [InlineData(new[] { "ACCOUNTING" }, "Ledger,Approvals,ErpDocuments", "muhasebe")]
     [InlineData(new[] { "WAREHOUSE" }, "Warehouse", "depo")]
     [InlineData(new[] { "ACCOUNTING", "WAREHOUSE" }, "Ledger,Approvals,Warehouse,ErpDocuments", "muhasebe")]
@@ -54,6 +54,52 @@ public sealed class PortalRolesTests
         session.RememberMe.Should().BeFalse();
         session.Allows(PortalArea.Reports).Should().BeTrue();
         session.IsAdmin.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_session_saved_before_modules_loads_without_any_and_keeps_the_catalog_closed()
+    {
+        var saved = JsonSerializer.Deserialize<PortalSessionState>(
+            """{"Token":"t","ExpiresAtUtc":"2026-09-30T00:00:00+00:00","TenantName":"Ege","TenantCode":"EGE123","DataSource":"native","Username":"patron","FullName":"Patron","Role":"ADMIN","CanApprove":true,"Roles":["ADMIN"],"RememberMe":true,"Permissions":{"portal.reports":true}}""")!;
+        var session = new PortalSession(new TestClock(PortalTestSetup.Now));
+
+        session.SignIn(saved);
+
+        session.IsSignedIn.Should().BeTrue();
+        session.Modules.Should().BeEmpty();
+        session.Allows(PortalArea.Reports).Should().BeTrue();
+        session.Allows(PortalArea.CustomerCatalog).Should().BeFalse("the company's modules are unknown until /me is read again");
+    }
+
+    [Fact]
+    public void Modules_are_saved_with_the_session_and_a_refresh_without_them_keeps_the_ones_held()
+    {
+        var session = new PortalSession(new TestClock(PortalTestSetup.Now));
+        session.SignIn(PortalTestSetup.State() with { Modules = ["customer_catalog", "xml_import"] }, fresh: true);
+
+        session.Allows(PortalArea.CustomerCatalog).Should().BeTrue();
+        var restored = JsonSerializer.Deserialize<PortalSessionState>(JsonSerializer.Serialize(session.Snapshot()))!;
+        restored.Modules.Should().Equal("customer_catalog", "xml_import");
+
+        session.Refresh("Firma Sahibi", ["ADMIN"], canApprove: true, permissions: null, modules: null);
+        session.HasModule("customer_catalog").Should().BeTrue("an older server sends no modules");
+
+        session.Refresh("Firma Sahibi", ["ADMIN"], canApprove: true, permissions: null, modules: []);
+        session.Allows(PortalArea.CustomerCatalog).Should().BeFalse("the operator turned the module off");
+    }
+
+    [Fact]
+    public void The_catalog_opens_for_admins_and_managers_only_even_when_a_permission_says_otherwise()
+    {
+        var granted = new Dictionary<string, bool> { ["action.customer_catalog.manage"] = true };
+        var revoked = new Dictionary<string, bool> { ["action.customer_catalog.manage"] = false };
+
+        PortalRoles.KeyOf(PortalArea.CustomerCatalog).Should().Be("action.customer_catalog.manage");
+        PortalRoles.Allows(["ACCOUNTING"], granted, PortalArea.CustomerCatalog).Should().BeFalse("the key is locked to ADMIN and MANAGER");
+        PortalRoles.Allows(["SALES", "WAREHOUSE"], granted, PortalArea.CustomerCatalog).Should().BeFalse();
+        PortalRoles.Allows(["MANAGER"], revoked, PortalArea.CustomerCatalog).Should().BeFalse();
+        PortalRoles.Allows(["MANAGER"], null, PortalArea.CustomerCatalog).Should().BeTrue();
+        PortalRoles.HomePage(["ADMIN"]).Should().Be("", "the catalog does not change where anyone lands");
     }
 
     [Fact]
@@ -228,6 +274,36 @@ public sealed class PortalLayoutTests : PortalPageTestContext
     /// too short on a loaded CI runner and failed unrelated pull requests (#187, 2026-09-25).
     /// </summary>
     private static readonly TimeSpan MenuTimeout = TimeSpan.FromSeconds(10);
+
+    [Theory]
+    [InlineData("ADMIN", true, null, true)]
+    [InlineData("MANAGER", true, null, true)]
+    [InlineData("ADMIN", false, null, false)]
+    [InlineData("ACCOUNTING", true, null, false)]
+    [InlineData("MANAGER", true, false, false)]
+    public void The_customer_catalog_group_needs_the_module_and_a_managing_role(string role, bool module, bool? permission, bool shown)
+    {
+        var state = PortalTestSetup.State(role: role) with
+        {
+            Modules = module ? ["customer_catalog"] : [],
+            Permissions = permission is { } allowed ? new Dictionary<string, bool> { ["action.customer_catalog.manage"] = allowed } : null,
+        };
+        PortalTestSetup.Register(this, signedIn: state, popoverProvider: false);
+
+        var cut = RenderLayout();
+
+        var links = cut.FindAll("#portal-nav a").Select(a => a.GetAttribute("href")).ToList();
+        if (shown)
+        {
+            links.Should().ContainInConsecutiveOrder("katalog", "musteri-siparisleri");
+            cut.Find("#portal-nav").TextContent.Should().Contain("Müşteri kataloğu").And.Contain("Katalog yönetimi").And.Contain("Müşteri siparişleri");
+        }
+        else
+        {
+            links.Should().NotContain(["katalog", "musteri-siparisleri"]);
+            cut.Find("#portal-nav").TextContent.Should().NotContain("Müşteri kataloğu");
+        }
+    }
 
     [Fact]
     public void An_erp_company_admin_has_no_quick_entry_links()
