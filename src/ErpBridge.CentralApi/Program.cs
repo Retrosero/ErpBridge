@@ -874,6 +874,7 @@ public partial class Program
         app.MapMobileUserPreferencesEndpoints();
         app.MapCustomerCatalogManageEndpoints();
         app.MapCustomerCatalogImageEndpoints();
+        app.MapCustomerCatalogOrderEndpoints();
         app.MapCustomerCatalogPublicEndpoints();
         catalogWeb?.MapShell(app);
         app.MapPortalTargetEndpoints();

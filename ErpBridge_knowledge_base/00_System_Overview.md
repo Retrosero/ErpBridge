@@ -1328,7 +1328,7 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
    - **Eşitleme telefonda karara bağlanır:** yerelde bekleyen değişiklik kazanır (son yazan), yoksa daha yüksek `Version` alınır. Kullanıcı silinince satırı da gider (cascade).
    - Test: `UserPreferencesRelationalTests`. Telefon ayağı: Siparis_Cepte KB kural 54.
 
-36. **Müşteri kataloğu temeli: gerçek istemci IP'si, giriş yavaşlatıcı, katalog tabloları, kilitli yetki (GOAL_MUSTERI_KATALOGU S1–S2, 2026-10-01).**
+36. **Müşteri kataloğu: gerçek istemci IP'si, giriş yavaşlatıcı, katalog tabloları, kilitli yetki, müşteri oturumu, talepler ve belge bağı (GOAL_MUSTERI_KATALOGU S1–S9, 2026-10-01).**
    - **Gerçek istemci IP'si:** `Security/ForwardedHeadersSetup`. `ForwardedHeaders:KnownNetworks` / `ForwardedHeaders:KnownProxies`
      (dizi ya da virgüllü tek değer; boş girdi yok sayılır) doluysa pipeline'ın **en başında** `UseForwardedHeaders`
      (`X-Forwarded-For` + `X-Forwarded-Proto`, `ForwardLimit=1`, varsayılan loopback güveni temizlenir; `X-Forwarded-Host` asla —
@@ -1393,8 +1393,30 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `/health*` ve kabuk yolları); kabuk `/{code}`, `/{code}/{**rest}` `RequireHost` uçları (`%V%`, `%TITLE%`, 5 dk başlık
      önbelleği, bilinmeyen kod aynı sayfa 404). Bu host'ta her yanıt CSP, `X-Robots-Tag: noindex`, `Referrer-Policy`, HSTS,
      `nosniff` taşır. Web dosyaları `wwwroot/katalog` (Web SDK publish'e kendiliğinden alır; Dockerfile değişmez).
+   - **Sipariş talepleri (S8)** — müşteri `Endpoints/CatalogCustomerOrderEndpoints` (`POST/GET orders`, `orders/detail?id=`),
+     personel `Endpoints/CustomerCatalogOrderEndpoints` (`/api/v1/customer-catalog/orders*`; modül var, yönetim yetkisi yok:
+     yönetici hepsini, diğerleri `AssignedUserId`/`ClaimedByUserId` kendisi olanları görür), çekirdek `CustomerCatalog/CatalogOrders`.
+     Gönderimde önce doğrulama ve fiyat (`CatalogQuote`; `422 CART_INVALID`/`409 PRICE_CHANGED` + `quote`), sonra tek işlemde
+     **hesap satırının kilidi** (taşınabilir `FOR UPDATE`: boş `ExecuteUpdate`, PostgreSQL'de satır kilidi, SQLite'ta yazma kilidi)
+     → açık talep sınırı → talep + bildirimler; sayaç (`ReserveAsync`) `SaveChanges`'in hemen önünde (kural 11); commit sonrası
+     `Publish(Tasks)`. `requestId` = talebin PK'sı: aynı hesap → aynı talep (201), başka hesap → içeriksiz `409 REQUEST_ID_CONFLICT`.
+     Personel eylemleri (`claim{force}`/`release`/`complete`/`reject`) talep satırının kilidi altında (aynı anda iki kişi → biri 409).
+     Bildirim `CATALOG_ORDER_NEW` (`TaskId` null; `TaskService` türe göre süzmez): sorumlu kişi ya da plasiyer eşlemesi
+     (`Customer.SalespersonCode` → `MobileUserErpMapping.SalespersonCode`, aktif kullanıcı) + aktif katalog yöneticileri.
+   - **Talep ↔ satış bağı (T8)** `CustomerCatalog/CatalogOrderLinker.TryLinkAsync`: satış gövdesinin üst düzey `catalogOrderId`'si
+     `IngestEndpoints`'te iş eklenmeden hemen önce (idempotent iş + onay/yetki denetimlerinden sonra; ERP yolunda ve ERP'siz
+     yolda — o zaman defter kaydının kendi `SaveChanges`'inde) ve `ApprovalService.PostDocumentsAsync`'te (onay işleminde) okunur.
+     Talep satırı kilitlenir; açıksa izlenen satır `COMPLETED` olur ve iş ile **aynı kayıtta** yazılır. Başka belgeyle çevrilmiş
+     `409 CATALOG_ORDER_ALREADY_CONVERTED`, reddedilmiş `409 CATALOG_ORDER_CLOSED`, bilinmeyen `409 CATALOG_ORDER_NOT_FOUND`: iş
+     yazılmaz. Alan yoksa hiçbir şey olmaz (eski davranış). ERP'siz defter satışı reddederse (`Failed` iş) `Link.Undo()` talebi açık
+     bırakır. Gövdede alan varsa ingest bir transaction açar (yalnız `sales_order` için değil).
+   - **Hesabım (S9)** `Endpoints/CatalogCustomerLedgerEndpoints`: `statement` (`PortalLedger.Statement`, açıklamasız dar DTO),
+     `invoices` / `invoices/detail?key=` (izinli küme = carinin kendi `sale|sale_return`, `!OtherSide`, anahtarlı satırları; detay
+     anahtarı önce bu kümede aranır, `DocumentByKey` **kullanılmaz** — kasa koduyla çakışan cari başka carinin `r` anahtarını
+     açamaz), `purchased` (iptalsiz satışların `LinesByDocument` satırları stok koduna göre). Bayrak kapalı `403 FEATURE_DISABLED`.
    - Testler: `LoginThrottleTests`, `ForwardedHeadersSetupTests`, `RateLimitTests` (XFF bölümleri, güvenilmeyen atlama, /64,
      `catalog-login`), `LoginThrottleEndpointTests`, `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
      `PermissionEndpointsRelationalTests`, `PermissionResolverTests`, `CustomerCatalogImagesRelationalTests`,
-     `CustomerCatalogLoginRelationalTests`, `CustomerCatalogBrowseRelationalTests`, `CatalogWebTests` (fixture
+     `CustomerCatalogLoginRelationalTests`, `CustomerCatalogBrowseRelationalTests`, `CustomerCatalogOrdersRelationalTests`,
+     `CustomerCatalogLedgerRelationalTests`, `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.

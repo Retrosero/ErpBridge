@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
+using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Native;
@@ -398,13 +399,22 @@ public sealed class ApprovalService
                 // And the thread of the phone request that asked, however many days ago that was.
                 CorrelationId = request.CorrelationId,
             };
+            // A sale made from a customer's catalog request completes it now, in the approval's transaction (T8); a
+            // rejected approval never gets here, so its request stays open.
+            var link = await CatalogOrderLinker.TryLinkAsync(db, tenant.Id, request.RequestedByUserId, job.PayloadJson, externalId, ct);
+            if (link.Refusal is { } refused)
+                return ApprovalResult<ApprovalRequest>.Fail(refused.Status, refused.Code, refused.Message);
             if (tenant.DataSource == TenantDataSources.Native)
             {
                 // Joins this transaction. Approval stands in for the administrator a
                 // product card otherwise needs.
                 var booked = await _native.IngestAsync(db, tenant.Id, job, callerIsAdmin: true, ct);
                 if (booked.Status == JobStatus.Failed)
+                {
+                    // Rolled back with the approval; put back for a provider without transactions too.
+                    link.Undo();
                     return ApprovalResult<ApprovalRequest>.Fail(422, "APPROVAL_DOCUMENT_FAILED", booked.LastError ?? "The document could not be booked.");
+                }
             }
             else
             {

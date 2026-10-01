@@ -466,3 +466,129 @@ public sealed class CatalogImageOrderRequest
 {
     [JsonPropertyName("ids")] public Guid[]? Ids { get; set; }
 }
+
+// ---- order requests ----------------------------------------------------------------------
+
+/// <summary><c>GET orders?status=&amp;q=&amp;page=</c>: newest first, 50 a page; <see cref="Counts"/> over everything the user may see.</summary>
+public sealed class CatalogOrderListResponse
+{
+    [JsonPropertyName("items")] public CatalogOrderSummaryDto[] Items { get; set; } = [];
+
+    [JsonPropertyName("total")] public int Total { get; set; }
+
+    [JsonPropertyName("counts")] public CatalogOrderCountsDto Counts { get; set; } = new();
+}
+
+public sealed class CatalogOrderCountsDto
+{
+    [JsonPropertyName("new")] public int New { get; set; }
+
+    [JsonPropertyName("claimed")] public int Claimed { get; set; }
+
+    [JsonPropertyName("completed")] public int Completed { get; set; }
+
+    [JsonPropertyName("rejected")] public int Rejected { get; set; }
+}
+
+public class CatalogOrderSummaryDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    [JsonPropertyName("no")] public string No { get; set; } = string.Empty;
+
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("customerName")] public string CustomerName { get; set; } = string.Empty;
+
+    /// <summary><c>NEW</c> (Yeni), <c>CLAIMED</c> (İşlemde), <c>COMPLETED</c> (Siparişe çevrildi), <c>REJECTED</c> (Reddedildi).</summary>
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+
+    [JsonPropertyName("lineCount")] public int LineCount { get; set; }
+
+    [JsonPropertyName("submittedAtMs")] public long SubmittedAtMs { get; set; }
+
+    /// <summary>Who the request was routed to (responsible user or salesperson mapping); null = managers only.</summary>
+    [JsonPropertyName("assignedUserName")] public string? AssignedUserName { get; set; }
+
+    [JsonPropertyName("claimedByUserId")] public Guid? ClaimedByUserId { get; set; }
+
+    [JsonPropertyName("claimedByName")] public string? ClaimedByName { get; set; }
+
+    [JsonPropertyName("claimedAtMs")] public long? ClaimedAtMs { get; set; }
+}
+
+public sealed class CatalogOrderDetailDto : CatalogOrderSummaryDto
+{
+    [JsonPropertyName("note")] public string? Note { get; set; }
+
+    /// <summary>The list the request was priced from: the sale takes its prices from exactly this list.</summary>
+    [JsonPropertyName("priceListNo")] public int PriceListNo { get; set; }
+
+    [JsonPropertyName("priceListName")] public string? PriceListName { get; set; }
+
+    [JsonPropertyName("priceIncludesVat")] public bool PriceIncludesVat { get; set; }
+
+    /// <summary>The account's discount when the request was sent.</summary>
+    [JsonPropertyName("discountPercent")] public decimal DiscountPercent { get; set; }
+
+    [JsonPropertyName("rejectReason")] public string? RejectReason { get; set; }
+
+    /// <summary>The sale's <c>externalId</c> the request became.</summary>
+    [JsonPropertyName("documentRef")] public string? DocumentRef { get; set; }
+
+    [JsonPropertyName("closedByName")] public string? ClosedByName { get; set; }
+
+    [JsonPropertyName("closedAtMs")] public long? ClosedAtMs { get; set; }
+
+    [JsonPropertyName("lines")] public CatalogOrderLineDto[] Lines { get; set; } = [];
+}
+
+public sealed class CatalogOrderLineDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+
+    [JsonPropertyName("cartonQuantity")] public int? CartonQuantity { get; set; }
+
+    [JsonPropertyName("listPrice")] public decimal ListPrice { get; set; }
+
+    /// <summary>The customer discount of this line: the account's, 0 on a <c>noDiscount</c> product.</summary>
+    [JsonPropertyName("discountPercent")] public decimal DiscountPercent { get; set; }
+
+    [JsonPropertyName("vatRate")] public decimal VatRate { get; set; }
+
+    [JsonPropertyName("gross")] public decimal Gross { get; set; }
+
+    [JsonPropertyName("discount")] public decimal Discount { get; set; }
+
+    [JsonPropertyName("vat")] public decimal Vat { get; set; }
+
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+
+    /// <summary>In stock now (all warehouses, as the phone rounds); false when the card is gone.</summary>
+    [JsonPropertyName("inStockNow")] public bool InStockNow { get; set; }
+}
+
+public sealed class CatalogOrderClaimRequest
+{
+    /// <summary>Take it over from whoever has it: catalog managers only.</summary>
+    [JsonPropertyName("force")] public bool Force { get; set; }
+}
+
+public sealed class CatalogOrderCompleteRequest
+{
+    /// <summary>The sale's <c>externalId</c>, or empty when it was entered elsewhere.</summary>
+    [JsonPropertyName("documentRef")] public string? DocumentRef { get; set; }
+}
+
+public sealed class CatalogOrderRejectRequest
+{
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+}

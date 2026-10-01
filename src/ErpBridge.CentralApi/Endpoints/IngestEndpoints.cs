@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ErpBridge.CentralApi.Authentication;
 using ErpBridge.CentralApi.Contracts;
+using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
@@ -389,14 +390,24 @@ public static class IngestEndpoints
             {
                 var callerIsAdmin = await CallerMayAsync(http, db, documentType, ct);
                 Job booked;
-                if (FulfillmentService.IsQueuedDocument(documentType))
+                if (FulfillmentService.IsQueuedDocument(documentType) || CatalogOrderLinker.Names(payloadJson))
                 {
                     // A booked sale enters the warehouse queue in the booking's own transaction (Faz 47).
                     var warehouse = http.RequestServices.GetRequiredService<FulfillmentService>();
                     OrderFulfillment? queued;
                     await using (var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null)
                     {
+                        // A sale made from a customer's catalog request completes it in the booking's save (T8).
+                        var link = await CatalogOrderLinker.TryLinkAsync(db, tenantId, job.CreatedByUserId, payloadJson, job.ExternalId, ct);
+                        if (link.Refusal is { } refused)
+                            return JsonResults.Status(refused.Status, new ApiError { ErrorCode = refused.Code, Message = refused.Message });
                         booked = await processor.IngestAsync(db, tenantId, job, callerIsAdmin, ct);
+                        if (booked.Status != JobStatus.Succeeded && link.Order is not null)
+                        {
+                            // The ledger refused the sale: the request stays open for the corrected one.
+                            link.Undo();
+                            await db.SaveChangesAsync(ct);
+                        }
                         queued = await warehouse.EnqueueAsync(db, tenant, booked, approvalRequestId: null, ct);
                         if (queued is not null) await db.SaveChangesAsync(ct);
                         if (transaction is not null) await transaction.CommitAsync(ct);
@@ -454,16 +465,20 @@ public static class IngestEndpoints
                 Message = "Bu belge yalnız ERP'si olmayan firmada merkezi API tarafından kaydedilir; ERP ajanının bunun için bir yazıcısı yok.",
             });
 
-        db.Jobs.Add(job);
         var erpWarehouse = http.RequestServices.GetRequiredService<FulfillmentService>();
         OrderFulfillment? erpQueued = null;
 
         try
         {
             // A sales order enters the warehouse queue before the agent writes it to the ERP (V2, Faz 47).
-            await using var transaction = FulfillmentService.IsQueuedDocument(documentType) && db.Database.IsRelational()
+            await using var transaction = (FulfillmentService.IsQueuedDocument(documentType) || CatalogOrderLinker.Names(payloadJson)) && db.Database.IsRelational()
                 ? await db.Database.BeginTransactionAsync(ct)
                 : null;
+            // A sale made from a customer's catalog request completes it in the job's save; a second sale for it is refused (T8).
+            var link = await CatalogOrderLinker.TryLinkAsync(db, tenantId, job.CreatedByUserId, payloadJson, job.ExternalId, ct);
+            if (link.Refusal is { } refused)
+                return JsonResults.Status(refused.Status, new ApiError { ErrorCode = refused.Code, Message = refused.Message });
+            db.Jobs.Add(job);
             erpQueued = await erpWarehouse.EnqueueAsync(db, tenant, job, approvalRequestId: null, ct);
             await db.SaveChangesAsync(ct);
             if (transaction is not null) await transaction.CommitAsync(ct);

@@ -148,7 +148,8 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade.
   - `catalog_orders` (sipariş **talebi**, sipariş değil): `Id` = müşterinin `requestId`'si, `TenantId`, `AccountId` (FK yok; hesap yumuşak silinir), `CustomerCode(64)`, `CustomerName(200)`,
     `AccountUsername(64)`, `No(16)` `KT-XXXXXX` UNIQUE `(TenantId, No)`, `Status(16)` NEW|CLAIMED|COMPLETED|REJECTED, `Note(1000)`, `RejectReason(500)`, `DocumentRef(128)` (çevrildiği
-    satışın `externalId`'si), `PriceListNo`, `PriceIncludesVat`, `DiscountPercent numeric(5,2)`, `Total numeric(18,2)`, `LineCount`, `LinesJson` jsonb, `AssignedUserId`, `ClaimedByUserId`,
+    satışın `externalId`'si), `PriceListNo`, `PriceIncludesVat`, `DiscountPercent numeric(5,2)`, `Total numeric(18,2)`, `LineCount`, `LinesJson` jsonb (`[{stockCode, name, unit, quantity, cartonQuantity, listPrice,
+    discountPercent, net, vatRate, gross, discount, vat, total}]`, sunucunun gönderim anındaki fiyatı), `AssignedUserId`, `ClaimedByUserId`,
     `ClaimedByName(120)`, `ClaimedAtMs`, `ClosedByUserId`, `ClosedByName(120)`, `ClosedAtMs`, `SubmittedAtMs`, `UpdatedAtMs`. İndeks `(TenantId, Status, SubmittedAtMs)`,
     `(TenantId, AccountId, SubmittedAtMs)`, `(TenantId, DocumentRef)`.
 

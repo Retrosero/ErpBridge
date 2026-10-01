@@ -385,6 +385,28 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
   `Cross-Origin-Resource-Policy: same-site`. `s` yoksa `l`; bağlantı görseli, bilinmeyen kimlik ya da firmanın modülü kapalıysa
   `404 NOT_FOUND` (önbellek başlıksız).
 
+- **Talepler (`orders*`, S8)** `Endpoints/CustomerCatalogOrderEndpoints`: modül denetlenir, yönetim yetkisi **istenmez**;
+  katalog yöneticisi (ADMIN/MANAGER) hepsini, diğerleri yalnız `AssignedUserId` ya da `ClaimedByUserId` kendisi olanları görür
+  (görmediği talep `404 CATALOG_ORDER_NOT_FOUND`). `GET orders?status=&q=&page=`: yeniden eskiye, 50'lik sayfa; `status`
+  `NEW|CLAIMED|COMPLETED|REJECTED` (başkası `400 INVALID_BODY`); `q` talep no / cari kodu / cari adı (tr-TR); `counts` görülebilen
+  bütün taleplerin durum sayıları (süzgeçsiz). `assignedUserName` = talebin düştüğü kişi. Değiştirici uçlar talebin satır kilidi
+  altında çalışır (aynı anda iki kişi: biri 200, öbürü 409) ve talebin son hâlini (`OrderDetail`) döner:
+  `claim {force}` — kapalı `409 CATALOG_ORDER_CLOSED`, başkasında `409 CATALOG_ORDER_TAKEN`, kendisininkini yeniden almak
+  değişiklik yapmaz; `force` yalnız yönetici (`403 CATALOG_MANAGE_REQUIRED`). `release` — alan kişi ya da yönetici; `NEW` ise
+  değişiklik yok. `complete {documentRef?}` (≤ 128; boş = "başka yerde girildi") — aynı belgeyle (ya da belgesiz) tekrar değişiklik
+  yapmaz, başka belge `409 CATALOG_ORDER_ALREADY_CONVERTED`, reddedilmiş `409 CATALOG_ORDER_CLOSED`. `reject {reason}` — gerekçe
+  zorunlu (`400 INVALID_BODY`, ≤ 500'e kırpılır), tekrar değişiklik yapmaz, çevrilmiş `409 CATALOG_ORDER_CLOSED`. Başkasının
+  aldığı talebi yönetici olmayan bırakamaz/çeviremez/reddedemez (`409 CATALOG_ORDER_TAKEN`). Detay satırları talebin anlık
+  fiyatlarıdır (`listPrice` talebin listesinden, `discountPercent` satırın müşteri iskontosu); `inStockNow` bugünkü stok.
+- **Talep ↔ satış bağı** (`CustomerCatalog/CatalogOrderLinker`, T8): satış gövdesi (`POST /api/v1/ingest/jobs`, ya da onay
+  isteğinin belgesi) üst düzeyde `catalogOrderId` taşıyorsa, iş yazılmadan hemen önce (idempotent iş ve onay/yetki
+  denetimlerinden sonra; onayda karar anında) talep aynı firmada ve `NEW`/`CLAIMED` olmalı → işle aynı kayıtta `COMPLETED`,
+  `documentRef` = satışın `externalId`'si, `closedBy*` = gönderen. Aynı `externalId` tekrar → sorun yok. Başka belgeyle çevrilmiş
+  `409 CATALOG_ORDER_ALREADY_CONVERTED`, reddedilmiş `409 CATALOG_ORDER_CLOSED`, bilinmeyen/başka firmanın/kimlik olmayan değer
+  `409 CATALOG_ORDER_NOT_FOUND` — bu üçünde **iş yazılmaz** (onayda onay `Pending` kalır). Alan yoksa ya da `null` ise davranış
+  aynen eskisi. ERP'siz firmada defter satışı reddederse (iş `Failed`) talep açık kalır. Reddedilen onay hiç iş yazmadığı için
+  talebe dokunmaz.
+
 ## Müşteri kataloğu, müşteri tarafı — `/api/v1/catalog/{code}` (GOAL_MUSTERI_KATALOGU §5.2, §6, §7)
 
 Firmanın carileri için; `{code}` firma kodu (`^[A-Za-z0-9]{4,16}$`, harf büyüklüğü fark etmez). Alanlar sözleşme belgesinde;
@@ -432,6 +454,34 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
   (ürün hakkında hiçbir bilgi dönmez: `code/name/unit/box/price/vatRate` null, tutarlar 0); miktar tam sayı değil, ≤ 0 ya da
   100000'den büyük → `INVALID_QUANTITY` (tutarlar 0); stokta yok → `OUT_OF_STOCK`; yalnız-koli üründe koli katı değil →
   `CARTON_MULTIPLE` (bu ikisi fiyatlanır). `totals` yalnız sorunsuz satırların toplamıdır.
+- **`POST orders {requestId, lines[{key, quantity}], note, expectedTotal}`** (S8, `Endpoints/CatalogCustomerOrderEndpoints`):
+  `requestId` boş, `lines` boş ya da 200'den fazla, `expectedTotal` yok, `note` 1000 karakterden uzun → `400 INVALID_BODY`.
+  Sıra: aynı `requestId` bu hesabınsa aynı talep aynı `201 {order}` ile döner (başka hesabın/firmanın kimliğiyse içerik vermeden
+  `409 REQUEST_ID_CONFLICT`) → `CanOrder` kapalı ya da cari kartı kilitli (`isLocked`) `403 ORDERING_DISABLED` → sepet sunucuda
+  yeniden fiyatlanır (`cart/quote` ile aynı): sorunlu satır varsa `422 CART_INVALID {…, quote}`; toplam `expectedTotal`'dan
+  0,05'ten fazla farklıysa `409 PRICE_CHANGED {…, quote}` → hesabın satır kilidi altında açık (`NEW`+`CLAIMED`) talep sayısı
+  `MaxOpenOrders`'a (20) ulaştıysa `429 TOO_MANY_OPEN_ORDERS` (gövde `ApiError`, `Retry-After` yok) → talep `No` = `KT-` + 6 karakter
+  (`A–Z` I/O hariç, `2–9`; firma içinde tekil), satırlar sunucunun fiyatıyla `LinesJson`'a, bildirimler aynı kayıtta (sayaç
+  `ReserveAsync` ile kaydın hemen önünde) → `Publish(Tasks)`. Bildirim: `CATALOG_ORDER_NEW`, `TaskId` null, başlık
+  "Yeni müşteri siparişi: {cari}", gövde "{No} · {n} kalem · {toplam} TL" (tr-TR); alıcılar `ResponsibleUserId` (aktifse) ya da
+  carinin plasiyer kodu (`salespersonCode`, kırpılmış, harf duyarsız) → `MobileUserErpMapping.SalespersonCode` → aktif kullanıcı
+  (bu kişi `AssignedUserId` olur), artı aktif katalog yöneticileri; herkese bir kez.
+- **`GET orders`:** hesabın en yeni 100 talebi. **`GET orders/detail?id=`:** başkasının/bilinmeyen `404 NOT_FOUND`; satırlar
+  `{key, code, name, quantity, net, total}` talebin fiyatıyla.
+- **Hesabım (S9, `Endpoints/CatalogCustomerLedgerEndpoints`):** bayrak kapalıysa `403 FEATURE_DISABLED` (`statement` ←
+  `ShowStatement`, `invoices*` ← `ShowInvoices`, `purchased` ← `ShowPurchased`). Kaynak panelin aynaları (`PortalLedger`); cari
+  aynada yoksa boş. `from`/`to` `yyyy-MM-dd` (bozuksa `400 INVALID_BODY`).
+  - `GET statement?from=&to=`: `balance` carinin bugünkü bakiyesi (`/me` ile aynı), `rows` yeniden eskiye, yalnız cari tarafı
+    satırlar (kapalı peşin/kasa-banka satırları yok), iptal edilen özgün satır gizli (karşı kaydı görünür); **açıklama yok**.
+  - `GET invoices?from=&to=&page=`: `Kind ∈ {sale, sale_return}`, `!OtherSide`, belge anahtarı olan satırlar (peşin kapanmış
+    faturalar dahil), belge başına bir, yeniden eskiye, 50'lik sayfa; `total` = borç + alacak.
+  - `GET invoices/detail?key=`: anahtar önce **aynı süzgeçten** geçen carinin kendi listesinde aranır (başka carinin anahtarı,
+    cari koduyla çakışan kasa/banka satırının `r…` anahtarı, tahsilat → `404 NOT_FOUND`); `DocumentByKey` kullanılmaz. ERP'siz
+    anahtar `d{CARİ}|{evrakNo}` `|` ve `/` içerebilir: sorguda URL-kodlu gider. Satır `productKey` yalnız ürün müşteriye
+    görünüyorsa.
+  - `GET purchased?q=&page=`: iptal edilmemiş satış faturalarının satırları stok koduna göre: `lastDate`, `totalQuantity`, `times`
+    (fatura sayısı); `name` stok kartından (yoksa kod); `product` görünürse `CProduct`, yoksa null; `q` ≥ 2 karakter ad/kod
+    (tr-TR, şapka duyarsız); son alıma göre, 48'lik sayfa.
 - **Web barındırma** (`CustomerCatalog/CatalogWeb`, yalnız `Host == CustomerCatalog:PublicHost`; boşsa hiçbiri yok):
   `/assets/{v}/…` dosyalar (`CustomerCatalog:WebRoot`; `v` = bütün dosyaların SHA-256'sının ilk 10 hex'i, açılışta bir kez;
   `Cache-Control: public, max-age=31536000, immutable`; yanlış `v` ya da olmayan dosya `404 no-store`; yönlendirme ve hız

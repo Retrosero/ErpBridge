@@ -241,3 +241,180 @@ public sealed class CatalogQuoteTotalsDto
 
     [JsonPropertyName("total")] public decimal Total { get; set; }
 }
+
+// ---- order requests ----------------------------------------------------------------------
+
+/// <summary><c>POST orders</c>: the cart as a request; the server prices it again and compares with what the page showed.</summary>
+public sealed class CatalogOrderRequest
+{
+    /// <summary>Made by the page once per cart: a repeated submit returns the same request.</summary>
+    [JsonPropertyName("requestId")] public Guid RequestId { get; set; }
+
+    [JsonPropertyName("lines")] public CatalogCartLineDto[]? Lines { get; set; }
+
+    [JsonPropertyName("note")] public string? Note { get; set; }
+
+    /// <summary>The total the customer saw; more than 0,05 off the server's is 409 <c>PRICE_CHANGED</c>.</summary>
+    [JsonPropertyName("expectedTotal")] public decimal? ExpectedTotal { get; set; }
+}
+
+/// <summary>409 <c>PRICE_CHANGED</c> and 422 <c>CART_INVALID</c>: the error with the cart priced as it is now.</summary>
+public sealed class CatalogQuoteErrorDto
+{
+    [JsonPropertyName("errorCode")] public string ErrorCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
+
+    [JsonPropertyName("traceId")] public string? TraceId { get; set; }
+
+    [JsonPropertyName("quote")] public CatalogQuoteDto Quote { get; set; } = new();
+}
+
+public sealed class CatalogOrderResponse
+{
+    [JsonPropertyName("order")] public CatalogCustomerOrderDto Order { get; set; } = new();
+}
+
+public sealed class CatalogCustomerOrdersResponse
+{
+    [JsonPropertyName("items")] public CatalogCustomerOrderDto[] Items { get; set; } = [];
+}
+
+/// <summary><c>COrder</c>: one of the customer's requests.</summary>
+public class CatalogCustomerOrderDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    [JsonPropertyName("no")] public string No { get; set; } = string.Empty;
+
+    /// <summary><c>NEW</c> (Alındı), <c>CLAIMED</c> (İnceleniyor), <c>COMPLETED</c> (Siparişe çevrildi), <c>REJECTED</c> (Reddedildi).</summary>
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+
+    [JsonPropertyName("lineCount")] public int LineCount { get; set; }
+
+    [JsonPropertyName("submittedAtMs")] public long SubmittedAtMs { get; set; }
+
+    [JsonPropertyName("rejectReason")] public string? RejectReason { get; set; }
+}
+
+public sealed class CatalogCustomerOrderDetailDto : CatalogCustomerOrderDto
+{
+    [JsonPropertyName("note")] public string? Note { get; set; }
+
+    [JsonPropertyName("lines")] public CatalogCustomerOrderLineDto[] Lines { get; set; } = [];
+}
+
+public sealed class CatalogCustomerOrderLineDto
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
+
+    [JsonPropertyName("code")] public string Code { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+
+    /// <summary>The unit price after the customer's discount, as the request was priced.</summary>
+    [JsonPropertyName("net")] public decimal Net { get; set; }
+
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+}
+
+// ---- account: statement, invoices, purchased ---------------------------------------------
+
+public sealed class CatalogStatementResponse
+{
+    /// <summary>The customer's balance now (positive: they owe the company).</summary>
+    [JsonPropertyName("balance")] public decimal Balance { get; set; }
+
+    /// <summary>Newest first; no description (staff notes stay inside the company).</summary>
+    [JsonPropertyName("rows")] public CatalogStatementRowDto[] Rows { get; set; } = [];
+}
+
+public sealed class CatalogStatementRowDto
+{
+    /// <summary><c>yyyy-MM-dd</c>.</summary>
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+
+    /// <summary><c>sale</c>, <c>sale_return</c>, <c>purchase</c>, <c>purchase_return</c>, <c>collection</c>, <c>payment</c> or <c>other</c>.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+
+    [JsonPropertyName("debit")] public decimal Debit { get; set; }
+
+    [JsonPropertyName("credit")] public decimal Credit { get; set; }
+
+    /// <summary>The running balance after this row.</summary>
+    [JsonPropertyName("balance")] public decimal Balance { get; set; }
+}
+
+public sealed class CatalogInvoicesResponse
+{
+    [JsonPropertyName("items")] public CatalogInvoiceDto[] Items { get; set; } = [];
+
+    [JsonPropertyName("total")] public int Total { get; set; }
+}
+
+public class CatalogInvoiceDto
+{
+    /// <summary>What <c>invoices/detail?key=</c> takes; may hold <c>|</c> and <c>/</c>, so it travels URL-encoded in the query.</summary>
+    [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
+
+    [JsonPropertyName("date")] public string Date { get; set; } = string.Empty;
+
+    [JsonPropertyName("documentNo")] public string? DocumentNo { get; set; }
+
+    /// <summary><c>sale</c> or <c>sale_return</c>.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+}
+
+public sealed class CatalogInvoiceDetailDto : CatalogInvoiceDto
+{
+    [JsonPropertyName("lines")] public CatalogInvoiceLineDto[] Lines { get; set; } = [];
+}
+
+public sealed class CatalogInvoiceLineDto
+{
+    [JsonPropertyName("code")] public string Code { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")] public string? Name { get; set; }
+
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+
+    [JsonPropertyName("unitPrice")] public decimal UnitPrice { get; set; }
+
+    [JsonPropertyName("amount")] public decimal Amount { get; set; }
+
+    /// <summary>The product's catalog key when the customer sees it (to order it again); otherwise null.</summary>
+    [JsonPropertyName("productKey")] public string? ProductKey { get; set; }
+}
+
+public sealed class CatalogPurchasedResponse
+{
+    [JsonPropertyName("items")] public CatalogPurchasedDto[] Items { get; set; } = [];
+
+    [JsonPropertyName("total")] public int Total { get; set; }
+}
+
+public sealed class CatalogPurchasedDto
+{
+    [JsonPropertyName("code")] public string Code { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+
+    /// <summary><c>yyyy-MM-dd</c> of the latest invoice with it.</summary>
+    [JsonPropertyName("lastDate")] public string LastDate { get; set; } = string.Empty;
+
+    [JsonPropertyName("totalQuantity")] public decimal TotalQuantity { get; set; }
+
+    /// <summary>On how many invoices.</summary>
+    [JsonPropertyName("times")] public int Times { get; set; }
+
+    /// <summary>The product as the customer sees it now; null when it is not in their catalog.</summary>
+    [JsonPropertyName("product")] public CatalogCustomerProductDto? Product { get; set; }
+}

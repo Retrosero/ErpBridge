@@ -11,16 +11,16 @@ push'u, Play production.
 
 | # | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| S1 | ForwardedHeaders, /64, giriş yavaşlatıcı, `OnRejected` | ✅ | | Personel + Admin girişi; katalog girişi S6'da `CatalogArea` |
-| S2 | Tablolar, migration, modül, kilitli yetki, Admin kutucuğu | 🔄 | | Sunucu tarafı bitti (migration `MusteriKatalogu`, `PermissionCatalog.Version` 2); Admin `TenantMobile.razor` kutucuğu panel kolunda |
-| S3 | Katalog derleme (görünüm, görünürlük, fiyat) | ✅ | | `CatalogViewService` (stok aynası + `Revision`), `CatalogVisibility`, `CatalogPricing` (`ErpSalePricingTest` örnekleri) |
-| S4 | Yönetim uçları | ✅ | | `CustomerCatalogManageEndpoints` (settings, categories, products, accounts); hata kodları `docs/api-contracts.md` |
-| S5 | Görsel uçları | ✅ | | `CustomerCatalogImageEndpoints` (manifest, links, kayıt, ham yükleme, sıra, silme, anonim `catalog/img`); `catalog-upload` / `catalog-public` politikaları |
-| S6 | Müşteri oturumu | ✅ | | `CustomerCatalogPublicEndpoints` (info/login/logout/me/password), `__Host-kt_{KOD}` çerezi, `CatalogCustomerPolicy`, cihaz çerezi, `CatalogLoginGate` |
-| S7 | Müşteri gezinme + quote | ✅ | | `CatalogCustomerView`, `CatalogQuote` (categories, products, products/detail, cart/quote) |
-| S8 | Talepler + belge bağı + bildirim | ⬜ | | |
-| S9 | Ekstre, faturalar, aldıkları | ⬜ | | |
-| W0 | Web barındırma | ✅ | | `CatalogWeb` (`/assets/{v}`, kabuk, başlıklar, izin listesi); dosyalar W1+ |
+| S1 | ForwardedHeaders, /64, giriş yavaşlatıcı, `OnRejected` | ✅ (yerel, PR bekliyor) | | Personel + Admin girişi; katalog girişi S6'da `CatalogArea` |
+| S2 | Tablolar, migration, modül, kilitli yetki, Admin kutucuğu | ✅ (yerel, PR bekliyor) | | Sunucu tarafı (migration `MusteriKatalogu`, `PermissionCatalog.Version` 2); Admin `TenantMobile.razor` kutucuğu panel kolunda |
+| S3 | Katalog derleme (görünüm, görünürlük, fiyat) | ✅ (yerel, PR bekliyor) | | `CatalogViewService` (stok aynası + `Revision`), `CatalogVisibility`, `CatalogPricing` (`ErpSalePricingTest` örnekleri) |
+| S4 | Yönetim uçları | ✅ (yerel, PR bekliyor) | | `CustomerCatalogManageEndpoints` (settings, categories, products, accounts); hata kodları `docs/api-contracts.md` |
+| S5 | Görsel uçları | ✅ (yerel, PR bekliyor) | | `CustomerCatalogImageEndpoints` (manifest, links, kayıt, ham yükleme, sıra, silme, anonim `catalog/img`); `catalog-upload` / `catalog-public` politikaları |
+| S6 | Müşteri oturumu | ✅ (yerel, PR bekliyor) | | `CustomerCatalogPublicEndpoints` (info/login/logout/me/password), `__Host-kt_{KOD}` çerezi, `CatalogCustomerPolicy`, cihaz çerezi, `CatalogLoginGate` |
+| S7 | Müşteri gezinme + quote | ✅ (yerel, PR bekliyor) | | `CatalogCustomerView`, `CatalogQuote` (categories, products, products/detail, cart/quote) |
+| S8 | Talepler + belge bağı + bildirim | ✅ (yerel, PR bekliyor) | | `CatalogCustomerOrderEndpoints` (müşteri), `CustomerCatalogOrderEndpoints` (personel), `CatalogOrderLinker` (ingest + onay), `CATALOG_ORDER_NEW` bildirimi |
+| S9 | Ekstre, faturalar, aldıkları | ✅ (yerel, PR bekliyor) | | `CatalogCustomerLedgerEndpoints` (statement, invoices, invoices/detail, purchased) |
+| W0 | Web barındırma | ✅ (yerel, PR bekliyor) | | `CatalogWeb` (`/assets/{v}`, kabuk, başlıklar, izin listesi); dosyalar W1+ |
 | W1–W5 | Web katalog | ⬜ | | |
 | P1–P5 | Panel | ⬜ | | |
 | A1–A7 | Telefon (Siparis_Cepte) | ⬜ | | |

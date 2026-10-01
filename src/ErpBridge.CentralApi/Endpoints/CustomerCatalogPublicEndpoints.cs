@@ -58,6 +58,8 @@ public static class CustomerCatalogPublicEndpoints
         signedIn.MapGet("/products", ProductsAsync).WithName("CatalogProducts");
         signedIn.MapGet("/products/detail", ProductDetailAsync).WithName("CatalogProductDetail");
         signedIn.MapPost("/cart/quote", QuoteAsync).WithName("CatalogCartQuote");
+        CatalogCustomerOrderEndpoints.Map(signedIn);
+        CatalogCustomerLedgerEndpoints.Map(signedIn);
         return routes;
     }
 
@@ -264,13 +266,13 @@ public static class CustomerCatalogPublicEndpoints
 
     // ---- helpers ---------------------------------------------------------------------------
 
-    private static async Task<CatalogCustomerView> CustomerViewAsync(HttpContext http, CentralApiDbContext db, CatalogViewService views, CancellationToken ct)
+    internal static async Task<CatalogCustomerView> CustomerViewAsync(HttpContext http, CentralApiDbContext db, CatalogViewService views, CancellationToken ct)
     {
         var session = CatalogSession.Of(http);
         return new CatalogCustomerView(await views.LoadAsync(db, session.Tenant.Id, forCustomer: true, ct), session.Account);
     }
 
-    private static T ProductOf<T>(CatalogCustomerView customer, CatalogProduct product) where T : CatalogCustomerProductDto, new() => new()
+    internal static T ProductOf<T>(CatalogCustomerView customer, CatalogProduct product) where T : CatalogCustomerProductDto, new() => new()
     {
         Key = product.Code,
         Code = product.Code,
