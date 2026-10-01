@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ErpBridge.CentralApi.Data.Migrations
 {
     [DbContext(typeof(CentralApiDbContext))]
-    [Migration("20261001204758_DepolamaAlanlari")]
+    [Migration("20261001205801_DepolamaAlanlari")]
     partial class DepolamaAlanlari
     {
         /// <inheritdoc />
@@ -4338,6 +4338,9 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Property<int>("SizeBytes")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("StoredFileId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("TaskId")
                         .HasColumnType("uuid");
 
@@ -4353,6 +4356,8 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("StoredFileId");
 
                     b.HasIndex("TaskId", "CreatedAtMs");
 

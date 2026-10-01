@@ -1050,9 +1050,10 @@ registration ayrı bir composition projesine taşınır.
      `TASK_DUE_SOON` (60 dk kala) ve `TASK_OVERDUE`. İşlemi yapana kendi işlemi bildirilmez. Push yoktur: telefon
      açıkken `GET tasks/events` uzun yoklaması (`TenantEventHub` konu `tasks`, sürüm numarası), kapalıyken kendi
      15 dk'lık işçisi.
-   - **Resim PostgreSQL'dedir:** `task_attachment_blobs` (bytea); Coolify'da kalıcı disk gerekmez, yedeğe girer.
-     Ham gövde `PUT tasks/{id}/attachments/{attachmentId}`, yalnız JPEG/PNG/WEBP (dosya imzası da denetlenir), ≤ 2 MB,
-     görev başı 10, firma kotası 1 GB (`Tasks:*`). `GET` yalnız görevi gören kullanıcıya, değişmez önbellek başlığıyla.
+   - **Resim merkezi dosya deposundadır** (R2 özel kova, 2026-10-01, kural 37 "Görev eki"); öncesinde yüklenenler S10 göçüne kadar
+     `task_attachment_blobs` (bytea) içinde kalır ve okunur. Ham gövde `PUT tasks/{id}/attachments/{attachmentId}`, yalnız
+     JPEG/PNG/WEBP (dosya imzası da denetlenir), ≤ 2 MB, görev başı 10; kota firmanın tek depolama kotası
+     (`Tasks:TenantAttachmentQuotaBytes` kaldırıldı). `GET` yalnız görevi gören kullanıcıya, değişmez önbellek başlığıyla.
    - **Zamanlayıcı:** `Workers/TaskSchedulerWorker` dakikada bir `RunSchedulerAsync`: seri örnekleri (sunucu
      kapalı kaldıysa birikmiş örnek değil **tek** örnek), ileri tarihli başlangıçlar, bitiş uyarıları, 30 günlük
      temizlik (silinen görevin resimleri, silinen resimler, eski `opId`'ler). Seri saatleri `Europe/Istanbul`
@@ -1530,8 +1531,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
 
-37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1, S2, S3, S8, 2026-10-01).**
-   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3); XML eşitleyici (S7), temizlik
+37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1, S2, S3, S4, S8, 2026-10-01).**
+   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4); XML eşitleyici (S7), temizlik
    (S9) ve bytea göçü (S10) bu temeli kullanacak — göçe kadar depodan önce yüklenen resimler PostgreSQL bytea'sında kalır ve okunur.
    - **Kayıtlar dosyaya `StoredFile*Id` ile bağlanır, yabancı anahtar yok** (migration `DepolamaAlanlari`): defter satırı deponun kendi
      yaşamıyla (çöp, kalıcı silme) gider, sahip kaydıyla değil; "yetim" = hiçbir kaydın göstermediği dosya (S9), bağlantı sütunları
@@ -1600,3 +1601,17 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CatalogViewService` (singleton) `IOptions<StorageOptions>` alır. Anonim `GET /api/v1/catalog/img/{id}/{s|l}` depodaki boyut için
      aynı firma/modül denetiminden sonra 1 saat önbellekli `302` → CDN. Testler `CustomerCatalogImagesRelationalTests`,
      `CustomerCatalogBannersRelationalTests` (`StorageCentralApiFactory`; `CatalogHostFactory` artık ondan türer).
+   - **Görev eki (S4)** `Tasks/TaskService` (artık `FileStore` alır) + `Endpoints/MobileTaskEndpoints`: yollar ve yanıtlar aynı.
+     `AddAttachmentAsync`: görünürlük/çalışma/adet denetimi → `FileStore.PutAsync` (alan `task`, özel kova, `OwnerType` `task`, `OwnerKey`
+     görevin kimliği, varyant `o`; küçültme yok — telefon ~1600 px gönderir) → görevin işleminde `task_attachments.StoredFileId`. Görev
+     arada silinmişse dosya kalıcı silinir; aynı kimlik yarışında kaybedenin dosyası kalıcı silinir, kazananın eki döner. Kota aşımı eski
+     `413 TASK_ATTACHMENT_QUOTA` koduyla + `usedBytes/quotaBytes` (`TaskResult.Storage` → `StorageError.ToResult`), depo yoksa `503`.
+     Silme (`DELETE …/attachments/{id}`) dosyayı çöpe atar; 30 günlük zamanlayıcı temizliği silinmiş görevin eklerinin satırlarını
+     silerken dosyalarını çöpe atar. **`GET …/attachments/{id}` yönlendirmez, R2'den akıtır** (`IObjectStore.GetAsync` →
+     `Results.Stream`, `private, max-age=31536000, immutable`): telefon resmi Coil 2.7 ile Bearer + `X-Tenant-Id` başlıklı yükler ve
+     disk önbelleğine güvenir; 302 ile imzalı R2 adresine gitseydi R2 yanıtında bu önbellek başlığı olmazdı (her gösterimde yeniden
+     doğrulama, çevrimdışı boş resim) ve `X-Tenant-Id` R2'ye taşınırdı (OkHttp başka host'a yalnız `Authorization`'ı düşürür). Görev
+     resmi küçüktür, her telefon bir kez indirir. İmzalı yönlendirme genel uçta kalır: `Tasks/TaskPictureReadRule`
+     (`IStoredFileReadRule`, alan `task`) `GET /api/v1/storage/files/{id}`'yi görevi gören herkese açar (`TaskService.CanSeeTaskOfAsync`:
+     dosyanın silinmemiş eki ve görevin görünürlüğü). Eski bytea ekler aynı uçtan okunur. Testler `TaskRelationalTests`
+     (`StorageCentralApiFactory`).

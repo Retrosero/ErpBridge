@@ -586,7 +586,15 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
 
 Firmanın kalıcı resimleri Cloudflare R2'de, firma kodunun klasöründe (`{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id}-{varyant}.{uzantı}`)
 ve tek kotayla durur. Alanlar: herkese açık kova `product`, `xml`, `catalog`, `banner`; kimliğe bağlı kova `task`, `expense`,
-`vehicle`. Katalog görseli ve banner (S3) bu depoyu kullanır; uç yolları değişmedi. Bilgi bankası kural 37.
+`vehicle`. Katalog görseli ve banner (S3), görev eki (S4) bu depoyu kullanır; uç yolları değişmedi. Bilgi bankası kural 37.
+
+**Görev eki (S4)** — `PUT/GET/DELETE /api/v1/android/tasks/{taskId}/attachments/{attachmentId}` yolları, gövdeleri ve yanıtları aynı.
+Resim özel kovaya (`task`) yazılır ve firmanın tek kotasına sayılır; aşımda eski kod `413 TASK_ATTACHMENT_QUOTA` döner, gövdeye
+`usedBytes`/`quotaBytes` eklenir; depo yoksa `503 STORAGE_UNAVAILABLE` (telefon kuyruğu yeniden dener). `GET` yönlendirme
+**yapmaz**: sunucu yetkiyi (görevi görme) denetleyip baytı R2'den akıtır, `Cache-Control: private, max-age=31536000, immutable`
+(telefonun Bearer başlıklı Coil isteği ve disk önbelleği değişmeden çalışır). Depodan önce yüklenen resim aynı uçtan PostgreSQL'den
+okunur. `DELETE` resmi çöpe atar (7 gün geri alınabilir, kotaya sayılır). Aynı dosya `GET /api/v1/storage/files/{id}` ile görevi
+gören herkese 302 imzalı adres olarak da açılır.
 
 | Uç | Kim | Gövde / yanıt |
 |---|---|---|
@@ -598,8 +606,8 @@ ve tek kotayla durur. Alanlar: herkese açık kova `product`, `xml`, `catalog`, 
 
 Yeni hata kodları:
 - `413 STORAGE_QUOTA_EXCEEDED` — `{ errorCode, message, traceId, usedBytes, quotaBytes }`. Telefon metni: "Firmanızın depolama
-  alanı doldu. Yöneticiniz panelden alan açabilir." Katalog uçları aynı durumda eski `CATALOG_IMAGE_QUOTA_EXCEEDED` kodunu
-  (aynı rakamlarla) döner; eski telefonlar ona bakıyor.
+  alanı doldu. Yöneticiniz panelden alan açabilir." Katalog uçları aynı durumda eski `CATALOG_IMAGE_QUOTA_EXCEEDED`, görev eki
+  `TASK_ATTACHMENT_QUOTA` kodunu (aynı rakamlarla) döner; eski telefonlar onlara bakıyor.
 - `503 STORAGE_UNAVAILABLE` — R2 ayarı yok ya da R2 yanıt vermedi; telefon kuyruğu sonra yeniden dener.
 - `415 INVALID_IMAGE` — yalnız JPEG, PNG, WebP (ilk baytlarından denetlenir).
 

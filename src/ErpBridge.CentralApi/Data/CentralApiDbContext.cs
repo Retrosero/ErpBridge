@@ -1290,8 +1290,9 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.ContentType).IsRequired().HasMaxLength(32);
             b.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TaskId, x.CreatedAtMs });
-            // The quota sums a company's live pictures.
             b.HasIndex(x => new { x.TenantId, x.IsDeleted });
+            // Which picture a stored file belongs to (the redirect endpoint's task rule, the clean-up's orphan check).
+            b.HasIndex(x => x.StoredFileId);
         });
 
         modelBuilder.Entity<WorkTaskAttachmentBlob>(b =>

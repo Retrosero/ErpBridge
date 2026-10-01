@@ -330,6 +330,7 @@ public partial class Program
         // Görevler ve bildirimler (docs/GOAL_GOREVLER.md).
         builder.Services.Configure<ErpBridge.CentralApi.Tasks.TaskOptions>(cfg.GetSection(ErpBridge.CentralApi.Tasks.TaskOptions.SectionName));
         builder.Services.AddScoped<ErpBridge.CentralApi.Tasks.TaskService>();
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.IStoredFileReadRule, ErpBridge.CentralApi.Tasks.TaskPictureReadRule>();
         builder.Services.AddHostedService<ErpBridge.CentralApi.Workers.TaskSchedulerWorker>();
         // SKT (son kullanma tarihi) kayıtları: telefonların ortak raf verisi, ERP'ye yazılmaz.
         builder.Services.AddScoped<ErpBridge.CentralApi.Expiry.StockExpiryService>();

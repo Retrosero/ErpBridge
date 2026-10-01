@@ -4335,6 +4335,9 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Property<int>("SizeBytes")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("StoredFileId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("TaskId")
                         .HasColumnType("uuid");
 
@@ -4350,6 +4353,8 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("StoredFileId");
 
                     b.HasIndex("TaskId", "CreatedAtMs");
 

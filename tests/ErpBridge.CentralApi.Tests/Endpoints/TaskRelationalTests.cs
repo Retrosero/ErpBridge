@@ -5,26 +5,29 @@ using System.Text.Json;
 using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
+using ErpBridge.CentralApi.Storage;
 using ErpBridge.CentralApi.Tasks;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Tests.Endpoints;
 
 /// <summary>
 /// Görevler ve bildirimler (docs/GOAL_GOREVLER.md). Relational because every change takes its number from
-/// the tenant counter inside its transaction and a rejected operation is rolled back to a savepoint.
+/// the tenant counter inside its transaction and a rejected operation is rolled back to a savepoint. Task pictures go to
+/// the central file store's private bucket (GOAL_DEPOLAMA_R2 S4), so the host has the in-memory store.
 /// </summary>
-public sealed class TaskRelationalTests : IClassFixture<SqliteCentralApiFactory>
+public sealed class TaskRelationalTests : IClassFixture<StorageCentralApiFactory>
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
     private const string Password = "parola123";
     private static readonly byte[] Jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01];
 
-    private readonly SqliteCentralApiFactory _factory;
+    private readonly StorageCentralApiFactory _factory;
 
-    public TaskRelationalTests(SqliteCentralApiFactory factory) => _factory = factory;
+    public TaskRelationalTests(StorageCentralApiFactory factory) => _factory = factory;
 
     [Fact]
     public async Task A_manager_assigns_a_task_the_assignee_sees_it_and_is_notified_and_others_do_not_see_it()
@@ -118,6 +121,8 @@ public sealed class TaskRelationalTests : IClassFixture<SqliteCentralApiFactory>
         download.StatusCode.Should().Be(HttpStatusCode.OK);
         (await download.Content.ReadAsByteArrayAsync()).Should().Equal(Jpeg);
         download.Content.Headers.ContentType!.MediaType.Should().Be("image/jpeg");
+        download.Headers.CacheControl!.Should().Match<CacheControlHeaderValue>(h => h.Private && h.MaxAge == TimeSpan.FromDays(365)
+            && h.Extensions.Any(e => e.Name == "immutable"), "the phone keeps it in its disk cache");
 
         (await OpsAsync(c.Ali, new { opId = Guid.NewGuid(), type = "complete_task", taskId })).Results.Single().Status.Should().Be("applied");
         var task = (await ListAsync(c.Patron)).Tasks.Single(t => t.Id == taskId);
@@ -128,6 +133,106 @@ public sealed class TaskRelationalTests : IClassFixture<SqliteCentralApiFactory>
         (await NotificationsAsync(c.Patron)).Notifications.Should().ContainSingle(n => n.Kind == "TASK_COMPLETED" && n.TaskId == taskId);
         (await NotificationsAsync(c.Mehmet)).Notifications.Should().ContainSingle(n => n.Kind == "TASK_COMPLETED");
         (await NotificationsAsync(c.Ali)).Notifications.Should().NotContain(n => n.Kind == "TASK_COMPLETED");
+    }
+
+    [Fact]
+    public async Task A_task_picture_goes_to_the_private_bucket_and_opens_only_to_who_sees_the_task()
+    {
+        var c = await CompanyAsync();
+        var taskId = Guid.NewGuid();
+        await OpsAsync(c.Patron, new { opId = Guid.NewGuid(), type = "create_task", taskId, title = "Raf", assigneeIds = new[] { c.AliId }, followerIds = new[] { c.MehmetId } });
+        var attachmentId = Guid.NewGuid();
+        var uploaded = await UploadAsync(c.Ali, taskId, attachmentId, Jpeg);
+        uploaded.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await uploaded.ReadAsJsonAsync<TaskAttachmentDto>()).Should().Match<TaskAttachmentDto>(a => a.Id == attachmentId && a.SizeBytes == Jpeg.Length);
+
+        var (attachment, file) = await StoredPictureAsync(attachmentId);
+        file.Should().Match<StoredFile>(f => f.Area == "task" && f.Bucket == "private" && f.OwnerType == "task" && f.OwnerKey == taskId.ToString("D")
+            && f.CreatedByUserId == c.AliId && f.Status == StoredFileStatuses.Active);
+        file.ObjectKey.Should().Contain("/task/");
+        _factory.Store.Bytes("private", file.ObjectKey).Should().Equal(Jpeg);
+        (await ReadAsync(db => db.WorkTaskAttachmentBlobs.AnyAsync(b => b.AttachmentId == attachmentId))).Should().BeFalse("no bytes in PostgreSQL any more");
+        attachment.ContentType.Should().Be("image/jpeg");
+        (await ReadAsync(db => db.TenantStorage.AsNoTracking().SingleAsync(s => s.TenantId == c.Id))).UsedBytes.Should().Be(Jpeg.Length);
+
+        // The redirect endpoint opens it to whoever sees the task (the follower here), not only to its uploader.
+        var follower = await OpenFileAsync(file.Id, c.Mehmet);
+        follower.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        follower.Headers.Location!.AbsoluteUri.Should().Be($"https://r2.test/private/{file.ObjectKey}?X-Amz-Expires=300&X-Amz-Signature=test");
+        (await OpenFileAsync(file.Id, c.Veli)).StatusCode.Should().Be(HttpStatusCode.NotFound, "Veli does not see the task");
+        (await _factory.CreateClient().GetAsync($"/api/v1/android/tasks/{taskId}/attachments/{attachmentId}", c.Veli)).StatusCode
+            .Should().Be(HttpStatusCode.NotFound);
+
+        // R2 out of reach: the upload is refused for the phone's queue to retry, the download answers 503.
+        _factory.Store.FailNextPuts(1);
+        var down = await UploadAsync(c.Ali, taskId, Guid.NewGuid(), Jpeg);
+        down.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        (await down.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("STORAGE_UNAVAILABLE");
+    }
+
+    [Fact]
+    public async Task Over_the_company_quota_a_task_picture_keeps_the_old_code_with_the_figures()
+    {
+        var c = await CompanyAsync();
+        var taskId = Guid.NewGuid();
+        await OpsAsync(c.Patron, new { opId = Guid.NewGuid(), type = "create_task", taskId, title = "Raf", assigneeIds = new[] { c.AliId } });
+        await SeedAsync(db => db.TenantStorage.Add(new TenantStorage { TenantId = c.Id, QuotaBytes = 5, UsedBytes = 2, UpdatedAtMs = 1 }));
+
+        var refused = await UploadAsync(c.Ali, taskId, Guid.NewGuid(), Jpeg);
+        refused.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+        (await refused.ReadAsJsonAsync<StorageErrorResponse>()).Should().Match<StorageErrorResponse>(e =>
+            e.ErrorCode == "TASK_ATTACHMENT_QUOTA" && e.UsedBytes == 2 && e.QuotaBytes == 5);
+        (await ReadAsync(db => db.WorkTaskAttachments.AnyAsync(a => a.TaskId == taskId))).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_deleted_picture_and_a_deleted_tasks_pictures_go_to_the_trash()
+    {
+        var c = await CompanyAsync();
+        var taskId = Guid.NewGuid();
+        await OpsAsync(c.Patron, new { opId = Guid.NewGuid(), type = "create_task", taskId, title = "Raf", assigneeIds = new[] { c.AliId } });
+        var removed = Guid.NewGuid();
+        var kept = Guid.NewGuid();
+        (await UploadAsync(c.Ali, taskId, removed, Jpeg)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await UploadAsync(c.Ali, taskId, kept, Jpeg)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var delete = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/android/tasks/{taskId}/attachments/{removed}");
+        delete.Headers.Authorization = new AuthenticationHeaderValue("Bearer", c.Ali);
+        (await _factory.CreateClient().SendAsync(delete)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await StoredPictureAsync(removed)).File.Status.Should().Be(StoredFileStatuses.Trashed, "a user's delete: restorable");
+        (await StoredPictureAsync(kept)).File.Status.Should().Be(StoredFileStatuses.Active);
+
+        // The task is deleted; 30 days on the scheduler removes its pictures' rows and trashes their files.
+        (await OpsAsync(c.Patron, new { opId = Guid.NewGuid(), type = "delete_task", taskId })).Results.Single().Status.Should().Be("applied");
+        var keptFile = (await StoredPictureAsync(kept)).File.Id;
+        await RunSchedulerAsync(TaskService.NowMs() + 31L * 86_400_000);
+        (await ReadAsync(db => db.WorkTaskAttachments.AnyAsync(a => a.TaskId == taskId))).Should().BeFalse();
+        (await ReadAsync(db => db.StoredFiles.AsNoTracking().SingleAsync(f => f.Id == keptFile))).Status.Should().Be(StoredFileStatuses.Trashed);
+        (await ReadAsync(db => db.TenantStorage.AsNoTracking().SingleAsync(s => s.TenantId == c.Id))).UsedBytes.Should().Be(2 * Jpeg.Length,
+            "the trash counts until it is emptied");
+    }
+
+    [Fact]
+    public async Task A_picture_from_before_the_store_is_still_served_from_postgresql()
+    {
+        var c = await CompanyAsync();
+        var taskId = Guid.NewGuid();
+        await OpsAsync(c.Patron, new { opId = Guid.NewGuid(), type = "create_task", taskId, title = "Raf", assigneeIds = new[] { c.AliId } });
+        var attachmentId = Guid.NewGuid();
+        await SeedAsync(db =>
+        {
+            db.WorkTaskAttachments.Add(new WorkTaskAttachment
+            {
+                Id = attachmentId, TenantId = c.Id, TaskId = taskId, UploadedByUserId = c.AliId, UploadedByName = "Ali Saha",
+                ContentType = "image/jpeg", SizeBytes = Jpeg.Length, CreatedAtMs = 1,
+            });
+            db.WorkTaskAttachmentBlobs.Add(new WorkTaskAttachmentBlob { AttachmentId = attachmentId, Data = Jpeg });
+        });
+
+        var download = await _factory.CreateClient().GetAsync($"/api/v1/android/tasks/{taskId}/attachments/{attachmentId}", c.Ali);
+        download.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await download.Content.ReadAsByteArrayAsync()).Should().Equal(Jpeg);
+        download.Headers.CacheControl!.Private.Should().BeTrue();
     }
 
     [Fact]
@@ -340,6 +445,34 @@ public sealed class TaskRelationalTests : IClassFixture<SqliteCentralApiFactory>
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return await _factory.CreateClient().SendAsync(request);
+    }
+
+    private async Task<(WorkTaskAttachment Attachment, StoredFile File)> StoredPictureAsync(Guid attachmentId)
+    {
+        var attachment = await ReadAsync(db => db.WorkTaskAttachments.AsNoTracking().SingleAsync(a => a.Id == attachmentId));
+        var file = await ReadAsync(db => db.StoredFiles.AsNoTracking().SingleAsync(f => f.Id == attachment.StoredFileId));
+        return (attachment, file);
+    }
+
+    private Task<HttpResponseMessage> OpenFileAsync(Guid fileId, string token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/storage/files/{fileId}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false }).SendAsync(request);
+    }
+
+    private async Task<T> ReadAsync<T>(Func<CentralApiDbContext, Task<T>> read)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return await read(scope.ServiceProvider.GetRequiredService<CentralApiDbContext>());
+    }
+
+    private async Task SeedAsync(Action<CentralApiDbContext> change)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CentralApiDbContext>();
+        change(db);
+        await db.SaveChangesAsync();
     }
 
     private async Task RunSchedulerAsync(long nowMs)

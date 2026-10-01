@@ -50,6 +50,7 @@ public static class StorageErrors
 {
     public const string QuotaExceededCode = "STORAGE_QUOTA_EXCEEDED";
     public const string UnavailableCode = "STORAGE_UNAVAILABLE";
+    public const string InvalidImageCode = "INVALID_IMAGE";
 
     public static StorageError QuotaExceeded(long usedBytes, long quotaBytes) => new(StatusCodes.Status413PayloadTooLarge, QuotaExceededCode,
         "Firmanızın depolama alanı doldu. Yöneticiniz panelden alan açabilir.", usedBytes, quotaBytes);
@@ -57,7 +58,7 @@ public static class StorageErrors
     public static StorageError Unavailable() => new(StatusCodes.Status503ServiceUnavailable, UnavailableCode,
         "Dosya deposuna şu an ulaşılamıyor; biraz sonra yeniden deneyin.");
 
-    public static StorageError InvalidImage() => new(StatusCodes.Status415UnsupportedMediaType, "INVALID_IMAGE",
+    public static StorageError InvalidImage() => new(StatusCodes.Status415UnsupportedMediaType, InvalidImageCode,
         "Yalnız JPEG, PNG ya da WEBP görsel yüklenebilir.");
 
     public static StorageError FileNotFound() => new(StatusCodes.Status404NotFound, "STORED_FILE_NOT_FOUND", "Dosya bulunamadı.");

@@ -2,6 +2,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Json;
 using ErpBridge.CentralApi.Notifications;
+using ErpBridge.CentralApi.Storage;
 using ErpBridge.CentralApi.Tasks;
 using Microsoft.AspNetCore.Mvc;
 
@@ -114,6 +115,7 @@ public static class MobileTaskEndpoints
             buffer.Write(chunk, 0, read);
         }
         var result = await tasks.AddAttachmentAsync(db, access.Tenant!, access.User!, taskId, attachmentId, http.Request.ContentType, buffer.ToArray(), ct);
+        if (result.Storage is { } storage) return storage.ToResult(http);
         return result.Succeeded ? JsonResults.Ok(result.Value) : JsonResults.Status(result.StatusCode, result.Error);
     }
 
@@ -124,16 +126,44 @@ public static class MobileTaskEndpoints
             Message = $"Resim en çok {max / 1024 / 1024} MB olabilir.",
         });
 
+    /// <summary>
+    /// The picture's bytes, for whoever sees the task. A picture in the central file store is streamed from R2 here rather
+    /// than redirected (GOAL_DEPOLAMA_R2 S4 decision): the phone loads it with Coil, Bearer header and an immutable disk
+    /// cache, and a redirect to a presigned R2 address would lose that cache header (R2 answers without it — the phone would
+    /// revalidate on every view and show nothing offline) and carry the phone's other headers to R2. A task picture is
+    /// small (~300 KB) and each phone fetches it once. The presigned redirect stays at <c>GET /api/v1/storage/files/{id}</c>.
+    /// </summary>
     private static async Task<IResult> DownloadAsync(Guid taskId, Guid attachmentId, HttpContext http,
-        [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks, CancellationToken ct)
+        [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks, [FromServices] IObjectStore store, CancellationToken ct)
     {
         var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
         if (access.Error is not null) return access.Error;
         var result = await tasks.ReadAttachmentAsync(db, access.Tenant!.Id, access.User!, taskId, attachmentId, ct);
         if (!result.Succeeded) return JsonResults.Status(result.StatusCode, result.Error);
+        var content = result.Value!;
+        Stream body;
+        if (content.File is { } file)
+        {
+            StoredObject? stored;
+            try
+            {
+                stored = await store.GetAsync(file.Bucket, file.ObjectKey, ct);
+            }
+            catch (StorageUnavailableException)
+            {
+                return StorageErrors.Unavailable().ToResult(http);
+            }
+            if (stored is null)
+                return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "TASK_ATTACHMENT_NOT_FOUND", Message = "Resim bulunamadı." });
+            body = stored.Content;
+        }
+        else
+        {
+            body = new MemoryStream(content.Data!, writable: false);
+        }
         // A picture never changes under its id; the phone may keep it as long as it likes.
         http.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
-        return Results.Bytes(result.Value.Data, result.Value.ContentType);
+        return Results.Stream(body, content.ContentType);
     }
 
     private static async Task<IResult> DeleteAttachmentAsync(Guid taskId, Guid attachmentId, HttpContext http,

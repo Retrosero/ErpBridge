@@ -105,7 +105,7 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `task_members`: PK `(TaskId, UserId, Role)`, `Role` ASSIGNEE|FOLLOWER, `UserName(120)` anlık kopya.
   - `task_subtasks`: `Id` (telefon), `TaskId`, `Title(300)`, `IsDone`, `DoneByUserId/Name`, `DoneAtMs`, `AssigneeUserId/Name`, `DueAtMs`, `SortOrder`, `IsDeleted`.
   - `task_comments`: `Id` (telefon), `TenantId`, `TaskId`, `AuthorUserId/Name`, `Text(2000)`, `CreatedAtMs`, `IsDeleted`.
-  - `task_attachments` (meta; `TenantId, IsDeleted` indeksi kota için) + `task_attachment_blobs` (`AttachmentId` PK, `Data` bytea; ek satırı silinince cascade).
+  - `task_attachments` (meta; `TenantId, IsDeleted` indeksi; `StoredFileId?` *(GOAL_DEPOLAMA_R2 S4, migration `DepolamaAlanlari`; FK yok, indeksli)* resmin `stored_files` satırı, null = eski bytea) + `task_attachment_blobs` (`AttachmentId` PK, `Data` bytea; ek satırı silinince cascade; 2026-10-01'den beri yeni satır yazılmaz, S10 göçünden sonra düşürülecek).
   - `task_events`: değişmez geçmiş (`Action(24)` CREATED|UPDATED|MEMBERS_CHANGED|COMPLETED|REOPENED|CANCELLED|DELETED|SUBTASK_*|COMMENTED|PHOTO_*, `ActorUserId` sistemde null, `ActorName`, `Detail(500)`, `OccurredAtMs`).
   - `task_series`: tekrarlayan görev şablonu (başlık, açıklama, öncelik, `RequiresPhoto`, cari, `AssigneesJson`/`FollowersJson` `[{userId,name}]`, `SubtasksJson` başlık dizisi) + kural `Frequency` DAILY|WEEKLY|MONTHLY, `Interval`, `Weekdays` (Pzt=1…Paz=64), `MonthDay`, `TimeOfDayMinutes` (İstanbul), `DueAfterMinutes`, `NextRunAtMs`, `EndsAtMs`, `IsActive`, `UpdatedSeq`.
   - `task_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` — 30 gün sonra silinir.

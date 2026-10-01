@@ -12,6 +12,12 @@ namespace ErpBridge.CentralApi.Data.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<Guid>(
+                name: "StoredFileId",
+                table: "task_attachments",
+                type: "uuid",
+                nullable: true);
+
+            migrationBuilder.AddColumn<Guid>(
                 name: "StoredFileLargeId",
                 table: "catalog_images",
                 type: "uuid",
@@ -22,6 +28,11 @@ namespace ErpBridge.CentralApi.Data.Migrations
                 table: "catalog_images",
                 type: "uuid",
                 nullable: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_task_attachments_StoredFileId",
+                table: "task_attachments",
+                column: "StoredFileId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_catalog_images_StoredFileLargeId",
@@ -38,12 +49,20 @@ namespace ErpBridge.CentralApi.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(
+                name: "IX_task_attachments_StoredFileId",
+                table: "task_attachments");
+
+            migrationBuilder.DropIndex(
                 name: "IX_catalog_images_StoredFileLargeId",
                 table: "catalog_images");
 
             migrationBuilder.DropIndex(
                 name: "IX_catalog_images_StoredFileSmallId",
                 table: "catalog_images");
+
+            migrationBuilder.DropColumn(
+                name: "StoredFileId",
+                table: "task_attachments");
 
             migrationBuilder.DropColumn(
                 name: "StoredFileLargeId",
