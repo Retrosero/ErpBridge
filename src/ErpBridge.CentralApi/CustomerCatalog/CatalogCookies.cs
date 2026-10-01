@@ -58,25 +58,30 @@ public static partial class CatalogCookies
     public static void DeleteSession(HttpResponse response, string code) =>
         response.Cookies.Delete(SessionCookie(code), Options(null));
 
-    public static void SetDevice(HttpResponse response, Guid accountId, string signingKey)
+    /// <summary>
+    /// The device cookie of an account at its current <c>TokenVersion</c>: a password change, a revoke or a deactivation
+    /// moves the version and the browsers trusted before stop being trusted (their sign-ins are counted by name again).
+    /// </summary>
+    public static void SetDevice(HttpResponse response, Guid accountId, int tokenVersion, string signingKey)
     {
         var expires = DateTimeOffset.UtcNow.Add(DeviceLifetime).ToUnixTimeMilliseconds();
-        var payload = accountId.ToString("N") + "." + expires.ToString(CultureInfo.InvariantCulture);
+        var payload = accountId.ToString("N") + "." + tokenVersion.ToString(CultureInfo.InvariantCulture) + "." + expires.ToString(CultureInfo.InvariantCulture);
         response.Cookies.Append(DeviceCookie, payload + "." + Sign(payload, signingKey), Options(DeviceLifetime));
     }
 
-    /// <summary>The account a valid, unexpired device cookie was given for; null without one.</summary>
-    public static Guid? DeviceAccount(HttpRequest request, string signingKey)
+    /// <summary>The account and token version a valid, unexpired device cookie was given for; null without one.</summary>
+    public static (Guid AccountId, int TokenVersion)? DeviceOf(HttpRequest request, string signingKey)
     {
         if (!request.Cookies.TryGetValue(DeviceCookie, out var value) || string.IsNullOrEmpty(value)) return null;
         var parts = value.Split('.');
-        if (parts.Length != 3) return null;
-        var payload = parts[0] + "." + parts[1];
+        if (parts.Length != 4) return null;
+        var payload = parts[0] + "." + parts[1] + "." + parts[2];
         var expected = Encoding.ASCII.GetBytes(Sign(payload, signingKey));
-        if (!CryptographicOperations.FixedTimeEquals(expected, Encoding.ASCII.GetBytes(parts[2]))) return null;
-        if (!long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var expires)
+        if (!CryptographicOperations.FixedTimeEquals(expected, Encoding.ASCII.GetBytes(parts[3]))) return null;
+        if (!long.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var expires)
             || expires < DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) return null;
-        return Guid.TryParseExact(parts[0], "N", out var accountId) ? accountId : null;
+        if (!int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var tokenVersion)) return null;
+        return Guid.TryParseExact(parts[0], "N", out var accountId) ? (accountId, tokenVersion) : null;
     }
 
     private static CookieOptions Options(TimeSpan? maxAge) => new()

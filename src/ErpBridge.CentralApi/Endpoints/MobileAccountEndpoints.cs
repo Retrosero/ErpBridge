@@ -43,6 +43,7 @@ public static class MobileAccountEndpoints
     }
 
     private static async Task<IResult> LoginAsync(
+        HttpContext http,
         [FromBody] MobileLoginRequest? body,
         [FromServices] CentralApiDbContext db,
         [FromServices] MobileSeatService seats,
@@ -62,23 +63,31 @@ public static class MobileAccountEndpoints
         if (client is not (CentralApiClaims.PhoneClient or CentralApiClaims.PortalClient))
             return Error(400, "INVALID_CLIENT", "client must be android or portal.");
 
-        // A name that failed too often waits, and the password is not even checked meanwhile: a right and a
-        // wrong guess get the same 429 (GOAL_MUSTERI_KATALOGU T2).
-        if (throttle.RetryAfter(LoginThrottle.StaffArea, tenantCode, body.Username) is { } wait)
-            return RateLimitedResponse.Result(wait);
-
         var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Code == tenantCode, ct);
         var user = tenant is null || username is null
             ? null
             : await db.MobileUsers.Include(u => u.Roles)
                 .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Username == username && u.DeletedAtUtc == null, ct);
+
+        // A name that failed too often waits, and the password is not even checked meanwhile: a right and a
+        // wrong guess get the same 429 (GOAL_MUSTERI_KATALOGU T2). The name is counted per caller address, so
+        // failures from elsewhere do not keep the user out; a phone this user signed in on before (its active
+        // device row) has a count of its own. The panel's device id is made from the username, so it proves nothing.
+        var trustedDevice = user is not null && client == CentralApiClaims.PhoneClient
+            && await db.MobileDevices.AnyAsync(d => d.TenantId == user.TenantId && d.DeviceId == deviceId && d.IsActive && d.LastUserId == user.Id, ct);
+        using var attempt = trustedDevice
+            ? throttle.TryBegin(LoginThrottle.StaffArea, tenantCode, "#" + user!.Id.ToString("N") + "@" + deviceId)
+            : throttle.TryBegin(LoginThrottle.StaffArea, tenantCode, body.Username, ClientIpPartition.Of(http.Connection.RemoteIpAddress));
+        if (attempt.RetryAfter is { } wait)
+            return RateLimitedResponse.Result(wait);
+
         var passwordOk = BCrypt.Net.BCrypt.Verify(body.Password, user?.PasswordHash ?? PasswordHashing.Dummy);
         if (tenant is null || user is null || !passwordOk)
         {
-            throttle.RecordFailure(LoginThrottle.StaffArea, tenantCode, body.Username);
+            attempt.Failed();
             return Error(401, "INVALID_CREDENTIALS", "Company code, username or password is wrong.");
         }
-        throttle.RecordSuccess(LoginThrottle.StaffArea, tenantCode, body.Username);
+        attempt.Succeeded();
 
         // Only past this point does the caller know the credentials, so the
         // specific reasons below are safe to disclose.

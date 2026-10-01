@@ -3,7 +3,11 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Security;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Tests.Endpoints;
 
@@ -79,15 +83,85 @@ public sealed class LoginThrottleEndpointTests : IClassFixture<LoginThrottleEndp
         (await Login("S3cret!")).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    [Fact]
+    public async Task Failures_from_another_address_do_not_keep_the_user_out()
+    {
+        var code = await CompanyAsync();
+
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+            await ShouldBeAsync(await StaffLoginAsync(code, "ali", WrongPassword, from: "198.51.100.66"), HttpStatusCode.Unauthorized, "INVALID_CREDENTIALS");
+        await ShouldBeAsync(await StaffLoginAsync(code, "ali", Password, from: "198.51.100.66"), HttpStatusCode.TooManyRequests, RateLimitedResponse.ErrorCode);
+
+        (await StaffLoginAsync(code, "ali", Password, from: "203.0.113.10")).StatusCode.Should().Be(HttpStatusCode.OK,
+            "the name is counted per caller address: a guesser elsewhere cannot lock the salesman out");
+    }
+
+    [Fact]
+    public async Task A_phone_the_user_signed_in_on_before_has_a_count_of_its_own()
+    {
+        var code = await CompanyAsync();
+        (await StaffLoginAsync(code, "ali", Password, deviceId: "PHONE-ALI")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Someone behind the same address (an office NAT) fails the name from another device.
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+            await ShouldBeAsync(await StaffLoginAsync(code, "ali", WrongPassword, deviceId: "PHONE-X"), HttpStatusCode.Unauthorized, "INVALID_CREDENTIALS");
+        await ShouldBeAsync(await StaffLoginAsync(code, "ali", Password, deviceId: "PHONE-X"), HttpStatusCode.TooManyRequests, RateLimitedResponse.ErrorCode);
+
+        (await StaffLoginAsync(code, "ali", Password, deviceId: "PHONE-ALI")).StatusCode.Should().Be(HttpStatusCode.OK,
+            "the user's own registered, active phone is not slowed down by the name's failures");
+
+        // A blocked device is no exemption.
+        await using (var db = _factory.CreateDbContext())
+        {
+            var device = await db.MobileDevices.SingleAsync(d => d.DeviceId == "PHONE-ALI" && d.Tenant!.Code == code);
+            device.IsActive = false;
+            await db.SaveChangesAsync();
+        }
+        await ShouldBeAsync(await StaffLoginAsync(code, "ali", Password, deviceId: "PHONE-ALI"), HttpStatusCode.TooManyRequests, RateLimitedResponse.ErrorCode);
+    }
+
+    [Fact]
+    public async Task The_admin_sign_in_counts_per_address_and_an_unknown_email_costs_a_hash_too()
+    {
+        var email = $"ops-{Guid.NewGuid():N}@test.local";
+        await _factory.SeedAdminAsync(email: email, password: "S3cret!");
+        Task<HttpResponseMessage> Login(string address, string password, string? asEmail = null)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/login")
+            {
+                Content = JsonContent.Create(new { email = asEmail ?? email, password }),
+            };
+            request.Headers.Add("X-Forwarded-For", address);
+            return _factory.CreateClient().SendAsync(request);
+        }
+
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+            await ShouldBeAsync(await Login("198.51.100.66", "Wrong!"), HttpStatusCode.Unauthorized, "INVALID_CREDENTIALS");
+        await ShouldBeAsync(await Login("198.51.100.66", "S3cret!"), HttpStatusCode.TooManyRequests, RateLimitedResponse.ErrorCode);
+        (await Login("203.0.113.10", "S3cret!")).StatusCode.Should().Be(HttpStatusCode.OK, "the operator at another address is not slowed down");
+
+        // An unknown email is checked against the shared dummy hash: it takes BCrypt's time, like a wrong password.
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await ShouldBeAsync(await Login("203.0.113.11", "S3cret!", asEmail: $"yok-{Guid.NewGuid():N}@test.local"), HttpStatusCode.Unauthorized, "INVALID_CREDENTIALS");
+        watch.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(20), "BCrypt.Verify runs for an unknown email as well");
+    }
+
     private static async Task ShouldBeAsync(HttpResponseMessage response, HttpStatusCode status, string errorCode)
     {
         response.StatusCode.Should().Be(status);
         (await response.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be(errorCode);
     }
 
-    private Task<HttpResponseMessage> StaffLoginAsync(string code, string username, string password) =>
-        _factory.CreateClient().PostJsonAsync("/api/v1/android/account/login",
-            new { tenantCode = code, username, password, deviceId = $"DEV-{username}", appVersion = "1.5.300" });
+    /// <param name="from">The caller's address as Traefik forwards it; the test host trusts its own loopback as the proxy.</param>
+    private Task<HttpResponseMessage> StaffLoginAsync(string code, string username, string password, string from = "198.51.100.1", string? deviceId = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/android/account/login")
+        {
+            Content = JsonContent.Create(new { tenantCode = code, username, password, deviceId = deviceId ?? $"DEV-{username}", appVersion = "1.5.300" }),
+        };
+        request.Headers.Add("X-Forwarded-For", from);
+        return _factory.CreateClient().SendAsync(request);
+    }
 
     /// <summary>A company with an administrator (<c>patron</c>) and a salesman (<c>ali</c>); returns its code.</summary>
     private async Task<string> CompanyAsync()
@@ -106,7 +180,10 @@ public sealed class LoginThrottleEndpointTests : IClassFixture<LoginThrottleEndp
         return (await (await client.GetAsync(basePath, adminToken)).ReadAsJsonAsync<TenantMobileOverviewResponse>()).TenantCode!;
     }
 
-    /// <summary>The relational host with a throttle whose clock the tests move.</summary>
+    /// <summary>
+    /// The relational host with a throttle whose clock the tests move, behind a trusted proxy: every request comes from
+    /// loopback, the caller's address in <c>X-Forwarded-For</c>.
+    /// </summary>
     public sealed class ClockedFactory : SqliteCentralApiFactory
     {
         public ManualClock Clock { get; } = new(DateTimeOffset.UtcNow);
@@ -114,7 +191,25 @@ public sealed class LoginThrottleEndpointTests : IClassFixture<LoginThrottleEndp
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);
-            builder.ConfigureServices(services => services.AddSingleton(new LoginThrottle(Clock)));
+            builder.UseSetting("ForwardedHeaders:KnownNetworks:0", "127.0.0.1/32");
+            builder.ConfigureServices(services =>
+            {
+                services.AddSingleton(new LoginThrottle(Clock));
+                services.AddSingleton<IStartupFilter>(new FromLoopback());
+            });
+        }
+
+        private sealed class FromLoopback : IStartupFilter
+        {
+            public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+            {
+                app.Use((HttpContext context, RequestDelegate nextMiddleware) =>
+                {
+                    context.Connection.RemoteIpAddress = IPAddress.Loopback;
+                    return nextMiddleware(context);
+                });
+                next(app);
+            };
         }
     }
 }

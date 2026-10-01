@@ -57,4 +57,44 @@ public static class ForwardedHeadersSetup
         IEnumerable<string> values = children.Count > 0 ? children : (section.Value ?? string.Empty).Split(',');
         return values.Select(v => v.Trim()).Where(v => v.Length > 0).ToList();
     }
+
+    /// <summary>Whether <c>UseForwardedHeaders</c> with these options would read a forwarded header from <paramref name="remote"/>.</summary>
+    public static bool Trusts(ForwardedHeadersOptions? options, IPAddress? remote)
+    {
+        if (options is null || remote is null) return false;
+        if (remote.IsIPv4MappedToIPv6) remote = remote.MapToIPv4();
+        return options.KnownProxies.Any(p => p.Equals(remote)) || options.KnownIPNetworks.Any(n => n.Contains(remote));
+    }
+}
+
+/// <summary>
+/// Says once, in the log, that a request came with <c>X-Forwarded-For</c> from an address that is not a trusted proxy
+/// (GOAL_MUSTERI_KATALOGU D3): behind Traefik that means <c>ForwardedHeaders:KnownNetworks</c> is missing or wrong, and
+/// every caller is counted as the proxy. Only the first such request is logged, with the header cut short.
+/// </summary>
+public sealed class UntrustedForwardWarning(ILogger logger, ForwardedHeadersOptions? options)
+{
+    public const int MaxHeaderLength = 64;
+
+    private int _warned;
+
+    public bool Warned => Volatile.Read(ref _warned) != 0;
+
+    public void Inspect(HttpContext context)
+    {
+        if (Warned) return;
+        var header = context.Request.Headers["X-Forwarded-For"];
+        if (header.Count == 0) return;
+        var remote = context.Connection.RemoteIpAddress;
+        if (ForwardedHeadersSetup.Trusts(options, remote) || Interlocked.Exchange(ref _warned, 1) != 0) return;
+        logger.LogWarning(
+            "X-Forwarded-For '{ForwardedFor}' from {RemoteIp} was ignored: the address is not in ForwardedHeaders:KnownNetworks/KnownProxies, so rate limits and sign-in slow-downs count the proxy instead of the client. Logged once.",
+            Clip(header.ToString()), remote?.ToString() ?? "unknown");
+    }
+
+    private static string Clip(string value)
+    {
+        var printable = new string(value.Where(c => !char.IsControl(c)).Take(MaxHeaderLength).ToArray());
+        return value.Length > MaxHeaderLength ? printable + "…" : printable;
+    }
 }

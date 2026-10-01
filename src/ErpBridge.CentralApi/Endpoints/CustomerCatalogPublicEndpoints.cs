@@ -98,7 +98,8 @@ public static class CustomerCatalogPublicEndpoints
     /// <summary>
     /// Unknown company, unknown name and wrong password are one answer, at the same BCrypt cost. A name that failed
     /// too often waits without its password being checked (<see cref="LoginThrottle"/>), unless the browser carries
-    /// the device cookie of that account. Only with the right password are the specific refusals told.
+    /// the device cookie of that account at its current token version (then it is counted on its own and spends nothing
+    /// of the company's budget). Only with the right password are the specific refusals told.
     /// </summary>
     private static async Task<IResult> LoginAsync(
         string code,
@@ -117,28 +118,33 @@ public static class CustomerCatalogPublicEndpoints
         if (string.IsNullOrEmpty(body?.Username) || string.IsNullOrEmpty(body.Password))
             return Error(StatusCodes.Status400BadRequest, "INVALID_REQUEST", "Kullanıcı adı ve şifre gerekli.");
         var tenantCode = code.ToUpperInvariant();
-        if (gate.Enter(tenantCode) is { } busy) return RateLimitedResponse.Result(busy);
+        var signingKey = jwtOptions.CurrentValue.SigningKey;
+        // The device cookie's signature is checked first (no database, no budget): a browser this account signed in on
+        // before, at its current token version, neither spends the company's sign-in budget nor shares the name's count,
+        // so others' failures do not keep it out.
+        var device = CatalogCookies.DeviceOf(http.Request, signingKey);
+        if (device is null && gate.Enter(tenantCode) is { } busy) return RateLimitedResponse.Result(busy);
 
         var username = MobileSeatService.NormalizeUsername(body.Username);
         var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Code == tenantCode, ct);
         var account = tenant is null || username is null
             ? null
             : await db.CatalogAccounts.FirstOrDefaultAsync(a => a.TenantId == tenant.Id && a.Username == username && a.DeletedAtMs == null, ct);
+        var trusted = account is not null && device is { } known && known.AccountId == account.Id && known.TokenVersion == account.TokenVersion;
+        // A cookie of another account (or an older version) is no exemption: the company's budget applies after all.
+        if (device is not null && !trusted && gate.Enter(tenantCode) is { } spent) return RateLimitedResponse.Result(spent);
 
-        // A browser this account signed in on before keeps its own count: others' failures do not lock it out.
-        var signingKey = jwtOptions.CurrentValue.SigningKey;
-        var trusted = account is not null && CatalogCookies.DeviceAccount(http.Request, signingKey) == account.Id;
-        var throttleName = trusted ? "#" + account!.Id.ToString("N") : body.Username;
-        if (throttle.RetryAfter(LoginThrottle.CatalogArea, tenantCode, throttleName) is { } wait)
+        using var attempt = throttle.TryBegin(LoginThrottle.CatalogArea, tenantCode, trusted ? SessionThrottleName(account!) : body.Username);
+        if (attempt.RetryAfter is { } wait)
             return RateLimitedResponse.Result(wait);
 
         var passwordOk = await gate.VerifyAsync(body.Password, account?.PasswordHash ?? PasswordHashing.Dummy, ct);
         if (tenant is null || account is null || !passwordOk)
         {
-            throttle.RecordFailure(LoginThrottle.CatalogArea, tenantCode, throttleName);
+            attempt.Failed();
             return Error(StatusCodes.Status401Unauthorized, "INVALID_CREDENTIALS", "Kullanıcı adı ya da şifre hatalı.");
         }
-        throttle.RecordSuccess(LoginThrottle.CatalogArea, tenantCode, throttleName);
+        attempt.Succeeded();
 
         if (!account.IsActive)
             return Error(StatusCodes.Status403Forbidden, CatalogAccountStateHandler.AccountInactive, CatalogAccountStateHandler.MessageOf(CatalogAccountStateHandler.AccountInactive));
@@ -148,9 +154,15 @@ public static class CustomerCatalogPublicEndpoints
         account.LastLoginAtMs = NowMs();
         await db.SaveChangesAsync(ct);
         CatalogCookies.SetSession(http.Response, tenantCode, jwt.IssueForCatalogAccount(account.Id, tenant.Id, account.TokenVersion, body.Remember));
-        CatalogCookies.SetDevice(http.Response, account.Id, signingKey);
+        CatalogCookies.SetDevice(http.Response, account.Id, account.TokenVersion, signingKey);
         return JsonResults.Ok(new CatalogLoginResponse { Me = await MeOfAsync(db, views, cache, tenant, account, ct) });
     }
+
+    /// <summary>
+    /// The throttle name of someone who proved the account already — a trusted device's sign-in, a signed-in customer's
+    /// current password: the account itself, not the typed name others can fail on.
+    /// </summary>
+    private static string SessionThrottleName(CatalogAccount account) => "#" + account.Id.ToString("N");
 
     /// <summary>Ends this browser's session only; the device cookie stays.</summary>
     private static IResult Logout(string code, HttpContext http)
@@ -167,8 +179,9 @@ public static class CustomerCatalogPublicEndpoints
     }
 
     /// <summary>
-    /// The customer's own password, current one first (a wrong one counts against the name like a failed sign-in).
-    /// Every other session of the account ends; this browser gets a new cookie of the same kind.
+    /// The customer's own password, current one first (a wrong one counts against the account like a failed sign-in of
+    /// a trusted browser). Every other session of the account ends; this browser gets a new session cookie of the same
+    /// kind and a device cookie at the new token version.
     /// </summary>
     private static async Task<IResult> ChangePasswordAsync(
         string code,
@@ -179,6 +192,7 @@ public static class CustomerCatalogPublicEndpoints
         [FromServices] LoginThrottle throttle,
         [FromServices] CatalogLoginGate gate,
         [FromServices] IOptions<CustomerCatalogOptions> options,
+        [FromServices] IOptionsMonitor<JwtOptions> jwtOptions,
         CancellationToken ct)
     {
         var session = CatalogSession.Of(http);
@@ -186,23 +200,29 @@ public static class CustomerCatalogPublicEndpoints
         var tenantCode = session.Tenant.Code!;
         if (string.IsNullOrEmpty(body?.Current) || body.Next is null)
             return Error(StatusCodes.Status400BadRequest, "INVALID_REQUEST", "Mevcut ve yeni şifre gerekli.");
-        if (throttle.RetryAfter(LoginThrottle.CatalogArea, tenantCode, account.Username) is { } wait)
+        // Counted on the account, not its typed name: the session already proves it, and a stranger failing the
+        // name at the sign-in page must not stop the customer changing a password.
+        using var attempt = throttle.TryBegin(LoginThrottle.CatalogArea, tenantCode, SessionThrottleName(account));
+        if (attempt.RetryAfter is { } wait)
             return RateLimitedResponse.Result(wait);
         if (!await gate.VerifyAsync(body.Current, account.PasswordHash, ct))
         {
-            throttle.RecordFailure(LoginThrottle.CatalogArea, tenantCode, account.Username);
+            attempt.Failed();
             return Error(StatusCodes.Status400BadRequest, "INVALID_CREDENTIALS", "Mevcut şifre hatalı.");
         }
+        attempt.Succeeded();
         if (CatalogAccounts.PasswordError(body.Next) is { } weak)
             return Error(StatusCodes.Status400BadRequest, "INVALID_PASSWORD", weak);
 
         var now = NowMs();
         account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Next);
         account.PasswordChangedAtMs = now;
-        account.TokenVersion++;
         account.UpdatedAtMs = now;
         await db.SaveChangesAsync(ct);
+        await CatalogAccounts.RevokeSessionsAsync(db, account, ct);
         CatalogCookies.SetSession(http.Response, code, jwt.IssueForCatalogAccount(account.Id, session.Tenant.Id, account.TokenVersion, Remembered(http.User, options.Value)));
+        // This browser stays trusted at the new version; every other one is counted by name again.
+        CatalogCookies.SetDevice(http.Response, account.Id, account.TokenVersion, jwtOptions.CurrentValue.SigningKey);
         return Results.NoContent();
     }
 

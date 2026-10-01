@@ -148,6 +148,27 @@ public class RateLimitTests
         (await PictureAsync("198.51.100.8")).StatusCode.Should().Be(HttpStatusCode.NotFound, "another visitor has a bucket of its own");
     }
 
+    [Fact]
+    public async Task Requests_without_a_session_on_a_per_account_policy_are_counted_per_visitor()
+    {
+        using var factory = new ProxiedFactory(IPAddress.Loopback);
+        var client = factory.CreateClient();
+        Task<HttpResponseMessage> MeAsync(string forwardedFor)
+        {
+            // An expired or missing catalog cookie: no "sub" to partition by.
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/catalog/ZZZZ9999/me");
+            request.Headers.Add("X-Forwarded-For", forwardedFor);
+            return client.SendAsync(request);
+        }
+
+        for (var i = 0; i < 120; i++)
+            (await MeAsync("198.51.100.7")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await MeAsync("198.51.100.7")).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+
+        (await MeAsync("198.51.100.8")).StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "one visitor's signed-out calls do not use up another's budget (no shared 'anonymous' bucket)");
+    }
+
     private static Task<HttpResponseMessage> ValidateAsync(HttpClient client, string licenseKey, string forwardedFor)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/licenses/validate") { Content = JsonContent.Create(new { licenseKey }) };

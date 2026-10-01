@@ -71,20 +71,23 @@ public static class AdminAuthEndpoints
             return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "MISSING_CREDENTIALS", Message = "email and password are required." });
 
         var email = body.Email.Trim().ToLowerInvariant();
-        // Same slow-down as the staff sign-in: while the address waits, no password is checked.
-        if (throttle.RetryAfter(LoginThrottle.AdminArea, null, email) is { } wait)
+        // Same slow-down as the staff sign-in: while the address waits, no password is checked. Counted per caller
+        // address, so guesses from elsewhere do not keep the operator out.
+        using var attempt = throttle.TryBegin(LoginThrottle.AdminArea, null, email, ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress));
+        if (attempt.RetryAfter is { } wait)
             return RateLimitedResponse.Result(wait);
 
         var admin = await db.AdminUsers.FirstOrDefaultAsync(a => a.Email == email, ct);
-        // Same response shape for unknown email / wrong password / inactive admin —
-        // do not leak which branch the caller hit.
-        if (admin is null || !admin.IsActive || !BCrypt.Net.BCrypt.Verify(body.Password, admin.PasswordHash))
+        // Same response shape — and the same BCrypt cost — for unknown email / wrong password / inactive admin:
+        // do not leak which branch the caller hit, not even by the answer's timing.
+        var passwordOk = BCrypt.Net.BCrypt.Verify(body.Password, admin?.PasswordHash ?? PasswordHashing.Dummy);
+        if (admin is null || !admin.IsActive || !passwordOk)
         {
-            throttle.RecordFailure(LoginThrottle.AdminArea, null, email);
+            attempt.Failed();
             return JsonResults.Status(StatusCodes.Status401Unauthorized,
                 new ApiError { ErrorCode = "INVALID_CREDENTIALS", Message = "Invalid email or password." });
         }
-        throttle.RecordSuccess(LoginThrottle.AdminArea, null, email);
+        attempt.Succeeded();
 
         // Update LastLoginAtUtc. Load+update (rather than ExecuteUpdate) so the
         // EF Core in-memory test provider — which does not translate

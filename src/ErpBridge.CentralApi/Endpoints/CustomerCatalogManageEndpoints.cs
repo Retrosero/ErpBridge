@@ -516,10 +516,10 @@ public static class CustomerCatalogManageEndpoints
             if (patch.ResponsibleUserId is { } responsible && !await IsStaffAsync(db, tenantId, responsible, ct)) return InvalidResponsible();
             account.ResponsibleUserId = patch.ResponsibleUserId;
         }
+        var deactivated = false;
         if (patch.IsActive is { } active)
         {
-            // A deactivated account's open sessions end now, not when their token runs out.
-            if (account.IsActive && !active) account.TokenVersion++;
+            deactivated = account.IsActive && !active;
             account.IsActive = active;
         }
         account.ShowStatement = patch.ShowStatement ?? account.ShowStatement;
@@ -529,6 +529,8 @@ public static class CustomerCatalogManageEndpoints
         account.UpdatedAtMs = NowMs();
         account.UpdatedByUserId = access.User!.Id;
         if (await SaveAccountAsync(db, account, ct) is { } conflict) return conflict;
+        // A deactivated account's open sessions end now, not when their token runs out.
+        if (deactivated) await CatalogAccounts.RevokeSessionsAsync(db, account, ct);
         return JsonResults.Ok(new CatalogAccountSavedResponse { Account = await ToDtoAsync(db, account, ct) });
     }
 
@@ -545,10 +547,10 @@ public static class CustomerCatalogManageEndpoints
         var now = NowMs();
         account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
         account.PasswordChangedAtMs = now;
-        account.TokenVersion++;
         account.UpdatedAtMs = now;
         account.UpdatedByUserId = access.User!.Id;
         await db.SaveChangesAsync(ct);
+        await CatalogAccounts.RevokeSessionsAsync(db, account, ct);
         return JsonResults.Ok(new CatalogPasswordResponse { IssuedPassword = issued });
     }
 
@@ -558,10 +560,10 @@ public static class CustomerCatalogManageEndpoints
         if (access.Error is not null) return access.Error;
         var account = await LiveAccountAsync(db, access.Tenant!.Id, id, ct);
         if (account is null) return AccountNotFound();
-        account.TokenVersion++;
         account.UpdatedAtMs = NowMs();
         account.UpdatedByUserId = access.User!.Id;
         await db.SaveChangesAsync(ct);
+        await CatalogAccounts.RevokeSessionsAsync(db, account, ct);
         return Results.NoContent();
     }
 
@@ -575,10 +577,10 @@ public static class CustomerCatalogManageEndpoints
         var now = NowMs();
         account.DeletedAtMs = now;
         account.IsActive = false;
-        account.TokenVersion++;
         account.UpdatedAtMs = now;
         account.UpdatedByUserId = access.User!.Id;
         await db.SaveChangesAsync(ct);
+        await CatalogAccounts.RevokeSessionsAsync(db, account, ct);
         return Results.NoContent();
     }
 

@@ -663,7 +663,7 @@ public partial class Program
 
             opt.AddPolicy(CatalogUploadRateLimitPolicy, httpContext =>
             {
-                var userId = httpContext.User.FindFirst("sub")?.Value ?? "anonymous";
+                var userId = httpContext.User.FindFirst("sub")?.Value ?? SignedOutPartition(httpContext);
                 return RateLimitPartition.GetFixedWindowLimiter("catalog-upload:" + userId, _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 300,
@@ -700,7 +700,7 @@ public partial class Program
 
             opt.AddPolicy(PerCatalogAccountRateLimitPolicy, httpContext =>
             {
-                var accountId = httpContext.User.FindFirst("sub")?.Value ?? "anonymous";
+                var accountId = httpContext.User.FindFirst("sub")?.Value ?? SignedOutPartition(httpContext);
                 return RateLimitPartition.GetFixedWindowLimiter("catalog-account:" + accountId, _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 120,
@@ -748,6 +748,13 @@ public partial class Program
         });
     }
 
+    /// <summary>
+    /// The bucket of a request without a session on a per-user policy (an expired cookie, a stray call): its caller's
+    /// address, so one visitor's 401s never use up another's budget the way a shared "anonymous" bucket would.
+    /// </summary>
+    internal static string SignedOutPartition(HttpContext httpContext) =>
+        "ip:" + ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
+
     private static string ResolvePartitionKey(HttpContext httpContext)
     {
         var tenantClaim = httpContext.User.FindFirst("tenant")?.Value;
@@ -765,7 +772,15 @@ public partial class Program
     {
         // The caller's real address and scheme behind Traefik, before anything reads them (rate limits, logs,
         // refresh-token audit). Absent unless the operator names the proxy (ForwardedHeadersSetup).
-        if (ForwardedHeadersSetup.FromConfiguration(app.Configuration) is { } forwarded)
+        var forwarded = ForwardedHeadersSetup.FromConfiguration(app.Configuration);
+        // A forwarded header from an address that is not the proxy means the proxy setting is missing or wrong: said once.
+        var untrustedForward = new UntrustedForwardWarning(app.Logger, forwarded);
+        app.Use((context, next) =>
+        {
+            untrustedForward.Inspect(context);
+            return next(context);
+        });
+        if (forwarded is not null)
             app.UseForwardedHeaders(forwarded);
 
         // Log Merkezi L0e: every request gets a correlation id first, so the exception handler, the logs and

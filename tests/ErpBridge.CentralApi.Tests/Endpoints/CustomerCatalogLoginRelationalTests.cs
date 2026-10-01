@@ -5,6 +5,7 @@ using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Tests.Support;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using static ErpBridge.CentralApi.Tests.Endpoints.CatalogCustomerTestSupport;
 using static ErpBridge.CentralApi.Tests.Endpoints.CustomerCatalogTestSupport;
 
@@ -116,6 +117,49 @@ public sealed class CustomerCatalogLoginRelationalTests : IClassFixture<CatalogH
         var forged = Browser(_factory);
         forged.DefaultRequestHeaders.Add("Cookie", "__Host-kt_dev=" + Guid.NewGuid().ToString("N") + ".9999999999999.x");
         (await LoginAsync(forged, c, "yilmaz", Pass)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public async Task The_own_browser_signs_in_even_when_the_company_budget_is_spent_and_a_stale_device_cookie_does_not()
+    {
+        var c = await OpenCatalogAsync(_factory);
+        var accountId = await AccountAsync(_factory, c, "C1", "yilmaz", Pass);
+        var own = Browser(_factory);
+        (await LoginAsync(own, c, "yilmaz", Pass)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Many addresses together spent the company's sign-in budget for this minute.
+        var gate = _factory.Services.GetRequiredService<ErpBridge.CentralApi.CustomerCatalog.CatalogLoginGate>();
+        while (gate.Enter(c.Code) is null) { }
+        (await LoginAsync(Browser(_factory), c, "yilmaz", Pass)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await LoginAsync(own, c, "yilmaz", Pass)).StatusCode.Should().Be(HttpStatusCode.OK,
+            "the device cookie is checked before the company's budget: the customer's own browser is not shut out by a crowd");
+
+        // Staff set a new password: the device cookie of the old token version no longer exempts the browser.
+        (await CustomerCatalogTestSupport.SendAsync(_factory, HttpMethod.Put, $"{Base}/accounts/{accountId}/password", c.Mudur, new { password = "personel-verdi" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await LoginAsync(own, c, "yilmaz", "personel-verdi")).StatusCode.Should().Be(HttpStatusCode.TooManyRequests,
+            "an older device cookie is no exemption from the company's budget");
+    }
+
+    [Fact]
+    public async Task A_stranger_failing_the_name_neither_stops_a_password_change_nor_the_browser_that_made_it()
+    {
+        var c = await OpenCatalogAsync(_factory);
+        await AccountAsync(_factory, c, "C1", "yilmaz", Pass);
+        var own = Browser(_factory);
+        (await LoginAsync(own, c, "yilmaz", Pass)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var stranger = Browser(_factory);
+        for (var i = 0; i < 5; i++)
+            (await LoginAsync(stranger, c, "yilmaz", "tahmin-" + i)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await LoginAsync(stranger, c, "yilmaz", Pass)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+
+        var changed = await SendAsync(own, HttpMethod.Post, Api(c) + "/password", new { current = Pass, next = "yeni-sifre-1" });
+        changed.StatusCode.Should().Be(HttpStatusCode.NoContent, "the signed-in customer is counted on the account, not on the name others fail");
+        SetCookieHeader(changed, "__Host-kt_dev").Should().NotBeNull("the browser is trusted at the new token version");
+
+        (await SendAsync(own, HttpMethod.Post, Api(c) + "/logout")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await LoginAsync(own, c, "yilmaz", "yeni-sifre-1")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await LoginAsync(stranger, c, "yilmaz", "yeni-sifre-1")).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
     }
 
     [Fact]

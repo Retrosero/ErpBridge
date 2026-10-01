@@ -65,6 +65,49 @@ public sealed class ForwardedHeadersSetupTests
         ClientIpPartition.Of(null).Should().Be(ClientIpPartition.Unknown);
     }
 
+    [Fact]
+    public void A_forwarded_header_from_an_untrusted_address_is_logged_once_and_cut_short()
+    {
+        var options = ForwardedHeadersSetup.FromConfiguration(Config(("ForwardedHeaders:KnownNetworks:0", "10.0.1.0/24")));
+        var log = new ListLogger();
+        var warning = new UntrustedForwardWarning(log, options);
+
+        warning.Inspect(Request("10.0.1.23", "198.51.100.7"));
+        warning.Inspect(Request("203.0.113.9", null));
+        log.Messages.Should().BeEmpty("the proxy's own header and a request without one are fine");
+
+        warning.Inspect(Request("203.0.113.9", new string('1', 200) + "\r\nsahte"));
+        warning.Inspect(Request("203.0.113.10", "198.51.100.8"));
+
+        log.Messages.Should().ContainSingle("said once, not on every request");
+        log.Messages[0].Should().Contain("203.0.113.9").And.Contain("ForwardedHeaders:KnownNetworks").And.NotContain("\n").And.NotContain("sahte");
+        warning.Warned.Should().BeTrue();
+
+        var unconfigured = new ListLogger();
+        new UntrustedForwardWarning(unconfigured, null).Inspect(Request("10.0.1.23", "198.51.100.7"));
+        unconfigured.Messages.Should().ContainSingle("without a proxy list nobody is trusted: behind Traefik that is the setting to fix");
+    }
+
+    private static Microsoft.AspNetCore.Http.HttpContext Request(string remote, string? forwardedFor)
+    {
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Parse(remote);
+        if (forwardedFor is not null) context.Request.Headers["X-Forwarded-For"] = forwardedFor;
+        return context;
+    }
+
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter) => Messages.Add(formatter(state, exception));
+    }
+
     private static IConfiguration Config(params (string Key, string Value)[] values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values.Select(v => new KeyValuePair<string, string?>(v.Key, v.Value))).Build();
 }

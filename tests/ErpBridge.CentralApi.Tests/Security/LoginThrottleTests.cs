@@ -7,6 +7,7 @@ namespace ErpBridge.CentralApi.Tests.Security;
 /// <summary>
 /// GOAL_MUSTERI_KATALOGU T2: five failures of one name within 15 minutes make it wait 60 s, every further failure
 /// doubles the wait up to 15 minutes, a success or 15 quiet minutes clear it. Nothing is ever locked for good.
+/// Attempts still running count (no race between the check and the failure), and the table has a ceiling.
 /// </summary>
 public sealed class LoginThrottleTests
 {
@@ -22,13 +23,15 @@ public sealed class LoginThrottleTests
 
         for (var i = 0; i < 4; i++)
         {
-            throttle.RecordFailure(Area, Tenant, "ali");
+            Fail(throttle, "ali", 1);
             _clock.Advance(TimeSpan.FromSeconds(10));
             throttle.RetryAfter(Area, Tenant, "ali").Should().BeNull($"only {i + 1} failures so far");
         }
 
-        throttle.RecordFailure(Area, Tenant, "ali");
+        Fail(throttle, "ali", 1);
         throttle.RetryAfter(Area, Tenant, "ali").Should().Be(TimeSpan.FromSeconds(60));
+        using (var refused = throttle.TryBegin(Area, Tenant, "ali"))
+            refused.RetryAfter.Should().Be(TimeSpan.FromSeconds(60), "while the name waits no attempt starts");
 
         _clock.Advance(TimeSpan.FromSeconds(59));
         throttle.RetryAfter(Area, Tenant, "ali").Should().Be(TimeSpan.FromSeconds(1));
@@ -48,7 +51,7 @@ public sealed class LoginThrottleTests
             var wait = throttle.RetryAfter(Area, Tenant, "ali")!.Value;
             waits.Add(wait);
             _clock.Advance(wait);
-            throttle.RecordFailure(Area, Tenant, "ali");
+            Fail(throttle, "ali", 1);
         }
 
         waits.Select(w => w.TotalSeconds).Should().Equal(60, 120, 240, 480, 900, 900);
@@ -61,7 +64,7 @@ public sealed class LoginThrottleTests
 
         for (var i = 0; i < 10; i++)
         {
-            throttle.RecordFailure(Area, Tenant, "ali");
+            Fail(throttle, "ali", 1);
             throttle.RetryAfter(Area, Tenant, "ali").Should().BeNull();
             _clock.Advance(TimeSpan.FromMinutes(4));
         }
@@ -71,25 +74,24 @@ public sealed class LoginThrottleTests
     public void A_success_clears_the_name_and_a_quiet_window_forgives_it()
     {
         var throttle = new LoginThrottle(_clock);
-        Fail(throttle, "ali", 5);
-        throttle.RecordSuccess(Area, Tenant, "ali");
-        throttle.RetryAfter(Area, Tenant, "ali").Should().BeNull();
+        Fail(throttle, "ali", 4);
+        Succeed(throttle, "ali");
         Fail(throttle, "ali", 4);
         throttle.RetryAfter(Area, Tenant, "ali").Should().BeNull("the count started again after the success");
 
-        Fail(throttle, "veli", 6);
+        FailThroughFirstWait(throttle, "veli");
         _clock.Advance(TimeSpan.FromMinutes(2) + LoginThrottle.Window - TimeSpan.FromSeconds(1));
-        throttle.RecordFailure(Area, Tenant, "veli");
+        Fail(throttle, "veli", 1);
         throttle.RetryAfter(Area, Tenant, "veli").Should().NotBeNull("the quiet window starts when the 2-minute wait ends");
 
-        Fail(throttle, "can", 6);
+        FailThroughFirstWait(throttle, "can");
         _clock.Advance(TimeSpan.FromMinutes(2) + LoginThrottle.Window);
-        throttle.RecordFailure(Area, Tenant, "can");
+        Fail(throttle, "can", 1);
         throttle.RetryAfter(Area, Tenant, "can").Should().BeNull("15 quiet minutes after the wait forgive earlier failures");
     }
 
     [Fact]
-    public void Names_are_counted_per_area_and_company_whatever_their_case()
+    public void Names_are_counted_per_area_company_and_address_whatever_their_case()
     {
         var throttle = new LoginThrottle(_clock);
         Fail(throttle, " Ali ", 5, tenant: "abcd2345");
@@ -98,24 +100,110 @@ public sealed class LoginThrottleTests
         throttle.RetryAfter(Area, "OTHER123", "ali").Should().BeNull();
         throttle.RetryAfter(LoginThrottle.CatalogArea, Tenant, "ali").Should().BeNull();
         throttle.RetryAfter(Area, Tenant, "veli").Should().BeNull();
+
+        Fail(throttle, "veli", 5, client: "198.51.100.7");
+        throttle.RetryAfter(Area, Tenant, "veli", "198.51.100.7").Should().NotBeNull();
+        throttle.RetryAfter(Area, Tenant, "veli", "198.51.100.8").Should().BeNull("another address has a count of its own");
+        throttle.RetryAfter(Area, Tenant, "veli").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Parallel_guesses_cannot_all_pass_the_check_before_the_first_failure_is_written()
+    {
+        var throttle = new LoginThrottle(_clock);
+
+        // Twenty guesses arrive together; each holds its attempt until all have asked (the BCrypt time of a real one).
+        using var start = new ManualResetEventSlim();
+        var guesses = Enumerable.Range(0, 20).Select(_ => Task.Run(() =>
+        {
+            start.Wait();
+            return throttle.TryBegin(Area, Tenant, "ali");
+        })).ToArray();
+        start.Set();
+        var attempts = await Task.WhenAll(guesses);
+        var allowed = attempts.Where(a => a.RetryAfter is null).ToList();
+        var refused = attempts.Where(a => a.RetryAfter is not null).ToList();
+
+        allowed.Should().HaveCount(LoginThrottle.MaxFailures, "only as many run at once as failures are left before the wait");
+        refused.Should().OnlyContain(a => a.RetryAfter == LoginThrottle.InFlightWait);
+        foreach (var attempt in allowed) attempt.Failed();
+
+        throttle.RetryAfter(Area, Tenant, "ali").Should().Be(TimeSpan.FromSeconds(60));
+        using var afterWait = throttle.TryBegin(Area, Tenant, "ali");
+        afterWait.RetryAfter.Should().Be(TimeSpan.FromSeconds(60));
+    }
+
+    [Fact]
+    public void Once_a_name_has_waited_only_one_attempt_runs_at_a_time_and_an_unfinished_one_counts_nothing()
+    {
+        var throttle = new LoginThrottle(_clock);
+        Fail(throttle, "ali", 5);
+        _clock.Advance(TimeSpan.FromSeconds(60));
+
+        var first = throttle.TryBegin(Area, Tenant, "ali");
+        first.RetryAfter.Should().BeNull();
+        using (var second = throttle.TryBegin(Area, Tenant, "ali"))
+            second.RetryAfter.Should().Be(LoginThrottle.InFlightWait);
+
+        first.Dispose();
+        throttle.RetryAfter(Area, Tenant, "ali").Should().BeNull("an attempt that ended in an error is not a failure");
+        Succeed(throttle, "ali");
+        throttle.Count.Should().Be(0, "a success forgets the name");
     }
 
     [Fact]
     public void Names_nobody_tried_for_a_while_are_forgotten()
     {
         var throttle = new LoginThrottle(_clock);
-        for (var i = 0; i < 50; i++) throttle.RecordFailure(Area, Tenant, $"yok{i}");
+        for (var i = 0; i < 50; i++) Fail(throttle, $"yok{i}", 1);
         Fail(throttle, "ali", 5);
         throttle.Count.Should().Be(51);
 
         _clock.Advance(TimeSpan.FromMinutes(16));
-        throttle.RecordFailure(Area, Tenant, "yeni");
+        Fail(throttle, "yeni", 1);
 
         throttle.Count.Should().Be(1, "only the name just tried is kept");
     }
 
-    private void Fail(LoginThrottle throttle, string username, int times, string tenant = Tenant)
+    [Fact]
+    public void A_flood_of_names_stays_under_the_ceiling_and_waiting_names_go_last()
     {
-        for (var i = 0; i < times; i++) throttle.RecordFailure(Area, tenant, username);
+        var throttle = new LoginThrottle(_clock, maxEntries: 100);
+        Fail(throttle, "ali", 5);
+        for (var i = 0; i < 300; i++)
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(10));
+            Fail(throttle, $"uydurma{i}", 1);
+        }
+
+        throttle.Count.Should().BeLessThanOrEqualTo(100);
+        throttle.RetryAfter(Area, Tenant, "ali").Should().NotBeNull("a waiting name is not dropped to make room for made-up ones");
+        throttle.RetryAfter(Area, Tenant, "uydurma299").Should().BeNull();
+    }
+
+    private void Fail(LoginThrottle throttle, string username, int times, string tenant = Tenant, string? client = null)
+    {
+        for (var i = 0; i < times; i++)
+        {
+            using var attempt = throttle.TryBegin(Area, tenant, username, client);
+            attempt.RetryAfter.Should().BeNull("the test fails only names that may try");
+            attempt.Failed();
+        }
+    }
+
+    /// <summary>Five failures, the minute's wait, and a sixth failure: the name now waits two minutes.</summary>
+    private void FailThroughFirstWait(LoginThrottle throttle, string username)
+    {
+        Fail(throttle, username, 5);
+        _clock.Advance(LoginThrottle.FirstWait);
+        Fail(throttle, username, 1);
+        throttle.RetryAfter(Area, Tenant, username).Should().Be(TimeSpan.FromMinutes(2));
+    }
+
+    private static void Succeed(LoginThrottle throttle, string username)
+    {
+        using var attempt = throttle.TryBegin(Area, Tenant, username);
+        attempt.RetryAfter.Should().BeNull();
+        attempt.Succeeded();
     }
 }

@@ -1,6 +1,9 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Domain;
+using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.CustomerCatalog;
 
@@ -33,6 +36,29 @@ public static class CatalogAccounts
         {
             for (var i = 0; i < span.Length; i++) span[i] = PasswordAlphabet[RandomNumberGenerator.GetInt32(PasswordAlphabet.Length)];
         });
+
+    /// <summary>
+    /// Ends every session (and device trust) of the account: <c>TokenVersion</c> moves by one in the database itself
+    /// (<c>TokenVersion = TokenVersion + 1</c>), so two revocations at once both count and a save of an older copy of the
+    /// row cannot put a version back. The tracked <paramref name="account"/> takes the new number without becoming
+    /// modified; call it after the account's own save.
+    /// </summary>
+    public static async Task RevokeSessionsAsync(CentralApiDbContext db, CatalogAccount account, CancellationToken ct)
+    {
+        await db.CatalogAccounts.Where(a => a.Id == account.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.TokenVersion, a => a.TokenVersion + 1), ct);
+        var version = await db.CatalogAccounts.AsNoTracking().Where(a => a.Id == account.Id).Select(a => a.TokenVersion).FirstAsync(ct);
+        var entry = db.Entry(account);
+        if (entry.State == EntityState.Detached)
+        {
+            account.TokenVersion = version;
+            return;
+        }
+        var property = entry.Property(a => a.TokenVersion);
+        property.CurrentValue = version;
+        property.OriginalValue = version;
+        property.IsModified = false;
+    }
 
     /// <summary>Null when the password is acceptable, else the reason.</summary>
     public static string? PasswordError(string password)
