@@ -361,18 +361,23 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
   (`400 INVALID_VISIBILITY`); `responsibleUserId` firmanın aktif kullanıcısı (`400 INVALID_RESPONSIBLE_USER`). Bilinmeyen ya
   da silinmiş hesap `404 CATALOG_ACCOUNT_NOT_FOUND`.
 - **`PATCH accounts/{id}`:** yalnız gönderilen alanlar değişir; `priceListNo` / `responsibleUserId` açıkça `null` gönderilirse
-  temizlenir; `customerCode`/`password` yok sayılır. `TokenVersion` +1: pasifleştirme, `PUT password`, `revoke-sessions`,
-  `DELETE` (yumuşak; ad ve cari serbest kalır).
+  temizlenir; `customerCode`/`password` yok sayılır. `TokenVersion` +1 — veritabanında atomik (`TokenVersion + 1`), eşzamanlı iki
+  iptal ikisi de sayılır: pasifleştirme, `PUT password`, `revoke-sessions`, `DELETE` (yumuşak; ad ve cari serbest kalır). Eski
+  sürümün oturumları ve cihaz çerezleri geçersiz olur.
 - **`GET accounts?q=&page=`:** 50'lik sayfa, cari adına (tr-TR) göre; `q` kod/ad/kullanıcı adında arar.
 - **`GET accounts/by-customer?code=`:** `suggestedUsername` cari adından (Türkçe harfler ASCII'ye, şirket ekleri ve tek harfler
   atılır, kelimeler `-` ile, ≤ 24), olmazsa koddan, olmazsa `musteri`; kullanılıyorsa sonuna 2, 3… eklenir.
-- **Görseller** (`images/*`; yükleme uçları `catalog-upload` hız sınırında: kullanıcı başına 300/dk). Her görsel değişikliği
-  revizyonu artırır (katalog görünümü ona göre tazelenir). Ürün başına en çok 8 (`409 CATALOG_IMAGE_LIMIT`), firma kotası 1 GB
+- **Görseller** (`images/*`; yükleme uçları `catalog-upload` hız sınırında: kullanıcı başına 300/dk, oturumsuz istek IP kovasına).
+  Her görsel değişikliği **görsel sayacını** (`catalog_settings.ImageRevision`) artırır, düzen revizyonunu değil: panelde ya da
+  telefonda açık bir düzen düzenlemesi görsel yüklemesi yüzünden `409 CATALOG_CHANGED` almaz; katalog görünümü iki sayaca birden
+  bakarak tazelenir. Görsel yazımları yine `catalog_settings` satır kilidinden geçer (kota yarışı yok). Ürün başına en çok 8 (`409 CATALOG_IMAGE_LIMIT`), firma kotası 1 GB
   (`413 CATALOG_IMAGE_QUOTA_EXCEEDED`); bulunamayan ya da başka firmanın görseli `404 CATALOG_IMAGE_NOT_FOUND`.
   - `POST images {stockCode, sourceHash, source, url?}`: kimliği sunucu üretir; aynı (`stockCode`, `sourceHash`) var olanı döner
     (sınırı aşmaz). `source` `phone|panel`; `url` verilirse bağlantı görseli olur (panelin "bağlantı ekle"si).
   - `PUT images/{id}/{s|l}` ham gövde: `Content-Type` `image/jpeg|png|webp` ve ilk baytlar tutmalı (`415 INVALID_IMAGE`);
-    `l` ≤ 1 MB, `s` ≤ 200 KB (`413 IMAGE_TOO_LARGE`; `Content-Length` yoksa okurken). JPEG'in APP1 (EXIF/XMP) bölümleri atılır.
+    `l` ≤ 1 MB, `s` ≤ 200 KB (`413 IMAGE_TOO_LARGE`; `Content-Length` yoksa okurken). Üst veri atılır (kütüphanesiz): JPEG APP1
+    (EXIF/XMP), PNG `eXIf`/`tEXt`/`iTXt`/`zTXt`, WebP `EXIF`/`XMP ` (VP8X bayrakları ve RIFF boyu düzeltilir); okunamayan dosya
+    olduğu gibi saklanır. JPEG yön bilgisi EXIF'le gider: telefon ve panel görseli zaten döndürüp yeniden kodlayarak gönderir.
     Aynı bayt tekrar → değişiklik yok. Bağlantı görseline dosya `400 INVALID_BODY`.
   - `PUT images/links` (≤ 500 ürün): verilen ürünün yalnız `phone` kaynaklı bağlantılarını değiştirir; dosyalar ve panel
     görselleri kalır, sınırı aşan bağlantı alınmaz; `updated` = bağlantıları değişen ürün sayısı. Bağlantı: `https`, port 443,
@@ -382,8 +387,9 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
     bağlantıda doğrudan adres; dosyanın boyutu henüz yüklenmemişse null.
 - **Anonim görsel `GET /api/v1/catalog/img/{id}/{s|l}`** (`catalog-public`: IP başına 600/dk, IPv6 /64): `Cache-Control: public,
   max-age=31536000, immutable`, `ETag` = SHA-256, `If-None-Match` → 304 (bayt okunmaz), `X-Content-Type-Options: nosniff`,
-  `Cross-Origin-Resource-Policy: same-site`. `s` yoksa `l`; bağlantı görseli, bilinmeyen kimlik ya da firmanın modülü kapalıysa
-  `404 NOT_FOUND` (önbellek başlıksız).
+  `Cross-Origin-Resource-Policy: same-site`. `s` yoksa `l`; bağlantı görseli, bilinmeyen kimlik, firma pasif ya da modülü kapalıysa
+  `404 NOT_FOUND` (önbellek başlıksız). Firmanın "yayında" anahtarı (`IsEnabled`) **sorulmaz**: panel ve telefon katalog
+  yayına alınmadan, hazırlanırken görselleri bu adresten gösterir.
 
 - **Talepler (`orders*`, S8)** `Endpoints/CustomerCatalogOrderEndpoints`: modül denetlenir, yönetim yetkisi **istenmez**;
   katalog yöneticisi (ADMIN/MANAGER) hepsini, diğerleri yalnız `AssignedUserId` ya da `ClaimedByUserId` kendisi olanları görür
@@ -396,16 +402,23 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
   değişiklik yok. `complete {documentRef?}` (≤ 128; boş = "başka yerde girildi") — aynı belgeyle (ya da belgesiz) tekrar değişiklik
   yapmaz, başka belge `409 CATALOG_ORDER_ALREADY_CONVERTED`, reddedilmiş `409 CATALOG_ORDER_CLOSED`. `reject {reason}` — gerekçe
   zorunlu (`400 INVALID_BODY`, ≤ 500'e kırpılır), tekrar değişiklik yapmaz, çevrilmiş `409 CATALOG_ORDER_CLOSED`. Başkasının
-  aldığı talebi yönetici olmayan bırakamaz/çeviremez/reddedemez (`409 CATALOG_ORDER_TAKEN`). Detay satırları talebin anlık
+  aldığı talebi yönetici olmayan bırakamaz/çeviremez/reddedemez (`409 CATALOG_ORDER_TAKEN`). `reopen` — yalnız katalog
+  yöneticisi (`403 CATALOG_MANAGE_REQUIRED`): `COMPLETED`/`REJECTED` → `NEW`; `documentRef`, `rejectReason`, `closedBy*` ve
+  `claimedBy*` temizlenir (sonraki satış talebe ilk günkü gibi bağlanır); açık talepte değişiklik yok. Panel bunu onaylı uyarıyla
+  sunar ("Yeniden aç"). Detay satırları talebin anlık
   fiyatlarıdır (`listPrice` talebin listesinden, `discountPercent` satırın müşteri iskontosu); `inStockNow` bugünkü stok.
-- **Talep ↔ satış bağı** (`CustomerCatalog/CatalogOrderLinker`, T8): satış gövdesi (`POST /api/v1/ingest/jobs`, ya da onay
-  isteğinin belgesi) üst düzeyde `catalogOrderId` taşıyorsa, iş yazılmadan hemen önce (idempotent iş ve onay/yetki
-  denetimlerinden sonra; onayda karar anında) talep aynı firmada ve `NEW`/`CLAIMED` olmalı → işle aynı kayıtta `COMPLETED`,
-  `documentRef` = satışın `externalId`'si, `closedBy*` = gönderen. Aynı `externalId` tekrar → sorun yok. Başka belgeyle çevrilmiş
-  `409 CATALOG_ORDER_ALREADY_CONVERTED`, reddedilmiş `409 CATALOG_ORDER_CLOSED`, bilinmeyen/başka firmanın/kimlik olmayan değer
-  `409 CATALOG_ORDER_NOT_FOUND` — bu üçünde **iş yazılmaz** (onayda onay `Pending` kalır). Alan yoksa ya da `null` ise davranış
-  aynen eskisi. ERP'siz firmada defter satışı reddederse (iş `Failed`) talep açık kalır. Reddedilen onay hiç iş yazmadığı için
-  talebe dokunmaz.
+- **Talep ↔ satış bağı** (`CustomerCatalog/CatalogOrderLinker`, T8): yalnız `documentType = sales_order` gövdesi (`POST
+  /api/v1/ingest/jobs`, ya da onay isteğinin belgesi) üst düzeyde `catalogOrderId` taşıyorsa — başka belge türündeki alan yok
+  sayılır —, iş yazılmadan hemen önce (idempotent iş ve onay/yetki denetimlerinden sonra; onayda karar anında) talep aynı firmada
+  ve `NEW`/`CLAIMED` olmalı → işle aynı kayıtta `COMPLETED`, `documentRef` = satışın `externalId`'si, `closedBy*` = gönderen.
+  Aynı `externalId` tekrar → sorun yok. Başkasının `CLAIMED` talebini, gönderen o kişi ya da katalog yöneticisi değilse
+  `409 CATALOG_ORDER_TAKEN` (personel `complete`'iyle aynı kural). Başka belgeyle çevrilmiş `409 CATALOG_ORDER_ALREADY_CONVERTED`
+  — **ancak** o belgenin işi (`TenantId` + `ExternalId`, `sales_order`) `Failed`/`DeadLetter` ise düzeltilmiş satış talebi
+  devralır; iş olmayan referans (personelin "başka yerde girildi" numarası) kalıcıdır, onu yalnız `reopen` açar. Reddedilmiş
+  `409 CATALOG_ORDER_CLOSED`, bilinmeyen/başka firmanın/kimlik olmayan değer `409 CATALOG_ORDER_NOT_FOUND` — reddedilen her
+  durumda **iş yazılmaz** (onayda onay `Pending` kalır). Alan yoksa ya da `null` ise davranış aynen eskisi. ERP'siz firmada
+  defter satışı reddederse (iş `Failed`) talep önceki hâline döner (açık ya da devraldığı başarısız satışa bağlı). Reddedilen
+  onay hiç iş yazmadığı için talebe dokunmaz.
 
 ## Müşteri kataloğu, müşteri tarafı — `/api/v1/catalog/{code}` (GOAL_MUSTERI_KATALOGU §5.2, §6, §7)
 
@@ -420,25 +433,29 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
 - **Her istekte** (`CatalogCustomerPolicy` + `CatalogAccountStateRequirement`): token katalog token'ı değil, firması yok ya da
   yoldaki kod token'ın firmasının değil → `401 INVALID_TOKEN`; hesap silinmiş ya da `tv` eski → `401 SESSION_REVOKED`; hesap
   pasif → `403 ACCOUNT_INACTIVE`; firma pasif, modül kapalı ya da `IsEnabled=false` → `403 CATALOG_UNAVAILABLE`; abonelik
-  → `403 SUBSCRIPTION_REQUIRED|SUBSCRIPTION_EXPIRED`. Gövde `ApiError` (Türkçe mesaj). Hız: hesap başına 120/dk (`per-catalog-account`).
+  → `403 SUBSCRIPTION_REQUIRED|SUBSCRIPTION_EXPIRED`. Gövde `ApiError` (Türkçe mesaj). Hız: hesap başına 120/dk (`per-catalog-account`;
+  oturumsuz istek — süresi geçmiş ya da hiç olmayan çerez — ortak bir kovaya değil istemcinin IP kovasına sayılır).
 - **CSRF:** her değiştirici istek (giriş dahil) `X-Katalog: 1` taşımalı; tarayıcı `Origin` gönderiyorsa `https://{PublicHost}`
   ile birebir aynı olmalı → yoksa `403 CSRF_REJECTED`. `PublicHost` boşken yalnız başlık aranır.
 - **Önbellek:** bu gruptaki her yanıt `Cache-Control: private, no-store`.
 - **`GET info`** (anonim, `catalog-public`): `{companyName, code}`; firma yok/pasif, modül kapalı ya da yayında değil →
   `404 CATALOG_NOT_FOUND`.
 - **`POST login`** (anonim, `catalog-login`: IP başına 10/dk) `{username, password, remember}` → `{me}` + çerezler. Eksik alan
-  `400 INVALID_REQUEST`. Sıra: firma başına 300/dk kova (`CatalogLoginGate`, aşılırsa `429 RATE_LIMITED`) → ad yavaşlatıcısı
-  (`LoginThrottle` alan `catalog`; beklerken şifre denetlenmez, `429`) → BCrypt (hesap yoksa ortak sahte hash; aynı anda en
-  çok 8) → bilinmeyen firma/kullanıcı/yanlış şifre tek cevap `401 INVALID_CREDENTIALS` → ancak şifre doğruysa
+  `400 INVALID_REQUEST`. Sıra: cihaz çerezinin imzası (veritabanısız) → çerez yoksa firma başına 300/dk kova (`CatalogLoginGate`,
+  aşılırsa `429 RATE_LIMITED`) → hesap okunur; çerez başka hesabın ya da eski `TokenVersion`'ın ise kova yine uygulanır → ad
+  yavaşlatıcısı (`LoginThrottle` alan `catalog`; beklerken şifre denetlenmez, `429`) → BCrypt (hesap yoksa ortak sahte hash;
+  aynı anda en çok 8) → bilinmeyen firma/kullanıcı/yanlış şifre tek cevap `401 INVALID_CREDENTIALS` → ancak şifre doğruysa
   `403 ACCOUNT_INACTIVE`, `403 CATALOG_UNAVAILABLE`, `403 SUBSCRIPTION_*`. Başarı `LastLoginAtMs` yazar ve imzalı
-  **cihaz çerezi** `__Host-kt_dev` (180 gün; hesap kimliği + bitiş, `Jwt:SigningKey`'den türetilmiş HMAC) verir: bu çerezi o
-  hesap için taşıyan tarayıcı başkalarının hatalarıyla yavaşlamaz (kendi sayacı vardır).
+  **cihaz çerezi** `__Host-kt_dev` (180 gün; hesap kimliği + `TokenVersion` + bitiş, `Jwt:SigningKey`'den türetilmiş HMAC)
+  verir: bu çerezi o hesabın **güncel** sürümüyle taşıyan tarayıcı firma kovasını harcamaz ve başkalarının hatalarıyla
+  yavaşlamaz (sayacı hesabın kendisidir, `#{hesapId}`). Şifre değişikliği / oturum iptali / pasifleştirme eski çerezleri düşürür.
 - **`POST logout`** → 204, yalnız bu tarayıcının oturum çerezini siler (cihaz çerezi kalır).
 - **`GET me`:** `priceList` etkin liste (`account.PriceListNo ?? varsayılan`), firmada hiç fiyat yoksa null; `balance` yalnız
   `features.statement` açıkken (panelin gösterdiği bakiye: ERP'li firmada hareket toplamı), cari aynada yoksa null.
-- **`POST password {current, next}`** → 204: yanlış `current` `400 INVALID_CREDENTIALS` (ad yavaşlatıcısına sayılır), `next`
-  8–72 bayt değilse `400 INVALID_PASSWORD`. `TokenVersion` +1 (diğer bütün oturumlar düşer); bu tarayıcıya aynı türde
-  (hatırlanan/oturum) yeni çerez verilir.
+- **`POST password {current, next}`** → 204: yanlış `current` `400 INVALID_CREDENTIALS` (yavaşlatıcıya **hesap** anahtarıyla
+  `#{hesapId}` sayılır — oturum zaten kanıt; giriş sayfasında adı deneyen yabancı müşterinin şifre değiştirmesini engelleyemez),
+  `next` 8–72 bayt değilse `400 INVALID_PASSWORD`. `TokenVersion` +1 (atomik; diğer bütün oturumlar ve cihaz çerezleri düşer);
+  bu tarayıcıya aynı türde (hatırlanan/oturum) yeni oturum çerezi ve yeni sürümde cihaz çerezi verilir.
 - **Görünürlük ve fiyat** (`CatalogCustomerView`): ürün, hesabın görünürlüğü izin veriyorsa ve hesabın etkin listesinde
   fiyatı varsa görünür (başka listeye düşülmez). `price {list, net, discountPercent, includesVat}`: `discountPercent` hesabın
   iskontosu, `noDiscount` üründe 0; `net = R2(list × (1 − d/100))`; `includesVat` listenin. `box {qty, only}` etkin koli ≥ 2
@@ -511,12 +528,20 @@ Yaygın kodlar:
 - `RATE_LIMITED` — HTTP 429. Hız sınırının ve giriş yavaşlatıcının her reddi bu gövdeyi taşır; bekleme biliniyorsa
   `Retry-After` (saniye) başlığı da gelir (GOAL_MUSTERI_KATALOGU §5).
 
-**Giriş yavaşlatıcı** (`/api/v1/android/account/login`, `/api/v1/admin/login`, `/api/v1/catalog/{code}/login`; bilgi bankası kural 36): aynı ad (firma kodu +
-kullanıcı adı, Admin'de e-posta) 15 dakikada 5 kez yanlış girilirse 60 sn bekler; her yeni hata beklemeyi ikiye katlar (en çok
-15 dk). Beklerken şifre denetlenmez, doğru şifre de `429 RATE_LIMITED` alır. Hesap kilitlenmez; başarılı giriş sayacı sıfırlar.
+**Giriş yavaşlatıcı** (`/api/v1/android/account/login`, `/api/v1/admin/login`, `/api/v1/catalog/{code}/login`; bilgi bankası kural 36): aynı ad
+15 dakikada 5 kez yanlış girilirse 60 sn bekler; her yeni hata beklemeyi ikiye katlar (en çok 15 dk). Beklerken şifre
+denetlenmez, doğru şifre de `429 RATE_LIMITED` alır. Hesap kilitlenmez; başarılı giriş sayacı sıfırlar. Devam eden denemeler de
+sayılır: aynı anda en çok kalan hata hakkı kadar deneme yürür (bir kez bekletilmiş adda tek), fazlası `429` (`Retry-After: 1`).
+Anahtarlar: personel = firma kodu + kullanıcı adı + **istemci adres bölümü** (IPv4 / IPv6 /64) — başka adresten deneyen kullanıcıyı
+dışarıda bırakamaz; kullanıcının kayıtlı ve aktif telefonu (`mobile_devices`: aynı firma, `DeviceId`, `IsActive`,
+`LastUserId` = kullanıcı) kendi sayacını kullanır (panelin cihaz kimliği kullanıcı adından türediği için muaf değildir). Admin =
+e-posta + adres bölümü; bilinmeyen e-postada da sahte hash'le BCrypt çalışır. Katalog = firma kodu + kullanıcı adı (güncel cihaz
+çerezli tarayıcı ve oturumdaki şifre değişikliği `#{hesapId}`). **Sınır:** panel ve Admin konsolu girişleri sunucuya kendi
+konteynerlerinin adresinden gelir; orada adres ayrımı yoktur.
 
 Sunucu Traefik arkasında gerçek istemci IP'sini yalnız `ForwardedHeaders:KnownNetworks` / `KnownProxies` ayarındaki
-vekillerden gelen `X-Forwarded-For` ile öğrenir; IP başına sınırlarda IPv6 adresleri /64 önekine indirgenir.
+vekillerden gelen `X-Forwarded-For` ile öğrenir; IP başına sınırlarda IPv6 adresleri /64 önekine indirgenir. Güvenilmeyen bir
+adresten `X-Forwarded-For` gelirse (ayar eksik ya da yanlış) ilk istekte bir kez uyarı loglanır (başlık 64 karaktere kısaltılır).
 
 ## Retry & backoff
 

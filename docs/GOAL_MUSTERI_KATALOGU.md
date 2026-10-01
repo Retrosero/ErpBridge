@@ -44,7 +44,7 @@ gönderir; istenirse ekstresini, faturalarını, daha önce aldığı ürünleri
 - **T7** Web: derleme adımsız, kütüphanesiz statik SPA; CentralApi yalnız `Host = CustomerCatalog:PublicHost` için sunar.
 - **T8** Talep ↔ belge bağı sunucuda: satış gövdesindeki `catalogOrderId` ingest'te (ve onay anında) doğrulanır,
   aynı işlemde talep `COMPLETED` olur; ikinci belge 409. Çift sipariş olmaz.
-- **T9** Stok "var" = tüm depoların toplamı telefondaki gibi yuvarlanınca ≥ 1. Fiyatsız ürün (etkin listede fiyatı yok)
+- **T9** Stok "var" = her depo telefondaki gibi ayrı yuvarlanıp toplanınca ≥ 1. Fiyatsız ürün (etkin listede fiyatı yok)
   müşteriye görünmez; başka listeye düşülmez.
 
 ## 3. Veri modeli (`Domain/CustomerCatalog.cs`, migration `MusteriKatalogu`)
@@ -53,7 +53,7 @@ Zamanlar unix ms `long`; tablolar snake_case; her tablonun `TenantId`'si `tenant
 
 | Tablo | Alanlar |
 |---|---|
-| `catalog_settings` PK `TenantId` | `IsEnabled bool`, `DefaultPriceListNo int?`, `Revision long`, `UpdatedAtMs long`, `UpdatedByUserId uuid?` |
+| `catalog_settings` PK `TenantId` | `IsEnabled bool`, `DefaultPriceListNo int?`, `Revision long` (düzen), `ImageRevision long` (görseller; migration `KatalogGorselSayaci`), `UpdatedAtMs long`, `UpdatedByUserId uuid?` |
 | `catalog_category_settings` PK (`TenantId`,`CategoryKey` varchar 160) | `SortOrder int?`, `IsHidden bool`, `UpdatedAtMs` |
 | `catalog_product_settings` PK (`TenantId`,`StockCode` varchar 64) | `SortOrder int?`, `IsHidden`, `NoDiscount`, `CartonOnly`, `CartonQuantity int?` (≥2), `UpdatedAtMs`. Satır yalnız varsayılandan farklıysa |
 | `catalog_accounts` PK `Id` | `TenantId`, `CustomerCode` (64), `CustomerName` (200), `Username` (64, normalize `^[a-z0-9._-]{3,64}$`), `PasswordHash` (100, BCrypt), `IsActive`, `DiscountPercent numeric(5,2)` 0–99.99, `PriceListNo int?`, `VisibilityJson jsonb` `{mode,rules}`, `ShowStatement`, `ShowInvoices`, `ShowPurchased`, `CanOrder`, `ResponsibleUserId uuid?`, `TokenVersion int`, `LastLoginAtMs?`, `PasswordChangedAtMs`, `CreatedAtMs`, `UpdatedAtMs`, `CreatedByUserId?`, `CreatedByName` (120), `UpdatedByUserId?`, `DeletedAtMs?`. Filtreli unique: (`TenantId`,`Username`) ve (`TenantId`,`CustomerCode`) where `DeletedAtMs IS NULL` |
@@ -76,7 +76,8 @@ Ek: `TenantModules.CustomerCatalog = "customer_catalog"` (`Known`), `PermissionK
   Müşteri API'sinde kategori kimliği = SHA-256(anahtar) ilk 12 hex.
 - **ERP koli** = `cartonCode` metni kırp, `,`→`.`, sayıya çevir; tam sayı ve > 1 ise geçerli (telefon `quickBoxQuantity`).
   Etkin koli = `CartonQuantity ?? ERP koli`. `CartonOnly` yalnız etkin koli ≥ 2 iken geçerli.
-- **Stok** = tüm depo miktarları toplamı, `Math.Round(AwayFromZero)` ≥ 1 → `inStock`.
+- **Stok** = her deponun miktarı ayrı ayrı `Math.Round(AwayFromZero)` ile yuvarlanır, sonra toplanır; toplam ≥ 1 → `inStock`
+  (telefonla aynı: iki depoda 0,4 → 0 + 0 = stokta yok; tek depoda 0,5 → 1 = stokta). `CatalogViewService.IsInStock`.
 - **Etkin fiyat listesi** = `account.PriceListNo ?? settings.DefaultPriceListNo ?? (liste 1 varsa 1, yoksa en küçük)`.
   Ürünün o listede fiyatı yoksa müşteri görmez.
 - **Sıra:** kategoriler `SortOrder` (null en sona), sonra ad (tr-TR). Ürünler kategori içinde `SortOrder` (null en sona),
@@ -131,10 +132,13 @@ yönetim yetkisi istemez: yetkili tümünü, diğerleri yalnız kendine atananı
 | `GET orders/{id}` | → `OrderDetail` = summary + `{note, priceListNo, priceListName, priceIncludesVat, discountPercent, rejectReason, documentRef, closedByName, closedAtMs, lines[{stockCode, name, unit, quantity, cartonQuantity, listPrice, discountPercent, vatRate, gross, discount, vat, total, inStockNow}]}` |
 | `POST orders/{id}/claim` | `{force}` (`force` yalnız yetkili) → `OrderDetail`; başkasında `409 CATALOG_ORDER_TAKEN`, kapalı `409 CATALOG_ORDER_CLOSED` |
 | `POST orders/{id}/release` / `complete {documentRef}` / `reject {reason}` | → `OrderDetail` |
+| `POST orders/{id}/reopen` | → `OrderDetail`. Yalnız yönetim yetkili (`403 CATALOG_MANAGE_REQUIRED`): `COMPLETED`/`REJECTED` → `NEW`; `documentRef`, `rejectReason`, `closedBy*`, `claimedBy*` temizlenir; açık talepte değişiklik yok. Panel: onaylı uyarıyla "Yeniden aç" |
 
 Görsel boyutu: `l` ≤ 1 MB ve uzun kenar ≤ 1280; `s` ≤ 200 KB ve ≤ 400 (boyut istemci sorumluluğunda; sunucu bayt
 sınırını ve sihirli baytı denetler, `415 INVALID_IMAGE`, `413 IMAGE_TOO_LARGE`). Ürün başına en çok 8 görsel
-(`409 CATALOG_IMAGE_LIMIT`), firma kotası 1 GB (`413 CATALOG_IMAGE_QUOTA_EXCEEDED`). JPEG APP1 (EXIF) atılır.
+(`409 CATALOG_IMAGE_LIMIT`), firma kotası 1 GB (`413 CATALOG_IMAGE_QUOTA_EXCEEDED`). Üst veri atılır: JPEG APP1 (EXIF/XMP), PNG
+`eXIf`/`tEXt`/`iTXt`/`zTXt`, WebP `EXIF`/`XMP ` (istemci görseli zaten döndürüp yeniden kodlar; yön bilgisi gerekmez). Görsel
+yazımları `ImageRevision`'ı artırır, düzen `revision`'ını değil (açık düzen düzenlemesi 409 almaz).
 Link: yalnız `https`, port 443, IP/`localhost`/`.local` host yok, ≤ 2048 (`400 INVALID_IMAGE_URL`).
 
 ### 5.2 Müşteri — `/api/v1/catalog/{code}`
@@ -166,15 +170,19 @@ değilse oturum çerezi + 12 saatlik JWT).
 
 Görsel: `GET /api/v1/catalog/img/{id}/{s|l}?h={sha8}` anonim (`catalog-public`), `Cache-Control: public,
 max-age=31536000, immutable`, `ETag`, `If-None-Match` → 304 (yalnız meta okunur), `nosniff`,
-`Cross-Origin-Resource-Policy: same-site`; modül kapalı ya da yoksa 404; `s` yoksa `l` döner.
+`Cross-Origin-Resource-Policy: same-site`; firma pasif, modül kapalı ya da görsel yoksa 404 (`IsEnabled` sorulmaz: panel ve
+telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 
 ### 5.3 Talep ↔ satış bağı ve bildirim
 
 - Telefonun satış gövdesi (`sales_order` payload) üst düzeyde `catalogOrderId` taşır.
-- `CatalogOrderLinker.TryLinkAsync(db, tenantId, userId, payloadJson, externalId)` `IngestEndpoints` job yazımından hemen
-  önce ve `ApprovalService` onay anında çağrılır: talep aynı firmada ve `NEW`/`CLAIMED` olmalı → aynı `SaveChanges`'te
-  `COMPLETED`, `DocumentRef = externalId`, `ClosedBy*`. Aynı `externalId` ile tekrar → idempotent. Başka belgeyle bağlıysa
-  `409 CATALOG_ORDER_ALREADY_CONVERTED`. Onayda reddedilen belge ingest'e girmez → talep `CLAIMED` kalır.
+- `CatalogOrderLinker.TryLinkAsync(db, tenantId, userId, documentType, payloadJson, externalId)` `IngestEndpoints` job
+  yazımından hemen önce ve `ApprovalService` onay anında çağrılır. Yalnız `sales_order` bağlanır (başka belgede alan yok
+  sayılır). Talep aynı firmada ve `NEW`/`CLAIMED` olmalı → aynı `SaveChanges`'te `COMPLETED`, `DocumentRef = externalId`,
+  `ClosedBy*`. Aynı `externalId` ile tekrar → idempotent. Başkasının `CLAIMED` talebini o kişi ya da yönetici değilse
+  `409 CATALOG_ORDER_TAKEN`. Başka belgeyle bağlıysa `409 CATALOG_ORDER_ALREADY_CONVERTED`; o belgenin işi `Failed`/`DeadLetter`
+  ise yeni satış talebi devralır (iş olmayan "başka yerde girildi" referansı kalıcı; yalnız `reopen`). Onayda reddedilen belge
+  ingest'e girmez → talep `CLAIMED` kalır.
 - Yeni talepte `UserNotification{Kind="CATALOG_ORDER_NEW", TaskId=null, Title="Yeni müşteri siparişi: {cari}",
   Body="{No} · {n} kalem · {toplam} TL"}`. Alıcılar: `ResponsibleUserId` ya da plasiyer eşlemesi
   (`Customer.SalespersonCode` → `MobileUserErpMapping.SalespersonCode`) → `AssignedUserId`; artı yönetim yetkili aktif
@@ -187,9 +195,12 @@ max-age=31536000, immutable`, `ETag`, `If-None-Match` → 304 (yalnız meta okun
 - `UseForwardedHeaders` (`XForwardedFor|XForwardedProto`, `ForwardLimit=1`, `KnownNetworks`/`KnownProxies`
   `ForwardedHeaders:*` ayarından; `XForwardedHost` yok). `CustomerCatalog:PublicHost` doluyken ayar zorunlu
   (`ValidateRuntimeConfiguration`). IP bölümlemesi IPv6'da /64. `AdminAuthEndpoints.ResolveClientIp` → `RemoteIpAddress`.
-- Giriş: `BCrypt.Verify` her zaman (hesap yoksa ortak sahte hash); bellek içi `LoginThrottle` (tek container varsayımı,
-  `TenantEventHub`/`PortalRecordMirror` gibi; anahtar = alan + firma + normalize kullanıcı adı, hesap olmasa da sayılır); firma başına giriş kovası;
-  BCrypt eşzamanlılık sınırı (8). Aynı yavaşlatıcı personel girişinde.
+- Giriş: `BCrypt.Verify` her zaman (hesap/e-posta yoksa ortak sahte hash; Admin dahil); bellek içi `LoginThrottle` (tek container
+  varsayımı, `TenantEventHub`/`PortalRecordMirror` gibi; en çok 100.000 anahtar). Deneme `TryBegin` ile adın kilidi altında
+  başlar, devam edenler de sayılır (kontrol–kayıt yarışı yok). Anahtarlar: katalog = firma + normalize kullanıcı adı (güncel
+  cihaz çerezi ve oturumdaki şifre değişikliği `#hesap`); personel = firma + kullanıcı adı + istemci adres bölümü (kayıtlı aktif
+  telefon kendi sayacıyla); Admin = e-posta + adres bölümü. Firma başına giriş kovası (güvenilir cihaz harcamaz); BCrypt
+  eşzamanlılık sınırı (8). Sınır: panel/Admin girişi kendi konteynerinin adresinden gelir.
 - `OnRejected`: tüm 429'lara `RATE_LIMITED` gövdesi + `Retry-After`.
 - Katalog alan adında izin listesi: `/assets/**`, `/robots.txt`, `/favicon.svg`, `/api/v1/catalog/**`, `/health*`, kabuk
   yolları; gerisi 404. CSP `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:;

@@ -131,15 +131,16 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `permission_changes`: `Id` bigint PK, `TenantId`, `ActorUserId`, `ActorName(120)` anlık kopya, `Client(16)` android\|portal, `Scope(16)` role\|user\|roles, `Role(16)`, `TargetUserId`, `TargetUserName(120)`, `Key`, `OldValue` (null = satır yoktu), `NewValue` (null = silindi), `CreatedAtUtc`. Yalnız eklenir.
   - `suspended_sale_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` (indeksli; henüz temizlenmiyor).
 
-- **Müşteri kataloğu** *(GOAL_MUSTERI_KATALOGU S2, 2026-10-01; kural 36; migration `MusteriKatalogu`)* — zamanlar unix ms (UTC); her tablonun
+- **Müşteri kataloğu** *(GOAL_MUSTERI_KATALOGU S2, 2026-10-01; kural 36; migration `MusteriKatalogu` + `KatalogGorselSayaci`)* — zamanlar unix ms (UTC); her tablonun
   `TenantId`'si `tenants`'a cascade. Katalog hesapları koltuk değildir:
   - `catalog_settings`: PK `TenantId`, `IsEnabled` (firmanın yayın anahtarı; operatörün `customer_catalog` modülü önce gelir), `DefaultPriceListNo`
-    null = liste 1 ya da en küçük, `Revision` (her düzen yazımında +1; eski revizyon 409 `CATALOG_CHANGED`), `UpdatedAtMs`, `UpdatedByUserId`. Satır yok = yayında değil.
+    null = liste 1 ya da en küçük, `Revision` (her düzen yazımında +1 — ayarlar, kategoriler, ürünler; eski revizyon 409 `CATALOG_CHANGED`), `ImageRevision` (her görsel
+    yazımında +1; düzen revizyonuna dokunmaz, açık düzen düzenlemesini eskitmez; katalog görünümü önbelleği ikisine birden bakar), `UpdatedAtMs`, `UpdatedByUserId`. Satır yok = yayında değil.
   - `catalog_category_settings`: PK `(TenantId, CategoryKey(160))` — anahtar telefonun gösterdiği kategori adı (kırpılmış); `SortOrder` null = sona, `IsHidden`, `UpdatedAtMs`.
   - `catalog_product_settings`: PK `(TenantId, StockCode(64))`, `SortOrder` null = sona, `IsHidden`, `NoDiscount`, `CartonOnly`, `CartonQuantity` (≥ 2, ERP `cartonCode`'u ezer), `UpdatedAtMs`. Satır yalnız varsayılandan farklıysa.
   - `catalog_accounts`: `Id`, `TenantId`, `CustomerCode(64)`, `CustomerName(200)` anlık kopya, `Username(64)` küçük harf `^[a-z0-9._-]{3,64}$`, `PasswordHash(100)` BCrypt,
     `IsActive`, `DiscountPercent numeric(5,2)` 0–99.99 (Mikro'ya yazılmaz/okunmaz), `PriceListNo` null = firma varsayılanı, `VisibilityJson` jsonb `{mode: all|only, rules[{type,key,effect}]}`,
-    `ShowStatement`, `ShowInvoices`, `ShowPurchased`, `CanOrder`, `ResponsibleUserId`, `TokenVersion` (şifre/pasif/silme/"oturumları kapat" ile +1), `LastLoginAtMs`, `PasswordChangedAtMs`,
+    `ShowStatement`, `ShowInvoices`, `ShowPurchased`, `CanOrder`, `ResponsibleUserId`, `TokenVersion` (şifre/pasif/silme/"oturumları kapat" ile veritabanında atomik +1; JWT `tv`'si ve cihaz çerezi bunu taşır), `LastLoginAtMs`, `PasswordChangedAtMs`,
     `CreatedAtMs`, `UpdatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`, `UpdatedByUserId`, `DeletedAtMs` (yumuşak silme). Filtreli UNIQUE `(TenantId, Username)` ve `(TenantId, CustomerCode)`
     `WHERE "DeletedAtMs" IS NULL` — cari başına tek canlı hesap; silinen hesabın adı ve carisi yeniden kullanılabilir.
   - `catalog_images`: `Id` (sunucu üretir), `TenantId`, `StockCode(64)`, `Kind(8)` link|file, `Url(2048)` (yalnız link; sunucu indirmez), `SourceHash(80)` göndericinin özgün parmak izi,
@@ -147,8 +148,8 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     UNIQUE `(TenantId, StockCode, SourceHash)` (tekrar yükleme aynı satırı bulur).
   - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade.
   - `catalog_orders` (sipariş **talebi**, sipariş değil): `Id` = müşterinin `requestId`'si, `TenantId`, `AccountId` (FK yok; hesap yumuşak silinir), `CustomerCode(64)`, `CustomerName(200)`,
-    `AccountUsername(64)`, `No(16)` `KT-XXXXXX` UNIQUE `(TenantId, No)`, `Status(16)` NEW|CLAIMED|COMPLETED|REJECTED, `Note(1000)`, `RejectReason(500)`, `DocumentRef(128)` (çevrildiği
-    satışın `externalId`'si), `PriceListNo`, `PriceIncludesVat`, `DiscountPercent numeric(5,2)`, `Total numeric(18,2)`, `LineCount`, `LinesJson` jsonb (`[{stockCode, name, unit, quantity, cartonQuantity, listPrice,
+    `AccountUsername(64)`, `No(16)` `KT-XXXXXX` UNIQUE `(TenantId, No)`, `Status(16)` NEW|CLAIMED|COMPLETED|REJECTED (yönetici `reopen` ile kapalıdan NEW'e), `Note(1000)`, `RejectReason(500)`, `DocumentRef(128)` (çevrildiği
+    satışın `externalId`'si; o satışın işi `Failed`/`DeadLetter` olursa düzeltilmiş satış devralır), `PriceListNo`, `PriceIncludesVat`, `DiscountPercent numeric(5,2)`, `Total numeric(18,2)`, `LineCount`, `LinesJson` jsonb (`[{stockCode, name, unit, quantity, cartonQuantity, listPrice,
     discountPercent, net, vatRate, gross, discount, vat, total}]`, sunucunun gönderim anındaki fiyatı), `AssignedUserId`, `ClaimedByUserId`,
     `ClaimedByName(120)`, `ClaimedAtMs`, `ClosedByUserId`, `ClosedByName(120)`, `ClosedAtMs`, `SubmittedAtMs`, `UpdatedAtMs`. İndeks `(TenantId, Status, SubmittedAtMs)`,
     `(TenantId, AccountId, SubmittedAtMs)`, `(TenantId, DocumentRef)`.

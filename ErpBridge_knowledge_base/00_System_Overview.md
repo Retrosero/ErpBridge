@@ -1335,19 +1335,35 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      katalog host denetimi atlatılırdı). Ayar boşsa ara katman eklenmez (eski davranış). Bozuk girdi başlatmayı durdurur.
      `CustomerCatalog:PublicHost` doluyken bu ayar test dışında **zorunlu** (`Program.ValidateRuntimeConfiguration`): aksi hâlde
      bütün firmaların katalog girişleri Traefik'in tek IP kovasına düşerdi. `AdminAuthEndpoints.ResolveClientIp` artık ham
-     `X-Forwarded-For` başlığını değil `RemoteIpAddress`'i okur (güvenilmeyen istemci IP uyduramaz).
+     `X-Forwarded-For` başlığını değil `RemoteIpAddress`'i okur (güvenilmeyen istemci IP uyduramaz). `Security/UntrustedForwardWarning`
+     (pipeline'ın başında, ayar olsa da olmasa da): güvenilmeyen adresten `X-Forwarded-For` gelen **ilk** istekte bir kez
+     `app.Logger` uyarısı (adres + 64 karaktere kısaltılmış, denetim karaktersiz başlık) — Traefik arkasında ayar eksik/yanlış demektir.
    - **Bölümleme:** `Anonymous` politikası ve global limiter anahtarı `Security/ClientIpPartition.Of`: IPv4 aynen, IPv6 **/64 öneki**
      (`2001:db8:1:2::/64`; sağlayıcı müşteriye bütün bir /64 verir). Yeni katalog politikaları (S5/S6) da bunu kullanır.
+     `per-catalog-account` ve `catalog-upload` `sub` yoksa (süresi geçmiş çerez, oturumsuz çağrı) ortak "anonymous" kovası yerine
+     `Program.SignedOutPartition` = `ip:{ClientIpPartition}`: bir ziyaretçinin 401'leri başkasının bütçesini tüketmez.
    - **429 gövdesi:** `AddRateLimiter.OnRejected` ve giriş yavaşlatıcı aynı `Security/RateLimitedResponse`'u yazar:
      `ApiError{errorCode:"RATE_LIMITED", traceId}` + `Retry-After` (tam saniye, yukarı yuvarlanmış, en az 1). Telefon ve panel 429'u
      durum koduyla işlediği için geriye uyumlu.
-   - **Giriş yavaşlatıcı** `Security/LoginThrottle` (singleton, bellek içi — tek container, `TenantEventHub` gibi). Anahtar = alan
-     (`staff` / `catalog` / `admin`) + firma kodu (büyük harf) + kullanıcı adı (küçük harf); hesap ya da firma olmasa da sayılır.
-     15 dk içinde 5 hata → 60 sn bekleme; sonraki her hata beklemeyi ikiye katlar (üst sınır 15 dk). Beklerken şifre
-     **doğrulanmaz**: doğru ve yanlış şifre aynı 429'u alır (bekleme tahmin denemek için kullanılamaz). Başarılı giriş adı temizler;
-     son hatadan **ve** son beklemenin bitiminden 15 dk sessizlik adı affeder (tavandaki ad 15 dk'da bir tahmin alır). Hesap hiç
-     kilitlenmez. Uygulandığı yerler: `MobileAccountEndpoints.LoginAsync` (personel; telefon + panel) ve `AdminAuthEndpoints.LoginAsync`
-     (e-posta, firma yok) ve katalog girişi (`LoginThrottle.CatalogArea`, S6).
+   - **Giriş yavaşlatıcı** `Security/LoginThrottle` (singleton, bellek içi — tek container, `TenantEventHub` gibi; en çok
+     `DefaultMaxEntries` = 100.000 anahtar: aşılınca önce sessizler, sonra en eski bekletilmeyenler, en son bekletilenler atılır,
+     denemesi süren anahtar atılmaz). Anahtar = alan (`staff` / `catalog` / `admin`) + firma kodu (büyük harf) + ad (küçük harf) +
+     isteğe bağlı istemci bölümü; hesap ya da firma olmasa da sayılır. 15 dk içinde 5 hata → 60 sn bekleme; sonraki her hata
+     beklemeyi ikiye katlar (üst sınır 15 dk). Beklerken şifre **doğrulanmaz**: doğru ve yanlış şifre aynı 429'u alır. Başarılı
+     giriş adı temizler; son hatadan **ve** son beklemenin bitiminden 15 dk sessizlik adı affeder. Hesap hiç kilitlenmez.
+     **API:** `using var attempt = throttle.TryBegin(alan, firma, ad, istemci?)` → `attempt.RetryAfter` doluysa 429; şifre
+     sonucuna göre `attempt.Failed()` / `attempt.Succeeded()`; bitirilmeyen deneme (hata/istisna) hiçbir şey saymaz. Devam eden
+     denemeler adın kilidi altında sayılır: aynı anda en çok kalan hata hakkı kadar deneme yürür (bir kez bekletilmiş adda tek),
+     fazlası `InFlightWait` (1 sn) ile 429 — paralel 20 tahmin eşiği geçemez.
+     **Anahtarlar:** personel (`MobileAccountEndpoints.LoginAsync`, telefon + panel) = firma + kullanıcı adı + `ClientIpPartition`
+     (başka adresten deneyen kullanıcıyı dışarıda bırakamaz); kullanıcının kayıtlı ve aktif telefonu (`mobile_devices`: aynı firma,
+     istekteki `DeviceId`, `IsActive`, `LastUserId` = kullanıcı; yalnız `client=android`) kendi sayacını kullanır
+     (`#{userId}@{deviceId}`, adressiz) — panelin cihaz kimliği `web-portal:{kullanıcı}` tahmin edilebildiği için muaf değil.
+     Admin (`AdminAuthEndpoints.LoginAsync`) = e-posta + `ClientIpPartition`; bilinmeyen e-postada da `PasswordHashing.Dummy` ile
+     BCrypt (yanıt süresi e-postanın varlığını söylemez). Katalog (`CatalogArea`, S6) = firma + kullanıcı adı; güncel cihaz çerezli
+     tarayıcı ve oturumdaki şifre değişikliği `#{hesapId}`. **Sınır:** panel girişleri CentralApi'ye Portal konteynerinin, Admin
+     girişleri Admin konteynerinin adresinden gelir — orada adres ayrımı yoktur (aynı adı yabancı ve sahibi aynı kovada denerse
+     sahibi de bekler); telefon ve katalog girişleri gerçek istemci adresiyle gelir.
    - **Tablolar** (03 §2, migration `MusteriKatalogu`): `catalog_settings`, `catalog_category_settings`, `catalog_product_settings`,
      `catalog_accounts`, `catalog_images`, `catalog_image_blobs`, `catalog_orders` — `Domain/CustomerCatalog.cs`. Katalog hesapları
      **koltuk değildir**, `mobile_users`'a girmez, personel oturumu açamaz.
@@ -1364,10 +1380,17 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      okumada 8 karakterlik kod üretir; yalnız kod hâlâ boşsa yazar, eşzamanlı iki okuma aynı kodu döner.
    - **Görseller (S5)** `Endpoints/CustomerCatalogImageEndpoints` + `CustomerCatalog/CatalogImages`: baytlar PostgreSQL'de
      (`catalog_image_blobs`, iki varyant); sunucuda görsel kütüphanesi yok — küçültmeyi gönderen yapar, sunucu yalnız bayt sınırını,
-     sihirli baytı (`TaskService.LooksLike`) denetler ve JPEG APP1'i (EXIF/XMP) atar. Bağlantı görseli hiç indirilmez. Görsel
-     yazımları da `WriteLayoutAsync` revizyon kilidinden geçer (kota yarışı yok; katalog görünümü revizyona göre tazelenir);
-     değişiklik yoksa revizyon artmaz. Anonim `GET /api/v1/catalog/img/{id}/{s|l}` tahmin edilemez kimlikle, `immutable`
-     önbellekle ve yalnız modül açıkken sunulur. Hız politikaları `catalog-upload` (kullanıcı başına 300/dk) ve `catalog-public`
+     sihirli baytı (`TaskService.LooksLike`) denetler ve üst veriyi kütüphanesiz atar (`CatalogImages.StripMetadata`: JPEG APP1
+     EXIF/XMP; PNG `eXIf`/`tEXt`/`iTXt`/`zTXt` parçaları — CRC parça başına olduğu için kalanlar geçerli; WebP `EXIF`/`XMP `
+     parçaları, VP8X bayraklarından 0x08/0x04 silinir, RIFF boyu yeniden yazılır; okunamayan dosya olduğu gibi kalır). JPEG yön
+     bilgisi EXIF'le gider: telefon ve panel görseli zaten döndürüp yeniden kodlayarak gönderir. Bağlantı görseli hiç indirilmez.
+     Görsel yazımları `WriteLayoutAsync(..., pictures: true)` ile aynı `catalog_settings` satır kilidinden geçer (kota yarışı yok)
+     ama düzen `Revision`'ını değil **`ImageRevision`**'ı artırır (migration `KatalogGorselSayaci`): görsel yüklemesi panelin
+     `Katalog.razor`'ında ya da telefonda açık düzen düzenlemesini `409 CATALOG_CHANGED`'e düşürmez; değişiklik yoksa sayaç artmaz.
+     `CatalogViewService` önbelleği `StockVersion` + `Revision` + `ImageRevision`'a bakar; müşteri isteği yenileme aralığında (5 sn)
+     ve iki revizyon saklananlarla aynıyken firmanın derleme kilidini beklemeden önbellekteki görünümü alır (tek satır okuma).
+     Anonim `GET /api/v1/catalog/img/{id}/{s|l}` tahmin edilemez kimlikle, `immutable` önbellekle ve yalnız firma aktif ve modül
+     açıkken sunulur; firmanın `IsEnabled`'ına bakılmaz (panel ve telefon katalog yayından önce görselleri gösterir). Hız politikaları `catalog-upload` (kullanıcı başına 300/dk) ve `catalog-public`
      (IP başına 600/dk, `ClientIpPartition`). Ayrıntı: `docs/api-contracts.md` "Müşteri kataloğu yönetimi".
    - **Müşteri oturumu (S6)** `Endpoints/CustomerCatalogPublicEndpoints` (`/api/v1/catalog/{code}`): token
      `JwtIssuer.IssueForCatalogAccount` (`scope=customer-catalog`, `tv` = hesabın `TokenVersion`'ı) yalnız HttpOnly çerezde
@@ -1380,11 +1403,17 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      hiçbir politikadan geçmez. Değiştirici her istek (giriş dahil) `X-Katalog: 1` + `Origin == https://{PublicHost}` (varsa) ister
      (`403 CSRF_REJECTED`); bütün yanıtlar `private, no-store`. Giriş: firma başına 300/dk kova ve aynı anda en çok 8 BCrypt
      (`CatalogLoginGate`, bellek içi), IP başına 10/dk (`catalog-login`), ad yavaşlatıcısı (`LoginThrottle.CatalogArea`), ortak
-     sahte hash `Security/PasswordHashing.Dummy` (personel girişiyle paylaşılır). İmzalı cihaz çerezi `__Host-kt_dev` (hesap +
-     bitiş, `Jwt:SigningKey`'den türetilmiş HMAC) taşıyan tarayıcı o hesabın kendi sayacını kullanır: yabancının hataları
-     müşteriyi dışarıda bırakmaz. Müşteri kendi şifresini değiştirince `TokenVersion` +1, kendi tarayıcısına yeni çerez.
+     sahte hash `Security/PasswordHashing.Dummy` (personel ve Admin girişiyle paylaşılır). İmzalı cihaz çerezi `__Host-kt_dev`
+     (`hesap.tokenVersion.bitiş.hmac`, `Jwt:SigningKey`'den türetilmiş HMAC; `CatalogCookies.DeviceOf`) imzası veritabanından ve
+     firma kovasından **önce** doğrulanır; hesabın güncel `TokenVersion`'ıyla eşleşen tarayıcı firma kovasını harcamaz ve
+     `#{hesapId}` sayacını kullanır: yabancının hataları ya da kalabalık müşteriyi dışarıda bırakmaz. Başka hesabın ya da eski
+     sürümün çerezi muaf değildir (kova yine uygulanır). `TokenVersion` artışları atomik
+     (`CatalogAccounts.RevokeSessionsAsync`: `ExecuteUpdate TokenVersion + 1`, izlenen satır yeni değeri değiştirilmiş sayılmadan
+     alır; hesabın kendi kaydından sonra çağrılır). Müşteri kendi şifresini değiştirince: mevcut şifre yanlışsa `#{hesapId}` sayılır
+     (giriş sayfasındaki yabancı engelleyemez), `TokenVersion` +1, kendi tarayıcısına yeni oturum çerezi ve yeni sürümde cihaz çerezi.
    - **Müşteri gezinme (S7)** `CustomerCatalog/CatalogCustomerView` (hesabın görünürlüğü + etkin listesinde fiyatı olan ürünler,
-     iskonto `noDiscount`'ta 0) ve `CatalogQuote` (satır sorunları `NOT_AVAILABLE|OUT_OF_STOCK|CARTON_MULTIPLE|INVALID_QUANTITY`;
+     iskonto `noDiscount`'ta 0; stok `inStock` = her depo telefondaki gibi ayrı yuvarlanıp **sonra** toplanır, ≥ 1 —
+     `CatalogViewService.IsInStock`; iki depoda 0,4 stokta yok sayılır; adet gösterilmez) ve `CatalogQuote` (satır sorunları `NOT_AVAILABLE|OUT_OF_STOCK|CARTON_MULTIPLE|INVALID_QUANTITY`;
      görünmeyen ürün hakkında hiçbir bilgi dönmez; toplamlar yalnız sorunsuz satırlar). Arama `CatalogProduct.Matches`: tr-TR
      `IgnoreCase | IgnoreNonSpace` (ç ğ ı ö ş ü Türkçede ayrı harf olarak kalır; "kagit" "kâğıt"ı bulmaz).
    - **Web barındırma (W0)** `CustomerCatalog/CatalogWeb`: yalnız `Host == CustomerCatalog:PublicHost` iken (boşsa hiç yok);
@@ -1406,16 +1435,30 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
    - **Talep ↔ satış bağı (T8)** `CustomerCatalog/CatalogOrderLinker.TryLinkAsync`: satış gövdesinin üst düzey `catalogOrderId`'si
      `IngestEndpoints`'te iş eklenmeden hemen önce (idempotent iş + onay/yetki denetimlerinden sonra; ERP yolunda ve ERP'siz
      yolda — o zaman defter kaydının kendi `SaveChanges`'inde) ve `ApprovalService.PostDocumentsAsync`'te (onay işleminde) okunur.
-     Talep satırı kilitlenir; açıksa izlenen satır `COMPLETED` olur ve iş ile **aynı kayıtta** yazılır. Başka belgeyle çevrilmiş
-     `409 CATALOG_ORDER_ALREADY_CONVERTED`, reddedilmiş `409 CATALOG_ORDER_CLOSED`, bilinmeyen `409 CATALOG_ORDER_NOT_FOUND`: iş
-     yazılmaz. Alan yoksa hiçbir şey olmaz (eski davranış). ERP'siz defter satışı reddederse (`Failed` iş) `Link.Undo()` talebi açık
-     bırakır. Gövdede alan varsa ingest bir transaction açar (yalnız `sales_order` için değil).
+     Yalnız `documentType = sales_order` bağlanır (başka belgedeki alan yok sayılır; `Names(documentType, payload)` da öyle).
+     Talep satırı kilitlenir; açıksa izlenen satır `COMPLETED` olur ve iş ile **aynı kayıtta** yazılır. Başkasının `CLAIMED`
+     talebini gönderen o kişi ya da katalog yöneticisi değilse `409 CATALOG_ORDER_TAKEN` (personel `complete` ile tutarlı; gönderen =
+     ingest'te `job.CreatedByUserId`, onayda `RequestedByUserId`). Başka belgeyle çevrilmiş `409 CATALOG_ORDER_ALREADY_CONVERTED` —
+     ancak o belgenin işi (`Jobs`: `TenantId` + `ExternalId`, tür `sales_order`) `Failed`/`DeadLetter` ise yeni satış talebi
+     devralır (`DocumentStandsAsync`). İş olmayan referans (personelin "başka yerde girildi" numarası, ya da boş) kalıcı sayılır:
+     onu devretmek çift siparişe kapı açardı; düzeltme yolu `reopen`. Bilinen risk: devralınan başarısız iş sonradan elle yeniden
+     denenirse (`PortalErpDocumentsEndpoints` retry) ikinci sipariş olabilir. Reddedilmiş `409 CATALOG_ORDER_CLOSED`, bilinmeyen
+     `409 CATALOG_ORDER_NOT_FOUND`: iş yazılmaz. Alan yoksa hiçbir şey olmaz (eski davranış). ERP'siz defter satışı reddederse
+     (`Failed` iş) `Link.Undo()` talebi önceki hâline (açık ya da devraldığı satışa bağlı) döndürür.
+   - **Yeniden açma** `POST /api/v1/customer-catalog/orders/{id}/reopen` (`CustomerCatalogOrderEndpoints.ReopenAsync`, talep
+     satır kilidi altında; yalnız `CanManageCustomerCatalog`, değilse `403 CATALOG_MANAGE_REQUIRED`): `COMPLETED`/`REJECTED` → `NEW`;
+     `DocumentRef`, `RejectReason`, `Closed*`, `Claimed*` temizlenir; açık talep değişmez. Panel `MusteriSiparisleri.razor`
+     kapalı talepte "Yeniden aç" (onaylı satır içi uyarı; çevrilmiş talepte ikinci sipariş uyarısı), `PortalApiClient.ReopenCatalogOrderAsync`.
+   - **Panel hata metinleri** `ErpBridge.Portal/Api/PortalMessages`: bilinen koda panelin metni; bilinmeyen kodda sunucunun mesajı
+     Türkçe harf içeriyorsa (`LooksTurkish`; katalog uçları Türkçe yazar) o, değilse kodlu genel metin
+     (`PortalApiClient.SendAsync` → `PortalMessages.For(code, message)`).
    - **Hesabım (S9)** `Endpoints/CatalogCustomerLedgerEndpoints`: `statement` (`PortalLedger.Statement`, açıklamasız dar DTO),
      `invoices` / `invoices/detail?key=` (izinli küme = carinin kendi `sale|sale_return`, `!OtherSide`, anahtarlı satırları; detay
      anahtarı önce bu kümede aranır, `DocumentByKey` **kullanılmaz** — kasa koduyla çakışan cari başka carinin `r` anahtarını
      açamaz), `purchased` (iptalsiz satışların `LinesByDocument` satırları stok koduna göre). Bayrak kapalı `403 FEATURE_DISABLED`.
-   - Testler: `LoginThrottleTests`, `ForwardedHeadersSetupTests`, `RateLimitTests` (XFF bölümleri, güvenilmeyen atlama, /64,
-     `catalog-login`), `LoginThrottleEndpointTests`, `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
+   - Testler: `LoginThrottleTests` (paralel deneme, devam eden deneme, anahtar sınırı, adres bölümü), `ForwardedHeadersSetupTests`
+     (tek seferlik uyarı), `RateLimitTests` (XFF bölümleri, güvenilmeyen atlama, /64, `catalog-login`, oturumsuz istek IP kovası),
+     `LoginThrottleEndpointTests` (başka adres, kayıtlı telefon, Admin adres + sahte hash), `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
      `PermissionEndpointsRelationalTests`, `PermissionResolverTests`, `CustomerCatalogImagesRelationalTests`,
      `CustomerCatalogLoginRelationalTests`, `CustomerCatalogBrowseRelationalTests`, `CustomerCatalogOrdersRelationalTests`,
      `CustomerCatalogLedgerRelationalTests`, `CatalogWebTests` (fixture
