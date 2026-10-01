@@ -11,25 +11,25 @@ push'u, Play production.
 
 | # | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| S1 | ForwardedHeaders, /64, giriş yavaşlatıcı, `OnRejected` | ✅ (yerel, PR bekliyor) | | Personel + Admin girişi; katalog girişi S6'da `CatalogArea` |
-| S2 | Tablolar, migration, modül, kilitli yetki, Admin kutucuğu | ✅ (yerel, PR bekliyor) | | Sunucu tarafı (migration `MusteriKatalogu`, `PermissionCatalog.Version` 2); Admin `TenantMobile.razor` kutucuğu panel kolunda |
-| S3 | Katalog derleme (görünüm, görünürlük, fiyat) | ✅ (yerel, PR bekliyor) | | `CatalogViewService` (stok aynası + `Revision`), `CatalogVisibility`, `CatalogPricing` (`ErpSalePricingTest` örnekleri) |
-| S4 | Yönetim uçları | ✅ (yerel, PR bekliyor) | | `CustomerCatalogManageEndpoints` (settings, categories, products, accounts); hata kodları `docs/api-contracts.md` |
-| S5 | Görsel uçları | ✅ (yerel, PR bekliyor) | | `CustomerCatalogImageEndpoints` (manifest, links, kayıt, ham yükleme, sıra, silme, anonim `catalog/img`); `catalog-upload` / `catalog-public` politikaları |
-| S6 | Müşteri oturumu | ✅ (yerel, PR bekliyor) | | `CustomerCatalogPublicEndpoints` (info/login/logout/me/password), `__Host-kt_{KOD}` çerezi, `CatalogCustomerPolicy`, cihaz çerezi, `CatalogLoginGate` |
-| S7 | Müşteri gezinme + quote | ✅ (yerel, PR bekliyor) | | `CatalogCustomerView`, `CatalogQuote` (categories, products, products/detail, cart/quote) |
-| S8 | Talepler + belge bağı + bildirim | ✅ (yerel, PR bekliyor) | | `CatalogCustomerOrderEndpoints` (müşteri), `CustomerCatalogOrderEndpoints` (personel), `CatalogOrderLinker` (ingest + onay), `CATALOG_ORDER_NEW` bildirimi |
-| S9 | Ekstre, faturalar, aldıkları | ✅ (yerel, PR bekliyor) | | `CatalogCustomerLedgerEndpoints` (statement, invoices, invoices/detail, purchased) |
-| W0 | Web barındırma | ✅ (yerel, PR bekliyor) | | `CatalogWeb` (`/assets/{v}`, kabuk, başlıklar, izin listesi); dosyalar W1+ |
-| W1–W5 | Web katalog | ✅ (yerel, PR bekliyor) | | Statik SPA `wwwroot/katalog` (giriş, katalog, sepet, talepler, hesabım); `node --test tests/katalog-web/` |
-| P1–P5 | Panel | ✅ (yerel, PR bekliyor) | | `/katalog`, ürün sheet'i görselleri, `CatalogAccessSheet`, `/musteri-siparisleri` (yeniden aç dahil) |
-| A1–A7 | Telefon (Siparis_Cepte) | ⬜ | | |
-| D1 | Cloudflare + Coolify alan adı (kullanıcı) | ⬜ | | |
-| D2 | CentralApi dağıtımı | ⬜ | | |
-| D3 | Ortam değişkenleri + gerçek IP doğrulaması | ⬜ | | |
-| D4 | Portal + Admin dağıtımı | ⬜ | | |
+| S1 | ForwardedHeaders, /64, giriş yavaşlatıcı, `OnRejected` | ✅ canlı | #229 | Personel + Admin girişi; katalog girişi S6'da `CatalogArea` |
+| S2 | Tablolar, migration, modül, kilitli yetki, Admin kutucuğu | ✅ canlı | #229 | Sunucu tarafı (migration `MusteriKatalogu`, `PermissionCatalog.Version` 2); Admin `TenantMobile.razor` kutucuğu panel kolunda |
+| S3 | Katalog derleme (görünüm, görünürlük, fiyat) | ✅ canlı | #229 | `CatalogViewService` (stok aynası + `Revision`), `CatalogVisibility`, `CatalogPricing` (`ErpSalePricingTest` örnekleri) |
+| S4 | Yönetim uçları | ✅ canlı | #229 | `CustomerCatalogManageEndpoints` (settings, categories, products, accounts); hata kodları `docs/api-contracts.md` |
+| S5 | Görsel uçları | ✅ canlı | #229 | `CustomerCatalogImageEndpoints` (manifest, links, kayıt, ham yükleme, sıra, silme, anonim `catalog/img`); `catalog-upload` / `catalog-public` politikaları |
+| S6 | Müşteri oturumu | ✅ canlı | #229 | `CustomerCatalogPublicEndpoints` (info/login/logout/me/password), `__Host-kt_{KOD}` çerezi, `CatalogCustomerPolicy`, cihaz çerezi, `CatalogLoginGate` |
+| S7 | Müşteri gezinme + quote | ✅ canlı | #229 | `CatalogCustomerView`, `CatalogQuote` (categories, products, products/detail, cart/quote) |
+| S8 | Talepler + belge bağı + bildirim | ✅ canlı | #229 | `CatalogCustomerOrderEndpoints` (müşteri), `CustomerCatalogOrderEndpoints` (personel), `CatalogOrderLinker` (ingest + onay), `CATALOG_ORDER_NEW` bildirimi |
+| S9 | Ekstre, faturalar, aldıkları | ✅ canlı | #229 | `CatalogCustomerLedgerEndpoints` (statement, invoices, invoices/detail, purchased) |
+| W0 | Web barındırma | ✅ canlı | #229 | `CatalogWeb` (`/assets/{v}`, kabuk, başlıklar, izin listesi); dosyalar W1+ |
+| W1–W5 | Web katalog | ✅ canlı | #229 | Statik SPA `wwwroot/katalog` (giriş, katalog, sepet, talepler, hesabım); `node --test tests/katalog-web/` |
+| P1–P5 | Panel | ✅ canlı | #229 | `/katalog`, ürün sheet'i görselleri, `CatalogAccessSheet`, `/musteri-siparisleri` (yeniden aç dahil) |
+| A1–A7 | Telefon (Siparis_Cepte) | ✅ Play internal 1.5.297 | siparis_cepte#156 | |
+| D1 | DNS + Coolify alan adı | ✅ | | `sipariscepte.appsgo.cloud` → sunucu IP'si (kullanıcı); Coolify centralapi alanı (Claude), geçerli sertifika |
+| D2 | CentralApi dağıtımı | ✅ | #229 | `/health/schema` current, applied 49, pending 0 |
+| D3 | Ortam değişkenleri + gerçek IP doğrulaması | ✅ | | PublicHost/PublicBaseUrl/KnownNetworks=10.0.1.0/24 konteynerde; güvenilmeyen XFF uyarısı yok; 5080 dışa kapalı |
+| D4 | Portal + Admin dağıtımı | ✅ | #229 | |
 | D5 | Test firmasında modül + duman testi (kullanıcı) | ⬜ | | |
-| D6 | Play internal | ⬜ | | |
+| D6 | Play internal | ✅ 1.5.297 | | |
 
 ## Karar günlüğü
 | Tarih | Karar | Gerekçe |
