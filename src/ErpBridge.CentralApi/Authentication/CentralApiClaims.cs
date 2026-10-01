@@ -24,6 +24,15 @@ public static class CentralApiClaims
     /// <summary>The scope of a paired warehouse TV (Faz 49): reads the warehouse board and nothing else.</summary>
     public const string DisplayScope = "display";
 
+    /// <summary>
+    /// Scope of a web catalog customer (docs/GOAL_MUSTERI_KATALOGU.md §5.2): valid only under
+    /// <c>/api/v1/catalog/{code}</c>, never on a staff, agent or admin endpoint.
+    /// </summary>
+    public const string CustomerCatalogScope = "customer-catalog";
+
+    /// <summary>The catalog account's <c>TokenVersion</c> when the token was issued; a newer one ends the session.</summary>
+    public const string TokenVersion = "tv";
+
     /// <summary>The installation id a mobile user token was issued to.</summary>
     public const string DeviceId = "device";
 

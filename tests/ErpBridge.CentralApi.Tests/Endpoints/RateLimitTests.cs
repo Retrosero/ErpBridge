@@ -155,6 +155,34 @@ public class RateLimitTests
         return client.SendAsync(request);
     }
 
+    [Fact]
+    public async Task Catalog_sign_in_allows_ten_tries_a_minute_per_visitor()
+    {
+        using var factory = new ProxiedFactory(IPAddress.Loopback);
+        var client = factory.CreateClient();
+        var tries = 0;
+        Task<HttpResponseMessage> LoginAsync(string forwardedFor)
+        {
+            // A new name each time: the per-name slow-down (LoginThrottle) is not what this counts.
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/catalog/ZZZZ9999/login")
+            {
+                Content = JsonContent.Create(new { username = "kimse" + tries++, password = "parola123" }),
+            };
+            request.Headers.Add("X-Forwarded-For", forwardedFor);
+            request.Headers.Add("X-Katalog", "1");
+            return client.SendAsync(request);
+        }
+
+        for (var i = 0; i < Program.CatalogLoginPermitsPerMinute; i++)
+            (await LoginAsync("198.51.100.7")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var rejected = await LoginAsync("198.51.100.7");
+        rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await rejected.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("RATE_LIMITED");
+        rejected.Headers.RetryAfter.Should().NotBeNull();
+        (await LoginAsync("198.51.100.8")).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "another visitor has a bucket of its own");
+    }
+
     /// <summary>
     /// Variant of <see cref="CentralApiFactory"/> that does NOT strip the
     /// rate limiter. Used by the limiter tests so the limiter is actually

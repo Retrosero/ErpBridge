@@ -16,11 +16,12 @@ push'u, Play production.
 | S3 | Katalog derleme (görünüm, görünürlük, fiyat) | ✅ | | `CatalogViewService` (stok aynası + `Revision`), `CatalogVisibility`, `CatalogPricing` (`ErpSalePricingTest` örnekleri) |
 | S4 | Yönetim uçları | ✅ | | `CustomerCatalogManageEndpoints` (settings, categories, products, accounts); hata kodları `docs/api-contracts.md` |
 | S5 | Görsel uçları | ✅ | | `CustomerCatalogImageEndpoints` (manifest, links, kayıt, ham yükleme, sıra, silme, anonim `catalog/img`); `catalog-upload` / `catalog-public` politikaları |
-| S6 | Müşteri oturumu | ⬜ | | |
-| S7 | Müşteri gezinme + quote | ⬜ | | |
+| S6 | Müşteri oturumu | ✅ | | `CustomerCatalogPublicEndpoints` (info/login/logout/me/password), `__Host-kt_{KOD}` çerezi, `CatalogCustomerPolicy`, cihaz çerezi, `CatalogLoginGate` |
+| S7 | Müşteri gezinme + quote | ✅ | | `CatalogCustomerView`, `CatalogQuote` (categories, products, products/detail, cart/quote) |
 | S8 | Talepler + belge bağı + bildirim | ⬜ | | |
 | S9 | Ekstre, faturalar, aldıkları | ⬜ | | |
-| W0–W5 | Web katalog | ⬜ | | |
+| W0 | Web barındırma | ✅ | | `CatalogWeb` (`/assets/{v}`, kabuk, başlıklar, izin listesi); dosyalar W1+ |
+| W1–W5 | Web katalog | ⬜ | | |
 | P1–P5 | Panel | ⬜ | | |
 | A1–A7 | Telefon (Siparis_Cepte) | ⬜ | | |
 | D1 | Cloudflare + Coolify alan adı (kullanıcı) | ⬜ | | |

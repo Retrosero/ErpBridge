@@ -1347,7 +1347,7 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      **doğrulanmaz**: doğru ve yanlış şifre aynı 429'u alır (bekleme tahmin denemek için kullanılamaz). Başarılı giriş adı temizler;
      son hatadan **ve** son beklemenin bitiminden 15 dk sessizlik adı affeder (tavandaki ad 15 dk'da bir tahmin alır). Hesap hiç
      kilitlenmez. Uygulandığı yerler: `MobileAccountEndpoints.LoginAsync` (personel; telefon + panel) ve `AdminAuthEndpoints.LoginAsync`
-     (e-posta, firma yok). Katalog girişi S6'da `LoginThrottle.CatalogArea` ile bağlanır.
+     (e-posta, firma yok) ve katalog girişi (`LoginThrottle.CatalogArea`, S6).
    - **Tablolar** (03 §2, migration `MusteriKatalogu`): `catalog_settings`, `catalog_category_settings`, `catalog_product_settings`,
      `catalog_accounts`, `catalog_images`, `catalog_image_blobs`, `catalog_orders` — `Domain/CustomerCatalog.cs`. Katalog hesapları
      **koltuk değildir**, `mobile_users`'a girmez, personel oturumu açamaz.
@@ -1369,6 +1369,32 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      değişiklik yoksa revizyon artmaz. Anonim `GET /api/v1/catalog/img/{id}/{s|l}` tahmin edilemez kimlikle, `immutable`
      önbellekle ve yalnız modül açıkken sunulur. Hız politikaları `catalog-upload` (kullanıcı başına 300/dk) ve `catalog-public`
      (IP başına 600/dk, `ClientIpPartition`). Ayrıntı: `docs/api-contracts.md` "Müşteri kataloğu yönetimi".
-   - Testler: `LoginThrottleTests`, `ForwardedHeadersSetupTests`, `RateLimitTests` (XFF bölümleri, güvenilmeyen atlama, /64),
-     `LoginThrottleEndpointTests`, `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
-     `PermissionEndpointsRelationalTests`, `PermissionResolverTests`, `CustomerCatalogImagesRelationalTests`.
+   - **Müşteri oturumu (S6)** `Endpoints/CustomerCatalogPublicEndpoints` (`/api/v1/catalog/{code}`): token
+     `JwtIssuer.IssueForCatalogAccount` (`scope=customer-catalog`, `tv` = hesabın `TokenVersion`'ı) yalnız HttpOnly çerezde
+     (`CustomerCatalog/CatalogCookies`: `__Host-kt_{KOD}`, Secure, SameSite=Strict, `Path=/`; JwtBearer `OnMessageReceived` çerezi
+     yalnız o kodun yolunda ve `Authorization` yokken okur). `CatalogCustomerPolicy` = kapsam + `CatalogAccountStateRequirement`
+     (`Authentication/CatalogAccountStateHandler`): her istekte rota kodu, hesap (silinmemiş, aktif, `tv`), firma/modül/`IsEnabled`
+     (`CatalogCustomerAccess.IsOpenAsync`) ve abonelik; ret `CatalogAccountStateHandler.DenialItemKey` ile **mevcut**
+     `MobileUserAuthorizationResultHandler` üzerinden yazılır (ikinci result handler kaydı telefonların `SESSION_REVOKED`
+     gövdelerini bozar). Oturum `CatalogSession.Of(http)` ile uçlara geçer (hesap ve firma yeniden okunmaz). Katalog token'ı başka
+     hiçbir politikadan geçmez. Değiştirici her istek (giriş dahil) `X-Katalog: 1` + `Origin == https://{PublicHost}` (varsa) ister
+     (`403 CSRF_REJECTED`); bütün yanıtlar `private, no-store`. Giriş: firma başına 300/dk kova ve aynı anda en çok 8 BCrypt
+     (`CatalogLoginGate`, bellek içi), IP başına 10/dk (`catalog-login`), ad yavaşlatıcısı (`LoginThrottle.CatalogArea`), ortak
+     sahte hash `Security/PasswordHashing.Dummy` (personel girişiyle paylaşılır). İmzalı cihaz çerezi `__Host-kt_dev` (hesap +
+     bitiş, `Jwt:SigningKey`'den türetilmiş HMAC) taşıyan tarayıcı o hesabın kendi sayacını kullanır: yabancının hataları
+     müşteriyi dışarıda bırakmaz. Müşteri kendi şifresini değiştirince `TokenVersion` +1, kendi tarayıcısına yeni çerez.
+   - **Müşteri gezinme (S7)** `CustomerCatalog/CatalogCustomerView` (hesabın görünürlüğü + etkin listesinde fiyatı olan ürünler,
+     iskonto `noDiscount`'ta 0) ve `CatalogQuote` (satır sorunları `NOT_AVAILABLE|OUT_OF_STOCK|CARTON_MULTIPLE|INVALID_QUANTITY`;
+     görünmeyen ürün hakkında hiçbir bilgi dönmez; toplamlar yalnız sorunsuz satırlar). Arama `CatalogProduct.Matches`: tr-TR
+     `IgnoreCase | IgnoreNonSpace` (ç ğ ı ö ş ü Türkçede ayrı harf olarak kalır; "kagit" "kâğıt"ı bulmaz).
+   - **Web barındırma (W0)** `CustomerCatalog/CatalogWeb`: yalnız `Host == CustomerCatalog:PublicHost` iken (boşsa hiç yok);
+     `UseRouting`'den ve hız sınırından önce `/assets/{v}/…` (`v` = WebRoot dosyalarının SHA-256'sı, ilk 10 hex, açılışta;
+     `immutable`; yanlış `v` `404 no-store`), `/robots.txt`, `/favicon.svg` ve izin listesi (o host'ta yalnız `/api/v1/catalog/**`,
+     `/health*` ve kabuk yolları); kabuk `/{code}`, `/{code}/{**rest}` `RequireHost` uçları (`%V%`, `%TITLE%`, 5 dk başlık
+     önbelleği, bilinmeyen kod aynı sayfa 404). Bu host'ta her yanıt CSP, `X-Robots-Tag: noindex`, `Referrer-Policy`, HSTS,
+     `nosniff` taşır. Web dosyaları `wwwroot/katalog` (Web SDK publish'e kendiliğinden alır; Dockerfile değişmez).
+   - Testler: `LoginThrottleTests`, `ForwardedHeadersSetupTests`, `RateLimitTests` (XFF bölümleri, güvenilmeyen atlama, /64,
+     `catalog-login`), `LoginThrottleEndpointTests`, `RuntimeConfigurationTests`, `CustomerCatalogFoundationRelationalTests`,
+     `PermissionEndpointsRelationalTests`, `PermissionResolverTests`, `CustomerCatalogImagesRelationalTests`,
+     `CustomerCatalogLoginRelationalTests`, `CustomerCatalogBrowseRelationalTests`, `CatalogWebTests` (fixture
+     `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.

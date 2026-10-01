@@ -88,6 +88,19 @@ public sealed class MobileUserAuthorizationResultHandler : Microsoft.AspNetCore.
             await context.Response.WriteAsJsonAsync(new Contracts.ApiError { ErrorCode = code, Message = "Mobile user is not allowed to work: " + code });
             return;
         }
+        // The web catalog's customers (CatalogAccountStateHandler) go through this same handler: one may be registered.
+        if (!authorizeResult.Succeeded && context.Items.TryGetValue(CatalogAccountStateHandler.DenialItemKey, out var catalogRaw) && catalogRaw is string catalogCode)
+        {
+            context.Response.StatusCode = CatalogAccountStateHandler.StatusOf(catalogCode);
+            context.Response.Headers.CacheControl = "private, no-store";
+            await context.Response.WriteAsJsonAsync(new Contracts.ApiError
+            {
+                ErrorCode = catalogCode,
+                Message = CatalogAccountStateHandler.MessageOf(catalogCode),
+                TraceId = LogCenter.CorrelationId.Of(context),
+            });
+            return;
+        }
         await _default.HandleAsync(next, context, policy, authorizeResult);
     }
 }

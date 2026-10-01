@@ -38,11 +38,16 @@ public sealed record CatalogProduct(
 
     private static readonly CompareInfo Turkish = CultureInfo.GetCultureInfo("tr-TR").CompareInfo;
 
-    /// <summary>A search hit: <paramref name="query"/> in the name, code, brand or a barcode, Turkish case ignored ("ışık" finds "IŞIK").</summary>
+    private const CompareOptions SearchOptions = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
+
+    /// <summary>
+    /// A search hit: <paramref name="query"/> in the name, code, brand or a barcode, Turkish case and circumflexes
+    /// ignored ("ışık" finds "IŞIK", "kağıt" finds "Kâğıt"); ç, ğ, ı, ö, ş, ü stay letters of their own, as in Turkish.
+    /// </summary>
     public bool Matches(string query) =>
-        Turkish.IndexOf(Name, query, CompareOptions.IgnoreCase) >= 0
-        || Turkish.IndexOf(Code, query, CompareOptions.IgnoreCase) >= 0
-        || (Brand is { } brand && Turkish.IndexOf(brand, query, CompareOptions.IgnoreCase) >= 0)
+        Turkish.IndexOf(Name, query, SearchOptions) >= 0
+        || Turkish.IndexOf(Code, query, SearchOptions) >= 0
+        || (Brand is { } brand && Turkish.IndexOf(brand, query, SearchOptions) >= 0)
         || Barcodes.Any(b => b.Contains(query, StringComparison.OrdinalIgnoreCase));
 }
 

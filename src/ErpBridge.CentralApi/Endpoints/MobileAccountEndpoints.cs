@@ -17,12 +17,6 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// </summary>
 public static class MobileAccountEndpoints
 {
-    /// <summary>
-    /// Verified against when the username or tenant is unknown, so a failed sign-in
-    /// costs the same BCrypt work either way and does not reveal which part was wrong.
-    /// </summary>
-    private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("erpbridge-timing-equalizer");
-
     public static IEndpointRouteBuilder MapMobileAccountEndpoints(this IEndpointRouteBuilder routes)
     {
         var anonymous = routes.MapGroup("/api/v1/android/account")
@@ -78,7 +72,7 @@ public static class MobileAccountEndpoints
             ? null
             : await db.MobileUsers.Include(u => u.Roles)
                 .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Username == username && u.DeletedAtUtc == null, ct);
-        var passwordOk = BCrypt.Net.BCrypt.Verify(body.Password, user?.PasswordHash ?? DummyPasswordHash);
+        var passwordOk = BCrypt.Net.BCrypt.Verify(body.Password, user?.PasswordHash ?? PasswordHashing.Dummy);
         if (tenant is null || user is null || !passwordOk)
         {
             throttle.RecordFailure(LoginThrottle.StaffArea, tenantCode, body.Username);

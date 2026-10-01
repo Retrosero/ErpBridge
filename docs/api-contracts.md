@@ -385,6 +385,63 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
   `Cross-Origin-Resource-Policy: same-site`. `s` yoksa `l`; bağlantı görseli, bilinmeyen kimlik ya da firmanın modülü kapalıysa
   `404 NOT_FOUND` (önbellek başlıksız).
 
+## Müşteri kataloğu, müşteri tarafı — `/api/v1/catalog/{code}` (GOAL_MUSTERI_KATALOGU §5.2, §6, §7)
+
+Firmanın carileri için; `{code}` firma kodu (`^[A-Za-z0-9]{4,16}$`, harf büyüklüğü fark etmez). Alanlar sözleşme belgesinde;
+burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
+
+- **Oturum:** JWT gövdede dönmez; `__Host-kt_{KOD}` çerezi (HttpOnly, Secure, SameSite=Strict, `Path=/`, Domain yok).
+  "Beni hatırla" (`remember`) → `Max-Age` 30 gün, yoksa oturum çerezi + 12 saatlik token. Token: `sub` hesap, `tenant`,
+  `scope=customer-catalog`, `tv` (hesabın `TokenVersion`'ı), `jti`. JwtBearer çerezi yalnız `/api/v1/catalog/{code}/…` yolunda,
+  `Authorization` başlığı yokken ve yoldaki kodun çerezinden okur. Bu kapsam başka hiçbir politikadan geçmez (personel uçlarında
+  403); personel token'ı katalogda `401 INVALID_TOKEN`.
+- **Her istekte** (`CatalogCustomerPolicy` + `CatalogAccountStateRequirement`): token katalog token'ı değil, firması yok ya da
+  yoldaki kod token'ın firmasının değil → `401 INVALID_TOKEN`; hesap silinmiş ya da `tv` eski → `401 SESSION_REVOKED`; hesap
+  pasif → `403 ACCOUNT_INACTIVE`; firma pasif, modül kapalı ya da `IsEnabled=false` → `403 CATALOG_UNAVAILABLE`; abonelik
+  → `403 SUBSCRIPTION_REQUIRED|SUBSCRIPTION_EXPIRED`. Gövde `ApiError` (Türkçe mesaj). Hız: hesap başına 120/dk (`per-catalog-account`).
+- **CSRF:** her değiştirici istek (giriş dahil) `X-Katalog: 1` taşımalı; tarayıcı `Origin` gönderiyorsa `https://{PublicHost}`
+  ile birebir aynı olmalı → yoksa `403 CSRF_REJECTED`. `PublicHost` boşken yalnız başlık aranır.
+- **Önbellek:** bu gruptaki her yanıt `Cache-Control: private, no-store`.
+- **`GET info`** (anonim, `catalog-public`): `{companyName, code}`; firma yok/pasif, modül kapalı ya da yayında değil →
+  `404 CATALOG_NOT_FOUND`.
+- **`POST login`** (anonim, `catalog-login`: IP başına 10/dk) `{username, password, remember}` → `{me}` + çerezler. Eksik alan
+  `400 INVALID_REQUEST`. Sıra: firma başına 300/dk kova (`CatalogLoginGate`, aşılırsa `429 RATE_LIMITED`) → ad yavaşlatıcısı
+  (`LoginThrottle` alan `catalog`; beklerken şifre denetlenmez, `429`) → BCrypt (hesap yoksa ortak sahte hash; aynı anda en
+  çok 8) → bilinmeyen firma/kullanıcı/yanlış şifre tek cevap `401 INVALID_CREDENTIALS` → ancak şifre doğruysa
+  `403 ACCOUNT_INACTIVE`, `403 CATALOG_UNAVAILABLE`, `403 SUBSCRIPTION_*`. Başarı `LastLoginAtMs` yazar ve imzalı
+  **cihaz çerezi** `__Host-kt_dev` (180 gün; hesap kimliği + bitiş, `Jwt:SigningKey`'den türetilmiş HMAC) verir: bu çerezi o
+  hesap için taşıyan tarayıcı başkalarının hatalarıyla yavaşlamaz (kendi sayacı vardır).
+- **`POST logout`** → 204, yalnız bu tarayıcının oturum çerezini siler (cihaz çerezi kalır).
+- **`GET me`:** `priceList` etkin liste (`account.PriceListNo ?? varsayılan`), firmada hiç fiyat yoksa null; `balance` yalnız
+  `features.statement` açıkken (panelin gösterdiği bakiye: ERP'li firmada hareket toplamı), cari aynada yoksa null.
+- **`POST password {current, next}`** → 204: yanlış `current` `400 INVALID_CREDENTIALS` (ad yavaşlatıcısına sayılır), `next`
+  8–72 bayt değilse `400 INVALID_PASSWORD`. `TokenVersion` +1 (diğer bütün oturumlar düşer); bu tarayıcıya aynı türde
+  (hatırlanan/oturum) yeni çerez verilir.
+- **Görünürlük ve fiyat** (`CatalogCustomerView`): ürün, hesabın görünürlüğü izin veriyorsa ve hesabın etkin listesinde
+  fiyatı varsa görünür (başka listeye düşülmez). `price {list, net, discountPercent, includesVat}`: `discountPercent` hesabın
+  iskontosu, `noDiscount` üründe 0; `net = R2(list × (1 − d/100))`; `includesVat` listenin. `box {qty, only}` etkin koli ≥ 2
+  ise, yoksa null. `thumb` ilk görsel (göreli `/api/v1/catalog/img/…` ya da https bağlantı).
+- **`GET categories`:** yalnız görünür ürünü olan kategoriler, katalog sırasında; `id` = SHA-256(kategori anahtarı) ilk 12 hex.
+- **`GET products?category=&q=&page=&pageSize=`:** `pageSize` varsayılan 48, 1–60'a kırpılır; `page` ≥ 1. `category` bilinmeyen
+  kimlik → boş liste. `q` kırpılır; 2 karakterden kısaysa yok sayılır; ad/kod/marka tr-TR harf ve şapka duyarsız
+  (`IgnoreCase | IgnoreNonSpace`; ç ğ ı ö ş ü ayrı harf kalır), barkod içerir.
+- **`GET products/detail?key=`** (`key` = stok kodu, harf büyüklüğü fark etmez): görünmeyen ya da olmayan ürün
+  `404 NOT_FOUND`; `images[{thumb, full}]` sıralı.
+- **`POST cart/quote {lines[{key, quantity}]}`:** `lines` yok `400 INVALID_BODY`, 200'den fazla satır `400 INVALID_BODY`.
+  Satır başına sunucu fiyatı (`CatalogPricing`, telefonun `ErpSalePricing`'i); `issue`: görünmeyen/olmayan → `NOT_AVAILABLE`
+  (ürün hakkında hiçbir bilgi dönmez: `code/name/unit/box/price/vatRate` null, tutarlar 0); miktar tam sayı değil, ≤ 0 ya da
+  100000'den büyük → `INVALID_QUANTITY` (tutarlar 0); stokta yok → `OUT_OF_STOCK`; yalnız-koli üründe koli katı değil →
+  `CARTON_MULTIPLE` (bu ikisi fiyatlanır). `totals` yalnız sorunsuz satırların toplamıdır.
+- **Web barındırma** (`CustomerCatalog/CatalogWeb`, yalnız `Host == CustomerCatalog:PublicHost`; boşsa hiçbiri yok):
+  `/assets/{v}/…` dosyalar (`CustomerCatalog:WebRoot`; `v` = bütün dosyaların SHA-256'sının ilk 10 hex'i, açılışta bir kez;
+  `Cache-Control: public, max-age=31536000, immutable`; yanlış `v` ya da olmayan dosya `404 no-store`; yönlendirme ve hız
+  sınırından önce). Kabuk `GET /{code}` ve `/{code}/{**rest}`: `index.html` (`%V%` → v, `%TITLE%` → "{Firma} · Müşteri
+  Kataloğu", HTML-encode, 5 dk önbellek), `no-cache`; bilinmeyen/kapalı kodda aynı sayfa genel başlıkla `404`.
+  `/robots.txt` (`Disallow: /`), `/favicon.svg`. Bu host'ta yalnız `/api/v1/catalog/**` ve `/health*` geçer, gerisi `404`.
+  Her yanıtta CSP (`default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self';
+  object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`), `X-Robots-Tag: noindex`,
+  `Referrer-Policy: same-origin`, `Strict-Transport-Security: max-age=31536000`, `X-Content-Type-Options: nosniff`.
+
 ## Hata modeli
 
 ```json
@@ -404,7 +461,7 @@ Yaygın kodlar:
 - `RATE_LIMITED` — HTTP 429. Hız sınırının ve giriş yavaşlatıcının her reddi bu gövdeyi taşır; bekleme biliniyorsa
   `Retry-After` (saniye) başlığı da gelir (GOAL_MUSTERI_KATALOGU §5).
 
-**Giriş yavaşlatıcı** (`/api/v1/android/account/login`, `/api/v1/admin/login`; bilgi bankası kural 36): aynı ad (firma kodu +
+**Giriş yavaşlatıcı** (`/api/v1/android/account/login`, `/api/v1/admin/login`, `/api/v1/catalog/{code}/login`; bilgi bankası kural 36): aynı ad (firma kodu +
 kullanıcı adı, Admin'de e-posta) 15 dakikada 5 kez yanlış girilirse 60 sn bekler; her yeni hata beklemeyi ikiye katlar (en çok
 15 dk). Beklerken şifre denetlenmez, doğru şifre de `429 RATE_LIMITED` alır. Hesap kilitlenmez; başarılı giriş sayacı sıfırlar.
 

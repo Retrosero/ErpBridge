@@ -27,6 +27,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- CatalogWebTests: a stand-in for the web catalog's files (the real ones live under the API's wwwroot/katalog). -->
+    <None Update="CustomerCatalog\WebFixture\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Microsoft.Extensions.DependencyInjection" />
     <Using Include="Xunit" />
   </ItemGroup>

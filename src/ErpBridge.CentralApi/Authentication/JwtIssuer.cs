@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Options;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -20,6 +21,9 @@ public sealed record IssuedAdminToken(string Token, Guid AdminId, DateTimeOffset
 
 /// <summary>Result of a mobile user sign-in token issuance.</summary>
 public sealed record IssuedMobileUserToken(string Token, Guid UserId, Guid TenantId, DateTimeOffset ExpiresAtUtc);
+
+/// <summary>A web catalog customer's token; <see cref="Persistent"/> = "remember me" (a cookie that outlives the browser).</summary>
+public sealed record IssuedCatalogToken(string Token, DateTimeOffset ExpiresAtUtc, TimeSpan Lifetime, bool Persistent);
 
 /// <summary>
 /// Mints HS256 JWTs for registered agents and admins. Signing/validation keys
@@ -50,6 +54,14 @@ public interface IJwtIssuer
     /// </summary>
     IssuedMobileUserToken IssueForDisplay(Guid displayDeviceId, Guid tenantId);
 
+    /// <summary>
+    /// Issue a token for a web catalog customer (GOAL_MUSTERI_KATALOGU §5.2): <c>sub=accountId</c>, <c>tenant</c>,
+    /// <c>scope=customer-catalog</c>, <c>tv</c> (the account's token version, so a password change ends every
+    /// session) and <c>jti</c>. <c>CustomerCatalog:TokenDays</c> with "remember me", else
+    /// <c>CustomerCatalog:SessionHours</c>.
+    /// </summary>
+    IssuedCatalogToken IssueForCatalogAccount(Guid accountId, Guid tenantId, int tokenVersion, bool remember);
+
     /// <summary>Validate a token. Returns <c>null</c> when invalid/expired.</summary>
     ClaimsPrincipal? Validate(string token);
 }
@@ -62,10 +74,12 @@ public interface IJwtIssuer
 public sealed class JwtIssuer : IJwtIssuer
 {
     private readonly IOptionsMonitor<JwtOptions> _options;
+    private readonly IOptionsMonitor<CustomerCatalogOptions>? _catalog;
 
-    public JwtIssuer(IOptionsMonitor<JwtOptions> options)
+    public JwtIssuer(IOptionsMonitor<JwtOptions> options, IOptionsMonitor<CustomerCatalogOptions>? catalog = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _catalog = catalog;
     }
 
     /// <inheritdoc />
@@ -172,6 +186,27 @@ public sealed class JwtIssuer : IJwtIssuer
         var creds = new SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(opts.Issuer, opts.Audience, claims, DateTime.UtcNow, expires.UtcDateTime, creds);
         return new IssuedMobileUserToken(new JwtSecurityTokenHandler().WriteToken(token), displayDeviceId, tenantId, expires);
+    }
+
+    /// <inheritdoc />
+    public IssuedCatalogToken IssueForCatalogAccount(Guid accountId, Guid tenantId, int tokenVersion, bool remember)
+    {
+        var opts = _options.CurrentValue;
+        var keyBytes = EnsureKey(opts);
+        var catalog = _catalog?.CurrentValue ?? new CustomerCatalogOptions();
+        var lifetime = remember ? TimeSpan.FromDays(catalog.TokenDays) : TimeSpan.FromHours(catalog.SessionHours);
+        var expires = DateTimeOffset.UtcNow.Add(lifetime);
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, accountId.ToString()),
+            new Claim(CentralApiClaims.TenantId, tenantId.ToString()),
+            new Claim(CentralApiClaims.Scope, CentralApiClaims.CustomerCatalogScope),
+            new Claim(CentralApiClaims.TokenVersion, tokenVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+        };
+        var creds = new SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(opts.Issuer, opts.Audience, claims, DateTime.UtcNow, expires.UtcDateTime, creds);
+        return new IssuedCatalogToken(new JwtSecurityTokenHandler().WriteToken(token), expires, lifetime, remember);
     }
 
     private static byte[] EnsureKey(JwtOptions opts)

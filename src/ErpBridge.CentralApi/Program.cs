@@ -95,6 +95,23 @@ public partial class Program
     /// <summary>The web catalog's anonymous calls (pictures, company info): per client IP, /64 for IPv6.</summary>
     public const string CatalogPublicRateLimitPolicy = "catalog-public";
 
+    /// <summary>
+    /// The web catalog's sign-in: per client IP (/64 for IPv6). The per-company budget and the cap on concurrent
+    /// BCrypt work are <see cref="ErpBridge.CentralApi.CustomerCatalog.CatalogLoginGate"/>'s.
+    /// </summary>
+    public const string CatalogLoginRateLimitPolicy = "catalog-login";
+
+    /// <summary>A signed-in web catalog customer: per account (JWT <c>sub</c>).</summary>
+    public const string PerCatalogAccountRateLimitPolicy = "per-catalog-account";
+
+    /// <summary>
+    /// A web catalog customer (<c>scope=customer-catalog</c>, docs/GOAL_MUSTERI_KATALOGU.md §5.2) whose account,
+    /// company, module, published switch and subscription still hold (<see cref="CatalogAccountStateRequirement"/>).
+    /// </summary>
+    public const string CatalogCustomerPolicy = "CatalogCustomer";
+
+    public const int CatalogLoginPermitsPerMinute = 10;
+
     /// <summary>Partition key prefix used for anonymous (pre-auth) calls.</summary>
     public const string RateLimitAnonymousPartition = "anon";
 
@@ -307,6 +324,7 @@ public partial class Program
         // Müşteri kataloğu (docs/GOAL_MUSTERI_KATALOGU.md): per-name sign-in slow-down, shared by the staff,
         // Admin and catalog sign-ins. In memory: one CentralApi container.
         builder.Services.AddSingleton(sp => new LoginThrottle(sp.GetService<TimeProvider>() ?? TimeProvider.System));
+        builder.Services.AddSingleton<ErpBridge.CentralApi.CustomerCatalog.CatalogLoginGate>();
         builder.Services.Configure<ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions>(cfg.GetSection(ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions.SectionName));
         // Each company's built catalog, over the shared stock mirror; in memory like the mirror itself.
         builder.Services.AddSingleton(sp => new ErpBridge.CentralApi.CustomerCatalog.CatalogViewService(
@@ -383,6 +401,7 @@ public partial class Program
         });
         services.AddSingleton<IJwtIssuer, JwtIssuer>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, MobileUserStateHandler>();
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, CatalogAccountStateHandler>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, MobileUserAuthorizationResultHandler>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -399,6 +418,11 @@ public partial class Program
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.FromSeconds(30),
+                };
+                // The web catalog's session is an HttpOnly cookie, read only for its own /api/v1/catalog/{code}/ paths.
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = ErpBridge.CentralApi.CustomerCatalog.CatalogCookies.ReadSessionAsync,
                 };
             })
             // API-key scheme sits alongside JWT. IngestEndpoints authorizes
@@ -468,6 +492,13 @@ public partial class Program
                     ctx.User.HasClaim("scope", "apikey") ||
                     ctx.User.HasClaim("scope", CentralApiClaims.MobileUserScope))
                 .AddRequirements(new MobileUserStateRequirement { PhoneClientOnly = true }));
+
+            // A web catalog customer only; its token is refused everywhere else (no other policy accepts its scope).
+            options.AddPolicy(CatalogCustomerPolicy, policy => policy
+                .RequireAuthenticatedUser()
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                .RequireClaim("scope", CentralApiClaims.CustomerCatalogScope)
+                .AddRequirements(new CatalogAccountStateRequirement()));
 
             options.AddPolicy(AgentOrApiKeyPolicy, policy => policy
                 .RequireAuthenticatedUser()
@@ -655,6 +686,30 @@ public partial class Program
                 });
             });
 
+            opt.AddPolicy(CatalogLoginRateLimitPolicy, httpContext =>
+            {
+                var remoteIp = ClientIpPartition.Of(httpContext.Connection.RemoteIpAddress);
+                return RateLimitPartition.GetFixedWindowLimiter("catalog-login:" + remoteIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = CatalogLoginPermitsPerMinute,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
+            opt.AddPolicy(PerCatalogAccountRateLimitPolicy, httpContext =>
+            {
+                var accountId = httpContext.User.FindFirst("sub")?.Value ?? "anonymous";
+                return RateLimitPartition.GetFixedWindowLimiter("catalog-account:" + accountId, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            });
+
             opt.AddPolicy(PerDisplayRateLimitPolicy, httpContext =>
             {
                 var displayId = httpContext.User.FindFirst("sub")?.Value ?? "unknown";
@@ -724,6 +779,11 @@ public partial class Program
             app.UseSwagger();
             app.UseSwaggerUI();
         }
+
+        // The web catalog's host (CustomerCatalog:PublicHost): its files go out before routing and the rate limiter,
+        // and nothing but the customer API, health and the catalog pages is reachable there.
+        var catalogWeb = ErpBridge.CentralApi.CustomerCatalog.CatalogWeb.Create(app);
+        catalogWeb?.UseFiles(app);
 
         app.UseRouting();
         app.UseCors(ProductionCorsPolicy);
@@ -814,6 +874,8 @@ public partial class Program
         app.MapMobileUserPreferencesEndpoints();
         app.MapCustomerCatalogManageEndpoints();
         app.MapCustomerCatalogImageEndpoints();
+        app.MapCustomerCatalogPublicEndpoints();
+        catalogWeb?.MapShell(app);
         app.MapPortalTargetEndpoints();
         app.MapPortalRouteEndpoints();
         app.MapPortalEndpoints();
