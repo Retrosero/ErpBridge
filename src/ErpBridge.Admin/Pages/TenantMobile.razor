@@ -55,6 +55,11 @@ else
             <strong>@_overview.Devices.Count(d => d.IsActive)</strong>
             <small>@_overview.Devices.Count(d => !d.IsActive) engelli</small>
         </div>
+        <div class="admin-stat @StorageStatClass" id="storage-stat">
+            <span class="admin-stat__label">Depolama</span>
+            <strong class="storage-usage">@(_storage is null ? "—" : $"{StorageTexts.Size(_storage.UsedBytes)} / {StorageTexts.Size(_storage.QuotaBytes)}")</strong>
+            <small>@StorageStatText</small>
+        </div>
     </div>
 
     <section class="admin-panel seat-panel">
@@ -82,6 +87,45 @@ else
             <label class="seat-check"><input id="module-customer-catalog" type="checkbox" @bind="_customerCatalog" /> <span>Müşteri kataloğu (web; carilere özel katalog ve sipariş talebi)</span></label>
             <button id="modules-save" class="btn btn-outline-primary" @onclick="SaveModulesAsync" disabled="@(_busy || !ModulesChanged)">Kaydet</button>
         </div>
+    </section>
+
+    <section class="admin-panel seat-panel" id="storage">
+        <div class="admin-panel__header">
+            <div><h2>Depolama</h2><p>Firmanın resimleri (ürün, XML, katalog, banner, görev, gider/araç fişi) Cloudflare R2'de tek kotayla durur. Boş kota varsayılanı kullanır; kota kullanılanın altına inerse yeni yükleme durur.</p></div>
+        </div>
+        @if (_storageError is not null)
+        {
+            <div class="admin-panel__body"><p class="seat-hint" id="storage-error">@_storageError</p></div>
+        }
+        else if (_storage is not null)
+        {
+            <div class="admin-panel__body seat-form">
+                <label class="seat-check"><input id="storage-default" type="checkbox" @bind="_quotaDefault" /> <span>Varsayılan kota (@StorageTexts.Size(_storage.DefaultQuotaBytes))</span></label>
+                <label><span>Firmaya özel kota <em>(GB)</em></span><input id="storage-quota-gb" class="form-control" type="number" min="0" step="0.5" disabled="@_quotaDefault" @bind="_quotaGb" /></label>
+                <button id="storage-save" class="btn btn-outline-primary" @onclick="SaveQuotaAsync" disabled="@(_busy || (!_quotaDefault && _quotaGb is not > 0))">Kotayı kaydet</button>
+                <button id="storage-recount" class="btn btn-outline-secondary" @onclick="RecountStorageAsync" disabled="@_busy">Yeniden hesapla</button>
+            </div>
+            <div class="admin-panel__body">
+                <ul class="storage-areas">
+                    @foreach (var area in _storage.Areas.Where(a => a.FileCount > 0))
+                    {
+                        <li class="storage-area" data-area="@area.Area"><span>@StorageTexts.Area(area.Area)</span> <strong>@StorageTexts.Size(area.UsedBytes)</strong> <small>(@area.FileCount dosya)</small></li>
+                    }
+                    @if (_storage.TrashedCount > 0)
+                    {
+                        <li class="storage-area" data-area="trash"><span>Çöp kutusu (kotaya sayılmaz)</span> <strong>@StorageTexts.Size(_storage.TrashedBytes)</strong> <small>(@_storage.TrashedCount dosya)</small></li>
+                    }
+                </ul>
+                @if (_storage.Areas.All(a => a.FileCount == 0) && _storage.TrashedCount == 0)
+                {
+                    <p class="seat-hint" id="storage-empty">Henüz depolanan dosya yok.</p>
+                }
+                @if (_storage.RecountedAtMs is { } recounted)
+                {
+                    <p class="seat-hint">Son yeniden hesaplama: @DateTimeOffset.FromUnixTimeMilliseconds(recounted).LocalDateTime.ToString("dd MMM yyyy, HH:mm")</p>
+                }
+            </div>
+        }
     </section>
 
     <section class="admin-panel seat-panel">
@@ -355,6 +399,26 @@ else
     private bool ModulesChanged => _overview is { } overview
         && (_xmlImport != overview.Modules.Contains(XmlImportModule) || _customerCatalog != overview.Modules.Contains(CustomerCatalogModule));
     private ApprovalRequestDto[] _approvals = Array.Empty<ApprovalRequestDto>();
+
+    /// <summary>GOAL_DEPOLAMA_R2 S8: loaded on its own like the approvals, so a failing call never hides the page.</summary>
+    private TenantStorageDto? _storage;
+    private string? _storageError;
+    private bool _quotaDefault = true;
+    private decimal? _quotaGb;
+
+    private string StorageStatClass => _storage is null ? "" : StorageTexts.Percent(_storage.UsedBytes, _storage.QuotaBytes) switch
+    {
+        >= 95 => "admin-stat--danger",
+        >= 80 => "admin-stat--warning",
+        _ => "",
+    };
+
+    private string StorageStatText => _storage switch
+    {
+        null => _storageError is null ? "Yükleniyor…" : "Alınamadı",
+        { Available: false } => "Depo ayarlı değil; yükleme kapalı",
+        _ => $"%{StorageTexts.Percent(_storage.UsedBytes, _storage.QuotaBytes)} dolu · {(_storage.CustomQuotaBytes is null ? "varsayılan kota" : "firmaya özel kota")}",
+    };
     private string _approvalStatus = "all";
     private string? _approvalsError;
 
@@ -390,7 +454,47 @@ else
         }
         catch (Exception ex) { _error = MobileSeatMessages.For(ex); }
         finally { _loading = false; }
-        if (_overview is not null) await LoadApprovalsAsync(_approvalStatus);
+        if (_overview is not null)
+        {
+            await LoadApprovalsAsync(_approvalStatus);
+            await LoadStorageAsync();
+        }
+    }
+
+    private async Task LoadStorageAsync()
+    {
+        try
+        {
+            ShowStorage(await Api.GetTenantStorageAsync(TenantId));
+            _storageError = null;
+        }
+        catch (Exception ex)
+        {
+            _storage = null;
+            _storageError = "Depolama bilgisi alınamadı: " + MobileSeatMessages.For(ex);
+        }
+    }
+
+    private void ShowStorage(TenantStorageDto storage)
+    {
+        _storage = storage;
+        _quotaDefault = storage.CustomQuotaBytes is null;
+        _quotaGb = storage.CustomQuotaBytes is { } custom ? Math.Round((decimal)custom / StorageTexts.GigaByte, 2) : null;
+    }
+
+    private Task SaveQuotaAsync()
+    {
+        long? quota = _quotaDefault ? null : (long)Math.Round((_quotaGb ?? 0) * StorageTexts.GigaByte);
+        return RunAsync(() => Api.SetTenantStorageQuotaAsync(TenantId, quota),
+            quota is { } bytes ? $"Depolama kotası {StorageTexts.Size(bytes)} oldu." : "Depolama kotası varsayılana döndü.");
+    }
+
+    private async Task RecountStorageAsync()
+    {
+        TenantStorageRecountDto? recount = null;
+        await RunAsync(async () => recount = await Api.RecountTenantStorageAsync(TenantId), "Depolama yeniden hesaplandı.");
+        if (recount is not null && _error is null)
+            _notice = $"Depolama yeniden hesaplandı: {StorageTexts.Size(recount.UsedBytesBefore)} → {StorageTexts.Size(recount.UsedBytesAfter)}.";
     }
 
     private Task OnApprovalStatusChangedAsync(ChangeEventArgs e) => LoadApprovalsAsync(e.Value?.ToString() ?? "all");

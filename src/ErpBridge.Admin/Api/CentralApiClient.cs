@@ -534,6 +534,78 @@ public sealed class UpdateMobileUserRequest
     [JsonPropertyName("canManageApprovalRules"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? CanManageApprovalRules { get; set; }
 }
 
+// ----- GOAL_DEPOLAMA_R2 S8: firma depolaması -----
+
+public sealed class StorageAreaUsageDto
+{
+    [JsonPropertyName("area")] public string Area { get; set; } = string.Empty;
+    [JsonPropertyName("usedBytes")] public long UsedBytes { get; set; }
+    [JsonPropertyName("fileCount")] public int FileCount { get; set; }
+}
+
+/// <summary><c>GET /api/v1/admin/tenants/{id}/storage</c>.</summary>
+public sealed class TenantStorageDto
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+
+    /// <summary>False while the server has no R2 settings: uploads answer 503.</summary>
+    [JsonPropertyName("available")] public bool Available { get; set; }
+    [JsonPropertyName("usedBytes")] public long UsedBytes { get; set; }
+    [JsonPropertyName("reservedBytes")] public long ReservedBytes { get; set; }
+    [JsonPropertyName("quotaBytes")] public long QuotaBytes { get; set; }
+    [JsonPropertyName("defaultQuotaBytes")] public long DefaultQuotaBytes { get; set; }
+    [JsonPropertyName("customQuotaBytes")] public long? CustomQuotaBytes { get; set; }
+    [JsonPropertyName("recountedAtMs")] public long? RecountedAtMs { get; set; }
+    [JsonPropertyName("areas")] public StorageAreaUsageDto[] Areas { get; set; } = Array.Empty<StorageAreaUsageDto>();
+    [JsonPropertyName("trashedBytes")] public long TrashedBytes { get; set; }
+    [JsonPropertyName("trashedCount")] public int TrashedCount { get; set; }
+}
+
+public sealed class SetTenantStorageQuotaRequest
+{
+    /// <summary>Always written (null = back to the default quota).</summary>
+    [JsonPropertyName("quotaBytes")] public long? QuotaBytes { get; set; }
+}
+
+public sealed class TenantStorageRecountDto
+{
+    [JsonPropertyName("usedBytesBefore")] public long UsedBytesBefore { get; set; }
+    [JsonPropertyName("usedBytesAfter")] public long UsedBytesAfter { get; set; }
+    [JsonPropertyName("storage")] public TenantStorageDto Storage { get; set; } = new();
+}
+
+/// <summary>Turkish sizes and area names for the storage card.</summary>
+public static class StorageTexts
+{
+    public const long GigaByte = 1024L * 1024 * 1024;
+
+    private static readonly System.Globalization.CultureInfo Turkish = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+
+    /// <summary>"3,2 GB", "512 MB", "12 KB", "0 B".</summary>
+    public static string Size(long bytes) => bytes switch
+    {
+        >= GigaByte => (bytes / (double)GigaByte).ToString("0.#", Turkish) + " GB",
+        >= 1024 * 1024 => (bytes / (1024d * 1024)).ToString("0.#", Turkish) + " MB",
+        >= 1024 => (bytes / 1024d).ToString("0", Turkish) + " KB",
+        _ => bytes.ToString(Turkish) + " B",
+    };
+
+    /// <summary>Share of the quota in use, 0–100 (a zero quota counts as full).</summary>
+    public static int Percent(long used, long quota) => quota <= 0 ? 100 : (int)Math.Min(100, Math.Round(used * 100d / quota));
+
+    public static string Area(string area) => area switch
+    {
+        "product" => "Ürün fotoğrafı",
+        "xml" => "XML görseli",
+        "catalog" => "Katalog görseli",
+        "banner" => "Banner",
+        "task" => "Görev fotoğrafı",
+        "expense" => "Gider fişi",
+        "vehicle" => "Araç bakım",
+        _ => area,
+    };
+}
+
 /// <summary>
 /// Turkish text for the seat error codes. The central API answers in English
 /// with a stable <c>errorCode</c>; the console tells operators what to do next.
@@ -560,6 +632,7 @@ public static class MobileSeatMessages
         "TENANT_HAS_ERP_DATA" => "Bu firmada ERP ajanı veya ERP'den gelmiş veri var; ERP'siz kullanıma geçirilemez.",
         "UNKNOWN_MODULE" => "Bilinmeyen modül; sayfayı yenileyip tekrar deneyin.",
         "TENANT_HAS_NATIVE_DATA" => "Bu firmada telefondan girilmiş ürün veya cari var; ERP bağlantılı kullanıma geçirilemez.",
+        "INVALID_QUOTA" => "Kota 0 ile 10 TB arasında olmalı.",
         _ => api.Message,
     };
 }
@@ -814,6 +887,18 @@ public sealed class CentralApiClient
 
     public Task<ApprovalRequestDto[]> GetTenantApprovalsAsync(Guid tenantId, string status = "all", CancellationToken ct = default) =>
         SendAsync<ApprovalRequestDto[]>(() => _http.GetAsync($"/api/v1/admin/tenants/{tenantId}/mobile/approvals?status={Uri.EscapeDataString(status)}&take=50", ct), ct);
+
+    /// <summary>GOAL_DEPOLAMA_R2 S8: the company's storage (used, quota, by area, trash).</summary>
+    public Task<TenantStorageDto> GetTenantStorageAsync(Guid tenantId, CancellationToken ct = default) =>
+        SendAsync<TenantStorageDto>(() => _http.GetAsync($"/api/v1/admin/tenants/{tenantId}/storage", ct), ct);
+
+    /// <summary>The company's own quota in bytes; null puts it back on the default.</summary>
+    public Task<TenantStorageDto> SetTenantStorageQuotaAsync(Guid tenantId, long? quotaBytes, CancellationToken ct = default) =>
+        SendAsync<TenantStorageDto>(() => _http.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/storage", new SetTenantStorageQuotaRequest { QuotaBytes = quotaBytes }, ct), ct);
+
+    /// <summary>Recounts the company's used bytes from the file ledger.</summary>
+    public Task<TenantStorageRecountDto> RecountTenantStorageAsync(Guid tenantId, CancellationToken ct = default) =>
+        SendAsync<TenantStorageRecountDto>(() => _http.PostAsync($"/api/v1/admin/tenants/{tenantId}/storage/recount", content: null, ct), ct);
 
     public Task SetMobileDeviceActiveAsync(Guid tenantId, Guid deviceId, bool isActive, CancellationToken ct = default) =>
         SendRawStringAsync(() => _http.PatchAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/devices/{deviceId}", new { isActive }, ct), ct);

@@ -72,7 +72,7 @@ public class CentralApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Parameters:SeedCatalogOnStartup", "false");
         // Tests drive the task scheduler themselves with a chosen clock (TaskRelationalTests).
         builder.UseSetting("Tasks:SchedulerEnabled", "false");
-        // Storage tests run the counter recount themselves (StorageRelationalTests).
+        // Storage tests run the daily maintenance pass themselves (StorageUsageRelationalTests).
         builder.UseSetting("Storage:MaintenanceEnabled", "false");
         if (_disableRateLimiter)
             builder.UseSetting("RateLimiter:DisabledForTests", "true");

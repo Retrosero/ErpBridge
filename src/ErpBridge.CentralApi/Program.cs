@@ -357,6 +357,8 @@ public partial class Program
                 : new ErpBridge.CentralApi.Storage.UnavailableObjectStore();
         });
         builder.Services.AddScoped<ErpBridge.CentralApi.Storage.FileStore>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageMaintenance>();
+        builder.Services.AddHostedService<ErpBridge.CentralApi.Storage.StorageMaintenanceWorker>();
     }
 
     /// <summary>
@@ -964,6 +966,7 @@ public partial class Program
         app.MapInternalLogEndpoints();
         app.MapAdminMobileSeatsEndpoints();
         app.MapStorageEndpoints();
+        app.MapAdminStorageEndpoints();
     }
 
     /// <summary>
