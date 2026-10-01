@@ -406,6 +406,58 @@ public sealed class CatalogOrderLineDto
     [JsonPropertyName("inStockNow")] public bool InStockNow { get; set; }
 }
 
+/// <summary>The preview of "Siparişe çevir" (S10, P6).</summary>
+public sealed class CatalogOrderConversionDto
+{
+    [JsonPropertyName("orderId")] public Guid OrderId { get; set; }
+    [JsonPropertyName("no")] public string No { get; set; } = string.Empty;
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("customerCode")] public string CustomerCode { get; set; } = string.Empty;
+    [JsonPropertyName("customerName")] public string CustomerName { get; set; } = string.Empty;
+    [JsonPropertyName("ownerUserId")] public Guid OwnerUserId { get; set; }
+    [JsonPropertyName("ownerName")] public string OwnerName { get; set; } = string.Empty;
+    [JsonPropertyName("ownerIsAssignee")] public bool OwnerIsAssignee { get; set; }
+    [JsonPropertyName("priceListNo")] public int PriceListNo { get; set; }
+    [JsonPropertyName("priceListName")] public string? PriceListName { get; set; }
+    [JsonPropertyName("priceIncludesVat")] public bool PriceIncludesVat { get; set; }
+    [JsonPropertyName("lines")] public CatalogOrderConversionLineDto[] Lines { get; set; } = [];
+    [JsonPropertyName("orderedTotal")] public decimal OrderedTotal { get; set; }
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+    [JsonPropertyName("priceChanged")] public bool PriceChanged { get; set; }
+    [JsonPropertyName("erp")] public bool Erp { get; set; }
+    [JsonPropertyName("defaultWarehouseNo")] public int? DefaultWarehouseNo { get; set; }
+    [JsonPropertyName("warehouses")] public ErpLookupItem[] Warehouses { get; set; } = [];
+    [JsonPropertyName("missingMappings")] public string[] MissingMappings { get; set; } = [];
+    [JsonPropertyName("requiresApproval")] public bool RequiresApproval { get; set; }
+}
+
+public sealed class CatalogOrderConversionLineDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("unit")] public string? Unit { get; set; }
+    [JsonPropertyName("quantity")] public decimal Quantity { get; set; }
+    [JsonPropertyName("orderedListPrice")] public decimal OrderedListPrice { get; set; }
+    [JsonPropertyName("listPrice")] public decimal? ListPrice { get; set; }
+    [JsonPropertyName("discountPercent")] public decimal DiscountPercent { get; set; }
+    [JsonPropertyName("vatRate")] public decimal VatRate { get; set; }
+    [JsonPropertyName("orderedTotal")] public decimal OrderedTotal { get; set; }
+    [JsonPropertyName("total")] public decimal Total { get; set; }
+    [JsonPropertyName("priceChanged")] public bool PriceChanged { get; set; }
+    [JsonPropertyName("issue")] public string? Issue { get; set; }
+}
+
+public sealed class CatalogOrderConvertResponse
+{
+    /// <summary><c>JOB</c> (written / booked) or <c>APPROVAL</c> (waits in the approval queue).</summary>
+    [JsonPropertyName("outcome")] public string Outcome { get; set; } = string.Empty;
+    [JsonPropertyName("documentRef")] public string DocumentRef { get; set; } = string.Empty;
+    [JsonPropertyName("jobId")] public Guid? JobId { get; set; }
+    [JsonPropertyName("jobStatus")] public string? JobStatus { get; set; }
+    [JsonPropertyName("approvalRequestId")] public Guid? ApprovalRequestId { get; set; }
+    [JsonPropertyName("order")] public CatalogOrderDetailDto Order { get; set; } = new();
+}
+
 /// <summary>Where the browser loads a catalog image from.</summary>
 public static class CatalogImageAddress
 {

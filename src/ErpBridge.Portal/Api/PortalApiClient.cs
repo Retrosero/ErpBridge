@@ -502,6 +502,17 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<CatalogOrderDetailDto> ReopenCatalogOrderAsync(Guid orderId, CancellationToken ct = default) =>
         SendAsync<CatalogOrderDetailDto>(HttpMethod.Post, $"{Catalog}orders/{orderId}/reopen", new { }, ct);
 
+    /// <summary>What "Siparişe çevir" would send now: today's prices against the request's, whose name, warehouse, missing mapping.</summary>
+    public Task<CatalogOrderConversionDto> CatalogOrderConversionAsync(Guid orderId, CancellationToken ct = default) =>
+        GetAsync<CatalogOrderConversionDto>($"{Catalog}orders/{orderId}/conversion", ct);
+
+    /// <summary>
+    /// Turns the request into a sale (the server builds the phone's document). <paramref name="expectedTotal"/> is the
+    /// preview's total: a changed price is <c>PRICE_CHANGED</c>; null <paramref name="warehouseNo"/> keeps the default.
+    /// </summary>
+    public Task<CatalogOrderConvertResponse> ConvertCatalogOrderAsync(Guid orderId, int? warehouseNo, decimal expectedTotal, CancellationToken ct = default) =>
+        SendAsync<CatalogOrderConvertResponse>(HttpMethod.Post, $"{Catalog}orders/{orderId}/convert", new { warehouseNo, expectedTotal }, ct);
+
     // ---- plumbing ------------------------------------------------------------
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);

@@ -11,19 +11,12 @@ else
 {
     <PageHeader Title="Müşteri siparişleri" Eyebrow="Müşteri kataloğu" Subtitle="Web kataloğundan gelen sipariş talepleri" Busy="Busy" />
 
-    @* GOAL_MUSTERI_KATALOGU T1: the panel never books a document; the phone turns a request into a sale. *@
-    @if (IsErpCompany)
-    {
-        <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true" Class="page-alert" id="customer-orders-erp-note">
-            ERP'ye gönderim telefondan yapılır: talebi Sipariş Cepte'de Müşteri siparişleri'nden açıp Satışa aktarın.
-        </MudAlert>
-    }
-    else
-    {
-        <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true" Class="page-alert" id="customer-orders-phone-note">
-            Talebi siparişe çevirmek için Sipariş Cepte'de Müşteri siparişleri'nden açıp Satışa aktarın.
-        </MudAlert>
-    }
+    @* GOAL_MUSTERI_KATALOGU S10/P6: a request becomes a sale here ("Siparişe çevir": the server builds the phone's document)
+       or on the phone; the linker lets only one document through. *@
+    <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true" Class="page-alert" id="customer-orders-convert-note">
+        Talebi buradan "Siparişe çevir" ile ya da Sipariş Cepte'de Müşteri siparişleri'nden Satışa aktararak siparişe çevirebilirsiniz; aynı talepten ikinci belge oluşmaz.
+        @(IsErpCompany ? " Panelden çevrilen sipariş ERP'ye ajan tarafından yazılır." : null)
+    </MudAlert>
     @if (Error is not null)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
@@ -203,11 +196,95 @@ else
                 {
                     <section class="detail-section" id="order-actions-section">
                         <div class="detail-section-title">İşlem</div>
-                        @if (IsErpCompany)
+                        @if (_confirm == OrderConfirm.Convert)
                         {
-                            <p class="field-hint">ERP'ye gönderim telefondan yapılır: talebi Sipariş Cepte'de Müşteri siparişleri'nden açıp Satışa aktarın.</p>
+                            <form class="order-confirm" id="order-convert-form" @onsubmit="ConvertAsync" @onsubmit:preventDefault>
+                                @if (_conversion is { } preview)
+                                {
+                                    <dl class="detail-facts" id="order-convert-facts">
+                                        <dt>Kimin adına</dt>
+                                        <dd id="order-convert-owner">@preview.OwnerName <span class="text-muted">@(preview.OwnerIsAssignee ? "(carinin plasiyeri)" : "(plasiyer yok; sizin adınıza)")</span></dd>
+                                        @if (preview.Erp)
+                                        {
+                                            <dt>Depo</dt>
+                                            <dd>
+                                                @if (preview.Warehouses.Length > 0)
+                                                {
+                                                    <select class="portal-input" id="order-convert-warehouse" disabled="@Busy" @onchange="SetWarehouse">
+                                                        @if (preview.DefaultWarehouseNo is null)
+                                                        {
+                                                            <option value="" selected="@(_warehouse is null)">Depo seçin</option>
+                                                        }
+                                                        @foreach (var warehouse in preview.Warehouses)
+                                                        {
+                                                            <option value="@warehouse.Code" selected="@(warehouse.Code == _warehouse?.ToString(System.Globalization.CultureInfo.InvariantCulture))">@WarehouseText(warehouse, preview)</option>
+                                                        }
+                                                    </select>
+                                                }
+                                                else
+                                                {
+                                                    <input class="portal-input" id="order-convert-warehouse-no" type="number" min="1" disabled="@Busy"
+                                                           value="@_warehouse" @onchange="SetWarehouse" aria-label="Depo numarası" />
+                                                }
+                                            </dd>
+                                        }
+                                        <dt>Toplam</dt>
+                                        <dd id="order-convert-total">
+                                            @if (preview.Total != preview.OrderedTotal)
+                                            {
+                                                @($"Talep: {Fmt.Money(preview.OrderedTotal)} → Güncel: ")<strong>@Fmt.Money(preview.Total)</strong>
+                                            }
+                                            else
+                                            {
+                                                <strong>@Fmt.Money(preview.Total)</strong>
+                                            }
+                                        </dd>
+                                    </dl>
+                                    @if (preview.Lines.Any(l => l.PriceChanged || l.Issue is not null))
+                                    {
+                                        <MudAlert Severity="Severity.Warning" Variant="Variant.Text" Dense="true" id="order-convert-price-note">
+                                            Belge talebin fiyat listesinin bugünkü fiyatlarıyla kesilir; değişenler aşağıda.
+                                        </MudAlert>
+                                        <table class="data-table data-table--plain" id="order-convert-changes">
+                                            <tbody>
+                                                @foreach (var line in preview.Lines.Where(l => l.PriceChanged || l.Issue is not null))
+                                                {
+                                                    <tr data-stock="@line.StockCode">
+                                                        <td>@line.Name <span class="text-muted">@line.StockCode</span></td>
+                                                        <td class="num">
+                                                            @if (line.ListPrice is { } now)
+                                                            {
+                                                                @($"Talep: {Fmt.Money(line.OrderedListPrice)} → Güncel: {Fmt.Money(now)}")
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="badge badge--off">Artık satılamıyor</span>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    }
+                                    @if (MissingMappings(preview) is { Length: > 0 } missing)
+                                    {
+                                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" id="order-convert-missing">
+                                            Belge @preview.OwnerName adına kesilecek; ERP eşlemesinde eksik: @(string.Join(", ", missing)). Kullanıcılar sayfasında kişinin Mikro eşlemesini ya da ERP ayarlarını tamamlayın.
+                                        </MudAlert>
+                                    }
+                                    @if (preview.RequiresApproval)
+                                    {
+                                        <p class="field-hint" id="order-convert-approval">Satış önce onay merkezine gider; onaylanınca @(preview.Erp ? "ERP'ye yazılır" : "deftere işlenir") ve talep "Siparişe çevrildi" olur.</p>
+                                    }
+                                }
+                                <div class="form-actions">
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="CancelConvert" id="order-convert-cancel">Vazgeç</MudButton>
+                                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                               Disabled="@(Busy || !CanSendConversion)" id="order-convert-confirm">@(IsErpCompany ? "Onayla ve ERP'ye gönder" : "Onayla ve deftere işle")</MudButton>
+                                </div>
+                            </form>
                         }
-                        @if (_confirm == OrderConfirm.Reject)
+                        else if (_confirm == OrderConfirm.Reject)
                         {
                             <form class="order-confirm" id="order-reject-form" @onsubmit="RejectAsync" @onsubmit:preventDefault>
                                 <label class="stack-field">
@@ -237,6 +314,7 @@ else
                         else
                         {
                             <div class="order-actions">
+                                <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small" Disabled="@Busy" OnClick="OpenConvertAsync" id="order-convert">Siparişe çevir</MudButton>
                                 @if (order.Status == "NEW")
                                 {
                                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" OnClick="() => ClaimAsync(force: false)" id="order-claim">İşleme al</MudButton>
@@ -306,6 +384,7 @@ else
         public const string Reject = "reject";
         public const string Complete = "complete";
         public const string Reopen = "reopen";
+        public const string Convert = "convert";
     }
 
     private string _status = "yeni";
@@ -322,6 +401,10 @@ else
     private string? _confirm;
     private string? _reason;
     private string? _documentRef;
+
+    /// <summary>The preview of the open "Siparişe çevir" form and the warehouse chosen in it.</summary>
+    private CatalogOrderConversionDto? _conversion;
+    private int? _warehouse;
 
     private string DetailTitle => _detail is { } order ? $"{order.No} · {order.CustomerName}" : "Müşteri siparişi";
 
@@ -408,6 +491,7 @@ else
         _openId = null;
         _detail = null;
         _confirm = null;
+        _conversion = null;
     }
 
     private void Confirm(string form)
@@ -415,6 +499,86 @@ else
         _confirm = form;
         _reason = _documentRef = null;
         _detailError = _detailNotice = null;
+    }
+
+    // ---- "Siparişe çevir" (S10, P6) ----------------------------------------------------------------
+
+    /// <summary>Opens the form with today's prices, the document's owner and the default warehouse.</summary>
+    private async Task OpenConvertAsync()
+    {
+        if (_detail is not { } order) return;
+        Confirm(OrderConfirm.Convert);
+        _conversion = null;
+        await SheetAsync(async () =>
+        {
+            _conversion = await Api.CatalogOrderConversionAsync(order.Id);
+            _warehouse = _conversion.DefaultWarehouseNo;
+        });
+        if (_conversion is null) _confirm = null;
+    }
+
+    private void CancelConvert()
+    {
+        _confirm = null;
+        _conversion = null;
+    }
+
+    private void SetWarehouse(ChangeEventArgs e) =>
+        _warehouse = int.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var no) && no > 0 ? no : null;
+
+    /// <summary>What the mapping lacks once the form's warehouse is counted.</summary>
+    private string[] MissingMappings(CatalogOrderConversionDto preview) =>
+        [.. preview.MissingMappings.Where(m => !(m == "depo" && _warehouse is not null))];
+
+    private bool CanSendConversion =>
+        _conversion is { } preview && preview.Lines.All(l => l.Issue is null) && MissingMappings(preview).Length == 0;
+
+    /// <summary>
+    /// Sends the sale at the preview's total. A changed price, a product no longer sold or a missing mapping keeps the
+    /// form open with the new preview; any other 409 (taken, closed, converted meanwhile) reads the request again.
+    /// </summary>
+    private async Task ConvertAsync()
+    {
+        if (_detail is not { } order || _conversion is not { } preview || !CanSendConversion) return;
+        _detailNotice = null;
+        CatalogOrderConvertResponse? converted = null;
+        var warehouse = preview.Erp ? _warehouse : null;
+        await SheetAsync(async () =>
+        {
+            try
+            {
+                converted = await Api.ConvertCatalogOrderAsync(order.Id, warehouse, preview.Total);
+            }
+            catch (PortalApiException stale) when (stale.Code is "PRICE_CHANGED" or "CART_INVALID" or "ERP_MAPPING_MISSING")
+            {
+                _conversion = await Api.CatalogOrderConversionAsync(order.Id);
+                if (_warehouse is null || !preview.Erp) _warehouse = _conversion.DefaultWarehouseNo;
+                throw;
+            }
+            catch (PortalApiException conflict) when (conflict.Status == 409)
+            {
+                CancelConvert();
+                _detail = await Api.CatalogOrderAsync(order.Id);
+                await LoadListAsync();
+                throw;
+            }
+            _detail = converted.Order;
+            CancelConvert();
+            await LoadListAsync();
+        });
+        if (converted is not null) _detailNotice = ConvertedNotice(converted);
+    }
+
+    private string ConvertedNotice(CatalogOrderConvertResponse converted) => converted.Outcome == "APPROVAL"
+        ? $"Satış onay merkezine gönderildi (belge {converted.DocumentRef}); onaylanınca talep \"Siparişe çevrildi\" olur."
+        : converted.JobStatus == "Succeeded"
+            ? $"Talep siparişe çevrildi; satış deftere işlendi (belge {converted.DocumentRef})."
+            : $"Talep siparişe çevrildi; belge {converted.DocumentRef} ERP'ye yazılmak üzere ajanı bekliyor.";
+
+    private static string WarehouseText(ErpLookupItem warehouse, CatalogOrderConversionDto preview)
+    {
+        var text = string.IsNullOrWhiteSpace(warehouse.Name) ? warehouse.Code : $"{warehouse.Code} — {warehouse.Name}";
+        return warehouse.Code == preview.DefaultWarehouseNo?.ToString(System.Globalization.CultureInfo.InvariantCulture) ? text + " (varsayılan)" : text;
     }
 
     private bool ClaimedByMe(CatalogOrderSummaryDto order) => order.ClaimedByUserId is { } id && id == Session.UserId;
