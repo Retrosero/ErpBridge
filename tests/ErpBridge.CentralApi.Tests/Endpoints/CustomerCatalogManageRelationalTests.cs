@@ -58,7 +58,7 @@ public sealed class CustomerCatalogManageRelationalTests : IClassFixture<SqliteC
         var settings = await OkAsync<CatalogSettingsDto>(await SendAsync(_factory, HttpMethod.Get, Base + "/settings", c.Mudur));
 
         settings.TenantCode.Should().MatchRegex("^[A-Z2-9]{8}$").And.NotBe(c.Code);
-        settings.PublicUrl.Should().Be("https://katalog.appsgo.cloud/" + settings.TenantCode);
+        settings.PublicUrl.Should().Be("https://sipariscepte.appsgo.cloud/" + settings.TenantCode);
         settings.IsEnabled.Should().BeFalse();
         settings.Revision.Should().Be(0);
         settings.DefaultPriceListNo.Should().BeNull();

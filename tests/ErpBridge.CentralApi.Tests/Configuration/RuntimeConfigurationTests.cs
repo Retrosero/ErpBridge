@@ -58,7 +58,7 @@ public sealed class RuntimeConfigurationTests
     [Fact]
     public void Non_test_host_with_a_public_catalog_requires_the_reverse_proxy_list()
     {
-        var catalog = new Dictionary<string, string?> { ["CustomerCatalog:PublicHost"] = "katalog.appsgo.cloud" };
+        var catalog = new Dictionary<string, string?> { ["CustomerCatalog:PublicHost"] = "sipariscepte.appsgo.cloud" };
 
         var withoutProxy = () => Program.ValidateRuntimeConfiguration(ValidConfiguration(catalog), allowTestDefaults: false);
         withoutProxy.Should().Throw<InvalidOperationException>()

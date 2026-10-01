@@ -27,7 +27,7 @@ public static class CustomerCatalogManageEndpoints
     public const string BasePath = "/api/v1/customer-catalog";
 
     /// <summary>The share address when <c>CustomerCatalog:PublicBaseUrl</c> is not set (K7).</summary>
-    public const string DefaultPublicBaseUrl = "https://katalog.appsgo.cloud";
+    public const string DefaultPublicBaseUrl = "https://sipariscepte.appsgo.cloud";
 
     public const int MaxCategoryProducts = 5000;
     public const int MaxSearchResults = 50;

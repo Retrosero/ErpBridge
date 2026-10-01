@@ -6,12 +6,12 @@ public sealed class CustomerCatalogOptions
     public const string SectionName = "CustomerCatalog";
 
     /// <summary>
-    /// Host the web catalog is served on (<c>katalog.appsgo.cloud</c>); empty = not served anywhere. Setting it
+    /// Host the web catalog is served on (<c>sipariscepte.appsgo.cloud</c>); empty = not served anywhere. Setting it
     /// outside tests requires the reverse proxy in <c>ForwardedHeaders</c> (<c>Program.ValidateRuntimeConfiguration</c>).
     /// </summary>
     public string PublicHost { get; set; } = string.Empty;
 
-    /// <summary>What share links start with (<c>https://katalog.appsgo.cloud</c>); the company code follows.</summary>
+    /// <summary>What share links start with (<c>https://sipariscepte.appsgo.cloud</c>); the company code follows.</summary>
     public string PublicBaseUrl { get; set; } = string.Empty;
 
     /// <summary>Life of a "remember me" customer session.</summary>

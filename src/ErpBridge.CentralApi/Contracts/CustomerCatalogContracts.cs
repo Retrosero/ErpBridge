@@ -22,7 +22,7 @@ public sealed class CatalogSettingsDto
 
     [JsonPropertyName("tenantCode")] public string TenantCode { get; set; } = string.Empty;
 
-    /// <summary><c>https://katalog.appsgo.cloud/{tenantCode}</c>: what the company shares with its customers.</summary>
+    /// <summary><c>https://sipariscepte.appsgo.cloud/{tenantCode}</c>: what the company shares with its customers.</summary>
     [JsonPropertyName("publicUrl")] public string PublicUrl { get; set; } = string.Empty;
 
     [JsonPropertyName("priceLists")] public CatalogPriceListDto[] PriceLists { get; set; } = [];

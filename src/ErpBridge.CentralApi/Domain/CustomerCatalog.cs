@@ -1,7 +1,7 @@
 namespace ErpBridge.CentralApi.Domain;
 
 // Müşteriye özel web katalog (docs/GOAL_MUSTERI_KATALOGU.md §3). A company shows its catalog to its customers at
-// https://katalog.appsgo.cloud/{Tenant.Code}; each customer signs in with an account of its own. Catalog accounts
+// https://sipariscepte.appsgo.cloud/{Tenant.Code}; each customer signs in with an account of its own. Catalog accounts
 // are not staff: they never take a paid seat and never sign in to the phone or the portal. Times are unix
 // milliseconds (UTC), as in tasks: SQLite cannot compare DateTimeOffset.
 
