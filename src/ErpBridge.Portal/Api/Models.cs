@@ -39,6 +39,9 @@ public sealed class SessionDto
 
     /// <summary>The user's yes/no permissions (GOAL_YETKILER); null from a server without them.</summary>
     [JsonPropertyName("permissions")] public Dictionary<string, bool>? Permissions { get; set; }
+
+    /// <summary>Add-on modules the company bought (<c>customer_catalog</c>…); null from a server without them.</summary>
+    [JsonPropertyName("modules")] public string[]? Modules { get; set; }
 }
 
 public sealed class SeatsDto

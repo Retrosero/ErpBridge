@@ -1,0 +1,676 @@
+@page "/katalog"
+@inherits PortalPageBase
+@using System.Globalization
+@inject IJSRuntime JS
+
+<PageTitle>Katalog yönetimi — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Katalog yönetimi" Eyebrow="Müşteri kataloğu" Subtitle="Ürün adı, fiyat ve stok ERP'den ya da karttan gelir; burada yalnız müşteriye nasıl görüneceği ayarlanır" Busy="Busy">
+        <Actions>
+            @if (_settings is { IsEnabled: false })
+            {
+                <span class="badge badge--off" id="catalog-closed">Katalog kapalı</span>
+            }
+            @if (_tab == "kategoriler")
+            {
+                @if (LayoutChanges > 0)
+                {
+                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="Discard" id="catalog-discard">Değişiklikleri bırak</MudButton>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || LayoutChanges == 0)" OnClick="SaveLayoutAsync" id="catalog-save">
+                    Kaydet@(LayoutChanges > 0 ? $" ({LayoutChanges})" : "")
+                </MudButton>
+            }
+        </Actions>
+    </PageHeader>
+
+    <div class="seg-tabs" role="tablist" id="catalog-tabs">
+        @foreach (var (tab, label) in Tabs)
+        {
+            <button type="button" role="tab" class="seg-tab @(tab == _tab ? "is-active" : null)" aria-selected="@(tab == _tab ? "true" : "false")"
+                    data-tab="@tab" disabled="@Busy" @onclick="() => GuardAsync(() => ShowTabAsync(tab))">@label</button>
+        }
+    </div>
+
+    @if (_pending is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="catalog-unsaved">
+            @UnsavedText kaydedilmedi.
+            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" OnClick="SaveAndContinueAsync" id="catalog-unsaved-save">Kaydet ve geç</MudButton>
+            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error" Disabled="@Busy" OnClick="DiscardAndContinueAsync" id="catalog-unsaved-discard">Bırak ve geç</MudButton>
+            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _pending = null" id="catalog-unsaved-cancel">Vazgeç</MudButton>
+        </MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+
+    @if (_tab == "genel" && _settings is { } settings)
+    {
+        <MudPaper Outlined="true" Class="panel" id="catalog-general">
+            <div class="stack-form">
+                <label class="inline-field">
+                    <input type="checkbox" id="catalog-enabled" checked="@_enabled" @onchange="e => _enabled = e.Value is true" />
+                    Katalog açık: müşteriler kendi kullanıcı adı ve şifresiyle girip ürünleri görür
+                </label>
+                <div class="stack-field">
+                    <span class="field-label">Varsayılan fiyat listesi</span>
+                    <span class="inline-field">
+                        <select class="portal-select" id="catalog-price-list" value="@(_defaultList?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)" @onchange="PriceListChanged">
+                            <option value="">Otomatik (@ListName(settings.EffectiveDefaultPriceListNo))</option>
+                            @foreach (var list in settings.PriceLists)
+                            {
+                                <option value="@list.No">@list.No — @list.Name</option>
+                            }
+                        </select>
+                        @if (ShownList is { } shown)
+                        {
+                            <span class="badge @(shown.IncludesVat ? "badge--info" : "badge--muted")" id="catalog-vat">@(shown.IncludesVat ? "KDV dahil" : "KDV hariç")</span>
+                        }
+                    </span>
+                    <span class="field-hint">Müşteri bu listedeki fiyatı görür; bir cariye başka liste erişim ayarından verilir. Listede fiyatı olmayan ürün müşteriye görünmez.</span>
+                </div>
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@(Busy || !SettingsDirty)" OnClick="ResetSettingsForm" id="catalog-settings-reset">Vazgeç</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || !SettingsDirty)" OnClick="SaveSettingsAsync" id="catalog-settings-save">Kaydet</MudButton>
+                </div>
+            </div>
+        </MudPaper>
+
+        <MudPaper Outlined="true" Class="panel mt-3" id="catalog-address">
+            <div class="panel-head"><MudText Typo="Typo.h6">Katalog adresi</MudText></div>
+            @if (string.IsNullOrWhiteSpace(settings.PublicUrl))
+            {
+                <MudText Typo="Typo.body2" Class="text-muted">Katalog adresi henüz hazır değil.</MudText>
+            }
+            else
+            {
+                <div class="catalog-address">
+                    <code id="catalog-url">@settings.PublicUrl</code>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Rounded.ContentCopy" OnClick="CopyAddressAsync" id="catalog-url-copy">Kopyala</MudButton>
+                    <a class="link-button" href="@settings.PublicUrl" target="_blank" rel="noopener noreferrer" id="catalog-url-open">Aç</a>
+                    @if (_copyNote is not null)
+                    {
+                        <span class="field-hint" id="catalog-url-copied">@_copyNote</span>
+                    }
+                </div>
+                <MudText Typo="Typo.body2" Class="text-muted mt-2">Adrese yalnız katalog erişimi verilen cariler girebilir.</MudText>
+            }
+        </MudPaper>
+
+        <section class="stat-grid stat-grid--four mt-3" id="catalog-counts">
+            <StatCard Id="catalog-count-categories" Label="Kategori" Value="@N(settings.Counts.Categories)" Icon="@Icons.Material.Rounded.Category" Tone="primary" />
+            <StatCard Id="catalog-count-products" Label="Görünen ürün" Value="@N(settings.Counts.VisibleProducts)" Caption="@($"{N(settings.Counts.Products)} ürünün")" Icon="@Icons.Material.Rounded.Inventory2" Tone="success" />
+            <StatCard Id="catalog-count-accounts" Label="Müşteri erişimi" Value="@N(settings.Counts.Accounts)" Icon="@Icons.Material.Rounded.People" Tone="info" />
+            <StatCard Id="catalog-count-orders" Label="Açık talep" Value="@N(settings.Counts.OpenOrders)" Icon="@Icons.Material.Rounded.ShoppingCartCheckout" Tone="warning" Attention="@(settings.Counts.OpenOrders > 0)" />
+        </section>
+
+        <MudPaper Outlined="true" Class="panel mt-3" id="catalog-quota">
+            <div class="progress-block">
+                <div class="progress-label">
+                    <span>Görsel kotası</span>
+                    <strong>@Bytes(settings.ImageQuota.UsedBytes) / @Bytes(settings.ImageQuota.LimitBytes)</strong>
+                </div>
+                <MudProgressLinear Color="@(QuotaPercent(settings) >= 90 ? Color.Error : Color.Primary)" Value="@QuotaPercent(settings)" Rounded="true" Size="Size.Medium" />
+            </div>
+        </MudPaper>
+    }
+
+    @if (_tab == "kategoriler" && _categories is not null)
+    {
+        <MudText Typo="Typo.body2" Class="text-muted page-footnote">
+            Sıra ve gizleme tüm müşterilere uygulanır; cariye özel istisna erişim ayarındadır. Sonradan gelen ürün kategorisinin sonuna, ad sırasıyla eklenir.
+        </MudText>
+        @if (_categoryOrder.Count == 0)
+        {
+            <EmptyState Id="catalog-empty" Icon="@Icons.Material.Rounded.Category" Title="Katalogda ürün yok." Hint="Ürünler telefonların eşitlediği stok kartlarından gelir." />
+        }
+        else
+        {
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="4" lg="3">
+                    <MudPaper Outlined="true" Class="panel">
+                        <div class="panel-head"><MudText Typo="Typo.h6">Kategoriler</MudText></div>
+                        <ol class="route-stops catalog-categories" id="catalog-categories">
+                            @foreach (var (category, index) in _categoryOrder.Select((c, i) => (c, i)))
+                            {
+                                var hidden = _categoryHidden[category.Key];
+                                <li data-category="@category.Key" class="@(category.Key == _category ? "is-selected" : null) @(hidden ? "is-hidden" : null)">
+                                    <button type="button" class="catalog-category-name category-open" disabled="@Busy" @onclick="() => GuardAsync(() => OpenCategoryAsync(category.Key))">
+                                        <span>@category.Name</span>
+                                        <small class="text-muted">@category.ProductCount ürün · @category.HiddenCount gizli</small>
+                                    </button>
+                                    <button type="button" class="perm-toggle category-hide @(hidden ? "is-off" : "is-on")" aria-pressed="@(hidden ? "true" : "false")"
+                                            @onclick="() => _categoryHidden[category.Key] = !hidden">@(hidden ? "Gizli" : "Görünür")</button>
+                                    <span class="catalog-move">
+                                        <MudIconButton Icon="@Icons.Material.Rounded.VerticalAlignTop" Size="Size.Small" Disabled="@(index == 0)" aria-label="En üste" Class="category-top" OnClick="() => Move(_categoryOrder, index, 0)" />
+                                        <MudIconButton Icon="@Icons.Material.Rounded.ArrowUpward" Size="Size.Small" Disabled="@(index == 0)" aria-label="Yukarı" Class="category-up" OnClick="() => Move(_categoryOrder, index, index - 1)" />
+                                        <MudIconButton Icon="@Icons.Material.Rounded.ArrowDownward" Size="Size.Small" Disabled="@(index == _categoryOrder.Count - 1)" aria-label="Aşağı" Class="category-down" OnClick="() => Move(_categoryOrder, index, index + 1)" />
+                                        <MudIconButton Icon="@Icons.Material.Rounded.VerticalAlignBottom" Size="Size.Small" Disabled="@(index == _categoryOrder.Count - 1)" aria-label="En alta" Class="category-bottom" OnClick="() => Move(_categoryOrder, index, _categoryOrder.Count - 1)" />
+                                    </span>
+                                </li>
+                            }
+                        </ol>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="8" lg="9">
+                    @{ var filtered = Filtered(); }
+                    <MudPaper Outlined="true" Class="panel panel--table" id="catalog-products-panel">
+                        <div class="panel-head">
+                            <div>
+                                <MudText Typo="Typo.h6">@(_categoryOrder.FirstOrDefault(c => c.Key == _category)?.Name ?? "Ürünler")</MudText>
+                                @if (_category is not null && _categoryHidden.GetValueOrDefault(_category))
+                                {
+                                    <MudText Typo="Typo.body2" Class="text-danger" id="catalog-category-hidden">Bu kategori gizli; ürünleri müşteriye görünmez.</MudText>
+                                }
+                            </div>
+                            <input type="search" class="portal-input catalog-search" id="catalog-product-search" placeholder="Kod ya da ürün adı" aria-label="Ürünlerde ara"
+                                   value="@_search" @oninput="SearchChanged" />
+                        </div>
+                        @if (_truncated)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="catalog-truncated">Bu kategoride 5000'den çok ürün var; ilk 5000 gösteriliyor.</MudAlert>
+                        }
+                        @if (_products.Count == 0)
+                        {
+                            <EmptyState Id="catalog-products-empty" Icon="@Icons.Material.Rounded.Inventory2" Title="Bu kategoride ürün yok." />
+                        }
+                        else
+                        {
+                            var selected = _products.Count(p => p.Selected);
+                            <div class="catalog-selection" id="catalog-selection">
+                                <button type="button" class="link-button" id="catalog-select-all" @onclick="() => Select(filtered, true)">Tümünü seç (@filtered.Count)</button>
+                                @if (selected > 0)
+                                {
+                                    <span class="catalog-selected" id="catalog-selected-count">@selected ürün seçili</span>
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => Bulk(r => r.Hidden = true)" id="bulk-hide">Gizle</MudButton>
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => Bulk(r => r.Hidden = false)" id="bulk-show">Göster</MudButton>
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => Bulk(r => r.NoDiscount = true)" id="bulk-no-discount">İskontosuz yap</MudButton>
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => Bulk(r => r.NoDiscount = false)" id="bulk-discount">İskonto uygula</MudButton>
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="BulkCartonOnly" id="bulk-carton-only">Yalnız koli</MudButton>
+                                    <button type="button" class="link-button" id="catalog-select-none" @onclick="() => Select(_products, false)">Seçimi kaldır</button>
+                                }
+                            </div>
+                            <div class="table-scroll">
+                                <MudSimpleTable Dense="true" Elevation="0" Class="data-table data-table--cards catalog-products" id="catalog-products">
+                                    <thead>
+                                        <tr>
+                                            <th><input type="checkbox" id="catalog-select-page" aria-label="Sayfadakileri seç" checked="@(PageRows(filtered).Any() && PageRows(filtered).All(r => r.Selected))" @onchange="e => Select(PageRows(filtered), e.Value is true)" /></th>
+                                            <th></th>
+                                            <th>Ürün</th>
+                                            <th class="num">Fiyat</th>
+                                            <th>Stok</th>
+                                            <th>Koli</th>
+                                            <th>Ayarlar</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in PageRows(filtered))
+                                        {
+                                            var index = _products.IndexOf(row);
+                                            <tr data-stock="@row.StockCode" class="@(Changed(row, index) ? "is-changed" : null)">
+                                                <td data-label="Seç"><input type="checkbox" class="product-select" aria-label="@($"{row.Item.Name} seç")" checked="@row.Selected" @onchange="e => row.Selected = e.Value is true" /></td>
+                                                <td data-label="Görsel">
+                                                    @if (ImageSrc(row.Item.ThumbUrl) is { } src)
+                                                    {
+                                                        <img class="catalog-thumb" src="@src" alt="" loading="lazy" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="catalog-thumb catalog-thumb--empty"><MudIcon Icon="@Icons.Material.Rounded.Image" Size="Size.Small" /></span>
+                                                    }
+                                                </td>
+                                                <td data-label="Ürün">
+                                                    <div class="cell-title">@row.Item.Name</div>
+                                                    <div class="cell-sub">@row.StockCode@(row.Item.Brand is null ? null : " · " + row.Item.Brand)@(row.Item.ImageCount > 0 ? $" · {row.Item.ImageCount} görsel" : null)</div>
+                                                </td>
+                                                <td class="num" data-label="Fiyat">
+                                                    @if (row.Item.ListPrice is { } price)
+                                                    {
+                                                        @Fmt.Money(price)
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge badge--warning" title="Varsayılan listede fiyatı yok; müşteri görmez">Fiyat yok</span>
+                                                    }
+                                                </td>
+                                                <td data-label="Stok"><span class="badge @(row.Item.InStock ? "badge--ok" : "badge--off")">@(row.Item.InStock ? "Stokta" : "Stokta yok")</span></td>
+                                                <td data-label="Koli">
+                                                    <span class="catalog-carton">
+                                                        <input type="number" min="2" step="1" class="portal-input portal-input--number product-carton" aria-label="@($"{row.Item.Name} koli adedi")"
+                                                               placeholder="@(row.Item.ErpCartonQuantity?.ToString(CultureInfo.InvariantCulture) ?? "—")" value="@row.CartonQuantity" @onchange="e => SetCarton(row, e.Value?.ToString())" />
+                                                        <small class="text-muted">ERP: @(row.Item.ErpCartonQuantity?.ToString(CultureInfo.InvariantCulture) ?? "—")</small>
+                                                    </span>
+                                                </td>
+                                                <td data-label="Ayarlar">
+                                                    <span class="catalog-flags">
+                                                        <button type="button" class="perm-toggle product-hidden @(row.Hidden ? "is-on" : "is-off")" aria-pressed="@(row.Hidden ? "true" : "false")" @onclick="() => row.Hidden = !row.Hidden">Gizli</button>
+                                                        <button type="button" class="perm-toggle product-no-discount @(row.NoDiscount ? "is-on" : "is-off")" aria-pressed="@(row.NoDiscount ? "true" : "false")" @onclick="() => row.NoDiscount = !row.NoDiscount">İsk. yok</button>
+                                                        <button type="button" class="perm-toggle product-carton-only @(row.CartonOnly ? "is-on" : "is-off")" aria-pressed="@(row.CartonOnly ? "true" : "false")" @onclick="() => ToggleCartonOnly(row)">Yalnız koli</button>
+                                                    </span>
+                                                </td>
+                                                <td class="card-actions">
+                                                    <span class="catalog-move">
+                                                        <MudIconButton Icon="@Icons.Material.Rounded.ArrowUpward" Size="Size.Small" Disabled="@(Searching || index == 0)" aria-label="Yukarı" Class="product-up" OnClick="() => Move(_products, index, index - 1)" />
+                                                        <MudIconButton Icon="@Icons.Material.Rounded.ArrowDownward" Size="Size.Small" Disabled="@(Searching || index == _products.Count - 1)" aria-label="Aşağı" Class="product-down" OnClick="() => Move(_products, index, index + 1)" />
+                                                        <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Class="product-settings" OnClick="() => _sheetRow = row">Ayarlar</MudButton>
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                            </div>
+                            @if (Searching)
+                            {
+                                <MudText Typo="Typo.body2" Class="text-muted page-footnote">Arama açıkken sıra değiştirilemez.</MudText>
+                            }
+                            <Pager Id="catalog-pager" Page="_page" PageSize="_pageSize" Total="filtered.Count" Unit="ürün"
+                                   PageChanged="p => _page = p" PageSizeChanged="s => { _pageSize = s; _page = 1; }" />
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+    }
+
+    <CatalogProductSheet Row="_sheetRow" PublicUrl="@_settings?.PublicUrl" OnClose="() => _sheetRow = null" OnChanged="() => Notice = null"
+                         OnImagesChanged="ImagesChanged" OnSessionEnded="EndSessionAsync" />
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.CustomerCatalog;
+
+    // The customer accesses tab (erisimler) comes with the access sheet (GOAL_MUSTERI_KATALOGU P4).
+    private static readonly (string Key, string Label)[] Tabs = [("genel", "Genel"), ("kategoriler", "Kategoriler ve ürünler")];
+
+    private string _tab = "genel";
+    private string? Notice { get; set; }
+    private string? _copyNote;
+
+    private CatalogSettingsDto? _settings;
+    private bool _enabled;
+    private int? _defaultList;
+
+    /// <summary>The categories as read; <see cref="_categoryOrder"/> and <see cref="_categoryHidden"/> are the edited copy.</summary>
+    private CatalogCategoriesDto? _categories;
+    private List<CatalogCategoryDto> _categoryOrder = [];
+    private readonly Dictionary<string, bool> _categoryHidden = new(StringComparer.Ordinal);
+    private string? _category;
+
+    /// <summary>The open category's products in their edited order; <see cref="_loaded"/> is the list as read.</summary>
+    private List<CatalogProductRow> _products = [];
+    private CatalogProductDto[] _loaded = [];
+    private long _productsRevision;
+    private bool _truncated;
+    private string? _search;
+    private int _page = 1;
+    private int _pageSize = 100;
+
+    /// <summary>A tab or category switch asked for while changes were unsaved; runs once they are saved or dropped.</summary>
+    private Func<Task>? _pending;
+    private CatalogProductRow? _sheetRow;
+
+    protected override void OnInitialized()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        string? One(string name) => query.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v) ? v[^1]!.Trim() : null;
+        _tab = One("sekme") is { } tab && Tabs.Any(t => t.Key == tab) ? tab : "genel";
+        _category = One("kategori");
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _settings = await Api.CatalogSettingsAsync();
+        ResetSettingsForm();
+        if (_tab == "kategoriler") await LoadLayoutAsync();
+        SyncAddress();
+    }
+
+    private async Task LoadLayoutAsync()
+    {
+        var categories = await Api.CatalogCategoriesAsync();
+        _categories = categories;
+        _categoryOrder = [.. categories.Items];
+        _categoryHidden.Clear();
+        foreach (var category in categories.Items) _categoryHidden[category.Key] = category.Hidden;
+        if (!categories.Items.Any(c => c.Key == _category)) _category = categories.Items.FirstOrDefault()?.Key;
+        if (_category is null)
+        {
+            _products = [];
+            _loaded = [];
+            return;
+        }
+        await LoadProductsAsync();
+    }
+
+    private async Task LoadProductsAsync()
+    {
+        var products = await Api.CatalogProductsAsync(_category);
+        _productsRevision = products.Revision;
+        _truncated = products.Truncated;
+        _loaded = products.Items;
+        _products = [.. _loaded.Select(p => new CatalogProductRow(p))];
+        _page = 1;
+    }
+
+    /// <summary>After a 409: everything is read again and the unsaved edits, made on an old copy, are dropped.</summary>
+    private async Task ReloadAsync()
+    {
+        _settings = await Api.CatalogSettingsAsync();
+        ResetSettingsForm();
+        if (_categories is not null) await LoadLayoutAsync();
+    }
+
+    private void SyncAddress()
+    {
+        var parts = new List<string>();
+        if (_tab != "genel") parts.Add("sekme=" + _tab);
+        if (_tab == "kategoriler" && _category is not null) parts.Add("kategori=" + Uri.EscapeDataString(_category));
+        Nav.NavigateTo(new Uri(Nav.Uri).GetLeftPart(UriPartial.Path) + (parts.Count == 0 ? string.Empty : "?" + string.Join("&", parts)),
+            new NavigationOptions { ReplaceHistoryEntry = true });
+    }
+
+    // ---- unsaved changes ----------------------------------------------------------------------
+
+    private bool SettingsDirty => _settings is not null && (_enabled != _settings.IsEnabled || _defaultList != _settings.DefaultPriceListNo);
+
+    private int CategoryChanges => _categories is null ? 0
+        : _categoryOrder.Where((c, i) => _categories.Items[i].Key != c.Key || _categoryHidden[c.Key] != c.Hidden).Count();
+
+    private int ProductChanges => _products.Where(Changed).Count();
+
+    /// <summary>Categories and products moved or changed, the count on "Kaydet".</summary>
+    private int LayoutChanges => CategoryChanges + ProductChanges;
+
+    private string UnsavedText => (LayoutChanges, SettingsDirty) switch
+    {
+        (> 0, true) => $"{LayoutChanges} değişiklik ve genel ayarlar",
+        (> 0, false) => $"{LayoutChanges} değişiklik",
+        _ => "Genel ayarlar",
+    };
+
+    private async Task GuardAsync(Func<Task> go)
+    {
+        if (LayoutChanges > 0 || SettingsDirty)
+        {
+            _pending = go;
+            return;
+        }
+        _pending = null;
+        await go();
+    }
+
+    private async Task SaveAndContinueAsync()
+    {
+        var go = _pending;
+        _pending = null;
+        Error = null;
+        if (SettingsDirty) await SaveSettingsAsync();
+        if (Error is null && LayoutChanges > 0) await SaveLayoutAsync();
+        if (Error is null && !SettingsDirty && LayoutChanges == 0 && go is not null) await go();
+    }
+
+    private async Task DiscardAndContinueAsync()
+    {
+        var go = _pending;
+        _pending = null;
+        ResetSettingsForm();
+        Discard();
+        if (go is not null) await go();
+    }
+
+    private void Discard()
+    {
+        if (_categories is not null)
+        {
+            _categoryOrder = [.. _categories.Items];
+            foreach (var category in _categories.Items) _categoryHidden[category.Key] = category.Hidden;
+        }
+        _products = [.. _loaded.Select(p => new CatalogProductRow(p))];
+    }
+
+    private async Task ShowTabAsync(string tab)
+    {
+        _tab = tab;
+        Notice = null;
+        if (tab == "kategoriler" && _categories is null) await RunAsync(LoadLayoutAsync);
+        SyncAddress();
+    }
+
+    private async Task OpenCategoryAsync(string key)
+    {
+        if (key == _category) return;
+        _category = key;
+        _search = null;
+        Notice = null;
+        await RunAsync(LoadProductsAsync);
+        SyncAddress();
+    }
+
+    // ---- general settings ---------------------------------------------------------------------
+
+    private void ResetSettingsForm()
+    {
+        if (_settings is null) return;
+        _enabled = _settings.IsEnabled;
+        _defaultList = _settings.DefaultPriceListNo;
+    }
+
+    private void PriceListChanged(ChangeEventArgs e) =>
+        _defaultList = int.TryParse(e.Value?.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var no) ? no : null;
+
+    private CatalogPriceListDto? ShownList => _settings?.PriceLists.FirstOrDefault(l => l.No == (_defaultList ?? _settings.EffectiveDefaultPriceListNo));
+
+    private string ListName(int? no) =>
+        _settings?.PriceLists.FirstOrDefault(l => l.No == no) is { } list ? $"{list.No} — {list.Name}" : "liste yok";
+
+    private async Task SaveSettingsAsync()
+    {
+        Notice = null;
+        await RunAsync(() => CatchChangedAsync(async () =>
+        {
+            var before = _settings!.Revision;
+            _settings = await Api.SaveCatalogSettingsAsync(new CatalogSettingsSaveRequest { Revision = before, IsEnabled = _enabled, DefaultPriceListNo = _defaultList });
+            Advance(before, _settings.Revision);
+            ResetSettingsForm();
+            Notice = _settings.IsEnabled ? "Genel ayarlar kaydedildi; katalog açık." : "Genel ayarlar kaydedildi; katalog kapalı.";
+        }));
+    }
+
+    private async Task CopyAddressAsync()
+    {
+        if (_settings?.PublicUrl is not { Length: > 0 } url) return;
+        bool copied;
+        try
+        {
+            copied = await JS.InvokeAsync<bool>("portalClipboard.copy", url);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException)
+        {
+            copied = false;
+        }
+        _copyNote = copied ? "Kopyalandı." : "Kopyalanamadı; adresi seçip kopyalayın.";
+    }
+
+    // ---- categories and products --------------------------------------------------------------
+
+    /// <summary>Moves an item to <paramref name="to"/> (clamped); the lists' order is what the save sends.</summary>
+    private static void Move<T>(List<T> items, int from, int to)
+    {
+        var item = items[from];
+        items.RemoveAt(from);
+        items.Insert(Math.Clamp(to, 0, items.Count), item);
+    }
+
+    private bool Searching => !string.IsNullOrWhiteSpace(_search);
+
+    private void SearchChanged(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString();
+        _page = 1;
+    }
+
+    private List<CatalogProductRow> Filtered()
+    {
+        if (!Searching) return _products;
+        var q = _search!.Trim();
+        return [.. _products.Where(p => Fmt.Turkish.CompareInfo.IndexOf(p.StockCode, q, CompareOptions.IgnoreCase) >= 0
+                                     || Fmt.Turkish.CompareInfo.IndexOf(p.Item.Name, q, CompareOptions.IgnoreCase) >= 0)];
+    }
+
+    private IEnumerable<CatalogProductRow> PageRows(List<CatalogProductRow> filtered) => filtered.Skip((_page - 1) * _pageSize).Take(_pageSize);
+
+    /// <summary>The row's flags changed, or another product now stands where it stood.</summary>
+    private bool Changed(CatalogProductRow row, int index) => row.FlagsChanged || _loaded[index].StockCode != row.StockCode;
+
+    private static void Select(IEnumerable<CatalogProductRow> rows, bool selected)
+    {
+        foreach (var row in rows) row.Selected = selected;
+    }
+
+    private void Bulk(Action<CatalogProductRow> change)
+    {
+        Notice = null;
+        foreach (var row in _products.Where(r => r.Selected)) change(row);
+    }
+
+    private void BulkCartonOnly()
+    {
+        var selected = _products.Where(r => r.Selected).ToList();
+        var without = selected.Count(r => r.EffectiveCarton is not >= 2);
+        foreach (var row in selected.Where(r => r.EffectiveCarton is >= 2)) row.CartonOnly = true;
+        Error = without == 0 ? null : $"{without} üründe koli adedi yok; onlarda yalnız koli açılmadı. Koli adedini girip tekrar deneyin.";
+    }
+
+    private void ToggleCartonOnly(CatalogProductRow row)
+    {
+        if (!row.CartonOnly && row.EffectiveCarton is not >= 2)
+        {
+            Error = $"{row.Item.Name}: önce koli adedini girin (en az 2); ERP'de koli bilgisi yok.";
+            return;
+        }
+        Error = null;
+        row.CartonOnly = !row.CartonOnly;
+    }
+
+    private void SetCarton(CatalogProductRow row, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) row.CartonQuantity = null;
+        else if (int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var quantity) && quantity >= 2) row.CartonQuantity = quantity;
+        else
+        {
+            Error = $"{row.Item.Name}: koli adedi en az 2 olan bir tam sayı olmalı.";
+            return;
+        }
+        Error = null;
+    }
+
+    private void ImagesChanged(CatalogImageDto[] images)
+    {
+        if (_sheetRow is not { } row) return;
+        row.Item.ImageCount = images.Length;
+        row.Item.ThumbUrl = images.FirstOrDefault()?.ThumbUrl;
+    }
+
+    private string? ImageSrc(string? url) => CatalogImageAddress.Resolve(url, _settings?.PublicUrl, Api.BaseAddress);
+
+    /// <summary>
+    /// A new product order sends the whole category numbered 1…n; otherwise only the changed products go, each keeping
+    /// its place. Products left out do not change on the server.
+    /// </summary>
+    private List<CatalogProductEdit> ProductEdits()
+    {
+        var reordered = !_products.Select(p => p.StockCode).SequenceEqual(_loaded.Select(p => p.StockCode));
+        return [.. _products.Select((row, i) => (row, i)).Where(x => reordered || x.row.FlagsChanged).Select(x => new CatalogProductEdit
+        {
+            StockCode = x.row.StockCode,
+            SortOrder = reordered ? x.i + 1 : x.row.Item.SortOrder,
+            Hidden = x.row.Hidden,
+            NoDiscount = x.row.NoDiscount,
+            CartonOnly = x.row.CartonOnly,
+            CartonQuantity = x.row.CartonQuantity,
+        })];
+    }
+
+    private async Task SaveLayoutAsync()
+    {
+        Notice = null;
+        if (_products.FirstOrDefault(p => p.CartonOnly && p.EffectiveCarton is not >= 2) is { } missing)
+        {
+            Error = $"{missing.Item.Name}: yalnız koli için koli adedi (en az 2) girin.";
+            return;
+        }
+        var changes = LayoutChanges;
+        await RunAsync(() => CatchChangedAsync(async () =>
+        {
+            if (CategoryChanges > 0)
+            {
+                var before = _categories!.Revision;
+                var saved = await Api.SaveCatalogCategoriesAsync(new CatalogCategoriesSaveRequest
+                {
+                    Revision = before,
+                    Items = [.. _categoryOrder.Select(c => new CatalogCategoryEdit { Key = c.Key, Hidden = _categoryHidden[c.Key] })],
+                });
+                Advance(before, saved.Revision);
+            }
+            if (ProductChanges > 0)
+            {
+                var before = _productsRevision;
+                var saved = await Api.SaveCatalogProductsAsync(new CatalogProductsSaveRequest { Revision = before, Items = ProductEdits() });
+                Advance(before, saved.Revision);
+            }
+            await LoadLayoutAsync();
+            Notice = $"{changes} değişiklik kaydedildi.";
+        }));
+    }
+
+    /// <summary>
+    /// Our own save moved the catalog from <paramref name="before"/> to <paramref name="after"/>, so what was read at
+    /// <paramref name="before"/> is still current. Anything read earlier keeps its revision and gets 409 when saved.
+    /// </summary>
+    private void Advance(long before, long after)
+    {
+        if (_settings is not null && _settings.Revision == before) _settings.Revision = after;
+        if (_categories is not null && _categories.Revision == before) _categories.Revision = after;
+        if (_productsRevision == before) _productsRevision = after;
+    }
+
+    /// <summary>Someone else saved first (409 <c>CATALOG_CHANGED</c>): read the catalog again, then let the page show why.</summary>
+    private async Task CatchChangedAsync(Func<Task> save)
+    {
+        try
+        {
+            await save();
+        }
+        catch (PortalApiException changed) when (changed.Code == "CATALOG_CHANGED")
+        {
+            await ReloadAsync();
+            throw;
+        }
+    }
+
+    // ---- formatting ---------------------------------------------------------------------------
+
+    private static string N(int value) => value.ToString("N0", Fmt.Turkish);
+
+    private static string Bytes(long bytes) => bytes >= 1L << 30
+        ? (bytes / (double)(1L << 30)).ToString("N1", Fmt.Turkish) + " GB"
+        : (bytes / (double)(1L << 20)).ToString("N1", Fmt.Turkish) + " MB";
+
+    private static double QuotaPercent(CatalogSettingsDto settings) =>
+        settings.ImageQuota.LimitBytes <= 0 ? 0 : Math.Min(100, settings.ImageQuota.UsedBytes * 100.0 / settings.ImageQuota.LimitBytes);
+}

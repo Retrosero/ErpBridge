@@ -32,6 +32,21 @@ public enum PortalArea
 
     /// <summary>Sales targets, teams and route plans (GOAL_HEDEF_RUT): the server's <c>CanManageTargets</c>.</summary>
     Targets,
+
+    /// <summary>
+    /// The customer web catalog and its order requests (GOAL_MUSTERI_KATALOGU): the server's
+    /// <c>CanManageCustomerCatalog</c>. Opens only when the company has the <see cref="PortalModules.CustomerCatalog"/> module.
+    /// </summary>
+    CustomerCatalog,
+}
+
+/// <summary>Sellable add-ons a company may have (the server's <c>TenantModules</c>); the session carries the bought ones.</summary>
+public static class PortalModules
+{
+    public const string CustomerCatalog = "customer_catalog";
+
+    /// <summary>The module an area needs besides the role, or null when the role is enough.</summary>
+    public static string? For(PortalArea area) => area == PortalArea.CustomerCatalog ? CustomerCatalog : null;
 }
 
 /// <summary>
@@ -88,17 +103,20 @@ public static class PortalRoles
         PortalArea.ErpDocuments => "portal.erp_documents",
         PortalArea.NativeAudit => "portal.audit",
         PortalArea.Targets => "portal.targets",
+        PortalArea.CustomerCatalog => "action.customer_catalog.manage",
         _ => null,
     };
 
     /// <summary>
     /// What the user's permissions open; a session without permissions (an older server, or a session saved
-    /// before them) falls back to the roles.
+    /// before them) falls back to the roles. The customer catalog's key is locked to ADMIN and MANAGER on the
+    /// server, so another role stays out even if a permission said otherwise.
     /// </summary>
     public static bool Allows(IReadOnlyCollection<string> roles, IReadOnlyDictionary<string, bool>? permissions, PortalArea area) =>
-        permissions is not null && KeyOf(area) is { } key && permissions.TryGetValue(key, out var allowed)
+        (area != PortalArea.CustomerCatalog || Allows(roles, area))
+        && (permissions is not null && KeyOf(area) is { } key && permissions.TryGetValue(key, out var allowed)
             ? allowed
-            : Allows(roles, area);
+            : Allows(roles, area));
 
     public static bool Allows(IReadOnlyCollection<string> roles, PortalArea area) => area switch
     {
@@ -113,6 +131,7 @@ public static class PortalRoles
         // D4: only ADMIN edits a native tenant's books, so only ADMIN needs its audit trail.
         PortalArea.NativeAudit => roles.Contains(Admin),
         PortalArea.Targets => roles.Any(r => r is Admin or Manager),
+        PortalArea.CustomerCatalog => roles.Any(r => r is Admin or Manager),
         _ => false,
     };
 
