@@ -199,6 +199,7 @@ public partial class Program
         }
 
         WarnIfSchemaIsBehind(app);
+        WarnIfStorageIsUnavailable(app);
         ConfigureApp(app);
         app.Run();
     }
@@ -224,6 +225,21 @@ public partial class Program
         catch (Exception ex)
         {
             app.Logger.LogWarning(ex, "Could not check the database schema version at startup.");
+        }
+    }
+
+    /// <summary>
+    /// The central file store is optional at startup (GOAL_DEPOLAMA_R2 T10): without its settings uploads answer 503.
+    /// Say which settings are missing (names only, never values) so the operator sees why.
+    /// </summary>
+    private static void WarnIfStorageIsUnavailable(WebApplication app)
+    {
+        var storage = app.Services.GetRequiredService<IOptions<ErpBridge.CentralApi.Storage.StorageOptions>>().Value;
+        if (!storage.IsConfigured)
+        {
+            app.Logger.LogWarning(
+                "Central file storage (R2) is not configured; storage endpoints answer 503 STORAGE_UNAVAILABLE. Missing: {Settings}.",
+                string.Join(", ", storage.MissingSettings().Select(name => "Storage:" + name)));
         }
     }
 
@@ -330,6 +346,17 @@ public partial class Program
         // Each company's built catalog, over the shared stock mirror; in memory like the mirror itself.
         builder.Services.AddSingleton(sp => new ErpBridge.CentralApi.CustomerCatalog.CatalogViewService(
             sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetService<TimeProvider>() ?? TimeProvider.System));
+        // Merkezi dosya deposu (docs/GOAL_DEPOLAMA_R2.md): Cloudflare R2 when every Storage:* connection value is set,
+        // otherwise a stand-in that makes the storage endpoints answer 503 STORAGE_UNAVAILABLE while the API runs.
+        builder.Services.Configure<ErpBridge.CentralApi.Storage.StorageOptions>(cfg.GetSection(ErpBridge.CentralApi.Storage.StorageOptions.SectionName));
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.IObjectStore>(sp =>
+        {
+            var storage = sp.GetRequiredService<IOptions<ErpBridge.CentralApi.Storage.StorageOptions>>();
+            return storage.Value.IsConfigured
+                ? new ErpBridge.CentralApi.Storage.R2ObjectStore(storage)
+                : new ErpBridge.CentralApi.Storage.UnavailableObjectStore();
+        });
+        builder.Services.AddScoped<ErpBridge.CentralApi.Storage.FileStore>();
     }
 
     /// <summary>
@@ -555,6 +582,12 @@ public partial class Program
         if (!string.IsNullOrWhiteSpace(cfg["CustomerCatalog:PublicHost"]) && forwarded is null)
             throw new InvalidOperationException(
                 $"CustomerCatalog:PublicHost requires {ForwardedHeadersSetup.KnownNetworksKey} or {ForwardedHeadersSetup.KnownProxiesKey} (the reverse proxy) outside the test environment.");
+
+        // The file store may be off (503), but a public address that is not https would hand out broken picture links.
+        var publicBaseUrl = cfg["Storage:PublicBaseUrl"];
+        if (!string.IsNullOrWhiteSpace(publicBaseUrl)
+            && (!Uri.TryCreate(publicBaseUrl.Trim(), UriKind.Absolute, out var storageUri) || storageUri.Scheme != Uri.UriSchemeHttps))
+            throw new InvalidOperationException("Storage:PublicBaseUrl must be an absolute https address.");
     }
 
     private static void ConfigureCors(IServiceCollection services, IConfiguration cfg, bool allowTestDefaults)
@@ -930,6 +963,7 @@ public partial class Program
         app.MapAdminLogEndpoints();
         app.MapInternalLogEndpoints();
         app.MapAdminMobileSeatsEndpoints();
+        app.MapStorageEndpoints();
     }
 
     /// <summary>

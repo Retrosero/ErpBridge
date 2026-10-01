@@ -22,6 +22,12 @@ public sealed class LogScrubberTests
     [InlineData("{\"password\":\"correct horse battery staple\",\"user\":\"x\"}", "horse battery staple")]
     [InlineData("{\"token\":\"a \\\"quoted\\\" secret\"}", "quoted")]
     [InlineData("Server=x;Pwd='with space';Database=y", "with space")]
+    [InlineData("Storage__SecretAccessKey=r2SecretValue123", "r2SecretValue123")]
+    [InlineData("Storage:AccessKeyId=AKIDR2VALUE99", "AKIDR2VALUE99")]
+    [InlineData("{\"SecretAccessKey\":\"abc def\",\"PublicBucket\":\"x\"}", "abc def")]
+    [InlineData("aws_secret_access_key = wJalrXUtnFEMIK7MDENG", "wJalrXUtnFEMIK7MDENG")]
+    [InlineData("aws_access_key_id=AKIAIOSFODNN7EXAMPLE", "AKIAIOSFODNN7EXAMPLE")]
+    [InlineData("GET https://r2.test/k.jpg?X-Amz-Credential=AKID%2F20261001&X-Amz-Signature=deadbeef01", "deadbeef01")]
     public void Scrub_removes_secrets_and_personal_data(string input, string secret)
     {
         var scrubbed = LogScrubber.Scrub(input);

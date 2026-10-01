@@ -207,6 +207,12 @@ public static class RolePermissions
     /// always admin and manager, never anyone else.
     /// </summary>
     public static bool CanManageCustomerCatalog(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.CustomerCatalogManage);
+
+    /// <summary>
+    /// The company file store (GOAL_DEPOLAMA_R2): usage by area, clean-up, trash, and every stored file. A locked key: always
+    /// admin and manager, never anyone else.
+    /// </summary>
+    public static bool CanManageStorage(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.StorageManage);
 }
 
 /// <summary>What a user may do in the approval centre, from their current row.</summary>

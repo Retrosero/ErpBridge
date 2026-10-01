@@ -73,6 +73,19 @@ public sealed class RuntimeConfigurationTests
     }
 
     [Fact]
+    public void Storage_settings_are_optional_but_a_public_address_must_be_https()
+    {
+        var none = () => Program.ValidateRuntimeConfiguration(ValidConfiguration(new()), allowTestDefaults: false);
+        none.Should().NotThrow("without storage settings the API starts and storage answers 503");
+
+        var http = () => Program.ValidateRuntimeConfiguration(ValidConfiguration(new() { ["Storage:PublicBaseUrl"] = "http://img.appsgo.cloud" }), allowTestDefaults: false);
+        http.Should().Throw<InvalidOperationException>().WithMessage("*Storage:PublicBaseUrl*");
+
+        var https = () => Program.ValidateRuntimeConfiguration(ValidConfiguration(new() { ["Storage:PublicBaseUrl"] = "https://img.appsgo.cloud" }), allowTestDefaults: false);
+        https.Should().NotThrow();
+    }
+
+    [Fact]
     public void Test_host_allows_factory_defaults()
     {
         var configuration = BuildConfiguration(signingKey: null);
