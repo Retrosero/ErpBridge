@@ -60,6 +60,7 @@ public static class CustomerCatalogPublicEndpoints
         signedIn.MapPost("/cart/quote", QuoteAsync).WithName("CatalogCartQuote");
         CatalogCustomerOrderEndpoints.Map(signedIn);
         CatalogCustomerLedgerEndpoints.Map(signedIn);
+        CustomerCatalogBannerEndpoints.MapCustomer(signedIn);
         return routes;
     }
 

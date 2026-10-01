@@ -64,9 +64,11 @@ public static class CustomerCatalogImageEndpoints
         var images = await db.CatalogImages.AsNoTracking().Where(i => i.TenantId == access.Tenant!.Id).ToListAsync(ct);
         return JsonResults.Ok(new CatalogImageManifestResponse
         {
+            // The quota counts every picture; the list is products only (banner pictures are the banners' own, S12).
             UsedBytes = images.Sum(i => (long)i.SizeBytes),
             LimitBytes = options.Value.TenantImageQuotaBytes,
             Items = [.. images
+                .Where(i => !CatalogBanners.IsReservedStockCode(i.StockCode))
                 .GroupBy(i => i.StockCode, StringComparer.Ordinal)
                 .OrderBy(g => g.Key, StringComparer.Ordinal)
                 .Select(g => new CatalogProductImagesDto { StockCode = g.Key, Images = [.. InOrder(g).Select(ToDto)] })],
@@ -91,7 +93,7 @@ public static class CustomerCatalogImageEndpoints
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in items)
         {
-            if (StockCodeOf(item.StockCode, view) is not { } code || !seen.Add(code))
+            if (ProductCodeOf(item.StockCode, view) is not { } code || !seen.Add(code))
                 return InvalidBody($"Her stok kodu dolu, en çok {CatalogVisibility.MaxStockCodeLength} karakter ve bir kez olmalı.");
             var links = new List<(string Url, string Hash)>();
             foreach (var link in item.Links ?? [])
@@ -158,6 +160,8 @@ public static class CustomerCatalogImageEndpoints
         var tenantId = access.Tenant!.Id;
         var view = await views.LoadAsync(db, tenantId, forCustomer: false, ct);
         if (StockCodeOf(body.StockCode, view) is not { } code) return InvalidBody($"stockCode dolu ve en çok {CatalogVisibility.MaxStockCodeLength} karakter olmalı.");
+        var banner = code == CatalogBanners.ImageStockCode;
+        if (!banner && CatalogBanners.IsReservedStockCode(code)) return ReservedCode();
         if (SourceHashOf(body.SourceHash) is not { } hash) return InvalidBody("sourceHash dolu ve en çok 80 karakter olmalı.");
         var source = body.Source?.Trim().ToLowerInvariant();
         if (source is not (CatalogImageSources.Phone or CatalogImageSources.Panel)) return InvalidBody("source 'phone' ya da 'panel' olmalı.");
@@ -176,14 +180,17 @@ public static class CustomerCatalogImageEndpoints
             Source = source,
             CreatedByUserId = access.User!.Id,
         };
-        var max = options.Value.MaxImagesPerProduct;
+        var max = banner ? CatalogBanners.MaxImages : options.Value.MaxImagesPerProduct;
         try
         {
             var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async now =>
             {
+                if (banner) await DropAbandonedBannerImagesAsync(db, tenantId, now, ct);
                 var orders = await db.CatalogImages.Where(i => i.TenantId == tenantId && i.StockCode == code).Select(i => i.SortOrder).ToListAsync(ct);
                 if (orders.Count >= max)
-                    return Error(StatusCodes.Status409Conflict, "CATALOG_IMAGE_LIMIT", $"Bir ürüne en çok {max} görsel eklenebilir.");
+                    return banner
+                        ? Error(StatusCodes.Status409Conflict, "CATALOG_IMAGE_LIMIT", $"Bannerlar için en çok {max} görsel tutulabilir; kullanılmayan bannerları silin.")
+                        : Error(StatusCodes.Status409Conflict, "CATALOG_IMAGE_LIMIT", $"Bir ürüne en çok {max} görsel eklenebilir.");
                 image.SortOrder = orders.Count == 0 ? 0 : orders.Max() + 1;
                 image.CreatedAtMs = now;
                 db.CatalogImages.Add(image);
@@ -269,7 +276,7 @@ public static class CustomerCatalogImageEndpoints
         if (body?.Ids is not { } ids || ids.Distinct().Count() != ids.Length) return InvalidBody("ids gerekli ve her kimlik bir kez olmalı.");
         var tenantId = access.Tenant!.Id;
         var view = await views.LoadAsync(db, tenantId, forCustomer: false, ct);
-        if (StockCodeOf(stockCode, view) is not { } code) return InvalidBody("stockCode gerekli.");
+        if (ProductCodeOf(stockCode, view) is not { } code) return InvalidBody("stockCode gerekli.");
         var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async _ =>
         {
             var pictures = InOrder(await db.CatalogImages.Where(i => i.TenantId == tenantId && i.StockCode == code).ToListAsync(ct)).ToList();
@@ -363,6 +370,24 @@ public static class CustomerCatalogImageEndpoints
         return view.Products.TryGetValue(code, out var product) ? product.Code : code;
     }
 
+    /// <summary><see cref="StockCodeOf"/> for a product: a reserved "~" key (banner pictures) is not one.</summary>
+    private static string? ProductCodeOf(string? text, CatalogView view) =>
+        StockCodeOf(text, view) is { } code && !CatalogBanners.IsReservedStockCode(code) ? code : null;
+
+    /// <summary>
+    /// Banner pictures registered more than a day ago that no banner uses: a banner edit that uploaded a picture and was
+    /// never saved. Removed under the picture lock before a new banner picture is counted, so they cannot fill the limit.
+    /// </summary>
+    private static async Task DropAbandonedBannerImagesAsync(CentralApiDbContext db, Guid tenantId, long now, CancellationToken ct)
+    {
+        var before = now - (long)TimeSpan.FromDays(1).TotalMilliseconds;
+        var abandoned = await db.CatalogImages
+            .Where(i => i.TenantId == tenantId && i.StockCode == CatalogBanners.ImageStockCode && i.CreatedAtMs < before
+                && !db.CatalogBanners.Any(b => b.ImageId == i.Id))
+            .ToListAsync(ct);
+        db.CatalogImages.RemoveRange(abandoned);
+    }
+
     private static string? SourceHashOf(string? text)
     {
         var hash = text?.Trim();
@@ -388,6 +413,9 @@ public static class CustomerCatalogImageEndpoints
 
     private static IResult InvalidImageUrl() =>
         Error(StatusCodes.Status400BadRequest, "INVALID_IMAGE_URL", "Görsel bağlantısı 443 portunda https olmalı, IP ya da yerel adres olamaz, en çok 2048 karakter.");
+
+    private static IResult ReservedCode() =>
+        InvalidBody($"'{CatalogBanners.ReservedPrefix}' ile başlayan kod ürün değildir; banner görseli için '{CatalogBanners.ImageStockCode}' kullanılır.");
 
     private static IResult ImageNotFound() => Error(StatusCodes.Status404NotFound, "CATALOG_IMAGE_NOT_FOUND", "Görsel bulunamadı.");
 

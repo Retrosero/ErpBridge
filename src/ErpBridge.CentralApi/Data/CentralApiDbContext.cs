@@ -211,6 +211,8 @@ public sealed class CentralApiDbContext : DbContext
 
     public DbSet<CatalogOrder> CatalogOrders => Set<CatalogOrder>();
 
+    public DbSet<CatalogBanner> CatalogBanners => Set<CatalogBanner>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -1507,6 +1509,20 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.AccountId, x.SubmittedAtMs });
             // A sale carrying catalogOrderId is checked against the request it completes (T8).
             b.HasIndex(x => new { x.TenantId, x.DocumentRef });
+        });
+
+        modelBuilder.Entity<CatalogBanner>(b =>
+        {
+            b.ToTable("catalog_banners");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(Domain.CatalogBanners.MaxTitleLength);
+            b.Property(x => x.Text).IsRequired().HasMaxLength(Domain.CatalogBanners.MaxTextLength);
+            b.Property(x => x.LinkType).IsRequired().HasMaxLength(16);
+            b.Property(x => x.LinkValue).IsRequired().HasMaxLength(Domain.CatalogBanners.MaxLinkLength);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // A picture deleted on its own (images API) leaves the banner without one rather than failing.
+            b.HasOne<CatalogImage>().WithMany().HasForeignKey(x => x.ImageId).OnDelete(DeleteBehavior.SetNull);
+            b.HasIndex(x => new { x.TenantId, x.SortOrder });
         });
     }
 }

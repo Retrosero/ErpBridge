@@ -467,6 +467,81 @@ public sealed class CatalogImageOrderRequest
     [JsonPropertyName("ids")] public Guid[]? Ids { get; set; }
 }
 
+// ---- banners (S12) -----------------------------------------------------------------------
+
+/// <summary><c>GET banners</c>: every banner of the company in its order, live or not.</summary>
+public sealed class CatalogBannersResponse
+{
+    [JsonPropertyName("items")] public CatalogBannerDto[] Items { get; set; } = [];
+}
+
+public sealed class CatalogBannerDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
+
+    [JsonPropertyName("imageId")] public Guid? ImageId { get; set; }
+
+    /// <summary>The picture under <c>~banner</c> (thumb and full addresses as for a product); null = text only.</summary>
+    [JsonPropertyName("image")] public CatalogImageDto? Image { get; set; }
+
+    /// <summary><c>none</c>, <c>category</c> (value = category key), <c>product</c> (stock code) or <c>url</c> (https).</summary>
+    [JsonPropertyName("linkType")] public string LinkType { get; set; } = "none";
+
+    [JsonPropertyName("linkValue")] public string LinkValue { get; set; } = string.Empty;
+
+    /// <summary>The linked category's or product's name as the catalog has it now; null when it is gone (or for none/url).</summary>
+    [JsonPropertyName("linkName")] public string? LinkName { get; set; }
+
+    [JsonPropertyName("sortOrder")] public int SortOrder { get; set; }
+
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+
+    [JsonPropertyName("startsAtMs")] public long? StartsAtMs { get; set; }
+
+    /// <summary>Exclusive: the banner is gone from this instant.</summary>
+    [JsonPropertyName("endsAtMs")] public long? EndsAtMs { get; set; }
+
+    /// <summary>Customers see it now: active and inside its dates.</summary>
+    [JsonPropertyName("live")] public bool Live { get; set; }
+
+    [JsonPropertyName("createdAtMs")] public long CreatedAtMs { get; set; }
+
+    [JsonPropertyName("updatedAtMs")] public long UpdatedAtMs { get; set; }
+}
+
+/// <summary>
+/// <c>POST banners</c> and <c>PUT banners/{id}</c> (every field; a PUT replaces them all). A picture is registered first
+/// with <c>POST images</c> under <c>stockCode = "~banner"</c>; a title or a picture is required.
+/// </summary>
+public sealed class CatalogBannerRequest
+{
+    [JsonPropertyName("title")] public string? Title { get; set; }
+
+    [JsonPropertyName("text")] public string? Text { get; set; }
+
+    [JsonPropertyName("imageId")] public Guid? ImageId { get; set; }
+
+    [JsonPropertyName("linkType")] public string? LinkType { get; set; }
+
+    [JsonPropertyName("linkValue")] public string? LinkValue { get; set; }
+
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; } = true;
+
+    [JsonPropertyName("startsAtMs")] public long? StartsAtMs { get; set; }
+
+    [JsonPropertyName("endsAtMs")] public long? EndsAtMs { get; set; }
+}
+
+/// <summary><c>PUT banners/order</c>: these first, in this order; banners not named follow in their old order.</summary>
+public sealed class CatalogBannerOrderRequest
+{
+    [JsonPropertyName("ids")] public Guid[]? Ids { get; set; }
+}
+
 // ---- order requests ----------------------------------------------------------------------
 
 /// <summary><c>GET orders?status=&amp;q=&amp;page=</c>: newest first, 50 a page; <see cref="Counts"/> over everything the user may see.</summary>

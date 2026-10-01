@@ -155,6 +155,41 @@ public sealed class CatalogCustomerImageDto
     [JsonPropertyName("full")] public string Full { get; set; } = string.Empty;
 }
 
+/// <summary><c>GET banners</c>: the live banners in their order (S12); empty when there are none.</summary>
+public sealed class CatalogCustomerBannersResponse
+{
+    [JsonPropertyName("items")] public CatalogCustomerBannerDto[] Items { get; set; } = [];
+}
+
+public sealed class CatalogCustomerBannerDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
+
+    [JsonPropertyName("image")] public CatalogCustomerImageDto? Image { get; set; }
+
+    /// <summary>Where a click goes; null when nowhere, or when the target is not in this customer's catalog.</summary>
+    [JsonPropertyName("link")] public CatalogCustomerBannerLinkDto? Link { get; set; }
+}
+
+public sealed class CatalogCustomerBannerLinkDto
+{
+    /// <summary><c>category</c>, <c>product</c> or <c>url</c>.</summary>
+    [JsonPropertyName("type")] public string Type { get; set; } = string.Empty;
+
+    /// <summary>The category name, the stock code or the https address.</summary>
+    [JsonPropertyName("value")] public string Value { get; set; } = string.Empty;
+
+    /// <summary>For <c>category</c>: the id <c>products?category=</c> takes.</summary>
+    [JsonPropertyName("categoryId")] public string? CategoryId { get; set; }
+
+    /// <summary>For <c>product</c>: the key <c>products/detail?key=</c> takes.</summary>
+    [JsonPropertyName("productKey")] public string? ProductKey { get; set; }
+}
+
 public sealed class CatalogCustomerPriceDto
 {
     /// <summary>The list price (struck through when <see cref="Net"/> is lower).</summary>
