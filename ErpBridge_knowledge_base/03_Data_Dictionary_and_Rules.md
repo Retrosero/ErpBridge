@@ -131,7 +131,7 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `permission_changes`: `Id` bigint PK, `TenantId`, `ActorUserId`, `ActorName(120)` anlık kopya, `Client(16)` android\|portal, `Scope(16)` role\|user\|roles, `Role(16)`, `TargetUserId`, `TargetUserName(120)`, `Key`, `OldValue` (null = satır yoktu), `NewValue` (null = silindi), `CreatedAtUtc`. Yalnız eklenir.
   - `suspended_sale_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` (indeksli; henüz temizlenmiyor).
 
-- **Müşteri kataloğu** *(GOAL_MUSTERI_KATALOGU S2, 2026-10-01; kural 36; migration `MusteriKatalogu` + `KatalogGorselSayaci`)* — zamanlar unix ms (UTC); her tablonun
+- **Müşteri kataloğu** *(GOAL_MUSTERI_KATALOGU S2, 2026-10-01; kural 36; migration `MusteriKatalogu` + `KatalogGorselSayaci` + `KatalogBannerlari`)* — zamanlar unix ms (UTC); her tablonun
   `TenantId`'si `tenants`'a cascade. Katalog hesapları koltuk değildir:
   - `catalog_settings`: PK `TenantId`, `IsEnabled` (firmanın yayın anahtarı; operatörün `customer_catalog` modülü önce gelir), `DefaultPriceListNo`
     null = liste 1 ya da en küçük, `Revision` (her düzen yazımında +1 — ayarlar, kategoriler, ürünler; eski revizyon 409 `CATALOG_CHANGED`), `ImageRevision` (her görsel
@@ -145,8 +145,13 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     `WHERE "DeletedAtMs" IS NULL` — cari başına tek canlı hesap; silinen hesabın adı ve carisi yeniden kullanılabilir.
   - `catalog_images`: `Id` (sunucu üretir), `TenantId`, `StockCode(64)`, `Kind(8)` link|file, `Url(2048)` (yalnız link; sunucu indirmez), `SourceHash(80)` göndericinin özgün parmak izi,
     `Source(8)` phone|panel, `SortOrder`, `SizeBytes` (iki varyant toplamı; kota bunu toplar), `HasSmall`, `HasLarge`, `ContentType(32)`, `Sha256Small/Large(64)`, `CreatedAtMs`, `CreatedByUserId`.
-    UNIQUE `(TenantId, StockCode, SourceHash)` (tekrar yükleme aynı satırı bulur).
+    UNIQUE `(TenantId, StockCode, SourceHash)` (tekrar yükleme aynı satırı bulur). `~` ile başlayan `StockCode` ürün değildir: `~banner` banner görselidir
+    (ürün sınırına, manifeste ve katalog görünümüne girmez; kotaya girer).
   - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade.
+  - `catalog_banners` *(S12, migration `KatalogBannerlari`)*: `Id`, `TenantId`, `Title(120)`, `Text(300)`, `ImageId` null = yalnız metin (FK `catalog_images`
+    `SET NULL`; görsel `StockCode = "~banner"`), `LinkType(16)` none|category|product|url, `LinkValue(2048)` kategori anahtarı / kartın stok kodu / https adres,
+    `SortOrder`, `IsActive`, `StartsAtMs` null = hemen, `EndsAtMs` null = süresiz (**hariç**: müşteri `StartsAtMs ≤ şimdi < EndsAtMs` görür), `CreatedAtMs`,
+    `UpdatedAtMs`, `UpdatedByUserId`. İndeks `(TenantId, SortOrder)`. Firma başına en çok 20.
   - `catalog_orders` (sipariş **talebi**, sipariş değil): `Id` = müşterinin `requestId`'si, `TenantId`, `AccountId` (FK yok; hesap yumuşak silinir), `CustomerCode(64)`, `CustomerName(200)`,
     `AccountUsername(64)`, `No(16)` `KT-XXXXXX` UNIQUE `(TenantId, No)`, `Status(16)` NEW|CLAIMED|COMPLETED|REJECTED (yönetici `reopen` ile kapalıdan NEW'e), `Note(1000)`, `RejectReason(500)`, `DocumentRef(128)` (çevrildiği
     satışın `externalId`'si; o satışın işi `Failed`/`DeadLetter` olursa düzeltilmiş satış devralır), `PriceListNo`, `PriceIncludesVat`, `DiscountPercent numeric(5,2)`, `Total numeric(18,2)`, `LineCount`, `LinesJson` jsonb (`[{stockCode, name, unit, quantity, cartonQuantity, listPrice,

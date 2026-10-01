@@ -177,7 +177,9 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
 
         var categoryRows = await db.CatalogCategorySettings.AsNoTracking().Where(s => s.TenantId == tenantId).ToListAsync(ct);
         var productRows = await db.CatalogProductSettings.AsNoTracking().Where(s => s.TenantId == tenantId).ToListAsync(ct);
-        var images = await db.CatalogImages.AsNoTracking().Where(i => i.TenantId == tenantId).ToListAsync(ct);
+        // Banner pictures (and any other reserved "~" key) are not a product's.
+        var images = await db.CatalogImages.AsNoTracking()
+            .Where(i => i.TenantId == tenantId && !i.StockCode.StartsWith(CatalogBanners.ReservedPrefix)).ToListAsync(ct);
         var view = Compose(stock, settings, categoryRows, productRows, images);
         cache.Set(key, view, new MemoryCacheEntryOptions { SlidingExpiration = Idle });
         return view;

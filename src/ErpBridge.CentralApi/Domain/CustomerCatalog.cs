@@ -260,6 +260,85 @@ public sealed class CatalogOrder
     public long UpdatedAtMs { get; set; }
 }
 
+/// <summary>
+/// A banner on top of the customer catalog (<c>catalog_banners</c>, GOAL_MUSTERI_KATALOGU S12): a picture and/or a title
+/// with a short text, shown to every customer in <see cref="SortOrder"/> while active and inside its dates. A click goes
+/// to a category, a product or an https address (<see cref="LinkType"/>). Its picture is an ordinary catalog picture
+/// kept under <see cref="CatalogBanners.ImageStockCode"/>, so upload, checks, quota and the anonymous address are shared.
+/// </summary>
+public sealed class CatalogBanner
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid TenantId { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>The banner's picture (<see cref="CatalogImage"/> under <see cref="CatalogBanners.ImageStockCode"/>); null = text only.</summary>
+    public Guid? ImageId { get; set; }
+
+    /// <summary>One of <see cref="CatalogBannerLinkTypes"/>.</summary>
+    public string LinkType { get; set; } = CatalogBannerLinkTypes.None;
+
+    /// <summary>The category key, the stock code or the https address; empty for <see cref="CatalogBannerLinkTypes.None"/>.</summary>
+    public string LinkValue { get; set; } = string.Empty;
+
+    public int SortOrder { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>Shown from this instant; null = at once.</summary>
+    public long? StartsAtMs { get; set; }
+
+    /// <summary>Shown until this instant (exclusive); null = no end.</summary>
+    public long? EndsAtMs { get; set; }
+
+    public long CreatedAtMs { get; set; }
+
+    public long UpdatedAtMs { get; set; }
+
+    public Guid? UpdatedByUserId { get; set; }
+
+    /// <summary>Active and inside its dates at <paramref name="nowMs"/>: the start counts, the end does not.</summary>
+    public bool IsLiveAt(long nowMs) => IsActive && (StartsAtMs is not { } start || start <= nowMs) && (EndsAtMs is not { } end || nowMs < end);
+}
+
+/// <summary>Values of <see cref="CatalogBanner.LinkType"/>.</summary>
+public static class CatalogBannerLinkTypes
+{
+    public const string None = "none";
+    public const string Category = "category";
+    public const string Product = "product";
+    public const string Url = "url";
+
+    public static readonly IReadOnlyList<string> All = [None, Category, Product, Url];
+}
+
+/// <summary>Limits and the picture key of <see cref="CatalogBanner"/>.</summary>
+public static class CatalogBanners
+{
+    /// <summary>
+    /// The stock code banner pictures are kept under. Codes starting with <see cref="ReservedPrefix"/> are not products:
+    /// the per-product picture limit, the picture manifest and the catalog view leave them out.
+    /// </summary>
+    public const string ImageStockCode = "~banner";
+
+    public const string ReservedPrefix = "~";
+
+    public const int MaxBanners = 20;
+
+    /// <summary>Banner pictures a company may hold, those of unsaved banner edits included.</summary>
+    public const int MaxImages = 2 * MaxBanners;
+
+    public const int MaxTitleLength = 120;
+    public const int MaxTextLength = 300;
+    public const int MaxLinkLength = 2048;
+
+    public static bool IsReservedStockCode(string? code) => code is not null && code.StartsWith(ReservedPrefix, StringComparison.Ordinal);
+}
+
 /// <summary>Values of <see cref="CatalogOrder.Status"/>. No cancel by the customer in v1 (T5).</summary>
 public static class CatalogOrderStatuses
 {

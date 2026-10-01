@@ -135,6 +135,11 @@ public static class PortalMessages
         "INVALID_VISIBILITY" => "Ürün görünürlüğü kaydedilemedi: seçilen kategori ya da ürünlerden biri geçersiz.",
         "INVALID_RESPONSIBLE_USER" => "Sorumlu kişi firmanın aktif bir kullanıcısı olmalı.",
         "CATALOG_IMAGE_NOT_FOUND" => "Görsel bulunamadı; başka biri silmiş olabilir. Ürünü yeniden açın.",
+        "CATALOG_BANNER_NOT_FOUND" => "Banner bulunamadı; başka biri silmiş olabilir. Liste yenilendi.",
+        "CATALOG_BANNER_LIMIT" => "En çok 20 banner olabilir; kullanılmayanları silin.",
+        "INVALID_BANNER_LINK" => "Bağlantı geçersiz: kategori ya da ürün katalogda olmalı, adres https:// ile başlamalı.",
+        "INVALID_BANNER_DATES" => "Bitiş tarihi başlangıç tarihinden önce olamaz.",
+        "INVALID_BANNER_IMAGE" => "Banner görseli bulunamadı; görseli yeniden yükleyin.",
         "INVALID_BODY" => "İstek eksik ya da hatalı; alanları kontrol edip tekrar deneyin.",
         "CATALOG_ORDER_NOT_FOUND" => "Müşteri siparişi bulunamadı; liste yenilendi.",
         "CATALOG_ORDER_TAKEN" => "Bu siparişle az önce başka biri ilgilenmeye başladı.",
@@ -172,6 +177,16 @@ public static class Fmt
 
     public static bool TryIsoDay(string? value, out DateOnly day) =>
         DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day);
+
+    /// <summary>The instant an Istanbul day begins, in Unix milliseconds (a banner's start; its end is the next day's start).</summary>
+    public static long DayStartMs(DateOnly day)
+    {
+        var local = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, Istanbul.GetUtcOffset(local)).ToUnixTimeMilliseconds();
+    }
+
+    /// <summary>The Istanbul day of Unix milliseconds.</summary>
+    public static DateOnly DayOfMs(long unixMs) => DayOf(DateTimeOffset.FromUnixTimeMilliseconds(unixMs));
 
     /// <summary>Istanbul wall-clock time of an instant.</summary>
     public static string Time(DateTimeOffset instant) => TimeZoneInfo.ConvertTime(instant, Istanbul).ToString("dd.MM.yyyy HH:mm", Turkish);

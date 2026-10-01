@@ -59,6 +59,7 @@ Zamanlar unix ms `long`; tablolar snake_case; her tablonun `TenantId`'si `tenant
 | `catalog_accounts` PK `Id` | `TenantId`, `CustomerCode` (64), `CustomerName` (200), `Username` (64, normalize `^[a-z0-9._-]{3,64}$`), `PasswordHash` (100, BCrypt), `IsActive`, `DiscountPercent numeric(5,2)` 0–99.99, `PriceListNo int?`, `VisibilityJson jsonb` `{mode,rules}`, `ShowStatement`, `ShowInvoices`, `ShowPurchased`, `CanOrder`, `ResponsibleUserId uuid?`, `TokenVersion int`, `LastLoginAtMs?`, `PasswordChangedAtMs`, `CreatedAtMs`, `UpdatedAtMs`, `CreatedByUserId?`, `CreatedByName` (120), `UpdatedByUserId?`, `DeletedAtMs?`. Filtreli unique: (`TenantId`,`Username`) ve (`TenantId`,`CustomerCode`) where `DeletedAtMs IS NULL` |
 | `catalog_images` PK `Id` (sunucu üretir) | `TenantId`, `StockCode`, `Kind` `link\|file`, `Url` (2048)?, `SourceHash` (80), `Source` `phone\|panel`, `SortOrder`, `SizeBytes int` (iki varyant toplamı), `HasSmall bool`, `HasLarge bool`, `ContentType` (32)?, `Sha256Small/Large` (64)?, `CreatedAtMs`, `CreatedByUserId?`. Unique (`TenantId`,`StockCode`,`SourceHash`) |
 | `catalog_image_blobs` PK (`ImageId`,`Variant` `s\|l`) | `Data bytea`, FK cascade |
+| `catalog_banners` PK `Id` (S12; migration `KatalogBannerlari`) | `TenantId`, `Title` (120), `Text` (300), `ImageId uuid?` → `catalog_images` (`SET NULL`; görsel `StockCode = "~banner"`), `LinkType` (16) `none\|category\|product\|url`, `LinkValue` (2048: kategori anahtarı, stok kodu ya da https), `SortOrder`, `IsActive`, `StartsAtMs?`, `EndsAtMs?` (hariç), `CreatedAtMs`, `UpdatedAtMs`, `UpdatedByUserId?`. İndeks (`TenantId`,`SortOrder`) |
 | `catalog_orders` PK `Id` (müşterinin `requestId`'si) | `TenantId`, `AccountId`, `CustomerCode`, `CustomerName`, `AccountUsername`, `No` (16, `KT-XXXXXX`, unique per tenant), `Status` (16), `Note` (1000)?, `RejectReason` (500)?, `DocumentRef` (128)?, `PriceListNo`, `PriceIncludesVat`, `DiscountPercent`, `Total numeric(18,2)`, `LineCount`, `LinesJson jsonb`, `AssignedUserId?`, `ClaimedByUserId?`, `ClaimedByName`?, `ClaimedAtMs?`, `ClosedByUserId?`, `ClosedByName?`, `ClosedAtMs?`, `SubmittedAtMs`, `UpdatedAtMs`. İndeks (`TenantId`,`Status`,`SubmittedAtMs`), (`TenantId`,`AccountId`,`SubmittedAtMs`), (`TenantId`,`DocumentRef`) |
 
 Ek: `TenantModules.CustomerCatalog = "customer_catalog"` (`Known`), `PermissionKeys.CustomerCatalogManage =
@@ -128,6 +129,10 @@ yönetim yetkisi istemez: yetkili tümünü, diğerleri yalnız kendine atananı
 | `PUT images/{id}/{s\|l}` | ham gövde, `Content-Type` jpeg/png/webp → 204 |
 | `PUT images/order?stockCode=` | `{ids[]}` → 204 |
 | `DELETE images/{id}` | → 204 |
+| `GET banners` | → `{items[Banner]}`; `Banner {id, title, text, imageId, image: Image\|null, linkType, linkValue, linkName, sortOrder, isActive, startsAtMs, endsAtMs, live, createdAtMs, updatedAtMs}` (S12) |
+| `POST banners` / `PUT banners/{id}` | `{title, text, imageId?, linkType, linkValue, isActive, startsAtMs?, endsAtMs?}` → `201 Banner` / `Banner`. Başlık ya da görsel zorunlu; geçersiz bağlantı `400 INVALID_BANNER_LINK`, ters tarih `400 INVALID_BANNER_DATES`, `~banner` olmayan görsel `400 INVALID_BANNER_IMAGE`, en çok 20 (`409 CATALOG_BANNER_LIMIT`) |
+| `DELETE banners/{id}` | → 204 (görseli de, başka banner göstermiyorsa) |
+| `PUT banners/order` | `{ids[]}` → 204 |
 | `GET orders?status=&q=&page=` | → `{items[OrderSummary], total, counts{new,claimed,completed,rejected}}`; `OrderSummary {id, no, customerCode, customerName, status, total, lineCount, submittedAtMs, assignedUserName, claimedByUserId, claimedByName, claimedAtMs}` |
 | `GET orders/counts` | → yalnız `counts{new,claimed,completed,rejected}`, veritabanında sayılır (panel menü rozeti) |
 | `GET orders/{id}` | → `OrderDetail` = summary + `{note, priceListNo, priceListName, priceIncludesVat, discountPercent, rejectReason, documentRef, closedByName, closedAtMs, lines[{stockCode, name, unit, quantity, cartonQuantity, listPrice, discountPercent, vatRate, gross, discount, vat, total, inStockNow}]}` |
@@ -143,6 +148,11 @@ sınırını ve sihirli baytı denetler, `415 INVALID_IMAGE`, `413 IMAGE_TOO_LAR
 `eXIf`/`tEXt`/`iTXt`/`zTXt`, WebP `EXIF`/`XMP ` (istemci görseli zaten döndürüp yeniden kodlar; yön bilgisi gerekmez). Görsel
 yazımları `ImageRevision`'ı artırır, düzen `revision`'ını değil (açık düzen düzenlemesi 409 almaz).
 Link: yalnız `https`, port 443, IP/`localhost`/`.local` host yok, ≤ 2048 (`400 INVALID_IMAGE_URL`).
+
+Banner görseli (S12) sıradan katalog görselidir: `POST images {stockCode: "~banner", …}` + aynı boyut yüklemesi; `l` 1920 × 720
+kutusunda ≤ 1 MB, `s` 800 × 300. `~` ile başlayan kod ürün değildir: ürün başına 8 sınırına, `images/manifest`'e ve katalog
+görünümüne girmez (kotaya girer); banner görselleri için firma başına 40, bir günden eski ve kullanılmayanlar yeni kayıtta silinir.
+Banner yazımları da `ImageRevision`'ı artırır, düzen `revision`'ını değil.
 
 ### 5.2 Müşteri — `/api/v1/catalog/{code}`
 
@@ -163,6 +173,7 @@ değilse oturum çerezi + 12 saatlik JWT).
 | `GET products?category=&q=&page=1&pageSize=48` | → `{items[CProduct], brands[string], total, page, pageSize}`; `CProduct {key, code, name, unit, brand, categoryId, price{list, net, discountPercent, includesVat}, box{qty, only}|null, inStock, thumb|null}` (`thumb` = görsel URL'si; `pageSize` en çok 60; `q` ≥ 2 karakter, ad/kod/barkod/marka, tr-TR) |
 | Ek ürün filtreleri | `brand`, `stock=in/out`, `minPrice`, `maxPrice`, `discounted=true`, `cartonOnly=true`, `hasImage=true`; fiyatlar müşterinin gördüğü net birim fiyatıdır. `sort=recommended/name-asc/name-desc/price-asc/price-desc/code-asc`; filtre/sıra sayfalama öncesi uygulanır. `brands` yalnız müşterinin gördüğü, kategori/aramaya uyan ürünlerden gelir. Negatif/ters fiyat aralığı ve tanımsız stok/sıra 400. |
 | `GET products/detail?key=` | → `CProduct` + `{images[{thumb, full}]}`; görünmüyorsa `404 NOT_FOUND` |
+| `GET banners` | → `{items[{id, title, text, image{thumb, full}\|null, link{type, value, categoryId?, productKey?}\|null}]}`: aktif ve tarih aralığında olanlar sırayla (S12); müşterinin görmediği ürüne/kategoriye bağlantı `null` |
 | `POST cart/quote` | `{lines[{key, quantity}]}` → `Quote {lines[{key, code, name, unit, quantity, box, price, vatRate, gross, discount, vat, total, issue}], totals{gross, discount, vat, total}}`; `issue` ∈ `NOT_AVAILABLE`, `OUT_OF_STOCK`, `CARTON_MULTIPLE`, `INVALID_QUANTITY` ya da null |
 | `POST orders` | `{requestId (uuid), lines[{key, quantity}], note, expectedTotal}` → `201 {order: COrder}`. `409 PRICE_CHANGED {quote}` (fark > 0,05), `422 CART_INVALID {quote}`, `403 ORDERING_DISABLED`, `429 TOO_MANY_OPEN_ORDERS` (açık talep ≤ 20), satır ≤ 200, aynı `requestId` aynı talebi döner |
 | `GET orders` | → `{items[COrder]}`; `COrder {id, no, status, total, lineCount, submittedAtMs, rejectReason}` |
@@ -247,6 +258,7 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 | S9 | `statement`, `invoices`, `invoices/detail`, `purchased` | Bayrak kapalı 403; başka carinin belge anahtarı 404; kasa koduyla çakışan cari başka carinin `r` anahtarıyla 404 |
 | S10 | Panelden siparişe çevirme: ortak `Jobs/SalesJobWriter` (ingest + onay + panel), `GET orders/{id}/conversion`, `POST orders/{id}/convert` | Gövde telefon gövdesiyle alan alan aynı ve `MobileDocumentTranslator` ile çevrilir; `CreatedByUserId` = atanan plasiyer, yoksa çağıran; fiyat değişince 409; ikinci çevirme 409; onay yetkisi olmayanda onay talebi; ERP'siz firmada defter kaydı; mevcut ingest/onay testleri değişmeden yeşil |
 | S11 | Talep ataması: sorumlu → cari temsilcisi → adres temsilcisi → firma varsayılanı → aktif rut planı; `notifyPreview`; kullanıcı listesinde `salespersonCode`; `GET orders/counts` | Her adım ayrı testli; pasif/silinmiş kişi atlanır; ERP'siz firmada rut planındaki kişiye atanır; hiçbiri yoksa yalnız yöneticiler |
+| S12 | Katalog bannerları: `catalog_banners` + migration `KatalogBannerlari`, yönetim `banners*` (görsel kilidi), müşteri `GET banners`, `~banner` görselleri | Tarih süzgeci (bitmiş/başlamamış görünmez); pasif gizli; görünmeyen ürüne/kategoriye bağlantı `null`; banner görseli ürünün 8 sınırına, manifeste ve ürün görsellerine girmez; SALES/ACCOUNTING 403, modülsüz 403; DELETE görseli siler; başka firma 404; düzen revizyonu artmaz |
 
 ### Web (ErpBridge)
 | # | Görev | Kabul |
@@ -257,6 +269,7 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 | W3 | Sepet, quote, talep gönderme, Siparişlerim | Yalnız-koli ürün koli katında; çift tıklama tek talep; 409'da güncel fiyat bandı |
 | W4 | Hesabım: ekstre/bakiye, faturalar, aldıklarım, şifre değiştir | Bayrağı kapalı bölüm görünmez |
 | W5 | Cihaz turu, erişilebilirlik, import grafiği/innerHTML/bütçe testleri | 360/390/768/1280 ekran görüntüleri |
+| W6 | Banner şeridi: `header.catalog-intro` altında 16:6 kayan şerit (`ui/banner-strip.js`, saf mantık `banners.js`) — CSS scroll-snap, otomatik kayma yok, nokta göstergesi, ok/Home/End tuşları, lazy görsel (ilki eager), metin görselin üstünde perdeyle; tıklama kategori seçer / ürün dialogunu açar / dış linki `target=_blank rel="noopener noreferrer"` açar | Banner yoksa şerit hiç çizilmez; inline style ve innerHTML yok; JS+CSS gzip ≤ 100 KB; `banners.test.mjs` + sahte sunucu `banners` ucu |
 
 ### Panel (ErpBridge.Portal + Admin)
 | # | Görev | Kabul |
@@ -268,6 +281,7 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 | P5 | `/musteri-siparisleri` | Reddetmede gerekçe zorunlu; ERP'li firmada "telefondan çevirin" kutusu (P6 ile iki yolu anlatan nota döndü) |
 | P6 | `/musteri-siparisleri` "Siparişe çevir" formu | Kimin adına, depo seçimi, "Talep: x → Güncel: y", eksik eşleme uyarısı (eksikken gönderilmez); `PRICE_CHANGED`'de form güncel önizlemeyle açık kalır; onaya giden satışta bilgi |
 | P7 | Bildirim görünürlüğü: menüde yeni talep rozeti (sayfa geçişinde ve 60 sn'de bir), `/musteri-siparisleri` 60 sn'de bir sessizce tazelenir, `CatalogAccessSheet`'te "Bildirim kime gidecek", Kullanıcılar'da temsilcisiz plasiyere "Katalog talepleri bildirilemez" | Rozet sayısı `orders/counts`'tan; açık talep ve yarım form tazelemede bozulmaz; ERP'siz firmada metin plasiyerden söz etmez |
+| P8 | `/katalog` "Bannerlar" sekmesi (liste: küçük görsel, başlık, bağlantı, tarih aralığı, durum rozeti, ↑↓ anında sıralama) + `Shared/CatalogBannerSheet.razor` (görsel yükle — `IImageShrinker` geniş kutu 1920 × 720 / 800 × 300 — ya da https bağlantı, başlık, metin, bağlantı türü + hedef: kategori seçici, ürün arama, url; İstanbul günleriyle başlangıç/bitiş, aktif, önizleme, sil) | Görsel `~banner` olarak `POST images` + `PUT l/s`; bitiş günü dahil (ertesi gün başı gönderilir); kaydedilmeden kapanınca yüklenen görsel silinir; silme onaylı |
 
 ### Telefon — Siparis_Cepte `docs/GOAL_MUSTERI_KATALOGU.md` (A1–A7)
 

@@ -477,6 +477,23 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task DeleteCatalogImageAsync(Guid imageId, CancellationToken ct = default) =>
         SendAsync<object>(HttpMethod.Delete, $"{Catalog}images/{imageId}", null, ct, emptyOk: true);
 
+    /// <summary>Every banner in its order, live or not (S12).</summary>
+    public Task<CatalogBannersDto> CatalogBannersAsync(CancellationToken ct = default) =>
+        GetAsync<CatalogBannersDto>(Catalog + "banners", ct);
+
+    public Task<CatalogBannerDto> CreateCatalogBannerAsync(CatalogBannerSaveRequest request, CancellationToken ct = default) =>
+        SendAsync<CatalogBannerDto>(HttpMethod.Post, Catalog + "banners", request, ct);
+
+    public Task<CatalogBannerDto> UpdateCatalogBannerAsync(Guid bannerId, CatalogBannerSaveRequest request, CancellationToken ct = default) =>
+        SendAsync<CatalogBannerDto>(HttpMethod.Put, $"{Catalog}banners/{bannerId}", request, ct);
+
+    /// <summary>The banner and its picture.</summary>
+    public Task DeleteCatalogBannerAsync(Guid bannerId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"{Catalog}banners/{bannerId}", null, ct, emptyOk: true);
+
+    public Task OrderCatalogBannersAsync(IEnumerable<Guid> ids, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Put, Catalog + "banners/order", new { ids = ids.ToArray() }, ct, emptyOk: true);
+
     /// <summary><paramref name="status"/> <c>NEW</c>, <c>CLAIMED</c>, <c>COMPLETED</c>, <c>REJECTED</c>, or null for all.</summary>
     public Task<CatalogOrdersDto> CatalogOrdersAsync(string? status, string? q, int page, CancellationToken ct = default) =>
         GetAsync<CatalogOrdersDto>(Catalog + "orders" + Query(("status", status), ("q", q), ("page", page.ToString(CultureInfo.InvariantCulture))), ct);

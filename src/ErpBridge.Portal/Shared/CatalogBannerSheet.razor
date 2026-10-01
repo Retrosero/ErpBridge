@@ -1,0 +1,445 @@
+@* GOAL_MUSTERI_KATALOGU P8: one catalog banner. Its picture goes up at once (a catalog picture under the reserved stock
+   code "~banner", 1920 × 720 and 800 × 300 in the browser); the rest is saved with "Kaydet". A picture uploaded here and
+   never saved is taken back on "Vazgeç"; the server drops leftovers after a day. *@
+@using System.Globalization
+@using System.Security.Cryptography
+@using System.Text
+@inject PortalApiClient Api
+@inject IImageShrinker Shrinker
+
+<DetailSheet Id="catalog-banner-sheet" Open="Banner is not null" Busy="_busy" Eyebrow="Katalog bannerı" Title="@(IsNew ? "Yeni banner" : (Banner?.Title is { Length: > 0 } t ? t : "Banner"))" OnClose="CancelAsync">
+    <ChildContent>
+        @if (Banner is not null)
+        {
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="banner-error">@_error</MudAlert>
+            }
+
+            <div class="banner-preview @(PreviewSrc is null ? "banner-preview--plain" : null)" id="banner-preview" aria-label="Önizleme">
+                @if (PreviewSrc is { } src)
+                {
+                    <img src="@src" alt="" />
+                }
+                @if (_title.Trim().Length > 0 || _text.Trim().Length > 0)
+                {
+                    <div class="banner-preview__text">
+                        @if (_title.Trim().Length > 0)
+                        {
+                            <strong>@_title.Trim()</strong>
+                        }
+                        @if (_text.Trim().Length > 0)
+                        {
+                            <span>@_text.Trim()</span>
+                        }
+                    </div>
+                }
+            </div>
+            <p class="field-hint">Önizleme; müşteri kataloğunda 16:6 oranında, kategorilerin üstünde kayan şeritte görünür.</p>
+
+            <div class="stack-form mt-3">
+                <section class="stack-field" id="banner-image-section">
+                    <span class="field-label">Görsel</span>
+                    @if (_image is not null)
+                    {
+                        <span class="inline-field">
+                            <span class="badge badge--muted" id="banner-image-kind">@(_image.Kind == "link" ? "Bağlantı görseli" : "Yüklenen görsel")</span>
+                            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error" Disabled="@_busy" OnClick="RemoveImageAsync" id="banner-image-remove">Görseli kaldır</MudButton>
+                        </span>
+                    }
+                    <InputFile OnChange="UploadAsync" accept="image/jpeg,image/png,image/webp" id="banner-image-file" disabled="@_busy" />
+                    <form class="document-search mt-2" @onsubmit="UseLinkAsync" @onsubmit:preventDefault>
+                        <input class="portal-input" id="banner-image-link" type="url" placeholder="ya da https://… görsel bağlantısı" maxlength="2048" value="@_imageLink" @onchange="e => _imageLink = e.Value?.ToString()" />
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@_busy" id="banner-image-link-use">Bağlantıyı kullan</MudButton>
+                    </form>
+                    <span class="field-hint">Geniş görsel önerilir (16:6, örn. 1920 × 720). Dosya tarayıcıda küçültülür: en çok @LargeWidth × @LargeHeight px ve 1 MB.</span>
+                </section>
+
+                <label class="stack-field">
+                    <span class="field-label">Başlık</span>
+                    <input class="portal-input" id="banner-title" maxlength="@MaxTitle" value="@_title" @oninput="e => _title = e.Value?.ToString() ?? string.Empty" />
+                    <span class="field-hint">Görsel yoksa zorunlu; en çok @MaxTitle karakter.</span>
+                </label>
+                <label class="stack-field">
+                    <span class="field-label">Kısa metin</span>
+                    <textarea class="portal-input" id="banner-text" rows="2" maxlength="@MaxText" value="@_text" @oninput="e => _text = e.Value?.ToString() ?? string.Empty"></textarea>
+                </label>
+
+                <div class="stack-field">
+                    <span class="field-label">Tıklanınca</span>
+                    <select class="portal-select" id="banner-link-type" value="@_linkType" @onchange="LinkTypeChangedAsync">
+                        <option value="none">Hiçbir yere gitmesin</option>
+                        <option value="category">Kategori açılsın</option>
+                        <option value="product">Ürün açılsın</option>
+                        <option value="url">Dış bağlantı açılsın (yeni sekme)</option>
+                    </select>
+                    @if (_linkType == "category")
+                    {
+                        <select class="portal-select mt-2" id="banner-link-category" value="@_linkValue" @onchange="e => _linkValue = e.Value?.ToString() ?? string.Empty">
+                            <option value="">Kategori seçin</option>
+                            @foreach (var category in _categories)
+                            {
+                                <option value="@category.Key">@category.Name</option>
+                            }
+                        </select>
+                    }
+                    else if (_linkType == "product")
+                    {
+                        @if (_linkValue.Length > 0)
+                        {
+                            <span class="field-hint" id="banner-link-product">Seçili ürün: <strong>@(_linkName ?? "katalogda bulunamadı")</strong> (@_linkValue)</span>
+                        }
+                        <form class="document-search mt-2" @onsubmit="SearchProductsAsync" @onsubmit:preventDefault>
+                            <input class="portal-input" id="banner-product-search" placeholder="Ürün adı ya da kodu" value="@_productQuery" @onchange="e => _productQuery = e.Value?.ToString()" />
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@_busy" id="banner-product-search-go">Ara</MudButton>
+                        </form>
+                        @if (_products is { } found)
+                        {
+                            @if (found.Length == 0)
+                            {
+                                <span class="field-hint" id="banner-product-none">Eşleşen ürün yok.</span>
+                            }
+                            <ul class="banner-pick" id="banner-product-results">
+                                @foreach (var product in found)
+                                {
+                                    <li><button type="button" class="link-button" data-stock="@product.StockCode" @onclick="() => PickProduct(product)">@product.Name <small class="text-muted">@product.StockCode</small></button></li>
+                                }
+                            </ul>
+                        }
+                    }
+                    else if (_linkType == "url")
+                    {
+                        <input class="portal-input mt-2" id="banner-link-url" type="url" placeholder="https://…" maxlength="2048" value="@_linkValue" @onchange="e => _linkValue = e.Value?.ToString()?.Trim() ?? string.Empty" />
+                    }
+                </div>
+
+                <div class="banner-dates">
+                    <label class="stack-field">
+                        <span class="field-label">Başlangıç</span>
+                        <input type="date" class="portal-input" id="banner-starts" value="@(_starts is { } s ? Fmt.IsoDay(s) : string.Empty)" @onchange="e => _starts = Day(e)" />
+                    </label>
+                    <label class="stack-field">
+                        <span class="field-label">Bitiş (dahil)</span>
+                        <input type="date" class="portal-input" id="banner-ends" value="@(_ends is { } d ? Fmt.IsoDay(d) : string.Empty)" @onchange="e => _ends = Day(e)" />
+                    </label>
+                </div>
+                <span class="field-hint">Boş bırakılan tarih sınırsızdır; bitiş günü sonuna kadar gösterilir (İstanbul saati).</span>
+                <label class="inline-field">
+                    <input type="checkbox" id="banner-active" checked="@_active" @onchange="e => _active = e.Value is true" />
+                    Aktif: tarih aralığında müşterilere gösterilir
+                </label>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        @if (Banner is not null && !IsNew)
+        {
+            @if (_confirmDelete)
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@_busy" OnClick="DeleteAsync" id="banner-delete-confirm">Evet, sil</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="() => _confirmDelete = false" id="banner-delete-cancel">Silme</MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@_busy" OnClick="() => _confirmDelete = true" id="banner-delete">Sil</MudButton>
+            }
+        }
+        <span style="flex: 1"></span>
+        <MudButton Variant="Variant.Text" Disabled="@_busy" OnClick="CancelAsync" id="banner-cancel">Vazgeç</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@_busy" OnClick="SaveAsync" id="banner-save">Kaydet</MudButton>
+    </Footer>
+</DetailSheet>
+
+@code {
+    /// <summary>The banner being edited; one with an empty id is a new banner; null closes the sheet.</summary>
+    [Parameter] public CatalogBannerDto? Banner { get; set; }
+
+    /// <summary>The catalog's public address (settings); stored pictures load from its host.</summary>
+    [Parameter] public string? PublicUrl { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Saved or deleted: the page reads the list again.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>The server ended the session; the page signs out with this code.</summary>
+    [Parameter] public EventCallback<string> OnSessionEnded { get; set; }
+
+    /// <summary>The server's key for banner pictures (catalog_images.StockCode).</summary>
+    public const string ImageStockCode = "~banner";
+
+    // GOAL_MUSTERI_KATALOGU S12: the banner picture is 16:6, at most 1920 px wide and 1 MB; the small one feeds phones.
+    // The byte limits stay a little under the server's so a size at the edge is not refused.
+    public const int LargeWidth = 1920;
+    public const int LargeHeight = 720;
+    public const int SmallWidth = 800;
+    public const int SmallHeight = 300;
+    private const long LargeBytes = 1_000_000;
+    private const long SmallBytes = 200_000;
+    private const long MaxSourceBytes = 15L * 1024 * 1024;
+    private const int MaxTitle = 120;
+    private const int MaxText = 300;
+    private static readonly HashSet<string> ImageTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    private CatalogBannerDto? _openFor;
+    private string _title = string.Empty;
+    private string _text = string.Empty;
+    private string _linkType = "none";
+    private string _linkValue = string.Empty;
+    private string? _linkName;
+    private DateOnly? _starts;
+    private DateOnly? _ends;
+    private bool _active = true;
+
+    /// <summary>The picture shown now; <see cref="_uploaded"/> is one this sheet registered and nothing saved yet.</summary>
+    private CatalogImageDto? _image;
+    private Guid? _uploaded;
+    private string? _imageLink;
+
+    private CatalogCategoryDto[] _categories = [];
+    private string? _productQuery;
+    private CatalogProductDto[]? _products;
+    private bool _busy;
+    private bool _confirmDelete;
+    private string? _error;
+
+    private bool IsNew => Banner is { Id: var id } && id == Guid.Empty;
+
+    private string? PreviewSrc => _image is null ? null : CatalogImageAddress.Resolve(_image.FullUrl ?? _image.ThumbUrl ?? _image.Url, PublicUrl, Api.BaseAddress);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(Banner, _openFor)) return;
+        _openFor = Banner;
+        _error = null;
+        _confirmDelete = false;
+        _products = null;
+        _productQuery = _imageLink = null;
+        _uploaded = null;
+        if (Banner is not { } banner) return;
+        _title = banner.Title;
+        _text = banner.Text;
+        _linkType = banner.LinkType;
+        _linkValue = banner.LinkValue;
+        _linkName = banner.LinkName;
+        _starts = banner.StartsAtMs is { } start ? Fmt.DayOfMs(start) : null;
+        // The end is exclusive (the next day's start); the form shows the last day.
+        _ends = banner.EndsAtMs is { } end ? Fmt.DayOfMs(end - 1) : null;
+        _active = banner.IsActive;
+        _image = banner.Image;
+        if (_linkType == "category") await RunAsync(LoadCategoriesAsync);
+    }
+
+    private async Task LoadCategoriesAsync() => _categories = (await Api.CatalogCategoriesAsync()).Items;
+
+    private async Task LinkTypeChangedAsync(ChangeEventArgs e)
+    {
+        _linkType = e.Value?.ToString() ?? "none";
+        _linkValue = string.Empty;
+        _linkName = null;
+        _products = null;
+        if (_linkType == "category" && _categories.Length == 0) await RunAsync(LoadCategoriesAsync);
+    }
+
+    private async Task SearchProductsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_productQuery)) return;
+        await RunAsync(async () => _products = (await Api.CatalogProductsAsync(null, _productQuery.Trim())).Items);
+    }
+
+    private void PickProduct(CatalogProductDto product)
+    {
+        _linkValue = product.StockCode;
+        _linkName = product.Name;
+        _products = null;
+    }
+
+    private static DateOnly? Day(ChangeEventArgs e) => Fmt.TryIsoDay(e.Value?.ToString(), out var day) ? day : null;
+
+    // ---- picture ---------------------------------------------------------------------------
+
+    /// <summary>The file's hash, its two sizes, the picture record under "~banner", then the sizes' bytes.</summary>
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (!ImageTypes.Contains(file.ContentType))
+        {
+            _error = $"{file.Name}: JPEG, PNG ya da WebP değil.";
+            return;
+        }
+        if (file.Size > MaxSourceBytes)
+        {
+            _error = $"{file.Name}: 15 MB'tan büyük.";
+            return;
+        }
+        await RunAsync(async () =>
+        {
+            string sourceHash;
+            await using (var stream = file.OpenReadStream(MaxSourceBytes))
+            {
+                sourceHash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream));
+            }
+            var large = await Shrinker.ShrinkAsync(file, LargeWidth, LargeHeight, LargeBytes);
+            var small = large is null ? null : await Shrinker.ShrinkAsync(file, SmallWidth, SmallHeight, SmallBytes);
+            if (large is null || small is null)
+            {
+                _error = $"{file.Name}: görsel okunamadı ya da yeterince küçültülemedi.";
+                return;
+            }
+            var image = await Api.CreateCatalogImageAsync(new CatalogImageCreateRequest { StockCode = ImageStockCode, SourceHash = sourceHash, Source = "panel" });
+            if (!image.HasLarge) await Api.UploadCatalogImageAsync(image.Id, "l", large.Content, large.ContentType);
+            if (!image.HasSmall) await Api.UploadCatalogImageAsync(image.Id, "s", small.Content, small.ContentType);
+            // The anonymous addresses the server gives; h only busts caches, so the bytes' own hash will do.
+            image.HasLarge = image.HasSmall = true;
+            image.FullUrl = $"/api/v1/catalog/img/{image.Id:D}/l?h={Convert.ToHexStringLower(SHA256.HashData(large.Content))[..8]}";
+            image.ThumbUrl = $"/api/v1/catalog/img/{image.Id:D}/s?h={Convert.ToHexStringLower(SHA256.HashData(small.Content))[..8]}";
+            await ReplaceImageAsync(image);
+        });
+    }
+
+    private async Task UseLinkAsync()
+    {
+        var url = _imageLink?.Trim() ?? string.Empty;
+        if (url.Length > 2048 || !Uri.TryCreate(url, UriKind.Absolute, out var address) || address.Scheme != Uri.UriSchemeHttps)
+        {
+            _error = PortalMessages.For("INVALID_IMAGE_URL");
+            return;
+        }
+        await RunAsync(async () =>
+        {
+            var image = await Api.CreateCatalogImageAsync(new CatalogImageCreateRequest
+            {
+                StockCode = ImageStockCode, SourceHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(url))), Source = "panel", Url = url,
+            });
+            await ReplaceImageAsync(image);
+            _imageLink = null;
+        });
+    }
+
+    /// <summary>The new picture is shown; one this sheet uploaded before (never saved) is taken back.</summary>
+    private async Task ReplaceImageAsync(CatalogImageDto image)
+    {
+        if (_uploaded is { } earlier && earlier != image.Id && earlier != Banner?.ImageId) await Api.DeleteCatalogImageAsync(earlier);
+        _image = image;
+        _uploaded = image.Id == Banner?.ImageId ? null : image.Id;
+    }
+
+    private async Task RemoveImageAsync()
+    {
+        await RunAsync(async () =>
+        {
+            if (_uploaded is { } earlier) await Api.DeleteCatalogImageAsync(earlier);
+            _uploaded = null;
+            _image = null;
+        });
+    }
+
+    // ---- save ------------------------------------------------------------------------------
+
+    private async Task SaveAsync()
+    {
+        if (Banner is not { } banner) return;
+        var title = _title.Trim();
+        if (title.Length == 0 && _image is null)
+        {
+            _error = "Başlık ya da görsel gerekli.";
+            return;
+        }
+        if (_linkType is "category" or "product" && _linkValue.Length == 0)
+        {
+            _error = _linkType == "category" ? "Bağlantı için bir kategori seçin." : "Bağlantı için bir ürün seçin.";
+            return;
+        }
+        if (_linkType == "url" && (!Uri.TryCreate(_linkValue, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps))
+        {
+            _error = PortalMessages.For("INVALID_BANNER_LINK");
+            return;
+        }
+        if (_starts is { } from && _ends is { } to && to < from)
+        {
+            _error = PortalMessages.For("INVALID_BANNER_DATES");
+            return;
+        }
+        var request = new CatalogBannerSaveRequest
+        {
+            Title = title,
+            Text = _text.Trim(),
+            ImageId = _image?.Id,
+            LinkType = _linkType,
+            LinkValue = _linkType == "none" ? string.Empty : _linkValue,
+            IsActive = _active,
+            StartsAtMs = _starts is { } start ? Fmt.DayStartMs(start) : null,
+            EndsAtMs = _ends is { } end ? Fmt.DayStartMs(end.AddDays(1)) : null,
+        };
+        var saved = false;
+        await RunAsync(async () =>
+        {
+            if (IsNew) await Api.CreateCatalogBannerAsync(request);
+            else await Api.UpdateCatalogBannerAsync(banner.Id, request);
+            saved = true;
+        });
+        if (!saved) return;
+        _uploaded = null;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Banner is not { } banner) return;
+        var deleted = false;
+        await RunAsync(async () =>
+        {
+            if (_uploaded is { } earlier) await Api.DeleteCatalogImageAsync(earlier);
+            await Api.DeleteCatalogBannerAsync(banner.Id);
+            deleted = true;
+        });
+        if (!deleted) return;
+        _uploaded = null;
+        await OnChanged.InvokeAsync();
+    }
+
+    /// <summary>Closing without saving takes back a picture uploaded here; the server would drop it after a day anyway.</summary>
+    private async Task CancelAsync()
+    {
+        if (_uploaded is { } earlier)
+        {
+            _uploaded = null;
+            await RunAsync(() => Api.DeleteCatalogImageAsync(earlier));
+        }
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+        }
+        catch (SessionEndedException ended)
+        {
+            await OnSessionEnded.InvokeAsync(ended.Code);
+        }
+        catch (PortalApiException failed)
+        {
+            _error = failed.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+        }
+        catch (TaskCanceledException)
+        {
+            _error = "Sunucu zamanında yanıt vermedi. Tekrar deneyin.";
+        }
+        catch (IOException)
+        {
+            _error = "Dosya okunamadı. Tekrar seçip deneyin.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -890,6 +890,7 @@ public partial class Program
         app.MapMobileUserPreferencesEndpoints();
         app.MapCustomerCatalogManageEndpoints();
         app.MapCustomerCatalogImageEndpoints();
+        app.MapCustomerCatalogBannerEndpoints();
         app.MapCustomerCatalogOrderEndpoints();
         app.MapCustomerCatalogPublicEndpoints();
         catalogWeb?.MapShell(app);

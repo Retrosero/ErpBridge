@@ -355,6 +355,53 @@ public sealed class CatalogImageCreatedDto
     [JsonPropertyName("image")] public CatalogImageDto Image { get; set; } = new();
 }
 
+// ---- banners (S12) --------------------------------------------------------------------------------
+
+public sealed class CatalogBannersDto
+{
+    [JsonPropertyName("items")] public CatalogBannerDto[] Items { get; set; } = [];
+}
+
+public sealed class CatalogBannerDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
+    [JsonPropertyName("imageId")] public Guid? ImageId { get; set; }
+
+    /// <summary>The picture (kept under the reserved stock code <c>~banner</c>); null = text only.</summary>
+    [JsonPropertyName("image")] public CatalogImageDto? Image { get; set; }
+
+    /// <summary><c>none</c>, <c>category</c> (value = category key), <c>product</c> (stock code) or <c>url</c> (https).</summary>
+    [JsonPropertyName("linkType")] public string LinkType { get; set; } = "none";
+    [JsonPropertyName("linkValue")] public string LinkValue { get; set; } = string.Empty;
+
+    /// <summary>The linked category's or product's name today; null when it is gone.</summary>
+    [JsonPropertyName("linkName")] public string? LinkName { get; set; }
+    [JsonPropertyName("sortOrder")] public int SortOrder { get; set; }
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; }
+    [JsonPropertyName("startsAtMs")] public long? StartsAtMs { get; set; }
+
+    /// <summary>Exclusive: the banner is gone from this instant (the panel sends the start of the day after the last day).</summary>
+    [JsonPropertyName("endsAtMs")] public long? EndsAtMs { get; set; }
+
+    /// <summary>Customers see it now.</summary>
+    [JsonPropertyName("live")] public bool Live { get; set; }
+}
+
+/// <summary><c>POST banners</c> / <c>PUT banners/{id}</c>: every field (a PUT replaces them all).</summary>
+public sealed class CatalogBannerSaveRequest
+{
+    [JsonPropertyName("title")] public string Title { get; set; } = string.Empty;
+    [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
+    [JsonPropertyName("imageId")] public Guid? ImageId { get; set; }
+    [JsonPropertyName("linkType")] public string LinkType { get; set; } = "none";
+    [JsonPropertyName("linkValue")] public string LinkValue { get; set; } = string.Empty;
+    [JsonPropertyName("isActive")] public bool IsActive { get; set; } = true;
+    [JsonPropertyName("startsAtMs")] public long? StartsAtMs { get; set; }
+    [JsonPropertyName("endsAtMs")] public long? EndsAtMs { get; set; }
+}
+
 // ---- order requests ----------------------------------------------------------------------------------
 
 public sealed class CatalogOrdersDto

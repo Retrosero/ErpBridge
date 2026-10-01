@@ -394,6 +394,31 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
   `Cross-Origin-Resource-Policy: same-site`. `s` yoksa `l`; bağlantı görseli, bilinmeyen kimlik, firma pasif ya da modülü kapalıysa
   `404 NOT_FOUND` (önbellek başlıksız). Firmanın "yayında" anahtarı (`IsEnabled`) **sorulmaz**: panel ve telefon katalog
   yayına alınmadan, hazırlanırken görselleri bu adresten gösterir.
+- **Bannerlar (`banners*`, S12)** `Endpoints/CustomerCatalogBannerEndpoints`: modül + yönetim yetkisi (diğer yönetim uçları gibi).
+  Yazımlar görsel kilidinden geçer (`WriteLayoutAsync(..., pictures: true)`): `ImageRevision` artar, düzen `revision`'ı **artmaz**
+  (açık düzen düzenlemesi 409 almaz). Sürüm/çakışma denetimi yok (son yazan kazanır).
+  - `GET banners` → `{items[Banner]}` sırayla (`sortOrder`, sonra oluşturma); `Banner {id, title, text, imageId, image: Image|null,
+    linkType, linkValue, linkName, sortOrder, isActive, startsAtMs, endsAtMs, live, createdAtMs, updatedAtMs}`. `linkName` bağlantı
+    verilen kategorinin/ürünün bugünkü adı (yoksa null), `live` = aktif ve şu an tarih aralığında.
+  - `POST banners` → `201 Banner`; `PUT banners/{id}` → `Banner` (gövde her alanı taşır, PUT hepsini değiştirir):
+    `{title, text, imageId?, linkType, linkValue, isActive, startsAtMs?, endsAtMs?}`. Başlık ≤ 120, metin ≤ 300 (kırpılır;
+    aşan `400 INVALID_BODY`); başlık ya da görsel zorunlu (`400 INVALID_BODY`). `linkType` `none|category|product|url` (harf
+    büyüklüğü fark etmez): `url` görsel bağlantısı kuralıyla (`https`, 443, IP/yerel yok, ≤ 2048), `category` katalogdaki kategori
+    anahtarı, `product` katalogdaki stok kodu (kartın kodu saklanır) — değilse `400 INVALID_BANNER_LINK`. `endsAtMs ≤ startsAtMs`
+    `400 INVALID_BANNER_DATES`; bitiş **hariçtir** (panel son günün ertesi gününün İstanbul başlangıcını gönderir). `imageId`
+    firmanın `~banner` görseli olmalı (`400 INVALID_BANNER_IMAGE`). En çok 20 banner (`409 CATALOG_BANNER_LIMIT`). PUT'ta artık
+    kullanılmayan eski görsel başka banner göstermiyorsa silinir.
+  - `DELETE banners/{id}` → 204; görseli (ve iki boyutu) başka banner göstermiyorsa birlikte silinir. `PUT banners/order {ids}` →
+    204: verilenler bu sırada, verilmeyenler eski sıralarıyla arkadan; tekrar eden kimlik `400 INVALID_BODY`. Bilinmeyen ya da
+    başka firmanın banner'ı `404 CATALOG_BANNER_NOT_FOUND`.
+  - **Görsel:** banner görseli sıradan katalog görselidir, `POST images {stockCode: "~banner", sourceHash, source, url?}` ile
+    kaydedilir ve boyutları aynı `PUT images/{id}/{s|l}` ile gider (aynı bayt sınırları, sihirli bayt, üst veri temizliği, kota,
+    anonim adres). `~` ile başlayan kod ürün değildir: ürün başına 8 sınırı yerine banner görselleri için firma başına 40
+    (`409 CATALOG_IMAGE_LIMIT`); `~banner` dışındaki `~` kodları, `PUT images/links` ve `PUT images/order` için `~` kodları
+    `400 INVALID_BODY`; `GET images/manifest` ve katalog görünümü (ürün `imageCount`/`thumbUrl`, müşteri `thumb`) bunları
+    göstermez, `usedBytes` (kota) sayar. Yeni `~banner` kaydında, bir günden eski ve hiçbir bannerın kullanmadığı banner görselleri
+    (kaydedilmemiş düzenlemeden kalan) silinir. Görsel images API'siyle silinirse banner görselsiz kalır (FK `SET NULL`). Panel
+    banner görselini 1920 × 720 (`l`, ≤ 1 MB) ve 800 × 300 (`s`) kutusuna sığdırarak gönderir.
 
 - **Talepler (`orders*`, S8)** `Endpoints/CustomerCatalogOrderEndpoints`: modül denetlenir, yönetim yetkisi **istenmez**;
   katalog yöneticisi (ADMIN/MANAGER) hepsini, diğerleri yalnız `AssignedUserId` ya da `ClaimedByUserId` kendisi olanları görür
@@ -498,6 +523,11 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
 - **`GET products?category=&q=&page=&pageSize=`:** `pageSize` varsayılan 48, 1–60'a kırpılır; `page` ≥ 1. `category` bilinmeyen
   kimlik → boş liste. `q` kırpılır; 2 karakterden kısaysa yok sayılır; ad/kod/marka tr-TR harf ve şapka duyarsız
   (`IgnoreCase | IgnoreNonSpace`; ç ğ ı ö ş ü ayrı harf kalır), barkod içerir.
+- **`GET banners`** (S12) → `{items[{id, title, text, image: {thumb, full}|null, link: {type, value, categoryId?, productKey?}|null}]}`:
+  yalnız aktif ve şu an tarih aralığında olanlar (`startsAtMs ≤ şimdi < endsAtMs`), sırayla; banner yoksa boş liste. Bağlantı
+  müşterinin görünürlüğüne göre süzülür: görmediği ürüne ya da hiç görünür ürünü olmayan kategoriye bağlantı `link: null` olur
+  (banner kalır). `category` → `categoryId` (`products?category=`'nin aldığı), `product` → `productKey`, `url` → https adres.
+  Görseli gitmiş (ya da baytı hiç yüklenmemiş) ve başlığı olmayan banner listelenmez.
 - **`GET products/detail?key=`** (`key` = stok kodu, harf büyüklüğü fark etmez): görünmeyen ya da olmayan ürün
   `404 NOT_FOUND`; `images[{thumb, full}]` sıralı.
 - **`POST cart/quote {lines[{key, quantity}]}`:** `lines` yok `400 INVALID_BODY`, 200'den fazla satır `400 INVALID_BODY`.
