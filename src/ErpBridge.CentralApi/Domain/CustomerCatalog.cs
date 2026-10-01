@@ -16,8 +16,14 @@ public sealed class CatalogSettings
     /// <summary>The price list customers see unless their account names another; null = list 1, or the lowest.</summary>
     public int? DefaultPriceListNo { get; set; }
 
-    /// <summary>+1 on every layout write (settings, categories, products, images); stale writers get 409.</summary>
+    /// <summary>+1 on every layout write (settings, categories, products); stale writers get 409.</summary>
     public long Revision { get; set; }
+
+    /// <summary>
+    /// +1 on every picture write (register, upload, links, order, delete). Kept apart from <see cref="Revision"/>: a
+    /// picture going up never makes the panel's or the phone's pending layout edit stale; the catalog view keys on both.
+    /// </summary>
+    public long ImageRevision { get; set; }
 
     public long UpdatedAtMs { get; set; }
 

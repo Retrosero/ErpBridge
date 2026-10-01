@@ -18,8 +18,10 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// pictures as files, the panel uploads files or adds links. A file picture is registered first (<c>POST images</c>,
 /// the server makes the id, a repeated original finds its row by its source hash), then each size's raw bytes follow
 /// (<c>PUT images/{id}/{s|l}</c>, JPEG/PNG/WebP checked by their first bytes, size and company quota). Every picture
-/// change moves the catalog revision, which the catalog view keys on. The bytes are served anonymously at
-/// <c>GET /api/v1/catalog/img/{id}/{s|l}</c>: an unguessable id, cached for good, only while the module is on.
+/// change moves the catalog's picture revision (<see cref="CatalogSettings.ImageRevision"/>), which the catalog view keys
+/// on — not the layout revision, so a layout edit open on the panel or the phone is not made stale by an upload. The
+/// bytes are served anonymously at <c>GET /api/v1/catalog/img/{id}/{s|l}</c>: an unguessable id, cached for good, only
+/// while the company is active and its module is on.
 /// </summary>
 public static class CustomerCatalogImageEndpoints
 {
@@ -142,7 +144,7 @@ public static class CustomerCatalogImageEndpoints
                 if (changed) updated++;
             }
             return null;
-        }, ct);
+        }, ct, pictures: true);
         return error ?? JsonResults.Ok(new CatalogImageLinksResponse { Updated = updated });
     }
 
@@ -186,7 +188,7 @@ public static class CustomerCatalogImageEndpoints
                 image.CreatedAtMs = now;
                 db.CatalogImages.Add(image);
                 return null;
-            }, ct);
+            }, ct, pictures: true);
             if (error is not null) return error;
         }
         catch (DbUpdateException)
@@ -219,7 +221,7 @@ public static class CustomerCatalogImageEndpoints
         var data = buffer.ToArray();
         if (!CatalogImages.ContentTypes.Contains(type) || !Tasks.TaskService.LooksLike(type, data))
             return Error(StatusCodes.Status415UnsupportedMediaType, "INVALID_IMAGE", "Yalnız JPEG, PNG ya da WEBP görsel yüklenebilir.");
-        if (type == "image/jpeg") data = CatalogImages.StripJpegMetadata(data);
+        data = CatalogImages.StripMetadata(type, data);
         var sha = Convert.ToHexStringLower(SHA256.HashData(data));
 
         var tenantId = access.Tenant!.Id;
@@ -254,7 +256,7 @@ public static class CustomerCatalogImageEndpoints
                 tracked.Sha256Large = sha;
             }
             return null;
-        }, ct);
+        }, ct, pictures: true);
         return error ?? Results.NoContent();
     }
 
@@ -275,7 +277,7 @@ public static class CustomerCatalogImageEndpoints
             var ordered = ids.Select(id => pictures.First(p => p.Id == id)).Concat(pictures.Where(p => !ids.Contains(p.Id))).ToList();
             for (var i = 0; i < ordered.Count; i++) ordered[i].SortOrder = i;
             return null;
-        }, ct);
+        }, ct, pictures: true);
         return error ?? Results.NoContent();
     }
 
@@ -291,7 +293,7 @@ public static class CustomerCatalogImageEndpoints
             // Its sizes go with it (catalog_image_blobs cascade).
             db.CatalogImages.Remove(image);
             return null;
-        }, ct);
+        }, ct, pictures: true);
         return error ?? Results.NoContent();
     }
 
@@ -299,8 +301,10 @@ public static class CustomerCatalogImageEndpoints
 
     /// <summary>
     /// A file picture's bytes, for an <c>img</c> tag on the catalog, the panel or the phone: no session, an
-    /// unguessable id. Not found when the company's module is off. <c>s</c> falls back to <c>l</c>. Kept for good
-    /// (the address changes with the bytes); a repeated request with the ETag reads only the picture's row.
+    /// unguessable id. Not found when the company is closed or its module is off. The company's own "published"
+    /// switch is not asked: the panel and the phone show the pictures while the catalog is being prepared, before it
+    /// is published. <c>s</c> falls back to <c>l</c>. Kept for good (the address changes with the bytes); a repeated
+    /// request with the ETag reads only the picture's row.
     /// </summary>
     private static async Task<IResult> PictureAsync(Guid id, string variant, HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
     {
@@ -312,7 +316,8 @@ public static class CustomerCatalogImageEndpoints
                 i.HasLarge,
                 i.Sha256Small,
                 i.Sha256Large,
-                Enabled = db.TenantModules.Any(m => m.TenantId == i.TenantId && m.ModuleKey == TenantModules.CustomerCatalog),
+                Enabled = db.TenantModules.Any(m => m.TenantId == i.TenantId && m.ModuleKey == TenantModules.CustomerCatalog)
+                    && db.Tenants.Any(t => t.Id == i.TenantId && t.IsActive),
             })
             .FirstOrDefaultAsync(ct);
         if (meta is null || !meta.Enabled) return PictureNotFound();

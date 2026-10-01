@@ -171,6 +171,37 @@ public sealed class CatalogViewRelationalTests : IClassFixture<SqliteCentralApiF
         (await LoadAsync(tenantId, service)).Products.Should().ContainKey("G", "staff requests always bring the stock up to date");
     }
 
+    [Fact]
+    public async Task A_customer_page_takes_a_fresh_view_without_waiting_for_a_build_and_sees_a_picture_change_at_once()
+    {
+        var tenantId = await TenantAsync();
+        await SeedErpStockAsync(tenantId);
+        await SeedAsync(tenantId, db => db.CatalogSettings.Add(new CatalogSettings { TenantId = tenantId, Revision = 2 }));
+        var service = new CatalogViewService(new MemoryCache(new MemoryCacheOptions()), new ManualClock(DateTimeOffset.UtcNow));
+        var first = await LoadAsync(tenantId, service);
+
+        // Another request of the company is building (it holds the lock): a customer page within the refresh interval
+        // whose revisions are still the stored ones does not queue behind it.
+        var gate = service.GateOf(tenantId);
+        await gate.WaitAsync();
+        try
+        {
+            (await LoadAsync(tenantId, service, forCustomer: true).WaitAsync(TimeSpan.FromSeconds(10))).Should().BeSameAs(first);
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        // A picture write moves only the picture revision; the view is composed again over the same stock.
+        await SeedAsync(tenantId, db => db.CatalogSettings.Single(s => s.TenantId == tenantId).ImageRevision = 1);
+        var repictured = await LoadAsync(tenantId, service, forCustomer: true);
+        repictured.Should().NotBeSameAs(first);
+        repictured.Should().Match<CatalogView>(v => v.Revision == 2 && v.ImageRevision == 1);
+        repictured.Stock.Should().BeSameAs(first.Stock);
+        (await LoadAsync(tenantId, service, forCustomer: true)).Should().BeSameAs(repictured);
+    }
+
     [Theory]
     [InlineData("12", 12)]
     [InlineData("12,0", 12)]

@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using System.Net;
+using System.Text;
 using ErpBridge.CentralApi.Domain;
 
 namespace ErpBridge.CentralApi.CustomerCatalog;
@@ -8,7 +10,8 @@ namespace ErpBridge.CentralApi.CustomerCatalog;
 /// picture by the anonymous <c>/api/v1/catalog/img/{id}/{s|l}?h={sha8}</c> path — relative, so the catalog host, the
 /// panel and the phone each put their own origin in front; <c>h</c> changes with the bytes, so the path may be cached
 /// for good. The server never downloads a link (K2) and has no image library: the sender makes both sizes, the
-/// server checks the bytes are what they claim and drops a JPEG's EXIF (location, camera).
+/// server checks the bytes are what they claim and drops their metadata (JPEG EXIF/XMP, PNG text/EXIF, WebP EXIF/XMP:
+/// location, camera, author).
 /// </summary>
 public static class CatalogImages
 {
@@ -93,5 +96,93 @@ public static class CatalogImages
         }
         output.Write(data, i, data.Length - i);
         return output.ToArray();
+    }
+
+    /// <summary>
+    /// The picture without what it says about where and how it was taken: JPEG APP1 (EXIF, XMP), PNG text and EXIF
+    /// chunks, WebP EXIF and XMP chunks. A JPEG's orientation goes with its EXIF; the phone and the panel turn the picture
+    /// upright and encode it again before sending, so nothing is left to turn.
+    /// </summary>
+    public static byte[] StripMetadata(string contentType, byte[] data) => contentType switch
+    {
+        "image/jpeg" => StripJpegMetadata(data),
+        "image/png" => StripPngMetadata(data),
+        "image/webp" => StripWebpMetadata(data),
+        _ => data,
+    };
+
+    /// <summary>PNG chunks dropped: EXIF and the three text kinds (author, comments, software, XMP).</summary>
+    private static readonly HashSet<string> PngMetadataChunks = new(StringComparer.Ordinal) { "eXIf", "tEXt", "iTXt", "zTXt" };
+
+    /// <summary>
+    /// A PNG without its <c>eXIf</c>, <c>tEXt</c>, <c>iTXt</c> and <c>zTXt</c> chunks (each chunk: length, type, data,
+    /// CRC; the CRC covers only its own chunk, so the rest stay valid). A file the walk cannot read is returned as it is.
+    /// </summary>
+    public static byte[] StripPngMetadata(byte[] data)
+    {
+        const int signature = 8;
+        if (data.Length < signature || data[0] != 0x89 || data[1] != 0x50 || data[2] != 0x4E || data[3] != 0x47) return data;
+        using var output = new MemoryStream(data.Length);
+        output.Write(data, 0, signature);
+        var i = signature;
+        var dropped = false;
+        while (i < data.Length)
+        {
+            if (i + 12 > data.Length) return data;
+            var length = ((long)data[i] << 24) | ((long)data[i + 1] << 16) | ((long)data[i + 2] << 8) | data[i + 3];
+            var total = 12 + length;
+            if (i + total > data.Length) return data;
+            var type = Encoding.ASCII.GetString(data, i + 4, 4);
+            if (PngMetadataChunks.Contains(type)) dropped = true;
+            else output.Write(data, i, (int)total);
+            i += (int)total;
+            if (type == "IEND") break;
+        }
+        if (!dropped) return data;
+        output.Write(data, i, data.Length - i);
+        return output.ToArray();
+    }
+
+    /// <summary>
+    /// A WebP without its <c>EXIF</c> and <c>XMP </c> chunks; the extended header's (<c>VP8X</c>) flags for them are
+    /// cleared and the RIFF size is written again. A file the walk cannot read is returned as it is.
+    /// </summary>
+    public static byte[] StripWebpMetadata(byte[] data)
+    {
+        const int header = 12;
+        if (data.Length < header || !Tasks.TaskService.LooksLike("image/webp", data)) return data;
+        using var output = new MemoryStream(data.Length);
+        output.Write(data, 0, header);
+        var i = header;
+        var dropped = false;
+        while (i < data.Length)
+        {
+            if (i + 8 > data.Length) return data;
+            long size = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(i + 4, 4));
+            var total = 8 + size + (size & 1);
+            if (i + 8 + size > data.Length) return data;
+            total = Math.Min(total, data.Length - i);
+            var fourCc = Encoding.ASCII.GetString(data, i, 4);
+            if (fourCc is "EXIF" or "XMP ")
+            {
+                dropped = true;
+            }
+            else
+            {
+                var start = (int)output.Position;
+                output.Write(data, i, (int)total);
+                // VP8X: the first payload byte's flags say which chunks follow (EXIF 0x08, XMP 0x04).
+                if (fourCc == "VP8X" && size >= 1)
+                {
+                    var buffer = output.GetBuffer();
+                    buffer[start + 8] = (byte)(buffer[start + 8] & ~0x0C);
+                }
+            }
+            i += (int)total;
+        }
+        if (!dropped) return data;
+        var result = output.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(4, 4), (uint)(result.Length - 8));
+        return result;
     }
 }

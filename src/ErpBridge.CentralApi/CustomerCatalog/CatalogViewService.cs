@@ -72,6 +72,9 @@ public sealed record CatalogView(
     /// <summary>The stock side it was built from; a layout-only change reuses it.</summary>
     internal CatalogViewService.StockSide? Stock { get; init; }
 
+    /// <summary>The picture revision it was built at (<see cref="CatalogSettings.ImageRevision"/>).</summary>
+    public long ImageRevision { get; init; }
+
     private readonly Dictionary<string, CatalogCategory> _categories = Categories.ToDictionary(c => c.Key, StringComparer.Ordinal);
 
     public CatalogCategory? Category(string key) => _categories.GetValueOrDefault(key);
@@ -90,9 +93,11 @@ public sealed record CatalogView(
 /// Builds and caches each company's <see cref="CatalogView"/> (GOAL_MUSTERI_KATALOGU §4). The stock comes from the
 /// shared stock mirror (<see cref="PortalRecordMirror{T}"/> "stock", the stock page's), the layout — settings, category
 /// and product rows, picture rows (never their bytes) — is read again only when <see cref="CatalogSettings.Revision"/>
-/// moved; every layout write moves it. One build at a time per company. Staff requests bring the mirror up to date
-/// every time; customer requests at most every <see cref="CustomerRefreshInterval"/>, so a busy catalog does not poll
-/// <c>mobile_records</c> on every page.
+/// or <see cref="CatalogSettings.ImageRevision"/> moved; every layout and picture write moves one of them. One build at
+/// a time per company. Staff requests bring the mirror up to date every time; customer requests at most every
+/// <see cref="CustomerRefreshInterval"/>, so a busy catalog does not poll <c>mobile_records</c> on every page — and
+/// while the cached view is that fresh and its revisions are the stored ones, a customer request takes it without
+/// waiting for the company's build lock (one row read).
 /// </summary>
 public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
 {
@@ -118,7 +123,18 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
     /// <param name="forCustomer">A customer's request: the mirror is brought up to date at most every <see cref="CustomerRefreshInterval"/>.</param>
     public async Task<CatalogView> LoadAsync(CentralApiDbContext db, Guid tenantId, bool forCustomer, CancellationToken ct)
     {
-        var gate = _gates.GetOrAdd(tenantId, _ => new SemaphoreSlim(1, 1));
+        // The fast path: a customer page within the refresh interval of a view whose revisions are still the stored ones
+        // does not queue behind another company request's build.
+        if (forCustomer
+            && cache.TryGetValue(CacheKey(tenantId), out CatalogView? fresh) && fresh is not null
+            && _refreshedAt.TryGetValue(tenantId, out var refreshed) && time.GetUtcNow() - refreshed < CustomerRefreshInterval)
+        {
+            var marks = await db.CatalogSettings.AsNoTracking().Where(s => s.TenantId == tenantId)
+                .Select(s => new { s.Revision, s.ImageRevision }).FirstOrDefaultAsync(ct);
+            if (fresh.Revision == (marks?.Revision ?? 0) && fresh.ImageRevision == (marks?.ImageRevision ?? 0)) return fresh;
+        }
+
+        var gate = GateOf(tenantId);
         await gate.WaitAsync(ct);
         try
         {
@@ -132,7 +148,7 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
 
     private async Task<CatalogView> BuildAsync(CentralApiDbContext db, Guid tenantId, bool forCustomer, CancellationToken ct)
     {
-        var key = ("customer-catalog-view", tenantId);
+        var key = CacheKey(tenantId);
         cache.TryGetValue(key, out CatalogView? cached);
         var mirror = PortalRecordMirror<PortalRecords.StockPart>.For(cache, "stock", tenantId, PortalRecords.StockEntities, PortalRecords.ParseStock);
 
@@ -152,7 +168,8 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
 
         var settings = await db.CatalogSettings.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
         var revision = settings?.Revision ?? 0;
-        if (cached is not null && cached.StockVersion == stockVersion && cached.Revision == revision) return cached;
+        var imageRevision = settings?.ImageRevision ?? 0;
+        if (cached is not null && cached.StockVersion == stockVersion && cached.Revision == revision && cached.ImageRevision == imageRevision) return cached;
 
         var stock = parts is not null ? BuildStock(stockVersion, parts)
             : cached?.Stock is { } reused && reused.Version == stockVersion ? reused
@@ -277,8 +294,14 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
             products)
         {
             Stock = stock,
+            ImageRevision = settings?.ImageRevision ?? 0,
         };
     }
+
+    private static (string, Guid) CacheKey(Guid tenantId) => ("customer-catalog-view", tenantId);
+
+    /// <summary>The company's build lock (tests hold it to show a customer page does not wait for it).</summary>
+    internal SemaphoreSlim GateOf(Guid tenantId) => _gates.GetOrAdd(tenantId, _ => new SemaphoreSlim(1, 1));
 
     /// <summary>The category the phone shows, trimmed, or "Diğer"; cut to the settings column's 160 characters.</summary>
     public static string CategoryKey(string? name)

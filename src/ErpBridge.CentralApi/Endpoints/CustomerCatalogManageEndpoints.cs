@@ -316,8 +316,13 @@ public static class CustomerCatalogManageEndpoints
     /// the same links again does not turn the panel's next save into a conflict. Picture writes call it without
     /// <paramref name="expected"/>: the catalog view keys on the revision. Returns the revision after the write.
     /// </summary>
+    /// <param name="pictures">
+    /// A picture write: it moves <see cref="CatalogSettings.ImageRevision"/> instead of the layout revision (same row lock,
+    /// so two uploads still cannot both slip under the quota), and a layout edit pending on the panel or the phone stays
+    /// current. The revision returned is then the unchanged layout one.
+    /// </param>
     internal static async Task<(long Revision, IResult? Error)> WriteLayoutAsync(
-        CentralApiDbContext db, Guid tenantId, Guid userId, long? expected, Func<long, Task<IResult?>> apply, CancellationToken ct)
+        CentralApiDbContext db, Guid tenantId, Guid userId, long? expected, Func<long, Task<IResult?>> apply, CancellationToken ct, bool pictures = false)
     {
         await EnsureSettingsAsync(db, tenantId, ct);
         var now = NowMs();
@@ -325,15 +330,17 @@ public static class CustomerCatalogManageEndpoints
         var settings = db.CatalogSettings.Where(s => s.TenantId == tenantId);
         if (expected is { } known) settings = settings.Where(s => s.Revision == known);
         // Also the row lock: a second writer waits here until this one commits, then sees the new revision.
-        var moved = await settings.ExecuteUpdateAsync(s => s
-            .SetProperty(x => x.Revision, x => x.Revision + 1)
-            .SetProperty(x => x.UpdatedAtMs, now)
-            .SetProperty(x => x.UpdatedByUserId, userId), ct);
+        var moved = pictures
+            ? await settings.ExecuteUpdateAsync(s => s.SetProperty(x => x.ImageRevision, x => x.ImageRevision + 1), ct)
+            : await settings.ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.Revision, x => x.Revision + 1)
+                .SetProperty(x => x.UpdatedAtMs, now)
+                .SetProperty(x => x.UpdatedByUserId, userId), ct);
         if (moved == 0) return (0, Changed());
         // An error or no change: the transaction is disposed uncommitted, so the revision does not move either.
         if (await apply(now) is { } error) return (0, error);
         var revision = await db.CatalogSettings.AsNoTracking().Where(s => s.TenantId == tenantId).Select(s => s.Revision).FirstAsync(ct);
-        if (!db.ChangeTracker.HasChanges()) return (revision - 1, null);
+        if (!db.ChangeTracker.HasChanges()) return (pictures ? revision : revision - 1, null);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return (revision, null);
