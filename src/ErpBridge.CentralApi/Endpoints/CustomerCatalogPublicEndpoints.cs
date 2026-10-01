@@ -245,6 +245,8 @@ public static class CustomerCatalogPublicEndpoints
     /// (at least 2 characters; a shorter one is ignored) the name, code, brand or a barcode must contain it.
     /// </summary>
     private static async Task<IResult> ProductsAsync(HttpContext http, string? category, string? q, int? page, int? pageSize,
+        string? brand, string? stock, string? sort, decimal? minPrice, decimal? maxPrice,
+        bool? discounted, bool? cartonOnly, bool? hasImage,
         [FromServices] CentralApiDbContext db, [FromServices] CatalogViewService views, CancellationToken ct)
     {
         var customer = await CustomerViewAsync(http, db, views, ct);
@@ -255,10 +257,38 @@ public static class CustomerCatalogPublicEndpoints
             : customer.Catalog.Categories.FirstOrDefault(c => c.Id == category.Trim().ToLowerInvariant())?.Products.Where(customer.Sees) ?? [];
         var search = q?.Trim();
         if (search is { Length: >= MinQueryLength }) products = products.Where(p => p.Matches(search));
-        var matched = products.ToList();
+        if (minPrice < 0 || maxPrice < 0 || minPrice > maxPrice)
+            return InvalidBody("Fiyat aralığı sıfırdan küçük olamaz; alt fiyat üst fiyatı geçemez.");
+        if (stock is not (null or "" or "in" or "out")
+            || sort is not (null or "" or "recommended" or "name-asc" or "name-desc" or "price-asc" or "price-desc" or "code-asc"))
+            return InvalidBody("Geçersiz stok veya sıralama seçimi.");
+        var textOrder = StringComparer.Create(CultureInfo.GetCultureInfo("tr-TR"), true);
+        var visible = products.Select(p => ProductOf<CatalogCustomerProductDto>(customer, p)).ToList();
+        var brands = visible.Select(p => p.Brand).Where(b => !string.IsNullOrWhiteSpace(b))
+            .Select(b => b!).Distinct(textOrder).Order(textOrder).ToArray();
+        IEnumerable<CatalogCustomerProductDto> filtered = visible;
+        if (!string.IsNullOrWhiteSpace(brand)) filtered = filtered.Where(p => textOrder.Equals(p.Brand, brand.Trim()));
+        if (stock == "in") filtered = filtered.Where(p => p.InStock);
+        if (stock == "out") filtered = filtered.Where(p => !p.InStock);
+        if (minPrice is { } min) filtered = filtered.Where(p => p.Price.Net >= min);
+        if (maxPrice is { } max) filtered = filtered.Where(p => p.Price.Net <= max);
+        if (discounted == true) filtered = filtered.Where(p => p.Price.DiscountPercent > 0 && p.Price.Net < p.Price.List);
+        if (cartonOnly == true) filtered = filtered.Where(p => p.Box?.Only == true);
+        if (hasImage == true) filtered = filtered.Where(p => p.Thumb is not null);
+        filtered = sort switch
+        {
+            "name-asc" => filtered.OrderBy(p => p.Name, textOrder).ThenBy(p => p.Code, textOrder),
+            "name-desc" => filtered.OrderByDescending(p => p.Name, textOrder).ThenBy(p => p.Code, textOrder),
+            "price-asc" => filtered.OrderBy(p => p.Price.Net).ThenBy(p => p.Code, textOrder),
+            "price-desc" => filtered.OrderByDescending(p => p.Price.Net).ThenBy(p => p.Code, textOrder),
+            "code-asc" => filtered.OrderBy(p => p.Code, textOrder),
+            _ => filtered,
+        };
+        var matched = filtered.ToList();
         return JsonResults.Ok(new CatalogCustomerProductsResponse
         {
-            Items = [.. matched.Skip((int)Math.Min((long)(number - 1) * size, int.MaxValue)).Take(size).Select(p => ProductOf<CatalogCustomerProductDto>(customer, p))],
+            Brands = brands,
+            Items = [.. matched.Skip((int)Math.Min((long)(number - 1) * size, int.MaxValue)).Take(size)],
             Total = matched.Count,
             Page = number,
             PageSize = size,

@@ -104,6 +104,8 @@ public sealed class CatalogCustomerCategoryDto
 
 public sealed class CatalogCustomerProductsResponse
 {
+    [JsonPropertyName("brands")] public string[] Brands { get; set; } = [];
+
     [JsonPropertyName("items")] public CatalogCustomerProductDto[] Items { get; set; } = [];
 
     [JsonPropertyName("total")] public int Total { get; set; }
@@ -308,6 +310,8 @@ public sealed class CatalogCustomerOrderDetailDto : CatalogCustomerOrderDto
 
 public sealed class CatalogCustomerOrderLineDto
 {
+    [JsonPropertyName("thumb")] public string? Thumb { get; set; }
+
     [JsonPropertyName("key")] public string Key { get; set; } = string.Empty;
 
     [JsonPropertyName("code")] public string Code { get; set; } = string.Empty;

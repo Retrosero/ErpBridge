@@ -28,6 +28,27 @@ public sealed class CustomerCatalogOrdersRelationalTests : IClassFixture<Catalog
     public CustomerCatalogOrdersRelationalTests(CatalogHostFactory factory) => _factory = factory;
 
     [Fact]
+    public async Task Order_detail_uses_its_tenants_product_pictures_without_changing_historical_prices()
+    {
+        var c = await OpenCatalogAsync(_factory);
+        await AccountAsync(_factory, c, "C1", "resimli", Pass, discountPercent: 10m);
+        var browser = await SignedInAsync(c, "resimli");
+        var created = await OkAsync<CatalogOrderResponse>(await SubmitAsync(browser, c, Guid.NewGuid(), 90m, ("A", 1m)), HttpStatusCode.Created);
+        var other = await OpenCatalogAsync(_factory);
+        await SendAsync(_factory, HttpMethod.Put, Base + "/images/links", other.Mudur,
+            new { items = new[] { new { stockCode = "A", links = new[] { new { url = "https://cdn.example.com/other.jpg", sourceHash = "other" } } } } });
+        var url = Api(c) + "/orders/detail?id=" + created.Order.Id;
+        var absent = await OkAsync<CatalogCustomerOrderDetailDto>(await GetAsync(browser, url));
+        absent.Lines.Single().Thumb.Should().BeNull("another tenant's picture cannot leak");
+        await SendAsync(_factory, HttpMethod.Put, Base + "/images/links", c.Mudur,
+            new { items = new[] { new { stockCode = "A", links = new[] { new { url = "https://cdn.example.com/own.jpg", sourceHash = "own" } } } } });
+        var detail = await OkAsync<CatalogCustomerOrderDetailDto>(await GetAsync(browser, url));
+        detail.Lines.Single().Thumb.Should().Be("https://cdn.example.com/own.jpg");
+        detail.Lines.Single().Net.Should().Be(90m);
+        detail.Total.Should().Be(90m);
+    }
+
+    [Fact]
     public async Task The_server_prices_the_request_again_and_refuses_a_changed_price_or_an_invalid_cart()
     {
         var c = await OpenCatalogAsync(_factory);

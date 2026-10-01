@@ -169,8 +169,17 @@ internal static class CatalogCustomerOrderEndpoints
         if (order is null) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "Talep bulunamadı.");
         var detail = Fill(new CatalogCustomerOrderDetailDto(), order);
         detail.Note = order.Note;
-        detail.Lines = [.. CatalogOrders.Lines(order).Select(l => new CatalogCustomerOrderLineDto
+        var lines = CatalogOrders.Lines(order);
+        var codes = lines.Select(l => l.StockCode).ToArray();
+        // Only pictures of this account's own order, within its tenant; no blob bytes or per-line queries.
+        var pictures = await db.CatalogImages.AsNoTracking()
+            .Where(i => i.TenantId == session.Tenant.Id && codes.Contains(i.StockCode))
+            .OrderBy(i => i.SortOrder).ThenBy(i => i.CreatedAtMs).ThenBy(i => i.Id).ToListAsync(ct);
+        var thumbs = pictures.GroupBy(i => i.StockCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(CatalogImages.ThumbUrl).FirstOrDefault(url => url is not null), StringComparer.OrdinalIgnoreCase);
+        detail.Lines = [.. lines.Select(l => new CatalogCustomerOrderLineDto
         {
+            Thumb = thumbs.GetValueOrDefault(l.StockCode),
             Key = l.StockCode,
             Code = l.StockCode,
             Name = l.Name,

@@ -63,6 +63,53 @@ public sealed class CustomerCatalogBrowseRelationalTests : IClassFixture<Catalog
     }
 
     [Fact]
+    public async Task Filters_and_sorting_apply_before_pagination_using_the_customers_net_prices()
+    {
+        var c = await OpenCatalogAsync(_factory);
+        await AccountAsync(_factory, c, "C1", "filtre", Pass, discountPercent: 10m);
+        var browser = await SignedInAsync(c, "filtre");
+        async Task<CatalogCustomerProductsResponse> Browse(string query) =>
+            await OkAsync<CatalogCustomerProductsResponse>(await GetAsync(browser, Api(c) + "/products?" + query));
+
+        var sorted = await Browse("sort=price-asc&pageSize=1&page=2");
+        sorted.Total.Should().Be(3);
+        sorted.Items.Select(p => p.Code).Should().Equal("B");
+        (await Browse("minPrice=40&maxPrice=50")).Items.Select(p => p.Code).Should().Equal("B");
+        (await Browse("stock=in&discounted=true")).Items.Select(p => p.Code).Should().Equal("A");
+        (await Browse("stock=out&sort=price-desc")).Items.Select(p => p.Code).Should().Equal("B", "C");
+        (await Browse("brand=unknown")).Total.Should().Be(0);
+        (await Browse("hasImage=true")).Total.Should().Be(0);
+        (await Browse("cartonOnly=true")).Total.Should().Be(0);
+        (await GetAsync(browser, Api(c) + "/products?minPrice=50&maxPrice=10")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await GetAsync(browser, Api(c) + "/products?minPrice=-1")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Brand_image_and_carton_filters_match_visible_products_and_keep_hidden_brands_private()
+    {
+        var c = await OpenCatalogAsync(_factory);
+        await SeedAsync(_factory, db =>
+        {
+            Record(db, c.Id, "stocks", "D", new { stockCode = "D", name = "Markalı ürün", brandCode = "Ege" });
+            Record(db, c.Id, "prices", "D|1", new { stockCode = "D", listNumber = 1, price = 80 });
+        });
+        await EditProductsAsync(c, new { stockCode = "A", sortOrder = (int?)null, hidden = false, noDiscount = false, cartonOnly = true, cartonQuantity = (int?)null });
+        await SendAsync(_factory, HttpMethod.Put, Base + "/images/links", c.Mudur,
+            new { items = new[] { new { stockCode = "A", links = new[] { new { url = "https://cdn.example.com/a.jpg", sourceHash = "a" } } } } });
+        await AccountAsync(_factory, c, "C1", "marka", Pass);
+        var browser = await SignedInAsync(c, "marka");
+        var branded = await OkAsync<CatalogCustomerProductsResponse>(await GetAsync(browser, Api(c) + "/products?brand=ege"));
+        branded.Items.Select(p => p.Code).Should().Equal("D");
+        branded.Brands.Should().Contain("Ege");
+        var pictured = await OkAsync<CatalogCustomerProductsResponse>(await GetAsync(browser, Api(c) + "/products?hasImage=true&cartonOnly=true"));
+        pictured.Items.Select(p => p.Code).Should().Equal("A");
+        await EditProductsAsync(c, new { stockCode = "D", sortOrder = (int?)null, hidden = true, noDiscount = false, cartonOnly = false, cartonQuantity = (int?)null });
+        var hidden = await OkAsync<CatalogCustomerProductsResponse>(await GetAsync(browser, Api(c) + "/products?brand=Ege"));
+        hidden.Total.Should().Be(0);
+        hidden.Brands.Should().NotContain("Ege");
+    }
+
+    [Fact]
     public async Task A_hidden_product_is_not_found_and_a_no_discount_product_has_one_price()
     {
         var c = await OpenCatalogAsync(_factory);

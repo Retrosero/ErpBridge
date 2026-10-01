@@ -157,7 +157,8 @@ değilse oturum çerezi + 12 saatlik JWT).
 | `GET me` | → `Me {companyName, code, customer{code,name}, username, discountPercent, priceList{no,name,includesVat}, features{order,statement,invoices,purchased}, balance{amount}|null}` (`balance` yalnız `statement` açıkken) |
 | `POST password` | `{current, next}` → 204; yanlış `400 INVALID_CREDENTIALS`, zayıf `400 INVALID_PASSWORD` |
 | `GET categories` | → `{items[{id, name, count}]}` (yalnız görünür ürünü olanlar, sıralı) |
-| `GET products?category=&q=&page=1&pageSize=48` | → `{items[CProduct], total, page, pageSize}`; `CProduct {key, code, name, unit, brand, categoryId, price{list, net, discountPercent, includesVat}, box{qty, only}|null, inStock, thumb|null}` (`thumb` = görsel URL'si; `pageSize` en çok 60; `q` ≥ 2 karakter, ad/kod/barkod/marka, tr-TR) |
+| `GET products?category=&q=&page=1&pageSize=48` | → `{items[CProduct], brands[string], total, page, pageSize}`; `CProduct {key, code, name, unit, brand, categoryId, price{list, net, discountPercent, includesVat}, box{qty, only}|null, inStock, thumb|null}` (`thumb` = görsel URL'si; `pageSize` en çok 60; `q` ≥ 2 karakter, ad/kod/barkod/marka, tr-TR) |
+| Ek ürün filtreleri | `brand`, `stock=in/out`, `minPrice`, `maxPrice`, `discounted=true`, `cartonOnly=true`, `hasImage=true`; fiyatlar müşterinin gördüğü net birim fiyatıdır. `sort=recommended/name-asc/name-desc/price-asc/price-desc/code-asc`; filtre/sıra sayfalama öncesi uygulanır. `brands` yalnız müşterinin gördüğü, kategori/aramaya uyan ürünlerden gelir. Negatif/ters fiyat aralığı ve tanımsız stok/sıra 400. |
 | `GET products/detail?key=` | → `CProduct` + `{images[{thumb, full}]}`; görünmüyorsa `404 NOT_FOUND` |
 | `POST cart/quote` | `{lines[{key, quantity}]}` → `Quote {lines[{key, code, name, unit, quantity, box, price, vatRate, gross, discount, vat, total, issue}], totals{gross, discount, vat, total}}`; `issue` ∈ `NOT_AVAILABLE`, `OUT_OF_STOCK`, `CARTON_MULTIPLE`, `INVALID_QUANTITY` ya da null |
 | `POST orders` | `{requestId (uuid), lines[{key, quantity}], note, expectedTotal}` → `201 {order: COrder}`. `409 PRICE_CHANGED {quote}` (fark > 0,05), `422 CART_INVALID {quote}`, `403 ORDERING_DISABLED`, `429 TOO_MANY_OPEN_ORDERS` (açık talep ≤ 20), satır ≤ 200, aynı `requestId` aynı talebi döner |
@@ -275,3 +276,5 @@ telefon yayından önce görselleri gösterir); `s` yoksa `l` döner.
 ## 10. Kapsam dışı (v1)
 Panelden ERP'siz firmada siparişe çevirme · müşteri iptali · cari başına birden çok kullanıcı · cari grubu/şablon katalog ·
 Mikro'dan iskonto · ondalıklı birim (KG) · PWA/koyu tema · firma logosu/rengi · "müşteri gözüyle önizleme".
+
+2026-10-01 katalog tasarımı: Sipariş detayındaki `lines` artık aynı firmadaki ürünün `thumb` adresini de döndürür (görsel yoksa null); geçmiş fiyatlar değişmez.
