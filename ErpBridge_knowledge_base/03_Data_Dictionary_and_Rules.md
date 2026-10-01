@@ -169,6 +169,10 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     `ContentType(32)`, `SizeBytes`, `Sha256(64)`, `OwnerType(32)` + `OwnerKey(128)` (dosyanın bağlı olduğu kayıt), `Status(16)`
     active|trashed|purging, `CreatedAtMs`, `CreatedByUserId?`, `TrashedAtMs?`, `TrashedByUserId?`. İndeks `(TenantId, Area, Status)`,
     `(TenantId, OwnerType, OwnerKey)`, UNIQUE `(Bucket, ObjectKey)`. Yalnız `Storage/FileStore` yazar.
+  - `expense_attachments` *(S5, migration `DepolamaAlanlari`)*: `Id` uuid (telefon üretir), `TenantId` (cascade), `DocumentExternalId(128)`
+    telefonun belge kimliği (`jobs.ExternalId`; FK yok, belge sonra gelebilir), `Kind(24)` expense|vehicle_maintenance, `StoredFileId` (FK yok),
+    `ContentType(32)`, `SizeBytes`, `CreatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`, `IsDeleted`, `DeletedAtMs?`. İndeks
+    `(TenantId, DocumentExternalId)`, `(TenantId, CreatedAtMs)`, `(StoredFileId)`.
 
 ---
 

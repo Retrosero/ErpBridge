@@ -586,7 +586,8 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
 
 Firmanın kalıcı resimleri Cloudflare R2'de, firma kodunun klasöründe (`{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id}-{varyant}.{uzantı}`)
 ve tek kotayla durur. Alanlar: herkese açık kova `product`, `xml`, `catalog`, `banner`; kimliğe bağlı kova `task`, `expense`,
-`vehicle`. Katalog görseli ve banner (S3), görev eki (S4) bu depoyu kullanır; uç yolları değişmedi. Bilgi bankası kural 37.
+`vehicle`. Katalog görseli ve banner (S3), görev eki (S4) bu depoyu kullanır (uç yolları değişmedi); gider/araç fişi (S5) yeni
+uçlardır. Bilgi bankası kural 37.
 
 **Görev eki (S4)** — `PUT/GET/DELETE /api/v1/android/tasks/{taskId}/attachments/{attachmentId}` yolları, gövdeleri ve yanıtları aynı.
 Resim özel kovaya (`task`) yazılır ve firmanın tek kotasına sayılır; aşımda eski kod `413 TASK_ATTACHMENT_QUOTA` döner, gövdeye
@@ -596,10 +597,22 @@ Resim özel kovaya (`task`) yazılır ve firmanın tek kotasına sayılır; aş�
 okunur. `DELETE` resmi çöpe atar (7 gün geri alınabilir, kotaya sayılır). Aynı dosya `GET /api/v1/storage/files/{id}` ile görevi
 gören herkese 302 imzalı adres olarak da açılır.
 
+**Gider ve araç fişi (S5)** — telefonun gider/araç bakım belgesine bağlı fiş fotoğrafı. `{docId}` belgenin telefon kimliği
+(kasa defteri satırı `K-{uuid}`, belgede `mobileDocumentId`); belge sunucuya henüz gitmemiş olabilir.
+
+| Uç | Kim | Gövde / yanıt |
+|---|---|---|
+| `PUT /api/v1/android/expenses/{docId}/attachments/{id}?kind=expense\|vehicle_maintenance` | firma kullanıcısı | Ham gövde `image/jpeg\|png\|webp` ≤ 2 MB; `{id}` telefonun ürettiği GUID (tekrar = aynı fiş, `200`). Yanıt `ExpenseAttachment { id, documentId, kind, contentType, sizeBytes, createdAtMs, createdByUserId, createdByName }`. `kind` yoksa `expense`. Hatalar: `400 INVALID_DOCUMENT_ID` (harf/rakam/`.-_:`, ≤ 128), `400 INVALID_EXPENSE_KIND`, `415 INVALID_IMAGE`, `413 EXPENSE_ATTACHMENT_TOO_LARGE`, `409 EXPENSE_ATTACHMENT_LIMIT` (belge başı 5), `409 EXPENSE_ATTACHMENT_EXISTS` (kimlik başka belgede ya da silinmiş), `403 EXPENSE_FORBIDDEN` (başkasının belgesi; yönetici/muhasebe hariç), `413 STORAGE_QUOTA_EXCEEDED {usedBytes, quotaBytes}`, `503 STORAGE_UNAVAILABLE` |
+| `GET /api/v1/android/expenses/{docId}/attachments` | firma kullanıcısı | `{ items: [ExpenseAttachment] }` — görebildikleri, yükleme sırasıyla |
+| `GET /api/v1/android/expenses/{docId}/attachments/{id}` | yükleyen; yönetici, muhasebe | Bayt (sunucu R2'den akıtır), `Cache-Control: private, max-age=31536000, immutable`; göremeyen `404 EXPENSE_ATTACHMENT_NOT_FOUND` |
+| `DELETE /api/v1/android/expenses/{docId}/attachments/{id}` | yükleyen; `action.storage.manage` | `204`, fiş çöpe gider (tekrar `204`); görebilen ama silemeyen `403 EXPENSE_FORBIDDEN` |
+| `GET /api/v1/portal/expense-receipts?from=&to=&documentId=` | yönetici, muhasebe (`portal.ledger`) | `{ from, to, items: [{ id, fileId, documentId, kind, contentType, sizeBytes, createdAtMs, createdByName, url, document: { type, status, amount, description, counterparty, occurredAt, expenseCardCode } \| null }], truncated }` — yükleme gününe göre (İstanbul, varsayılan son 30 gün, ≤ 92 gün, ≤ 500 fiş) ya da `documentId` (≤ 200) ile; `url` `Storage:PresignMinutes` dakikalık imzalı adres (depo ayarsızsa null); başkasına `403 PORTAL_REQUIRES_MANAGER` |
+
 | Uç | Kim | Gövde / yanıt |
 |---|---|---|
 | `GET /api/v1/storage/usage` | firma kullanıcısı | `{ available, usedBytes, quotaBytes, freeBytes, trashedBytes, areas?: [{ area, usedBytes, fileCount }], trashedCount? }` — `usedBytes` çöp kutusunu da içerir (dosya kalıcı silinene kadar kotaya sayılır; `trashedBytes` bunun çöpteki kısmı, çöp boşaltılınca açılır). `areas` (etkin dosyalar) ve `trashedCount` yalnız `action.storage.manage` (Admin, Yönetici; kilitli) sahibine. `available: false` = sunucuda R2 ayarı yok, yükleme `503` döner |
-| `GET /api/v1/storage/files/{id}` | yükleyen; `action.storage.manage`; alan kuralı (S4/S5) | `302` → özel dosyada 5 dakikalık imzalı R2 adresi, herkese açık dosyada `https://img.appsgo.cloud/…`; `Cache-Control: private, no-store`. Başka firmanın, çöpteki ya da açma yetkisi olmayan dosya aynı `404 STORED_FILE_NOT_FOUND`; depo ayarsızsa `503 STORAGE_UNAVAILABLE` |
+| `GET /api/v1/storage/files/{id}/link` | `files/{id}` ile aynı | `{ url, expiresAtMs }` — yönlendirmenin adresi veri olarak (panel fişi kendisi gösterir); herkese açık dosyada `expiresAtMs` null |
+| `GET /api/v1/storage/files/{id}` | yükleyen; `action.storage.manage`; alan kuralı (görev: görevi gören; gider/araç: muhasebe, `portal.ledger`, `view.expenses.all_users`) | `302` → özel dosyada 5 dakikalık imzalı R2 adresi, herkese açık dosyada `https://img.appsgo.cloud/…`; `Cache-Control: private, no-store`. Başka firmanın, çöpteki ya da açma yetkisi olmayan dosya aynı `404 STORED_FILE_NOT_FOUND`; depo ayarsızsa `503 STORAGE_UNAVAILABLE` |
 | `GET /api/v1/admin/tenants/{id}/storage` | Admin konsolu | `{ tenantId, available, usedBytes, reservedBytes, quotaBytes, defaultQuotaBytes, customQuotaBytes?, recountedAtMs?, areas: [...], trashedBytes, trashedCount }`; firma yoksa `404 TENANT_NOT_FOUND` |
 | `PUT /api/v1/admin/tenants/{id}/storage` | Admin konsolu | `{ quotaBytes: sayı \| null }` — `null` = varsayılan (5 GB, `Storage:DefaultQuotaBytes`); 0..10 TB, değilse `400 INVALID_QUOTA`. Kullanılanın altına inebilir (yeni yükleme durur). Yanıt güncel görünüm |
 | `POST /api/v1/admin/tenants/{id}/storage/recount` | Admin konsolu | `{ usedBytesBefore, usedBytesAfter, storage }` — kullanılan bayt defterdeki etkin ve çöpteki dosyalardan yeniden hesaplanır (aynı iş her gün `Storage:MaintenanceHourUtc`'de çalışır) |

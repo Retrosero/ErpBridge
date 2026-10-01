@@ -1531,8 +1531,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
 
-37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1, S2, S3, S4, S8, 2026-10-01).**
-   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4); XML eşitleyici (S7), temizlik
+37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1, S2, S3, S4, S5, S8, 2026-10-01).**
+   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5); XML eşitleyici (S7), temizlik
    (S9) ve bytea göçü (S10) bu temeli kullanacak — göçe kadar depodan önce yüklenen resimler PostgreSQL bytea'sında kalır ve okunur.
    - **Kayıtlar dosyaya `StoredFile*Id` ile bağlanır, yabancı anahtar yok** (migration `DepolamaAlanlari`): defter satırı deponun kendi
      yaşamıyla (çöp, kalıcı silme) gider, sahip kaydıyla değil; "yetim" = hiçbir kaydın göstermediği dosya (S9), bağlantı sütunları
@@ -1615,3 +1615,20 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      (`IStoredFileReadRule`, alan `task`) `GET /api/v1/storage/files/{id}`'yi görevi gören herkese açar (`TaskService.CanSeeTaskOfAsync`:
      dosyanın silinmemiş eki ve görevin görünürlüğü). Eski bytea ekler aynı uçtan okunur. Testler `TaskRelationalTests`
      (`StorageCentralApiFactory`).
+   - **Gider ve araç fişi (S5)** `Endpoints/MobileExpenseAttachmentEndpoints` + `Expenses/ExpenseReceipts`, tablo `expense_attachments`:
+     `PUT/GET/DELETE /api/v1/android/expenses/{docId}/attachments/{id}` ve `GET …/{docId}/attachments` (görev eki deseni). `docId` telefonun
+     belge kimliği — kasa defteri satırının `K-{uuid}` kimliği, telefon bunu `mobileDocumentId` olarak gönderir ve sunucuda
+     `jobs.ExternalId` olur (gider kartlı ise `expense`, eski telefonda `disbursement`); FK yok, fiş belgeden önce de yüklenebilir.
+     `?kind=expense|vehicle_maintenance` alanı seçer (`expense` / `vehicle`, özel kova), `OwnerType` `expense`, `OwnerKey` belge
+     kimliği. Ham gövde ≤ 2 MB, belge başı 5 fiş, kimlik telefonundur (tekrar = aynı fiş, silinmiş/başka belge `409`). Başkasının
+     belgesine (o belgenin işi ya da ilk fişi başkasınınsa) yalnız `CanSeeAll` fiş ekler (`403 EXPENSE_FORBIDDEN`). Görme
+     (`ExpenseReceipts.CanSee`): yükleyen ya da `CanSeeAll` = `action.storage.manage` ∨ ACCOUNTING rolü ∨ `portal.ledger` ∨
+     `view.expenses.all_users`; silme yalnız yükleyen ya da `action.storage.manage` (çöpe). Görmeyen için her şey aynı
+     `404 EXPENSE_ATTACHMENT_NOT_FOUND`. Kota aşımı yeni kodla `413 STORAGE_QUOTA_EXCEEDED`. `GET` görev eki gibi akıtır
+     (`Storage/StoredFileResults.StreamAsync`, değişmez önbellek); 302 imzalı adres `GET /api/v1/storage/files/{id}` ile
+     (`ExpenseReceiptReadRule`, alan başına bir örnek). Panel: `GET /api/v1/portal/expense-receipts?from&to|documentId` (`Endpoints/PortalExpenseReceiptEndpoints`,
+     yalnız `CanSeeAll`, varsayılan son 30 gün, en çok 92 gün/500 fiş, yükleme gününe göre İstanbul) her fişi `PresignMinutes`'lık
+     imzalı adres ve belgenin işteki özetiyle (`ExpenseReceipts.DocumentsAsync`: tutar, açıklama, karşı taraf, tarih, gider kartı,
+     durum) döner; açarken taze adres `GET /api/v1/storage/files/{id}/link` (`{url, expiresAtMs}`, 302 ile aynı yetki). Panel sayfası
+     `Pages/Fisler.razor` (`/fisler`, Kayıtlar menüsünde "Gider fişleri", `PortalArea.Ledger`). Testler `Storage/ExpenseReceiptRelationalTests`,
+     Portal `PortalReceiptsPageTests`; `StorageTestCompany`'ye panelden giren muhasebe kullanıcısı eklendi.

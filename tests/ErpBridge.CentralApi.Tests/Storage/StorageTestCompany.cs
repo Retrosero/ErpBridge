@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ErpBridge.CentralApi.Tests.Storage;
 
-/// <summary>A company with a signed-in admin, manager and two salespeople, and the operator's Admin token.</summary>
+/// <summary>A company with a signed-in admin, manager, accountant and two salespeople, and the operator's Admin token.</summary>
 internal sealed record StorageTestCompany(Guid TenantId, string AdminToken, string OperatorToken, IReadOnlyDictionary<string, (Guid Id, string Token)> Users)
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
@@ -31,7 +31,7 @@ internal sealed record StorageTestCompany(Guid TenantId, string AdminToken, stri
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         var ids = new Dictionary<string, Guid>();
-        foreach (var (username, role) in new[] { ("patron", "ADMIN"), ("mudur", "MANAGER"), ("ali", "SALES"), ("veli", "SALES") })
+        foreach (var (username, role) in new[] { ("patron", "ADMIN"), ("mudur", "MANAGER"), ("muhasebe", "ACCOUNTING"), ("ali", "SALES"), ("veli", "SALES") })
         {
             var created = await SendAsync(factory, HttpMethod.Post, $"{basePath}/users", new { username, fullName = username, password = Password, roles = new[] { role } }, operatorToken);
             created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
@@ -39,7 +39,9 @@ internal sealed record StorageTestCompany(Guid TenantId, string AdminToken, stri
         }
         var code = (await (await factory.CreateClient().GetAsync(basePath, operatorToken)).ReadAsJsonAsync<TenantMobileOverviewResponse>()).TenantCode!;
         var users = new Dictionary<string, (Guid, string)>();
-        foreach (var (username, id) in ids) users[username] = (id, await LoginAsync(factory, code, username, $"DEV-{username}-{suffix}"));
+        // The accountant works in the web portal only (its role does not open the phone app).
+        foreach (var (username, id) in ids)
+            users[username] = (id, await LoginAsync(factory, code, username, $"DEV-{username}-{suffix}", username == "muhasebe" ? "portal" : "android"));
         return new StorageTestCompany(tenant.Id, users["patron"].Item2, operatorToken, users);
     }
 
@@ -78,10 +80,10 @@ internal sealed record StorageTestCompany(Guid TenantId, string AdminToken, stri
         return await client.SendAsync(request);
     }
 
-    private static async Task<string> LoginAsync(SqliteCentralApiFactory factory, string code, string username, string deviceId)
+    private static async Task<string> LoginAsync(SqliteCentralApiFactory factory, string code, string username, string deviceId, string client)
     {
         var response = await factory.CreateClient().PostJsonAsync("/api/v1/android/account/login",
-            new { tenantCode = code, username, password = Password, deviceId, appVersion = "1.5.300" });
+            new { tenantCode = code, username, password = Password, deviceId, appVersion = "1.5.300", client });
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         return (await response.ReadAsJsonAsync<MobileLoginResponse>()).Token;
     }

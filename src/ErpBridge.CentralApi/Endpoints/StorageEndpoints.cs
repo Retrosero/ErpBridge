@@ -13,7 +13,8 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// Maps <c>/api/v1/storage</c> (GOAL_DEPOLAMA_R2): the central file store's signed-in surface for phones and the panel.
 /// <c>GET usage</c> is the company's total (trash included), quota and trash for everyone, by area for who manages storage.
 /// <c>GET files/{id}</c> answers a stored file with a 302 to where it can be loaded — a short presigned R2 address for a
-/// private file, the CDN address for a public one — after checking the user may open it (<see cref="StoredFileAccess"/>).
+/// private file, the CDN address for a public one — after checking the user may open it (<see cref="StoredFileAccess"/>);
+/// <c>GET files/{id}/link</c> gives the same address as data, for a page that shows the file itself (the panel's receipts).
 /// </summary>
 public static class StorageEndpoints
 {
@@ -29,6 +30,10 @@ public static class StorageEndpoints
             .Produces<StorageUsageResponse>(StatusCodes.Status200OK);
         group.MapGet("/files/{id:guid}", OpenFileAsync).WithName("StorageOpenFile")
             .Produces(StatusCodes.Status302Found)
+            .Produces<ApiError>(StatusCodes.Status404NotFound)
+            .Produces<ApiError>(StatusCodes.Status503ServiceUnavailable);
+        group.MapGet("/files/{id:guid}/link", LinkAsync).WithName("StorageFileLink")
+            .Produces<StoredFileLinkResponse>(StatusCodes.Status200OK)
             .Produces<ApiError>(StatusCodes.Status404NotFound)
             .Produces<ApiError>(StatusCodes.Status503ServiceUnavailable);
         return routes;
@@ -53,31 +58,48 @@ public static class StorageEndpoints
         });
     }
 
+    /// <summary>302 to where the file loads (<see cref="ResolveAsync"/>).</summary>
+    private static async Task<IResult> OpenFileAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] FileStore files,
+        [FromServices] IObjectStore store, [FromServices] IEnumerable<IStoredFileReadRule> rules, [FromServices] IOptions<StorageOptions> options, CancellationToken ct)
+    {
+        var (link, error) = await ResolveAsync(id, http, db, files, store, rules, options.Value, ct);
+        return error ?? Results.Redirect(link!.Url);
+    }
+
+    /// <summary>The same address as data: <c>{url, expiresAtMs}</c>.</summary>
+    private static async Task<IResult> LinkAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] FileStore files,
+        [FromServices] IObjectStore store, [FromServices] IEnumerable<IStoredFileReadRule> rules, [FromServices] IOptions<StorageOptions> options, CancellationToken ct)
+    {
+        var (link, error) = await ResolveAsync(id, http, db, files, store, rules, options.Value, ct);
+        return error ?? JsonResults.Ok(link!);
+    }
+
     /// <summary>
     /// Another company's file, a file in the trash and a file the user may not open all answer the same 404: the
     /// answer never tells whether an id exists.
     /// </summary>
-    private static async Task<IResult> OpenFileAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] FileStore files,
-        [FromServices] IObjectStore store, [FromServices] IEnumerable<IStoredFileReadRule> rules, [FromServices] IOptions<StorageOptions> options, CancellationToken ct)
+    private static async Task<(StoredFileLinkResponse? Link, IResult? Error)> ResolveAsync(Guid id, HttpContext http, CentralApiDbContext db, FileStore files,
+        IObjectStore store, IEnumerable<IStoredFileReadRule> rules, StorageOptions options, CancellationToken ct)
     {
         var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
-        if (access.Error is not null) return access.Error;
+        if (access.Error is not null) return (null, access.Error);
         var file = await files.FindAsync(access.Tenant!.Id, id, ct);
         if (file is null || file.Status != StoredFileStatuses.Active || !await StoredFileAccess.CanReadAsync(db, access.User!, file, rules, ct))
-            return StorageErrors.FileNotFound().ToResult(http);
-        if (!store.IsAvailable) return StorageErrors.Unavailable().ToResult(http);
+            return (null, StorageErrors.FileNotFound().ToResult(http));
+        if (!store.IsAvailable) return (null, StorageErrors.Unavailable().ToResult(http));
 
         http.Response.Headers[HeaderNames.CacheControl] = "private, no-store";
         var url = files.UrlFor(file);
-        if (!url.StartsWith(FileStore.FilePathPrefix, StringComparison.Ordinal)) return Results.Redirect(url);
+        if (!url.StartsWith(FileStore.FilePathPrefix, StringComparison.Ordinal)) return (new StoredFileLinkResponse { Url = url }, null);
         try
         {
-            var signed = await store.PresignGetAsync(file.Bucket, file.ObjectKey, TimeSpan.FromMinutes(Math.Clamp(options.Value.PresignMinutes, 1, 60)), ct);
-            return Results.Redirect(signed.AbsoluteUri);
+            var validFor = TimeSpan.FromMinutes(Math.Clamp(options.PresignMinutes, 1, 60));
+            var signed = await store.PresignGetAsync(file.Bucket, file.ObjectKey, validFor, ct);
+            return (new StoredFileLinkResponse { Url = signed.AbsoluteUri, ExpiresAtMs = (DateTimeOffset.UtcNow + validFor).ToUnixTimeMilliseconds() }, null);
         }
         catch (StorageUnavailableException)
         {
-            return StorageErrors.Unavailable().ToResult(http);
+            return (null, StorageErrors.Unavailable().ToResult(http));
         }
     }
 }

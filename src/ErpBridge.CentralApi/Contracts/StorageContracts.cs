@@ -66,3 +66,80 @@ public sealed class AdminStorageRecountResponse
     [JsonPropertyName("usedBytesAfter")] public long UsedBytesAfter { get; set; }
     [JsonPropertyName("storage")] public AdminTenantStorageResponse Storage { get; set; } = new();
 }
+
+/// <summary><c>GET /api/v1/storage/files/{id}/link</c>: the redirect's address as data, for a page that shows the file itself.</summary>
+public sealed class StoredFileLinkResponse
+{
+    [JsonPropertyName("url")] public string Url { get; set; } = string.Empty;
+
+    /// <summary>When a presigned address stops working (unix ms); null for a public CDN address.</summary>
+    [JsonPropertyName("expiresAtMs")] public long? ExpiresAtMs { get; set; }
+}
+
+/// <summary>A receipt photo of a phone expense or vehicle maintenance document (GOAL_DEPOLAMA_R2 S5).</summary>
+public sealed class ExpenseAttachmentDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    /// <summary>The phone's document id the receipt belongs to (the cash-log id, <c>mobileDocumentId</c>).</summary>
+    [JsonPropertyName("documentId")] public string DocumentId { get; set; } = string.Empty;
+
+    /// <summary><c>expense</c> or <c>vehicle_maintenance</c>.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("contentType")] public string ContentType { get; set; } = string.Empty;
+    [JsonPropertyName("sizeBytes")] public int SizeBytes { get; set; }
+    [JsonPropertyName("createdAtMs")] public long CreatedAtMs { get; set; }
+    [JsonPropertyName("createdByUserId")] public Guid CreatedByUserId { get; set; }
+    [JsonPropertyName("createdByName")] public string CreatedByName { get; set; } = string.Empty;
+}
+
+/// <summary><c>GET /api/v1/android/expenses/{docId}/attachments</c>: the document's receipts the user may see.</summary>
+public sealed class ExpenseAttachmentListResponse
+{
+    [JsonPropertyName("items")] public ExpenseAttachmentDto[] Items { get; set; } = [];
+}
+
+/// <summary>The receipt's document as the server holds it (absent while the document has not reached the server).</summary>
+public sealed class ExpenseDocumentDto
+{
+    /// <summary>The job's document type: <c>expense</c>, or <c>disbursement</c> from an older phone.</summary>
+    [JsonPropertyName("type")] public string Type { get; set; } = string.Empty;
+    [JsonPropertyName("status")] public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("amount")] public decimal? Amount { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("counterparty")] public string? Counterparty { get; set; }
+
+    /// <summary>As the phone wrote it (<c>dd.MM.yyyy HH:mm</c>).</summary>
+    [JsonPropertyName("occurredAt")] public string? OccurredAt { get; set; }
+    [JsonPropertyName("expenseCardCode")] public string? ExpenseCardCode { get; set; }
+}
+
+/// <summary>One receipt on the panel: the photo's short-lived address and its document.</summary>
+public sealed class PortalExpenseReceiptDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    /// <summary>The stored file: a fresh address comes from <c>GET /api/v1/storage/files/{fileId}/link</c>.</summary>
+    [JsonPropertyName("fileId")] public Guid FileId { get; set; }
+    [JsonPropertyName("documentId")] public string DocumentId { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("contentType")] public string ContentType { get; set; } = string.Empty;
+    [JsonPropertyName("sizeBytes")] public int SizeBytes { get; set; }
+    [JsonPropertyName("createdAtMs")] public long CreatedAtMs { get; set; }
+    [JsonPropertyName("createdByName")] public string CreatedByName { get; set; } = string.Empty;
+
+    /// <summary>A presigned address valid for <c>Storage:PresignMinutes</c>; null while the store is not configured.</summary>
+    [JsonPropertyName("url")] public string? Url { get; set; }
+    [JsonPropertyName("document")] public ExpenseDocumentDto? Document { get; set; }
+}
+
+/// <summary><c>GET /api/v1/portal/expense-receipts</c>.</summary>
+public sealed class PortalExpenseReceiptsResponse
+{
+    [JsonPropertyName("from")] public string From { get; set; } = string.Empty;
+    [JsonPropertyName("to")] public string To { get; set; } = string.Empty;
+    [JsonPropertyName("items")] public PortalExpenseReceiptDto[] Items { get; set; } = [];
+
+    /// <summary>True when the list was cut at the endpoint's limit: narrow the dates.</summary>
+    [JsonPropertyName("truncated")] public bool Truncated { get; set; }
+}

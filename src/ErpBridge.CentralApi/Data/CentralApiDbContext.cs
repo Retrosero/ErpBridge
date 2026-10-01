@@ -219,6 +219,9 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Merkezi dosya deposu: one row per R2 object.</summary>
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
 
+    /// <summary>Receipt photos of the phones' expense and vehicle maintenance documents (GOAL_DEPOLAMA_R2 S5).</summary>
+    public DbSet<ExpenseAttachment> ExpenseAttachments => Set<ExpenseAttachment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -1563,6 +1566,22 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.Area, x.Status });
             b.HasIndex(x => new { x.TenantId, x.OwnerType, x.OwnerKey });
             b.HasIndex(x => new { x.Bucket, x.ObjectKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<ExpenseAttachment>(b =>
+        {
+            b.ToTable("expense_attachments");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.DocumentExternalId).IsRequired().HasMaxLength(ExpenseAttachment.MaxDocumentIdLength);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(24);
+            b.Property(x => x.ContentType).IsRequired().HasMaxLength(32);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // A document's receipts; the panel's list by date; which receipt a stored file is (read rule, orphan check).
+            b.HasIndex(x => new { x.TenantId, x.DocumentExternalId });
+            b.HasIndex(x => new { x.TenantId, x.CreatedAtMs });
+            b.HasIndex(x => x.StoredFileId);
         });
     }
 }

@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ErpBridge.CentralApi.Data.Migrations
 {
     [DbContext(typeof(CentralApiDbContext))]
-    [Migration("20261001205801_DepolamaAlanlari")]
+    [Migration("20261001210736_DepolamaAlanlari")]
     partial class DepolamaAlanlari
     {
         /// <inheritdoc />
@@ -1370,6 +1370,63 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.HasKey("TenantId");
 
                     b.ToTable("erp_write_settings", (string)null);
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ExpenseAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long>("CreatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("DeletedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DocumentExternalId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<int>("SizeBytes")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StoredFileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoredFileId");
+
+                    b.HasIndex("TenantId", "CreatedAtMs");
+
+                    b.HasIndex("TenantId", "DocumentExternalId");
+
+                    b.ToTable("expense_attachments", (string)null);
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ForaImportBatch", b =>
@@ -4898,6 +4955,15 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ExpenseAttachment", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.ForaImportBatch", b =>

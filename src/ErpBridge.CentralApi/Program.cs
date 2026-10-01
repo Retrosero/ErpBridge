@@ -331,6 +331,9 @@ public partial class Program
         builder.Services.Configure<ErpBridge.CentralApi.Tasks.TaskOptions>(cfg.GetSection(ErpBridge.CentralApi.Tasks.TaskOptions.SectionName));
         builder.Services.AddScoped<ErpBridge.CentralApi.Tasks.TaskService>();
         builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.IStoredFileReadRule, ErpBridge.CentralApi.Tasks.TaskPictureReadRule>();
+        // Gider ve araç fişleri (GOAL_DEPOLAMA_R2 S5): one read rule per area.
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.IStoredFileReadRule>(new ErpBridge.CentralApi.Expenses.ExpenseReceiptReadRule(ErpBridge.CentralApi.Domain.StorageAreas.Expense));
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.IStoredFileReadRule>(new ErpBridge.CentralApi.Expenses.ExpenseReceiptReadRule(ErpBridge.CentralApi.Domain.StorageAreas.Vehicle));
         builder.Services.AddHostedService<ErpBridge.CentralApi.Workers.TaskSchedulerWorker>();
         // SKT (son kullanma tarihi) kayıtları: telefonların ortak raf verisi, ERP'ye yazılmaz.
         builder.Services.AddScoped<ErpBridge.CentralApi.Expiry.StockExpiryService>();
@@ -968,6 +971,8 @@ public partial class Program
         app.MapInternalLogEndpoints();
         app.MapAdminMobileSeatsEndpoints();
         app.MapStorageEndpoints();
+        app.MapMobileExpenseAttachmentEndpoints();
+        app.MapPortalExpenseReceiptEndpoints();
         app.MapAdminStorageEndpoints();
     }
 

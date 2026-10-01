@@ -141,29 +141,10 @@ public static class MobileTaskEndpoints
         var result = await tasks.ReadAttachmentAsync(db, access.Tenant!.Id, access.User!, taskId, attachmentId, ct);
         if (!result.Succeeded) return JsonResults.Status(result.StatusCode, result.Error);
         var content = result.Value!;
-        Stream body;
-        if (content.File is { } file)
-        {
-            StoredObject? stored;
-            try
-            {
-                stored = await store.GetAsync(file.Bucket, file.ObjectKey, ct);
-            }
-            catch (StorageUnavailableException)
-            {
-                return StorageErrors.Unavailable().ToResult(http);
-            }
-            if (stored is null)
-                return JsonResults.Status(StatusCodes.Status404NotFound, new ApiError { ErrorCode = "TASK_ATTACHMENT_NOT_FOUND", Message = "Resim bulunamadı." });
-            body = stored.Content;
-        }
-        else
-        {
-            body = new MemoryStream(content.Data!, writable: false);
-        }
+        if (content.File is { } file) return await StoredFileResults.StreamAsync(http, store, file, "TASK_ATTACHMENT_NOT_FOUND", "Resim bulunamadı.", ct);
         // A picture never changes under its id; the phone may keep it as long as it likes.
-        http.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
-        return Results.Stream(body, content.ContentType);
+        http.Response.Headers.CacheControl = StoredFileResults.ImmutableCache;
+        return Results.Bytes(content.Data!, content.ContentType);
     }
 
     private static async Task<IResult> DeleteAttachmentAsync(Guid taskId, Guid attachmentId, HttpContext http,

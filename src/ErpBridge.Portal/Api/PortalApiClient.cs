@@ -132,6 +132,14 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
              ("customer", customer), ("userId", userId?.ToString()),
              ("page", page.ToString(CultureInfo.InvariantCulture)), ("pageSize", pageSize.ToString(CultureInfo.InvariantCulture))]), ct);
 
+    /// <summary>The company's expense and vehicle receipts uploaded in the range (GOAL_DEPOLAMA_R2 S5), newest first.</summary>
+    public Task<ExpenseReceiptsResponse> ExpenseReceiptsAsync(DateOnly from, DateOnly to, CancellationToken ct = default) =>
+        GetAsync<ExpenseReceiptsResponse>("api/v1/portal/expense-receipts" + Query(("from", Day(from)), ("to", Day(to))), ct);
+
+    /// <summary>A stored file's address now: a presigned one lasts a few minutes, so it is asked when the file is opened.</summary>
+    public Task<StoredFileLink> StoredFileLinkAsync(Guid fileId, CancellationToken ct = default) =>
+        GetAsync<StoredFileLink>($"api/v1/storage/files/{fileId:D}/link", ct);
+
     public Task<StockSearchResponse> StockSearchAsync(StockFilter filter, CancellationToken ct = default) =>
         GetAsync<StockSearchResponse>("api/v1/portal/stock/search" + filter.ToApiQuery(), ct);
 
