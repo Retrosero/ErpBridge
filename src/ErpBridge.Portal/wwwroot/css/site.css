@@ -77,6 +77,10 @@ h1:focus, h1:focus-visible { outline: none; }
 }
 .portal-nav .mud-nav-link.active .mud-nav-link-icon { color: #9fbaf5 !important; }
 .portal-nav .mud-nav-link.active .mud-nav-link-text { color: #fff !important; }
+.nav-count {
+    display: inline-block; margin-left: 8px; min-width: 20px; padding: 0 6px; border-radius: 999px;
+    font-size: .7rem; font-weight: 700; line-height: 1.6; text-align: center; background: #f59e0b; color: #1f2937;
+}
 .portal-drawer-footer { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 12px; font-size: .74rem; color: #6f82ab; border-top: 1px solid rgba(255, 255, 255, .06); }
 
 .portal-main { min-height: 100vh; }

@@ -3,6 +3,8 @@
 @inject PortalSession Session
 @inject ISessionPersistence Persistence
 @inject NavigationManager Nav
+@inject PortalApiClient Api
+@inject PortalRefreshTiming Refresh
 
 <MudThemeProvider Theme="PortalTheme.Theme" />
 <MudPopoverProvider />
@@ -103,7 +105,13 @@
                     <div class="portal-nav-label">Müşteri kataloğu</div>
                     <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
                         <MudNavLink Href="katalog" Icon="@Icons.Material.Rounded.Storefront" id="nav-catalog">Katalog yönetimi</MudNavLink>
-                        <MudNavLink Href="musteri-siparisleri" Icon="@Icons.Material.Rounded.ShoppingCartCheckout" id="nav-customer-orders">Müşteri siparişleri</MudNavLink>
+                        <MudNavLink Href="musteri-siparisleri" Icon="@Icons.Material.Rounded.ShoppingCartCheckout" id="nav-customer-orders">
+                            Müşteri siparişleri
+                            @if (_newOrders is int waiting && waiting > 0)
+                            {
+                                <span class="nav-count" id="nav-customer-orders-new" title="@($"{waiting} yeni talep")">@(waiting > 99 ? "99+" : waiting.ToString(System.Globalization.CultureInfo.InvariantCulture))</span>
+                            }
+                        </MudNavLink>
                     </MudNavMenu>
                 }
 
@@ -178,9 +186,82 @@ else
 
     private string Initials => Fmt.Initials(string.IsNullOrWhiteSpace(Session.FullName) ? Session.Username : Session.FullName);
 
-    protected override void OnInitialized() => Session.Changed += Redraw;
+    // GOAL_MUSTERI_KATALOGU P7: the new customer requests, read once a minute and on every page change, while the module and
+    // the roles open the area. The loop lives as long as the layout (the circuit) and stops when it is disposed.
+    private readonly CancellationTokenSource _live = new();
+    private int? _newOrders;
+    private bool _counting;
+    private string? _countedPath;
 
-    private void Redraw() => InvokeAsync(StateHasChanged);
+    protected override void OnInitialized()
+    {
+        Session.Changed += Redraw;
+        Nav.LocationChanged += PageChanged;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) _ = WatchNewOrdersAsync(_live.Token);
+    }
+
+    private void Redraw() => InvokeAsync(async () =>
+    {
+        StateHasChanged();
+        // Signed in (or the roles read again) after the layout was drawn: the badge needn't wait for the next minute.
+        if (_newOrders is null) await CountNewOrdersAsync();
+    });
+
+    private void PageChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // A page that rewrites its own address (filters, paging) is not a page change.
+        if (string.Equals(PathOf(e.Location), _countedPath, StringComparison.OrdinalIgnoreCase)) return;
+        _ = InvokeAsync(CountNewOrdersAsync);
+    }
+
+    private static string PathOf(string uri) => new Uri(uri).AbsolutePath;
+
+    private async Task WatchNewOrdersAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(Refresh.CustomerOrders);
+            do
+            {
+                await InvokeAsync(CountNewOrdersAsync);
+            }
+            while (await timer.WaitForNextTickAsync(token));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task CountNewOrdersAsync()
+    {
+        if (_live.IsCancellationRequested || _counting) return;
+        _countedPath = PathOf(Nav.Uri);
+        if (!Session.IsSignedIn || !Session.Allows(PortalArea.CustomerCatalog))
+        {
+            if (_newOrders is null) return;
+            _newOrders = null;
+            StateHasChanged();
+            return;
+        }
+        _counting = true;
+        try
+        {
+            _newOrders = (await Api.CatalogOrderCountsAsync(_live.Token)).New;
+        }
+        catch (Exception ex) when (ex is PortalApiException or SessionEndedException or HttpRequestException or TaskCanceledException)
+        {
+            // The badge is a hint: it keeps the last count, and the page the user is on deals with an ended session.
+        }
+        finally
+        {
+            _counting = false;
+        }
+        if (!_live.IsCancellationRequested) StateHasChanged();
+    }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
@@ -199,5 +280,10 @@ else
         Nav.NavigateTo("login", forceLoad: true);
     }
 
-    public void Dispose() => Session.Changed -= Redraw;
+    public void Dispose()
+    {
+        Session.Changed -= Redraw;
+        Nav.LocationChanged -= PageChanged;
+        _live.Cancel();
+    }
 }

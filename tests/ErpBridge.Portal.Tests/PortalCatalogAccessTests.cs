@@ -68,15 +68,21 @@ public sealed class PortalCatalogAccessTests : PortalPageTestContext
         revision = 7, truncated = false, items = new[] { Product("CAY-1", "Çay 1 kg", hidden: false), Product("GIZLI-1", "Gizli çay", hidden: true) },
     };
 
-    private static object Account(string mode = "all", object[]? rules = null, int? priceListNo = 2) => new
+    private static object Account(string mode = "all", object[]? rules = null, int? priceListNo = 2, Guid? responsible = null) => new
     {
         id = AccountId, customerCode = "C/1", customerName = "Bakkal Ali", username = "bakkal.ali", isActive = true, discountPercent = 10m,
         priceListNo, visibility = new { mode, rules = rules ?? Array.Empty<object>() },
-        showStatement = true, showInvoices = false, showPurchased = false, canOrder = true, responsibleUserId = (Guid?)null,
+        showStatement = true, showInvoices = false, showPurchased = false, canOrder = true, responsibleUserId = responsible,
         lastLoginAtMs = (long?)null, openOrderCount = 0, createdAtMs = 1790000000000L, createdByName = "Firma Sahibi", updatedAtMs = 1790000000000L,
     };
 
     private static object Lookup(object? account) => new { account, customerName = "Bakkal Ali", suggestedUsername = "bakkal.ali" };
+
+    private static object Lookup(object? account, string source, string? userName) => new
+    {
+        account, customerName = "Bakkal Ali", suggestedUsername = "bakkal.ali",
+        notifyPreview = new { userId = userName is null ? (Guid?)null : VeliId, userName, source },
+    };
 
     private static JsonElement Body(FakeCentralApi api, HttpMethod method, string path) =>
         JsonDocument.Parse(api.Requests.Last(r => r.Method == method && r.PathAndQuery == path).Body!).RootElement;
@@ -84,9 +90,9 @@ public sealed class PortalCatalogAccessTests : PortalPageTestContext
     private static IEnumerable<string> Rules(JsonElement visibility) =>
         visibility.GetProperty("rules").EnumerateArray().Select(r => $"{r.GetProperty("type").GetString()}:{r.GetProperty("key").GetString()}:{r.GetProperty("effect").GetString()}");
 
-    private FakeCentralApi SetupCustomerPage(bool module = true)
+    private FakeCentralApi SetupCustomerPage(bool module = true, string dataSource = "native")
     {
-        var state = PortalTestSetup.State() with { Modules = module ? ["customer_catalog"] : null };
+        var state = PortalTestSetup.State() with { Modules = module ? ["customer_catalog"] : null, DataSource = dataSource };
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: state);
         Services.GetRequiredService<NavigationManager>().NavigateTo("cari?kod=C%2F1");
         api.Answer(Customers + "/card?code=C%2F1", Card());
@@ -129,6 +135,55 @@ public sealed class PortalCatalogAccessTests : PortalPageTestContext
         cut.WaitForAssertion(() => cut.Find("#access-product-results li[data-stock='GIZLI-1']"));
     }
 
+    /// <summary>S11/P7: the sheet says who hears of a new request — the server's rule, or the responsible user just picked.</summary>
+    [Fact]
+    public void Without_an_erp_the_sheet_names_the_route_plans_person_and_never_a_salesperson()
+    {
+        var api = SetupCustomerPage();
+        api.Answer(ByCustomer, Lookup(null, "route", "Veli Plasiyer"));
+        var cut = RenderCustomer();
+
+        OpenSheet(cut);
+
+        var preview = cut.Find("#access-notify-preview");
+        preview.GetAttribute("data-source").Should().Be("route");
+        preview.TextContent.Should().Be("Veli Plasiyer — carinin bulunduğu aktif rut planı");
+        cut.FindAll("#access-notify-help").Should().BeEmpty();
+        cut.Find("#access-notify").TextContent.Should().Contain("Katalog yöneticileri her talepte ayrıca bildirim alır.");
+        cut.Find("#access-form").TextContent.Should().Contain("seçilmezse carinin bulunduğu aktif rut planındaki kişiye")
+            .And.NotContain("plasiyerine", "an ERP-less company has no salesperson codes");
+
+        cut.Find("#access-responsible").Change(VeliId.ToString());
+        cut.Find("#access-notify-preview").TextContent.Should().Be("Veli Plasiyer — sorumlu personel (kaydedince)");
+        cut.Find("#access-responsible").Change("");
+        cut.Find("#access-notify-preview").TextContent.Should().Be("Veli Plasiyer — carinin bulunduğu aktif rut planı");
+    }
+
+    [Fact]
+    public void An_erp_customer_nobody_is_routed_to_gets_the_way_to_fix_it_and_a_saved_choice_is_read_again()
+    {
+        var api = SetupCustomerPage(dataSource: "erp");
+        api.Answer(ByCustomer, Lookup(Account(), "managersOnly", null));
+        var cut = RenderCustomer();
+
+        OpenSheet(cut);
+
+        cut.Find("#access-notify-preview").TextContent.Should().Be("Kimseye atanmıyor; yalnız katalog yöneticileri bildirim alır.");
+        cut.Find("#access-notify-help").TextContent.Should().Contain("Kullanıcılar › Mikro").And.Contain("rut planına");
+        cut.Find("#access-form").TextContent.Should().Contain("sırasıyla carinin plasiyerine, adres temsilcisine, firmanın varsayılan temsilcisine");
+
+        cut.Find("#access-responsible").Change(VeliId.ToString());
+        cut.Find("#access-notify-preview").TextContent.Should().Be("Veli Plasiyer — sorumlu personel (kaydedince)");
+        cut.FindAll("#access-notify-help").Should().BeEmpty();
+        api.Answer($"{Accounts}/{AccountId}", new { account = Account(responsible: VeliId) });
+        api.Answer(ByCustomer, Lookup(Account(responsible: VeliId), "responsible", "Veli Plasiyer"));
+        cut.Find("#access-save").Click();
+
+        cut.WaitForAssertion(() => cut.Find("#access-notify-preview").TextContent.Should().Be("Veli Plasiyer — sorumlu personel"));
+        cut.Find("#access-notice").TextContent.Should().Be("Katalog erişimi kaydedildi.");
+        api.Requests.Count(r => r.PathAndQuery == ByCustomer).Should().Be(2, "the routing is read again once the responsible user changed");
+    }
+
     [Fact]
     public void The_customer_page_reads_no_catalog_data_and_offers_the_button_only_with_the_module()
     {
@@ -164,7 +219,8 @@ public sealed class PortalCatalogAccessTests : PortalPageTestContext
         cut.Find("#access-none").Should().NotBeNull();
         cut.Find("#access-username").GetAttribute("value").Should().Be("bakkal.ali", "the server suggests the username");
         cut.Find("#access-password-auto").HasAttribute("checked").Should().BeTrue("the server makes the password by default");
-        cut.FindAll("#access-responsible option").Select(o => o.TextContent).Should().Equal("Seçilmedi (carinin plasiyeri)", "Veli Plasiyer");
+        cut.FindAll("#access-responsible option").Select(o => o.TextContent).Should().Equal("Seçilmedi (otomatik)", "Veli Plasiyer");
+        cut.FindAll("#access-notify").Should().BeEmpty("an older server sends no preview");
 
         cut.Find("#access-discount").Input("10");
         cut.Find("#access-discount-preview").TextContent.Should().Contain("100,00 TL → 90,00 TL").And.Contain("İskontosuz işaretli ürünlere uygulanmaz");

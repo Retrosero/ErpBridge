@@ -243,18 +243,41 @@
                         <span class="field-label">Sorumlu personel</span>
                         <select class="portal-select" id="access-responsible" value="@(_form.ResponsibleUserId?.ToString() ?? string.Empty)"
                                 @onchange="e => _form.ResponsibleUserId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null">
-                            <option value="">Seçilmedi (carinin plasiyeri)</option>
+                            <option value="">Seçilmedi (otomatik)</option>
                             @foreach (var user in users)
                             {
                                 <option value="@user.Id">@(string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName)</option>
                             }
                         </select>
-                        <span class="field-hint">Yeni sipariş talebinin bildirimi bu kişiye gider; seçilmezse carinin plasiyerine.</span>
+                        <span class="field-hint">Yeni sipariş talebinin bildirimi bu kişiye gider; seçilmezse @AutomaticRule.</span>
                     </label>
                 }
                 else
                 {
-                    <span class="field-hint">Talep bildirimi carinin plasiyerine gider; sorumlu personeli firma admini seçer.</span>
+                    <span class="field-hint">Talep bildirimi @AutomaticRule gider; sorumlu personeli firma admini seçer.</span>
+                }
+
+                @if (_lookup.NotifyPreview is not null)
+                {
+                    var (person, reason, help) = Notify;
+                    <div class="stack-field" id="access-notify">
+                        <span class="field-label">Bildirim kime gidecek</span>
+                        <span id="access-notify-preview" data-source="@_lookup.NotifyPreview.Source">
+                            @if (person is not null)
+                            {
+                                <strong>@person</strong><span> — @reason</span>
+                            }
+                            else
+                            {
+                                <span>@reason</span>
+                            }
+                        </span>
+                        @if (help is not null)
+                        {
+                            <span class="field-hint field-hint--warn" id="access-notify-help">@help</span>
+                        }
+                        <span class="field-hint">Katalog yöneticileri her talepte ayrıca bildirim alır.</span>
+                    </div>
                 }
 
                 <label class="inline-field">
@@ -322,6 +345,51 @@
     private string? _copyNote;
     private bool _ended;
 
+    private bool IsErpCompany => string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The server's order when no one is chosen (CatalogOrders.AssigneeAsync, S11), in words. An ERP-less company has no
+    /// salesperson codes: only route plans name someone there.
+    /// </summary>
+    private string AutomaticRule => IsErpCompany
+        ? "sırasıyla carinin plasiyerine, adres temsilcisine, firmanın varsayılan temsilcisine ya da carinin aktif rut planındaki kişiye"
+        : "carinin bulunduğu aktif rut planındaki kişiye";
+
+    /// <summary>The responsible user the server's preview was worked out with; another choice in the form changes it on save.</summary>
+    private Guid? _previewResponsible;
+
+    /// <summary>Who hears of a new request: the person, why, and what to do when nobody does.</summary>
+    private (string? Person, string Reason, string? Help) Notify
+    {
+        get
+        {
+            var preview = _lookup!.NotifyPreview!;
+            if (_form.ResponsibleUserId != _previewResponsible)
+            {
+                return _form.ResponsibleUserId is { } chosen
+                    ? (UserName(chosen), "sorumlu personel (kaydedince)", null)
+                    : (null, "Kaydedince sorumlu personel yerine otomatik kural uygulanır.", null);
+            }
+            var reason = preview.Source switch
+            {
+                "responsible" => "sorumlu personel",
+                "salesperson" => "carinin plasiyeri (Mikro temsilci kodu)",
+                "address" => "carinin adresindeki temsilci",
+                "default" => "firmanın varsayılan temsilcisi",
+                "route" => "carinin bulunduğu aktif rut planı",
+                _ => null,
+            };
+            if (reason is not null && preview.UserName is { } name) return (name, reason, null);
+            return (null, "Kimseye atanmıyor; yalnız katalog yöneticileri bildirim alır.",
+                IsErpCompany
+                    ? "Sorumlu personel seçin, carinin temsilci kodunu Kullanıcılar › Mikro'da bir kişiye eşleyin ya da cariyi bir rut planına ekleyin."
+                    : "Sorumlu personel seçin ya da cariyi bir rut planına ekleyin.");
+        }
+    }
+
+    private string UserName(Guid id) =>
+        _users?.FirstOrDefault(u => u.Id == id) is { } user ? (string.IsNullOrWhiteSpace(user.FullName) ? user.Username : user.FullName) : "Seçilen kişi";
+
     private string CustomerTitle => !string.IsNullOrWhiteSpace(_lookup?.CustomerName) ? _lookup.CustomerName : CustomerName ?? CustomerCode ?? string.Empty;
 
     protected override async Task OnParametersSetAsync()
@@ -345,6 +413,7 @@
     private async Task OpenAsync(string code)
     {
         _lookup = await Api.CatalogAccountByCustomerAsync(code);
+        _previewResponsible = _lookup.Account?.ResponsibleUserId;
         _settings = await Api.CatalogSettingsAsync();
         Show(_lookup.Account);
         if (_form.Visibility != CatalogAccessForm.Main) await LoadCategoriesAsync();
@@ -459,7 +528,25 @@
             }
             saved = true;
         });
-        if (saved) await OnChanged.InvokeAsync();
+        if (!saved) return;
+        if (_account?.ResponsibleUserId != _previewResponsible) await RefreshPreviewAsync(code);
+        await OnChanged.InvokeAsync();
+    }
+
+    /// <summary>The routing again after the responsible user changed; on failure the old preview says "kaydedince".</summary>
+    private async Task RefreshPreviewAsync(string code)
+    {
+        try
+        {
+            var lookup = await Api.CatalogAccountByCustomerAsync(code);
+            if (_lookup is null || CustomerCode != code) return;
+            _lookup.NotifyPreview = lookup.NotifyPreview;
+            _previewResponsible = lookup.Account?.ResponsibleUserId;
+        }
+        catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+        {
+            // Only the preview is stale; the save went through and said so.
+        }
     }
 
     private async Task ResetPasswordAsync()
@@ -497,6 +584,7 @@
             _issuedPassword = null;
             deleted = true;
             _lookup = await Api.CatalogAccountByCustomerAsync(code);
+            _previewResponsible = _lookup.Account?.ResponsibleUserId;
             Show(_lookup.Account);
             _notice = "Katalog erişimi silindi; müşteri artık kataloğa giremez.";
         });

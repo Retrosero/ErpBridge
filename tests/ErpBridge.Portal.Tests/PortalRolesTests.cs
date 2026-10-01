@@ -305,6 +305,61 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         }
     }
 
+    private const string OrderCounts = "/api/v1/customer-catalog/orders/counts";
+
+    private static object Counts(int newCount) => new { @new = newCount, claimed = 1, completed = 4, rejected = 0 };
+
+    /// <summary>GOAL_MUSTERI_KATALOGU P7: the menu tells how many customer requests are new, read again on a page change.</summary>
+    [Fact]
+    public void The_customer_orders_link_counts_the_new_requests_and_reads_them_again_on_a_page_change()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State() with { Modules = ["customer_catalog"] }, popoverProvider: false);
+        api.Answer(OrderCounts, Counts(3));
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+
+        var cut = RenderLayout();
+
+        cut.WaitForAssertion(() => cut.Find("#nav-customer-orders #nav-customer-orders-new").TextContent.Should().Be("3"));
+        cut.Find("#nav-customer-orders-new").GetAttribute("title").Should().Be("3 yeni talep");
+
+        api.Answer(OrderCounts, Counts(0));
+        nav.NavigateTo("cariler");
+        cut.WaitForAssertion(() => cut.FindAll("#nav-customer-orders-new").Should().BeEmpty("no new request, no badge"));
+        api.Requests.Count(r => r.PathAndQuery == OrderCounts).Should().Be(2);
+
+        // A page rewriting its own address (a filter, a page number) is not a page change.
+        nav.NavigateTo("cariler?ara=yilmaz");
+        nav.NavigateTo("musteri-siparisleri");
+        cut.WaitForAssertion(() => api.Requests.Count(r => r.PathAndQuery == OrderCounts).Should().Be(3));
+    }
+
+    [Fact]
+    public void The_new_requests_badge_reads_again_on_its_own_and_caps_its_number()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State() with { Modules = ["customer_catalog"] }, popoverProvider: false,
+            refreshTiming: new PortalRefreshTiming { CustomerOrders = TimeSpan.FromMilliseconds(40) });
+        api.Answer(OrderCounts, Counts(2));
+
+        var cut = RenderLayout();
+        cut.WaitForAssertion(() => cut.Find("#nav-customer-orders-new").TextContent.Should().Be("2"));
+
+        api.Answer(OrderCounts, Counts(120));
+        cut.WaitForAssertion(() => cut.Find("#nav-customer-orders-new").TextContent.Should().Be("99+"), TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Without_the_catalog_the_menu_reads_no_counts()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State() with { Modules = [] }, popoverProvider: false,
+            refreshTiming: new PortalRefreshTiming { CustomerOrders = TimeSpan.FromMilliseconds(40) });
+
+        var cut = RenderLayout();
+        await Task.Delay(200); // a few of the shortened minutes
+
+        api.Requests.Should().NotContain(r => r.PathAndQuery == OrderCounts);
+        cut.FindAll("#nav-customer-orders-new").Should().BeEmpty();
+    }
+
     [Fact]
     public void An_erp_company_admin_has_no_quick_entry_links()
     {
