@@ -64,8 +64,11 @@ katalog kotası görünüyor.
     (tek seviye alt alan adı, Cloudflare'de proxied).
   - Özel kovadaki dosya yalnız yetkili isteğe verilir: sunucu yetkiyi denetler, 5 dakikalık imzalı R2 adresine
     yönlendirir (302).
-  - Web katalogdaki "firma kapalıysa görsel 404" kuralı herkese açık kovada kendiliğinden işlemez. Bunun yerine firma
-    kapatılınca bir iş firmanın public klasörünü 30 gün sonra siler; adresler zaten tahmin edilemez.
+  - Web katalogdaki "firma kapalıysa görsel 404" kuralı herkese açık kovada kendiliğinden işlemez. Bu yüzden erişim
+    **hemen** kesilir: firma pasifleşince firmanın bütün public nesneleri, katalog modülü kaldırılınca yalnız
+    `catalog`/`banner` alanındakiler bir iş tarafından özel kovaya (`{FIRMAKODU}/_karantina/…`) taşınır (kopyala +
+    sil, dakikalar içinde); defterde `Bucket` güncellenir. Firma/modül yeniden açılınca geri taşınır. Taşıma bitene kadar
+    eski adresler tahmin edilemez olduğu için risk kısa pencereyle sınırlıdır (inceleme P1, 2026-10-01).
 - **T5 — Görsel işleme:** sunucuya **SkiaSharp** (MIT lisanslı) eklenir: küçültme ve WebP kodlama. XML görselleri ve
   panel/telefon yüklemeleri aynı kodla iki boyuta indirilir: l uzun kenar 1280 px, s 400 px. Banner için 1920×720 ve
   800×300. ImageSharp lisans koşulları nedeniyle seçilmedi.
@@ -80,8 +83,9 @@ katalog kotası görünüyor.
     `TenantSyncCounter` gibi satır kilidiyle güncellenir.
   - Yükleme önce yer ayırır, yazım başarılı olunca kesinleştirir, hata olursa geri verir.
   - Günde bir çalışan iş sayacı defterden yeniden hesaplar ve sapmayı loglar.
-  - Silinmiş ama henüz temizlenmemiş dosyalar kotaya **sayılmaz**: kullanıcı silince yeri hemen açılmış görür; bayt
-    çöp kutusu süresince R2'de durur.
+  - Çöp kutusundaki dosyalar kalıcı silinene kadar kotaya **sayılır**: yükle-sil döngüsüyle kota aşılamaz ve geri
+    alma her zaman yer bulur. Yerin hemen açılması isteniyorsa panelde "Çöpü boşalt / kalıcı sil" vardır; çöp 7 gün
+    sonra kendiliğinden boşalır (inceleme P1, 2026-10-01).
 - **T9 — Geçiş:** mevcut bytea veriler bir arka plan göç işiyle R2'ye taşınır. Göç bitene kadar okuma ikilidir
   (`StoredFileId` boşsa bytea'dan okunur). Göç doğrulanınca bytea tabloları ayrı bir migration ile düşürülür ve
   PostgreSQL'de yer geri kazanılır.
@@ -151,8 +155,10 @@ Ayarlar `StorageOptions` (`Storage:*`; Coolify'da `Storage__*`):
     - XML'den kalkan görsel ya da ürün sunucudan doğrudan silinir; çöp kutusuna gitmez. XML eşitlemesi yarıda
       kalırsa (indirme ya da ayrıştırma hatası) hiçbir şey silinmez, ki boş ya da bozuk bir feed bütün görselleri
       silmesin.
-  - Dış adres güvenliği (SSRF): yalnız http/https; DNS çözümünde özel, yerel ve link-local IP'ler reddedilir;
-    yönlendirmede yeniden denetlenir. Dosya başı en çok 10 MB, istek başı 20 sn zaman aşımı, firma başı eşzamanlılık 4.
+  - Dış adres güvenliği (SSRF): yalnız http/https; ad çözümlenir, çözülen **bütün** adresler denetlenir (özel,
+    yerel, link-local, çok noktaya yayın, IPv6 eşlenik dahil reddedilir) ve bağlantı yalnız doğrulanmış IP'ye kurulur
+    (`SocketsHttpHandler.ConnectCallback` ile sabitleme; TLS ve Host için özgün ad korunur) — DNS rebinding'e karşı.
+    Otomatik yönlendirme kapalıdır; her yönlendirme hedefi aynı denetimden geçip elle izlenir (en çok 3). Dosya başı en çok 10 MB, istek başı 20 sn zaman aşımı, firma başı eşzamanlılık 4.
   - Telefonun kendi XML indirmesi bir süre yedek olarak kalır, sonra kapatılır (kural 40 güncellenir).
 - **Kota ve kullanım:**
   - `GET /api/v1/customer-catalog/...` yerine genel `GET /api/v1/storage/usage`: alanlara göre kullanım ve kota (panel
@@ -165,7 +171,8 @@ Ayarlar `StorageOptions` (`Storage:*`; Coolify'da `Storage__*`):
     - kapanan görevlerin fotoğrafları (X günden eski),
     - süresi biten ya da pasif bannerlar,
     -     - silinmiş giderlerin fişleri.
-  - `POST /api/v1/storage/cleanup {group, ids[] | all}` seçilenleri çöp kutusuna taşır; kota hemen düşer.
+  - `POST /api/v1/storage/cleanup {group, ids[] | all}` seçilenleri çöp kutusuna taşır (kota çöp boşalınca düşer);
+    `POST /api/v1/storage/trash/purge {ids[] | all}` çöpü hemen kalıcı siler ve yeri açar.
   - `POST /api/v1/storage/trash/restore {ids}`: çöp kutusu süresi (7 gün) dolmadan geri alma.
   - Bütün temizlik uçları yalnız yöneticiye açık (`action.storage.manage`, kilitli, ADMIN+MANAGER). Her işlem denetim
     kaydına yazılır.
@@ -175,7 +182,8 @@ Ayarlar `StorageOptions` (`Storage:*`; Coolify'da `Storage__*`):
   - 24 saati geçen yarım yüklemelerin ve defterde olmayan R2 nesnelerinin (yetimler) silinmesi; R2 listeleme ile haftada
     bir mutabakat.
   - Günlük sayaç yeniden hesabı.
-  - Kapatılan firmanın public klasörünün 30 gün sonra silinmesi.
+  - Firma pasifleşince ya da katalog modülü kaldırılınca public nesnelerin karantinaya taşınması, yeniden açılınca geri
+    taşınması (T4).
 
 ## 5. Panel ve Admin
 
@@ -237,7 +245,7 @@ Sıra: D0 → S1 → S2 → (S3 ∥ S4 ∥ S5) → S6 → S7 → S8 → S9 → P
 | R2 ile veritabanı arasında tutarsızlık (yarım yükleme, yetim nesne) | Önce R2 yazımı, sonra defter; 24 saatlik yarım yükleme temizliği; haftalık mutabakat |
 | Sunucunun dış adres indirmesi (XML) güvenlik riski | Yalnız kayıtlı XML'in kendi adresleri; özel IP engeli; boyut ve süre sınırı; yönlendirme denetimi |
 | SkiaSharp'ın Docker'da native bağımlılığı | S2'de Linux imajında açılış testi; gerekirse `NoDependencies` paketi |
-| Herkese açık kovada firma kapatılınca görsel hemen gizlenmez | Tahmin edilemez adresler; kapanışta 30 gün sonra klasör silme |
+| Herkese açık kovada firma kapatılınca görsel hemen gizlenmez | Kapanışta ve modül kaldırılınca public nesneler hemen özel kovaya taşınır (T4) |
 | Kota yarışı | `tenant_storage` satır kilidiyle ayırma/kesinleştirme |
 | PostgreSQL yedeği görselleri artık içermez | R2 nesne sürümleme ya da yaşam döngüsü kuralı (D0'da açılır) |
 | Eski telefon sürümleri | Uç yolları ve eski kota kodları korunur; yeni alanlar geriye uyumlu |
