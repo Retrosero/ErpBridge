@@ -105,7 +105,7 @@ public static class PortalMessages
         "CARTON_QUANTITY_REQUIRED" => "Yalnız koli satışı için ürünün koli adedi (en az 2) olmalı.",
         "CUSTOMER_NOT_FOUND" => "Cari bulunamadı.",
         "CATALOG_ACCOUNT_NOT_FOUND" => "Katalog erişimi bulunamadı; liste yenilendi.",
-        "CATALOG_ACCOUNT_EXISTS" => "Bu carinin zaten bir katalog erişimi var.",
+        "CATALOG_ACCOUNT_EXISTS" or "CUSTOMER_HAS_ACCOUNT" => "Bu carinin zaten bir katalog erişimi var.",
         "CATALOG_USERNAME_TAKEN" => "Bu kullanıcı adı başka bir katalog erişiminde kullanılıyor.",
         "INVALID_DISCOUNT" => "İskonto 0 ile 99,99 arasında olmalı.",
         "INVALID_IMAGE" => "Dosya JPEG, PNG ya da WebP görseli değil.",

@@ -257,19 +257,23 @@ public sealed class CatalogAccountCreateRequest
     [JsonPropertyName("responsibleUserId")] public Guid? ResponsibleUserId { get; set; }
 }
 
-/// <summary><c>PATCH accounts/{id}</c>: every field optional; a field left null is not sent and does not change.</summary>
+/// <summary>
+/// <c>PATCH accounts/{id}</c>: every field optional; a field left null is not sent and does not change. The two whose
+/// null means something — <see cref="PriceListNo"/> (the company's default list) and <see cref="ResponsibleUserId"/>
+/// (nobody) — are always sent, so the access sheet, which sends the whole form, can set them back.
+/// </summary>
 public sealed class CatalogAccountPatchRequest
 {
     [JsonPropertyName("username"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Username { get; set; }
     [JsonPropertyName("isActive"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? IsActive { get; set; }
     [JsonPropertyName("discountPercent"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? DiscountPercent { get; set; }
-    [JsonPropertyName("priceListNo"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? PriceListNo { get; set; }
+    [JsonPropertyName("priceListNo")] public int? PriceListNo { get; set; }
     [JsonPropertyName("visibility"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public CatalogVisibilityDto? Visibility { get; set; }
     [JsonPropertyName("showStatement"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? ShowStatement { get; set; }
     [JsonPropertyName("showInvoices"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? ShowInvoices { get; set; }
     [JsonPropertyName("showPurchased"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? ShowPurchased { get; set; }
     [JsonPropertyName("canOrder"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? CanOrder { get; set; }
-    [JsonPropertyName("responsibleUserId"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? ResponsibleUserId { get; set; }
+    [JsonPropertyName("responsibleUserId")] public Guid? ResponsibleUserId { get; set; }
 }
 
 /// <summary>The saved access; <see cref="IssuedPassword"/> only once, when the server made the password.</summary>

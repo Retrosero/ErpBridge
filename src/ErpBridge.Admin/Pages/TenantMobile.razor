@@ -75,11 +75,12 @@ else
 
     <section class="admin-panel seat-panel">
         <div class="admin-panel__header">
-            <div><h2>Ek modüller</h2><p>Ayrı satılan özellikler. Açılan modül telefonlarda bir sonraki oturum yenilemesinde görünür.</p></div>
+            <div><h2>Ek modüller</h2><p>Ayrı satılan özellikler. Açılan modül telefonlarda ve panelde bir sonraki oturum yenilemesinde görünür.</p></div>
         </div>
         <div class="admin-panel__body seat-form">
             <label class="seat-check"><input id="module-xml-import" type="checkbox" @bind="_xmlImport" /> <span>XML ürün aktarımı (resim/açıklama; ERP'siz firmada tüm alanlar)</span></label>
-            <button id="modules-save" class="btn btn-outline-primary" @onclick="SaveModulesAsync" disabled="@(_busy || _xmlImport == _overview.Modules.Contains(XmlImportModule))">Kaydet</button>
+            <label class="seat-check"><input id="module-customer-catalog" type="checkbox" @bind="_customerCatalog" /> <span>Müşteri kataloğu (web; carilere özel katalog ve sipariş talebi)</span></label>
+            <button id="modules-save" class="btn btn-outline-primary" @onclick="SaveModulesAsync" disabled="@(_busy || !ModulesChanged)">Kaydet</button>
         </div>
     </section>
 
@@ -346,6 +347,13 @@ else
     private string _dataSource = "erp";
     private const string XmlImportModule = "xml_import";
     private bool _xmlImport;
+
+    /// <summary>GOAL_MUSTERI_KATALOGU: the customer web catalog (the server's <c>TenantModules.CustomerCatalog</c>).</summary>
+    private const string CustomerCatalogModule = "customer_catalog";
+    private bool _customerCatalog;
+
+    private bool ModulesChanged => _overview is { } overview
+        && (_xmlImport != overview.Modules.Contains(XmlImportModule) || _customerCatalog != overview.Modules.Contains(CustomerCatalogModule));
     private ApprovalRequestDto[] _approvals = Array.Empty<ApprovalRequestDto>();
     private string _approvalStatus = "all";
     private string? _approvalsError;
@@ -376,6 +384,7 @@ else
                 : new SubscriptionForm { Seats = current.Seats, EndsAtLocal = current.EndsAtUtc?.LocalDateTime.Date, Source = current.Source };
             _dataSource = _overview.DataSource;
             _xmlImport = _overview.Modules.Contains(XmlImportModule);
+            _customerCatalog = _overview.Modules.Contains(CustomerCatalogModule);
             // The first user of a company is its administrator; later ones default to field users.
             _newUser = new CreateMobileUserRequest { Role = _overview.Users.Length == 0 ? "ADMIN" : "SALES" };
         }
@@ -443,10 +452,11 @@ else
     /// <summary>Sends the whole set: modules not listed are switched off.</summary>
     private Task SaveModulesAsync()
     {
-        var modules = _overview!.Modules.Where(m => m != XmlImportModule).ToList();
+        var modules = _overview!.Modules.Where(m => m is not (XmlImportModule or CustomerCatalogModule)).ToList();
         if (_xmlImport) modules.Add(XmlImportModule);
+        if (_customerCatalog) modules.Add(CustomerCatalogModule);
         return RunAsync(() => Api.SetTenantModulesAsync(TenantId, modules),
-            _xmlImport ? "XML ürün aktarımı açıldı." : "XML ürün aktarımı kapatıldı.");
+            $"Ek modüller kaydedildi: XML ürün aktarımı {(_xmlImport ? "açık" : "kapalı")}, müşteri kataloğu {(_customerCatalog ? "açık" : "kapalı")}.");
     }
 
     private Task CreateUserAsync() =>

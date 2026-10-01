@@ -410,6 +410,12 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
 
     private const string Catalog = "api/v1/customer-catalog/";
 
+    /// <summary>
+    /// Rows per page of the accounts and order lists. The contract sends only <c>page</c>, so the server's page size is
+    /// fixed and the pager counts with the same number.
+    /// </summary>
+    public const int CatalogPageSize = 50;
+
     public Task<CatalogSettingsDto> CatalogSettingsAsync(CancellationToken ct = default) =>
         GetAsync<CatalogSettingsDto>(Catalog + "settings", ct);
 

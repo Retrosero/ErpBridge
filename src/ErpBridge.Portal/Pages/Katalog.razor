@@ -287,15 +287,80 @@ else
         }
     }
 
+    @if (_tab == "erisimler" && _accounts is { } accounts)
+    {
+        <form class="document-search accounts-search" id="accounts-filter" @onsubmit="SearchAccountsAsync" @onsubmit:preventDefault>
+            <input class="portal-input" id="accounts-search" placeholder="Cari kodu, unvanı ya da kullanıcı adı" aria-label="Erişimlerde ara"
+                   value="@_accountQuery" @onchange="e => _accountQuery = e.Value?.ToString()" />
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@Busy" id="accounts-search-go">Ara</MudButton>
+        </form>
+        @if (accounts.Items.Length == 0)
+        {
+            <EmptyState Id="accounts-empty" Icon="@Icons.Material.Rounded.People"
+                        Title="@(string.IsNullOrWhiteSpace(_accountQuery) ? "Henüz katalog erişimi yok." : "Aramayla eşleşen erişim yok.")"
+                        Hint="Cariler sayfasından cariyi açıp 'Katalog erişimi' ile oluşturun." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="table-scroll">
+                    <MudSimpleTable Hover="true" Dense="true" Elevation="0" Class="data-table data-table--cards" id="catalog-accounts">
+                        <thead>
+                            <tr>
+                                <th>Cari</th>
+                                <th>Kullanıcı</th>
+                                <th class="num">İskonto</th>
+                                <th>Fiyat listesi</th>
+                                <th>Son giriş</th>
+                                <th class="num">Açık talep</th>
+                                <th>Durum</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var account in accounts.Items)
+                            {
+                                <tr class="row-clickable" data-customer="@account.CustomerCode" title="Erişimi aç" @onclick="() => OpenAccess(account)">
+                                    <td data-label="Cari">
+                                        <div class="cell-title">@account.CustomerName</div>
+                                        <div class="cell-sub">@account.CustomerCode</div>
+                                    </td>
+                                    <td class="mono" data-label="Kullanıcı">@account.Username</td>
+                                    <td class="num" data-label="İskonto">@(account.DiscountPercent > 0 ? CatalogText.Percent(account.DiscountPercent) : "—")</td>
+                                    <td data-label="Fiyat listesi">@AccountListName(account.PriceListNo)</td>
+                                    <td data-label="Son giriş">@(account.LastLoginAtMs is { } ms ? Fmt.Time(DateTimeOffset.FromUnixTimeMilliseconds(ms)) : "Hiç")</td>
+                                    <td class="num" data-label="Açık talep">
+                                        @if (account.OpenOrderCount > 0)
+                                        {
+                                            <span class="badge badge--warning">@account.OpenOrderCount</span>
+                                        }
+                                        else
+                                        {
+                                            <span>0</span>
+                                        }
+                                    </td>
+                                    <td data-label="Durum"><span class="badge @(account.IsActive ? "badge--ok" : "badge--off")">@(account.IsActive ? "Açık" : "Kapalı")</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+                <Pager Id="accounts-pager" Page="_accountPage" PageSize="PortalApiClient.CatalogPageSize" Total="accounts.Total" Unit="erişim" Busy="Busy" ShowSize="false"
+                       PageChanged="AccountPageAsync" />
+            </MudPaper>
+        }
+    }
+
     <CatalogProductSheet Row="_sheetRow" PublicUrl="@_settings?.PublicUrl" OnClose="() => _sheetRow = null" OnChanged="() => Notice = null"
                          OnImagesChanged="ImagesChanged" OnSessionEnded="EndSessionAsync" />
+    <CatalogAccessSheet CustomerCode="@_accessCode" CustomerName="@_accessName" LookUpPhone="true" OnClose="() => _accessCode = null"
+                        OnChanged="() => RunAsync(LoadAccountsAsync)" OnSessionEnded="EndSessionAsync" />
 }
 
 @code {
     protected override PortalArea Requires => PortalArea.CustomerCatalog;
 
-    // The customer accesses tab (erisimler) comes with the access sheet (GOAL_MUSTERI_KATALOGU P4).
-    private static readonly (string Key, string Label)[] Tabs = [("genel", "Genel"), ("kategoriler", "Kategoriler ve ürünler")];
+    private static readonly (string Key, string Label)[] Tabs =
+        [("genel", "Genel"), ("kategoriler", "Kategoriler ve ürünler"), ("erisimler", "Müşteri erişimleri")];
 
     private string _tab = "genel";
     private string? Notice { get; set; }
@@ -324,6 +389,13 @@ else
     private Func<Task>? _pending;
     private CatalogProductRow? _sheetRow;
 
+    /// <summary>The customer accesses tab: one server page of accounts, and the customer whose access sheet is open.</summary>
+    private CatalogAccountsDto? _accounts;
+    private string? _accountQuery;
+    private int _accountPage = 1;
+    private string? _accessCode;
+    private string? _accessName;
+
     protected override void OnInitialized()
     {
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
@@ -337,6 +409,7 @@ else
         _settings = await Api.CatalogSettingsAsync();
         ResetSettingsForm();
         if (_tab == "kategoriler") await LoadLayoutAsync();
+        if (_tab == "erisimler") await LoadAccountsAsync();
         SyncAddress();
     }
 
@@ -448,6 +521,7 @@ else
         _tab = tab;
         Notice = null;
         if (tab == "kategoriler" && _categories is null) await RunAsync(LoadLayoutAsync);
+        if (tab == "erisimler" && _accounts is null) await RunAsync(LoadAccountsAsync);
         SyncAddress();
     }
 
@@ -662,6 +736,31 @@ else
             throw;
         }
     }
+
+    // ---- customer accesses ----------------------------------------------------------------------
+
+    private async Task LoadAccountsAsync() => _accounts = await Api.CatalogAccountsAsync(_accountQuery, _accountPage);
+
+    private Task SearchAccountsAsync()
+    {
+        _accountPage = 1;
+        return RunAsync(LoadAccountsAsync);
+    }
+
+    private Task AccountPageAsync(int page)
+    {
+        _accountPage = page;
+        return RunAsync(LoadAccountsAsync);
+    }
+
+    private void OpenAccess(CatalogAccountSummaryDto account)
+    {
+        _accessCode = account.CustomerCode;
+        _accessName = account.CustomerName;
+    }
+
+    private string AccountListName(int? no) =>
+        no is null ? "Firma varsayılanı" : _settings?.PriceLists.FirstOrDefault(l => l.No == no) is { } list ? $"{list.No} — {list.Name}" : $"Liste {no}";
 
     // ---- formatting ---------------------------------------------------------------------------
 
