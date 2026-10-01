@@ -143,3 +143,41 @@ public sealed class PortalExpenseReceiptsResponse
     /// <summary>True when the list was cut at the endpoint's limit: narrow the dates.</summary>
     [JsonPropertyName("truncated")] public bool Truncated { get; set; }
 }
+
+/// <summary>A product photo (GOAL_DEPOLAMA_R2 S6): its two WebP sizes by their CDN addresses.</summary>
+public sealed class ProductImageDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("sortOrder")] public int SortOrder { get; set; }
+
+    /// <summary>400 px WebP, <c>https://img.appsgo.cloud/{FIRMAKODU}/product/…-s.webp</c>.</summary>
+    [JsonPropertyName("thumbUrl")] public string ThumbUrl { get; set; } = string.Empty;
+
+    /// <summary>1280 px WebP.</summary>
+    [JsonPropertyName("fullUrl")] public string FullUrl { get; set; } = string.Empty;
+    [JsonPropertyName("width")] public int Width { get; set; }
+    [JsonPropertyName("height")] public int Height { get; set; }
+    [JsonPropertyName("sizeBytes")] public long SizeBytes { get; set; }
+    [JsonPropertyName("createdAtMs")] public long CreatedAtMs { get; set; }
+    [JsonPropertyName("createdByName")] public string CreatedByName { get; set; } = string.Empty;
+}
+
+/// <summary><c>GET /api/v1/storage/products/images?stockCode=</c>: one product's photos in order.</summary>
+public sealed class ProductImagesResponse
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("items")] public ProductImageDto[] Items { get; set; } = [];
+}
+
+/// <summary><c>GET /api/v1/storage/products/images/manifest</c>: every product with photos (the phone's picture order).</summary>
+public sealed class ProductImageManifestResponse
+{
+    [JsonPropertyName("items")] public ProductImagesResponse[] Items { get; set; } = [];
+}
+
+/// <summary><c>PUT /api/v1/storage/products/images/order?stockCode=</c>.</summary>
+public sealed class ProductImageOrderRequest
+{
+    [JsonPropertyName("ids")] public Guid[]? Ids { get; set; }
+}

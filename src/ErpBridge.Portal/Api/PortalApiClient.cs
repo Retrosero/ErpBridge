@@ -140,6 +140,27 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<StoredFileLink> StoredFileLinkAsync(Guid fileId, CancellationToken ct = default) =>
         GetAsync<StoredFileLink>($"api/v1/storage/files/{fileId:D}/link", ct);
 
+    private const string ProductImages = "api/v1/storage/products/images";
+
+    /// <summary>A product's own photos in order (GOAL_DEPOLAMA_R2 S6).</summary>
+    public Task<ProductImagesDto> ProductImagesAsync(string stockCode, CancellationToken ct = default) =>
+        GetAsync<ProductImagesDto>(ProductImages + Query(("stockCode", stockCode)), ct);
+
+    /// <summary>The photo as picked (≤ 10 MB); the server turns, shrinks and stores it.</summary>
+    public Task<ProductImageDto> UploadProductImageAsync(string stockCode, byte[] content, string contentType, CancellationToken ct = default)
+    {
+        var body = new ByteArrayContent(content);
+        body.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        return SendAsync<ProductImageDto>(HttpMethod.Post, ProductImages + Query(("stockCode", stockCode)), body, ct);
+    }
+
+    /// <summary>The product's photos in this order; the first is the cover.</summary>
+    public Task OrderProductImagesAsync(string stockCode, IEnumerable<Guid> ids, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Put, ProductImages + "/order" + Query(("stockCode", stockCode)), new { ids = ids.ToArray() }, ct, emptyOk: true);
+
+    public Task DeleteProductImageAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"{ProductImages}/{id:D}", null, ct, emptyOk: true);
+
     public Task<StockSearchResponse> StockSearchAsync(StockFilter filter, CancellationToken ct = default) =>
         GetAsync<StockSearchResponse>("api/v1/portal/stock/search" + filter.ToApiQuery(), ct);
 

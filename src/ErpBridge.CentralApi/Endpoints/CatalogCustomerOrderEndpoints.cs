@@ -177,9 +177,15 @@ internal static class CatalogCustomerOrderEndpoints
         var pictures = await db.CatalogImages.AsNoTracking()
             .Where(i => i.TenantId == session.Tenant.Id && codes.Contains(i.StockCode))
             .OrderBy(i => i.SortOrder).ThenBy(i => i.CreatedAtMs).ThenBy(i => i.Id).ToListAsync(ct);
-        var urls = await CatalogFileUrls.LoadAsync(db, storage.Value, session.Tenant.Id, pictures, ct);
+        // A product without a catalog picture shows the company's own product photo (GOAL_DEPOLAMA_R2 S6), as the catalog does.
+        var photos = ProductImage.InOrder(await db.ProductImages.AsNoTracking()
+            .Where(i => i.TenantId == session.Tenant.Id && codes.Contains(i.StockCode)).ToListAsync(ct)).ToList();
+        var urls = await CatalogFileUrls.LoadAsync(db, storage.Value, session.Tenant.Id,
+            pictures.SelectMany(CatalogImages.StoredFileIds).Concat(photos.Select(p => p.StoredFileSmallId)), ct);
         var thumbs = pictures.GroupBy(i => i.StockCode, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Select(i => CatalogImages.ThumbUrl(i, urls)).FirstOrDefault(url => url is not null), StringComparer.OrdinalIgnoreCase);
+        foreach (var photo in photos)
+            if (thumbs.GetValueOrDefault(photo.StockCode) is null && urls.Of(photo.StoredFileSmallId) is { } thumb) thumbs[photo.StockCode] = thumb;
         detail.Lines = [.. lines.Select(l => new CatalogCustomerOrderLineDto
         {
             Thumb = thumbs.GetValueOrDefault(l.StockCode),

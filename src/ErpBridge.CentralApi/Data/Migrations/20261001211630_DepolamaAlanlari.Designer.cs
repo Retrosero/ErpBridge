@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ErpBridge.CentralApi.Data.Migrations
 {
     [DbContext(typeof(CentralApiDbContext))]
-    [Migration("20261001210736_DepolamaAlanlari")]
+    [Migration("20261001211630_DepolamaAlanlari")]
     partial class DepolamaAlanlari
     {
         /// <inheritdoc />
@@ -3241,6 +3241,67 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.ToTable("permission_changes", (string)null);
                 });
 
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ProductImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("CreatedAtMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("StockCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("StoredFileLargeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StoredFileSmallId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoredFileLargeId");
+
+                    b.HasIndex("StoredFileSmallId");
+
+                    b.HasIndex("TenantId", "StockCode", "SortOrder");
+
+                    b.HasIndex("TenantId", "StockCode", "SourceSha256")
+                        .IsUnique();
+
+                    b.ToTable("product_images", (string)null);
+                });
+
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5357,6 +5418,15 @@ namespace ErpBridge.CentralApi.Data.Migrations
                     b.Navigation("MobileUser");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("ErpBridge.CentralApi.Domain.ProductImage", b =>
+                {
+                    b.HasOne("ErpBridge.CentralApi.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ErpBridge.CentralApi.Domain.SalesTarget", b =>

@@ -222,6 +222,7 @@ else
                                                         </ul>
                                                     }
                                                 </div>
+                                                <ProductPhotos StockCode="@row.StockCode" CanEdit="@CanEditPhotos" OnSessionEnded="EndSessionAsync" />
                                                 @if (Session.CanEditNativeData)
                                                 {
                                                     <div class="stock-detail-actions">
@@ -471,6 +472,9 @@ else
 }
 
 @code {
+    /// <summary>Product photos (GOAL_DEPOLAMA_R2 S6): only the picture changes, so an ERP company may add them too.</summary>
+    private bool CanEditPhotos => Session.Can("action.products.photo", Session.IsAdmin);
+
     protected override PortalArea Requires => PortalArea.Ledger;
 
     private static readonly (string Status, string Label)[] Statuses =

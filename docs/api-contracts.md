@@ -586,8 +586,8 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
 
 Firmanın kalıcı resimleri Cloudflare R2'de, firma kodunun klasöründe (`{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id}-{varyant}.{uzantı}`)
 ve tek kotayla durur. Alanlar: herkese açık kova `product`, `xml`, `catalog`, `banner`; kimliğe bağlı kova `task`, `expense`,
-`vehicle`. Katalog görseli ve banner (S3), görev eki (S4) bu depoyu kullanır (uç yolları değişmedi); gider/araç fişi (S5) yeni
-uçlardır. Bilgi bankası kural 37.
+`vehicle`. Katalog görseli ve banner (S3), görev eki (S4) bu depoyu kullanır (uç yolları değişmedi); gider/araç fişi (S5) ve ürün
+fotoğrafı (S6) yeni uçlardır. Bilgi bankası kural 37.
 
 **Görev eki (S4)** — `PUT/GET/DELETE /api/v1/android/tasks/{taskId}/attachments/{attachmentId}` yolları, gövdeleri ve yanıtları aynı.
 Resim özel kovaya (`task`) yazılır ve firmanın tek kotasına sayılır; aşımda eski kod `413 TASK_ATTACHMENT_QUOTA` döner, gövdeye
@@ -616,6 +616,20 @@ gören herkese 302 imzalı adres olarak da açılır.
 | `GET /api/v1/admin/tenants/{id}/storage` | Admin konsolu | `{ tenantId, available, usedBytes, reservedBytes, quotaBytes, defaultQuotaBytes, customQuotaBytes?, recountedAtMs?, areas: [...], trashedBytes, trashedCount }`; firma yoksa `404 TENANT_NOT_FOUND` |
 | `PUT /api/v1/admin/tenants/{id}/storage` | Admin konsolu | `{ quotaBytes: sayı \| null }` — `null` = varsayılan (5 GB, `Storage:DefaultQuotaBytes`); 0..10 TB, değilse `400 INVALID_QUOTA`. Kullanılanın altına inebilir (yeni yükleme durur). Yanıt güncel görünüm |
 | `POST /api/v1/admin/tenants/{id}/storage/recount` | Admin konsolu | `{ usedBytesBefore, usedBytesAfter, storage }` — kullanılan bayt defterdeki etkin ve çöpteki dosyalardan yeniden hesaplanır (aynı iş her gün `Storage:MaintenanceHourUtc`'de çalışır) |
+
+**Ürün fotoğrafı (S6)** — firmanın kendi ürün fotoğrafları (telefonda kamera/galeri, panelde Stok). Yalnız görsel değişir, ürün kartı
+değil: ERP'li firmada da çalışır, modül gerekmez. Yazım yetkisi `action.products.photo` (Admin, Yönetici, Satış; kilitsiz).
+
+| Uç | Kim | Gövde / yanıt |
+|---|---|---|
+| `POST /api/v1/storage/products/images?stockCode=` | `action.products.photo` | Ham gövde `image/jpeg\|png\|webp` ≤ 10 MB, küçültmeden. Sunucu dik çevirir, üst veriyi atar, 1280 px ve 400 px WebP üretir. Yanıt `ProductImage { id, stockCode, sortOrder, thumbUrl, fullUrl, width, height, sizeBytes, createdAtMs, createdByName }` — `thumbUrl`/`fullUrl` tam CDN adresi (`https://img.appsgo.cloud/{FIRMAKODU}/product/…-{s\|l}.webp`). Aynı bayt tekrar = aynı fotoğraf (`200`, yeni dosya yok). Hatalar: `403 PRODUCT_PHOTO_FORBIDDEN`, `400 INVALID_STOCK_CODE`, `413 PRODUCT_IMAGE_TOO_LARGE`, `415 INVALID_IMAGE` (çözülemeyen resim dahil), `409 PRODUCT_IMAGE_LIMIT` (ürün başı 8), `413 STORAGE_QUOTA_EXCEEDED {usedBytes, quotaBytes}`, `503 STORAGE_UNAVAILABLE` |
+| `GET /api/v1/storage/products/images?stockCode=` | firma kullanıcısı | `{ stockCode, items: [ProductImage] }` sırayla (kapak ilk) |
+| `GET /api/v1/storage/products/images/manifest` | firma kullanıcısı | `{ items: [{ stockCode, items: [ProductImage] }] }` — fotoğrafı olan bütün ürünler (telefonun görsel sırası: firmanın fotoğrafı → XML → yerel kopya) |
+| `PUT /api/v1/storage/products/images/order?stockCode=` | `action.products.photo` | `{ ids }` bu sırayla, verilmeyenler eski sırasıyla arkadan; `204`; bilinmeyen kimlik `404 PRODUCT_IMAGE_NOT_FOUND` |
+| `DELETE /api/v1/storage/products/images/{id}` | `action.products.photo` | `204`, iki dosya çöpe; yok/başka firma `404 PRODUCT_IMAGE_NOT_FOUND` |
+
+Web katalog bir ürünün görseli olarak önce katalog görsellerini, yoksa ürün fotoğraflarını gösterir (`products`/`products/detail`
+`thumb` ve `images`, talep detayındaki küçük resim); katalog yönetimi (`images/manifest`, `imageCount`) yalnız katalog görsellerini sayar.
 
 Yeni hata kodları:
 - `413 STORAGE_QUOTA_EXCEEDED` — `{ errorCode, message, traceId, usedBytes, quotaBytes }`. Telefon metni: "Firmanızın depolama

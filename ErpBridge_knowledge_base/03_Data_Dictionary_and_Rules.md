@@ -173,6 +173,10 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     telefonun belge kimliği (`jobs.ExternalId`; FK yok, belge sonra gelebilir), `Kind(24)` expense|vehicle_maintenance, `StoredFileId` (FK yok),
     `ContentType(32)`, `SizeBytes`, `CreatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`, `IsDeleted`, `DeletedAtMs?`. İndeks
     `(TenantId, DocumentExternalId)`, `(TenantId, CreatedAtMs)`, `(StoredFileId)`.
+  - `product_images` *(S6, migration `DepolamaAlanlari`)*: `Id` uuid (sunucu), `TenantId` (cascade), `StockCode(64)` (kartın kodu ya da gönderilen), `SortOrder`,
+    `StoredFileSmallId`/`StoredFileLargeId` (400/1280 px WebP, FK yok), `Width`/`Height` (büyük boy), `SizeBytes` (iki boy), `SourceSha256(64)` gönderilen
+    baytın özeti, `CreatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`. İndeks `(TenantId, StockCode, SortOrder)`, UNIQUE `(TenantId, StockCode, SourceSha256)`,
+    `(StoredFileSmallId)`, `(StoredFileLargeId)`.
 
 ---
 

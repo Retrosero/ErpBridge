@@ -35,6 +35,14 @@ public sealed record CatalogProduct(
 
     public string? ThumbUrl => Pictures.Count > 0 ? Pictures[0].ThumbUrl : null;
 
+    /// <summary>The company's own product photos (GOAL_DEPOLAMA_R2 S6), in their order; not catalog pictures.</summary>
+    public IReadOnlyList<CatalogPicture> ProductPhotos { get; init; } = [];
+
+    /// <summary>What a customer sees: the catalog pictures, or the product photos when the catalog has none.</summary>
+    public IReadOnlyList<CatalogPicture> ShownPictures => Pictures.Count > 0 ? Pictures : ProductPhotos;
+
+    public string? ShownThumbUrl => ShownPictures.Count > 0 ? ShownPictures[0].ThumbUrl : null;
+
     /// <summary>The price in one list; null when the product has none there (the customer of that list does not see it).</summary>
     public decimal? PriceIn(int? listNo) => listNo is { } no && Prices.TryGetValue(no, out var price) ? price : null;
 
@@ -183,8 +191,11 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IO
         // Banner pictures (and any other reserved "~" key) are not a product's.
         var images = await db.CatalogImages.AsNoTracking()
             .Where(i => i.TenantId == tenantId && !i.StockCode.StartsWith(CatalogBanners.ReservedPrefix)).ToListAsync(ct);
-        var urls = await CatalogFileUrls.LoadAsync(db, storage?.Value ?? new StorageOptions(), tenantId, images, ct);
-        var view = Compose(stock, settings, categoryRows, productRows, images, urls);
+        // The company's product photos (S6) stand in for a product without catalog pictures; their writes move ImageRevision too.
+        var photos = await db.ProductImages.AsNoTracking().Where(i => i.TenantId == tenantId).ToListAsync(ct);
+        var urls = await CatalogFileUrls.LoadAsync(db, storage?.Value ?? new StorageOptions(), tenantId,
+            images.SelectMany(CatalogImages.StoredFileIds).Concat(photos.SelectMany(p => new[] { p.StoredFileSmallId, p.StoredFileLargeId })), ct);
+        var view = Compose(stock, settings, categoryRows, productRows, images, photos, urls);
         cache.Set(key, view, new MemoryCacheEntryOptions { SlidingExpiration = Idle });
         return view;
     }
@@ -255,7 +266,7 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IO
 
     private static CatalogView Compose(
         StockSide stock, CatalogSettings? settings, List<CatalogCategorySetting> categoryRows, List<CatalogProductSetting> productRows, List<CatalogImage> images,
-        CatalogFileUrls urls)
+        List<ProductImage> photos, CatalogFileUrls urls)
     {
         var categorySettings = categoryRows.ToDictionary(r => r.CategoryKey, StringComparer.Ordinal);
         var productSettings = productRows.ToDictionary(r => r.StockCode, StringComparer.OrdinalIgnoreCase);
@@ -268,6 +279,12 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IO
                 g => (IReadOnlyList<CatalogPicture>)[.. g.OrderBy(x => x.Image.SortOrder).ThenBy(x => x.Image.CreatedAtMs).ThenBy(x => x.Image.Id)
                     .Select(x => new CatalogPicture(x.Image.Id, x.Thumb!, x.Full!))],
                 StringComparer.OrdinalIgnoreCase);
+        var productPhotos = ProductImage.InOrder(photos)
+            .Select(p => (Photo: p, Thumb: urls.Of(p.StoredFileSmallId), Full: urls.Of(p.StoredFileLargeId)))
+            .Where(x => x.Thumb is not null && x.Full is not null)
+            .GroupBy(x => x.Photo.StockCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<CatalogPicture>)[.. g.Select(x => new CatalogPicture(x.Photo.Id, x.Thumb!, x.Full!))],
+                StringComparer.OrdinalIgnoreCase);
 
         var products = new Dictionary<string, CatalogProduct>(stock.Products.Count, StringComparer.OrdinalIgnoreCase);
         foreach (var p in stock.Products)
@@ -276,7 +293,10 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IO
             products[p.Code] = new CatalogProduct(
                 p.Code, p.Name, p.Unit, p.Brand, p.Barcodes, p.CategoryKey, p.VatRate, p.Prices, p.InStock, p.ErpCartonQuantity,
                 setting?.SortOrder, setting?.IsHidden ?? false, setting?.NoDiscount ?? false, setting?.CartonQuantity, setting?.CartonOnly ?? false,
-                pictures.GetValueOrDefault(p.Code) ?? []);
+                pictures.GetValueOrDefault(p.Code) ?? [])
+            {
+                ProductPhotos = productPhotos.GetValueOrDefault(p.Code) ?? [],
+            };
         }
 
         var categories = products.Values

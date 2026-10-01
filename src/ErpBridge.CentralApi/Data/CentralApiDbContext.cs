@@ -222,6 +222,9 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Receipt photos of the phones' expense and vehicle maintenance documents (GOAL_DEPOLAMA_R2 S5).</summary>
     public DbSet<ExpenseAttachment> ExpenseAttachments => Set<ExpenseAttachment>();
 
+    /// <summary>Product photos taken or uploaded by the company (GOAL_DEPOLAMA_R2 S6).</summary>
+    public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -1582,6 +1585,22 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.DocumentExternalId });
             b.HasIndex(x => new { x.TenantId, x.CreatedAtMs });
             b.HasIndex(x => x.StoredFileId);
+        });
+
+        modelBuilder.Entity<ProductImage>(b =>
+        {
+            b.ToTable("product_images");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.StockCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.SourceSha256).IsRequired().HasMaxLength(64);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // A product's photos in order; the same photo sent again finds its row.
+            b.HasIndex(x => new { x.TenantId, x.StockCode, x.SortOrder });
+            b.HasIndex(x => new { x.TenantId, x.StockCode, x.SourceSha256 }).IsUnique();
+            b.HasIndex(x => x.StoredFileSmallId);
+            b.HasIndex(x => x.StoredFileLargeId);
         });
     }
 }

@@ -1531,8 +1531,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
 
-37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1, S2, S3, S4, S5, S8, 2026-10-01).**
-   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5); XML eşitleyici (S7), temizlik
+37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1–S6, S8, 2026-10-01).**
+   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5), ürün fotoğrafı (S6); XML eşitleyici (S7), temizlik
    (S9) ve bytea göçü (S10) bu temeli kullanacak — göçe kadar depodan önce yüklenen resimler PostgreSQL bytea'sında kalır ve okunur.
    - **Kayıtlar dosyaya `StoredFile*Id` ile bağlanır, yabancı anahtar yok** (migration `DepolamaAlanlari`): defter satırı deponun kendi
      yaşamıyla (çöp, kalıcı silme) gider, sahip kaydıyla değil; "yetim" = hiçbir kaydın göstermediği dosya (S9), bağlantı sütunları
@@ -1632,3 +1632,18 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      durum) döner; açarken taze adres `GET /api/v1/storage/files/{id}/link` (`{url, expiresAtMs}`, 302 ile aynı yetki). Panel sayfası
      `Pages/Fisler.razor` (`/fisler`, Kayıtlar menüsünde "Gider fişleri", `PortalArea.Ledger`). Testler `Storage/ExpenseReceiptRelationalTests`,
      Portal `PortalReceiptsPageTests`; `StorageTestCompany`'ye panelden giren muhasebe kullanıcısı eklendi.
+   - **Ürün fotoğrafı (S6)** `Endpoints/ProductImageEndpoints`, tablo `product_images`: `POST /api/v1/storage/products/images?stockCode=` ham
+     gövde (JPEG/PNG/WebP, ≤ 10 MB) → sunucu `ImageProcessor.ToWebp(.., [Large, Small])` ile 1280/400 px WebP (EXIF yönü, üst veri yok)
+     → iki `FileStore.PutAsync` (alan `product`, public, `OwnerType` `product`, `OwnerKey` stok kodu, varyant `l`/`s`; ikincisi olmazsa
+     birincisi kalıcı silinir) → satır katalog görsel kilidinde (`WriteLayoutAsync(pictures: true)`; `ImageRevision` artar, ürün başı 8 —
+     `409 PRODUCT_IMAGE_LIMIT`). Aynı ham bayt (SHA-256, UNIQUE `(TenantId, StockCode, SourceSha256)`) aynı fotoğraftır (yeniden deneme
+     güvenli). Stok kodu stoktaki kartın kendi kodudur (büyük/küçük harf duyarsız), kartı olmayan kod olduğu gibi (telefonun çevrimdışı
+     açtığı ürün). `GET ?stockCode=` ve `GET /manifest` (telefonun görsel sırası: firmanın fotoğrafı → XML → yerel kopya) firmanın her
+     kullanıcısına; `PUT /order?stockCode=` ve `DELETE /{id}` (iki dosya çöpe). Yazım yetkisi yeni
+     `PermissionKeys.ProductsPhoto = "action.products.photo"` (ADMIN + MANAGER + SALES, sunucu denetler, **kilitsiz**; `PermissionCatalog.Version`
+     = 4; `RolePermissions.CanEditProductPhotos`) — `action.products.edit` (ERP'siz kart düzenleme, yalnız Admin) bilerek kullanılmadı:
+     fotoğraf ERP kartına dokunmaz, sahada çekilir. Modül gerekmez. Web katalog: `CatalogProduct.ProductPhotos` (görünüm onları da yükler),
+     müşteriye `ShownPictures`/`ShownThumbUrl` — katalog görseli varsa o, yoksa ürün fotoğrafı (`CustomerCatalogPublicEndpoints`, talep
+     detayındaki küçük resim de); katalog yönetimi (`ImageCount`, manifest) yalnız katalog görsellerini sayar. Panel: Stok sayfasında ürün
+     detayına `Shared/ProductPhotos.razor` (küçük resim, büyük resim yeni sekmede, yükleme küçültmeden, "Kapak yap", sil; yetki yoksa
+     yalnız gösterir). Testler `Storage/ProductImageRelationalTests`, Portal `PortalProductPhotosTests`.

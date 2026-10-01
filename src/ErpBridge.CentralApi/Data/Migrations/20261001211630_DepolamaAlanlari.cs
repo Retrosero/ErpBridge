@@ -57,6 +57,35 @@ namespace ErpBridge.CentralApi.Data.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "product_images",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    StockCode = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    SortOrder = table.Column<int>(type: "integer", nullable: false),
+                    StoredFileSmallId = table.Column<Guid>(type: "uuid", nullable: false),
+                    StoredFileLargeId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Width = table.Column<int>(type: "integer", nullable: false),
+                    Height = table.Column<int>(type: "integer", nullable: false),
+                    SizeBytes = table.Column<long>(type: "bigint", nullable: false),
+                    SourceSha256 = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    CreatedAtMs = table.Column<long>(type: "bigint", nullable: false),
+                    CreatedByUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedByName = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_product_images", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_product_images_tenants_TenantId",
+                        column: x => x.TenantId,
+                        principalTable: "tenants",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_task_attachments_StoredFileId",
                 table: "task_attachments",
@@ -86,6 +115,27 @@ namespace ErpBridge.CentralApi.Data.Migrations
                 name: "IX_expense_attachments_TenantId_DocumentExternalId",
                 table: "expense_attachments",
                 columns: new[] { "TenantId", "DocumentExternalId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_product_images_StoredFileLargeId",
+                table: "product_images",
+                column: "StoredFileLargeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_product_images_StoredFileSmallId",
+                table: "product_images",
+                column: "StoredFileSmallId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_product_images_TenantId_StockCode_SortOrder",
+                table: "product_images",
+                columns: new[] { "TenantId", "StockCode", "SortOrder" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_product_images_TenantId_StockCode_SourceSha256",
+                table: "product_images",
+                columns: new[] { "TenantId", "StockCode", "SourceSha256" },
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -93,6 +143,9 @@ namespace ErpBridge.CentralApi.Data.Migrations
         {
             migrationBuilder.DropTable(
                 name: "expense_attachments");
+
+            migrationBuilder.DropTable(
+                name: "product_images");
 
             migrationBuilder.DropIndex(
                 name: "IX_task_attachments_StoredFileId",

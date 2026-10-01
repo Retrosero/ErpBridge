@@ -213,6 +213,9 @@ public static class RolePermissions
     /// admin and manager, never anyone else.
     /// </summary>
     public static bool CanManageStorage(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.StorageManage);
+
+    /// <summary>Adds, orders and deletes a product's photos (GOAL_DEPOLAMA_R2 S6); admin, manager and sales by default.</summary>
+    public static bool CanEditProductPhotos(MobileUser user) => Can(user, global::ErpBridge.CentralApi.Permissions.PermissionKeys.ProductsPhoto);
 }
 
 /// <summary>What a user may do in the approval centre, from their current row.</summary>

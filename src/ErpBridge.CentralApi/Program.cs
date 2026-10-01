@@ -973,6 +973,7 @@ public partial class Program
         app.MapStorageEndpoints();
         app.MapMobileExpenseAttachmentEndpoints();
         app.MapPortalExpenseReceiptEndpoints();
+        app.MapProductImageEndpoints();
         app.MapAdminStorageEndpoints();
     }
 
