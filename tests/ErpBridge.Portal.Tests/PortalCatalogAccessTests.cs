@@ -41,7 +41,7 @@ public sealed class PortalCatalogAccessTests : PortalPageTestContext
     private static object Settings() => new
     {
         isEnabled = true, defaultPriceListNo = (int?)null, effectiveDefaultPriceListNo = 1, revision = 7, tenantCode = "ABCD2345",
-        publicUrl = "https://katalog.appsgo.cloud/ABCD2345",
+        publicUrl = "https://sipariscepte.appsgo.cloud/ABCD2345",
         priceLists = new[] { new { no = 1, name = "Perakende", includesVat = true }, new { no = 2, name = "Toptan", includesVat = false } },
         imageQuota = new { usedBytes = 0L, limitBytes = 1024L * 1024 * 1024 },
         counts = new { categories = 2, products = 3, visibleProducts = 2, accounts = 1, openOrders = 0 },
@@ -191,10 +191,10 @@ public sealed class PortalCatalogAccessTests : PortalPageTestContext
 
         // The share message leaves the password out until it is asked for.
         cut.Find("#access-message").TextContent.Should().Be(
-            "Merhaba Bakkal Ali, Ege Dağıtım ürün kataloğumuza https://katalog.appsgo.cloud/ABCD2345 adresinden girebilirsiniz. Kullanıcı adınız: bakkal.ali");
+            "Merhaba Bakkal Ali, Ege Dağıtım ürün kataloğumuza https://sipariscepte.appsgo.cloud/ABCD2345 adresinden girebilirsiniz. Kullanıcı adınız: bakkal.ali");
         var whatsApp = cut.Find("#access-whatsapp");
         whatsApp.GetAttribute("href").Should().StartWith("https://wa.me/905320000000?text=Merhaba%20Bakkal%20Ali%2C%20Ege%20Da%C4%9F%C4%B1t%C4%B1m%20")
-            .And.Contain("https%3A%2F%2Fkatalog.appsgo.cloud%2FABCD2345").And.NotContain(Password);
+            .And.Contain("https%3A%2F%2Fsipariscepte.appsgo.cloud%2FABCD2345").And.NotContain(Password);
         whatsApp.GetAttribute("target").Should().Be("_blank");
         whatsApp.GetAttribute("rel").Should().Be("noopener");
         cut.Find("#access-include-password").HasAttribute("checked").Should().BeFalse();

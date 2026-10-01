@@ -7,7 +7,7 @@ yüklemesi önceden onaylı). Durum: `GOAL_MUSTERI_KATALOGU_DURUM.md`. Telefon a
 ## 1. Bağlam
 
 Firma, carilerine link gönderir; cari kendisine tanımlı kullanıcı adı + şifreyle
-`https://katalog.appsgo.cloud/{FIRMAKODU}` adresinde katalogu görür, iskontolu fiyatını görür, sipariş talebi
+`https://sipariscepte.appsgo.cloud/{FIRMAKODU}` adresinde katalogu görür, iskontolu fiyatını görür, sipariş talebi
 gönderir; istenirse ekstresini, faturalarını, daha önce aldığı ürünleri görür. Sayfa %100 mobil uyumludur.
 
 **Bugünkü durum (koddan doğrulandı, `origin/main` 6984b96):**
@@ -27,7 +27,7 @@ gönderir; istenirse ekstresini, faturalarını, daha önce aldığı ürünleri
 - **K4** Firma geneli tek ana katalog düzeni (kategori/ürün sırası, gizle-göster) + cariye özel istisna.
 - **K5** Firma geneli varsayılan fiyat listesi; cariye farklı liste. KDV dahil/hariç etiketi listenin `includesVat`'ından.
 - **K6** Stok adedi gösterilmez; stoksuz ürün "Stokta yok" rozetiyle görünür, sepete eklenemez.
-- **K7** Adres `https://katalog.appsgo.cloud/{FIRMAKODU}`.
+- **K7** Adres `https://sipariscepte.appsgo.cloud/{FIRMAKODU}`.
 - **K8** Push, PR, birleştirme, dağıtım, Play internal önceden onaylı (Actions kredisi yoksa yerel derleme + test yeşilse).
 
 **Tasarım kararları:**
@@ -245,9 +245,9 @@ max-age=31536000, immutable`, `ETag`, `If-None-Match` → 304 (yalnız meta okun
 ### Dağıtım ve insan kapıları
 | # | Kim | İş |
 |---|---|---|
-| D1 | Kullanıcı | Cloudflare `katalog` kaydı (`lisans` ile aynı hedef, DNS-only); Coolify centralapi Domains'e `https://katalog.appsgo.cloud` |
+| D1 | Kullanıcı | Cloudflare `katalog` kaydı (`lisans` ile aynı hedef, DNS-only); Coolify centralapi Domains'e `https://sipariscepte.appsgo.cloud` |
 | D2 | Claude (K8) | CentralApi dağıtımı; `https://lisans.appsgo.cloud/health/schema` → `current`, `pending:0` |
-| D3 | Kullanıcı + Claude | Coolify ortam: `CustomerCatalog__PublicHost=katalog.appsgo.cloud`, `CustomerCatalog__PublicBaseUrl=https://katalog.appsgo.cloud`, `ForwardedHeaders__KnownNetworks__0=<Traefik ağı CIDR>`; `ports: 5080` dışa açık mı ve Cloudflare proxy durumu kontrol. Loglarda gerçek istemci IP'si görülene kadar modül hiçbir firmaya açılmaz |
+| D3 | Kullanıcı + Claude | Coolify ortam: `CustomerCatalog__PublicHost=sipariscepte.appsgo.cloud`, `CustomerCatalog__PublicBaseUrl=https://sipariscepte.appsgo.cloud`, `ForwardedHeaders__KnownNetworks__0=<Traefik ağı CIDR>`; `ports: 5080` dışa açık mı ve Cloudflare proxy durumu kontrol. Loglarda gerçek istemci IP'si görülene kadar modül hiçbir firmaya açılmaz |
 | D4 | Claude (K8) | Portal ve Admin ayrı dağıtım |
 | D5 | Kullanıcı | Test firmasında Admin'den `customer_catalog`; uçtan uca duman testi |
 | D6 | Claude (K8) | Play internal |

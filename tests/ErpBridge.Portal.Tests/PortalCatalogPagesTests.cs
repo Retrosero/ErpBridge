@@ -30,7 +30,7 @@ public sealed class PortalCatalogPagesTests : PortalPageTestContext
     private static object Settings(bool enabled = true, int? defaultList = null, long revision = 7) => new
     {
         isEnabled = enabled, defaultPriceListNo = defaultList, effectiveDefaultPriceListNo = 1, revision, tenantCode = "ABCD2345",
-        publicUrl = "https://katalog.appsgo.cloud/ABCD2345",
+        publicUrl = "https://sipariscepte.appsgo.cloud/ABCD2345",
         priceLists = new[] { new { no = 1, name = "Perakende", includesVat = true }, new { no = 2, name = "Toptan", includesVat = false } },
         imageQuota = new { usedBytes = 50L * 1024 * 1024, limitBytes = 1024L * 1024 * 1024 },
         counts = new { categories = 3, products = 3, visibleProducts = 2, accounts = 4, openOrders = 1 },
@@ -123,14 +123,14 @@ public sealed class PortalCatalogPagesTests : PortalPageTestContext
     {
         var (api, nav) = Setup("katalog");
         api.Answer(SettingsPath, Settings(enabled: false));
-        JSInterop.Setup<bool>("portalClipboard.copy", "https://katalog.appsgo.cloud/ABCD2345").SetResult(true);
+        JSInterop.Setup<bool>("portalClipboard.copy", "https://sipariscepte.appsgo.cloud/ABCD2345").SetResult(true);
 
         var cut = Render<Katalog>();
         cut.WaitForAssertion(() => cut.Find("#catalog-general"));
 
         cut.Find("#catalog-closed").TextContent.Should().Be("Katalog kapalı");
         cut.Find("#catalog-vat").TextContent.Should().Be("KDV dahil", "the automatic list is list 1, which includes VAT");
-        cut.Find("#catalog-url").TextContent.Should().Be("https://katalog.appsgo.cloud/ABCD2345");
+        cut.Find("#catalog-url").TextContent.Should().Be("https://sipariscepte.appsgo.cloud/ABCD2345");
         cut.Find("#catalog-url-open").GetAttribute("target").Should().Be("_blank");
         cut.Find("#catalog-quota").TextContent.Should().Contain("50,0 MB / 1,0 GB");
         cut.Find("#catalog-count-products").TextContent.Should().Contain("2").And.Contain("3 ürünün");
@@ -316,7 +316,7 @@ public sealed class PortalCatalogPagesTests : PortalPageTestContext
         cut.Find("tr[data-stock='CAY-1'] .product-settings").Click();
         cut.WaitForAssertion(() => cut.FindAll("#sheet-images [data-image]").Should().ContainSingle());
         cut.Find($"[data-image='{existing}'] img").GetAttribute("src").Should().Be(
-            $"https://katalog.appsgo.cloud/api/v1/catalog/img/{existing:N}/s?h=1234abcd", "the panel loads images from the public catalog host");
+            $"https://sipariscepte.appsgo.cloud/api/v1/catalog/img/{existing:N}/s?h=1234abcd", "the panel loads images from the public catalog host");
         cut.Find($"[data-image='{existing}']").TextContent.Should().Contain("Telefondan").And.Contain("Kapak");
 
         api.Answer(ImagesPath, new { image = new { id = added, kind = "file", sourceHash = "x", source = "panel", sortOrder = 1, hasSmall = false, hasLarge = false } });
@@ -473,10 +473,10 @@ public sealed class PortalCatalogPagesTests : PortalPageTestContext
     {
         var api = new Uri("https://lisans.appsgo.cloud/");
 
-        CatalogImageAddress.Resolve("/api/v1/catalog/img/x/s?h=1", "https://katalog.appsgo.cloud/ABCD2345", api)
-            .Should().Be("https://katalog.appsgo.cloud/api/v1/catalog/img/x/s?h=1");
+        CatalogImageAddress.Resolve("/api/v1/catalog/img/x/s?h=1", "https://sipariscepte.appsgo.cloud/ABCD2345", api)
+            .Should().Be("https://sipariscepte.appsgo.cloud/api/v1/catalog/img/x/s?h=1");
         CatalogImageAddress.Resolve("/api/v1/catalog/img/x/s?h=1", null, api).Should().Be("https://lisans.appsgo.cloud/api/v1/catalog/img/x/s?h=1");
-        CatalogImageAddress.Resolve("https://cdn.ornek.com/a.jpg", "https://katalog.appsgo.cloud/ABCD2345", api).Should().Be("https://cdn.ornek.com/a.jpg");
-        CatalogImageAddress.Resolve(null, "https://katalog.appsgo.cloud/ABCD2345", api).Should().BeNull();
+        CatalogImageAddress.Resolve("https://cdn.ornek.com/a.jpg", "https://sipariscepte.appsgo.cloud/ABCD2345", api).Should().Be("https://cdn.ornek.com/a.jpg");
+        CatalogImageAddress.Resolve(null, "https://sipariscepte.appsgo.cloud/ABCD2345", api).Should().BeNull();
     }
 }

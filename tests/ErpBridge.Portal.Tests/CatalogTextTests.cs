@@ -31,9 +31,9 @@ public sealed class CatalogTextTests
     [Fact]
     public void The_share_message_names_the_customer_company_link_and_username_and_the_password_only_when_given()
     {
-        var message = CatalogText.ShareMessage("Bakkal Ali", "Ege Dağıtım", "https://katalog.appsgo.cloud/ABCD2345", "bakkal.ali");
+        var message = CatalogText.ShareMessage("Bakkal Ali", "Ege Dağıtım", "https://sipariscepte.appsgo.cloud/ABCD2345", "bakkal.ali");
 
-        message.Should().Be("Merhaba Bakkal Ali, Ege Dağıtım ürün kataloğumuza https://katalog.appsgo.cloud/ABCD2345 adresinden girebilirsiniz. Kullanıcı adınız: bakkal.ali");
+        message.Should().Be("Merhaba Bakkal Ali, Ege Dağıtım ürün kataloğumuza https://sipariscepte.appsgo.cloud/ABCD2345 adresinden girebilirsiniz. Kullanıcı adınız: bakkal.ali");
         CatalogText.ShareMessage("Bakkal Ali", "Ege Dağıtım", "https://k/ABCD2345", "bakkal.ali", "Xy7kP2mQ9a").Should().EndWith("Kullanıcı adınız: bakkal.ali, şifreniz: Xy7kP2mQ9a");
     }
 

@@ -19,7 +19,7 @@ public sealed class CatalogSettingsDto
     [JsonPropertyName("revision")] public long Revision { get; set; }
     [JsonPropertyName("tenantCode")] public string TenantCode { get; set; } = string.Empty;
 
-    /// <summary>The customers' address, <c>https://katalog.appsgo.cloud/{CODE}</c>; its origin also serves the images.</summary>
+    /// <summary>The customers' address, <c>https://sipariscepte.appsgo.cloud/{CODE}</c>; its origin also serves the images.</summary>
     [JsonPropertyName("publicUrl")] public string? PublicUrl { get; set; }
     [JsonPropertyName("priceLists")] public CatalogPriceListDto[] PriceLists { get; set; } = [];
     [JsonPropertyName("imageQuota")] public CatalogImageQuotaDto ImageQuota { get; set; } = new();
