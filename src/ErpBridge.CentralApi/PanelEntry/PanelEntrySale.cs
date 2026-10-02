@@ -179,6 +179,12 @@ public static class PanelEntrySale
     private sealed record StockLine(PortalStockCatalog.Product Product, decimal Quantity, int ListNo, decimal ListPrice,
         decimal LineDiscountPercent, decimal VatRate, bool IncludesVat, string? Note);
 
+    /// <summary>
+    /// Lines asking for more than the company has, all warehouses together — what the phone checks too. Not the owner's
+    /// warehouse: Mikro's reader sends the company total as one row under the agent's warehouse number (KB 00 rule 18), so a
+    /// per-warehouse figure does not exist to check against; demanding one would refuse every sale of an owner mapped to
+    /// another warehouse (Codex #250, answered).
+    /// </summary>
     private static IEnumerable<PortalEntryStockWarningDto> Shortages(IEnumerable<StockLine> lines) =>
         lines.GroupBy(l => l.Product.Code, StringComparer.Ordinal)
             .Select(g => (g.First().Product, Requested: g.Sum(l => l.Quantity)))

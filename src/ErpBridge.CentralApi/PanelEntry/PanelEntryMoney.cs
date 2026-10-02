@@ -71,7 +71,11 @@ public static class PanelEntryMoney
                 ["amount"] = total,
                 ["currency"] = "TL",
             };
-            if (description is not null) payload["description"] = description;
+            // The receipt has no field for a card slip or a transfer receipt number: they go to its description, where the
+            // ERP keeps them, rather than being dropped (Codex #250).
+            var references = string.Join(", ", payments.Where(p => p.Reference is not null).Select(p => $"{p.ErpLabel} ref: {p.Reference}"));
+            var receiptDescription = references.Length == 0 ? description : description is null ? references : $"{description} ({references})";
+            if (receiptDescription is not null) payload["description"] = receiptDescription;
             payload["transactionType"] = "Tahsilat";
             payload["paymentType"] = payments.Count == 1 ? payments[0].ErpLabel : "Çoklu Tahsilat";
             payload["payments"] = lines;

@@ -46,7 +46,7 @@ public sealed class PortalEntryMoneyRelationalTests : IClassFixture<SqliteCentra
             payments = new object[]
             {
                 new { method = "cash", amount = 1000m },
-                new { method = "card", amount = 1500m, bankCode = "13", installments = 3, surchargeAmount = 45m },
+                new { method = "card", amount = 1500m, bankCode = "13", installments = 3, surchargeAmount = 45m, reference = "S-77" },
                 new { method = "cheque", amount = 1200m, documentNo = "27703", dueDate = dueDate.ToString("yyyy-MM-dd"), bankName = "Ziraat" },
             },
             expectedTotal = 3700m,
@@ -70,6 +70,7 @@ public sealed class PortalEntryMoneyRelationalTests : IClassFixture<SqliteCentra
         var translation = new MobileDocumentTranslator().Translate("collection", externalId, job.PayloadJson, await AgentContextAsync(c.Id, c.AliId, "ali"));
         translation.Error.Should().BeNull();
         translation.Collection!.Header.Should().Match<ErpDocumentHeader>(h => h.CustomerCode == "C1" && h.ErpUserNo == 7 && h.ExpectedTotal == 3700m);
+        translation.Collection!.Header.Description.Should().Be("Eylül tahsilatı (Kredi Kartı ref: S-77)", "a slip number has no field of its own and is kept in the description");
         translation.Collection!.Payments.Should().HaveCount(3);
         translation.Collection!.Payments[1].Should().Match<CollectionPayment>(p => p.Method == CollectionMethod.Card && p.AccountCode == "13" && p.Installments == 3);
         translation.Collection!.Payments[2].Should().Match<CollectionPayment>(p => p.Method == CollectionMethod.Cheque && p.DueDate == dueDate.ToDateTime(TimeOnly.MinValue) && p.Cheque!.No == "27703");
