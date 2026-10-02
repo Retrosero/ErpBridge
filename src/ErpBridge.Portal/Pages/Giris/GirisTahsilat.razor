@@ -15,6 +15,7 @@ else
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
+    <EntryUnsettled Shown="Unsettled" />
     @if (Saved is { } saved)
     {
         <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
@@ -22,9 +23,10 @@ else
     else
     {
         <MudPaper Outlined="true" Class="panel">
-            <form class="stack-form document-form" id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
-                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Busy" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
-                <CustomerPicker Label="Müşteri" Selected="_customer" Disabled="Busy" Picked="CustomerPickedAsync" />
+            @* Not a <form>: Enter in a field — a search above all — must never save the document; only Kaydet saves (Codex #252). *@
+            <div class="stack-form document-form" id="entry-form">
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Locked" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+                <CustomerPicker Label="Müşteri" Selected="_customer" Disabled="Locked" Picked="CustomerPickedAsync" />
 
                 @foreach (var payment in _payments)
                 {
@@ -33,7 +35,7 @@ else
                         <div class="form-row">
                             <label class="stack-field">
                                 <span class="field-label">Tutar</span>
-                                <input type="number" class="portal-input portal-input--number payment-amount" min="0" step="any" value="@Number(payment.Amount)" disabled="@Busy"
+                                <input type="number" class="portal-input portal-input--number payment-amount" min="0" step="any" value="@Number(payment.Amount)" disabled="@Locked"
                                        @onchange="e => ChangedAsync(() => payment.Amount = ParseDecimal(e.Value) ?? 0)" />
                             </label>
                             @if (payment.Method is "card" or "transfer")
@@ -42,7 +44,7 @@ else
                                 {
                                     <label class="stack-field">
                                         <span class="field-label">Banka</span>
-                                        <select class="portal-select payment-bank" value="@(payment.BankCode ?? string.Empty)" disabled="@Busy"
+                                        <select class="portal-select payment-bank" value="@(payment.BankCode ?? string.Empty)" disabled="@Locked"
                                                 @onchange="e => ChangedAsync(() => payment.BankCode = Blank(e.Value))">
                                             <option value="">Varsayılan</option>
                                             @foreach (var bank in Context.Banks)
@@ -56,24 +58,24 @@ else
                                 {
                                     <label class="stack-field">
                                         <span class="field-label">Banka</span>
-                                        <input class="portal-input payment-bank-name" value="@payment.BankName" maxlength="60" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.BankName = Blank(e.Value))" />
+                                        <input class="portal-input payment-bank-name" value="@payment.BankName" maxlength="60" disabled="@Locked" @onchange="e => ChangedAsync(() => payment.BankName = Blank(e.Value))" />
                                     </label>
                                 }
                                 <label class="stack-field">
                                     <span class="field-label">@(payment.Method == "card" ? "Slip no" : "Dekont no")</span>
-                                    <input class="portal-input payment-reference" value="@payment.Reference" maxlength="40" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.Reference = Blank(e.Value))" />
+                                    <input class="portal-input payment-reference" value="@payment.Reference" maxlength="40" disabled="@Locked" @onchange="e => ChangedAsync(() => payment.Reference = Blank(e.Value))" />
                                 </label>
                             }
                             @if (payment.Method == "card")
                             {
                                 <label class="stack-field">
                                     <span class="field-label">Taksit</span>
-                                    <input type="number" class="portal-input portal-input--number payment-installments" min="1" max="36" step="1" value="@(payment.Installments ?? 1)" disabled="@Busy"
+                                    <input type="number" class="portal-input portal-input--number payment-installments" min="1" max="36" step="1" value="@(payment.Installments ?? 1)" disabled="@Locked"
                                            @onchange="e => ChangedAsync(() => payment.Installments = (int?)ParseDecimal(e.Value))" />
                                 </label>
                                 <label class="stack-field">
                                     <span class="field-label">Vade farkı</span>
-                                    <input type="number" class="portal-input portal-input--number payment-surcharge" min="0" step="any" value="@(payment.Surcharge is { } s ? Number(s) : string.Empty)" disabled="@Busy"
+                                    <input type="number" class="portal-input portal-input--number payment-surcharge" min="0" step="any" value="@(payment.Surcharge is { } s ? Number(s) : string.Empty)" disabled="@Locked"
                                            @onchange="e => ChangedAsync(() => payment.Surcharge = ParseDecimal(e.Value))" />
                                 </label>
                             }
@@ -81,21 +83,21 @@ else
                             {
                                 <label class="stack-field">
                                     <span class="field-label">@(payment.Method == "cheque" ? "Çek no" : "Senet no")</span>
-                                    <input class="portal-input payment-document-no" value="@payment.DocumentNo" maxlength="40" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.DocumentNo = Blank(e.Value))" />
+                                    <input class="portal-input payment-document-no" value="@payment.DocumentNo" maxlength="40" disabled="@Locked" @onchange="e => ChangedAsync(() => payment.DocumentNo = Blank(e.Value))" />
                                 </label>
                                 <label class="stack-field">
                                     <span class="field-label">Vade</span>
-                                    <input type="date" class="portal-input payment-due" value="@payment.DueDate" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.DueDate = Blank(e.Value))" />
+                                    <input type="date" class="portal-input payment-due" value="@payment.DueDate" disabled="@Locked" @onchange="e => ChangedAsync(() => payment.DueDate = Blank(e.Value))" />
                                 </label>
                                 @if (payment.Method == "cheque")
                                 {
                                     <label class="stack-field">
                                         <span class="field-label">Çekin bankası</span>
-                                        <input class="portal-input payment-bank-name" value="@payment.BankName" maxlength="60" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.BankName = Blank(e.Value))" />
+                                        <input class="portal-input payment-bank-name" value="@payment.BankName" maxlength="60" disabled="@Locked" @onchange="e => ChangedAsync(() => payment.BankName = Blank(e.Value))" />
                                     </label>
                                 }
                             }
-                            <MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="payment-remove" aria-label="Ödemeyi çıkar" Disabled="Busy" OnClick="() => RemoveAsync(payment)" />
+                            <MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="payment-remove" aria-label="Ödemeyi çıkar" Disabled="Locked" OnClick="() => RemoveAsync(payment)" />
                         </div>
                     </fieldset>
                 }
@@ -104,13 +106,13 @@ else
                     <span class="field-label">Ödeme ekle</span>
                     @foreach (var (method, label) in Methods)
                     {
-                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => AddAsync(method)" id="@("collection-add-" + method)">@label</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Locked" OnClick="() => AddAsync(method)" id="@("collection-add-" + method)">@label</MudButton>
                     }
                 </div>
 
                 <label class="stack-field">
                     <span class="field-label">Açıklama</span>
-                    <textarea class="portal-input" id="collection-description" rows="2" maxlength="500" disabled="@Busy" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
+                    <textarea class="portal-input" id="collection-description" rows="2" maxlength="500" disabled="@Locked" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
                 </label>
 
                 <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
@@ -118,10 +120,10 @@ else
 
                 <div class="form-actions">
                     <span style="flex: 1"></span>
-                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" id="entry-save">Kaydet</MudButton>
+                    <MudButton Variant="Variant.Text" Disabled="@Locked" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="SaveAsync" id="entry-save">Kaydet</MudButton>
                 </div>
-            </form>
+            </div>
         </MudPaper>
     }
 }

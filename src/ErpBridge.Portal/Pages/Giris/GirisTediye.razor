@@ -15,6 +15,7 @@ else
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
+    <EntryUnsettled Shown="Unsettled" />
     @if (Saved is { } saved)
     {
         <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
@@ -22,19 +23,20 @@ else
     else
     {
         <MudPaper Outlined="true" Class="panel">
-            <form class="stack-form document-form" id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
-                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Busy" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
-                <CustomerPicker Label="Ödenen cari" Selected="_customer" Disabled="Busy" Picked="CustomerPickedAsync" />
+            @* Not a <form>: Enter in a field — a search above all — must never save the document; only Kaydet saves (Codex #252). *@
+            <div class="stack-form document-form" id="entry-form">
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Locked" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+                <CustomerPicker Label="Ödenen cari" Selected="_customer" Disabled="Locked" Picked="CustomerPickedAsync" />
 
                 <div class="form-row">
                     <label class="stack-field">
                         <span class="field-label">Tutar</span>
-                        <input type="number" class="portal-input portal-input--number" id="disbursement-amount" min="0" step="any" value="@Number(_amount)" disabled="@Busy"
+                        <input type="number" class="portal-input portal-input--number" id="disbursement-amount" min="0" step="any" value="@Number(_amount)" disabled="@Locked"
                                @onchange="e => ChangedAsync(() => _amount = ParseDecimal(e.Value) ?? 0)" />
                     </label>
                     <label class="stack-field">
                         <span class="field-label">Kaynak</span>
-                        <select class="portal-select" id="disbursement-type" value="@_paymentType" disabled="@Busy" @onchange="e => ChangedAsync(() => _paymentType = e.Value?.ToString() ?? Cash)">
+                        <select class="portal-select" id="disbursement-type" value="@_paymentType" disabled="@Locked" @onchange="e => ChangedAsync(() => _paymentType = e.Value?.ToString() ?? Cash)">
                             <option value="@Cash">Nakit kasa</option>
                             <option value="@Transfer">Banka EFT / Havale</option>
                         </select>
@@ -45,7 +47,7 @@ else
                             <span class="field-label">Banka</span>
                             @if (IsErp && Context.Banks.Count > 0)
                             {
-                                <select class="portal-select" id="disbursement-bank" value="@(_bankCode ?? string.Empty)" disabled="@Busy" @onchange="e => ChangedAsync(() => _bankCode = Blank(e.Value))">
+                                <select class="portal-select" id="disbursement-bank" value="@(_bankCode ?? string.Empty)" disabled="@Locked" @onchange="e => ChangedAsync(() => _bankCode = Blank(e.Value))">
                                     <option value="">Varsayılan</option>
                                     @foreach (var bank in Context.Banks)
                                     {
@@ -55,7 +57,7 @@ else
                             }
                             else
                             {
-                                <input class="portal-input" id="disbursement-bank-name" value="@_bankName" maxlength="60" disabled="@Busy" @onchange="e => ChangedAsync(() => _bankName = Blank(e.Value))" />
+                                <input class="portal-input" id="disbursement-bank-name" value="@_bankName" maxlength="60" disabled="@Locked" @onchange="e => ChangedAsync(() => _bankName = Blank(e.Value))" />
                             }
                         </label>
                     }
@@ -63,7 +65,7 @@ else
 
                 <label class="stack-field">
                     <span class="field-label">Açıklama / belge no</span>
-                    <textarea class="portal-input" id="disbursement-description" rows="2" maxlength="500" disabled="@Busy" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
+                    <textarea class="portal-input" id="disbursement-description" rows="2" maxlength="500" disabled="@Locked" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
                 </label>
 
                 <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
@@ -71,10 +73,10 @@ else
 
                 <div class="form-actions">
                     <span style="flex: 1"></span>
-                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" id="entry-save">Kaydet</MudButton>
+                    <MudButton Variant="Variant.Text" Disabled="@Locked" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="SaveAsync" id="entry-save">Kaydet</MudButton>
                 </div>
-            </form>
+            </div>
         </MudPaper>
     }
 }

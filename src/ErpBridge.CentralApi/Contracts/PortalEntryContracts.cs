@@ -42,6 +42,12 @@ public sealed class PortalEntryContextResponse
 
     /// <summary>Company without an ERP: the phone's fixed expense categories.</summary>
     public List<string> ExpenseCategories { get; set; } = [];
+
+    /// <summary>
+    /// ERP company: its supplier prices include VAT ("Tedarikçi fiyatı", ERP aktarım ayarları), so a purchase's typed price is
+    /// VAT-inclusive. The form needs it before its first preview, to start a new line at the right price (Codex #252).
+    /// </summary>
+    public bool PurchasePricesIncludeVat { get; set; }
 }
 
 public sealed class PortalEntryOwnerDto

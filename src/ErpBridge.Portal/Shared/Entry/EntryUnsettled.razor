@@ -1,0 +1,14 @@
+@namespace ErpBridge.Portal.Shared.Entry
+
+@* A save that got no answer (EntryPageBase.Unsettled): the form is locked as it was sent until a save gets a definite answer. *@
+@if (Shown)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="page-alert" id="entry-unsettled">
+        Kaydın sonucu alınamadı; belge yazılmış olabilir. Form gönderildiği gibi kilitlendi: Kaydet'e yeniden basın, aynı belge
+        iki kez yazılmaz. Sonucu <a href="girisler">Son girişler</a>'den de görebilirsiniz.
+    </MudAlert>
+}
+
+@code {
+    [Parameter] public bool Shown { get; set; }
+}

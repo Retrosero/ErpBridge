@@ -165,7 +165,7 @@ uyanır, ERP'siz firmada defter hemen işler). Panel `/ingest`'e yine **yazamaz*
 
 | Uç | Açıklama |
 |---|---|
-| `GET /context` | `dataSource`, `today`, `kinds[]` (izinli türler), `canSellOnAccount`, `canSellBelowStock`, `owners[]`, `priceLists[{no,name,includesVat}]`; ERP'li: `warehouses`, `cashAccounts`, `banks`, `expenseCards`, `vatRates[{code (işaretçi), name, rate}]`; ERP'siz: `expenseCategories` |
+| `GET /context` | `dataSource`, `today`, `kinds[]` (izinli türler), `canSellOnAccount`, `canSellBelowStock`, `owners[]`, `priceLists[{no,name,includesVat}]`; ERP'li: `purchasePricesIncludeVat` (tedarikçi fiyatı KDV dahil ayarı), `warehouses`, `cashAccounts`, `banks`, `expenseCards`, `vatRates[{code (işaretçi), name, rate}]`; ERP'siz: `expenseCategories` |
 | `GET /customers?q=&take=` | Cari arama (≤ 50); bakiye yalnız `view.customer.balance` ile |
 | `GET /products?q=&take=` | Ürün arama (≤ 50): `prices{liste:fiyat}`, `defaultPriceListNo` (başlık listesi), `vatRate` (yoksa 20), `stock` |
 | `POST /sale[/preview]` | `customerCode`, `priceListNo?` (yoksa ürün başına başlık listesi), `lines[{productCode, quantity (tam sayı), lineDiscountPercent, note?}]`, `generalDiscountPercent`, `paymentType` (`Cari Borç`/`Nakit`/`Kredi Kartı`), `bankCode?` (kart; ERP'de banka listesi varsa zorunlu), `note?` |

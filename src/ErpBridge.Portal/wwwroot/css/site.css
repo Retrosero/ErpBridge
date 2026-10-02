@@ -661,6 +661,7 @@ h1:focus, h1:focus-visible { outline: none; }
 .print-lines .num { text-align: right; }
 .print-foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-top: 12px; }
 .print-total { margin-left: auto; display: flex; gap: 16px; align-items: baseline; font-size: 1.1rem; }
+.print-total--part { font-size: 0.95rem; }
 .print-stamp { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-18deg); font-size: 5rem; font-weight: 800; color: rgba(200, 30, 30, .25); border: 6px solid rgba(200, 30, 30, .25); padding: 0 24px; pointer-events: none; }
 .print-error { max-width: 800px; margin: 0 auto; color: #b00020; }
 @media print {

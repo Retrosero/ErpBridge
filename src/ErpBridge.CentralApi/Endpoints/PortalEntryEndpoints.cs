@@ -84,6 +84,7 @@ public static class PortalEntryEndpoints
             response.Banks = [.. lookups["bank"]];
             response.ExpenseCards = [.. lookups["expense_card"]];
             response.VatRates = [.. lookups["vat_rate"].Where(r => r.Rate is not null)];
+            response.PurchasePricesIncludeVat = await PanelEntryLines.PurchasePricesIncludeVatAsync(db, caller, ct);
         }
         else
         {

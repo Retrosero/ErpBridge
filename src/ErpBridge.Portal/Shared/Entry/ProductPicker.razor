@@ -3,7 +3,7 @@
 
 <div class="document-search">
     <input class="portal-input" id="entry-product-search" placeholder="Ürün kodu, adı ya da barkod" value="@_query" disabled="@Disabled"
-           @onchange="e => _query = e.Value?.ToString() ?? string.Empty" @onkeydown="SearchOnEnterAsync" />
+           @oninput="e => _query = e.Value?.ToString() ?? string.Empty" @onkeydown="SearchOnEnterAsync" />
     <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(Disabled || _searching)" OnClick="SearchAsync" id="entry-product-search-go">Ara</MudButton>
 </div>
 @if (_problem is not null)

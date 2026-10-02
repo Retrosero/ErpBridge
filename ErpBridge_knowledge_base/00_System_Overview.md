@@ -1871,9 +1871,14 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      (oturumda yetki yoksa rol yedeği ADMIN, MANAGER), `Entries` herhangi bir giriş alanı açıksa görünür. Ortak parçalar `Shared/Entry/`:
      `EntryPageBase` her değişiklikte sunucunun `preview`'unu çağırır (sıra bekçisiyle yalnız son yanıt çizilir), ret ya da eksik eşleme
      varken Kaydet kapalı, gönderilen `expectedTotal` önizlemenin toplamıdır; `operationId` **gönderim başına bir kez** üretilir — yanıtı
-     kaybolan kayıt aynı anahtarla yeniden gider (Codex #249). `EntryHeader` (kimin adına + belge tarihi, ileri gün seçilemez),
+     kaybolan kayıt aynı anahtarla yeniden gider (Codex #249); o arada form gönderildiği gibi kilitlidir (`Unsettled`/`Locked`, uyarı
+     `EntryUnsettled`) — değiştirilmiş form aynı anahtarla gitse sunucu ilk belgeyi döner, sayfa "kaydedildi" derdi (Codex #252).
+     Kesin ret (4xx) bir şey yazmadığı için kilit açılır. Sayfa `<form>` değildir: Enter (aramada da) belgeyi kaydetmez, yalnız
+     Kaydet kaydeder; arama kutuları metni `oninput` ile tutar ki Enter yazılanı arasın. `EntryHeader` (kimin adına + belge tarihi, ileri gün seçilemez),
      `CustomerPicker`, `ProductPicker`, `EntryChecks` (ret, stok uyarısı), `EntryTotals`, `EntrySaved` (sonuç kartı + yazdır). `?cari=`
-     (`EntryQuery`) cariyi seçili açar. Alış sayfası fiyat sütununu ve öneriyi önizlemenin `PriceIncludesVat`'ına göre etiketler.
+     (`EntryQuery`) cariyi seçili açar. Alış sayfası fiyat sütununu ve yeni satırın önerisini bağlamın `PurchasePricesIncludeVat`'ına göre
+     kurar (ilk satır önizlemeden önce eklenir, Codex #252). Fiş ERP iadesinde satır tutarını iade oranıyla hesaplar (ERP iade
+     satırı toplam taşımaz), alışta KDV'yi ve KDV dahil genel toplamı gösterir.
      Testler: `PortalEntryPagesTests`.
    - Testler: `PortalEntrySaleRelationalTests`, `PortalEntryMoneyRelationalTests`, `PortalEntryLinesRelationalTests` (`PortalEntryTestSupport`),
      `DocumentPermissionCheckTests`.

@@ -8,6 +8,7 @@ namespace ErpBridge.Portal.Shared.Entry;
 /// entry carries, the server's preview after each change, and the save. The server prices and checks everything; the page
 /// shows its preview and sends the total the user saw. The save's <see cref="OperationId"/> is made once per submission and
 /// kept until a definite answer (Codex #249): a save sent again after a lost answer is the same document, never a second one.
+/// Until then the form is <see cref="Unsettled"/> and stays as it was sent (Codex #252).
 /// </summary>
 public abstract class EntryPageBase : PortalPageBase
 {
@@ -46,6 +47,16 @@ public abstract class EntryPageBase : PortalPageBase
     protected virtual Task OnContextAsync() => Task.CompletedTask;
 
     protected bool IsErp => Context?.IsErp == true;
+
+    /// <summary>
+    /// A save got no answer (or the server failed midway): the document may be written. The key is kept and the form stays
+    /// as it was sent until a save gets a definite answer — an edited form sent again with the same key would be answered
+    /// with the first document and reported as saved (Codex #252).
+    /// </summary>
+    protected bool Unsettled { get; private set; }
+
+    /// <summary>The form's fields are closed while a request runs and while a save is <see cref="Unsettled"/>.</summary>
+    protected bool Locked => Busy || Unsettled;
 
     /// <summary>Saving is open when the preview is current and nothing stands in its way.</summary>
     protected bool CanSave => !Busy && Complete && Preview is not null && Preview.Refusal is null && PreviewProblem is null;
@@ -104,6 +115,7 @@ public abstract class EntryPageBase : PortalPageBase
         try
         {
             var saved = await Api.EntrySaveAsync(Kind, Stamp(Build(), withKey: true));
+            Unsettled = false;
             Saved = saved;
             Notice = $"{EntryKinds.Label(Kind)} kaydedildi." + (saved.Idempotent ? " (Daha önce kaydedilmişti.)" : string.Empty);
             OperationId = null;
@@ -112,7 +124,19 @@ public abstract class EntryPageBase : PortalPageBase
         catch (PortalApiException changed) when (changed.Code == "PRICE_CHANGED")
         {
             // Nothing was written: show the current figures and let the user confirm them.
+            Unsettled = false;
             await RefreshPreviewAsync();
+            throw;
+        }
+        catch (PortalApiException refused) when (refused.Status is >= 400 and < 500)
+        {
+            // A definite refusal: nothing was written, the form may change.
+            Unsettled = false;
+            throw;
+        }
+        catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+        {
+            Unsettled = true;
             throw;
         }
     });
@@ -127,6 +151,7 @@ public abstract class EntryPageBase : PortalPageBase
         Notice = null;
         Error = null;
         OperationId = null;
+        Unsettled = false;
     }
 
     protected async Task OwnerChangedAsync(string? value)
