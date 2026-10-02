@@ -21,7 +21,7 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
 | P3f | İade | ✅ | [#251](https://github.com/Retrosero/ErpBridge/pull/251) | Yalnız satılmış ürün + satıldığı fiyat (400 `NOT_SOLD_TO_CUSTOMER`); ERP'li `ErpReturnDocument`, ERP'siz `salesReturnPayload`. 8 ilişkisel test |
 | P4 | `documents/{id}`, son girişlerim | ✅ | [#251](https://github.com/Retrosero/ErpBridge/pull/251) | Durum (bekliyor/yeniden/yazıldı + ERP seri-sıra/hata), giren/sahip, gövde; liste kişinin kendi girişleri, yönetici `all=true` |
 | P5a–d | Panel: alanlar/menü, istemci, bileşenler, altı sayfa, yazdırma, son girişler | ✅ | [#252](https://github.com/Retrosero/ErpBridge/pull/252) | `/giris/{satis,tahsilat,alis,iade,tediye,gider}`, `/girisler`, `/giris-yazdir`; `PortalArea.Entry*` → `module.*`; 10 bUnit testi |
-| P5e | Evraklar/Cari giriş düğmeleri → yeni sayfalar | ⏳ | | |
+| P5e | Evraklar/Cari giriş düğmeleri → yeni sayfalar | ✅ | P5E_PR | Evraklar'ın Yeni satış/alış/iade'si ve Cari'nin Tahsilat al/Ödeme yap'ı giriş sayfalarına (`?cari=` dolu); eski `evraklar?yeni=` adresi yönlenir. Düzenle/İptal aynen ADMIN'de |
 | P6a–f | Panel: Görevler | ✅ | [#253](https://github.com/Retrosero/ErpBridge/pull/253) | `/gorevler`, `/gorevler/seriler`, bildirim zili; sunucu panel oturumunda `module.tasks` (403 `TASKS_MODULE_DENIED`); tarayıcı kontrolünde `add_subtask` hatası bulunup düzeltildi (telefonu da etkiliyordu) |
 | P7 | KB + sözleşmeler | ⏳ | | |
 | P8 | Uçtan uca doğrulama + kapanış | ⏳ | | |
@@ -42,6 +42,10 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
   kimliğiyle gelen yeni satır yalnız izlenen görevin koleksiyonuna eklenince EF onu var olan satır sanıp UPDATE deniyordu. Satır
   artık `DbSet` üzerinden eklenir. Telefonun aynı işlemi de bundan etkileniyordu (yeni görevle birlikte gelen alt görevler değil,
   sonradan eklenenler). Test: `PortalTasksAccessRelationalTests.A_subtask_added_to_an_existing_task_is_saved`.
+
+- **Davranış değişikliği (P5e):** ERP'siz firmada panelden **yeni** belge girişi artık yalnız ADMIN'e değil telefonun `module.*`
+  yetkisine bağlı (K3, GOAL_PANEL_ERPSIZ D4'ün giriş kısmının yerini alır): varsayılan rollerde yönetici de girer. Düzeltme/iptal,
+  kart düzenleme ve sayım D4'teki gibi yalnız ADMIN. ERP'li firmada Cari ve Evraklar da artık giriş düğmesi gösterir (belge ERP'ye yazılır).
 
 ## Seni Bekleyenler
 - Muhasebe (ACCOUNTING) rolü panelden giriş yapacaksa `/yetkiler`'den ilgili `module.*` anahtarları açılmalı (varsayılan kapalı).
