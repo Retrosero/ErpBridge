@@ -138,6 +138,41 @@ Her yazma `native_audit_log`'a düşer (`GET /api/v1/portal/native/audit`).
 
 İptal/düzenleme uçları (`ledger/{key}/void|edit`, `documents/{key}/void|edit`, `stock-counts/{key}/void`) "zaten iptal" kontrolünden **önce** aynı `operationId`'li işi arar: yanıtı kaybolan tekrar 200 alır, 409 değil. `operationId` içindeki `|` `-` olur (hareket anahtarları `{iş}|{ek}`).
 
+### Panelden belge girişi (`/api/v1/portal/entry`, panel oturumu — GOAL_PANEL_GIRIS)
+
+Panel, telefonun girdiği belgeleri ERP'li ve ERP'siz firmada girer. Sunucu Sipariş Cepte'nin **kendi gövdesini** kurar
+(`docs/mobil-belge-sozlesmesi.md`) ve ingest'in yazdığı gibi yazar (`SalesJobWriter`: ERP'li firmada `Pending` iş + ajan
+uyanır, ERP'siz firmada defter hemen işler). Panel `/ingest`'e yine **yazamaz** (`PORTAL_CANNOT_SUBMIT_DOCUMENTS`).
+
+- **Yalnız panel oturumu** (`client=portal`); telefon token'ı 403 `ENTRY_REQUIRES_PORTAL`. Kişi başı hız sınırı.
+- **Yetki:** türün telefon modülü (`module.sales`, `module.collection`, `module.disbursement`, `module.expenses`…); yoksa 403
+  `ENTRY_MODULE_DENIED`. Firma onay kuralına **bakılmaz** (onay talebi açılmaz); kişinin limitleri/açık hesap yetkisi
+  aşılırsa belge **reddedilir**: 409 `ENTRY_LIMIT_EXCEEDED` (limit), 403 `ENTRY_MODULE_DENIED` (açık hesap), 409
+  `ENTRY_NEGATIVE_STOCK` (`action.sale.negative_stock` yokken stok yetmiyor). Limit giren kişininkidir; yönetici muaf.
+- **Sahip** (`ownerUserId`, varsayılan giren kişi; firmanın etkin telefon kullanıcısı olmalı, yoksa 400 `UNKNOWN_OWNER`):
+  iş onun adına yazılır (`CreatedByUserId`; ajan seri/depo/plasiyer/ERP kullanıcı no'yu onun eşlemesinden alır). ERP'li
+  firmada ajanın çeviricisi sahibin bağlamıyla önceden çalıştırılır: eksik eşleme 409 `ERP_MAPPING_MISSING`, başka çeviri
+  hatası 422 `ENTRY_DOCUMENT_INVALID`. Giren kişi `native_audit_log`'a yazılır (iki firma türünde).
+- **Tarih** `date` (`yyyy-MM-dd`, yoksa bugün): ileri gün 400 `INVALID_DOCUMENT_DATE`; geçmiş gün 12:00 damgalanır.
+- **Önizleme → kayıt:** `POST {tür}/preview` hiçbir şey yazmaz; fiyatlı satırlar, toplamlar, `refusal{code,message,key}`,
+  `stockWarnings`, `payments` döner. `POST {tür}` aynı gövde + `operationId` (GUID, **form gönderimi başına bir**, tekrar
+  denemede aynısı) + `expectedTotal` (önizlemedeki toplam; ±0,05 dışında 409 `PRICE_CHANGED`). Yanıt 201
+  `{documents[{jobId, externalId, documentType, status}], idempotent, preview}`; aynı `operationId` tekrar gelirse önceki
+  işler 200 ile döner. Defter reddederse 422 `ENTRY_BOOKING_FAILED`. Gövde hatası 400 `ENTRY_INVALID` /
+  `UNKNOWN_CUSTOMER` / `UNKNOWN_PRODUCT` / `PRICE_MISSING`.
+- **Belge anahtarı** `PNL-SO-` (satış), `PNL-TH-` (tahsilat; ERP'siz firmada yöntem başına `-1`, `-2`…), `PNL-TD-`
+  (tediye), `PNL-GD-` (gider) + `operationId`; `mobileDocumentId` ile aynı.
+
+| Uç | Açıklama |
+|---|---|
+| `GET /context` | `dataSource`, `today`, `kinds[]` (izinli türler), `canSellOnAccount`, `canSellBelowStock`, `owners[]`, `priceLists[{no,name,includesVat}]`; ERP'li: `warehouses`, `cashAccounts`, `banks`, `expenseCards`, `vatRates[{code (işaretçi), name, rate}]`; ERP'siz: `expenseCategories` |
+| `GET /customers?q=&take=` | Cari arama (≤ 50); bakiye yalnız `view.customer.balance` ile |
+| `GET /products?q=&take=` | Ürün arama (≤ 50): `prices{liste:fiyat}`, `defaultPriceListNo` (başlık listesi), `vatRate` (yoksa 20), `stock` |
+| `POST /sale[/preview]` | `customerCode`, `priceListNo?` (yoksa ürün başına başlık listesi), `lines[{productCode, quantity (tam sayı), lineDiscountPercent, note?}]`, `generalDiscountPercent`, `paymentType` (`Cari Borç`/`Nakit`/`Kredi Kartı`), `bankCode?` (kart; ERP'de banka listesi varsa zorunlu), `note?` |
+| `POST /collection[/preview]` | `customerCode`, `description?`, `payments[{method (cash/card/transfer/cheque/note), amount, bankCode?, bankName?, installments?, surchargeAmount?, reference?, documentNo?, dueDate? (yyyy-MM-dd; çek/senette no + vade zorunlu)}]` |
+| `POST /disbursement[/preview]` | `customerCode`, `amount`, `paymentType` (`Nakit`/`EFT / Havale`), `bankCode?` (ERP), `bankName?` (ERP'siz), `description?` |
+| `POST /expense[/preview]` | `amount` (KDV dahil), `description` (zorunlu), `paymentType` (`Nakit`/`Banka`/`Kredi Kartı`); ERP'li: `expenseCardCode`, `vatAmount`, `vatPointer` (KDV > 0 ise), `accountCode?` (kasa/banka); ERP'siz: `category` (sabit türlerden) |
+
 ### Admin iş uçları (`/api/v1/admin/jobs`)
 
 Liste öğesi `nextAttemptAtUtc`, `leasedUntilUtc` taşır. `GET /{id}` ek olarak `payloadJson`,

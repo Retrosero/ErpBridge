@@ -65,6 +65,10 @@ public sealed class PortalErpLookupItem
 {
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>A VAT definition's rate (<c>vat_rate</c>, the code is Mikro's pointer); null for every other kind.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? Rate { get; set; }
 }
 
 /// <summary>

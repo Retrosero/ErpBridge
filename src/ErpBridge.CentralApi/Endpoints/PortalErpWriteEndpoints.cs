@@ -169,7 +169,7 @@ public static class PortalErpWriteEndpoints
         Sorted(await ReadLookupsAsync(db, tenantId, ct), "warehouse");
 
     /// <summary>The bootstrap's lookup rows (<c>lookups</c>, <c>cashAndBank</c>) by kind, then code.</summary>
-    private static async Task<Dictionary<string, Dictionary<string, PortalErpLookupItem>>> ReadLookupsAsync(CentralApiDbContext db, Guid tenantId, CancellationToken ct)
+    internal static async Task<Dictionary<string, Dictionary<string, PortalErpLookupItem>>> ReadLookupsAsync(CentralApiDbContext db, Guid tenantId, CancellationToken ct)
     {
         var rows = await db.MobileRecords.AsNoTracking()
             .Where(r => r.TenantId == tenantId && !r.IsDeleted && (r.Entity == "lookups" || r.Entity == "cashAndBank"))
@@ -188,7 +188,7 @@ public static class PortalErpWriteEndpoints
             if (string.IsNullOrEmpty(kind) || string.IsNullOrEmpty(code)) continue;
             var name = AndroidEndpoints.GetString(item, "name")?.Trim() ?? string.Empty;
             if (!byKind.TryGetValue(kind, out var items)) byKind[kind] = items = new(StringComparer.Ordinal);
-            items[code] = new PortalErpLookupItem { Code = code, Name = name };
+            items[code] = new PortalErpLookupItem { Code = code, Name = name, Rate = AndroidEndpoints.GetDecimal(item, "rate") };
         }
         return byKind;
     }
@@ -214,7 +214,7 @@ public static class PortalErpWriteEndpoints
     private static Task<bool> UserExistsAsync(CentralApiDbContext db, Guid tenantId, Guid userId, CancellationToken ct) =>
         db.MobileUsers.AsNoTracking().AnyAsync(u => u.Id == userId && u.TenantId == tenantId && u.DeletedAtUtc == null, ct);
 
-    private static IReadOnlyList<PortalErpLookupItem> Sorted(Dictionary<string, Dictionary<string, PortalErpLookupItem>> byKind, string kind) =>
+    internal static IReadOnlyList<PortalErpLookupItem> Sorted(Dictionary<string, Dictionary<string, PortalErpLookupItem>> byKind, string kind) =>
         byKind.TryGetValue(kind, out var items)
             ? items.Values
                 .OrderBy(i => int.TryParse(i.Code, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : int.MaxValue)

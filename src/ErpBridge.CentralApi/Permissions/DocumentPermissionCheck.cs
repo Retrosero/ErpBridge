@@ -59,6 +59,44 @@ public sealed record DocumentLimitFacts(decimal? Amount, decimal? MaxLineDiscoun
     private static decimal? Max(decimal? a, decimal? b) => a is null ? b : b is null ? a : Math.Max(a.Value, b.Value);
 }
 
+/// <summary>What stands in the way of a document: the module of its kind, the open-account right, or one of the limits.</summary>
+public enum PermissionViolationKind
+{
+    Module,
+    OpenAccount,
+    Limit,
+}
+
+/// <summary>
+/// The first permission a document goes over (<see cref="DocumentPermissionCheck.Check"/>): the key, and for a limit what
+/// was asked and the ceiling. The phone's ingest turns it into an approval request (<see cref="ApprovalMessage"/>); the
+/// panel, which has no approval path for its own entries (GOAL_PANEL_GIRIS K2/K4), refuses with <see cref="Message"/>.
+/// </summary>
+public sealed record PermissionViolation(PermissionViolationKind Kind, string Key, string Subject, decimal? Actual = null, decimal? Ceiling = null, bool Percent = false)
+{
+    /// <summary>The refusal in plain words, without sending anyone to the approval queue.</summary>
+    public string Message => Kind switch
+    {
+        PermissionViolationKind.Module => $"Bu işlem için yetkiniz yok ({Subject}).",
+        PermissionViolationKind.OpenAccount => "Açık hesap (veresiye) satış yetkiniz yok.",
+        _ => Percent
+            ? $"{Subject} %{Show(Actual!.Value)}, sınırınız %{Show(Ceiling!.Value)}."
+            : $"{Subject} {Show(Actual!.Value)} TL, sınırınız {Show(Ceiling!.Value)} TL.",
+    };
+
+    /// <summary>The ingest's text (409 <c>APPROVAL_REQUIRED</c>): the phone sends the document for approval instead.</summary>
+    public string ApprovalMessage => Kind switch
+    {
+        PermissionViolationKind.Module => $"Bu işlem için yetkiniz yok ({Subject}); belge onaya gönderilmeli.",
+        PermissionViolationKind.OpenAccount => "Açık hesap (veresiye) satış yetkiniz yok; belge onaya gönderilmeli.",
+        _ => Percent
+            ? $"{Subject} %{Show(Actual!.Value)}, sınır %{Show(Ceiling!.Value)}; belge onaya gönderilmeli."
+            : $"{Subject} {Show(Actual!.Value)} TL, onaysız sınır {Show(Ceiling!.Value)} TL; belge onaya gönderilmeli.",
+    };
+
+    private static string Show(decimal value) => value.ToString("#,0.##", CultureInfo.GetCultureInfo("tr-TR"));
+}
+
 /// <summary>
 /// The sender's permissions over a phone document (GOAL_YETKILER): the module of its kind, and the user's limits.
 /// A refusal is not a rejection: the ingest answers <c>409 APPROVAL_REQUIRED</c>, which every phone version turns into an
@@ -78,35 +116,35 @@ public static class DocumentPermissionCheck
     };
 
     /// <summary>Why the document needs approval, or null when the user may send it as it is.</summary>
-    public static string? Refusal(EffectivePermissions permissions, string approvalKind, DocumentLimitFacts facts)
+    public static string? Refusal(EffectivePermissions permissions, string approvalKind, DocumentLimitFacts facts) =>
+        Check(permissions, approvalKind, facts)?.ApprovalMessage;
+
+    /// <summary>The first permission the document goes over, or null. Administrators have no limits.</summary>
+    public static PermissionViolation? Check(EffectivePermissions permissions, string approvalKind, DocumentLimitFacts facts)
     {
         if (permissions.IsAdmin) return null;
         if (ModuleOf(approvalKind) is { } module && !permissions.Can(module))
-            return $"Bu işlem için yetkiniz yok ({PermissionCatalog.Find(module)?.Label}); belge onaya gönderilmeli.";
+            return new PermissionViolation(PermissionViolationKind.Module, module, PermissionCatalog.Find(module)?.Label ?? module);
 
         return approvalKind switch
         {
             ApprovalKinds.Sale =>
                 (facts.OnAccount && !permissions.Can(PermissionKeys.SaleOpenAccount)
-                    ? "Açık hesap (veresiye) satış yetkiniz yok; belge onaya gönderilmeli."
+                    ? new PermissionViolation(PermissionViolationKind.OpenAccount, PermissionKeys.SaleOpenAccount, "Açık hesap")
                     : null)
-                ?? Over(permissions, PermissionKeys.LimitSaleLineDiscountPct, facts.MaxLineDiscountPercent, "Satır iskontosu", "%")
-                ?? Over(permissions, PermissionKeys.LimitSaleGeneralDiscountPct, facts.MaxGeneralDiscountPercent, "Sipariş iskontosu", "%")
-                ?? Over(permissions, PermissionKeys.LimitSaleAmount, facts.Amount, "Satış tutarı", "TL"),
-            ApprovalKinds.Return => Over(permissions, PermissionKeys.LimitReturnAmount, facts.Amount, "İade tutarı", "TL"),
-            ApprovalKinds.Purchase => Over(permissions, PermissionKeys.LimitPurchaseAmount, facts.Amount, "Alış tutarı", "TL"),
-            ApprovalKinds.Disbursement => Over(permissions, PermissionKeys.LimitDisbursementAmount, facts.Amount, "Tediye tutarı", "TL"),
+                ?? Over(permissions, PermissionKeys.LimitSaleLineDiscountPct, facts.MaxLineDiscountPercent, "Satır iskontosu", percent: true)
+                ?? Over(permissions, PermissionKeys.LimitSaleGeneralDiscountPct, facts.MaxGeneralDiscountPercent, "Sipariş iskontosu", percent: true)
+                ?? Over(permissions, PermissionKeys.LimitSaleAmount, facts.Amount, "Satış tutarı", percent: false),
+            ApprovalKinds.Return => Over(permissions, PermissionKeys.LimitReturnAmount, facts.Amount, "İade tutarı", percent: false),
+            ApprovalKinds.Purchase => Over(permissions, PermissionKeys.LimitPurchaseAmount, facts.Amount, "Alış tutarı", percent: false),
+            ApprovalKinds.Disbursement => Over(permissions, PermissionKeys.LimitDisbursementAmount, facts.Amount, "Tediye tutarı", percent: false),
             _ => null,
         };
     }
 
-    private static string? Over(EffectivePermissions permissions, string key, decimal? actual, string what, string unit)
+    private static PermissionViolation? Over(EffectivePermissions permissions, string key, decimal? actual, string what, bool percent)
     {
         if (actual is not { } value || permissions.Limit(key) is not { } limit || value <= limit) return null;
-        return unit == "%"
-            ? $"{what} %{Show(value)}, sınır %{Show(limit)}; belge onaya gönderilmeli."
-            : $"{what} {Show(value)} TL, onaysız sınır {Show(limit)} TL; belge onaya gönderilmeli.";
+        return new PermissionViolation(PermissionViolationKind.Limit, key, what, value, limit, percent);
     }
-
-    private static string Show(decimal value) => value.ToString("#,0.##", CultureInfo.GetCultureInfo("tr-TR"));
 }

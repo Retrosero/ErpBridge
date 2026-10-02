@@ -1823,3 +1823,33 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      olursa gösterilmez); katalog yönetimindeki "Görsel kotası" S3'ten beri birleşik kotayı okur, rengi aynı 80/95 eşiklerine çekildi.
      Testler Portal `PortalStoragePageTests` (eşikler, seçim + onay, XML uyarısı, geri alma hataları, çöpü boşaltma, XML eşitleme, menü ve
      yetki), `PortalManagementPagesTests` (Kullanıcılar özeti), `PortalRolesTests`.
+
+38. **Panelden belge girişi telefonun gövdesiyle yazılır: `PanelEntry/` + `Endpoints/PortalEntryEndpoints` (GOAL_PANEL_GIRIS, 2026-10-02).**
+   - **Tek yol, iki firma türü:** `/api/v1/portal/entry/{sale,collection,disbursement,expense}[/preview]` formdan Sipariş Cepte'nin
+     belge gövdesini **alan alan** kurar (satış `salesOrderPayload`, ERP tahsilatı `ErpCollectionDocument.payload`, kasa defteri
+     `kasaLogPayload`) ve `PanelEntryWriter` → `SalesJobWriter` ile yazar: ERP'li firmada `Pending` iş ajanı bekler, ERP'siz firmada
+     `NativeDocumentProcessor` hemen işler, satış depo kuyruğuna girer. Kural 36'daki katalog "Siparişe çevir"in genelleşmiş hâli;
+     panel `/ingest`'e hâlâ yazmaz (`PORTAL_CANNOT_SUBMIT_DOCUMENTS` aynen).
+   - **Yalnız panel oturumu:** `client=portal` değilse 403 `ENTRY_REQUIRES_PORTAL` — yoksa telefon bu uçla onay kurallarını atlardı.
+   - **Onay yok, ret var (K2/K4):** firma onay kuralları sorulmaz; kişinin yetkisi kural 33'teki `DocumentPermissionCheck` ile denetlenir
+     ama `APPROVAL_REQUIRED` yerine **ret** döner: `Check()` ihlali yapılandırılmış verir (`PermissionViolation`: tür, anahtar, gerçek,
+     sınır), `Message` onaydan söz etmez, `ApprovalMessage` ingest'in eski metnidir (`Refusal()` onu döndürür, ingest değişmedi).
+     Limit giren kişinindir (sahibin değil); yönetici muaf. Eksi stok `action.sale.negative_stock` yoksa reddedilir.
+   - **Sahip (K5):** iş `ownerUserId`'nin (varsayılan giren kişi; firmanın etkin telefon kullanıcısı) adınadır: `CreatedByUserId`, ajanın
+     eşlemesi, raporlar. ERP'li firmada `PanelEntryErp` sahibin kiralama bağlamıyla (`ErpWriteContextBuilder`) ajanın
+     `MobileDocumentTranslator`'ını önceden çalıştırır: eksik eşleme formu 409 `ERP_MAPPING_MISSING` ile durdurur, kuyrukta düşmez.
+     Giren kişi her iki firma türünde `native_audit_log`'a (`Entity` = belge türü, `EntityKey` = `externalId`) yazılır.
+   - **Fiyat:** satış `CatalogPricing` (= telefon `ErpSalePricing` = Mikro): liste → satır → genel iskonto, KDV en son; liste ürünün başlık
+     listesi (`MobileEntityAssembler.satisFiyatListeNo`: 1, yoksa fiyatlı en küçük) ya da formun seçtiği; belgenin `priceListNo`'su
+     satırların en çok kullandığı liste; müşteri iskontosu 0 (telefonun ERP carisinde de yok); kartında KDV olmayan ürün %20.
+   - **Tarih (K6):** `PanelEntryDates`: ileri gün reddedilir, geçmiş gün 12:00, bugün şimdiki saat (İstanbul); sınır yok. Bütün Mikro
+     yazıcıları evrak tarihini `OccurredAt.Date`'ten alır. 7 günden eski tarihli belge panelin günlük raporlarında o güne sayılmaz (kural 18).
+   - **Idempotency:** `externalId = PNL-{SO|TH|TD|GD}-{operationId}`; panel `operationId`'yi form gönderimi başına bir kez üretir.
+     ERP'siz tahsilat yöntem başına `-n` belgedir ve tek işlemde yazılır (hepsi ya da hiçbiri); eşzamanlı tekrarda kaybeden
+     `DbUpdateException`'ı yakalayıp kazananın işlerini döner. Kayıt ucu önce aynı anahtarın (ve `-n` parçalarının) işlerine bakar.
+   - **Tediye** ERP'li havalede `bankCode` da gönderir (telefon yalnız `bankName` gönderiyor → ajan `MOBILE_APP_UPDATE_REQUIRED`).
+     **Gider** ERP'li firmada `expense` (gider kartı, KDV + Mikro işaretçisi, ödeyen kasa/banka kodu); ERP'siz firmada müşterisiz
+     `disbursement` "Gider: …" — yalnız kayıt, ve telefondaki gibi tediye yetkisi/limitiyle denetlenir.
+   - Kart/hesap kodları `PanelEntryLookups` ile ajanın `lookups` satırlarından (`PortalErpWriteEndpoints.ReadLookupsAsync`, satıra
+     isteğe bağlı `rate`); bu uç ERP ayarları sayfasının aksine yönetici şartı aramaz.
+   - Testler: `PortalEntrySaleRelationalTests`, `PortalEntryMoneyRelationalTests` (`PortalEntryTestSupport`), `DocumentPermissionCheckTests`.
