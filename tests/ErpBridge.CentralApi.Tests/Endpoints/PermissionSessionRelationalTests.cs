@@ -105,6 +105,18 @@ public sealed class PermissionSessionRelationalTests : IClassFixture<SqliteCentr
         (await MeAsync(c.Ali)).SyncMode.Should().Be(TenantMobileSyncModes.Tables);
         var tablesStamp = (await client.GetAsync(sync, c.Ali)).Headers.GetValues(PermissionStamp.Header).Single();
 
+        // An ERP company whose change feed holds no catalogue would hand its phones an empty one.
+        var notReady = await client.PutJsonAsync(path, new { syncMode = "feed" }, c.AdminToken);
+        notReady.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await notReady.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("FEED_NOT_READY");
+        (await MeAsync(c.Ali)).SyncMode.Should().Be(TenantMobileSyncModes.Tables);
+        await WithDbAsync(async db =>
+        {
+            db.MobileRecords.Add(new MobileRecord { TenantId = c.TenantId, Entity = "stocks", RecordKey = "S-1", PayloadJson = "{}", UpdatedSeq = 1 });
+            db.MobileRecords.Add(new MobileRecord { TenantId = c.TenantId, Entity = "customers", RecordKey = "C-1", PayloadJson = "{}", UpdatedSeq = 2 });
+            await db.SaveChangesAsync();
+        });
+
         (await client.PutJsonAsync(path, new { syncMode = "FEED " }, c.AdminToken)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         var feedStamp = (await client.GetAsync(sync, c.Ali)).Headers.GetValues(PermissionStamp.Header).Single();

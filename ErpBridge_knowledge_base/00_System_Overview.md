@@ -206,7 +206,7 @@ registration ayrı bir composition projesine taşınır.
    konsolunda *Firma → Mobil → Telefon senkronu* ile, API'de
    `PUT /api/v1/admin/tenants/{id}/mobile/sync-mode` gövde `{"syncMode":"tables"|"feed"}` ile
    değiştirir (AdminPolicy; geçersiz değer 400 `INVALID_SYNC_MODE`, firma yok 404; büyük/küçük
-   harf ve boşluk normalize edilir; veri kontrolü yoktur, çünkü mod veri taşımaz). Telefon
+   harf ve boşluk normalize edilir). **ERP'li firmada `feed`'e geçiş, `mobile_records`'ta silinmemiş `stocks` ve `customers` kaydı yoksa 409 `FEED_NOT_READY` ile reddedilir**: akışta tablo görevleri durur, boş bir projeksiyon telefona boş katalog verir ve telefonun ilk tam yürüyüşteki budaması (Siparis_Cepte kural 58) yereldekini silerdi. Pilot sırası: önce `POST /api/v1/admin/mobile-records/backfill`, `summary` sayıları snapshot ile karşılaştırılır, sonra mod `feed`. Telefon
    değeri oturumdan okur: giriş yanıtı `session.syncMode` ve `GET /account/me` → `syncMode`
    (`MobileSessionDto.SyncMode`); Admin özeti `TenantMobileOverviewResponse.syncMode`.
    Mod **izin damgasına** (`PermissionStamp.Of(tenant, user, permissions)`, kural 33) girer:

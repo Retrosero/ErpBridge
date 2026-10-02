@@ -230,6 +230,23 @@ public static class AdminMobileSeatsEndpoints
         var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return TenantNotFound();
         if (tenant.MobileSyncMode == value) return Results.NoContent();
+        // An ERP tenant's phones on the feed read only mobile_records; the table tasks stop.
+        // If the projection was never filled (no backfill, or only recent changes), a phone
+        // would see an empty catalogue and, on its first full walk, prune its own. Require
+        // the catalogue and the customer list to be projected first (POST
+        // /api/v1/admin/mobile-records/backfill).
+        if (value == TenantMobileSyncModes.Feed && tenant.DataSource != TenantDataSources.Native)
+        {
+            var projected = await db.MobileRecords.AsNoTracking()
+                .Where(r => r.TenantId == tenantId && !r.IsDeleted && (r.Entity == "stocks" || r.Entity == "customers"))
+                .Select(r => r.Entity).Distinct().CountAsync(ct);
+            if (projected < 2)
+                return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
+                {
+                    ErrorCode = "FEED_NOT_READY",
+                    Message = "The change feed has no products or customers for this tenant yet; run the mobile-records backfill first.",
+                });
+        }
         tenant.MobileSyncMode = value!;
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
