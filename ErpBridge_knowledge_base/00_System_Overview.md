@@ -1366,7 +1366,16 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      şekil telefonda (`ViewPrefs`). `GET/PUT /api/v1/android/account/preferences`; kullanıcı yalnız jetondan gelir, yani kimse başkasınınkini okuyamaz.
      PUT belgeyi tümüyle değiştirir ve `Version`'ı artırır; gövde `{ "data": {…} }`, `data` nesne ve ≤ 16 KB olmalı (`400 INVALID_PREFERENCES`).
    - **Eşitleme telefonda karara bağlanır:** yerelde bekleyen değişiklik kazanır (son yazan), yoksa daha yüksek `Version` alınır. Kullanıcı silinince satırı da gider (cascade).
-   - Test: `UserPreferencesRelationalTests`. Telefon ayağı: Siparis_Cepte KB kural 54.
+   - **Katmanlar ve panel (2026-10-02, Siparis_Cepte `docs/PLAN_SAYFA_GORUNUM_AYARLARI.md`):** fabrika < rol varsayılanı < kişinin belgesi < kilit.
+     Rol varsayılanları `tenant_role_view_preferences` (TenantId+Role PK, `Json`, `LocksJson`, `Version`), kişi kilitleri `mobile_user_preferences.LocksJson`
+     (+ `LocksVersion`); ikisi de **düz** nesne: ayar yolu → değer, liste üyesi `yol#üye`. Birleştirme `Preferences/ViewPreferenceLayers` (saf): roller düşük
+     öncelikten yükseğe, kişi kilidi en son; `stamp` şablon sürümleri + kişi kilit sürümü. Kişinin kendi `GET`'i `base: { data, locks, stamp }` taşır.
+     Satır kimin kaydettiğini de tutar (`UpdatedByUserId`, `UpdatedByClient` android/portal).
+   - **Yönetici uçları** (yalnız ADMIN, yalnız kendi firması): `GET/PUT /users/{id}/preferences` (belge + kilit, `expectedVersion` → `409 PREFERENCES_CONFLICT`),
+     `POST /users/{id}/preferences/copy` (belge ve istenirse kilitler, tek kayıt; bilinmeyen hedefte kimse değişmez), `GET /roles/view-preferences`,
+     `PUT /roles/{role}/view-preferences`. Sözleşme: `docs/api-contracts.md`. Sunucu yolları yorumlamaz; ayar listesi telefonun kataloğudur
+     (`docs/view-settings-catalog.json`, panel kopyası).
+   - Test: `UserPreferencesRelationalTests`, `ViewPreferenceAdminRelationalTests`, `ViewPreferenceLayersTests`. Telefon ayağı: Siparis_Cepte KB kural 54, 59.
 
 36. **Müşteri kataloğu: gerçek istemci IP'si, giriş yavaşlatıcı, katalog tabloları, kilitli yetki, müşteri oturumu, talepler, belge bağı ve panelden siparişe çevirme (GOAL_MUSTERI_KATALOGU S1–S10, 2026-10-01).**
    - **Gerçek istemci IP'si:** `Security/ForwardedHeadersSetup`. `ForwardedHeaders:KnownNetworks` / `ForwardedHeaders:KnownProxies`
