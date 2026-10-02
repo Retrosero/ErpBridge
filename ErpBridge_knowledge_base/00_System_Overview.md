@@ -1050,9 +1050,10 @@ registration ayrı bir composition projesine taşınır.
      `TASK_DUE_SOON` (60 dk kala) ve `TASK_OVERDUE`. İşlemi yapana kendi işlemi bildirilmez. Push yoktur: telefon
      açıkken `GET tasks/events` uzun yoklaması (`TenantEventHub` konu `tasks`, sürüm numarası), kapalıyken kendi
      15 dk'lık işçisi.
-   - **Resim PostgreSQL'dedir:** `task_attachment_blobs` (bytea); Coolify'da kalıcı disk gerekmez, yedeğe girer.
-     Ham gövde `PUT tasks/{id}/attachments/{attachmentId}`, yalnız JPEG/PNG/WEBP (dosya imzası da denetlenir), ≤ 2 MB,
-     görev başı 10, firma kotası 1 GB (`Tasks:*`). `GET` yalnız görevi gören kullanıcıya, değişmez önbellek başlığıyla.
+   - **Resim merkezi dosya deposundadır** (R2 özel kova, 2026-10-01, kural 37 "Görev eki"); öncesinde yüklenenler S10 göçüne kadar
+     `task_attachment_blobs` (bytea) içinde kalır ve okunur. Ham gövde `PUT tasks/{id}/attachments/{attachmentId}`, yalnız
+     JPEG/PNG/WEBP (dosya imzası da denetlenir), ≤ 2 MB, görev başı 10; kota firmanın tek depolama kotası
+     (`Tasks:TenantAttachmentQuotaBytes` kaldırıldı). `GET` yalnız görevi gören kullanıcıya, değişmez önbellek başlığıyla.
    - **Zamanlayıcı:** `Workers/TaskSchedulerWorker` dakikada bir `RunSchedulerAsync`: seri örnekleri (sunucu
      kapalı kaldıysa birikmiş örnek değil **tek** örnek), ileri tarihli başlangıçlar, bitiş uyarıları, 30 günlük
      temizlik (silinen görevin resimleri, silinen resimler, eski `opId`'ler). Seri saatleri `Europe/Istanbul`
@@ -1374,18 +1375,20 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `RolePermissions.CanManageCustomerCatalog`. Bildirim türü `UserNotificationKinds.CatalogOrderNew = "CATALOG_ORDER_NEW"`.
    - **Yapılandırma** `CustomerCatalog/CustomerCatalogOptions` (`CustomerCatalog` bölümü): `PublicHost` (boş = katalog hiçbir yerde
      sunulmaz), `PublicBaseUrl`, `TokenDays` 30, `SessionHours` 12, `MaxImageBytesLarge` 1 MB, `MaxImageBytesSmall` 200 KB,
-     `MaxImagesPerProduct` 8, `TenantImageQuotaBytes` 1 GB, `MaxOpenOrders` 20, `MaxOrderLines` 200, `WebRoot` `wwwroot/katalog`.
+     `MaxImagesPerProduct` 8, `MaxOpenOrders` 20, `MaxOrderLines` 200, `WebRoot` `wwwroot/katalog`.
      `docker-compose.coolify.yml` `CustomerCatalog__PublicHost`, `CustomerCatalog__PublicBaseUrl`, `ForwardedHeaders__KnownNetworks__0`
      değişkenlerini boş varsayılanla geçirir (Coolify'da doldurulur, D3).
    - **Firma kodu güvencesi:** `MobileSeatService.EnsureTenantCodeAsync` — kodu olmayan firmaya (hiç koltuk almamış olabilir) ilk
      okumada 8 karakterlik kod üretir; yalnız kod hâlâ boşsa yazar, eşzamanlı iki okuma aynı kodu döner.
-   - **Görseller (S5)** `Endpoints/CustomerCatalogImageEndpoints` + `CustomerCatalog/CatalogImages`: baytlar PostgreSQL'de
-     (`catalog_image_blobs`, iki varyant); sunucuda görsel kütüphanesi yok — küçültmeyi gönderen yapar, sunucu yalnız bayt sınırını,
+   - **Görseller (S5)** `Endpoints/CustomerCatalogImageEndpoints` + `CustomerCatalog/CatalogImages`: baytlar 2026-10-01'den beri
+     merkezi dosya deposunda (R2, kural 37 "Katalog görseli ve banner"); öncesinde yüklenenler S10 göçüne kadar PostgreSQL'de
+     (`catalog_image_blobs`, iki varyant). Kota firmanın tek depolama kotasıdır (`TenantImageQuotaBytes` kaldırıldı). Katalog görseli
+     için küçültmeyi gönderen yapar, sunucu yalnız bayt sınırını,
      sihirli baytı (`Storage/ImageBytes.LooksLike`, kural 37) denetler ve üst veriyi kütüphanesiz atar (`ImageBytes.StripMetadata`: JPEG APP1
      EXIF/XMP; PNG `eXIf`/`tEXt`/`iTXt`/`zTXt` parçaları — CRC parça başına olduğu için kalanlar geçerli; WebP `EXIF`/`XMP `
      parçaları, VP8X bayraklarından 0x08/0x04 silinir, RIFF boyu yeniden yazılır; okunamayan dosya olduğu gibi kalır). JPEG yön
      bilgisi EXIF'le gider: telefon ve panel görseli zaten döndürüp yeniden kodlayarak gönderir. Bağlantı görseli hiç indirilmez.
-     Görsel yazımları `WriteLayoutAsync(..., pictures: true)` ile aynı `catalog_settings` satır kilidinden geçer (kota yarışı yok)
+     Görsel yazımları `WriteLayoutAsync(..., pictures: true)` ile aynı `catalog_settings` satır kilidinden geçer
      ama düzen `Revision`'ını değil **`ImageRevision`**'ı artırır (migration `KatalogGorselSayaci`): görsel yüklemesi panelin
      `Katalog.razor`'ında ya da telefonda açık düzen düzenlemesini `409 CATALOG_CHANGED`'e düşürmez; değişiklik yoksa sayaç artmaz.
      `CatalogViewService` önbelleği `StockVersion` + `Revision` + `ImageRevision`'a bakar; müşteri isteği yenileme aralığında (5 sn)
@@ -1528,10 +1531,13 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
 
-37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1, S2, S8, 2026-10-01).**
-   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Bu kural temeli anlatır; katalog/banner (S3), görev (S4),
-   gider/araç fişi (S5), ürün fotoğrafı (S6), XML eşitleyici (S7), temizlik (S9) ve bytea göçü (S10) bu temeli kullanacak — o işlere
-   kadar mevcut katalog ve görev resimleri PostgreSQL bytea'sında kalır.
+37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1–S6, S8, 2026-10-01).**
+   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5), ürün fotoğrafı (S6); XML eşitleyici (S7), temizlik
+   (S9) ve bytea göçü (S10) bu temeli kullanacak — göçe kadar depodan önce yüklenen resimler PostgreSQL bytea'sında kalır ve okunur.
+   - **Kayıtlar dosyaya `StoredFile*Id` ile bağlanır, yabancı anahtar yok** (migration `DepolamaAlanlari`): defter satırı deponun kendi
+     yaşamıyla (çöp, kalıcı silme) gider, sahip kaydıyla değil; "yetim" = hiçbir kaydın göstermediği dosya (S9), bağlantı sütunları
+     bu sorgu için indekslidir. Sahip kaydı silinince dosyalar işlem **sonrası** `FileStore.TrashAllAsync` (kullanıcı silmesi) ya da
+     `PurgeAllAsync` (kimsenin geri almayacağı: değiştirilen boyut, kayıtsız kalmış yükleme) ile gider; ikisi de hatayı loglar, fırlatmaz.
    - **Depo Cloudflare R2, iki kova:** herkese açık (`product`, `xml`, `catalog`, `banner`; `Storage:PublicBaseUrl` =
      `https://img.appsgo.cloud`) ve kimliğe bağlı (`task`, `expense`, `vehicle`). Kova alandan çıkar (`StorageAreas.BucketOf`), çağıranın
      seçimi değildir: R2'de erişim kova düzeyinde açıldığı için özel dosya herkese açık kovaya giremez. Nesne anahtarı
@@ -1580,3 +1586,64 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      paralel 20 yükleme, R2 hatası, tür reddi, çöp/geri al/kalıcı silme, `purging` yeniden deneme, yeniden hesap), `StorageFileEndpointRelationalTests`
      (302 yetkisi, 404'ler, alan kuralı, depo ayarsızken 503), `StorageUsageRelationalTests` (kullanım, Admin kota/yeniden hesap, günlük
      geçiş, kilitli yetki), `ImageProcessorTests`, `R2ObjectStoreTests` (çevrimdışı imzalı adres); Admin `TenantMobilePageTests`.
+   - **Katalog görseli ve banner (S3)** `Endpoints/CustomerCatalogImageEndpoints`, `CustomerCatalogBannerEndpoints`: uç yolları ve
+     yanıt biçimi aynı. `PUT images/{id}/{s|l}` baytı denetleyip `FileStore.PutAsync` ile yazar (alan `catalog`; `StockCode == "~banner"`
+     → `banner`; `OwnerType` `catalog_image`, `OwnerKey` görselin kimliği, varyant `s`/`l`), **sonra** görsel kilidinde
+     (`WriteLayoutAsync(pictures: true)`) `catalog_images.StoredFileSmallId/LargeId`'ye bağlar; aynı boyutun eski PostgreSQL baytı
+     (`catalog_image_blobs`) silinir, eski depolanmış dosyası işlem sonrası `PurgeAllAsync` ile **kalıcı** silinir (kimse silmedi,
+     geri alınacak bir şey yok; yeni bayt için önce yer gerekir). Görsel kilitte silinmişse yeni dosya da kalıcı silinir. Kullanıcı
+     silmesi (`DELETE images/{id}`, banner'ın artık kullanılmayan görseli) dosyaları `TrashAllAsync` ile **çöpe** atar; bir günlük
+     terk edilmiş banner görselleri kalıcı silinir. Kota aşımı eski `413 CATALOG_IMAGE_QUOTA_EXCEEDED` koduyla, `usedBytes/quotaBytes`
+     eklenerek döner (`CustomerCatalogImageEndpoints.StorageFailure`); depo yoksa `503 STORAGE_UNAVAILABLE` (bytea'ya geri düşülmez).
+     Manifestteki ve `GET settings` `imageQuota`'daki rakamlar `FileStore.QuotaFiguresAsync` (birleşik kota). Adres:
+     `CatalogImages.ThumbUrl/FullUrl(image, CatalogFileUrls)` — depodaki boyut `FileStore.PublicUrl` (`PublicBaseUrl/ObjectKey`;
+     yalnız etkin ve public dosya, `CatalogFileUrls.LoadAsync` tek sorguda çözer), yoksa eski bytea yolu (ikili okuma, T9).
+     `CatalogViewService` (singleton) `IOptions<StorageOptions>` alır. Anonim `GET /api/v1/catalog/img/{id}/{s|l}` depodaki boyut için
+     aynı firma/modül denetiminden sonra 1 saat önbellekli `302` → CDN. Testler `CustomerCatalogImagesRelationalTests`,
+     `CustomerCatalogBannersRelationalTests` (`StorageCentralApiFactory`; `CatalogHostFactory` artık ondan türer).
+   - **Görev eki (S4)** `Tasks/TaskService` (artık `FileStore` alır) + `Endpoints/MobileTaskEndpoints`: yollar ve yanıtlar aynı.
+     `AddAttachmentAsync`: görünürlük/çalışma/adet denetimi → `FileStore.PutAsync` (alan `task`, özel kova, `OwnerType` `task`, `OwnerKey`
+     görevin kimliği, varyant `o`; küçültme yok — telefon ~1600 px gönderir) → görevin işleminde `task_attachments.StoredFileId`. Görev
+     arada silinmişse dosya kalıcı silinir; aynı kimlik yarışında kaybedenin dosyası kalıcı silinir, kazananın eki döner. Kota aşımı eski
+     `413 TASK_ATTACHMENT_QUOTA` koduyla + `usedBytes/quotaBytes` (`TaskResult.Storage` → `StorageError.ToResult`), depo yoksa `503`.
+     Silme (`DELETE …/attachments/{id}`) dosyayı çöpe atar; 30 günlük zamanlayıcı temizliği silinmiş görevin eklerinin satırlarını
+     silerken dosyalarını çöpe atar. **`GET …/attachments/{id}` yönlendirmez, R2'den akıtır** (`IObjectStore.GetAsync` →
+     `Results.Stream`, `private, max-age=31536000, immutable`): telefon resmi Coil 2.7 ile Bearer + `X-Tenant-Id` başlıklı yükler ve
+     disk önbelleğine güvenir; 302 ile imzalı R2 adresine gitseydi R2 yanıtında bu önbellek başlığı olmazdı (her gösterimde yeniden
+     doğrulama, çevrimdışı boş resim) ve `X-Tenant-Id` R2'ye taşınırdı (OkHttp başka host'a yalnız `Authorization`'ı düşürür). Görev
+     resmi küçüktür, her telefon bir kez indirir. İmzalı yönlendirme genel uçta kalır: `Tasks/TaskPictureReadRule`
+     (`IStoredFileReadRule`, alan `task`) `GET /api/v1/storage/files/{id}`'yi görevi gören herkese açar (`TaskService.CanSeeTaskOfAsync`:
+     dosyanın silinmemiş eki ve görevin görünürlüğü). Eski bytea ekler aynı uçtan okunur. Testler `TaskRelationalTests`
+     (`StorageCentralApiFactory`).
+   - **Gider ve araç fişi (S5)** `Endpoints/MobileExpenseAttachmentEndpoints` + `Expenses/ExpenseReceipts`, tablo `expense_attachments`:
+     `PUT/GET/DELETE /api/v1/android/expenses/{docId}/attachments/{id}` ve `GET …/{docId}/attachments` (görev eki deseni). `docId` telefonun
+     belge kimliği — kasa defteri satırının `K-{uuid}` kimliği, telefon bunu `mobileDocumentId` olarak gönderir ve sunucuda
+     `jobs.ExternalId` olur (gider kartlı ise `expense`, eski telefonda `disbursement`); FK yok, fiş belgeden önce de yüklenebilir.
+     `?kind=expense|vehicle_maintenance` alanı seçer (`expense` / `vehicle`, özel kova), `OwnerType` `expense`, `OwnerKey` belge
+     kimliği. Ham gövde ≤ 2 MB, belge başı 5 fiş, kimlik telefonundur (tekrar = aynı fiş, silinmiş/başka belge `409`). Başkasının
+     belgesine (o belgenin işi ya da ilk fişi başkasınınsa) yalnız `CanSeeAll` fiş ekler (`403 EXPENSE_FORBIDDEN`). Görme
+     (`ExpenseReceipts.CanSee`): yükleyen ya da `CanSeeAll` = `action.storage.manage` ∨ ACCOUNTING rolü ∨ `portal.ledger` ∨
+     `view.expenses.all_users`; silme yalnız yükleyen ya da `action.storage.manage` (çöpe). Görmeyen için her şey aynı
+     `404 EXPENSE_ATTACHMENT_NOT_FOUND`. Kota aşımı yeni kodla `413 STORAGE_QUOTA_EXCEEDED`. `GET` görev eki gibi akıtır
+     (`Storage/StoredFileResults.StreamAsync`, değişmez önbellek); 302 imzalı adres `GET /api/v1/storage/files/{id}` ile
+     (`ExpenseReceiptReadRule`, alan başına bir örnek). Panel: `GET /api/v1/portal/expense-receipts?from&to|documentId` (`Endpoints/PortalExpenseReceiptEndpoints`,
+     yalnız `CanSeeAll`, varsayılan son 30 gün, en çok 92 gün/500 fiş, yükleme gününe göre İstanbul) her fişi `PresignMinutes`'lık
+     imzalı adres ve belgenin işteki özetiyle (`ExpenseReceipts.DocumentsAsync`: tutar, açıklama, karşı taraf, tarih, gider kartı,
+     durum) döner; açarken taze adres `GET /api/v1/storage/files/{id}/link` (`{url, expiresAtMs}`, 302 ile aynı yetki). Panel sayfası
+     `Pages/Fisler.razor` (`/fisler`, Kayıtlar menüsünde "Gider fişleri", `PortalArea.Ledger`). Testler `Storage/ExpenseReceiptRelationalTests`,
+     Portal `PortalReceiptsPageTests`; `StorageTestCompany`'ye panelden giren muhasebe kullanıcısı eklendi.
+   - **Ürün fotoğrafı (S6)** `Endpoints/ProductImageEndpoints`, tablo `product_images`: `POST /api/v1/storage/products/images?stockCode=` ham
+     gövde (JPEG/PNG/WebP, ≤ 10 MB) → sunucu `ImageProcessor.ToWebp(.., [Large, Small])` ile 1280/400 px WebP (EXIF yönü, üst veri yok)
+     → iki `FileStore.PutAsync` (alan `product`, public, `OwnerType` `product`, `OwnerKey` stok kodu, varyant `l`/`s`; ikincisi olmazsa
+     birincisi kalıcı silinir) → satır katalog görsel kilidinde (`WriteLayoutAsync(pictures: true)`; `ImageRevision` artar, ürün başı 8 —
+     `409 PRODUCT_IMAGE_LIMIT`). Aynı ham bayt (SHA-256, UNIQUE `(TenantId, StockCode, SourceSha256)`) aynı fotoğraftır (yeniden deneme
+     güvenli). Stok kodu stoktaki kartın kendi kodudur (büyük/küçük harf duyarsız), kartı olmayan kod olduğu gibi (telefonun çevrimdışı
+     açtığı ürün). `GET ?stockCode=` ve `GET /manifest` (telefonun görsel sırası: firmanın fotoğrafı → XML → yerel kopya) firmanın her
+     kullanıcısına; `PUT /order?stockCode=` ve `DELETE /{id}` (iki dosya çöpe). Yazım yetkisi yeni
+     `PermissionKeys.ProductsPhoto = "action.products.photo"` (ADMIN + MANAGER + SALES, sunucu denetler, **kilitsiz**; `PermissionCatalog.Version`
+     = 4; `RolePermissions.CanEditProductPhotos`) — `action.products.edit` (ERP'siz kart düzenleme, yalnız Admin) bilerek kullanılmadı:
+     fotoğraf ERP kartına dokunmaz, sahada çekilir. Modül gerekmez. Web katalog: `CatalogProduct.ProductPhotos` (görünüm onları da yükler),
+     müşteriye `ShownPictures`/`ShownThumbUrl` — katalog görseli varsa o, yoksa ürün fotoğrafı (`CustomerCatalogPublicEndpoints`, talep
+     detayındaki küçük resim de); katalog yönetimi (`ImageCount`, manifest) yalnız katalog görsellerini sayar. Panel: Stok sayfasında ürün
+     detayına `Shared/ProductPhotos.razor` (küçük resim, büyük resim yeni sekmede, yükleme küçültmeden, "Kapak yap", sil; yetki yoksa
+     yalnız gösterir). Testler `Storage/ProductImageRelationalTests`, Portal `PortalProductPhotosTests`.

@@ -105,7 +105,7 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `task_members`: PK `(TaskId, UserId, Role)`, `Role` ASSIGNEE|FOLLOWER, `UserName(120)` anlık kopya.
   - `task_subtasks`: `Id` (telefon), `TaskId`, `Title(300)`, `IsDone`, `DoneByUserId/Name`, `DoneAtMs`, `AssigneeUserId/Name`, `DueAtMs`, `SortOrder`, `IsDeleted`.
   - `task_comments`: `Id` (telefon), `TenantId`, `TaskId`, `AuthorUserId/Name`, `Text(2000)`, `CreatedAtMs`, `IsDeleted`.
-  - `task_attachments` (meta; `TenantId, IsDeleted` indeksi kota için) + `task_attachment_blobs` (`AttachmentId` PK, `Data` bytea; ek satırı silinince cascade).
+  - `task_attachments` (meta; `TenantId, IsDeleted` indeksi; `StoredFileId?` *(GOAL_DEPOLAMA_R2 S4, migration `DepolamaAlanlari`; FK yok, indeksli)* resmin `stored_files` satırı, null = eski bytea) + `task_attachment_blobs` (`AttachmentId` PK, `Data` bytea; ek satırı silinince cascade; 2026-10-01'den beri yeni satır yazılmaz, S10 göçünden sonra düşürülecek).
   - `task_events`: değişmez geçmiş (`Action(24)` CREATED|UPDATED|MEMBERS_CHANGED|COMPLETED|REOPENED|CANCELLED|DELETED|SUBTASK_*|COMMENTED|PHOTO_*, `ActorUserId` sistemde null, `ActorName`, `Detail(500)`, `OccurredAtMs`).
   - `task_series`: tekrarlayan görev şablonu (başlık, açıklama, öncelik, `RequiresPhoto`, cari, `AssigneesJson`/`FollowersJson` `[{userId,name}]`, `SubtasksJson` başlık dizisi) + kural `Frequency` DAILY|WEEKLY|MONTHLY, `Interval`, `Weekdays` (Pzt=1…Paz=64), `MonthDay`, `TimeOfDayMinutes` (İstanbul), `DueAfterMinutes`, `NextRunAtMs`, `EndsAtMs`, `IsActive`, `UpdatedSeq`.
   - `task_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` — 30 gün sonra silinir.
@@ -144,10 +144,12 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     `CreatedAtMs`, `UpdatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`, `UpdatedByUserId`, `DeletedAtMs` (yumuşak silme). Filtreli UNIQUE `(TenantId, Username)` ve `(TenantId, CustomerCode)`
     `WHERE "DeletedAtMs" IS NULL` — cari başına tek canlı hesap; silinen hesabın adı ve carisi yeniden kullanılabilir.
   - `catalog_images`: `Id` (sunucu üretir), `TenantId`, `StockCode(64)`, `Kind(8)` link|file, `Url(2048)` (yalnız link; sunucu indirmez), `SourceHash(80)` göndericinin özgün parmak izi,
-    `Source(8)` phone|panel, `SortOrder`, `SizeBytes` (iki varyant toplamı; kota bunu toplar), `HasSmall`, `HasLarge`, `ContentType(32)`, `Sha256Small/Large(64)`, `CreatedAtMs`, `CreatedByUserId`.
+    `Source(8)` phone|panel, `SortOrder`, `SizeBytes` (iki varyant toplamı; bilgi amaçlı — kota artık `tenant_storage`), `HasSmall`, `HasLarge`, `ContentType(32)`, `Sha256Small/Large(64)`,
+    `StoredFileSmallId?`/`StoredFileLargeId?` *(GOAL_DEPOLAMA_R2 S3, migration `DepolamaAlanlari`; FK yok, indeksli)* boyutun `stored_files` satırı — null ise boyut `catalog_image_blobs`'ta (eski) ya da yüklenmemiş, `CreatedAtMs`, `CreatedByUserId`.
     UNIQUE `(TenantId, StockCode, SourceHash)` (tekrar yükleme aynı satırı bulur). `~` ile başlayan `StockCode` ürün değildir: `~banner` banner görselidir
     (ürün sınırına, manifeste ve katalog görünümüne girmez; kotaya girer).
-  - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade.
+  - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade. 2026-10-01'den beri yeni bayt
+    yazılmaz (R2'ye gider); boyut yeniden yüklenince satırı silinir. S10 göçünden sonra düşürülecek.
   - `catalog_banners` *(S12, migration `KatalogBannerlari`)*: `Id`, `TenantId`, `Title(120)`, `Text(300)`, `ImageId` null = yalnız metin (FK `catalog_images`
     `SET NULL`; görsel `StockCode = "~banner"`), `LinkType(16)` none|category|product|url, `LinkValue(2048)` kategori anahtarı / kartın stok kodu / https adres,
     `SortOrder`, `IsActive`, `StartsAtMs` null = hemen, `EndsAtMs` null = süresiz (**hariç**: müşteri `StartsAtMs ≤ şimdi < EndsAtMs` görür), `CreatedAtMs`,
@@ -167,6 +169,14 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     `ContentType(32)`, `SizeBytes`, `Sha256(64)`, `OwnerType(32)` + `OwnerKey(128)` (dosyanın bağlı olduğu kayıt), `Status(16)`
     active|trashed|purging, `CreatedAtMs`, `CreatedByUserId?`, `TrashedAtMs?`, `TrashedByUserId?`. İndeks `(TenantId, Area, Status)`,
     `(TenantId, OwnerType, OwnerKey)`, UNIQUE `(Bucket, ObjectKey)`. Yalnız `Storage/FileStore` yazar.
+  - `expense_attachments` *(S5, migration `DepolamaAlanlari`)*: `Id` uuid (telefon üretir), `TenantId` (cascade), `DocumentExternalId(128)`
+    telefonun belge kimliği (`jobs.ExternalId`; FK yok, belge sonra gelebilir), `Kind(24)` expense|vehicle_maintenance, `StoredFileId` (FK yok),
+    `ContentType(32)`, `SizeBytes`, `CreatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`, `IsDeleted`, `DeletedAtMs?`. İndeks
+    `(TenantId, DocumentExternalId)`, `(TenantId, CreatedAtMs)`, `(StoredFileId)`.
+  - `product_images` *(S6, migration `DepolamaAlanlari`)*: `Id` uuid (sunucu), `TenantId` (cascade), `StockCode(64)` (kartın kodu ya da gönderilen), `SortOrder`,
+    `StoredFileSmallId`/`StoredFileLargeId` (400/1280 px WebP, FK yok), `Width`/`Height` (büyük boy), `SizeBytes` (iki boy), `SourceSha256(64)` gönderilen
+    baytın özeti, `CreatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`. İndeks `(TenantId, StockCode, SortOrder)`, UNIQUE `(TenantId, StockCode, SourceSha256)`,
+    `(StoredFileSmallId)`, `(StoredFileLargeId)`.
 
 ---
 

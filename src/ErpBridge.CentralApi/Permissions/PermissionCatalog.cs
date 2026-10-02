@@ -56,8 +56,11 @@ public sealed record PermissionDefinition(
 public static class PermissionCatalog
 {
     /// <summary>Bumped when keys are added or their meaning changes; phones and the portal read it from the session.</summary>
-    /// <remarks>2: <see cref="K.CustomerCatalogManage"/> (GOAL_MUSTERI_KATALOGU). 3: <see cref="K.StorageManage"/> (GOAL_DEPOLAMA_R2).</remarks>
-    public const int Version = 3;
+    /// <remarks>
+    /// 2: <see cref="K.CustomerCatalogManage"/> (GOAL_MUSTERI_KATALOGU). 3: <see cref="K.StorageManage"/> (GOAL_DEPOLAMA_R2).
+    /// 4: <see cref="K.ProductsPhoto"/> (GOAL_DEPOLAMA_R2 S6).
+    /// </remarks>
+    public const int Version = 4;
 
     /// <summary>The roles whose template a company may change (ADMIN is fixed at everything).</summary>
     public static readonly IReadOnlyList<string> EditableRoles = [R.Manager, R.Sales, R.Warehouse, R.Accounting];
@@ -142,6 +145,8 @@ public static class PermissionCatalog
             Flag(K.SuspendedSalesManageOthers, PermissionGroup.Actions, "Başkasının bekleyen satışını siler", "Başkasının beklettiği satışı iptal etme ya da değiştirme.", managers, server: true),
             Flag(K.WarehouseManage, PermissionGroup.Actions, "Depo yönetimi", "Sipariş iptali, yeniden atama, başkasının adımını geri alma, depo ayarları.", managers, server: true),
             Flag(K.ProductsEdit, PermissionGroup.Actions, "Ürün kartı ekler ve düzenler", "ERP'siz firmada ürün kartı açma, değiştirme ve silme.", admin, server: true),
+            Flag(K.ProductsPhoto, PermissionGroup.Actions, "Ürün fotoğrafı ekler",
+                "Ürüne fotoğraf çekme ya da yükleme, sıralama ve silme. Yalnız görseli değiştirir, ürün kartına dokunmaz; ERP'li firmada da çalışır.", field, server: true),
             Flag(K.CustomersEdit, PermissionGroup.Actions, "Cari kartı ekler ve düzenler", "ERP'siz firmada müşteri kartı açma ve değiştirme.", field),
             Flag(K.MasterDataImport, PermissionGroup.Actions, "Excel ile toplu aktarım", "Ürün ve carileri Excel'den içe alma.", admin),
             Flag(K.NativeBooksEdit, PermissionGroup.Actions, "Belge ve hesap düzeltme", "ERP'siz firmada panelden belge, ödeme ve cari hareketi düzeltme veya iptal.", admin, server: true),

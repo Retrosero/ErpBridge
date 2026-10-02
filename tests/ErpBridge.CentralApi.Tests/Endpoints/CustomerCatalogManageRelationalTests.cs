@@ -46,6 +46,8 @@ public sealed class CustomerCatalogManageRelationalTests : IClassFixture<SqliteC
         await SeedAsync(_factory, db =>
         {
             db.CatalogImages.Add(new CatalogImage { TenantId = c.Id, StockCode = "A", SourceHash = "x", SizeBytes = 1234, HasLarge = true, CreatedAtMs = now });
+            // "Görsel kotası" is the company's one storage quota (GOAL_DEPOLAMA_R2): its counter, every area.
+            db.TenantStorage.Add(new TenantStorage { TenantId = c.Id, UsedBytes = 5678, QuotaBytes = 2L << 30, UpdatedAtMs = now });
             db.CatalogOrders.Add(new CatalogOrder
             {
                 Id = Guid.NewGuid(), TenantId = c.Id, AccountId = Guid.NewGuid(), CustomerCode = "C1", CustomerName = "Yılmaz", AccountUsername = "y",
@@ -64,7 +66,7 @@ public sealed class CustomerCatalogManageRelationalTests : IClassFixture<SqliteC
         settings.DefaultPriceListNo.Should().BeNull();
         settings.EffectiveDefaultPriceListNo.Should().Be(1);
         settings.PriceLists.Select(l => (l.No, l.Name, l.IncludesVat)).Should().Equal((1, "Perakende", true), (2, "Bayi", false));
-        settings.ImageQuota.Should().BeEquivalentTo(new CatalogImageQuotaDto { UsedBytes = 1234, LimitBytes = 1L << 30 });
+        settings.ImageQuota.Should().BeEquivalentTo(new CatalogImageQuotaDto { UsedBytes = 5678, LimitBytes = 2L << 30 });
         settings.Counts.Should().BeEquivalentTo(new CatalogCountsDto { Categories = 3, Products = 3, VisibleProducts = 3, Accounts = 0, OpenOrders = 1 });
         (await ReadAsync(_factory, db => db.Tenants.AsNoTracking().SingleAsync(t => t.Id == c.Id))).Code.Should().Be(settings.TenantCode);
     }

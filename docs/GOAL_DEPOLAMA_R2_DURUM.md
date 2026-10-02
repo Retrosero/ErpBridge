@@ -11,14 +11,14 @@ R2 API anahtarı değerlerini görmek/girmek (kullanıcı girer).
 | # | Görev | Durum | PR | Not |
 |---|---|---|---|---|
 | D0 | R2 kovaları + `img.appsgo.cloud` | 🔄 | | Kovalar ve alan adı hazır; API anahtarı + Coolify sırları kullanıcıda |
-| S1 | `FileStore`, `stored_files`, `tenant_storage`, R2 istemcisi | ⬜ | | |
-| S2 | SkiaSharp küçültme/WebP | ⬜ | | |
-| S3 | Katalog + banner → R2 | ⬜ | | |
-| S4 | Görev eki → R2 (özel kova) | ⬜ | | |
-| S5 | Gider/araç fişi | ⬜ | | |
-| S6 | Ürün fotoğrafı | ⬜ | | |
+| S1 | `FileStore`, `stored_files`, `tenant_storage`, R2 istemcisi | ✅ | #237 | R2 istemcisi, `FileStore`, defter, satır kilitli kota; aynı kova adı reddedilir; kalıcı silme yarışı kapalı |
+| S2 | SkiaSharp küçültme/WebP | ✅ | #237 | SkiaSharp `ImageProcessor` (1280/400, banner 1920×720/800×300 WebP) |
+| S3 | Katalog + banner → R2 | ✅ | bu PR | Katalog görseli ve banner `FileStore`'da; bytea okuma S10'a kadar ikili |
+| S4 | Görev eki → R2 (özel kova) | ✅ | bu PR | Görev eki özel kovada; GET sunucu akıtır |
+| S5 | Gider/araç fişi | ✅ | bu PR | `expense_attachments`, fiş uçları, panel `/fisler` |
+| S6 | Ürün fotoğrafı | ✅ | bu PR | `product_images`, `action.products.photo`, panel Stok > Fotoğraflar, katalogda yedek görsel |
 | S7 | XML görsel eşitleyici (değişen/silinen izlenir) | ⬜ | | |
-| S8 | Kota/kullanım + Admin | ⬜ | | |
+| S8 | Kota/kullanım + Admin | ✅ | #237 | `GET /api/v1/storage/usage`, Admin kota kartı (0 GB dahil), günlük sayaç hesabı |
 | S9 | Temizlik + bakım işi | ⬜ | | |
 | S10 | Bytea → R2 göçü | ⬜ | | |
 | P1–P3 | Panel + Admin | ⬜ | | |

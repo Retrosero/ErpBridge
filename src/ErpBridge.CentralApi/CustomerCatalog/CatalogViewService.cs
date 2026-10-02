@@ -5,9 +5,11 @@ using System.Text;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Portal;
+using ErpBridge.CentralApi.Storage;
 using ErpBridge.CentralApi.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace ErpBridge.CentralApi.CustomerCatalog;
 
@@ -32,6 +34,14 @@ public sealed record CatalogProduct(
     public bool CartonOnly => CartonOnlySetting && EffectiveCartonQuantity >= 2;
 
     public string? ThumbUrl => Pictures.Count > 0 ? Pictures[0].ThumbUrl : null;
+
+    /// <summary>The company's own product photos (GOAL_DEPOLAMA_R2 S6), in their order; not catalog pictures.</summary>
+    public IReadOnlyList<CatalogPicture> ProductPhotos { get; init; } = [];
+
+    /// <summary>What a customer sees: the catalog pictures, or the product photos when the catalog has none.</summary>
+    public IReadOnlyList<CatalogPicture> ShownPictures => Pictures.Count > 0 ? Pictures : ProductPhotos;
+
+    public string? ShownThumbUrl => ShownPictures.Count > 0 ? ShownPictures[0].ThumbUrl : null;
 
     /// <summary>The price in one list; null when the product has none there (the customer of that list does not see it).</summary>
     public decimal? PriceIn(int? listNo) => listNo is { } no && Prices.TryGetValue(no, out var price) ? price : null;
@@ -99,7 +109,8 @@ public sealed record CatalogView(
 /// while the cached view is that fresh and its revisions are the stored ones, a customer request takes it without
 /// waiting for the company's build lock (one row read).
 /// </summary>
-public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
+/// <param name="storage">The CDN address of pictures in the central file store; none in tests that do not store pictures.</param>
+public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IOptions<StorageOptions>? storage = null)
 {
     public static readonly TimeSpan CustomerRefreshInterval = TimeSpan.FromSeconds(5);
 
@@ -180,7 +191,11 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
         // Banner pictures (and any other reserved "~" key) are not a product's.
         var images = await db.CatalogImages.AsNoTracking()
             .Where(i => i.TenantId == tenantId && !i.StockCode.StartsWith(CatalogBanners.ReservedPrefix)).ToListAsync(ct);
-        var view = Compose(stock, settings, categoryRows, productRows, images);
+        // The company's product photos (S6) stand in for a product without catalog pictures; their writes move ImageRevision too.
+        var photos = await db.ProductImages.AsNoTracking().Where(i => i.TenantId == tenantId).ToListAsync(ct);
+        var urls = await CatalogFileUrls.LoadAsync(db, storage?.Value ?? new StorageOptions(), tenantId,
+            images.SelectMany(CatalogImages.StoredFileIds).Concat(photos.SelectMany(p => new[] { p.StoredFileSmallId, p.StoredFileLargeId })), ct);
+        var view = Compose(stock, settings, categoryRows, productRows, images, photos, urls);
         cache.Set(key, view, new MemoryCacheEntryOptions { SlidingExpiration = Idle });
         return view;
     }
@@ -250,18 +265,25 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
     }
 
     private static CatalogView Compose(
-        StockSide stock, CatalogSettings? settings, List<CatalogCategorySetting> categoryRows, List<CatalogProductSetting> productRows, List<CatalogImage> images)
+        StockSide stock, CatalogSettings? settings, List<CatalogCategorySetting> categoryRows, List<CatalogProductSetting> productRows, List<CatalogImage> images,
+        List<ProductImage> photos, CatalogFileUrls urls)
     {
         var categorySettings = categoryRows.ToDictionary(r => r.CategoryKey, StringComparer.Ordinal);
         var productSettings = productRows.ToDictionary(r => r.StockCode, StringComparer.OrdinalIgnoreCase);
         var pictures = images
-            .Select(i => (Image: i, Thumb: CatalogImages.ThumbUrl(i), Full: CatalogImages.FullUrl(i)))
+            .Select(i => (Image: i, Thumb: CatalogImages.ThumbUrl(i, urls), Full: CatalogImages.FullUrl(i, urls)))
             .Where(x => x.Thumb is not null && x.Full is not null)
             .GroupBy(x => x.Image.StockCode, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
                 g => (IReadOnlyList<CatalogPicture>)[.. g.OrderBy(x => x.Image.SortOrder).ThenBy(x => x.Image.CreatedAtMs).ThenBy(x => x.Image.Id)
                     .Select(x => new CatalogPicture(x.Image.Id, x.Thumb!, x.Full!))],
+                StringComparer.OrdinalIgnoreCase);
+        var productPhotos = ProductImage.InOrder(photos)
+            .Select(p => (Photo: p, Thumb: urls.Of(p.StoredFileSmallId), Full: urls.Of(p.StoredFileLargeId)))
+            .Where(x => x.Thumb is not null && x.Full is not null)
+            .GroupBy(x => x.Photo.StockCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<CatalogPicture>)[.. g.Select(x => new CatalogPicture(x.Photo.Id, x.Thumb!, x.Full!))],
                 StringComparer.OrdinalIgnoreCase);
 
         var products = new Dictionary<string, CatalogProduct>(stock.Products.Count, StringComparer.OrdinalIgnoreCase);
@@ -271,7 +293,10 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time)
             products[p.Code] = new CatalogProduct(
                 p.Code, p.Name, p.Unit, p.Brand, p.Barcodes, p.CategoryKey, p.VatRate, p.Prices, p.InStock, p.ErpCartonQuantity,
                 setting?.SortOrder, setting?.IsHidden ?? false, setting?.NoDiscount ?? false, setting?.CartonQuantity, setting?.CartonOnly ?? false,
-                pictures.GetValueOrDefault(p.Code) ?? []);
+                pictures.GetValueOrDefault(p.Code) ?? [])
+            {
+                ProductPhotos = productPhotos.GetValueOrDefault(p.Code) ?? [],
+            };
         }
 
         var categories = products.Values

@@ -126,7 +126,8 @@ else
         <MudPaper Outlined="true" Class="panel mt-3" id="catalog-quota">
             <div class="progress-block">
                 <div class="progress-label">
-                    <span>Görsel kotası</span>
+                    @* The company's one storage quota (GOAL_DEPOLAMA_R2): pictures, task photos, receipts together. *@
+                    <span title="Firmanın bütün dosyaları (katalog, ürün, görev, fiş) bu kotayı paylaşır.">Görsel kotası (firma depolaması)</span>
                     <strong>@Bytes(settings.ImageQuota.UsedBytes) / @Bytes(settings.ImageQuota.LimitBytes)</strong>
                 </div>
                 <MudProgressLinear Color="@(QuotaPercent(settings) >= 90 ? Color.Error : Color.Primary)" Value="@QuotaPercent(settings)" Rounded="true" Size="Size.Medium" />

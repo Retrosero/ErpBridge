@@ -3,6 +3,7 @@ using ErpBridge.CentralApi.Contracts;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Notifications;
+using ErpBridge.CentralApi.Storage;
 using ErpBridge.CentralApi.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -17,8 +18,23 @@ public sealed record TaskResult<T>(T? Value, int StatusCode, ApiError? Error)
     public static TaskResult<T> Fail(int status, string code, string message) =>
         new(default, status, new ApiError { ErrorCode = code, Message = message });
 
+    /// <summary>A file store refusal; over the quota it carries the company figures (<see cref="StorageErrorResponse"/>).</summary>
+    public static TaskResult<T> Fail(StorageError error) => new(default, error.Status, new ApiError { ErrorCode = error.Code, Message = error.Message })
+    {
+        Storage = error,
+    };
+
     public bool Succeeded => Error is null;
+
+    /// <summary>Set when the refusal came from the central file store.</summary>
+    public StorageError? Storage { get; init; }
 }
+
+/// <summary>
+/// A task picture to send: the bytes of one uploaded before the central file store (<see cref="Data"/>), or the stored
+/// file (<see cref="File"/>) the endpoint streams from R2.
+/// </summary>
+public sealed record TaskAttachmentContent(byte[]? Data, StoredFile? File, string ContentType);
 
 /// <summary>
 /// Tasks and the in-app notifications they produce (docs/GOAL_GOREVLER.md).
@@ -49,13 +65,21 @@ public sealed class TaskService
 
     private const string SystemActor = "Sistem";
 
+    /// <summary><c>stored_files.OwnerType</c> of a task picture; the owner key is the task's id.</summary>
+    public const string StoredFileOwnerType = "task";
+
+    /// <summary>The tasks' own "over the quota" code, kept for older phones (now the company's one storage quota).</summary>
+    public const string QuotaExceededCode = "TASK_ATTACHMENT_QUOTA";
+
     private readonly ITenantEventHub _events;
     private readonly TaskOptions _options;
+    private readonly FileStore _files;
 
-    public TaskService(ITenantEventHub events, IOptions<TaskOptions> options)
+    public TaskService(ITenantEventHub events, IOptions<TaskOptions> options, FileStore files)
     {
         _events = events;
         _options = options.Value;
+        _files = files;
     }
 
     public TaskOptions Options => _options;
@@ -642,6 +666,12 @@ public sealed class TaskService
 
     // ---- attachments ------------------------------------------------------------------------
 
+    /// <summary>
+    /// A picture on a task, into the central file store's private bucket (GOAL_DEPOLAMA_R2 S4: area <c>task</c>, owner the
+    /// task). The checks come first, then the file (the store reserves the company quota and commits on its own), then the
+    /// attachment row in the task's transaction. Over the quota: the old <c>413 TASK_ATTACHMENT_QUOTA</c> code (older phones
+    /// look for it) with the company figures; the store unreachable: <c>503 STORAGE_UNAVAILABLE</c>, never PostgreSQL.
+    /// </summary>
     public async Task<TaskResult<TaskAttachmentDto>> AddAttachmentAsync(
         CentralApiDbContext db, Tenant tenant, MobileUser user, Guid taskId, Guid attachmentId, string? contentType, byte[] data, CancellationToken ct)
     {
@@ -659,19 +689,29 @@ public sealed class TaskService
                 : TaskResult<TaskAttachmentDto>.Fail(409, "TASK_ATTACHMENT_EXISTS", "Bu kimlikle başka bir resim var.");
         }
 
-        var now = NowMs();
-        var task = await LoadAsync(db, tenant.Id, taskId, tracking: true, ct);
-        if (task is null || task.IsDeleted || !CanSee(task, user, now))
+        var seen = await LoadAsync(db, tenant.Id, taskId, tracking: false, ct);
+        if (seen is null || seen.IsDeleted || !CanSee(seen, user, NowMs()))
             return TaskResult<TaskAttachmentDto>.Fail(404, "TASK_NOT_FOUND", "Görev bulunamadı.");
-        if (!CanWork(task, user))
+        if (!CanWork(seen, user))
             return TaskResult<TaskAttachmentDto>.Fail(403, "TASK_FORBIDDEN", "Bu göreve resim ekleyemezsiniz.");
         var count = await db.WorkTaskAttachments.CountAsync(a => a.TaskId == taskId && !a.IsDeleted, ct);
         if (count >= _options.MaxAttachmentsPerTask)
             return TaskResult<TaskAttachmentDto>.Fail(409, "TASK_ATTACHMENT_LIMIT", $"Bir göreve en çok {_options.MaxAttachmentsPerTask} resim eklenebilir.");
-        var used = await db.WorkTaskAttachments.Where(a => a.TenantId == tenant.Id && !a.IsDeleted).SumAsync(a => (long)a.SizeBytes, ct);
-        if (used + data.Length > _options.TenantAttachmentQuotaBytes)
-            return TaskResult<TaskAttachmentDto>.Fail(413, "TASK_ATTACHMENT_QUOTA", "Firmanın resim depolama alanı doldu; eski görevlerin resimlerini silin.");
 
+        var stored = await _files.PutAsync(tenant.Id, StorageAreas.Task, StoredFileOwnerType, taskId.ToString("D"), StoredFileVariants.Original, type, data, user.Id, ct);
+        if (!stored.Succeeded)
+        {
+            var error = stored.Error!;
+            return TaskResult<TaskAttachmentDto>.Fail(error.Code switch
+            {
+                StorageErrors.QuotaExceededCode => error with { Code = QuotaExceededCode },
+                StorageErrors.InvalidImageCode => error with { Code = "TASK_ATTACHMENT_TYPE" },
+                _ => error,
+            });
+        }
+        var file = stored.Value!;
+
+        var now = NowMs();
         var attachment = new WorkTaskAttachment
         {
             Id = attachmentId,
@@ -679,24 +719,47 @@ public sealed class TaskService
             TaskId = taskId,
             UploadedByUserId = user.Id,
             UploadedByName = Clip(user.FullName, 120),
-            ContentType = type,
-            SizeBytes = data.Length,
+            ContentType = file.ContentType,
+            SizeBytes = (int)file.SizeBytes,
             CreatedAtMs = now,
+            StoredFileId = file.Id,
         };
-        await using (var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null)
+        try
         {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var task = await LoadAsync(db, tenant.Id, taskId, tracking: true, ct);
+            if (task is null || task.IsDeleted)
+            {
+                // Deleted while the picture went up: the picture goes with it.
+                await transaction.RollbackAsync(ct);
+                db.ChangeTracker.Clear();
+                await _files.PurgeAllAsync(tenant.Id, [file.Id], ct);
+                return TaskResult<TaskAttachmentDto>.Fail(404, "TASK_NOT_FOUND", "Görev bulunamadı.");
+            }
             db.WorkTaskAttachments.Add(attachment);
-            db.WorkTaskAttachmentBlobs.Add(new WorkTaskAttachmentBlob { AttachmentId = attachmentId, Data = data });
             task.UpdatedSeq = await NextSeqAsync(db, tenant.Id, ct);
             task.UpdatedAtMs = now;
             db.WorkTaskEvents.Add(new WorkTaskEvent { TenantId = tenant.Id, TaskId = taskId, Action = WorkTaskActions.PhotoAdded, ActorUserId = user.Id, ActorName = Clip(user.FullName, 120), OccurredAtMs = now });
             await db.SaveChangesAsync(ct);
-            if (transaction is not null) await transaction.CommitAsync(ct);
+            await transaction.CommitAsync(ct);
         }
+        catch (DbUpdateException)
+        {
+            // The same id sent twice at the same moment: the one that landed is the answer, this file is nobody's.
+            db.ChangeTracker.Clear();
+            await _files.PurgeAllAsync(tenant.Id, [file.Id], ct);
+            var landed = await db.WorkTaskAttachments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == attachmentId, ct);
+            if (landed is null) throw;
+            return landed.TenantId == tenant.Id && landed.TaskId == taskId && !landed.IsDeleted
+                ? TaskResult<TaskAttachmentDto>.Ok(ToDto(landed))
+                : TaskResult<TaskAttachmentDto>.Fail(409, "TASK_ATTACHMENT_EXISTS", "Bu kimlikle başka bir resim var.");
+        }
+        db.ChangeTracker.Clear();
         Notify(tenant.Id);
         return TaskResult<TaskAttachmentDto>.Ok(ToDto(attachment));
     }
 
+    /// <summary>The picture is marked deleted; its stored file goes to the trash (a user's delete: restorable for the trash period).</summary>
     public async Task<TaskResult<bool>> DeleteAttachmentAsync(CentralApiDbContext db, Tenant tenant, MobileUser user, Guid taskId, Guid attachmentId, CancellationToken ct)
     {
         var now = NowMs();
@@ -716,22 +779,46 @@ public sealed class TaskService
             await db.SaveChangesAsync(ct);
             if (transaction is not null) await transaction.CommitAsync(ct);
         }
+        db.ChangeTracker.Clear();
+        if (attachment.StoredFileId is { } file) await _files.TrashAllAsync(tenant.Id, [file], user.Id, ct);
         Notify(tenant.Id);
         return TaskResult<bool>.Ok(true);
     }
 
-    public async Task<TaskResult<(byte[] Data, string ContentType)>> ReadAttachmentAsync(
+    /// <summary>
+    /// A picture for whoever sees the task: its stored file, or the bytes of one uploaded before the central store (read
+    /// until the move, S10). Not found alike for a task the user does not see, a deleted picture and one whose file is gone.
+    /// </summary>
+    public async Task<TaskResult<TaskAttachmentContent>> ReadAttachmentAsync(
         CentralApiDbContext db, Guid tenantId, MobileUser user, Guid taskId, Guid attachmentId, CancellationToken ct)
     {
         var task = await LoadAsync(db, tenantId, taskId, tracking: false, ct);
         if (task is null || !CanSee(task, user, NowMs()))
-            return TaskResult<(byte[], string)>.Fail(404, "TASK_NOT_FOUND", "Görev bulunamadı.");
+            return TaskResult<TaskAttachmentContent>.Fail(404, "TASK_NOT_FOUND", "Görev bulunamadı.");
         var attachment = await db.WorkTaskAttachments.AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == attachmentId && a.TaskId == taskId && a.TenantId == tenantId && !a.IsDeleted, ct);
+        if (attachment?.StoredFileId is { } fileId)
+        {
+            return await _files.FindAsync(tenantId, fileId, ct) is { Status: StoredFileStatuses.Active } file
+                ? TaskResult<TaskAttachmentContent>.Ok(new TaskAttachmentContent(null, file, file.ContentType))
+                : TaskResult<TaskAttachmentContent>.Fail(404, "TASK_ATTACHMENT_NOT_FOUND", "Resim bulunamadı.");
+        }
         var blob = attachment is null ? null : await db.WorkTaskAttachmentBlobs.AsNoTracking().FirstOrDefaultAsync(x => x.AttachmentId == attachmentId, ct);
         return blob is null
-            ? TaskResult<(byte[], string)>.Fail(404, "TASK_ATTACHMENT_NOT_FOUND", "Resim bulunamadı.")
-            : TaskResult<(byte[], string)>.Ok((blob.Data, attachment!.ContentType));
+            ? TaskResult<TaskAttachmentContent>.Fail(404, "TASK_ATTACHMENT_NOT_FOUND", "Resim bulunamadı.")
+            : TaskResult<TaskAttachmentContent>.Ok(new TaskAttachmentContent(blob.Data, null, attachment!.ContentType));
+    }
+
+    /// <summary>
+    /// Whether <paramref name="user"/> sees the task a stored task picture belongs to (<see cref="TaskPictureReadRule"/>):
+    /// the redirect endpoint opens it to everyone who may open the task, not only its uploader and managers.
+    /// </summary>
+    public static async Task<bool> CanSeeTaskOfAsync(CentralApiDbContext db, MobileUser user, StoredFile file, CancellationToken ct)
+    {
+        if (file.OwnerType != StoredFileOwnerType || !Guid.TryParse(file.OwnerKey, out var taskId)) return false;
+        if (!await db.WorkTaskAttachments.AsNoTracking().AnyAsync(a => a.StoredFileId == file.Id && a.TaskId == taskId && !a.IsDeleted, ct)) return false;
+        var task = await LoadAsync(db, file.TenantId, taskId, tracking: false, ct);
+        return task is not null && CanSee(task, user, NowMs());
     }
 
     // ---- scheduler --------------------------------------------------------------------------
@@ -869,15 +956,26 @@ public sealed class TaskService
         await db.SaveChangesAsync(ct);
     }
 
+    /// <remarks>
+    /// The stored files of the attachment rows removed here go to the trash (a deleted task's pictures, 30 days on —
+    /// GOAL_DEPOLAMA_R2 §4); a picture deleted on its own is there already.
+    /// </remarks>
     private async Task<int> PurgeAsync(CentralApiDbContext db, long nowMs, CancellationToken ct)
     {
         if (!db.Database.IsRelational()) return 0;
         var cutoff = nowMs - _options.PurgeAfterDays * 24L * 60 * 60 * 1000;
         var deletedTasks = db.WorkTasks.Where(t => t.IsDeleted && t.DeletedAtMs != null && t.DeletedAtMs < cutoff).Select(t => t.Id);
-        var removed = await db.WorkTaskAttachments
-            .Where(a => (a.IsDeleted && a.DeletedAtMs != null && a.DeletedAtMs < cutoff) || deletedTasks.Contains(a.TaskId))
-            .ExecuteDeleteAsync(ct);
+        var expired = db.WorkTaskAttachments
+            .Where(a => (a.IsDeleted && a.DeletedAtMs != null && a.DeletedAtMs < cutoff) || deletedTasks.Contains(a.TaskId));
+        var files = await expired.Where(a => a.StoredFileId != null).Select(a => new { a.TenantId, FileId = a.StoredFileId!.Value }).ToListAsync(ct);
+        var removed = await expired.ExecuteDeleteAsync(ct);
         removed += await db.WorkTaskOpsApplied.Where(a => a.AppliedAtMs < cutoff).ExecuteDeleteAsync(ct);
+        if (files.Count > 0)
+        {
+            db.ChangeTracker.Clear();
+            foreach (var tenant in files.GroupBy(f => f.TenantId))
+                await _files.TrashAllAsync(tenant.Key, tenant.Select(f => f.FileId), null, ct);
+        }
         return removed;
     }
 

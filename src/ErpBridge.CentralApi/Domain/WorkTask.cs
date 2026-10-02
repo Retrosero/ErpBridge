@@ -147,7 +147,10 @@ public sealed class WorkTaskComment
     public bool IsDeleted { get; set; }
 }
 
-/// <summary>A picture on a task; the bytes are in <see cref="WorkTaskAttachmentBlob"/> so lists never load them.</summary>
+/// <summary>
+/// A picture on a task. Its file is in the central file store's private bucket (<see cref="StoredFileId"/>, GOAL_DEPOLAMA_R2
+/// S4); one uploaded before the store keeps its bytes in <see cref="WorkTaskAttachmentBlob"/> until the move (S10).
+/// </summary>
 public sealed class WorkTaskAttachment
 {
     public Guid Id { get; set; }
@@ -169,8 +172,12 @@ public sealed class WorkTaskAttachment
     public bool IsDeleted { get; set; }
 
     public long? DeletedAtMs { get; set; }
+
+    /// <summary>The picture's <c>stored_files</c> row (no foreign key: the ledger follows the store's own life); null = old blob.</summary>
+    public Guid? StoredFileId { get; set; }
 }
 
+/// <summary>The bytes of a task picture uploaded before the central file store; no new rows (GOAL_DEPOLAMA_R2 S4).</summary>
 public sealed class WorkTaskAttachmentBlob
 {
     public Guid AttachmentId { get; set; }

@@ -179,12 +179,26 @@ public sealed class CatalogImage
 
     public string? Sha256Large { get; set; }
 
+    /// <summary>
+    /// The small size in the central file store (<c>stored_files</c>, GOAL_DEPOLAMA_R2 S3); null while the size is still
+    /// in <see cref="CatalogImageBlob"/> (uploaded before the store, until the move) or not uploaded at all. No foreign
+    /// key: the ledger's rows come and go with the store's own life (trash, purge), never with this row.
+    /// </summary>
+    public Guid? StoredFileSmallId { get; set; }
+
+    /// <summary>The large size in the central file store; see <see cref="StoredFileSmallId"/>.</summary>
+    public Guid? StoredFileLargeId { get; set; }
+
     public long CreatedAtMs { get; set; }
 
     public Guid? CreatedByUserId { get; set; }
 }
 
-/// <summary>The bytes of one size of a file picture (<c>catalog_image_blobs</c>); deleted with the picture.</summary>
+/// <summary>
+/// The bytes of one size of a file picture uploaded before the central file store (<c>catalog_image_blobs</c>); deleted
+/// with the picture or when that size is uploaded again (then it goes to the store). Read only while the move (S10) is
+/// not done.
+/// </summary>
 public sealed class CatalogImageBlob
 {
     public Guid ImageId { get; set; }

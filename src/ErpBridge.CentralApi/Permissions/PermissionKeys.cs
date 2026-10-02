@@ -52,6 +52,12 @@ public static class PermissionKeys
     public const string SuspendedSalesManageOthers = "action.suspended_sales.manage_others";
     public const string WarehouseManage = "action.warehouse.manage";
     public const string ProductsEdit = "action.products.edit";
+
+    /// <summary>
+    /// A product's photos in the central file store (GOAL_DEPOLAMA_R2 S6): take, upload, order and delete them. Only the
+    /// picture, never the product card, so it works in an ERP company too; not locked.
+    /// </summary>
+    public const string ProductsPhoto = "action.products.photo";
     public const string CustomersEdit = "action.customers.edit";
     public const string MasterDataImport = "action.master_data.import";
     public const string NativeBooksEdit = "action.native_books.edit";

@@ -55,6 +55,13 @@ public sealed partial class FileStore
     /// <summary>The company's quota: its own, else the default.</summary>
     public long QuotaOf(TenantStorage? row) => row?.QuotaBytes ?? _options.DefaultQuotaBytes;
 
+    /// <summary>The company's used bytes (trash included) and quota, as the counter row has them.</summary>
+    public async Task<(long UsedBytes, long QuotaBytes)> QuotaFiguresAsync(Guid tenantId, CancellationToken ct)
+    {
+        var row = await _db.TenantStorage.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
+        return (row?.UsedBytes ?? 0, QuotaOf(row));
+    }
+
     // ---- upload ---------------------------------------------------------------------------------
 
     /// <summary>
@@ -156,10 +163,17 @@ public sealed partial class FileStore
     /// Where a client loads the file: a public file from the CDN domain (<c>Storage:PublicBaseUrl</c>), a private one
     /// through the signed-in redirect endpoint (<c>GET /api/v1/storage/files/{id}</c>, 302 to a short presigned R2 address).
     /// </summary>
-    public string UrlFor(StoredFile file) =>
-        file.Bucket == StorageBuckets.Public && !string.IsNullOrWhiteSpace(_options.PublicBaseUrl)
-            ? $"{_options.PublicBaseUrl.Trim().TrimEnd('/')}/{file.ObjectKey}"
-            : FilePathPrefix + file.Id.ToString("D");
+    public string UrlFor(StoredFile file) => PublicUrl(_options, file.Bucket, file.ObjectKey) ?? FilePathPrefix + file.Id.ToString("D");
+
+    /// <summary>
+    /// The CDN address of an object in the public bucket (<c>Storage:PublicBaseUrl/ObjectKey</c>); null for a private
+    /// object (a quarantined one too, T4) or while no CDN address is set. For a page that shows a public picture
+    /// directly — the catalog, the panel, the phone — without the redirect endpoint.
+    /// </summary>
+    public static string? PublicUrl(StorageOptions options, string bucket, string objectKey) =>
+        bucket == StorageBuckets.Public && !string.IsNullOrWhiteSpace(options.PublicBaseUrl)
+            ? $"{options.PublicBaseUrl.Trim().TrimEnd('/')}/{objectKey}"
+            : null;
 
     // ---- trash, restore, purge ------------------------------------------------------------------
 
@@ -248,6 +262,46 @@ public sealed partial class FileStore
         }
         await _db.StoredFiles.Where(f => f.Id == fileId && f.Status == StoredFileStatuses.Purging).ExecuteDeleteAsync(ct);
         return StorageResult<bool>.Ok(true);
+    }
+
+    /// <summary>
+    /// Trashes the files of a record a user just deleted (restorable for the trash period). Called after the record's own
+    /// commit: the delete has happened, so a file that cannot be trashed now is logged and left to the daily sweep
+    /// (<see cref="StorageMaintenance.TrashUnreferencedAsync"/>), which trashes active files no live record points at.
+    /// </summary>
+    public async Task TrashAllAsync(Guid tenantId, IEnumerable<Guid> fileIds, Guid? userId, CancellationToken ct)
+    {
+        foreach (var id in fileIds.Distinct().ToList())
+        {
+            try
+            {
+                await TrashAsync(tenantId, id, userId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "A deleted record's stored file could not be moved to the trash.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Purges files no record uses any more — a size uploaded again, an upload whose record went meanwhile. Not the trash:
+    /// nobody deleted a picture, there is nothing to restore. A failure is logged and left to the clean-up (S9).
+    /// </summary>
+    public async Task PurgeAllAsync(Guid tenantId, IEnumerable<Guid> fileIds, CancellationToken ct)
+    {
+        foreach (var id in fileIds.Distinct().ToList())
+        {
+            try
+            {
+                var result = await PurgeAsync(tenantId, id, ct);
+                if (!result.Succeeded) _logger.LogWarning("An unused stored file was left for the clean-up: {Code}", result.Error!.Code);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "An unused stored file could not be purged.");
+            }
+        }
     }
 
     public Task<StoredFile?> FindAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>

@@ -1,0 +1,119 @@
+@page "/fisler"
+@inherits PortalPageBase
+
+<PageTitle>Gider fişleri — Yönetim Paneli</PageTitle>
+
+@* GOAL_DEPOLAMA_R2 S5: the receipt photos phones attach to expense and vehicle maintenance documents. The photos are
+   private: each comes with a presigned address for a few minutes, and opening one asks the server for a fresh one. *@
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Gider fişleri" Eyebrow="Kayıtlar" Subtitle="Telefondan eklenen gider ve araç bakım fişleri" Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    <form class="ledger-toolbar" id="receipts-filter" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <label class="inline-field">
+            Başlangıç
+            <input type="date" class="portal-input portal-input--date" id="receipts-from" value="@Fmt.IsoDay(_from)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _from = d; }" />
+        </label>
+        <label class="inline-field">
+            Bitiş
+            <input type="date" class="portal-input portal-input--date" id="receipts-to" value="@Fmt.IsoDay(_to)" disabled="@Busy"
+                   @onchange="e => { if (Fmt.TryIsoDay(e.Value?.ToString(), out var d)) _to = d; }" />
+        </label>
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" id="receipts-search">Süz</MudButton>
+    </form>
+
+    @if (_open is { } open)
+    {
+        <MudPaper Outlined="true" Class="panel receipt-viewer mb-3" id="receipt-viewer">
+            <div class="progress-label mb-2">
+                <strong>@KindLabel(open.Receipt.Kind) · @DocumentTitle(open.Receipt)</strong>
+                <span>
+                    <a href="@open.Url" target="_blank" rel="noopener noreferrer" id="receipt-open-tab">Yeni sekmede aç</a>
+                    <MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" OnClick="() => _open = null" aria-label="Kapat" id="receipt-close" />
+                </span>
+            </div>
+            <img src="@open.Url" alt="Fiş" id="receipt-large" />
+        </MudPaper>
+    }
+
+    @if (_result is not null)
+    {
+        @if (_result.Items.Length == 0)
+        {
+            <EmptyState Id="receipts-empty" Icon="@Icons.Material.Rounded.Receipt" Title="Bu tarihlerde eklenen fiş yok."
+                        Hint="Telefonda gider ya da araç bakımı girerken fotoğraf eklenen fişler burada görünür." />
+        }
+        else
+        {
+            @if (_result.Truncated)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="page-alert" id="receipts-truncated">İlk @_result.Items.Length fiş gösteriliyor; tarih aralığını daraltın.</MudAlert>
+            }
+            <div class="receipt-grid" id="receipts">
+                @foreach (var receipt in _result.Items)
+                {
+                    <div class="receipt-card" data-receipt="@receipt.Id">
+                        <button type="button" class="receipt-thumb" disabled="@Busy" @onclick="() => OpenAsync(receipt)" aria-label="Fişi aç">
+                            @if (receipt.Url is { } url)
+                            {
+                                <img src="@url" alt="Fiş" loading="lazy" />
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Rounded.Receipt" />
+                            }
+                        </button>
+                        <div class="cell-title">@KindLabel(receipt.Kind)@(receipt.Document?.Amount is { } amount ? " · " + Fmt.Money(amount) : null)</div>
+                        <div class="cell-sub">@DocumentTitle(receipt)</div>
+                        @if (receipt.Document is null)
+                        {
+                            <div class="cell-sub receipt-pending">Belge henüz sunucuya ulaşmadı.</div>
+                        }
+                        <div class="cell-sub">@receipt.CreatedByName · @Fmt.Time(DateTimeOffset.FromUnixTimeMilliseconds(receipt.CreatedAtMs))</div>
+                    </div>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Ledger;
+
+    private DateOnly _from = Fmt.Today().AddDays(-30);
+    private DateOnly _to = Fmt.Today();
+    private ExpenseReceiptsResponse? _result;
+    private (ExpenseReceiptDto Receipt, string Url)? _open;
+
+    protected override async Task LoadAsync() => _result = await Api.ExpenseReceiptsAsync(_from, _to);
+
+    private async Task SearchAsync()
+    {
+        _open = null;
+        await RunAsync(LoadAsync);
+    }
+
+    /// <summary>A fresh address: the one in the list lasts only a few minutes.</summary>
+    private Task OpenAsync(ExpenseReceiptDto receipt) => RunAsync(async () =>
+    {
+        var link = await Api.StoredFileLinkAsync(receipt.FileId);
+        _open = (receipt, link.Url);
+    });
+
+    private static string KindLabel(string kind) => kind == "vehicle_maintenance" ? "Araç bakımı" : "Gider";
+
+    private static string DocumentTitle(ExpenseReceiptDto receipt) =>
+        receipt.Document is { } document
+            ? string.Join(" · ", new[] { document.OccurredAt, document.Counterparty, document.Description }.Where(s => !string.IsNullOrWhiteSpace(s)))
+            : receipt.DocumentId;
+}

@@ -302,7 +302,7 @@ public static class CustomerCatalogPublicEndpoints
         var customer = await CustomerViewAsync(http, db, views, ct);
         if (customer.Find(key) is not { } product) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "Ürün bulunamadı.");
         var detail = ProductOf<CatalogCustomerProductDetailDto>(customer, product);
-        detail.Images = [.. product.Pictures.Select(p => new CatalogCustomerImageDto { Thumb = p.ThumbUrl, Full = p.FullUrl })];
+        detail.Images = [.. product.ShownPictures.Select(p => new CatalogCustomerImageDto { Thumb = p.ThumbUrl, Full = p.FullUrl })];
         return JsonResults.Ok(detail);
     }
 
@@ -334,7 +334,7 @@ public static class CustomerCatalogPublicEndpoints
         Price = CatalogQuote.Price(customer, product),
         Box = CatalogQuote.Box(product),
         InStock = product.InStock,
-        Thumb = product.ThumbUrl,
+        Thumb = product.ShownThumbUrl,
     };
 
     private static async Task<CatalogMeDto> MeOfAsync(CentralApiDbContext db, CatalogViewService views, IMemoryCache cache, Tenant tenant, CatalogAccount account, CancellationToken ct)

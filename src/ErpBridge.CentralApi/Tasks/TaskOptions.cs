@@ -10,9 +10,6 @@ public sealed class TaskOptions
 
     public int MaxAttachmentsPerTask { get; set; } = 10;
 
-    /// <summary>Live pictures of one company, all tasks together.</summary>
-    public long TenantAttachmentQuotaBytes { get; set; } = 1024L * 1024 * 1024;
-
     public bool SchedulerEnabled { get; set; } = true;
 
     public int SchedulerIntervalSeconds { get; set; } = 60;

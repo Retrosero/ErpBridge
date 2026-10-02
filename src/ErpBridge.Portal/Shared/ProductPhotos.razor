@@ -1,0 +1,149 @@
+@* GOAL_DEPOLAMA_R2 S6: a product's own photos on the Stok page's product detail. The photo goes up as picked (at most
+   10 MB); the server turns it upright, drops its metadata and makes the two WebP sizes, so nothing is shrunk here. Only
+   the picture changes, never the product card: an ERP company uses it too. Changes reach the server at once. *@
+@inject PortalApiClient Api
+
+<div class="product-photos" data-photos="@StockCode">
+    <h4>Fotoğraflar</h4>
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true" Class="mb-2" id="product-photos-error">@_error</MudAlert>
+    }
+    @if (_photos is null)
+    {
+        <p class="text-muted">Yükleniyor…</p>
+    }
+    else
+    {
+        @if (_photos.Length == 0)
+        {
+            <p class="text-muted" id="product-photos-empty">Fotoğraf yok.</p>
+        }
+        <div class="product-photo-list">
+            @foreach (var photo in _photos)
+            {
+                <figure class="product-photo" data-photo="@photo.Id">
+                    <a href="@photo.FullUrl" target="_blank" rel="noopener noreferrer"><img src="@photo.ThumbUrl" alt="Ürün fotoğrafı" loading="lazy" /></a>
+                    @if (CanEdit)
+                    {
+                        <figcaption>
+                            @if (photo != _photos[0])
+                            {
+                                <MudIconButton Icon="@Icons.Material.Rounded.Star" Size="Size.Small" Disabled="@_busy" OnClick="() => MakeCoverAsync(photo)" aria-label="Kapak yap" Class="photo-cover" />
+                            }
+                            <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" Color="Color.Error" Disabled="@_busy" OnClick="() => DeleteAsync(photo)" aria-label="Sil" Class="photo-delete" />
+                        </figcaption>
+                    }
+                </figure>
+            }
+        </div>
+        @if (CanEdit && _photos.Length < MaxPhotos)
+        {
+            <label class="inline-field product-photo-upload">
+                @(_busy ? "Gönderiliyor…" : "Fotoğraf ekle")
+                <InputFile OnChange="UploadAsync" multiple accept="image/jpeg,image/png,image/webp" disabled="@_busy" class="product-photo-input" />
+            </label>
+        }
+    }
+</div>
+
+@code {
+    public const int MaxPhotos = 8;
+    public const long MaxBytes = 10 * 1024 * 1024;
+
+    private static readonly HashSet<string> Types = new(StringComparer.OrdinalIgnoreCase) { "image/jpeg", "image/png", "image/webp" };
+
+    [Parameter, EditorRequired] public string StockCode { get; set; } = string.Empty;
+
+    /// <summary>The user holds <c>action.products.photo</c>.</summary>
+    [Parameter] public bool CanEdit { get; set; }
+
+    [Parameter] public EventCallback<string> OnSessionEnded { get; set; }
+
+    private ProductImageDto[]? _photos;
+    private string? _loadedFor;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == StockCode) return;
+        _loadedFor = StockCode;
+        _photos = null;
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task LoadAsync() => _photos = (await Api.ProductImagesAsync(StockCode)).Items;
+
+    /// <summary>One file at a time; a file the server refuses stops the rest with its message.</summary>
+    private Task UploadAsync(InputFileChangeEventArgs e) => RunAsync(async () =>
+    {
+        var room = MaxPhotos - (_photos?.Length ?? 0);
+        foreach (var file in e.GetMultipleFiles(Math.Max(1, e.FileCount)).Take(room))
+        {
+            if (!Types.Contains(file.ContentType))
+            {
+                _error = $"{file.Name}: JPEG, PNG ya da WebP değil.";
+                continue;
+            }
+            if (file.Size > MaxBytes)
+            {
+                _error = $"{file.Name}: 10 MB'tan büyük.";
+                continue;
+            }
+            using var buffer = new MemoryStream();
+            await using (var stream = file.OpenReadStream(MaxBytes)) await stream.CopyToAsync(buffer);
+            await Api.UploadProductImageAsync(StockCode, buffer.ToArray(), file.ContentType);
+        }
+        await LoadAsync();
+    });
+
+    private Task MakeCoverAsync(ProductImageDto photo) => RunAsync(async () =>
+    {
+        await Api.OrderProductImagesAsync(StockCode, [photo.Id]);
+        await LoadAsync();
+    });
+
+    private Task DeleteAsync(ProductImageDto photo) => RunAsync(async () =>
+    {
+        await Api.DeleteProductImageAsync(photo.Id);
+        await LoadAsync();
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+        }
+        catch (SessionEndedException ended)
+        {
+            await OnSessionEnded.InvokeAsync(ended.Code);
+        }
+        catch (PortalApiException failed)
+        {
+            _error = failed.Message;
+            _photos ??= [];
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+            _photos ??= [];
+        }
+        catch (TaskCanceledException)
+        {
+            _error = "Sunucu zamanında yanıt vermedi. Tekrar deneyin.";
+            _photos ??= [];
+        }
+        catch (IOException)
+        {
+            _error = "Dosya okunamadı. Tekrar seçip deneyin.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

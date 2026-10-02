@@ -4,6 +4,7 @@ using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Json;
+using ErpBridge.CentralApi.Storage;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -17,11 +18,15 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// like the rest of the catalog (module, then permission): the phone sends its https links in bulk and its other
 /// pictures as files, the panel uploads files or adds links. A file picture is registered first (<c>POST images</c>,
 /// the server makes the id, a repeated original finds its row by its source hash), then each size's raw bytes follow
-/// (<c>PUT images/{id}/{s|l}</c>, JPEG/PNG/WebP checked by their first bytes, size and company quota). Every picture
-/// change moves the catalog's picture revision (<see cref="CatalogSettings.ImageRevision"/>), which the catalog view keys
-/// on — not the layout revision, so a layout edit open on the panel or the phone is not made stale by an upload. The
-/// bytes are served anonymously at <c>GET /api/v1/catalog/img/{id}/{s|l}</c>: an unguessable id, cached for good, only
-/// while the company is active and its module is on.
+/// (<c>PUT images/{id}/{s|l}</c>, JPEG/PNG/WebP checked by their first bytes and size) into the central file store
+/// (GOAL_DEPOLAMA_R2 S3: area <c>catalog</c>, or <c>banner</c> for <see cref="CatalogBanners.ImageStockCode"/>; the
+/// company's one storage quota, refused with the old <c>413 CATALOG_IMAGE_QUOTA_EXCEEDED</c> code older phones know).
+/// Every picture change moves the catalog's picture revision (<see cref="CatalogSettings.ImageRevision"/>), which the
+/// catalog view keys on — not the layout revision, so a layout edit open on the panel or the phone is not made stale by an
+/// upload. A stored size is shown from its CDN address; a size uploaded before the store is still served anonymously at
+/// <c>GET /api/v1/catalog/img/{id}/{s|l}</c> (which redirects a stored size to its CDN address): an unguessable id, only
+/// while the company is active and its module is on. A deleted picture's files go to the trash, a replaced size's file is
+/// purged.
 /// </summary>
 public static class CustomerCatalogImageEndpoints
 {
@@ -57,21 +62,26 @@ public static class CustomerCatalogImageEndpoints
 
     // ---- managed ---------------------------------------------------------------------------
 
-    private static async Task<IResult> ManifestAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IOptions<CustomerCatalogOptions> options, CancellationToken ct)
+    private static async Task<IResult> ManifestAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] FileStore files,
+        [FromServices] IOptions<StorageOptions> storage, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
-        var images = await db.CatalogImages.AsNoTracking().Where(i => i.TenantId == access.Tenant!.Id).ToListAsync(ct);
+        var tenantId = access.Tenant!.Id;
+        var images = (await db.CatalogImages.AsNoTracking().Where(i => i.TenantId == tenantId).ToListAsync(ct))
+            .Where(i => !CatalogBanners.IsReservedStockCode(i.StockCode)).ToList();
+        var urls = await CatalogFileUrls.LoadAsync(db, storage.Value, tenantId, images, ct);
+        // The figures are the company's one storage quota (every area, GOAL_DEPOLAMA_R2 S3); the list is products only
+        // (banner pictures are the banners' own, S12).
+        var (used, quota) = await files.QuotaFiguresAsync(tenantId, ct);
         return JsonResults.Ok(new CatalogImageManifestResponse
         {
-            // The quota counts every picture; the list is products only (banner pictures are the banners' own, S12).
-            UsedBytes = images.Sum(i => (long)i.SizeBytes),
-            LimitBytes = options.Value.TenantImageQuotaBytes,
+            UsedBytes = used,
+            LimitBytes = quota,
             Items = [.. images
-                .Where(i => !CatalogBanners.IsReservedStockCode(i.StockCode))
                 .GroupBy(i => i.StockCode, StringComparer.Ordinal)
                 .OrderBy(g => g.Key, StringComparer.Ordinal)
-                .Select(g => new CatalogProductImagesDto { StockCode = g.Key, Images = [.. InOrder(g).Select(ToDto)] })],
+                .Select(g => new CatalogProductImagesDto { StockCode = g.Key, Images = [.. InOrder(g).Select(i => ToDto(i, urls))] })],
         });
     }
 
@@ -152,7 +162,8 @@ public static class CustomerCatalogImageEndpoints
 
     /// <summary>Registers a picture; the same (stock code, source hash) answers the picture already there.</summary>
     private static async Task<IResult> CreateAsync(HttpContext http, [FromBody] CatalogImageCreateRequest? body, [FromServices] CentralApiDbContext db,
-        [FromServices] CatalogViewService views, [FromServices] IOptions<CustomerCatalogOptions> options, CancellationToken ct)
+        [FromServices] CatalogViewService views, [FromServices] IOptions<CustomerCatalogOptions> options, [FromServices] FileStore files,
+        [FromServices] IOptions<StorageOptions> storage, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
@@ -168,7 +179,7 @@ public static class CustomerCatalogImageEndpoints
         string? url = null;
         if (!string.IsNullOrWhiteSpace(body.Url) && (url = CatalogImages.ValidLink(body.Url)) is null) return InvalidImageUrl();
 
-        if (await FindAsync(db, tenantId, code, hash, ct) is { } existing) return JsonResults.Ok(new CatalogImageCreatedResponse { Image = ToDto(existing) });
+        if (await FindAsync(db, tenantId, code, hash, ct) is { } existing) return await CreatedAsync(db, storage.Value, existing, ct);
 
         var image = new CatalogImage
         {
@@ -181,11 +192,13 @@ public static class CustomerCatalogImageEndpoints
             CreatedByUserId = access.User!.Id,
         };
         var max = banner ? CatalogBanners.MaxImages : options.Value.MaxImagesPerProduct;
+        var dropped = new List<Guid>();
         try
         {
             var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async now =>
             {
-                if (banner) await DropAbandonedBannerImagesAsync(db, tenantId, now, ct);
+                dropped.Clear();
+                if (banner) dropped.AddRange(await DropAbandonedBannerImagesAsync(db, tenantId, now, ct));
                 var orders = await db.CatalogImages.Where(i => i.TenantId == tenantId && i.StockCode == code).Select(i => i.SortOrder).ToListAsync(ct);
                 if (orders.Count >= max)
                     return banner
@@ -201,16 +214,26 @@ public static class CustomerCatalogImageEndpoints
         catch (DbUpdateException)
         {
             // The same original registered at the same moment: that picture is the answer.
-            db.Entry(image).State = EntityState.Detached;
-            if (await FindAsync(db, tenantId, code, hash, ct) is { } raced) return JsonResults.Ok(new CatalogImageCreatedResponse { Image = ToDto(raced) });
+            db.ChangeTracker.Clear();
+            if (await FindAsync(db, tenantId, code, hash, ct) is { } raced) return await CreatedAsync(db, storage.Value, raced, ct);
             throw;
         }
-        return JsonResults.Ok(new CatalogImageCreatedResponse { Image = ToDto(image) });
+        // An abandoned banner picture is nobody's delete to undo: its files leave for good.
+        db.ChangeTracker.Clear();
+        await files.PurgeAllAsync(tenantId, dropped, ct);
+        return JsonResults.Ok(new CatalogImageCreatedResponse { Image = ToDto(image, CatalogFileUrls.None) });
     }
 
-    /// <summary>One size's raw bytes; the same bytes again change nothing.</summary>
+    private static async Task<IResult> CreatedAsync(CentralApiDbContext db, StorageOptions storage, CatalogImage image, CancellationToken ct) =>
+        JsonResults.Ok(new CatalogImageCreatedResponse { Image = ToDto(image, await CatalogFileUrls.LoadAsync(db, storage, image.TenantId, [image], ct)) });
+
+    /// <summary>
+    /// One size's raw bytes, into the central file store; the same bytes again change nothing. The file is written first
+    /// (the store reserves the quota and commits on its own), then linked to the picture under the picture lock; the size
+    /// it replaces — a stored file or an old blob — goes. A picture deleted meanwhile takes the new file with it.
+    /// </summary>
     private static async Task<IResult> UploadAsync(Guid id, string variant, HttpContext http, [FromServices] CentralApiDbContext db,
-        [FromServices] IOptions<CustomerCatalogOptions> options, CancellationToken ct)
+        [FromServices] IOptions<CustomerCatalogOptions> options, [FromServices] FileStore files, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
@@ -224,11 +247,11 @@ public static class CustomerCatalogImageEndpoints
             if (buffer.Length + read > max) return TooLarge(max);
             buffer.Write(chunk, 0, read);
         }
-        var type = (http.Request.ContentType ?? string.Empty).Split(';')[0].Trim().ToLowerInvariant();
+        var type = ImageBytes.MediaType(http.Request.ContentType);
         var data = buffer.ToArray();
-        if (!Storage.ImageBytes.ContentTypes.Contains(type) || !Storage.ImageBytes.LooksLike(type, data))
+        if (!ImageBytes.ContentTypes.Contains(type) || !ImageBytes.LooksLike(type, data))
             return Error(StatusCodes.Status415UnsupportedMediaType, "INVALID_IMAGE", "Yalnız JPEG, PNG ya da WEBP görsel yüklenebilir.");
-        data = Storage.ImageBytes.StripMetadata(type, data);
+        data = ImageBytes.StripMetadata(type, data);
         var sha = Convert.ToHexStringLower(SHA256.HashData(data));
 
         var tenantId = access.Tenant!.Id;
@@ -237,35 +260,56 @@ public static class CustomerCatalogImageEndpoints
         if (image.Kind != CatalogImageKinds.File) return InvalidBody("Bağlantı görseline dosya yüklenemez.");
         if ((variant == CatalogImageVariants.Small ? image.Sha256Small : image.Sha256Large) == sha) return Results.NoContent();
 
-        var quota = options.Value.TenantImageQuotaBytes;
+        var area = image.StockCode == CatalogBanners.ImageStockCode ? StorageAreas.Banner : StorageAreas.Catalog;
+        var stored = await files.PutAsync(tenantId, area, CatalogImages.StoredFileOwnerType, id.ToString("D"), variant, type, data, access.User!.Id, ct);
+        if (!stored.Succeeded) return StorageFailure(stored.Error!, http);
+        var file = stored.Value!;
+
+        Guid? replaced = null;
         var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async _ =>
         {
-            // Under the revision lock: two uploads at once cannot both slip under the quota.
-            var tracked = await db.CatalogImages.FirstOrDefaultAsync(i => i.Id == id, ct);
+            var tracked = await db.CatalogImages.FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId, ct);
             if (tracked is null) return ImageNotFound();
+            var small = variant == CatalogImageVariants.Small;
+            replaced = small ? tracked.StoredFileSmallId : tracked.StoredFileLargeId;
+            // The size this one replaces: an old blob (uploaded before the store) or the previous stored file.
             var blob = await db.CatalogImageBlobs.FirstOrDefaultAsync(b => b.ImageId == id && b.Variant == variant, ct);
-            var replaced = blob?.Data.Length ?? 0;
-            var used = await db.CatalogImages.Where(i => i.TenantId == tenantId).SumAsync(i => (long)i.SizeBytes, ct);
-            if (used - replaced + data.Length > quota)
-                return Error(StatusCodes.Status413PayloadTooLarge, "CATALOG_IMAGE_QUOTA_EXCEEDED", "Firmanın görsel kotası doldu; kullanılmayan görselleri silin.");
-            if (blob is null) db.CatalogImageBlobs.Add(new CatalogImageBlob { ImageId = id, Variant = variant, Data = data });
-            else blob.Data = data;
-            tracked.SizeBytes += data.Length - replaced;
+            long replacedBytes = blob?.Data.Length ?? 0;
+            if (blob is not null) db.CatalogImageBlobs.Remove(blob);
+            if (replaced is { } previous)
+                replacedBytes += await db.StoredFiles.Where(f => f.Id == previous).Select(f => (long?)f.SizeBytes).FirstOrDefaultAsync(ct) ?? 0;
+            tracked.SizeBytes = (int)Math.Clamp(tracked.SizeBytes - replacedBytes + file.SizeBytes, 0, int.MaxValue);
             tracked.ContentType = type;
-            if (variant == CatalogImageVariants.Small)
+            if (small)
             {
                 tracked.HasSmall = true;
                 tracked.Sha256Small = sha;
+                tracked.StoredFileSmallId = file.Id;
             }
             else
             {
                 tracked.HasLarge = true;
                 tracked.Sha256Large = sha;
+                tracked.StoredFileLargeId = file.Id;
             }
             return null;
         }, ct, pictures: true);
-        return error ?? Results.NoContent();
+        db.ChangeTracker.Clear();
+        if (error is not null)
+        {
+            await files.PurgeAllAsync(tenantId, [file.Id], ct);
+            return error;
+        }
+        if (replaced is { } old) await files.PurgeAllAsync(tenantId, [old], ct);
+        return Results.NoContent();
     }
+
+    /// <summary>
+    /// A file store refusal as the catalog answers it: over the quota keeps the old <c>CATALOG_IMAGE_QUOTA_EXCEEDED</c> code
+    /// (older phones look for it), now with the company figures; 503 when the store cannot be reached.
+    /// </summary>
+    internal static IResult StorageFailure(StorageError error, HttpContext http) =>
+        (error.Code == StorageErrors.QuotaExceededCode ? error with { Code = CatalogImages.QuotaExceededCode } : error).ToResult(http);
 
     /// <summary>The product's pictures in this order; pictures not named follow in their old order.</summary>
     private static async Task<IResult> OrderAsync(HttpContext http, string? stockCode, [FromBody] CatalogImageOrderRequest? body,
@@ -288,20 +332,25 @@ public static class CustomerCatalogImageEndpoints
         return error ?? Results.NoContent();
     }
 
-    private static async Task<IResult> DeleteAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    /// <summary>The picture goes; its stored sizes go to the trash (a user's delete), its old blobs with it (cascade).</summary>
+    private static async Task<IResult> DeleteAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] FileStore files, CancellationToken ct)
     {
         var access = await AuthorizeAsync(http, db, manage: true, ct);
         if (access.Error is not null) return access.Error;
         var tenantId = access.Tenant!.Id;
+        var stored = new List<Guid>();
         var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async _ =>
         {
             var image = await db.CatalogImages.FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId, ct);
             if (image is null) return ImageNotFound();
-            // Its sizes go with it (catalog_image_blobs cascade).
+            stored.AddRange(CatalogImages.StoredFileIds(image));
             db.CatalogImages.Remove(image);
             return null;
         }, ct, pictures: true);
-        return error ?? Results.NoContent();
+        if (error is not null) return error;
+        db.ChangeTracker.Clear();
+        await files.TrashAllAsync(tenantId, stored, access.User!.Id, ct);
+        return Results.NoContent();
     }
 
     // ---- anonymous ---------------------------------------------------------------------------
@@ -311,14 +360,19 @@ public static class CustomerCatalogImageEndpoints
     /// unguessable id. Not found when the company is closed or its module is off. The company's own "published"
     /// switch is not asked: the panel and the phone show the pictures while the catalog is being prepared, before it
     /// is published. <c>s</c> falls back to <c>l</c>. Kept for good (the address changes with the bytes); a repeated
-    /// request with the ETag reads only the picture's row.
+    /// request with the ETag reads only the picture's row. A size in the central file store is not read here: the path
+    /// (an address a phone may hold from before the upload) redirects to its CDN address, cached for an hour.
     /// </summary>
-    private static async Task<IResult> PictureAsync(Guid id, string variant, HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    private static async Task<IResult> PictureAsync(Guid id, string variant, HttpContext http, [FromServices] CentralApiDbContext db,
+        [FromServices] IOptions<StorageOptions> storage, CancellationToken ct)
     {
         var meta = await db.CatalogImages.AsNoTracking()
             .Where(i => i.Id == id && i.Kind == CatalogImageKinds.File)
             .Select(i => new
             {
+                i.TenantId,
+                i.StoredFileSmallId,
+                i.StoredFileLargeId,
                 i.HasSmall,
                 i.HasLarge,
                 i.Sha256Small,
@@ -332,6 +386,13 @@ public static class CustomerCatalogImageEndpoints
             : meta.HasLarge ? CatalogImageVariants.Large
             : null;
         if (served is null) return PictureNotFound();
+        if ((served == CatalogImageVariants.Small ? meta.StoredFileSmallId : meta.StoredFileLargeId) is { } fileId)
+        {
+            var urls = await CatalogFileUrls.LoadAsync(db, storage.Value, meta.TenantId, [fileId], ct);
+            if (urls.Of(fileId) is not { } url) return PictureNotFound();
+            http.Response.Headers.CacheControl = "public, max-age=3600";
+            return Results.Redirect(url);
+        }
 
         var etag = new EntityTagHeaderValue("\"" + (served == CatalogImageVariants.Small ? meta.Sha256Small : meta.Sha256Large) + "\"");
         var headers = http.Response.Headers;
@@ -378,7 +439,8 @@ public static class CustomerCatalogImageEndpoints
     /// Banner pictures registered more than a day ago that no banner uses: a banner edit that uploaded a picture and was
     /// never saved. Removed under the picture lock before a new banner picture is counted, so they cannot fill the limit.
     /// </summary>
-    private static async Task DropAbandonedBannerImagesAsync(CentralApiDbContext db, Guid tenantId, long now, CancellationToken ct)
+    /// <returns>The removed pictures' stored files, for the caller to purge after its commit.</returns>
+    private static async Task<List<Guid>> DropAbandonedBannerImagesAsync(CentralApiDbContext db, Guid tenantId, long now, CancellationToken ct)
     {
         var before = now - (long)TimeSpan.FromDays(1).TotalMilliseconds;
         var abandoned = await db.CatalogImages
@@ -386,6 +448,7 @@ public static class CustomerCatalogImageEndpoints
                 && !db.CatalogBanners.Any(b => b.ImageId == i.Id))
             .ToListAsync(ct);
         db.CatalogImages.RemoveRange(abandoned);
+        return [.. abandoned.SelectMany(CatalogImages.StoredFileIds)];
     }
 
     private static string? SourceHashOf(string? text)
@@ -394,7 +457,7 @@ public static class CustomerCatalogImageEndpoints
         return string.IsNullOrEmpty(hash) || hash.Length > CatalogImages.MaxSourceHashLength ? null : hash;
     }
 
-    internal static CatalogImageDto ToDto(CatalogImage image) => new()
+    internal static CatalogImageDto ToDto(CatalogImage image, CatalogFileUrls urls) => new()
     {
         Id = image.Id,
         Kind = image.Kind,
@@ -404,8 +467,8 @@ public static class CustomerCatalogImageEndpoints
         SortOrder = image.SortOrder,
         HasSmall = image.HasSmall,
         HasLarge = image.HasLarge,
-        ThumbUrl = CatalogImages.ThumbUrl(image),
-        FullUrl = CatalogImages.FullUrl(image),
+        ThumbUrl = CatalogImages.ThumbUrl(image, urls),
+        FullUrl = CatalogImages.FullUrl(image, urls),
     };
 
     private static IResult TooLarge(int max) =>

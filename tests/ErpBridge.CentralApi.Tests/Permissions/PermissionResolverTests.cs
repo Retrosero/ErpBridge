@@ -60,6 +60,8 @@ public sealed class PermissionResolverTests
         RolePermissions.CanManageCustomerCatalog(user).Should().Be(p.Can(K.CustomerCatalogManage));
         p.Can(K.StorageManage).Should().Be(roles.Any(r => r is R.Admin or R.Manager), "company storage is managed by admin and manager only");
         RolePermissions.CanManageStorage(user).Should().Be(p.Can(K.StorageManage));
+        p.Can(K.ProductsPhoto).Should().Be(roles.Any(r => r is R.Admin or R.Manager or R.Sales), "product photos are taken in the field");
+        RolePermissions.CanEditProductPhotos(user).Should().Be(p.Can(K.ProductsPhoto));
         foreach (var limit in PermissionCatalog.All.Where(d => d.Type == PermissionType.Limit))
             p.Limit(limit.Key).Should().BeNull("no limit exists today");
     }

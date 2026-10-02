@@ -219,6 +219,12 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Merkezi dosya deposu: one row per R2 object.</summary>
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
 
+    /// <summary>Receipt photos of the phones' expense and vehicle maintenance documents (GOAL_DEPOLAMA_R2 S5).</summary>
+    public DbSet<ExpenseAttachment> ExpenseAttachments => Set<ExpenseAttachment>();
+
+    /// <summary>Product photos taken or uploaded by the company (GOAL_DEPOLAMA_R2 S6).</summary>
+    public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -1290,8 +1296,9 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.ContentType).IsRequired().HasMaxLength(32);
             b.HasOne<WorkTask>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(x => new { x.TaskId, x.CreatedAtMs });
-            // The quota sums a company's live pictures.
             b.HasIndex(x => new { x.TenantId, x.IsDeleted });
+            // Which picture a stored file belongs to (the redirect endpoint's task rule, the clean-up's orphan check).
+            b.HasIndex(x => x.StoredFileId);
         });
 
         modelBuilder.Entity<WorkTaskAttachmentBlob>(b =>
@@ -1481,6 +1488,9 @@ public sealed class CentralApiDbContext : DbContext
             b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
             // A repeated upload of the same original finds its row; it also serves the per-product listing and the quota.
             b.HasIndex(x => new { x.TenantId, x.StockCode, x.SourceHash }).IsUnique();
+            // Which picture a stored file belongs to (the clean-up's orphan check, S9).
+            b.HasIndex(x => x.StoredFileSmallId);
+            b.HasIndex(x => x.StoredFileLargeId);
         });
 
         modelBuilder.Entity<CatalogImageBlob>(b =>
@@ -1559,6 +1569,38 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.Area, x.Status });
             b.HasIndex(x => new { x.TenantId, x.OwnerType, x.OwnerKey });
             b.HasIndex(x => new { x.Bucket, x.ObjectKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<ExpenseAttachment>(b =>
+        {
+            b.ToTable("expense_attachments");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.DocumentExternalId).IsRequired().HasMaxLength(ExpenseAttachment.MaxDocumentIdLength);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(24);
+            b.Property(x => x.ContentType).IsRequired().HasMaxLength(32);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // A document's receipts; the panel's list by date; which receipt a stored file is (read rule, orphan check).
+            b.HasIndex(x => new { x.TenantId, x.DocumentExternalId });
+            b.HasIndex(x => new { x.TenantId, x.CreatedAtMs });
+            b.HasIndex(x => x.StoredFileId);
+        });
+
+        modelBuilder.Entity<ProductImage>(b =>
+        {
+            b.ToTable("product_images");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.StockCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.SourceSha256).IsRequired().HasMaxLength(64);
+            b.Property(x => x.CreatedByName).IsRequired().HasMaxLength(120);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // A product's photos in order; the same photo sent again finds its row.
+            b.HasIndex(x => new { x.TenantId, x.StockCode, x.SortOrder });
+            b.HasIndex(x => new { x.TenantId, x.StockCode, x.SourceSha256 }).IsUnique();
+            b.HasIndex(x => x.StoredFileSmallId);
+            b.HasIndex(x => x.StoredFileLargeId);
         });
     }
 }

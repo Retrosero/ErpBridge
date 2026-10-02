@@ -330,6 +330,10 @@ public partial class Program
         // Görevler ve bildirimler (docs/GOAL_GOREVLER.md).
         builder.Services.Configure<ErpBridge.CentralApi.Tasks.TaskOptions>(cfg.GetSection(ErpBridge.CentralApi.Tasks.TaskOptions.SectionName));
         builder.Services.AddScoped<ErpBridge.CentralApi.Tasks.TaskService>();
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.IStoredFileReadRule, ErpBridge.CentralApi.Tasks.TaskPictureReadRule>();
+        // Gider ve araç fişleri (GOAL_DEPOLAMA_R2 S5): one read rule per area.
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.IStoredFileReadRule>(new ErpBridge.CentralApi.Expenses.ExpenseReceiptReadRule(ErpBridge.CentralApi.Domain.StorageAreas.Expense));
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.IStoredFileReadRule>(new ErpBridge.CentralApi.Expenses.ExpenseReceiptReadRule(ErpBridge.CentralApi.Domain.StorageAreas.Vehicle));
         builder.Services.AddHostedService<ErpBridge.CentralApi.Workers.TaskSchedulerWorker>();
         // SKT (son kullanma tarihi) kayıtları: telefonların ortak raf verisi, ERP'ye yazılmaz.
         builder.Services.AddScoped<ErpBridge.CentralApi.Expiry.StockExpiryService>();
@@ -345,7 +349,8 @@ public partial class Program
         builder.Services.Configure<ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions>(cfg.GetSection(ErpBridge.CentralApi.CustomerCatalog.CustomerCatalogOptions.SectionName));
         // Each company's built catalog, over the shared stock mirror; in memory like the mirror itself.
         builder.Services.AddSingleton(sp => new ErpBridge.CentralApi.CustomerCatalog.CatalogViewService(
-            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetService<TimeProvider>() ?? TimeProvider.System));
+            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(), sp.GetService<TimeProvider>() ?? TimeProvider.System,
+            sp.GetRequiredService<IOptions<ErpBridge.CentralApi.Storage.StorageOptions>>()));
         // Merkezi dosya deposu (docs/GOAL_DEPOLAMA_R2.md): Cloudflare R2 when every Storage:* connection value is set,
         // otherwise a stand-in that makes the storage endpoints answer 503 STORAGE_UNAVAILABLE while the API runs.
         builder.Services.Configure<ErpBridge.CentralApi.Storage.StorageOptions>(cfg.GetSection(ErpBridge.CentralApi.Storage.StorageOptions.SectionName));
@@ -966,6 +971,9 @@ public partial class Program
         app.MapInternalLogEndpoints();
         app.MapAdminMobileSeatsEndpoints();
         app.MapStorageEndpoints();
+        app.MapMobileExpenseAttachmentEndpoints();
+        app.MapPortalExpenseReceiptEndpoints();
+        app.MapProductImageEndpoints();
         app.MapAdminStorageEndpoints();
     }
 
