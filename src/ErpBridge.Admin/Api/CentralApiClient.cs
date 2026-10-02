@@ -490,6 +490,9 @@ public sealed class TenantMobileOverviewDto
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
+
+    /// <summary>How the company's phones sync: <c>tables</c> or <c>feed</c>.</summary>
+    [JsonPropertyName("syncMode")] public string SyncMode { get; set; } = "tables";
     [JsonPropertyName("approvalRules")] public ApprovalRulesDto ApprovalRules { get; set; } = new();
 
     /// <summary>Sellable add-ons switched on for the company (<c>xml_import</c>…).</summary>
@@ -880,6 +883,10 @@ public sealed class CentralApiClient
 
     public Task SetTenantDataSourceAsync(Guid tenantId, string dataSource, CancellationToken ct = default) =>
         SendRawStringAsync(() => _http.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/data-source", new { dataSource }, ct), ct);
+
+    /// <summary>Moves the company's phones to the per-table endpoints (<c>tables</c>) or the change feed (<c>feed</c>).</summary>
+    public Task SetTenantSyncModeAsync(Guid tenantId, string syncMode, CancellationToken ct = default) =>
+        SendRawStringAsync(() => _http.PutAsJsonAsync($"/api/v1/admin/tenants/{tenantId}/mobile/sync-mode", new { syncMode }, ct), ct);
 
     /// <summary>Replaces the company's add-on modules with <paramref name="modules"/>.</summary>
     public Task SetTenantModulesAsync(Guid tenantId, IReadOnlyCollection<string> modules, CancellationToken ct = default) =>

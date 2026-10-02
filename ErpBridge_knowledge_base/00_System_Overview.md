@@ -195,6 +195,21 @@ registration ayrı bir composition projesine taşınır.
    seçim keyfi sıraydı); tek barkodlu ürünlerde (ERP'siz kartlar dahil) etki yoktur.
    Yeni bir ürün kurucusu barkod seçecekse bu sınıfı kullanır, `barcodes[0]`'ı değil.
 
+   **Telefonun okuma yolu firma bazında seçilir: `tenants.MobileSyncMode` (2026-10-02).**
+   Değerler `tables` (varsayılan; tablo bazlı `/sync/<bölüm>` uçları) ve `feed` (bu uç).
+   Pilot anahtarı **`DataSource` DEĞİLDİR**: `native` yapmak ERP yazımlarını
+   `NativeTenantGuard`'a takar ve ERP verisi olan firmada zaten 409 döner. Operatör Admin
+   konsolunda *Firma → Mobil → Telefon senkronu* ile, API'de
+   `PUT /api/v1/admin/tenants/{id}/mobile/sync-mode` gövde `{"syncMode":"tables"|"feed"}` ile
+   değiştirir (AdminPolicy; geçersiz değer 400 `INVALID_SYNC_MODE`, firma yok 404; büyük/küçük
+   harf ve boşluk normalize edilir; veri kontrolü yoktur, çünkü mod veri taşımaz). Telefon
+   değeri oturumdan okur: giriş yanıtı `session.syncMode` ve `GET /account/me` → `syncMode`
+   (`MobileSessionDto.SyncMode`); Admin özeti `TenantMobileOverviewResponse.syncMode`.
+   Mod **izin damgasına** (`PermissionStamp.Of(tenant, user, permissions)`, kural 33) girer:
+   değişince her imzalı yanıttaki `X-Permissions-Stamp` değişir, telefon `/me`'yi yeniden okur —
+   uygulama yeniden başlatılmadan geçer. Damgaya yalnız varsayılan **dışındaki** değer eklenir
+   (`|sync:feed`), bu yüzden `tables` firmaların damgaları dağıtımda değişmedi.
+
    Bir sayfa, imlecin üzerinden geçtiği ham satır sayısından **daha az** değişiklik
    taşıyabilir (bir stok kartı + 3 barkodu + 5 fiyatı tek üründür) ve bazen hiç
    taşımaz. Döngüyü `changes.size` değil **`hasMore`** sürdürür.
@@ -1298,7 +1313,7 @@ registration ayrı bir composition projesine taşınır.
      `permissionsVersion` taşır; `MobileUserDto.permissionOverrideCount`. Panel: `/yetkiler` (rol × izin matrisi, geçmiş) ve
      Kullanıcılar → Yetkiler (`UserPermissionsSheet`); `PortalRoles.Allows` oturum yetkisine bakar. Telefon: Siparis_Cepte KB kural 51.
    - **Yetki damgası:** her imzalı mobil yanıt `X-Permissions-Stamp` başlığı taşır (`PermissionStamp`: roller + bütün yetki ve
-     limitlerin SHA-256 özetinin ilk 16 hanesi; `MobileUserStateHandler` ve `MobileAccountEndpoints.AuthorizeAsync` koyar),
+     limitler + varsayılan dışındaysa firmanın `MobileSyncMode`'u (kural 12) — SHA-256 özetinin ilk 16 hanesi; `MobileUserStateHandler` ve `MobileAccountEndpoints.AuthorizeAsync` koyar),
      oturum da `permissionsStamp`. Telefon kaydettiğinden farklı damga görünce `/me`'yi yeniden okur: panelde yapılan değişiklik
      "beni hatırla" ile haftalarca açık kalan telefona yeniden giriş gerekmeden bir sonraki çağrıda (arka plan eşitlemesi dahil) ulaşır.
    - Sözleşme `docs/api-contracts.md`; testler `PermissionResolverTests`, `DocumentPermissionCheckTests`,

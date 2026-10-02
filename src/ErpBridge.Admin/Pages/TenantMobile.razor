@@ -80,6 +80,22 @@ else
 
     <section class="admin-panel seat-panel">
         <div class="admin-panel__header">
+            <div><h2>Telefon senkronu</h2><p>Telefonların veriyi nasıl indirdiği. Tablo bazlı: her bölüm ayrı uçtan. Değişiklik akışı: yalnız değişenler tek uçtan. Veri kaynağından bağımsızdır; telefonlar bir sonraki isteklerinde oturumu yenileyip geçer.</p></div>
+        </div>
+        <div class="admin-panel__body seat-form">
+            <label>
+                <span>Senkron yöntemi</span>
+                <select id="sync-mode" class="form-select" @bind="_syncMode">
+                    <option value="tables">Tablo bazlı (varsayılan)</option>
+                    <option value="feed">Değişiklik akışı</option>
+                </select>
+            </label>
+            <button id="sync-mode-save" class="btn btn-outline-primary" @onclick="SaveSyncModeAsync" disabled="@(_busy || _syncMode == _overview.SyncMode)">Kaydet</button>
+        </div>
+    </section>
+
+    <section class="admin-panel seat-panel">
+        <div class="admin-panel__header">
             <div><h2>Ek modüller</h2><p>Ayrı satılan özellikler. Açılan modül telefonlarda ve panelde bir sonraki oturum yenilemesinde görünür.</p></div>
         </div>
         <div class="admin-panel__body seat-form">
@@ -389,6 +405,7 @@ else
     private SubscriptionForm _subscription = new();
     private CreateMobileUserRequest _newUser = new() { Role = "ADMIN" };
     private string _dataSource = "erp";
+    private string _syncMode = "tables";
     private const string XmlImportModule = "xml_import";
     private bool _xmlImport;
 
@@ -447,6 +464,7 @@ else
                 ? new SubscriptionForm { EndsAtLocal = DateTime.Today.AddYears(1) }
                 : new SubscriptionForm { Seats = current.Seats, EndsAtLocal = current.EndsAtUtc?.LocalDateTime.Date, Source = current.Source };
             _dataSource = _overview.DataSource;
+            _syncMode = _overview.SyncMode;
             _xmlImport = _overview.Modules.Contains(XmlImportModule);
             _customerCatalog = _overview.Modules.Contains(CustomerCatalogModule);
             // The first user of a company is its administrator; later ones default to field users.
@@ -552,6 +570,10 @@ else
     private Task SaveDataSourceAsync() =>
         RunAsync(() => Api.SetTenantDataSourceAsync(TenantId, _dataSource),
             _dataSource == "native" ? "Firma ERP'siz kullanıma alındı." : "Firma ERP bağlantılı kullanıma alındı.");
+
+    private Task SaveSyncModeAsync() =>
+        RunAsync(() => Api.SetTenantSyncModeAsync(TenantId, _syncMode),
+            _syncMode == "feed" ? "Telefonlar değişiklik akışına alındı." : "Telefonlar tablo bazlı senkrona alındı.");
 
     /// <summary>Sends the whole set: modules not listed are switched off.</summary>
     private Task SaveModulesAsync()

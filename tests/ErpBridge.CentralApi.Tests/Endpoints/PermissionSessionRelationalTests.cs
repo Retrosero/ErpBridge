@@ -86,6 +86,63 @@ public sealed class PermissionSessionRelationalTests : IClassFixture<SqliteCentr
         (await client.GetAsync(sync, c.Patron)).Headers.GetValues(PermissionStamp.Header).Single().Should().NotBe(after, "another person's permissions");
     }
 
+    /// <summary>
+    /// The company's phone sync mode (tables | feed) is chosen by the operator, travels in the session as
+    /// <c>syncMode</c> and is part of the stamp, so a phone that stays signed in switches at its next call.
+    /// </summary>
+    [Fact]
+    public async Task The_sync_mode_defaults_to_tables_and_a_switch_reaches_the_phone_through_the_stamp()
+    {
+        var c = await CompanyAsync();
+        var client = _factory.CreateClient();
+        const string sync = "/api/v1/android/suspended-sales?changedSinceSeq=0";
+        var path = $"/api/v1/admin/tenants/{c.TenantId}/mobile/sync-mode";
+
+        var login = await (await client.PostJsonAsync("/api/v1/android/account/login",
+            new { tenantCode = c.Code, username = "ali", password = Password, deviceId = "DEV-A-" + c.Suffix, appVersion = "1.5.288" }))
+            .ReadAsJsonAsync<MobileLoginResponse>();
+        login.Session.SyncMode.Should().Be(TenantMobileSyncModes.Tables, "a company starts on the table endpoints");
+        (await MeAsync(c.Ali)).SyncMode.Should().Be(TenantMobileSyncModes.Tables);
+        var tablesStamp = (await client.GetAsync(sync, c.Ali)).Headers.GetValues(PermissionStamp.Header).Single();
+
+        (await client.PutJsonAsync(path, new { syncMode = "FEED " }, c.AdminToken)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var feedStamp = (await client.GetAsync(sync, c.Ali)).Headers.GetValues(PermissionStamp.Header).Single();
+        feedStamp.Should().NotBe(tablesStamp, "the phone must re-read /me to learn the new mode");
+        var me = await MeAsync(c.Ali);
+        me.SyncMode.Should().Be(TenantMobileSyncModes.Feed);
+        me.DataSource.Should().Be(TenantDataSources.Erp, "the sync mode is not the data source");
+        me.PermissionsStamp.Should().Be(feedStamp);
+        (await (await client.GetAsync($"/api/v1/admin/tenants/{c.TenantId}/mobile", c.AdminToken))
+            .ReadAsJsonAsync<TenantMobileOverviewResponse>()).SyncMode.Should().Be(TenantMobileSyncModes.Feed);
+
+        (await client.PutJsonAsync(path, new { syncMode = "tables" }, c.AdminToken)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await client.GetAsync(sync, c.Ali)).Headers.GetValues(PermissionStamp.Header).Single().Should().Be(tablesStamp,
+            "the default mode leaves the stamp as it always was");
+    }
+
+    [Fact]
+    public async Task Only_an_operator_sets_the_sync_mode_and_only_to_a_known_value()
+    {
+        var c = await CompanyAsync();
+        var client = _factory.CreateClient();
+        var path = $"/api/v1/admin/tenants/{c.TenantId}/mobile/sync-mode";
+
+        var invalid = await client.PutJsonAsync(path, new { syncMode = "native" }, c.AdminToken);
+        invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await invalid.ReadAsJsonAsync<ApiError>()).ErrorCode.Should().Be("INVALID_SYNC_MODE");
+        (await client.PutJsonAsync(path, new { }, c.AdminToken)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await client.PutJsonAsync($"/api/v1/admin/tenants/{Guid.NewGuid()}/mobile/sync-mode", new { syncMode = "feed" }, c.AdminToken))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        (await client.PutJsonAsync(path, new { syncMode = "feed" }, c.Patron)).StatusCode
+            .Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+        (await client.PutAsync(path, System.Net.Http.Json.JsonContent.Create(new { syncMode = "feed" }))).StatusCode
+            .Should().Be(HttpStatusCode.Unauthorized);
+
+        (await MeAsync(c.Ali)).SyncMode.Should().Be(TenantMobileSyncModes.Tables, "nothing above may change it");
+    }
+
     [Fact]
     public async Task The_catalogue_is_served_to_any_signed_in_user()
     {
@@ -104,7 +161,7 @@ public sealed class PermissionSessionRelationalTests : IClassFixture<SqliteCentr
         (await _factory.CreateClient().GetAsync("/api/v1/android/account/permissions/catalog")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    private sealed record Company(Guid TenantId, string Patron, string Ali, Guid AliId);
+    private sealed record Company(Guid TenantId, string Patron, string Ali, Guid AliId, string AdminToken = "", string Code = "", string Suffix = "");
 
     private async Task<MobileSessionDto> MeAsync(string token)
     {
@@ -138,7 +195,7 @@ public sealed class PermissionSessionRelationalTests : IClassFixture<SqliteCentr
         await Create("patron", "Patron", "ADMIN");
         var aliId = await Create("ali", "Ali Saha", "SALES");
         var code = (await (await client.GetAsync(basePath, adminToken)).ReadAsJsonAsync<TenantMobileOverviewResponse>()).TenantCode!;
-        return new Company(tenant.Id, await LoginAsync(code, "patron", $"DEV-P-{suffix}"), await LoginAsync(code, "ali", $"DEV-A-{suffix}"), aliId);
+        return new Company(tenant.Id, await LoginAsync(code, "patron", $"DEV-P-{suffix}"), await LoginAsync(code, "ali", $"DEV-A-{suffix}"), aliId, adminToken, code, suffix);
     }
 
     private async Task<string> LoginAsync(string code, string username, string deviceId)

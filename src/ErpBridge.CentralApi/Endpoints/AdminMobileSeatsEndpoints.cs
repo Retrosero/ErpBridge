@@ -34,6 +34,10 @@ public static class AdminMobileSeatsEndpoints
         group.MapDelete("/users/{userId:guid}", DeleteUserAsync).WithName("AdminMobileDeleteUser");
         group.MapPatch("/devices/{deviceId:guid}", UpdateDeviceAsync).WithName("AdminMobileUpdateDevice");
         group.MapPut("/data-source", SetDataSourceAsync).WithName("AdminMobileSetDataSource");
+        group.MapPut("/sync-mode", SetSyncModeAsync).WithName("AdminMobileSetSyncMode")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ApiError>(StatusCodes.Status404NotFound);
         group.MapPut("/modules", SetModulesAsync).WithName("AdminMobileSetModules")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
@@ -80,6 +84,7 @@ public static class AdminMobileSeatsEndpoints
             TenantId = tenant.Id,
             TenantCode = tenant.Code,
             DataSource = tenant.DataSource,
+            SyncMode = tenant.MobileSyncMode,
             ApprovalRules = MobileApprovalEndpoints.RulesDto(await ErpBridge.CentralApi.Approvals.ApprovalService.RulesAsync(db, tenantId, ct), viewer: null),
             Modules = await MobileXmlFeedEndpoints.ModulesAsync(db, tenantId, ct),
             Seats = await seats.GetUsageAsync(tenantId, ct),
@@ -207,6 +212,26 @@ public static class AdminMobileSeatsEndpoints
         tenant.DataSource = value!;
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Moves the company's phones between the per-table endpoints and the change feed. Unlike the
+    /// data source this touches no data, so it is never refused for what the tenant holds: both
+    /// paths serve the same products under the same primary barcode (<c>Sync/ProductBarcodes</c>).
+    /// Phones learn it from their session; the permission stamp changes with it, so a phone that
+    /// stays signed in re-reads <c>/me</c> at its next call.
+    /// </summary>
+    private static async Task<IResult> SetSyncModeAsync(Guid tenantId, [FromBody] SetSyncModeRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        var value = body?.SyncMode?.Trim().ToLowerInvariant();
+        if (!TenantMobileSyncModes.IsValid(value))
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_SYNC_MODE", Message = "syncMode must be tables or feed." });
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
+        if (tenant is null) return TenantNotFound();
+        if (tenant.MobileSyncMode == value) return Results.NoContent();
+        tenant.MobileSyncMode = value!;
+        await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
 

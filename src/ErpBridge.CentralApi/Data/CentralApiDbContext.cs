@@ -553,6 +553,7 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => x.Name).IsUnique();
             b.Property(x => x.Code).HasMaxLength(16);
             b.Property(x => x.DataSource).IsRequired().HasMaxLength(16).HasDefaultValue(TenantDataSources.Erp);
+            b.Property(x => x.MobileSyncMode).IsRequired().HasMaxLength(16).HasDefaultValue(TenantMobileSyncModes.Tables);
             b.HasIndex(x => x.Code).IsUnique();
         });
 
