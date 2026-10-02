@@ -140,6 +140,7 @@ public static class ChangeSetEndpoints
 
         var accepted = 0;
         var duplicates = 0;
+        var acceptedDeletes = false;
         // Rows the ERP no longer has. They are evicted from the active
         // bootstrap snapshot below so the mobile read endpoints stop serving
         // them; without that the snapshot keeps every deleted row forever.
@@ -190,6 +191,7 @@ public static class ChangeSetEndpoints
 
             snapshotDeletes.AddRange(
                 await AddMobileQueueItems(db, tenantId, body.SourceDatabase, table, ct));
+            if (table.Deleted is { Rows.Count: > 0 }) acceptedDeletes = true;
 
             // Faz 15.6: append one audit row per non-empty direction. The
             // (TenantId, IdempotencyKey, Direction) unique index makes a
@@ -249,9 +251,15 @@ public static class ChangeSetEndpoints
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        // Wake any client long-polling /api/v1/android/notify so an ERP change
+        // Wake any client long-polling /api/v1/android/notify so an ERP deletion
         // reaches the device in seconds instead of on the next periodic sync.
-        if (accepted > 0)
+        // Only deletions: phones read just the delete queue from a change set
+        // (inserts and updates reach them through the snapshot upload, which
+        // publishes on its own once its merge finds a change). Waking on an
+        // insert-only set — every sale written to Mikro — started a round with
+        // nothing new in it, and the snapshot's publish a few seconds later
+        // started a second one (Siparis_Cepte KB rule 21).
+        if (accepted > 0 && acceptedDeletes)
         {
             hub.Publish(tenantId, body.PulledAtUtc);
         }
