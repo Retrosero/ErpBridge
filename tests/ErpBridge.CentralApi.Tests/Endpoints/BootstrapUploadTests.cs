@@ -255,6 +255,71 @@ public sealed class BootstrapUploadTests : IClassFixture<CentralApiFactory>
         quietDoc.RootElement.GetProperty("total").GetInt32().Should().Be(0, "nothing changed after the new watermark");
     }
 
+    [Fact]
+    public async Task Customer_endpoint_pages_only_customers_changed_after_server_since()
+    {
+        // Since G4 every sale re-sends its customer (the balance moved), and
+        // /sync/cari always answered with the whole list. With serverSince the
+        // phone gets just the customers whose row changed; the legacy `since`
+        // (older phones send their own clock there) still means the full list.
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var (tenant, _) = await _factory.SeedTenantAsync(licenseKey: $"BOOT-CUS-{suffix}");
+        var agent = await _factory.SeedAgentAsync(tenant.Id, $"MACHINE-CUS-{suffix}");
+        var client = _factory.CreateClient();
+        var token = _factory.IssueTestJwt(agent.Id, tenant.Id);
+
+        var fullUploadId = await UploadAsync(client, token, isIncremental: false, sections: new()
+        {
+            ["customers"] = new object[]
+            {
+                new { customerCode = "C1", title1 = "Bir", balance = 10.0 },
+                new { customerCode = "C2", title1 = "Iki", balance = 20.0 },
+            },
+        });
+        await CompleteAsync(client, token, fullUploadId);
+
+        var (_, rawKey, _, _) = await _factory.SeedApiKeyAsync(tenant.Id, $"AK-CUS-{suffix}", scopes: new[] { "mobile:read" });
+        var mobile = _factory.CreateClient();
+        mobile.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", rawKey);
+        mobile.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.Id.ToString());
+
+        var full = await mobile.PostAsJsonAsync("/api/v1/android/sync/cari", new { page = 1, pageSize = 500 });
+        full.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var fullDoc = JsonDocument.Parse(await full.Content.ReadAsStringAsync());
+        fullDoc.RootElement.GetProperty("total").GetInt32().Should().Be(2);
+        var watermark = fullDoc.RootElement.GetProperty("watermark").GetString();
+        watermark.Should().NotBeNullOrEmpty();
+
+        await Task.Delay(20);
+        var incrementalUploadId = await UploadAsync(client, token, isIncremental: true, sections: new()
+        {
+            ["customers"] = new object[]
+            {
+                new { customerCode = "C1", title1 = "Bir", balance = 15.0 },
+                new { customerCode = "C2", title1 = "Iki", balance = 20.0 },
+            },
+        });
+        await CompleteAsync(client, token, incrementalUploadId);
+
+        var delta = await mobile.PostAsJsonAsync("/api/v1/android/sync/cari", new { page = 1, pageSize = 500, serverSince = watermark });
+        delta.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var deltaDoc = JsonDocument.Parse(await delta.Content.ReadAsStringAsync());
+        deltaDoc.RootElement.GetProperty("total").GetInt32().Should().Be(1, "only C1's balance changed");
+        var row = deltaDoc.RootElement.GetProperty("items").EnumerateArray().Single();
+        row.GetProperty("cariKod").GetString().Should().Be("C1");
+        row.GetProperty("bakiye").GetDecimal().Should().Be(15m);
+        var newWatermark = deltaDoc.RootElement.GetProperty("watermark").GetString();
+        DateTimeOffset.Parse(newWatermark!).Should().BeAfter(DateTimeOffset.Parse(watermark!));
+
+        var quiet = await mobile.PostAsJsonAsync("/api/v1/android/sync/cari", new { page = 1, pageSize = 500, serverSince = newWatermark });
+        using var quietDoc = JsonDocument.Parse(await quiet.Content.ReadAsStringAsync());
+        quietDoc.RootElement.GetProperty("total").GetInt32().Should().Be(0);
+
+        var legacy = await mobile.PostAsJsonAsync("/api/v1/android/sync/cari", new { page = 1, pageSize = 500, since = newWatermark });
+        using var legacyDoc = JsonDocument.Parse(await legacy.Content.ReadAsStringAsync());
+        legacyDoc.RootElement.GetProperty("total").GetInt32().Should().Be(2, "the legacy since may be a device clock and is not filtered on");
+    }
+
     private async Task<Guid> UploadAsync(
         HttpClient client,
         string token,

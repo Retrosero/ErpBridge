@@ -443,6 +443,17 @@ public static class AndroidEndpoints
     /// The mobile DTO intentionally uses Turkish field names, whereas the
     /// bridge package uses English canonical names. Returning the raw payload
     /// silently discarded tax, phone and region values on Android.
+    /// <para>
+    /// With <c>serverSince</c> only the customers whose row changed after that
+    /// version come back. Since GOAL_PANEL_DUZELTMELER G4 every sale or
+    /// collection re-sends its customer (the balance moved), so without it each
+    /// ERP sale made every phone download the whole customer list. The
+    /// versions are the server's row stamps (<see cref="SnapshotRowVersion"/>),
+    /// and the full and filtered reads both return a <c>watermark</c> the
+    /// device echoes next time. The legacy <c>since</c> is deliberately not
+    /// read: older phones send their own clock there, and filtering on it would
+    /// silently leave customers stale.
+    /// </para>
     /// </summary>
     private static async Task<IResult> CustomersAsync(
         AndroidPageRequest? request,
@@ -454,10 +465,39 @@ public static class AndroidEndpoints
         if (mobile.Error is not null) return mobile.Error;
         var snapshot = await db.BootstrapSnapshots.AsNoTracking()
             .Where(x => x.TenantId == mobile.TenantId && x.IsActive).FirstOrDefaultAsync(ct);
+        var page = Math.Max(1, request?.Page ?? 1);
+        var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
+
+        if (snapshot is not null && DateTimeOffset.TryParse(request?.ServerSince?.Trim(), out var serverSince))
+        {
+            var delta = await ReadSnapshotSectionSinceAsync(db, snapshot, "customers", serverSince, page, pageSize, ct);
+            return Results.Ok(new
+            {
+                entity = "cari",
+                sourceDatabase = snapshot.SourceDatabase,
+                pulledAtUtc = snapshot.PulledAtUtc,
+                page,
+                pageSize,
+                total = delta.Total,
+                serverSince = request!.ServerSince,
+                watermark = delta.Watermark,
+                items = delta.Items.Select(customer => ToAndroidCustomer(customer, snapshot.PulledAtUtc)).ToArray(),
+            });
+        }
+
         BootstrapPackage? package = null;
         JsonDocument document;
+        string? watermark = null;
         if (snapshot is not null)
+        {
             document = await BuildSnapshotDocumentAsync(db, snapshot, ["customers"], ct);
+            // No row stamp can be newer than the chunk that holds the row, so the
+            // newest chunk time bounds every version the device just read.
+            var newestChunk = await db.BootstrapSnapshotChunks.AsNoTracking()
+                .Where(x => x.SnapshotId == snapshot.Id && x.Section == "customers")
+                .MaxAsync(x => (DateTimeOffset?)x.ReceivedAtUtc, ct);
+            watermark = newestChunk is { } bound ? SnapshotRowVersion.Format(bound) : null;
+        }
         else
         {
             var access = await GetLatestPackageAsync(http, db, ct);
@@ -465,38 +505,44 @@ public static class AndroidEndpoints
             package = access.Package!;
             document = JsonDocument.Parse(package.PayloadJson);
         }
-        var page = Math.Max(1, request?.Page ?? 1);
-        var pageSize = Math.Clamp(request?.PageSize ?? 200, 1, 500);
-        var all = GetArray(document.RootElement, "customers").ToArray();
-        var items = all.Skip((page - 1) * pageSize).Take(pageSize).Select(customer => new
+        using (document)
         {
-            id = GetString(customer, "customerCode"),
-            erpRef = GetString(customer, "customerCode"),
-            cariKod = GetString(customer, "customerCode"),
-            unvan = JoinAddressLine(GetString(customer, "title1"), GetString(customer, "title2")),
-            cariUnvan = GetString(customer, "title1"),
-            vergiNo = GetString(customer, "taxNo"),
-            vergiDairesi = GetString(customer, "taxOffice"),
-            telefon = GetString(customer, "phone"),
-            email = GetString(customer, "email"),
-            cariBolgeKodu = GetString(customer, "regionCode"),
-            paraBirimi = GetString(customer, "currency"),
-            bakiye = GetDecimal(customer, "balance") ?? 0m,
-            updatedAt = snapshot?.PulledAtUtc ?? package!.PulledAtUtc,
-            isDeleted = false,
-        }).ToArray();
+            var pulledAtUtc = snapshot?.PulledAtUtc ?? package!.PulledAtUtc;
+            var all = GetArray(document.RootElement, "customers").ToArray();
+            var items = all.Skip((page - 1) * pageSize).Take(pageSize)
+                .Select(customer => ToAndroidCustomer(customer, pulledAtUtc)).ToArray();
 
-        return Results.Ok(new
-        {
-            entity = "cari",
-            sourceDatabase = snapshot?.SourceDatabase ?? package!.SourceDatabase,
-            pulledAtUtc = snapshot?.PulledAtUtc ?? package!.PulledAtUtc,
-            page,
-            pageSize,
-            total = all.Length,
-            items,
-        });
+            return Results.Ok(new
+            {
+                entity = "cari",
+                sourceDatabase = snapshot?.SourceDatabase ?? package!.SourceDatabase,
+                pulledAtUtc,
+                page,
+                pageSize,
+                total = all.Length,
+                watermark,
+                items,
+            });
+        }
     }
+
+    private static object ToAndroidCustomer(JsonElement customer, DateTimeOffset pulledAtUtc) => new
+    {
+        id = GetString(customer, "customerCode"),
+        erpRef = GetString(customer, "customerCode"),
+        cariKod = GetString(customer, "customerCode"),
+        unvan = JoinAddressLine(GetString(customer, "title1"), GetString(customer, "title2")),
+        cariUnvan = GetString(customer, "title1"),
+        vergiNo = GetString(customer, "taxNo"),
+        vergiDairesi = GetString(customer, "taxOffice"),
+        telefon = GetString(customer, "phone"),
+        email = GetString(customer, "email"),
+        cariBolgeKodu = GetString(customer, "regionCode"),
+        paraBirimi = GetString(customer, "currency"),
+        bakiye = GetDecimal(customer, "balance") ?? 0m,
+        updatedAt = pulledAtUtc,
+        isDeleted = false,
+    };
 
     private static async Task<IResult> CashAndBankSectionAsync(
         string kind,
@@ -1391,7 +1437,9 @@ public static class AndroidEndpoints
     // `Since` stays a string: the device echoes the cursor it last received,
     // which is not always strict ISO 8601, and a bind failure would turn the
     // whole request into a 400 instead of a full page.
-    private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, string? Since = null);
+    // `ServerSince` (customers only) is the server's own row version from a
+    // previous `watermark`; `Since` may hold an old device-clock cursor.
+    private sealed record AndroidPageRequest(int Page = 1, int PageSize = 200, string? Since = null, string? ServerSince = null);
     private sealed record AndroidStockMovementRequest(int Page = 1, int PageSize = 50, string? Since = null);
     private sealed record AndroidInvoiceRequest(int Page = 1, int PageSize = 200, string? Since = null);
 }
