@@ -13,11 +13,16 @@ namespace ErpBridge.Core.Sync;
 /// <param name="FirstRunDelaySeconds">Seconds to wait before the first iteration, so the host can finish booting.</param>
 /// <param name="UseTriggerBasedSync">Drive the ERP change log; otherwise only the snapshot delta runs.</param>
 /// <param name="RefreshSnapshotInTriggerMode">In trigger mode, also run the snapshot-delta cycle each iteration.</param>
+/// <param name="KickMinGapSeconds">
+/// Ajan hızı A2: a round requested through <see cref="AgentSyncTrigger"/> starts no sooner than this many seconds after
+/// the previous round ended, so a burst of ERP writes cannot keep the ERP busy with back-to-back reads.
+/// </param>
 public sealed record AgentSyncLoopOptions(
     int IntervalSeconds = 20,
     int FirstRunDelaySeconds = 5,
     bool UseTriggerBasedSync = true,
-    bool RefreshSnapshotInTriggerMode = true);
+    bool RefreshSnapshotInTriggerMode = true,
+    int KickMinGapSeconds = 5);
 
 /// <summary>
 /// The agent's periodic sync cycle: drive the ERP change log and the bootstrap
@@ -36,6 +41,7 @@ public sealed class AgentSyncLoop
     private readonly IServiceProvider _services;
     private readonly AgentSyncLoopOptions _options;
     private readonly ILogger<AgentSyncLoop> _logger;
+    private readonly AgentSyncTrigger? _trigger;
 
     /// <summary>Build the loop. <paramref name="services"/> is the root provider — each iteration opens its own scope.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="options"/> carries a non-positive interval.</exception>
@@ -47,6 +53,8 @@ public sealed class AgentSyncLoop
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        // Optional: a host (or a test) without the trigger keeps the plain timer cadence.
+        _trigger = services.GetService<AgentSyncTrigger>();
         if (_options.IntervalSeconds <= 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -58,7 +66,8 @@ public sealed class AgentSyncLoop
     /// <summary>Describes the configured cadence; hosts log this on startup.</summary>
     public string DescribeCadence() =>
         $"interval = {_options.IntervalSeconds}s, first run delayed {_options.FirstRunDelaySeconds}s, "
-        + $"mode = {(_options.UseTriggerBasedSync ? "trigger" : "watermark")}";
+        + $"mode = {(_options.UseTriggerBasedSync ? "trigger" : "watermark")}, "
+        + $"after an ERP write = {(_trigger is null ? "off" : $"at once (min gap {_options.KickMinGapSeconds}s)")}";
 
     /// <summary>
     /// Run until <paramref name="stoppingToken"/> is cancelled. Never throws for
@@ -73,10 +82,32 @@ public sealed class AgentSyncLoop
         }
 
         var interval = TimeSpan.FromSeconds(_options.IntervalSeconds);
+        var minGap = TimeSpan.FromSeconds(Math.Max(0, _options.KickMinGapSeconds));
+        var kicked = false;
         while (!stoppingToken.IsCancellationRequested)
         {
-            await RunSingleIterationAsync(stoppingToken).ConfigureAwait(false);
-            if (!await DelayAsync(interval, stoppingToken).ConfigureAwait(false)) break;
+            await RunSingleIterationAsync(kicked, stoppingToken).ConfigureAwait(false);
+            var roundEnded = System.Diagnostics.Stopwatch.GetTimestamp();
+
+            // Ajan hızı A2: wait for the interval OR a request from the job pump, whichever comes first.
+            if (_trigger is null)
+            {
+                if (!await DelayAsync(interval, stoppingToken).ConfigureAwait(false)) break;
+                kicked = false;
+                continue;
+            }
+            try
+            {
+                kicked = await _trigger.WaitAsync(interval, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            if (!kicked) continue;
+
+            var sinceLastRound = System.Diagnostics.Stopwatch.GetElapsedTime(roundEnded);
+            if (sinceLastRound < minGap && !await DelayAsync(minGap - sinceLastRound, stoppingToken).ConfigureAwait(false)) break;
         }
     }
 
@@ -99,8 +130,16 @@ public sealed class AgentSyncLoop
     /// anything unexpected so a programmer bug cannot kill the loop. Public so
     /// a host can force a single pass without starting the timer.
     /// </summary>
-    public async Task RunSingleIterationAsync(CancellationToken stoppingToken)
+    public Task RunSingleIterationAsync(CancellationToken stoppingToken) => RunSingleIterationAsync(kicked: false, stoppingToken);
+
+    /// <summary>
+    /// One iteration. <paramref name="kicked"/>: the job pump asked for it right after an ERP write — the snapshot's
+    /// idempotency window is cleared first (<see cref="IBootstrapSyncService.InvalidateAsync"/>: only its last-success
+    /// time, never a cursor) so the round reads the ERP instead of skipping, and the round reports trigger <c>job</c>.
+    /// </summary>
+    public async Task RunSingleIterationAsync(bool kicked, CancellationToken stoppingToken)
     {
+        var trigger = kicked ? AgentSyncRound.Triggers.Job : AgentSyncRound.Triggers.Timer;
         try
         {
             // Log Merkezi L3g: one round, one trace id. Without this the client's own warning about a call
@@ -119,9 +158,12 @@ public sealed class AgentSyncLoop
                 return;
             }
 
+            var runsSnapshot = !_options.UseTriggerBasedSync || _options.RefreshSnapshotInTriggerMode;
+            if (kicked && runsSnapshot) await InvalidateSnapshotWindowAsync(scope, stoppingToken).ConfigureAwait(false);
+
             if (_options.UseTriggerBasedSync)
             {
-                await RunChangeLogIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+                await RunChangeLogIterationAsync(scope, trigger, stoppingToken).ConfigureAwait(false);
 
                 // The change-log path carries deletes to the mobile master-data
                 // consumers but not inserts/updates — those still travel as
@@ -129,12 +171,12 @@ public sealed class AgentSyncLoop
                 // out (e.g. an ERP with no *_lastup_date).
                 if (_options.RefreshSnapshotInTriggerMode)
                 {
-                    await RunSnapshotIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+                    await RunSnapshotIterationAsync(scope, trigger, stoppingToken).ConfigureAwait(false);
                 }
             }
             else
             {
-                await RunSnapshotIterationAsync(scope, stoppingToken).ConfigureAwait(false);
+                await RunSnapshotIterationAsync(scope, trigger, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -150,14 +192,30 @@ public sealed class AgentSyncLoop
         }
     }
 
-    private async Task RunSnapshotIterationAsync(IServiceScope scope, CancellationToken stoppingToken)
+    /// <summary>
+    /// Clears the snapshot's 30-second idempotency window. Never the change-log's InvalidateAsync: that one resets the
+    /// change-log cursor and would re-read the whole feed. A failure only costs the speed-up — the round still runs.
+    /// </summary>
+    private async Task InvalidateSnapshotWindowAsync(IServiceScope scope, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await scope.ServiceProvider.GetRequiredService<IBootstrapSyncService>().InvalidateAsync(stoppingToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Could not clear the snapshot window before a sync requested by an ERP write; the round runs anyway.");
+        }
+    }
+
+    private async Task RunSnapshotIterationAsync(IServiceScope scope, string trigger, CancellationToken stoppingToken)
     {
         var sync = scope.ServiceProvider.GetRequiredService<IBootstrapSyncService>();
         var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
 
         // Log Merkezi L3e: one INFO event per round, counts only. The throttle turns a round every twenty
         // seconds into one event per window with the repeats counted, so the panel sees the rhythm, not a flood.
-        await Reporter(scope).ReportAsync(AgentSyncRound.Triggers.Timer, result, ct: stoppingToken).ConfigureAwait(false);
+        await Reporter(scope).ReportAsync(trigger, result, ct: stoppingToken).ConfigureAwait(false);
         // Log Merkezi L3f: the heartbeat's "last sync" is only honest if a round actually sets it.
         Status(scope)?.RecordSync(result.Success, DateTimeOffset.UtcNow, result.ErrorCode, result.ErrorMessage);
 
@@ -199,14 +257,14 @@ public sealed class AgentSyncLoop
         && result.CustomerTransactionsCount == 0 && result.StockTransactionsCount == 0
         && result.BarcodesCount == 0 && result.SalesConditionsCount == 0;
 
-    private async Task RunChangeLogIterationAsync(IServiceScope scope, CancellationToken stoppingToken)
+    private async Task RunChangeLogIterationAsync(IServiceScope scope, string trigger, CancellationToken stoppingToken)
     {
         // The sync service owns installation: it checks the change log's own
         // IsInstalledAsync and installs when missing, so this method stays free
         // of any vendor type.
         var sync = scope.ServiceProvider.GetRequiredService<IErpChangeLogSyncService>();
         var result = await sync.RunOnceAsync(stoppingToken).ConfigureAwait(false);
-        await Reporter(scope).ReportAsync(AgentSyncRound.Triggers.Timer, result, stoppingToken).ConfigureAwait(false);
+        await Reporter(scope).ReportAsync(trigger, result, stoppingToken).ConfigureAwait(false);
         Status(scope)?.RecordSync(result.Success, DateTimeOffset.UtcNow, result.ErrorCode, result.ErrorMessage);
 
         if (!result.Success)

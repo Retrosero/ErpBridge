@@ -21,7 +21,7 @@ public sealed record SalesJobWrite(Job? Job, bool Idempotent, CatalogOrderLinker
 /// <see cref="WriteAsync"/> stands alone: the existing job wins, the transaction is its own, a racing duplicate returns
 /// the winner, and the phones and the warehouse screens are woken after the commit.</para>
 /// </summary>
-public sealed class SalesJobWriter(NativeDocumentProcessor native, FulfillmentService warehouse, IBootstrapNotificationHub hub)
+public sealed class SalesJobWriter(NativeDocumentProcessor native, FulfillmentService warehouse, IBootstrapNotificationHub hub, IJobSignal jobs)
 {
     /// <summary>The job <see cref="PlaceAsync"/> placed (for a company without an ERP: booked or failed), the warehouse row it made, or the refusal.</summary>
     public sealed record Placement(Job? Job, OrderFulfillment? Queued, CatalogOrderLinker.Refusal? Refusal);
@@ -95,6 +95,8 @@ public sealed class SalesJobWriter(NativeDocumentProcessor native, FulfillmentSe
         if (bundled && tenant.DataSource == TenantDataSources.Native && placed.Job!.Status == JobStatus.Succeeded && db.Database.IsRelational())
             hub.Publish(tenant.Id, DateTimeOffset.UtcNow);
         if (placed.Queued is not null) warehouse.Notify(tenant.Id);
+        // Ajan hızı S2: an ERP company's job waits for the agent — wake its pending long-poll now that it is committed.
+        if (placed.Job!.Status == JobStatus.Pending) jobs.Notify(tenant.Id);
         return new SalesJobWrite(placed.Job, Idempotent: false, null);
     }
 }

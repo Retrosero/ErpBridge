@@ -95,6 +95,31 @@ public class HttpRemoteApiClientTests
     }
 
     [Fact]
+    public async Task GetPendingJobsAsync_without_a_wait_sends_the_old_query()
+    {
+        var uris = new List<Uri>();
+        var (client, _) = BuildClient(req => { uris.Add(req.RequestUri!); return RespondJson(req, HttpStatusCode.OK, Array.Empty<object>()); });
+
+        await client.GetPendingJobsAsync();
+        await client.GetPendingJobsAsync(0, CancellationToken.None);
+
+        uris.Should().HaveCount(2).And.OnlyContain(u => u.Query == "?take=50");
+    }
+
+    [Fact]
+    public async Task GetPendingJobsAsync_with_a_wait_asks_the_server_to_hold_the_poll()
+    {
+        var uris = new List<Uri>();
+        var (client, _) = BuildClient(req => { uris.Add(req.RequestUri!); return RespondJson(req, HttpStatusCode.OK, Array.Empty<object>()); });
+
+        await client.GetPendingJobsAsync(25, CancellationToken.None);
+        await client.GetPendingJobsAsync(90, CancellationToken.None);
+
+        // StubOptions' 30 s timeout leaves room for 20 s (wait + 10 s margin must fit under HttpClient.Timeout).
+        uris.Select(u => u.Query).Should().Equal("?take=50&wait=20", "?take=50&wait=20");
+    }
+
+    [Fact]
     public async Task GetPendingJobsAsync_empty_returns_empty_list()
     {
         var (client, _) = BuildClient(req => RespondJson(req, HttpStatusCode.OK, Array.Empty<object>()));

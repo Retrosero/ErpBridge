@@ -144,6 +144,7 @@ public static class AdminJobsEndpoints
         Guid id,
         [FromServices] CentralApiDbContext db,
         [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse,
+        [FromServices] ErpBridge.CentralApi.Jobs.IJobSignal signal,
         CancellationToken ct)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
@@ -170,6 +171,8 @@ public static class AdminJobsEndpoints
             if (transaction is not null) await transaction.CommitAsync(ct);
         }
         if (orderChanged) warehouse.Notify(job.TenantId);
+        // Ajan hızı S2: the agent's pending long-poll takes the job now, not on its next poll.
+        signal.Notify(job.TenantId);
         return JsonResults.Ok(ToDto(job));
     }
 

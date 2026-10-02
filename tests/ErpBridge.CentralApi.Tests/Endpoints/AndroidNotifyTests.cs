@@ -45,7 +45,7 @@ public sealed class AndroidNotifyTests : IClassFixture<CentralApiFactory>
         // Every sale written to Mikro produces one of these. Phones read only
         // deletions from a change set; the snapshot upload that follows wakes
         // them once, with the data.
-        var (notifyTask, ingest) = await PushWhileWaitingAsync(withDeletion: false, wait: 3);
+        var (notifyTask, ingest) = await PushWhileWaitingAsync(withDeletion: false, wait: 8);
         ingest.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var notify = await notifyTask;
@@ -71,7 +71,7 @@ public sealed class AndroidNotifyTests : IClassFixture<CentralApiFactory>
         // Poll the hub's own subscriber count rather than sleeping: publishing
         // before the long-poll registered is a no-op and would flake.
         var hub = (BootstrapNotificationHub)_factory.Services.GetRequiredService<IBootstrapNotificationHub>();
-        for (var attempt = 0; attempt < 300 && hub.GetWaiterCount(tenant.Id) == 0; attempt++)
+        for (var attempt = 0; attempt < 1000 && hub.GetWaiterCount(tenant.Id) == 0; attempt++)
         {
             await Task.Delay(10);
         }

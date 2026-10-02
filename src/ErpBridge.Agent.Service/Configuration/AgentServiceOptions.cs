@@ -82,12 +82,27 @@ public sealed class AgentServiceOptions
     public int JobPollFirstRunDelaySeconds { get; set; } = 5;
 
     /// <summary>
+    /// Ajan hızı A1: each job poll asks the central API to hold the request up to this many seconds until a document
+    /// is waiting (<c>GET /jobs/pending?wait=N</c>, server maximum 25), so a phone's document is written within about a
+    /// second instead of on the next <see cref="JobPollIntervalSeconds"/> tick. Default 25; 0 turns it off. The client
+    /// shortens it to fit <c>CentralApi:TimeoutSeconds</c> (wait + 10 s must fit).
+    /// </summary>
+    public int JobLongPollWaitSeconds { get; set; } = 25;
+
+    /// <summary>
+    /// Ajan hızı A2: after the job pump wrote a document to the ERP, the sync loop runs a round at once (so the result
+    /// reaches the phones) — but no sooner than this many seconds after its previous round ended. Default 5.
+    /// </summary>
+    public int SyncKickMinGapSeconds { get; set; } = 5;
+
+    /// <summary>
     /// Project the job-cadence subset onto <see cref="ErpBridge.Core.Jobs.AgentJobPumpOptions"/>,
     /// which both hosts (Windows Service and WPF agent) drive.
     /// </summary>
     public ErpBridge.Core.Jobs.AgentJobPumpOptions ToJobPumpOptions() => new(
         PollIntervalSeconds: JobPollIntervalSeconds,
-        FirstRunDelaySeconds: JobPollFirstRunDelaySeconds);
+        FirstRunDelaySeconds: JobPollFirstRunDelaySeconds,
+        LongPollWaitSeconds: JobLongPollWaitSeconds);
 
     /// <summary>
     /// Project the sync-cadence subset onto <see cref="AgentSyncLoopOptions"/>,
@@ -97,5 +112,6 @@ public sealed class AgentServiceOptions
         IntervalSeconds: BootstrapIntervalSeconds,
         FirstRunDelaySeconds: BootstrapFirstRunDelaySeconds,
         UseTriggerBasedSync: UseTriggerBasedSync,
-        RefreshSnapshotInTriggerMode: RefreshSnapshotInTriggerMode);
+        RefreshSnapshotInTriggerMode: RefreshSnapshotInTriggerMode,
+        KickMinGapSeconds: SyncKickMinGapSeconds);
 }

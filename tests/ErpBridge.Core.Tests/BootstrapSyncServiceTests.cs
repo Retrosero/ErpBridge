@@ -445,6 +445,43 @@ public class BootstrapSyncServiceTests
             Times.Once);
     }
 
+    // Ajan hızı A2: the sync loop calls InvalidateAsync after an ERP write. It must open the 30 s window — the very next
+    // RunOnceAsync reads the ERP — and keep the cursor, or every write would cost a full snapshot.
+    [Fact]
+    public async Task InvalidateAsync_skips_the_window_for_the_next_run_and_keeps_the_cursor()
+    {
+        var fixedNow = new DateTimeOffset(2026, 10, 2, 9, 0, 0, TimeSpan.Zero);
+        var existing = new CheckpointRecord
+        {
+            TenantId = TenantId,
+            SyncScope = BootstrapSyncService.BootstrapScope,
+            LastSuccessAt = fixedNow.UtcDateTime.AddSeconds(-10),
+            LastToken = "cursor-42",
+            UpdatedAt = fixedNow.UtcDateTime.AddSeconds(-10),
+        };
+        var configStore = new Mock<IAgentConfigStore>();
+        configStore.Setup(s => s.LoadAsync(It.IsAny<CancellationToken>())).ReturnsAsync(NewAgentConfig());
+        var checkpointStore = new Mock<ICheckpointStore>();
+        checkpointStore.Setup(s => s.LoadAsync(TenantId, BootstrapSyncService.BootstrapScope, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        var adapterFactory = new Mock<IErpAdapterFactory>();
+        adapterFactory.Setup(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()))
+            .Throws(new NotSupportedException("reached the ERP"));
+        var sut = new BootstrapSyncService(
+            configStore.Object, checkpointStore.Object, adapterFactory.Object,
+            new Mock<IRemoteApiClient>().Object, NullLogger<BootstrapSyncService>.Instance,
+            new FixedTimeProvider(fixedNow), NoRetryPipeline());
+
+        await sut.InvalidateAsync();
+        await sut.RunOnceAsync();
+
+        checkpointStore.Verify(
+            s => s.SaveAsync(It.Is<CheckpointRecord>(c => c.LastSuccessAt == null && c.LastToken == "cursor-42"), It.IsAny<CancellationToken>()),
+            Times.Once);
+        adapterFactory.Verify(f => f.Create(It.IsAny<ErpBridge.Erp.Abstractions.ErpType>()), Times.Once,
+            "a 10-second-old success no longer skips the run");
+    }
+
     [Fact]
     public async Task InvalidateAsync_clears_legacy_unknown_checkpoint_when_tenant_is_missing()
     {

@@ -60,10 +60,12 @@ public static class JobsEndpoints
     private static async Task<IResult> PendingAsync(
         [FromQuery] int? take,
         [FromQuery] string? type,
+        [FromQuery] int? wait,
         HttpContext http,
         [FromServices] CentralApiDbContext db,
         [FromServices] IWebhookDispatcher webhooks,
         [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse,
+        [FromServices] ErpBridge.CentralApi.Jobs.IJobSignal signal,
         CancellationToken ct)
     {
         if (!http.User.TryGetTenantId(out var tenantId))
@@ -71,7 +73,46 @@ public static class JobsEndpoints
                 new ApiError { ErrorCode = "INVALID_TOKEN", Message = "JWT missing tenant claim." });
 
         var takeClamped = Math.Clamp(take ?? DefaultTake, 1, MaxTake);
-        var now = (http.RequestServices.GetService<TimeProvider>() ?? TimeProvider.System).GetUtcNow();
+        var clock = http.RequestServices.GetService<TimeProvider>() ?? TimeProvider.System;
+
+        // Ajan hızı S2: wait=0 (or no wait, every agent before 1.4.0) answers at once, exactly as before. With a wait the
+        // request stays open until a job is leasable: a signal after a job's commit wakes it at once, and the lease query
+        // re-runs every RequeryInterval anyway — that catches retries whose NextAttemptAtMs has come, expired leases, and
+        // any creation site that does not signal. No DB connection is held in between (EF closes it after each query).
+        var waitFor = TimeSpan.FromSeconds(Math.Clamp(wait ?? 0, 0, MaxWaitSeconds));
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var stopping = http.RequestServices.GetService<IHostApplicationLifetime>()?.ApplicationStopping ?? CancellationToken.None;
+        while (true)
+        {
+            // Taken before the query, so a job committed between the query and the wait still wakes this request.
+            var woken = signal.Current(tenantId);
+            var leased = await LeaseOnceAsync(db, tenantId, takeClamped, type, clock, webhooks, warehouse, ct);
+            var remaining = waitFor - System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            if (leased.Count > 0 || remaining <= TimeSpan.Zero || stopping.IsCancellationRequested)
+                return JsonResults.Ok(leased);
+
+            // Nothing tracked survives into the next round: it re-reads the rows as they are now.
+            db.ChangeTracker.Clear();
+            using var slice = CancellationTokenSource.CreateLinkedTokenSource(ct, stopping);
+            var delay = Task.Delay(remaining < RequeryInterval ? remaining : RequeryInterval, slice.Token);
+            await Task.WhenAny(woken, delay);
+            await slice.CancelAsync();
+            ct.ThrowIfCancellationRequested();
+        }
+    }
+
+    /// <summary>Longest <c>wait</c> the pending poll accepts; below every proxy's idle timeout and the agent's HTTP timeout.</summary>
+    public const int MaxWaitSeconds = 25;
+
+    /// <summary>How often a waiting pending poll re-runs the lease query without a signal.</summary>
+    public static readonly TimeSpan RequeryInterval = TimeSpan.FromSeconds(5);
+
+    /// <summary>One lease round: gives up abandoned jobs, leases what is due and returns it (empty when nothing is).</summary>
+    private static async Task<List<JobResponse>> LeaseOnceAsync(
+        CentralApiDbContext db, Guid tenantId, int takeClamped, string? type, TimeProvider clock,
+        IWebhookDispatcher webhooks, ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
         var nowMs = now.ToUnixTimeMilliseconds();
 
         // A job whose agent kept dying on it is given up instead of being leased forever.
@@ -179,7 +220,7 @@ public static class JobsEndpoints
                 CorrelationId = j.CorrelationId,
             })
             .ToList();
-        return JsonResults.Ok(response);
+        return response;
     }
 
     private static async Task<IResult> AckAsync(

@@ -55,6 +55,8 @@ public static class ServiceCollectionExtensions
         // running only the tray app otherwise had nothing fetching jobs, so every document the phone
         // sent stayed pending on the server.
         services.TryAddSingleton<ErpBridge.Core.Jobs.SalesOrderPayloadDeserializer>();
+        // Ajan hızı A2: one per process, shared by the job pump (asks) and the sync loop (wakes).
+        services.TryAddSingleton<ErpBridge.Core.Sync.AgentSyncTrigger>();
         services.TryAddSingleton<ErpBridge.Core.Jobs.AgentJobPump>();
         services.TryAddSingleton<ILogger<ErpBridge.Core.Jobs.AgentJobPump>>(sp =>
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<ErpBridge.Core.Jobs.AgentJobPump>());

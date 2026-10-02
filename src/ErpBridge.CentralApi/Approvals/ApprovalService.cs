@@ -43,13 +43,15 @@ public sealed class ApprovalService
     private readonly IBootstrapNotificationHub _hub;
     private readonly FulfillmentService _warehouse;
     private readonly ITenantEventHub _portal;
+    private readonly IJobSignal _jobSignal;
 
-    public ApprovalService(SalesJobWriter jobs, IBootstrapNotificationHub hub, FulfillmentService warehouse, ITenantEventHub portal)
+    public ApprovalService(SalesJobWriter jobs, IBootstrapNotificationHub hub, FulfillmentService warehouse, ITenantEventHub portal, IJobSignal jobSignal)
     {
         _jobs = jobs;
         _hub = hub;
         _warehouse = warehouse;
         _portal = portal;
+        _jobSignal = jobSignal;
     }
 
     // ---- rules ----------------------------------------------------------------
@@ -317,6 +319,8 @@ public sealed class ApprovalService
         _portal.Publish(tenant.Id, TenantEventTopics.Approvals);
         // An approved sale may have entered the warehouse queue.
         if (approve) _warehouse.Notify(tenant.Id);
+        // Ajan hızı S2: an ERP company's approved documents are agent jobs now — wake its pending long-poll.
+        if (approve && tenant.DataSource != TenantDataSources.Native) _jobSignal.Notify(tenant.Id);
         return ApprovalResult<ApprovalRequest>.Ok(request);
     }
 

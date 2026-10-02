@@ -55,4 +55,17 @@ public class CoreServiceRegistrationTests
 
         provider.GetService<SalesOrderPayloadDeserializer>().Should().NotBeNull();
     }
+
+    [Fact]
+    public void The_pump_gets_the_one_sync_trigger_the_loop_listens_to()
+    {
+        // Ajan hızı A2: the pump asks, the sync loop (resolved from the same root provider) wakes. Two instances would
+        // mean a request nobody hears.
+        using var provider = BuildHostContainer();
+
+        var trigger = provider.GetRequiredService<Core.Sync.AgentSyncTrigger>();
+        trigger.Should().BeSameAs(provider.GetRequiredService<Core.Sync.AgentSyncTrigger>());
+        typeof(AgentJobPump).GetField("_syncTrigger", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(provider.GetRequiredService<AgentJobPump>()).Should().BeSameAs(trigger);
+    }
 }

@@ -306,6 +306,9 @@ public partial class Program
         // signals consumed by the WPF desktop UI's long-poll loop. Single
         // replica only — multi-instance scale would need a Redis backplane.
         builder.Services.AddSingleton<IBootstrapNotificationHub, BootstrapNotificationHub>();
+        // Ajan hızı S2: wakes the agent's GET /jobs/pending?wait=N long-poll after a job commits. Same single-replica
+        // caveat; without the signal a waiting poll still re-runs its lease query every few seconds.
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Jobs.IJobSignal, ErpBridge.CentralApi.Jobs.JobSignal>();
 
         // Faz 26: the single writer of mobile_records. Stateless apart from its
         // logger, but scoped so it reads naturally alongside the DbContext it is
