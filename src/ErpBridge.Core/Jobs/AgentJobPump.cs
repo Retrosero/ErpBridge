@@ -11,9 +11,20 @@ using Microsoft.Extensions.Logging;
 namespace ErpBridge.Core.Jobs;
 
 /// <summary>Cadence for <see cref="AgentJobPump.RunAsync"/>. Both hosts read it from <c>AgentService</c> configuration.</summary>
-/// <param name="PollIntervalSeconds">Seconds between polls of the central API. Must be positive.</param>
+/// <param name="PollIntervalSeconds">
+/// Seconds between polls of the central API when the long-poll is off or did not hold (an older server, an error).
+/// Must be positive.
+/// </param>
 /// <param name="FirstRunDelaySeconds">Seconds to wait before the first poll, so the host can finish booting.</param>
-public sealed record AgentJobPumpOptions(int PollIntervalSeconds = 30, int FirstRunDelaySeconds = 5);
+/// <param name="LongPollWaitSeconds">
+/// Ajan hızı A1: how long each poll asks the server to hold the request until a job is leasable
+/// (<c>GET /jobs/pending?wait=N</c>, server maximum 25). 0 turns the long-poll off — the plain poll every
+/// <paramref name="PollIntervalSeconds"/>.
+/// </param>
+public sealed record AgentJobPumpOptions(int PollIntervalSeconds = 30, int FirstRunDelaySeconds = 5, int LongPollWaitSeconds = 25);
+
+/// <summary>What one poll did: how many jobs it processed, how many reached the ERP, and whether the poll itself failed.</summary>
+public readonly record struct AgentJobPollOutcome(int Processed, int Written, bool Failed);
 
 /// <summary>
 /// The agent's inbound half: lease pending jobs from the central API, write each one to the ERP
@@ -88,8 +99,13 @@ public sealed class AgentJobPump
     private readonly SalesOrderPayloadDeserializer _payloadDeserializer;
     private readonly AgentRunStatus _runStatus;
     private readonly ILogger<AgentJobPump> _logger;
+    private readonly AgentSyncTrigger? _syncTrigger;
 
     /// <summary>DI constructor.</summary>
+    /// <param name="syncTrigger">
+    /// Ajan hızı A2: asked for a sync round after a poll wrote at least one document to the ERP. Optional so a host
+    /// without it (and the tests that do not care) keeps the timer-only sync.
+    /// </param>
     public AgentJobPump(
         IRemoteApiClient remoteApi,
         ILocalQueueStore localQueue,
@@ -97,8 +113,10 @@ public sealed class AgentJobPump
         IErpAdapterFactory adapterFactory,
         SalesOrderPayloadDeserializer payloadDeserializer,
         AgentRunStatus runStatus,
-        ILogger<AgentJobPump> logger)
+        ILogger<AgentJobPump> logger,
+        AgentSyncTrigger? syncTrigger = null)
     {
+        _syncTrigger = syncTrigger;
         _remoteApi = remoteApi ?? throw new ArgumentNullException(nameof(remoteApi));
         _localQueue = localQueue ?? throw new ArgumentNullException(nameof(localQueue));
         _configStore = configStore ?? throw new ArgumentNullException(nameof(configStore));
@@ -112,7 +130,8 @@ public sealed class AgentJobPump
     public static string DescribeCadence(AgentJobPumpOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return $"poll interval = {options.PollIntervalSeconds}s, first poll delayed {options.FirstRunDelaySeconds}s";
+        var longPoll = options.LongPollWaitSeconds > 0 ? $"long-poll wait = {options.LongPollWaitSeconds}s" : "long-poll off";
+        return $"{longPoll}, poll interval = {options.PollIntervalSeconds}s, first poll delayed {options.FirstRunDelaySeconds}s";
     }
 
     /// <summary>
@@ -136,12 +155,33 @@ public sealed class AgentJobPump
             return;
         }
 
-        var interval = TimeSpan.FromSeconds(options.PollIntervalSeconds);
+        var wait = Math.Max(0, options.LongPollWaitSeconds);
         while (!stoppingToken.IsCancellationRequested)
         {
-            await RunSingleIterationAsync(stoppingToken).ConfigureAwait(false);
-            if (!await DelayAsync(interval, stoppingToken).ConfigureAwait(false)) break;
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var outcome = await PollAsync(wait, stoppingToken).ConfigureAwait(false);
+            var pause = NextPollDelay(options, outcome, System.Diagnostics.Stopwatch.GetElapsedTime(started));
+            if (pause > TimeSpan.Zero && !await DelayAsync(pause, stoppingToken).ConfigureAwait(false)) break;
         }
+    }
+
+    /// <summary>
+    /// Ajan hızı A1: how long to pause before the next poll. Jobs came → ask again at once (there may be more). An empty
+    /// answer the server held for (roughly) the wait → ask again at once: that is the long-poll working. An empty answer
+    /// that came fast — an older server that ignores <c>wait</c>, the long-poll off — or a failed poll → the poll interval,
+    /// so neither an old server nor an outage turns the loop into a tight one.
+    /// </summary>
+    public static TimeSpan NextPollDelay(AgentJobPumpOptions options, AgentJobPollOutcome outcome, TimeSpan elapsed)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var interval = TimeSpan.FromSeconds(options.PollIntervalSeconds);
+        if (outcome.Failed) return interval;
+        if (outcome.Processed > 0) return TimeSpan.Zero;
+        if (options.LongPollWaitSeconds <= 0) return interval;
+        // "Held": at least half the wait (and at least a second). The client may shorten the wait to fit its HTTP
+        // timeout, and a server shutting down answers early; half keeps both on the fast path without a tight loop.
+        var held = TimeSpan.FromSeconds(Math.Max(1, options.LongPollWaitSeconds / 2.0));
+        return elapsed >= held ? TimeSpan.Zero : interval;
     }
 
     /// <summary>False when the wait was cut short by cancellation.</summary>
@@ -165,6 +205,14 @@ public sealed class AgentJobPump
     /// </summary>
     /// <returns>How many jobs were processed in this pass.</returns>
     public async Task<int> RunSingleIterationAsync(CancellationToken stoppingToken)
+        => (await PollAsync(waitSeconds: 0, stoppingToken).ConfigureAwait(false)).Processed;
+
+    /// <summary>
+    /// One poll, optionally long (<paramref name="waitSeconds"/> &gt; 0). After at least one document reached the ERP it
+    /// asks <see cref="AgentSyncTrigger"/> for a sync round, once per poll, so the write's result travels to the phones
+    /// in seconds. A rejected or retried write asks for nothing: the ERP did not change.
+    /// </summary>
+    public async Task<AgentJobPollOutcome> PollAsync(int waitSeconds, CancellationToken stoppingToken)
     {
         try
         {
@@ -174,34 +222,45 @@ public sealed class AgentJobPump
             if (config is null)
             {
                 _logger.LogWarning("No AgentConfig persisted yet; the agent must be configured before documents can be written.");
-                return 0;
+                return new AgentJobPollOutcome(0, 0, Failed: true);
             }
 
-            var jobs = await _remoteApi.GetPendingJobsAsync(stoppingToken).ConfigureAwait(false);
+            var jobs = waitSeconds > 0
+                ? await _remoteApi.GetPendingJobsAsync(waitSeconds, stoppingToken).ConfigureAwait(false)
+                : await _remoteApi.GetPendingJobsAsync(stoppingToken).ConfigureAwait(false);
             if (jobs.Count == 0)
             {
                 _logger.LogDebug("No pending jobs from central API.");
-                return 0;
+                return new AgentJobPollOutcome(0, 0, Failed: false);
             }
 
             _logger.LogInformation("Received {Count} pending job(s) from central API.", jobs.Count);
-            foreach (var job in jobs)
+            var written = 0;
+            try
             {
-                await ProcessJobAsync(job, config, stoppingToken).ConfigureAwait(false);
+                foreach (var job in jobs)
+                {
+                    if (await ProcessJobAsync(job, config, stoppingToken).ConfigureAwait(false)) written++;
+                }
+            }
+            finally
+            {
+                // Even when shutdown cut the batch short: what reached the ERP should reach the phones.
+                if (written > 0) _syncTrigger?.Request();
             }
 
-            return jobs.Count;
+            return new AgentJobPollOutcome(jobs.Count, written, Failed: false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // graceful shutdown
-            return 0;
+            return new AgentJobPollOutcome(0, 0, Failed: false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Job poll failed; will retry after backoff.");
             _runStatus.RecordError("JOB_POLL_FAILED", ex.Message);
-            return 0;
+            return new AgentJobPollOutcome(0, 0, Failed: true);
         }
     }
 
@@ -210,7 +269,8 @@ public sealed class AgentJobPump
     /// corresponding ack to the central API. Failures at every step are caught and reported so one
     /// bad job cannot poison the rest of the batch.
     /// </summary>
-    public async Task ProcessJobAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
+    /// <returns>True when the document reached the ERP (whether or not its ack could be sent).</returns>
+    public async Task<bool> ProcessJobAsync(RemoteJob job, AgentConfig config, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(job);
         ArgumentNullException.ThrowIfNull(config);
@@ -228,9 +288,11 @@ public sealed class AgentJobPump
         ack.Attempt ??= job.Attempt;
         // Log Merkezi L3f: one place for every rejected write. The heartbeat's lastError used to stay empty
         // however many documents the ERP refused, because nothing ever wrote it.
-        if (!string.Equals(ack.Status, "succeeded", StringComparison.Ordinal))
+        var written = string.Equals(ack.Status, "succeeded", StringComparison.Ordinal);
+        if (!written)
             _runStatus.RecordError(ack.ErrorCode, ack.ErrorMessage);
         await TrySendAckAsync(ack, ct).ConfigureAwait(false);
+        return written;
     }
 
     /// <summary>

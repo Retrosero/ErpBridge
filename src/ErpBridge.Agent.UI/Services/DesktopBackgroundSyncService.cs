@@ -116,7 +116,8 @@ public sealed class DesktopBackgroundSyncService : IDisposable
         IntervalSeconds: _configuration.GetValue($"{SectionName}:BootstrapIntervalSeconds", 20),
         FirstRunDelaySeconds: _configuration.GetValue($"{SectionName}:BootstrapFirstRunDelaySeconds", 5),
         UseTriggerBasedSync: _configuration.GetValue($"{SectionName}:UseTriggerBasedSync", true),
-        RefreshSnapshotInTriggerMode: _configuration.GetValue($"{SectionName}:RefreshSnapshotInTriggerMode", true));
+        RefreshSnapshotInTriggerMode: _configuration.GetValue($"{SectionName}:RefreshSnapshotInTriggerMode", true),
+        KickMinGapSeconds: _configuration.GetValue($"{SectionName}:SyncKickMinGapSeconds", 5));
 
     /// <inheritdoc />
     public void Dispose()

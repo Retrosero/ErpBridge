@@ -22,6 +22,14 @@ public interface IRemoteApiClient
     /// <summary>Fetch pending jobs from the central queue.</summary>
     Task<IReadOnlyList<RemoteJob>> GetPendingJobsAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Ajan hızı A1: the long-poll form — the server holds the request up to <paramref name="waitSeconds"/> until a job
+    /// is leasable. A server without <c>wait</c> answers at once, as the plain poll does. The default ignores the wait,
+    /// so a client that predates it (and every test fake) keeps working.
+    /// </summary>
+    Task<IReadOnlyList<RemoteJob>> GetPendingJobsAsync(int waitSeconds, CancellationToken ct)
+        => GetPendingJobsAsync(ct);
+
     /// <summary>Acknowledge a job as succeeded/failed.</summary>
     Task SendAckAsync(JobAck ack, CancellationToken ct = default);
 

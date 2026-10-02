@@ -166,11 +166,24 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<RemoteJob>> GetPendingJobsAsync(CancellationToken ct = default)
+    public Task<IReadOnlyList<RemoteJob>> GetPendingJobsAsync(CancellationToken ct = default)
+        => GetPendingJobsAsync(0, ct);
+
+    /// <summary>Longest wait the server accepts on <c>GET /jobs/pending</c> (CentralApi <c>JobsEndpoints.MaxWaitSeconds</c>).</summary>
+    public const int MaxPendingWaitSeconds = 25;
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RemoteJob>> GetPendingJobsAsync(int waitSeconds, CancellationToken ct)
     {
         var opts = _options.CurrentValue;
-        using var request = BuildRequest(HttpMethod.Get, "/api/v1/jobs/pending?take=50", opts, idempotencyKey: null);
-        var jobs = await SendAsync<List<RemoteJob>>(request, opts, ct);
+        // Ajan hızı A1: the wait plus a 10 s margin must fit under HttpClient.Timeout (= TimeoutSeconds, set once for the
+        // client), or the client would abort a request the server is legitimately holding. A short timeout shortens the
+        // wait; a timeout under 11 s turns the long-poll off.
+        var wait = Math.Clamp(waitSeconds, 0, Math.Min(MaxPendingWaitSeconds, Math.Max(0, opts.TimeoutSeconds - 10)));
+        var path = wait > 0 ? $"/api/v1/jobs/pending?take=50&wait={wait}" : "/api/v1/jobs/pending?take=50";
+        using var request = BuildRequest(HttpMethod.Get, path, opts, idempotencyKey: null);
+        var timeout = TimeSpan.FromSeconds(Math.Max(opts.TimeoutSeconds, wait + 10));
+        var jobs = await SendAsync<List<RemoteJob>>(request, opts, ct, timeoutOverride: timeout);
         return (IReadOnlyList<RemoteJob>)(jobs ?? new List<RemoteJob>());
     }
 
@@ -741,11 +754,13 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         HttpRequestMessage request,
         CentralApiOptions opts,
         CancellationToken ct,
-        bool classifyBootstrapFailure = false)
+        bool classifyBootstrapFailure = false,
+        TimeSpan? timeoutOverride = null)
         where T : class
     {
+        var limit = timeoutOverride ?? TimeSpan.FromSeconds(opts.TimeoutSeconds);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(opts.TimeoutSeconds));
+        timeout.CancelAfter(limit);
 
         try
         {
@@ -764,13 +779,13 @@ public sealed class HttpRemoteApiClient : IRemoteApiClient
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            _logger.LogWarning("Central API call {Path} timed out after {Timeout}s", request.RequestUri, opts.TimeoutSeconds);
+            _logger.LogWarning("Central API call {Path} timed out after {Timeout}s", request.RequestUri, (int)limit.TotalSeconds);
             // A timeout is an upstream/transient failure, not an operator
             // cancellation. Converting it here lets BootstrapSyncService's
             // retry policy retry the affected chunk (and then use the
             // section fallback) instead of surfacing "A task was canceled".
             throw new TransientPushException(
-                $"Central API call timed out after {opts.TimeoutSeconds}s: {request.RequestUri}", ex);
+                $"Central API call timed out after {(int)limit.TotalSeconds}s: {request.RequestUri}", ex);
         }
     }
 

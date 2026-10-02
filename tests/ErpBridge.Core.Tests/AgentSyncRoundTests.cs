@@ -130,4 +130,28 @@ public sealed class AgentSyncRoundTests
         var quiet = new AgentSyncLoop(bareProvider, new AgentSyncLoopOptions(), NullLogger<AgentSyncLoop>.Instance);
         await quiet.Invoking(l => l.RunSingleIterationAsync(CancellationToken.None)).Should().NotThrowAsync();
     }
+
+    [Fact]
+    public async Task A_round_requested_by_an_erp_write_reports_the_job_trigger()
+    {
+        var bootstrap = new Mock<IBootstrapSyncService>();
+        bootstrap.Setup(s => s.RunOnceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BootstrapSyncResult(true, 1, 0, 0, 0, 0, 0, 0, 5));
+        var changeLog = new Mock<IErpChangeLogSyncService>();
+        changeLog.Setup(s => s.RunOnceAsync(It.IsAny<CancellationToken>())).ReturnsAsync(ErpChangeLogSyncResult.Empty(3));
+        var tokens = new Mock<IAgentTokenService>();
+        tokens.Setup(t => t.EnsureValidAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var reporter = new SpyReporter();
+        var services = new ServiceCollection();
+        services.AddSingleton(bootstrap.Object);
+        services.AddSingleton(changeLog.Object);
+        services.AddSingleton(tokens.Object);
+        services.AddSingleton<IAgentLogReporter>(reporter);
+        using var provider = services.BuildServiceProvider();
+
+        var loop = new AgentSyncLoop(provider, new AgentSyncLoopOptions(), NullLogger<AgentSyncLoop>.Instance);
+        await loop.RunSingleIterationAsync(kicked: true, CancellationToken.None);
+
+        reporter.Events.Should().HaveCount(2).And.OnlyContain(e => (string)e.Properties!["trigger"]! == AgentSyncRound.Triggers.Job);
+    }
 }

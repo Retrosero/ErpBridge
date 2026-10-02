@@ -18,6 +18,9 @@ public static class AgentSyncRound
         public const string Timer = "timer";
         public const string Manual = "manual";
         public const string Signal = "signal";
+
+        /// <summary>Ajan hızı A2: the job pump asked for the round right after it wrote a phone document to the ERP.</summary>
+        public const string Job = "job";
     }
 
     /// <summary>Which cycle ran: the ERP change log, or the snapshot delta.</summary>

@@ -108,7 +108,8 @@ public sealed class DesktopJobPumpService : IDisposable
 
     private AgentJobPumpOptions ReadOptions() => new(
         PollIntervalSeconds: _configuration.GetValue($"{SectionName}:JobPollIntervalSeconds", 30),
-        FirstRunDelaySeconds: _configuration.GetValue($"{SectionName}:JobPollFirstRunDelaySeconds", 5));
+        FirstRunDelaySeconds: _configuration.GetValue($"{SectionName}:JobPollFirstRunDelaySeconds", 5),
+        LongPollWaitSeconds: _configuration.GetValue($"{SectionName}:JobLongPollWaitSeconds", 25));
 
     /// <inheritdoc />
     public void Dispose()
