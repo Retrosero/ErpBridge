@@ -32,4 +32,27 @@ public sealed class PortalTasksAccessRelationalTests : IClassFixture<SqliteCentr
         (await SendAsync(_factory, HttpMethod.Get, "/api/v1/android/tasks", c.MudurPhone)).StatusCode.Should().Be(HttpStatusCode.OK, "the phone hides its own screen");
         (await SendAsync(_factory, HttpMethod.Get, "/api/v1/android/notifications", c.Mudur)).StatusCode.Should().Be(HttpStatusCode.OK, "catalog requests notify there too");
     }
+    [Fact]
+    public async Task A_subtask_added_to_an_existing_task_is_saved()
+    {
+        var c = await EntryCompanyAsync(_factory);
+        var taskId = Guid.NewGuid();
+        var subtaskId = Guid.NewGuid();
+        await OkAsync<Contracts.TaskOpsResponse>(await SendAsync(_factory, HttpMethod.Post, "/api/v1/android/tasks/ops", c.Mudur, new
+        {
+            ops = new object[] { new { opId = Guid.NewGuid(), type = "create_task", taskId, title = "Raf düzeni", priority = "NORMAL", assigneeIds = new[] { c.MudurId } } },
+        }));
+
+        var added = await OkAsync<Contracts.TaskOpsResponse>(await SendAsync(_factory, HttpMethod.Post, "/api/v1/android/tasks/ops", c.Mudur, new
+        {
+            ops = new object[]
+            {
+                new { opId = Guid.NewGuid(), type = "add_subtask", taskId, subtaskId, title = "Ön raflar", sortOrder = 0 },
+                new { opId = Guid.NewGuid(), type = "toggle_subtask", taskId, subtaskId, isDone = true },
+            },
+        }));
+
+        added.Results.Select(r => r.Status).Should().Equal("applied", "applied");
+        added.Tasks.Single().Subtasks.Should().ContainSingle().Which.Should().Match<Contracts.TaskSubtaskDto>(s => s.Id == subtaskId && s.Title == "Ön raflar" && s.IsDone);
+    }
 }

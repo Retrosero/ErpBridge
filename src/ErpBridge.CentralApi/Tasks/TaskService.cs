@@ -527,6 +527,10 @@ public sealed class TaskService
             DueAtMs = op.DueAtMs,
             SortOrder = op.SortOrder ?? (task.Subtasks.Count == 0 ? 0 : task.Subtasks.Max(s => s.SortOrder) + 1),
         };
+        // Added explicitly: the id is the client's, and a new row found only through the tracked task's collection with its
+        // key already set is taken for an existing one — EF would UPDATE it and fail with a concurrency error
+        // (GOAL_PANEL_GIRIS P6, found in the panel's browser check).
+        b.Db.WorkTaskSubtasks.Add(subtask);
         task.Subtasks.Add(subtask);
         var seq = await TouchAsync(b, task, ct);
         AddEvent(b, task, WorkTaskActions.SubtaskAdded, Clip(title, 500));
