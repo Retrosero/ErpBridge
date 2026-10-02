@@ -56,7 +56,7 @@ public sealed class MobileUserStateHandler : AuthorizationHandler<MobileUserStat
         if (access.Allowed)
         {
             // The phone re-reads its session when this changes (GOAL_YETKILER): no new sign-in needed.
-            Permissions.PermissionStamp.Stamp(http, access.User!);
+            Permissions.PermissionStamp.Stamp(http, access.Tenant!, access.User!);
             context.Succeed(requirement);
             return;
         }

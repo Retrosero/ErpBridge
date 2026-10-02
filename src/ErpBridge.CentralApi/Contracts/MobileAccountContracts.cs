@@ -41,6 +41,14 @@ public sealed class MobileSessionDto
     /// <summary><c>erp</c> (data comes from the company's ERP) or <c>native</c> (the phones create it).</summary>
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
 
+    /// <summary>
+    /// How the phone reads its data: <c>tables</c> (per-table <c>/sync/…</c> endpoints) or <c>feed</c>
+    /// (the change feed, <c>POST /sync/pull</c>). Set per company by an operator; independent of
+    /// <see cref="DataSource"/>. A change also changes <see cref="PermissionsStamp"/>, so a signed-in
+    /// phone re-reads <c>/me</c> at its next call.
+    /// </summary>
+    [JsonPropertyName("syncMode")] public string SyncMode { get; set; } = "tables";
+
     /// <summary>Operations that go to the approval centre, keyed by approval kind.</summary>
     [JsonPropertyName("approvalRules")] public Dictionary<string, bool> ApprovalRules { get; set; } = new();
 
@@ -57,7 +65,7 @@ public sealed class MobileSessionDto
     [JsonPropertyName("permissionsVersion")] public int PermissionsVersion { get; set; }
 
     /// <summary>
-    /// Fingerprint of the roles and permissions above; every signed-in response carries the current one in the
+    /// Fingerprint of the roles and permissions above and of <see cref="SyncMode"/>; every signed-in response carries the current one in the
     /// <c>X-Permissions-Stamp</c> header, and a phone that sees another one re-reads <c>/me</c>.
     /// </summary>
     [JsonPropertyName("permissionsStamp")] public string? PermissionsStamp { get; set; }
@@ -203,6 +211,7 @@ public sealed class TenantMobileOverviewResponse
     [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
     [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
     [JsonPropertyName("dataSource")] public string DataSource { get; set; } = "erp";
+    [JsonPropertyName("syncMode")] public string SyncMode { get; set; } = "tables";
     [JsonPropertyName("approvalRules")] public ApprovalRulesDto ApprovalRules { get; set; } = new();
     [JsonPropertyName("modules")] public string[] Modules { get; set; } = [];
     [JsonPropertyName("seats")] public SeatUsageDto Seats { get; set; } = new();
@@ -227,4 +236,10 @@ public sealed class SetTenantModulesRequest
 public sealed class SetDataSourceRequest
 {
     [JsonPropertyName("dataSource")] public string? DataSource { get; set; }
+}
+
+/// <summary>PUT /api/v1/admin/tenants/{id}/mobile/sync-mode body: <c>tables</c> or <c>feed</c>.</summary>
+public sealed class SetSyncModeRequest
+{
+    [JsonPropertyName("syncMode")] public string? SyncMode { get; set; }
 }

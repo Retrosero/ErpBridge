@@ -181,6 +181,39 @@ registration ayrı bir composition projesine taşınır.
    zaten yapıyordu; fark, artık tüm katalog yerine yalnızca delta'nın dokunduğu
    kayıtlar için çalışması.
 
+   **Birincil barkod deterministiktir: `Sync/ProductBarcodes` (2026-10-02).** Telefon ürün
+   tablosunu barkodla anahtarlar (Room PK); aynı ürünün iki kurulumunda `barkod` değişirse
+   telefonda ürün **çift** görünür. Ne ajanın `BARKOD_TANIMLARI` okuması ne `mobile_records`
+   sorgusu sıra taşır (`ORDER BY` yok), bu yüzden akış (`MobileEntityAssembler.BuildProduct`)
+   `barcodes` dizisini `ProductBarcodes.Order` ile sıralar ve `barkod` = ilk eleman
+   (`ProductBarcodes.Primary`). **Tablo yolu (`/sync/urun`, `ProductCatalogAsync`) bilerek henüz
+   eski (saklanan) sırada:** bugün her ERP telefonu bu ucu okuyor; sıralama orada değişirse bazı
+   ürünlerin `barkod`'u dağıtımda değişir ve eski satırı düşürmeyen telefonlarda ürün çiftlenir.
+   Telefonun "birincil barkod değişince aynı koddaki eski satırı düşür" sürümü sahaya çıkınca
+   `/sync/urun` da `ProductBarcodes`'a bağlanır. Sıra: (1) **gerçek** barkod
+   önce — boş, stok koduna eşit veya `STK-` ile başlayan değer telefonun tablo yolunda zaten
+   atlanır (`BridgeSyncHelper`), sunucu da onu birincil seçmez; (2) ana birim (`unitPointer`
+   0/1) koli biriminden önce; (3) barkod metni ordinal; (4) ham satır metni (eşitlik bozucu).
+   Firma tablo yolundan akışa geçerken birincil barkod farklıysa telefon aynı koddaki eski satırı
+   düşürür (Siparis_Cepte, akış pilotu). Akış bugün yalnız ERP'siz firmada açık; onlarda tek
+   barkodlu kartlarda etki yoktur.
+   Yeni bir ürün kurucusu barkod seçecekse bu sınıfı kullanır, `barcodes[0]`'ı değil.
+
+   **Telefonun okuma yolu firma bazında seçilir: `tenants.MobileSyncMode` (2026-10-02).**
+   Değerler `tables` (varsayılan; tablo bazlı `/sync/<bölüm>` uçları) ve `feed` (bu uç).
+   Pilot anahtarı **`DataSource` DEĞİLDİR**: `native` yapmak ERP yazımlarını
+   `NativeTenantGuard`'a takar ve ERP verisi olan firmada zaten 409 döner. Operatör Admin
+   konsolunda *Firma → Mobil → Telefon senkronu* ile, API'de
+   `PUT /api/v1/admin/tenants/{id}/mobile/sync-mode` gövde `{"syncMode":"tables"|"feed"}` ile
+   değiştirir (AdminPolicy; geçersiz değer 400 `INVALID_SYNC_MODE`, firma yok 404; büyük/küçük
+   harf ve boşluk normalize edilir). **ERP'li firmada `feed`'e geçiş, `mobile_records`'ta silinmemiş `stocks` ve `customers` kaydı yoksa 409 `FEED_NOT_READY` ile reddedilir**: akışta tablo görevleri durur, boş bir projeksiyon telefona boş katalog verir ve telefonun ilk tam yürüyüşteki budaması (Siparis_Cepte kural 58) yereldekini silerdi. Pilot sırası: önce `POST /api/v1/admin/mobile-records/backfill`, `summary` sayıları snapshot ile karşılaştırılır, sonra mod `feed`. Telefon
+   değeri oturumdan okur: giriş yanıtı `session.syncMode` ve `GET /account/me` → `syncMode`
+   (`MobileSessionDto.SyncMode`); Admin özeti `TenantMobileOverviewResponse.syncMode`.
+   Mod **izin damgasına** (`PermissionStamp.Of(tenant, user, permissions)`, kural 33) girer:
+   değişince her imzalı yanıttaki `X-Permissions-Stamp` değişir, telefon `/me`'yi yeniden okur —
+   uygulama yeniden başlatılmadan geçer. Damgaya yalnız varsayılan **dışındaki** değer eklenir
+   (`|sync:feed`), bu yüzden `tables` firmaların damgaları dağıtımda değişmedi.
+
    Bir sayfa, imlecin üzerinden geçtiği ham satır sayısından **daha az** değişiklik
    taşıyabilir (bir stok kartı + 3 barkodu + 5 fiyatı tek üründür) ve bazen hiç
    taşımaz. Döngüyü `changes.size` değil **`hasMore`** sürdürür.
@@ -1287,7 +1320,7 @@ registration ayrı bir composition projesine taşınır.
      `permissionsVersion` taşır; `MobileUserDto.permissionOverrideCount`. Panel: `/yetkiler` (rol × izin matrisi, geçmiş) ve
      Kullanıcılar → Yetkiler (`UserPermissionsSheet`); `PortalRoles.Allows` oturum yetkisine bakar. Telefon: Siparis_Cepte KB kural 51.
    - **Yetki damgası:** her imzalı mobil yanıt `X-Permissions-Stamp` başlığı taşır (`PermissionStamp`: roller + bütün yetki ve
-     limitlerin SHA-256 özetinin ilk 16 hanesi; `MobileUserStateHandler` ve `MobileAccountEndpoints.AuthorizeAsync` koyar),
+     limitler + varsayılan dışındaysa firmanın `MobileSyncMode`'u (kural 12) — SHA-256 özetinin ilk 16 hanesi; `MobileUserStateHandler` ve `MobileAccountEndpoints.AuthorizeAsync` koyar),
      oturum da `permissionsStamp`. Telefon kaydettiğinden farklı damga görünce `/me`'yi yeniden okur: panelde yapılan değişiklik
      "beni hatırla" ile haftalarca açık kalan telefona yeniden giriş gerekmeden bir sonraki çağrıda (arka plan eşitlemesi dahil) ulaşır.
    - Sözleşme `docs/api-contracts.md`; testler `PermissionResolverTests`, `DocumentPermissionCheckTests`,

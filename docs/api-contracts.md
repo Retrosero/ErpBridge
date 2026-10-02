@@ -312,6 +312,9 @@ Ret kodları: `ADMIN_REQUIRED` (403), `ADMIN_ROLE_LOCKED`, `ADMIN_USER_LOCKED`, 
 Oturum (`/login`, `/me`): `permissions: {anahtar: bool}`, `limits: {anahtar: sayı \| null}`, `permissionsVersion` (0 = yetkisiz
 eski sunucu), `permissionsStamp` (roller + yetkilerin 16 haneli özeti). Her imzalı mobil yanıt güncel damgayı
 `X-Permissions-Stamp` başlığında taşır; telefon farklı damga görünce `/me`'yi yeniden okur (yeniden giriş gerekmez).
+Oturumda ayrıca `syncMode: "tables" | "feed"` (varsayılan `tables`; firma bazında, `dataSource`'tan bağımsız): `feed` ise telefon
+`POST /android/sync/pull` akışını kullanır. Operatör `PUT /admin/tenants/{id}/mobile/sync-mode` `{"syncMode":"feed"}` ile değiştirir
+(204; geçersiz değer 400 `INVALID_SYNC_MODE`, firma yok 404). Mod damgaya girer, yani değişiklik telefona bir sonraki çağrıda ulaşır.
 Ingest: mobil kullanıcının doğrudan belgesi modül yetkisi yoksa, açık hesap (cari borç) satış yetkisi olmadan cari borçlu satışsa ya da limit aşılırsa
 `409 APPROVAL_REQUIRED` (mesaj nedeni söyler); belge onay talebi olarak yeniden gönderilir.
 
