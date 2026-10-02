@@ -41,8 +41,10 @@ Kullanıcı isteği: "web panelden, uygulamadan yapabildiğim satış tahsilat a
   `specialDiscountPercent=0` koyar, fiilen ürünün başlık listesini kullanır (`MobileEntityAssembler` `satisFiyatListeNo`:
   fiyatı varsa 1, yoksa fiyatlı en küçük liste). Belgenin `priceListNo`'su satırların en çok kullandığı liste (eşitlikte
   küçük). Panel aynı kuralı uygular, müşteri iskontosu 0; ayrıca liste seçimi için açılır menü.
-- `module.expenses` ve `module.tasks` sunucuda denetlenmiyor (`PermissionCatalog` `ServerEnforced=false`). Görevler yalnız
-  panelde kapılanır (telefon davranışı değişmez); yeni gider ucu `module.expenses`'i sunucuda denetler.
+- `module.expenses` ve `module.tasks` sunucuda denetlenmiyor (`PermissionCatalog` `ServerEnforced=false`). Yeni gider ucu
+  `module.expenses`'i sunucuda denetler. Görev uçları (`MobileTaskEndpoints`, bildirimler) **yalnız panel oturumunda**
+  (`client=portal`) `module.tasks`'ı sunucuda denetler (403 `ENTRY_MODULE_DENIED`): menüyü gizlemek güvence değildir;
+  telefon oturumunun davranışı değişmez (Codex #249).
 - ERP'siz gider telefonda müşterisiz `disbursement` ("Gider: {kategori}") → yalnız kayıt, bakiyeye etkisiz; ingest 5b2'de
   `disbursement` yetki/limitine tabi. Panel de aynısını yapar.
 - Varsayılan rol şablonunda `module.*` yalnız ADMIN/MANAGER/SALES'te açık; muhasebe girecekse `/yetkiler`'den açılır.
@@ -79,6 +81,9 @@ Grup `/api/v1/portal/entry`, `MobileUserPolicy` + `PerMobileUserRateLimitPolicy`
   ("{sahip} adına; eksik: …"); diğer çeviri hatası → 422 `ENTRY_DOCUMENT_INVALID` (gövde kurucusuna kalkan).
 - **`PanelEntryWriter`**: tek belge `SalesJobWriter.WriteAsync` (`CreatedByUserId = sahip`); çok belge işlem içinde
   `PlaceAsync`, biri `Failed` → hepsi geri, 422 `ENTRY_BOOKING_FAILED` (`ApprovalService.PostDocumentsAsync` deseni).
+  Çok belgede tekrar deneme `PlaceAsync`'ten **önce** belgelerin hepsi var mı diye bakar (hepsi varsa idempotent yanıt);
+  eşzamanlı iki tekrar denemesinde kaybeden `DbUpdateException`'ı yakalayıp kazananın işlerini döner (`WriteAsync`'in
+  yarış kurtarmasının çok belgeli karşılığı; Codex #249).
   Her girişe `native_audit_log` satırı (iki firma türünde): giren kişi, belge, "X adına" özeti.
   `expectedTotal` tolerans dışında → 409 `PRICE_CHANGED` + güncel önizleme.
 - **`PanelPricing`**: satış `CustomerCatalog/CatalogPricing`; iade satırı ve alış (6 satır + 6 genel iskonto) Sipariş Cepte
@@ -123,7 +128,9 @@ Grup `/api/v1/portal/entry`, `MobileUserPolicy` + `PerMobileUserRateLimitPolicy`
   `/giris/iade`, `/giris/tediye`, `/giris/gider` (Stok sayımı `CanEditNativeData`'da kalır); "Görevler" + üst çubukta zil.
 - `Shared/Entry/`: `EntryHeader` (sahip + tarih), `CustomerPicker`, `ProductLineGrid`, `PaymentLines`, `EntryTotals`,
   `RefusalBanner` (ret/eksik eşlemede Kaydet pasif), `EntryResultCard` (durum, ERP belgeleri bağlantısı, yazdır).
-  Önizleme ~400 ms gecikmeli; her kayıt denemesi yeni `operationId`.
+  Önizleme ~400 ms gecikmeli. `operationId` **form gönderimi başına bir kez** üretilir ve kesin yanıt (başarı ya da
+  sunucunun kalıcı reddi) ya da form sıfırlanana kadar korunur: yanıtı kaybolan kaydı yeniden göndermek aynı
+  `externalId`'yi taşır, ikinci mali belge açılmaz (Codex #249).
 - Altı sayfa, alanlar telefonla aynı (satış: satır/genel iskonto, not, Cari Borç/Nakit/Kredi Kartı+banka; tahsilat:
   bölünmüş ödeme, taksit, çek/senet no+vade; alış: seri/sıra, 6+6 iskonto; iade: yalnız satılmış ürünler, durum oranı,
   neden, Cari Alacak/Nakit/Banka İade; tediye: Nakit/EFT+banka; gider: kart/kategori, KDV, Kasa/Banka/Kredi Kartı).
@@ -131,9 +138,10 @@ Grup `/api/v1/portal/entry`, `MobileUserPolicy` + `PerMobileUserRateLimitPolicy`
 - `Evraklar ?yeni=` ve `Cari` ödeme düğmeleri yeni sayfalara gider (`?cari=` dolu); düzenle/iptal aynen.
 - `Api/PortalApiClient.cs` + `Api/EntryModels.cs`; `Api/PortalMessages.cs`'e yeni kodların Türkçe metni.
 
-### 2.3 Görevler (panel; sunucu değişmez)
+### 2.3 Görevler (panel; sunucuda yalnız panel oturumu için modül denetimi)
 - `Api/TaskModels.cs` (`Contracts/TaskContracts.cs` aynası); liste (`changedSinceSeq`), özet, kişiler, seriler, `events`
   uzun yoklama, `ops` (işlem başına `opId`, tekrarda korunur), detay, ek PUT/GET/DELETE, bildirimler + okundu.
+- Sunucu (tek değişiklik): görev/bildirim uçlarında panel oturumu için `module.tasks` denetimi (yukarıdaki not).
 - `/gorevler` (özet kartları; bana atanan/oluşturduğum/takip ettiğim/hepsi `canManage`), detay (alt görev, yorum,
   olaylar, tamamla/yeniden aç/iptal/sil), düzenleme çekmecesi (atanan/takipçi, cari + ziyaret hatırlatma,
   başlangıç/bitiş, öncelik, alt görevler, `requiresPhoto`), `/gorevler/seriler`; canlı güncelleme `Muhasebe.razor`
