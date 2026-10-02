@@ -20,7 +20,8 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// only the picture changes, never the product card, so an ERP company uses it too. Reading the photos is for every user
 /// of the company. Writes go through the catalog's picture lock and move its picture revision: the web catalog shows a
 /// product's photos when it has no catalog picture of its own (<see cref="CatalogViewService"/>). A deleted photo's files
-/// go to the trash.
+/// go to the trash. The reads also carry the server's copies of the product's XML feed pictures (<c>xmlItems</c>, S7,
+/// <see cref="XmlImageSync"/>; read-only here) so the phone can prefer them to downloading the feed's pictures itself.
 /// </summary>
 public static class ProductImageEndpoints
 {
@@ -53,8 +54,14 @@ public static class ProductImageEndpoints
         var tenantId = access.Tenant!.Id;
         if (StockCodeOf(stockCode, await views.LoadAsync(db, tenantId, forCustomer: false, ct)) is not { } code) return InvalidStockCode();
         var rows = await db.ProductImages.AsNoTracking().Where(i => i.TenantId == tenantId && i.StockCode == code).ToListAsync(ct);
-        var urls = await UrlsAsync(db, storage.Value, tenantId, rows, ct);
-        return JsonResults.Ok(new ProductImagesResponse { StockCode = code, Items = [.. Dtos(ProductImage.InOrder(rows), urls)] });
+        var xml = await db.XmlImages.AsNoTracking().Where(i => i.TenantId == tenantId && i.StockCode == code).ToListAsync(ct);
+        var urls = await CatalogFileUrls.LoadAsync(db, storage.Value, tenantId, FileIds(rows).Concat(XmlFileIds(xml)), ct);
+        return JsonResults.Ok(new ProductImagesResponse
+        {
+            StockCode = code,
+            Items = [.. Dtos(ProductImage.InOrder(rows), urls)],
+            XmlItems = [.. XmlDtos(XmlImage.InOrder(xml), urls)],
+        });
     }
 
     private static async Task<IResult> ManifestAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] IOptions<StorageOptions> storage, CancellationToken ct)
@@ -63,11 +70,15 @@ public static class ProductImageEndpoints
         if (access.Error is not null) return access.Error;
         var tenantId = access.Tenant!.Id;
         var rows = await db.ProductImages.AsNoTracking().Where(i => i.TenantId == tenantId).ToListAsync(ct);
-        var urls = await UrlsAsync(db, storage.Value, tenantId, rows, ct);
+        var xml = await db.XmlImages.AsNoTracking().Where(i => i.TenantId == tenantId).ToListAsync(ct);
+        var urls = await CatalogFileUrls.LoadAsync(db, storage.Value, tenantId, FileIds(rows).Concat(XmlFileIds(xml)), ct);
         return JsonResults.Ok(new ProductImageManifestResponse
         {
             Items = [.. rows.GroupBy(i => i.StockCode, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal)
                 .Select(g => new ProductImagesResponse { StockCode = g.Key, Items = [.. Dtos(ProductImage.InOrder(g), urls)] })
+                .Where(p => p.Items.Length > 0)],
+            XmlItems = [.. xml.GroupBy(i => i.StockCode, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new XmlProductImagesDto { StockCode = g.Key, Items = [.. XmlDtos(XmlImage.InOrder(g), urls)] })
                 .Where(p => p.Items.Length > 0)],
         });
     }
@@ -219,7 +230,32 @@ public static class ProductImageEndpoints
 
     /// <summary>The CDN addresses of the photos' stored sizes (active public files only).</summary>
     public static Task<CatalogFileUrls> UrlsAsync(CentralApiDbContext db, StorageOptions storage, Guid tenantId, IEnumerable<ProductImage> images, CancellationToken ct) =>
-        CatalogFileUrls.LoadAsync(db, storage, tenantId, images.SelectMany(i => new[] { i.StoredFileSmallId, i.StoredFileLargeId }), ct);
+        CatalogFileUrls.LoadAsync(db, storage, tenantId, FileIds(images), ct);
+
+    public static IEnumerable<Guid> FileIds(IEnumerable<ProductImage> images) => images.SelectMany(i => new[] { i.StoredFileSmallId, i.StoredFileLargeId });
+
+    public static IEnumerable<Guid> XmlFileIds(IEnumerable<XmlImage> images) => images.SelectMany(i => new[] { i.StoredFileSmallId, i.StoredFileLargeId });
+
+    /// <summary>An XML picture whose sizes both have an address, else none.</summary>
+    public static XmlImageDto? ToDto(XmlImage image, CatalogFileUrls urls) =>
+        urls.Of(image.StoredFileSmallId) is { } thumb && urls.Of(image.StoredFileLargeId) is { } full
+            ? new XmlImageDto
+            {
+                Id = image.Id,
+                StockCode = image.StockCode,
+                Position = image.Position,
+                SourceUrl = image.SourceUrl,
+                ThumbUrl = thumb,
+                FullUrl = full,
+                Width = image.Width,
+                Height = image.Height,
+                SizeBytes = image.SizeBytes,
+                UpdatedAtMs = image.UpdatedAtMs,
+            }
+            : null;
+
+    private static IEnumerable<XmlImageDto> XmlDtos(IEnumerable<XmlImage> images, CatalogFileUrls urls) =>
+        images.Select(i => ToDto(i, urls)).OfType<XmlImageDto>();
 
     /// <summary>A photo whose sizes both have an address, else none (a file in the trash or quarantined is not shown).</summary>
     public static ProductImageDto? ToDto(ProductImage image, CatalogFileUrls urls) =>

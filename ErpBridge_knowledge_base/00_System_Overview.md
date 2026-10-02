@@ -1064,7 +1064,7 @@ registration ayrı bir composition projesine taşınır.
      bağlı görevde açık kalır (`SetVisitReminder`; cari yoksa sunucu kapatır). Seride `task_series.VisitReminder`;
      her örnek kendi başlangıcından (`runAt`) itibaren hatırlatır. Hatırlatmayı sunucu göndermez: telefon, atanan
      kişi cariyi satış için açınca gösterir; "sonra tekrar sor" telefonda yereldir (Sipariş Cepte KB kural 34).
-28. **Satılan ek modüller firma bazındadır; XML ürün beslemesi telefonda işlenir: `Endpoints/MobileXmlFeedEndpoints` (XML ürün modülü, 2026-09-26).**
+28. **Satılan ek modüller firma bazındadır; XML ürün beslemesi telefonda işlenir, görselleri sunucu da kopyalar: `Endpoints/MobileXmlFeedEndpoints` (XML ürün modülü, 2026-09-26; görseller GOAL_DEPOLAMA_R2 S7, 2026-10-02).**
    - **Modül seti yalnız operatörden:** `tenant_modules` (`TenantId, ModuleKey` birleşik PK). Bilinen anahtarlar tek yerde:
      `Domain/TenantModules.Known` (firma ek modülleri: `xml_import`, `customer_catalog` — kural 36). Admin konsolu `/tenants/{id}/mobile` "Ek modüller"
      paneli → `PUT /api/v1/admin/tenants/{id}/mobile/modules {modules:[…]}` **telefon ek modülleri** setini tamamen değiştirir (204; bilinmeyen
@@ -1085,8 +1085,11 @@ registration ayrı bir composition projesine taşınır.
    - **ERP'li firmada tam aktarım yok:** `fullImport` yalnız `DataSource = native` ise saklanır; ERP'li firmada telefon ne
      gönderirse göndersin `false` yazılır — ana veri ERP'nindir, XML yalnız resim/açıklama ekler (Sipariş Cepte
      `DataEditPolicy`).
-   - **Sunucu beslemeyi indirmez.** URL'yi her telefon kendisi çeker ve kendi yerel veritabanına işler; sunucu yalnız
-     ayarı saklar (SSRF yüzeyi açılmaz, sunucuda XML ayrıştırma yok).
+   - **Telefon beslemeyi kendisi işler; sunucu yalnız görselleri kopyalar (R3, 2026-10-02'de değişti).** URL'yi her telefon
+     kendisi çeker ve kendi yerel veritabanına işler (açıklama, kart alanları). Sunucu aynı adresi **yalnız kod ve görsel için**
+     okur (`Storage/XmlImageSync`, kural 37 "XML görselleri"): görselleri R2'ye koyar ki web katalog ve bütün telefonlar aynı
+     kopyayı görsün. Eskiden "sunucu indirmez, SSRF yüzeyi yok" kuralıydı; artık bu yüzey `Storage/SafeHttpFetcher` ile korunur.
+     Ayar görsel indirme açık kaydedilince (`PUT`) eşitleme isteği konur (`ImageSyncRequestedAtMs`).
    - Testler: `XmlFeedModuleRelationalTests`, Admin `TenantMobilePageTests` (modül kutusu).
 29. **SKT (son kullanma tarihi) kayıtları merkezdedir: `Expiry/StockExpiryService` + `Endpoints/MobileExpiryEndpoints` (2026-09-27).**
    - **Uygulamanın operasyonel verisidir, ERP ana verisi değil.** Kayıt = ürün (`stockCode`, barkod/ad anlık kopyası) +
@@ -1531,8 +1534,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
 
-37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1–S6, S8, 2026-10-01).**
-   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5), ürün fotoğrafı (S6); XML eşitleyici (S7), temizlik
+37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1–S8, 2026-10-01/02).**
+   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5), ürün fotoğrafı (S6), XML görsel eşitleyici (S7); temizlik
    (S9) ve bytea göçü (S10) bu temeli kullanacak — göçe kadar depodan önce yüklenen resimler PostgreSQL bytea'sında kalır ve okunur.
    - **Kayıtlar dosyaya `StoredFile*Id` ile bağlanır, yabancı anahtar yok** (migration `DepolamaAlanlari`): defter satırı deponun kendi
      yaşamıyla (çöp, kalıcı silme) gider, sahip kaydıyla değil; "yetim" = hiçbir kaydın göstermediği dosya (S9), bağlantı sütunları
@@ -1544,7 +1547,7 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id:N}-{varyant}.{uzantı}`; kod boşsa `MobileSeatService.EnsureTenantCodeAsync` üretir.
    - **Ayarlar** `Storage/StorageOptions` (`Storage:*`, Coolify `Storage__*`; anahtar çifti Coolify Secret): `AccountId`, `AccessKeyId`,
      `SecretAccessKey`, `PublicBucket`, `PrivateBucket`, `PublicBaseUrl`, `DefaultQuotaBytes` 5 GB, `PresignMinutes` 5, `TrashDays` 7,
-     `DeletedOwnerPurgeDays` 30, `MaintenanceEnabled`, `MaintenanceHourUtc` 2. Biri eksikse API **açılır**: `IObjectStore` =
+     `DeletedOwnerPurgeDays` 30, `MaintenanceEnabled`, `MaintenanceHourUtc` 2, `XmlSyncEnabled` (S7). Biri eksikse API **açılır**: `IObjectStore` =
      `UnavailableObjectStore`, depolama uçları `503 STORAGE_UNAVAILABLE`, açılışta eksik ayarların **adları** uyarılır; `PublicBaseUrl`
      doluysa https olmalı (`ValidateRuntimeConfiguration`).
    - **R2 istemcisi** `Storage/R2ObjectStore` (`AWSSDK.S3` 4.x): `https://{AccountId}.r2.cloudflarestorage.com`, path-style, imza bölgesi
@@ -1647,3 +1650,36 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      detayındaki küçük resim de); katalog yönetimi (`ImageCount`, manifest) yalnız katalog görsellerini sayar. Panel: Stok sayfasında ürün
      detayına `Shared/ProductPhotos.razor` (küçük resim, büyük resim yeni sekmede, yükleme küçültmeden, "Kapak yap", sil; yetki yoksa
      yalnız gösterir). Testler `Storage/ProductImageRelationalTests`, Portal `PortalProductPhotosTests`.
+   - **XML görselleri (S7)** `Storage/XmlImageSync` + `XmlImageSyncWorker`, tablo `xml_images` (R3, R6): sunucu firmanın kayıtlı XML
+     beslemesini (`tenant_xml_feed_settings`) **telefonun kurallarıyla** okur — `Storage/XmlFeedImageReader`, Sipariş Cepte
+     `XmlFeedScanner.forEachRecord` + `XmlFeedReader.toItem`'in birebir karşılığı (kayıt yolu kökten tam yol, ön ekler yazıldığı gibi,
+     ad alanı çözülmez; alan kayda göreli, öznitelik `@ad`; değer öğenin kendi metni; resim ailesi kuralı; adres bölme; aynı kod ilk
+     kayıt). İkisi birlikte değişir. DTD yasak, çözümleyici yok (XXE), akışlı; windows-1254/ISO-8859-9 okunur. Kod firmanın ürünleriyle
+     (`CatalogViewService` `Products`, büyük/küçük harf duyarsız) eşleşir, satırda kartın kendi kodu durur; ürün başı ilk 6 adres
+     (`MaxImagesPerProduct`, telefonla aynı). Akış: önce silmeler ve sıra (XML'den kalkan adres ya da ürün → satır silinir, iki dosya
+     **çöpe gitmeden** `PurgeAllAsync`; XML yeniden üretebilir), sonra indirmeler (firma başı 4 paralel; veritabanı/depo yazımı tek
+     sırada — DbContext iş parçacığı güvenli değil): yeni adres → `ImageBytes.Sniff` → SHA-256 → `ImageProcessor` 1280/400 WebP →
+     iki `FileStore.PutAsync` (alan `xml`, `OwnerType` `xml_image`, `OwnerKey` stok kodu, kullanıcı yok) → satırlar 25'lik gruplarla
+     katalog görsel kilidinde (`WriteLayoutAsync(pictures: true)`, `ImageRevision` artar). 7 günden (`RecheckDays`) eski kopya
+     ETag/Last-Modified ile sorulur: 304 ya da aynı bayt yalnız `CheckedAtMs`; yeni bayt → yeni dosyalar, satır güncellenir, eski
+     dosyalar kalıcı silinir. Tek görsel hatası (404, resim değil, > 10 MB) sayılır, varsa eski kopya kalır (yeniden sorma 7 gün
+     sonra). `413` kota yeni indirmeleri durdurur (`quota`; silmeler zaten yapılmıştır), depo hatası (`503`) turu durdurur. Tur başı
+     en çok 3000 indirme; iş kalırsa ve tur ilerleme kaydettiyse istek yeniden konur. **R6 güvencesi — hiçbir şey silinmez:** XML
+     indirilemez/okunamaz, kayıt yok, hiçbir ürün eşleşmez, eşleşen ürünlerin hiç görseli yok, eşlemede CODE ya da IMAGE alanı yok
+     → `failed`. Modül yok, görsel indirme kapalı ya da firma pasifse tur hiçbir şey yapmaz (istek düşer); artık istenmeyen kopyalar
+     temizliğin (S9) işidir — `StorageMaintenance.TrashUnreferencedAsync` `xml` alanını bilerek atlar, bu yüzden S9'da ayrıca ele
+     alınmalı. Sonuç ayar satırında (`ImageSync*`, istatistik JSON). **Dış adres güvenliği** `Storage/SafeHttpFetcher` (`IExternalFetcher`,
+     testte `FakeExternalFetcher`): yalnız http/https, kullanıcı bilgisi yok, `localhost`/`.localhost`/`.local`/`.internal` yok, düz IP
+     `WebhookTargetValidator.IsPublicAddress` (2026-10-02 genişledi: IPv4-eşlenik IPv6, `::/96`, NAT64 `64:ff9b::/96` içindeki IPv4,
+     `64:ff9b:1::/48`, Teredo, 6to4 içindeki IPv4, site-local, `192.0.0.0/24`, `198.18.0.0/15`, TEST-NET'ler, `::`, yayın); adlı istemcinin
+     `SocketsHttpHandler`'ı proxy'siz, otomatik yönlendirmesiz, `ConnectCallback = ConnectPublicAsync` (çözülen **bütün** adresler
+     denetlenir, soket doğrulanan IP'ye bağlanır — DNS rebinding'e karşı); yönlendirme elle en çok 3, her hedef yeniden denetlenir;
+     tek zaman aşımı (görsel 20 sn, XML 120 sn), bayt sınırı akarken (görsel 10 MB, XML 100 MB; XML geçici dosyaya iner, sonra
+     silinir). Günlüğe yalnız host yazılır (adres sorgusunda anahtar olabilir). **İşçi** `XmlImageSyncWorker` (`Storage:XmlSyncEnabled`,
+     testte kapalı): dakikada bir bekleyen firmaları en eski istek önce, birer birer; her gün `MaintenanceHourUtc + 1` saatinde (UTC)
+     XML modülü ve görsel indirmesi açık her firmaya istek koyar (`RequestAllAsync`). **Uçlar** `Endpoints/XmlImageEndpoints`:
+     `GET /api/v1/storage/xml-images/status`, `POST …/sync` (202) — yalnız `action.storage.manage` (`403 STORAGE_FORBIDDEN`).
+     **Kullanım:** `CatalogProduct.XmlPhotos`; müşteriye `ShownPictures` = katalog görseli → ürün fotoğrafı → XML görseli. Ürün
+     fotoğrafı `GET ?stockCode=` ve `GET /manifest` yanıtlarına salt okunur `xmlItems` eklendi (`XmlImage { id, stockCode, position,
+     sourceUrl, thumbUrl, fullUrl, … }`, XML sırasıyla) — telefon (A4) sunucu kopyası varken kendisi indirmesin diye. Testler
+     `Storage/XmlImageSyncRelationalTests`, `XmlFeedImageReaderTests`, `SafeHttpFetcherTests`, `Security/WebhookTargetValidatorTests`.

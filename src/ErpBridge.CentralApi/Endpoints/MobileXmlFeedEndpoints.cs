@@ -11,9 +11,11 @@ namespace ErpBridge.CentralApi.Endpoints;
 /// <summary>
 /// Maps <c>/api/v1/android/xml-feed</c>: the company's XML product feed (sellable module
 /// <see cref="TenantModules.XmlImport"/>). The administrator saves it from the phone; every phone
-/// of the company reads it and downloads and imports the feed itself — the server never fetches
-/// the URL. In an ERP company only images and descriptions are imported: the ERP keeps the
-/// master data, so <c>fullImport</c> is stored false there whatever the phone sends.
+/// of the company reads it and downloads and imports the feed itself. The server fetches the same
+/// address for the pictures only (GOAL_DEPOLAMA_R2 S7, R3): <see cref="Storage.XmlImageSync"/> copies them
+/// into the central file store through the SSRF-safe <see cref="Storage.SafeHttpFetcher"/>; saving a feed
+/// with pictures on asks for a run. In an ERP company only images and descriptions are imported: the ERP
+/// keeps the master data, so <c>fullImport</c> is stored false there whatever the phone sends.
 /// </summary>
 public static class MobileXmlFeedEndpoints
 {
@@ -98,6 +100,8 @@ public static class MobileXmlFeedEndpoints
         row.FullImport = body.FullImport && tenant.DataSource == TenantDataSources.Native;
         row.UpdatedByUserId = access.User!.Id;
         row.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        // A saved feed is copied soon, not at the next daily run (a run already waiting keeps its place).
+        if (row.DownloadImages) row.ImageSyncRequestedAtMs ??= row.UpdatedAtUtc.ToUnixTimeMilliseconds();
         await db.SaveChangesAsync(ct);
         return JsonResults.Ok(await ToDtoAsync(db, row, tenant, ct));
     }

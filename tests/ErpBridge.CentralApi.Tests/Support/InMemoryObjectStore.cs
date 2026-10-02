@@ -56,15 +56,24 @@ public sealed class InMemoryObjectStore : IObjectStore
         Task.FromResult(new Uri($"https://r2.test/{bucket}/{key}?X-Amz-Expires={(int)validFor.TotalSeconds}&X-Amz-Signature=test"));
 }
 
-/// <summary>A relational host whose file store is <see cref="InMemoryObjectStore"/>, CDN at <c>https://img.test</c>.</summary>
+/// <summary>
+/// A relational host whose file store is <see cref="InMemoryObjectStore"/>, CDN at <c>https://img.test</c>, and whose
+/// outside downloads (the XML picture sync) come from <see cref="FakeExternalFetcher"/>.
+/// </summary>
 public class StorageCentralApiFactory : SqliteCentralApiFactory
 {
     public InMemoryObjectStore Store { get; } = new();
+
+    public FakeExternalFetcher Fetcher { get; } = new();
 
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         builder.UseSetting("Storage:PublicBaseUrl", "https://img.test");
-        builder.ConfigureServices(services => services.AddSingleton<IObjectStore>(Store));
+        builder.ConfigureServices(services =>
+        {
+            services.AddSingleton<IObjectStore>(Store);
+            services.AddSingleton<IExternalFetcher>(Fetcher);
+        });
     }
 }

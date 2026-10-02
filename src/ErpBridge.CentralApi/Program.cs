@@ -364,6 +364,17 @@ public partial class Program
         builder.Services.AddScoped<ErpBridge.CentralApi.Storage.FileStore>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageMaintenance>();
         builder.Services.AddHostedService<ErpBridge.CentralApi.Storage.StorageMaintenanceWorker>();
+        // XML picture sync (S7): the server's only outside downloads, through a handler that pins every connection to a
+        // checked public address and follows no redirect by itself (SafeHttpFetcher follows and re-checks them).
+        builder.Services.AddHttpClient<ErpBridge.CentralApi.Storage.IExternalFetcher, ErpBridge.CentralApi.Storage.SafeHttpFetcher>(
+                ErpBridge.CentralApi.Storage.SafeHttpFetcher.ClientName, client =>
+                {
+                    client.Timeout = Timeout.InfiniteTimeSpan;
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd("SiparisCepte-XmlSync/1.0");
+                })
+            .ConfigurePrimaryHttpMessageHandler(ErpBridge.CentralApi.Storage.SafeHttpFetcher.CreateHandler);
+        builder.Services.AddScoped<ErpBridge.CentralApi.Storage.XmlImageSync>();
+        builder.Services.AddHostedService<ErpBridge.CentralApi.Storage.XmlImageSyncWorker>();
     }
 
     /// <summary>
@@ -974,6 +985,7 @@ public partial class Program
         app.MapMobileExpenseAttachmentEndpoints();
         app.MapPortalExpenseReceiptEndpoints();
         app.MapProductImageEndpoints();
+        app.MapXmlImageEndpoints();
         app.MapAdminStorageEndpoints();
     }
 

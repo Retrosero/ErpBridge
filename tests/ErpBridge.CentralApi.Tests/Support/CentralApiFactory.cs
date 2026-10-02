@@ -74,6 +74,8 @@ public class CentralApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Tasks:SchedulerEnabled", "false");
         // Storage tests run the daily maintenance pass themselves (StorageUsageRelationalTests).
         builder.UseSetting("Storage:MaintenanceEnabled", "false");
+        // XML picture sync tests run XmlImageSync themselves (XmlImageSyncRelationalTests).
+        builder.UseSetting("Storage:XmlSyncEnabled", "false");
         if (_disableRateLimiter)
             builder.UseSetting("RateLimiter:DisabledForTests", "true");
         // Go licensing signs with a throwaway key; GoLicenseActivateTests verifies against it.
