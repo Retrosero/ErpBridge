@@ -86,4 +86,37 @@ public sealed class DocumentPermissionCheckTests
             DocumentPermissionCheck.Refusal(Sales(new()), kind, huge).Should().BeNull();
         }
     }
+    [Fact]
+    public void The_check_names_the_violation_and_the_panel_text_never_mentions_approval()
+    {
+        var limited = Sales(new()
+        {
+            [K.LimitSaleAmount] = "1000",
+            [K.LimitSaleLineDiscountPct] = "10",
+            [K.SaleOpenAccount] = PermissionValues.False,
+            [K.ModuleReturns] = PermissionValues.False,
+        });
+
+        var amount = DocumentPermissionCheck.Check(limited, ApprovalKinds.Sale, new DocumentLimitFacts(1500m, null, null));
+        amount.Should().Be(new PermissionViolation(PermissionViolationKind.Limit, K.LimitSaleAmount, "Satış tutarı", 1500m, 1000m));
+        amount!.Message.Should().Be("Satış tutarı 1.500 TL, sınırınız 1.000 TL.");
+        amount.ApprovalMessage.Should().Be(DocumentPermissionCheck.Refusal(limited, ApprovalKinds.Sale, new DocumentLimitFacts(1500m, null, null)));
+
+        var discount = DocumentPermissionCheck.Check(limited, ApprovalKinds.Sale, new DocumentLimitFacts(10m, 12.5m, null));
+        discount!.Key.Should().Be(K.LimitSaleLineDiscountPct);
+        discount.Percent.Should().BeTrue();
+        discount.Message.Should().Be("Satır iskontosu %12,5, sınırınız %10.");
+
+        var onAccount = DocumentPermissionCheck.Check(limited, ApprovalKinds.Sale, new DocumentLimitFacts(10m, null, null, OnAccount: true));
+        onAccount!.Kind.Should().Be(PermissionViolationKind.OpenAccount);
+        onAccount.Key.Should().Be(K.SaleOpenAccount);
+
+        var module = DocumentPermissionCheck.Check(limited, ApprovalKinds.Return, DocumentLimitFacts.None);
+        module!.Kind.Should().Be(PermissionViolationKind.Module);
+        module.Key.Should().Be(K.ModuleReturns);
+
+        foreach (var violation in new[] { amount, discount, onAccount, module })
+            violation.Message.Should().NotContain("onay");
+        DocumentPermissionCheck.Check(limited, ApprovalKinds.Sale, new DocumentLimitFacts(1000m, 10m, null)).Should().BeNull();
+    }
 }
