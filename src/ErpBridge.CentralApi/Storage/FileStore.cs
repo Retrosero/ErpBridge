@@ -70,8 +70,29 @@ public sealed partial class FileStore
     /// is the caller's step, made before. Fails with 415 for anything but JPEG/PNG/WebP, 413 over the quota, 503 when R2
     /// is not configured or does not answer, 404 when the company does not exist.
     /// </summary>
-    public async Task<StorageResult<StoredFile>> PutAsync(
-        Guid tenantId, string area, string ownerType, string ownerKey, string variant, string? contentType, byte[] data, Guid? userId, CancellationToken ct)
+    public Task<StorageResult<StoredFile>> PutAsync(
+        Guid tenantId, string area, string ownerType, string ownerKey, string variant, string? contentType, byte[] data, Guid? userId, CancellationToken ct) =>
+        PutCoreAsync(tenantId, area, ownerType, ownerKey, variant, contentType, data, userId, migration: false, ct);
+
+    /// <summary>
+    /// <b>The bytea move only</b> (<see cref="BlobMigration"/>, GOAL_DEPOLAMA_R2 S10/T9) — no other caller. Stores a picture
+    /// that was uploaded before the central store and sat in PostgreSQL (<c>catalog_image_blobs</c>, <c>task_attachment_blobs</c>):
+    /// <list type="bullet">
+    /// <item>the bytes are kept <b>exactly as they are</b> (no metadata strip, no re-encoding), so the object's SHA-256 is the
+    /// blob's and the move can be verified byte for byte;</item>
+    /// <item><b>the quota is not checked</b>: these bytes are already the company's (they were stored before the quota
+    /// existed), and moving them must never fail because the company is full. They are still reserved and then added to
+    /// <see cref="TenantStorage.UsedBytes"/> like any upload, so the counter tells the truth afterwards (it may go over the
+    /// quota; new uploads then stop until space is freed).</item>
+    /// </list>
+    /// The type is still checked by the first bytes (415 otherwise); 503 when R2 does not answer.
+    /// </summary>
+    internal Task<StorageResult<StoredFile>> PutMigratedAsync(
+        Guid tenantId, string area, string ownerType, string ownerKey, string variant, string contentType, byte[] data, Guid? userId, CancellationToken ct) =>
+        PutCoreAsync(tenantId, area, ownerType, ownerKey, variant, contentType, data, userId, migration: true, ct);
+
+    private async Task<StorageResult<StoredFile>> PutCoreAsync(
+        Guid tenantId, string area, string ownerType, string ownerKey, string variant, string? contentType, byte[] data, Guid? userId, bool migration, CancellationToken ct)
     {
         if (!StorageAreas.IsKnown(area)) throw new ArgumentOutOfRangeException(nameof(area), area, "Unknown storage area.");
         if (!StoredFileVariants.IsKnown(variant)) throw new ArgumentOutOfRangeException(nameof(variant), variant, "Unknown file variant.");
@@ -82,7 +103,8 @@ public sealed partial class FileStore
         if (data.Length == 0 || !ImageBytes.ContentTypes.Contains(type) || !ImageBytes.LooksLike(type, data))
             return StorageResult<StoredFile>.Fail(StorageErrors.InvalidImage());
         if (!_store.IsAvailable) return StorageResult<StoredFile>.Fail(StorageErrors.Unavailable());
-        data = ImageBytes.StripMetadata(type, data);
+        // A moved blob keeps its bytes (its SHA-256 is the proof of the move); an upload loses its metadata.
+        if (!migration) data = ImageBytes.StripMetadata(type, data);
 
         var code = await _seats.EnsureTenantCodeAsync(tenantId, ct);
         if (code is null) return StorageResult<StoredFile>.Fail(StorageErrors.TenantNotFound());
@@ -90,8 +112,15 @@ public sealed partial class FileStore
 
         var size = (long)data.Length;
         var now = _time.GetUtcNow();
-        var quotaError = await ReserveAsync(tenantId, size, now.ToUnixTimeMilliseconds(), ct);
-        if (quotaError is not null) return StorageResult<StoredFile>.Fail(quotaError);
+        if (migration)
+        {
+            await ReserveUncheckedAsync(tenantId, size, now.ToUnixTimeMilliseconds(), ct);
+        }
+        else
+        {
+            var quotaError = await ReserveAsync(tenantId, size, now.ToUnixTimeMilliseconds(), ct);
+            if (quotaError is not null) return StorageResult<StoredFile>.Fail(quotaError);
+        }
 
         var id = Guid.NewGuid();
         var bucket = StorageAreas.BucketOf(area);
@@ -352,6 +381,18 @@ public sealed partial class FileStore
                 .SetProperty(s => s.ReservedBytes, s => s.ReservedBytes + size)
                 .SetProperty(s => s.UpdatedAtMs, now), ct);
         return reserved == 1 ? null : await QuotaExceededAsync(tenantId, ct);
+    }
+
+    /// <summary>
+    /// The bytea move's reservation (<see cref="PutMigratedAsync"/>): the same counter update without the quota condition —
+    /// already-owned bytes are never refused. Nothing else may reserve this way.
+    /// </summary>
+    private async Task ReserveUncheckedAsync(Guid tenantId, long size, long now, CancellationToken ct)
+    {
+        await EnsureCounterAsync(tenantId, now, ct);
+        await _db.TenantStorage.Where(s => s.TenantId == tenantId).ExecuteUpdateAsync(u => u
+            .SetProperty(s => s.ReservedBytes, s => s.ReservedBytes + size)
+            .SetProperty(s => s.UpdatedAtMs, now), ct);
     }
 
     private async Task ReleaseAsync(Guid tenantId, long size)

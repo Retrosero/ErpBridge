@@ -76,6 +76,8 @@ public class CentralApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Storage:MaintenanceEnabled", "false");
         // XML picture sync tests run XmlImageSync themselves (XmlImageSyncRelationalTests).
         builder.UseSetting("Storage:XmlSyncEnabled", "false");
+        // Bytea move tests run BlobMigration themselves (BlobMigrationRelationalTests).
+        builder.UseSetting("Storage:BlobMigrationEnabled", "false");
         if (_disableRateLimiter)
             builder.UseSetting("RateLimiter:DisabledForTests", "true");
         // Go licensing signs with a throwaway key; GoLicenseActivateTests verifies against it.

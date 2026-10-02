@@ -272,12 +272,13 @@ public static class CustomerCatalogImageEndpoints
             if (tracked is null) return ImageNotFound();
             var small = variant == CatalogImageVariants.Small;
             replaced = small ? tracked.StoredFileSmallId : tracked.StoredFileLargeId;
-            // The size this one replaces: an old blob (uploaded before the store) or the previous stored file.
+            // The size this one replaces: an old blob (uploaded before the store) or the previous stored file. A blob the move
+            // (S10) already copied to the store is the same bytes as that file: counted once.
             var blob = await db.CatalogImageBlobs.FirstOrDefaultAsync(b => b.ImageId == id && b.Variant == variant, ct);
-            long replacedBytes = blob?.Data.Length ?? 0;
             if (blob is not null) db.CatalogImageBlobs.Remove(blob);
-            if (replaced is { } previous)
-                replacedBytes += await db.StoredFiles.Where(f => f.Id == previous).Select(f => (long?)f.SizeBytes).FirstOrDefaultAsync(ct) ?? 0;
+            long replacedBytes = replaced is { } previous
+                ? await db.StoredFiles.Where(f => f.Id == previous).Select(f => (long?)f.SizeBytes).FirstOrDefaultAsync(ct) ?? blob?.Data.Length ?? 0
+                : blob?.Data.Length ?? 0;
             tracked.SizeBytes = (int)Math.Clamp(tracked.SizeBytes - replacedBytes + file.SizeBytes, 0, int.MaxValue);
             tracked.ContentType = type;
             if (small)

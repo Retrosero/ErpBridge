@@ -418,3 +418,103 @@ public sealed class StorageCleanupResponse
     [JsonPropertyName("remaining")] public int Remaining { get; set; }
     [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
 }
+
+/// <summary>Figures of the bytea move (GOAL_DEPOLAMA_R2 S10): rows and bytes, all companies or one.</summary>
+public class AdminBlobMigrationCounts
+{
+    /// <summary>Rows still only in PostgreSQL (failed ones included).</summary>
+    [JsonPropertyName("remainingCount")] public int RemainingCount { get; set; }
+    [JsonPropertyName("remainingBytes")] public long RemainingBytes { get; set; }
+
+    /// <summary>Rows whose record points at a stored file while the blob is still there (until the drop).</summary>
+    [JsonPropertyName("migratedCount")] public int MigratedCount { get; set; }
+    [JsonPropertyName("migratedBytes")] public long MigratedBytes { get; set; }
+
+    /// <summary>Rows that failed to move since the server started (invalid image, check failed); part of the remaining ones.</summary>
+    [JsonPropertyName("failedCount")] public int FailedCount { get; set; }
+    [JsonPropertyName("failedBytes")] public long FailedBytes { get; set; }
+
+    /// <summary>Deleted task pictures: not moved, they go with the table.</summary>
+    [JsonPropertyName("skippedCount")] public int SkippedCount { get; set; }
+    [JsonPropertyName("skippedBytes")] public long SkippedBytes { get; set; }
+
+    /// <summary>Moved rows whose file exists with the blob's SHA-256 (null when the check was not asked for).</summary>
+    [JsonPropertyName("verifiedCount")] public int? VerifiedCount { get; set; }
+
+    /// <summary>Moved rows that failed the check (null when the check was not asked for).</summary>
+    [JsonPropertyName("problemCount")] public int? ProblemCount { get; set; }
+}
+
+/// <summary>One company's figures of the bytea move.</summary>
+public sealed class AdminBlobMigrationTenant : AdminBlobMigrationCounts
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+    [JsonPropertyName("tenantCode")] public string? TenantCode { get; set; }
+}
+
+/// <summary>A row that failed to move or a moved row that failed the check: ids and a reason, no customer value.</summary>
+public sealed class AdminBlobMigrationItem
+{
+    [JsonPropertyName("tenantId")] public Guid TenantId { get; set; }
+
+    /// <summary><c>catalog_image</c> (a catalog or banner picture's size) or <c>task_attachment</c>.</summary>
+    [JsonPropertyName("source")] public string Source { get; set; } = string.Empty;
+
+    /// <summary>The picture's or the task picture's id.</summary>
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    /// <summary><c>s</c>, <c>l</c> or <c>o</c>.</summary>
+    [JsonPropertyName("variant")] public string Variant { get; set; } = string.Empty;
+    [JsonPropertyName("reason")] public string Reason { get; set; } = string.Empty;
+
+    [JsonPropertyName("sizeBytes"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? SizeBytes { get; set; }
+
+    [JsonPropertyName("atMs"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? AtMs { get; set; }
+}
+
+/// <summary><c>GET /api/v1/admin/storage/migration</c>: where the bytea move stands and whether the blob tables may be dropped.</summary>
+public sealed class AdminBlobMigrationResponse
+{
+    /// <summary><c>Storage:BlobMigrationEnabled</c> and <c>Storage:MaintenanceEnabled</c>: the worker moves rows every minute.</summary>
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; }
+
+    /// <summary>False while the R2 settings are missing: nothing can move.</summary>
+    [JsonPropertyName("available")] public bool Available { get; set; }
+
+    /// <summary>The last complete run found nothing left (the worker stopped asking).</summary>
+    [JsonPropertyName("idle")] public bool Idle { get; set; }
+
+    /// <summary>Whether the SHA-256 check ran (<c>?verify=false</c> skips it).</summary>
+    [JsonPropertyName("verified")] public bool Verified { get; set; }
+
+    /// <summary>Nothing left, nothing failed, every moved row checked: the drop migration may run.</summary>
+    [JsonPropertyName("readyToDrop")] public bool ReadyToDrop { get; set; }
+
+    [JsonPropertyName("totals")] public AdminBlobMigrationCounts Totals { get; set; } = new();
+    [JsonPropertyName("tenants")] public AdminBlobMigrationTenant[] Tenants { get; set; } = [];
+
+    /// <summary>At most 100; the counts are complete.</summary>
+    [JsonPropertyName("failures")] public AdminBlobMigrationItem[] Failures { get; set; } = [];
+
+    /// <summary>At most 100; the counts are complete.</summary>
+    [JsonPropertyName("problems")] public AdminBlobMigrationItem[] Problems { get; set; } = [];
+}
+
+/// <summary><c>POST /api/v1/admin/storage/migration/run</c>: what the run did.</summary>
+public sealed class AdminBlobMigrationRunResponse
+{
+    [JsonPropertyName("migrated")] public int Migrated { get; set; }
+    [JsonPropertyName("migratedBytes")] public long MigratedBytes { get; set; }
+    [JsonPropertyName("failed")] public int Failed { get; set; }
+
+    /// <summary>Copies not needed any more: the record changed meanwhile (new upload, deleted); purged.</summary>
+    [JsonPropertyName("lost")] public int Lost { get; set; }
+
+    /// <summary>R2 did not answer: the run stopped, the next one retries.</summary>
+    [JsonPropertyName("storeUnavailable")] public bool StoreUnavailable { get; set; }
+
+    /// <summary>The budget ran out (or R2 stopped): there may be more left.</summary>
+    [JsonPropertyName("more")] public bool More { get; set; }
+}

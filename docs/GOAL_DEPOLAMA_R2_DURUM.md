@@ -20,7 +20,7 @@ R2 API anahtarı değerlerini görmek/girmek (kullanıcı girer).
 | S7 | XML görsel eşitleyici (değişen/silinen izlenir) | ✅ | bu PR | `XmlImageSync` + `SafeHttpFetcher` (DNS sabitleme, elle yönlendirme), `xml_images`, status/sync uçları, katalog yedeği ve manifest `xmlItems`; bozuk/boş/eşleşmeyen feed hiçbir şey silmez |
 | S8 | Kota/kullanım + Admin | ✅ | #237 | `GET /api/v1/storage/usage`, Admin kota kartı (0 GB dahil), günlük sayaç hesabı |
 | S9 | Temizlik + bakım işi | ✅ | bu PR | Çöp öğeleri + geri alma (sınırlarla), temizlik grupları, kalıcı silme, günlük çöp boşaltma, karantina (T4), haftalık R2 mutabakatı, denetim kaydı; migration `DepolamaTemizlik` |
-| S10 | Bytea → R2 göçü | ⬜ | | |
+| S10 | Bytea → R2 göçü | 🔄 göç (düşürme ayrı PR) | bu PR | `Storage/BlobMigration`: katalog/banner/görev blobları bayt bayt R2'ye (kota denetimsiz ama sayılır), SHA-256 ile doğrulanır, kayda bağlanır; işçinin dakikalık turu (500 dosya), Admin `GET/POST /admin/storage/migration` (`readyToDrop`). Bloblar yerinde; tabloları düşüren migration üretimde `readyToDrop` sonrası ayrı PR |
 | P1 | Panel Depolama sayfası | ✅ | bu PR | `/depolama` (kota çubuğu %80 sarı/%95 kırmızı, alan dağılımı, Alan aç, çöp kutusu, XML eşitleme); Kullanıcılar'da depolama özeti; katalog kota rengi 80/95 |
 | P2–P3 | Panel fiş/ürün fotoğrafı + Admin kartı | ⬜ | | İçeriğin çoğu S3/S5/S6/S8'de geldi (`/fisler`, Stok > Fotoğraflar, birleşik katalog kotası, Admin depolama kartı); ayrıca gözden geçirilecek |
 | A1–A4 | Telefon | ⬜ | | |
@@ -34,3 +34,7 @@ R2 API anahtarı değerlerini görmek/girmek (kullanıcı girer).
 | 2026-10-02 | S9: iptal edilmiş görevin kapanış zamanı = son değişiklik (`UpdatedAtMs`) | Görevde ayrı iptal zamanı yok; en geç o an iptal edilmiştir |
 | 2026-10-02 | S9: plandaki "silinmiş giderlerin fişleri" grubu eklenmedi | Fiş silinince zaten çöpe gider (öğesiyle); sunucuda "silinmiş gider belgesi" bilgisi yok. Silinmiş fiş satırları 30 gün sonra silinir |
 | 2026-10-02 | S9: kaydı olmayan dosyalar (süpürme, 30 günlük silinmiş görev) çöpte görünür ama geri alınamaz | Geri konacak kayıt yok; geri alınsa ertesi gün yine süpürülürdü |
+| 2026-10-02 | S10: göç kotayı denetlemez (`FileStore.PutMigratedAsync`) ama baytı sayar | Bayt zaten firmanındı; göç kota yüzünden yarım kalırsa bytea tabloları hiç düşemez. Kota aşılırsa yalnız yeni yüklemeler durur |
+| 2026-10-02 | S10: bayt yeniden kodlanmaz, üst veri de silinmez | Doğrulama nesnenin SHA-256'sının blobunkine eşit olmasına dayanır; bu baytlar yüklenirken zaten denetlenmişti |
+| 2026-10-02 | S10: başarısız satırlar şema değişikliği olmadan süreç belleğinde tutulur | Başarısız satır zaten "kalan" sayılır, `readyToDrop`'u engeller; yeniden başlatmada bir kez daha denenir. Kalıcı durum tablosu gerekmedi |
+| 2026-10-02 | S10: silinmiş görev resimleri taşınmaz | Kimse okumaz; çöp/30 gün kuralı onları zaten siler; blob tabloyla gider |

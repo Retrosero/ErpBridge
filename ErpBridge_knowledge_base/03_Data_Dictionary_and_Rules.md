@@ -105,7 +105,9 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
   - `task_members`: PK `(TaskId, UserId, Role)`, `Role` ASSIGNEE|FOLLOWER, `UserName(120)` anlık kopya.
   - `task_subtasks`: `Id` (telefon), `TaskId`, `Title(300)`, `IsDone`, `DoneByUserId/Name`, `DoneAtMs`, `AssigneeUserId/Name`, `DueAtMs`, `SortOrder`, `IsDeleted`.
   - `task_comments`: `Id` (telefon), `TenantId`, `TaskId`, `AuthorUserId/Name`, `Text(2000)`, `CreatedAtMs`, `IsDeleted`.
-  - `task_attachments` (meta; `TenantId, IsDeleted` indeksi; `StoredFileId?` *(GOAL_DEPOLAMA_R2 S4, migration `DepolamaAlanlari`; FK yok, indeksli)* resmin `stored_files` satırı, null = eski bytea) + `task_attachment_blobs` (`AttachmentId` PK, `Data` bytea; ek satırı silinince cascade; 2026-10-01'den beri yeni satır yazılmaz, S10 göçünden sonra düşürülecek).
+  - `task_attachments` (meta; `TenantId, IsDeleted` indeksi; `StoredFileId?` *(GOAL_DEPOLAMA_R2 S4, migration `DepolamaAlanlari`; FK yok, indeksli)* resmin `stored_files` satırı, null = eski bytea) + `task_attachment_blobs` (`AttachmentId` PK, `Data` bytea; ek satırı silinince cascade; 2026-10-01'den beri yeni satır yazılmaz. S10 göçü (`Storage/BlobMigration`,
+    kural 37) silinmemiş eklerin baytını R2'ye taşıyıp `StoredFileId`'yi doldurur, blob satırı **kalır**; okuma `StoredFileId` doluysa R2'den, boşsa
+    bytea'dan (ikili okuma). Tablo, üretimde Admin `GET /admin/storage/migration` `readyToDrop` true olduktan sonra **ayrı bir migration/PR** ile düşürülecek).
   - `task_events`: değişmez geçmiş (`Action(24)` CREATED|UPDATED|MEMBERS_CHANGED|COMPLETED|REOPENED|CANCELLED|DELETED|SUBTASK_*|COMMENTED|PHOTO_*, `ActorUserId` sistemde null, `ActorName`, `Detail(500)`, `OccurredAtMs`).
   - `task_series`: tekrarlayan görev şablonu (başlık, açıklama, öncelik, `RequiresPhoto`, cari, `AssigneesJson`/`FollowersJson` `[{userId,name}]`, `SubtasksJson` başlık dizisi) + kural `Frequency` DAILY|WEEKLY|MONTHLY, `Interval`, `Weekdays` (Pzt=1…Paz=64), `MonthDay`, `TimeOfDayMinutes` (İstanbul), `DueAfterMinutes`, `NextRunAtMs`, `EndsAtMs`, `IsActive`, `UpdatedSeq`.
   - `task_ops_applied`: PK `(TenantId, OpId)`, `UserId`, `AppliedAtMs` — 30 gün sonra silinir.
@@ -149,7 +151,9 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     UNIQUE `(TenantId, StockCode, SourceHash)` (tekrar yükleme aynı satırı bulur). `~` ile başlayan `StockCode` ürün değildir: `~banner` banner görselidir
     (ürün sınırına, manifeste ve katalog görünümüne girmez; kotaya girer).
   - `catalog_image_blobs`: PK `(ImageId, Variant(1))` `s` küçük / `l` büyük, `Data bytea`; görsel silinince cascade. 2026-10-01'den beri yeni bayt
-    yazılmaz (R2'ye gider); boyut yeniden yüklenince satırı silinir. S10 göçünden sonra düşürülecek.
+    yazılmaz (R2'ye gider); boyut yeniden yüklenince satırı silinir. S10 göçü (`Storage/BlobMigration`, kural 37) her boyutu bayt bayt R2'ye taşıyıp
+    `StoredFileSmallId/LargeId`'yi doldurur, blob satırı **kalır** (doğrulama ona karşı yapılır); okuma dosya doluysa R2'den, boşsa bytea'dan. Tablo,
+    üretimde `readyToDrop` true olduktan sonra **ayrı bir migration/PR** ile düşürülecek.
   - `catalog_banners` *(S12, migration `KatalogBannerlari`)*: `Id`, `TenantId`, `Title(120)`, `Text(300)`, `ImageId` null = yalnız metin (FK `catalog_images`
     `SET NULL`; görsel `StockCode = "~banner"`), `LinkType(16)` none|category|product|url, `LinkValue(2048)` kategori anahtarı / kartın stok kodu / https adres,
     `SortOrder`, `IsActive`, `StartsAtMs` null = hemen, `EndsAtMs` null = süresiz (**hariç**: müşteri `StartsAtMs ≤ şimdi < EndsAtMs` görür), `CreatedAtMs`,
