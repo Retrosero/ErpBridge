@@ -22,7 +22,7 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
 | P4 | `documents/{id}`, son girişlerim | ✅ | [#251](https://github.com/Retrosero/ErpBridge/pull/251) | Durum (bekliyor/yeniden/yazıldı + ERP seri-sıra/hata), giren/sahip, gövde; liste kişinin kendi girişleri, yönetici `all=true` |
 | P5a–d | Panel: alanlar/menü, istemci, bileşenler, altı sayfa, yazdırma, son girişler | ✅ | [#252](https://github.com/Retrosero/ErpBridge/pull/252) | `/giris/{satis,tahsilat,alis,iade,tediye,gider}`, `/girisler`, `/giris-yazdir`; `PortalArea.Entry*` → `module.*`; 10 bUnit testi |
 | P5e | Evraklar/Cari giriş düğmeleri → yeni sayfalar | ⏳ | | |
-| P6a–f | Panel: Görevler | ⏳ | | |
+| P6a–f | Panel: Görevler | ✅ | TASKS_PR | `/gorevler`, `/gorevler/seriler`, bildirim zili; sunucu panel oturumunda `module.tasks` (403 `TASKS_MODULE_DENIED`); tarayıcı kontrolünde `add_subtask` hatası bulunup düzeltildi (telefonu da etkiliyordu) |
 | P7 | KB + sözleşmeler | ⏳ | | |
 | P8 | Uçtan uca doğrulama + kapanış | ⏳ | | |
 
@@ -37,6 +37,11 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
   yanında `module.disbursement` da açık olmalı (varsayılan rollerde ikisi de açık).
 - **Fiyat grubu sunucuda yok:** telefonun ERP carilerinde de müşteri iskontosu 0 ve fiyat ürünün başlık listesinden; panel
   aynısını yapar, ayrıca tüm satırlar için liste seçtirir.
+
+- **`add_subtask` düzeltmesi (P6):** var olan göreve alt görev eklemek `DbUpdateConcurrencyException` ile düşüyordu: istemcinin
+  kimliğiyle gelen yeni satır yalnız izlenen görevin koleksiyonuna eklenince EF onu var olan satır sanıp UPDATE deniyordu. Satır
+  artık `DbSet` üzerinden eklenir. Telefonun aynı işlemi de bundan etkileniyordu (yeni görevle birlikte gelen alt görevler değil,
+  sonradan eklenenler). Test: `PortalTasksAccessRelationalTests.A_subtask_added_to_an_existing_task_is_saved`.
 
 ## Seni Bekleyenler
 - Muhasebe (ACCOUNTING) rolü panelden giriş yapacaksa `/yetkiler`'den ilgili `module.*` anahtarları açılmalı (varsayılan kapalı).
