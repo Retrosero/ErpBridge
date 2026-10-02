@@ -246,8 +246,14 @@ delete tablolarının ayrı su-seviyeleri korunur.
 
 `GET /api/v1/android/notify?wait=30` — mobil uzun-yoklama ucu. WPF için olan
 `bootstrap/notify` ile aynı `IBootstrapNotificationHub`'ı paylaşır ama API-key ile
-kimliklenir ve **hem bootstrap snapshot yüklemesi hem agent change-set push'u**
-(`ChangeSetEndpoints.IngestAsync` → `hub.Publish`) ile uyanır.
+kimliklenir. **Bootstrap snapshot yüklemesi** (birleştirme gerçek bir değişiklik bulduysa) ve
+**yalnız silme içeren agent change-set push'u** (`ChangeSetEndpoints.IngestAsync` → `hub.Publish`,
+2026-10-02'den beri `acceptedDeletes`) ile uyanır. Telefon change-set'ten yalnız silme kuyruğunu okur;
+ekleme/güncelleme telefona (ve `mobile_records` akışına) snapshot yüklemesinden gelir. Eskiden yalnız
+ekleme içeren paket de (Mikro'ya yazılan her satış) yayın yapıyordu: telefon veri olmayan bir tur
+başlatıyor, birkaç saniye sonra snapshot yayınıyla ikinci bir tur çalışıyordu (Siparis_Cepte KB kural 21).
+ERP'de silme olduğunda hâlâ iki yayın olur (silme, sonra snapshot); PendingSyncSignal bunları birleştirir.
+Test: `AndroidNotifyTests.Insert_only_change_set_does_not_wake_a_mobile_long_poll`.
 
 Android tarafında `LiveSyncManager.run(context)` uygulama ön plandayken
 (`repeatOnLifecycle(STARTED)`) bu ucu yoklar; sinyal gelince anında
