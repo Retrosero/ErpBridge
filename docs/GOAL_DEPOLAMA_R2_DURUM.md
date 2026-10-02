@@ -10,21 +10,21 @@ R2 API anahtarı değerlerini görmek/girmek (kullanıcı girer).
 
 | # | Görev | Durum | PR | Not |
 |---|---|---|---|---|
-| D0 | R2 kovaları + `img.appsgo.cloud` | 🔄 | | Kovalar ve alan adı hazır; API anahtarı + Coolify sırları kullanıcıda |
+| D0 | R2 kovaları + `img.appsgo.cloud` | ✅ | | Kovalar, alan adı ve Coolify `Storage__*` ayarları (anahtarları kullanıcı girdi); canlı günlükte eksik ayar uyarısı yok |
 | S1 | `FileStore`, `stored_files`, `tenant_storage`, R2 istemcisi | ✅ | #237 | R2 istemcisi, `FileStore`, defter, satır kilitli kota; aynı kova adı reddedilir; kalıcı silme yarışı kapalı |
 | S2 | SkiaSharp küçültme/WebP | ✅ | #237 | SkiaSharp `ImageProcessor` (1280/400, banner 1920×720/800×300 WebP) |
-| S3 | Katalog + banner → R2 | ✅ | bu PR | Katalog görseli ve banner `FileStore`'da; bytea okuma S10'a kadar ikili |
-| S4 | Görev eki → R2 (özel kova) | ✅ | bu PR | Görev eki özel kovada; GET sunucu akıtır |
-| S5 | Gider/araç fişi | ✅ | bu PR | `expense_attachments`, fiş uçları, panel `/fisler` |
-| S6 | Ürün fotoğrafı | ✅ | bu PR | `product_images`, `action.products.photo`, panel Stok > Fotoğraflar, katalogda yedek görsel |
-| S7 | XML görsel eşitleyici (değişen/silinen izlenir) | ✅ | bu PR | `XmlImageSync` + `SafeHttpFetcher` (DNS sabitleme, elle yönlendirme), `xml_images`, status/sync uçları, katalog yedeği ve manifest `xmlItems`; bozuk/boş/eşleşmeyen feed hiçbir şey silmez |
+| S3 | Katalog + banner → R2 | ✅ | #238 | Katalog görseli ve banner `FileStore`'da; bytea okuma S10'a kadar ikili |
+| S4 | Görev eki → R2 (özel kova) | ✅ | #238 | Görev eki özel kovada; GET sunucu akıtır |
+| S5 | Gider/araç fişi | ✅ | #238 | `expense_attachments`, fiş uçları, panel `/fisler` |
+| S6 | Ürün fotoğrafı | ✅ | #238 | `product_images`, `action.products.photo`, panel Stok > Fotoğraflar, katalogda yedek görsel |
+| S7 | XML görsel eşitleyici (değişen/silinen izlenir) | ✅ | #239 | `XmlImageSync` + `SafeHttpFetcher` (DNS sabitleme, elle yönlendirme), `xml_images`, status/sync uçları, katalog yedeği ve manifest `xmlItems`; bozuk/boş/eşleşmeyen feed hiçbir şey silmez |
 | S8 | Kota/kullanım + Admin | ✅ | #237 | `GET /api/v1/storage/usage`, Admin kota kartı (0 GB dahil), günlük sayaç hesabı |
-| S9 | Temizlik + bakım işi | ✅ | bu PR | Çöp öğeleri + geri alma (sınırlarla), temizlik grupları, kalıcı silme, günlük çöp boşaltma, karantina (T4), haftalık R2 mutabakatı, denetim kaydı; migration `DepolamaTemizlik` |
-| S10 | Bytea → R2 göçü | 🔄 göç (düşürme ayrı PR) | bu PR | `Storage/BlobMigration`: katalog/banner/görev blobları bayt bayt R2'ye (kota denetimsiz ama sayılır), SHA-256 ile doğrulanır, kayda bağlanır; işçinin dakikalık turu (500 dosya), Admin `GET/POST /admin/storage/migration` (`readyToDrop`). Bloblar yerinde; tabloları düşüren migration üretimde `readyToDrop` sonrası ayrı PR |
-| P1 | Panel Depolama sayfası | ✅ | bu PR | `/depolama` (kota çubuğu %80 sarı/%95 kırmızı, alan dağılımı, Alan aç, çöp kutusu, XML eşitleme); Kullanıcılar'da depolama özeti; katalog kota rengi 80/95 |
-| P2–P3 | Panel fiş/ürün fotoğrafı + Admin kartı | ⬜ | | İçeriğin çoğu S3/S5/S6/S8'de geldi (`/fisler`, Stok > Fotoğraflar, birleşik katalog kotası, Admin depolama kartı); ayrıca gözden geçirilecek |
-| A1–A4 | Telefon | ⬜ | | |
-| K1 | Bilgi bankası | ⬜ | | |
+| S9 | Temizlik + bakım işi | ✅ | #240 | Çöp öğeleri + geri alma (sınırlarla), temizlik grupları, kalıcı silme, günlük çöp boşaltma, karantina (T4), haftalık R2 mutabakatı, denetim kaydı; migration `DepolamaTemizlik` |
+| S10 | Bytea → R2 göçü | 🔄 göç (düşürme ayrı PR) | #241 | `Storage/BlobMigration`: katalog/banner/görev blobları bayt bayt R2'ye (kota denetimsiz ama sayılır), SHA-256 ile doğrulanır, kayda bağlanır; işçinin dakikalık turu (500 dosya), Admin `GET/POST /admin/storage/migration` (`readyToDrop`). Bloblar yerinde; tabloları düşüren migration üretimde `readyToDrop` sonrası ayrı PR |
+| P1 | Panel Depolama sayfası | ✅ | #240 | `/depolama` (kota çubuğu %80 sarı/%95 kırmızı, alan dağılımı, Alan aç, çöp kutusu, XML eşitleme); Kullanıcılar'da depolama özeti; katalog kota rengi 80/95 |
+| P2–P3 | Panel fiş/ürün fotoğrafı + Admin kartı | ✅ | #237, #238, #240 | Fişler `/fisler`, Stok > Fotoğraflar, katalog göstergesi birleşik kotada (80/95), Admin firma mobil sayfasında depolama kartı ve kota alanı |
+| A1–A4 | Telefon | ✅ | siparis_cepte#159, #162 | 1.5.299 Play internal (Room 50): fiş ve ürün fotoğrafı sunucuya, kota mesajı, yerel temizlik, XML görselleri sunucu kopyasından |
+| K1 | Bilgi bankası | ✅ | her PR | ErpBridge kural 28, 37 ve veri sözlüğü; Siparis_Cepte kural 40, 57 ve veri sözlüğü |
 
 ## Karar günlüğü
 | Tarih | Karar | Gerekçe |
