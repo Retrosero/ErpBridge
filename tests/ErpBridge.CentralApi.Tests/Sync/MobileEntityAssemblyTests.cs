@@ -56,6 +56,48 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
         data.GetProperty("kdvOrani").GetDecimal().Should().Be(10m, "the ERP's VAT rate travels with the card");
     }
 
+    /// <summary>
+    /// The phone keys its products by the primary barcode, so the feed must pick the same
+    /// one however the rows were stored — and the same one <c>/sync/urun</c> serves, or a
+    /// tenant moving from the table endpoints to the feed would get every product twice.
+    /// </summary>
+    [Fact]
+    public async Task The_primary_barcode_does_not_depend_on_the_order_rows_arrived_in()
+    {
+        string[] expected = ["8690000000001", "8690000000009", "8690000000002", "S-1", "STK-S-1"];
+
+        var inOneChunk = await SeedAsync("BARCODE-A");
+        await UploadAsync(inOneChunk, incremental: false,
+            ("stocks", [Stock("S-1", "Kalem")]),
+            ("barcodes", [
+                Barcode("STK-S-1", "S-1", 1), Barcode("8690000000002", "S-1", 2), Barcode("S-1", "S-1", 1),
+                Barcode("8690000000009", "S-1", 1), Barcode("8690000000001", "S-1", 1),
+            ]));
+
+        var reversedAndLater = await SeedAsync("BARCODE-B");
+        await UploadAsync(reversedAndLater, incremental: false,
+            ("stocks", [Stock("S-1", "Kalem")]),
+            ("barcodes", [Barcode("8690000000009", "S-1", 1), Barcode("S-1", "S-1", 1)]),
+            ("barcodes", [Barcode("STK-S-1", "S-1", 1), Barcode("8690000000002", "S-1", 2)]));
+        await UploadAsync(reversedAndLater, incremental: true,
+            ("barcodes", [Barcode("8690000000001", "S-1", 1)]));
+
+        foreach (var ctx in new[] { inOneChunk, reversedAndLater })
+        {
+            var fed = (await PullAsync(ctx, null)).Changes.Last(c => c.Entity == "urun" && c.Key == "S-1").Data!.Value;
+            fed.GetProperty("barkod").GetString().Should().Be("8690000000001",
+                "a real main-unit barcode comes first, then the lowest by text");
+            fed.GetProperty("barcodes").EnumerateArray().Select(b => b.GetProperty("barcode").GetString())
+                .Should().Equal(expected);
+
+            var served = await ProductCatalogAsync(ctx, "S-1");
+            served.GetProperty("barkod").GetString().Should().Be("8690000000001",
+                "the table path and the feed must pick the same primary barcode");
+            served.GetProperty("barcodes").EnumerateArray().Select(b => b.GetProperty("barcode").GetString())
+                .Should().Equal(expected);
+        }
+    }
+
     [Fact]
     public async Task A_product_carries_its_stock_sub_group_name_as_category()
     {
@@ -305,6 +347,7 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
 
     private static object Stock(string code, string name) => new { stockCode = code, name };
     private static object Barcode(string barcode, string stockCode) => new { barcode, stockCode };
+    private static object Barcode(string barcode, string stockCode, int unitPointer) => new { barcode, stockCode, unitPointer };
     private static object Price(string stockCode, int listNumber, decimal price) => new { stockCode, listNumber, price };
     private static object Inventory(string stockCode, int warehouseNo, decimal quantity) =>
         new { stockCode, warehouseNo, quantity };
@@ -344,6 +387,19 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
         return (await response.Content.ReadFromJsonAsync<SyncPage>())!;
     }
 
+    private static async Task<JsonElement> ProductCatalogAsync(TenantContext ctx, string stockCode)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/android/sync/urun");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ctx.ApiKey);
+        request.Headers.Add("X-Tenant-Id", ctx.TenantId.ToString());
+
+        var response = await ctx.Client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.GetProperty("items").EnumerateArray()
+            .Single(p => p.GetProperty("stockCode").GetString() == stockCode).Clone();
+    }
+
     private static async Task UploadAsync(
         TenantContext ctx, bool incremental, params (string Section, object[] Items)[] sections)
     {
@@ -361,11 +417,15 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
         startResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var uploadId = (await startResponse.Content.ReadFromJsonAsync<StartBody>())!.UploadId;
 
+        // A section named twice is sent as two chunks, in the order given.
+        var chunkIndexes = new Dictionary<string, int>();
         foreach (var section in sections)
         {
+            var chunkIndex = chunkIndexes.GetValueOrDefault(section.Section);
+            chunkIndexes[section.Section] = chunkIndex + 1;
             using var chunk = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/bootstrap/upload/{uploadId}/chunks")
             {
-                Content = JsonContent.Create(new { section = section.Section, chunkIndex = 0, items = section.Items }),
+                Content = JsonContent.Create(new { section = section.Section, chunkIndex, items = section.Items }),
             };
             Authorize(chunk, ctx);
             (await ctx.Client.SendAsync(chunk)).StatusCode.Should().Be(HttpStatusCode.NoContent);

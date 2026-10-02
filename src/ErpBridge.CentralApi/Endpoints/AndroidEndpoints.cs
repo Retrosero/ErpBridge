@@ -391,8 +391,11 @@ public static class AndroidEndpoints
 
             if (barcodesByStock.TryGetValue(stockCode, out var barcodes) && barcodes.Length > 0)
             {
+                // Same order and primary barcode as the change feed (ProductBarcodes): the
+                // phone keys products by it, so the two paths must never pick differently.
+                barcodes = ProductBarcodes.Order(barcodes, stockCode);
                 mapped["barcodes"] = barcodes;
-                mapped["barkod"] = GetString(barcodes[0], "barcode") ?? string.Empty;
+                mapped["barkod"] = ProductBarcodes.Primary(barcodes);
             }
 
             if (pricesByStock.TryGetValue(stockCode, out var price) && price.Price is > 0)

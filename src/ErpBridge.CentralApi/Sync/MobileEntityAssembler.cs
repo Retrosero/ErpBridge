@@ -409,11 +409,13 @@ public static class MobileEntityAssembler
         mapped["sto_marka_kodu"] = marka;
         mapped["sto_kalkon_kodu"] = koliAdet;
 
-        var barcodes = Rows(parts, "barcodes").ToArray();
+        // Rows come back in no particular order; the primary barcode is the phone's
+        // product key, so it is picked by ProductBarcodes exactly as /sync/urun does.
+        var barcodes = ProductBarcodes.Order(Rows(parts, "barcodes"), AndroidEndpoints.GetString(stock, "stockCode") ?? stockCode);
         if (barcodes.Length > 0)
         {
             mapped["barcodes"] = barcodes;
-            mapped["barkod"] = AndroidEndpoints.GetString(barcodes[0], "barcode") ?? string.Empty;
+            mapped["barkod"] = ProductBarcodes.Primary(barcodes);
         }
 
         var priceRows = Rows(parts, "prices")

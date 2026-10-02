@@ -181,6 +181,20 @@ registration ayrı bir composition projesine taşınır.
    zaten yapıyordu; fark, artık tüm katalog yerine yalnızca delta'nın dokunduğu
    kayıtlar için çalışması.
 
+   **Birincil barkod deterministiktir: `Sync/ProductBarcodes` (2026-10-02).** Telefon ürün
+   tablosunu barkodla anahtarlar (Room PK); aynı ürünün iki kurulumunda `barkod` değişirse
+   telefonda ürün **çift** görünür. Ne ajanın `BARKOD_TANIMLARI` okuması ne `mobile_records`
+   sorgusu sıra taşır (`ORDER BY` yok), bu yüzden hem akış (`MobileEntityAssembler.BuildProduct`)
+   hem tablo yolu (`/sync/urun`, `ProductCatalogAsync`) `barcodes` dizisini `ProductBarcodes.Order`
+   ile sıralar ve `barkod` = ilk eleman (`ProductBarcodes.Primary`). Sıra: (1) **gerçek** barkod
+   önce — boş, stok koduna eşit veya `STK-` ile başlayan değer telefonun tablo yolunda zaten
+   atlanır (`BridgeSyncHelper`), sunucu da onu birincil seçmez; (2) ana birim (`unitPointer`
+   0/1) koli biriminden önce; (3) barkod metni ordinal; (4) ham satır metni (eşitlik bozucu).
+   İki yol aynı fonksiyonu kullanır, yani firma tablo yolundan akışa geçince birincil barkod
+   değişmez. Bu kural **dağıtımda bir kez** bazı ürünlerin `barkod`'unu değiştirebilir (eski
+   seçim keyfi sıraydı); tek barkodlu ürünlerde (ERP'siz kartlar dahil) etki yoktur.
+   Yeni bir ürün kurucusu barkod seçecekse bu sınıfı kullanır, `barcodes[0]`'ı değil.
+
    Bir sayfa, imlecin üzerinden geçtiği ham satır sayısından **daha az** değişiklik
    taşıyabilir (bir stok kartı + 3 barkodu + 5 fiyatı tek üründür) ve bazen hiç
    taşımaz. Döngüyü `changes.size` değil **`hasMore`** sürdürür.
