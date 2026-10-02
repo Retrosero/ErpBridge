@@ -184,15 +184,19 @@ registration ayrı bir composition projesine taşınır.
    **Birincil barkod deterministiktir: `Sync/ProductBarcodes` (2026-10-02).** Telefon ürün
    tablosunu barkodla anahtarlar (Room PK); aynı ürünün iki kurulumunda `barkod` değişirse
    telefonda ürün **çift** görünür. Ne ajanın `BARKOD_TANIMLARI` okuması ne `mobile_records`
-   sorgusu sıra taşır (`ORDER BY` yok), bu yüzden hem akış (`MobileEntityAssembler.BuildProduct`)
-   hem tablo yolu (`/sync/urun`, `ProductCatalogAsync`) `barcodes` dizisini `ProductBarcodes.Order`
-   ile sıralar ve `barkod` = ilk eleman (`ProductBarcodes.Primary`). Sıra: (1) **gerçek** barkod
+   sorgusu sıra taşır (`ORDER BY` yok), bu yüzden akış (`MobileEntityAssembler.BuildProduct`)
+   `barcodes` dizisini `ProductBarcodes.Order` ile sıralar ve `barkod` = ilk eleman
+   (`ProductBarcodes.Primary`). **Tablo yolu (`/sync/urun`, `ProductCatalogAsync`) bilerek henüz
+   eski (saklanan) sırada:** bugün her ERP telefonu bu ucu okuyor; sıralama orada değişirse bazı
+   ürünlerin `barkod`'u dağıtımda değişir ve eski satırı düşürmeyen telefonlarda ürün çiftlenir.
+   Telefonun "birincil barkod değişince aynı koddaki eski satırı düşür" sürümü sahaya çıkınca
+   `/sync/urun` da `ProductBarcodes`'a bağlanır. Sıra: (1) **gerçek** barkod
    önce — boş, stok koduna eşit veya `STK-` ile başlayan değer telefonun tablo yolunda zaten
    atlanır (`BridgeSyncHelper`), sunucu da onu birincil seçmez; (2) ana birim (`unitPointer`
    0/1) koli biriminden önce; (3) barkod metni ordinal; (4) ham satır metni (eşitlik bozucu).
-   İki yol aynı fonksiyonu kullanır, yani firma tablo yolundan akışa geçince birincil barkod
-   değişmez. Bu kural **dağıtımda bir kez** bazı ürünlerin `barkod`'unu değiştirebilir (eski
-   seçim keyfi sıraydı); tek barkodlu ürünlerde (ERP'siz kartlar dahil) etki yoktur.
+   Firma tablo yolundan akışa geçerken birincil barkod farklıysa telefon aynı koddaki eski satırı
+   düşürür (Siparis_Cepte, akış pilotu). Akış bugün yalnız ERP'siz firmada açık; onlarda tek
+   barkodlu kartlarda etki yoktur.
    Yeni bir ürün kurucusu barkod seçecekse bu sınıfı kullanır, `barcodes[0]`'ı değil.
 
    **Telefonun okuma yolu firma bazında seçilir: `tenants.MobileSyncMode` (2026-10-02).**

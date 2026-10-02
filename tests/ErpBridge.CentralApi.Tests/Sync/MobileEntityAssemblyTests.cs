@@ -58,8 +58,8 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
 
     /// <summary>
     /// The phone keys its products by the primary barcode, so the feed must pick the same
-    /// one however the rows were stored — and the same one <c>/sync/urun</c> serves, or a
-    /// tenant moving from the table endpoints to the feed would get every product twice.
+    /// one however the rows were stored. (<c>/sync/urun</c> keeps its stored order until the
+    /// phone build that drops a product's old row on a primary-barcode change is out.)
     /// </summary>
     [Fact]
     public async Task The_primary_barcode_does_not_depend_on_the_order_rows_arrived_in()
@@ -90,11 +90,6 @@ public sealed class MobileEntityAssemblyTests : IClassFixture<SqliteCentralApiFa
             fed.GetProperty("barcodes").EnumerateArray().Select(b => b.GetProperty("barcode").GetString())
                 .Should().Equal(expected);
 
-            var served = await ProductCatalogAsync(ctx, "S-1");
-            served.GetProperty("barkod").GetString().Should().Be("8690000000001",
-                "the table path and the feed must pick the same primary barcode");
-            served.GetProperty("barcodes").EnumerateArray().Select(b => b.GetProperty("barcode").GetString())
-                .Should().Equal(expected);
         }
     }
 
