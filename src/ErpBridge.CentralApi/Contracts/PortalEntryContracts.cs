@@ -194,6 +194,12 @@ public sealed class PortalEntryPaymentDto
 public sealed class PortalEntryPricedLineDto
 {
     public string ProductCode { get; set; } = string.Empty;
+
+    /// <summary>A purchase line's own discounts, or a return line's refunded share (0–1).</summary>
+    public List<decimal> LineDiscountPercents { get; set; } = [];
+
+    public decimal? ConditionPercent { get; set; }
+    public string? Reason { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Unit { get; set; }
     public decimal Quantity { get; set; }
@@ -337,4 +343,101 @@ public sealed class PortalEntryExpenseRequest
     public string? Description { get; set; }
 
     public decimal? ExpectedTotal { get; set; }
+}
+
+/// <summary><c>POST /api/v1/portal/entry/purchase[/preview]</c>: a supplier's invoice, paid on the spot as on the phone.</summary>
+public sealed class PortalEntryPurchaseRequest
+{
+    public string? OperationId { get; set; }
+    public Guid? OwnerUserId { get; set; }
+    public string? Date { get; set; }
+
+    /// <summary>The supplier: a customer card.</summary>
+    public string SupplierCode { get; set; } = string.Empty;
+
+    /// <summary>The supplier's invoice series and number (for information: the ERP numbers the invoice itself).</summary>
+    public string? Series { get; set; }
+
+    public string? SequenceNo { get; set; }
+    public List<PortalEntryPurchaseLineRequest> Lines { get; set; } = [];
+
+    /// <summary>The invoice's discounts, chained after each line's own (at most 6, each 0–100).</summary>
+    public List<decimal> GeneralDiscountPercents { get; set; } = [];
+
+    public decimal? ExpectedTotal { get; set; }
+}
+
+public sealed class PortalEntryPurchaseLineRequest
+{
+    public string ProductCode { get; set; } = string.Empty;
+    public decimal Quantity { get; set; }
+
+    /// <summary>The supplier's price, without VAT and before discounts.</summary>
+    public decimal UnitPrice { get; set; }
+
+    /// <summary>The line's own discounts, chained (at most 6, each 0–100).</summary>
+    public List<decimal> LineDiscountPercents { get; set; } = [];
+}
+
+/// <summary><c>POST /api/v1/portal/entry/return[/preview]</c>: goods a customer brings back, at a price they were sold at.</summary>
+public sealed class PortalEntryReturnRequest
+{
+    public string? OperationId { get; set; }
+    public Guid? OwnerUserId { get; set; }
+    public string? Date { get; set; }
+    public string CustomerCode { get; set; } = string.Empty;
+    public List<PortalEntryReturnLineRequest> Lines { get; set; } = [];
+
+    /// <summary><c>Cari Alacak</c> (default), <c>Nakit</c> or <c>Banka İade</c>.</summary>
+    public string? SettlementMethod { get; set; }
+
+    /// <summary>ERP company: the refunding bank (a <c>bank</c> lookup) for <c>Banka İade</c>.</summary>
+    public string? BankCode { get; set; }
+
+    /// <summary>Company without an ERP: the refunding bank's name.</summary>
+    public string? BankName { get; set; }
+
+    public decimal? ExpectedTotal { get; set; }
+}
+
+public sealed class PortalEntryReturnLineRequest
+{
+    public string ProductCode { get; set; } = string.Empty;
+
+    /// <summary>A whole number above zero.</summary>
+    public decimal Quantity { get; set; }
+
+    /// <summary>One of the prices the product was sold to the customer at (<c>returnables</c>), without VAT.</summary>
+    public decimal UnitPrice { get; set; }
+
+    /// <summary>The refunded share, 0–1 (1 = undamaged).</summary>
+    public decimal ConditionPercent { get; set; } = 1m;
+
+    public string? Reason { get; set; }
+}
+
+/// <summary><c>GET /api/v1/portal/entry/returnables?customerCode=</c>: what the customer was sold and at which prices.</summary>
+public sealed class PortalEntryReturnablesResponse
+{
+    public List<PortalEntryReturnableDto> Items { get; set; } = [];
+}
+
+public sealed class PortalEntryReturnableDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Unit { get; set; }
+    public string? Barcode { get; set; }
+    public decimal VatRate { get; set; }
+
+    /// <summary>The prices it was sold at, newest first.</summary>
+    public List<PortalEntrySoldPriceDto> Prices { get; set; } = [];
+}
+
+public sealed class PortalEntrySoldPriceDto
+{
+    public decimal UnitPrice { get; set; }
+
+    /// <summary><c>yyyy-MM-dd</c>.</summary>
+    public string LastSold { get; set; } = string.Empty;
 }

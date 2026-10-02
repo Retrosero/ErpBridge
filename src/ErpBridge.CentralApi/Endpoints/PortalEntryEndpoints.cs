@@ -47,6 +47,11 @@ public static class PortalEntryEndpoints
         group.MapPost("/disbursement", CreateDisbursementAsync).WithName("PortalEntryDisbursement");
         group.MapPost("/expense/preview", PreviewExpenseAsync).WithName("PortalEntryExpensePreview");
         group.MapPost("/expense", CreateExpenseAsync).WithName("PortalEntryExpense");
+        group.MapPost("/purchase/preview", PreviewPurchaseAsync).WithName("PortalEntryPurchasePreview");
+        group.MapPost("/purchase", CreatePurchaseAsync).WithName("PortalEntryPurchase");
+        group.MapGet("/returnables", ReturnablesAsync).WithName("PortalEntryReturnables");
+        group.MapPost("/return/preview", PreviewReturnAsync).WithName("PortalEntryReturnPreview");
+        group.MapPost("/return", CreateReturnAsync).WithName("PortalEntryReturn");
         return routes;
     }
 
@@ -185,6 +190,39 @@ public static class PortalEntryEndpoints
         [FromServices] CentralApiDbContext db, [FromServices] PanelEntryWriter writer, CancellationToken ct) =>
         CreateAsync(http, db, writer, PanelEntryKinds.Expense, body, body?.OperationId, body?.OwnerUserId, body?.ExpectedTotal,
             (caller, owner, key) => PanelEntryMoney.ExpenseAsync(db, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    // ---- purchase and return ----------------------------------------------------------------
+
+    private static Task<IResult> PreviewPurchaseAsync(HttpContext http, [FromBody] PortalEntryPurchaseRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct) =>
+        PreviewAsync(http, db, PanelEntryKinds.Purchase, body, body?.OwnerUserId,
+            (caller, owner, key) => PanelEntryLines.PurchaseAsync(db, cache, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    private static Task<IResult> CreatePurchaseAsync(HttpContext http, [FromBody] PortalEntryPurchaseRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, [FromServices] PanelEntryWriter writer, CancellationToken ct) =>
+        CreateAsync(http, db, writer, PanelEntryKinds.Purchase, body, body?.OperationId, body?.OwnerUserId, body?.ExpectedTotal,
+            (caller, owner, key) => PanelEntryLines.PurchaseAsync(db, cache, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    private static async Task<IResult> ReturnablesAsync(HttpContext http, string? customerCode, [FromServices] CentralApiDbContext db,
+        [FromServices] IMemoryCache cache, CancellationToken ct)
+    {
+        var (caller, error) = await PanelEntryAccess.AuthorizeAsync(http, db, PanelEntryKinds.Return, ct);
+        if (error is not null) return error;
+        var (customer, unknown) = await PanelEntryMoney.CustomerAsync(db, cache, caller!, customerCode, ct);
+        if (unknown is not null) return Invalid(unknown);
+        return JsonResults.Ok(new PortalEntryReturnablesResponse { Items = await PanelEntryLines.ReturnablesAsync(db, cache, caller!.Tenant.Id, customer!.Code, ct) });
+    }
+
+    private static Task<IResult> PreviewReturnAsync(HttpContext http, [FromBody] PortalEntryReturnRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, [FromServices] CatalogViewService views, CancellationToken ct) =>
+        PreviewAsync(http, db, PanelEntryKinds.Return, body, body?.OwnerUserId,
+            (caller, owner, key) => PanelEntryLines.ReturnAsync(db, cache, views, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    private static Task<IResult> CreateReturnAsync(HttpContext http, [FromBody] PortalEntryReturnRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, [FromServices] CatalogViewService views,
+        [FromServices] PanelEntryWriter writer, CancellationToken ct) =>
+        CreateAsync(http, db, writer, PanelEntryKinds.Return, body, body?.OperationId, body?.OwnerUserId, body?.ExpectedTotal,
+            (caller, owner, key) => PanelEntryLines.ReturnAsync(db, cache, views, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
 
     // ---- shared -----------------------------------------------------------------------------
 
