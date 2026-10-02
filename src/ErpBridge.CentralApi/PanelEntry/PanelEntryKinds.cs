@@ -20,6 +20,10 @@ public static class PanelEntryKinds
 
     public static readonly IReadOnlyList<PanelEntryKind> All = [Sale, Collection, Purchase, Return, Disbursement, Expense];
 
+    /// <summary>The kind whose prefix a panel entry's key carries; null for any other key.</summary>
+    public static PanelEntryKind? OfKey(string? externalId) =>
+        externalId is null ? null : All.FirstOrDefault(k => externalId.StartsWith(k.Prefix, StringComparison.Ordinal));
+
     /// <summary>The document key of one save attempt; null when <paramref name="operationId"/> is not a GUID.</summary>
     public static string? ExternalId(PanelEntryKind kind, string? operationId) =>
         Guid.TryParse(operationId, out var id) ? kind.Prefix + id.ToString("D") : null;

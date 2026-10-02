@@ -301,6 +301,39 @@ public sealed class PortalEntrySaleRelationalTests : IClassFixture<SqliteCentral
             .Should().Be(3m);
     }
 
+    [Fact]
+    public async Task A_saved_entry_shows_its_state_the_erp_number_and_who_entered_it()
+    {
+        var c = await EntryCompanyAsync(_factory);
+        await SeedErpAsync(_factory, c);
+        var saved = await OkAsync<PortalEntryCreateResponse>(
+            await PostAsync(_factory, "/sale", c.Mudur, Sale(ownerUserId: c.AliId, operationId: Guid.NewGuid(), expectedTotal: 1080m)), HttpStatusCode.Created);
+        var jobId = saved.Documents.Single().JobId;
+
+        var pending = await OkAsync<PortalEntryDocumentDetailDto>(await GetAsync(_factory, $"/documents/{jobId}", c.Mudur));
+        pending.Should().Match<PortalEntryDocumentDetailDto>(d => d.Kind == "sale" && d.State == "pending" && d.ErpDocumentNo == null
+            && d.OwnerName == "ali bey" && d.EnteredBy == "mudur bey" && d.CustomerName == "Yılmaz Market Ltd. Şti." && d.Amount == 1080m);
+        pending.Payload.GetProperty("lines").GetArrayLength().Should().Be(1);
+
+        // The agent writes it: the ERP's number shows.
+        await SeedAsync(_factory, db =>
+        {
+            db.Jobs.Single(j => j.Id == jobId).Status = JobStatus.Succeeded;
+            db.JobAcks.Add(new JobAckRecord { JobId = jobId, Status = "Succeeded", ErpDocumentSeries = "T", ErpDocumentNumber = 1234 });
+        });
+        var written = await OkAsync<PortalEntryDocumentDetailDto>(await GetAsync(_factory, $"/documents/{jobId}", c.Mudur));
+        written.Should().Match<PortalEntryDocumentDetailDto>(d => d.State == "written" && d.ErpDocumentNo == "T-1234");
+
+        var mine = await OkAsync<PortalEntryDocumentsResponse>(await GetAsync(_factory, "/documents", c.Mudur));
+        mine.Items.Should().ContainSingle().Which.Should().Match<PortalEntryDocumentSummaryDto>(i => i.JobId == jobId && i.ErpDocumentNo == "T-1234" && i.Kind == "sale");
+        (await OkAsync<PortalEntryDocumentsResponse>(await GetAsync(_factory, "/documents", c.Patron))).Items.Should().BeEmpty("only one's own entries");
+        (await OkAsync<PortalEntryDocumentsResponse>(await GetAsync(_factory, "/documents?all=true", c.Patron))).Items.Should().ContainSingle();
+
+        // Someone without the sales module does not read sales entries.
+        await SetPermissionAsync(_factory, c.MudurId, K.ModuleSales, PermissionValues.False);
+        await ShouldFailAsync(await GetAsync(_factory, $"/documents/{jobId}", c.Mudur), HttpStatusCode.NotFound, "ENTRY_NOT_FOUND");
+    }
+
     // ---- helpers -----------------------------------------------------------
 
     private static object Sale(

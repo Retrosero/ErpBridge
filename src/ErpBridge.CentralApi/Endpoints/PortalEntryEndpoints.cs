@@ -52,6 +52,8 @@ public static class PortalEntryEndpoints
         group.MapGet("/returnables", ReturnablesAsync).WithName("PortalEntryReturnables");
         group.MapPost("/return/preview", PreviewReturnAsync).WithName("PortalEntryReturnPreview");
         group.MapPost("/return", CreateReturnAsync).WithName("PortalEntryReturn");
+        group.MapGet("/documents", DocumentsAsync).WithName("PortalEntryDocuments");
+        group.MapGet("/documents/{jobId:guid}", DocumentAsync).WithName("PortalEntryDocument");
         return routes;
     }
 
@@ -223,6 +225,26 @@ public static class PortalEntryEndpoints
         [FromServices] PanelEntryWriter writer, CancellationToken ct) =>
         CreateAsync(http, db, writer, PanelEntryKinds.Return, body, body?.OperationId, body?.OwnerUserId, body?.ExpectedTotal,
             (caller, owner, key) => PanelEntryLines.ReturnAsync(db, cache, views, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    // ---- after the save ---------------------------------------------------------------------
+
+    /// <summary>The panel entries, newest first: the user's own, or everyone's for an administrator who asks (<c>all=true</c>).</summary>
+    private static async Task<IResult> DocumentsAsync(HttpContext http, bool? all, int? page, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        var (caller, error) = await AuthorizeAnyAsync(http, db, ct);
+        if (error is not null) return error;
+        var everyone = all == true && RolePermissions.IsAdmin(caller!.User);
+        return JsonResults.Ok(await PanelEntryDocuments.ListAsync(db, caller!, everyone, page ?? 1, ct));
+    }
+
+    private static async Task<IResult> DocumentAsync(HttpContext http, Guid jobId, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        var (caller, error) = await PanelEntryAccess.AuthorizeAsync(http, db, kind: null, ct);
+        if (error is not null) return error;
+        return await PanelEntryDocuments.DetailAsync(db, caller!, jobId, ct) is { } detail
+            ? JsonResults.Ok(detail)
+            : PanelEntryAccess.Error(StatusCodes.Status404NotFound, "ENTRY_NOT_FOUND", "Belge bulunamadı.");
+    }
 
     // ---- shared -----------------------------------------------------------------------------
 

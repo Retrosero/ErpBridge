@@ -441,3 +441,59 @@ public sealed class PortalEntrySoldPriceDto
     /// <summary><c>yyyy-MM-dd</c>.</summary>
     public string LastSold { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// <c>GET /api/v1/portal/entry/documents/{jobId}</c>: a panel entry after it was saved — its state (an ERP company's:
+/// queued, retrying, written with the ERP's number, failed), who entered it in whose name, and the document itself for the
+/// result card and the printed slip.
+/// </summary>
+public sealed class PortalEntryDocumentDetailDto
+{
+    public Guid JobId { get; set; }
+    public string ExternalId { get; set; } = string.Empty;
+    public string DocumentType { get; set; } = string.Empty;
+
+    /// <summary><c>sale</c>, <c>collection</c>, <c>purchase</c>, <c>return</c>, <c>disbursement</c> or <c>expense</c>.</summary>
+    public string Kind { get; set; } = string.Empty;
+
+    public string DataSource { get; set; } = string.Empty;
+
+    /// <summary><c>pending</c>, <c>retrying</c>, <c>written</c> (booked, for a company without an ERP) or <c>failed</c>.</summary>
+    public string State { get; set; } = string.Empty;
+
+    /// <summary>The ERP's series-number once written.</summary>
+    public string? ErpDocumentNo { get; set; }
+
+    public string? Message { get; set; }
+    public string? CustomerName { get; set; }
+    public decimal? Amount { get; set; }
+    public string? OwnerName { get; set; }
+    public string? EnteredBy { get; set; }
+    public DateTimeOffset EnteredAtUtc { get; set; }
+
+    /// <summary>The document body as it was written (the phone's contract).</summary>
+    public System.Text.Json.JsonElement Payload { get; set; }
+}
+
+/// <summary><c>GET /api/v1/portal/entry/documents</c>: the panel entries, newest first.</summary>
+public sealed class PortalEntryDocumentsResponse
+{
+    public List<PortalEntryDocumentSummaryDto> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}
+
+public sealed class PortalEntryDocumentSummaryDto
+{
+    public Guid JobId { get; set; }
+    public string ExternalId { get; set; } = string.Empty;
+    public string Kind { get; set; } = string.Empty;
+    public string State { get; set; } = string.Empty;
+    public string? ErpDocumentNo { get; set; }
+    public string? CustomerName { get; set; }
+    public decimal? Amount { get; set; }
+    public string? OwnerName { get; set; }
+    public string? EnteredBy { get; set; }
+    public DateTimeOffset EnteredAtUtc { get; set; }
+}
