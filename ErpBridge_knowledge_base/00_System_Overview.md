@@ -656,7 +656,8 @@ registration ayrı bir composition projesine taşınır.
      `PortalPageBase.Requires` ile bir `PortalArea` bildirir: `Reports` (Özet, Plasiyerler, Ziyaretler —
      ADMIN, MANAGER), `Ledger` (Cariler, Stok — + ACCOUNTING), `Approvals` (Onaylar — ADMIN, MANAGER,
      ACCOUNTING), `Warehouse` (Depo — ADMIN, MANAGER, WAREHOUSE), `Users` (Kullanıcılar — ADMIN), `Targets` (Hedef takibi,
-     Hedef girişi, Bölge ve ekipler — ADMIN, MANAGER; GOAL_HEDEF_RUT, kural 31). Rolün
+     Hedef girişi, Bölge ve ekipler — ADMIN, MANAGER; GOAL_HEDEF_RUT, kural 31), `Entry*`/`Entries` (Hızlı giriş sayfaları —
+     telefonun `module.*` yetkisiyle; kural 38). Rolün
      açmadığı adres (yer imi, elle yazılan URL) API'ye hiç sormadan kullanıcının **açılış sayfasına**
      gider: raporları görebilen `/`, muhasebe `/muhasebe` (Faz 48), depo `/depo`. Girişten sonra da oraya gidilir.
      `PortalRoles` ile `RolePermissions` birlikte değişir; panel yalnız kolaylıktır, kapı sunucudadır.
@@ -1863,5 +1864,16 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
    - **Sonuç ve liste (P4)** `PanelEntryDocuments`: `GET documents/{jobId}` durum (`ErpDocumentStates`), ERP seri-sıra (`JobAcks`),
      giren (denetim satırı) ve sahip, gövde (yazdırma); `GET documents` son girişler (denetim satırlarından, kişinin kendisi; yönetici
      `all=true`). Yalnız `PNL-` anahtarlı ve türünün modülü açık işler.
+   - **Panel sayfaları (P5)** `ErpBridge.Portal/Pages/Giris/`: `/giris/satis`, `/giris/tahsilat`, `/giris/alis`, `/giris/iade`,
+     `/giris/tediye`, `/giris/gider` (menüde "Hızlı giriş"), `/girisler` (son girişler: durum, ERP seri-sıra, giren/sahip) ve
+     `/giris-yazdir?is=` (sipariş/satış, tahsilat ve tediye makbuzu, iade, alış; giderde yazdırma yok — telefondaki gibi). Her sayfa
+     `PortalArea.Entry*` ister; `PortalRoles.KeyOf` bunları `module.sales/collection/purchase/returns/disbursement/expenses`'e eşler
+     (oturumda yetki yoksa rol yedeği ADMIN, MANAGER), `Entries` herhangi bir giriş alanı açıksa görünür. Ortak parçalar `Shared/Entry/`:
+     `EntryPageBase` her değişiklikte sunucunun `preview`'unu çağırır (sıra bekçisiyle yalnız son yanıt çizilir), ret ya da eksik eşleme
+     varken Kaydet kapalı, gönderilen `expectedTotal` önizlemenin toplamıdır; `operationId` **gönderim başına bir kez** üretilir — yanıtı
+     kaybolan kayıt aynı anahtarla yeniden gider (Codex #249). `EntryHeader` (kimin adına + belge tarihi, ileri gün seçilemez),
+     `CustomerPicker`, `ProductPicker`, `EntryChecks` (ret, stok uyarısı), `EntryTotals`, `EntrySaved` (sonuç kartı + yazdır). `?cari=`
+     (`EntryQuery`) cariyi seçili açar. Alış sayfası fiyat sütununu ve öneriyi önizlemenin `PriceIncludesVat`'ına göre etiketler.
+     Testler: `PortalEntryPagesTests`.
    - Testler: `PortalEntrySaleRelationalTests`, `PortalEntryMoneyRelationalTests`, `PortalEntryLinesRelationalTests` (`PortalEntryTestSupport`),
      `DocumentPermissionCheckTests`.
