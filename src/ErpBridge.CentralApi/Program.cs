@@ -367,6 +367,9 @@ public partial class Program
         builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageTrash>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageCleanup>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageQuarantine>();
+        // The bytea move (S10): run by the maintenance worker's minute tick and the Admin console; one gate between them.
+        builder.Services.AddSingleton<ErpBridge.CentralApi.Storage.BlobMigrationState>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Storage.BlobMigration>();
         builder.Services.AddHostedService<ErpBridge.CentralApi.Storage.StorageMaintenanceWorker>();
         // XML picture sync (S7): the server's only outside downloads, through a handler that pins every connection to a
         // checked public address and follows no redirect by itself (SafeHttpFetcher follows and re-checks them).

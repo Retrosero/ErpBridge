@@ -52,6 +52,13 @@ public sealed class StorageOptions
     /// </summary>
     public bool XmlSyncEnabled { get; set; } = true;
 
+    /// <summary>
+    /// The bytea move (S10, <see cref="BlobMigration"/>): every minute, as part of <see cref="StorageMaintenanceWorker"/>'s
+    /// tick (so only while <see cref="MaintenanceEnabled"/>), at most <see cref="BlobMigration.RunBudget"/> pictures still in
+    /// PostgreSQL go to R2, until none is left. Off in tests (they run the move themselves).
+    /// </summary>
+    public bool BlobMigrationEnabled { get; set; } = true;
+
     /// <summary>Every value the R2 connection needs is present.</summary>
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(AccountId)

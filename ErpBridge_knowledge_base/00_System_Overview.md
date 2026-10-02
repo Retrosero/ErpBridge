@@ -1050,8 +1050,8 @@ registration ayrı bir composition projesine taşınır.
      `TASK_DUE_SOON` (60 dk kala) ve `TASK_OVERDUE`. İşlemi yapana kendi işlemi bildirilmez. Push yoktur: telefon
      açıkken `GET tasks/events` uzun yoklaması (`TenantEventHub` konu `tasks`, sürüm numarası), kapalıyken kendi
      15 dk'lık işçisi.
-   - **Resim merkezi dosya deposundadır** (R2 özel kova, 2026-10-01, kural 37 "Görev eki"); öncesinde yüklenenler S10 göçüne kadar
-     `task_attachment_blobs` (bytea) içinde kalır ve okunur. Ham gövde `PUT tasks/{id}/attachments/{attachmentId}`, yalnız
+   - **Resim merkezi dosya deposundadır** (R2 özel kova, 2026-10-01, kural 37 "Görev eki"); öncesinde yüklenenler `task_attachment_blobs`
+     (bytea) içindeydi; S10 göçü (kural 37 "Bytea göçü") onları R2'ye taşır, taşınana kadar oradan okunur. Ham gövde `PUT tasks/{id}/attachments/{attachmentId}`, yalnız
      JPEG/PNG/WEBP (dosya imzası da denetlenir), ≤ 2 MB, görev başı 10; kota firmanın tek depolama kotası
      (`Tasks:TenantAttachmentQuotaBytes` kaldırıldı). `GET` yalnız görevi gören kullanıcıya, değişmez önbellek başlığıyla.
    - **Zamanlayıcı:** `Workers/TaskSchedulerWorker` dakikada bir `RunSchedulerAsync`: seri örnekleri (sunucu
@@ -1384,8 +1384,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
    - **Firma kodu güvencesi:** `MobileSeatService.EnsureTenantCodeAsync` — kodu olmayan firmaya (hiç koltuk almamış olabilir) ilk
      okumada 8 karakterlik kod üretir; yalnız kod hâlâ boşsa yazar, eşzamanlı iki okuma aynı kodu döner.
    - **Görseller (S5)** `Endpoints/CustomerCatalogImageEndpoints` + `CustomerCatalog/CatalogImages`: baytlar 2026-10-01'den beri
-     merkezi dosya deposunda (R2, kural 37 "Katalog görseli ve banner"); öncesinde yüklenenler S10 göçüne kadar PostgreSQL'de
-     (`catalog_image_blobs`, iki varyant). Kota firmanın tek depolama kotasıdır (`TenantImageQuotaBytes` kaldırıldı). Katalog görseli
+     merkezi dosya deposunda (R2, kural 37 "Katalog görseli ve banner"); öncesinde yüklenenler PostgreSQL'deydi
+     (`catalog_image_blobs`, iki varyant); S10 göçü (kural 37 "Bytea göçü") onları R2'ye taşır, taşınana kadar oradan okunur. Kota firmanın tek depolama kotasıdır (`TenantImageQuotaBytes` kaldırıldı). Katalog görseli
      için küçültmeyi gönderen yapar, sunucu yalnız bayt sınırını,
      sihirli baytı (`Storage/ImageBytes.LooksLike`, kural 37) denetler ve üst veriyi kütüphanesiz atar (`ImageBytes.StripMetadata`: JPEG APP1
      EXIF/XMP; PNG `eXIf`/`tEXt`/`iTXt`/`zTXt` parçaları — CRC parça başına olduğu için kalanlar geçerli; WebP `EXIF`/`XMP `
@@ -1534,9 +1534,9 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
 
-37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1–S9, 2026-10-01/02).**
+37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1–S10, 2026-10-01/02).**
    Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5), ürün fotoğrafı (S6), XML görsel eşitleyici (S7),
-   çöp kutusu/temizlik/karantina (S9, aşağıda); bytea göçü (S10) bu temeli kullanacak — göçe kadar depodan önce yüklenen resimler PostgreSQL bytea'sında kalır ve okunur.
+   çöp kutusu/temizlik/karantina (S9, aşağıda), bytea göçü (S10, aşağıda) — depodan önce yüklenen resimler göç edene kadar PostgreSQL bytea'sından okunur.
    - **Kayıtlar dosyaya `StoredFile*Id` ile bağlanır, yabancı anahtar yok** (migration `DepolamaAlanlari`): defter satırı deponun kendi
      yaşamıyla (çöp, kalıcı silme) gider, sahip kaydıyla değil; "yetim" = hiçbir kaydın göstermediği dosya (S9), bağlantı sütunları
      bu sorgu için indekslidir. Sahip kaydı silinince dosyalar işlem **sonrası** `FileStore.TrashAllAsync` (kullanıcı silmesi) ya da
@@ -1547,7 +1547,7 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id:N}-{varyant}.{uzantı}`; kod boşsa `MobileSeatService.EnsureTenantCodeAsync` üretir.
    - **Ayarlar** `Storage/StorageOptions` (`Storage:*`, Coolify `Storage__*`; anahtar çifti Coolify Secret): `AccountId`, `AccessKeyId`,
      `SecretAccessKey`, `PublicBucket`, `PrivateBucket`, `PublicBaseUrl`, `DefaultQuotaBytes` 5 GB, `PresignMinutes` 5, `TrashDays` 7,
-     `DeletedOwnerPurgeDays` 30, `MaintenanceEnabled`, `MaintenanceHourUtc` 2, `XmlSyncEnabled` (S7). Biri eksikse API **açılır**: `IObjectStore` =
+     `DeletedOwnerPurgeDays` 30, `MaintenanceEnabled`, `MaintenanceHourUtc` 2, `XmlSyncEnabled` (S7), `BlobMigrationEnabled` (S10). Biri eksikse API **açılır**: `IObjectStore` =
      `UnavailableObjectStore`, depolama uçları `503 STORAGE_UNAVAILABLE`, açılışta eksik ayarların **adları** uyarılır; `PublicBaseUrl`
      doluysa https olmalı (`ValidateRuntimeConfiguration`).
    - **R2 istemcisi** `Storage/R2ObjectStore` (`AWSSDK.S3` 4.x): `https://{AccountId}.r2.cloudflarestorage.com`, path-style, imza bölgesi
@@ -1731,6 +1731,35 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      geri alma, XML'in kalıcı silinmesi, fiş geri alma, süpürme öğesi geri alınamaz, karantina gidiş-dönüş ve yalnız katalog alanları, denetim
      kaydı), `StorageReconcileRelationalTests` (eski yetim silinir, yabancı klasör ve genç nesne kalır, %30 üstü hiçbir şey silinmez).
      `InMemoryObjectStore` artık nesnenin yazılma zamanını tutar (`Seed` ile tarihli yetim).
+   - **Bytea göçü (S10, T9)** `Storage/BlobMigration` (+ tekil `BlobMigrationState`): depodan önce PostgreSQL'e yazılmış resimleri — `catalog_image_blobs`
+     (katalog görseli; `StockCode == "~banner"` → alan `banner`, varyant `s`/`l`, `OwnerType` `catalog_image`, sahip görselin kimliği) ve
+     `task_attachment_blobs` (görev resmi; alan `task`, özel kova, varyant `o`, sahip görevin kimliği) — R2'ye taşır. Yapılacak iş yalnız
+     "kaydında o boyutun dosyası olmayan blob"dur (ayrı durum tutulmaz): **kaldığı yerden sürer ve tekrar çalışması bir şey değiştirmez**.
+     Adımlar: blob okunur → `FileStore.PutMigratedAsync` (**yalnız göç**: bayt **olduğu gibi** — üst veri silme yok, yeniden kodlama yok, böylece nesnenin
+     SHA-256'sı blobunkine eşittir; tür yine ilk baytlardan; **kota denetlenmez** ama bayt ayrılır ve `UsedBytes`'a eklenir — bayt zaten firmanındır,
+     göç kota yüzünden durmaz, sayaç doğruyu söyler, kota aşılırsa yeni yüklemeler durur) → nesne R2'den geri okunup boyut + SHA-256 blobla
+     karşılaştırılır → tutmazsa kopya `PurgeAllAsync` ile silinir, satır "başarısız" sayılır (`invalid_image`, `sha_mismatch`, `size_mismatch`,
+     `missing_object`; günlükte yalnız kimlikler ve neden) → tutanlar 50'lik gruplarla bağlanır: katalog görsel kilidinde
+     (`WriteLayoutAsync(pictures: true)`, `ImageRevision` artar, katalog görünümü CDN adresine geçer), görev resmi koşullu UPDATE ile
+     (`StoredFileId == null && !IsDeleted`). Arada kayıt değiştiyse (boyut yeniden yüklendi, görsel/ek silindi) kopya kalıcı silinir (`lost`).
+     Modülsüz ya da pasif firmanın taşınan katalog görselleri hemen karantinaya alınır (`StorageQuarantine.RunAsync`; eski yol 404 veriyordu).
+     R2 cevap vermezse tur durur, sonraki tur sürdürür. **Silinmiş görev resimleri taşınmaz** (kimse okumaz, tabloyla gider). Başarısız satırlar
+     süreç ömrünce `BlobMigrationState`'te tutulur ve atlanır (yeniden başlatmada ya da Admin `retryFailed=true` ile bir kez daha denenir).
+     **Okuma ikiliği** S3/S4'teki gibi: bütün okuma yolları (`CatalogImages.ThumbUrl/FullUrl` + `CatalogFileUrls`, anonim `catalog/img`, banner,
+     `TaskService.ReadAttachmentAsync`, `TaskPictureReadRule`) önce depodaki dosyayı kullanır; bağlanan satır o an R2'den okunur, bağlanmayan
+     bytea'dan. **Bloblar yerinde kalır**; tabloları düşüren migration **ayrı PR**'dır ve ancak üretimde `readyToDrop` true olunca yazılır.
+     `CustomerCatalogImageEndpoints.UploadAsync`: taşınmış boyut yeniden yüklenirse blob ve dosya aynı bayttır, `SizeBytes`'tan bir kez düşülür.
+     **Çalıştırma:** `StorageMaintenanceWorker`'ın dakikalık turunda (`Storage:MaintenanceEnabled` ve `Storage:BlobMigrationEnabled`, varsayılan
+     açık, testte kapalı) tur başı en çok 500 dosya (`RunBudget`), bütün firmalarda iş kalmayınca durur (`Idle`; Admin çalıştırması yeniden uyandırır).
+     İşçi ve Admin tek kapıyı paylaşır (aynı anda iki tur yok). **Admin:** `GET /api/v1/admin/storage/migration[?verify=false]` firma başına kalan /
+     taşınan / başarısız / atlanan satır ve bayt; `BlobMigration.VerifyAsync` her taşınmış satır için (silinmemiş görev resmi ve katalog boyutu)
+     dosyanın defterde olduğunu, aynı firmanın olduğunu, etkin (ya da çöpte) olduğunu ve boyut + SHA-256'sının blobdan **o an** hesaplananla
+     aynı olduğunu 50'lik gruplarla denetler (bütün taşınmış blobları okur); `readyToDrop` = kalan yok, başarısız yok, denetim temiz.
+     `POST /api/v1/admin/storage/migration/run[?budget=1..5000&tenantId=&retryFailed=true]` hemen bir tur (`409 STORAGE_MIGRATION_RUNNING`).
+     Sorgular `BlobMigration.*Query` olarak açık: PostgreSQL çevirisi `BlobMigrationQueryTests`'te sunucusuz denetlenir (boyut `length(bytea)` ile
+     veritabanında toplanır). Testler `Storage/BlobMigrationRelationalTests` (katalog + banner + EXIF'li JPEG bayt bayt, okuma CDN'den, modülsüz
+     firmada karantina, görev resmi özel kovada ve R2'den okunur, silinmiş ek atlanır, tekrar çalışma, yarıda R2 kesintisi, bozuk kopya silinir +
+     başarısız, dolu kota, Admin sayıları/doğrulama/`readyToDrop`); `InMemoryObjectStore.FailPutsAfter/RestorePuts/CorruptPuts`.
    - **Panel "Depolama" sayfası (P1)** `ErpBridge.Portal/Pages/Depolama.razor` (`/depolama`, menüde İşlemler > "Depolama"; `PortalArea.Storage` =
      `action.storage.manage`, katalog gibi ADMIN + MANAGER'a kilitli — izin sözlüğü başka rolü açamaz): kota çubuğu ("3,2 GB / 5,0 GB",
      `StorageText.Level`: %80'den sarı `warn`, %95'ten kırmızı `full`, uyarı metniyle), çöpün payı, alanlara göre dağılım (Ürün, XML, Katalog,

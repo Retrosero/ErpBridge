@@ -243,7 +243,9 @@ public sealed class StorageMaintenance
 /// Runs the storage passes (the <c>XmlImageSyncWorker</c> pattern; one CentralApi container): every minute the
 /// quarantine checks asked for (<see cref="StorageMaintenance.RunRequestedQuarantinesAsync"/>); once a day at
 /// <see cref="StorageOptions.MaintenanceHourUtc"/> <see cref="StorageMaintenance.RunOnceAsync"/>, and on Sundays after it
-/// the R2 reconciliation. Off with <c>Storage:MaintenanceEnabled=false</c> (tests run the passes themselves).
+/// the R2 reconciliation. Every minute too, while <c>Storage:BlobMigrationEnabled</c> and pictures are left in PostgreSQL,
+/// one run of the bytea move (<see cref="BlobMigration"/>, S10, at most <see cref="BlobMigration.RunBudget"/> files) until
+/// a run finds nothing left. Off with <c>Storage:MaintenanceEnabled=false</c> (tests run the passes themselves).
 /// </summary>
 public sealed class StorageMaintenanceWorker : BackgroundService
 {
@@ -251,12 +253,14 @@ public sealed class StorageMaintenanceWorker : BackgroundService
 
     private readonly IServiceScopeFactory _scopes;
     private readonly IOptionsMonitor<StorageOptions> _options;
+    private readonly BlobMigrationState _migration;
     private readonly ILogger<StorageMaintenanceWorker> _logger;
 
-    public StorageMaintenanceWorker(IServiceScopeFactory scopes, IOptionsMonitor<StorageOptions> options, ILogger<StorageMaintenanceWorker> logger)
+    public StorageMaintenanceWorker(IServiceScopeFactory scopes, IOptionsMonitor<StorageOptions> options, BlobMigrationState migration, ILogger<StorageMaintenanceWorker> logger)
     {
         _scopes = scopes;
         _options = options;
+        _migration = migration;
         _logger = logger;
     }
 
@@ -298,6 +302,24 @@ public sealed class StorageMaintenanceWorker : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Storage maintenance pass failed.");
+            }
+
+            try
+            {
+                // The bytea move (S10): its own step, so a failure here never holds up the passes above.
+                if (_options.CurrentValue.MaintenanceEnabled && _options.CurrentValue.BlobMigrationEnabled && !_migration.Idle)
+                {
+                    await using var scope = _scopes.CreateAsyncScope();
+                    await scope.ServiceProvider.GetRequiredService<BlobMigration>().TryRunAsync(BlobMigration.RunBudget, tenantId: null, stoppingToken);
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Blob move run failed.");
             }
 
             try

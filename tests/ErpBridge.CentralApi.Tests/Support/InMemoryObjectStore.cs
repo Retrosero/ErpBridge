@@ -12,11 +12,29 @@ public sealed class InMemoryObjectStore : IObjectStore
 {
     private readonly ConcurrentDictionary<(string Bucket, string Key), (byte[] Data, string ContentType, DateTimeOffset Modified)> _objects = new();
     private int _failPuts;
+    private readonly object _gate = new();
+    private int? _okPutsLeft;
 
     public bool IsAvailable => true;
 
     /// <summary>How many of the next uploads fail with <see cref="StorageUnavailableException"/>.</summary>
     public void FailNextPuts(int count) => Interlocked.Exchange(ref _failPuts, count);
+
+    /// <summary>After <paramref name="successes"/> more uploads every upload fails, until <see cref="RestorePuts"/> (an outage mid-way).</summary>
+    public void FailPutsAfter(int successes)
+    {
+        lock (_gate) _okPutsLeft = successes;
+    }
+
+    /// <summary>Uploads work again.</summary>
+    public void RestorePuts()
+    {
+        lock (_gate) _okPutsLeft = null;
+        Interlocked.Exchange(ref _failPuts, 0);
+    }
+
+    /// <summary>While set, an upload stores its bytes with the last one changed (a copy that does not match its source).</summary>
+    public bool CorruptPuts { get; set; }
 
     /// <summary>Every delete fails while set.</summary>
     public bool FailDeletes { get; set; }
@@ -28,7 +46,17 @@ public sealed class InMemoryObjectStore : IObjectStore
     public Task PutAsync(string bucket, string key, byte[] data, string contentType, CancellationToken ct)
     {
         if (Interlocked.Decrement(ref _failPuts) >= 0) throw new StorageUnavailableException("simulated R2 outage");
-        _objects[(bucket, key)] = (data.ToArray(), contentType, DateTimeOffset.UtcNow);
+        lock (_gate)
+        {
+            if (_okPutsLeft is { } left)
+            {
+                if (left <= 0) throw new StorageUnavailableException("simulated R2 outage");
+                _okPutsLeft = left - 1;
+            }
+        }
+        var stored = data.ToArray();
+        if (CorruptPuts && stored.Length > 0) stored[^1] ^= 0xFF;
+        _objects[(bucket, key)] = (stored, contentType, DateTimeOffset.UtcNow);
         return Task.CompletedTask;
     }
 
