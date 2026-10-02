@@ -147,7 +147,8 @@ public static class PortalErpDocumentsEndpoints
     /// </summary>
     private static async Task<IResult> RetryAsync(
         HttpContext http, Guid jobId, [FromServices] CentralApiDbContext db,
-        [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse, CancellationToken ct)
+        [FromServices] ErpBridge.CentralApi.Warehouse.FulfillmentService warehouse,
+        [FromServices] ErpBridge.CentralApi.Jobs.IJobSignal signal, CancellationToken ct)
     {
         var (tenant, _, error) = await AuthorizeAsync(http, db, RolePermissions.IsAdmin, requireAdmin: true, ct);
         if (error is not null) return error;
@@ -175,6 +176,8 @@ public static class PortalErpDocumentsEndpoints
             if (transaction is not null) await transaction.CommitAsync(ct);
         }
         if (orderChanged) warehouse.Notify(job.TenantId);
+        // Ajan hızı S2: the agent's pending long-poll takes the job now, not on its next poll.
+        signal.Notify(job.TenantId);
         return JsonResults.Ok(new PortalErpRetryResponse { JobId = job.Id, State = ErpDocumentStates.Pending });
     }
 
