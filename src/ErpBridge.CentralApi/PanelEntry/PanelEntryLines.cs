@@ -5,6 +5,7 @@ using ErpBridge.CentralApi.CustomerCatalog;
 using ErpBridge.CentralApi.Data;
 using ErpBridge.CentralApi.Domain;
 using ErpBridge.CentralApi.Portal;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace ErpBridge.CentralApi.PanelEntry;
@@ -47,6 +48,10 @@ public static class PanelEntryLines
         if (body.Lines.Count > 500) return (null, PanelEntryInvalid.Body("Bir belgede en çok 500 satır olabilir."));
         if (Chain(body.GeneralDiscountPercents) is not { } general) return (null, PanelEntryInvalid.Body("Genel iskontolar en çok 6 adet, her biri %0 ile %100 arasında olmalı."));
 
+        // An ERP company may say its suppliers' prices include VAT ("Tedarikçi fiyatı", ERP aktarım ayarları): the typed price
+        // is then VAT-inclusive and the ERP compares the VAT-inclusive total (Codex #251; MikroPriceCalculator.PurchaseLine).
+        var includesVat = !caller.IsNative && await db.ErpWriteSettings.AsNoTracking()
+            .Where(s => s.TenantId == caller.Tenant.Id).Select(s => s.PurchasePricesIncludeVat).FirstOrDefaultAsync(ct);
         var stock = await PortalStockCatalog.LoadAsync(db, cache, caller.Tenant.Id, ct);
         var products = stock.Products.ToDictionary(p => p.Code, StringComparer.Ordinal);
         var priced = new List<(PortalStockCatalog.Product Product, PortalEntryPurchaseLineRequest Line, IReadOnlyList<decimal> Discounts, decimal Vat, PurchasePricing.Priced Price)>();
@@ -62,7 +67,7 @@ public static class PanelEntryLines
             if (Chain(line.LineDiscountPercents) is not { } discounts)
                 return (null, PanelEntryInvalid.Body($"{no}. satırın iskontoları en çok 6 adet, her biri %0 ile %100 arasında olmalı."));
             var vat = product.VatRate ?? PanelEntrySale.DefaultVatRate;
-            priced.Add((product, line, discounts, vat, PurchasePricing.Price(line.UnitPrice, line.Quantity, discounts, general, vat)));
+            priced.Add((product, line, discounts, vat, PurchasePricing.Price(line.UnitPrice, line.Quantity, discounts, general, vat, includesVat)));
         }
 
         var net = CatalogPricing.R2(priced.Sum(p => p.Price.Net));
@@ -91,7 +96,8 @@ public static class PanelEntryLines
             ["counterparty"] = supplier.Title,
         };
         if (invoiceNo.Length > 0) payload["invoiceNo"] = invoiceNo;
-        payload["amount"] = net;
+        // The contract: the discounted net, or with VAT-inclusive supplier prices the VAT-inclusive total.
+        payload["amount"] = includesVat ? CatalogPricing.R2(net + vatTotal) : net;
         payload["vatAmount"] = vatTotal;
         payload["grossAmount"] = CatalogPricing.R2(net + vatTotal);
         if (general.Count > 0) payload["generalDiscountPercents"] = new JsonArray([.. general.Select(d => (JsonNode?)d)]);
@@ -107,6 +113,7 @@ public static class PanelEntryLines
             CustomerCode = supplier.Code,
             CustomerName = supplier.Title,
             OccurredAt = PanelEntryDates.Local(wall.Value),
+            PriceIncludesVat = includesVat,
             Lines = [.. priced.Select(p => new PortalEntryPricedLineDto
             {
                 ProductCode = p.Product.Code,
@@ -312,9 +319,11 @@ public static class PanelEntryLines
             public decimal Total => CatalogPricing.R2(Net + Vat);
         }
 
-        public static Priced Price(decimal unitPrice, decimal quantity, IReadOnlyList<decimal> lineDiscounts, IReadOnlyList<decimal> generalDiscounts, decimal vatPercent)
+        public static Priced Price(decimal unitPrice, decimal quantity, IReadOnlyList<decimal> lineDiscounts, IReadOnlyList<decimal> generalDiscounts,
+            decimal vatPercent, bool priceIncludesVat = false)
         {
-            var gross = CatalogPricing.R2(unitPrice * quantity);
+            var unit = priceIncludesVat && vatPercent != 0m ? unitPrice / (1m + vatPercent / 100m) : unitPrice;
+            var gross = CatalogPricing.R2(unit * quantity);
             var remaining = gross;
             decimal discount = 0;
             foreach (var percent in lineDiscounts.Concat(generalDiscounts))

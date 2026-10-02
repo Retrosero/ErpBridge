@@ -117,7 +117,8 @@ public static class PanelEntryDocuments
                 state == ErpDocumentStates.Written ? ErpDocumentStates.DocumentNo(ack?.ErpDocumentSeries, ack?.ErpDocumentNumber) : null,
                 state is ErpDocumentStates.Failed or ErpDocumentStates.Retrying ? ack?.ErrorMessage ?? job.LastError : null,
                 ReadText(job.PayloadJson, "counterparty"),
-                PortalReports.ReadDecimal(job.PayloadJson, "amount"),
+                // A purchase's amount is its net; what was paid is its VAT-inclusive gross (Codex #251).
+                PortalReports.ReadDecimal(job.PayloadJson, "grossAmount") ?? PortalReports.ReadDecimal(job.PayloadJson, "amount"),
                 job.CreatedByUserId is { } owner && owners.TryGetValue(owner, out var name) ? name : null,
                 who?.UserName,
                 who?.CreatedAtUtc ?? job.EnqueuedAtUtc);

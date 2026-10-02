@@ -88,6 +88,34 @@ public sealed class PortalEntryLinesRelationalTests : IClassFixture<SqliteCentra
     }
 
     [Fact]
+    public async Task With_vat_inclusive_supplier_prices_the_purchase_carries_the_vat_inclusive_total()
+    {
+        var c = await EntryCompanyAsync(_factory);
+        await SeedErpAsync(_factory, c);
+        await SeedAsync(_factory, db => db.ErpWriteSettings.Single(s => s.TenantId == c.Id).PurchasePricesIncludeVat = true);
+        var operationId = Guid.NewGuid();
+        var externalId = "PNL-PR-" + operationId.ToString("D");
+        // 10 × 110 with 10 % VAT inside: 1000 net, 100 VAT.
+        var body = new { operationId = operationId.ToString("D"), supplierCode = "C2", lines = new[] { new { productCode = "A", quantity = 10m, unitPrice = 110m } }, expectedTotal = 1100m };
+
+        var preview = await OkAsync<PortalEntryPreviewResponse>(await PostAsync(_factory, "/purchase/preview", c.Patron, body));
+        preview.Should().Match<PortalEntryPreviewResponse>(p => p.PriceIncludesVat && p.Gross == 1000m && p.Vat == 100m && p.Total == 1100m);
+
+        var saved = await OkAsync<PortalEntryCreateResponse>(await PostAsync(_factory, "/purchase", c.Patron, body), HttpStatusCode.Created);
+        var job = await JobAsync(c, externalId);
+        using (var payload = JsonDocument.Parse(job.PayloadJson))
+        {
+            payload.RootElement.GetProperty("amount").GetDecimal().Should().Be(1100m, "the ERP compares the VAT-inclusive total when prices include VAT");
+            payload.RootElement.GetProperty("lines")[0].GetProperty("unitPrice").GetDecimal().Should().Be(110m);
+        }
+        var translation = new MobileDocumentTranslator().Translate("purchase_receipt", externalId, job.PayloadJson, await AgentContextAsync(c.Id, c.PatronId, "patron"));
+        translation.Purchase!.Should().Match<PurchaseInvoiceCommand>(p => p.PricesIncludeVat && p.Header.ExpectedTotal == 1100m);
+
+        var detail = await OkAsync<PortalEntryDocumentDetailDto>(await GetAsync(_factory, $"/documents/{saved.Documents.Single().JobId}", c.Patron));
+        detail.Amount.Should().Be(1100m, "what was paid");
+    }
+
+    [Fact]
     public async Task A_purchase_over_the_limit_or_with_a_bad_discount_chain_is_refused()
     {
         var c = await EntryCompanyAsync(_factory);
