@@ -17,7 +17,7 @@ R2 API anahtarı değerlerini görmek/girmek (kullanıcı girer).
 | S4 | Görev eki → R2 (özel kova) | ✅ | bu PR | Görev eki özel kovada; GET sunucu akıtır |
 | S5 | Gider/araç fişi | ✅ | bu PR | `expense_attachments`, fiş uçları, panel `/fisler` |
 | S6 | Ürün fotoğrafı | ✅ | bu PR | `product_images`, `action.products.photo`, panel Stok > Fotoğraflar, katalogda yedek görsel |
-| S7 | XML görsel eşitleyici (değişen/silinen izlenir) | ⬜ | | |
+| S7 | XML görsel eşitleyici (değişen/silinen izlenir) | ✅ | bu PR | `XmlImageSync` + `SafeHttpFetcher` (DNS sabitleme, elle yönlendirme), `xml_images`, status/sync uçları, katalog yedeği ve manifest `xmlItems`; bozuk/boş/eşleşmeyen feed hiçbir şey silmez |
 | S8 | Kota/kullanım + Admin | ✅ | #237 | `GET /api/v1/storage/usage`, Admin kota kartı (0 GB dahil), günlük sayaç hesabı |
 | S9 | Temizlik + bakım işi | ⬜ | | |
 | S10 | Bytea → R2 göçü | ⬜ | | |

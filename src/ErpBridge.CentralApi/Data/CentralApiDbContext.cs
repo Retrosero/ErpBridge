@@ -225,6 +225,9 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Product photos taken or uploaded by the company (GOAL_DEPOLAMA_R2 S6).</summary>
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
 
+    /// <summary>Pictures the server copied from the company's XML feed (GOAL_DEPOLAMA_R2 S7).</summary>
+    public DbSet<XmlImage> XmlImages => Set<XmlImage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -331,6 +334,11 @@ public sealed class CentralApiDbContext : DbContext
             b.Property(x => x.Url).IsRequired().HasMaxLength(2048);
             b.Property(x => x.RecordPath).IsRequired().HasMaxLength(512);
             b.Property(x => x.MappingJson).IsRequired().HasColumnType("jsonb");
+            b.Property(x => x.ImageSyncStatus).HasMaxLength(16);
+            b.Property(x => x.ImageSyncMessage).HasMaxLength(Domain.TenantXmlFeedSettings.MaxImageSyncMessageLength);
+            b.Property(x => x.ImageSyncStatsJson).HasMaxLength(2000);
+            // The worker's queue: the oldest waiting request first.
+            b.HasIndex(x => x.ImageSyncRequestedAtMs);
             b.HasOne(x => x.Tenant).WithOne().HasForeignKey<TenantXmlFeedSettings>(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -1599,6 +1607,25 @@ public sealed class CentralApiDbContext : DbContext
             // A product's photos in order; the same photo sent again finds its row.
             b.HasIndex(x => new { x.TenantId, x.StockCode, x.SortOrder });
             b.HasIndex(x => new { x.TenantId, x.StockCode, x.SourceSha256 }).IsUnique();
+            b.HasIndex(x => x.StoredFileSmallId);
+            b.HasIndex(x => x.StoredFileLargeId);
+        });
+
+        modelBuilder.Entity<XmlImage>(b =>
+        {
+            b.ToTable("xml_images");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.StockCode).IsRequired().HasMaxLength(64);
+            b.Property(x => x.SourceUrl).IsRequired().HasMaxLength(XmlImage.MaxSourceUrlLength);
+            b.Property(x => x.SourceUrlHash).IsRequired().HasMaxLength(64);
+            b.Property(x => x.ETag).HasMaxLength(XmlImage.MaxETagLength);
+            b.Property(x => x.LastModified).HasMaxLength(XmlImage.MaxLastModifiedLength);
+            b.Property(x => x.ContentSha256).IsRequired().HasMaxLength(64);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // A product's feed pictures; one row per address of a product; which picture a stored file is (orphan check).
+            b.HasIndex(x => new { x.TenantId, x.StockCode });
+            b.HasIndex(x => new { x.TenantId, x.StockCode, x.SourceUrlHash }).IsUnique();
             b.HasIndex(x => x.StoredFileSmallId);
             b.HasIndex(x => x.StoredFileLargeId);
         });

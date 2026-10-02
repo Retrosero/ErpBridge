@@ -163,17 +163,92 @@ public sealed class ProductImageDto
     [JsonPropertyName("createdByName")] public string CreatedByName { get; set; } = string.Empty;
 }
 
-/// <summary><c>GET /api/v1/storage/products/images?stockCode=</c>: one product's photos in order.</summary>
+/// <summary>
+/// <c>GET /api/v1/storage/products/images?stockCode=</c>: one product's photos in order, and the server's copies of its
+/// XML feed pictures (GOAL_DEPOLAMA_R2 S7) in the feed's order — the phone shows the photos, then these, then its own copy.
+/// </summary>
 public sealed class ProductImagesResponse
 {
     [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
     [JsonPropertyName("items")] public ProductImageDto[] Items { get; set; } = [];
+
+    /// <summary>Read-only: the XML sync writes them. Empty in the manifest's groups (it lists them in its own <c>xmlItems</c>).</summary>
+    [JsonPropertyName("xmlItems")] public XmlImageDto[] XmlItems { get; set; } = [];
 }
 
-/// <summary><c>GET /api/v1/storage/products/images/manifest</c>: every product with photos (the phone's picture order).</summary>
+/// <summary>
+/// <c>GET /api/v1/storage/products/images/manifest</c>: every product with photos (the phone's picture order), and every
+/// product with server copies of its XML pictures.
+/// </summary>
 public sealed class ProductImageManifestResponse
 {
     [JsonPropertyName("items")] public ProductImagesResponse[] Items { get; set; } = [];
+
+    [JsonPropertyName("xmlItems")] public XmlProductImagesDto[] XmlItems { get; set; } = [];
+}
+
+/// <summary>A picture the server copied from the company's XML feed (GOAL_DEPOLAMA_R2 S7): its two WebP sizes by their CDN addresses.</summary>
+public sealed class XmlImageDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+
+    /// <summary>Place in the feed's order (0 first).</summary>
+    [JsonPropertyName("position")] public int Position { get; set; }
+
+    /// <summary>The address in the feed it was copied from: the phone matches its own XML picture by it.</summary>
+    [JsonPropertyName("sourceUrl")] public string SourceUrl { get; set; } = string.Empty;
+
+    /// <summary>400 px WebP, <c>https://img.appsgo.cloud/{FIRMAKODU}/xml/…-s.webp</c>.</summary>
+    [JsonPropertyName("thumbUrl")] public string ThumbUrl { get; set; } = string.Empty;
+
+    /// <summary>1280 px WebP.</summary>
+    [JsonPropertyName("fullUrl")] public string FullUrl { get; set; } = string.Empty;
+    [JsonPropertyName("width")] public int Width { get; set; }
+    [JsonPropertyName("height")] public int Height { get; set; }
+    [JsonPropertyName("sizeBytes")] public long SizeBytes { get; set; }
+    [JsonPropertyName("updatedAtMs")] public long UpdatedAtMs { get; set; }
+}
+
+/// <summary>One product's XML pictures in the manifest.</summary>
+public sealed class XmlProductImagesDto
+{
+    [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
+    [JsonPropertyName("items")] public XmlImageDto[] Items { get; set; } = [];
+}
+
+/// <summary>
+/// <c>GET /api/v1/storage/xml-images/status</c> (and the body of <c>POST …/sync</c>'s 202): the company's XML picture
+/// sync for who manages storage.
+/// </summary>
+public sealed class XmlImageSyncStatusResponse
+{
+    /// <summary>A feed is saved (<c>tenant_xml_feed_settings</c>).</summary>
+    [JsonPropertyName("configured")] public bool Configured { get; set; }
+
+    /// <summary>The company has the XML product module.</summary>
+    [JsonPropertyName("moduleEnabled")] public bool ModuleEnabled { get; set; }
+
+    /// <summary>The feed's "download images" switch; off = the server copies nothing.</summary>
+    [JsonPropertyName("downloadImages")] public bool DownloadImages { get; set; }
+
+    /// <summary>False while the file store is not configured: the sync cannot store anything.</summary>
+    [JsonPropertyName("storageAvailable")] public bool StorageAvailable { get; set; }
+
+    /// <summary>A run is waiting since (unix ms); null = none.</summary>
+    [JsonPropertyName("requestedAtMs")] public long? RequestedAtMs { get; set; }
+    [JsonPropertyName("startedAtMs")] public long? StartedAtMs { get; set; }
+    [JsonPropertyName("finishedAtMs")] public long? FinishedAtMs { get; set; }
+
+    /// <summary><c>ok</c>, <c>partial</c>, <c>quota</c> or <c>failed</c>; null before the first run.</summary>
+    [JsonPropertyName("status")] public string? Status { get; set; }
+    [JsonPropertyName("message")] public string? Message { get; set; }
+    [JsonPropertyName("stats")] public Storage.XmlImageSyncStats? Stats { get; set; }
+
+    /// <summary>Pictures held now and their two sizes' bytes together.</summary>
+    [JsonPropertyName("imageCount")] public int ImageCount { get; set; }
+    [JsonPropertyName("imageBytes")] public long ImageBytes { get; set; }
+    [JsonPropertyName("productCount")] public int ProductCount { get; set; }
 }
 
 /// <summary><c>PUT /api/v1/storage/products/images/order?stockCode=</c>.</summary>

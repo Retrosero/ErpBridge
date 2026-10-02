@@ -38,8 +38,14 @@ public sealed record CatalogProduct(
     /// <summary>The company's own product photos (GOAL_DEPOLAMA_R2 S6), in their order; not catalog pictures.</summary>
     public IReadOnlyList<CatalogPicture> ProductPhotos { get; init; } = [];
 
-    /// <summary>What a customer sees: the catalog pictures, or the product photos when the catalog has none.</summary>
-    public IReadOnlyList<CatalogPicture> ShownPictures => Pictures.Count > 0 ? Pictures : ProductPhotos;
+    /// <summary>The server's copies of the product's XML feed pictures (GOAL_DEPOLAMA_R2 S7), in the feed's order.</summary>
+    public IReadOnlyList<CatalogPicture> XmlPhotos { get; init; } = [];
+
+    /// <summary>
+    /// What a customer sees: the catalog pictures; when the catalog has none, the product photos; when there are none
+    /// either, the XML feed's pictures.
+    /// </summary>
+    public IReadOnlyList<CatalogPicture> ShownPictures => Pictures.Count > 0 ? Pictures : ProductPhotos.Count > 0 ? ProductPhotos : XmlPhotos;
 
     public string? ShownThumbUrl => ShownPictures.Count > 0 ? ShownPictures[0].ThumbUrl : null;
 
@@ -193,9 +199,13 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IO
             .Where(i => i.TenantId == tenantId && !i.StockCode.StartsWith(CatalogBanners.ReservedPrefix)).ToListAsync(ct);
         // The company's product photos (S6) stand in for a product without catalog pictures; their writes move ImageRevision too.
         var photos = await db.ProductImages.AsNoTracking().Where(i => i.TenantId == tenantId).ToListAsync(ct);
+        // The XML sync's copies (S7) come last; its writes move ImageRevision too.
+        var xmlPhotos = await db.XmlImages.AsNoTracking().Where(i => i.TenantId == tenantId).ToListAsync(ct);
         var urls = await CatalogFileUrls.LoadAsync(db, storage?.Value ?? new StorageOptions(), tenantId,
-            images.SelectMany(CatalogImages.StoredFileIds).Concat(photos.SelectMany(p => new[] { p.StoredFileSmallId, p.StoredFileLargeId })), ct);
-        var view = Compose(stock, settings, categoryRows, productRows, images, photos, urls);
+            images.SelectMany(CatalogImages.StoredFileIds)
+                .Concat(photos.SelectMany(p => new[] { p.StoredFileSmallId, p.StoredFileLargeId }))
+                .Concat(xmlPhotos.SelectMany(p => new[] { p.StoredFileSmallId, p.StoredFileLargeId })), ct);
+        var view = Compose(stock, settings, categoryRows, productRows, images, photos, xmlPhotos, urls);
         cache.Set(key, view, new MemoryCacheEntryOptions { SlidingExpiration = Idle });
         return view;
     }
@@ -266,7 +276,7 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IO
 
     private static CatalogView Compose(
         StockSide stock, CatalogSettings? settings, List<CatalogCategorySetting> categoryRows, List<CatalogProductSetting> productRows, List<CatalogImage> images,
-        List<ProductImage> photos, CatalogFileUrls urls)
+        List<ProductImage> photos, List<XmlImage> xmlPhotos, CatalogFileUrls urls)
     {
         var categorySettings = categoryRows.ToDictionary(r => r.CategoryKey, StringComparer.Ordinal);
         var productSettings = productRows.ToDictionary(r => r.StockCode, StringComparer.OrdinalIgnoreCase);
@@ -285,6 +295,12 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IO
             .GroupBy(x => x.Photo.StockCode, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<CatalogPicture>)[.. g.Select(x => new CatalogPicture(x.Photo.Id, x.Thumb!, x.Full!))],
                 StringComparer.OrdinalIgnoreCase);
+        var feedPhotos = XmlImage.InOrder(xmlPhotos)
+            .Select(p => (Photo: p, Thumb: urls.Of(p.StoredFileSmallId), Full: urls.Of(p.StoredFileLargeId)))
+            .Where(x => x.Thumb is not null && x.Full is not null)
+            .GroupBy(x => x.Photo.StockCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<CatalogPicture>)[.. g.Select(x => new CatalogPicture(x.Photo.Id, x.Thumb!, x.Full!))],
+                StringComparer.OrdinalIgnoreCase);
 
         var products = new Dictionary<string, CatalogProduct>(stock.Products.Count, StringComparer.OrdinalIgnoreCase);
         foreach (var p in stock.Products)
@@ -296,6 +312,7 @@ public sealed class CatalogViewService(IMemoryCache cache, TimeProvider time, IO
                 pictures.GetValueOrDefault(p.Code) ?? [])
             {
                 ProductPhotos = productPhotos.GetValueOrDefault(p.Code) ?? [],
+                XmlPhotos = feedPhotos.GetValueOrDefault(p.Code) ?? [],
             };
         }
 

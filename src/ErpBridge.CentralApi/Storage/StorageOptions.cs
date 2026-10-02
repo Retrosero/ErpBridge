@@ -46,6 +46,12 @@ public sealed class StorageOptions
     /// <summary>UTC hour-of-day of the daily maintenance pass (0-23).</summary>
     public int MaintenanceHourUtc { get; set; } = 2;
 
+    /// <summary>
+    /// The XML picture sync (<see cref="XmlImageSyncWorker"/>): every minute the companies waiting for a run, and once a
+    /// day, an hour after <see cref="MaintenanceHourUtc"/>, every company with an XML feed marked as waiting. Off in tests.
+    /// </summary>
+    public bool XmlSyncEnabled { get; set; } = true;
+
     /// <summary>Every value the R2 connection needs is present.</summary>
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(AccountId)

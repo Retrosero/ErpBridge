@@ -587,7 +587,7 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
 Firmanın kalıcı resimleri Cloudflare R2'de, firma kodunun klasöründe (`{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id}-{varyant}.{uzantı}`)
 ve tek kotayla durur. Alanlar: herkese açık kova `product`, `xml`, `catalog`, `banner`; kimliğe bağlı kova `task`, `expense`,
 `vehicle`. Katalog görseli ve banner (S3), görev eki (S4) bu depoyu kullanır (uç yolları değişmedi); gider/araç fişi (S5) ve ürün
-fotoğrafı (S6) yeni uçlardır. Bilgi bankası kural 37.
+fotoğrafı (S6) yeni uçlardır; XML görselleri (S7) sunucunun kendi kopyasıdır. Bilgi bankası kural 37.
 
 **Görev eki (S4)** — `PUT/GET/DELETE /api/v1/android/tasks/{taskId}/attachments/{attachmentId}` yolları, gövdeleri ve yanıtları aynı.
 Resim özel kovaya (`task`) yazılır ve firmanın tek kotasına sayılır; aşımda eski kod `413 TASK_ATTACHMENT_QUOTA` döner, gövdeye
@@ -623,13 +623,29 @@ değil: ERP'li firmada da çalışır, modül gerekmez. Yazım yetkisi `action.p
 | Uç | Kim | Gövde / yanıt |
 |---|---|---|
 | `POST /api/v1/storage/products/images?stockCode=` | `action.products.photo` | Ham gövde `image/jpeg\|png\|webp` ≤ 10 MB, küçültmeden. Sunucu dik çevirir, üst veriyi atar, 1280 px ve 400 px WebP üretir. Yanıt `ProductImage { id, stockCode, sortOrder, thumbUrl, fullUrl, width, height, sizeBytes, createdAtMs, createdByName }` — `thumbUrl`/`fullUrl` tam CDN adresi (`https://img.appsgo.cloud/{FIRMAKODU}/product/…-{s\|l}.webp`). Aynı bayt tekrar = aynı fotoğraf (`200`, yeni dosya yok). Hatalar: `403 PRODUCT_PHOTO_FORBIDDEN`, `400 INVALID_STOCK_CODE`, `413 PRODUCT_IMAGE_TOO_LARGE`, `415 INVALID_IMAGE` (çözülemeyen resim dahil), `409 PRODUCT_IMAGE_LIMIT` (ürün başı 8), `413 STORAGE_QUOTA_EXCEEDED {usedBytes, quotaBytes}`, `503 STORAGE_UNAVAILABLE` |
-| `GET /api/v1/storage/products/images?stockCode=` | firma kullanıcısı | `{ stockCode, items: [ProductImage] }` sırayla (kapak ilk) |
-| `GET /api/v1/storage/products/images/manifest` | firma kullanıcısı | `{ items: [{ stockCode, items: [ProductImage] }] }` — fotoğrafı olan bütün ürünler (telefonun görsel sırası: firmanın fotoğrafı → XML → yerel kopya) |
+| `GET /api/v1/storage/products/images?stockCode=` | firma kullanıcısı | `{ stockCode, items: [ProductImage], xmlItems: [XmlImage] }` sırayla (kapak ilk; `xmlItems` XML sırasıyla, S7) |
+| `GET /api/v1/storage/products/images/manifest` | firma kullanıcısı | `{ items: [{ stockCode, items: [ProductImage] }], xmlItems: [{ stockCode, items: [XmlImage] }] }` — fotoğrafı olan bütün ürünler ve sunucuda XML görseli olan bütün ürünler (telefonun görsel sırası: firmanın fotoğrafı → XML → yerel kopya). `items` içindeki grupların `xmlItems`'ı burada boştur |
 | `PUT /api/v1/storage/products/images/order?stockCode=` | `action.products.photo` | `{ ids }` bu sırayla, verilmeyenler eski sırasıyla arkadan; `204`; bilinmeyen kimlik `404 PRODUCT_IMAGE_NOT_FOUND` |
 | `DELETE /api/v1/storage/products/images/{id}` | `action.products.photo` | `204`, iki dosya çöpe; yok/başka firma `404 PRODUCT_IMAGE_NOT_FOUND` |
 
-Web katalog bir ürünün görseli olarak önce katalog görsellerini, yoksa ürün fotoğraflarını gösterir (`products`/`products/detail`
-`thumb` ve `images`, talep detayındaki küçük resim); katalog yönetimi (`images/manifest`, `imageCount`) yalnız katalog görsellerini sayar.
+Web katalog bir ürünün görseli olarak önce katalog görsellerini, yoksa ürün fotoğraflarını, o da yoksa XML görsellerini (S7)
+gösterir (`products`/`products/detail` `thumb` ve `images`, talep detayındaki küçük resim); katalog yönetimi (`images/manifest`,
+`imageCount`) yalnız katalog görsellerini sayar.
+
+**XML görselleri (S7)** — sunucu firmanın kayıtlı XML beslemesini (`/api/v1/android/xml-feed/config`) telefonla aynı kurallarla
+okur, kodu firmanın ürünleriyle (büyük/küçük harf duyarsız) eşleştirir ve ürün başı ilk 6 görsel adresini indirip 1280/400 px WebP
+olarak herkese açık kovaya (`xml` alanı) koyar; kotaya sayılır. Günde bir (`Storage:MaintenanceHourUtc` + 1, UTC), panelden
+"şimdi eşitle" ile ve XML ayarı görsel indirme açık kaydedilince çalışır. Kaynağı izler: adresi XML'den kalkan görsel ya da XML'den
+kalkan ürünün görselleri **çöpe gitmeden** silinir; 7 günden eski kopya ETag/Last-Modified ile yeniden sorulur, içerik değiştiyse
+yenisiyle değişir. XML indirilemez, okunamaz, kaydı yoksa, hiçbir ürünle eşleşmezse ya da eşleşen ürünlerin hiç görseli yoksa
+**hiçbir şey silinmez** (`status: failed`). Dış adres güvenliği: yalnız http/https, yerel/özel/link-local/eşlenik IPv6 adresler
+reddedilir, bağlantı doğrulanan IP'ye sabitlenir, yönlendirme elle en çok 3, görsel ≤ 10 MB / 20 sn, XML ≤ 100 MB / 120 sn.
+`XmlImage { id, stockCode, position, sourceUrl, thumbUrl, fullUrl, width, height, sizeBytes, updatedAtMs }` (salt okunur).
+
+| Uç | Kim | Gövde / yanıt |
+|---|---|---|
+| `GET /api/v1/storage/xml-images/status` | `action.storage.manage` | `{ configured, moduleEnabled, downloadImages, storageAvailable, requestedAtMs?, startedAtMs?, finishedAtMs?, status?, message?, stats?, imageCount, imageBytes, productCount }` — `status` `ok\|partial\|quota\|failed` (ilk çalışmadan önce null); `stats { feedRecords, matchedProducts, wanted, added, replaced, removed, unchanged, failed, remaining }`; `message` kısa Türkçe açıklama (adres içermez). Yetkisiz `403 STORAGE_FORBIDDEN` |
+| `POST /api/v1/storage/xml-images/sync` | `action.storage.manage` | Gövde yok. `202` + status gövdesi; eşitleme bir dakika içinde başlar (bekleyen istek yerini korur). `403 STORAGE_FORBIDDEN`, modül yoksa `403 MODULE_NOT_ENABLED`, XML ayarı yoksa `409 XML_FEED_NOT_CONFIGURED`, görsel indirme kapalıysa `409 XML_IMAGES_DISABLED`, depo ayarsızsa `503 STORAGE_UNAVAILABLE` |
 
 Yeni hata kodları:
 - `413 STORAGE_QUOTA_EXCEEDED` — `{ errorCode, message, traceId, usedBytes, quotaBytes }`. Telefon metni: "Firmanızın depolama

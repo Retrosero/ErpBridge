@@ -78,7 +78,9 @@ public static class TenantModules
 
 /// <summary>
 /// The company's XML product feed, written by a company administrator from the phone and read
-/// by every phone of the company, which downloads and imports the feed itself.
+/// by every phone of the company, which downloads and imports the feed itself. The server reads the
+/// same feed for its pictures only (GOAL_DEPOLAMA_R2 S7, <c>Storage/XmlImageSync</c>) and keeps the
+/// last run's state here.
 /// </summary>
 public sealed class TenantXmlFeedSettings
 {
@@ -104,4 +106,24 @@ public sealed class TenantXmlFeedSettings
     public Guid? UpdatedByUserId { get; set; }
 
     public DateTimeOffset UpdatedAtUtc { get; set; }
+
+    // ---- the server's picture copy (GOAL_DEPOLAMA_R2 S7, Storage/XmlImageSync) -------------------------------
+
+    public const int MaxImageSyncMessageLength = 500;
+
+    /// <summary>A sync is wanted (panel "şimdi eşitle", the daily mark, a saved feed, unfinished work); null = none waiting.</summary>
+    public long? ImageSyncRequestedAtMs { get; set; }
+
+    public long? ImageSyncStartedAtMs { get; set; }
+
+    public long? ImageSyncFinishedAtMs { get; set; }
+
+    /// <summary>The last run's outcome, one of <see cref="XmlImageSyncStatuses"/>; null before the first run.</summary>
+    public string? ImageSyncStatus { get; set; }
+
+    /// <summary>A short Turkish explanation for the panel; never an address or a secret.</summary>
+    public string? ImageSyncMessage { get; set; }
+
+    /// <summary>The last run's counts as JSON (<c>XmlImageSyncStats</c>).</summary>
+    public string? ImageSyncStatsJson { get; set; }
 }

@@ -93,7 +93,7 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
 - `log_settings` *(Log Merkezi L0)*: Saklama süreleri, tek satır `Id = 1` (yoksa varsayılanlar). `InfoRetentionDays` (14, DEBUG+INFO), `WarnRetentionDays` (90, WARN+ ve bayat açık gruplar), `UpdatedAtUtc`, `UpdatedBy(120)`. Okuyan `LogCenter/LogRetention` değerleri 1–730'a sıkıştırır.
 - `display_pairing_codes` *(Faz 49)*: TV'nin gösterdiği kod. `Code char(6)` PK, `PairingSecretHash char(64)`, `ExpiresAtUtc` (+10 dk), `DisplayDeviceId` (yönetici sahiplenince), `ClaimedAtUtc`. TV token'ı alınca satır silinir.
 - `tenant_modules` *(XML ürün modülü, 2026-09-26)*: Firmaya satılan ek modüller (kural 28). PK `(TenantId, ModuleKey)`, `ModuleKey(64)` (`xml_import`, 2026-10-01'den beri `customer_catalog`; 2026-09-28'den beri Go modülleri de: `go_ai`, `go_einvoice`, `go_erp`, `go_reports`, `go_competition` — kural 30), `EnabledAtUtc`, `EnabledBy(128)` null = bilinmiyor (operatör e-postası). FK `tenants` cascade. Yalnız Admin konsolu yazar; telefon ucu yalnız `go_` olmayan, Go lisans ucu yalnız `go_` satırlarını değiştirir.
-- `tenant_xml_feed_settings` *(XML ürün modülü, 2026-09-26)*: `TenantId` PK/FK cascade, `Url(2048)`, `RecordPath(512)`, `MappingJson` jsonb (`{"CODE":["StokKodu"],"IMAGE":[…]}` hedef → aday yollar), `DownloadImages`, `ImportDescriptions`, `FullImport` (ERP'li firmada her zaman false), `UpdatedByUserId` null, `UpdatedAtUtc`. Satır yoksa besleme tanımsız; firma admini telefondan yazar.
+- `tenant_xml_feed_settings` *(XML ürün modülü, 2026-09-26)*: `TenantId` PK/FK cascade, `Url(2048)`, `RecordPath(512)`, `MappingJson` jsonb (`{"CODE":["StokKodu"],"IMAGE":[…]}` hedef → aday yollar), `DownloadImages`, `ImportDescriptions`, `FullImport` (ERP'li firmada her zaman false), `UpdatedByUserId` null, `UpdatedAtUtc`. Satır yoksa besleme tanımsız; firma admini telefondan yazar. Sunucunun XML görsel eşitlemesi (S7, migration `XmlGorselleri`) aynı satırda: `ImageSyncRequestedAtMs?` (bekleyen istek; indeksli kuyruk, en eski önce), `ImageSyncStartedAtMs?`, `ImageSyncFinishedAtMs?`, `ImageSyncStatus(16)?` ok|partial|quota|failed, `ImageSyncMessage(500)?` (kısa Türkçe, adres ve sır içermez), `ImageSyncStatsJson(2000)?` (`XmlImageSyncStats`). Görsel indirme açık kaydedilince istek konur.
 - `tenant_approval_rules` *(Faz 38)*: Tenant başına onay kuralları (`TenantId` PK; `Sale, Purchase, Return, Collection, Disbursement, StockCount, ProductCard, CustomerCard` bool; `UpdatedByName`, `UpdatedAtUtc`). Satır yoksa hepsi açık sayılır.
 - `tenants.DataSource` *(Faz 33)*: `erp` | `native`. `tenants.NativeLockVersion`: native belge transaction'larının satır kilidi sayacı (bkz. 00 kural 15).
 - `parameter_records`: Müşteri bazlı konfigürasyon parametreleri.
@@ -177,6 +177,13 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     `StoredFileSmallId`/`StoredFileLargeId` (400/1280 px WebP, FK yok), `Width`/`Height` (büyük boy), `SizeBytes` (iki boy), `SourceSha256(64)` gönderilen
     baytın özeti, `CreatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`. İndeks `(TenantId, StockCode, SortOrder)`, UNIQUE `(TenantId, StockCode, SourceSha256)`,
     `(StoredFileSmallId)`, `(StoredFileLargeId)`.
+  - `xml_images` *(S7, migration `XmlGorselleri`)*: sunucunun XML beslemesinden kopyaladığı görseller. `Id` uuid (sunucu), `TenantId` (cascade),
+    `StockCode(64)` (kartın kendi kodu), `Position` (XML sırası, 0 ilk), `SourceUrl(2048)`, `SourceUrlHash(64)` (adresin UTF-8 SHA-256'sı, küçük hex),
+    `ETag(256)?`, `LastModified(64)?` (koşullu yeniden sorma için), `ContentSha256(64)` (indirilen baytın özeti), `StoredFileSmallId`/`StoredFileLargeId`
+    (400/1280 px WebP, alan `xml`, `OwnerType` `xml_image`, `OwnerKey` stok kodu; FK yok), `Width`/`Height`, `SizeBytes` (iki boy), `CreatedAtMs`,
+    `UpdatedAtMs` (kopya son değiştiğinde), `CheckedAtMs` (kaynak son sorulduğunda; 7 günden eskiyse yeniden sorulur). İndeks `(TenantId, StockCode)`,
+    UNIQUE `(TenantId, StockCode, SourceUrlHash)`, `(StoredFileSmallId)`, `(StoredFileLargeId)`. Yalnız `Storage/XmlImageSync` yazar; silinen satırın
+    dosyaları çöpe değil doğrudan kalıcı silinir (R6).
 
 ---
 
