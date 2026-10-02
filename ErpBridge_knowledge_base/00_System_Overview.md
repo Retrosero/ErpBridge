@@ -449,6 +449,10 @@ registration ayrı bir composition projesine taşınır.
      `stock-cards/{code}/movements`, `stock-counts` ve `stock-counts/{key}/void`, `barcodes/{barcode}` (tam eşleşme),
      `stock-cards/batch` ve `customer-cards/batch` (dosyadan içe aktarma; telefonun toplu kart belgeleri, ≤ 500 kart/istek, satır
      numaralı atlananlar; panel CSV/.xlsx'i kendisi okur — `SpreadsheetReader`, ek kütüphane yok).
+     **Yeni giriş artık kural 38'in sayfalarından (GOAL_PANEL_GIRIS P5e, 2026-10-02):** `Evraklar`'daki Yeni satış/alış/iade ve
+     `Cari`'deki Tahsilat al/Ödeme yap `/giris/*` sayfalarına gider (cari `?cari=` ile seçili; eski `evraklar?yeni=` adresi yönlenir) ve
+     telefonun `module.*` yetkisiyle açılır — ERP'siz firmada yönetici de girer, ERP'li firmada belge ERP'ye yazılır. `native/sales-orders`,
+     `collections` vb. uçlar silinmedi (yalnız ekleme kuralı); düzeltme/iptal, kart ve sayım D4'teki gibi yalnız ADMIN.
    - **Düzeltme = storno (D2/D11).** Defterden/evraktan satır fiziksel silinmez ve üzerine yazılmaz:
      orijinal yerinde `voided` (+ `voidedByUserId`, `voidedAt`, `voidReason`) işaretlenir, ters kayıt
      `{orijinal id}|void` anahtarıyla ve `voidsKey` alanıyla eklenir; bakiye/stok ters çevrilir, hepsi tek

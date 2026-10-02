@@ -11,16 +11,24 @@ else
 {
     <PageHeader Title="Evraklar" Eyebrow="Kayıtlar" Subtitle="Satış, alış ve iade faturaları" Busy="Busy">
         <Actions>
-            @if (Session.CanEditNativeData)
+            @* GOAL_PANEL_GIRIS P5e: new documents are entered on the entry pages, by the phone module; editing and voiding an
+               ERP-less company's document stays here (action.native_books.edit). *@
+            @if (Session.Allows(PortalArea.EntrySales))
             {
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.PointOfSale" OnClick="@(() => OpenNew("sale"))" id="document-new-sale">Yeni satış</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Rounded.LocalShipping" OnClick="@(() => OpenNew("purchase"))" id="document-new-purchase">Yeni alış</MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Rounded.AssignmentReturn" OnClick="@(() => OpenNew("sale_return"))" id="document-new-return">Yeni iade</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.PointOfSale" Href="giris/satis" id="document-new-sale">Yeni satış</MudButton>
+            }
+            @if (Session.Allows(PortalArea.EntryPurchase))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Rounded.LocalShipping" Href="giris/alis" id="document-new-purchase">Yeni alış</MudButton>
+            }
+            @if (Session.Allows(PortalArea.EntryReturns))
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Rounded.AssignmentReturn" Href="giris/iade" id="document-new-return">Yeni iade</MudButton>
             }
         </Actions>
     </PageHeader>
 
-    <ErpReadOnlyNote />
+    <ErpReadOnlyNote Text="Bu evraklar ERP'den gelir ve orada düzeltilir; yeni satış, alış ve iade panelden girilip ERP'ye yazılır." />
 
     @if (Error is not null)
     {
@@ -407,11 +415,17 @@ else
         if (Ready) OpenNewFromAddress();
     }
 
+    /// <summary>An old "Yeni satış/alış/iade" address goes to the entry page that replaced the form (GOAL_PANEL_GIRIS P5e).</summary>
     private void OpenNewFromAddress()
     {
-        if (NewKind is not { } kind || !Session.CanEditNativeData || !EditableKinds.Contains(kind)) return;
-        OpenNew(kind);
-        Nav.NavigateTo("evraklar", new NavigationOptions { ReplaceHistoryEntry = true });
+        if (NewKind is not { } kind || !EditableKinds.Contains(kind)) return;
+        var (page, area) = kind switch
+        {
+            "purchase" => ("giris/alis", PortalArea.EntryPurchase),
+            "sale_return" => ("giris/iade", PortalArea.EntryReturns),
+            _ => ("giris/satis", PortalArea.EntrySales),
+        };
+        Nav.NavigateTo(Session.Allows(area) ? page : "evraklar", new NavigationOptions { ReplaceHistoryEntry = true });
     }
 
     protected override void OnInitialized()
@@ -585,15 +599,6 @@ else
     private string PartyLabel => _formKind == "purchase" ? "Tedarikçi" : "Müşteri";
 
     private decimal FormTotal => _lines.Count > 0 ? _lines.Sum(l => l.Total) : _form.Amount ?? 0;
-
-    private void OpenNew(string kind)
-    {
-        Notice = null;
-        Error = null;
-        ResetForm(kind);
-        _date = Fmt.IsoDay(Fmt.Today());
-        _formOpen = true;
-    }
 
     private void OpenEdit()
     {

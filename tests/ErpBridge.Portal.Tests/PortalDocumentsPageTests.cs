@@ -112,12 +112,13 @@ public sealed class PortalDocumentsPageTests : PortalPageTestContext
     }
 
     [Fact]
-    public void A_manager_or_an_erp_company_reads_documents_but_cannot_enter_or_change_them()
+    public void A_manager_enters_new_documents_on_the_entry_pages_but_cannot_change_them()
     {
         var api = Setup(role: "MANAGER", rows: [Row(SaleKey, "sale", "S-1", 270m)]);
         var cut = Render<Evraklar>();
         cut.WaitForAssertion(() => cut.Find($"tr[data-document='{SaleKey}']"));
-        cut.FindAll("#document-new-sale").Should().BeEmpty();
+        // GOAL_PANEL_GIRIS P5e: new documents go by the phone module (a manager has it), editing stays the admin's.
+        cut.Find("#document-new-sale").GetAttribute("href").Should().Be("giris/satis");
 
         cut.Find($"tr[data-document='{SaleKey}']").Click();
 
@@ -180,55 +181,15 @@ public sealed class PortalDocumentsPageTests : PortalPageTestContext
     }
 
     [Fact]
-    public void A_new_sale_picks_a_customer_and_products_and_posts_the_lines()
+    public void New_documents_open_the_entry_pages()
     {
-        var api = Setup(rows: []);
-        api.AnswerPrefix(HttpMethod.Get, "/api/v1/portal/customers?", new
-        {
-            items = new object[] { new { customerCode = "C-001", title = "Bakkal Ali", balance = 0m } }, total = 1, page = 1, pageSize = 10,
-            totalReceivable = 0m, totalPayable = 0m,
-        });
-        api.AnswerPrefix(HttpMethod.Get, "/api/v1/portal/stock/search", new
-        {
-            items = new object[] { new { stockCode = "CAY-1", name = "Çay 1 kg", quantity = 40m, reserved = 0m, price = 150m } },
-            total = 1, page = 1, pageSize = 25, summary = new { },
-        });
-        api.Answer("/api/v1/portal/native/sales-orders", Ok(), System.Net.HttpStatusCode.Created);
+        Setup(rows: []);
         var cut = Render<Evraklar>();
+
         cut.WaitForAssertion(() => cut.Find("#document-new-sale"));
-
-        cut.Find("#document-new-sale").Click();
-        cut.WaitForAssertion(() => cut.Find("#document-form-sheet"));
-        cut.Find("#document-form").Submit();
-        cut.WaitForAssertion(() => cut.Find("#page-error").TextContent.Should().Contain("Müşteri seçin"));
-
-        cut.Find("#document-party-search").Change("Ali");
-        cut.Find("#document-party-search-go").Click();
-        cut.WaitForAssertion(() => cut.Find("[data-party='C-001']"));
-        cut.Find("[data-party='C-001']").Click();
-        cut.Find("#document-party").TextContent.Should().Contain("Bakkal Ali");
-
-        cut.Find("#document-product-search").Change("çay");
-        cut.Find("#document-product-search-go").Click();
-        cut.WaitForAssertion(() => cut.Find("[data-product='CAY-1']"));
-        cut.Find("[data-product='CAY-1']").Click();
-        cut.Find("#document-form-lines tr[data-line='CAY-1'] .line-quantity").Change("3");
-        cut.Find("#document-form-lines tr[data-line='CAY-1'] .line-discount").Change("10");
-        cut.Find("#document-payment").Change("Nakit");
-        cut.Find("#document-total").TextContent.Should().Contain("405,00", "3 × 150 less 10%");
-
-        cut.Find("#document-form").Submit();
-
-        cut.WaitForAssertion(() => cut.Find("#page-notice").TextContent.Should().Contain("Satış kaydedildi"));
-        var sent = JsonDocument.Parse(api.Requests.Single(r => r.Method == HttpMethod.Post && r.PathAndQuery.EndsWith("/sales-orders")).Body!).RootElement;
-        sent.GetProperty("partyCode").GetString().Should().Be("C-001");
-        sent.GetProperty("paymentType").GetString().Should().Be("Nakit");
-        var line = sent.GetProperty("lines")[0];
-        line.GetProperty("productCode").GetString().Should().Be("CAY-1");
-        line.GetProperty("quantity").GetDecimal().Should().Be(3m);
-        line.GetProperty("unitPrice").GetDecimal().Should().Be(150m);
-        line.GetProperty("lineTotal").GetDecimal().Should().Be(405m);
-        sent.TryGetProperty("voidReason", out _).Should().BeFalse("a new document is not an edit");
+        cut.Find("#document-new-sale").GetAttribute("href").Should().Be("giris/satis");
+        cut.Find("#document-new-purchase").GetAttribute("href").Should().Be("giris/alis");
+        cut.Find("#document-new-return").GetAttribute("href").Should().Be("giris/iade");
     }
 
     [Fact]
@@ -270,26 +231,26 @@ public sealed class PortalDocumentsPageTests : PortalPageTestContext
     }
 
     [Fact]
-    public void The_menus_new_sale_link_opens_the_form_on_arrival()
+    public void An_old_new_sale_address_goes_to_the_entry_page()
     {
         Setup(address: "evraklar?yeni=sale", rows: [Row(SaleKey, "sale", "S-1", 270m)]);
 
         var cut = Render<Evraklar>();
 
-        cut.WaitForAssertion(() => cut.Find("#document-form-sheet").TextContent.Should().Contain("Yeni satış"));
-        cut.FindAll("#erp-read-only").Should().BeEmpty("a company without an ERP enters its own documents");
+        cut.WaitForAssertion(() => Services.GetRequiredService<NavigationManager>().Uri.Should().EndWith("/giris/satis"));
+        cut.FindAll("#document-form-sheet").Should().BeEmpty();
     }
 
     [Fact]
-    public void An_erp_company_reads_its_documents_with_a_read_only_note_and_no_form()
+    public void An_erp_company_reads_its_documents_with_a_note_and_enters_new_ones_on_the_entry_pages()
     {
-        Setup(dataSource: "erp", address: "evraklar?yeni=sale", rows: [Row(SaleKey, "sale", "S-1", 270m)]);
+        Setup(dataSource: "erp", rows: [Row(SaleKey, "sale", "S-1", 270m)]);
 
         var cut = Render<Evraklar>();
 
-        cut.WaitForAssertion(() => cut.Find("#erp-read-only"));
+        cut.WaitForAssertion(() => cut.Find("#erp-read-only").TextContent.Should().Contain("panelden girilip"));
         cut.FindAll("#document-form-sheet").Should().BeEmpty();
-        cut.FindAll("#document-new-sale").Should().BeEmpty();
+        cut.Find("#document-new-sale").GetAttribute("href").Should().Be("giris/satis");
     }
 
     [Fact]
