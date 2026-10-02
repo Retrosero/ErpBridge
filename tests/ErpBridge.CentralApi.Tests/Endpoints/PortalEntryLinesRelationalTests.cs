@@ -98,6 +98,8 @@ public sealed class PortalEntryLinesRelationalTests : IClassFixture<SqliteCentra
         // 10 × 110 with 10 % VAT inside: 1000 net, 100 VAT.
         var body = new { operationId = operationId.ToString("D"), supplierCode = "C2", lines = new[] { new { productCode = "A", quantity = 10m, unitPrice = 110m } }, expectedTotal = 1100m };
 
+        var context = await OkAsync<PortalEntryContextResponse>(await GetAsync(_factory, "/context", c.Patron));
+        context.PurchasePricesIncludeVat.Should().BeTrue("the form prices a new line before its first preview (Codex #252)");
         var preview = await OkAsync<PortalEntryPreviewResponse>(await PostAsync(_factory, "/purchase/preview", c.Patron, body));
         preview.Should().Match<PortalEntryPreviewResponse>(p => p.PriceIncludesVat && p.Gross == 1000m && p.Vat == 100m && p.Total == 1100m);
 

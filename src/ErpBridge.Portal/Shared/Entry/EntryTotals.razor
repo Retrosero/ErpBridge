@@ -1,0 +1,30 @@
+@namespace ErpBridge.Portal.Shared.Entry
+@* The document's figures as the server priced them (the phone's and Mikro's arithmetic). *@
+
+<div class="entry-totals" id="entry-totals">
+    @if (Preview is { } preview)
+    {
+        @if (preview.Lines.Count > 0)
+        {
+            <div class="document-total"><span class="field-label">Ara toplam</span><span id="entry-gross">@Fmt.Money(preview.Gross)</span></div>
+            @if (preview.Discount != 0)
+            {
+                <div class="document-total"><span class="field-label">İskonto</span><span id="entry-discount">−@Fmt.Money(preview.Discount)</span></div>
+            }
+        }
+        @if (preview.Vat != 0)
+        {
+            <div class="document-total"><span class="field-label">KDV</span><span id="entry-vat">@Fmt.Money(preview.Vat)</span></div>
+        }
+        <div class="document-total"><span class="field-label">Toplam</span><strong id="entry-total">@Fmt.Money(preview.Total)</strong></div>
+        <span class="field-hint" id="entry-occurred">Belge: @preview.OccurredAt · @preview.OwnerName adına@(preview.PriceListName is { } list ? $" · {list}" : string.Empty)</span>
+    }
+    else
+    {
+        <div class="document-total"><span class="field-label">Toplam</span><strong id="entry-total">—</strong></div>
+    }
+</div>
+
+@code {
+    [Parameter] public EntryPreviewDto? Preview { get; set; }
+}

@@ -1,0 +1,187 @@
+@page "/giris/gider"
+@inherits EntryPageBase
+
+<PageTitle>Gider — Yönetim Paneli</PageTitle>
+
+@if (!Ready || Context is null)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Gider" Eyebrow="Hızlı giriş"
+                Subtitle="@(IsErp ? "ERP'nin gider kartına, KDV'siyle birlikte yazılır." : "Gider kaydı; cari ve stok bakiyesini değiştirmez.")" Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    <EntryUnsettled Shown="Unsettled" />
+    @if (Saved is { } saved)
+    {
+        <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel">
+            @* Not a <form>: Enter in a field — a search above all — must never save the document; only Kaydet saves (Codex #252). *@
+            <div class="stack-form document-form" id="entry-form">
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Locked" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+
+                <div class="form-row">
+                    @if (IsErp)
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">Gider kartı</span>
+                            <select class="portal-select" id="expense-card" value="@(_card ?? string.Empty)" disabled="@Locked" @onchange="e => ChangedAsync(() => _card = Blank(e.Value))">
+                                <option value="">Seçin</option>
+                                @foreach (var card in Context.ExpenseCards)
+                                {
+                                    <option value="@card.Code">@card.Code · @card.Name</option>
+                                }
+                            </select>
+                            @if (Context.ExpenseCards.Count == 0)
+                            {
+                                <span class="field-hint field-hint--warn">ERP'den gider kartı gelmedi; ajanın gider kartlarını yüklediğini kontrol edin.</span>
+                            }
+                        </label>
+                    }
+                    else
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">Gider türü</span>
+                            <select class="portal-select" id="expense-category" value="@(_category ?? string.Empty)" disabled="@Locked" @onchange="e => ChangedAsync(() => _category = Blank(e.Value))">
+                                <option value="">Seçin</option>
+                                @foreach (var category in Context.ExpenseCategories)
+                                {
+                                    <option value="@category">@category</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    <label class="stack-field">
+                        <span class="field-label">Tutar (KDV dahil)</span>
+                        <input type="number" class="portal-input portal-input--number" id="expense-amount" min="0" step="any" value="@Number(_amount)" disabled="@Locked"
+                               @onchange="e => ChangedAsync(() => { _amount = ParseDecimal(e.Value) ?? 0; RecomputeVat(); })" />
+                    </label>
+                    @if (IsErp)
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">KDV oranı</span>
+                            <select class="portal-select" id="expense-vat-rate" value="@(_vatPointer?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)" disabled="@Locked"
+                                    @onchange="e => ChangedAsync(() => { _vatPointer = int.TryParse(e.Value?.ToString(), out var p) ? p : null; RecomputeVat(); })">
+                                <option value="">KDV yok</option>
+                                @foreach (var rate in Context.VatRates)
+                                {
+                                    <option value="@rate.Code">@rate.Name (%@Number(rate.Rate ?? 0))</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="stack-field">
+                            <span class="field-label">KDV tutarı</span>
+                            <input type="number" class="portal-input portal-input--number" id="expense-vat" min="0" step="any" value="@Number(_vat)" disabled="@(Locked || _vatPointer is null)"
+                                   @onchange="e => ChangedAsync(() => _vat = Math.Max(0, ParseDecimal(e.Value) ?? 0))" />
+                        </label>
+                    }
+                    <label class="stack-field">
+                        <span class="field-label">Ödeme</span>
+                        <select class="portal-select" id="expense-payment" value="@_paymentType" disabled="@Locked" @onchange="e => ChangedAsync(() => { _paymentType = e.Value?.ToString() ?? Cash; _account = null; })">
+                            <option value="@Cash">Kasa</option>
+                            <option value="Banka">Banka</option>
+                            <option value="Kredi Kartı">Kredi Kartı</option>
+                        </select>
+                    </label>
+                    @if (IsErp && Accounts.Count > 0)
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">@(_paymentType == Cash ? "Kasa" : "Banka")</span>
+                            <select class="portal-select" id="expense-account" value="@(_account ?? string.Empty)" disabled="@Locked" @onchange="e => ChangedAsync(() => _account = Blank(e.Value))">
+                                <option value="">Varsayılan</option>
+                                @foreach (var account in Accounts)
+                                {
+                                    <option value="@account.Code">@account.Code · @account.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                </div>
+
+                <label class="stack-field">
+                    <span class="field-label">Açıklama</span>
+                    <textarea class="portal-input" id="expense-description" rows="2" maxlength="500" disabled="@Locked" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
+                </label>
+
+                <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
+                <EntryTotals Preview="Preview" />
+
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@Locked" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="SaveAsync" id="entry-save">Kaydet</MudButton>
+                </div>
+            </div>
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.EntryExpenses;
+    protected override string Kind => EntryKinds.Expense;
+
+    private const string Cash = "Nakit";
+
+    private string? _card;
+    private string? _category;
+    private decimal _amount;
+    private int? _vatPointer;
+    private decimal _vat;
+    private string _paymentType = Cash;
+    private string? _account;
+    private string? _description;
+
+    private IReadOnlyList<EntryLookupDto> Accounts => _paymentType == Cash ? Context!.CashAccounts : Context!.Banks;
+
+    protected override bool Complete =>
+        _amount > 0 && _description is not null && (IsErp ? _card is not null : _category is not null);
+
+    protected override EntryRequestBase Build() => new EntryExpenseRequest
+    {
+        Amount = _amount,
+        ExpenseCardCode = IsErp ? _card : null,
+        Category = IsErp ? null : _category,
+        VatAmount = IsErp && _vatPointer is not null ? _vat : 0,
+        VatPointer = IsErp ? _vatPointer : null,
+        PaymentType = _paymentType,
+        AccountCode = IsErp ? _account : null,
+        Description = _description,
+    };
+
+    protected override void ClearForm()
+    {
+        _card = null;
+        _category = null;
+        _amount = 0;
+        _vatPointer = null;
+        _vat = 0;
+        _paymentType = Cash;
+        _account = null;
+        _description = null;
+    }
+
+    /// <summary>The VAT inside the amount at the chosen rate, as the phone computes it; the user may still type it.</summary>
+    private void RecomputeVat()
+    {
+        var rate = Context?.VatRates.FirstOrDefault(r => r.Code == _vatPointer?.ToString(System.Globalization.CultureInfo.InvariantCulture))?.Rate ?? 0;
+        _vat = _vatPointer is null || rate <= 0 ? 0 : Math.Round(_amount * rate / (100 + rate), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private async Task ChangedAsync(Action change)
+    {
+        change();
+        await RefreshPreviewAsync();
+    }
+
+    private static string? Blank(object? value) => string.IsNullOrWhiteSpace(value?.ToString()) ? null : value!.ToString()!.Trim();
+
+    private static string Number(decimal value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}

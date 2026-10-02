@@ -1,0 +1,24 @@
+@namespace ErpBridge.Portal.Shared.Entry
+@* What stands in the way of the form, as the server's preview says: a field it could not read, a permission or limit
+   gone over (refused, never sent for approval — GOAL_PANEL_GIRIS K2/K4), a missing ERP mapping, short stock. *@
+
+@if (Problem is not null)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="page-alert" id="entry-problem">@Problem</MudAlert>
+}
+@if (Preview?.Refusal is { } refusal)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true" Class="page-alert" id="entry-refusal" data-code="@refusal.Code">@refusal.Message</MudAlert>
+}
+@if (Preview is { StockWarnings.Count: > 0 } warned)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="page-alert" id="entry-stock-warnings">
+        Stok yetersiz:
+        @string.Join(", ", warned.StockWarnings.Select(w => $"{w.Name} (istenen {Fmt.Quantity(w.Requested)}, stokta {Fmt.Quantity(w.Available)})"))
+    </MudAlert>
+}
+
+@code {
+    [Parameter] public EntryPreviewDto? Preview { get; set; }
+    [Parameter] public string? Problem { get; set; }
+}

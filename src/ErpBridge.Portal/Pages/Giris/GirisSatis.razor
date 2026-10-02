@@ -1,0 +1,237 @@
+@page "/giris/satis"
+@inherits EntryPageBase
+
+<PageTitle>Satış — Yönetim Paneli</PageTitle>
+
+@if (!Ready || Context is null)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Satış" Eyebrow="Hızlı giriş" Subtitle="@(IsErp ? "Telefondaki satışın aynısı; ERP'ye ajan yazar." : "Telefondaki satışın aynısı; stok ve cari hemen işlenir.")" Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    <EntryUnsettled Shown="Unsettled" />
+    @if (Saved is { } saved)
+    {
+        <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel">
+            @* Not a <form>: Enter in a field — a search above all — must never save the document; only Kaydet saves (Codex #252). *@
+            <div class="stack-form document-form" id="entry-form">
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Locked" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+
+                <CustomerPicker Label="Müşteri" Selected="_customer" Disabled="Locked" Picked="CustomerPickedAsync" />
+
+                <div class="form-row">
+                    <label class="stack-field">
+                        <span class="field-label">Fiyat listesi</span>
+                        <select class="portal-select" id="sale-price-list" value="@(_priceListNo?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)" disabled="@Locked"
+                                @onchange="PriceListChangedAsync">
+                            <option value="">Ürünün kendi listesi</option>
+                            @foreach (var list in Context.PriceLists)
+                            {
+                                <option value="@list.No">@list.No · @list.Name@(list.IncludesVat ? " (KDV dahil)" : string.Empty)</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="stack-field">
+                        <span class="field-label">Ödeme</span>
+                        <select class="portal-select" id="sale-payment" value="@_paymentType" disabled="@Locked" @onchange="PaymentChangedAsync">
+                            @if (Context.CanSellOnAccount)
+                            {
+                                <option value="Cari Borç">Cari Borç</option>
+                            }
+                            <option value="Nakit">Nakit</option>
+                            <option value="Kredi Kartı">Kredi Kartı</option>
+                        </select>
+                    </label>
+                    @if (_paymentType == "Kredi Kartı" && IsErp && Context.Banks.Count > 0)
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">Kart bankası</span>
+                            <select class="portal-select" id="sale-bank" value="@(_bankCode ?? string.Empty)" disabled="@Locked" @onchange="BankChangedAsync">
+                                <option value="">Seçin</option>
+                                @foreach (var bank in Context.Banks)
+                                {
+                                    <option value="@bank.Code">@bank.Code · @bank.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    <label class="stack-field">
+                        <span class="field-label">Genel iskonto %</span>
+                        <input type="number" class="portal-input portal-input--number" id="sale-general-discount" min="0" max="100" step="any"
+                               value="@Number(_generalDiscount)" disabled="@Locked" @onchange="GeneralDiscountChangedAsync" />
+                    </label>
+                </div>
+
+                <div class="stack-field">
+                    <span class="field-label">Kalemler</span>
+                    <ProductPicker Disabled="Locked" PriceListNo="_priceListNo" Picked="ProductPickedAsync" />
+                    @if (_lines.Count > 0)
+                    {
+                        <div class="table-scroll">
+                            <table class="data-table detail-lines" id="sale-lines">
+                                <thead>
+                                    <tr>
+                                        <th>Ürün</th>
+                                        <th class="num">Miktar</th>
+                                        <th class="num">Liste fiyatı</th>
+                                        <th class="num">Satır isk. %</th>
+                                        <th class="num">KDV</th>
+                                        <th class="num">Tutar</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var i = 0; i < _lines.Count; i++)
+                                    {
+                                        var line = _lines[i];
+                                        var priced = Preview?.Lines.ElementAtOrDefault(i);
+                                        <tr data-line="@line.Product.Code">
+                                            <td class="cell-title">@line.Product.Name<div class="cell-sub">@line.Product.Code@(line.Product.Unit is { } unit ? " · " + unit : string.Empty)</div></td>
+                                            <td class="num"><input type="number" class="portal-input portal-input--number line-quantity" min="1" step="1" value="@Number(line.Quantity)" disabled="@Locked"
+                                                                   @onchange="e => LineChangedAsync(() => line.Quantity = ParseDecimal(e.Value) ?? line.Quantity)" /></td>
+                                            <td class="num">@(priced is null ? "—" : Fmt.Money(priced.ListUnitPrice))</td>
+                                            <td class="num"><input type="number" class="portal-input portal-input--number line-discount" min="0" max="100" step="any" value="@Number(line.Discount)" disabled="@Locked"
+                                                                   @onchange="e => LineChangedAsync(() => line.Discount = Math.Clamp(ParseDecimal(e.Value) ?? 0, 0, 100))" /></td>
+                                            <td class="num">@(priced is null ? "—" : Fmt.Money(priced.Vat))</td>
+                                            <td class="num line-total">@(priced is null ? "—" : Fmt.Money(priced.Total))</td>
+                                            <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Kalemi çıkar" Disabled="Locked" OnClick="() => RemoveLineAsync(line)" /></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <label class="stack-field">
+                    <span class="field-label">Not</span>
+                    <textarea class="portal-input" id="sale-note" rows="2" maxlength="500" disabled="@Locked" @onchange="NoteChangedAsync">@_note</textarea>
+                </label>
+
+                <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
+                <EntryTotals Preview="Preview" />
+
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@Locked" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="SaveAsync" id="entry-save">Kaydet</MudButton>
+                </div>
+            </div>
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.EntrySales;
+    protected override string Kind => EntryKinds.Sale;
+
+    private sealed class Line
+    {
+        public required EntryProductDto Product { get; init; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal Discount { get; set; }
+    }
+
+    private EntryCustomerDto? _customer;
+    private readonly List<Line> _lines = [];
+    private int? _priceListNo;
+    private string _paymentType = "Nakit";
+    private string? _bankCode;
+    private decimal _generalDiscount;
+    private string? _note;
+
+    protected override bool Complete => _customer is not null && _lines.Count > 0;
+
+    protected override EntryRequestBase Build() => new EntrySaleRequest
+    {
+        CustomerCode = _customer?.Code ?? string.Empty,
+        PriceListNo = _priceListNo,
+        Lines = [.. _lines.Select(l => new EntrySaleLineRequest { ProductCode = l.Product.Code, Quantity = l.Quantity, LineDiscountPercent = l.Discount })],
+        GeneralDiscountPercent = _generalDiscount,
+        PaymentType = _paymentType,
+        BankCode = _paymentType == "Kredi Kartı" ? _bankCode : null,
+        Note = _note,
+    };
+
+    protected override void ClearForm()
+    {
+        _customer = null;
+        _lines.Clear();
+        _generalDiscount = 0;
+        _note = null;
+        _bankCode = null;
+        _paymentType = Context?.CanSellOnAccount == true ? "Cari Borç" : "Nakit";
+    }
+
+    protected override async Task OnContextAsync()
+    {
+        _paymentType = Context!.CanSellOnAccount ? "Cari Borç" : "Nakit";
+        if (EntryQuery.Customer(Nav) is { } code) _customer = await EntryQuery.FindCustomerAsync(Api, code);
+    }
+
+    private async Task CustomerPickedAsync(EntryCustomerDto? customer)
+    {
+        _customer = customer;
+        await RefreshPreviewAsync();
+    }
+
+    private async Task ProductPickedAsync(EntryProductDto product)
+    {
+        _lines.Add(new Line { Product = product });
+        await RefreshPreviewAsync();
+    }
+
+    private async Task RemoveLineAsync(Line line)
+    {
+        _lines.Remove(line);
+        await RefreshPreviewAsync();
+    }
+
+    private async Task LineChangedAsync(Action change)
+    {
+        change();
+        await RefreshPreviewAsync();
+    }
+
+    private async Task PriceListChangedAsync(ChangeEventArgs e)
+    {
+        _priceListNo = int.TryParse(e.Value?.ToString(), out var list) ? list : null;
+        await RefreshPreviewAsync();
+    }
+
+    private async Task PaymentChangedAsync(ChangeEventArgs e)
+    {
+        _paymentType = e.Value?.ToString() ?? "Nakit";
+        await RefreshPreviewAsync();
+    }
+
+    private async Task BankChangedAsync(ChangeEventArgs e)
+    {
+        _bankCode = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString();
+        await RefreshPreviewAsync();
+    }
+
+    private async Task GeneralDiscountChangedAsync(ChangeEventArgs e)
+    {
+        _generalDiscount = Math.Clamp(ParseDecimal(e.Value) ?? 0, 0, 100);
+        await RefreshPreviewAsync();
+    }
+
+    private async Task NoteChangedAsync(ChangeEventArgs e)
+    {
+        _note = string.IsNullOrWhiteSpace(e.Value?.ToString()) ? null : e.Value!.ToString();
+        await RefreshPreviewAsync();
+    }
+
+    private static string Number(decimal value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}

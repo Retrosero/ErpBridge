@@ -1,0 +1,89 @@
+@namespace ErpBridge.Portal.Shared.Entry
+@inject PortalApiClient Api
+
+<div class="stack-field">
+    <span class="field-label">@Label</span>
+    @if (Selected is { } picked)
+    {
+        <div class="document-party" id="entry-customer">
+            <span class="cell-title">@picked.Title</span>
+            <span class="cell-sub">@picked.Code@(picked.Balance is { } balance ? $" · bakiye {Fmt.Money(balance)}" : string.Empty)</span>
+            <button type="button" class="link-button" id="entry-customer-change" disabled="@Disabled" @onclick="() => Picked.InvokeAsync(null)">Değiştir</button>
+        </div>
+    }
+    else
+    {
+        <div class="document-search">
+            <input class="portal-input" id="entry-customer-search" placeholder="Kod, unvan ya da telefon" value="@_query" disabled="@Disabled"
+                   @oninput="e => _query = e.Value?.ToString() ?? string.Empty" @onkeydown="SearchOnEnterAsync" />
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(Disabled || _searching)" OnClick="SearchAsync" id="entry-customer-search-go">Ara</MudButton>
+        </div>
+        @if (_problem is not null)
+        {
+            <span class="field-hint field-hint--warn">@_problem</span>
+        }
+        @if (_results.Count > 0)
+        {
+            <ul class="pick-list" id="entry-customer-results">
+                @foreach (var found in _results)
+                {
+                    <li>
+                        <button type="button" class="pick-item" data-customer="@found.Code" @onclick="() => PickAsync(found)">
+                            <span class="cell-title">@found.Title</span>
+                            <span class="cell-sub">@found.Code@(found.City is { } city ? " · " + city : string.Empty)</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+        else if (_searched)
+        {
+            <span class="field-hint" id="entry-customer-none">Eşleşen cari yok.</span>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "Müşteri";
+    [Parameter] public EntryCustomerDto? Selected { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<EntryCustomerDto?> Picked { get; set; }
+
+    private string _query = string.Empty;
+    private List<EntryCustomerDto> _results = [];
+    private bool _searched;
+    private bool _searching;
+    private string? _problem;
+
+    private async Task SearchOnEnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _searching = true;
+        _problem = null;
+        try
+        {
+            _results = (await Api.EntryCustomersAsync(_query)).Items;
+            _searched = true;
+        }
+        catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+        {
+            _problem = ex is PortalApiException api ? api.Message : "Sunucuya ulaşılamadı.";
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private async Task PickAsync(EntryCustomerDto customer)
+    {
+        _results = [];
+        _searched = false;
+        _query = string.Empty;
+        await Picked.InvokeAsync(customer);
+    }
+}

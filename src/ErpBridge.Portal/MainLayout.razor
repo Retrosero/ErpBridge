@@ -89,15 +89,44 @@
                     </MudNavMenu>
                 }
 
-                @if (Session.CanEditNativeData)
+                @if (Session.Allows(PortalArea.Entries) || Session.CanEditNativeData)
                 {
-                    @* GOAL_PANEL_ERPSIZ E7c: an ERP-less company's admin enters its own documents here; an ERP company does not. *@
+                    @* GOAL_PANEL_GIRIS: the phone's documents, entered from the panel in both kinds of company, each by its phone module.
+                       The stock count stays the ERP-less admin's (GOAL_PANEL_ERPSIZ E6c). *@
                     <div class="portal-nav-label">Hızlı giriş</div>
                     <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
-                        <MudNavLink Href="evraklar?yeni=sale" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.PointOfSale" id="nav-new-sale">Yeni satış</MudNavLink>
-                        <MudNavLink Href="evraklar?yeni=purchase" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.LocalShipping" id="nav-new-purchase">Yeni alış</MudNavLink>
-                        <MudNavLink Href="evraklar?yeni=sale_return" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.AssignmentReturn" id="nav-new-return">Yeni iade</MudNavLink>
-                        <MudNavLink Href="stok/sayim" Icon="@Icons.Material.Rounded.Checklist" id="nav-stock-count">Stok sayımı</MudNavLink>
+                        @if (Session.Allows(PortalArea.EntrySales))
+                        {
+                            <MudNavLink Href="giris/satis" Icon="@Icons.Material.Rounded.PointOfSale" id="nav-new-sale">Satış</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.EntryCollection))
+                        {
+                            <MudNavLink Href="giris/tahsilat" Icon="@Icons.Material.Rounded.Payments" id="nav-new-collection">Tahsilat</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.EntryPurchase))
+                        {
+                            <MudNavLink Href="giris/alis" Icon="@Icons.Material.Rounded.LocalShipping" id="nav-new-purchase">Alış</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.EntryReturns))
+                        {
+                            <MudNavLink Href="giris/iade" Icon="@Icons.Material.Rounded.AssignmentReturn" id="nav-new-return">İade</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.EntryDisbursement))
+                        {
+                            <MudNavLink Href="giris/tediye" Icon="@Icons.Material.Rounded.Outbound" id="nav-new-disbursement">Tediye</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.EntryExpenses))
+                        {
+                            <MudNavLink Href="giris/gider" Icon="@Icons.Material.Rounded.ReceiptLong" id="nav-new-expense">Gider</MudNavLink>
+                        }
+                        @if (Session.Allows(PortalArea.Entries))
+                        {
+                            <MudNavLink Href="girisler" Icon="@Icons.Material.Rounded.History" id="nav-entries">Son girişler</MudNavLink>
+                        }
+                        @if (Session.CanEditNativeData)
+                        {
+                            <MudNavLink Href="stok/sayim" Icon="@Icons.Material.Rounded.Checklist" id="nav-stock-count">Stok sayımı</MudNavLink>
+                        }
                     </MudNavMenu>
                 }
 

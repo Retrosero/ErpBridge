@@ -1,0 +1,140 @@
+@page "/giris/tediye"
+@inherits EntryPageBase
+
+<PageTitle>Tediye — Yönetim Paneli</PageTitle>
+
+@if (!Ready || Context is null)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Tediye" Eyebrow="Hızlı giriş" Subtitle="Tedarikçiye ya da müşteriye yapılan ödeme." Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    <EntryUnsettled Shown="Unsettled" />
+    @if (Saved is { } saved)
+    {
+        <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel">
+            @* Not a <form>: Enter in a field — a search above all — must never save the document; only Kaydet saves (Codex #252). *@
+            <div class="stack-form document-form" id="entry-form">
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Locked" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+                <CustomerPicker Label="Ödenen cari" Selected="_customer" Disabled="Locked" Picked="CustomerPickedAsync" />
+
+                <div class="form-row">
+                    <label class="stack-field">
+                        <span class="field-label">Tutar</span>
+                        <input type="number" class="portal-input portal-input--number" id="disbursement-amount" min="0" step="any" value="@Number(_amount)" disabled="@Locked"
+                               @onchange="e => ChangedAsync(() => _amount = ParseDecimal(e.Value) ?? 0)" />
+                    </label>
+                    <label class="stack-field">
+                        <span class="field-label">Kaynak</span>
+                        <select class="portal-select" id="disbursement-type" value="@_paymentType" disabled="@Locked" @onchange="e => ChangedAsync(() => _paymentType = e.Value?.ToString() ?? Cash)">
+                            <option value="@Cash">Nakit kasa</option>
+                            <option value="@Transfer">Banka EFT / Havale</option>
+                        </select>
+                    </label>
+                    @if (_paymentType == Transfer)
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">Banka</span>
+                            @if (IsErp && Context.Banks.Count > 0)
+                            {
+                                <select class="portal-select" id="disbursement-bank" value="@(_bankCode ?? string.Empty)" disabled="@Locked" @onchange="e => ChangedAsync(() => _bankCode = Blank(e.Value))">
+                                    <option value="">Varsayılan</option>
+                                    @foreach (var bank in Context.Banks)
+                                    {
+                                        <option value="@bank.Code">@bank.Code · @bank.Name</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input class="portal-input" id="disbursement-bank-name" value="@_bankName" maxlength="60" disabled="@Locked" @onchange="e => ChangedAsync(() => _bankName = Blank(e.Value))" />
+                            }
+                        </label>
+                    }
+                </div>
+
+                <label class="stack-field">
+                    <span class="field-label">Açıklama / belge no</span>
+                    <textarea class="portal-input" id="disbursement-description" rows="2" maxlength="500" disabled="@Locked" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
+                </label>
+
+                <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
+                <EntryTotals Preview="Preview" />
+
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@Locked" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="SaveAsync" id="entry-save">Kaydet</MudButton>
+                </div>
+            </div>
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.EntryDisbursement;
+    protected override string Kind => EntryKinds.Disbursement;
+
+    private const string Cash = "Nakit";
+    private const string Transfer = "EFT / Havale";
+
+    private EntryCustomerDto? _customer;
+    private decimal _amount;
+    private string _paymentType = Cash;
+    private string? _bankCode;
+    private string? _bankName;
+    private string? _description;
+
+    protected override bool Complete => _customer is not null && _amount > 0;
+
+    protected override EntryRequestBase Build() => new EntryDisbursementRequest
+    {
+        CustomerCode = _customer?.Code ?? string.Empty,
+        Amount = _amount,
+        PaymentType = _paymentType,
+        BankCode = _paymentType == Transfer ? _bankCode : null,
+        BankName = _paymentType == Transfer ? _bankName : null,
+        Description = _description,
+    };
+
+    protected override void ClearForm()
+    {
+        _customer = null;
+        _amount = 0;
+        _paymentType = Cash;
+        _bankCode = null;
+        _bankName = null;
+        _description = null;
+    }
+
+    protected override async Task OnContextAsync()
+    {
+        if (EntryQuery.Customer(Nav) is { } code) _customer = await EntryQuery.FindCustomerAsync(Api, code);
+    }
+
+    private async Task CustomerPickedAsync(EntryCustomerDto? customer)
+    {
+        _customer = customer;
+        await RefreshPreviewAsync();
+    }
+
+    private async Task ChangedAsync(Action change)
+    {
+        change();
+        await RefreshPreviewAsync();
+    }
+
+    private static string? Blank(object? value) => string.IsNullOrWhiteSpace(value?.ToString()) ? null : value!.ToString()!.Trim();
+
+    private static string Number(decimal value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}

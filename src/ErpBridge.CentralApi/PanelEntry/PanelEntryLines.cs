@@ -35,6 +35,14 @@ public static class PanelEntryLines
 
     // ---- purchase ---------------------------------------------------------------------------
 
+    /// <summary>
+    /// An ERP company may say its suppliers' prices include VAT ("Tedarikçi fiyatı", ERP aktarım ayarları): the typed price is
+    /// then VAT-inclusive and the ERP compares the VAT-inclusive total (Codex #251; MikroPriceCalculator.PurchaseLine).
+    /// </summary>
+    public static async Task<bool> PurchasePricesIncludeVatAsync(CentralApiDbContext db, PanelEntryCaller caller, CancellationToken ct) =>
+        !caller.IsNative && await db.ErpWriteSettings.AsNoTracking()
+            .Where(s => s.TenantId == caller.Tenant.Id).Select(s => s.PurchasePricesIncludeVat).FirstOrDefaultAsync(ct);
+
     public static async Task<(PanelEntryPlan? Plan, PanelEntryInvalid? Invalid)> PurchaseAsync(
         CentralApiDbContext db, IMemoryCache cache, PanelEntryCaller caller, MobileUser owner, PortalEntryPurchaseRequest body,
         string key, DateTimeOffset now, CancellationToken ct)
@@ -48,10 +56,7 @@ public static class PanelEntryLines
         if (body.Lines.Count > 500) return (null, PanelEntryInvalid.Body("Bir belgede en çok 500 satır olabilir."));
         if (Chain(body.GeneralDiscountPercents) is not { } general) return (null, PanelEntryInvalid.Body("Genel iskontolar en çok 6 adet, her biri %0 ile %100 arasında olmalı."));
 
-        // An ERP company may say its suppliers' prices include VAT ("Tedarikçi fiyatı", ERP aktarım ayarları): the typed price
-        // is then VAT-inclusive and the ERP compares the VAT-inclusive total (Codex #251; MikroPriceCalculator.PurchaseLine).
-        var includesVat = !caller.IsNative && await db.ErpWriteSettings.AsNoTracking()
-            .Where(s => s.TenantId == caller.Tenant.Id).Select(s => s.PurchasePricesIncludeVat).FirstOrDefaultAsync(ct);
+        var includesVat = await PurchasePricesIncludeVatAsync(db, caller, ct);
         var stock = await PortalStockCatalog.LoadAsync(db, cache, caller.Tenant.Id, ct);
         var products = stock.Products.ToDictionary(p => p.Code, StringComparer.Ordinal);
         var priced = new List<(PortalStockCatalog.Product Product, PortalEntryPurchaseLineRequest Line, IReadOnlyList<decimal> Discounts, decimal Vat, PurchasePricing.Priced Price)>();

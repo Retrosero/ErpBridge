@@ -20,12 +20,17 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
 | P3e | Alış | ✅ | [#251](https://github.com/Retrosero/ErpBridge/pull/251) | `purchaseReceiptPayload`; satır + genel iskonto zinciri (≤ 6, `ErpPurchasePricing`); peşin kapalı fatura (K13); `amount` net, `grossAmount` KDV dahil |
 | P3f | İade | ✅ | [#251](https://github.com/Retrosero/ErpBridge/pull/251) | Yalnız satılmış ürün + satıldığı fiyat (400 `NOT_SOLD_TO_CUSTOMER`); ERP'li `ErpReturnDocument`, ERP'siz `salesReturnPayload`. 8 ilişkisel test |
 | P4 | `documents/{id}`, son girişlerim | ✅ | [#251](https://github.com/Retrosero/ErpBridge/pull/251) | Durum (bekliyor/yeniden/yazıldı + ERP seri-sıra/hata), giren/sahip, gövde; liste kişinin kendi girişleri, yönetici `all=true` |
-| P5a–e | Panel: alanlar/menü, istemci, bileşenler, sayfalar, yazdırma | ⏳ | | |
+| P5a–d | Panel: alanlar/menü, istemci, bileşenler, altı sayfa, yazdırma, son girişler | ✅ | [#252](https://github.com/Retrosero/ErpBridge/pull/252) | `/giris/{satis,tahsilat,alis,iade,tediye,gider}`, `/girisler`, `/giris-yazdir`; `PortalArea.Entry*` → `module.*`; 10 bUnit testi |
+| P5e | Evraklar/Cari giriş düğmeleri → yeni sayfalar | ⏳ | | |
 | P6a–f | Panel: Görevler | ⏳ | | |
 | P7 | KB + sözleşmeler | ⏳ | | |
 | P8 | Uçtan uca doğrulama + kapanış | ⏳ | | |
 
 ## Notlar
+- **Codex #252:** (P1) alışta ilk satır önizlemeden önce eklendiği için firmanın "tedarikçi fiyatı KDV dahil" ayarı bağlamdan
+  okunuyor (`context.purchasePricesIncludeVat`); (P1) giriş sayfaları `<form>` değil — aramada Enter belgeyi kaydetmiyor, arama
+  yazılanı arıyor; (P1) yanıtı kaybolan kayıtta form kilitleniyor, yalnız Kaydet aynı gövdeyi aynı anahtarla yeniden gönderiyor;
+  (P2) ERP iade fişinde satır tutarı iade oranıyla; (P2) alış fişinde toplam "KDV dahil" + KDV satırı.
 - **Codex #251:** (P1) firmanın "tedarikçi fiyatı KDV dahil" ayarı açıksa alış fiyatı KDV dahil okunur, `amount` KDV dahil toplamdır
   (Mikro o durumda toplamla karşılaştırır); (P2) giriş sonucu/listesi alışta ödenen KDV dahil tutarı (`grossAmount`) gösterir.
 - **Codex #250:** (P2) ERP tahsilatında kart slip / havale dekont numarası makbuzun açıklamasına yazılıyor (önceden düşüyordu).
