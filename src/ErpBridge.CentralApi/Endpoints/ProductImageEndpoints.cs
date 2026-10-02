@@ -212,11 +212,12 @@ public static class ProductImageEndpoints
         if (!RolePermissions.CanEditProductPhotos(access.User!)) return Forbidden();
         var tenantId = access.Tenant!.Id;
         var stored = new List<Guid>();
-        var (_, error) = await CustomerCatalogManageEndpoints.WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async _ =>
+        var (_, error) = await CustomerCatalogManageEndpoints.WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async now =>
         {
             var image = await db.ProductImages.FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId, ct);
             if (image is null) return NotFound();
             stored.AddRange([image.StoredFileLargeId, image.StoredFileSmallId]);
+            await TrashItemAsync(db, image, StorageTrashSources.User, access.User!.Id, now, ct);
             db.ProductImages.Remove(image);
             return null;
         }, ct, pictures: true);
@@ -225,6 +226,11 @@ public static class ProductImageEndpoints
         await files.TrashAllAsync(tenantId, stored, access.User!.Id, ct);
         return Results.NoContent();
     }
+
+    /// <summary>The trash item of a removed photo (S9): the row as it was, so a restore puts it back.</summary>
+    internal static Task<StorageTrashItem?> TrashItemAsync(CentralApiDbContext db, ProductImage image, string source, Guid? userId, long now, CancellationToken ct) =>
+        StorageTrash.AddAsync(db, image.TenantId, StorageAreas.Product, StorageTrashKinds.ProductImage, image.StockCode,
+            [image.StoredFileLargeId, image.StoredFileSmallId], StorageTrash.Snapshot(image), source, userId, now, ct);
 
     // ---- shared with the catalog view ------------------------------------------------------------
 

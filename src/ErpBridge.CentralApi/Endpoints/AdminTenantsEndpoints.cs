@@ -118,6 +118,9 @@ public static class AdminTenantsEndpoints
             tenant.MaxDeviceCount = maxDeviceCount;
         }
         await db.SaveChangesAsync(ct);
+        // A company switched off hides its public pictures within the minute, switched on shows them again (GOAL_DEPOLAMA_R2 T4).
+        if (body.IsActive.HasValue)
+            await ErpBridge.CentralApi.Storage.StorageQuarantine.RequestAsync(db, id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), ct);
         return JsonResults.Ok(ToDto(tenant));
     }
 

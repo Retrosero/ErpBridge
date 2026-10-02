@@ -776,6 +776,10 @@ public sealed class TaskService
             task.UpdatedSeq = await NextSeqAsync(db, tenant.Id, ct);
             task.UpdatedAtMs = now;
             db.WorkTaskEvents.Add(new WorkTaskEvent { TenantId = tenant.Id, TaskId = taskId, Action = WorkTaskActions.PhotoDeleted, ActorUserId = user.Id, ActorName = Clip(user.FullName, 120), OccurredAtMs = now });
+            // The trash item (GOAL_DEPOLAMA_R2 S9): restorable from the panel for the trash period.
+            if (attachment.StoredFileId is { } trashed)
+                await StorageTrash.AddAsync(db, tenant.Id, StorageAreas.Task, StorageTrashKinds.TaskAttachment, task.Title, [trashed],
+                    StorageTrash.RowSnapshot(attachment.Id), StorageTrashSources.User, user.Id, now, ct);
             await db.SaveChangesAsync(ct);
             if (transaction is not null) await transaction.CommitAsync(ct);
         }
@@ -783,6 +787,82 @@ public sealed class TaskService
         if (attachment.StoredFileId is { } file) await _files.TrashAllAsync(tenant.Id, [file], user.Id, ct);
         Notify(tenant.Id);
         return TaskResult<bool>.Ok(true);
+    }
+
+    /// <summary>
+    /// The panel's "Alan aç" (GOAL_DEPOLAMA_R2 S9): the pictures are marked deleted as a user's delete would (an event on the
+    /// task, its change number moves so phones drop them), each with a trash item, then their files go to the trash.
+    /// Pictures already deleted or of a deleted task are skipped. Returns how many pictures went and their bytes.
+    /// </summary>
+    public async Task<(int Count, long Bytes)> TrashAttachmentsAsync(CentralApiDbContext db, Guid tenantId, MobileUser actor, IReadOnlyCollection<Guid> attachmentIds, CancellationToken ct)
+    {
+        if (attachmentIds.Count == 0) return (0, 0);
+        var now = NowMs();
+        var files = new List<Guid>();
+        long bytes = 0;
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            var ids = attachmentIds.Distinct().ToList();
+            var attachments = await db.WorkTaskAttachments.Where(a => a.TenantId == tenantId && ids.Contains(a.Id) && !a.IsDeleted && a.StoredFileId != null).ToListAsync(ct);
+            var taskIds = attachments.Select(a => a.TaskId).Distinct().ToList();
+            var tasks = await db.WorkTasks.Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id) && !t.IsDeleted).ToDictionaryAsync(t => t.Id, ct);
+            foreach (var group in attachments.Where(a => tasks.ContainsKey(a.TaskId)).GroupBy(a => a.TaskId))
+            {
+                var task = tasks[group.Key];
+                task.UpdatedSeq = await NextSeqAsync(db, tenantId, ct);
+                task.UpdatedAtMs = now;
+                foreach (var attachment in group)
+                {
+                    attachment.IsDeleted = true;
+                    attachment.DeletedAtMs = now;
+                    db.WorkTaskEvents.Add(new WorkTaskEvent { TenantId = tenantId, TaskId = task.Id, Action = WorkTaskActions.PhotoDeleted, ActorUserId = actor.Id, ActorName = Clip(actor.FullName, 120), OccurredAtMs = now });
+                    var item = await StorageTrash.AddAsync(db, tenantId, StorageAreas.Task, StorageTrashKinds.TaskAttachment, task.Title, [attachment.StoredFileId!.Value],
+                        StorageTrash.RowSnapshot(attachment.Id), StorageTrashSources.Cleanup, actor.Id, now, ct);
+                    bytes += item?.SizeBytes ?? 0;
+                    files.Add(attachment.StoredFileId.Value);
+                }
+            }
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+        db.ChangeTracker.Clear();
+        await _files.TrashAllAsync(tenantId, files, actor.Id, ct);
+        if (files.Count > 0) Notify(tenantId);
+        return (files.Count, bytes);
+    }
+
+    /// <summary>
+    /// Brings a deleted picture back from the storage trash (S9; the caller has taken its file out of the trash) unless its
+    /// task was deleted or already holds the most pictures. The trash item <paramref name="trashItemId"/> leaves in the same
+    /// transaction. Returns a Turkish reason when it cannot.
+    /// </summary>
+    public async Task<string?> RestoreAttachmentAsync(CentralApiDbContext db, Guid tenantId, Guid attachmentId, MobileUser actor, Guid trashItemId, CancellationToken ct)
+    {
+        var now = NowMs();
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            var attachment = await db.WorkTaskAttachments.FirstOrDefaultAsync(a => a.Id == attachmentId && a.TenantId == tenantId, ct);
+            if (attachment is null) return "Görev resminin kaydı artık yok; geri alınamaz.";
+            if (attachment.IsDeleted)
+            {
+                var task = await LoadAsync(db, tenantId, attachment.TaskId, tracking: true, ct);
+                if (task is null || task.IsDeleted) return "Görev silinmiş; resmi geri alınamaz.";
+                if (await db.WorkTaskAttachments.CountAsync(a => a.TaskId == task.Id && !a.IsDeleted, ct) >= _options.MaxAttachmentsPerTask)
+                    return $"Görevin resim sınırı ({_options.MaxAttachmentsPerTask}) dolu; önce başka bir resmini silin.";
+                attachment.IsDeleted = false;
+                attachment.DeletedAtMs = null;
+                task.UpdatedSeq = await NextSeqAsync(db, tenantId, ct);
+                task.UpdatedAtMs = now;
+                db.WorkTaskEvents.Add(new WorkTaskEvent { TenantId = tenantId, TaskId = task.Id, Action = WorkTaskActions.PhotoAdded, ActorUserId = actor.Id, ActorName = Clip(actor.FullName, 120), Detail = "Çöpten geri alındı", OccurredAtMs = now });
+                await db.SaveChangesAsync(ct);
+            }
+            await db.StorageTrashItemFiles.Where(f => f.ItemId == trashItemId).ExecuteDeleteAsync(ct);
+            await db.StorageTrashItems.Where(i => i.Id == trashItemId).ExecuteDeleteAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+        db.ChangeTracker.Clear();
+        Notify(tenantId);
+        return null;
     }
 
     /// <summary>
@@ -967,8 +1047,28 @@ public sealed class TaskService
         var deletedTasks = db.WorkTasks.Where(t => t.IsDeleted && t.DeletedAtMs != null && t.DeletedAtMs < cutoff).Select(t => t.Id);
         var expired = db.WorkTaskAttachments
             .Where(a => (a.IsDeleted && a.DeletedAtMs != null && a.DeletedAtMs < cutoff) || deletedTasks.Contains(a.TaskId));
-        var files = await expired.Where(a => a.StoredFileId != null).Select(a => new { a.TenantId, FileId = a.StoredFileId!.Value }).ToListAsync(ct);
-        var removed = await expired.ExecuteDeleteAsync(ct);
+        var files = await expired.Where(a => a.StoredFileId != null).Select(a => new { a.TenantId, a.TaskId, FileId = a.StoredFileId!.Value }).ToListAsync(ct);
+        // A deleted task's pictures still active get one trash item per task (nothing to restore: their rows go here); a
+        // picture deleted on its own has its item already, or its file left with the trash long ago.
+        var fileIds = files.Select(f => f.FileId).ToList();
+        var active = fileIds.Count == 0
+            ? []
+            : (await db.StoredFiles.AsNoTracking()
+                .Where(f => fileIds.Contains(f.Id) && f.Status == StoredFileStatuses.Active && !db.StorageTrashItemFiles.Any(x => x.FileId == f.Id))
+                .Select(f => f.Id).ToListAsync(ct)).ToHashSet();
+        var taskIds = files.Where(f => active.Contains(f.FileId)).Select(f => f.TaskId).Distinct().ToList();
+        var titles = taskIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.WorkTasks.AsNoTracking().Where(t => taskIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Title, ct);
+        var removed = 0;
+        await InTransactionAsync(db, async () =>
+        {
+            foreach (var task in files.Where(f => active.Contains(f.FileId)).GroupBy(f => (f.TenantId, f.TaskId)))
+                await StorageTrash.AddAsync(db, task.Key.TenantId, StorageAreas.Task, StorageTrashKinds.Files, titles.GetValueOrDefault(task.Key.TaskId) ?? "Silinmiş görev",
+                    task.Select(f => f.FileId), null, StorageTrashSources.OwnerDeleted, null, nowMs, ct);
+            await db.SaveChangesAsync(ct);
+            removed = await expired.ExecuteDeleteAsync(ct);
+        }, ct);
         removed += await db.WorkTaskOpsApplied.Where(a => a.AppliedAtMs < cutoff).ExecuteDeleteAsync(ct);
         if (files.Count > 0)
         {

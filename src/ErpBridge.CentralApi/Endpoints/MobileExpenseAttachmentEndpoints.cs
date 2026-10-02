@@ -173,6 +173,9 @@ public static class MobileExpenseAttachmentEndpoints
             return Error(StatusCodes.Status403Forbidden, "EXPENSE_FORBIDDEN", "Bu fişi yalnız ekleyen ya da yönetici silebilir.");
         receipt.IsDeleted = true;
         receipt.DeletedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // The trash item (S9): the panel can bring the receipt back for the trash period.
+        await StorageTrash.AddAsync(db, tenantId, ExpenseAttachmentKinds.AreaOf(receipt.Kind), StorageTrashKinds.ExpenseAttachment, docId, [receipt.StoredFileId],
+            StorageTrash.RowSnapshot(receipt.Id), StorageTrashSources.User, user.Id, receipt.DeletedAtMs.Value, ct);
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();
         await files.TrashAllAsync(tenantId, [receipt.StoredFileId], user.Id, ct);

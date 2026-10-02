@@ -156,6 +156,8 @@ public static class AdminMobileSeatsEndpoints
 
         await TenantModuleSets.ReplaceAsync(db, http, tenantId, wanted, key => !TenantModules.IsGo(key), ct);
         await db.SaveChangesAsync(ct);
+        // The customer catalog module gone (or back): its pictures leave the public bucket within the minute (GOAL_DEPOLAMA_R2 T4).
+        await ErpBridge.CentralApi.Storage.StorageQuarantine.RequestAsync(db, tenantId, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), ct);
         return Results.NoContent();
     }
 

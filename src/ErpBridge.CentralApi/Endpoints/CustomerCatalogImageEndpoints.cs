@@ -339,11 +339,12 @@ public static class CustomerCatalogImageEndpoints
         if (access.Error is not null) return access.Error;
         var tenantId = access.Tenant!.Id;
         var stored = new List<Guid>();
-        var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async _ =>
+        var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async now =>
         {
             var image = await db.CatalogImages.FirstOrDefaultAsync(i => i.Id == id && i.TenantId == tenantId, ct);
             if (image is null) return ImageNotFound();
             stored.AddRange(CatalogImages.StoredFileIds(image));
+            await TrashItemAsync(db, image, StorageTrashSources.User, access.User!.Id, now, ct);
             db.CatalogImages.Remove(image);
             return null;
         }, ct, pictures: true);
@@ -351,6 +352,17 @@ public static class CustomerCatalogImageEndpoints
         db.ChangeTracker.Clear();
         await files.TrashAllAsync(tenantId, stored, access.User!.Id, ct);
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// The trash item of a removed picture (S9): the row as it was, so a restore puts it back. A banner's picture removed
+    /// through the images API is a catalog picture of the banner area (its banner keeps no picture).
+    /// </summary>
+    internal static Task<StorageTrashItem?> TrashItemAsync(CentralApiDbContext db, CatalogImage image, string source, Guid? userId, long now, CancellationToken ct)
+    {
+        var banner = image.StockCode == CatalogBanners.ImageStockCode;
+        return StorageTrash.AddAsync(db, image.TenantId, banner ? StorageAreas.Banner : StorageAreas.Catalog, StorageTrashKinds.CatalogImage,
+            banner ? "Banner görseli" : image.StockCode, CatalogImages.StoredFileIds(image), StorageTrash.Snapshot(image), source, userId, now, ct);
     }
 
     // ---- anonymous ---------------------------------------------------------------------------

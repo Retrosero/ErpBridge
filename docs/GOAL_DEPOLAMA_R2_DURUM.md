@@ -19,7 +19,7 @@ R2 API anahtarı değerlerini görmek/girmek (kullanıcı girer).
 | S6 | Ürün fotoğrafı | ✅ | bu PR | `product_images`, `action.products.photo`, panel Stok > Fotoğraflar, katalogda yedek görsel |
 | S7 | XML görsel eşitleyici (değişen/silinen izlenir) | ✅ | bu PR | `XmlImageSync` + `SafeHttpFetcher` (DNS sabitleme, elle yönlendirme), `xml_images`, status/sync uçları, katalog yedeği ve manifest `xmlItems`; bozuk/boş/eşleşmeyen feed hiçbir şey silmez |
 | S8 | Kota/kullanım + Admin | ✅ | #237 | `GET /api/v1/storage/usage`, Admin kota kartı (0 GB dahil), günlük sayaç hesabı |
-| S9 | Temizlik + bakım işi | ⬜ | | |
+| S9 | Temizlik + bakım işi | ✅ | bu PR | Çöp öğeleri + geri alma (sınırlarla), temizlik grupları, kalıcı silme, günlük çöp boşaltma, karantina (T4), haftalık R2 mutabakatı, denetim kaydı; migration `DepolamaTemizlik` |
 | S10 | Bytea → R2 göçü | ⬜ | | |
 | P1–P3 | Panel + Admin | ⬜ | | |
 | A1–A4 | Telefon | ⬜ | | |
@@ -29,3 +29,7 @@ R2 API anahtarı değerlerini görmek/girmek (kullanıcı girer).
 | Tarih | Karar | Gerekçe |
 |---|---|---|
 | 2026-10-01 | R1–R6, T1–T11 (plan §2); varsayılan kota 5 GB | Kullanıcı plan onayı |
+| 2026-10-02 | S9: "stoksuz ürünler" grubu **şu an** stoksuz olanları alır (plandaki "N gündür stoksuz" değil) | Sunucu stok geçmişi tutmuyor; panel seçimle temizler, geri alma 7 gün açık |
+| 2026-10-02 | S9: iptal edilmiş görevin kapanış zamanı = son değişiklik (`UpdatedAtMs`) | Görevde ayrı iptal zamanı yok; en geç o an iptal edilmiştir |
+| 2026-10-02 | S9: plandaki "silinmiş giderlerin fişleri" grubu eklenmedi | Fiş silinince zaten çöpe gider (öğesiyle); sunucuda "silinmiş gider belgesi" bilgisi yok. Silinmiş fiş satırları 30 gün sonra silinir |
+| 2026-10-02 | S9: kaydı olmayan dosyalar (süpürme, 30 günlük silinmiş görev) çöpte görünür ama geri alınamaz | Geri konacak kayıt yok; geri alınsa ertesi gün yine süpürülürdü |

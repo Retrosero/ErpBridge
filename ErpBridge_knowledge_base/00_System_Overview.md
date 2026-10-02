@@ -1534,9 +1534,9 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `CustomerCatalogLedgerRelationalTests`, `CustomerCatalogConversionRelationalTests` (S10), `CatalogWebTests` (fixture
      `tests/ErpBridge.CentralApi.Tests/CustomerCatalog/WebFixture`, `CatalogHostFactory` = `katalog.test`), `CatalogLoginGateTests`.
 
-37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1–S8, 2026-10-01/02).**
-   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5), ürün fotoğrafı (S6), XML görsel eşitleyici (S7); temizlik
-   (S9) ve bytea göçü (S10) bu temeli kullanacak — göçe kadar depodan önce yüklenen resimler PostgreSQL bytea'sında kalır ve okunur.
+37. **Merkezi dosya deposu (R2): `Storage/FileStore`, `stored_files` + `tenant_storage` (GOAL_DEPOLAMA_R2 S1–S9, 2026-10-01/02).**
+   Plan ve kararlar: [`docs/GOAL_DEPOLAMA_R2.md`](../docs/GOAL_DEPOLAMA_R2.md). Temel + katalog/banner (S3), görev eki (S4), gider/araç fişi (S5), ürün fotoğrafı (S6), XML görsel eşitleyici (S7),
+   çöp kutusu/temizlik/karantina (S9, aşağıda); bytea göçü (S10) bu temeli kullanacak — göçe kadar depodan önce yüklenen resimler PostgreSQL bytea'sında kalır ve okunur.
    - **Kayıtlar dosyaya `StoredFile*Id` ile bağlanır, yabancı anahtar yok** (migration `DepolamaAlanlari`): defter satırı deponun kendi
      yaşamıyla (çöp, kalıcı silme) gider, sahip kaydıyla değil; "yetim" = hiçbir kaydın göstermediği dosya (S9), bağlantı sütunları
      bu sorgu için indekslidir. Sahip kaydı silinince dosyalar işlem **sonrası** `FileStore.TrashAllAsync` (kullanıcı silmesi) ya da
@@ -1566,7 +1566,7 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      kota aşılamaz, geri alma her zaman yer bulur. `TrashAsync` yalnız durumu değiştirir (bayt çöp süresince R2'de kalır); `RestoreAsync`
      kota denetimi yapmaz; `PurgeAsync` satırı önce `purging` yapar ve baytı **burada** kotadan düşer (etkin ya da çöpteki dosya), R2'den
      siler, sonra satırı siler — R2 hatasında satır `purging` kalır, sonraki geçiş tamamlar. Durum değişiklikleri koşullu UPDATE'tir (iki
-     kez silme bir kez düşer). Yerin hemen açılması için çöpü boşaltma (kalıcı silme) S9'da panele gelir.
+     kez silme bir kez düşer). Yerin hemen açılması için panelde "Kalıcı sil / Çöpü boşalt" var (S9, aşağıda).
    - **Adres** `FileStore.UrlFor`: herkese açık dosya `PublicBaseUrl/ObjectKey`, özel dosya `/api/v1/storage/files/{id}`. Bu uç
      (`Endpoints/StorageEndpoints`, `MobileUserPolicy`) yükleyen ya da `action.storage.manage` sahibine 302 verir (özel dosya
      `PresignMinutes` dakikalık imzalı R2 adresi, `private, no-store`); ileride alan bazlı yetki `IStoredFileReadRule` kaydıyla eklenir
@@ -1583,8 +1583,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
    - **Sayaç yeniden hesabı** `FileStore.RecountAsync`: önce sayaç satırı kilitlenir, sonra etkin + çöpteki dosyalar toplanır (`purging`
      satırı kotadan zaten düşmüştür) (eşzamanlı commit bir
      kez sayılır); 1 saatten eski (`StaleReservation`) ayırma geri verilir; sapma uyarı olarak loglanır. `Storage/StorageMaintenanceWorker`
-     (LogRetentionWorker deseni) her gün `MaintenanceHourUtc`'de `StorageMaintenance.RunOnceAsync` ile bütün firmaları yeniden hesaplar;
-     S9'un temizlikleri buraya eklenecek. Testlerde kapalı (`Storage:MaintenanceEnabled=false`).
+     (S9'dan beri `XmlImageSyncWorker` deseni, dakikada bir tur) her gün `MaintenanceHourUtc`'de `StorageMaintenance.RunOnceAsync` ile bütün
+     firmaları yeniden hesaplar ve S9'un günlük işlerini yapar (aşağıda). Testlerde kapalı (`Storage:MaintenanceEnabled=false`).
    - Testler: `tests/ErpBridge.CentralApi.Tests/Storage/` — `FileStoreRelationalTests` (yükleme → nesne + defter + kota, firma kodu klasörü,
      paralel 20 yükleme, R2 hatası, tür reddi, çöp/geri al/kalıcı silme, `purging` yeniden deneme, yeniden hesap), `StorageFileEndpointRelationalTests`
      (302 yetkisi, 404'ler, alan kuralı, depo ayarsızken 503), `StorageUsageRelationalTests` (kullanım, Admin kota/yeniden hesap, günlük
@@ -1667,8 +1667,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      en çok 3000 indirme; iş kalırsa ve tur ilerleme kaydettiyse istek yeniden konur. **R6 güvencesi — hiçbir şey silinmez:** XML
      indirilemez/okunamaz, kayıt yok, hiçbir ürün eşleşmez, eşleşen ürünlerin hiç görseli yok, eşlemede CODE ya da IMAGE alanı yok
      → `failed`. Modül yok, görsel indirme kapalı ya da firma pasifse tur hiçbir şey yapmaz (istek düşer); artık istenmeyen kopyalar
-     temizliğin (S9) işidir — `StorageMaintenance.TrashUnreferencedAsync` `xml` alanını bilerek atlar, bu yüzden S9'da ayrıca ele
-     alınmalı. Sonuç ayar satırında (`ImageSync*`, istatistik JSON). **Dış adres güvenliği** `Storage/SafeHttpFetcher` (`IExternalFetcher`,
+     temizliğin işidir — panelin "Alan aç" `xml_unused` grubu (S9, aşağıda); hiçbir `xml_images` satırının göstermediği XML dosyasını günlük
+     süpürme çöpe atmadan kalıcı siler. Sonuç ayar satırında (`ImageSync*`, istatistik JSON). **Dış adres güvenliği** `Storage/SafeHttpFetcher` (`IExternalFetcher`,
      testte `FakeExternalFetcher`): yalnız http/https, kullanıcı bilgisi yok, `localhost`/`.localhost`/`.local`/`.internal` yok, düz IP
      `WebhookTargetValidator.IsPublicAddress` (2026-10-02 genişledi: IPv4-eşlenik IPv6, `::/96`, NAT64 `64:ff9b::/96` içindeki IPv4,
      `64:ff9b:1::/48`, Teredo, 6to4 içindeki IPv4, site-local, `192.0.0.0/24`, `198.18.0.0/15`, TEST-NET'ler, `::`, yayın); adlı istemcinin
@@ -1683,3 +1683,51 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      fotoğrafı `GET ?stockCode=` ve `GET /manifest` yanıtlarına salt okunur `xmlItems` eklendi (`XmlImage { id, stockCode, position,
      sourceUrl, thumbUrl, fullUrl, … }`, XML sırasıyla) — telefon (A4) sunucu kopyası varken kendisi indirmesin diye. Testler
      `Storage/XmlImageSyncRelationalTests`, `XmlFeedImageReaderTests`, `SafeHttpFetcherTests`, `Security/WebhookTargetValidatorTests`.
+   - **Çöp kutusu (S9)** `Storage/StorageTrash`, tablolar `storage_trash_items` + `storage_trash_item_files` (migration `DepolamaTemizlik`): dosyaları
+     çöpe atan her yol **sahibin kendi işleminde** bir öğe yazar (`StorageTrash.AddAsync`; boyut defterden, etiket stok kodu/banner başlığı/görev
+     başlığı/belge kimliği): ürün fotoğrafı silme (`product_image`, anlık görüntü satırın JSON'u), katalog görseli silme (`catalog_image`;
+     `~banner` görseli alan `banner`), banner silme (`banner`: banner + görseli) ve düzenlemede değiştirilen banner görseli (`banner_image`:
+     görsel + banner kimliği), görev resmi silme (`task_attachment`, yumuşak silme: anlık görüntü yalnız kimlik), fiş silme
+     (`expense_attachment`, aynı), "Alan aç" (`Source` `cleanup`). Kaydı olmayan dosyalar da öğe alır ama **geri alınamaz** (anlık görüntü yok):
+     günlük süpürme (`TrashUnreferencedAsync`, sahip başı bir öğe `files`/`sweep`; dosya zaten bir öğedeyse ikinci öğe açılmaz) ve görev
+     zamanlayıcısının 30 günlük temizliği (silinmiş görevin hâlâ etkin resimleri, görev başı bir öğe `owner_deleted`; zamanlayıcı bunu zaten
+     yapıyordu, S9 yalnız öğeyi ekledi — tekrar etmez). **Geri alma** öğe öğe: önce kilitsiz çakışma denetimi, sonra dosyalar
+     (`FileStore.RestoreAsync`; biri kalıcı silinmişse diğerleri çöpe döner), sonra sahip **yüklemedeki kilit ve sınırlarla** geri konur ve
+     öğe aynı işlemde silinir — ürün/katalog/banner katalog görsel kilidinde (`WriteLayoutAsync(pictures: true)`, `ImageRevision` artar,
+     katalog görünümü tazelenir; ürün başı 8 ve aynı SHA, katalog ürün sınırı ve aynı `SourceHash`, banner sınırı 20/görsel 40; geri gelen
+     görselin `HasSmall/HasLarge`'ı depodaki boyutlardan, eski bytea boyutları silmeyle gitmiştir), görev resmi `TaskService.RestoreAttachmentAsync`
+     (görev silinmemiş, görev başı 10; değişim numarası artar, olay `PHOTO_ADDED` "Çöpten geri alındı"), fiş sayaç satırı kilidinde (belge başı 5).
+     Çakışma o öğeyi Türkçe gerekçeyle başarısız yapar, dosyaları çöpte kalır, diğer öğeler sürer. **Kalıcı silme** öğenin dosyalarını
+     `PurgeAsync` ile siler (kota hemen düşer), hepsi gidince öğeyi siler; "Çöpü boşalt" öğesiz eski çöp dosyalarını da alır.
+   - **Temizlik (S9, R5)** `Storage/StorageCleanup` + `Endpoints/StorageCleanupEndpoints` (yalnız `action.storage.manage`, `403 STORAGE_FORBIDDEN`):
+     `GET /api/v1/storage/trash`, `POST …/trash/restore`, `POST …/trash/purge`, `GET …/cleanup/summary`, `GET …/cleanup/candidates`,
+     `POST …/cleanup` (sözleşme `docs/api-contracts.md`). Gruplar her istekte kayıtlardan hesaplanır, POST'taki kimlikler o anki adaylarla
+     kesiştirilir: `missing_products` (stok kodu `CatalogViewService` ürünlerinde olmayan ürün fotoğrafı + katalog görseli + XML görseli; **firmanın
+     hiç ürünü yoksa boş**), `out_of_stock` (ürünün `InStock`'u yanlış; stok geçmişi tutulmadığı için plandaki "N gündür stoksuz" yerine
+     "şu an stoksuz"), `closed_tasks` (`days`, varsayılan 90: `DONE` ise `CompletedAtMs`, `CANCELLED` ise iptalin ayrı zamanı olmadığından
+     `UpdatedAtMs`; silinmiş görevler zamanlayıcının), `ended_banners` (kapalı ya da bitişi geçmiş; görseli canlı bir banner da gösteriyorsa
+     aday değil), `xml_unused` (XML modülü yok, ayar silinmiş ya da `DownloadImages=false`). Aday boyutu yalnız etkin dosyalardan; hiç etkin dosyası
+     olmayan kayıt aday değildir. Ürün/katalog/banner/XML değişikliği katalog görsel kilidinde; görev resimleri `TaskService.TrashAttachmentsAsync`
+     (kullanıcı silmesi gibi: `PHOTO_DELETED` olayı, değişim numarası, telefonlar düşürür). **XML görselleri çöpe gitmez**, kalıcı silinir (R6:
+     XML yeniden üretir; yanıt mesajı bunu söyler). İstek başı en çok 500 sahip (`remaining`). Her temizlik/geri alma/kalıcı silme
+     `native_audit_log`'a (`Entity` `storage`, `EntityKey` grup ya da `trash`, `Action` `cleanup|restore|purge|empty_trash`) yalnız sayı ve
+     bayt yazar; dosya ya da müşteri adı yazılmaz (`AfterJson` sayılar).
+   - **Günlük ve dakikalık işler (S9)** `StorageMaintenance`: her gün sayaç yeniden hesabı → `StorageTrash.PurgeExpiredAsync` (`TrashDays`'i
+     dolan öğeler dosyalarıyla, aynı yaştaki öğesiz çöp dosyaları, `purging`'de kalmış satırlar yeniden) → süpürme (yukarıda; XML yetimleri
+     doğrudan kalıcı silinir) → `DeletedOwnerPurgeDays` (30) günden eski silinmiş fiş satırları silinir → her firmada karantina denetimi.
+     Dakikada bir Admin'in istediği karantina denetimleri (`tenant_storage.QuarantineRequestedAtMs`, `XmlImageSync` istek deseni; istek
+     koşullu temizlenir). Pazar günü günlük işin ardından **R2 mutabakatı** `ReconcileAsync`: iki kova listelenir, defterde olmayan + 24 saatten
+     eski + ilk klasörü bilinen bir firma kodu olan nesneler silinir (en çok 1000); bilinmeyen nesne listenin %30'unu ya da 2000'i aşarsa
+     **hiçbir şey silinmez**, hata loglanır (yanlış kova ayarı ya da boş defter R2'yi boşaltamaz).
+   - **Karantina (T4, S9)** `Storage/StorageQuarantine`: firma pasifse bütün herkese açık alanlar (`product`, `xml`, `catalog`, `banner`),
+     firma etkin ama `customer_catalog` modülü yoksa yalnız `catalog`/`banner` özel kovaya `{KOD}/_karantina/{özgün anahtar}` (kod özgün anahtarın
+     ilk klasörü) altına taşınır: GET → özel kovaya PUT → defter satırı koşullu UPDATE (`Bucket`, `ObjectKey`, `QuarantinedFromKey`) → herkese açık
+     nesne silinir; geri dönüş aynı yolla `QuarantinedFromKey`'e. Çöpteki dosya da taşınır, `purging` satırı taşınmaz; yarıda kalan taşımanın
+     fazla nesnesini mutabakat siler. Tur başı firma başı 2000 taşıma, fazlası için istek yeniden konur. Taşıma olduysa firmanın
+     `ImageRevision`'ı artar (katalog görünümündeki adresler tazelenir; özel kovadaki dosyanın CDN adresi yoktur, gösterilmez). Admin
+     `PATCH /admin/tenants/{id}` (`isActive` gönderildiyse) ve `PUT …/mobile/modules` kaydettikten sonra `StorageQuarantine.RequestAsync` çağırır.
+   - Testler (S9): `Storage/StorageCleanupRelationalTests` (çöp → geri al, sınır çakışması tek öğede, kalıcı silme/çöpü boşaltma ve kota, süresi
+     dolan öğe, gruplar ve POST'ta kimlik denetimi, ürünsüz firma, kapanmış görev, biten banner, değiştirilen banner görseli ve katalog görseli
+     geri alma, XML'in kalıcı silinmesi, fiş geri alma, süpürme öğesi geri alınamaz, karantina gidiş-dönüş ve yalnız katalog alanları, denetim
+     kaydı), `StorageReconcileRelationalTests` (eski yetim silinir, yabancı klasör ve genç nesne kalır, %30 üstü hiçbir şey silinmez).
+     `InMemoryObjectStore` artık nesnenin yazılma zamanını tutar (`Seed` ile tarihli yetim).

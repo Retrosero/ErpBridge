@@ -228,6 +228,11 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>Pictures the server copied from the company's XML feed (GOAL_DEPOLAMA_R2 S7).</summary>
     public DbSet<XmlImage> XmlImages => Set<XmlImage>();
 
+    /// <summary>The storage trash: what a delete or the clean-up removed, restorable for the trash period (GOAL_DEPOLAMA_R2 S9).</summary>
+    public DbSet<StorageTrashItem> StorageTrashItems => Set<StorageTrashItem>();
+
+    public DbSet<StorageTrashItemFile> StorageTrashItemFiles => Set<StorageTrashItemFile>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApprovalRequest>(b =>
@@ -1577,6 +1582,31 @@ public sealed class CentralApiDbContext : DbContext
             b.HasIndex(x => new { x.TenantId, x.Area, x.Status });
             b.HasIndex(x => new { x.TenantId, x.OwnerType, x.OwnerKey });
             b.HasIndex(x => new { x.Bucket, x.ObjectKey }).IsUnique();
+            b.Property(x => x.QuarantinedFromKey).HasMaxLength(StoredFile.MaxObjectKeyLength);
+        });
+
+        modelBuilder.Entity<StorageTrashItem>(b =>
+        {
+            b.ToTable("storage_trash_items");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever();
+            b.Property(x => x.Area).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Kind).IsRequired().HasMaxLength(32);
+            b.Property(x => x.Label).IsRequired().HasMaxLength(StorageTrashItem.MaxLabelLength);
+            b.Property(x => x.Source).IsRequired().HasMaxLength(16);
+            b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(x => x.Files).WithOne().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
+            // The panel's list (newest first) and the daily purge of expired items.
+            b.HasIndex(x => new { x.TenantId, x.TrashedAtMs });
+            b.HasIndex(x => x.TrashedAtMs);
+        });
+
+        modelBuilder.Entity<StorageTrashItemFile>(b =>
+        {
+            b.ToTable("storage_trash_item_files");
+            b.HasKey(x => new { x.ItemId, x.FileId });
+            // Whether a file already belongs to an item (the sweep does not make a second one).
+            b.HasIndex(x => x.FileId);
         });
 
         modelBuilder.Entity<ExpenseAttachment>(b =>
